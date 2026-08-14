@@ -245,8 +245,10 @@ describe('headless runner', () => {
     expect(() => { apply(ctx, { task: 't' }) }).toThrow('must provide ctx.appExit')
   })
 
-  it('validates config: the task is required', () => {
-    expect(() => new Config({} as never)).toThrow()
+  it('accepts the run options with defaults and rejects a non-boolean list', () => {
     expect(new Config({ task: 'x' })).toEqual({ task: 'x' })
+    expect(new Config({ list: true })).toEqual({ list: true })
+    expect(new Config({ model: 'm', resume: 'session-x' })).toEqual({ model: 'm', resume: 'session-x' })
+    expect(() => new Config({ list: 'yes' as never })).toThrow()
   })
 })
