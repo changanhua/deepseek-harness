@@ -1,51 +1,35 @@
-# 任务队列模块（task-queue）设计 v2
+# 任务队列模块（task-queue）设计 v3
 
-> 状态：待用户审阅（v2：已按 codex CLI 审查意见修订）
+> 状态：待用户审阅（v3：已按 codex CLI 两轮审查修订）
 > 日期：2026-08-14
 > 目标仓库：`changanhua/deepseek-harness`（上游 `deepseek-ai/deepseek-harness`）
-> 修订来源：codex CLI 独立审查（HEAD `adfd4d6b6f` 时的文档 v1），全部 P0/P1/P2 意见经逐条仓库验证后吸收
+> 修订来源：codex CLI 独立审查两轮（v1@`adfd4d6b6f`、v2@`55771d6095`），全部 P0/P1/P2 意见经逐条仓库验证后吸收
 
 ## 0. 摘要
 
 给 DSH 增加一个**跨会话持久化的 host 平面任务队列**（`ctx.taskQueue`）：agent 工具调用或 inbox 文件投递入队，宿主进程内的调度器按并发上限、优先级、延迟时间自动消化，任务由可插拔执行器（`claude` / `codex` / `opencode` / `arkcli` / `shell`）运行，产出物落盘到指定目录。队列状态跨会话、跨进程重启存活，失败任务按指数退避自动重试。
 
-典型用法（用户原始诉求）：把"生成知识库、拆解小说"等批量研究任务派给本机 Claude Code CLI 等外部 agent，用满多供应商闲置 API 额度。模块本身是通用基础设施。
+**v3 的核心修正（回应第二轮审查的元问题）**：持久状态与不可逆副作用**不再是文档里的一句"先持久后副作用"**，而是被分解为两阶段状态机（starting/running、stopping/canceled）、单一 mutation FIFO、提交不确定时的 faulted 协议、receipt 幂等 admission 与 durable notification outbox（§3/§4/§7）。
 
-**"确保系统合理使用"是设计目标之一（见第 8 节），但本版修正措辞：机制只能提高采用概率，不承诺保证**——唯一的硬机制是 host 面调度器自治（队列自排干）。
-
-## 1. 背景与动机（v2 修正了对既有能力的描述）
+## 1. 背景与动机
 
 ### 1.1 既有能力的准确边界（经仓库验证）
 
-| 既有能力 | 真实语义（v1 文档说错的已纠正） |
+| 既有能力 | 真实语义 |
 |---|---|
-| `jobs`（`ctx.jobs`） | **进程内**后台任务注册表（`jobs-local` 为内存实现），进程退出即失；无跨会话持久、无重试 |
-| `todo_write` | **持久**（`session.append('todo/write')` 完整快照，可重放），但作用域是单个 agent session，无执行、无重试、无并发、无跨会话可见 |
-| goal | **same-session 单目标**，未完成目标阻塞下一目标创建；跨会话 resume 可用但不是任务队列 |
-| `schedule` | **会话级持久提醒**（After/At/Every，version-1 change 记录 + flush barrier），触发后注入 agent 上下文——是"提醒"，不是"任务执行流水线" |
+| `jobs`（`ctx.jobs`） | **进程内**后台任务注册表（`jobs-local` 内存实现），进程退出即失；状态含 `stopping` 中间态 |
+| `todo_write` | **持久**（`session.append('todo/write')` 完整快照），但作用域是单个 agent session，无执行/重试/并发 |
+| goal | **same-session 单目标**，未完成目标阻塞下一目标 |
+| `schedule` | **会话级持久提醒**（After/At/Every，version-1 change 记录 + flush barrier），是提醒不是执行流水线 |
 | workflow / subagent | 单次编排/委托，无持久队列语义 |
 
-**结论（修正后）**：缺的不是"任何持久化"，而是**一条 host 平面、跨会话、可执行、可重试、有并发上限的批量任务流水线**。job/schedule/todo 各自对，组合起来不等于队列。
+**结论**：缺的是**一条 host 平面、跨会话、可执行、可重试、有并发上限的批量任务流水线**。
 
 ### 1.2 目标 / 非目标
 
-**目标（v1）：**
-1. 跨会话持久：状态机变更以持久 change 记录为唯一路径，重启后精确重放。
-2. 批量投递：agent 工具批量入队 + inbox 目录文件投递（两种入口，一种单写者存储协议，见 §4/§7）。
-3. 并发上限：全局 + 每执行器两级。
-4. 失败重试：指数退避 + 最大次数，耗尽进死信，可手动重试。
-5. 定时/延迟：`delayUntil` 任务级资格门槛（不与 `schedule` 的会话提醒混淆）。
-6. 可插拔执行器：注册表 + 5 个 CLI 适配器，全部经 `ctx.subprocess` 运行（§6）。
-7. 采用机制：工具可见性 + preset 指令 + pre-step 摘要注入 + 调度器自治（§8，措辞已降级）。
+**目标（v1）：** 跨会话持久、批量投递（工具 + inbox）、两级并发上限、指数退避重试、`delayUntil` 延迟、可插拔执行器（经 `ctx.subprocess`）、采用机制（§8）。
 
-**非目标（v1 明确不做）：**
-- 分布式多机队列（单机单进程）
-- 网页面板（Client 插件，未来第二个包的候选）
-- 任务间依赖 DAG
-- 自动额度均衡路由（注册表留接口）
-- 周期 cron（`delayUntil` 一次性定时；周期任务未来评估复用 `schedule` 模型）
-- 任务执行沙箱化/容器化（信任边界见 §6.3，如实声明）
-- 孤儿进程 reattach（v1 只做 kill-or-mark，见 §4.2）
+**非目标（v1）：** 分布式多机队列；网页面板；任务依赖 DAG；自动额度均衡路由；周期 cron；执行器容器化；**exec 前发布进程身份的 spawn wrapper**（v1 明确接受无 pid 孤儿窗口，§3.2）。
 
 ## 2. 总体架构
 
@@ -56,328 +40,354 @@
   inbox 目录文件投递 ───────►  @deepseek-ai/dsh-task-queue（contract）      │
                           │    @deepseek-ai/dsh-task-queue-local（backend）│
                           │     ├─ Service: ctx.taskQueue                 │
+                          │     ├─ mutation FIFO（§4.2）                  │
                           │     ├─ 调度循环（并发/优先级/退避/延迟）        │
-                          │     ├─ 单写者 change 日志 + 快照 + fsync       │
-                          │     ├─ 执行器注册表（claude/codex/.../shell）  │
+                          │     ├─ 单写者 segment 日志 + 快照（§4.1）      │
+                          │     ├─ 执行器注册表（prepare-only，§6）        │
                           │     └─ 事件：task-queue/*                     │
                           └───────────────┬──────────────────────────────┘
-                                          │ 全部经 ctx.subprocess（树终止/敏感 env 清洗）
+                                          │ 唯一 spawn 点：ctx.subprocess
                                           ▼
                       claude -p / codex exec / opencode / arkcli / shell
                                           │
                                           ▼
-                    产出物 → 任务指定 outputDir；运行日志 → runs/<id>/
+                    产出物 → outputDir；运行日志 → runs/<id>/run-<attempt>.log
 ```
 
-**命名（v2 修正）**：领域名一律 `task-queue` / `taskQueue`，**不用裸 `queue`**——`packages/client/ui-conversation` 已有会话 transient inbox 的 `queue` 概念（`queue/store.ts`），避免 UI/日志/事件命名冲突。
+**命名**：领域名一律 `task-queue` / `taskQueue` / `task_queue_*`，**不用裸 `queue`**（`ui-conversation` 已有会话 inbox 的 `queue` 概念）。
 
-**包结构（v2 修正，完全仿照 jobs 三包模式）**：
+**包结构（仿 jobs 三包模式）**：
 
 | 包 | 目录 | 职责 |
 |---|---|---|
 | `@deepseek-ai/dsh-task-queue` | `packages/task-queue/task-queue` | contract：Task 类型、状态机、change 记录 schema、Service 接口 |
-| `@deepseek-ai/dsh-task-queue-local` | `packages/task-queue/task-queue-local` | durable backend：单写者日志/快照/inbox 扫描/调度循环/执行器注册表 |
-| `@deepseek-ai/dsh-tool-task-queue` | `packages/task-queue/tool-task-queue` | agent 面：7 个工具 + pre-step 摘要钩子 |
+| `@deepseek-ai/dsh-task-queue-local` | `packages/task-queue/task-queue-local` | durable backend：segment 日志/快照/inbox 扫描/FIFO/调度/注册表 |
+| `@deepseek-ai/dsh-tool-task-queue` | `packages/task-queue/tool-task-queue` | agent 面：7 个工具 + pre-step 摘要钩子 + system-prompt section |
 
-**与既有 seam 的关系（v2 新增，回应"为何不并入 jobs"）**：jobs 是**进程内、按 agent session 键控**的注册表，其"随进程而逝"正是队列要消灭的属性；两者作用域不同（jobs = 会话内后台命令，taskQueue = host 平面持久批量流水线），因此独立 Service 是必要的。但执行层不另造轮子：**子进程一律走 `ctx.subprocess`**（§6）。
+**与既有 seam 的关系**：jobs 是进程内、按 agent session 键控的注册表——"随进程而逝"正是队列要消灭的属性，独立 Service 必要。执行层不另造轮子：**spawn/terminate/waitForExit 唯一归 `ctx.subprocess`，执行器适配器只产 spawn spec**（§6）。
 
-## 3. 任务模型与状态机（v2 修正矛盾）
+## 3. 任务模型与状态机（v3：两阶段副作用状态机）
 
-### 3.1 状态机（超时归属已修正）
+### 3.1 状态机（含副作用中间态）
 
 ```
-pending ──领取──► running ──成功──► succeeded
-   ▲                 │
-   │                 ├──失败(可重试)──► pending（retries+1，退避延迟后）
-   │                 │
-   │                 ├──失败(耗尽 maxRetries)──► failed（死信）
-   │                 │
-   │                 └──超时──► 失败路径（同上：可重试→pending；耗尽→failed）
+pending ──领取──► starting ──spawn──► running ──成功──► succeeded
+   ▲                                    │
+   │                                    ├──失败(可重试)──► pending（attempt+1，退避延迟后）
+   │                                    │
+   │                                    ├──失败(耗尽 maxAttempts)──► failed
+   │                                    │
+   │                                    └──超时(abort→树终止)──► 失败路径（同上）
    │
-   ├──取消（pending 或 running，显式用户动作）──► canceled
+   ├──取消（pending）──► canceled
    │
-   └──── 手动 queue_retry ── failed（计数清零，回 pending）
+   ├──取消（starting/running）──► stopping ──terminate+waitForExit──► canceled
+   │
+   └──── 手动 task_queue_retry ── failed（attempt 清零，回 pending）
 ```
 
-**v2 关键修正**：**超时走失败路径，不是 canceled**。canceled 是唯一的显式取消终态；超时/崩溃/非零退出码统一进"失败"语义，由 retry 策略决定去向。
+**两阶段副作用状态（v3 新增，回应"pid 不可能在 spawn 前持久化"）**：
 
-**宿主崩溃（进程被杀）时的 running 任务**：重启时一律按"失败一次"处理——retries+1 后回 `pending`（或耗尽进 `failed`）。**v1 不做孤儿 reattach**（v1 文档此设计无法由字段支撑，已删）：boot 时凭持久化的 run record（含 pid）尽力终止疑似孤儿进程，找不到则发出 `orphan-unknown` 告警（记录泄漏），任务照样回队。at-least-once 语义见 §4.3。
+| 转移 | 持久化内容 | 副作用 | 崩溃窗口与处理 |
+|---|---|---|---|
+| pending → `starting` | attempt、runId、logPath、commandFingerprint、plannedStartedAt（**无 pid**） | 无 | 重启见 starting 且无 running 记录 → 按失败一次处理（回 pending），**同时记录 `orphan-unknown` 风险**：spawn 可能已发生但 pid 未及持久化，可能留下未知孤儿（v1 明确接受此窗口，见 §4.3） |
+| `starting` → `running` | **pid**、actualStartedAt | spawn（唯一副作用点） | running 已持久 → 重启凭 pid 做 best-effort 孤儿终止（§10.5） |
+| running → `stopping` | 取消意图 | 无 | 重启见 stopping → 继续终止路径（凭已持久 pid）→ canceled |
+| stopping → `canceled` | 终态 | terminate + waitForExit（幂等） | 终止与结算解耦：先写意图再杀，崩溃后重放意图继续杀 |
 
-### 3.2 任务字段（v2：运行身份全部持久化）
+**规则（v3）**：
+1. **领取唯一性**：只有 `pending` 且 `delayUntil <= now` 可领取；调度循环单线程。
+2. **意图先行**：任何不可逆副作用（spawn/terminate）之前，先持久化其意图状态（starting/stopping）。副作用本身可能重复执行，但状态机保证转移有据可查。
+3. **结算单写**：succeeded/failed/canceled 只能由 mutation FIFO（§4.2）在副作用完成后写入；失败留痕（lastError、result、run record）。
+
+### 3.2 任务字段
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `id` | string | `tq-<8位随机>`，唯一 |
-| `title` | string | 一句话标题（人读） |
+| `id` | string | `tq-<8位随机>` |
+| `title` | string | 一句话标题 |
 | `prompt` | string | 交给执行器的完整指令 |
-| `executor` | string | 注册表名；**执行器需在 host 配置中显式启用（§6.3）** |
-| `status` | enum | `pending`/`running`/`succeeded`/`failed`/`canceled` |
-| `priority` | int | 越小越先（默认 10）；不抢占 running |
-| `retries` / `maxRetries` | int | 已重试 / 上限（默认 3） |
-| `backoffMs` | int | 退避基数（默认 30s），延迟 = `backoffMs * 2^(retries-1)` |
-| `delayUntil` | ISO | 此时间前不可领取（任务级资格门槛，可选） |
-| `timeoutMs` | int | 单次执行超时（默认 30min），超时走失败路径 |
+| `executor` | string | 注册表名；需 host 配置显式启用（§6.3） |
+| `status` | enum | `pending`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`canceled` |
+| `priority` | int | 越小越先（默认 10）；不抢占 |
+| `attempt` / `maxAttempts` | int | **已执行次数 / 总执行上限（默认 3）**。`maxAttempts=3` 示例序列：执行①失败→退避→执行②失败→退避→执行③失败→`failed`。首次执行即 attempt=1；退避延迟 = `backoffMs * 2^(attempt-1)` |
+| `backoffMs` | int | 退避基数（默认 30s） |
+| `delayUntil` | ISO | 此时间前不可领取（可选） |
+| `timeoutMs` | int | 单次执行超时（默认 30min）→ abort 信号 → 失败路径 |
 | `outputDir` | string | 产出目录（可选；默认 `$DSH_HOME/task-queue/output/<id>/`） |
-| `tags` | string[] | 可选自由标签，`queue_list` 过滤用 |
-| `createdAt` / `updatedAt` | ISO | 时间戳（诊断用；**全序依据是 seq，不是时间**，见 §4.1） |
+| `tags` | string[] | `task_queue_list` 过滤用 |
+| `createdAt` / `updatedAt` | ISO | 诊断用；**全序依据是 seq** |
 | `lastError` | string? | 最近失败原因 |
-| `result` | object? | 成功摘要：退出码、产出文件列表、耗时 |
-| `source` | enum | `agent-tool` / `inbox`（授权模型按来源区分，§6.3） |
-| `ownerSessionId` | string? | 投递时所在会话（结果投递模型用，§7.4） |
+| `result` | object? | 成功摘要 |
+| `ownerSessionId` | string? | 结果投递用（§7.4；落盘前 **encodeSegment**，§9.4） |
+| `receiptId` | string | 幂等 admission 键（§7.3；inbox = 文件 UUID，工具 = 可选 idempotencyKey） |
+| `notification` | enum? | `pending`/`acknowledged`（仅终态任务，§7.4） |
 
-**durable run record（v2 新增，每次 attempt 一条，随 change 记录持久化）**：
-
-| 字段 | 说明 |
-|---|---|
-| `runId` | `r-<随机>`，唯一标识一次执行 attempt |
-| `attempt` | 第几次执行（1 起） |
-| `pid` | 子进程 pid（boot 时用于孤儿排查） |
-| `startedAt` | 进程启动时间戳 |
-| `logPath` | `runs/<taskId>/run-<attempt>.log` |
-| `commandFingerprint` | argv 的哈希（诊断与重复检测） |
+**durable run record（每次 attempt 一条，随 change 记录持久化）**：`runId`、`attempt`、`pid`（starting 时为 null）、`startedAt`、`logPath`、`commandFingerprint`。
 
 ### 3.3 状态机规则（不可违背）
 
-1. **领取唯一性**：只有 `pending` 且 `delayUntil <= now` 可领取；调度循环单线程，天然互斥。
-2. **先持久后动作**：任何状态转移先落 change 记录（含 fsync），成功后才执行副作用（spawn/kill/通知）。**写失败 = 转移未发生**，内存保留旧状态，调度器暂停并告警（§10）。
-3. **失败留痕**：`failed` 保留 `lastError`、`result` 与最后一次 run record，供诊断与手动重试。
+1. 领取唯一性（§3.1 规则 1）。
+2. 意图先行（§3.1 规则 2）——副作用前必有持久化意图，副作用可重放。
+3. 结算单写（§3.1 规则 3）——所有 mutation 走 §4.2 FIFO。
 
-## 4. 持久化与崩溃恢复（v2 重写协议）
+## 4. 持久化与崩溃恢复（v3：segment + FIFO + faulted 协议）
 
-### 4.1 单写者 change 日志（修正多写者竞态）
-
-**v1 文档"外部直接 append 共享 tasks.jsonl"已删除**——外部写者与调度器压缩之间的竞态无法用"重放尾部"闭合。v2 协议：
+### 4.1 单写者 segment 日志（v3 明确轮转协议）
 
 ```
-$DSH_HOME/task-queue/
-  log.jsonl             # 唯一源真。写者只有调度器（单写者，无锁竞争）
-  snapshot.json         # {lastSeq, tasks} 物化快照，加速 boot
-  inbox/                # 外部投递入口：每任务一个独立文件（见 §7.3）
-  corrupt/              # 坏行隔离区（运营可操作）
-  runs/<taskId>/        # 每次执行日志 run-<attempt>.log
-  output/<taskId>/      # 默认产出目录
+$DSH_HOME/task-queue/            # 根目录 0o700（prompt/结果属用户私有数据）
+  active.jsonl                   # 活跃写段（唯一可追加段，写者只有 scheduler）
+  segments/000001-000100.jsonl   # 不可变已封段（文件名 = 首尾 seq）
+  snapshot.json                  # {lastSeq, baseSegment?, tasks} 物化快照
+  inbox/                         # 外部投递入口（0o700，§7.3）
+  quarantine/                    # 运营隔离区（运行时只读入，不写入坏段）
+  runs/<taskId>/                 # 每次执行日志 run-<attempt>.log
+  output/<taskId>/               # 默认产出目录
 ```
 
 **change 记录格式**（借鉴 `schedule` 的 version-1 变更记录模式）：
 
 ```jsonc
-{ "seq": 41, "version": 1, "op": "created|claimed|succeeded|failed|requeued|canceled|attempt",
-  "taskId": "tq-…", "state": { /* op 之后的完整任务快照，含 run record */ }, "at": "ISO" }
+{ "seq": 41, "version": 1, "op": "created|starting|running|stopping|succeeded|failed|requeued|canceled|notified",
+  "taskId": "tq-…", "state": { /* op 之后完整任务快照，含 run record */ }, "at": "ISO" }
 ```
 
-- **全序依据是 `seq`**（单调递增，快照内持久化 `lastSeq`），`at` 仅诊断；不依赖 wall-clock 排序。
-- **追加协议**：open('a') → write → **fsync(file)** → 更新内存 → 发事件。首次创建文件时 fsync 父目录。
-- **快照**：定期（行数 > 10000 或文件 > 8MB）与 boot 时生成。用 `writeFileAtomic` 保证 rename 原子性（读者只见旧或新完整内容）；**但 `writeFileAtomic` 明确不保证 crash durability**（源码注释），因此快照写完追加 fsync 文件 + fsync 父目录，并**把 fsync 延迟写入成本记在 §10.5 的取舍里**。
-- **重放**：加载 snapshot（若其 lastSeq 与 log 尾部一致则直接信任），否则按 seq 折叠 log 中 seq > lastSeq 的行。行级校验失败（schema 不合法但行尾完整）→ 移入 `corrupt/` 并告警，**不静默丢弃**（运营可恢复）；文件尾半行（崩溃于 write 中途）→ 截断丢弃，该次变更视为未发生（与 §3.3 规则 2 一致）。
+- **全序依据 `seq`**（单调递增，`snapshot.json` 持久 `lastSeq`），`at` 仅诊断。
+- **追加协议**：open('a') → write → **fsync(file)** → 更新内存 → 发事件；首次创建时 fsync 父目录。
+- **轮转协议（v3 新增）**：active 行数 > 10000 或 > 8MB 时：
+  1. fsync(active) → rename 为 `segments/<firstSeq>-<lastSeq>.jsonl` → fsync(segments 目录)；
+  2. 创建新 active（fsync 新文件 + 目录）；
+  3. 最后更新 `snapshot.json`（`writeFileAtomic` + fsync 文件 + fsync 父目录；**`writeFileAtomic` 不保证 crash durability，fsync 由我们补**）。
+  发布顺序保证：snapshot 永远只引用已封段 + active；任一步崩溃后重放均收敛（snapshot 与 segments 可从 active 尾部增量重放）。
+- **快照是缓存**：boot 时 snapshot 的 lastSeq 与 active 尾部一致则信任；否则从 baseSegment 起折叠重放（按 seq 序）。
+- **损坏处理（v3 修正，fail-closed）**：重放遇到完整但非法的行 → **直接 faulted**（同 `schedule` 对 corrupt durable stream 的做法：`runtime.ts` 折叠失败即 `faulted=true`），告警并停调；**运行时不得自行跳过坏行**（跳过一个 change 会让后续 seq 建在错误状态上）。恢复是运营动作：把坏段复制到 `quarantine/`、显式重写后重启。文件尾半行（崩溃于 write 中途）→ 截断丢弃，该变更视为未发生（与 §4.2 faulted 判定衔接）。
+- **v3 删除 v2 的"孤儿 `.lock`"场景**：`writeFileAtomic` 不产生 `.lock`（只有显式 `withFileLock` 才有）；本设计 snapshot/active 均为单写者，不使用 `withFileLock`，无孤儿锁问题。
 
-### 4.2 崩溃场景矩阵（v2）
+### 4.2 mutation FIFO 与提交不确定协议（v3 新增，回应 P0-2）
+
+**所有 mutation 串行**：enqueue、batch、inbox import、结算（succeeded/failed/canceled/requeued）、cancel 意图、retry、notification ack——全部进入**一个服务级 FIFO**（仿 `schedule` 的 `runScheduleTransaction`，按 service 实例键控）。多个 agent 并发 enqueue、子进程完成回调、scheduler tick 产生的 append 由此串行化。
+
+**append/fsync 失败 ≠ 转移未发生**（v2 该断言在文件系统语义上不成立——write 可能已把完整行交给内核而 fsync 报错，或调用方看到错误但重启后记录实际存在）。协议：
+
+1. FIFO 内 mutation 的 append/fsync 抛错 → 队列进入 **`faulted`**；
+2. 拒绝新 mutation（enqueue/cancel/retry 返回 faulted 错误），调度器停转；
+3. **判定**：关闭并重读 active 日志，折叠到 lastSeq，按 seq 检查该 change 是否已提交：
+   - 已提交 → 重放该 change，内存与其一致，退出 faulted 继续；
+   - 未提交且行尾完整 → 该转移确实未发生，退出 faulted 继续；
+   - **无法判定**（日志不可读/行损坏）→ 保持 fail-closed，要求重启或运营恢复，**不自动 `resume()`**。
+4. 半行截断情形复用第 3 步判定（截断 = 未提交）。
+
+### 4.3 崩溃场景矩阵与语义取舍（v3）
 
 | 场景 | 恢复行为 |
 |---|---|
-| 任务 pending，进程被杀 | 重放后仍 pending，正常被领取 |
-| 任务 running，宿主进程被杀 | 重放发现 running → 按失败一次处理：retries+1 回 pending 或进 failed；凭 run record 的 pid 尽力终止疑似孤儿，找不到则 `orphan-unknown` 告警 |
-| 任务 running，子进程自然死亡（非零退出） | 正常失败路径（结算时写 change 记录） |
-| 进程死在 append 半途 | 半行截断丢弃；该变更未发生（§3.3 规则 2 的持久化保证） |
-| snapshot 损坏或缺失 | 从 log 全量重放重建 |
-| 孤儿锁文件（`writeFileAtomic` 的 `.lock`） | 其文档明示"孤儿锁恢复是运营动作"：检测到锁超时 → 告警并指引运营处理，不自动猜删 |
+| pending，进程被杀 | 重放后仍 pending |
+| starting，进程被杀 | 无 pid → 按失败一次处理（回 pending），发 `orphan-unknown` 风险告警 |
+| running，宿主进程被杀 | 凭持久化 pid best-effort 终止孤儿（§10.5），任务按失败一次处理 |
+| stopping，宿主进程被杀 | 重放取消意图 → 继续 terminate → canceled |
+| spawned 子进程自然失败 | 正常失败路径 |
+| active 半行 | 截断丢弃；faulted 判定协议收尾（§4.2） |
+| 非法完整行 | fail-closed，运营 quarantine 恢复（§4.1） |
 
-### 4.3 语义取舍（明确记录）
-
-**at-least-once**：崩溃窗口内任务可能执行两次（重放发现 running 但子进程实际已完成）。理由：v1 面向内容生产类任务，重跑代价 < exactly-once 复杂度（幂等键/两阶段提交）。缓解：`attempt` 递增 + 每次执行独立 `run-<attempt>.log`，重复执行可追溯；未来需要时加幂等键字段。
+**at-least-once**：崩溃窗口内任务可能执行两次（starting→spawn→running 之间崩溃：spawn 可能已发生，任务回队重跑，同时留下未知孤儿）。理由：内容生产类任务重跑代价 < exactly-once 复杂度。缓解：attempt 递增 + 独立 `run-<attempt>.log` + `orphan-unknown` 告警可追溯。**v1 明确接受无 pid 孤儿窗口**（exec 前发布进程身份的 wrapper 列为非目标）。
 
 ## 5. 调度策略
 
 调度循环是 `task-queue-local` 内的 `ctx.setInterval`（1s 可配），每 tick：
 
-1. **扫 inbox**（§7.3）：校验新文件 → 转成 `created` change 记录落 log → 删 inbox 文件（**落 log 成功后才删**，不丢任务）。
-2. **回收**：扫描 running——`now - startedAt > timeoutMs` → 经 `ctx.subprocess` 终止（树终止）→ 失败路径；宿主重启路径见 §4.2。
-3. **领取**：pending 中筛 `delayUntil <= now`，按 `priority` 升序、同优先级 FIFO，直到：
-   - 全局 running 数 < `maxConcurrent`（默认 2，可配）；
-   - 该执行器 running 数 < 执行器上限（默认 1，可配）。
-4. **执行**：先写 `claimed`+`attempt` change 记录（含 run record，§3.2）→ 再经执行器 spawn。
-5. **结算**：退出码 0 → `succeeded`；非 0 / 超时 → 失败路径。每次结算发事件。
+1. **扫 inbox**（§7.3）：校验 → 以 receiptId 幂等检查 → FIFO 写 `created` → 成功后删文件。
+2. **回收**：running 超时（`now - startedAt > timeoutMs`）→ 触发 subprocess 的 abort 信号（`SubprocessSpawnSpec.signal`，spawn 时由 scheduler 注入 `AbortSignal.timeout(timeoutMs)`）→ 树终止 → 失败路径；starting 超时（spawn 未返回）同理。
+3. **领取**：pending 筛 `delayUntil <= now`，按 priority 升序、同优先级 FIFO，直到全局 running+starting 数 < `maxConcurrent`（默认 2）且该执行器数 < 执行器上限（默认 1）。
+4. **执行**：FIFO 写 `starting`（run record 无 pid）→ `ctx.subprocess.spawn(spec)` → FIFO 写 `running`（pid）。
+5. **结算**：`SubprocessOutcome.exitCode === 0` → `succeeded`；非 0/超时/信号 → 失败路径（attempt+1 回 pending 或进 failed）。
 
-**与 `dsh-schedule` 的职责边界（v2 写明）**：`schedule` 是会话级持久提醒（触发后注入 agent 上下文，不执行任务）；`delayUntil` 是队列任务级"何时可领取"的资格门槛。两者不合并：调度器只消费自己的任务，不订阅 schedule。
+**与 `dsh-schedule` 的职责边界**：schedule 是会话级持久提醒（触发后注入上下文，不执行任务）；`delayUntil` 是任务级"何时可领取"资格门槛。两者不合并。
 
-**不抢占**：priority 只影响领取顺序，不打断 running（v1 取舍）。
+**不抢占**：priority 只影响领取顺序。
 
-## 6. 执行器（v2 重写边界）
+## 6. 执行器（v3：prepare-only 接口，spawn 唯一归 scheduler）
 
-### 6.1 注册表接口
+### 6.1 注册表接口（v3 修正——适配器不再持有生命周期）
 
 ```ts
-// contract 包导出的注册接口（host 面）
-taskQueue.registerExecutor(name, handler: (run, task, ctx) => ExecutorRun)
-// ExecutorRun = { spawn(): {pid, startedAt}, wait(pid): Promise<{exitCode, durationMs}>, terminate(pid) }
+// contract 包导出（host 面）
+taskQueue.registerExecutor(name, adapter: {
+  prepare(task, run): Promise<SubprocessSpawnSpec>   // 只产 spec，不碰 child_process
+})
 ```
 
-任何 host 插件可注册新执行器——加执行器不动调度器一行。
+- **scheduler 唯一调用** `ctx.subprocess.spawn()`，唯一持有 `SubprocessHandle`，唯一负责：注入 `AbortSignal.timeout(timeoutMs)`、terminate、waitForExit、结算。
+- 第三方执行器**没有** spawn/kill 入口，绕不过 `ctx.subprocess`——v2 的 `{spawn(), wait(), terminate()}` 接口已删。
 
-### 6.2 内置 CLI 适配器（命令模板实现时以 `--help` 复核）
+### 6.2 内置 CLI 适配器（prepare 产出的 spec 要点）
 
-| 执行器 | 命令模板 | 备注 |
+| 执行器 | argv 模板（实现时以 `--help` 复核） | 备注 |
 |---|---|---|
-| `claude` | `claude -p <prompt> --output-format json --add-dir <outputDir>` | 允许其写产出目录 |
+| `claude` | `claude -p <prompt> --output-format json --add-dir <outputDir>` | |
 | `codex` | `codex exec <prompt>` | cwd = outputDir |
-| `opencode` | `opencode run <prompt>` | 本机 config 目录有 EEXIST 环境问题，M3 先修 |
+| `opencode` | `opencode run <prompt>` | 本机 config EEXIST 问题，M3 先修 |
 | `arkcli` | `arkcli +chat <prompt>` | 走用户 profile |
-| `shell` | argv 数组（**不用 shell 字符串插值**） | 见 §6.3 授权限制 |
+| `shell` | argv 数组（无 shell 插值） | §6.3 授权限制 |
 
-**通用行为（v2 修正——不再自研 spawn/kill）：**
+**通用行为：**
+- spec 的 `env`：默认不传（subprocess 服务的 scrub 后环境）；执行器需要显式凭据 → host 配置 `env` 白名单传入（合并发生在 scrub 之后）。
+- spec 的 `stdio`：stdout/stderr 用 `SubprocessCollect`（带 spill 配置，内存有界）——**subprocess 服务不会自动合并写文件**（v2 隐含假设不成立）。
+- **运行日志（v3 定义）**：结算后由 scheduler 从 collected reader（`readFrom(0)`）读取，**先 stdout 后 stderr、各带标记头**写入 `runs/<taskId>/run-<attempt>.log`。**明确声明**：不保留 stdout/stderr 时间交错序；背压由 collect 的内存上限 + spill 处理；**日志写失败仅告警不影响任务结算**（日志是诊断产物，非持久事实源）。
+- 命令一律 argv 数组，无 shell 插值。
 
-- **一律经 `ctx.subprocess`**：它提供跨平台 detached tree 管理、`SIGTERM→grace→SIGKILL` 树终止、整树退出等待、spill 日志。队列不直接调用 `child_process`。
-- **环境继承**：使用 subprocess 的默认 env 基（**敏感凭据形变量与 `DSH_*` 默认清洗**，`SENSITIVE_ENV_PATTERN`）；执行器需要的显式凭据必须经配置里的 `env` 白名单传入（合并发生在 scrub 之后）。
-- stdout/stderr 写 `runs/<taskId>/run-<attempt>.log`；退出码为唯一成败判据。
-- 命令一律 **argv 数组**，无 shell 插值。
+### 6.3 授权模型
 
-### 6.3 授权模型（v2 新增，回应 P0-4）
-
-**"模型调了工具 ≠ 人工授权"。** 分层如下：
-
-1. **执行器启用制**：每个执行器在 host 配置（bundle patch 行 config）里显式 `enabled: true` 才可运行；默认全部禁用。启用 = 运营者（你）对该二进制的授权。
-2. **来源限制**：`shell` 执行器**只接受 `source: 'inbox'` 的任务**（运营者投递），**模型工具不得入队 shell 任务**（tool 层直接拒绝）。其余 CLI 执行器对两种来源开放，但仅限已启用者。
-3. **信任边界（如实声明，v1 不做沙箱化）**：CLI 子进程以 DSH 宿主用户权限运行，**不受 DSH 文件沙箱约束**。缓解仅限：outputDir 约定 + 启用白名单 + 来源限制。执行器容器化/沙箱化是非目标，文档不粉饰此边界。
+1. **执行器启用制**：host 配置（bundle patch 行 config）显式 `enabled: true` 才可运行；默认全禁。启用 = 运营者对该二进制的授权。
+2. **来源限制**：`shell` 只接受 inbox 来源任务；**模型工具不得入队 shell**（工具层直接拒绝）。
+3. **信任边界（如实声明，v1 不做沙箱化）**：CLI 子进程以 DSH 宿主用户权限运行，不受 DSH 文件沙箱约束。缓解：outputDir 约定 + 启用白名单 + 来源限制 + scrub 后环境。
 
 ## 7. 对外接口
 
-### 7.1 Service（host 面，`ctx.taskQueue`）
+### 7.1 Service（host 面，`ctx.taskQueue`，v3 可信入口拆分）
 
 ```
-enqueue(spec, source) → {id}          # source: 'agent-tool' | 'inbox'（影响授权，§6.3）
-enqueueBatch(specs, source) → {ids}   # 上限 200/次，可配
-list(filter?) → TaskSummary[]         # status/executor/tags/limit
+// 可信入口（source 由入口代码赋值，不接受调用方传 source）
+enqueueFromTool(spec) → {id}            # 拒绝 executor:'shell'；可选 spec.idempotencyKey
+enqueueBatchFromTool(specs) → {ids}     # 上限 200/次
+// inbox 由 scheduler 内部扫描调用，不对外
+list(filter?) → TaskSummary[]           # status/executor/tags/limit
 get(id) → Task
-cancel(id) → ok                       # pending 直接取消；running 经 subprocess 终止后标 canceled
-retry(id) → ok                        # failed → pending（计数清零）
+cancel(id) → ok                         # pending→canceled；starting/running→stopping 意图
+retry(id) → ok                          # failed → pending（attempt 清零）
 stats() → 各状态计数 + 每执行器计数
-registerExecutor(name, handler)
-pause()/resume()                      # 维护窗口
+registerExecutor(name, adapter)
+pause()/resume()
 ```
 
-### 7.2 事件（host 面，v2 更名避免与 UI queue 冲突）
+### 7.2 事件（host 面）
 
-`task-queue/created`、`task-queue/started`、`task-queue/succeeded`、`task-queue/failed`、`task-queue/requeued`、`task-queue/canceled`、`task-queue/drained`、`task-queue/orphan-unknown`。payload 只含叶子字段。
+`task-queue/created`、`task-queue/started`、`task-queue/succeeded`、`task-queue/failed`、`task-queue/requeued`、`task-queue/canceled`、`task-queue/drained`、`task-queue/orphan-unknown`、`task-queue/faulted`。payload 只含叶子字段。
 
-### 7.3 inbox 文件投递（v2 重写协议，替代共享文件 append）
+### 7.3 inbox 幂等 admission（v3 修正重复入队窗口）
 
-外部投递（无会话时下任务）：
+**producer 协议（防半文件 + power-loss durable）**：
+1. 写 `inbox/<uuid>.tmp`（独占 `wx`）→ **fsync(tmp)** → rename 为 `<uuid>.json` → **fsync(inbox 目录)**。仅 rename 原子可见 ≠ power-loss durable，两个 fsync 是协议的组成部分。
+2. 文件内容 = 一条任务 spec（同 `enqueueFromTool` schema，严格校验）。
 
-1. 生产者在 `$DSH_HOME/task-queue/inbox/` 写入 `<uuid>.tmp`（独占创建 `wx`），完成后 **rename 为 `<uuid>.json`**——原子现身，无半文件。
-2. 每个文件一条任务 spec（与 `enqueue` 同一 schema，严格校验）。
-3. 调度器每 tick 扫描、校验、转 `created` change 落 log、**落 log 后才删**文件。
-4. 校验失败 → 移入 `corrupt/` 告警，不静默丢。
+**scheduler 幂等 admission（v3 修正"落 log 后、删除前崩溃 → 重复创建"）**：
+1. 每 tick 扫描 inbox；
+2. **receiptId = 文件 UUID**；FIFO 写 `created` change 时**同时持久化 receiptId**；
+3. 重扫时若该 receiptId 已提交 → **只补删 inbox 文件，不再创建任务**；
+4. `created` 提交成功后删除 inbox 文件。
+工具入口的 `idempotencyKey` 同机制（已提交则返回既有 task id）。
 
-**多写者安全**：每文件唯一名，生产者在 rename 后不再触碰；log 是单写者。压缩只读 log + 快照，不碰 inbox——竞态面被彻底移除。
+### 7.4 durable notification outbox（v3 重写，notes 降级为可重建投影）
 
-### 7.4 结果投递模型（v2 新增）
+**事实源 = change 日志，note 文件只是物化投影**：
 
-- 任务终态（succeeded/failed/canceled）时，若 `ownerSessionId` 存在，写一条 `$DSH_HOME/task-queue/notes/<sessionId>/<taskId>.json` 投递通知。
-- pre-step 摘要钩子（§8.3）在所属会话活跃时读取 notes 与 stats 注入上下文，并消费已读 notes。
-- 无 owner 任务：结果仅存于任务记录 + outputDir，通过 `queue_list`/`queue_status` 查询审计。
-- 跨会话完成后归属哪个 session、如何通知，由以上最小模型定义；**不复用 tool-jobs 的 owner wakeup**（那是进程内 jobs 注册表的语义）。
+1. 任务进入终态（succeeded/failed/canceled）时，同一终态 change 内写 `notification: 'pending'`（若 `ownerSessionId` 存在）。
+2. 可重建投影：backend 可从日志重建"待通知集合"；`notes/` 目录（若实现）只是加速缓存，**丢失可重建，不作为事实源**。
+3. pre-step 钩子（§8.3）：读取该会话 pending 通知 → 注入 agent 上下文 → **等待 session persistence flush 完成**（注入消息已进会话事件日志）→ FIFO 写 `notified` change（`notification: 'acknowledged'`）。
+4. **崩溃窗口语义（v3 明确）**：
+   - 终态已提交、注入未发生 → 重启后 pending 集合从日志重建，通知不丢；
+   - 已注入、ack 未提交 → at-least-once：下次重注入（可能重复，**不静默丢失**）；
+   - ack 已提交但注入消息未持久 → 不可能：ack 在 session flush 之后才写。
+5. 无 owner 任务：无通知，结果存任务记录 + outputDir，经 `task_queue_list` 审计。
 
-### 7.5 工具（agent 面，`@deepseek-ai/dsh-tool-task-queue`）
+### 7.5 工具（agent 面，`@deepseek-ai/dsh-tool-task-queue`，v3 改名）
 
-`queue_enqueue` / `queue_enqueue_batch` / `queue_list` / `queue_status` / `queue_cancel` / `queue_retry` / `queue_stats`。
+`task_queue_enqueue` / `task_queue_enqueue_batch` / `task_queue_list` / `task_queue_status` / `task_queue_cancel` / `task_queue_retry` / `task_queue_stats`。
 
-- `queue_enqueue*` 强制 `source: 'agent-tool'`，**拒绝 executor: 'shell'**（§6.3）。
-- description 编码使用时机（§8.1）。
+- 全部经 `enqueueFromTool*` 可信入口；**拒绝 executor: 'shell'**；`maxAttempts` 语义写入 description。
+- 工具插件通过 **`ctx.systemPrompt.section()`** 注册使用规范段落（同 `tool-jobs` 先例，name `tool:task-queue`，order 参考 jobs 之后）——**不修改不存在的 persona/instructions 文本文件**（v2 该落点错误）。
 
-## 8. 采用机制（v2 措辞降级：提高概率，不承诺保证）
+## 8. 采用机制（v3 沿用 v2 措辞：提高概率，不承诺保证）
 
-### 8.1 工具可见性 + 描述即规范
+1. **工具可见性**：description 编码使用时机（批量 ≥3 个独立任务、长耗时、需重试、跨会话 → 入队；单条快速交互 → 内联）。
+2. **system-prompt section**（§7.5）：批量先入队再汇报；会话开始 `task_queue_stats` 看积压；发现 failed 主动报告并建议 `task_queue_retry`；不重复入队（先 list 查重）；agent 职责 = 投递、监控、处置失败、汇报。
+3. **pre-step 摘要注入**：薄 context 插件挂 `agent/pre-step`（同 time-context 挂点），队列非空且距上次注入超阈值时注入一行状态摘要 + 本会话 pending 通知（§7.4）。
+4. **调度器自治（唯一硬机制）**：无会话活跃时 host 面调度循环照常消化队列。前三条是采用概率放大器，本条是机制兜底。
 
-工具注册进 tool 注册表，模型可见。description 写明何时该用（批量 ≥3 个独立任务、长耗时、需重试、跨会话类工作 → 入队；单条快速交互 → 内联）。**这是提示层，不是保证层。**
-
-### 8.2 preset 指令约束
-
-fork 的 `standard` preset 加使用规范段落：批量先入队再汇报；会话开始 `queue_stats` 看积压；发现 `failed` 主动报告并建议 `queue_retry`；不重复入队（先 `queue_list` 查重）；agent 职责 = 投递、监控、处置失败、汇报。**同为提示层。**
-
-### 8.3 pre-step 摘要注入（v2 修正挂点，与 time-context 同类）
-
-薄 context 插件，挂 `agent/pre-step` 事件（time-context 的同一挂点）：队列非空且距上次注入超阈值时，注入一行状态摘要 + 当前会话的 notes（§7.4）。agent 每次推理前都可能看到队列状态——**降低遗忘概率**，不保证。
-
-### 8.4 调度器自治（唯一的硬机制）
-
-即使无会话活跃、agent 从不查看，host 面调度循环照常消化队列。**队列自排干是机制保证；其余三条是采用概率的放大器。** v2 措辞：不说"确保系统合理使用"，说"最大化采用概率 + 机制兜底"。
-
-## 9. 在 fork 中的落点与上游 merge 策略（v2 修正真实路径）
+## 9. 在 fork 中的落点（v3 修正完整 wiring 清单）
 
 ### 9.1 新增包（全新目录）
 
 `packages/task-queue/{task-queue, task-queue-local, tool-task-queue}`（§2 表格）。
 
-### 9.2 修改的既有文件（v2 全部改为真实存在的路径）
+### 9.2 修改的既有文件（v3 完整清单，含依赖归属）
+
+**挂载模式（v3 修正）**：照 `tool-jobs` 既有模式——base bundle 挂 model-facing 工具，web overlay 禁用，standard preset 为 Web agent 重挂。
 
 | 文件 | 改动 | 已验证 |
 |---|---|---|
-| `packages/bundle/base/cordis.patch.yml` | host 组合加 `task-queue-local` 服务行（`@deepseek-ai/dsh-task-queue-local`，含执行器启用配置）。**v1 写的 `apps/cli/config/base.cordis.yml` 不存在** | 文件存在（当前有本地 WIP 修改，注意与其共存） |
-| `packages/bundle/base/package.json` | 声明 workspace 依赖（bundle 是 host 行的依赖归属方） | 存在 |
+| `packages/bundle/base/cordis.patch.yml` | ① host 面服务行 `task-queue-local`（含执行器启用配置）② 工具行 `tool-task-queue`（供 TUI 等非 web 面） | 存在（当前有本地 WIP 改动，注意共存） |
+| `packages/bundle/base/package.json` | 声明 `task-queue`、`task-queue-local`、`tool-task-queue` workspace 依赖 | 存在 |
+| `packages/bundle/web-app/cordis.patch.yml` | `tool-task-queue` 行 `disabled: true`（web 由 preset 重挂，同 tool-jobs 模式） | 存在 |
 | `apps/cli/config/agent-presets/standard/agent.cordis.yml` | 加 `tool-task-queue` 工具行 + pre-step 钩子行 | 存在 |
-| `apps/cli/config/agent-presets/standard/` persona/instructions 文本 | 加 §8.2 规范段落 | 存在 |
+| `apps/cli/package.json` | **声明 `tool-task-queue` 依赖**（preset 文件属于 apps/cli，其引用的包须可从 CLI 依赖解析——同 `tool-jobs` 在 73 行的先例） | 存在，v2 漏此项 |
+| `pnpm-lock.yaml` | 由 `pnpm install` 自动更新（不手改） | — |
 
-**覆盖机制（v2 修正）**：host 层叠是 `base bundle patch` + profile/home 的 `cordis.patch.yml` + `--patch <path>` overlay（`dsh --profile web --patch ./extra.yml`）。**`--config` 入口不存在**，v1 文档写的 `$DSH_HOME/config.yaml` / `dsh --config` 兜底已删；个人 overlay 的正确路径是 profile 的 `cordis.patch.yml` 或 `--patch`。
+**覆盖机制**：host 层叠 = `base bundle patch` + profile/home 的 `cordis.patch.yml` + `--patch <path>` overlay（`dsh --profile web --patch ./extra.yml`）。**`--config` 入口不存在**。
 
-### 9.3 merge 上游策略（v2 去绝对化）
+### 9.3 merge 上游策略
 
-- 同步：`git fetch upstream && git merge upstream/master`。冲突面 = §9.2 表格里的 4 个文件各自的新增行；`bundle` 的 patch 文件若上游重排，需按新行序重放我们的行。
-- 措辞修正：**不承诺"永远无冲突"**；承诺的是"冲突面小且可机械重放"（我们的改动 = 新目录 + 若干单行追加）。
-- 兜底：迁移到 profile/home 的 `cordis.patch.yml` 或 `--patch` overlay，零仓库内文件改动。
+- 同步：`git fetch upstream && git merge upstream/master`。冲突面 = §9.2 表内文件的新增行；bundle patch 若上游重排，按新行序重放。
+- 措辞：不承诺"永远无冲突"，承诺"冲突面小且可机械重放"。
+- 兜底：迁移到 profile/home `cordis.patch.yml` 或 `--patch` overlay，零仓库内改动。
 
-## 10. 错误处理与边界（v2 补充）
+### 9.4 路径与权限（v3 新增）
 
-1. **执行器缺失/未启用**：入队时即拒绝（未启用）；运行时 spawn ENOENT → 立即 failed，`lastError` 写明，**不进重试风暴**（配置错误类不重试，与瞬时失败区分）。
-2. **超时**：经 `ctx.subprocess` 树终止 → 失败路径。
-3. **append/fsync 失败**：转移未发生（§3.3 规则 2）——内存保留旧状态，调度器暂停 + stderr 告警；恢复后 `resume()`。**语义定死：不存在"内存已变但日志没变"的中间态。**
-4. **坏行**：移 `corrupt/` 告警（§4.1）；半行截断。
-5. **孤儿进程**：boot 时按持久化 run record 的 pid 尽力终止；未知状态 → `orphan-unknown` 告警 + 任务回队（§4.2）。v1 不 reattach。
-6. **孤儿 `.lock` 文件**：告警 + 运营手册处理（`writeFileAtomic` 契约如此）。
-7. **重复入队**：不强制幂等；规范层查重（§8.2）+ `commandFingerprint` 供诊断。at-least-once 已明示（§4.3）。
-8. **危险任务**：授权模型 §6.3（启用制 + shell 仅 inbox + 信任边界如实声明）。
-9. **fsync 成本**：每次状态转移一次 fsync 是刻意的正确性开销；任务级批量吞吐上限由并发数决定而非写入次数，30min 级任务下 fsync 占比可忽略。若未来出现高频短任务，再评估组提交（group commit）优化——记录为已知取舍，不提前实现（YAGNI）。
+- **路径安全**：`ownerSessionId`、taskId、receiptId 进入路径前一律 `encodeSegment`（`session-persistence-jsonl/src/format.ts`，防 `../`/绝对路径/NUL/分隔符；SessionId 是未验证 branded string）。
+- **目录权限**：`task-queue/` 根、`inbox/`、`notes/`（若实现）、`runs/`、`output/` 均 0o700（prompt 与结果属用户私有数据）；`active.jsonl`、`segments/`、`snapshot.json` 0o600。
+- **`source` 赋值**：只能由入口代码（enqueueFromTool / inbox 扫描）赋值，**任何调用方不得从 spec 传入**；Service 拆可信入口（§7.1）后，普通调用方拿不到 inbox 权限。
 
-## 11. 测试策略（v2 增补授权与多写者）
+## 10. 错误处理与边界（v3）
+
+1. **执行器缺失/未启用**：入队即拒（未启用）；spawn ENOENT → 立即 failed，不进重试风暴（配置错误类不重试）。
+2. **超时**：`AbortSignal.timeout(timeoutMs)` 注入 spawn spec → subprocess 树终止 → 失败路径。
+3. **append/fsync 错误**：§4.2 faulted 协议——进入 faulted、拒绝新 mutation、重读日志判定提交结果；**无法判定则 fail-closed，绝不自动 resume**。
+4. **坏行**：完整非法行 → faulted + 运营 quarantine 恢复；半行 → 截断 + §4.2 判定。
+5. **孤儿进程**：running 已持久 → boot 时凭 pid best-effort 终止（POSIX kill 进程组 / Windows taskkill /T；这是**唯一**绕开 `ctx.subprocess` 的窄工具，因为 subprocess 无法管理跨重启进程，如实声明）；starting 无 pid → `orphan-unknown` 告警 + 任务回队。
+6. **重复入队**：receiptId/idempotencyKey 幂等（§7.3）；at-least-once 语义已明示（§4.3）。
+7. **危险任务**：授权模型 §6.3。
+8. **fsync 成本**：每次状态转移一次 fsync 是刻意开销；30min 级任务下占比可忽略；高频短任务再评估组提交（记录为已知取舍，YAGNI 不提前实现）。
+
+## 11. 测试策略（v3）
 
 | 层 | 内容 |
 |---|---|
-| 单元 | 状态机全转移（含超时→失败、取消→canceled）、退避计算、change 记录 schema、seq 全序折叠 |
-| 集成（假执行器） | 入队→领取→成功/失败→重试→死信；inbox 投递→落 log→删文件 |
-| 崩溃模拟 | 杀宿主进程：pending 恢复、running 回队、孤儿 pid 终止/告警、半行截断 |
-| 多写者 | inbox 并发投递（多文件 rename）+ 压缩并存，验证零丢失 |
-| 授权 | shell 仅 inbox、未启用执行器拒绝、模型工具无法入队 shell |
-| 安全 | 子进程 env 不含 `DSH_*` 与凭据形变量（scrub 断言） |
-| 冒烟（手动，标注成本与局限） | 真实 claude/codex/arkcli 各一条最简 prompt；**仅证明该环境可运行，不替代恢复/授权/多写者测试** |
+| 单元 | 状态机全转移（starting→running 两阶段、stopping 取消路径、超时→失败）、退避序列（maxAttempts 语义）、change schema、seq 折叠 |
+| 集成（假执行器） | 入队→starting→running→结算全链路；inbox 投递→receipt 幂等→删除 |
+| 崩溃模拟 | 杀宿主进程于：pending/starting/running/stopping/active 半行 各点 → 验证恢复矩阵 §4.3 |
+| faulted 协议 | 注入 append 失败 → 断言 faulted、拒绝新 mutation、判定路径正确（已提交/未提交/不可判定） |
+| 幂等 | 同 receiptId 重复扫描不重复创建；idempotencyKey 返回既有 id |
+| outbox | 终态→注入→flush→ack 全链；杀进程于各窗口 → 验证不静默丢失（允许重复） |
+| 授权 | shell 仅 inbox、未启用执行器拒绝、工具无法入队 shell、source 不可伪造 |
+| 安全 | 子进程 env 不含 `DSH_*` 与凭据形变量；路径 encodeSegment 断言 |
+| 冒烟（手动） | 真实 claude/codex/arkcli 各一条最简 prompt；**仅证明该环境可运行，不替代上述测试** |
 
-## 12. 里程碑（v2 验收改为可执行证据）
+## 12. 里程碑（v3 验收 = 可执行证据）
 
-| 里程碑 | 内容 | 验收证据（可执行命令/观察） |
+| 里程碑 | 内容 | 验收证据 |
 |---|---|---|
-| M1 contract+backend | `task-queue` contract + `task-queue-local`：状态机、change 日志、重放、inbox | `pnpm --filter @deepseek-ai/dsh-task-queue-local test` 全绿；手动杀进程后 `queue_list` 完整 |
-| M2 调度器 | tick、并发、优先级、退避、`delayUntil`、超时 | 集成测试全绿；并发上限断言测试通过 |
-| M3 执行器 | 5 个适配器经 `ctx.subprocess` + run record + 授权模型 | 冒烟：claude 一条跑通；env scrub 断言通过 |
-| M4 集成 wiring | 工具 + pre-step 钩子 + bundle patch 行 + preset 指令 | 会话内说"帮我做这 5 件事"→ 批量入队并被消化；`queue_stats` 可见 |
-| M5 Linux 部署 | systemd 常驻 + 跨会话断点续传实测 + 文档 | 重启服务器后：pending 续跑、running 回队、notes 投递 |
+| M1 contract+backend | 状态机（两阶段）、segment 日志+轮转、快照重放、inbox receipt、FIFO+faulted | `pnpm exec vitest run packages/task-queue/...` 全绿；杀进程矩阵测试通过 |
+| M2 调度器 | tick、并发、优先级、退避、`delayUntil`、超时 abort | 集成测试全绿 |
+| M3 执行器 | 5 个 prepare-only 适配器 + 运行日志 + 授权模型 | 冒烟：claude 一条跑通；env scrub 断言通过 |
+| M4 集成 wiring | 工具 + system-prompt section + pre-step 钩子 + bundle/preset wiring | **验收 fixture 显式启用一个安全假执行器**（默认全禁的前置条件）；会话内"帮我做这 5 件事"→ 批量入队并被消化 |
+| M5 Linux 部署 | systemd 常驻 + 跨会话断点续传实测 + 文档 | 重启服务器：pending 续跑、running/starting 按矩阵恢复、通知 outbox 不丢 |
 
 ## 13. 未来方向（非 v1）
 
-- Client 面板（Slot UI）——届时是第二个包的合理理由
-- 周期任务（评估复用 `schedule` 的持久记录模型）、任务依赖 DAG、自动额度均衡路由
-- 幂等键（exactly-once）、执行器容器化、组提交优化（§10.9）
+- Client 面板（Slot UI）
+- 周期任务（评估复用 `schedule` 持久记录模型）、任务依赖 DAG、自动额度均衡路由
+- exec 前发布进程身份的 spawn wrapper（消除无 pid 孤儿窗口）、幂等键（exactly-once）、执行器容器化、组提交优化
 
-## 附：v1 → v2 修订清单（回应 codex 审查）
+## 附：v2 → v3 修订清单（回应 codex 第二轮审查）
 
 | 审查意见 | 采纳方式 |
 |---|---|
-| P0-1 状态机矛盾 | §3.1 超时归失败路径，canceled 仅显式取消 |
-| P0-2 多写者竞态 | §4/§7.3 删除共享 append，改单写者 log + inbox 文件协议 |
-| P0-3 复用 subprocess | §6.2 一律经 `ctx.subprocess`，env scrub 默认 |
-| P0-4 授权模型 | §6.3 启用制 + shell 仅 inbox + 来源字段 |
-| P1-1 落点错误 | §9.2 改 `bundle/cordis.patch.yml` + `--patch`，删 `--config` |
-| P1-2 jobs seam | §2 写明两作用域差异与"独立 Service 必要、执行层复用" |
-| P1-3 schedule 模式 | §4.1 change 记录 + version + flush 语义 |
-| P1-4 envelope/全序 | §4.1 seq 全序、version、corrupt 隔离 |
-| P1-5 结果投递 | §7.4 notes 投递模型 |
-| P2-1 措辞降级 | §8 全节改写 |
-| P2-2 命名冲突 | 全部改 `task-queue`/`taskQueue` |
-| P2-3 绝对措辞 | §9.3 去绝对化 |
-| P2-4 验收标准 | §12 可执行证据 |
+| P0-1 pid 无法 spawn 前持久化 | §3.1 starting→running 两阶段 + stopping 中间态（仿 jobs `stopping`）；明确接受无 pid 孤儿窗口 |
+| P0-2 fsync 失败≠转移未发生 | §4.2 mutation FIFO（仿 schedule transaction）+ faulted + 重读判定协议 |
+| P0-3 inbox 重复入队 | §7.3 receiptId 幂等 admission + producer fsync 协议 |
+| P0-4 notes 非可靠 outbox | §7.4 通知状态进 change 日志，notes 降级可重建投影，session flush 后 ack |
+| P1-1 轮转/损坏协议未闭合 | §4.1 immutable segments + 发布顺序 + fail-closed（仿 schedule faulted）；删除孤儿 .lock 场景 |
+| P1-2 执行器接口复制生命周期 | §6.1 prepare-only 接口，scheduler 唯一 spawn；§6.2 定义日志合并/背压/写失败 |
+| P1-3 wiring 清单不全 | §9.2 补 `apps/cli/package.json`、web-app overlay 禁用、systemPrompt.section 替代 instructions 文件 |
+| P1-4 路径/权限缺失 | §9.4 encodeSegment + 目录权限 + source 由入口赋值 + 可信入口拆分 |
+| P2 命名/off-by-one/测试命令/验收前置 | §7.5 `task_queue_*`；§3.2 `maxAttempts`+示例序列；§12 `pnpm exec vitest`；M4 fixture 显式启用假执行器 |
