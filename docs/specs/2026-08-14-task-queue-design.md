@@ -1,316 +1,383 @@
-# 任务队列模块（task-queue）设计
+# 任务队列模块（task-queue）设计 v2
 
-> 状态：待用户审阅
+> 状态：待用户审阅（v2：已按 codex CLI 审查意见修订）
 > 日期：2026-08-14
 > 目标仓库：`changanhua/deepseek-harness`（上游 `deepseek-ai/deepseek-harness`）
-> 相关会话决策：形态 = 一个 Host 插件（fork 内一等公民包）；部署 = Linux 常驻服务
+> 修订来源：codex CLI 独立审查（HEAD `adfd4d6b6f` 时的文档 v1），全部 P0/P1/P2 意见经逐条仓库验证后吸收
 
 ## 0. 摘要
 
-给 DSH 增加一个**持久化的通用任务队列**：任何来源（agent 工具调用、JSONL 文件投递）都可以入队任务，宿主进程内的调度器按并发上限、优先级、延迟时间自动消化，任务由可插拔执行器（`claude` / `codex` / `opencode` / `arkcli` / `shell`）运行，产出物落盘到指定目录。队列状态跨会话、跨进程重启存活，失败任务按指数退避自动重试。
+给 DSH 增加一个**跨会话持久化的 host 平面任务队列**（`ctx.taskQueue`）：agent 工具调用或 inbox 文件投递入队，宿主进程内的调度器按并发上限、优先级、延迟时间自动消化，任务由可插拔执行器（`claude` / `codex` / `opencode` / `arkcli` / `shell`）运行，产出物落盘到指定目录。队列状态跨会话、跨进程重启存活，失败任务按指数退避自动重试。
 
-典型用法（用户原始诉求）：把"生成知识库、拆解小说"等批量研究任务派给本机 Claude Code CLI 等外部 agent，用满多供应商闲置 API 额度。但模块本身是通用基础设施——批量内容生产、长任务断点续传、定时任务、失败重试都挂在这条流水线上。
+典型用法（用户原始诉求）：把"生成知识库、拆解小说"等批量研究任务派给本机 Claude Code CLI 等外部 agent，用满多供应商闲置 API 额度。模块本身是通用基础设施。
 
-**"确保系统合理使用"是设计的一等目标**（见第 8 节）：工具可见性、preset 指令约束、会话开始钩子、调度器自治四条机制共同保证队列不被架设后遗忘。
+**"确保系统合理使用"是设计目标之一（见第 8 节），但本版修正措辞：机制只能提高采用概率，不承诺保证**——唯一的硬机制是 host 面调度器自治（队列自排干）。
 
-## 1. 背景与目标
+## 1. 背景与动机（v2 修正了对既有能力的描述）
 
-### 1.1 动机
+### 1.1 既有能力的准确边界（经仓库验证）
 
-- 用户有多供应商 API 套餐（火山/阿里云/OpenAI/opencodego），额度经常闲置；研究需求多（知识库、小说拆解等批量任务）。
-- 现有能力覆盖了"一个长线目标"（goal）、"会话内清单"（todo）、"后台命令"（jobs）、"大规模 fan-out"（workflow），但**没有跨会话的批量任务队列**：`todo_write` 不持久，goal 只追踪单目标，jobs 随进程而逝。
-- 队列补的正是这个洞：**一批异构任务、每条各自状态、进程重启不丢、失败自动重试**。
+| 既有能力 | 真实语义（v1 文档说错的已纠正） |
+|---|---|
+| `jobs`（`ctx.jobs`） | **进程内**后台任务注册表（`jobs-local` 为内存实现），进程退出即失；无跨会话持久、无重试 |
+| `todo_write` | **持久**（`session.append('todo/write')` 完整快照，可重放），但作用域是单个 agent session，无执行、无重试、无并发、无跨会话可见 |
+| goal | **same-session 单目标**，未完成目标阻塞下一目标创建；跨会话 resume 可用但不是任务队列 |
+| `schedule` | **会话级持久提醒**（After/At/Every，version-1 change 记录 + flush barrier），触发后注入 agent 上下文——是"提醒"，不是"任务执行流水线" |
+| workflow / subagent | 单次编排/委托，无持久队列语义 |
+
+**结论（修正后）**：缺的不是"任何持久化"，而是**一条 host 平面、跨会话、可执行、可重试、有并发上限的批量任务流水线**。job/schedule/todo 各自对，组合起来不等于队列。
 
 ### 1.2 目标 / 非目标
 
 **目标（v1）：**
-1. 跨会话持久化：任务状态进程重启后完整恢复，未完成任务自动回队。
-2. 批量投递：一次入队多条任务；会话里说一句话，agent 用工具批量写入。
-3. 并发上限：全局 + 每执行器两级并发控制，超出排队。
+1. 跨会话持久：状态机变更以持久 change 记录为唯一路径，重启后精确重放。
+2. 批量投递：agent 工具批量入队 + inbox 目录文件投递（两种入口，一种单写者存储协议，见 §4/§7）。
+3. 并发上限：全局 + 每执行器两级。
 4. 失败重试：指数退避 + 最大次数，耗尽进死信，可手动重试。
-5. 定时/延迟：`delayUntil` 支持"明早 9 点跑"。
-6. 可插拔执行器：注册表机制，内置 5 个 CLI 适配器，未来可加。
-7. 系统合理使用：第 8 节的四条机制，保证 agent 真的会用、用得对。
+5. 定时/延迟：`delayUntil` 任务级资格门槛（不与 `schedule` 的会话提醒混淆）。
+6. 可插拔执行器：注册表 + 5 个 CLI 适配器，全部经 `ctx.subprocess` 运行（§6）。
+7. 采用机制：工具可见性 + preset 指令 + pre-step 摘要注入 + 调度器自治（§8，措辞已降级）。
 
 **非目标（v1 明确不做）：**
 - 分布式多机队列（单机单进程）
-- 网页面板（Client 插件，未来第二个包的合理候选）
-- 任务间依赖 DAG（先做优先级 + 延迟）
-- 自动额度均衡路由（用户选择入队时指定执行器；注册表留好接口，未来只是加一个策略函数）
-- 周期 cron（`delayUntil` 一次性定时够用；周期任务 v1.1 再议）
-- 队列级鉴权/多租户
+- 网页面板（Client 插件，未来第二个包的候选）
+- 任务间依赖 DAG
+- 自动额度均衡路由（注册表留接口）
+- 周期 cron（`delayUntil` 一次性定时；周期任务未来评估复用 `schedule` 模型）
+- 任务执行沙箱化/容器化（信任边界见 §6.3，如实声明）
+- 孤儿进程 reattach（v1 只做 kill-or-mark，见 §4.2）
 
 ## 2. 总体架构
 
 ```
-                         ┌─────────────────────────────────────────────┐
-                         │          DSH Host 进程（Linux 常驻）          │
-                         │                                             │
-  会话内 agent 工具 ───────►  @deepseek-ai/dsh-tool-queue（agent 面工具） │
-  JSONL 文件投递 ──────────►  @deepseek-ai/dsh-queue（host 面核心）      │
-                         │   ├─ Service: ctx.queue                     │
-                         │   ├─ 调度循环（并发/优先级/退避/延迟）        │
-                         │   ├─ 持久化：$DSH_HOME/queue/*.jsonl        │
-                         │   ├─ 执行器注册表（claude/codex/.../shell）  │
-                         │   └─ 事件：queue/*                           │
-                         └──────────────┬──────────────────────────────┘
-                                        │ spawn 子进程
-                                        ▼
-                    claude -p / codex exec / opencode / arkcli / shell
-                                        │
-                                        ▼
-                   产出物 → 任务指定 outputDir；运行日志 → runs/<id>/
+                          ┌──────────────────────────────────────────────┐
+                          │          DSH Host 进程（Linux 常驻）           │
+  会话内 agent 工具 ────────►  @deepseek-ai/dsh-tool-task-queue（工具+钩子）│
+  inbox 目录文件投递 ───────►  @deepseek-ai/dsh-task-queue（contract）      │
+                          │    @deepseek-ai/dsh-task-queue-local（backend）│
+                          │     ├─ Service: ctx.taskQueue                 │
+                          │     ├─ 调度循环（并发/优先级/退避/延迟）        │
+                          │     ├─ 单写者 change 日志 + 快照 + fsync       │
+                          │     ├─ 执行器注册表（claude/codex/.../shell）  │
+                          │     └─ 事件：task-queue/*                     │
+                          └───────────────┬──────────────────────────────┘
+                                          │ 全部经 ctx.subprocess（树终止/敏感 env 清洗）
+                                          ▼
+                      claude -p / codex exec / opencode / arkcli / shell
+                                          │
+                                          ▼
+                    产出物 → 任务指定 outputDir；运行日志 → runs/<id>/
 ```
 
-**关键决策（沿袭会话中已确认的结论）：**
+**命名（v2 修正）**：领域名一律 `task-queue` / `taskQueue`，**不用裸 `queue`**——`packages/client/ui-conversation` 已有会话 transient inbox 的 `queue` 概念（`queue/store.ts`），避免 UI/日志/事件命名冲突。
 
-| 项 | 决策 |
-|---|---|
-| 插件数量 | **一个核心包 + 一个工具包**（模块化在接口层：Service/Event/注册表，不在包边界） |
-| 所在平面 | 核心服务在 **host 组合**（跨会话共享、常驻）；工具行在 **agent preset** |
-| 存储 | `$DSH_HOME/queue/` 下 JSONL 追加写（源真）+ 压缩快照 |
-| 持久化语义 | at-least-once（见 4.3 崩溃恢复的取舍说明） |
-| 对上游 merge | 每处改动都是单行追加或全新目录，冲突面最小化（见第 9 节） |
+**包结构（v2 修正，完全仿照 jobs 三包模式）**：
 
-## 3. 任务模型与状态机
+| 包 | 目录 | 职责 |
+|---|---|---|
+| `@deepseek-ai/dsh-task-queue` | `packages/task-queue/task-queue` | contract：Task 类型、状态机、change 记录 schema、Service 接口 |
+| `@deepseek-ai/dsh-task-queue-local` | `packages/task-queue/task-queue-local` | durable backend：单写者日志/快照/inbox 扫描/调度循环/执行器注册表 |
+| `@deepseek-ai/dsh-tool-task-queue` | `packages/task-queue/tool-task-queue` | agent 面：7 个工具 + pre-step 摘要钩子 |
 
-### 3.1 状态机
+**与既有 seam 的关系（v2 新增，回应"为何不并入 jobs"）**：jobs 是**进程内、按 agent session 键控**的注册表，其"随进程而逝"正是队列要消灭的属性；两者作用域不同（jobs = 会话内后台命令，taskQueue = host 平面持久批量流水线），因此独立 Service 是必要的。但执行层不另造轮子：**子进程一律走 `ctx.subprocess`**（§6）。
+
+## 3. 任务模型与状态机（v2 修正矛盾）
+
+### 3.1 状态机（超时归属已修正）
 
 ```
 pending ──领取──► running ──成功──► succeeded
    ▲                 │
    │                 ├──失败(可重试)──► pending（retries+1，退避延迟后）
    │                 │
-   │                 ├──失败(耗尽 maxRetries)──► failed（死信，保留 lastError/result）
+   │                 ├──失败(耗尽 maxRetries)──► failed（死信）
    │                 │
-   │                 └──超时/取消(杀进程树)──► canceled（lastError 记被杀原因）
+   │                 └──超时──► 失败路径（同上：可重试→pending；耗尽→failed）
    │
-   ├──取消（仅 pending）──► canceled
+   ├──取消（pending 或 running，显式用户动作）──► canceled
    │
-   └──── 手动 queue_retry ── failed（重试计数清零，回 pending）
+   └──── 手动 queue_retry ── failed（计数清零，回 pending）
 ```
 
-- 只有 `pending` 且 `delayUntil <= now` 的任务可被领取。
-- `running` 任务崩溃（宿主进程被杀）→ 重启后按心跳/pidfile 恢复（4.2）。
-- `failed` 不是终点：可手动 `queue_retry` 重新入队，重试计数清零、退避重置。
-- `canceled`：终态。`pending` 可直接取消；`running` 的取消 = 杀进程树后标 `canceled`（`lastError` 记被杀原因）。
+**v2 关键修正**：**超时走失败路径，不是 canceled**。canceled 是唯一的显式取消终态；超时/崩溃/非零退出码统一进"失败"语义，由 retry 策略决定去向。
 
-### 3.2 任务字段（v1）
+**宿主崩溃（进程被杀）时的 running 任务**：重启时一律按"失败一次"处理——retries+1 后回 `pending`（或耗尽进 `failed`）。**v1 不做孤儿 reattach**（v1 文档此设计无法由字段支撑，已删）：boot 时凭持久化的 run record（含 pid）尽力终止疑似孤儿进程，找不到则发出 `orphan-unknown` 告警（记录泄漏），任务照样回队。at-least-once 语义见 §4.3。
+
+### 3.2 任务字段（v2：运行身份全部持久化）
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `id` | string | `t-<8位随机>`，唯一 |
+| `id` | string | `tq-<8位随机>`，唯一 |
 | `title` | string | 一句话标题（人读） |
 | `prompt` | string | 交给执行器的完整指令 |
-| `executor` | string | 注册表名：`claude`/`codex`/`opencode`/`arkcli`/`shell` |
+| `executor` | string | 注册表名；**执行器需在 host 配置中显式启用（§6.3）** |
 | `status` | enum | `pending`/`running`/`succeeded`/`failed`/`canceled` |
-| `priority` | int | 越小越先（默认 10）；仅影响领取顺序，不抢占 running |
+| `priority` | int | 越小越先（默认 10）；不抢占 running |
 | `retries` / `maxRetries` | int | 已重试 / 上限（默认 3） |
-| `backoffMs` | int | 退避基数（默认 30s），实际延迟 = `backoffMs * 2^(retries-1)` |
-| `delayUntil` | ISO | 定时任务：此时间前不可领取（可选） |
-| `timeoutMs` | int | 单次执行超时（默认 30min），超时杀进程树 |
-| `outputDir` | string | 产出目录（可选；默认 `$DSH_HOME/queue/output/<id>/`） |
-| `tags` | string[] | 可选自由标签，用于 `queue_list` 过滤（如 `["novel", "kb"]`） |
-| `createdAt` / `updatedAt` | ISO | 时间戳 |
-| `lastError` | string? | 最近失败原因（诊断） |
+| `backoffMs` | int | 退避基数（默认 30s），延迟 = `backoffMs * 2^(retries-1)` |
+| `delayUntil` | ISO | 此时间前不可领取（任务级资格门槛，可选） |
+| `timeoutMs` | int | 单次执行超时（默认 30min），超时走失败路径 |
+| `outputDir` | string | 产出目录（可选；默认 `$DSH_HOME/task-queue/output/<id>/`） |
+| `tags` | string[] | 可选自由标签，`queue_list` 过滤用 |
+| `createdAt` / `updatedAt` | ISO | 时间戳（诊断用；**全序依据是 seq，不是时间**，见 §4.1） |
+| `lastError` | string? | 最近失败原因 |
 | `result` | object? | 成功摘要：退出码、产出文件列表、耗时 |
-| `enqueuedBy` | string | 来源：会话 id 或 `file`（诊断用） |
+| `source` | enum | `agent-tool` / `inbox`（授权模型按来源区分，§6.3） |
+| `ownerSessionId` | string? | 投递时所在会话（结果投递模型用，§7.4） |
 
-运行时字段（不持久化）：`pid`（子进程号）、`heartbeatAt`。
+**durable run record（v2 新增，每次 attempt 一条，随 change 记录持久化）**：
 
-### 3.3 状态机规则（不可违背的三条）
+| 字段 | 说明 |
+|---|---|
+| `runId` | `r-<随机>`，唯一标识一次执行 attempt |
+| `attempt` | 第几次执行（1 起） |
+| `pid` | 子进程 pid（boot 时用于孤儿排查） |
+| `startedAt` | 进程启动时间戳 |
+| `logPath` | `runs/<taskId>/run-<attempt>.log` |
+| `commandFingerprint` | argv 的哈希（诊断与重复检测） |
 
-1. **领取唯一性**：只有 `pending` 可领取；同一条任务不会有两个执行者（调度器进程内单线程循环，天然互斥）。
-2. **重试退避**：`retries` 每 +1，延迟翻倍，直到 `maxRetries` 才进 `failed`。
-3. **失败留痕**：`failed` 保留 `lastError` 与 `result`，供诊断与手动重试。
+### 3.3 状态机规则（不可违背）
 
-## 4. 持久化与崩溃恢复
+1. **领取唯一性**：只有 `pending` 且 `delayUntil <= now` 可领取；调度循环单线程，天然互斥。
+2. **先持久后动作**：任何状态转移先落 change 记录（含 fsync），成功后才执行副作用（spawn/kill/通知）。**写失败 = 转移未发生**，内存保留旧状态，调度器暂停并告警（§10）。
+3. **失败留痕**：`failed` 保留 `lastError`、`result` 与最后一次 run record，供诊断与手动重试。
 
-### 4.1 文件布局（`$DSH_HOME/queue/`）
+## 4. 持久化与崩溃恢复（v2 重写协议）
+
+### 4.1 单写者 change 日志（修正多写者竞态）
+
+**v1 文档"外部直接 append 共享 tasks.jsonl"已删除**——外部写者与调度器压缩之间的竞态无法用"重放尾部"闭合。v2 协议：
 
 ```
-queue/
-  tasks.jsonl           # 源真：每次状态变更追加一行 {taskId, state, at}
-                        # state = 该任务变更后的完整快照
-  tasks.archive.jsonl   # 压缩时轮转出的历史行
-  index.json            # 物化视图：id → 最新快照；原子写（复用 dsh-atomic-write）
-  runs/<taskId>/        # 每次执行的运行日志 run-<n>.log（stdout+stderr 合并）
+$DSH_HOME/task-queue/
+  log.jsonl             # 唯一源真。写者只有调度器（单写者，无锁竞争）
+  snapshot.json         # {lastSeq, tasks} 物化快照，加速 boot
+  inbox/                # 外部投递入口：每任务一个独立文件（见 §7.3）
+  corrupt/              # 坏行隔离区（运营可操作）
+  runs/<taskId>/        # 每次执行日志 run-<attempt>.log
   output/<taskId>/      # 默认产出目录
 ```
 
-- **追加写是唯一的变更路径**：调度器内存里持有 `Map<id, task>`，任何状态变化先 `appendFile` 一行完整快照，再更新内存。写失败 → 调度器暂停、stderr 报警、内存状态保留（见 10.3）。
-- **index.json 是优化不是依赖**：boot 时若存在且比 tasks.jsonl 新则直接加载，否则全量重放 jsonl 重建。损坏时同样重放。重放规则：同一 id 取时间戳最新的一行。
-- **压缩**：当 tasks.jsonl 行数超过阈值（默认 10000）或文件超过 8MB，把当前快照写回新 tasks.jsonl，旧文件轮转为 archive。压缩用 dsh-atomic-write 保证原子性。**压缩与外部文件投递（7.4）的竞态解法**：压缩前先把文件尾部的追加行全部重放进快照，再执行轮转——任何已落盘的行都不会丢。
+**change 记录格式**（借鉴 `schedule` 的 version-1 变更记录模式）：
 
-### 4.2 崩溃场景矩阵
+```jsonc
+{ "seq": 41, "version": 1, "op": "created|claimed|succeeded|failed|requeued|canceled|attempt",
+  "taskId": "tq-…", "state": { /* op 之后的完整任务快照，含 run record */ }, "at": "ISO" }
+```
+
+- **全序依据是 `seq`**（单调递增，快照内持久化 `lastSeq`），`at` 仅诊断；不依赖 wall-clock 排序。
+- **追加协议**：open('a') → write → **fsync(file)** → 更新内存 → 发事件。首次创建文件时 fsync 父目录。
+- **快照**：定期（行数 > 10000 或文件 > 8MB）与 boot 时生成。用 `writeFileAtomic` 保证 rename 原子性（读者只见旧或新完整内容）；**但 `writeFileAtomic` 明确不保证 crash durability**（源码注释），因此快照写完追加 fsync 文件 + fsync 父目录，并**把 fsync 延迟写入成本记在 §10.5 的取舍里**。
+- **重放**：加载 snapshot（若其 lastSeq 与 log 尾部一致则直接信任），否则按 seq 折叠 log 中 seq > lastSeq 的行。行级校验失败（schema 不合法但行尾完整）→ 移入 `corrupt/` 并告警，**不静默丢弃**（运营可恢复）；文件尾半行（崩溃于 write 中途）→ 截断丢弃，该次变更视为未发生（与 §3.3 规则 2 一致）。
+
+### 4.2 崩溃场景矩阵（v2）
 
 | 场景 | 恢复行为 |
 |---|---|
-| 任务 pending，进程被杀 | 重启后重放 jsonl，仍 pending，正常被领取 |
-| 任务 running，子进程也死了 | 心跳过期 → 状态回 pending，retries+1（消耗一次重试） |
-| 任务 running，子进程还活着（孤儿） | pidfile 命中 → 重新附着，tail 其日志继续计时；附着失败则杀之回队 |
-| 进程死在 appendFile 半途 | 半行在重放时被丢弃（校验行尾完整 JSON），丢失的是最后一条变更，语义降级为"那次变更没发生"——at-least-once 的可接受面 |
+| 任务 pending，进程被杀 | 重放后仍 pending，正常被领取 |
+| 任务 running，宿主进程被杀 | 重放发现 running → 按失败一次处理：retries+1 回 pending 或进 failed；凭 run record 的 pid 尽力终止疑似孤儿，找不到则 `orphan-unknown` 告警 |
+| 任务 running，子进程自然死亡（非零退出） | 正常失败路径（结算时写 change 记录） |
+| 进程死在 append 半途 | 半行截断丢弃；该变更未发生（§3.3 规则 2 的持久化保证） |
+| snapshot 损坏或缺失 | 从 log 全量重放重建 |
+| 孤儿锁文件（`writeFileAtomic` 的 `.lock`） | 其文档明示"孤儿锁恢复是运营动作"：检测到锁超时 → 告警并指引运营处理，不自动猜删 |
 
 ### 4.3 语义取舍（明确记录）
 
-队列采用 **at-least-once**：崩溃窗口内任务可能被执行两次。理由：v1 面向"研究/内容生产"任务，重跑一次的代价远低于实现 exactly-once（两阶段提交/幂等键）的复杂度。缓解：执行器写 `runs/<taskId>/run-<n>.log` 按次递增，重复执行产物可追溯；未来需要时加幂等键字段即可。
+**at-least-once**：崩溃窗口内任务可能执行两次（重放发现 running 但子进程实际已完成）。理由：v1 面向内容生产类任务，重跑代价 < exactly-once 复杂度（幂等键/两阶段提交）。缓解：`attempt` 递增 + 每次执行独立 `run-<attempt>.log`，重复执行可追溯；未来需要时加幂等键字段。
 
 ## 5. 调度策略
 
-调度循环是宿主进程内的一个 `ctx.setInterval`（间隔 1s，可配），每 tick 执行：
+调度循环是 `task-queue-local` 内的 `ctx.setInterval`（1s 可配），每 tick：
 
-1. **回收**：扫描 `running`，心跳过期（默认 60s 无更新）→ 按 4.2 恢复；超时（`timeoutMs`）→ 杀进程树 → 失败路径。
-2. **领取**：从 `pending` 中筛 `delayUntil <= now`，按 `priority` 升序、同优先级 FIFO，逐条领取直到满足：
-   - 全局 `running` 数 < `maxConcurrent`（默认 2，可配）；
-   - 该执行器 `running` 数 < 执行器并发上限（默认 1，可配）。
-3. **执行**：交给注册表对应执行器（第 6 节），spawn 后登记 `pid`/`heartbeatAt`，写日志文件。
-4. **结算**：退出码 0 → `succeeded`；非 0 → 可重试则回 `pending`（带退避），否则 `failed`。每次结算发事件（第 7.2 节）。
+1. **扫 inbox**（§7.3）：校验新文件 → 转成 `created` change 记录落 log → 删 inbox 文件（**落 log 成功后才删**，不丢任务）。
+2. **回收**：扫描 running——`now - startedAt > timeoutMs` → 经 `ctx.subprocess` 终止（树终止）→ 失败路径；宿主重启路径见 §4.2。
+3. **领取**：pending 中筛 `delayUntil <= now`，按 `priority` 升序、同优先级 FIFO，直到：
+   - 全局 running 数 < `maxConcurrent`（默认 2，可配）；
+   - 该执行器 running 数 < 执行器上限（默认 1，可配）。
+4. **执行**：先写 `claimed`+`attempt` change 记录（含 run record，§3.2）→ 再经执行器 spawn。
+5. **结算**：退出码 0 → `succeeded`；非 0 / 超时 → 失败路径。每次结算发事件。
 
-**明确不做抢占**：priority 只影响领取顺序，不打断 running 任务（v1 取舍，简单可预测）。
+**与 `dsh-schedule` 的职责边界（v2 写明）**：`schedule` 是会话级持久提醒（触发后注入 agent 上下文，不执行任务）；`delayUntil` 是队列任务级"何时可领取"的资格门槛。两者不合并：调度器只消费自己的任务，不订阅 schedule。
 
-## 6. 执行器注册表与 CLI 适配器
+**不抢占**：priority 只影响领取顺序，不打断 running（v1 取舍）。
+
+## 6. 执行器（v2 重写边界）
 
 ### 6.1 注册表接口
 
 ```ts
-// 核心包导出的注册接口（host 面）
-queue.registerExecutor(name, handler: (task, ctx) => ExecutorRun)
-// ExecutorRun = { spawn(): {pid, logPath}, wait(pid): Promise<{exitCode, durationMs}> , kill(pid) }
+// contract 包导出的注册接口（host 面）
+taskQueue.registerExecutor(name, handler: (run, task, ctx) => ExecutorRun)
+// ExecutorRun = { spawn(): {pid, startedAt}, wait(pid): Promise<{exitCode, durationMs}>, terminate(pid) }
 ```
 
-任何 host 插件都能注册新执行器——**加执行器不动调度器一行**。
+任何 host 插件可注册新执行器——加执行器不动调度器一行。
 
-### 6.2 内置 CLI 适配器（v1，命令模板实现时以 `--help` 复核）
+### 6.2 内置 CLI 适配器（命令模板实现时以 `--help` 复核）
 
 | 执行器 | 命令模板 | 备注 |
 |---|---|---|
 | `claude` | `claude -p <prompt> --output-format json --add-dir <outputDir>` | 允许其写产出目录 |
-| `codex` | `codex exec <prompt>` | cwd 设为 outputDir |
+| `codex` | `codex exec <prompt>` | cwd = outputDir |
 | `opencode` | `opencode run <prompt>` | 本机 config 目录有 EEXIST 环境问题，M3 先修 |
 | `arkcli` | `arkcli +chat <prompt>` | 走用户 profile |
-| `shell` | 任意命令字符串 | 逃生舱，同时是测试用的 `echo` 执行器 |
+| `shell` | argv 数组（**不用 shell 字符串插值**） | 见 §6.3 授权限制 |
 
-**通用行为（所有适配器共享）：**
-- spawn 平台适配层：Windows 用 shell 包装（`.ps1` shim 必须经 powershell 解析）；Linux 用 detached process group，`kill` 杀整棵树。
-- stdout/stderr 合并写入 `runs/<taskId>/run-<n>.log`；退出码为唯一成败判据。
-- 子进程 cwd/环境继承宿主；`outputDir` 在执行前 `mkdir -p`。
-- **信任边界（写入文档）**：CLI 执行器是独立子进程，**不在 DSH 文件沙箱内**。队列只能靠"prompt 约定 + outputDir 约定"约束其落盘范围；用户入队即授权该执行器以用户权限运行。v1 不做容器化（非目标）。
+**通用行为（v2 修正——不再自研 spawn/kill）：**
+
+- **一律经 `ctx.subprocess`**：它提供跨平台 detached tree 管理、`SIGTERM→grace→SIGKILL` 树终止、整树退出等待、spill 日志。队列不直接调用 `child_process`。
+- **环境继承**：使用 subprocess 的默认 env 基（**敏感凭据形变量与 `DSH_*` 默认清洗**，`SENSITIVE_ENV_PATTERN`）；执行器需要的显式凭据必须经配置里的 `env` 白名单传入（合并发生在 scrub 之后）。
+- stdout/stderr 写 `runs/<taskId>/run-<attempt>.log`；退出码为唯一成败判据。
+- 命令一律 **argv 数组**，无 shell 插值。
+
+### 6.3 授权模型（v2 新增，回应 P0-4）
+
+**"模型调了工具 ≠ 人工授权"。** 分层如下：
+
+1. **执行器启用制**：每个执行器在 host 配置（bundle patch 行 config）里显式 `enabled: true` 才可运行；默认全部禁用。启用 = 运营者（你）对该二进制的授权。
+2. **来源限制**：`shell` 执行器**只接受 `source: 'inbox'` 的任务**（运营者投递），**模型工具不得入队 shell 任务**（tool 层直接拒绝）。其余 CLI 执行器对两种来源开放，但仅限已启用者。
+3. **信任边界（如实声明，v1 不做沙箱化）**：CLI 子进程以 DSH 宿主用户权限运行，**不受 DSH 文件沙箱约束**。缓解仅限：outputDir 约定 + 启用白名单 + 来源限制。执行器容器化/沙箱化是非目标，文档不粉饰此边界。
 
 ## 7. 对外接口
 
-### 7.1 Service（host 面，`ctx.queue`）
+### 7.1 Service（host 面，`ctx.taskQueue`）
 
 ```
-enqueue(spec) → {id}            # 单条入队
-enqueueBatch(specs) → {ids}     # 批量入队（上限 200/次，可配）
-list(filter?) → TaskSummary[]   # 过滤：status/executor/tags/limit
+enqueue(spec, source) → {id}          # source: 'agent-tool' | 'inbox'（影响授权，§6.3）
+enqueueBatch(specs, source) → {ids}   # 上限 200/次，可配
+list(filter?) → TaskSummary[]         # status/executor/tags/limit
 get(id) → Task
-cancel(id) → ok                 # pending 直接取消；running 杀进程树后标 canceled
-retry(id) → ok                  # failed → pending（计数清零）
-stats() → 各状态计数 + 每执行器计数 + 运行时长
+cancel(id) → ok                       # pending 直接取消；running 经 subprocess 终止后标 canceled
+retry(id) → ok                        # failed → pending（计数清零）
+stats() → 各状态计数 + 每执行器计数
 registerExecutor(name, handler)
-pause()/resume()                # 暂停/恢复领取（维护窗口用）
+pause()/resume()                      # 维护窗口
 ```
 
-### 7.2 事件（host 面）
+### 7.2 事件（host 面，v2 更名避免与 UI queue 冲突）
 
-`queue/task-created`、`queue/task-started`、`queue/task-succeeded`、`queue/task-failed`、`queue/task-requeued`、`queue/task-canceled`、`queue/drained`。任何 host 插件可订阅；payload 只含叶子字段（id/status/executor/exitCode）。
+`task-queue/created`、`task-queue/started`、`task-queue/succeeded`、`task-queue/failed`、`task-queue/requeued`、`task-queue/canceled`、`task-queue/drained`、`task-queue/orphan-unknown`。payload 只含叶子字段。
 
-### 7.3 工具（agent 面，`@deepseek-ai/dsh-tool-queue` 注册进 preset）
+### 7.3 inbox 文件投递（v2 重写协议，替代共享文件 append）
+
+外部投递（无会话时下任务）：
+
+1. 生产者在 `$DSH_HOME/task-queue/inbox/` 写入 `<uuid>.tmp`（独占创建 `wx`），完成后 **rename 为 `<uuid>.json`**——原子现身，无半文件。
+2. 每个文件一条任务 spec（与 `enqueue` 同一 schema，严格校验）。
+3. 调度器每 tick 扫描、校验、转 `created` change 落 log、**落 log 后才删**文件。
+4. 校验失败 → 移入 `corrupt/` 告警，不静默丢。
+
+**多写者安全**：每文件唯一名，生产者在 rename 后不再触碰；log 是单写者。压缩只读 log + 快照，不碰 inbox——竞态面被彻底移除。
+
+### 7.4 结果投递模型（v2 新增）
+
+- 任务终态（succeeded/failed/canceled）时，若 `ownerSessionId` 存在，写一条 `$DSH_HOME/task-queue/notes/<sessionId>/<taskId>.json` 投递通知。
+- pre-step 摘要钩子（§8.3）在所属会话活跃时读取 notes 与 stats 注入上下文，并消费已读 notes。
+- 无 owner 任务：结果仅存于任务记录 + outputDir，通过 `queue_list`/`queue_status` 查询审计。
+- 跨会话完成后归属哪个 session、如何通知，由以上最小模型定义；**不复用 tool-jobs 的 owner wakeup**（那是进程内 jobs 注册表的语义）。
+
+### 7.5 工具（agent 面，`@deepseek-ai/dsh-tool-task-queue`）
 
 `queue_enqueue` / `queue_enqueue_batch` / `queue_list` / `queue_status` / `queue_cancel` / `queue_retry` / `queue_stats`。
 
-**工具的 description 本身就是"合理使用"的第一道闸门**——每个工具描述里编码使用时机（见 8.1）。
+- `queue_enqueue*` 强制 `source: 'agent-tool'`，**拒绝 executor: 'shell'**（§6.3）。
+- description 编码使用时机（§8.1）。
 
-### 7.4 无会话时的投递入口
-
-JSONL 文件投递：向 `$DSH_HOME/queue/tasks.jsonl` 追加 `{taskId, state:{status:"pending", ...完整字段}}` 行即可入队（调度循环 tail 该文件，每 tick 检测追加）。这让"没有活跃会话也能下任务"成为可能，且不增加任何协议成本。
-
-## 8. 确保系统合理使用（一等目标）
-
-用户原始问题的另一半："如何确保系统合理使用这个模块"。四条机制，缺一不可：
+## 8. 采用机制（v2 措辞降级：提高概率，不承诺保证）
 
 ### 8.1 工具可见性 + 描述即规范
 
-工具注册进 agent 的 tool 注册表，模型推理时天然可见。每个工具 description 写明**何时该用**：
+工具注册进 tool 注册表，模型可见。description 写明何时该用（批量 ≥3 个独立任务、长耗时、需重试、跨会话类工作 → 入队；单条快速交互 → 内联）。**这是提示层，不是保证层。**
 
-> `queue_enqueue_batch`：当用户一次给出 ≥3 个独立任务，或任务属于长耗时/需要重试/跨会话类（生成、拆解、批量处理）时，用本工具批量入队，而不是逐个内联执行。
+### 8.2 preset 指令约束
 
-### 8.2 preset 指令约束（fork 拥有 preset → 原生内置）
+fork 的 `standard` preset 加使用规范段落：批量先入队再汇报；会话开始 `queue_stats` 看积压；发现 `failed` 主动报告并建议 `queue_retry`；不重复入队（先 `queue_list` 查重）；agent 职责 = 投递、监控、处置失败、汇报。**同为提示层。**
 
-在 fork 的 `standard` preset（`apps/cli/config/agent-presets/standard/`）加入队列使用规范段落（persona/instructions 文本，约 15 行）：
+### 8.3 pre-step 摘要注入（v2 修正挂点，与 time-context 同类）
 
-- 批量任务先入队再汇报队列状态；不重复入队已存在任务（先 `queue_list` 查重）。
-- 会话开始调用 `queue_stats` 了解积压；发现 `failed` 主动报告并建议 `queue_retry`。
-- 队列由调度器自动消化——agent 的职责是**投递、监控、处置失败、汇报**，不是手动派发。
-- 单条、快速、交互式任务走内联，不入队（防止队列被琐碎任务污染）。
+薄 context 插件，挂 `agent/pre-step` 事件（time-context 的同一挂点）：队列非空且距上次注入超阈值时，注入一行状态摘要 + 当前会话的 notes（§7.4）。agent 每次推理前都可能看到队列状态——**降低遗忘概率**，不保证。
 
-### 8.3 会话开始钩子
+### 8.4 调度器自治（唯一的硬机制）
 
-`dsh-tool-queue` 附带一个薄 context 插件（参照 `dsh-time-context` 先例）：会话开始时若队列非空，向 agent 上下文注入一行摘要（各状态计数）。agent 每次醒来都知道队列在不在干活——**不依赖它记性好**。
+即使无会话活跃、agent 从不查看，host 面调度循环照常消化队列。**队列自排干是机制保证；其余三条是采用概率的放大器。** v2 措辞：不说"确保系统合理使用"，说"最大化采用概率 + 机制兜底"。
 
-### 8.4 调度器自治（兜底）
+## 9. 在 fork 中的落点与上游 merge 策略（v2 修正真实路径）
 
-即使没有任何会话活跃、agent 从不主动查看，host 面的调度循环照常消化队列。**"合理使用"不依赖 agent 记得**——队列是自排干的，agent 只是投递与监督者。这是与"纯 skill 约定"方案的本质区别：约定会忘，机制不会。
+### 9.1 新增包（全新目录）
 
-## 9. 在 fork 中的落点与上游 merge 策略
+`packages/task-queue/{task-queue, task-queue-local, tool-task-queue}`（§2 表格）。
 
-### 9.1 新增包（全新目录，上游不可能冲突）
+### 9.2 修改的既有文件（v2 全部改为真实存在的路径）
 
-```
-packages/queue/queue/       → @deepseek-ai/dsh-queue      （host 面核心：Service/调度/持久化/注册表/CLI 适配器）
-packages/queue/tool-queue/  → @deepseek-ai/dsh-tool-queue （agent 面：7 个工具 + 会话钩子）
-```
+| 文件 | 改动 | 已验证 |
+|---|---|---|
+| `packages/bundle/base/cordis.patch.yml` | host 组合加 `task-queue-local` 服务行（`@deepseek-ai/dsh-task-queue-local`，含执行器启用配置）。**v1 写的 `apps/cli/config/base.cordis.yml` 不存在** | 文件存在（当前有本地 WIP 修改，注意与其共存） |
+| `packages/bundle/base/package.json` | 声明 workspace 依赖（bundle 是 host 行的依赖归属方） | 存在 |
+| `apps/cli/config/agent-presets/standard/agent.cordis.yml` | 加 `tool-task-queue` 工具行 + pre-step 钩子行 | 存在 |
+| `apps/cli/config/agent-presets/standard/` persona/instructions 文本 | 加 §8.2 规范段落 | 存在 |
 
-命名与结构完全仿照 `packages/jobs/{jobs,jobs-local,tool-jobs}` 先例。
+**覆盖机制（v2 修正）**：host 层叠是 `base bundle patch` + profile/home 的 `cordis.patch.yml` + `--patch <path>` overlay（`dsh --profile web --patch ./extra.yml`）。**`--config` 入口不存在**，v1 文档写的 `$DSH_HOME/config.yaml` / `dsh --config` 兜底已删；个人 overlay 的正确路径是 profile 的 `cordis.patch.yml` 或 `--patch`。
 
-### 9.2 修改的既有文件（每处一行，冲突 = 一行 keep-both）
+### 9.3 merge 上游策略（v2 去绝对化）
 
-| 文件 | 改动 |
-|---|---|
-| `apps/cli/config/base.cordis.yml` | host 组合加一行 `- id: queue / name: '@deepseek-ai/dsh-queue'`（服务行必须在 host 平面——与 jobs 注册表同理） |
-| `apps/cli/package.json` | 声明两个 workspace 依赖（仓库内已交付配置的依赖归属约定，见 `.agents/notes`） |
-| `apps/cli/config/agent-presets/standard/agent.cordis.yml` | 加 `tool-queue` 工具行 + context 钩子行 |
-| `apps/cli/config/agent-presets/standard/` persona/instructions 文本 | 加 8.2 的使用规范段落 |
+- 同步：`git fetch upstream && git merge upstream/master`。冲突面 = §9.2 表格里的 4 个文件各自的新增行；`bundle` 的 patch 文件若上游重排，需按新行序重放我们的行。
+- 措辞修正：**不承诺"永远无冲突"**；承诺的是"冲突面小且可机械重放"（我们的改动 = 新目录 + 若干单行追加）。
+- 兜底：迁移到 profile/home 的 `cordis.patch.yml` 或 `--patch` overlay，零仓库内文件改动。
 
-### 9.3 merge 上游策略
+## 10. 错误处理与边界（v2 补充）
 
-- 常规同步：`git fetch upstream && git merge upstream/master`；冲突只可能出现在上面 4 个文件的同一行附近，解法恒定：**双方行都保留**（我们加的行与上游改的行不重叠）。
-- 兜底（极端情况上游大改 base.cordis.yml）：把我们的行迁到 `$DSH_HOME/config.yaml` 个人 overlay（`dsh --config` 的 Include 补丁机制已存在），零仓库冲突。
-- 队列包本身在全新目录 `packages/queue/`，上游除非同名加包，否则永远无冲突。
+1. **执行器缺失/未启用**：入队时即拒绝（未启用）；运行时 spawn ENOENT → 立即 failed，`lastError` 写明，**不进重试风暴**（配置错误类不重试，与瞬时失败区分）。
+2. **超时**：经 `ctx.subprocess` 树终止 → 失败路径。
+3. **append/fsync 失败**：转移未发生（§3.3 规则 2）——内存保留旧状态，调度器暂停 + stderr 告警；恢复后 `resume()`。**语义定死：不存在"内存已变但日志没变"的中间态。**
+4. **坏行**：移 `corrupt/` 告警（§4.1）；半行截断。
+5. **孤儿进程**：boot 时按持久化 run record 的 pid 尽力终止；未知状态 → `orphan-unknown` 告警 + 任务回队（§4.2）。v1 不 reattach。
+6. **孤儿 `.lock` 文件**：告警 + 运营手册处理（`writeFileAtomic` 契约如此）。
+7. **重复入队**：不强制幂等；规范层查重（§8.2）+ `commandFingerprint` 供诊断。at-least-once 已明示（§4.3）。
+8. **危险任务**：授权模型 §6.3（启用制 + shell 仅 inbox + 信任边界如实声明）。
+9. **fsync 成本**：每次状态转移一次 fsync 是刻意的正确性开销；任务级批量吞吐上限由并发数决定而非写入次数，30min 级任务下 fsync 占比可忽略。若未来出现高频短任务，再评估组提交（group commit）优化——记录为已知取舍，不提前实现（YAGNI）。
 
-## 10. 错误处理与边界
-
-1. **执行器缺失**（如 `claude` 不在 PATH）：spawn ENOENT → 立即 failed，`lastError` 写清楚"可执行文件未找到"，**不进重试风暴**（区分配置错误与瞬时错误，前者不重试）。
-2. **超时**：杀进程树 → 走失败路径（可重试则回队）。
-3. **磁盘写失败**：appendFile 报错 → 调度器暂停 + stderr 报警 + 内存态保留；恢复磁盘后手动 `resume()`。
-4. **JSONL 损坏**：重放时丢弃不完整行并告警（4.2）。
-5. **重复入队**：不强制幂等；规范层面要求 agent 先 `queue_list` 查重（8.2）。at-least-once 语义已在 4.3 明示。
-6. **孤儿进程**：pidfile 附着或杀之（4.2）。
-7. **恶意/危险 prompt**：CLI 执行器跑在用户权限下（6.2 信任边界），入队即授权；v1 不设内容闸门（非目标）。
-
-## 11. 测试策略（沿袭仓库 vitest 惯例）
+## 11. 测试策略（v2 增补授权与多写者）
 
 | 层 | 内容 |
 |---|---|
-| 单元 | 状态机全转移、优先级排序、退避计算、jsonl 重放/压缩/损坏行丢弃 |
-| 集成 | 假执行器（`shell` echo）端到端：入队→领取→成功/失败→重试→死信 |
-| 崩溃模拟 | 起子进程后杀宿主进程，重启验证 pending 恢复、running 回队、孤儿附着 |
-| 并发 | 验证全局/每执行器上限不被突破 |
-| 冒烟（手动，标注成本） | 真实 `claude`/`codex`/`arkcli` 各一条最简 prompt（消耗额度，不纳入 CI） |
+| 单元 | 状态机全转移（含超时→失败、取消→canceled）、退避计算、change 记录 schema、seq 全序折叠 |
+| 集成（假执行器） | 入队→领取→成功/失败→重试→死信；inbox 投递→落 log→删文件 |
+| 崩溃模拟 | 杀宿主进程：pending 恢复、running 回队、孤儿 pid 终止/告警、半行截断 |
+| 多写者 | inbox 并发投递（多文件 rename）+ 压缩并存，验证零丢失 |
+| 授权 | shell 仅 inbox、未启用执行器拒绝、模型工具无法入队 shell |
+| 安全 | 子进程 env 不含 `DSH_*` 与凭据形变量（scrub 断言） |
+| 冒烟（手动，标注成本与局限） | 真实 claude/codex/arkcli 各一条最简 prompt；**仅证明该环境可运行，不替代恢复/授权/多写者测试** |
 
-## 12. 里程碑
+## 12. 里程碑（v2 验收改为可执行证据）
 
-| 里程碑 | 内容 | 验收 |
+| 里程碑 | 内容 | 验收证据（可执行命令/观察） |
 |---|---|---|
-| M1 核心骨架 | `packages/queue/queue`：状态机 + JSONL 持久化 + 重放恢复 + 事件 | 单测全绿；杀进程重启后队列完整 |
-| M2 调度器 | tick 循环、并发、优先级、退避、`delayUntil`、超时/心跳 | 集成测试全绿 |
-| M3 执行器 | `shell` + 4 个 CLI 适配器 + 日志 + pidfile | 手动冒烟：claude 跑通一条 |
-| M4 集成 wiring | tool-queue 工具 + 会话钩子 + base.cordis.yml 行 + preset 指令 | 会话内说"帮我做这 5 件事"→ 批量入队并被消化 |
-| M5 Linux 部署 | systemd 常驻 + 跨会话断点续传实测 + 文档 | 重启服务器后队列自动续跑 |
+| M1 contract+backend | `task-queue` contract + `task-queue-local`：状态机、change 日志、重放、inbox | `pnpm --filter @deepseek-ai/dsh-task-queue-local test` 全绿；手动杀进程后 `queue_list` 完整 |
+| M2 调度器 | tick、并发、优先级、退避、`delayUntil`、超时 | 集成测试全绿；并发上限断言测试通过 |
+| M3 执行器 | 5 个适配器经 `ctx.subprocess` + run record + 授权模型 | 冒烟：claude 一条跑通；env scrub 断言通过 |
+| M4 集成 wiring | 工具 + pre-step 钩子 + bundle patch 行 + preset 指令 | 会话内说"帮我做这 5 件事"→ 批量入队并被消化；`queue_stats` 可见 |
+| M5 Linux 部署 | systemd 常驻 + 跨会话断点续传实测 + 文档 | 重启服务器后：pending 续跑、running 回队、notes 投递 |
 
 ## 13. 未来方向（非 v1）
 
-- Client 面板（Slot UI 展示队列状态）——届时才是第二个包的合理理由
-- 周期 cron、任务依赖 DAG、自动额度均衡路由、幂等键（exactly-once）
-- 队列级限额/审批（危险执行器准入）
+- Client 面板（Slot UI）——届时是第二个包的合理理由
+- 周期任务（评估复用 `schedule` 的持久记录模型）、任务依赖 DAG、自动额度均衡路由
+- 幂等键（exactly-once）、执行器容器化、组提交优化（§10.9）
+
+## 附：v1 → v2 修订清单（回应 codex 审查）
+
+| 审查意见 | 采纳方式 |
+|---|---|
+| P0-1 状态机矛盾 | §3.1 超时归失败路径，canceled 仅显式取消 |
+| P0-2 多写者竞态 | §4/§7.3 删除共享 append，改单写者 log + inbox 文件协议 |
+| P0-3 复用 subprocess | §6.2 一律经 `ctx.subprocess`，env scrub 默认 |
+| P0-4 授权模型 | §6.3 启用制 + shell 仅 inbox + 来源字段 |
+| P1-1 落点错误 | §9.2 改 `bundle/cordis.patch.yml` + `--patch`，删 `--config` |
+| P1-2 jobs seam | §2 写明两作用域差异与"独立 Service 必要、执行层复用" |
+| P1-3 schedule 模式 | §4.1 change 记录 + version + flush 语义 |
+| P1-4 envelope/全序 | §4.1 seq 全序、version、corrupt 隔离 |
+| P1-5 结果投递 | §7.4 notes 投递模型 |
+| P2-1 措辞降级 | §8 全节改写 |
+| P2-2 命名冲突 | 全部改 `task-queue`/`taskQueue` |
+| P2-3 绝对措辞 | §9.3 去绝对化 |
+| P2-4 验收标准 | §12 可执行证据 |
