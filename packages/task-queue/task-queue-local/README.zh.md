@@ -1,0 +1,64 @@
+# @deepseek-ai/dsh-task-queue-local
+
+[English](README.md) | 中文
+
+[`@deepseek-ai/dsh-task-queue`](../task-queue/README.md) 约定的 host 平面持久实现：`LocalTaskQueue` 把每一条任务与通知记录写进 `$DSH_HOME/task-queue/` 下的单写者 segment 日志，跨进程重启仍存活，并由一个调度器按可配置的并发上限领取、spawn 并结算任务。作为插件加载后即注册为 `ctx.taskQueue`。
+
+## Service
+
+`LocalTaskQueue` 继承约定包里的 `TaskQueue` 服务，注册为 `ctx.taskQueue`。所有读操作都返回持久状态，所有写操作都经过一个服务级 mutation FIFO。
+
+- `enqueueFromTool(spec) → TaskId`：可信工具入口。它拒绝 `executor: 'shell'`，要求执行器被显式启用，并生成幂等 receipt：调用方提供 `idempotencyKey` 时为 `tool:key:<idempotencyKey>`（重复调用返回既有任务 id），否则为 `tool:auto:<uuid>`（仅作为单次准入身份，不承诺跨调用去重）。
+- `enqueueBatchFromTool(specs) → TaskId[]`：每次调用最多 200 条。
+- `list(filter?)` / `get(id)`：读取摘要或完整任务；`list` 可按 status、executor、tags 过滤。
+- `cancel(id)`：`pending` 直接取消；`starting`/`running` 落 `stopping` 意图并返回 `'stopping'`；终止态任务是空操作并返回 `'canceled'`。
+- `retry(id)`：把 `failed` 或 `canceled` 任务清零 attempt 后回到 `pending`。
+- `stats()`：返回 `serviceState`（faulted 时附原因）、各状态计数与各执行器计数。
+- `registerExecutor(name, adapter)`：安装 prepare-only 适配器；返回一个移除它的 disposer。
+- `pause()` / `resume()`：`pause` 仅允许自 `running`，`resume` 仅允许自 `paused`。对 faulted 队列调用 `resume()` 会被拒绝；faulted 只能经 fault 判定协议退出或由运营者重启。
+- `ackNotification(notificationId, messageId)`：对终态变更产生的 `pending` 通知做 CAS 确认；status 或 message id 不匹配时失败，且不改动任何其他记录。
+- `listNotifications({ ownerSessionId })`：按 terminalSeq 排序重建某一会话的待通知 outbox。
+
+事件只有在对应 change 完成 fsync 并折叠进内存后才发布：`task-queue/created`、`task-queue/starting`、`task-queue/running`、`task-queue/succeeded`、`task-queue/failed`、`task-queue/requeued`、`task-queue/canceled`，以及用于恢复与故障信号的 `task-queue/orphan-unknown`、`task-queue/faulted`。
+
+## 持久存储
+
+队列根目录包含追加写的 `active.jsonl`、已封段的 `segments/<first>-<last>.jsonl`、可丢弃的 `snapshot.json` 缓存，以及 `inbox/`、`quarantine/`、`runs/<taskId>/` 和 `output/<taskId>/`。每条新变更写一行 JSON，遵循 `open('a')` → 写入 → `fsync(文件)`，首次创建时再 fsync 父目录。当 active 段超过 10000 行或 8 MB 时，先 fsync 该段，再改名为 `segments/` 下的封段，跨目录 rename 后 fsync 两个父目录，随后独占新建并 fsync 新的 active，最后重写快照。
+
+启动时折叠所有封段与 active 尾部，校验文件名范围与 seq 连续；损坏的完整行、封段的半行、任何 seq 缺口或重复都会以 `FaultedError` 直接失败关闭。只有 active 段的尾部残行会被修复——截断到最后一个完整换行并 fsync。只有当快照的 sha256 state 摘要与逐行 lastChange 摘要都与持久日志一致时才信任它；任何不匹配都会丢弃快照并从最早段全量折叠。
+
+## Mutation FIFO 与 faulted 协议
+
+每一次持久 mutation——入队、批量、inbox 导入、结算、取消意图、重试、通知确认——都经同一条以服务实例为键的 promise 链串行执行，因此并发入队、inbox 扫描与结算回调不会交错。append/fsync 失败并不等于转移未发生，所以服务进入 `faulted`，拒绝新 mutation，并重读日志判定：已提交（seq 与 payload 均在）→ 对账并清除 fault；未提交且前一行尾完整 → 转移确实未发生，保留原始 I/O 错误；无法判定 → 保持 fail-closed，绝不自动 resume。spawn 之后的 `running` 发布是唯一重试特例：在下一个 seq 下重试同一规范 payload，而不是二次 spawn 进程。
+
+## Inbox
+
+外部生产者投递任务的方式是：写 `inbox/<uuid>.tmp`（独占）、fsync、改名为 `<uuid>.json`、再 fsync inbox 目录——两次 fsync 都是断电持久协议的一部分，因此调度器只会看到完整文件。basename 必须是严格 UUID，内容必须通过严格的入队 schema 校验。非 UUID basename 被忽略，非法内容被移入 `quarantine/` 而非入队。`receiptId` 即 UUID basename：重复扫描到已提交 receipt 时只删除文件、不创建第二个任务，且文件只在 `created` change 提交后才删除。
+
+## 调度
+
+tick 循环（默认 1 秒）先处理 inbox，再按优先级升序、同优先级 FIFO 顺序领取可用的 `pending` 任务，受全局 `maxConcurrent`（默认 2）与每执行器 `maxConcurrentPerExecutor`（默认 1）约束。领取分两阶段：先在 FIFO 内写 `starting`（`attempt` 唯一在此递增，run record 不含 pid），随后在 FIFO 外由适配器 `prepare(task, run, signal)` 产出 spawn spec，最后回到 FIFO 内原子地重检任务仍为 `starting`、经 `ctx.subprocess.spawn(spec)` spawn、并带真实 pid 写 `running`。在 prepare 期间被取消的任务绝不会被 spawn。`exitCode === 0` 结算为 `succeeded`；其余走失败路径——按 `backoffMs * 2^(attempt-1)` 退避重入队直到 `maxAttempts`，之后进 `failed`。attempt 级 `AbortSignal`（同时传入 spec 的 `signal`）兑现 `timeoutMs`，超时会升级为进程树终止。
+
+崩溃回收恰在启动时执行一次：`starting`/`running`/`stopping` 任务是上一个宿主进程的遗留（不存在对应 live handle），按恢复矩阵结算（绝不向恢复出的 pid 发信号）并各自发出 `task-queue/orphan-unknown`。正常 tick 从不回收，否则一个已 spawn 的任务会每秒被回退一次。
+
+## 执行器
+
+适配器只做 prepare：返回完整指定的 `SubprocessSpawnSpec`，绝不直接触碰 `child_process`——spawn、terminate、wait 全部由调度器经 `ctx.subprocess` 完成。内置 `claude`、`codex`、`opencode`、`arkcli` 与 `shell`。它们都以任务输出目录为 `cwd`、以有界 spill 收集 stdout/stderr，且不传 `env`，让 subprocess 服务的 scrub 后父环境生效。`shell` 执行从任务 prompt 的 `{ "argv": string[] }` JSON 解析出的 argv 数组，且被一切工具入口拒绝——只有 inbox 准入能入队它，因此模型 prompt 永远无法变成任意命令。执行器必须在 host 配置中显式启用；未知或未启用的执行器在准入时即被拒绝，spawn 的 `ENOENT` 会让该 attempt 立即失败，而不是进入重试风暴。
+
+## 权限
+
+队列目录（`task-queue/`、`segments/`、`inbox/`、`quarantine/`、`runs/`、`output/`）以 `0o700` 创建；文件（`active.jsonl`、封段、`snapshot.json`、run 日志）以 `0o600` 创建。任何进入路径的不可信 id 都会先经 `encodeSegment` 编码。Windows 上不强制执行这些 mode，所有权依赖当前用户的目录 ACL。
+
+## Model Experience
+
+间接地，经由 [`dsh-tool-task-queue`](../tool-task-queue/README.md)，它渲染 7 个 `task_queue_*` 工具、`tool:task-queue` 提示词段落与通知投递消息；此后端自身不注册任何模型面。
+
+#### KV Cache effect
+
+无直接失效；命名的消费者拥有任何 request-prefix 变更。
+
+## 已知限制与暂缓事项
+
+- **至少一次执行语义**：`spawn` 与 `running` 提交之间崩溃可能导致同一 attempt 执行两次；`attempt` 只在领取时递增，恢复出的 pid 仅作诊断，绝不作为跨重启 kill 的授权。
+- **未实现 segment GC**：封段永不删除，因此恢复不依赖未定义的 base-segment 协议，但队列目录会无限增长。
+- **faulted 状态刻意保持粘滞**：无法判定的提交会一直 fail-closed，直到运营恢复与重启；设计上 `resume()` 无法清除它。

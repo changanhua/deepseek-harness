@@ -247,6 +247,7 @@
         "./packages/preset/*/src",
         "./packages/subagent/*/src",
         "./packages/jobs/*/src",
+        "./packages/task-queue/*/src",
         "./packages/workflow/*/src",
         "./packages/web/*/src",
         "./packages/attachment/*/src",

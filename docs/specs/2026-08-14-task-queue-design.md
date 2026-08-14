@@ -1,9 +1,6 @@
 # 任务队列模块（task-queue）设计 v4
 
-> 状态：待用户审阅（v4：已按 codex 第三轮独立复审修订）
-> 日期：2026-08-14
-> 目标仓库：`changanhua/deepseek-harness`（上游 `deepseek-ai/deepseek-harness`）
-> 修订来源：codex 独立审查三轮（v1@`adfd4d6b6f`、v2@`55771d6095`、v3@`3e551aab1f`），全部意见经逐条仓库验证后吸收
+> 状态：待用户审阅（v4：已按 codex 第三轮独立复审修订）。日期：2026-08-14。目标仓库：`changanhua/deepseek-harness`（上游 `deepseek-ai/deepseek-harness`）。修订来源：codex 独立审查三轮（v1@`adfd4d6b6f`、v2@`55771d6095`、v3@`3e551aab1f`），全部意见经逐条仓库验证后吸收。
 
 ## 0. 摘要
 
@@ -152,6 +149,10 @@ $DSH_HOME/task-queue/            # 根目录 0o700（prompt/结果属用户私�
 **change 记录格式**（借鉴 `schedule` 的 version-1 变更记录模式）：
 
 ```ts
+// 占位声明使文档块自洽可编译（真实类型见 contract 包）
+interface Task {}
+interface NotificationRecord {}
+
 type ChangeRecord =
   | { seq: number; version: 1
       op: 'created'|'starting'|'running'|'stopping'|'succeeded'|'failed'|'requeued'|'canceled'
@@ -173,8 +174,10 @@ type ChangeRecord =
   2. rename 为 `segments/<firstSeq>-<lastSeq>.jsonl`，然后 **fsync `segments/` 与 `task-queue/` 两个父目录**（跨目录 rename 同时修改源、目标目录项）；
   3. 以独占创建方式建立新 active，fsync 新文件，再 fsync `task-queue/`；
   4. 最后更新 `snapshot.json`（`writeFileAtomic` + fsync 文件 + fsync `task-queue/`；`writeFileAtomic` 本身不承担 crash durability）。
+
   boot 若发现 active 缺失，先验证所有 sealed segment 的文件名范围与内容 seq 连续，再独占创建新 active；任一不连续、重叠或重复 seq 都直接 faulted。
 - **快照是可丢弃缓存**：snapshot 必须通过 schema、`stateDigest = SHA-256(canonical({tasks,notifications}))`，且其 `lastChangeDigest` 匹配持久日志中 `lastSeq` 对应完整行；然后才以 snapshot 为基线重放 `seq > lastSeq`。任一校验失败就丢弃 snapshot，从最早 segment 全量折叠。先扫描所有 sealed segments + active 得到 durable `maxSeq`；snapshot.lastSeq 不得大于它。v1 **不删除旧 segment**，因此恢复不依赖未定义的 `baseSegment`/GC 协议。
+
   `canonical` 固定为 UTF-8、无额外空白、对象键递归字典序、tasks/notifications 按 id 升序；digest 规则进入 contract 包并由 golden vectors 固定，不能依赖运行时对象插入顺序。
 - **损坏处理（fail-closed）**：完整非法行、sealed segment 的任何半行、文件名范围与内容不符、seq 缺口/重复 → 直接 faulted；运行时不得自行跳过坏行。只有 **active 的最后一条半行**可作为 interrupted append 修复：记录原长度 → truncate 到最后完整换行 → **fsync(active)** → 再按 §4.2 判定该 mutation 未提交。恢复其他损坏是运营动作：复制原件到 `quarantine/`、显式重写后重启。
 - **v3 删除 v2 的"孤儿 `.lock`"场景**：`writeFileAtomic` 不产生 `.lock`（只有显式 `withFileLock` 才有）；本设计 snapshot/active 均为单写者，不使用 `withFileLock`，无孤儿锁问题。
@@ -229,10 +232,12 @@ type ChangeRecord =
 ### 6.1 注册表接口（v3 修正——适配器不再持有生命周期）
 
 ```ts
-// contract 包导出（host 面）
-taskQueue.registerExecutor(name, adapter: {
-  prepare(task, run, signal: AbortSignal): Promise<SubprocessSpawnSpec>   // 只产 spec，不碰 child_process
-})
+// contract 包导出的注册接口（host 面）
+interface ExecutorAdapter {
+  // 只产 spawn spec，不碰 child_process
+  prepare(task: unknown, run: unknown, signal: AbortSignal): Promise<unknown>
+}
+declare function registerExecutor(name: string, adapter: ExecutorAdapter): () => void
 ```
 
 - **scheduler 唯一调用** `ctx.subprocess.spawn()`，唯一持有 `SubprocessHandle`，唯一负责：创建 `AbortSignal.any([attemptController.signal, AbortSignal.timeout(timeoutMs)])` 并同时约束 prepare/spawn、terminate、waitForExit、结算。
@@ -294,6 +299,7 @@ pause()/resume()                         # resume 仅接受 paused；faulted 必
 2. **receiptId = 文件 UUID**；FIFO 写 `created` change 时同时持久化 `source:'inbox'` 与 receiptId；
 3. 重扫时若 `(source:'inbox', receiptId)` 已提交 → **只补删 inbox 文件，不再创建任务**；
 4. `created` 提交成功后删除 inbox 文件。
+
 工具入口提供 `idempotencyKey` 时映射为 `(source:'tool', receiptId:'tool:key:<key>')`，已提交则返回既有 task id；key 必须是 1–128 UTF-8 bytes、不得含 NUL。未提供时生成 `tool:auto:<uuid>`，只作为持久 admission 身份，不承诺两个独立工具调用自动去重。inbox 文件 basename 必须严格匹配 UUID，不能把任意文件名直接当 receipt。
 
 ### 7.4 durable notification outbox（v4：独立 record + append 后 flush + CAS ack）

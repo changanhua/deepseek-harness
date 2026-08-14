@@ -479,6 +479,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Producers (background bash, PTY sends, and subagent delegations) register running work; tool-jobs is the model-facing controller that reads, lists, and kills it; jobs-local is the process-local registry.',
   },
   {
+    key: 'taskQueue',
+    pkg: 'task-queue',
+    title: 'Durable cross-session task queue',
+    mode: 'seam',
+    implementations: ['task-queue-local'],
+    consumers: ['tool-task-queue'],
+    note: 'The host-plane service admits tool and inbox tasks, persists a single-writer segment change log, and runs the two-phase scheduler; task-queue-local is the durable backend with the mutation FIFO and faulted protocol; tool-task-queue exposes the seven task_queue_* tools plus the notification outbox hooks.',
+  },
+  {
     key: 'web',
     pkg: 'web',
     title: 'Web access provider registry',

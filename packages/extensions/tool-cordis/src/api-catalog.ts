@@ -1737,6 +1737,82 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'taskQueue',
+    summary: 'Abstract durable task queue.',
+    description: 'Abstract durable task queue. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.taskQueue` (one implementation per context; loading a second throws, cordis\' standard duplicate-service behavior).\n\nMutations are serialized through the backend\'s service FIFO and are fail-closed on append error (the queue enters `faulted`); `resume()` must never clear `faulted`. `source`/`receiptId` are assigned only by the trusted entry points, so the tool-surface methods accept a spec without them.',
+    methods: [
+      {
+        signature: 'abstract enqueueFromTool(spec: EnqueueSpec): Promise<TaskId>',
+        description: 'Enqueue a single tool-originated task; rejects `executor: \'shell\'`.',
+        parameters: [{ name: 'spec', description: 'the validated admission spec (source/receipt assigned by the entry).' }],
+        returns: 'the minted task id.',
+      },
+      {
+        signature: 'abstract enqueueBatchFromTool(specs: EnqueueSpec[]): Promise<TaskId[]>',
+        description: 'Enqueue tool-originated tasks in one batch (bounded, e.g. 200).',
+        parameters: [{ name: 'specs', description: 'the validated admission specs; any `shell` rejects the whole batch.' }],
+        returns: 'the minted task ids, in spec order.',
+      },
+      {
+        signature: 'abstract list(filter?: ListFilter): TaskSummary[]',
+        description: 'List summary projections, filtered by status/executor/tags, bounded by limit.',
+        parameters: [{ name: 'filter', description: 'optional status/executor/tags filters and a result limit.' }],
+        returns: 'fresh summary rows.',
+      },
+      {
+        signature: 'abstract get(id: TaskId): Task',
+        description: 'Return the full durable state of one task.',
+        parameters: [{ name: 'id', description: 'the task id to look up.' }],
+        returns: 'the durable task snapshot; throws for an unknown id.',
+      },
+      {
+        signature: 'abstract cancel(id: TaskId): Promise<\'canceled\' | \'stopping\'>',
+        description: 'Cancel a task: pending → canceled; starting/running → stopping intent.',
+        parameters: [{ name: 'id', description: 'the task id to cancel.' }],
+        returns: '`canceled` for a directly-canceled pending task, `stopping` when a cancel intent was persisted.',
+      },
+      {
+        signature: 'abstract retry(id: TaskId): Promise<TaskId>',
+        description: 'Retry a failed task; returns the (unchanged) task id.',
+        parameters: [{ name: 'id', description: 'the failed task id to requeue.' }],
+        returns: 'the same task id, now pending with `attempt` reset.',
+      },
+      {
+        signature: 'abstract stats(): QueueStats',
+        description: 'Aggregate service state and per-status/per-executor counters.',
+        parameters: [],
+        returns: 'the current service state, optional fault, and counters.',
+      },
+      {
+        signature: 'abstract registerExecutor(name: string, adapter: ExecutorAdapter): () => void',
+        description: 'Register an executor adapter; returns a disposer that unregisters it.',
+        parameters: [{ name: 'name', description: 'the registry name tasks select with `executor`.' }, { name: 'adapter', description: 'the prepare-only adapter producing spawn specs.' }],
+        returns: 'a disposer removing exactly this registration.',
+      },
+      {
+        signature: 'abstract pause(): void',
+        description: 'Pause the queue (running → paused only).',
+        parameters: [],
+      },
+      {
+        signature: 'abstract resume(): void',
+        description: 'Resume the queue (paused → running only; faulted rejected).',
+        parameters: [],
+      },
+      {
+        signature: 'abstract ackNotification(notificationId: NotificationId, messageId: string): Promise<void>',
+        description: 'Acknowledge a pending notification with a CAS (spec §7.4): only a `pending` record whose `messageId` matches `messageId` transitions to `acknowledged`. An already-acknowledged record with a matching message id is an idempotent no-op.',
+        parameters: [{ name: 'notificationId', description: 'the outbox record to acknowledge.' }, { name: 'messageId', description: 'the stable message id the record must match.' }],
+      },
+      {
+        signature: 'abstract listNotifications(filter: { ownerSessionId: string }): NotificationRecord[]',
+        description: 'List notification outbox records for one owner session, ordered by `terminalSeq` ascending. The pre-step hook consumes this to propose candidate notice messages (spec §7.4 step 4).',
+        parameters: [{ name: 'filter', description: '.ownerSessionId - the session whose outbox records to list.' }],
+        returns: 'the session\'s notification records in terminal order.',
+      },
+    ],
+  },
+  {
     key: 'terminals',
     summary: 'In-process registry for replaceable PTY backends and exact-Agent sessions.',
     description: 'In-process registry for replaceable PTY backends and exact-Agent sessions.',
@@ -2510,6 +2586,86 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [],
   },
   {
+    name: 'task-queue/canceled',
+    mode: 'emit',
+    signature: '\'task-queue/canceled\'(payload: { taskId: TaskId }): void',
+    summary: 'A task reached the canceled terminal state.',
+    description: 'A task reached the canceled terminal state.',
+    parameters: [{ name: 'payload', description: '.taskId - the canceled task id.' }],
+  },
+  {
+    name: 'task-queue/created',
+    mode: 'emit',
+    signature: '\'task-queue/created\'(payload: { taskId: TaskId }): void',
+    summary: 'A task\'s `created` change committed (fsync + fold before emission).',
+    description: 'A task\'s `created` change committed (fsync + fold before emission).',
+    parameters: [{ name: 'payload', description: '.taskId - the admitted task id.' }],
+  },
+  {
+    name: 'task-queue/drained',
+    mode: 'emit',
+    signature: '\'task-queue/drained\'(payload: { pending: number }): void',
+    summary: 'The queue drained (no live starting/running/stopping work remains).',
+    description: 'The queue drained (no live starting/running/stopping work remains).',
+    parameters: [{ name: 'payload', description: '.pending - the pending count at drain time.' }],
+  },
+  {
+    name: 'task-queue/failed',
+    mode: 'emit',
+    signature: '\'task-queue/failed\'(payload: { taskId: TaskId; reason: string }): void',
+    summary: 'A task exhausted its attempts or failed without retry.',
+    description: 'A task exhausted its attempts or failed without retry.',
+    parameters: [{ name: 'payload', description: '.reason - the failure summary.' }],
+  },
+  {
+    name: 'task-queue/faulted',
+    mode: 'emit',
+    signature: '\'task-queue/faulted\'(payload: { reason: string }): void',
+    summary: 'The queue entered `faulted`; operator recovery or restart required.',
+    description: 'The queue entered `faulted`; operator recovery or restart required.',
+    parameters: [{ name: 'payload', description: '.reason - the fault summary.' }],
+  },
+  {
+    name: 'task-queue/orphan-unknown',
+    mode: 'emit',
+    signature: '\'task-queue/orphan-unknown\'(payload: { taskId?: TaskId; priorStatus?: TaskStatus; reason?: string }): void',
+    summary: 'A crash left a possibly-orphaned child or an unrecognized inbox entry.',
+    description: 'A crash left a possibly-orphaned child or an unrecognized inbox entry.',
+    parameters: [{ name: 'payload', description: '.reason - the diagnostic detail, when known.' }],
+  },
+  {
+    name: 'task-queue/requeued',
+    mode: 'emit',
+    signature: '\'task-queue/requeued\'(payload: { taskId: TaskId; reason: string }): void',
+    summary: 'A failed attempt requeued to pending with backoff.',
+    description: 'A failed attempt requeued to pending with backoff.',
+    parameters: [{ name: 'payload', description: '.reason - the failure summary.' }],
+  },
+  {
+    name: 'task-queue/running',
+    mode: 'emit',
+    signature: '\'task-queue/running\'(payload: { taskId: TaskId }): void',
+    summary: 'A task entered `running` (pid persisted).',
+    description: 'A task entered `running` (pid persisted).',
+    parameters: [{ name: 'payload', description: '.taskId - the spawned task id.' }],
+  },
+  {
+    name: 'task-queue/starting',
+    mode: 'emit',
+    signature: '\'task-queue/starting\'(payload: { taskId: TaskId; attempt: number }): void',
+    summary: 'A task entered `starting` (attempt incremented).',
+    description: 'A task entered `starting` (attempt incremented).',
+    parameters: [{ name: 'payload', description: '.attempt - the attempt ordinal that just started.' }],
+  },
+  {
+    name: 'task-queue/succeeded',
+    mode: 'emit',
+    signature: '\'task-queue/succeeded\'(payload: { taskId: TaskId }): void',
+    summary: 'A task settled successfully.',
+    description: 'A task settled successfully.',
+    parameters: [{ name: 'payload', description: '.taskId - the succeeded task id.' }],
+  },
+  {
     name: 'tools/change',
     mode: 'emit',
     signature: '\'tools/change\'(): void',
@@ -3026,8 +3182,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EditGoalRequest {\n    readonly objective?: string;\n    readonly maxGoalRounds?: number;\n}',
   },
   {
+    name: 'EnqueueSpec',
+    declaration: 'export interface EnqueueSpec {\n    title: string;\n    prompt: string;\n    executor: string;\n    priority?: number;\n    maxAttempts?: number;\n    backoffMs?: number;\n    delayUntil?: string;\n    timeoutMs?: number;\n    outputDir?: string;\n    tags?: string[];\n    ownerSessionId?: string;\n    idempotencyKey?: string;\n}',
+  },
+  {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
+  },
+  {
+    name: 'ExecutorAdapter',
+    declaration: 'export type ExecutorAdapter = {\n    prepare(task: Task, run: RunRecord, signal: AbortSignal): Promise<SubprocessSpawnSpec>;\n};',
   },
   {
     name: 'FileDiff',
@@ -3262,6 +3426,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n}',
   },
   {
+    name: 'ListFilter',
+    declaration: 'export interface ListFilter {\n    status?: TaskStatus;\n    executor?: string;\n    tags?: string[];\n    limit?: number;\n}',
+  },
+  {
     name: 'LlmAdapter',
     declaration: 'export abstract class LlmAdapter {\n    providerInfo(provider: string): LlmProviderInfo;\n    providerRetryPolicy(_provider: string): ResolvedRetryPolicy | undefined;\n    listModels(_provider: string): Promise<readonly LlmModelInfo[]>;\n    resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    abstract stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
   },
@@ -3466,6 +3634,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelModalityMap {\n    text: \'text\';\n    image: \'image\';\n}',
   },
   {
+    name: 'NotificationId',
+    declaration: 'export type NotificationId = Branded<\'NotificationId\'>;',
+  },
+  {
+    name: 'NotificationRecord',
+    declaration: 'export interface NotificationRecord {\n    notificationId: NotificationId;\n    taskId: TaskId;\n    runId: RunId;\n    attempt: number;\n    terminalSeq: number;\n    ownerSessionId: string;\n    messageId: string;\n    status: \'pending\' | \'acknowledged\';\n    acknowledgedAt: string | null;\n}',
+  },
+  {
     name: 'ObjectJsonSchema',
     declaration: 'export type ObjectJsonSchema = JsonSchemaNode & {\n    type: \'object\';\n};',
   },
@@ -3556,6 +3732,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PruneResult',
     declaration: 'export interface PruneResult {\n    readonly pruned: readonly PrunedEntry[];\n    readonly charsRemoved: number;\n}',
+  },
+  {
+    name: 'QueueStats',
+    declaration: 'export interface QueueStats {\n    serviceState: ServiceState;\n    fault?: {\n        reason: string;\n    };\n    byStatus: Record<TaskStatus, number>;\n    byExecutor: Record<string, number>;\n}',
   },
   {
     name: 'ReadFileLine',
@@ -3650,8 +3830,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type RpcResult<T> = {\n    ok: true;\n    value: T;\n} | {\n    ok: false;\n    error: RpcError;\n};',
   },
   {
+    name: 'RunId',
+    declaration: 'export type RunId = Branded<\'RunId\'>;',
+  },
+  {
     name: 'RunnerFailureRule',
     declaration: 'export interface RunnerFailureRule {\n    allowedExitCodes?: readonly number[];\n    fatalSignatures: readonly string[];\n    informationalLines?: readonly string[];\n}',
+  },
+  {
+    name: 'RunRecord',
+    declaration: 'export interface RunRecord {\n    runId: RunId;\n    attempt: number;\n    pid: number | null;\n    plannedStartedAt: string | null;\n    actualStartedAt: string | null;\n    logPath: string | null;\n    commandFingerprint: string | null;\n    terminationUnverified?: boolean;\n}',
   },
   {
     name: 'SandboxEnforcement',
@@ -3720,6 +3908,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ServerResponse',
     declaration: 'export interface ServerResponse {\n    type: \'server-response\';\n    rpcId: RpcId;\n    result: RpcResult<unknown>;\n}',
+  },
+  {
+    name: 'ServiceState',
+    declaration: 'export type ServiceState = \'running\' | \'paused\' | \'faulted\';',
   },
   {
     name: 'SessionAvailability',
@@ -4240,6 +4432,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TableValueOf',
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
+  },
+  {
+    name: 'Task',
+    declaration: 'export interface Task {\n    id: TaskId;\n    title: string;\n    prompt: string;\n    executor: string;\n    status: TaskStatus;\n    priority: number;\n    attempt: number;\n    maxAttempts: number;\n    backoffMs: number;\n    delayUntil: string | null;\n    timeoutMs: number;\n    outputDir: string;\n    tags: string[];\n    createdAt: string;\n    updatedAt: string;\n    lastError: string | null;\n    result: TaskResult | null;\n    ownerSessionId: string | null;\n    source: \'tool\' | \'inbox\';\n    receiptId: string;\n    terminalSeq: number | null;\n    runs: RunRecord[];\n}',
+  },
+  {
+    name: 'TaskId',
+    declaration: 'export type TaskId = Branded<\'TaskId\'>;',
+  },
+  {
+    name: 'TaskResult',
+    declaration: 'export interface TaskResult {\n    exitCode: number | null;\n    signal: string | null;\n    durationMs: number;\n    outputFiles?: string[];\n}',
+  },
+  {
+    name: 'TaskStatus',
+    declaration: 'export type TaskStatus = \'pending\' | \'starting\' | \'running\' | \'stopping\' | \'succeeded\' | \'failed\' | \'canceled\';',
+  },
+  {
+    name: 'TaskSummary',
+    declaration: 'export interface TaskSummary {\n    id: TaskId;\n    title: string;\n    executor: string;\n    status: TaskStatus;\n    priority: number;\n    attempt: number;\n    maxAttempts: number;\n    createdAt: string;\n    updatedAt: string;\n    tags: string[];\n    ownerSessionId: string | null;\n}',
   },
   {
     name: 'TerminalBackend',

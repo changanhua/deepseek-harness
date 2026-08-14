@@ -74,6 +74,10 @@ flowchart LR
   cfg --> plugin_dsh_base_tool_pwsh
   plugin_dsh_base_tool_jobs["tool-jobs<br/>@deepseek-ai/dsh-tool-jobs"]
   cfg --> plugin_dsh_base_tool_jobs
+  plugin_dsh_base_task_queue["task-queue<br/>@deepseek-ai/dsh-task-queue-local"]
+  cfg --> plugin_dsh_base_task_queue
+  plugin_dsh_base_tool_task_queue["tool-task-queue<br/>@deepseek-ai/dsh-tool-task-queue"]
+  cfg --> plugin_dsh_base_tool_task_queue
   plugin_dsh_base_fs_observation_policy["fs-observation-policy<br/>@deepseek-ai/dsh-fs-observation-policy"]
   cfg --> plugin_dsh_base_fs_observation_policy
   plugin_dsh_base_tool_fs["tool-fs<br/>@deepseek-ai/dsh-tool-fs"]
@@ -114,6 +118,10 @@ flowchart LR
   cfg --> plugin_dsh_base_subagent_spawn_in_process
   plugin_dsh_base_subagent_fork_in_process["subagent-fork-in-process<br/>@deepseek-ai/dsh-subagent-fork-in-process"]
   cfg --> plugin_dsh_base_subagent_fork_in_process
+  plugin_dsh_base_subagent_codex["subagent-codex<br/>@deepseek-ai/dsh-subagent-codex"]
+  cfg --> plugin_dsh_base_subagent_codex
+  plugin_dsh_base_subagent_claude_code["subagent-claude-code<br/>@deepseek-ai/dsh-subagent-claude-code"]
+  cfg --> plugin_dsh_base_subagent_claude_code
   plugin_dsh_base_tool_subagent_control["tool-subagent-control<br/>@deepseek-ai/dsh-tool-subagent-control"]
   cfg --> plugin_dsh_base_tool_subagent_control
   plugin_dsh_base_tool_subagent_list_agents["tool-subagent-list-agents<br/>@deepseek-ai/dsh-tool-subagent-control/list-agents"]
@@ -201,6 +209,8 @@ flowchart LR
 | `tool-bash` | `@deepseek-ai/dsh-tool-bash` |
 | `tool-pwsh` | `@deepseek-ai/dsh-tool-pwsh` |
 | `tool-jobs` | `@deepseek-ai/dsh-tool-jobs` |
+| `task-queue` | `@deepseek-ai/dsh-task-queue-local` |
+| `tool-task-queue` | `@deepseek-ai/dsh-tool-task-queue` |
 | `fs-observation-policy` | `@deepseek-ai/dsh-fs-observation-policy` |
 | `tool-fs` | `@deepseek-ai/dsh-tool-fs` |
 | `tool-fs-search` | `@deepseek-ai/dsh-tool-fs-search` |
@@ -221,6 +231,8 @@ flowchart LR
 | `subagent` | `@deepseek-ai/dsh-subagent` |
 | `subagent-spawn-in-process` | `@deepseek-ai/dsh-subagent-spawn-in-process` |
 | `subagent-fork-in-process` | `@deepseek-ai/dsh-subagent-fork-in-process` |
+| `subagent-codex` | `@deepseek-ai/dsh-subagent-codex` |
+| `subagent-claude-code` | `@deepseek-ai/dsh-subagent-claude-code` |
 | `tool-subagent-control` | `@deepseek-ai/dsh-tool-subagent-control` |
 | `tool-subagent-list-agents` | `@deepseek-ai/dsh-tool-subagent-control/list-agents` |
 | `tool-subagent` | `@deepseek-ai/dsh-tool-subagent` |

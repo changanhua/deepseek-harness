@@ -57,6 +57,8 @@ import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+import LocalTaskQueue from '@deepseek-ai/dsh-task-queue-local'
+import * as ToolTaskQueue from '@deepseek-ai/dsh-tool-task-queue'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import * as ToolSubagent from '@deepseek-ai/dsh-tool-subagent'
 import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
@@ -505,6 +507,20 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers\' `ctx.jobs.start()`.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-task-queue',
+    dir: 'tool-task-queue',
+    source: 'packages/task-queue/tool-task-queue/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.sessions (notification finalizer flush)', 'ctx.taskQueue (optional host service)'],
+    writes: ['tool/call', 'tool/result', 'user/message notification candidates via agent/pre-step', 'task-queue/* notification acks'],
+    async mount(ctx) {
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(LocalTaskQueue, { executors: {} })
+      await ctx.plugin(ToolTaskQueue)
+    },
+    note:
+      'The durable cross-session task-queue controller: seven `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-todo',

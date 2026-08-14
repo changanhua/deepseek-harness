@@ -651,8 +651,14 @@ export interface Config {
 ```ts config-catalog
 /** Plugin config: the task resolved from this app's injected provider service. */
 export interface Config {
-  /** The prompt text for the single run. */
-  task: string
+  /** The prompt text for the single run (positional or piped stdin). */
+  task?: string
+  /** Model name override; the default provider is kept. */
+  model?: string
+  /** Persisted session id to resume instead of creating a new session. */
+  resume?: string
+  /** List sessions and exit instead of running a task. */
+  list?: boolean
 }
 ```
 
@@ -2246,6 +2252,34 @@ export interface Config {
 
 来源：[`packages/core/system-prompt/src/index.ts:186`](../packages/core/system-prompt/src/index.ts)
 
+<a id="deepseek-aidsh-task-queue-local"></a>
+
+## `@deepseek-ai/dsh-task-queue-local`
+
+```ts config-catalog
+/** Config with every optional field defaulted (schemastery output shape). */
+export type ResolvedConfig = Required<Pick<Config, 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs'>> & Config
+
+/** Admission config schema (schemastery). */
+export interface Config {
+  /** Maximum concurrent starting/running/stopping tasks across all executors. */
+  maxConcurrent?: number
+  /** Maximum concurrent starting/running/stopping tasks per one executor. */
+  maxConcurrentPerExecutor?: number
+  /** Scheduler tick interval in milliseconds. */
+  intervalMs?: number
+  /** Queue root directory; defaults to `$DSH_HOME/task-queue`. */
+  queueRoot?: string
+  /** Per-executor enablement; a disabled executor rejects admission. */
+  executors?: Record<string, {
+    /** Whether this executor may run tasks. */
+    enabled: boolean
+  }>
+}
+```
+
+来源：[`packages/task-queue/task-queue-local/src/index.ts:64`](../packages/task-queue/task-queue-local/src/index.ts)
+
 <a id="deepseek-aidsh-terminal-bash"></a>
 
 ## `@deepseek-ai/dsh-terminal-bash`
@@ -2677,6 +2711,19 @@ export interface Config {
 依赖：[`SubagentReportDelivery`](subsystems/subagent.md)
 
 来源：[`packages/subagent/tool-subagent-report/src/index.ts:27`](../packages/subagent/tool-subagent-report/src/index.ts)
+
+<a id="deepseek-aidsh-tool-task-queue"></a>
+
+## `@deepseek-ai/dsh-tool-task-queue`
+
+需要：`tools` · `systemPrompt` · `sessions`
+
+```ts config-catalog
+/** Tool-task-queue plugin configuration (reserved; currently empty). */
+export interface Config {}
+```
+
+来源：[`packages/task-queue/tool-task-queue/src/index.ts:656`](../packages/task-queue/tool-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 
@@ -3111,6 +3158,7 @@ export interface Config {
 - `@deepseek-ai/dsh-shell` — 抽象 `ShellExecutor`（[`packages/shell/shell/src/index.ts`](../packages/shell/shell/src/index.ts)）
 - `@deepseek-ai/dsh-spill` — 抽象 `SpillStore`（[`packages/spill/spill/src/index.ts`](../packages/spill/spill/src/index.ts)）
 - `@deepseek-ai/dsh-subprocess` — 抽象 `SubprocessRuntime`（[`packages/subprocess/subprocess/src/index.ts`](../packages/subprocess/subprocess/src/index.ts)）
+- `@deepseek-ai/dsh-task-queue` — 抽象 `TaskQueue`（[`packages/task-queue/task-queue/src/index.ts`](../packages/task-queue/task-queue/src/index.ts)）
 - `@deepseek-ai/dsh-workflow` — 抽象 `WorkflowEngine`（[`packages/workflow/workflow/src/index.ts`](../packages/workflow/workflow/src/index.ts)）
 ## 库包（无插件入口）
 

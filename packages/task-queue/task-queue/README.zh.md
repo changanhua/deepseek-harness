@@ -1,0 +1,49 @@
+# @deepseek-ai/dsh-task-queue
+
+[English](README.md) | 中文
+
+跨会话持久任务队列的契约（`ctx.taskQueue`）。抽象 `TaskQueue` 服务与其词汇表——任务模型、两阶段状态机、change 记录 schema、fold 与 canonical digest 规则、执行器适配器形状、`task-queue/*` 事件面——让 [`dsh-task-queue-local`](../task-queue-local/README.md) 的持久后端与 [`dsh-tool-task-queue`](../tool-task-queue/README.md) 的 agent 工具集共享同一套身份与 mutation 语义。设计文档见 [docs/specs/2026-08-14-task-queue-design.md](../../../docs/specs/2026-08-14-task-queue-design.md)。
+
+## Service 契约
+
+- `enqueueFromTool(spec)` 以 `source: 'tool'` 接纳单条任务；后端拒绝 `executor: 'shell'` 并分配 receipt。`enqueueBatchFromTool(specs)` 是有界批量形式（每次上限 200）。
+- `list(filter?)` 与 `get(id)` 返回只读投影；`get` 对未知 id 抛错。
+- `cancel(id)` 返回 `'canceled'`（pending 任务）或 `'stopping'`（starting/running 任务上持久化的取消意图）。`retry(id)` 清零 `attempt` 并把 failed 任务重新入队。
+- `stats()` 报告 `serviceState`（`running`/`paused`/`faulted`）、可选 `fault`、按状态计数与按执行器计数。
+- `registerExecutor(name, adapter)` 注册 prepare-only 适配器并返回其 disposer。
+- `pause()`/`resume()` 闸控 admission；`resume()` 必须拒绝 `faulted` 队列。
+- `ackNotification(notificationId, messageId)` 用 CAS 确认一条 pending 投递记录；已 acknowledged 且 messageId 匹配的记录是幂等 no-op。`listNotifications({ ownerSessionId })` 按 `terminalSeq` 列出一个会话的记录。
+
+所有 mutation 都经后端的服务级 FIFO 串行化，append 出错即 fail-closed——队列进入 `faulted`，任何调用方都不能用 `resume()` 把它带走。
+
+## 任务模型
+
+`Task` 携带完整持久快照：状态（`pending`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`canceled`）、`attempt`/`maxAttempts`、`backoffMs`、`delayUntil`、`timeoutMs`、`outputDir`、tags、`lastError`、`result`、`ownerSessionId`、受信 `source`/`receiptId`，以及每次 attempt 的 `RunRecord[]`（`runId`、attempt、仅供诊断的 `pid`、时间戳、日志路径、命令指纹、`terminationUnverified`）。
+
+`attempt` 只在领取时（`pending → starting`）递增一次。失败回 `pending` 且 `attempt` 不变，退避延迟 = `backoffMs * 2^(attempt-1)`；耗尽 `maxAttempts` 进入 `failed`。宿主崩溃时 `starting`/`running` 走失败路径恢复，`stopping` 恢复为 `canceled` 并标 `terminationUnverified`——持久化 pid 只作诊断，绝不是跨重启的终止授权。
+
+## Change 记录与折叠
+
+`ChangeRecord` 是判别联合：任务 op（`created`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`requeued`/`canceled`）携带 op 之后的完整 `state` 快照，终态转移还可原子附带一条 `notification`；`notification-acknowledged` op 携带 CAS 三元组（`notificationId`、`expectedStatus: 'pending'`、`expectedMessageId`）。
+
+`foldChanges` 以 fail-closed 方式折叠有序流：严格 `seq` 单调（`lastSeq + 1`）、任务 op 身份（`state.id === taskId`）、终态通知一致性、CAS ack 语义——任一不满足即抛错，绝不跳过坏记录。`applyChange` 是后端在每次提交追加后使用的增量单步折叠。
+
+`canonicalJson` 与 `canonicalQueueState` 做确定性序列化（UTF-8、无额外空白、键递归排序、tasks/notifications 按 id 升序），快照摘要永远不依赖运行时对象插入顺序。
+
+## 事件
+
+`task-queue/created`、`task-queue/starting`、`task-queue/running`、`task-queue/succeeded`、`task-queue/failed`、`task-queue/requeued`、`task-queue/canceled`、`task-queue/drained`、`task-queue/orphan-unknown`、`task-queue/faulted`——每个都在对应 change 完成 fsync 并折叠后才发布。
+
+## Model Experience
+
+间接地，经由 [`dsh-tool-task-queue`](../tool-task-queue/README.md)，它渲染 7 个 `task_queue_*` 工具、`tool:task-queue` 提示词段落与通知投递消息；本契约自身不注册任何模型面。
+
+#### KV Cache effect
+
+无直接失效；命名的消费者拥有任何 request-prefix 变更。
+
+## 已知限制与待办
+
+- **at-least-once 执行**——spawn 与 running 记录之间崩溃可能留下未知孤儿；attempt 与逐次日志使重复可追溯。
+- **无 segment GC**——v1 不删除已封段，恢复从不依赖 GC 协议。
+- **`faulted` 是粘滞的**——只有成功的日志重判定或运营恢复 + 重启才能清除。

@@ -309,6 +309,13 @@
 - id: tool-jobs
   disabled: true
 
+# The task-queue SERVICE stays on the host plane; only the model-facing
+# `task_queue_*` controls move. Web agents get them from the standard preset
+# (which re-mounts the row), so the base-mounted tool row is disabled here —
+# the same tool-jobs pattern above.
+- id: tool-task-queue
+  disabled: true
+
 - id: tool-fs
   disabled: true
 

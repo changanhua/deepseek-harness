@@ -73,6 +73,17 @@
 - id: tool-jobs
   name: '@deepseek-ai/dsh-tool-jobs'
 
+# ── task queue ──────────────────────────────────────────────────────────────
+#
+# The durable task-queue SERVICE stays on the host plane (cross-session
+# persistence, scheduler, executor registry — spec docs/specs/2026-08-14-task-
+# queue-design.md §2). This preset contributes only the model-facing controls:
+# the seven `task_queue_*` tools, the `tool:task-queue` prompt section, the
+# pre-step notification candidates, and the session/event ack finalizer — all
+# registered by one plugin apply.
+- id: tool-task-queue
+  name: '@deepseek-ai/dsh-tool-task-queue'
+
 # ── skills ──────────────────────────────────────────────────────────────────
 
 # The skill REGISTRY lives in the host composition and is layered per scope:

@@ -218,6 +218,24 @@
     - id: tool-jobs
       name: '@deepseek-ai/dsh-tool-jobs'
 
+    # ── task queue ─────────────────────────────────────────────────────────
+    #
+    # The durable task-queue SERVICE stays on the host plane (cross-session
+    # persistence, scheduler, and the executor registry are process-global by
+    # design — spec docs/specs/2026-08-14-task-queue-design.md §2). Executors
+    # are disabled by default; enable the exact CLI binaries a deployment may
+    # run. `shell` remains inbox-only even when enabled (authorization §6.3).
+    - id: task-queue
+      name: '@deepseek-ai/dsh-task-queue-local'
+      config:
+        maxConcurrent: 2
+        maxConcurrentPerExecutor: 1
+        intervalMs: 1000
+        executors: {}
+
+    - id: tool-task-queue
+      name: '@deepseek-ai/dsh-tool-task-queue'
+
     - id: fs-observation-policy
       name: '@deepseek-ai/dsh-fs-observation-policy'
 
@@ -301,6 +319,18 @@
       name: '@deepseek-ai/dsh-subagent-fork-in-process'
       config:
         providerName: fork
+
+    # Native product subagents (host-plane singletons). Each provider resolves
+    # its CLI from PATH and reuses the host's own login state and native config;
+    # neither installs, authenticates, nor selects a model. Presets expose a
+    # product by copying the shipped disabled tool row for it. Credentials are
+    # scrubbed from the child environment by the subprocess seam, so any key the
+    # product needs must be added to `env` explicitly.
+    - id: subagent-codex
+      name: '@deepseek-ai/dsh-subagent-codex'
+
+    - id: subagent-claude-code
+      name: '@deepseek-ai/dsh-subagent-claude-code'
 
     # Continuable background children are selected per delegation tool. The
     # separately loaded follow-up tool registers the one global `send_message`.
