@@ -13,7 +13,7 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import { internals, provideCmdline } from '@deepseek-ai/dsh-cmdline'
 import { afterEach, describe, expect, it } from 'vitest'
-import { apply, HEADLESS_STARTUP_SERVICE, type HeadlessStartupValues } from '../src/startup.ts'
+import { apply, internals as startupInternals, HEADLESS_STARTUP_SERVICE, type HeadlessStartupValues } from '../src/startup.ts'
 
 /** What one boot of the fixture tree observed. */
 interface Observed {
@@ -23,9 +23,11 @@ interface Observed {
 }
 
 const disposers: (() => Promise<void>)[] = []
+const originalReadStdin = startupInternals.readStdin
 
 afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose()
+  startupInternals.readStdin = originalReadStdin
   internals.stdout = process.stdout
   internals.stderr = process.stderr
 })
@@ -89,6 +91,9 @@ describe('headless command-line provider', () => {
   })
 
   it.each([{ args: [] }, { args: ['   '] }])('rejects an invocation with no non-whitespace task ($args)', async ({ args }) => {
+    // A non-TTY stdin is probed for the task; the worker's own stdin is an
+    // indeterminate open pipe, so stub the probe (EOF: no piped task).
+    startupInternals.readStdin = () => ''
     const { task, observed } = await bootStartup(args)
     expect(observed.out).toContain('a task is required')
     expect(task).toBeUndefined()

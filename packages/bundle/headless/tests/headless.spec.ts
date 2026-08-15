@@ -9,6 +9,8 @@ import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import type { Session, UserMessage } from '@deepseek-ai/dsh-session'
 import { apply, Config, internals } from '../src/index.ts'
+import { apply as applyStartup, internals as startupInternals } from '../src/startup.ts'
+import type { HeadlessStartupValues } from '../src/startup.ts'
 
 const originalInternals = { ...internals }
 afterEach(() => { Object.assign(internals, originalInternals) })
@@ -250,5 +252,80 @@ describe('headless runner', () => {
     expect(new Config({ list: true })).toEqual({ list: true })
     expect(new Config({ model: 'm', resume: 'session-x' })).toEqual({ model: 'm', resume: 'session-x' })
     expect(() => new Config({ list: 'yes' as never })).toThrow()
+  })
+})
+
+describe('headless startup', () => {
+  const originalReadStdin = startupInternals.readStdin
+  afterEach(() => { startupInternals.readStdin = originalReadStdin })
+
+  /** Force `process.stdin.isTTY` for the synchronous parse, then restore it. */
+  async function withForcedStdinIsTty(value: unknown, run: () => Promise<void>): Promise<void> {
+    const descriptor = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+    Object.defineProperty(process.stdin, 'isTTY', { value, configurable: true })
+    try {
+      await run()
+    } finally {
+      if (descriptor) Object.defineProperty(process.stdin, 'isTTY', descriptor)
+      else Reflect.deleteProperty(process.stdin, 'isTTY')
+    }
+  }
+
+  async function benchStartup(args: readonly string[]): Promise<{
+    ctx: Context
+    exits: number[]
+  }> {
+    const ctx = new Context()
+    const exits: number[] = []
+    ctx.provide('appExit', (code: number) => { exits.push(code) })
+    ctx.provide('cmdlineArgs', { get: () => args })
+    await ctx.plugin({ inject: ['cmdlineArgs'], apply: applyStartup })
+    return { ctx, exits }
+  }
+
+  it('takes the task from non-TTY stdin when no positional task is given', async () => {
+    await withForcedStdinIsTty(undefined, async () => {
+      startupInternals.readStdin = () => 'piped task'
+      const { ctx, exits } = await benchStartup([])
+      expect(exits).toEqual([])
+      expect(ctx.get('headlessStartup')).toEqual({
+        task: 'piped task',
+        model: undefined,
+        resume: undefined,
+        list: undefined,
+      } satisfies HeadlessStartupValues)
+      await ctx.fiber.dispose()
+    })
+  })
+
+  it('prefers the positional task and never probes stdin', async () => {
+    let probed = false
+    startupInternals.readStdin = () => { probed = true; return 'piped' }
+    const { ctx } = await benchStartup(['positional', 'task'])
+    expect(probed).toBe(false)
+    expect(ctx.get('headlessStartup')).toMatchObject({ task: 'positional task' })
+    await ctx.fiber.dispose()
+  })
+
+  it('never probes a TTY stdin', async () => {
+    await withForcedStdinIsTty(true, async () => {
+      let probed = false
+      startupInternals.readStdin = () => { probed = true; return 'piped' }
+      const { ctx, exits } = await benchStartup([])
+      expect(probed).toBe(false)
+      expect(exits).toEqual([1])
+      expect(ctx.get('headlessStartup')).toBeUndefined()
+      await ctx.fiber.dispose()
+    })
+  })
+
+  it('rejects an empty invocation when stdin carries no task', async () => {
+    await withForcedStdinIsTty(undefined, async () => {
+      startupInternals.readStdin = () => ''
+      const { ctx, exits } = await benchStartup([])
+      expect(exits).toEqual([1])
+      expect(ctx.get('headlessStartup')).toBeUndefined()
+      await ctx.fiber.dispose()
+    })
   })
 })

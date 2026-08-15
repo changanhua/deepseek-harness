@@ -49,6 +49,9 @@ function readStdinSync(): string {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+/** The stdin probe the startup provider uses; tests substitute a capture. */
+export const internals: { readStdin(): string } = { readStdin: readStdinSync }
+
 /**
  * This app's command: the task positional, the run options, and the help text.
  * @returns a fresh program, so one process can parse more than once (tests).
@@ -92,10 +95,11 @@ export function apply(ctx: Context): void {
       return
     }
     let task = program.args.join(' ').trim()
-    // A definite non-TTY stdin (pipe, file redirection) supplies the task. A
-    // TTY stdin would block on the sync read, and an indeterminate one (some
-    // test runners, worker processes) is never probed.
-    if (task === '' && process.stdin.isTTY === false) task = readStdinSync().trim()
+    // A non-TTY stdin (pipe, file redirection) supplies the task. Node leaves
+    // `isTTY` undefined for every non-terminal fd — pipes included — so probe
+    // anything that is not a definite TTY: a TTY stdin would block on the sync
+    // read. An open pipe with no data blocks until its writer closes it.
+    if (task === '' && process.stdin.isTTY !== true) task = internals.readStdin().trim()
     if (task === '') program.error('error: a task is required, for example: dsh --profile headless "run the tests"')
     ctx.provide(HEADLESS_STARTUP_SERVICE, {
       task,
