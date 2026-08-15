@@ -271,6 +271,12 @@
     - id: command-feedback
       name: '@deepseek-ai/dsh-command-feedback'
 
+    # Human `/queue`: list/stats/status/retry/cancel over the durable task
+    # queue. Registers alongside the backend; without one it answers with a
+    # load-guidance error (the row never resolves a half-composed service).
+    - id: command-task-queue
+      name: '@deepseek-ai/dsh-command-task-queue'
+
     - id: goal
       name: '@deepseek-ai/dsh-goal'
 
