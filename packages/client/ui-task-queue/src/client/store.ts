@@ -171,6 +171,38 @@ export class QueueStore {
     }
   }
 
+  /** Cancel many tasks, then confirm from the host. */
+  async cancelMany(ids: string[]): Promise<QueueActionResult> {
+    if (ids.length === 0) return { ok: true, message: 'no tasks' }
+    const failures: string[] = []
+    for (const id of ids) {
+      try {
+        valueOf(await this.remote.cancel(id))
+      } catch (error: unknown) {
+        failures.push(`${id}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    await this.refresh()
+    if (failures.length > 0) return { ok: false, message: failures.join('; ') }
+    return { ok: true, message: `canceled ${ids.length}` }
+  }
+
+  /** Re-queue many tasks, then confirm from the host. */
+  async retryMany(ids: string[]): Promise<QueueActionResult> {
+    if (ids.length === 0) return { ok: true, message: 'no tasks' }
+    const failures: string[] = []
+    for (const id of ids) {
+      try {
+        valueOf(await this.remote.retry(id))
+      } catch (error: unknown) {
+        failures.push(`${id}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    await this.refresh()
+    if (failures.length > 0) return { ok: false, message: failures.join('; ') }
+    return { ok: true, message: `retried ${ids.length}` }
+  }
+
   /** Re-queue one task, then confirm the change from the host. */
   async retry(id: string): Promise<QueueActionResult> {
     try {

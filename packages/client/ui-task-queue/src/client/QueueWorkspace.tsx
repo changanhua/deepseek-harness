@@ -174,6 +174,30 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
               value={query}
               onChange={(event) => { setQuery(event.target.value) }}
             />
+            {snapshot.summaries.some(task => task.status === 'failed') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => {
+                  void runAction(() => queue.retryMany(snapshot.summaries.filter(task => task.status === 'failed').map(task => task.id)))
+                }}
+              >
+                {t('list.actions.retryAllFailed')}
+              </Button>
+            )}
+            {snapshot.summaries.some(task => LIVE_STATUSES.includes(task.status)) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => {
+                  void runAction(() => queue.cancelMany(snapshot.summaries.filter(task => LIVE_STATUSES.includes(task.status)).map(task => task.id)))
+                }}
+              >
+                {t('list.actions.cancelAllLive')}
+              </Button>
+            )}
           </div>
           {rows.length === 0
             ? <div className={css.empty}>{t('list.empty')}</div>

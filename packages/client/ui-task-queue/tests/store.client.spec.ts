@@ -139,6 +139,21 @@ describe('QueueStore', () => {
     expect(calls.filter(c => c === 'stats').length).toBeGreaterThanOrEqual(1 + 4)
   })
 
+  it('cancelMany/retryMany batch verbs and report partial failures', async () => {
+    const { remote, calls } = makeRemote()
+    const store = new QueueStore(remote)
+    await store.refresh()
+    await expect(store.cancelMany(['tq-1', 'tq-2'])).resolves.toEqual({ ok: true, message: 'canceled 2' })
+    await expect(store.retryMany(['tq-1', 'tq-2'])).resolves.toEqual({ ok: true, message: 'retried 2' })
+    expect(calls.filter(c => c === 'cancel').length).toBe(2)
+    expect(calls.filter(c => c === 'retry').length).toBe(2)
+
+    remote.cancel = vi.fn(async () => fail('cannot cancel'))
+    const partial = await store.cancelMany(['tq-1', 'tq-2'])
+    expect(partial.ok).toBe(false)
+    expect(partial.message).toContain('cannot cancel')
+  })
+
   it('a failing verb reports failure without refreshing away the error', async () => {
     const { remote } = makeRemote()
     const store = new QueueStore(remote)
