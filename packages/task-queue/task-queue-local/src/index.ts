@@ -42,6 +42,8 @@ const MAX_BATCH_SIZE = 200
 const DEFAULT_MAX_CONCURRENT = 2
 const DEFAULT_MAX_CONCURRENT_PER_EXECUTOR = 1
 const DEFAULT_INTERVAL_MS = 1_000
+/** Extra time beyond `timeoutMs` before a stalled `stopping` task is force-reclaimed. */
+const DEFAULT_STOPPING_GRACE_MS = 5_000
 
 /** Admission config schema (schemastery). */
 export interface Config {
@@ -51,6 +53,8 @@ export interface Config {
   maxConcurrentPerExecutor?: number
   /** Scheduler tick interval in milliseconds. */
   intervalMs?: number
+  /** Extra time beyond `timeoutMs` before a stalled `stopping` task is force-reclaimed. */
+  stoppingGraceMs?: number
   /** Queue root directory; the composing row resolves it explicitly, for example `dshHomePath('task-queue')`. */
   queueRoot: string
   /** Per-executor enablement; a disabled executor rejects admission. */
@@ -61,7 +65,7 @@ export interface Config {
 }
 
 /** Config with every optional field defaulted (schemastery output shape). */
-export type ResolvedConfig = Required<Pick<Config, 'queueRoot' | 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs'>> & Config
+export type ResolvedConfig = Required<Pick<Config, 'queueRoot' | 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs' | 'stoppingGraceMs'>> & Config
 
 /**
  * Durable host-plane task queue backend. Composes the segment store, the
@@ -76,6 +80,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     maxConcurrent: z.number().step(1).min(1).default(DEFAULT_MAX_CONCURRENT),
     maxConcurrentPerExecutor: z.number().step(1).min(1).default(DEFAULT_MAX_CONCURRENT_PER_EXECUTOR),
     intervalMs: z.number().step(1).min(1).default(DEFAULT_INTERVAL_MS),
+    stoppingGraceMs: z.number().step(1).min(0).default(DEFAULT_STOPPING_GRACE_MS),
     queueRoot: z.string(),
     executors: z.dict(z.object({ enabled: z.boolean() })).default({}),
   })
@@ -97,12 +102,14 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   readonly maxConcurrent: number
   readonly maxConcurrentPerExecutor: number
   readonly intervalMs: number
+  readonly stoppingGraceMs: number
 
   constructor(ctx: Context, config: ResolvedConfig) {
     super(ctx)
     this.maxConcurrent = config.maxConcurrent
     this.maxConcurrentPerExecutor = config.maxConcurrentPerExecutor
     this.intervalMs = config.intervalMs
+    this.stoppingGraceMs = config.stoppingGraceMs
 
     this.store = new TaskQueueStore(config.queueRoot)
     this.enabledExecutors = new Set(
@@ -415,6 +422,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   /* ---------------------------------------------------------- SchedulerHost -- */
 
   async housekeeping(): Promise<void> {
+    await this.reapStalledStopping()
     for (const entry of await scanInbox(this.store.paths.root)) {
       if (entry.kind === 'invalid-filename') continue
       if (entry.kind === 'invalid-content') {
@@ -435,7 +443,39 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   }
 
   private async deleteInboxFile(receiptId: string): Promise<void> {
-    await unlink(join(this.store.paths.root, 'inbox', `${receiptId}.json`)).catch(() => {})
+    await unlink(join(this.store.paths.root, 'inbox', `${receiptId}.json`)).catch((error) => {
+      console.error(`task-queue: cannot delete inbox file ${receiptId}.json: ${String(error)}`)
+    })
+  }
+
+  /**
+   * Watchdog for `stopping` tasks whose settle callback was lost (e.g. the
+   * subprocess exited without firing `done`, or the callback raced away).
+   * Normally cancel → terminate → settle turns `stopping` into `canceled` in
+   * seconds. If that never happens, force-reclaim after `timeoutMs` plus a
+   * grace period so the queue self-heals without a host restart.
+   */
+  private async reapStalledStopping(): Promise<void> {
+    const now = Date.now()
+    const stalled = [...this.folded.tasksById.values()].filter((task) => {
+      if (task.status !== 'stopping') return false
+      const startedAt = Date.parse(task.updatedAt)
+      if (Number.isNaN(startedAt)) return false
+      return now - startedAt > task.timeoutMs + this.stoppingGraceMs
+    })
+    for (const task of stalled) {
+      // One last best-effort terminate in case the handle is still around.
+      const handle = this.liveHandles.get(task.id)
+      if (handle !== undefined) {
+        try { handle.terminate() } catch { /* best-effort */ }
+      }
+      // Reuse crash recovery: it marks the last run terminationUnverified and
+      // finalizes stopping -> canceled, exactly what a lost settle needs.
+      const { task: recovered } = recoverTaskAfterCrash(task, new Date().toISOString())
+      await this.commitTerminal(recovered)
+      this.ctx.emit('task-queue/canceled', { taskId: task.id })
+      this.stopping.delete(task.id)
+    }
   }
 
   eligibleTasks(): Task[] {

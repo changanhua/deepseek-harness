@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import LocalTaskQueue from '../src/index.ts'
 import { TaskQueueStore } from '../src/store.ts'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -83,5 +83,102 @@ describe('LocalTaskQueue lifecycle', () => {
 
     expect(queue.get(taskId).status).toBe('succeeded')
     expect(queue.get(taskId).result?.exitCode).toBe(0)
+  })
+
+  it('reclaims a stopping task when its settle callback is lost', async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-task-queue-watchdog-'))
+    const script = join(root, 'sleep.cjs')
+    const result = join(root, 'out.txt')
+    await writeFile(script, `setTimeout(() => require('node:fs').writeFileSync(process.argv[2], 'x'), 5000)
+`, 'utf8')
+
+    context = new Context()
+    await context.plugin(LocalSubprocessRuntime)
+    await context.plugin(LocalTaskQueue, {
+      queueRoot: root,
+      intervalMs: 5,
+      maxConcurrent: 1,
+      maxConcurrentPerExecutor: 1,
+      stoppingGraceMs: 0,
+      executors: { node: { enabled: true } },
+    } as never)
+
+    const queue = context.taskQueue as unknown as {
+      enqueueFromTool(spec: unknown): Promise<string>
+      cancel(id: string): Promise<'canceled' | 'stopping'>
+      get(id: string): { status: string; runs: Array<{ terminationUnverified?: boolean }>; updatedAt: string }
+      mutate<T>(fn: () => Promise<T>): Promise<T>
+      housekeeping(): Promise<void>
+      settle(): Promise<void>
+    }
+
+    const id = await queue.enqueueFromTool({
+      title: 'lost settle watchdog',
+      prompt: JSON.stringify({ script, args: [result] }),
+      executor: 'node',
+      maxAttempts: 1,
+      timeoutMs: 5_000,
+      outputDir: join(root, 'output'),
+    })
+    await waitFor(() => queue.get(id).status === 'running')
+
+    // Simulate a lost settle callback: the child is terminated by cancel, but
+    // the normal settle path is swallowed and never finalizes stopping.
+    vi.spyOn(queue, 'settle').mockImplementation(async () => {})
+    const outcome = await queue.cancel(id)
+    expect(outcome).toBe('stopping')
+
+    // Make the stopping task look ancient so the watchdog threshold is exceeded.
+    const stuck = queue.get(id)
+    stuck.updatedAt = new Date(Date.now() - 60_000).toISOString()
+
+    // Stop the scheduler so only this test drives the watchdog pass.
+    ;(queue as unknown as { scheduler: { stop(): void } }).scheduler.stop()
+    await queue.mutate(() => queue.housekeeping())
+
+    const recovered = queue.get(id)
+    expect(recovered.status).toBe('canceled')
+    expect(recovered.runs[recovered.runs.length - 1]?.terminationUnverified).toBe(true)
+  })
+
+  it('cancels a running task, finalizes to canceled, and keeps its output file absent', async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-task-queue-cancel-running-'))
+    const script = join(root, 'sleep.cjs')
+    const result = join(root, 'should-not-exist.txt')
+    await writeFile(script, `setTimeout(() => require('node:fs').writeFileSync(process.argv[2], 'done'), 5000)
+`, 'utf8')
+
+    context = new Context()
+    await context.plugin(LocalSubprocessRuntime)
+    await context.plugin(LocalTaskQueue, {
+      queueRoot: root,
+      intervalMs: 5,
+      maxConcurrent: 1,
+      maxConcurrentPerExecutor: 1,
+      stoppingGraceMs: 1_000,
+      executors: { node: { enabled: true } },
+    } as never)
+
+    const queue = context.taskQueue as unknown as {
+      enqueueFromTool(spec: unknown): Promise<string>
+      cancel(id: string): Promise<'canceled' | 'stopping'>
+      get(id: string): { status: string }
+    }
+
+    const id = await queue.enqueueFromTool({
+      title: 'cancel running',
+      prompt: JSON.stringify({ script, args: [result] }),
+      executor: 'node',
+      maxAttempts: 1,
+      timeoutMs: 5_000,
+      outputDir: join(root, 'output'),
+    })
+    await waitFor(() => queue.get(id).status === 'running')
+
+    const outcome = await queue.cancel(id)
+    expect(outcome).toBe('stopping')
+    await waitFor(() => queue.get(id).status === 'canceled')
+
+    await expect(access(result)).rejects.toThrow()
   })
 })

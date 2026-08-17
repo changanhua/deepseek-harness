@@ -120,7 +120,9 @@ export class TaskScheduler {
   private async tick(): Promise<void> {
     if (!this.running || this.host.halted()) return
     const task = (async () => {
-      await this.host.mutate(() => this.host.housekeeping()).catch(() => {})
+      await this.host.mutate(() => this.host.housekeeping()).catch((error) => {
+        console.error(`task-queue: housekeeping failed: ${String(error)}`)
+      })
       await this.runClaims()
       this.host.notifyDrain()
     })()
@@ -168,7 +170,9 @@ export class TaskScheduler {
         const err = error as Error
         await this.host.mutate(async () => {
           await this.host.settleFailure(claimed.task, false, err?.message ?? String(error))
-        }).catch(() => {})
+        }).catch((error) => {
+          console.error(`task-queue: failed to settle prepare failure: ${String(error)}`)
+        })
       }
     } finally {
       clearTimeout(timer)

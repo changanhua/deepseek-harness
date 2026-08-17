@@ -102,7 +102,10 @@ export class QueueStore {
       ])
       const detail = this.#snapshot.selectedId === null
         ? null
-        : await this.remote.get(this.#snapshot.selectedId).then(valueOf).catch(() => null)
+        : await this.remote.get(this.#snapshot.selectedId).then(valueOf).catch((error) => {
+          console.error(`task-queue: failed to load detail ${String(this.#snapshot.selectedId)}: ${String(error)}`)
+          return null
+        })
       this.#set({
         stats: valueOf(stats),
         summaries: valueOf(list),
