@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { TaskId, RunId } from '../src/brand.ts'
 import {
-  cancelPending, claimTask, isTerminalStatus, markRunning, recoverTaskAfterCrash,
+  cancelPending, claimTask, createTask, dismissTask, isTerminalStatus, markRunning, recoverTaskAfterCrash,
   requestStop, retryTask, settleCanceled, settleFailed, settleSucceeded,
 } from '../src/transitions.ts'
 import type { Task, TaskResult } from '../src/types.ts'
@@ -30,6 +30,7 @@ function task(overrides: Partial<Task> = {}): Task {
     receiptId: 'tool:auto:1',
     terminalSeq: null,
     runs: [],
+    dismissed: false,
     ...overrides,
   }
 }
@@ -184,6 +185,45 @@ describe('retryTask', () => {
 
   it('rejects from non-failed', () => {
     expect(() => retryTask(task({ status: 'pending' }), NOW)).toThrow(/retry/)
+  })
+
+  it('clears dismissed when requeuing a dismissed failed task (no ghost rows)', () => {
+    const out = retryTask(task({ status: 'failed', dismissed: true }), NOW)
+    expect(out.status).toBe('pending')
+    expect(out.dismissed).toBe(false)
+  })
+})
+
+describe('dismissTask', () => {
+  it('sets dismissed=true on a terminal task without changing status', () => {
+    const out = dismissTask(task({ status: 'failed' }), true, NOW)
+    expect(out.dismissed).toBe(true)
+    expect(out.status).toBe('failed')
+    expect(out.updatedAt).toBe(NOW)
+  })
+
+  it('sets dismissed=false on undismiss (reversible)', () => {
+    const out = dismissTask(task({ status: 'failed', dismissed: true }), false, NOW)
+    expect(out.dismissed).toBe(false)
+    expect(out.status).toBe('failed')
+  })
+
+  it('rejects a non-terminal task', () => {
+    expect(() => dismissTask(task({ status: 'pending' }), true, NOW)).toThrow(/terminal/)
+    expect(() => dismissTask(task({ status: 'running' }), true, NOW)).toThrow(/terminal/)
+  })
+
+  it('accepts all three terminal statuses', () => {
+    for (const status of ['succeeded', 'failed', 'canceled'] as const) {
+      expect(dismissTask(task({ status }), true, NOW).dismissed).toBe(true)
+    }
+  })
+})
+
+describe('createTask', () => {
+  it('defaults dismissed to false', () => {
+    const t = createTask(TaskId('tq-x'), { title: 't', prompt: 'p', executor: 'shell' }, 'tool', 'rec', NOW)
+    expect(t.dismissed).toBe(false)
   })
 })
 

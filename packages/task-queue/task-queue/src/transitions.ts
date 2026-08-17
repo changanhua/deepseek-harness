@@ -55,6 +55,7 @@ export function createTask(
     receiptId,
     terminalSeq: null,
     runs: [],
+    dismissed: false,
   }
 }
 
@@ -214,7 +215,26 @@ export function retryTask(task: Task, now: string): Task {
     lastError: null,
     updatedAt: now,
     terminalSeq: null,
+    dismissed: false,
   }
+}
+
+/**
+ * Soft-conclude (or restore) a terminal task. Legal only from a terminal
+ * status (succeeded/failed/canceled); toggles only `dismissed` and
+ * `updatedAt`, leaving `status`/`terminalSeq` untouched so the audit
+ * dimension stays intact. Idempotency (same-value no-op) is the backend's
+ * responsibility in the FIFO, not here — this pure function always applies.
+ * @param task - the terminal task to dismiss or restore.
+ * @param dismissed - true to conclude, false to restore.
+ * @param now - ISO timestamp for `updatedAt`.
+ * @returns a new task with the `dismissed` flag toggled.
+ */
+export function dismissTask(task: Task, dismissed: boolean, now: string): Task {
+  if (!isTerminalStatus(task.status)) {
+    throw new Error(`cannot dismiss task ${task.id}: expected terminal, got ${task.status}`)
+  }
+  return { ...task, dismissed, updatedAt: now }
 }
 
 /**
