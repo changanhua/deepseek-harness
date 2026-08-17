@@ -14,13 +14,13 @@ import css from './QueueNavEntry.module.css'
 const MODULE_ID = 'queue'
 
 /** The badge copy/kind for one stats snapshot; undefined hides the badge. */
-function badgeFor(snapshot: QueueSnapshot, t: QueueNavEntryProps['t']):
+export function badgeFor(snapshot: QueueSnapshot, t: QueueNavEntryProps['t']):
   { text: string; kind: 'hot' | 'idle' | 'plain' } | undefined {
   const stats = snapshot.stats
   if (stats === null) return undefined
   if (stats.serviceState === 'faulted') return { text: t('nav.queue.faulted'), kind: 'hot' }
-  const failed = stats.byStatus.failed ?? 0
-  if (failed > 0) return { text: `${failed} ${t('nav.queue.failed')}`, kind: 'hot' }
+  const undismissedFailed = stats.undismissedFailed ?? 0
+  if (undismissedFailed > 0) return { text: `${undismissedFailed} ${t('nav.queue.failed')}`, kind: 'hot' }
   const running = stats.byStatus.running ?? 0
   if (running > 0) return { text: `${running} ${t('nav.queue.running')}`, kind: 'idle' }
   return { text: t('nav.queue.idle'), kind: 'plain' }

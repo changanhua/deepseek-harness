@@ -34,3 +34,14 @@ export const LIVE_STATUSES: readonly QueueTaskStatus[] = ['pending', 'starting',
 
 /** Terminal statuses; the "finished" filter row. */
 export const DONE_STATUSES: readonly QueueTaskStatus[] = ['succeeded', 'canceled']
+
+/**
+ * Attention predicate: a failed task that has not been soft-concluded.
+ * Dismissed failed tasks leave attention (badge + "Needs attention" filter)
+ * but keep their record in the "Dismissed" filter.
+ * @param task - the summary row to classify.
+ * @returns true when the task is failed and not dismissed.
+ */
+export function isAttention(task: { status: QueueTaskStatus; dismissed: boolean }): boolean {
+  return task.status === 'failed' && !task.dismissed
+}

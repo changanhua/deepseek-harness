@@ -15,12 +15,12 @@ import { Button, StateDot, IconRefreshOutline16, IconPauseOutline16, IconPlayOut
 import type { QueueWorkspaceProps } from './contract/slots.ts'
 import type { QueueExecutorView, QueueSnapshot } from './store.ts'
 import type { QueueTaskStatus, QueueTaskView } from '@deepseek-ai/dsh-task-queue-remote/views'
-import { DONE_STATUSES, LIVE_STATUSES, STATUS_DOT, STATUS_LABEL_KEY } from './status.ts'
+import { DONE_STATUSES, LIVE_STATUSES, STATUS_DOT, STATUS_LABEL_KEY, isAttention } from './status.ts'
 import css from './QueueWorkspace.module.css'
 
-type Filter = 'all' | 'live' | 'attention' | 'done'
+type Filter = 'all' | 'live' | 'attention' | 'done' | 'dismissed'
 
-const FILTERS: Filter[] = ['all', 'live', 'attention', 'done']
+const FILTERS: Filter[] = ['all', 'live', 'attention', 'done', 'dismissed']
 
 /** Service-state dot semantic (healthy green / paused amber / faulted red). */
 const SERVICE_DOT = { running: 'done', paused: 'warning', faulted: 'error' } as const
@@ -70,8 +70,9 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
     const q = query.trim().toLowerCase()
     return snapshot.summaries.filter((task) => {
       if (filter === 'live' && !LIVE_STATUSES.includes(task.status)) return false
-      if (filter === 'attention' && task.status !== 'failed') return false
+      if (filter === 'attention' && !isAttention(task)) return false
       if (filter === 'done' && !DONE_STATUSES.includes(task.status)) return false
+      if (filter === 'dismissed' && !task.dismissed) return false
       if (q !== '' && !task.title.toLowerCase().includes(q) && !task.id.toLowerCase().includes(q)) return false
       return true
     })
@@ -79,11 +80,15 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
 
   const running = stats?.byStatus.running ?? 0
   const starting = stats?.byStatus.starting ?? 0
-  const failed = stats?.byStatus.failed ?? 0
+  const failed = stats?.undismissedFailed ?? 0
+  const dismissedCount = stats?.byDismissed ?? 0
   const total = snapshot.summaries.length
 
   const canCancel = (status: QueueTaskStatus) => status === 'pending' || status === 'starting' || status === 'running'
   const canRetry = (status: QueueTaskStatus) => status === 'failed' || status === 'canceled'
+  const canDismiss = (task: { status: QueueTaskStatus; dismissed: boolean }) =>
+    (task.status === 'succeeded' || task.status === 'failed' || task.status === 'canceled') && !task.dismissed
+  const canUndismiss = (task: { dismissed: boolean }) => task.dismissed
 
   return (
     <div className={css.workspace}>
@@ -165,6 +170,7 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
                 {t(`filter.${kind}`)}
                 {kind === 'all' && <span className={css.count}>{total}</span>}
                 {kind === 'attention' && failed > 0 && <span className={css.count}>{failed}</span>}
+                {kind === 'dismissed' && dismissedCount > 0 && <span className={css.count}>{dismissedCount}</span>}
               </button>
             ))}
             <input
@@ -174,16 +180,32 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
               value={query}
               onChange={(event) => { setQuery(event.target.value) }}
             />
-            {snapshot.summaries.some(task => task.status === 'failed') && (
+            {snapshot.summaries.some(task => task.status === 'failed' && !task.dismissed) && (
               <Button
                 variant="ghost"
                 size="sm"
                 disabled={busy}
                 onClick={() => {
-                  void runAction(() => queue.retryMany(snapshot.summaries.filter(task => task.status === 'failed').map(task => task.id)))
+                  const ids = snapshot.summaries
+                    .filter(task => task.status === 'failed' && !task.dismissed)
+                    .map(task => task.id)
+                  void runAction(() => queue.retryMany(ids))
                 }}
               >
                 {t('list.actions.retryAllFailed')}
+              </Button>
+            )}
+            {failed > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => {
+                  if (!window.confirm(t('list.actions.dismissAllFailedConfirm'))) return
+                  void runAction(() => queue.dismissMany(snapshot.summaries.filter(task => task.status === 'failed' && !task.dismissed).map(task => task.id), true))
+                }}
+              >
+                {t('list.actions.dismissAllFailed')}
               </Button>
             )}
             {snapshot.summaries.some(task => LIVE_STATUSES.includes(task.status)) && (
@@ -192,7 +214,10 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
                 size="sm"
                 disabled={busy}
                 onClick={() => {
-                  void runAction(() => queue.cancelMany(snapshot.summaries.filter(task => LIVE_STATUSES.includes(task.status)).map(task => task.id)))
+                  const ids = snapshot.summaries
+                    .filter(task => LIVE_STATUSES.includes(task.status))
+                    .map(task => task.id)
+                  void runAction(() => queue.cancelMany(ids))
                 }}
               >
                 {t('list.actions.cancelAllLive')}
@@ -248,6 +273,32 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
                             }}
                           >
                             {t('list.actions.retry')}
+                          </Button>
+                        )}
+                        {canDismiss(task) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              void runAction(() => queue.dismiss(task.id))
+                            }}
+                          >
+                            {t('list.actions.dismiss')}
+                          </Button>
+                        )}
+                        {canUndismiss(task) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              void runAction(() => queue.undismiss(task.id))
+                            }}
+                          >
+                            {t('list.actions.undismiss')}
                           </Button>
                         )}
                       </span>
@@ -384,6 +435,12 @@ function QueueDetail({ task, selected, loading, diag, setDiag, t, executors, onR
         {task.status === 'canceled' && (
           <section className={css.section}>
             <div className={clsx(css.card, css.note)}>{t('detail.canceled')}</div>
+          </section>
+        )}
+
+        {task.dismissed && (
+          <section className={css.section}>
+            <div className={clsx(css.card, css.note)}>{t('detail.dismissed')}</div>
           </section>
         )}
 

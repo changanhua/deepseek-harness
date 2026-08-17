@@ -16,11 +16,12 @@ import type { QueueNavEntryInjected, QueueWorkspaceInjected } from '../src/clien
 /** Controllable panel Remote face for the apply bench. */
 function makeRemoteFace() {
   return {
-    stats: vi.fn(async () => ({ ok: true as const, value: { serviceState: 'running' as const, fault: null, byStatus: {}, byExecutor: {} } })),
+    stats: vi.fn(async () => ({ ok: true as const, value: { serviceState: 'running' as const, fault: null, byStatus: {}, byExecutor: {}, undismissedFailed: 0, byDismissed: 0 } })),
     list: vi.fn(async () => ({ ok: true as const, value: [] })),
     get: vi.fn(async () => ({ ok: false as const, error: { code: 'internal', message: 'no', details: {} } })),
     cancel: vi.fn(async () => ({ ok: true as const, value: 'canceled' as const })),
     retry: vi.fn(async () => ({ ok: true as const, value: 'tq-1' })),
+    dismiss: vi.fn(async () => ({ ok: true as const, value: undefined })),
     pause: vi.fn(async () => ({ ok: true as const, value: undefined })),
     resume: vi.fn(async () => ({ ok: true as const, value: undefined })),
   }
