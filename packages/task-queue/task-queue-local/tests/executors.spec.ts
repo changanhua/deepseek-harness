@@ -30,6 +30,7 @@ function task(overrides: Partial<Task> = {}): Task {
     receiptId: 'r',
     terminalSeq: null,
     runs: [],
+    dismissed: false,
     ...overrides,
   }
 }

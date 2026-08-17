@@ -198,6 +198,10 @@ export interface QueueStats {
   fault?: { reason: string }
   byStatus: Record<TaskStatus, number>
   byExecutor: Record<string, number>
+  /** Count of failed tasks not yet dismissed — drives the attention badge. */
+  undismissedFailed: number
+  /** Count of dismissed terminal tasks — drives the "Dismissed" filter badge. */
+  byDismissed: number
 }
 
 /**

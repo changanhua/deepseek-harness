@@ -44,7 +44,7 @@ export class FaultedError extends Error {
 /** Change ops allowed on the wire, in exact-match form for strict parsing. */
 const CHANGE_OPS = new Set([
   'created', 'starting', 'running', 'stopping',
-  'succeeded', 'failed', 'requeued', 'canceled', 'notification-acknowledged',
+  'succeeded', 'failed', 'requeued', 'canceled', 'dismissed', 'notification-acknowledged',
 ])
 
 function fault(message: string): FaultedError {

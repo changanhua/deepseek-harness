@@ -33,6 +33,7 @@ function task(id: string, status: Task['status'] = 'pending', extra: Partial<Tas
     receiptId: 'tool:auto:1',
     terminalSeq: null,
     runs: [],
+    dismissed: false,
     ...extra,
   }
 }

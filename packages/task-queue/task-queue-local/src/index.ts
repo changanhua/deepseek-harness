@@ -26,7 +26,7 @@ import type {
 } from '@deepseek-ai/dsh-task-queue'
 import {
   createTask, claimTask, markRunning, settleSucceeded, settleFailed,
-  requestStop, settleCanceled, cancelPending, retryTask, recoverTaskAfterCrash,
+  requestStop, settleCanceled, cancelPending, retryTask, dismissTask, recoverTaskAfterCrash,
   isTerminalStatus, applyChange,
 } from '@deepseek-ai/dsh-task-queue'
 import { runLogPath, DIR_MODE, FILE_MODE } from './paths.ts'
@@ -348,20 +348,40 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     })
   }
 
+  async dismiss(id: TaskId, dismissed: boolean): Promise<void> {
+    await this.bootPromise
+    this.assertAdmitting()
+    await this.mutate(async () => {
+      const task = this.folded.tasksById.get(id)
+      if (task === undefined) throw new Error(`unknown task ${id}`)
+      // Idempotent short-circuit: same value → no change record, no event, no updatedAt.
+      if (task.dismissed === dismissed) return
+      const updated = dismissTask(task, dismissed, new Date().toISOString())
+      await this.commit(dismissedChange(this.nextSeq, updated))
+      this.ctx.emit('task-queue/dismissed', { taskId: id, dismissed })
+    })
+  }
+
   stats(): QueueStats {
     const byStatus: Record<TaskStatus, number> = {
       pending: 0, starting: 0, running: 0, stopping: 0, succeeded: 0, failed: 0, canceled: 0,
     }
     const byExecutor: Record<string, number> = {}
+    let undismissedFailed = 0
+    let byDismissed = 0
     for (const task of this.folded.tasksById.values()) {
       byStatus[task.status] += 1
       byExecutor[task.executor] = (byExecutor[task.executor] ?? 0) + 1
+      if (task.dismissed) byDismissed += 1
+      if (task.status === 'failed' && !task.dismissed) undismissedFailed += 1
     }
     return {
       serviceState: this.serviceState,
       ...(this.faultReason !== undefined ? { fault: { reason: this.faultReason } } : {}),
       byStatus,
       byExecutor,
+      undismissedFailed,
+      byDismissed,
     }
   }
 
@@ -707,6 +727,11 @@ function createdChange(seq: number, state: Task): TaskChange {
   return { seq, version: 1, op: 'created', taskId: state.id, state, at: new Date().toISOString() }
 }
 
+/** The `dismissed` op is the soft-conclude toggle; it carries the full task state but never a notification. */
+function dismissedChange(seq: number, state: Task): TaskChange {
+  return { seq, version: 1, op: 'dismissed', taskId: state.id, state, at: new Date().toISOString() }
+}
+
 export function taskToSummary(task: Task): TaskSummary {
   // The seam's TaskSummary type is regenerated into lib by the host build; the
   // projection intentionally carries lastError so list and status schemas stay
@@ -725,6 +750,7 @@ export function taskToSummary(task: Task): TaskSummary {
     lastError: task.lastError,
     tags: task.tags,
     ownerSessionId: task.ownerSessionId,
+    dismissed: task.dismissed,
   } as TaskSummary
 }
 

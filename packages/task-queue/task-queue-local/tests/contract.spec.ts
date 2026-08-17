@@ -26,6 +26,7 @@ const TASK: Task = {
   receiptId: 'r',
   terminalSeq: null,
   runs: [],
+  dismissed: false,
 }
 
 describe('task-queue contract', () => {

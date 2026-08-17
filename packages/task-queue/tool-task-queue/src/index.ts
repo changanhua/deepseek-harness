@@ -266,6 +266,7 @@ export const TASK_SUMMARY_SCHEMA = {
     // ownerSessionId, so neither is required.
     lastError: { oneOf: [{ type: 'string' }, { type: 'null' }] },
     ownerSessionId: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+    dismissed: { type: 'boolean', required: true },
   },
 } as const
 
