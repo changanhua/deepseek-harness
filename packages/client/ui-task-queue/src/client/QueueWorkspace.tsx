@@ -85,7 +85,10 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
   const total = snapshot.summaries.length
 
   const canCancel = (status: QueueTaskStatus) => status === 'pending' || status === 'starting' || status === 'running'
-  const canRetry = (status: QueueTaskStatus) => status === 'failed' || status === 'canceled'
+  // Canceled tasks are not retryable: retry only requeues a failure (backend
+  // `retryTask` accepts `failed` only), so a canceled row gets dismiss/restore
+  // but no retry button.
+  const canRetry = (status: QueueTaskStatus) => status === 'failed'
   const canDismiss = (task: { status: QueueTaskStatus; dismissed: boolean }) =>
     (task.status === 'succeeded' || task.status === 'failed' || task.status === 'canceled') && !task.dismissed
   const canUndismiss = (task: { dismissed: boolean }) => task.dismissed
