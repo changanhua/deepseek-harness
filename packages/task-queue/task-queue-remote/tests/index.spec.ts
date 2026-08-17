@@ -44,6 +44,7 @@ function makeQueue(overrides: Partial<TaskQueue> = {}): {
     maxAttempts: 3,
     createdAt: '2026-08-15T00:00:00.000Z',
     updatedAt: '2026-08-15T01:00:00.000Z',
+    lastError: null,
     tags: ['demo'],
     ownerSessionId: 'ses-1',
   })

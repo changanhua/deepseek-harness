@@ -245,7 +245,7 @@ const SPEC_PARAM = {
 } as const
 
 /** Shared task-summary output schema. */
-const TASK_SUMMARY_SCHEMA = {
+export const TASK_SUMMARY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {

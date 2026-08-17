@@ -707,7 +707,11 @@ function createdChange(seq: number, state: Task): TaskChange {
   return { seq, version: 1, op: 'created', taskId: state.id, state, at: new Date().toISOString() }
 }
 
-function taskToSummary(task: Task): TaskSummary {
+export function taskToSummary(task: Task): TaskSummary {
+  // The seam's TaskSummary type is regenerated into lib by the host build; the
+  // projection intentionally carries lastError so list and status schemas stay
+  // in lockstep. The cast bridges pre-rebuild lib types while keeping the wire
+  // contract stable.
   return {
     id: task.id,
     title: task.title,
@@ -718,10 +722,10 @@ function taskToSummary(task: Task): TaskSummary {
     maxAttempts: task.maxAttempts,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
-    ...(task.lastError !== null ? { lastError: task.lastError } : {}),
+    lastError: task.lastError,
     tags: task.tags,
     ownerSessionId: task.ownerSessionId,
-  }
+  } as TaskSummary
 }
 
 export default LocalTaskQueue

@@ -153,6 +153,7 @@ export interface TaskSummary {
   maxAttempts: number
   createdAt: string
   updatedAt: string
+  lastError: string | null
   tags: string[]
   ownerSessionId: string | null
 }
