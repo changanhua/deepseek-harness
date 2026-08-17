@@ -93,6 +93,8 @@ export interface Task {
   receiptId: string
   terminalSeq: number | null
   runs: RunRecord[]
+  /** Soft-conclude flag: a dismissed terminal task leaves the attention badge/filters but keeps its record; reset to false on requeue. */
+  dismissed: boolean
 }
 
 /**
@@ -122,7 +124,7 @@ export type ChangeRecord =
   | {
     seq: number
     version: 1
-    op: 'created' | 'starting' | 'running' | 'stopping' | 'succeeded' | 'failed' | 'requeued' | 'canceled'
+    op: 'created' | 'starting' | 'running' | 'stopping' | 'succeeded' | 'failed' | 'requeued' | 'canceled' | 'dismissed'
     taskId: TaskId
     state: Task
     notification?: NotificationRecord
@@ -156,6 +158,8 @@ export interface TaskSummary {
   lastError: string | null
   tags: string[]
   ownerSessionId: string | null
+  /** Soft-conclude flag projected from {@link Task.dismissed}. */
+  dismissed: boolean
 }
 
 /**
