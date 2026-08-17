@@ -32,6 +32,7 @@ export interface QueueRemoteFace {
   readRunLog(id: string, runId: string): Promise<RemoteResult<string>>
   cancel(id: string): Promise<RemoteResult<QueueCancelOutcomeView>>
   retry(id: string): Promise<RemoteResult<string>>
+  dismiss(id: string, dismissed?: boolean): Promise<RemoteResult<void>>
   pause(): Promise<RemoteResult<void>>
   resume(): Promise<RemoteResult<void>>
 }
@@ -201,6 +202,38 @@ export class QueueStore {
     await this.refresh()
     if (failures.length > 0) return { ok: false, message: failures.join('; ') }
     return { ok: true, message: `retried ${ids.length}` }
+  }
+
+  /** Dismiss one terminal task (default dismissed=true), then confirm from the host. */
+  async dismiss(id: string, dismissed: boolean = true): Promise<QueueActionResult> {
+    try {
+      valueOf(await this.remote.dismiss(id, dismissed))
+      await this.refresh()
+      return { ok: true, message: dismissed ? 'task dismissed' : 'task restored' }
+    } catch (error: unknown) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
+  /** Restore one dismissed task to attention. */
+  async undismiss(id: string): Promise<QueueActionResult> {
+    return this.dismiss(id, false)
+  }
+
+  /** Dismiss/restore many tasks, then confirm from the host. */
+  async dismissMany(ids: string[], dismissed: boolean): Promise<QueueActionResult> {
+    if (ids.length === 0) return { ok: true, message: 'no tasks' }
+    const failures: string[] = []
+    for (const id of ids) {
+      try {
+        valueOf(await this.remote.dismiss(id, dismissed))
+      } catch (error: unknown) {
+        failures.push(`${id}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    await this.refresh()
+    if (failures.length > 0) return { ok: false, message: failures.join('; ') }
+    return { ok: true, message: `${dismissed ? 'dismissed' : 'restored'} ${ids.length}` }
   }
 
   /** Re-queue one task, then confirm the change from the host. */

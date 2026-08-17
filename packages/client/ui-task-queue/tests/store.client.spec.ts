@@ -25,6 +25,8 @@ const STATS: QueueStatsView = {
   fault: null,
   byStatus: { pending: 1, starting: 0, running: 2, stopping: 0, succeeded: 1, failed: 1, canceled: 0 },
   byExecutor: { codex: 3 },
+  undismissedFailed: 1,
+  byDismissed: 0,
 }
 
 const SUMMARY = (id: string, status: QueueTaskSummaryView['status']): QueueTaskSummaryView => ({
@@ -39,6 +41,7 @@ const SUMMARY = (id: string, status: QueueTaskSummaryView['status']): QueueTaskS
   updatedAt: '2026-08-15T01:00:00.000Z',
   tags: [],
   ownerSessionId: null,
+  dismissed: false,
 })
 
 const DETAIL: QueueTaskView = {
@@ -74,6 +77,7 @@ function makeRemote() {
     }),
     cancel: vi.fn(async () => { calls.push('cancel'); return ok('canceled' as const) }),
     retry: vi.fn(async () => { calls.push('retry'); return ok('tq-1') }),
+    dismiss: vi.fn(async (id: string, dismissed?: boolean) => { calls.push(`dismiss:${id}:${dismissed}`); return ok(undefined) }),
     pause: vi.fn(async () => { calls.push('pause'); return ok(undefined) }),
     resume: vi.fn(async () => { calls.push('resume'); return ok(undefined) }),
   }
@@ -152,6 +156,50 @@ describe('QueueStore', () => {
     const partial = await store.cancelMany(['tq-1', 'tq-2'])
     expect(partial.ok).toBe(false)
     expect(partial.message).toContain('cannot cancel')
+  })
+
+  it('dismiss calls remote.dismiss(id, true), refreshes, and confirms', async () => {
+    const { remote, calls } = makeRemote()
+    const store = new QueueStore(remote)
+    await store.refresh()
+    const out = await store.dismiss('tq-1')
+    expect(out).toEqual({ ok: true, message: 'task dismissed' })
+    expect(calls).toContain('dismiss:tq-1:true')
+    expect(calls.filter(c => c === 'stats').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('undismiss calls remote.dismiss(id, false)', async () => {
+    const { remote, calls } = makeRemote()
+    const store = new QueueStore(remote)
+    await store.refresh()
+    const out = await store.undismiss('tq-1')
+    expect(out).toEqual({ ok: true, message: 'task restored' })
+    expect(calls).toContain('dismiss:tq-1:false')
+  })
+
+  it('dismissMany aggregates failures and still refreshes', async () => {
+    const { remote, calls } = makeRemote()
+    const store = new QueueStore(remote)
+    await store.refresh()
+    remote.dismiss = vi.fn(async (id: string, dismissed?: boolean) => {
+      calls.push(`dismiss:${id}:${dismissed}`)
+      if (id === 'tq-bad') return fail('cannot dismiss')
+      return ok(undefined)
+    })
+    const out = await store.dismissMany(['tq-1', 'tq-bad', 'tq-2'], true)
+    expect(out.ok).toBe(false)
+    expect(out.message).toContain('tq-bad')
+    expect(calls.filter(c => c.startsWith('dismiss:')).length).toBe(3)
+    expect(calls.filter(c => c === 'stats').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('a failing dismiss reports failure without clearing the snapshot', async () => {
+    const { remote } = makeRemote()
+    const store = new QueueStore(remote)
+    await store.refresh()
+    remote.dismiss = vi.fn(async () => fail('cannot dismiss'))
+    const out = await store.dismiss('tq-1')
+    expect(out).toEqual({ ok: false, message: 'cannot dismiss' })
   })
 
   it('a failing verb reports failure without refreshing away the error', async () => {
