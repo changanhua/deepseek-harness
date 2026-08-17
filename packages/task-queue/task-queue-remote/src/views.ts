@@ -46,6 +46,8 @@ export interface QueueTaskSummaryView {
   updatedAt: string
   tags: string[]
   ownerSessionId: string | null
+  /** Soft-conclude flag: a dismissed terminal task leaves attention but keeps its record. */
+  dismissed: boolean
 }
 
 /**
@@ -115,6 +117,10 @@ export interface QueueStatsView {
   fault: { reason: string } | null
   byStatus: Record<QueueTaskStatus, number>
   byExecutor: Record<string, number>
+  /** Count of failed tasks not yet dismissed — drives the attention badge. */
+  undismissedFailed: number
+  /** Count of dismissed terminal tasks — drives the "Dismissed" filter badge. */
+  byDismissed: number
 }
 
 /**

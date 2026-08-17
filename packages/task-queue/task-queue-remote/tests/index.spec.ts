@@ -30,10 +30,12 @@ function makeQueue(overrides: Partial<TaskQueue> = {}): {
   listCalls: unknown[]
   cancelCalls: string[]
   retryCalls: string[]
+  dismissCalls: { id: string; dismissed: boolean }[]
 } {
   const listCalls: unknown[] = []
   const cancelCalls: string[] = []
   const retryCalls: string[] = []
+  const dismissCalls: { id: string; dismissed: boolean }[] = []
   const summary = (id: string, status: Task['status']): TaskSummary => ({
     id: TaskId(id),
     title: `task ${id}`,
@@ -47,6 +49,7 @@ function makeQueue(overrides: Partial<TaskQueue> = {}): {
     lastError: null,
     tags: ['demo'],
     ownerSessionId: 'ses-1',
+    dismissed: false,
   })
   const task = (id: string): Task => ({
     ...summary(id, 'running'),
@@ -90,12 +93,17 @@ function makeQueue(overrides: Partial<TaskQueue> = {}): {
       retryCalls.push(String(id))
       return Promise.resolve(id)
     },
+    async dismiss(id: TaskId, dismissed: boolean) {
+      dismissCalls.push({ id: String(id), dismissed })
+    },
     stats(): QueueStats {
       return {
         serviceState: 'faulted',
         fault: { reason: 'append error' },
         byStatus: { pending: 1, starting: 0, running: 1, stopping: 0, succeeded: 0, failed: 1, canceled: 0 },
         byExecutor: { codex: 2 },
+        undismissedFailed: 1,
+        byDismissed: 0,
       }
     },
     registerExecutor: () => () => {},
@@ -106,7 +114,7 @@ function makeQueue(overrides: Partial<TaskQueue> = {}): {
     listNotifications: () => [],
     ...overrides,
   } as unknown as TaskQueue
-  return { queue, listCalls, cancelCalls, retryCalls }
+  return { queue, listCalls, cancelCalls, retryCalls, dismissCalls }
 }
 
 function mount(overrides: Partial<TaskQueue> = {}): {
@@ -116,6 +124,7 @@ function mount(overrides: Partial<TaskQueue> = {}): {
   listCalls: unknown[]
   cancelCalls: string[]
   retryCalls: string[]
+  dismissCalls: { id: string; dismissed: boolean }[]
 } {
   const bench = makeQueue(overrides)
   const ctx = new Context()
@@ -135,10 +144,10 @@ describe('task-queue-remote service', () => {
     expect(service.typertRemote.namespace).toBe('taskQueue')
   })
 
-  it('marks exactly the eight panel verbs as Remote methods', () => {
+  it('marks exactly the ten panel verbs as Remote methods', () => {
     const { service } = mount()
     expect(remoteMethods(service).map(marker => marker.method))
-      .toEqual(['list', 'get', 'executors', 'readRunLog', 'stats', 'cancel', 'retry', 'pause', 'resume'])
+      .toEqual(['list', 'get', 'executors', 'readRunLog', 'stats', 'cancel', 'retry', 'dismiss', 'pause', 'resume'])
   })
 
   it('list passes the filter through and projects summaries to wire views', () => {
@@ -158,6 +167,7 @@ describe('task-queue-remote service', () => {
       updatedAt: '2026-08-15T01:00:00.000Z',
       tags: ['demo'],
       ownerSessionId: 'ses-1',
+      dismissed: false,
     })
   })
 
@@ -215,6 +225,7 @@ describe('task-queue-remote service', () => {
           receiptId: 'rcpt-1',
           terminalSeq: null,
           runs: [],
+          dismissed: false,
         }
         return base
       },
@@ -227,13 +238,15 @@ describe('task-queue-remote service', () => {
     expect(() => service.get('tq-unknown')).toThrow(/unknown task/)
   })
 
-  it('stats projects the fault and both counter maps', () => {
+  it('stats projects the fault, both counter maps, and dismissed counts', () => {
     const { service } = mount()
     expect(service.stats()).toEqual({
       serviceState: 'faulted',
       fault: { reason: 'append error' },
       byStatus: { pending: 1, starting: 0, running: 1, stopping: 0, succeeded: 0, failed: 1, canceled: 0 },
       byExecutor: { codex: 2 },
+      undismissedFailed: 1,
+      byDismissed: 0,
     })
   })
 
@@ -243,6 +256,13 @@ describe('task-queue-remote service', () => {
     await expect(service.retry('tq-9')).resolves.toBe('tq-9')
     expect(cancelCalls).toEqual(['tq-9'])
     expect(retryCalls).toEqual(['tq-9'])
+  })
+
+  it('dismiss delegates with the plain id and the dismissed flag', async () => {
+    const { service, dismissCalls } = mount()
+    await service.dismiss('tq-9', true)
+    await service.dismiss('tq-9', false)
+    expect(dismissCalls).toEqual([{ id: 'tq-9', dismissed: true }, { id: 'tq-9', dismissed: false }])
   })
 
   it('pause and resume delegate to the service-level switch', () => {

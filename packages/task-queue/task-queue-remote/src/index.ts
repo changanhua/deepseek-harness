@@ -56,6 +56,7 @@ function toSummaryView(task: TaskSummary): QueueTaskSummaryView {
     updatedAt: task.updatedAt,
     tags: [...task.tags],
     ownerSessionId: task.ownerSessionId,
+    dismissed: task.dismissed,
   }
 }
 
@@ -168,6 +169,8 @@ export class TaskQueueRemoteService extends TypertRemoteService {
       fault: stats.fault === undefined ? null : { reason: stats.fault.reason },
       byStatus: { ...stats.byStatus },
       byExecutor: { ...stats.byExecutor },
+      undismissedFailed: stats.undismissedFailed,
+      byDismissed: stats.byDismissed,
     }
   }
 
@@ -189,6 +192,18 @@ export class TaskQueueRemoteService extends TypertRemoteService {
   @Remote('retry')
   async retry(id: string): Promise<string> {
     return await this.queue.retry(TaskId(id))
+  }
+
+  /**
+   * Soft-conclude (or restore) a terminal task by toggling its `dismissed`
+   * flag. A dismissed task leaves the attention badge/filters but keeps its
+   * record; requeuing resets `dismissed` to false.
+   * @param id - the terminal task id (`tq-<uuid>`).
+   * @param dismissed - true to conclude, false to restore.
+   */
+  @Remote('dismiss')
+  async dismiss(id: string, dismissed: boolean): Promise<void> {
+    await this.queue.dismiss(TaskId(id), dismissed)
   }
 
   /**
