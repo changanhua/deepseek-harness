@@ -1778,6 +1778,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the same task id, now pending with `attempt` reset.',
       },
       {
+        signature: 'abstract dismiss(id: TaskId, dismissed: boolean): Promise<void>',
+        description: 'Soft-conclude (or restore) a terminal task by toggling its `dismissed` flag. Only succeeded/failed/canceled tasks may be dismissed; a non- terminal task throws. Same-value dismiss is an idempotent no-op (no change record, no event). The task\'s `status` and audit record are unchanged; a dismissed task leaves the attention badge/filters but keeps its record, and requeuing (retry) resets `dismissed` to false.',
+        parameters: [{ name: 'id', description: 'the terminal task id to dismiss or restore.' }, { name: 'dismissed', description: 'true to conclude, false to restore.' }],
+      },
+      {
         signature: 'abstract stats(): QueueStats',
         description: 'Aggregate service state and per-status/per-executor counters.',
         parameters: [],
@@ -2606,6 +2611,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'A task\'s `created` change committed (fsync + fold before emission).',
     description: 'A task\'s `created` change committed (fsync + fold before emission).',
     parameters: [{ name: 'payload', description: '.taskId - the admitted task id.' }],
+  },
+  {
+    name: 'task-queue/dismissed',
+    mode: 'emit',
+    signature: '\'task-queue/dismissed\'(payload: { taskId: TaskId; dismissed: boolean }): void',
+    summary: 'A terminal task\'s `dismissed` flag was toggled (soft-conclude or restore).',
+    description: 'A terminal task\'s `dismissed` flag was toggled (soft-conclude or restore). The task\'s `status` and audit record are unchanged.',
+    parameters: [{ name: 'payload', description: '.dismissed - the new dismissed flag value.' }],
   },
   {
     name: 'task-queue/drained',
@@ -3740,12 +3753,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PruneResult {\n    readonly pruned: readonly PrunedEntry[];\n    readonly charsRemoved: number;\n}',
   },
   {
-    name: 'QueueExecutorView',
-    declaration: 'export interface QueueExecutorView {\n    name: string;\n    enabled: boolean;\n    toolAllowed: boolean;\n}',
-  },
-  {
     name: 'QueueStats',
-    declaration: 'export interface QueueStats {\n    serviceState: ServiceState;\n    fault?: {\n        reason: string;\n    };\n    byStatus: Record<TaskStatus, number>;\n    byExecutor: Record<string, number>;\n}',
+    declaration: 'export interface QueueStats {\n    serviceState: ServiceState;\n    fault?: {\n        reason: string;\n    };\n    byStatus: Record<TaskStatus, number>;\n    byExecutor: Record<string, number>;\n    undismissedFailed: number;\n    byDismissed: number;\n}',
   },
   {
     name: 'ReadFileLine',
@@ -4445,7 +4454,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'Task',
-    declaration: 'export interface Task {\n    id: TaskId;\n    title: string;\n    prompt: string;\n    executor: string;\n    status: TaskStatus;\n    priority: number;\n    attempt: number;\n    maxAttempts: number;\n    backoffMs: number;\n    delayUntil: string | null;\n    timeoutMs: number;\n    outputDir: string;\n    tags: string[];\n    createdAt: string;\n    updatedAt: string;\n    lastError: string | null;\n    result: TaskResult | null;\n    ownerSessionId: string | null;\n    source: \'tool\' | \'inbox\';\n    receiptId: string;\n    terminalSeq: number | null;\n    runs: RunRecord[];\n}',
+    declaration: 'export interface Task {\n    id: TaskId;\n    title: string;\n    prompt: string;\n    executor: string;\n    status: TaskStatus;\n    priority: number;\n    attempt: number;\n    maxAttempts: number;\n    backoffMs: number;\n    delayUntil: string | null;\n    timeoutMs: number;\n    outputDir: string;\n    tags: string[];\n    createdAt: string;\n    updatedAt: string;\n    lastError: string | null;\n    result: TaskResult | null;\n    ownerSessionId: string | null;\n    source: \'tool\' | \'inbox\';\n    receiptId: string;\n    terminalSeq: number | null;\n    runs: RunRecord[];\n    dismissed: boolean;\n}',
   },
   {
     name: 'TaskId',
@@ -4461,7 +4470,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TaskSummary',
-    declaration: 'export interface TaskSummary {\n    id: TaskId;\n    title: string;\n    executor: string;\n    status: TaskStatus;\n    priority: number;\n    attempt: number;\n    maxAttempts: number;\n    createdAt: string;\n    updatedAt: string;\n    tags: string[];\n    ownerSessionId: string | null;\n}',
+    declaration: 'export interface TaskSummary {\n    id: TaskId;\n    title: string;\n    executor: string;\n    status: TaskStatus;\n    priority: number;\n    attempt: number;\n    maxAttempts: number;\n    createdAt: string;\n    updatedAt: string;\n    lastError: string | null;\n    tags: string[];\n    ownerSessionId: string | null;\n    dismissed: boolean;\n}',
   },
   {
     name: 'TerminalBackend',
