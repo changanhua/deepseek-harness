@@ -203,6 +203,20 @@ export interface QueueStats {
 export type ServiceState = 'running' | 'paused' | 'faulted'
 
 /**
+ * One registered executor as exposed to the model-facing tools. `enabled`
+ * reports the deployment gate for the built-in adapters; `toolAllowed` marks
+ * inbox-only executors that the model tools must refuse to submit.
+ */
+export interface QueueExecutorView {
+  /** Executor registry name tasks select with `executor`. */
+  name: string
+  /** Whether this deployment currently admits tasks for the executor. */
+  enabled: boolean
+  /** Whether the model-facing tools may submit this executor (`false` for `shell`). */
+  toolAllowed: boolean
+}
+
+/**
  * A pluggable executor. It only produces a fully-specified spawn request; the
  * scheduler is the sole spawn/terminate/waitForExit owner and passes the
  * attempt-scoped abort signal to constrain both `prepare` and the eventual

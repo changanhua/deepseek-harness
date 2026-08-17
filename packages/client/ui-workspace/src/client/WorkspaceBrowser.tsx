@@ -741,6 +741,7 @@ function SearchResults({
 export function WorkspaceBrowser({
   wide,
   expandSidebar,
+  setActiveModule,
   useSessions,
   useWorkspaces,
   useStore,
@@ -767,6 +768,13 @@ export function WorkspaceBrowser({
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
   const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
+  // Opening a session row (including the already-current row) always returns
+  // the center column to the conversation; the module ring stays put only
+  // while no session selection is made.
+  const openSession = (sessionId: SessionId): void => {
+    setActiveModule('conversation')
+    open(sessionId)
+  }
   const groupBy = useStore(s => s.groupBy)
   const orderBy = useStore(s => s.orderBy)
   const groupExpansion = useStore(s => s.groupExpansion)
@@ -1110,7 +1118,7 @@ export function WorkspaceBrowser({
           ? (
             <SearchResults
               useSessions={useSessions}
-              open={open}
+              open={openSession}
               workspaces={workspaces}
               archivedSessionIds={archivedSessionIds}
               query={normalizedQuery}
@@ -1122,7 +1130,7 @@ export function WorkspaceBrowser({
           : groupBy === 'flat'
             ? (
               <FlatList
-                useSessions={useSessions} open={open} forkSession={forkSession}
+                useSessions={useSessions} open={openSession} forkSession={forkSession}
                 onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
                 archivedSessionIds={archivedSessionIds}
                 orderBy={orderBy}
@@ -1148,7 +1156,7 @@ export function WorkspaceBrowser({
                 setSessionOrder={actions.setSessionOrder}
                 archivedSessionIds={archivedSessionIds}
                 startSession={startSession}
-                open={open}
+                open={openSession}
                 insertWorkspaceBefore={insertWorkspaceBefore}
                 insertSessionBefore={insertSessionBefore}
                 orderBy={orderBy}

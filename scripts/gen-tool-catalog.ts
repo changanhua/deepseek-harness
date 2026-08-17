@@ -7,7 +7,8 @@
  */
 
 import { globSync, readFileSync, writeFileSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { basename, join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -516,7 +517,12 @@ const TOOL_PACKAGES: ToolPackage[] = [
     writes: ['tool/call', 'tool/result', 'user/message notification candidates via agent/pre-step', 'task-queue/* notification acks'],
     async mount(ctx) {
       await ctx.plugin(SessionStore)
-      await ctx.plugin(LocalTaskQueue, { executors: {} })
+      // `queueRoot` has no runtime default; the generator boot must pass an
+      // explicit disposable root instead of depending on the user's DSH_HOME.
+      await ctx.plugin(LocalTaskQueue, {
+        executors: {},
+        queueRoot: join(tmpdir(), 'dsh-tool-catalog', 'task-queue'),
+      })
       await ctx.plugin(ToolTaskQueue)
     },
     note:

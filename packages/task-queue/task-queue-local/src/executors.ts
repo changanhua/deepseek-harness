@@ -14,7 +14,7 @@
  * @module @deepseek-ai/dsh-task-queue-local/executors
  */
 
-import { mkdir } from 'node:fs/promises'
+import { mkdir, stat } from 'node:fs/promises'
 import type { SubprocessSpawnSpec, SubprocessCollect } from '@deepseek-ai/dsh-subprocess'
 import type { ExecutorAdapter, Task } from '@deepseek-ai/dsh-task-queue'
 import { DIR_MODE } from './paths.ts'
@@ -70,6 +70,7 @@ export function builtinAdapters(commands: ExecutorCommands): Map<string, Executo
     ['codex', codexAdapter(commands.codex ?? 'codex')],
     ['opencode', opencodeAdapter(commands.opencode ?? 'opencode')],
     ['arkcli', arkcliAdapter(commands.arkcli ?? 'arkcli')],
+    ['node', nodeAdapter(commands.node ?? 'node')],
     ['shell', shellAdapter()],
   ])
 }
@@ -80,6 +81,7 @@ export interface ExecutorCommands {
   codex?: string
   opencode?: string
   arkcli?: string
+  node?: string
 }
 
 /** `claude -p <prompt> --output-format json --add-dir <outputDir>`. */
@@ -102,6 +104,55 @@ function opencodeAdapter(command: string): ExecutorAdapter {
 /** `arkcli +chat <prompt>` (user profile). */
 function arkcliAdapter(command: string): ExecutorAdapter {
   return cliAdapter((_task, prompt, _cwd) => [command, '+chat', prompt])
+}
+
+/**
+ * `node` executes a local Node script taken from the task prompt's JSON
+ * `{ script: string, args?: string[] }`. The script must be an existing file
+ * and `cwd` is the task's output directory. Model tools may submit it once
+ * the deployment enables the executor; it shares the deployment gate with the
+ * other built-ins.
+ */
+function nodeAdapter(command: string): ExecutorAdapter {
+  return {
+    async prepare(task, _run, signal): Promise<SubprocessSpawnSpec> {
+      void signal
+      let script: string | undefined
+      let args: string[] = []
+      try {
+        const parsed: unknown = JSON.parse(task.prompt)
+        if (typeof parsed === 'object' && parsed !== null) {
+          const candidate = (parsed as { script?: unknown; args?: unknown }).script
+          if (typeof candidate === 'string' && candidate.length > 0) script = candidate
+          const argCandidate = (parsed as { args?: unknown }).args
+          if (Array.isArray(argCandidate) && argCandidate.every(x => typeof x === 'string')) {
+            args = argCandidate as string[]
+          } else if (argCandidate !== undefined) {
+            throw new Error('args must be a string array')
+          }
+        }
+      } catch {
+        script = undefined
+      }
+      if (script === undefined) {
+        throw new Error('node executor requires task.prompt JSON { script: string, args?: string[] }')
+      }
+      try {
+        const statResult = await stat(script)
+        if (!statResult.isFile()) throw new Error('script is not a file')
+      } catch (error) {
+        throw new Error(`node executor script unavailable: ${script}`, { cause: error })
+      }
+      const cwd = task.outputDir
+      if (cwd !== '') await ensureOutputDir(cwd)
+      return {
+        argv: [command, script, ...args],
+        cwd: cwd || process.cwd(),
+        stdio: stdio(),
+        graceMs: DEFAULT_GRACE_MS,
+      }
+    },
+  }
 }
 
 /**

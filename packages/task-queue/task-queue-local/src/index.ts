@@ -14,13 +14,13 @@ import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { randomUUID } from 'node:crypto'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type {
   SubprocessHandle, SubprocessOutcome, SubprocessSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import { TaskQueue, TaskId, RunId, NotificationId } from '@deepseek-ai/dsh-task-queue'
 import type {
-  Task, TaskStatus, EnqueueSpec, ListFilter, TaskSummary, QueueStats, ServiceState,
+  Task, TaskStatus, EnqueueSpec, ListFilter, TaskSummary, QueueExecutorView, QueueStats, ServiceState,
   ExecutorAdapter, RunRecord, FoldedQueue, ChangeRecord, NotificationRecord,
   TaskResult,
 } from '@deepseek-ai/dsh-task-queue'
@@ -29,7 +29,7 @@ import {
   requestStop, settleCanceled, cancelPending, retryTask, recoverTaskAfterCrash,
   isTerminalStatus, applyChange,
 } from '@deepseek-ai/dsh-task-queue'
-import { resolveQueueRoot, runLogPath, DIR_MODE, FILE_MODE } from './paths.ts'
+import { runLogPath, DIR_MODE, FILE_MODE } from './paths.ts'
 import { TaskQueueStore, FaultedError } from './store.ts'
 import { runMutationTransaction } from './fifo.ts'
 import { scanInbox, quarantineInboxFile } from './inbox.ts'
@@ -51,8 +51,8 @@ export interface Config {
   maxConcurrentPerExecutor?: number
   /** Scheduler tick interval in milliseconds. */
   intervalMs?: number
-  /** Queue root directory; defaults to `$DSH_HOME/task-queue`. */
-  queueRoot?: string
+  /** Queue root directory; the composing row resolves it explicitly, for example `dshHomePath('task-queue')`. */
+  queueRoot: string
   /** Per-executor enablement; a disabled executor rejects admission. */
   executors?: Record<string, {
     /** Whether this executor may run tasks. */
@@ -61,7 +61,7 @@ export interface Config {
 }
 
 /** Config with every optional field defaulted (schemastery output shape). */
-export type ResolvedConfig = Required<Pick<Config, 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs'>> & Config
+export type ResolvedConfig = Required<Pick<Config, 'queueRoot' | 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs'>> & Config
 
 /**
  * Durable host-plane task queue backend. Composes the segment store, the
@@ -70,6 +70,8 @@ export type ResolvedConfig = Required<Pick<Config, 'maxConcurrent' | 'maxConcurr
  * only owner of live `SubprocessHandle`s.
  */
 export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
+  static inject = ['subprocess']
+
   static Config: z<Config> = z.object({
     maxConcurrent: z.number().step(1).min(1).default(DEFAULT_MAX_CONCURRENT),
     maxConcurrentPerExecutor: z.number().step(1).min(1).default(DEFAULT_MAX_CONCURRENT_PER_EXECUTOR),
@@ -84,6 +86,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   private readonly scheduler: TaskScheduler
   private readonly liveHandles = new Map<string, SubprocessHandle>()
   private readonly stopping = new Set<string>()
+  private readonly bootPromise: Promise<void>
 
   private folded: FoldedQueue = { tasksById: new Map(), notificationsById: new Map(), lastSeq: 0 }
   private nextSeq = 1
@@ -101,8 +104,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     this.maxConcurrentPerExecutor = config.maxConcurrentPerExecutor
     this.intervalMs = config.intervalMs
 
-    const root = config.queueRoot ?? resolveQueueRoot(process.env.DSH_HOME)
-    this.store = new TaskQueueStore(root)
+    this.store = new TaskQueueStore(config.queueRoot)
     this.enabledExecutors = new Set(
       Object.entries(config.executors ?? {})
         .filter(([, cfg]) => cfg.enabled === true)
@@ -110,10 +112,12 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     )
     this.adapters = builtinAdapters({})
     this.scheduler = new TaskScheduler(this)
+    this.bootPromise = this.boot()
 
     ctx.effect(() => {
-      void this.boot()
-      this.scheduler.start()
+      void this.bootPromise.then(() => {
+        if (!this.disposed) this.scheduler.start()
+      })
       return () => {
         this.disposed = true
         this.scheduler.stop()
@@ -235,6 +239,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   /* -------------------------------------------------------------- ingress -- */
 
   async enqueueFromTool(spec: EnqueueSpec): Promise<TaskId> {
+    await this.bootPromise
     this.assertAdmitting()
     if (spec.executor === 'shell') throw new Error('shell executor is not allowed from tools')
     this.assertExecutorEnabled(spec.executor)
@@ -287,8 +292,9 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   /* -------------------------------------------------------------- control -- */
 
   async cancel(id: TaskId): Promise<'canceled' | 'stopping'> {
+    await this.bootPromise
     this.assertAdmitting()
-    return this.mutate(async () => {
+    const outcome = await this.mutate(async () => {
       const task = this.folded.tasksById.get(id)
       if (task === undefined) throw new Error(`unknown task ${id}`)
       if (isTerminalStatus(task.status)) return 'canceled' as const
@@ -303,9 +309,27 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
       await this.commit(changeFor(this.nextSeq, stopping))
       return 'stopping' as const
     })
+    // The cancel intent is persisted; now actually stop the live process so it
+    // does not keep running (and keep occupying a concurrency slot) until it
+    // ends on its own. settle() then finalizes stopping→canceled once the
+    // terminated handle's `done` fires. Without this terminate() the subprocess
+    // would run to completion — e.g. still producing its output file — despite
+    // the user having canceled it.
+    if (outcome === 'stopping') {
+      const handle = this.liveHandles.get(id)
+      if (handle !== undefined) {
+        // terminate() is void, idempotent, and never throws (it only begins the
+        // SIGTERM→grace→SIGKILL escalation). The eventual stopping→canceled
+        // transition happens in settle() when the terminated handle's `done`
+        // fires; we do not await here — cancel returns 'stopping' immediately.
+        try { handle.terminate() } catch { /* best-effort */ }
+      }
+    }
+    return outcome
   }
 
   async retry(id: TaskId): Promise<TaskId> {
+    await this.bootPromise
     this.assertAdmitting()
     return this.mutate(async () => {
       const task = this.folded.tasksById.get(id)
@@ -341,6 +365,15 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     }
   }
 
+  listExecutors(): QueueExecutorView[] {
+    return [...this.adapters.keys()].sort().map(name => ({
+      name,
+      enabled: this.enabledExecutors.has(name),
+      // `shell` is the only inbox-only built-in: tools must never submit it.
+      toolAllowed: name !== 'shell',
+    }))
+  }
+
   pause(): void {
     if (this.serviceState === 'running') this.serviceState = 'paused'
     else throw new Error(`cannot pause from ${this.serviceState}`)
@@ -352,6 +385,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   }
 
   async ackNotification(notificationId: NotificationId, messageId: string): Promise<void> {
+    await this.bootPromise
     this.assertAdmitting()
     await this.mutate(async () => {
       const existing = this.folded.notificationsById.get(notificationId)
@@ -493,7 +527,21 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     await this.writeRunLog(task.id, task.attempt, renderRunLog(stdout, stderr))
     await this.mutate(async () => {
       const current = this.folded.tasksById.get(task.id)
-      if (current === undefined || current.status !== 'running') return
+      if (current === undefined) return
+      if (current.status === 'stopping') {
+        // Canceled while running: the process has now ended, so finalize as
+        // canceled. Without this, `settle` would early-return on the
+        // `status !== 'running'` guard below and the task would stick in
+        // `stopping` forever (the cancel intent was persisted but never
+        // settled). The outcome's exit code/signal is irrelevant here — a
+        // cancel is a cancel regardless of how the terminated process exited.
+        const canceled = settleCanceled(current, new Date().toISOString())
+        await this.commitTerminal(canceled)
+        this.ctx.emit('task-queue/canceled', { taskId: task.id })
+        this.stopping.delete(task.id)
+        return
+      }
+      if (current.status !== 'running') return
       if (outcome.exitCode === 0) {
         const result: TaskResult = { exitCode: 0, signal: null, durationMs: 0 }
         const succeeded = settleSucceeded(current, result, new Date().toISOString())
@@ -562,8 +610,14 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
 
   async writeRunLog(taskId: string, attempt: number, body: string): Promise<void> {
     const path = runLogPath(this.store.paths.root, taskId, attempt)
-    await mkdir(join(this.store.paths.root, 'runs'), { recursive: true, mode: DIR_MODE }).catch(() => {})
-    await writeFile(path, body, { mode: FILE_MODE }).catch(() => {})
+    await mkdir(dirname(path), { recursive: true, mode: DIR_MODE }).catch((error) => {
+      // Best-effort by contract, but never silent: surface the failure on stderr
+      // so the host log can explain a missing run log.
+      console.error(`task-queue: cannot create run-log dir for ${path}: ${String(error)}`)
+    })
+    await writeFile(path, body, { mode: FILE_MODE }).catch((error) => {
+      console.error(`task-queue: cannot write run log ${path}: ${String(error)}`)
+    })
   }
 
   halted(): boolean {

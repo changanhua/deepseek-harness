@@ -1790,6 +1790,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'a disposer removing exactly this registration.',
       },
       {
+        signature: 'abstract listExecutors(): QueueExecutorView[]',
+        description: 'List registered executors with their deployment gates. The model-facing `task_queue_executors` tool projects this without exposing adapter code.',
+        parameters: [],
+        returns: 'one view per registered executor, name order.',
+      },
+      {
         signature: 'abstract pause(): void',
         description: 'Pause the queue (running → paused only).',
         parameters: [],
@@ -3732,6 +3738,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PruneResult',
     declaration: 'export interface PruneResult {\n    readonly pruned: readonly PrunedEntry[];\n    readonly charsRemoved: number;\n}',
+  },
+  {
+    name: 'QueueExecutorView',
+    declaration: 'export interface QueueExecutorView {\n    name: string;\n    enabled: boolean;\n    toolAllowed: boolean;\n}',
   },
   {
     name: 'QueueStats',

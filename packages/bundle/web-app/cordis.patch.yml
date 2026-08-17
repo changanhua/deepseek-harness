@@ -116,7 +116,7 @@
       name: '@deepseek-ai/dsh-host-webserver'
       inject: [webStartup]
       config:
-        host: !!js ctx.webStartup.host ?? '127.0.0.1'
+        host: !!js ctx.webStartup.host ?? '0.0.0.0'
         port: !!js ctx.webStartup.port ?? 3080
 
     # Web glue owned by this bundle: resolves the built frontend dist (an
@@ -272,6 +272,12 @@
 
     - id: ui-trajectory
       name: '@deepseek-ai/dsh-client-ui-trajectory'
+
+    # Queue module: the sidebar module entry (live status badge) and the
+    # center-column Queue workspace over the taskQueue Remote. The Remote row
+    # lives in dsh-base's host plane beside the queue backend.
+    - id: ui-task-queue
+      name: '@deepseek-ai/dsh-client-ui-task-queue'
 
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #

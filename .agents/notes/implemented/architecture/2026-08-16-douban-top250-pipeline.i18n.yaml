@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-16-douban-top250-pipeline.md
+2026-08-16-douban-top250-pipeline.md: f64cb2b165466a1db4054aeef87ccfeccdf6dceb
+2026-08-16-douban-top250-pipeline.zh.md: 3be80f1437390f32c65f1e157801243b2e36915f

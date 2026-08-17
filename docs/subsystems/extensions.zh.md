@@ -20,7 +20,11 @@ Registry and cross-page router behind the two model-facing inspect tools.
 
 ```ts cordis-catalog
 /**
- * Register one Host provider.
+ * Register one Host provider. Provider ids are process-global and first-wins:
+ * the same provider directory is registered by every composition that mounts
+ * the cordis tool package (each agent preset carries its own row), and the
+ * catalogs it answers with are static or keyed by the QUERYING agent, so a
+ * duplicate registration carries no additional information.
  * @param registration - manifest and local query handler.
  * @returns idempotent disposer.
  */

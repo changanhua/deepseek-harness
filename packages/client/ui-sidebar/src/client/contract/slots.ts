@@ -3,9 +3,10 @@
  * layout-owned `sidebar` slot, plus the holes this shell declares. The shell
  * owns column geometry (fold state machine, brand row, New Session);
  * everything between the section header and the list bottom is the
- * `sidebar.workspaces` registrant's (ui-workspace), and the foot is the
- * `sidebar.settings` registrant's (ui-settings), followed by optional footer
- * actions in `sidebar.footer.action`.
+ * `sidebar.workspaces` registrant's (ui-workspace), first-level module
+ * entries (Queue and future module workspaces) stack in `sidebar.modules`
+ * above the foot, and the foot is the `sidebar.settings` registrant's
+ * (ui-settings), followed by optional footer actions in `sidebar.footer.action`.
  */
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls ui-layout's SlotMap merge (the 'sidebar' entry) into every
@@ -22,6 +23,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * registers the browser.
      */
     'sidebar.workspaces': { kind: 'single'; scope: 'root'; owner: SidebarSectionOwnerProps }
+    /**
+     * First-level module entries between the session browsing region and the
+     * foot (the Queue workspace lives here). Declared by this package's
+     * 'sidebar' entry; each entry receives the column state plus the center
+     * module-ring state it can switch (`setActiveModule`).
+     */
+    'sidebar.modules': { kind: 'list'; scope: 'root'; owner: SidebarModuleOwnerProps }
     /**
      * The settings seat at the sidebar foot. Declared by this package's
      * 'sidebar' entry; ui-settings registers its trigger row + modal panel.
@@ -45,6 +53,23 @@ export interface SidebarSectionOwnerProps {
   wide: boolean
   /** Rail icons request expansion; the browser rides the wide flip for focus. */
   expandSidebar: () => void
+  /** Switch the center column back to a module view; the browser calls it with 'conversation' whenever a session row is opened. */
+  setActiveModule: (module: string) => void
+}
+
+/**
+ * Owner share of one first-level module entry: the column display state plus
+ * the center module-ring state the shell forwards from the frame. Entries
+ * highlight on `activeModule === their id` and switch the center column via
+ * `setActiveModule`.
+ */
+export interface SidebarModuleOwnerProps {
+  /** Whether the sidebar renders wide content (false = 56px rail). */
+  wide: boolean
+  /** The center column's active module-view id ('conversation' or a module id). */
+  activeModule: string
+  /** Switch the center column to the module view with this id. */
+  setActiveModule: (module: string) => void
 }
 
 /**
@@ -85,5 +110,5 @@ export type SidebarRootInjected = {
  */
 export type SidebarRootComponentProps =
   PropsRuntime<'sidebar'>
-  & PropsRenderSlots<'sidebar.workspaces' | 'sidebar.settings' | 'sidebar.footer.action'>
+  & PropsRenderSlots<'sidebar.workspaces' | 'sidebar.modules' | 'sidebar.settings' | 'sidebar.footer.action'>
   & SidebarRootInjected & PropsLocale<'sidebar'>

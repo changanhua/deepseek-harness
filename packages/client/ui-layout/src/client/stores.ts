@@ -14,13 +14,19 @@ import {
 } from './columns.ts'
 
 /**
- * Layout store state: panel width preferences in px (0 = closed), plus the
+ * Layout store state: panel width preferences in px (0 = closed), the
  * narrow-viewport pair — `narrow` mirrors AppFrame's breakpoint reading
  * (viewport < SIDEBAR_AUTO_COLLAPSE) so toggleSidebar can pick semantics, and
  * `narrowExpanded` is the manual override that re-expands the auto-collapsed
- * sidebar over the squeezed center without rewriting the width preference.
+ * sidebar over the squeezed center without rewriting the width preference —
+ * and `activeModule`, the center column's active module-view id. The
+ * conversation is not a `shell.view` entry; its dedicated slot stays mounted
+ * (hidden while another module is active) so chat state survives a switch.
  */
-type LayoutState = { sidebar: number; details: number; narrow: boolean; narrowExpanded: boolean }
+type LayoutState = { sidebar: number; details: number; narrow: boolean; narrowExpanded: boolean; activeModule: string }
+
+/** Default center module: the conversation surface. */
+export const DEFAULT_MODULE = 'conversation'
 
 /**
  * Annotation twin of the actions literal below (the export needs a declared
@@ -33,6 +39,7 @@ type LayoutActions = {
   setNarrow: (draft: LayoutState, narrow: boolean) => void
   openDetails: (draft: LayoutState) => void
   closeDetails: (draft: LayoutState) => void
+  setActiveModule: (draft: LayoutState, module: string) => void
 }
 
 /**
@@ -47,7 +54,7 @@ type LayoutActions = {
  */
 export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
   const handle = defineStore({
-    init: (): LayoutState => ({ sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false }),
+    init: (): LayoutState => ({ sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, activeModule: DEFAULT_MODULE }),
     actions: {
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
       setDetails: (d, px: number) => { d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX) },
@@ -66,6 +73,7 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       },
       openDetails: (d) => { if (d.details === 0) d.details = DETAILS_DEFAULT },
       closeDetails: (d) => { d.details = 0 },
+      setActiveModule: (d, module: string) => { d.activeModule = module },
     },
   })
   return handle

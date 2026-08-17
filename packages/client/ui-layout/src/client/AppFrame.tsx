@@ -15,12 +15,13 @@ import type { ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
 import type { createLayoutStore } from './stores.ts'
+import { DEFAULT_MODULE } from './stores.ts'
 import css from './AppFrame.module.css'
 
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay' | 'shell.view'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
 
 /** Center column grid item (session-body building block). */
@@ -91,10 +92,12 @@ export function AppFrame({
   renderSlot,
 }: AppFrameProps) {
   const panels = useStore(s => s)
+  const activeModule = useStore(s => s.activeModule)
   const detailsSession = useSessions((s) => {
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
+  const currentSession = useSessions(s => s.current)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const [viewport, setViewport] = useState(() => window.innerWidth)
 
@@ -106,6 +109,20 @@ export function AppFrame({
     }
     lastSession.current = detailsSession
   }, [actions, detailsSession])
+
+  // Module ring: picking a different session (or a blank one becoming
+  // current) means the user is in a session context again — return the center
+  // column to the conversation. Opening a module view never changes the
+  // session, so the module stays until a session selection flips it back.
+  const lastCurrentSession = useRef(currentSession)
+  useLayoutEffect(() => {
+    if (lastCurrentSession.current !== currentSession
+      && lastCurrentSession.current !== undefined && currentSession !== undefined
+      && activeModule !== DEFAULT_MODULE) {
+      actions.setActiveModule(DEFAULT_MODULE)
+    }
+    lastCurrentSession.current = currentSession
+  }, [actions, currentSession, activeModule])
 
   // Track the frame's own box (not the window): rAF-throttled ResizeObserver.
   useEffect(() => {
@@ -175,10 +192,13 @@ export function AppFrame({
             sidebar keeps the mounted slot at the compact-rail width, and the
             component sees its rendered state as owner params decided here
             (collapsed follows the resolved rail, so a derived auto-collapse
-            renders the rail UI too). */}
+            renders the rail UI too). The module ring state rides along for
+            the sidebar's module entries. */}
         {renderSlot('sidebar', {
           collapsed: sidebarCollapsed,
           width: cols.sidebar,
+          activeModule,
+          setActiveModule: actions.setActiveModule,
         })}
       </div>
       <>
@@ -186,8 +206,17 @@ export function AppFrame({
             paint — no loading gate: a bare status line reads worse than
             the shell's own pending rendering. The conversation
             is session-maybe; the strict details entry naturally renders
-            empty while no session is current. */}
-        <CenterColumn>{renderSlot('conversation', {})}</CenterColumn>
+            empty while no session is current. The conversation pane stays
+            mounted under the active module view (chat state survives the
+            switch); the module ring renders only the active entry. */}
+        <CenterColumn>
+          <div className={css.modulePane} hidden={activeModule !== DEFAULT_MODULE}>
+            {renderSlot('conversation', {})}
+          </div>
+          {activeModule !== DEFAULT_MODULE && (
+            <div className={css.modulePane}>{renderSlot('shell.view', {}, { only: activeModule })}</div>
+          )}
+        </CenterColumn>
         <DetailsColumn>{renderSlot('details', {})}</DetailsColumn>
       </>
       <div className={css.overlayLayer} data-shell-overlay>

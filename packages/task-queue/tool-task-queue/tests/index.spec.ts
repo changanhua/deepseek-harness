@@ -69,6 +69,7 @@ function makeQueue(overrides: Partial<Pick<TaskQueue, 'list' | 'get' | 'stats'>>
     },
     listNotifications() { return pendingNotifications },
     registerExecutor() { return () => {} },
+    listExecutors() { return [{ name: 'codex', enabled: true, toolAllowed: true }] },
     pause() {},
     resume() {},
     ...overrides,
@@ -152,6 +153,15 @@ describe('validateEnqueueSpec', () => {
 })
 
 describe('tool schema validation (through execute)', () => {
+  it('task_queue_executors lists the backend executors with gates', async () => {
+    const queue = makeQueue()
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const executors = kit.tools.find(t => t.name === 'task_queue_executors')!
+    await expect(executors.execute({}, {} as never)).resolves.toEqual({
+      executors: [{ name: 'codex', enabled: true, toolAllowed: true }],
+    })
+  })
+
   it('task_queue_enqueue rejects shell and enqueues sane specs', async () => {
     const queue = makeQueue()
     const kit = createToolTaskQueue(makeDeps(queue.taskQueue))

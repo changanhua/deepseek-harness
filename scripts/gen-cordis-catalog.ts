@@ -519,6 +519,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   TaskResult: 'task-queue task model is owned by packages/task-queue/task-queue/README.md',
   RunRecord: 'task-queue task model is owned by packages/task-queue/task-queue/README.md',
   QueueStats: 'task-queue aggregate vocabulary is owned by packages/task-queue/task-queue/README.md',
+  QueueExecutorView: 'task-queue executor-gate vocabulary is owned by packages/task-queue/task-queue/README.md',
   ExecutorAdapter: 'task-queue executor vocabulary is owned by packages/task-queue/task-queue/README.md',
   NotificationRecord: 'task-queue outbox vocabulary is owned by packages/task-queue/task-queue/README.md',
   ChangeRecord: 'task-queue change-log vocabulary is owned by packages/task-queue/task-queue/README.md',

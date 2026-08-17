@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type {
-  SidebarFooterActionOwnerProps, SidebarRootComponentProps, SidebarSectionOwnerProps,
-  SidebarSettingsOwnerProps,
+  SidebarFooterActionOwnerProps, SidebarModuleOwnerProps, SidebarRootComponentProps,
+  SidebarSectionOwnerProps, SidebarSettingsOwnerProps,
 } from '../src/client/contract/slots.ts'
 import { SidebarRoot } from '../src/client/SidebarRoot.tsx'
 import { en } from '../src/client/locales.ts'
@@ -24,18 +24,21 @@ const neverHook = (() => { throw new Error('shell must not read global hooks') }
 function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; width?: number } = {}) {
   const startSession = vi.fn()
   const toggleSidebar = vi.fn()
+  const setActiveModule = vi.fn()
   let regionOwner: SidebarSectionOwnerProps | undefined
+  let modulesOwner: SidebarModuleOwnerProps | undefined
   let settingsOwner: SidebarSettingsOwnerProps | undefined
   let footerActionOwner: SidebarFooterActionOwnerProps | undefined
-  let current = { collapsed, width }
+  let current = { collapsed, width, activeModule: 'conversation' }
   const root = () => (
     <SidebarRoot
       collapsed={current.collapsed} width={current.width}
+      activeModule={current.activeModule} setActiveModule={setActiveModule}
       useSessions={neverHook} useWorkspaces={neverHook}
       startSession={startSession} toggleSidebar={toggleSidebar} t={t}
       renderSlot={((
         key: string,
-        owner: SidebarFooterActionOwnerProps | SidebarSectionOwnerProps | SidebarSettingsOwnerProps,
+        owner: SidebarFooterActionOwnerProps | SidebarModuleOwnerProps | SidebarSectionOwnerProps | SidebarSettingsOwnerProps,
       ) => {
         if (key === 'sidebar.settings') {
           settingsOwner = owner
@@ -44,6 +47,10 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
         if (key === 'sidebar.footer.action') {
           footerActionOwner = owner
           return <div data-testid="footer-action-seat" data-wide={owner.wide} />
+        }
+        if (key === 'sidebar.modules') {
+          modulesOwner = owner as SidebarModuleOwnerProps
+          return <div data-testid="modules-seat" data-wide={owner.wide} />
         }
         regionOwner = owner as SidebarSectionOwnerProps
         return <div data-testid="region" data-wide={owner.wide} />
@@ -54,9 +61,14 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
   return {
     startSession,
     toggleSidebar,
+    setActiveModule,
     regionOwner: () => {
       if (regionOwner === undefined) throw new Error('region owner not rendered')
       return regionOwner
+    },
+    modulesOwner: () => {
+      if (modulesOwner === undefined) throw new Error('modules owner not rendered')
+      return modulesOwner
     },
     settingsOwner: () => {
       if (settingsOwner === undefined) throw new Error('settings owner not rendered')
@@ -94,6 +106,17 @@ describe('SidebarRoot shell', () => {
     // Expanded: the request is a no-op (no accidental collapse).
     b.regionOwner().expandSidebar()
     expect(b.toggleSidebar).not.toHaveBeenCalled()
+  })
+
+  it('forwards the module-ring state to the module seat and switches through it', () => {
+    const b = mountShell()
+    expect(b.modulesOwner()).toEqual({ wide: true, activeModule: 'conversation', setActiveModule: b.setActiveModule })
+    b.modulesOwner().setActiveModule('queue')
+    expect(b.setActiveModule).toHaveBeenCalledWith('queue')
+    // A live frame update flows straight through on re-render.
+    b.rerender({ activeModule: 'queue' })
+    expect(b.modulesOwner().activeModule).toBe('queue')
+    expect(b.modulesOwner().wide).toBe(true)
   })
 
   it('keeps the region mounted through collapse and expands on its request', () => {

@@ -42,18 +42,6 @@ export function encodeSegment(raw: string): string {
   return out
 }
 
-/**
- * Resolve the queue root directory under `$DSH_HOME`, or throw when unset.
- * @param home - the `$DSH_HOME` value to root the queue under.
- * @returns the absolute `…/task-queue` root path.
- */
-export function resolveQueueRoot(home: string | undefined): string {
-  if (home === undefined || home === '') {
-    throw new Error('task-queue unavailable: $DSH_HOME is not set')
-  }
-  return join(home, 'task-queue')
-}
-
 /** All immediate sub-path names under the queue root. */
 export interface QueuePaths {
   root: string

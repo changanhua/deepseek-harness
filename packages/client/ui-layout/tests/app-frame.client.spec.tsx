@@ -16,7 +16,7 @@ import { useSyncExternalStore } from 'react'
 import { AppFrame } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import type { AppFrameProps } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import { SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
-import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
+import { createLayoutStore, DEFAULT_MODULE } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
 import type {
   SessionId, SessionListState, WorkspaceListState,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -216,7 +216,9 @@ describe('AppFrame', () => {
 
   it('sidebar slot receives live concession output as owner props', () => {
     const { slotCalls } = mountFrame()
-    expect(slotCalls.find(c => c.key === 'sidebar')!.props).toEqual({ collapsed: false, width: 280 })
+    expect(slotCalls.find(c => c.key === 'sidebar')!.props).toEqual({
+      collapsed: false, width: 280, activeModule: DEFAULT_MODULE, setActiveModule: expect.any(Function),
+    })
   })
 
   it('sidebar drag widens through rAF-batched pointer moves', () => {
@@ -258,7 +260,9 @@ describe('AppFrame', () => {
     expect(getByTestId('sidebar-content')).toBeTruthy()
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
     const lastSidebarCall = slotCalls.filter(c => c.key === 'sidebar').at(-1)!
-    expect(lastSidebarCall.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED })
+    expect(lastSidebarCall.props).toEqual({
+      collapsed: true, width: SIDEBAR_COLLAPSED, activeModule: DEFAULT_MODULE, setActiveModule: expect.any(Function),
+    })
   })
 
   it('viewport shrink triggers the concession chain via ResizeObserver', () => {
@@ -290,7 +294,9 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
     const { frame, slotCalls } = mountFrame()
     expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
-    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED })
+    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({
+      collapsed: true, width: SIDEBAR_COLLAPSED, activeModule: DEFAULT_MODULE, setActiveModule: expect.any(Function),
+    })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
   })
 

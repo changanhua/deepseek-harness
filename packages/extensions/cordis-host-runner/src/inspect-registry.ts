@@ -55,13 +55,17 @@ export class CordisInspectRegistryService extends Service {
   }
 
   /**
-   * Register one Host provider.
+   * Register one Host provider. Provider ids are process-global and first-wins:
+   * the same provider directory is registered by every composition that mounts
+   * the cordis tool package (each agent preset carries its own row), and the
+   * catalogs it answers with are static or keyed by the QUERYING agent, so a
+   * duplicate registration carries no additional information.
    * @param registration - manifest and local query handler.
    * @returns idempotent disposer.
    */
   register(registration: HostCordisInspectProviderRegistration): () => void {
     const manifest = validateManifest(registration.manifest)
-    if (this.providers.has(manifest.id)) throw new Error(`Host Cordis inspect provider "${manifest.id}" is already registered`)
+    if (this.providers.has(manifest.id)) return () => {}
     const stored = { ...registration, manifest }
     this.providers.set(manifest.id, stored)
     return () => {

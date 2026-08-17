@@ -9,7 +9,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import type {
   EnqueueSpec, ExecutorAdapter, ListFilter, NotificationId, NotificationRecord,
-  QueueStats, Task, TaskId, TaskStatus, TaskSummary,
+  QueueExecutorView, QueueStats, Task, TaskId, TaskStatus, TaskSummary,
 } from './types.ts'
 
 export type {
@@ -18,6 +18,7 @@ export type {
   ExecutorAdapter,
   ListFilter,
   NotificationRecord,
+  QueueExecutorView,
   QueueStats,
   RunRecord,
   ServiceState,
@@ -218,6 +219,13 @@ export abstract class TaskQueue extends Service {
    * @returns a disposer removing exactly this registration.
    */
   abstract registerExecutor(name: string, adapter: ExecutorAdapter): () => void
+
+  /**
+   * List registered executors with their deployment gates. The model-facing
+   * `task_queue_executors` tool projects this without exposing adapter code.
+   * @returns one view per registered executor, name order.
+   */
+  abstract listExecutors(): QueueExecutorView[]
 
   /**
    * Pause the queue (running → paused only).

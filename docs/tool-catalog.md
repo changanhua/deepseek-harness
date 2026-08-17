@@ -36,7 +36,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message` | `ctx.tools`, `ctx.subagents`, `ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries). |
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`, `ctx.systemPrompt`, `a live continuable in-process child Agent` | `tool/call`, `tool/result`, `a user-role message in the direct parent session` | - | Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
-| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_enqueue`, `task_queue_enqueue_batch`, `task_queue_list`, `task_queue_retry`, `task_queue_stats`, `task_queue_status` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessions (notification finalizer flush)`, `ctx.taskQueue (optional host service)` | `tool/call`, `tool/result`, `user/message notification candidates via agent/pre-step`, `task-queue/* notification acks` | - | The durable cross-session task-queue controller: seven `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools. |
+| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_enqueue`, `task_queue_enqueue_batch`, `task_queue_executors`, `task_queue_list`, `task_queue_retry`, `task_queue_stats`, `task_queue_status` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessions (notification finalizer flush)`, `ctx.taskQueue (optional host service)` | `tool/call`, `tool/result`, `user/message notification candidates via agent/pre-step`, `task-queue/* notification acks` | - | The durable cross-session task-queue controller: seven `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
@@ -1727,7 +1727,7 @@ Enqueue one durable, cross-session task on the host task queue. Use the queue fo
         },
         "executor": {
           "type": "string",
-          "description": "Registered executor name; never 'shell' (inbox-only)."
+          "description": "Registered executor name. Built-ins: claude/codex/opencode/arkcli (CLI coding agents) and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
         },
         "priority": {
           "type": "integer",
@@ -1805,7 +1805,7 @@ Enqueue up to 200 tasks in one batch. Use for 3 or more independent tasks. Rejec
           },
           "executor": {
             "type": "string",
-            "description": "Registered executor name; never 'shell' (inbox-only)."
+            "description": "Registered executor name. Built-ins: claude/codex/opencode/arkcli (CLI coding agents) and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
           },
           "priority": {
             "type": "integer",
@@ -1854,6 +1854,19 @@ Enqueue up to 200 tasks in one batch. Use for 3 or more independent tasks. Rejec
   "required": [
     "specs"
   ]
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_executors`
+
+List the executors this task queue has registered, with whether each is enabled for admission and whether the model tools may submit it. Call this before enqueueing to pick a valid executor.
+
+```json
+{
+  "type": "object",
+  "properties": {}
 }
 ```
 

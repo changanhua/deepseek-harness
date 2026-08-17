@@ -7,8 +7,10 @@
  * same top-down order) on one fade that ends with the slide. The bottom-pinned
  * settings control only fades. The workspace/session browsing region between
  * the New Session button and the foot is the `sidebar.workspaces` registrant's,
- * and the foot holds `sidebar.settings` plus `sidebar.footer.action`; the shell
- * hands them the wide flag (plus an expand request callback for the browser).
+ * first-level module entries stack in `sidebar.modules` above the foot, and
+ * the foot holds `sidebar.settings` plus `sidebar.footer.action`; the shell
+ * hands them the wide flag (plus an expand request callback for the browser)
+ * and forwards the frame's module-ring state to the module entries.
  *
  * The column also owns whether the scroll regions nested in it draw a
  * scrollbar at all: the shell tracks the pointer and rebinds ui-theme's
@@ -44,6 +46,8 @@ const SCROLLBAR_LINGER_MS = 2000
 export function SidebarRoot({
   collapsed,
   width,
+  activeModule,
+  setActiveModule,
   startSession,
   toggleSidebar,
   t,
@@ -175,7 +179,14 @@ export function SidebarRoot({
         {renderSlot('sidebar.workspaces', {
           wide,
           expandSidebar: () => { if (collapsed) toggleSidebar() },
+          setActiveModule,
         })}
+      </div>
+
+      {/* First-level module entries (Queue and future module workspaces) stack
+          above the foot; the frame's module-ring state rides straight through. */}
+      <div className={css.modulesArea}>
+        {renderSlot('sidebar.modules', { wide, activeModule, setActiveModule })}
       </div>
 
       {/* Footer actions stack above Settings in both sidebar widths. */}

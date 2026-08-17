@@ -95,6 +95,7 @@
     "@deepseek-ai/dsh-jobs-local": "workspace:^",
     "@deepseek-ai/dsh-task-queue": "workspace:^",
     "@deepseek-ai/dsh-task-queue-local": "workspace:^",
+    "@deepseek-ai/dsh-task-queue-remote": "workspace:^",
     "@deepseek-ai/dsh-tool-task-queue": "workspace:^",
     "@deepseek-ai/dsh-tool-call-timeout-policy": "workspace:^",
     "@deepseek-ai/dsh-token-meter": "workspace:^",

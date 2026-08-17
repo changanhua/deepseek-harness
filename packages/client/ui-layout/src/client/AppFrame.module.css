@@ -36,6 +36,24 @@
   overflow: hidden;
 }
 
+/* Module-view pane wrapper inside the center column: the conversation stays
+   mounted under a hidden pane so chat state survives a module switch, and the
+   active module view fills the same box. The flex column shape is preserved
+   for the occupant (it was the center column's direct flex child before the
+   module ring existed). */
+.modulePane {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modulePane[hidden] {
+  display: none;
+}
+
 .detailsCol {
   min-width: 0;
   overflow: hidden;

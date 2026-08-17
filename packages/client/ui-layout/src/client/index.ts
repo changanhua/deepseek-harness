@@ -1,11 +1,13 @@
 /**
  * Layout plugin, browser half: one register() call contributes AppFrame into
  * the runtime's built-in 'root' slot and, in the same breath, declares the
- * four child slots (declaration = exclusive render authority), seats the
- * layout store (panel geometry), and wires the panel-action service face.
- * ctx.layout is the cross-plugin panel-action contract; navigation state lives
- * with the runtime sessions service. A second effect seats the theme
- * presenter, which projects ctx.theme snapshots onto document.body.
+ * five child slots (declaration = exclusive render authority), seats the
+ * layout store (panel geometry + active module view), and wires the
+ * panel-action service face. ctx.layout is the cross-plugin panel-action
+ * contract; module-view selection lives in the layout store (the frame owns
+ * the center column's module ring), session selection with the runtime
+ * sessions service. A second effect seats the theme presenter, which projects
+ * ctx.theme snapshots onto document.body.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
@@ -81,6 +83,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * `id` is added beside the shipped entries instead of replacing them.
      */
     'shell.overlay': { kind: 'list'; scope: 'root' }
+    /**
+     * The center column's module-view ring: one list entry per module
+     * workspace besides the conversation (which keeps its dedicated slot so it
+     * can stay mounted across a switch). The frame renders the entry whose
+     * registration `id` equals the layout store's `activeModule` — everything
+     * else in the ring unmounts, so a module view must rehydrate from its own
+     * host-backed store on mount. Register with a root-scoped entry carrying
+     * an `id` (e.g. `queue`); activating it is `setActiveModule(id)`.
+     */
+    'shell.view': { kind: 'list'; scope: 'root'; owner: ShellViewOwnerProps }
   }
 }
 
@@ -96,6 +108,10 @@ export interface SidebarOwnerProps {
   collapsed: boolean
   /** Rendered column width in px (SIDEBAR_COLLAPSED when collapsed). */
   width: number
+  /** The center column's active module-view id (layout store). */
+  activeModule: string
+  /** Switch the center column to another module view (see `shell.view`). */
+  setActiveModule: (module: string) => void
 }
 
 /** Conversation owner share: business state and actions belong to the registrant. */
@@ -103,6 +119,9 @@ export interface ConvOwnerProps {}
 
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
+
+/** Module-view owner share: entries render only while active (ring dispatch via `only`). */
+export interface ShellViewOwnerProps {}
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme']
@@ -124,6 +143,7 @@ export function apply(ctx: ClientContext): void {
         'conversation': { kind: 'single', scope: 'session-maybe' },
         'details': { kind: 'single', scope: 'session' },
         'shell.overlay': { kind: 'list', scope: 'root' },
+        'shell.view': { kind: 'list', scope: 'root' },
       },
       // Exclusive store: the factory itself — the framework instantiates per
       // entry and delivers useStore/actions to AppFrame as standard props.

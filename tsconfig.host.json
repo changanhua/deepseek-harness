@@ -269,6 +269,7 @@
     { "path": "./packages/task-queue/task-queue-local" },
     { "path": "./packages/task-queue/tool-task-queue" },
     { "path": "./packages/task-queue/command-task-queue" },
+    { "path": "./packages/task-queue/task-queue-remote" },
     { "path": "./packages/workflow/workflow" },
     { "path": "./packages/workflow/workflow-worker-thread" },
     { "path": "./packages/workflow/tool-workflow" },

@@ -2,7 +2,7 @@
  * Agent-facing task-queue toolkit. Loading this plugin once registers, in a
  * single apply (no second listener-duplicating mount):
  *
- * 1. the seven `task_queue_*` tools,
+ * 1. the eight `task_queue_*` tools,
  * 2. the `tool:task-queue` system-prompt section,
  * 3. the `agent/pre-step` candidate-notification hook, and
  * 4. the `session/event` append→flush→CAS-ack finalizer plus the `turn/end`
@@ -232,7 +232,7 @@ const SPEC_PARAM = {
   properties: {
     title: { type: 'string', required: true, description: 'One-line title.' },
     prompt: { type: 'string', required: true, description: 'Complete instruction handed to the executor.' },
-    executor: { type: 'string', required: true, description: "Registered executor name; never 'shell' (inbox-only)." },
+    executor: { type: 'string', required: true, description: "Registered executor name. Built-ins: claude/codex/opencode/arkcli (CLI coding agents) and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set." },
     priority: { type: 'integer', description: 'Lower is higher precedence (default 10).' },
     maxAttempts: { type: 'integer', description: 'Total execution attempts; default 3.' },
     backoffMs: { type: 'integer', description: 'Backoff base in ms (default 30000).' },
@@ -259,6 +259,13 @@ const TASK_SUMMARY_SCHEMA = {
     tags: { type: 'array', required: true, items: { type: 'string' } },
     createdAt: { type: 'string', required: true },
     updatedAt: { type: 'string', required: true },
+    // The contract summary carries these two nullable fields (task-queue
+    // TaskSummary); declaring them (optional) keeps `task_queue_list` from
+    // rejecting the backend projection under additionalProperties:false. The
+    // `status` tool spreads these properties too but does not project
+    // ownerSessionId, so neither is required.
+    lastError: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+    ownerSessionId: { oneOf: [{ type: 'string' }, { type: 'null' }] },
   },
 } as const
 
@@ -321,10 +328,13 @@ export function buildSection(): { name: string; order: number; text: string } {
     order: 107,
     text: 'Use the task_queue_* tools for durable cross-session work. Enqueue a batch first, then report the '
       + 'queued ids — do not inline a batch of 3 or more independent tasks, long-running jobs, or anything that '
-      + 'may need retry or should survive the session. At session start, call task_queue_stats to see the backlog. '
-      + 'When a task is failed, report it proactively and suggest task_queue_retry. Do not re-enqueue duplicate '
-      + 'work: call task_queue_list first to check for an existing matching task. Your responsibilities are '
-      + 'delivery (enqueue), monitoring (list/status/stats), failure triage (retry/cancel), and reporting results.',
+      + 'may need retry or should survive the session. At session start, call task_queue_stats to see the backlog, '
+      + 'and task_queue_executors to see which executors this deployment enables. For batch LLM/script work use '
+      + 'the node executor with a local script (prompt JSON { script, args? }); use claude/codex/opencode/arkcli '
+      + 'only for full coding-agent jobs. Never submit shell (inbox-only). When a task is failed, report it '
+      + 'proactively and suggest task_queue_retry. Do not re-enqueue duplicate work: call task_queue_list first '
+      + 'to check for an existing matching task. Your responsibilities are delivery (enqueue), monitoring '
+      + '(list/status/stats/executors), failure triage (retry/cancel), and reporting results.',
   }
 }
 
@@ -528,6 +538,44 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
       },
       presentCall: () => ({ card: 'generic', title: 'Task queue stats', kind: 'read' }),
     }),
+    defineTool({
+      name: 'task_queue_executors',
+      description: 'List the executors this task queue has registered, with whether each is enabled for admission and whether the model tools may submit it. Call this before enqueueing to pick a valid executor.',
+      parameters: {},
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            executors: {
+              type: 'array',
+              required: true,
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  name: { type: 'string', required: true },
+                  enabled: { type: 'boolean', required: true },
+                  toolAllowed: { type: 'boolean', required: true },
+                },
+              },
+            },
+          },
+        },
+        render: (_args, value) => [{
+          type: 'text',
+          text: value.executors.length === 0
+            ? '(no executors registered)'
+            : (value.executors as { name: string; enabled: boolean; toolAllowed: boolean }[])
+              .map(e => `${e.name}: ${e.enabled ? 'enabled' : 'disabled'}${e.toolAllowed ? '' : ' (inbox-only)'}`)
+              .join(' | '),
+        }],
+      },
+      execute(_args, _exec) {
+        return Promise.resolve({ executors: resolveTaskQueue().listExecutors() })
+      },
+      presentCall: () => ({ card: 'generic', title: 'Task queue executors', kind: 'read' }),
+    }),
   ]
 
   // --- pre-step hook ------------------------------------------------------
@@ -659,7 +707,7 @@ export interface Config {}
 export const Config: z<Config> = z.object({})
 
 /**
- * Register all seven tools, the system-prompt section, the pre-step hook, and
+ * Register all eight tools, the system-prompt section, the pre-step hook, and
  * the session/event finalizer in one apply. The host task-queue Service is
  * read optionally via `ctx.get('taskQueue')`.
  */

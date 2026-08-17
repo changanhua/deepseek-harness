@@ -228,10 +228,15 @@
     - id: task-queue
       name: '@deepseek-ai/dsh-task-queue-local'
       config:
-        maxConcurrent: 2
-        maxConcurrentPerExecutor: 1
+        queueRoot: !!js dshHomePath('task-queue')
+        maxConcurrent: 5
+        maxConcurrentPerExecutor: 3
         intervalMs: 1000
-        executors: {}
+        executors:
+          node:
+            enabled: true
+          arkcli:
+            enabled: true
 
     - id: tool-task-queue
       name: '@deepseek-ai/dsh-tool-task-queue'
@@ -276,6 +281,13 @@
     # load-guidance error (the row never resolves a half-composed service).
     - id: command-task-queue
       name: '@deepseek-ai/dsh-command-task-queue'
+
+    # Browser panel Remote face over the durable queue: the Queue workspace's
+    # read/steer surface (list/stats/get/cancel/retry as wire views).
+    # `inject: ['taskQueue']` gates it on the backend row above, so a
+    # composition without the backend never activates a dangling namespace.
+    - id: task-queue-remote
+      name: '@deepseek-ai/dsh-task-queue-remote'
 
     - id: goal
       name: '@deepseek-ai/dsh-goal'

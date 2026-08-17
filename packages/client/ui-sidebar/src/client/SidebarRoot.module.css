@@ -241,6 +241,23 @@
   padding-left: 0;
 }
 
+/* Module seat: additive first-level entries (Queue workspace and future
+   modules) stacked above the foot. Each occupant owns its row geometry. */
+.modulesArea {
+  flex: none;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.collapsed .modulesArea {
+  align-items: center;
+  width: auto;
+  display: flex;
+  justify-content: center;
+}
+
 /* Footer seats: additive actions stack above Settings. Each occupant owns its
    button geometry and hover chrome. */
 .footArea {
@@ -277,6 +294,7 @@
   .railIn .iconButton,
   .railIn .newSession,
   .railIn .footArea,
+  .railIn .modulesArea,
   .railIn .regionArea {
     transition: none;
     animation: none;
