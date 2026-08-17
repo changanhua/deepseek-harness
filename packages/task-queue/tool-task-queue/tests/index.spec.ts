@@ -52,11 +52,12 @@ function makeQueue(overrides: Partial<Pick<TaskQueue, 'list' | 'get' | 'stats'>>
         priority: 10, attempt: 0, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
         timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
         lastError: null, result: null, ownerSessionId: null, source: 'tool',
-        receiptId: 'r', terminalSeq: null, runs: [],
+        receiptId: 'r', terminalSeq: null, runs: [], dismissed: false,
       }
     },
     async cancel(): Promise<'canceled' | 'stopping'> { return 'canceled' },
     async retry(id: TaskId): Promise<TaskId> { return id },
+    async dismiss(_id: TaskId, _dismissed: boolean): Promise<void> {},
     stats(): QueueStats {
       return {
         serviceState: 'running',
@@ -191,6 +192,42 @@ describe('tool schema validation (through execute)', () => {
       { title: 'b', prompt: 'b', executor: 'codex' },
     ] }, {} as never)
     expect(two).toEqual({ ids: ['tq-1', 'tq-2'] })
+  })
+
+  it('task_queue_dismiss soft-concludes a terminal task and returns dismissed=true', async () => {
+    const calls: { id: string; dismissed: boolean }[] = []
+    const queue = makeQueue({
+      dismiss: async (id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+    })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const dismiss = kit.tools.find(t => t.name === 'task_queue_dismiss')!
+    const out = await dismiss.execute({ id: 'tq-1' }, {} as never)
+    expect(out).toEqual({ id: 'tq-1', dismissed: true })
+    expect(calls).toEqual([{ id: 'tq-1', dismissed: true }])
+  })
+
+  it('task_queue_dismiss with dismissed:false restores (undo path)', async () => {
+    const calls: { id: string; dismissed: boolean }[] = []
+    const queue = makeQueue({
+      dismiss: async (id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+    })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const dismiss = kit.tools.find(t => t.name === 'task_queue_dismiss')!
+    const out = await dismiss.execute({ id: 'tq-1', dismissed: false }, {} as never)
+    expect(out).toEqual({ id: 'tq-1', dismissed: false })
+    expect(calls).toEqual([{ id: 'tq-1', dismissed: false }])
+  })
+
+  it('task_queue_undismiss restores to attention (dismissed=false)', async () => {
+    const calls: { id: string; dismissed: boolean }[] = []
+    const queue = makeQueue({
+      dismiss: async (id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+    })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const undismiss = kit.tools.find(t => t.name === 'task_queue_undismiss')!
+    const out = await undismiss.execute({ id: 'tq-1' }, {} as never)
+    expect(out).toEqual({ id: 'tq-1', dismissed: false })
+    expect(calls).toEqual([{ id: 'tq-1', dismissed: false }])
   })
 
   it('tools report a clear error when the backend is absent', async () => {
@@ -374,6 +411,7 @@ describe('system-prompt section', () => {
     expect(section.text).toContain('task_queue_stats')
     expect(section.text).toContain('task_queue_retry')
     expect(section.text).toContain('task_queue_list')
+    expect(section.text).toContain('task_queue_dismiss')
     expect(section.text).toMatch(/Enqueue a batch first/)
     expect(section.text).toMatch(/just 3 or more|3 or more independent tasks/)
   })

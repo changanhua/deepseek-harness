@@ -333,7 +333,9 @@ export function buildSection(): { name: string; order: number; text: string } {
       + 'and task_queue_executors to see which executors this deployment enables. For batch LLM/script work use '
       + 'the node executor with a local script (prompt JSON { script, args? }); use claude/codex/opencode/arkcli '
       + 'only for full coding-agent jobs. Never submit shell (inbox-only). When a task is failed, report it '
-      + 'proactively and suggest task_queue_retry. Do not re-enqueue duplicate work: call task_queue_list first '
+      + 'proactively and suggest task_queue_retry. For a failure you have diagnosed and will not retry, '
+      + 'task_queue_dismiss soft-concludes it (leaves attention, keeps the record); task_queue_undismiss '
+      + 'restores it. Do not re-enqueue duplicate work: call task_queue_list first '
       + 'to check for an existing matching task. Your responsibilities are delivery (enqueue), monitoring '
       + '(list/status/stats/executors), failure triage (retry/cancel), and reporting results.',
   }
@@ -495,6 +497,38 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         return { id: await resolveTaskQueue().retry(TaskId(args.id)) }
       },
       presentCall: args => ({ card: 'generic', title: `Retry task ${args.id}`, kind: 'execute', rawInput: args.id }),
+    }),
+    defineTool({
+      name: 'task_queue_dismiss',
+      description: 'Soft-conclude a terminal task (succeeded/failed/canceled) by id: it leaves the attention badge and "needs attention" filter but keeps its record. Reversible with task_queue_undismiss. Use for failures you have diagnosed and decided not to retry.',
+      parameters: {
+        id: { type: 'string', required: true, description: 'Terminal task id to dismiss.' },
+        dismissed: { type: 'boolean', description: 'true to conclude (default), false to restore.' },
+      },
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, dismissed: { type: 'boolean', required: true } } },
+        render: (_args, value) => [{ type: 'text', text: `task ${value.id} ${value.dismissed ? 'dismissed' : 'restored'}` }],
+      },
+      async execute(args, _exec) {
+        const dismissed = args.dismissed !== false
+        await resolveTaskQueue().dismiss(TaskId(args.id), dismissed)
+        return { id: args.id, dismissed }
+      },
+      presentCall: args => ({ card: 'generic', title: `Dismiss task ${args.id}`, kind: 'execute', rawInput: args.id }),
+    }),
+    defineTool({
+      name: 'task_queue_undismiss',
+      description: 'Restore a dismissed terminal task to attention by id. Reverses task_queue_dismiss.',
+      parameters: { id: { type: 'string', required: true, description: 'Dismissed task id to restore.' } },
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, dismissed: { type: 'boolean', required: true } } },
+        render: (_args, value) => [{ type: 'text', text: `task ${value.id} restored` }],
+      },
+      async execute(args, _exec) {
+        await resolveTaskQueue().dismiss(TaskId(args.id), false)
+        return { id: args.id, dismissed: false }
+      },
+      presentCall: args => ({ card: 'generic', title: `Restore task ${args.id}`, kind: 'execute', rawInput: args.id }),
     }),
     defineTool({
       name: 'task_queue_stats',
