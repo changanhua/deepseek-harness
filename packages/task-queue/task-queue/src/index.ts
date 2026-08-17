@@ -43,6 +43,7 @@ export {
   settleCanceled,
   cancelPending,
   retryTask,
+  dismissTask,
   recoverTaskAfterCrash,
 } from './transitions.ts'
 export {
@@ -64,6 +65,7 @@ export const TASK_QUEUE_EVENTS = {
   failed: 'task-queue/failed',
   requeued: 'task-queue/requeued',
   canceled: 'task-queue/canceled',
+  dismissed: 'task-queue/dismissed',
   drained: 'task-queue/drained',
   orphanUnknown: 'task-queue/orphan-unknown',
   faulted: 'task-queue/faulted',
@@ -120,6 +122,14 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'task-queue/canceled'(payload: { taskId: TaskId }): void
+    /**
+     * A terminal task's `dismissed` flag was toggled (soft-conclude or restore).
+     * The task's `status` and audit record are unchanged.
+     * @param payload.taskId - the dismissed/restored task id.
+     * @param payload.dismissed - the new dismissed flag value.
+     * @mode emit
+     */
+    'task-queue/dismissed'(payload: { taskId: TaskId; dismissed: boolean }): void
     /**
      * The queue drained (no live starting/running/stopping work remains).
      * @param payload.pending - the pending count at drain time.
@@ -205,6 +215,18 @@ export abstract class TaskQueue extends Service {
    * @returns the same task id, now pending with `attempt` reset.
    */
   abstract retry(id: TaskId): Promise<TaskId>
+
+  /**
+   * Soft-conclude (or restore) a terminal task by toggling its `dismissed`
+   * flag. Only succeeded/failed/canceled tasks may be dismissed; a non-
+   * terminal task throws. Same-value dismiss is an idempotent no-op (no
+   * change record, no event). The task's `status` and audit record are
+   * unchanged; a dismissed task leaves the attention badge/filters but keeps
+   * its record, and requeuing (retry) resets `dismissed` to false.
+   * @param id - the terminal task id to dismiss or restore.
+   * @param dismissed - true to conclude, false to restore.
+   */
+  abstract dismiss(id: TaskId, dismissed: boolean): Promise<void>
 
   /**
    * Aggregate service state and per-status/per-executor counters.
