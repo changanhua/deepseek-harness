@@ -20,6 +20,7 @@ import type {
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   QueueCancelOutcomeView,
+  QueueExecutorView,
   QueueListFilterView,
   QueueStatsView,
   QueueTaskSummaryView,
@@ -28,6 +29,7 @@ import type {
 
 export type {
   QueueCancelOutcomeView,
+  QueueExecutorView,
   QueueListFilterView,
   QueueRunView,
   QueueStatsView,
@@ -117,6 +119,25 @@ export class TaskQueueRemoteService extends TypertRemoteService {
         terminationUnverified: run.terminationUnverified === true,
       })),
     }
+  }
+
+  /**
+   * List executor registration/enable gates plus current live task counts.
+   * @returns one row per registered executor.
+   */
+  @Remote('executors')
+  executors(): QueueExecutorView[] {
+    const live = new Set(['starting', 'running', 'stopping'])
+    const liveByExecutor = new Map<string, number>()
+    for (const task of this.queue.list()) {
+      if (live.has(task.status)) {
+        liveByExecutor.set(task.executor, (liveByExecutor.get(task.executor) ?? 0) + 1)
+      }
+    }
+    return this.queue.listExecutors().map(executor => ({
+      ...executor,
+      running: liveByExecutor.get(executor.name) ?? 0,
+    }))
   }
 
   /**

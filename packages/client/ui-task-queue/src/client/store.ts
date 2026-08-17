@@ -15,10 +15,19 @@ import type {
   QueueTaskView,
 } from '@deepseek-ai/dsh-task-queue-remote/views'
 
+/** Local mirror of the remote executor view; kept until lib types regenerate. */
+export interface QueueExecutorView {
+  name: string
+  enabled: boolean
+  toolAllowed: boolean
+  running: number
+}
+
 /** The narrow Remote face the store drives; test fakes satisfy exactly this. */
 export interface QueueRemoteFace {
   stats(): Promise<RemoteResult<QueueStatsView>>
   list(filter: { status?: QueueTaskSummaryView['status']; limit?: number }): Promise<RemoteResult<QueueTaskSummaryView[]>>
+  executors(): Promise<RemoteResult<QueueExecutorView[]>>
   get(id: string): Promise<RemoteResult<QueueTaskView>>
   readRunLog(id: string, runId: string): Promise<RemoteResult<string>>
   cancel(id: string): Promise<RemoteResult<QueueCancelOutcomeView>>
@@ -31,6 +40,7 @@ export interface QueueRemoteFace {
 export interface QueueSnapshot {
   stats: QueueStatsView | null
   summaries: QueueTaskSummaryView[]
+  executors: QueueExecutorView[]
   selectedId: string | null
   detail: QueueTaskView | null
   loading: boolean
@@ -47,6 +57,7 @@ export interface QueueActionResult {
 const EMPTY: QueueSnapshot = {
   stats: null,
   summaries: [],
+  executors: [],
   selectedId: null,
   detail: null,
   loading: false,
@@ -97,9 +108,10 @@ export class QueueStore {
     if (this.#disposed) return
     this.#set({ refreshing: true, error: null })
     try {
-      const [stats, list] = await Promise.all([
+      const [stats, list, executors] = await Promise.all([
         this.remote.stats(),
         this.remote.list({}),
+        this.remote.executors(),
       ])
       const detail = this.#snapshot.selectedId === null
         ? null
@@ -110,6 +122,7 @@ export class QueueStore {
       this.#set({
         stats: valueOf(stats),
         summaries: valueOf(list),
+        executors: valueOf(executors),
         detail,
         loading: false,
         refreshing: false,

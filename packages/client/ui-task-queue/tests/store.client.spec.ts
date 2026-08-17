@@ -61,6 +61,7 @@ function makeRemote() {
   const remote: QueueRemoteFace = {
     stats: vi.fn(async () => { calls.push('stats'); return ok(STATS) }),
     list: vi.fn(async () => { calls.push('list'); return ok([SUMMARY('tq-1', 'running'), SUMMARY('tq-2', 'failed')]) }),
+    executors: vi.fn(async () => { calls.push('executors'); return ok([{ name: 'codex', enabled: true, toolAllowed: true, running: 1 }]) }),
     get: vi.fn(async (id: string) => {
       calls.push(`get:${id}`)
       if (id === 'tq-1') return ok(DETAIL)
@@ -86,6 +87,7 @@ describe('QueueStore', () => {
     await store.refresh()
     expect(store.getSnapshot().stats).toEqual(STATS)
     expect(store.getSnapshot().summaries.map(s => s.id)).toEqual(['tq-1', 'tq-2'])
+    expect(store.getSnapshot().executors).toEqual([{ name: 'codex', enabled: true, toolAllowed: true, running: 1 }])
     expect(store.getSnapshot().error).toBeNull()
     expect(remote.list).toHaveBeenCalledWith({})
     // A selected detail is re-confirmed on the next refresh.

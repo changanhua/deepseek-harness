@@ -96,6 +96,17 @@ export interface QueueTaskView extends QueueTaskSummaryView {
 }
 
 /**
+ * One executor's panel view: registration/enable gates plus the number of
+ * currently live tasks (starting/running/stopping) using that executor.
+ */
+export interface QueueExecutorView {
+  name: string
+  enabled: boolean
+  toolAllowed: boolean
+  running: number
+}
+
+/**
  * Aggregate service state and counters, projected from {@link QueueStats}.
  * `faulted` is sticky and never clears through the panel.
  */

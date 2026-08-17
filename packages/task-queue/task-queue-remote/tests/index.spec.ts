@@ -99,6 +99,7 @@ function makeQueue(overrides: Partial<TaskQueue> = {}): {
       }
     },
     registerExecutor: () => () => {},
+    listExecutors: () => [{ name: 'codex', enabled: true, toolAllowed: true }],
     pause: () => {},
     resume: () => {},
     ackNotification: async () => {},
@@ -137,7 +138,7 @@ describe('task-queue-remote service', () => {
   it('marks exactly the eight panel verbs as Remote methods', () => {
     const { service } = mount()
     expect(remoteMethods(service).map(marker => marker.method))
-      .toEqual(['list', 'get', 'readRunLog', 'stats', 'cancel', 'retry', 'pause', 'resume'])
+      .toEqual(['list', 'get', 'executors', 'readRunLog', 'stats', 'cancel', 'retry', 'pause', 'resume'])
   })
 
   it('list passes the filter through and projects summaries to wire views', () => {
@@ -176,6 +177,11 @@ describe('task-queue-remote service', () => {
       commandFingerprint: 'codex:1',
       terminationUnverified: true,
     }])
+  })
+
+  it('executors lists registered executors with live task counts', () => {
+    const { service } = mount()
+    expect(service.executors()).toEqual([{ name: 'codex', enabled: true, toolAllowed: true, running: 1 }])
   })
 
   it('readRunLog returns the on-disk log for a known run', async () => {

@@ -13,7 +13,7 @@ import { useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { Button, StateDot, IconRefreshOutline16, IconPauseOutline16, IconPlayOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { QueueWorkspaceProps } from './contract/slots.ts'
-import type { QueueSnapshot } from './store.ts'
+import type { QueueExecutorView, QueueSnapshot } from './store.ts'
 import type { QueueTaskStatus, QueueTaskView } from '@deepseek-ai/dsh-task-queue-remote/views'
 import { DONE_STATUSES, LIVE_STATUSES, STATUS_DOT, STATUS_LABEL_KEY } from './status.ts'
 import css from './QueueWorkspace.module.css'
@@ -240,6 +240,7 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
           diag={diag}
           setDiag={setDiag}
           t={t}
+          executors={snapshot.executors}
           onReadRunLog={(taskId, runId) => queue.readRunLog(taskId, runId)}
         />
       </div>
@@ -261,13 +262,14 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
 }
 
 /** Right-hand task detail, driven by the store's selected detail view. */
-function QueueDetail({ task, selected, loading, diag, setDiag, t, onReadRunLog }: {
+function QueueDetail({ task, selected, loading, diag, setDiag, t, executors, onReadRunLog }: {
   task: QueueTaskView | null
   selected: boolean
   loading: boolean
   diag: boolean
   setDiag: (open: boolean) => void
   t: QueueWorkspaceProps['t']
+  executors: QueueExecutorView[]
   onReadRunLog: (taskId: string, runId: string) => Promise<{ ok: true; content: string } | { ok: false; message: string }>
 }) {
   const [log, setLog] = useState<{ runId: string; content: string | null; loading: boolean; error: string | null } | null>(null)
@@ -418,6 +420,7 @@ function QueueDetail({ task, selected, loading, diag, setDiag, t, onReadRunLog }
               id: {task.id} · source: {task.source} · receipt: {task.receiptId}{'\n'}
               outputDir: {task.outputDir} · backoff: {task.backoffMs} ms · timeout: {task.timeoutMs} ms{'\n'}
               delayUntil: {task.delayUntil ?? '—'} · ownerSessionId: {task.ownerSessionId ?? '—'}
+              {executors.map(e => `\nexecutor ${e.name}: enabled=${e.enabled} toolAllowed=${e.toolAllowed} live=${e.running}`).join('')}
               {task.runs.map(run => `\nrun ${run.attempt}: pid=${run.pid ?? '—'} fp=${run.commandFingerprint ?? '—'} unverified=${run.terminationUnverified}`).join('')}
             </div>
           )}
