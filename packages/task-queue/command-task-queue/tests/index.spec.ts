@@ -23,7 +23,7 @@ const ZERO_STATUS: QueueStats['byStatus'] = {
 }
 
 function stats(overrides: Partial<QueueStats> = {}): QueueStats {
-  return { serviceState: 'running', byStatus: ZERO_STATUS, byExecutor: {}, ...overrides }
+  return { serviceState: 'running', byStatus: ZERO_STATUS, byExecutor: {}, undismissedFailed: 0, byDismissed: 0, ...overrides }
 }
 
 function summary(overrides: Partial<TaskSummary> = {}): TaskSummary {
@@ -37,8 +37,10 @@ function summary(overrides: Partial<TaskSummary> = {}): TaskSummary {
     maxAttempts: 3,
     createdAt: '2026-08-15T00:00:00.000Z',
     updatedAt: '2026-08-15T00:00:00.000Z',
+    lastError: null,
     tags: ['castle'],
     ownerSessionId: null,
+    dismissed: false,
     ...overrides,
   }
 }
@@ -67,6 +69,7 @@ function task(overrides: Partial<Task> = {}): Task {
     receiptId: 'tool:key:k1',
     terminalSeq: null,
     runs: [],
+    dismissed: false,
     ...overrides,
   }
 }

@@ -461,6 +461,7 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
           tags: task.tags,
           createdAt: task.createdAt,
           updatedAt: task.updatedAt,
+          dismissed: task.dismissed,
           prompt: task.prompt,
           ...(task.delayUntil !== null ? { delayUntil: task.delayUntil } : {}),
           timeoutMs: task.timeoutMs,

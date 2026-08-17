@@ -20,7 +20,7 @@ import type {
 import { TaskId, NotificationId, RunId } from '@deepseek-ai/dsh-task-queue'
 
 /** A controllable in-memory task-queue Service for driving the toolkit. */
-function makeQueue(overrides: Partial<Pick<TaskQueue, 'list' | 'get' | 'stats'>> = {}): {
+function makeQueue(overrides: Partial<Pick<TaskQueue, 'list' | 'get' | 'stats' | 'dismiss'>> = {}): {
   taskQueue: TaskQueue
   enqueued: EnqueueSpec[]
   acks: { notificationId: string; messageId: string }[]
@@ -63,6 +63,8 @@ function makeQueue(overrides: Partial<Pick<TaskQueue, 'list' | 'get' | 'stats'>>
         serviceState: 'running',
         byStatus: { pending: 0, starting: 0, running: 0, stopping: 0, succeeded: 0, failed: 0, canceled: 0 },
         byExecutor: {},
+        undismissedFailed: 0,
+        byDismissed: 0,
       }
     },
     async ackNotification(notificationId: string, messageId: string): Promise<void> {

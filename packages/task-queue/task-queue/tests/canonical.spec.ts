@@ -52,6 +52,7 @@ function makeTask(id: string): Task {
     receiptId: 'tool:auto:1',
     terminalSeq: null,
     runs: [],
+    dismissed: false,
   }
 }
 
