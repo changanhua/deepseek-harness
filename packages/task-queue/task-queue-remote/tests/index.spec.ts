@@ -20,6 +20,10 @@ import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import { TaskQueueRemoteService } from '../src/index.ts'
 import * as invariant from '../src/invariant.ts'
 
+vi.mock('node:fs/promises', async () => ({
+  readFile: vi.fn(async () => 'log body'),
+}))
+
 /** A controllable in-memory queue seam for driving the Remote face. */
 function makeQueue(overrides: Partial<TaskQueue> = {}): {
   queue: TaskQueue
@@ -129,10 +133,10 @@ describe('task-queue-remote service', () => {
     expect(service.typertRemote.namespace).toBe('taskQueue')
   })
 
-  it('marks exactly the seven panel verbs as Remote methods', () => {
+  it('marks exactly the eight panel verbs as Remote methods', () => {
     const { service } = mount()
     expect(remoteMethods(service).map(marker => marker.method))
-      .toEqual(['list', 'get', 'stats', 'cancel', 'retry', 'pause', 'resume'])
+      .toEqual(['list', 'get', 'readRunLog', 'stats', 'cancel', 'retry', 'pause', 'resume'])
   })
 
   it('list passes the filter through and projects summaries to wire views', () => {
@@ -171,6 +175,44 @@ describe('task-queue-remote service', () => {
       commandFingerprint: 'codex:1',
       terminationUnverified: true,
     }])
+  })
+
+  it('readRunLog returns the on-disk log for a known run', async () => {
+    const { service } = mount()
+    await expect(service.readRunLog('tq-1', 'run-1')).resolves.toBe('log body')
+  })
+
+  it('readRunLog rejects a run without a log path', async () => {
+    const { service } = mount({
+      get(id: TaskId) {
+        const base = {
+          id,
+          title: 'tq-1',
+          executor: 'codex',
+          status: 'running' as const,
+          priority: 10,
+          attempt: 1,
+          maxAttempts: 3,
+          createdAt: '2026-08-15T00:00:00.000Z',
+          updatedAt: '2026-08-15T01:00:00.000Z',
+          tags: [] as string[],
+          ownerSessionId: null,
+          prompt: '',
+          backoffMs: 30_000,
+          delayUntil: null,
+          timeoutMs: 1_800_000,
+          outputDir: 'queue/tq-1',
+          lastError: null,
+          result: null,
+          source: 'tool' as const,
+          receiptId: 'rcpt-1',
+          terminalSeq: null,
+          runs: [],
+        }
+        return base
+      },
+    })
+    await expect(service.readRunLog('tq-1', 'run-1')).rejects.toThrow(/no log path/)
   })
 
   it('get rethrows the seam error for an unknown id', () => {

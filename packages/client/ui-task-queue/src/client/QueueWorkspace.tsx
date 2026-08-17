@@ -233,7 +233,15 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
               </ul>
             )}
         </section>
-        <QueueDetail task={snapshot.detail} selected={snapshot.selectedId !== null} loading={snapshot.loading} diag={diag} setDiag={setDiag} t={t} />
+        <QueueDetail
+          task={snapshot.detail}
+          selected={snapshot.selectedId !== null}
+          loading={snapshot.loading}
+          diag={diag}
+          setDiag={setDiag}
+          t={t}
+          onReadRunLog={(taskId, runId) => queue.readRunLog(taskId, runId)}
+        />
       </div>
 
       {snapshot.error !== null && (
@@ -253,14 +261,27 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
 }
 
 /** Right-hand task detail, driven by the store's selected detail view. */
-function QueueDetail({ task, selected, loading, diag, setDiag, t }: {
+function QueueDetail({ task, selected, loading, diag, setDiag, t, onReadRunLog }: {
   task: QueueTaskView | null
   selected: boolean
   loading: boolean
   diag: boolean
   setDiag: (open: boolean) => void
   t: QueueWorkspaceProps['t']
+  onReadRunLog: (taskId: string, runId: string) => Promise<{ ok: true; content: string } | { ok: false; message: string }>
 }) {
+  const [log, setLog] = useState<{ runId: string; content: string | null; loading: boolean; error: string | null } | null>(null)
+  async function loadRunLog(runId: string): Promise<void> {
+    if (task === null) return
+    setLog({ runId, content: null, loading: true, error: null })
+    const result = await onReadRunLog(task.id, runId)
+    if (result.ok) {
+      setLog({ runId, content: result.content, loading: false, error: null })
+    } else {
+      setLog({ runId, content: null, loading: false, error: result.message })
+    }
+  }
+
   if (!selected && task === null) {
     return (
       <aside className={css.detailPane}>
@@ -368,6 +389,20 @@ function QueueDetail({ task, selected, loading, diag, setDiag, t }: {
                   <span className={css.runMeta}>
                     {run.logPath ?? '—'} · {run.actualStartedAt?.slice(11, 19) ?? '—'}
                   </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={log?.runId === run.runId && log.loading}
+                    onClick={() => { void loadRunLog(run.runId) }}
+                  >
+                    {log?.runId === run.runId && log.loading ? '…' : t('detail.runs.viewLog')}
+                  </Button>
+                  {log?.runId === run.runId && log.error !== null && (
+                    <div className={css.runLogError}>{log.error}</div>
+                  )}
+                  {log?.runId === run.runId && log.content !== null && (
+                    <pre className={css.runLog}>{log.content}</pre>
+                  )}
                 </div>
               ))}
           </div>

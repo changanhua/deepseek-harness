@@ -414,6 +414,7 @@
 
 .runRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 5px 0;
@@ -435,6 +436,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.runLog {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-label-primary-foreground);
+  font-size: 10px;
+  line-height: 1.5;
+  font-family: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.runLogError {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  color: var(--dsw-alias-state-error-primary, #d64545);
+  font-size: 11px;
 }
 
 .diagToggle {

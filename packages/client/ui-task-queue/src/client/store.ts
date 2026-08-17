@@ -20,6 +20,7 @@ export interface QueueRemoteFace {
   stats(): Promise<RemoteResult<QueueStatsView>>
   list(filter: { status?: QueueTaskSummaryView['status']; limit?: number }): Promise<RemoteResult<QueueTaskSummaryView[]>>
   get(id: string): Promise<RemoteResult<QueueTaskView>>
+  readRunLog(id: string, runId: string): Promise<RemoteResult<string>>
   cancel(id: string): Promise<RemoteResult<QueueCancelOutcomeView>>
   retry(id: string): Promise<RemoteResult<string>>
   pause(): Promise<RemoteResult<void>>
@@ -134,6 +135,15 @@ export class QueueStore {
         loading: false,
         error: error instanceof Error ? error.message : String(error),
       })
+    }
+  }
+
+  /** Read one run's log from the host. */
+  async readRunLog(id: string, runId: string): Promise<{ ok: true; content: string } | { ok: false; message: string }> {
+    try {
+      return { ok: true, content: valueOf(await this.remote.readRunLog(id, runId)) }
+    } catch (error: unknown) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) }
     }
   }
 

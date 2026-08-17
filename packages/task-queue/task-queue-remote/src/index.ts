@@ -11,6 +11,7 @@
  */
 
 import { Context } from '@deepseek-ai/cordis'
+import { readFile } from 'node:fs/promises'
 import { TaskId } from '@deepseek-ai/dsh-task-queue'
 import type {
   TaskQueue,
@@ -116,6 +117,22 @@ export class TaskQueueRemoteService extends TypertRemoteService {
         terminationUnverified: run.terminationUnverified === true,
       })),
     }
+  }
+
+  /**
+   * Read the on-disk run log for one completed/attempted run.
+   * @param id - the task id (`tq-<uuid>`).
+   * @param runId - the run id to read.
+   * @returns the merged stdout/stderr log body as UTF-8 text.
+   */
+  @Remote('readRunLog')
+  async readRunLog(id: string, runId: string): Promise<string> {
+    const task = this.queue.get(TaskId(id))
+    const run = task.runs.find(r => r.runId === runId)
+    if (run === undefined || run.logPath === null) {
+      throw new Error(`run ${runId} has no log path`)
+    }
+    return await readFile(run.logPath, 'utf8')
   }
 
   /**

@@ -66,6 +66,11 @@ function makeRemote() {
       if (id === 'tq-1') return ok(DETAIL)
       return fail(`unknown task ${id}`)
     }),
+    readRunLog: vi.fn(async (id: string, runId: string) => {
+      calls.push(`readRunLog:${id}:${runId}`)
+      if (id === 'tq-1' && runId === 'run-1') return ok('log body')
+      return fail(`missing ${id}/${runId}`)
+    }),
     cancel: vi.fn(async () => { calls.push('cancel'); return ok('canceled' as const) }),
     retry: vi.fn(async () => { calls.push('retry'); return ok('tq-1') }),
     pause: vi.fn(async () => { calls.push('pause'); return ok(undefined) }),
@@ -101,6 +106,14 @@ describe('QueueStore', () => {
     expect(store.getSnapshot().summaries).toHaveLength(2)
     expect(store.getSnapshot().error).toBe('backend absent')
     expect(store.getSnapshot().refreshing).toBe(false)
+  })
+
+  it('readRunLog returns a log and reports missing logs as a failed action', async () => {
+    const { remote, calls } = makeRemote()
+    const store = new QueueStore(remote)
+    await expect(store.readRunLog('tq-1', 'run-1')).resolves.toEqual({ ok: true, content: 'log body' })
+    await expect(store.readRunLog('tq-unknown', 'run-1')).resolves.toEqual({ ok: false, message: 'missing tq-unknown/run-1' })
+    expect(calls).toContain('readRunLog:tq-1:run-1')
   })
 
   it('select surfaces unknown-id errors and clears the detail', async () => {

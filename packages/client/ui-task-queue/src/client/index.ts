@@ -20,7 +20,7 @@ import type {} from '@deepseek-ai/dsh-task-queue-remote/remote'
 import type { QueueNavEntryInjected, QueueWorkspaceInjected } from './contract/slots.ts'
 import { QueueNavEntry } from './QueueNavEntry.tsx'
 import { QueueWorkspace } from './QueueWorkspace.tsx'
-import { QueueStore } from './store.ts'
+import { QueueStore, type QueueRemoteFace } from './store.ts'
 import { en, zh, type TaskQueueKey } from './locales.ts'
 
 export type { QueueActionResult, QueueRemoteFace, QueueSnapshot } from './store.ts'
@@ -51,7 +51,9 @@ export const inject = ['slots', 'remote', 'remote.taskQueue', 'locale']
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-task-queue: dictionaries')
 
-  const store = new QueueStore(ctx.remote.taskQueue)
+  // The Typert remote-client type is generated into lib; keep the face cast
+  // explicit until the host build regenerates it with readRunLog.
+  const store = new QueueStore(ctx.remote.taskQueue as unknown as QueueRemoteFace)
 
   ctx.effect(() => {
     void store.refresh()
