@@ -1,5 +1,8 @@
 # AGENTS.md
 
+> **语言规则：所有思考和回复必须使用中文。** 每次 compact 后重新读到此文件时，立即恢复中文思考和中文回复，不要用英文。
+
+
 DeepSeek Harness is a plugin-based agent harness on vendored Cordis: **everything is a plugin**. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
 
 ## Pre-release stance: foundation over blast radius
