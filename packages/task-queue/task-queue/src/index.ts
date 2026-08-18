@@ -51,7 +51,7 @@ export {
   canonicalQueueState,
 } from './canonical.ts'
 export type { FoldedQueue } from './fold.ts'
-export { foldChanges, applyChange } from './fold.ts'
+export { foldChanges, applyChange, materializeTask } from './fold.ts'
 
 /**
  * Event names published after the corresponding change is fsync'd and memory is

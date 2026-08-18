@@ -20,6 +20,7 @@ import {
   foldChanges,
   isTerminalStatus,
   canonicalQueueState,
+  materializeTask,
 } from '@deepseek-ai/dsh-task-queue'
 import type { ChangeRecord, FoldedQueue, Task, NotificationRecord } from '@deepseek-ai/dsh-task-queue'
 import { DIR_MODE, FILE_MODE, segmentPath } from './paths.ts'
@@ -191,7 +192,7 @@ function validateSnapshot(parsed: unknown): parsed is SnapshotFile {
 /** Fold `tasks`/`notifications` arrays into id-keyed maps (snapshot replay shape). */
 function foldFromArrays(tasks: Task[], notifications: NotificationRecord[], lastSeq: number): FoldedQueue {
   const tasksById = new Map<Task['id'], Task>()
-  for (const task of tasks) tasksById.set(task.id, task)
+  for (const task of tasks) tasksById.set(task.id, materializeTask(task))
   const notificationsById = new Map<NotificationRecord['notificationId'], NotificationRecord>()
   for (const notification of notifications) notificationsById.set(notification.notificationId, notification)
   return { tasksById, notificationsById, lastSeq }

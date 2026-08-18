@@ -60,6 +60,21 @@ export function applyChange(folded: FoldedQueue, change: ChangeRecord): void {
 /** One task-op change: every non-ack record. */
 type TaskChange = Exclude<ChangeRecord, { op: 'notification-acknowledged' }>
 
+/**
+ * Normalize a task entering the folded queue so `dismissed` is always a
+ * defined boolean. `dismissed` (soft-conclude) was added to the persisted Task
+ * state after the first releases, so logs and snapshots written before that
+ * flag carry no value; folding it to the well-defined `false` (never
+ * dismissed) prevents leaking `undefined` into projections, which the gateway
+ * rejects as non-JSON-safe. Every task materialized into `folded.tasksById`
+ * goes through this function, so all readers see a boolean.
+ * @param state - the task state read from a change record or snapshot.
+ * @returns the task with a defined `dismissed` field.
+ */
+export function materializeTask(state: Task): Task {
+  return state.dismissed === undefined ? { ...state, dismissed: false } : state
+}
+
 function applyTaskOp(
   folded: FoldedQueue,
   change: TaskChange,
@@ -82,7 +97,7 @@ function applyTaskOp(
     folded.notificationsById.set(notification.notificationId, notification)
   }
 
-  folded.tasksById.set(change.taskId, change.state)
+  folded.tasksById.set(change.taskId, materializeTask(change.state))
 }
 
 function applyAck(

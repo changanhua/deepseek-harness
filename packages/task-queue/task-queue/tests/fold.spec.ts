@@ -84,6 +84,17 @@ describe('foldChanges', () => {
     expect(() => foldChanges([taskOp(5, task('tq-1'))])).toThrow(/seq 5 out of order; expected 1/)
   })
 
+  it('defaults a missing `dismissed` field to false for records written before the flag existed', () => {
+    // Old durable records (pre-dismiss) carry no `dismissed`; the fold must not
+    // hand the projection a value of `undefined`, which the gateway rejects as
+    // non-JSON-safe. Semantically a record without the flag was never dismissed.
+    const t = task('tq-1')
+    const { dismissed: _omitDismissed, ...legacy } = t as Task & { dismissed?: boolean }
+    expect(Object.hasOwn(legacy, 'dismissed')).toBe(false)
+    const f = foldChanges([taskOp(1, legacy as Task)])
+    expect(f.tasksById.get(TaskId('tq-1'))!.dismissed).toBe(false)
+  })
+
   it('rejects a task op whose state.taskId mismatches change.taskId', () => {
     const t = task('tq-1')
     const bad: ChangeRecord = { ...taskOp(1, t), taskId: TaskId('tq-2') }
