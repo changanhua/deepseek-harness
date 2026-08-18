@@ -21,6 +21,7 @@ import type {
   CapabilitySkill,
   CapabilityTool,
 } from '@deepseek-ai/dsh-host-capability-registry/types'
+import { skillZh, toolZh } from './zhNames.ts'
 import css from './CapabilityWorkspace.module.css'
 
 type Tab = 'skills' | 'mcp' | 'tools'
@@ -220,23 +221,47 @@ function filterByQuery(
   if (data === undefined) return empty
   const q = query.trim().toLowerCase()
   if (tab === 'skills') {
-    return { kind: 'skills', rows: data.skills.filter(s => q === '' || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)) }
+    return {
+      kind: 'skills',
+      rows: data.skills.filter((s) => {
+        if (q === '') return true
+        const zh = skillZh(s.name)
+        const zhText = zh !== undefined ? `${zh.zh} ${zh.intro}` : ''
+        return s.name.toLowerCase().includes(q)
+          || s.description.toLowerCase().includes(q)
+          || zhText.toLowerCase().includes(q)
+      }),
+    }
   }
   if (tab === 'mcp') {
     return { kind: 'mcp', rows: data.mcpServers.filter(s => q === '' || s.serverName.toLowerCase().includes(q)) }
   }
-  return { kind: 'tools', rows: data.tools.filter(tool => q === '' || tool.name.toLowerCase().includes(q) || tool.description.toLowerCase().includes(q)) }
+  return {
+    kind: 'tools',
+    rows: data.tools.filter((tool) => {
+      if (q === '') return true
+      const zh = toolZh(tool.name)
+      const zhText = zh !== undefined ? `${zh.zh} ${zh.intro}` : ''
+      return tool.name.toLowerCase().includes(q)
+        || tool.description.toLowerCase().includes(q)
+        || zhText.toLowerCase().includes(q)
+    }),
+  }
 }
 
 /** Convert filtered rows into localized list items with selection keys. */
 function toListItems(filtered: FilteredRows, t: CapabilityWorkspaceProps['t']): ListItem[] {
   if (filtered.kind === 'skills') {
-    return filtered.rows.map(s => ({
-      key: { kind: 'skill', name: s.name } as SelectionKey,
-      title: s.name,
-      subtitle: s.description,
-      tags: [s.source, s.provider],
-    }))
+    return filtered.rows.map((s) => {
+      const zh = skillZh(s.name)
+      return {
+        key: { kind: 'skill', name: s.name } as SelectionKey,
+        // 第一行保留英文标识便于调用，附中文名便于理解（“名字（中文名）”）。
+        title: zh !== undefined ? `${s.name}（${zh.zh}）` : s.name,
+        subtitle: zh !== undefined ? zh.intro : s.description,
+        tags: [s.source, s.provider],
+      }
+    })
   }
   if (filtered.kind === 'mcp') {
     return filtered.rows.map(s => ({
@@ -246,12 +271,16 @@ function toListItems(filtered: FilteredRows, t: CapabilityWorkspaceProps['t']): 
       tags: [s.transport, `${s.registeredTools} ${t('mcp.tools')}`],
     }))
   }
-  return filtered.rows.map(tool => ({
-    key: { kind: 'tool', name: tool.name } as SelectionKey,
-    title: tool.name,
-    subtitle: tool.description,
-    tags: tool.mcpServer !== undefined ? [`${t('tool.source.mcp')} · ${tool.mcpServer}`] : [t('tool.source.runtime')],
-  }))
+  return filtered.rows.map((tool) => {
+    const zh = toolZh(tool.name)
+    return {
+      key: { kind: 'tool', name: tool.name } as SelectionKey,
+      // 第一行保留英文标识便于调用，附中文名便于理解（“名字（中文名）”）。
+      title: zh !== undefined ? `${tool.name}（${zh.zh}）` : tool.name,
+      subtitle: zh !== undefined ? zh.intro : tool.description,
+      tags: tool.mcpServer !== undefined ? [`${t('tool.source.mcp')} · ${tool.mcpServer}`] : [t('tool.source.runtime')],
+    }
+  })
 }
 
 /** One summary card. */

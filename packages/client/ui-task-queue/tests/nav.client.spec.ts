@@ -8,9 +8,10 @@
 import { describe, expect, it } from 'vitest'
 import { badgeFor } from '../src/client/QueueNavEntry.tsx'
 import type { QueueSnapshot } from '../src/client/store.ts'
-import { en } from '../src/client/locales.ts'
+import type { LocaleKeysOf } from '@deepseek-ai/dsh-client-ui-slots'
+import { en, type TaskQueueKey } from '../src/client/locales.ts'
 
-const t = (key: keyof typeof en): string => en[key]
+const t = (key: LocaleKeysOf<'taskQueue'>): string => en[key as TaskQueueKey] ?? key
 
 function snapshot(stats: QueueSnapshot['stats']): QueueSnapshot {
   return {
