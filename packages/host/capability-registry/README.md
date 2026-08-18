@@ -1,7 +1,5 @@
 # @deepseek-ai/dsh-host-capability-registry
 
-English | [中文](README.zh.md)
-
 Read-only Host projection of the current capability surface: Skills, Tools, and MCP server entries. `CapabilityRegistryGateway` registers the `capabilityRegistry` service and publishes one generated direct Remote, `capabilityRegistry/list`. Every call reads the live Loader entries, the skill registry's management snapshot, and the tool registry's schemas directly — no cache, history, or mutation path.
 
 The skill projection mirrors `ctx.skills.managementSnapshot()` for the viewing session's scope, including each candidate's name, description, invocation policy, source, provider, path, origin, and selection state. The tool projection mirrors `ctx.tools.schemas()`, tagging MCP-bridged tools (`mcp__<serverName>__<rawName>`) with their server and raw MCP name. The MCP server projection reads Loader entries whose module is `@deepseek-ai/dsh-mcp-client`, exposing only the configured `serverName`, `transport`, and the count of tools currently registered under that server's namespace.
