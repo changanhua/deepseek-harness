@@ -33,6 +33,8 @@ Cooperative listeners usually mutate a shared request or decision object and the
 
 For single-decision events, short-circuiting is the design. A policy listener can return without `next()` when it owns the decision, while a listener that only annotates or observes must delegate.
 
+**Waterfall listeners MUST call `next()`** to delegate; returning without it short-circuits the chain.
+
 ## Loader Configuration
 
 `@deepseek-ai/cordis-plugin-include` parses `!!js` into expression nodes. Loader interpolates an entry's `config` (after declared injections activate, against that plugin context — `ctx.serviceName`) and its `disabled` field (at every mount decision, against the loader context); Include preserves nested row expressions until target activation. Other entry metadata stays literal. Use overlays when the environment selects plugins.

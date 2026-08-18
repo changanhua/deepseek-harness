@@ -112,7 +112,7 @@ lefthook is configured in `lefthook.yml` as a fast local checkpoint:
 
 The vendor manifest guard checks that changes under `vendor/*/src` are staged with the matching `vendor/README.md` manifest update. See `vendor/README.md` before editing vendored code.
 
-Apart from the scoped staged-record verification, the hooks intentionally do not run tests, snapshots, documentation checks, builds, or hygiene. Contributors run the [checks relevant to the changed behavior](../AGENTS.md#run-relevant-checks-locally) once; CI owns exhaustive coverage, built-artifact smokes, and the Node 22.19, 24, and 26 compatibility matrix.
+Apart from the scoped staged-record verification, the hooks intentionally do not run tests, snapshots, documentation checks, builds, or hygiene. Contributors run the checks relevant to the changed behavior once; CI owns exhaustive coverage, built-artifact smokes, and the Node 22.19, 24, and 26 compatibility matrix.
 
 Contributors can opt into the comprehensive local gate set with `pnpm run check:all`. The command is independent of the Git hooks and is not an agent instruction.
 
@@ -169,3 +169,57 @@ The [subsystems](subsystems/README.md) pages paste source-equivalent declaration
 ```
 
 `pnpm run verify-type-equiv` (part of `doc-sync`) then extracts that symbol's declaration and attached JSDoc from source via the TypeScript parser and asserts the block matches both. For a class whose implementation bodies do not belong in the catalog, use ` ```ts public-api ` and set `"projection": "public-api"`; the checked projection retains the public fields, constructor, accessors, methods, and original class/member JSDoc while omitting bodies and private or protected members. Comparison ignores whitespace and non-JSDoc comments but requires every original JSDoc comment, including member documentation, so readers see the source contract beside the exact type definition. The gate enforces a 1:1 correspondence by document, symbol, and projection between primary blocks and manifest entries; a paired `.zh.md` block reuses its unsuffixed sibling's entry only when the whole tracked fence sequence is byte-identical and ordered identically. `doc-typecheck` applies the same derivative rule to compilable fences, while skipping both source-equivalence fence kinds from compilation and its opt-out ratio. When you change a documented declaration or its JSDoc, the gate fails until you update the paste; when you add or remove a primary block, update the manifest in the same change.
+
+## Code conventions
+
+### Package naming and module format
+
+Every npm package is `@deepseek-ai/dsh-<name>`; vendored packages are rescoped ([mapping](rescope.md)) and `private: true`. `@deepseek-ai/cordis` is a peerDependency (+ dev) of every harness package.
+
+ESM everywhere (`"type": "module"`). Use package names across packages and `.ts` in local relative imports. Config subprocesses run built `lib/` under plain Node; source regressions use their declared launcher ([testing policy](testing.md#test-subprocess-launch-modes)). The `dsh` CLI source launch runs through tsx's ESM-only hook (`node --import tsx/esm`); modules it reaches must stay ESM (no CJS-only exports) — Node's native TypeScript modes are unavailable across the engines range ([source-launch contract](../.agents/notes/implemented/architecture/2026-07-29-dsh-source-launch-tsx-esm.md)). Raw/Web `cordis.yml` bare plugins must appear in their resolver manifest's `dependencies`; `verify-cordis-config` enforces it.
+
+### Typed events
+
+Typed events use declaration merging and merge-extensible maps. Event JSDoc needs `@mode` and payload `@param`; scoped keys absent from payloads need `@dshScopeScan unsupported`. Public service methods document parameters and non-void returns. A `SessionEventMap` member is required-on-read by default — builds that do not know its type refuse the log unless the event carries the envelope's `ignorable: true`; only structural format changes bump `SESSION_FORMAT_VERSION` ([mechanism](../.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.md)).
+
+### Discriminated unions
+
+Switch on discriminant tags. Closed unions end in `assertNever`; merge-extensible unions fall through a documented default.
+
+### Dependencies
+
+Prefer maintained dependencies over hand-rolling when they genuinely delete owned code and tests ([policy](../.agents/notes/implemented/process/2026-07-26-dependencies-over-hand-rolling.md)).
+
+### Cross-boundary IDs
+
+Opaque cross-boundary ids are branded (`Branded<B>` from `dsh-brand`), never bare `string`.
+
+### No hardcoded tunables
+
+Deployment-varying behavior must be changeable through the owning plugin's validated `Config` from `cordis.yml`, never hardcoded in the plugin. A `DEFAULT_*` constant or a test hook is not configurability. Protocol constants, external specifications, and security invariants stay fixed — the line is between a value a deployment may legitimately adjust (timeouts, caps, feature gates, path choices) and a constant the contract pins (wire formats, security invariants, protocol literals).
+
+### TypeScript at same-process boundaries
+
+Trust TypeScript at typed same-process boundaries. Do not add runtime validation, fallback behavior, or hostile-input tests solely for values the static interface requires; validate at parser/config, queued, model/tool JSON, durable/file, worker, process, and wire boundaries.
+
+### Compiler faces
+
+Keep compiler faces explicit. Each package uses one aggregate except `api/remotes`; repo-wide programs seed a face config, never the root solution ([layout](#typescript-project-layout)).
+
+### Empty catch
+
+An empty `catch` names what it swallows and why nothing else can reach it; keep the `try` to one statement.
+
+### Comments
+
+Do not comment on facts obvious from code. Prefer symmetry for parallel values; unexplained asymmetry usually signals a missed extraction.
+
+### PR history
+
+Split independent changes; fix the introducing PR before propagation. Standalone PRs and official stacks may merge-forward or rebase after review. Rewrites use `--force-with-lease`, abort on remote movement, never raw `--force`; an in-progress merge-forward preserves its checkpoint before taking a newer base ([rationale](../.agents/notes/implemented/process/2026-08-02-native-github-stacks-and-optional-rebases.md)).
+
+**Labels:** one PR `kind/*`, all material `area/*`, and native Issue Type ([taxonomy](../.agents/notes/implemented/process/2026-08-08-unified-github-label-taxonomy.md)).
+
+### Files
+
+Files end with exactly one trailing newline; `git diff --cached --check` (pre-commit) gates it.

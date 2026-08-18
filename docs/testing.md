@@ -22,7 +22,7 @@ We are DeepSeek — do not ration real-API tests. A no-key test proves plumbing;
 
 Mock only the expensive or non-deterministic boundary (LLM adapter, network, clock); keep everything downstream real. A hand-rolled stand-in proves the bridge moves bytes, not that the shipping tool behaves as asserted. Bridge tool-call tests use the scripted mock model with the real tool and executor: `makeBridgeHarness({ withBash: true })` plugs in `dsh-bash-local` and `dsh-tool-bash`, then runs `echo`.
 
-Recovery tests separate pre/post-chunk failures by step and prove failed chunks derive no message or tool side effect. Cover exhaustion, cancellation, policy composition, persistence, status, wire counts, transport-closing idle timeouts, and shipping Loader composition.
+Recovery tests separate pre/post-chunk failures by step and prove failed chunks derive no message or tool side effect.
 
 ## Verify the world, not the self-report
 
@@ -46,4 +46,16 @@ An e2e assertion re-runs the command or re-reads the file externally; a keyword 
 
 ## When a snapshot test is required
 
-Every non-trivial model-, protocol-, or human-visible change adds or updates a keyless scenario in the same PR through a runnable example's owning snapshot suite. Package tests, e2e assertions, mock/test-only compositions, and PR rationale do not replace the assembled transcript; extend the harness when needed. ACP automation scenarios use `examples/<name>/tests/snapshots/`, a scenario table over the [`dsh-acp-snapshot`](../packages/test-support/acp-snapshot/README.md) suite factory (`examples/acp-agent` is primary); `examples/headless-agent` owns the internal canonical-event JSONL snapshots and replay fixtures. The `pwsh-tool-turn` ACP scenario boots real `pwsh` and skips where it is absent. Completed interactive-terminal journeys use JSONL-driven scenarios under `apps/cli/tests/snapshots/`; transient presentation uses the package-local semantic matrix, with a PTY case when input, Loader selection, or terminal teardown changes. Browser-rendered web GUI journeys use `apps/web/tests/snapshots/`. New capability seams, lifecycle variants, or transcript surfaces name every coverage tier at plan time and verify the harness can express it before implementation.
+Every non-trivial model-, protocol-, or human-visible change adds or updates a keyless scenario in the same PR through a runnable example's owning snapshot suite. Package tests, e2e assertions, mock/test-only compositions, and PR rationale do not replace the assembled transcript; extend the harness when needed. ACP automation scenarios use `examples/<name>/tests/snapshots/`; `examples/headless-agent` owns internal canonical-event JSONL snapshots. The `pwsh-tool-turn` ACP scenario boots real `pwsh` and skips where it is absent. Interactive-terminal journeys use JSONL-driven scenarios under `apps/cli/tests/snapshots/`; browser-rendered web GUI journeys use `apps/web/tests/snapshots/`. New capability seams, lifecycle variants, or transcript surfaces name every coverage tier at plan time and verify the harness can express it before implementation.
+
+## Host sandbox failures
+
+When required commands fail because the agent sandbox blocks credentials, network, IPC, file watching, or nested `sandbox-exec`, retry unchanged with the narrowest host escalation before diagnosing authentication or project failure. Require sandbox evidence; never bypass genuine test failures or the product sandbox under test.
+
+## Tests describe behavior, not correctness
+
+Change obsolete behavior with its tests.
+
+## Coverage planning
+
+Plan unit, e2e, and snapshot coverage for capability seams and lifecycle paths.
