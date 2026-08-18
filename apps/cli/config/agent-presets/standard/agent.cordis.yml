@@ -24,7 +24,9 @@
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: >-
+    text: |-
+      始终使用简体中文思考和回复。除非用户明确切换语言，否则一切思考过程与对外回复都必须用中文；代码、compact、命令、文件路径、专有名词、报错信息、API 名等原文可保留英文，其余全部中文。
+
       You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
 
 - id: agent-instructions

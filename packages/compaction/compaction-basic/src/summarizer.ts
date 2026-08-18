@@ -70,6 +70,26 @@ const CHECKPOINT_PREAMBLE =
   'This is an automatically generated checkpoint condensing an earlier span of the conversation to free up context. Treat the captured context as established background and build on it without restating it. Continue the task directly from the messages that follow, without acknowledging this checkpoint.'
 
 /**
+ * Compact 后紧跟在英文摘要之后、后续对话之前的语言恢复指令。
+ *
+ * 落点选在 `</compacted-summary>` 闭合标签的正后方：模型刚读完英文
+ * <compacted-summary>，立刻撞上这条中文强制指令，近因效应最强，能压住
+ * 英文摘要带来的语言惯性。它与 system prompt 里 AGENTS.md 的中文规则
+ * 一前一后夹击，共同把 compact 后的上下文语言拉回中文。
+ *
+ * 仅约束语言，不改变摘要的事实内容（摘要仍按 COMPACTION_INSTRUCTION
+ * 用英文生成）；此指令只是给"摘要之后的一切"定中文基调。
+ */
+const LANG_RESTORE_DIRECTIVE = [
+  '',
+  '---',
+  '语言指令（强制，优先级高于上方英文摘要的语言惯性）：',
+  '从本检查点起，你的所有思考（reasoning / thinking 链）与回复（output）必须使用简体中文。',
+  '代码、命令、文件路径、标识符、错误串、数值、函数签名与语法片段保持原文不翻译，其余一律中文。',
+  '上方 <compacted-summary> 虽为英文，仅用于事实记录，不构成用英文继续对话或思考的依据。',
+].join('\n')
+
+/**
  * The replayed conversation surface the summarizer condenses. Reproducing the
  * last routed request's system prompt, tools, and leading messages verbatim
  * lets the auxiliary call reuse the provider's warm prefix cache; the trailing
@@ -190,7 +210,7 @@ export function frameSummary(summary: readonly ContentBlock[]): ContentBlock[] {
   return [
     { type: 'text', text: `${CHECKPOINT_PREAMBLE}\n\n${SUMMARY_OPEN_TAG}` },
     ...summary,
-    { type: 'text', text: SUMMARY_CLOSE_TAG },
+    { type: 'text', text: `${SUMMARY_CLOSE_TAG}\n${LANG_RESTORE_DIRECTIVE}` },
   ]
 }
 
