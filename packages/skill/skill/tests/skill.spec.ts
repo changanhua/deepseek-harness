@@ -202,7 +202,11 @@ describe('SkillRegistry registry', () => {
       }]),
       get: () => Promise.resolve(undefined),
     })
-    await expect(ctx.skills.list()).rejects.toThrow('non-string description')
+    const descSnapshot = await ctx.skills.snapshot()
+    expect(descSnapshot.skills).toEqual([])
+    expect(descSnapshot.complete).toBe(false)
+    const descMgmt = await ctx.skills.managementSnapshot()
+    expect(descMgmt.diagnostics.some(d => d.stage === 'registry-validation' && d.message.includes('non-string description'))).toBe(true)
 
     const badBoolean = new Context()
     await badBoolean.plugin(SkillRegistry)
@@ -215,7 +219,11 @@ describe('SkillRegistry registry', () => {
       }]),
       get: () => Promise.resolve(undefined),
     })
-    await expect(badBoolean.skills.list()).rejects.toThrow('non-boolean invocation.modelInvocable')
+    const boolSnapshot = await badBoolean.skills.snapshot()
+    expect(boolSnapshot.skills).toEqual([])
+    expect(boolSnapshot.complete).toBe(false)
+    const boolMgmt = await badBoolean.skills.managementSnapshot()
+    expect(boolMgmt.diagnostics.some(d => d.stage === 'registry-validation' && d.message.includes('invocation.modelInvocable'))).toBe(true)
   })
 
   it('rejects malformed provider results and every malformed candidate scalar', async () => {
@@ -228,7 +236,11 @@ describe('SkillRegistry registry', () => {
         list: () => Promise.resolve(output as readonly SkillCandidate[] | SkillProviderObservation),
         get: () => Promise.resolve(undefined),
       })
-      await expect(badList.skills.list()).rejects.toThrow('list() must return an array or { candidates, complete } observation')
+      const obsSnapshot = await badList.skills.snapshot()
+      expect(obsSnapshot.skills).toEqual([])
+      expect(obsSnapshot.complete).toBe(false)
+      const obsMgmt = await badList.skills.managementSnapshot()
+      expect(obsMgmt.diagnostics.some(d => d.stage === 'provider-discovery' && d.message.includes('list() must return an array or { candidates, complete } observation'))).toBe(true)
     }
 
     const cases: { patch: Partial<SkillCandidate>; expected: string }[] = [
@@ -261,7 +273,11 @@ describe('SkillRegistry registry', () => {
         get: () => Promise.resolve(undefined),
       })
 
-      await expect(ctx.skills.list()).rejects.toThrow(expected)
+      const scalarSnapshot = await ctx.skills.snapshot()
+      expect(scalarSnapshot.skills).toEqual([])
+      expect(scalarSnapshot.complete).toBe(false)
+      const scalarMgmt = await ctx.skills.managementSnapshot()
+      expect(scalarMgmt.diagnostics.some(d => d.stage === 'registry-validation' && d.message.includes(expected))).toBe(true)
     }
   })
 
@@ -573,7 +589,11 @@ describe('SkillRegistry registry', () => {
         return undefined
       },
     })
-    await expect(ctx.skills.list()).rejects.toThrow('invalid skill name')
+    const nameSnapshot = await ctx.skills.snapshot()
+    expect(nameSnapshot.skills).toEqual([])
+    expect(nameSnapshot.complete).toBe(false)
+    const nameMgmt = await ctx.skills.managementSnapshot()
+    expect(nameMgmt.diagnostics.some(d => d.stage === 'registry-validation' && d.message.includes('invalid skill name'))).toBe(true)
 
     const invalidCandidates = [
       { ...memorySkill('empty-description', '', 1), provider: 'empty-description' },
@@ -592,7 +612,11 @@ describe('SkillRegistry registry', () => {
           return undefined
         },
       })
-      await expect(invalid.skills.list()).rejects.toThrow('skill provider')
+      const invSnapshot = await invalid.skills.snapshot()
+      expect(invSnapshot.skills).toEqual([])
+      expect(invSnapshot.complete).toBe(false)
+      const invMgmt = await invalid.skills.managementSnapshot()
+      expect(invMgmt.diagnostics.some(d => d.stage === 'registry-validation' && d.message.includes('skill provider'))).toBe(true)
     }
 
     await expect(new Context().plugin(SkillRegistry, { collectCacheMaxEntries: 1.5 })).rejects.toThrow('collectCacheMaxEntries')
@@ -1267,5 +1291,113 @@ describe('SkillRegistry scoped layers', () => {
     control?.invalidate()
     expect(await ctx.skills.list({ scope })).toEqual([])
     await preset.dispose()
+  })
+})
+
+describe('SkillRegistry management projection', () => {
+  it('keeps within-layer losers as shadowed entries and shares one discovery pass', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    const lower = new MemoryProvider([memorySkill('shared', 'Lower rank', 20)])
+    const higher: SkillProvider = {
+      name: 'higher',
+      async list() {
+        return [{ ...memorySkill('shared', 'Higher rank', 5), provider: 'higher' }]
+      },
+      async get(candidate) {
+        return { ...candidate, content: (candidate.locator as { content: string }).content }
+      },
+    }
+    registerProvider(ctx, lower)
+    registerProvider(ctx, higher)
+
+    const callProjection = await ctx.skills.list()
+    expect(callProjection.map(skill => skill.description)).toEqual(['Higher rank'])
+
+    const mgmt = await ctx.skills.managementSnapshot()
+    expect(mgmt.complete).toBe(true)
+    const selected = mgmt.entries.filter(entry => entry.selected)
+    const shadowed = mgmt.entries.filter(entry => !entry.selected)
+    expect(selected).toHaveLength(1)
+    expect(selected[0]?.candidate.description).toBe('Higher rank')
+    expect(shadowed).toHaveLength(1)
+    expect(shadowed[0]?.candidate.description).toBe('Lower rank')
+    expect(shadowed[0]?.shadowReason).toBe('within-layer')
+    expect(shadowed[0]?.shadowedBy).toBe(selected[0]?.candidate)
+
+    // single pass: the management projection reused the cached discovery.
+    expect(lower.listCalls).toBe(1)
+  })
+
+  it('keeps cross-layer losers as shadowed entries across scope layers', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    registerProvider(ctx, new MemoryProvider([memorySkill('shared', 'Global wins ranks', 10)]))
+    const preset = createScope(ctx, { preset: 'shadow' })
+    scopedSkills(preset.ctx).registerProvider(() => ({
+      name: 'preset-local',
+      async list() {
+        return [{ ...memorySkill('shared', 'Preset shadow', 900), provider: 'preset-local', source: 'preset' }]
+      },
+      async get(candidate: SkillCandidate) {
+        return { ...candidate, content: (candidate.locator as { content: string }).content }
+      },
+    }))
+
+    const scope = scopeOf(preset.ctx)
+    const callProjection = await ctx.skills.list({ scope })
+    expect(callProjection).toHaveLength(1)
+    expect(callProjection[0]?.description).toBe('Preset shadow')
+
+    const mgmt = await ctx.skills.managementSnapshot({ scope })
+    const selected = mgmt.entries.filter(entry => entry.selected)
+    const shadowed = mgmt.entries.filter(entry => !entry.selected)
+    expect(selected).toHaveLength(1)
+    expect(selected[0]?.candidate.description).toBe('Preset shadow')
+    expect(shadowed).toHaveLength(1)
+    expect(shadowed[0]?.candidate.description).toBe('Global wins ranks')
+    expect(shadowed[0]?.shadowReason).toBe('cross-layer')
+    expect(shadowed[0]?.shadowedBy).toBe(selected[0]?.candidate)
+    await preset.dispose()
+  })
+
+  it('caches the management projection like the call projection', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    const provider = new MemoryProvider([memorySkill('cached-skill', 'Cached', 10)])
+    registerProvider(ctx, provider)
+
+    await ctx.skills.managementSnapshot()
+    expect(provider.listCalls).toBe(1)
+    await ctx.skills.managementSnapshot()
+    expect(provider.listCalls).toBe(1)
+    await ctx.skills.list()
+    expect(provider.listCalls).toBe(1)
+  })
+
+  it('carries provider diagnostics alongside registry-validation diagnostics', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    registerProvider(ctx, {
+      name: 'mixed',
+      list: () => Promise.resolve({
+        candidates: [
+          { ...memorySkill('good', 'Good', 10), provider: 'mixed' },
+          { ...memorySkill('Bad_Name', 'bad', 5), provider: 'mixed' },
+        ],
+        complete: true,
+        diagnostics: [{ code: 'provider-note', severity: 'warning', message: 'provider warned' }],
+      } as SkillProviderObservation),
+      get: () => Promise.resolve(undefined),
+    })
+
+    const mgmt = await ctx.skills.managementSnapshot()
+    expect(mgmt.complete).toBe(false)
+    expect(mgmt.entries.filter(entry => entry.selected).map(entry => entry.candidate.name)).toEqual(['good'])
+    const stages = mgmt.diagnostics.map(d => d.stage)
+    expect(stages).toContain('provider-discovery')
+    expect(stages).toContain('registry-validation')
+    expect(mgmt.diagnostics.some(d => d.stage === 'provider-discovery' && d.code === 'provider-note')).toBe(true)
+    expect(mgmt.diagnostics.some(d => d.stage === 'registry-validation' && d.message.includes('invalid skill name'))).toBe(true)
   })
 })

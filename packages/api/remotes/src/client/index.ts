@@ -5,15 +5,18 @@ import commandsRemote from '@deepseek-ai/dsh-commands/remote'
 import goalsRemote from '@deepseek-ai/dsh-goal/remote'
 import dynamicRemote from '@deepseek-ai/dsh-cordis-host-runner/remote'
 import pluginInventoryRemote from '@deepseek-ai/dsh-host-plugin-inventory/remote'
+import capabilityRegistryRemote from '@deepseek-ai/dsh-host-capability-registry/remote'
 import messageFeedbackRemote from '@deepseek-ai/dsh-message-feedback/remote'
 import taskQueueRemote from '@deepseek-ai/dsh-task-queue-remote/remote'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 
 export type { TypertClientRemote as ClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 export type { PluginInventorySnapshot } from '@deepseek-ai/dsh-host-plugin-inventory/types'
+export type { CapabilitySnapshot, CapabilitySkill, CapabilityTool, CapabilityMcpServer } from '@deepseek-ai/dsh-host-capability-registry/types'
 export type {} from '@deepseek-ai/dsh-commands/remote'
 export type {} from '@deepseek-ai/dsh-goal/remote'
 export type {} from '@deepseek-ai/dsh-host-plugin-inventory/remote'
+export type {} from '@deepseek-ai/dsh-host-capability-registry/remote'
 export type {} from '@deepseek-ai/dsh-message-feedback/remote'
 export type {} from '@deepseek-ai/dsh-task-queue-remote/remote'
 // The forwarded-event allowlist's selection seat: without it in the consumer's
@@ -28,6 +31,7 @@ export type {} from '@deepseek-ai/dsh-credentials/types'
 export type {} from '@deepseek-ai/dsh-llm/types'
 export type {} from '@deepseek-ai/dsh-agent-presets/types'
 export type {} from '@deepseek-ai/dsh-settings/types'
+export type {} from '@deepseek-ai/dsh-skill'
 
 /**
  * The carrier's Client-facing types, re-exported so a business package names one
@@ -40,7 +44,10 @@ export type {
   MessageId, ModelCatalogFailure, ModelProviderGroup, ModelReasoningEffort, ModelSelection,
   MuxFrame, PromptContentPart, QuestionResponsePayload, QueueAction, RpcError, RpcId, RpcReceipt,
   RpcRequest, RpcResponse, RpcResult, SessionId, SessionModels, SessionSearchItem,
-  SessionSummary, SettingsNamespaceView, SettingsPathOpView, SkillEntry, StreamChunk,
+  SessionSummary, SettingsNamespaceView, SettingsPathOpView, SkillEntry,
+  SkillManagementApi, SkillManagementSnapshot, SkillManagementEntry, SkillManagementSummary,
+  SkillShadow, SkillManagementActions, SkillManagementOrigin, SkillDiagnostic,
+  SkillEntryId, SkillRootId, StreamChunk,
   SubagentAddress, SubagentCatalog, JobView, ToolCallView, ToolEventView, ToolResultView,
   WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-client-connection/client'
@@ -108,7 +115,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const disposers: Array<() => Promise<void>> = []
   try {
     for (const contribution of [
-      commandsRemote, goalsRemote, dynamicRemote, pluginInventoryRemote, messageFeedbackRemote, taskQueueRemote,
+      commandsRemote, goalsRemote, dynamicRemote, pluginInventoryRemote, capabilityRegistryRemote, messageFeedbackRemote, taskQueueRemote,
     ]) {
       disposers.push(await ctx.remote.$mount(contribution))
     }

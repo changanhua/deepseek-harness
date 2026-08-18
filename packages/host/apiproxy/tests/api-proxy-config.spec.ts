@@ -24,6 +24,8 @@ import type { RpcRequest, RpcResponse } from '../src/api/rpc.ts'
 import { RpcId } from '../src/api/rpc.ts'
 import { AGENT_DEFAULT_MODEL_SETTINGS_NAMESPACE } from '@deepseek-ai/dsh-agent-default-model'
 import { createApiProxy } from '../src/api-proxy.ts'
+import { SkillRegistry } from '@deepseek-ai/dsh-skill'
+import { createScope } from '@deepseek-ai/dsh-scope'
 
 const DEFAULTS = { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' }
 
@@ -775,5 +777,39 @@ describe('llm.discoverModels', () => {
 
     expect(error.code).toBe('model-discovery-failed')
     expect(error.message).toContain('no model discovery is registered')
+  })
+})
+
+describe('skills/change forwarded event', () => {
+  it('forwards a scope-scoped realm registry invalidation to the host stream', async () => {
+    const ctx = await harness()
+    const api = createApiProxy(ctx, DEFAULTS)
+
+    // A realm skills registry is mounted on a scoped child context, exactly as
+    // an agent preset's standing composition would, rather than on the root
+    // host context. Its `skills/change` must still reach the root browser
+    // connection: the spec forbids testing only the host global registry.
+    const scope = createScope(ctx, { realm: true } as unknown as object)
+    const realmRegistry = new SkillRegistry(scope.ctx)
+    let invalidate: () => void = () => {}
+    realmRegistry.registerProvider((control) => {
+      invalidate = control.invalidate
+      return {
+        name: 'realm-provider',
+        list: () => Promise.resolve([]),
+        get: () => Promise.resolve(undefined),
+      }
+    })
+
+    const frames = await collectHost(api, ['host/remote-event'], 1, async () => {
+      // The provider advertises its catalog as changed; the scope-scoped
+      // registry notifies subscribers through its own (child) context.
+      invalidate()
+    })
+    await scope.dispose()
+
+    expect(frames).toEqual([
+      { type: 'host/remote-event', event: 'skills/change', args: [] },
+    ])
   })
 })

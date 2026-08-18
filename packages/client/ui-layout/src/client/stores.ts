@@ -73,7 +73,11 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       },
       openDetails: (d) => { if (d.details === 0) d.details = DETAILS_DEFAULT },
       closeDetails: (d) => { d.details = 0 },
-      setActiveModule: (d, module: string) => { d.activeModule = module },
+      // Activate a module view; picking the one already active returns to the
+      // default conversation view (the sidebar nav entries' second click exit).
+      setActiveModule: (d, module: string) => {
+        d.activeModule = d.activeModule === module ? DEFAULT_MODULE : module
+      },
     },
   })
   return handle

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SettingsRootComponentProps } from '../src/client/shell-contract.ts'
 import { SettingsRoot } from '../src/client/SettingsRoot.tsx'
+import { SettingsNavigatorService } from '../src/client/settings-navigator.ts'
+import { Context } from '@deepseek-ai/cordis'
 
 afterEach(cleanup)
 
@@ -21,6 +23,7 @@ const SEAT_CONTENT: Record<string, string> = {
 function mount({
   wide = true,
   onboardingActive = true,
+  navigator,
   rows = [
     { id: 'general', order: 0, label: 'General' },
     { id: 'models', order: 10, label: 'Models' },
@@ -30,7 +33,7 @@ function mount({
     { id: 'welcome', order: -100 },
     { id: 'credential', order: 0 },
   ],
-}: { wide?: boolean; onboardingActive?: boolean; rows?: Row[]; steps?: Step[] } = {}) {
+}: { wide?: boolean; onboardingActive?: boolean; navigator?: SettingsNavigatorService; rows?: Row[]; steps?: Step[] } = {}) {
   // Mutable row source standing in for the bound useSections hook; bump()
   // plays a ledger change through the same observable contract.
   let current = rows
@@ -52,6 +55,7 @@ function mount({
   const props: SettingsRootComponentProps = {
     useSessions,
     useWorkspaces: unusedHook,
+    ...(navigator !== undefined ? { navigator } : {}),
     wide,
     useOnboardingSteps: select => select(steps),
     useSections: (select) => {
@@ -265,5 +269,30 @@ describe('SettingsPanel navigation', () => {
     expect(listeners.size).toBe(1)
     view.unmount()
     expect(listeners.size).toBe(0)
+  })
+})
+
+describe('SettingsNavigator shell channel', () => {
+  it('opens a named section from outside the shell tree', () => {
+    const navigator = new SettingsNavigatorService(new Context())
+    const { renderSlot } = mount({ navigator })
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    act(() => { navigator.open('models') })
+
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Models' }).getAttribute('aria-current')).toBe('true')
+    expect(screen.getByTestId('section-models')).toBeTruthy()
+    expect(renderSlot).toHaveBeenCalledWith('settings.section', expect.objectContaining({}), { only: 'models' })
+  })
+
+  it('unbinds the panel on unmount so a stale component stops receiving intents', () => {
+    const navigator = new SettingsNavigatorService(new Context())
+    const { view } = mount({ navigator })
+    // Mounting subscribes the SettingsRoot; unmounting drops the disposer.
+    view.unmount()
+
+    // No live subscriber means the intent is dropped without an error.
+    expect(() => navigator.open('models')).not.toThrow()
   })
 })

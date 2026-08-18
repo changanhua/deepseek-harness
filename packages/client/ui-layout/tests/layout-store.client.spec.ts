@@ -96,6 +96,21 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
   })
 
+  it('setActiveModule exits a module on a second click of its own nav entry', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setActiveModule('capability')
+    expect(store.getSnapshot().activeModule).toBe('capability')
+    // Re-picking the already-active module returns to the conversation default.
+    actions.setActiveModule('capability')
+    expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
+    // Picking the conversation module while already there keeps it a no-op.
+    actions.setActiveModule('queue')
+    actions.setActiveModule(DEFAULT_MODULE)
+    expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
+    actions.setActiveModule(DEFAULT_MODULE)
+    expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
+  })
+
   it('does not persist panel geometry', () => {
     const first = createLayoutStore().create()
     first.actions.setSidebar(400)

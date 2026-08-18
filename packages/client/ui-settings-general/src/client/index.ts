@@ -24,6 +24,7 @@ import { SettingsRoot } from './SettingsRoot.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
 import { SettingsDocumentAction } from './SettingsDocumentAction.tsx'
+import { SettingsNavigatorService } from './settings-navigator.ts'
 import type { SettingsDocumentActionInjected } from './SettingsDocumentAction.tsx'
 import { refreshDocumentIfLoaded, SettingsDocumentStore } from './settings-document-store.ts'
 import { en, zh, type SettingsKey } from './locales.ts'
@@ -91,7 +92,11 @@ export function apply(ctx: ClientContext): void {
   let rows: readonly SettingsSectionRow[] = []
   let onboardingVersion = -1
   let onboardingSteps: readonly SettingsOnboardingStep[] = []
+  // The shell owns the navigator implementation: a feature controller calls
+  // `settingsNavigator.open('skills')` and SettingsRoot applies the intent.
+  const navigator = new SettingsNavigatorService(ctx)
   const shellInjected = (): SettingsRootInjected => ({
+    navigator,
     hooks: {
       sections: {
         getSnapshot: () => {

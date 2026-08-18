@@ -70,6 +70,24 @@ export interface SkillSummary {
   readonly resourceBase?: SkillResourceBase
 }
 
+/**
+ * Provider-declared origin describing where a skill candidate came from, used by
+ * management projection to render layer/root/relative-position labels. The
+ * `kind` discriminant is provider-owned and merge-extensible: a provider may
+ * declare a new kind, and the registry never infers it from the provider name
+ * or the open `SkillSource` union.
+ */
+export interface SkillCandidateOrigin {
+  /** Provider-declared origin discriminant (e.g. `filesystem`); never inferred. */
+  readonly kind: string
+  /** Provider name contributing this origin. */
+  readonly provider: string
+  /** Human-readable label for the discovery layer this candidate belongs to. */
+  readonly layerLabel: string
+  /** Provider-extensible origin payload (e.g. filesystem root id, label, relative path, rank, source). */
+  readonly details?: Readonly<Record<string, unknown>>
+}
+
 /** Provider catalog entry used by the registry to merge and later load skills. */
 export interface SkillCandidate extends SkillSummary {
   /** Lower ranks win duplicate skill names before provider registration order is considered. */
@@ -80,6 +98,8 @@ export interface SkillCandidate extends SkillSummary {
   readonly path?: string
   /** Parsed optional metadata object from provider-specific skill frontmatter. */
   readonly metadata?: Readonly<Record<string, unknown>>
+  /** Provider-declared origin for management projection; omitted by providers without origin data. */
+  readonly origin?: SkillCandidateOrigin
 }
 
 /** Complete parsed skill definition, including the body loaded by `ctx.skills.get()`. */
@@ -242,6 +262,45 @@ export interface SkillProviderObservation {
   readonly candidates: readonly SkillCandidate[]
   /** Whether discovery completed and these candidates may be cached. */
   readonly complete: boolean
+  readonly diagnostics?: readonly ProviderSkillDiagnostic[]
+}
+
+export interface ProviderSkillDiagnostic {
+  readonly code: string
+  readonly severity: 'warning' | 'error'
+  readonly message: string
+  readonly details?: Readonly<Record<string, unknown>>
+}
+
+export interface SkillDiagnostic {
+  readonly code: string
+  readonly severity: 'warning' | 'error'
+  readonly stage: 'provider-discovery' | 'registry-validation'
+  readonly message: string
+  readonly provider?: string
+  readonly candidatePath?: string
+  readonly details?: Readonly<Record<string, unknown>>
+}
+
+export interface SkillShadowEdge {
+  readonly loser: IndexedCandidate
+  readonly winner: IndexedCandidate
+  readonly reason: 'within-layer' | 'cross-layer'
+}
+
+export interface SkillManagementEntry {
+  readonly candidate: SkillCandidate
+  readonly selected: boolean
+  readonly shadowedBy?: SkillCandidate
+  readonly shadowReason?: 'within-layer' | 'cross-layer'
+  readonly providerOrder: number
+  readonly localOrder: number
+}
+
+export interface SkillManagementResult {
+  readonly entries: readonly SkillManagementEntry[]
+  readonly diagnostics: readonly SkillDiagnostic[]
+  readonly complete: boolean
 }
 
 /** Provider interface for one source of skills, such as local directories or a remote registry. */
@@ -316,11 +375,15 @@ interface RegisteredProvider {
 
 interface LayerCollectResult {
   entries: IndexedCandidate[]
+  shadows: SkillShadowEdge[]
+  diagnostics: SkillDiagnostic[]
   cacheable: boolean
 }
 
 interface CollectResult {
   entries: Map<string, IndexedCandidate>
+  shadows: SkillShadowEdge[]
+  diagnostics: SkillDiagnostic[]
   cacheable: boolean
 }
 
@@ -364,7 +427,7 @@ export class SkillRegistry extends Service {
     scope => new SkillLayer(scope),
     () => { this.invalidateCache() },
   )
-  private readonly collectCache = new Map<string, Map<string, IndexedCandidate>>()
+  private readonly collectCache = new Map<string, CollectResult>()
   private revision = 0
   private nextProviderOrder = 0
   /** Stable identities for cache keys; scope keys are opaque identity-compared objects. */
@@ -489,6 +552,25 @@ export class SkillRegistry extends Service {
     }
   }
 
+  async managementSnapshot(options: SkillViewOptions = {}): Promise<SkillManagementResult> {
+    const collected = await this.collect(options)
+    const entries: SkillManagementEntry[] = []
+    for (const entry of collected.entries.values()) {
+      entries.push({ candidate: entry.candidate, selected: true, providerOrder: entry.providerOrder, localOrder: entry.localOrder })
+    }
+    for (const edge of collected.shadows) {
+      entries.push({
+        candidate: edge.loser.candidate,
+        selected: false,
+        shadowedBy: edge.winner.candidate,
+        shadowReason: edge.reason,
+        providerOrder: edge.loser.providerOrder,
+        localOrder: edge.loser.localOrder,
+      })
+    }
+    return { entries, diagnostics: collected.diagnostics, complete: collected.cacheable }
+  }
+
   /**
    * Load and validate the winning candidate, passing its opaque discovery locator back to the
    * provider. Cancellation is rechecked after selection, including cache hits, and raced against
@@ -527,7 +609,7 @@ export class SkillRegistry extends Service {
       // and only a chain-bearing key makes the next read see the new preset.
       const key = this.collectCacheKey(options.cwd, scopeChainOf(options.scope), revision)
       const cached = this.collectCache.get(key)
-      if (cached !== undefined) return { entries: cached, cacheable: true }
+      if (cached !== undefined) return cached
 
       const result = await this.collectFresh(options)
       throwIfAborted(options.signal)
@@ -536,10 +618,10 @@ export class SkillRegistry extends Service {
           attempt += 1
           continue
         }
-        return { entries: result.entries, cacheable: false }
+        return { entries: result.entries, shadows: result.shadows, diagnostics: result.diagnostics, cacheable: false }
       }
       if (result.cacheable) {
-        this.collectCache.set(key, result.entries)
+        this.collectCache.set(key, result)
         if (this.collectCache.size > this.collectCacheMaxEntries) {
           const oldest = this.collectCache.keys().next() as IteratorYieldResult<string>
           this.collectCache.delete(oldest.value)
@@ -556,35 +638,45 @@ export class SkillRegistry extends Service {
     // duplicates only within one layer.
     const layers = [this.layers.global, ...this.layers.chainLayers(options.scope)]
     const merged = new Map<string, IndexedCandidate>()
+    const shadows: SkillShadowEdge[] = []
+    const diagnostics: SkillDiagnostic[] = []
     let cacheable = true
     for (const layer of layers) {
       const collected = await this.collectLayer(layer, options)
       if (!collected.cacheable) cacheable = false
-      for (const entry of collected.entries) merged.set(entry.candidate.name, entry)
+      for (const edge of collected.shadows) shadows.push(edge)
+      for (const diagnostic of collected.diagnostics) diagnostics.push(diagnostic)
+      for (const entry of collected.entries) {
+        const displaced = merged.get(entry.candidate.name)
+        if (displaced !== undefined) shadows.push({ loser: displaced, winner: entry, reason: 'cross-layer' })
+        merged.set(entry.candidate.name, entry)
+      }
     }
-    return { entries: merged, cacheable }
+    return { entries: merged, shadows, diagnostics, cacheable }
   }
 
   private async collectLayer(layer: SkillLayer, options: SkillLookupOptions): Promise<LayerCollectResult> {
     const collected = await this.listLayerCandidates(layer, options)
     collected.entries.sort(compareIndexedCandidates)
-    const seen = new Set<string>()
-    const result: IndexedCandidate[] = []
+    const winners = new Map<string, IndexedCandidate>()
+    const shadows: SkillShadowEdge[] = []
     for (const entry of collected.entries) {
       const skill = entry.candidate
-      if (seen.has(skill.name)) {
+      const existing = winners.get(skill.name)
+      if (existing !== undefined) {
+        shadows.push({ loser: entry, winner: existing, reason: 'within-layer' })
         this.ctx.logger.warn(`skill "${skill.name}" from ${skill.source} ignored because a higher-priority skill already exists`)
         continue
       }
-      seen.add(skill.name)
-      result.push(entry)
+      winners.set(skill.name, entry)
     }
-    return { entries: result, cacheable: collected.cacheable }
+    return { entries: [...winners.values()], shadows, diagnostics: collected.diagnostics, cacheable: collected.cacheable }
   }
 
   private async listLayerCandidates(layer: SkillLayer, options: SkillLookupOptions): Promise<LayerCollectResult> {
     throwIfAborted(options.signal)
     const candidates: IndexedCandidate[] = []
+    const diagnostics: SkillDiagnostic[] = []
     let cacheable = true
     let runtimeOrder = 0
     for (const skill of [...layer.runtime.values()].sort((a, b) => compareCodePoints(a.name, b.name))) {
@@ -606,17 +698,38 @@ export class SkillRegistry extends Service {
         if (options.signal?.aborted === true) throw toError(options.signal.reason)
         cacheable = false
         this.ctx.logger.warn(`skill provider "${provider.name}" skipped: ${errorMessage(error)}`)
+        diagnostics.push({ code: 'provider-discovery-failed', severity: 'error', stage: 'provider-discovery', message: `skill provider "${provider.name}" was skipped: ${errorMessage(error)}`, provider: provider.name })
+        continue
       }
-      if (output === undefined) continue
-      const observation = normalizeProviderObservation(output, provider.name)
+      let observation: SkillProviderObservation
+      try {
+        observation = normalizeProviderObservation(output, provider.name)
+      } catch (error) {
+        cacheable = false
+        this.ctx.logger.warn(`skill provider "${provider.name}" produced an invalid observation: ${errorMessage(error)}`)
+        diagnostics.push({ code: 'invalid-provider-observation', severity: 'error', stage: 'provider-discovery', message: `skill provider "${provider.name}" returned an invalid observation: ${errorMessage(error)}`, provider: provider.name })
+        continue
+      }
       if (!observation.complete) cacheable = false
+      if (observation.diagnostics !== undefined) {
+        for (const diagnostic of observation.diagnostics) {
+          diagnostics.push({ code: diagnostic.code, severity: diagnostic.severity, stage: 'provider-discovery', message: diagnostic.message, provider: provider.name, ...diagnostic.details !== undefined ? { details: diagnostic.details } : {} })
+        }
+      }
       for (const candidate of observation.candidates) {
-        validateCandidate(candidate, provider.name)
+        try {
+          validateCandidate(candidate, provider.name)
+        } catch (error) {
+          cacheable = false
+          this.ctx.logger.warn(`skill provider "${provider.name}" returned an invalid candidate: ${errorMessage(error)}`)
+          diagnostics.push({ code: 'invalid-candidate', severity: 'error', stage: 'registry-validation', message: `skill provider "${provider.name}" returned an invalid candidate: ${errorMessage(error)}`, provider: provider.name, ...candidate.path !== undefined ? { candidatePath: candidate.path } : {} })
+          continue
+        }
         candidates.push({ candidate, provider, providerOrder: order, localOrder, layer })
         localOrder += 1
       }
     }
-    return { entries: candidates, cacheable }
+    return { entries: candidates, shadows: [], diagnostics, cacheable }
   }
 
   private invalidateCache(): void {
@@ -736,6 +849,14 @@ function validateCandidate(candidate: SkillCandidate, providerName: string): voi
   }
   if (candidate.path !== undefined && typeof candidate.path !== 'string') {
     throw new TypeError(`skill provider "${providerName}" returned skill "${candidate.name}" with a non-string path`)
+  }
+  if (candidate.origin !== undefined) {
+    const origin = candidate.origin
+    if (typeof origin.kind !== 'string' || origin.kind.length === 0
+      || typeof origin.provider !== 'string' || origin.provider.length === 0
+      || typeof origin.layerLabel !== 'string' || origin.layerLabel.length === 0) {
+      throw new TypeError(`skill provider "${providerName}" returned skill "${candidate.name}" with an invalid origin`)
+    }
   }
 }
 

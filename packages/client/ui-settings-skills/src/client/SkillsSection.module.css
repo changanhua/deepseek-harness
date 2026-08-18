@@ -1,0 +1,132 @@
+/* Skills Settings section (§5.2): context row, banners, search, the
+   selected-first candidate list, and grouped diagnostics. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.context strong {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.banner {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.bannerStanding {
+  composes: banner;
+}
+
+.bannerIncomplete {
+  composes: banner;
+}
+
+.search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.entry {
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+}
+
+.entrySelected {
+  composes: entry;
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.name {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.meta {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.muted {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+.diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diagnosticsTitle {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.diagnostic {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-caption);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.empty {
+  color: var(--dsw-alias-label-dimmed);
+  font-size: 13px;
+  line-height: 20px;
+}

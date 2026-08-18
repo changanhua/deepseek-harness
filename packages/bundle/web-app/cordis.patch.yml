@@ -94,6 +94,11 @@
     - id: plugin-inventory
       name: '@deepseek-ai/dsh-host-plugin-inventory'
 
+    # Read-only projection of current Skills, Tools, and MCP server capability
+    # state for the capability viewer.
+    - id: capability-registry
+      name: '@deepseek-ai/dsh-host-capability-registry'
+
     # The API gateway: the transport-agnostic dispatch face every client shape
     # shares. The base layer's agent-default-model service owns the default model.
     - id: api-gateway
@@ -192,6 +197,9 @@
     - id: ui-settings-models
       name: '@deepseek-ai/dsh-client-ui-settings-models'
 
+    - id: ui-settings-skills
+      name: '@deepseek-ai/dsh-client-ui-settings-skills'
+
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
 
@@ -278,6 +286,13 @@
     # lives in dsh-base's host plane beside the queue backend.
     - id: ui-task-queue
       name: '@deepseek-ai/dsh-client-ui-task-queue'
+
+    # Capability viewer: the sidebar module entry (count badge) and the
+    # center-column read-only Skills/MCP/Skills view over the
+    # capabilityRegistry Remote. The Remote row lives above beside the host
+    # inventory rows.
+    - id: ui-capability
+      name: '@deepseek-ai/dsh-client-ui-capability'
 
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #

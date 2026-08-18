@@ -41,6 +41,7 @@ import type {
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
   WorkspaceId, WorkspaceView,
+  SkillEntryId, SkillManagementOrigin, SkillManagementSnapshot,
 } from './api/index.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
@@ -74,7 +75,7 @@ import type {} from '@deepseek-ai/dsh-commands'
 // merges `ctx.dynamicCordisRunner`, and a dependency on that package would
 // rebuild the api-remotes cycle this direction exists to avoid.
 import type {} from '@deepseek-ai/dsh-cordis-host-runner/types'
-import type {} from '@deepseek-ai/dsh-skill'
+import type { SkillCandidate, SkillManagementResult } from '@deepseek-ai/dsh-skill'
 // The settings/credentials seams: brand guards run at this wire boundary; the
 // service reads stay optional (`ctx.get`) so a composition without either
 // provider still serves every other domain.
@@ -1612,6 +1613,69 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       // a deleted or broken preset must degrade this read, never fail it.
       return undefined
     }
+  }
+
+  /** Build a stable opaque entry id from candidate identity fields (no host path). */
+  function skillEntryIdOf(provider: string, source: string, name: string, rank: number): SkillEntryId {
+    return `${provider}:${source}:${name}:${rank}` as SkillEntryId
+  }
+
+  /** Project a host candidate origin into the wire discriminated map. */
+  function projectSkillOrigin(candidate: SkillCandidate): SkillManagementOrigin {
+    const origin = candidate.origin
+    if (origin !== undefined) {
+      return {
+        kind: origin.kind,
+        provider: origin.provider,
+        layerLabel: origin.layerLabel,
+        ...origin.details !== undefined ? { details: origin.details } : {},
+      }
+    }
+    return { kind: 'runtime', provider: candidate.provider, layerLabel: 'Runtime' }
+  }
+
+  /** Project the registry management result into the wire snapshot. */
+  function projectSkillManagementSnapshot(
+    sessionId: SessionId,
+    fidelity: 'live' | 'standing',
+    result: SkillManagementResult,
+  ): SkillManagementSnapshot {
+    const entries = result.entries.map((entry) => {
+      const candidate = entry.candidate
+      const id = skillEntryIdOf(candidate.provider, candidate.source, candidate.name, candidate.rank)
+      const shadowedBy = entry.shadowedBy
+      return {
+        id,
+        summary: {
+          name: candidate.name,
+          description: candidate.description,
+          ...candidate.whenToUse !== undefined ? { whenToUse: candidate.whenToUse } : {},
+          invocation: { modelInvocable: candidate.invocation.modelInvocable, userInvocable: candidate.invocation.userInvocable },
+          source: candidate.source,
+          provider: candidate.provider,
+          ...candidate.resourceBase !== undefined ? { resourceKind: candidate.resourceBase.kind } : {},
+        },
+        selected: entry.selected,
+        ...(shadowedBy !== undefined && entry.shadowReason !== undefined) ? {
+          shadow: {
+            by: skillEntryIdOf(shadowedBy.provider, shadowedBy.source, shadowedBy.name, shadowedBy.rank),
+            reason: entry.shadowReason,
+          },
+        } : {},
+        origin: projectSkillOrigin(candidate),
+        actions: { edit: false, remove: false, setInvocation: false },
+      }
+    })
+    const diagnostics = result.diagnostics.map(diagnostic => ({
+      code: diagnostic.code,
+      severity: diagnostic.severity,
+      stage: diagnostic.stage,
+      message: diagnostic.message,
+      ...diagnostic.provider !== undefined ? { provider: diagnostic.provider } : {},
+      ...diagnostic.candidatePath !== undefined ? { location: diagnostic.candidatePath } : {},
+      ...diagnostic.details !== undefined ? { details: diagnostic.details } : {},
+    }))
+    return { sessionId, fidelity, complete: result.complete, entries, diagnostics }
   }
 
   /** Resolve one requested identity to a live agent, creating or resuming it once. */
@@ -3253,6 +3317,43 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           })
         } catch (error: unknown) {
           return err(request, { code: 'internal', message: `skill listing failed: ${String(error)}`, details: {} })
+        }
+      },
+    },
+
+    skillManagement: {
+      // Same session-addressed stance as skill.list: the header cwd selects the
+      // project, the live agent selects a realm-mounted registry, and the
+      // viewing scope is the live agent, the recorded preset's standing key,
+      // or the global layer.
+      async snapshot(request) {
+        const { sessionId } = request.payload
+        const session = ctx.sessions.get(sessionId)
+        if (session === undefined) {
+          return err(request, {
+            code: 'session-not-found',
+            message: `session "${sessionId}" not found (not attached)`,
+            details: { sessionId },
+          })
+        }
+        if (session.header.cwd === undefined) {
+          return err(request, { code: 'internal', message: `session "${sessionId}" has no project cwd`, details: {} })
+        }
+        const cwd = session.header.cwd
+        const live = ctx.agents.get(sessionId)
+        const presets = ctx.get('agentPresets')
+        const scoped = live === undefined ? undefined : presets?.serviceFor(live, 'skills')
+        const skillRegistry = scoped ?? ctx.get('skills')
+        if (skillRegistry === undefined) {
+          return err(request, { code: 'internal', message: 'skill registry is absent: neither this session\'s agent preset nor the host composition mounts @deepseek-ai/dsh-skill', details: {} })
+        }
+        const scope = await presenterScopeFor(sessionId, session)
+        const fidelity: 'live' | 'standing' = live === undefined ? 'standing' : 'live'
+        try {
+          const result = await skillRegistry.managementSnapshot({ cwd, scope })
+          return ok(request, projectSkillManagementSnapshot(sessionId, fidelity, result))
+        } catch (error: unknown) {
+          return err(request, { code: 'internal', message: `skill management snapshot failed: ${String(error)}`, details: {} })
         }
       },
     },

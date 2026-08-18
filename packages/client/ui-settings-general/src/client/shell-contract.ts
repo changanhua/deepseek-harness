@@ -12,6 +12,7 @@ import type { HostObservable, InjectFace, PropsRenderSlots, PropsRuntime } from 
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls the settings slot declarations the shell renders into.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { SettingsNavigatorService } from './settings-navigator.ts'
 
 /** One nav row projected from a settings.section registration's options. */
 export interface SettingsSectionRow {
@@ -29,7 +30,9 @@ export interface SettingsOnboardingStep {
 /**
  * Registrant-private injected share of the settings shell (assembled in
  * apply): the ledger's nav-row projection as a hooks-compartment source —
- * the shell reads no locale state and subscribes through the bound hook.
+ * the shell reads no locale state and subscribes through the bound hook. The
+ * `navigator` channel is optional at the component edge so an embedded or
+ * test mount without one still renders; the composed host always supplies it.
  */
 export type SettingsRootInjected = {
   hooks: {
@@ -38,6 +41,8 @@ export type SettingsRootInjected = {
     /** settings.onboarding ledger projected into coordinator order. */
     onboardingSteps: HostObservable<readonly SettingsOnboardingStep[]>
   }
+  /** Channel for external `settingsNavigator.open(id)` intents (optional in tests/embedding). */
+  navigator?: SettingsNavigatorService
 }
 
 /**

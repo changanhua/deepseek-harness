@@ -15,6 +15,7 @@ export type {
   SettingsGeneralItemOwnerProps, SettingsHeaderOwnerProps, SettingsOnboardingOwnerProps,
   SettingsPluginsTabOwnerProps, SettingsSectionOwnerProps, SettingsTriggerOwnerProps,
 } from './contract/slots.ts'
+export type { SettingsNavigator } from './contract/settings-navigator.ts'
 export { SettingsScopeController, SettingsScopeBinder } from './settings-scope.ts'
 
 /**

@@ -29,6 +29,7 @@ import {
   workspaceRenameRequestSchema, workspaceRenameValueSchema, workspaceViewSchema,
 } from '../src/api/workspace.schema.ts'
 import { skillEntrySchema, skillListRequestSchema, skillListValueSchema } from '../src/api/skills.schema.ts'
+import { skillManagementSnapshotRequestSchema, skillManagementSnapshotValueSchema } from '../src/api/skill-management.schema.ts'
 import {
   agentPresetEntrySchema, agentPresetListValueSchema, agentPresetOpenDocumentValueSchema,
 } from '../src/api/agent-presets.schema.ts'
@@ -427,6 +428,19 @@ describe('skills domain schemas', () => {
   })
 })
 
+describe('skillManagement domain schemas', () => {
+  it('validates the snapshot request/value pair', () => {
+    expect(skillManagementSnapshotRequestSchema.parse({ sessionId: 's1' })).toEqual({ sessionId: 's1' })
+    expect(() => skillManagementSnapshotRequestSchema.parse({})).toThrow()
+    const value = skillManagementSnapshotValueSchema.parse({
+      sessionId: 's1', fidelity: 'live', complete: true, entries: [], diagnostics: [],
+    })
+    expect(value.fidelity).toBe('live')
+    expect(value.complete).toBe(true)
+    expect(value.entries).toEqual([])
+  })
+})
+
 describe('goals domain schemas', () => {
   it('requires at least one replacement field for goal.edit', () => {
     const ref = { id: 'g1', revision: 1 }
@@ -526,6 +540,7 @@ describe('events frame schemas', () => {
       { type: 'host/remote-event', event: 'settings/document-updated', args: ['ns', 3] },
       { type: 'host/remote-event', event: 'agent-preset/selected', args: ['s', 'minimal'] },
       { type: 'host/remote-event', event: 'llm/adapters-updated', args: [] },
+      { type: 'host/remote-event', event: 'skills/change', args: [] },
       { type: 'stream/error', error: { code: 'internal', message: 'm', details: {} } },
     ]
     for (const frame of frames) expect(hostFrameSchema.parse(frame)).toMatchObject({ type: frame.type })

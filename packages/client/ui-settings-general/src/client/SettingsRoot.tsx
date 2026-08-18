@@ -102,7 +102,7 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
  * @returns the settings shell element tree.
  */
 export function SettingsRoot(props: SettingsRootComponentProps) {
-  const { wide, useSections, useOnboardingSteps, useSessions, renderSlot } = props
+  const { wide, useSections, useOnboardingSteps, useSessions, navigator, renderSlot } = props
   const [open, setOpen] = useState(false)
   const [activeId, setActiveId] = useState<string | undefined>(undefined)
   const [completedOnboarding, setCompletedOnboarding] = useState<ReadonlySet<string>>(() => new Set())
@@ -114,6 +114,12 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
     setActiveId(id)
     setOpen(true)
   }, [])
+
+  // External `settingsNavigator.open(id)` intents drive the same open state a
+  // nav click or an onboarding `openSection` uses. The channel is optional at
+  // the component edge (embedded or test mounts may omit it); the composed
+  // host always subscribes. A stale panel's disposer leaves the channel.
+  useEffect(() => navigator?.subscribe(openSection), [navigator, openSection])
 
   // The ledger tick keeps the nav rows fresh: registrants re-register with
   // freshly localized text on locale change, and the trigger/header/close

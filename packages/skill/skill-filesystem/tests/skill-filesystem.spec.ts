@@ -406,6 +406,75 @@ describe('FileSystemSkillProvider', () => {
     expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['good-skill'])
   })
 
+  it('contributes filesystem origin to management projection entries', async () => {
+    const home = await tempDir('skill-origin')
+    const project = await tempDir('skill-origin-project')
+    const custom = await tempDir('skill-origin-custom')
+    await mkdir(join(project, '.git'), { recursive: true })
+    await writeSkill(join(project, '.dsh/skills'), 'project-skill', 'Project skill')
+    await writeSkill(custom, 'custom-skill', 'Custom skill')
+    await writeSkill(join(home, '.dsh/skills'), 'user-skill', 'User skill')
+    const ctx = await setupLocal(home, { customSkillDirs: [custom] })
+
+    const result = await ctx.skills.managementSnapshot({ cwd: join(project, 'src') })
+    const find = (name: string) => result.entries.find(entry => entry.candidate.name === name)
+    const projectEntry = find('project-skill')
+    expect(projectEntry).toBeDefined()
+    expect(projectEntry!.candidate.origin).toMatchObject({
+      kind: 'filesystem',
+      provider: 'filesystem',
+      layerLabel: 'Project (.dsh)',
+      details: {
+        rootId: `filesystem:project-dsh:${join(project, '.dsh/skills')}`,
+        rootLabel: join(project, '.dsh/skills'),
+        rank: 100,
+        source: 'project-dsh',
+        relativePath: 'project-skill/SKILL.md',
+      },
+    })
+    const customEntry = find('custom-skill')
+    expect(customEntry!.candidate.origin).toMatchObject({
+      kind: 'filesystem',
+      layerLabel: 'Custom',
+      details: { rank: 300, source: 'custom', relativePath: 'custom-skill/SKILL.md' },
+    })
+    const userEntry = find('user-skill')
+    expect(userEntry!.candidate.origin).toMatchObject({
+      kind: 'filesystem',
+      layerLabel: 'User (.dsh)',
+      details: { rank: 400, source: 'user-dsh', relativePath: 'user-skill/SKILL.md' },
+    })
+  })
+
+  it('reports invalid skill files as provider-discovery diagnostics without dropping valid siblings', async () => {
+    const home = await tempDir('skill-diagnostic')
+    const root = join(home, '.dsh/skills')
+    await writeSkill(root, 'good-skill', 'Good skill')
+    await writeFile(join(root, 'bad-yaml.md'), `---
+name: bad-yaml
+description: [unclosed
+---
+
+Bad body.
+`)
+    await writeFile(join(root, 'no-frontmatter.md'), `# No frontmatter here
+
+Just a heading.
+`)
+    const ctx = await setupLocal(home)
+
+    const result = await ctx.skills.managementSnapshot()
+    expect(result.entries.map(entry => entry.candidate.name)).toEqual(['good-skill'])
+    const codes = result.diagnostics.map(diagnostic => diagnostic.code).sort()
+    expect(codes).toEqual(expect.arrayContaining(['invalid-yaml-frontmatter', 'missing-yaml-frontmatter']))
+    for (const diagnostic of result.diagnostics) {
+      expect(diagnostic.stage).toBe('provider-discovery')
+      expect(diagnostic.provider).toBe('filesystem')
+      expect(diagnostic.severity).toBe('warning')
+    }
+    expect(result.complete).toBe(true)
+  })
+
   it('discovers symlinked skill directories and flat files', async () => {
     const home = await tempDir('skill-symlink-home')
     const external = await tempDir('skill-symlink-external')

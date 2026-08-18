@@ -637,6 +637,63 @@ describe('skills over the layered host registry', () => {
     expect(seen).toEqual([ctx.agents.get(SessionId('h1'))])
   })
 
+  it('projects management candidates, shadow edges and diagnostics', async () => {
+    const { api, ctx } = await harness(['standard'])
+    await api.sessions.create(request({ sessionId: SessionId('m1'), agentPreset: 'standard' }))
+    ctx.provide('skills', {
+      managementSnapshot: () => Promise.resolve({
+        entries: [
+          {
+            candidate: {
+              name: 'dup', description: 'project winner', invocation: { modelInvocable: true, userInvocable: true },
+              source: 'project-dsh', provider: 'filesystem', rank: 100,
+              origin: { kind: 'filesystem', provider: 'filesystem', layerLabel: 'Project (.dsh)', details: { rootId: 'r1', relativePath: 'dup/SKILL.md', rank: 100, source: 'project-dsh' } },
+            },
+            selected: true, providerOrder: 0, localOrder: 0,
+          },
+          {
+            candidate: {
+              name: 'dup', description: 'user loser', invocation: { modelInvocable: true, userInvocable: true },
+              source: 'user-dsh', provider: 'filesystem', rank: 400,
+            },
+            selected: false,
+            shadowedBy: {
+              name: 'dup', description: 'project winner', invocation: { modelInvocable: true, userInvocable: true },
+              source: 'project-dsh', provider: 'filesystem', rank: 100,
+            },
+            shadowReason: 'cross-layer', providerOrder: 0, localOrder: 0,
+          },
+        ],
+        diagnostics: [
+          { code: 'invalid-yaml-frontmatter', severity: 'warning', stage: 'provider-discovery', message: 'bad file', provider: 'filesystem', candidatePath: '/p/bad.md', details: { path: '/p/bad.md' } },
+        ],
+        complete: true,
+      }),
+    } as never)
+
+    const response = await api.skillManagement.snapshot(request({ sessionId: SessionId('m1') }))
+
+    expect(response.result.ok).toBe(true)
+    if (!response.result.ok) throw new Error('unreachable')
+    const snapshot = response.result.value
+    expect(snapshot.fidelity).toBe('live')
+    expect(snapshot.complete).toBe(true)
+    expect(snapshot.sessionId).toBe(SessionId('m1'))
+    expect(snapshot.entries).toHaveLength(2)
+    const winner = snapshot.entries.find(entry => entry.selected)
+    const loser = snapshot.entries.find(entry => !entry.selected)
+    expect(winner?.id).toBe(loser?.shadow?.by)
+    expect(winner?.summary.source).toBe('project-dsh')
+    expect(winner?.summary.invocation.userInvocable).toBe(true)
+    expect(winner?.origin?.kind).toBe('filesystem')
+    expect(winner?.origin?.details?.relativePath).toBe('dup/SKILL.md')
+    expect(loser?.shadow?.reason).toBe('cross-layer')
+    expect(loser?.actions.edit).toBe(false)
+    expect(snapshot.diagnostics[0]?.location).toBe('/p/bad.md')
+    expect(snapshot.diagnostics[0]?.provider).toBe('filesystem')
+    expect(snapshot.diagnostics[0]?.stage).toBe('provider-discovery')
+  })
+
   it('resolves a cold session to its recorded preset standing key', async () => {
     const { api, ctx } = await harness(['standard', 'minimal'])
     const seen: unknown[] = []

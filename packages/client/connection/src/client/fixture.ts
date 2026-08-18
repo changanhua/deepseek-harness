@@ -2789,6 +2789,19 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         })
       },
     },
+    skillManagement: {
+      snapshot: (request) => {
+        const missing = requireSession(request)
+        if (missing !== undefined) return missing
+        return ok(request, {
+          sessionId: request.payload.sessionId,
+          fidelity: 'live',
+          complete: true,
+          entries: [],
+          diagnostics: [],
+        })
+      },
+    },
     goals: {
       // Compatibility face only: old API Proxy payloads and acknowledgements
       // adapt to the canonical fixture Remote implementation above.
@@ -3106,6 +3119,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'workspace.insertSessionBefore': return this.api.workspace.insertSessionBefore(request)
       case 'workspace.archiveSession': return this.api.workspace.archiveSession(request)
       case 'skill.list': return this.api.skills.list(request)
+      case 'skillManagement.snapshot': return this.api.skillManagement.snapshot(request)
       case 'agentPreset.list': return this.api.agentPresets.list(request)
       case 'agentPreset.select': return this.api.agentPresets.select(request)
       case 'agentPreset.read': return this.api.agentPresets.read(request)
