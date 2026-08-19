@@ -293,6 +293,15 @@ async list(options: SkillViewOptions = {}): Promise<SkillSummary[]>
 async snapshot(options: SkillViewOptions = {}): Promise<SkillCatalogSnapshot>
 
 /**
+ * Observe the management-view catalog: every discovered entry with its
+ * selection state — winners selected, shadowed entries carrying the winning
+ * candidate and shadow reason — plus provider/local ordering.
+ * @param options - view options; `scope` selects the viewing agent's layers, `cwd` selects project roots, and `signal` cancels discovery.
+ * @returns all discovered entries, diagnostics, and discovery-completeness state.
+ */
+async managementSnapshot(options: SkillViewOptions = {}): Promise<SkillManagementResult>
+
+/**
  * Load and validate the winning candidate, passing its opaque discovery locator back to the
  * provider. Cancellation is rechecked after selection, including cache hits, and raced against
  * loading so an uncooperative provider cannot hang the caller.
@@ -304,7 +313,7 @@ async snapshot(options: SkillViewOptions = {}): Promise<SkillCatalogSnapshot>
 async get(name: string, options: SkillViewOptions = {}): Promise<SkillDefinition | undefined>
 ```
 
-Source: [`packages/skill/skill/src/index.ts:357`](../../packages/skill/skill/src/index.ts)
+Source: [`packages/skill/skill/src/index.ts:420`](../../packages/skill/skill/src/index.ts)
 
 <a id="skills-events"></a>
 
@@ -327,5 +336,5 @@ A skill provider, runtime contribution, or provider-backed catalog may have chan
 'skills/change'(): void
 ```
 
-Source: [`packages/skill/skill/src/index.ts:297`](../../packages/skill/skill/src/index.ts)
+Source: [`packages/skill/skill/src/index.ts:356`](../../packages/skill/skill/src/index.ts)
 <!-- END GENERATED cordis-surface -->

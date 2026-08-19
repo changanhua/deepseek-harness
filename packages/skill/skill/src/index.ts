@@ -552,6 +552,13 @@ export class SkillRegistry extends Service {
     }
   }
 
+  /**
+   * Observe the management-view catalog: every discovered entry with its
+   * selection state — winners selected, shadowed entries carrying the winning
+   * candidate and shadow reason — plus provider/local ordering.
+   * @param options - view options; `scope` selects the viewing agent's layers, `cwd` selects project roots, and `signal` cancels discovery.
+   * @returns all discovered entries, diagnostics, and discovery-completeness state.
+   */
   async managementSnapshot(options: SkillViewOptions = {}): Promise<SkillManagementResult> {
     const collected = await this.collect(options)
     const entries: SkillManagementEntry[] = []

@@ -873,7 +873,12 @@ describe('compaction region transaction', () => {
     const head = session.deriveMessages()[0]!
     expect(head.content[0]?.type).toBe('text')
     expect(head.content[0]?.type === 'text' ? head.content[0].text : '').toContain('<compacted-summary>')
-    expect(head.content.at(-1)).toEqual({ type: 'text', text: '</compacted-summary>' })
+    const tail = head.content.at(-1)
+    expect(tail?.type).toBe('text')
+    if (tail?.type === 'text') {
+      expect(tail.text).toContain('</compacted-summary>')
+      expect(tail.text).toContain('其余一律中文')
+    }
 
     const replay = Session.create(SessionId('replay'), [...session.events])
     expect(replay.deriveMessages()).toEqual(session.deriveMessages())

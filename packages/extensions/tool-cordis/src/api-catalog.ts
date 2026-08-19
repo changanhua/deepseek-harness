@@ -1520,6 +1520,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'sorted summaries plus discovery-completeness state.',
       },
       {
+        signature: 'async managementSnapshot(options: SkillViewOptions = {}): Promise<SkillManagementResult>',
+        description: 'Observe the management-view catalog: every discovered entry with its selection state — winners selected, shadowed entries carrying the winning candidate and shadow reason — plus provider/local ordering.',
+        parameters: [{ name: 'options', description: 'view options; `scope` selects the viewing agent\'s layers, `cwd` selects project roots, and `signal` cancels discovery.' }],
+        returns: 'all discovered entries, diagnostics, and discovery-completeness state.',
+      },
+      {
         signature: 'async get(name: string, options: SkillViewOptions = {}): Promise<SkillDefinition | undefined>',
         description: 'Load and validate the winning candidate, passing its opaque discovery locator back to the provider. Cancellation is rechecked after selection, including cache hits, and raced against loading so an uncooperative provider cannot hang the caller.',
         parameters: [{ name: 'name', description: 'kebab-case skill name.' }, { name: 'options', description: 'view options; `scope` selects the viewing agent\'s layers, `cwd` selects workspace-sensitive skills, and `signal` cancels work.' }],
@@ -3751,6 +3757,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ProviderRequestId = Branded<\'ProviderRequestId\'>;',
   },
   {
+    name: 'ProviderSkillDiagnostic',
+    declaration: 'export interface ProviderSkillDiagnostic {\n    readonly code: string;\n    readonly severity: \'warning\' | \'error\';\n    readonly message: string;\n    readonly details?: Readonly<Record<string, unknown>>;\n}',
+  },
+  {
     name: 'PrunedEntry',
     declaration: 'export interface PrunedEntry {\n    readonly originalSeq: number;\n    readonly replacementSeq: number;\n    readonly callId: CallId;\n    readonly charsBefore: number;\n    readonly charsAfter: number;\n}',
   },
@@ -4232,7 +4242,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SkillCandidate',
-    declaration: 'export interface SkillCandidate extends SkillSummary {\n    readonly rank: number;\n    readonly locator: unknown;\n    readonly path?: string;\n    readonly metadata?: Readonly<Record<string, unknown>>;\n}',
+    declaration: 'export interface SkillCandidate extends SkillSummary {\n    readonly rank: number;\n    readonly locator: unknown;\n    readonly path?: string;\n    readonly metadata?: Readonly<Record<string, unknown>>;\n    readonly origin?: SkillCandidateOrigin;\n}',
+  },
+  {
+    name: 'SkillCandidateOrigin',
+    declaration: 'export interface SkillCandidateOrigin {\n    readonly kind: string;\n    readonly provider: string;\n    readonly layerLabel: string;\n    readonly details?: Readonly<Record<string, unknown>>;\n}',
   },
   {
     name: 'SkillCatalogSnapshot',
@@ -4251,6 +4265,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SkillLookupOptions {\n    readonly cwd?: string | undefined;\n    readonly signal?: AbortSignal | undefined;\n}',
   },
   {
+    name: 'SkillManagementResult',
+    declaration: 'export interface SkillManagementResult {\n    readonly entries: readonly SkillManagementEntry[];\n    readonly diagnostics: readonly SkillDiagnostic[];\n    readonly complete: boolean;\n}',
+  },
+  {
     name: 'SkillProvider',
     declaration: 'export interface SkillProvider {\n    readonly name: string;\n    readonly list: (options: SkillLookupOptions) => Promise<readonly SkillCandidate[] | SkillProviderObservation>;\n    readonly get: (candidate: SkillCandidate, options: SkillLookupOptions) => Promise<SkillDefinition | undefined>;\n}',
   },
@@ -4260,7 +4278,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SkillProviderObservation',
-    declaration: 'export interface SkillProviderObservation {\n    readonly candidates: readonly SkillCandidate[];\n    readonly complete: boolean;\n}',
+    declaration: 'export interface SkillProviderObservation {\n    readonly candidates: readonly SkillCandidate[];\n    readonly complete: boolean;\n    readonly diagnostics?: readonly ProviderSkillDiagnostic[];\n}',
   },
   {
     name: 'SkillRegistration',
