@@ -22,11 +22,11 @@ const NO_DIAGNOSTICS = [] as const
 
 /**
  * Render the section. The target is a pure derivation over framework-hook
- * data (`useStore` adoption + `useSessions` ordinary facts); the snapshot
+ * data (`useAdopted` adoption + `useSessions` ordinary facts); the snapshot
  * store receives the resolved session through the injected `load` callback.
  */
-export function SkillsSection({ close, useStore, actions, useSessions, useSnapshot, load, retry, reset, t }: SkillsSectionProps) {
-  const adopted = useStore(s => s.adopted)
+export function SkillsSection({ close, useAdopted, followCurrent, useSessions, useSnapshot, load, retry, reset, t }: SkillsSectionProps) {
+  const adopted = useAdopted(s => s.adopted)
   const sessions = useSessions(state => ({ byId: state.byId, current: state.current }))
   const snapshotState = useSnapshot(state => state)
   const [query, setQuery] = useState('')
@@ -74,7 +74,7 @@ export function SkillsSection({ close, useStore, actions, useSessions, useSnapsh
         <strong>{String(target.sessionId)}</strong>
         <span>·</span>
         <span>{snapshotState.snapshot?.fidelity === 'standing' ? t('standing') : t('live')}</span>
-        <Button type="button" onClick={() => { actions.followCurrent() }}>{t('followCurrent')}</Button>
+        <Button type="button" onClick={() => { followCurrent() }}>{t('followCurrent')}</Button>
       </div>
 
       {snapshotState.snapshot?.fidelity === 'standing' && (

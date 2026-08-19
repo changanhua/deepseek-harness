@@ -41,7 +41,7 @@ function mount(options: {
   row?: { id: SessionId; blank?: boolean; origin?: string | undefined }
   snapshot?: SkillsSnapshotState
 } = {}) {
-  const actions = { adopt: vi.fn(), followCurrent: vi.fn() }
+  const adopt = vi.fn()
   const load = vi.fn()
   const retry = vi.fn()
   const reset = vi.fn()
@@ -50,13 +50,13 @@ function mount(options: {
   const sessionId = options.sessionId ?? S1
   const props = {
     sessionId,
-    actions, load, retry, reset, openManagement, t,
+    adopt, load, retry, reset, openManagement, t,
     useSessions: (selector: (s: { byId: Record<string, { id: SessionId; blank?: boolean; origin?: string | undefined }> }) => unknown) =>
       selector({ byId: options.row === undefined ? {} : { [String(sessionId)]: options.row } }),
     useSnapshot: (selector: (s: SkillsSnapshotState) => unknown) => selector(options.snapshot ?? stateOf('idle')),
   } as unknown as SkillsPopoverProps
   render(<SkillsPopover {...props} />)
-  return { actions, load, openManagement }
+  return { adopt, load, openManagement }
 }
 
 describe('SkillsPopover', () => {
@@ -70,10 +70,10 @@ describe('SkillsPopover', () => {
   })
 
   it('Manage all adopts the session and opens the section via the navigator callback', () => {
-    const { actions, openManagement } = mount({ row: { id: S1, blank: false }, snapshot: stateOf('ready') })
+    const { adopt, openManagement } = mount({ row: { id: S1, blank: false }, snapshot: stateOf('ready') })
     fireEvent.click(screen.getByRole('button', { name: 'nav · 1' }))
     fireEvent.click(screen.getByRole('button', { name: 'manageAll' }))
-    expect(actions.adopt).toHaveBeenCalledWith(S1)
+    expect(adopt).toHaveBeenCalledWith(S1)
     expect(openManagement).toHaveBeenCalled()
   })
 

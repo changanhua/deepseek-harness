@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
 import { isOrdinary, ordinarySessionsOf, resolveTarget } from '../src/client/controller.ts'
-import { createSkillsFeatureStore } from '../src/client/skills-feature-store.ts'
+import { createSkillsFeatureController } from '../src/client/skills-feature-store.ts'
 import { createSkillsSnapshotController } from '../src/client/skills-snapshot.ts'
 import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
 
@@ -49,15 +49,17 @@ describe('resolveTarget (§3.4 fallback ladder)', () => {
   })
 })
 
-describe('SkillsFeatureStore', () => {
-  it('adopts and follows through baked actions', () => {
-    const handle = createSkillsFeatureStore()
-    const instance = handle.create()
-    expect(instance.getSnapshot().adopted).toBeUndefined()
-    instance.actions.adopt(S1)
-    expect(instance.getSnapshot().adopted).toBe(S1)
-    instance.actions.followCurrent()
-    expect(instance.getSnapshot().adopted).toBeUndefined()
+describe('SkillsFeatureController', () => {
+  it('adopts and follows through the observable source', () => {
+    const feature = createSkillsFeatureController()
+    const listener = vi.fn()
+    feature.source.subscribe(listener)
+    expect(feature.source.getSnapshot().adopted).toBeUndefined()
+    feature.adopt(S1)
+    expect(feature.source.getSnapshot().adopted).toBe(S1)
+    feature.followCurrent()
+    expect(feature.source.getSnapshot().adopted).toBeUndefined()
+    expect(listener).toHaveBeenCalledTimes(2)
   })
 })
 

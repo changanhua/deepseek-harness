@@ -54,7 +54,7 @@ function mount(options: {
   current?: SessionId | undefined
   snapshot?: SkillsSnapshotState
 } = {}) {
-  const actions = { adopt: vi.fn(), followCurrent: vi.fn() }
+  const followCurrent = vi.fn()
   const load = vi.fn()
   const retry = vi.fn()
   const reset = vi.fn()
@@ -63,19 +63,19 @@ function mount(options: {
   const t = vi.fn((key: string) => key) as never
   const props = {
     close,
-    actions,
+    followCurrent,
     load,
     retry,
     reset,
     openManagement,
     t,
-    useStore: (selector: (s: { adopted?: SessionId | undefined }) => unknown) => selector({ adopted: options.adopted }),
+    useAdopted: (selector: (s: { adopted?: SessionId | undefined }) => unknown) => selector({ adopted: options.adopted }),
     useSessions: (selector: (s: { byId: typeof options.byId; current: SessionId | undefined }) => unknown) =>
       selector({ byId: options.byId ?? {}, current: options.current }),
     useSnapshot: (selector: (s: SkillsSnapshotState) => unknown) => selector(options.snapshot ?? stateOf('idle')),
   } as unknown as SkillsSectionProps
   render(<SkillsSection {...props} />)
-  return { actions, load, retry, reset, close, openManagement }
+  return { followCurrent, load, retry, reset, close, openManagement }
 }
 
 describe('SkillsSection', () => {

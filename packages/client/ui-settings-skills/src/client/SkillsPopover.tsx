@@ -21,7 +21,7 @@ const PREVIEW_LIMIT = 6
  * Render the header trigger and its anchored panel. The panel is a
  * lightweight, self-contained popover driven by component-local open state.
  */
-export function SkillsPopover({ sessionId, actions, useSessions, useSnapshot, load, openManagement, t }: SkillsPopoverProps) {
+export function SkillsPopover({ sessionId, adopt, useSessions, useSnapshot, load, openManagement, t }: SkillsPopoverProps) {
   const [open, setOpen] = useState(false)
   const row = useSessions(state => state.byId[sessionId])
   const snapshotState = useSnapshot(state => state)
@@ -89,7 +89,7 @@ export function SkillsPopover({ sessionId, actions, useSessions, useSnapshot, lo
                 className={css.manage}
                 type="button"
                 onClick={() => {
-                  actions.adopt(sessionId)
+                  adopt(sessionId)
                   openManagement()
                   setOpen(false)
                 }}

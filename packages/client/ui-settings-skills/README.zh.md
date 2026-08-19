@@ -6,9 +6,9 @@
 
 本功能包含三部分：
 
-- **视图 store**（`createSkillsFeatureStore`，`defineStore` 工厂）：只承载跨两个注册面存活的交互状态——由 Popover「管理全部」显式带入的会话（Skills 管理 UI 设计 §3.4）。快照数据不在此处。
+- **视图状态控制器**（`createSkillsFeatureController`）：只承载跨两个注册面存活的交互状态——由 Popover「管理全部」显式带入的会话（Skills 管理 UI 设计 §3.4）。它通过 inject `hooks` 舱暴露裸 `HostObservable`（renderer 绑定的 `useAdopted` hook）以及普通 `adopt`/`followCurrent` 回调。不使用 `store` seat：两个槽位于不同 scope（root 设置页 vs 每会话标题栏动作），而 slot 系统把共享 store handle 固定到单一 scope。快照数据不在此处。
 - **apply 私有的快照控制器**：负责 `skillManagement.snapshot` 的单一响应寻址槽，暴露裸 `HostObservable`（inject `hooks` 舱 → renderer 绑定的 `useSnapshot` hook）以及普通 `load`/`retry`/`reset` 回调。取数与竞态状态（generation 守卫、last-good 保留）留在这里，绝不进入组件或视图 store。
-- **Popover（§5.1）与 Settings 页面（§5.2）**：两者都通过四个 props share 组合。目标会话由 `useStore` 的 adoption 与 `useSessions` 的普通会话事实经纯函数派生；空白/子代理或无普通会话的选择渲染空态，绝不查询 host 全局 registry。
+- **Popover（§5.1）与 Settings 页面（§5.2）**：两者都通过各自的派生 props share 组合。目标会话由 `useAdopted` 的 adoption 与 `useSessions` 的普通会话事实经纯函数派生；空白/子代理或无普通会话的选择渲染空态，绝不查询 host 全局 registry。
 
 页面展示生效项置前列表、同名候选遮蔽组（原因 + 胜者 + 来源）、model/user 调用状态、provider/layer/resource kind/root 标签、分组诊断、incomplete/standing 横幅，以及复用同一会话的显式重试。`skills/change` 失效是驱动重取的全局信号（§5.3）；连接重置会清空快照槽。
 

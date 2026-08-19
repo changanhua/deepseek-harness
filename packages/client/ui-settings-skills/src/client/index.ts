@@ -1,11 +1,11 @@
 /**
  * Skills management feature plugin, browser half (§5). It provisions one
- * shared viewing store (the adopted session, §3.4), one apply-private
+ * shared viewing state (the adopted session, §3.4), one apply-private
  * snapshot controller (the `skillManagement.snapshot` remote), and registers
  * the session title-bar Popover (§5.1) and the Settings Skills section (§5.2).
- * The inject face carries only plain callbacks plus the snapshot hooks
- * compartment; components never see the controller, the ctx, or a hand-made
- * hook. Export discipline: packages/client/AGENTS.md.
+ * The inject face carries only plain callbacks plus the snapshot/adopted
+ * hooks compartment; components never see the controller, the ctx, or a
+ * hand-made hook. Export discipline: packages/client/AGENTS.md.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
@@ -16,7 +16,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { createSkillsSnapshotController } from './skills-snapshot.ts'
-import { createSkillsFeatureStore } from './skills-feature-store.ts'
+import { createSkillsFeatureController } from './skills-feature-store.ts'
 import { SkillsSection } from './SkillsSection.tsx'
 import { SkillsPopover } from './SkillsPopover.tsx'
 import type { SkillsFeatureInjected } from './feature-types.ts'
@@ -57,9 +57,12 @@ export function apply(ctx: ClientContext): void {
 
   const connection = ctx.get('connection') as ConnectionHandle
   const snapshot = createSkillsSnapshotController(connection.api)
-  // One shared viewing handle for both registrations: an adoption made in the
-  // header Popover is visible to the Settings section (§3.4).
-  const featureStore = createSkillsFeatureStore()
+  // One shared viewing source for both registrations: an adoption made in the
+  // header Popover is visible to the Settings section (§3.4). The value rides
+  // the inject `hooks` compartment (not a `store` seat): the two slots live in
+  // different scopes (root settings section vs per-session header action), and
+  // the slot system pins a shared store handle to one scope.
+  const feature = createSkillsFeatureController()
   // One bound translator serves both the nav-label thunk and any future copy.
   const t = ctx.locale.bind(NS)
   const openManagement = (): void => { ctx.settingsNavigator?.open(SKILLS_SECTION_ID) }
@@ -76,7 +79,9 @@ export function apply(ctx: ClientContext): void {
     retry: () => snapshot.retry(),
     reset: () => snapshot.reset(),
     openManagement,
-    hooks: { snapshot: snapshot.source },
+    adopt: (sessionId) => { feature.adopt(sessionId) },
+    followCurrent: () => { feature.followCurrent() },
+    hooks: { snapshot: snapshot.source, adopted: feature.source },
   })
 
   ctx.slots.inject('settings.section', () => ctx.slots.register({
@@ -85,7 +90,6 @@ export function apply(ctx: ClientContext): void {
     order: 15,
     label: () => t('nav'),
     locale: NS,
-    store: featureStore,
     inject: injected,
   }, SkillsSection))
 
@@ -94,7 +98,6 @@ export function apply(ctx: ClientContext): void {
     id: 'skills',
     order: 10,
     locale: NS,
-    store: featureStore,
     inject: injected,
   }, SkillsPopover))
 }
