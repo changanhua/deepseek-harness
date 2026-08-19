@@ -46,6 +46,10 @@ export function CapabilityWorkspace({ capability, t }: CapabilityWorkspaceProps)
   const [tab, setTab] = useState<Tab>('skills')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<SelectionKey | null>(null)
+  // Which collapsible skill groups the user has expanded. Named prefix groups
+  // default collapsed; the flat "other" bucket is never collapsible and always
+  // renders its rows.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
 
   const data = snapshot.status === 'ready' ? snapshot.snapshot : undefined
 
@@ -61,6 +65,10 @@ export function CapabilityWorkspace({ capability, t }: CapabilityWorkspaceProps)
   // Clear the selection when it leaves the filtered list.
   const filtered = useMemo(() => filterByQuery(data, tab, query), [data, tab, query])
   const rows = useMemo(() => toListItems(filtered, t), [filtered, t])
+  const groups = useMemo(() => buildSkillGroups(rows, t), [rows, t])
+  // A search query forces every matching group open; clearing it restores the
+  // user's collapse choices.
+  const searchActive = query.trim() !== ''
   useEffect(() => {
     if (selected !== null && !rows.some(item => keyEquals(selected, item.key))) setSelected(null)
   }, [selected, rows])
@@ -153,8 +161,59 @@ export function CapabilityWorkspace({ capability, t }: CapabilityWorkspaceProps)
           <div className={css.body}>
             {rows.length === 0 ? (
               <div className={css.empty}>
-                {query.trim() !== '' ? t('status.empty.search') : t(`status.empty.${tab === 'mcp' ? 'mcp' : tab === 'tools' ? 'tools' : 'skills'}`)}
+                {searchActive ? t('status.empty.search') : t(`status.empty.${tab === 'mcp' ? 'mcp' : tab === 'tools' ? 'tools' : 'skills'}`)}
               </div>
+            ) : tab === 'skills' ? (
+              <ul className={css.rows}>
+                {groups.map(group => {
+                  // A search query forces every group open; otherwise a named
+                  // group renders only when the user expanded it, and the flat
+                  // "other" bucket always renders its rows.
+                  const isOpen = searchActive || !group.collapsible || expanded.has(group.key)
+                  return (
+                    <li key={group.key} className={css.group}>
+                      {group.collapsible ? (
+                        <button
+                          type="button"
+                          className={css.groupHead}
+                          aria-expanded={isOpen}
+                          onClick={() => {
+                            setExpanded(prev => {
+                              const next = new Set(prev)
+                              if (next.has(group.key)) next.delete(group.key)
+                              else next.add(group.key)
+                              return next
+                            })
+                          }}
+                        >
+                          <IconChevronDownOutline14 className={clsx(css.chevron, isOpen && css.chevronOpen)} size={12} aria-hidden="true" />
+                          <span className={css.groupLabel}>{group.label}</span>
+                          <span className={css.groupCount}>{group.count}</span>
+                        </button>
+                      ) : (
+                        <div className={css.groupFlatHead}>
+                          <span className={css.groupLabel}>{group.label}</span>
+                          <span className={css.groupCount}>{group.count}</span>
+                        </div>
+                      )}
+                      {isOpen ? (
+                        <ul className={css.groupItems}>
+                          {group.items.map(item => (
+                            <li key={`${item.key.kind}:${item.key.kind === 'mcp' ? item.key.id : item.key.name}`}>
+                              <CapabilityRow
+                                item={item}
+                                selected={keyEquals(selected, item.key)}
+                                onSelect={() => { setSelected(keyEquals(selected, item.key) ? null : item.key) }}
+                                t={t}
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  )
+                })}
+              </ul>
             ) : (
               <ul className={css.rows}>
                 {rows.map(item => (
@@ -281,6 +340,75 @@ function toListItems(filtered: FilteredRows, t: CapabilityWorkspaceProps['t']): 
       tags: tool.mcpServer !== undefined ? [`${t('tool.source.mcp')} · ${tool.mcpServer}`] : [t('tool.source.runtime')],
     }
   })
+}
+
+/** Minimum members a named prefix group needs before it collapses; smaller
+ * prefixes fold into the "other" bucket instead. */
+const GROUP_MIN_MEMBERS = 4
+
+/** One visible skill group in the Skills tab. */
+interface SkillGroup {
+  readonly key: string
+  readonly label: string
+  readonly count: number
+  /** Whether this group is large enough to render a collapsible head. */
+  readonly collapsible: boolean
+  readonly items: readonly ListItem[]
+}
+
+/** Derive the grouping key from a skill name: the text before the first `-`,
+ * or `undefined` for names without a hyphen prefix. */
+function groupKeyOf(name: string): string | undefined {
+  const dash = name.indexOf('-')
+  return dash > 0 ? name.slice(0, dash) : undefined
+}
+
+/** Group the Skills list by name prefix. Prefixes with fewer than
+ * `GROUP_MIN_MEMBERS` members collapse into a single "other" bucket that
+ * stays flat (never collapses); larger prefixes become collapsible groups.
+ * Groups render in descending member count, ties broken by key, with the
+ * "other" bucket last when non-empty. Non-skill items are ignored. */
+export function buildSkillGroups(rows: readonly ListItem[], t: CapabilityWorkspaceProps['t']): SkillGroup[] {
+  const buckets = new Map<string, ListItem[]>()
+  for (const item of rows) {
+    if (item.key.kind !== 'skill') continue
+    const key = groupKeyOf(item.key.name)
+    const bucketKey = key === undefined ? '__other__' : key
+    const bucket = buckets.get(bucketKey)
+    if (bucket === undefined) buckets.set(bucketKey, [item])
+    else bucket.push(item)
+  }
+  const named: SkillGroup[] = []
+  let otherItems: ListItem[] = []
+  for (const [key, items] of buckets) {
+    if (key === '__other__') {
+      otherItems = items
+      continue
+    }
+    if (items.length >= GROUP_MIN_MEMBERS) {
+      named.push({
+        key,
+        label: key,
+        count: items.length,
+        collapsible: true,
+        items,
+      })
+    } else {
+      otherItems = [...otherItems, ...items]
+    }
+  }
+  named.sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+  const groups: SkillGroup[] = [...named]
+  if (otherItems.length > 0) {
+    groups.push({
+      key: 'other',
+      label: t('skill.group.other'),
+      count: otherItems.length,
+      collapsible: false,
+      items: otherItems,
+    })
+  }
+  return groups
 }
 
 /** One summary card. */
