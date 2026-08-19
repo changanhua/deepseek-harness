@@ -35,6 +35,7 @@ Never commit credentials. Real-API tests use `DEEPSEEK_API_KEY`; see [docs/testi
 - **Source plane vs artifact plane, never mixed.** Static gates and tests resolve workspace imports through tsconfig `paths` to `src` and pass on a clean tree; gates consuming built `lib/` declare that dependency ([layout](docs/development.md#typescript-project-layout)).
 - **Non-trivial changes MUST include an Agent Note in the same PR;** only mechanical/local edits are exempt ([scope](.agents/notes/README.md#when-to-write-one)). Archived notes are frozen: never edit or treat them as current authority ([archive policy](.agents/notes/README.md#archiving-and-deletion)).
 
+
 ## Secondary documentation
 
 - **Fork divergence record** — the owner-maintained list of deliberate differences from the official upstream, reconciled when the owner requests an update or merge: [FORK-DIVERGENCE.md](FORK-DIVERGENCE.md).
