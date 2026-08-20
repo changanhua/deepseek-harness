@@ -4,7 +4,7 @@ A manually maintained record of current deliberate differences between this fork
 
 ## Identity
 
-- The official upstream tips and this fork's `master` share merge base `47f943859b` (`upstream/master`). This fork's `master` currently sits 27 commits ahead of that base; upstream has no commits this fork lacks.
+- The official upstream tips and this fork's `master` share merge base `141eb6fef8` (upstream dsh-v0.1.0-rc.8). This fork's `master` currently sits 46 commits ahead of that base; upstream has no commits this fork lacks.
 - Official upstream: `https://github.com/deepseek-ai/deepseek-harness.git`
 - This fork: `https://github.com/changanhua/deepseek-harness.git`
 
@@ -23,6 +23,9 @@ A manually maintained record of current deliberate differences between this fork
 | 9 | `.agents/skills/dsh-code-review/SKILL.md` | Removed a dead link to a removed AGENTS.md section. |
 | 10 | `.agents/notes/implemented/feature/2026-07-30-web-read-card.{md,zh.md}` | Fixed a dead fragment anchor. |
 | 11 | `packages/host/capability-registry/README.md` | Removed a dead link to a nonexistent `README.zh.md`. |
+| 12 | `packages/bundle/web-app` | Fork allows `--host 0.0.0.0` (LAN publishing on a trusted network, warning only); upstream rejects it for safety. Kept as a deliberate fork choice. |
+| 13 | `packages/task-queue/*`, `packages/client/ui-task-queue` | Fork-only durable cross-session task-queue capability: service seam, local/remote backends, seven `task_queue_*` tools, `/queue` command, and browser Queue workspace. Upstream has no equivalent. |
+| 14 | `docs/specs/` | Fork-only design-spec documents (research baseline, task-queue design, UI prototypes). |
 
 ## Non-divergence workspace residue
 
