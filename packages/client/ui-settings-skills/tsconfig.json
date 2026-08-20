@@ -18,7 +18,7 @@
       "path": "../runtime"
     },
     {
-      "path": "../web-react"
+      "path": "../ui-renderer"
     },
     {
       "path": "../ui-primitives"
