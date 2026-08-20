@@ -220,6 +220,7 @@ const develop = pairedPages([
 
 const cordisTutorial = pairedPages(([
   ['index.md', '总览', 'Overview'],
+  ['java-developer-path.md', 'Java 开发者路径', 'Java developer path'],
   ['01-first-plugin.md', '1. 第一个插件', '1. Your first plugin'],
   ['02-lifecycle-and-effects.md', '2. 生命周期与副作用', '2. Lifecycle and effects'],
   ['03-services.md', '3. 服务', '3. Services'],

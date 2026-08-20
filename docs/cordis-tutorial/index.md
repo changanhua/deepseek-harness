@@ -10,6 +10,12 @@ If you want the condensed concept reference instead of a walkthrough, read the [
 
 To write plugins for the harness itself — loaded from a `cordis.yml` and driven from the Web UI rather than the launcher below — start from [your first Harness plugin](../user/develop/basic/index.md).
 
+## Choose a path
+
+If you are a Java developer new to the harness, read the [Java developer path](java-developer-path.md) before the runnable chapters. It maps Cordis, Agent, Session, Tool, MCP, Skill, and persistence to the order in which you need them.
+
+If you already know Cordis or want to learn by running code, continue with the numbered chapters below.
+
 ## Setup
 
 You need a clone of this repository with dependencies installed; the [development guide](../development.md#setup-tutorial) lists the prerequisites. No API key is needed for this tutorial; every example runs keylessly.

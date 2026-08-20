@@ -10,6 +10,12 @@ Cordis 是 DeepSeek Harness 底层的插件框架：它是一个小型运行时�
 
 如果你要为 harness 本身编写插件——由 `cordis.yml` 加载、在 Web UI 中驱动，而不是下面这个启动器——请从[第一个 Harness 插件](../user/develop/basic/index.md)开始。
 
+## 选择路径
+
+如果你是刚接触 harness 的 Java 开发者，请先阅读[Java 开发者路径](java-developer-path.md)，再开始可运行的章节。它按照学习顺序映射 Cordis、Agent、Session、Tool、MCP、Skill 和持久化。
+
+如果你已经了解 Cordis，或希望通过运行代码学习，请继续阅读下面编号的章节。
+
 <a id="setup"></a>
 
 ## 准备工作

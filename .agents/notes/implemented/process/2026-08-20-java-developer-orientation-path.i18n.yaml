@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-08-20-java-developer-orientation-path.md
+2026-08-20-java-developer-orientation-path.md: d7f1c5cbb289737f083f1107e47a98c442bb55d7
+2026-08-20-java-developer-orientation-path.zh.md: 370757526b4c0ce7869879cf074cfa09771107d1
