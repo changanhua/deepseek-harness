@@ -5,6 +5,16 @@ import { RpcId } from '../src/api/rpc.ts'
 import { toFetchHandler } from '../src/fetch/handler.ts'
 import { AbstractApiClient, InProcessApiClient } from '../src/fetch/client.ts'
 
+/** Test base: captures the last rpc id minted by `AbstractApiClient.mintRpcId`. */
+abstract class MintCapturingClient extends AbstractApiClient {
+  lastMinted = ''
+  protected override mintRpcId(): ReturnType<AbstractApiClient['mintRpcId']> {
+    const id = super.mintRpcId()
+    this.lastMinted = id
+    return id
+  }
+}
+
 /** Minimal in-memory ApiProxy: echoes rpcIds, scripts one frame per stream. */
 function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFrame[]; crashOn: string }> = {}): ApiProxy {
   const muxFrames = overrides.muxFrames ?? [{ type: 'session/subscribed', sessionId: 's1' as never, lastSeq: -1 }]
@@ -775,18 +785,11 @@ describe('envelope observation', () => {
 
 describe('resolveBase', () => {
   it('prefers a real location.origin and falls back to the internal authority', async () => {
-    class Probe extends AbstractApiClient {
+    class Probe extends MintCapturingClient {
       urls: string[] = []
       protected async doFetch(input: URL): Promise<Response> {
         this.urls.push(input.href)
         return Response.json({ type: 'server-response', rpcId: this.lastMinted, result: { ok: true, value: { items: [] } } })
-      }
-
-      lastMinted = ''
-      protected override mintRpcId(): ReturnType<AbstractApiClient['mintRpcId']> {
-        const id = super.mintRpcId()
-        this.lastMinted = id
-        return id
       }
     }
     const probe = new Probe()
@@ -805,6 +808,34 @@ describe('resolveBase', () => {
       expect(probe3.urls[0]).toMatch(/^http:\/\/dsh\.internal\//)
     } finally {
       delete globalWithLocation.location
+    }
+  })
+})
+
+describe('mintRpcId on insecure origins', () => {
+  it('carries unary calls when crypto exposes getRandomValues but not secure-context randomUUID', async () => {
+    class InsecureOriginProbe extends MintCapturingClient {
+      protected async doFetch(_input: URL): Promise<Response> {
+        return Response.json({
+          type: 'server-response',
+          rpcId: this.lastMinted,
+          result: { ok: true, value: { items: [] } },
+        })
+      }
+    }
+    // Insecure-origin shape: crypto exists with getRandomValues only (the LAN
+    // HTTP page); secure-context-only randomUUID is absent.
+    vi.stubGlobal('crypto', {
+      getRandomValues(bytes: Uint8Array) {
+        return bytes.fill(7)
+      },
+    })
+    try {
+      const probe = new InsecureOriginProbe()
+      await expect(probe.sessions.list({})).resolves.toMatchObject({ result: { ok: true } })
+      expect(probe.lastMinted).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    } finally {
+      vi.unstubAllGlobals()
     }
   })
 })

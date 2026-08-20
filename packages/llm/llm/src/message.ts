@@ -4,6 +4,22 @@ import { MessageId, type CallId } from './brand.ts'
 import { deepFreeze } from './call-config.ts'
 import type { ContentBlock, StreamChunk, ToolResultBlock } from './types.ts'
 
+/**
+ * RFC 4122 version 4 UUID backed by `crypto.getRandomValues`, which every
+ * origin exposes. `crypto.randomUUID` is secure-context-only (HTTPS or
+ * loopback): a plain-HTTP LAN page (`http://<lan-ip>:port`) lacks the global,
+ * so message identity must not depend on it. Inlined here because dsh-llm is a
+ * leaf package (the apiproxy layer, which depends on it, keeps its own copy).
+ */
+function randomUuid(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16))
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  view.setUint8(6, (view.getUint8(6) & 0x0f) | 0x40)
+  view.setUint8(8, (view.getUint8(8) & 0x3f) | 0x80)
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 /** Provider/model identity and adapter-private replay data for an assistant message. */
 export interface AssistantProvenance {
   /** Provider route that produced the message. */
@@ -180,7 +196,7 @@ export function createMessage<T extends NewMessage>(
 ): T & Pick<Message, 'id'> {
   return freezeMessage({
     ...input,
-    id: MessageId(crypto.randomUUID()),
+    id: MessageId(randomUuid()),
   })
 }
 
