@@ -1,0 +1,104 @@
+# dsh-on-issue: 在 GitHub 上给 issue 打上 `dsh-run` 标签，自动拉起 dsh 分析该 issue，
+# 并把分析结论以评论形式回帖到同一 issue。
+#
+# 设计要点
+# - 触发方式：`issues` 事件 + `labeled`，且标签名必须是 `dsh-run`。不是所有 opened
+#   issue 都触发，避免 API 额度被任意 issue 消耗；需要谁跑就给谁打标签。
+# - 处理深度：只分析 + 回帖。dsh 以 `DSH_PERMISSION_MODE=read-only` 运行，沙箱
+#   只读，模型无法修改任何文件；headless 无交互 UI，审批 `ask` 会 fail closed，
+#   不会卡死也不会偷偷放行写操作。
+# - 模型与密钥：dsh headless 默认 `deepseek-v4-flash`，通过环境变量
+#   `DEEPSEEK_API_KEY` 解析凭据（在仓库 Settings -> Secrets and variables 配置）。
+# - 任务传递：issue 标题+正文先由 gh 写入 task.txt，再让 dsh 读取该文件分析。
+#   命令本身只含固定指令文本，不含 issue 内容，避免超长参数与 shell 注入。
+# - 回帖：dsh 的 stdout（最终 assistant 文本）写入 dsh_output.txt，用 gh 回帖。
+
+name: dsh on issue
+
+on:
+  issues:
+    types:
+      - labeled
+
+permissions:
+  contents: read
+  issues: write
+
+# 同一 issue 上只允许一个 dsh 运行；避免重复打标签时并发跑多个。
+concurrency:
+  group: dsh-on-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  dsh-analyze:
+    name: dsh analyze issue
+    # 只有打上 dsh-run 标签才触发；其他任何标签不触发。
+    if: github.event.label.name == 'dsh-run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # CI 运行不得向生产遥测端点上报（与仓库内其他 workflow 一致）。
+      DSH_TELEMETRY_DISABLED: '1'
+      # 只读沙箱：dsh 只能读文件与分析，禁止任何写操作，天然符合"只分析+回帖"。
+      DSH_PERMISSION_MODE: read-only
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: 22
+
+      - name: Install dsh
+        run: npm install -g @deepseek-ai/dsh
+
+      - name: Write issue to task file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue view "${{ github.event.issue.number }}" \
+            --json title,body \
+            --jq '"# \(.title)\n\n\(.body // \"(no body)\")"' \
+            > task.txt
+          echo "task bytes: $(wc -c < task.txt)"
+
+      - name: Run dsh headless
+        id: dsh
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          set +e
+          dsh --profile headless "请阅读当前工作目录下的 task.txt，其中是 GitHub issue #${{ github.event.issue.number }} 的标题与正文。请分析该 issue 提出的需求或问题，给出你的结论、分析要点和可行的方案或建议，然后把最终答复作为你的输出返回。" > dsh_output.txt 2>&1
+          status=$?
+          set -e
+          echo "dsh_exit=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Post result to issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DSH_EXIT: ${{ steps.dsh.outputs.dsh_exit }}
+        run: |
+          {
+            echo "## 🤖 dsh 分析结果"
+            echo ""
+            echo "> 由 \`dsh --profile headless\` 自动生成，仅作分析参考，未修改任何文件。"
+            echo "> dsh 退出码：${DSH_EXIT:-unknown}"
+            echo ""
+            if [[ -s dsh_output.txt ]]; then
+              cat dsh_output.txt
+            else
+              echo "_（dsh 未产生可用输出）_"
+            fi
+          } > comment.md
+          gh issue comment "${{ github.event.issue.number }}" --body-file comment.md
+
+      - name: Mark analyzed label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue edit "${{ github.event.issue.number }}" \
+            --remove-label dsh-run \
+            --add-label dsh-done
