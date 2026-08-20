@@ -16,6 +16,10 @@ The section shows the selected-first effective list, same-name shadow groups (re
 
 None, as this feature renders a read-only management UI; nothing here reaches a model request.
 
+#### KV Cache effect
+
+None; this package never assembles model input.
+
 ## Known Limitations and Deferred Work
 
 - **P0 is read-only** — `actions.edit/remove/setInvocation` are informational only; no write RPC exists yet.

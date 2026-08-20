@@ -34,6 +34,7 @@ export const en = {
   relative: '{path}',
   close: 'Close',
 }
+/** Locale key union mirroring the `en` dictionary exactly. */
 export type SkillsKey = keyof typeof en
 
 /** Simplified-Chinese strings (key set must mirror `en` exactly). */

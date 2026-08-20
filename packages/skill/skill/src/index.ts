@@ -265,6 +265,7 @@ export interface SkillProviderObservation {
   readonly diagnostics?: readonly ProviderSkillDiagnostic[]
 }
 
+/** One diagnostic surfaced by a skill provider or the registry. */
 export interface ProviderSkillDiagnostic {
   readonly code: string
   readonly severity: 'warning' | 'error'
@@ -272,6 +273,7 @@ export interface ProviderSkillDiagnostic {
   readonly details?: Readonly<Record<string, unknown>>
 }
 
+/** One diagnostic surfaced during provider discovery or registry validation. */
 export interface SkillDiagnostic {
   readonly code: string
   readonly severity: 'warning' | 'error'
@@ -282,12 +284,14 @@ export interface SkillDiagnostic {
   readonly details?: Readonly<Record<string, unknown>>
 }
 
+/** One duplicate-name edge: which candidate shadowed which, and why. */
 export interface SkillShadowEdge {
   readonly loser: IndexedCandidate
   readonly winner: IndexedCandidate
   readonly reason: 'within-layer' | 'cross-layer'
 }
 
+/** One discovered skill entry in the management projection with its selection state. */
 export interface SkillManagementEntry {
   readonly candidate: SkillCandidate
   readonly selected: boolean
@@ -297,6 +301,7 @@ export interface SkillManagementEntry {
   readonly localOrder: number
 }
 
+/** Complete management-view projection: every entry, diagnostics, and completeness. */
 export interface SkillManagementResult {
   readonly entries: readonly SkillManagementEntry[]
   readonly diagnostics: readonly SkillDiagnostic[]

@@ -30,7 +30,15 @@ by re-reading the host before updating the snapshot. A 5-second poll keeps the
 badge live; the workspace refreshes on mount and offers a manual refresh.
 Every write reports pending → success/failure through an aria-live region.
 
-## Known limits
+## Model Experience
+
+None, as this browser-side queue panel renders durable task records and registers no model surface.
+
+#### KV Cache effect
+
+None; this package never assembles model input.
+
+## Known Limitations and Deferred Work
 
 - No forwarded `task-queue/*` events yet: the poll is the refresh floor until
   the events join the remote allowlist.

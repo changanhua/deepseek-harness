@@ -102,6 +102,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   readonly maxConcurrent: number
   readonly maxConcurrentPerExecutor: number
   readonly intervalMs: number
+  /** Extra time beyond `timeoutMs` before a stalled `stopping` task is force-reclaimed. */
   readonly stoppingGraceMs: number
 
   constructor(ctx: Context, config: ResolvedConfig) {
@@ -732,6 +733,9 @@ function dismissedChange(seq: number, state: Task): TaskChange {
   return { seq, version: 1, op: 'dismissed', taskId: state.id, state, at: new Date().toISOString() }
 }
 
+/** Project one task's durable state onto its summary view.
+ * @param task - the full durable task state.
+ * @returns the summary projection for list/status schemas. */
 export function taskToSummary(task: Task): TaskSummary {
   // The seam's TaskSummary type is regenerated into lib by the host build; the
   // projection intentionally carries lastError so list and status schemas stay

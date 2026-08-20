@@ -95,12 +95,16 @@ export const TOOL_ZH: Readonly<Record<string, ZhEntry>> = {
   'ralph': { zh: 'Ralph 循环', intro: '向前台全新 agent 循环执行一个不可变目标。' },
 }
 
-/** 取 Skill 中文映射；未命中返回 undefined。 */
+/** 取 Skill 中文映射；未命中返回 undefined。
+ * @param name - skill name to look up.
+ * @returns the Chinese entry, or undefined when unmapped. */
 export function skillZh(name: string): ZhEntry | undefined {
   return SKILL_ZH[name]
 }
 
-/** 取 Tool 中文映射；未命中返回 undefined。 */
+/** 取 Tool 中文映射；未命中返回 undefined。
+ * @param name - tool name to look up.
+ * @returns the Chinese entry, or undefined when unmapped. */
 export function toolZh(name: string): ZhEntry | undefined {
   return TOOL_ZH[name]
 }

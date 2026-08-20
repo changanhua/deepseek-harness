@@ -24,7 +24,9 @@ export interface OrdinarySessionRow {
   readonly origin?: string | undefined
 }
 
-/** Is one row an ordinary session (addressable by the management remote)? */
+/** Is one row an ordinary session (addressable by the management remote)?
+ * @param row - the session list row to classify.
+ * @returns true when the row is a real, addressable ordinary session. */
 export function isOrdinary(row: OrdinarySessionRow): boolean {
   return row.blank !== true && row.origin !== 'subagent'
 }

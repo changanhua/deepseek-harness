@@ -22,7 +22,9 @@ export interface SkillsSnapshotState {
   snapshot: SkillManagementSnapshot | undefined
 }
 
-/** Human text for a rejected wire call (a host/realm may reject with anything). */
+/** Human text for a rejected wire call (a host/realm may reject with anything).
+ * @param error - the rejection value.
+ * @returns a human-readable message string. */
 export function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }

@@ -20,7 +20,15 @@ A bare or unknown subcommand returns the usage text; a missing or invalid id ret
 - `recordInput` stays at its default `true`: command input is recorded in the `command/run` lifecycle event for audit.
 - This package registers no model surface; for the agent-facing toolkit use `@deepseek-ai/dsh-tool-task-queue`.
 
-## Known limitations
+## Model Experience
+
+None, as the human-facing /queue command renders records directly and registers no model surface.
+
+#### KV Cache effect
+
+None; this package never assembles model input.
+
+## Known Limitations and Deferred Work
 
 - **No backend, no operations** — without `@deepseek-ai/dsh-task-queue-local` mounted, every subcommand reports the load-guidance error.
 - The command only projects and controls; it never enqueues (enqueueing belongs to the model tools or the inbox admission path).

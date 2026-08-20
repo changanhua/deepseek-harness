@@ -51,13 +51,16 @@ export class CapabilityStore {
 
   constructor(private readonly remote: CapabilityRemoteFace) {}
 
+  /** Current snapshot for synchronous readers. */
   getSnapshot = (): CapabilityStoreSnapshot => this.#snapshot
 
+  /** Subscribe to snapshot changes; returns the unsubscribe disposer. */
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener)
     return () => { this.#listeners.delete(listener) }
   }
 
+  /** Drop listeners and reject further updates. */
   dispose(): void {
     this.#disposed = true
     this.#listeners.clear()
@@ -69,7 +72,8 @@ export class CapabilityStore {
     for (const listener of [...this.#listeners]) listener()
   }
 
-  /** Load a full capability snapshot for one session. */
+  /** Load a full capability snapshot for one session.
+   * @param sessionId - the session whose capability snapshot to load. */
   async load(sessionId: SessionId): Promise<void> {
     if (this.#disposed) return
     const generation = ++this.#generation

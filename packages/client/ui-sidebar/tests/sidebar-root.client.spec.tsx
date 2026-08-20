@@ -108,7 +108,7 @@ describe('SidebarRoot shell', () => {
   it('renders generic brand fallbacks when no package fills the slots', () => {
     vi.stubEnv('DSH_CLIENT_COMMIT_HASH', '0123456')
     const { container } = render(<SidebarRoot
-      collapsed={false} width={300}
+      collapsed={false} width={300} activeModule="conversation" setActiveModule={vi.fn()}
       useSessions={neverHook} useWorkspaces={neverHook}
       startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
       renderSlot={((_key: string, _owner: unknown, options?: { fallback?: ReactNode }) =>

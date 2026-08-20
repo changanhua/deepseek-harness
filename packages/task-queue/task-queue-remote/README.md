@@ -39,3 +39,15 @@ exposed here — those belong to the tool surface
 - `@deepseek-ai/dsh-client-ui-task-queue` — the Queue module workspace.
 - `@deepseek-ai/dsh-api-remotes` — mounts the generated Remote contribution
   into the browser assembly (`ctx.remote.taskQueue`).
+
+## Model Experience
+
+None, as this browser panel wire face renders durable records and registers no model surface.
+
+#### KV Cache effect
+
+None; this package never assembles model input.
+
+## Known Limitations and Deferred Work
+
+- Enqueue, executor registration, and notification acks are deliberately not exposed here; they belong to the tool surface and the operator's /queue command.

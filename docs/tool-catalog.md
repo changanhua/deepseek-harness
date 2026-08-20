@@ -37,6 +37,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message` | `ctx.tools`, `ctx.subagents`, `ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries). |
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`, `ctx.systemPrompt`, `a live continuable in-process child Agent` | `tool/call`, `tool/result`, `a user-role message in the direct parent session` | - | Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
+| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_dismiss`, `task_queue_enqueue`, `task_queue_enqueue_batch`, `task_queue_executors`, `task_queue_list`, `task_queue_retry`, `task_queue_stats`, `task_queue_status`, `task_queue_undismiss` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessions (notification finalizer flush)`, `ctx.taskQueue (optional host service)` | `tool/call`, `tool/result`, `user/message notification candidates via agent/pre-step`, `task-queue/* notification acks` | - | The durable cross-session task-queue controller: seven `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools. |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`, `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
@@ -1707,6 +1708,334 @@ Read a background job. Stream jobs return only output since the previous read; f
 Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/index.ts)
 
 The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`.
+
+<a id="deepseek-aidsh-tool-task-queue"></a>
+
+## `@deepseek-ai/dsh-tool-task-queue`
+
+### `task_queue_cancel`
+
+Cancel a pending task (or request stop of a starting/running one) by id.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Task id to cancel."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_dismiss`
+
+Soft-conclude a terminal task (succeeded/failed/canceled) by id: it leaves the attention badge and "needs attention" filter but keeps its record. Reversible with task_queue_undismiss. Use for failures you have diagnosed and decided not to retry.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Terminal task id to dismiss."
+    },
+    "dismissed": {
+      "type": "boolean",
+      "description": "true to conclude (default), false to restore."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_enqueue`
+
+Enqueue one durable, cross-session task on the host task queue. Use the queue for batch work (3 or more independent tasks), long-running jobs, work that may need retry, or anything that should survive the session; use inline execution for a single quick interaction. Rejects executor "shell".
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "One-line title."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Complete instruction handed to the executor."
+        },
+        "executor": {
+          "type": "string",
+          "description": "Registered executor name. Built-ins: claude/codex/opencode/arkcli (CLI coding agents) and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Lower is higher precedence (default 10)."
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "description": "Total execution attempts; default 3."
+        },
+        "backoffMs": {
+          "type": "integer",
+          "description": "Backoff base in ms (default 30000)."
+        },
+        "delayUntil": {
+          "type": "string",
+          "description": "ISO timestamp; not claimable before it."
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "description": "Per-execution timeout in ms (default 1800000)."
+        },
+        "outputDir": {
+          "type": "string",
+          "description": "Output directory."
+        },
+        "tags": {
+          "type": "array",
+          "description": "Free-form filter tags.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "description": "Cross-call dedupe key (1–128 bytes, no NUL)."
+        }
+      },
+      "required": [
+        "title",
+        "prompt",
+        "executor"
+      ]
+    }
+  },
+  "required": [
+    "spec"
+  ]
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_enqueue_batch`
+
+Enqueue up to 200 tasks in one batch. Use for 3 or more independent tasks. Rejects any executor "shell".
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "specs": {
+      "type": "array",
+      "description": "Task specs to enqueue (at most 200).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "One-line title."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Complete instruction handed to the executor."
+          },
+          "executor": {
+            "type": "string",
+            "description": "Registered executor name. Built-ins: claude/codex/opencode/arkcli (CLI coding agents) and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
+          },
+          "priority": {
+            "type": "integer",
+            "description": "Lower is higher precedence (default 10)."
+          },
+          "maxAttempts": {
+            "type": "integer",
+            "description": "Total execution attempts; default 3."
+          },
+          "backoffMs": {
+            "type": "integer",
+            "description": "Backoff base in ms (default 30000)."
+          },
+          "delayUntil": {
+            "type": "string",
+            "description": "ISO timestamp; not claimable before it."
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "description": "Per-execution timeout in ms (default 1800000)."
+          },
+          "outputDir": {
+            "type": "string",
+            "description": "Output directory."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Free-form filter tags.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Cross-call dedupe key (1–128 bytes, no NUL)."
+          }
+        },
+        "required": [
+          "title",
+          "prompt",
+          "executor"
+        ]
+      }
+    }
+  },
+  "required": [
+    "specs"
+  ]
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_executors`
+
+List the executors this task queue has registered, with whether each is enabled for admission and whether the model tools may submit it. Call this before enqueueing to pick a valid executor.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_list`
+
+List queued tasks with optional status/executor/tags filters and a limit. Use before enqueueing to avoid duplicates.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "description": "Filter by status (pending/starting/running/stopping/succeeded/failed/canceled)."
+    },
+    "executor": {
+      "type": "string",
+      "description": "Filter by executor name."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Free-form filter tags.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum tasks to return."
+    }
+  }
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_retry`
+
+Retry a failed task (attempts reset, returns to pending).
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Failed task id to retry."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_stats`
+
+Aggregate queue health: service state, per-status counts, and per-executor counts. Use at session start to see the backlog.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_status`
+
+Get the full record of one task by id.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Task id returned by enqueue."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_undismiss`
+
+Restore a dismissed terminal task to attention by id. Reverses task_queue_dismiss.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Dismissed task id to restore."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+The durable cross-session task-queue controller: seven `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools.
 
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 

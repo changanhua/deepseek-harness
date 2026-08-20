@@ -82,13 +82,16 @@ export class QueueStore {
 
   constructor(private readonly remote: QueueRemoteFace) {}
 
+  /** Current snapshot for synchronous readers. */
   getSnapshot = (): QueueSnapshot => this.#snapshot
 
+  /** Subscribe to snapshot changes; returns the unsubscribe disposer. */
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener)
     return () => { this.#listeners.delete(listener) }
   }
 
+  /** Drop listeners and reject further updates. */
   dispose(): void {
     this.#disposed = true
     this.#listeners.clear()
@@ -137,7 +140,8 @@ export class QueueStore {
     }
   }
 
-  /** Select one task and read its full durable state. */
+  /** Select one task and read its full durable state.
+   * @param id - the task id to select. */
   async select(id: string): Promise<void> {
     if (this.#disposed) return
     this.#set({ selectedId: id, loading: true, error: null })
@@ -152,7 +156,10 @@ export class QueueStore {
     }
   }
 
-  /** Read one run's log from the host. */
+  /** Read one run's log from the host.
+   * @param id - the owning task id.
+   * @param runId - the run id to read.
+   * @returns the run log content, or a failure message. */
   async readRunLog(id: string, runId: string): Promise<{ ok: true; content: string } | { ok: false; message: string }> {
     try {
       return { ok: true, content: valueOf(await this.remote.readRunLog(id, runId)) }
@@ -161,7 +168,9 @@ export class QueueStore {
     }
   }
 
-  /** Cancel one task, then confirm the change from the host. */
+  /** Cancel one task, then confirm the change from the host.
+   * @param id - the task id to cancel.
+   * @returns the action outcome. */
   async cancel(id: string): Promise<QueueActionResult> {
     try {
       const outcome = valueOf(await this.remote.cancel(id))
@@ -172,7 +181,9 @@ export class QueueStore {
     }
   }
 
-  /** Cancel many tasks, then confirm from the host. */
+  /** Cancel many tasks, then confirm from the host.
+   * @param ids - the task ids to cancel.
+   * @returns the action outcome, collecting per-id failures. */
   async cancelMany(ids: string[]): Promise<QueueActionResult> {
     if (ids.length === 0) return { ok: true, message: 'no tasks' }
     const failures: string[] = []
@@ -188,7 +199,9 @@ export class QueueStore {
     return { ok: true, message: `canceled ${ids.length}` }
   }
 
-  /** Re-queue many tasks, then confirm from the host. */
+  /** Re-queue many tasks, then confirm from the host.
+   * @param ids - the task ids to re-queue.
+   * @returns the action outcome, collecting per-id failures. */
   async retryMany(ids: string[]): Promise<QueueActionResult> {
     if (ids.length === 0) return { ok: true, message: 'no tasks' }
     const failures: string[] = []
@@ -204,7 +217,10 @@ export class QueueStore {
     return { ok: true, message: `retried ${ids.length}` }
   }
 
-  /** Dismiss one terminal task (default dismissed=true), then confirm from the host. */
+  /** Dismiss one terminal task (default dismissed=true), then confirm from the host.
+   * @param id - the task id to dismiss.
+   * @param dismissed - whether to dismiss (true) or restore (false).
+   * @returns the action outcome. */
   async dismiss(id: string, dismissed: boolean = true): Promise<QueueActionResult> {
     try {
       valueOf(await this.remote.dismiss(id, dismissed))
@@ -215,12 +231,17 @@ export class QueueStore {
     }
   }
 
-  /** Restore one dismissed task to attention. */
+  /** Restore one dismissed task to attention.
+   * @param id - the task id to restore.
+   * @returns the action outcome. */
   async undismiss(id: string): Promise<QueueActionResult> {
     return this.dismiss(id, false)
   }
 
-  /** Dismiss/restore many tasks, then confirm from the host. */
+  /** Dismiss/restore many tasks, then confirm from the host.
+   * @param ids - the task ids to dismiss or restore.
+   * @param dismissed - whether to dismiss (true) or restore (false).
+   * @returns the action outcome, collecting per-id failures. */
   async dismissMany(ids: string[], dismissed: boolean): Promise<QueueActionResult> {
     if (ids.length === 0) return { ok: true, message: 'no tasks' }
     const failures: string[] = []
@@ -236,7 +257,9 @@ export class QueueStore {
     return { ok: true, message: `${dismissed ? 'dismissed' : 'restored'} ${ids.length}` }
   }
 
-  /** Re-queue one task, then confirm the change from the host. */
+  /** Re-queue one task, then confirm the change from the host.
+   * @param id - the task id to re-queue.
+   * @returns the action outcome. */
   async retry(id: string): Promise<QueueActionResult> {
     try {
       valueOf(await this.remote.retry(id))
@@ -247,7 +270,8 @@ export class QueueStore {
     }
   }
 
-  /** Pause the service switch, then confirm from the host. */
+  /** Pause the service switch, then confirm from the host.
+   * @returns the action outcome. */
   async pause(): Promise<QueueActionResult> {
     try {
       valueOf(await this.remote.pause())
@@ -258,7 +282,8 @@ export class QueueStore {
     }
   }
 
-  /** Resume the service switch, then confirm from the host. */
+  /** Resume the service switch, then confirm from the host.
+   * @returns the action outcome. */
   async resume(): Promise<QueueActionResult> {
     try {
       valueOf(await this.remote.resume())

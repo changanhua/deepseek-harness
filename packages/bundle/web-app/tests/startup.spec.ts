@@ -136,8 +136,8 @@ describe('web command-line provider', () => {
 
   it('accepts the all-interfaces host on the fork (LAN publishing) with a warning', async () => {
     const { values, observed } = await bootProvider(['--host', '0.0.0.0'])
-    expect(values).toEqual({ host: '0.0.0.0', trustedHosts: [] })
-    expect(observed.readerConfig).toEqual({ host: '0.0.0.0', port: 3080, trustedHosts: [] })
+    expect(values).toEqual({ host: '0.0.0.0', openBrowser: true, trustedHosts: [] })
+    expect(observed.readerConfig).toEqual({ host: '0.0.0.0', port: 3080, openBrowser: true, trustedHosts: [] })
     expect(observed.exits).toEqual([])
   })
 })

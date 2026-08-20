@@ -1975,7 +1975,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/skill/skill/src/index.ts:279`](../packages/skill/skill/src/index.ts)
+Source: [`packages/skill/skill/src/index.ts:338`](../packages/skill/skill/src/index.ts)
 
 <a id="deepseek-aidsh-skill-filesystem"></a>
 
@@ -2013,7 +2013,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/skill/skill-filesystem/src/index.ts:49`](../packages/skill/skill-filesystem/src/index.ts)
+Source: [`packages/skill/skill-filesystem/src/index.ts:51`](../packages/skill/skill-filesystem/src/index.ts)
 
 <a id="deepseek-aidsh-spill-local"></a>
 
@@ -2386,9 +2386,11 @@ Source: [`packages/core/system-prompt/src/index.ts:186`](../packages/core/system
 
 ## `@deepseek-ai/dsh-task-queue-local`
 
+Requires: `subprocess`
+
 ```ts config-catalog
 /** Config with every optional field defaulted (schemastery output shape). */
-export type ResolvedConfig = Required<Pick<Config, 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs'>> & Config
+export type ResolvedConfig = Required<Pick<Config, 'queueRoot' | 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs' | 'stoppingGraceMs'>> & Config
 
 /** Admission config schema (schemastery). */
 export interface Config {
@@ -2398,8 +2400,10 @@ export interface Config {
   maxConcurrentPerExecutor?: number
   /** Scheduler tick interval in milliseconds. */
   intervalMs?: number
-  /** Queue root directory; defaults to `$DSH_HOME/task-queue`. */
-  queueRoot?: string
+  /** Extra time beyond `timeoutMs` before a stalled `stopping` task is force-reclaimed. */
+  stoppingGraceMs?: number
+  /** Queue root directory; the composing row resolves it explicitly, for example `dshHomePath('task-queue')`. */
+  queueRoot: string
   /** Per-executor enablement; a disabled executor rejects admission. */
   executors?: Record<string, {
     /** Whether this executor may run tasks. */
@@ -2408,7 +2412,20 @@ export interface Config {
 }
 ```
 
-Source: [`packages/task-queue/task-queue-local/src/index.ts:64`](../packages/task-queue/task-queue-local/src/index.ts)
+Source: [`packages/task-queue/task-queue-local/src/index.ts:68`](../packages/task-queue/task-queue-local/src/index.ts)
+
+<a id="deepseek-aidsh-task-queue-remote"></a>
+
+## `@deepseek-ai/dsh-task-queue-remote`
+
+Requires: `taskQueue`
+
+```ts config-catalog
+/** The panel remote's configuration (reserved; the surface needs none today). */
+export type Config = Record<string, never>
+```
+
+Source: [`packages/task-queue/task-queue-remote/src/index.ts:43`](../packages/task-queue/task-queue-remote/src/index.ts)
 
 <a id="deepseek-aidsh-terminal-bash"></a>
 
@@ -2880,7 +2897,7 @@ Requires: `tools` · `systemPrompt` · `sessions`
 export interface Config {}
 ```
 
-Source: [`packages/task-queue/tool-task-queue/src/index.ts:656`](../packages/task-queue/tool-task-queue/src/index.ts)
+Source: [`packages/task-queue/tool-task-queue/src/index.ts:740`](../packages/task-queue/tool-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 
@@ -3244,6 +3261,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-agent-preset` ([`packages/client/ui-agent-preset/src/index.ts`](../packages/client/ui-agent-preset/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-attachment` ([`packages/client/ui-attachment/src/index.ts`](../packages/client/ui-attachment/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-brand-official` ([`packages/client/ui-brand-official/src/index.ts`](../packages/client/ui-brand-official/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-commands` ([`packages/client/ui-commands/src/index.ts`](../packages/client/ui-commands/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-conversation` ([`packages/client/ui-conversation/src/index.ts`](../packages/client/ui-conversation/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-cordis` ([`packages/extensions/ui-cordis/src/index.ts`](../packages/extensions/ui-cordis/src/index.ts))
@@ -3265,9 +3283,11 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-settings-models` ([`packages/client/ui-settings-models/src/index.ts`](../packages/client/ui-settings-models/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-plugin-inventory` ([`packages/client/ui-settings-plugin-inventory/src/index.ts`](../packages/client/ui-settings-plugin-inventory/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-plugins` ([`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-sidebar` ([`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-skill` ([`packages/client/ui-skill/src/index.ts`](../packages/client/ui-skill/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-subagent` ([`packages/client/ui-subagent/src/index.ts`](../packages/client/ui-subagent/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-theme` ([`packages/client/ui-theme/src/index.ts`](../packages/client/ui-theme/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-tool` ([`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-trajectory` ([`packages/client/ui-trajectory/src/index.ts`](../packages/client/ui-trajectory/src/index.ts))
@@ -3277,11 +3297,13 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-command-compact` — requires `commands` · `compaction` ([`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts))
 - `@deepseek-ai/dsh-command-feedback` — requires `commands` ([`packages/feedback/command-feedback/src/index.ts`](../packages/feedback/command-feedback/src/index.ts))
 - `@deepseek-ai/dsh-command-goal` — requires `commands` · `goals` ([`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts))
+- `@deepseek-ai/dsh-command-task-queue` — requires `commands` ([`packages/task-queue/command-task-queue/src/index.ts`](../packages/task-queue/command-task-queue/src/index.ts))
 - `@deepseek-ai/dsh-commands` ([`packages/interaction/commands/src/index.ts`](../packages/interaction/commands/src/index.ts))
 - `@deepseek-ai/dsh-cordis-client-runner` ([`packages/extensions/cordis-client-runner/src/index.ts`](../packages/extensions/cordis-client-runner/src/index.ts))
 - `@deepseek-ai/dsh-fs-e2b` — requires `e2b` ([`packages/e2b/fs-e2b/src/index.ts`](../packages/e2b/fs-e2b/src/index.ts))
 - `@deepseek-ai/dsh-fs-observation-policy` ([`packages/fs/fs-observation-policy/src/index.ts`](../packages/fs/fs-observation-policy/src/index.ts))
 - `@deepseek-ai/dsh-goal-round-driver` — requires `agents` · `goals` · `sessions` ([`packages/goal/goal-round-driver/src/index.ts`](../packages/goal/goal-round-driver/src/index.ts))
+- `@deepseek-ai/dsh-host-capability-registry` — requires `loader` · `skills` · `tools` · `agents` ([`packages/host/capability-registry/src/index.ts`](../packages/host/capability-registry/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker-auto` — requires `webServer` · `loader` ([`packages/host/directory-picker-auto/src/index.ts`](../packages/host/directory-picker-auto/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker-native` ([`packages/host/directory-picker-native/src/index.ts`](../packages/host/directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-host-plugin-inventory` — requires `loader` ([`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts))

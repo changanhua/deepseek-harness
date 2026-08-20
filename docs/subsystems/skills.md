@@ -23,6 +23,7 @@ interface SkillProviderObservation {
   readonly candidates: readonly SkillCandidate[]
   /** Whether discovery completed and these candidates may be cached. */
   readonly complete: boolean
+  readonly diagnostics?: readonly ProviderSkillDiagnostic[]
 }
 ```
 
@@ -150,6 +151,8 @@ interface SkillCandidate extends SkillSummary {
   readonly path?: string
   /** Parsed optional metadata object from provider-specific skill frontmatter. */
   readonly metadata?: Readonly<Record<string, unknown>>
+  /** Provider-declared origin for management projection; omitted by providers without origin data. */
+  readonly origin?: SkillCandidateOrigin
 }
 ```
 

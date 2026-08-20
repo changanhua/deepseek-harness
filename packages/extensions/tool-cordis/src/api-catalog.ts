@@ -3322,12 +3322,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EditGoalRequest {\n    readonly objective?: string;\n    readonly maxGoalRounds?: number;\n}',
   },
   {
-    name: 'EnqueueSpec',
-    declaration: 'export interface EnqueueSpec {\n    title: string;\n    prompt: string;\n    executor: string;\n    priority?: number;\n    maxAttempts?: number;\n    backoffMs?: number;\n    delayUntil?: string;\n    timeoutMs?: number;\n    outputDir?: string;\n    tags?: string[];\n    ownerSessionId?: string;\n    idempotencyKey?: string;\n}',
-  },
-  {
     name: 'EncodedImageAttachment',
     declaration: 'export interface EncodedImageAttachment {\n    mediaType: ImageMediaType;\n    data: string;\n    name?: string;\n}',
+  },
+  {
+    name: 'EnqueueSpec',
+    declaration: 'export interface EnqueueSpec {\n    title: string;\n    prompt: string;\n    executor: string;\n    priority?: number;\n    maxAttempts?: number;\n    backoffMs?: number;\n    delayUntil?: string;\n    timeoutMs?: number;\n    outputDir?: string;\n    tags?: string[];\n    ownerSessionId?: string;\n    idempotencyKey?: string;\n}',
   },
   {
     name: 'EpochHeader',

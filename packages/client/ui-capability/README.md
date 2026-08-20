@@ -49,12 +49,13 @@ MCP env, headers, command, and args are never returned to the browser.
 
 ## Model Experience
 
-The Capability view is a client-only presentation surface with no model-visible
-token cost and no language-model calls. Loading one snapshot reads the live
-Skill, Tool, and Loader registries on the host (small, bounded projections);
-there is no model inference, token consumption, or KV-cache effect.
+None, as the Capability view is a client-only presentation surface; loading a snapshot reads bounded host registries and never reaches a model request.
 
-## Known limits
+#### KV Cache effect
+
+None; this package never assembles model input.
+
+## Known Limitations and Deferred Work
 
 - No forwarded `capability/*` refresh events yet: the store loads on mount and
   on session change, with a manual retry; there is no live push when the host

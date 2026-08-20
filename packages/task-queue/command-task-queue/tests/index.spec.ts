@@ -116,7 +116,7 @@ async function harness(queue?: TaskQueue): Promise<Harness> {
 
 /** Execute `/queue` through the same registry boundary as a UI adapter. */
 async function run(test: Harness, suffix = ''): Promise<NonNullable<Awaited<ReturnType<CommandRuntime['execute']>>>['result']> {
-  const execution = await test.ctx.commands.execute(test.agent, `/queue${suffix}`, new AbortController().signal)
+  const execution = await test.ctx.commands.execute(test.agent, `/queue${suffix}`, [], new AbortController().signal)
   if (execution === undefined) throw new Error('queue command was not registered')
   return execution.result
 }
