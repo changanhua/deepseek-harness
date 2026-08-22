@@ -1,6 +1,6 @@
 # Runtime Awareness + User Preference Plane — Implementation Spec（R3）
 
-> 决策依据：`architecture-decision.md`（B1–B16、Ownership Matrix、方案 C、sync baseline + async inspect）。现状盘点：`repository-facts.md`。V1 目标：Agent 不猜宿主事实；用户有稳定位置表达长期 capability preference 且 Agent 知道当前真正生效的状态。不造万能配置平台，不做 Doctor。R3 变更：RuntimeFact 三正交维度（evaluation / freshness / exposure，取代 R2 的 observation+cost）；`RuntimeFactValue` 保持 scalar，`host.proxy` 拆 5 个 fact；`projectWhen` 回调改声明式 `relevance`；自动投影收敛为纯 sync `systemPrompt.context(order=120)`（弃用 R2 的 async waterfall）；删除 `web.search-operable`；secret literal precedence 统一；provider id 统一 `deepseek-official`。
+> 决策依据：`architecture-decision.md`（B1–B16、Ownership Matrix、方案 C、sync baseline + async inspect）。现状盘点：`repository-facts.md`。V1 目标：Agent 不猜宿主事实；用户有稳定位置表达长期 capability preference 且 Agent 知道当前真正生效的状态。不造万能配置平台，不做 Doctor。R3 变更：RuntimeFact 三正交维度（evaluation / freshness / exposure，取代 R2 的 observation+cost）；`RuntimeFactValue` 保持 scalar，`host.proxy` 拆 5 个 fact；`projectWhen` 回调改声明式 `relevance`；自动投影收敛为纯 sync `systemPrompt.context(order=120)`（弃用 R2 的 async waterfall）；删除 `web.search-operable`；secret literal precedence 统一；provider id 统一 `deepseek-official`。R3.1 errata：`SubprocessRuntime.executionWorld` 权威字段（B1）、`host.shell` 与 `web-search.<id>.registered` 移出 V1（B1/B4）、`web.server-url`/`runtime.execution-world` 改 dynamic（B2）、Web/Provider→runtimeFacts optional 生命周期接线（B3）。
 
 ## 1. Package / File Changes（总览）
 
@@ -14,12 +14,15 @@
 
 > R2-P1 保留：`tool-runtime-inspect` 定义 tool，违反 context 组契约（"request-context extensions WITHOUT defining a tool"，`packages/context/README.md:5`），移入 `packages/extensions/`（与 `tool-cordis` 同类：model-facing runtime inspection tool，`packages/extensions/README.md:9`）。 R2-P2 保留：`runtime-facts-baseline` 更名 `runtime-facts-host`——该包承载的是"宿主事实"（baseline + inspect 都有），包名不再声称仅 baseline；cost 是 fact 级属性。
 
-### 修改的包（4 个）
+### 修改的包（7 个）
 
 | 包 | 改动 |
 |---|---|
-| `packages/web/web` | 注册 `web` settings namespace；`searchProvider`/`fetchProvider` live resolve（`installSettingsSection`）；导出 `web-search.<id>.registered` 与 `web.search-selected` 状态给 registry（owner 归 `web` 包，R2-B5；**V1 不实现 `web.search-operable`**，R3-5） |
-| `packages/web/web-search-exa` | 增 `apiKeyEnv` + settings namespace，走 `ctx.credentials`；声明 `web-search.exa.registered`（owner 归 web 包）之外由 provider 包声明 `web-search.exa.local-available`（sync）与 `web-search.exa.credential-configured`（async）fact（owner 归 provider 包，R2-B5；V1 均 `exposure='inspect'`） |
+| `packages/subprocess/subprocess`（SD） | `SubprocessRuntime` 增 `abstract readonly executionWorld: ExecutionWorldKind`（`'local' | 'remote'`），execution-world 的唯一权威（R3.1-B1） |
+| `packages/subprocess/subprocess-local` | `LocalSubprocessRuntime.executionWorld = 'local'` |
+| `packages/subprocess/subprocess-e2b` | `E2BSubprocessRuntime.executionWorld = 'remote'` |
+| `packages/web/web` | 注册 `web` settings namespace；`searchProvider`/`fetchProvider` live resolve（`installSettingsSection`）；经 `ctx.inject(['runtimeFacts'], cb)` **optional** 导出 `web.search-selected`（owner 归 `web` 包，R2-B5；R3.1-B3：不导出 `web.search-operable`，R3-5；不注册 `web-search.<id>.registered`，R3.1-B4） |
+| `packages/web/web-search-exa` | 增 `apiKeyEnv` + settings namespace，走 `ctx.credentials`；经 optional inject 声明 `web-search.exa.local-available`（sync）与 `web-search.exa.credential-configured`（async）fact（owner 归 provider 包，R2-B5；V1 均 `exposure='inspect'`） |
 | `packages/web/web-search-perplexity` | 同上（`perplexity` id） |
 | `packages/web/tool-web` | 不改（selection 由 `WebRuntime` 计算；tool-web 只调 `ctx.web.search`） |
 
@@ -147,6 +150,15 @@ registry.registerFact({
   resolveSync: () => normalizeOs(process.platform),
 })
 registry.registerFact({
+  key: factKey('runtime.execution-world'),
+  owner: 'runtime-facts-host',
+  description: 'Execution world of the subprocess seam (local or remote).',
+  evaluation: 'sync',
+  freshness: 'dynamic',   // 值来自可热加载 Service Provider（R3.1-B2），不得缓存
+  exposure: 'baseline',
+  resolveSync: () => pluginCtx.get('subprocess')?.executionWorld,   // seam 权威字段（R3.1-B1）；禁止 instanceof / process.platform / plugin name 猜测
+})
+registry.registerFact({
   key: factKey('web.search-selected'),
   owner: 'web',   // selection 语义 owner = WebRuntime；runtime-facts-host 不注册它（注册在 web 包）
   description: 'Currently selected search provider id.',
@@ -187,8 +199,8 @@ registry.registerFact({
 })
 ```
 
-- **复用既有 owner 而非重复探测**：`runtime.execution-world` 委托 subprocess provider；`host.proxy.*` 委托 `launch-environment` 快照（`repository-facts.md §7.4`）；`web.server-url` 委托 `ctx.webServer.port`（**R2-P3：peerDeps 必须列 webserver**）；sandbox mode / session cwd / `DSH_HOME` / command resolution 不注册（已有 owner，见 §4 禁止清单）。
-- **freshness=static 缓存一次、freshness=dynamic 每次求值**（R3-1）：`host.proxy.*` 由启动快照派生，可缓存；`web.search-selected` 不得缓存。
+- **复用既有 owner 而非重复探测**：`runtime.execution-world` 读 **`SubprocessRuntime.executionWorld`**（R3.1-B1 seam 权威字段；`LocalSubprocessRuntime='local'`、`E2BSubprocessRuntime='remote'`）；`host.proxy.*` 委托 `launch-environment` 快照（`repository-facts.md §7.4`）；`web.server-url` 委托 `ctx.webServer.port`（**R2-P3：peerDeps 必须列 webserver**）；sandbox mode / session cwd / `DSH_HOME` / command resolution 不注册（已有 owner，见 §4 禁止清单）。
+- **freshness 默认规则（R3.1-B2）**：凡值来自另一个**可热加载 Service Provider** 的 fact，一律 `freshness='dynamic'`（不得注册时缓存）——`web.server-url`（WebServer.port 由异步 `init()` 的 `server.listen` 回调赋值，`packages/host/webserver/src/index.ts:86,93-94,233-236`）、`runtime.execution-world`（subprocess 可热换）、`web.search-selected`（settings 热改）。V1 真正的 `static` 只有进程常量/启动快照：`host.os` / `host.arch` / `host.pid` / `host.proxy.*`（launch-environment 快照）。
 
 ### 2.3 Consumer — `runtime_inspect` tool（`packages/extensions/tool-runtime-inspect`）
 
@@ -205,7 +217,7 @@ Model-facing schema（R2-B3：tagged union，facts / command）：
 执行语义：
 
 - `kind="facts"`：`registry.inspect(keys)`（**async**，可 await `credentials.describe` / probe）。返回每 key 的 `{status, value|reason}`（ok / unknown / unavailable / probe-failure）。省略 `keys` 返回 baseline + 可查询列表。
-- `kind="command"`：调 **`ctx.subprocess.resolveExecutable(command, env?, signal)`**（`packages/subprocess/subprocess/src/index.ts:107-122`，authority 复用）。返回结构化结果：
+- `kind="command"`：调 **`ctx.subprocess.resolveExecutable(command, env?, signal)`**（`packages/subprocess/subprocess/src/index.ts:107-122`，authority 复用）。返回结构化结果；`world` 字段来自 `ctx.subprocess.executionWorld`（R3.1-B1，与 `runtime.execution-world` 同一权威，禁止猜测）：
 
 ```jsonc
 { "kind": "command", "command": "codex", "resolved": "C:\\...\\codex.exe", "world": "local" }
@@ -215,6 +227,37 @@ Model-facing schema（R2-B3：tagged union，facts / command）：
 - **禁止为每个 command 预注册 fact**（B16）：command 是 parameterized inspector，不枚举。
 - 只暴露安全事实；secret 永不出现。`apiKeyEnv` 只回 `credential-configured`。
 - 注册到 `ctx.tools` + 一条 `systemPrompt.section` 稳定指导："Use runtime_inspect to query authoritative host/runtime facts or resolve a command instead of guessing environment details."
+
+### 2.4 Web / Provider → runtimeFacts optional 接线（R3.1-B3，生命周期契约）
+
+`web` / `web-search-exa` / `web-search-perplexity` 贡献 fact 时**不得**把 `runtimeFacts` 声明为硬注入（`static inject = ['settings', 'runtimeFacts']` 会把 Runtime Awareness 变成 Web 的硬依赖，破坏未加载该插件的历史 composition）。照 `installSettingsSection` / `agent-presets` 的 optional seam 风格，用 `ctx.inject(['runtimeFacts'], cb)` + `effect` disposer：
+
+```ts ignore-check
+// packages/web/web/src/index.ts（web-search-exa / web-search-perplexity 同构）
+ctx.inject(['runtimeFacts'], (rctx) => {
+  rctx.effect(() => {
+    const disposers = [
+      rctx.runtimeFacts.registerFact({
+        key: factKey('web.search-selected'),
+        owner: 'web',
+        description: 'Currently selected search provider id.',
+        evaluation: 'sync',
+        freshness: 'dynamic',
+        exposure: 'baseline',
+        relevance: { tools: ['web_search'] },
+        resolveSync: () => resolveProvider(this.searchProviders, ...)?.id,
+      }),
+      // provider 包各自注册 local-available / credential-configured（exposure='inspect'）
+    ]
+    return () => disposers.forEach(d => d())
+  })
+})
+```
+
+生命周期（必须有测试）：
+- **without `ctx.runtimeFacts`**：`ctx.inject` 不执行，Web 完整工作（`installSettingsSection` 同款降级，`packages/settings/settings/src/index.ts:870-896`）。
+- **runtimeFacts appears**：facts 注册，投影/查询可见。
+- **runtimeFacts unloads**：`effect` disposer 自动撤回 facts，Web 继续正常（无残留引用、无 throw）。
 
 ## 3. Settings Schema（Web Preference）
 
@@ -267,22 +310,20 @@ installSettingsSection(ctx, WEB_SETTINGS_NAMESPACE, WEB_SETTINGS_SCHEMA, entry, 
 |---|---|---|---|---|---|---|
 | `host.os` | runtime-facts-host | sync | static | baseline | `win32` | `process.platform` |
 | `host.arch` | runtime-facts-host | sync | static | baseline | `x64` | `process.arch` |
-| `runtime.execution-world` | runtime-facts-host | sync | static | baseline | `local` | 委托 `ctx.subprocess`（E2B → `remote`） |
+| `runtime.execution-world` | runtime-facts-host | sync | **dynamic** | baseline | `local` | `SubprocessRuntime.executionWorld`（seam 权威，R3.1-B1） |
 | `web.search-selected` | `web` 包（selection） | sync | **dynamic** | baseline（relevance: `web_search`） | `exa` | `resolveProvider()` 结果 |
-| `web-search.exa.registered` | `web` 包（`WebRuntime` 注册表） | sync | dynamic | **inspect** | `true` | `WebRuntime` 注册表 |
 | `web-search.exa.local-available` | `web-search-exa` 包 | sync | dynamic | **inspect** | `true` | `provider.available()` |
 | `web-search.exa.credential-configured` | `web-search-exa` 包 | **async** | dynamic | **inspect** | `true` | `credentials.describe(ref).configured` |
 | `host.pid` | runtime-facts-host | sync | static | inspect | `12345` | `process.pid` |
-| `host.shell` | runtime-facts-host | sync | static | inspect | `pwsh` | 委托 shell provider 自述 |
 | `host.proxy.configured` | runtime-facts-host | sync | static | inspect | `true` | launch-environment → sanitize |
 | `host.proxy.scheme` | runtime-facts-host | sync | static | inspect | `http` | 同上（同一 sanitize 快照） |
 | `host.proxy.host` | runtime-facts-host | sync | static | inspect | `proxy.example.com` | 同上 |
 | `host.proxy.port` | runtime-facts-host | sync | static | inspect | `8080` | 同上 |
 | `host.proxy.source` | runtime-facts-host | sync | static | inspect | `env` | 同上 |
-| `web.server-url` | runtime-facts-host（委托 `ctx.webServer`） | sync | static | inspect | `http://127.0.0.1:3080` | `webServer.port` |
+| `web.server-url` | runtime-facts-host（委托 `ctx.webServer`） | sync | **dynamic** | inspect | `http://127.0.0.1:3080` | `webServer.port`（异步 init 赋值，R3.1-B2） |
 | `net.reachable` | runtime-facts-host | **async** | dynamic | inspect | `true` | inspect 时 probe（V1 可选，默认不内置） |
 
-> 禁止注册（重复 owner）：sandbox mode / workspace root（sandbox-policy 已投影）、session cwd（SessionHeader）、`DSH_HOME`（shell-env 已有）、command resolution（inspect 走 `resolveExecutable`，不预注册 per-command fact）。 R2-B5：provider 专属状态（`registered`/`local-available`/`credential-configured`）owner = `web` 包 / 各 provider 包，**V1 全部 `exposure='inspect'`**（R3-5）；selection（`web.search-selected`）owner = `web` 包，`exposure='baseline'`（relevance 命中时自动投影）。 **R3-5：`web.search-operable` 不在 V1**（无统一 credential/readiness interface；统一 readiness protocol V2）。
+> 禁止注册（重复 owner）：sandbox mode / workspace root（sandbox-policy 已投影）、session cwd（SessionHeader）、`DSH_HOME`（shell-env 已有）、command resolution（inspect 走 `resolveExecutable`，不预注册 per-command fact）。 R2-B5：provider 专属状态（`local-available`/`credential-configured`）owner = 各 provider 包，**V1 全部 `exposure='inspect'`**（R3-5）；selection（`web.search-selected`）owner = `web` 包，`exposure='baseline'`（relevance 命中时自动投影）。 **R3-5：`web.search-operable` 不在 V1**（无统一 credential/readiness interface；统一 readiness protocol V2）。 **R3.1-B4：`web-search.<id>.registered` 不在 V1**（`WebSearchProvider.id: string` 不保证 kebab grammar；已注册 provider 清单留给 parameterized inspection `runtime_inspect kind=web-provider`，V2）。 **R3.1-B1：`host.shell` 不在 V1**（`ShellExecutor` 无自述；模型已通过可见 Tool 知 shell，V2）。 **R3.1-B2**：来自可热加载 Service Provider 的 fact 一律 `dynamic`（`web.server-url`、`runtime.execution-world`、`web.search-selected`）；V1 的 `static` 仅 `host.os`/`host.arch`/`host.pid`/`host.proxy.*`。
 
 ## 5. Context Projection Algorithm（R3：sync baseline + async inspect）
 
@@ -312,7 +353,7 @@ installSettingsSection(ctx, WEB_SETTINGS_NAMESPACE, WEB_SETTINGS_SCHEMA, entry, 
 3. 配置 precedence 保持仓库既定单一顺序（B4），不发明新层。
 4. Secret 永不进 settings / fact 值 / prompt；只允许 `credential-configured` 安全事实（B3）；secret literal precedence 见 §3.3（`apiKey` 非空 > `apiKeyEnv`；`apiKey` deprecated）。
 5. Preset/Mode 只经 `relevance`/scope 影响投影，不改 fact 值（B9）。
-6. `freshness='static'` 的 fact 注册时求值缓存一次；`freshness='dynamic'` 的 fact 每次求值重新 resolve（R3-1，保证 B5 热 reload 生效）；无自动过期（V1）。
+6. `freshness='static'` 的 fact 注册时求值缓存一次；`freshness='dynamic'` 的 fact 每次求值重新 resolve（R3-1，保证 B5 热 reload 生效）；**来自可热加载 Service Provider 的 fact 一律 `dynamic`**，V1 的 `static` 仅 `host.os`/`host.arch`/`host.pid`/`host.proxy.*`（R3.1-B2）；无自动过期（V1）。
 
 ## 7. Capability-Visible Projection（B6/B8/B15）
 
@@ -336,6 +377,7 @@ installSettingsSection(ctx, WEB_SETTINGS_NAMESPACE, WEB_SETTINGS_SCHEMA, entry, 
 | 事件 | 行为 |
 |---|---|
 | 插件 mount / `registerFact` | effect 注册；`systemPrompt.context` disposer 随 fiber dispose 移除。 |
+| `ctx.inject(['runtimeFacts'])`（R3.1-B3） | 服务出现 → Web/Provider 注册 facts；服务 unload → `effect` disposer 撤回，Web 完整工作（无硬依赖）。 |
 | HMR / 插件 reload | facts 随 fiber 移除；settings namespace 留在存储给下一 owner（`packages/settings/settings/src/index.ts:863-897`）。 |
 | settings.yaml 外部编辑 | watcher 热发布 → `settings/updated` → WebRuntime `setSource` 更新 → 下一次 `search`/`fetch` 生效（B5）；下一次 assembly 的 `web.search-selected`（dynamic）重新求值 → snapshot 变化 → `RuntimeContextProjection` 注入新 snapshot。 |
 | settings 写入失败 / 非法 | settings-file warn-and-keep-last-good；WebRuntime 保持 last good source。 |
@@ -383,6 +425,8 @@ installSettingsSection(ctx, WEB_SETTINGS_NAMESPACE, WEB_SETTINGS_SCHEMA, entry, 
 | runtime-facts 单测 | 注册冲突 throw；key 校验（kebab-case，拒绝 `executionWorld` 等）；三正交维度求值（sync/async、static/dynamic、baseline/inspect）；四种结果状态（ok/unknown/unavailable/probe-failure）；`relevance` 过滤（经 ctx.tools 集中求值，scope 未定义 → 不投影）；渲染确定性排序；dispose 移除 |
 | runtime-facts freshness | `static` fact 缓存一次；`dynamic` fact 每次求值重新 resolve（`web.search-selected` 随 preference 变化更新，B5） |
 | runtime-facts async（inspect） | `inspect()` 中 async fact abort → probe-failure；一个 async fact 失败不影响其他 fact（contained）；async fact 不进入 `render()` 自动投影 |
+| **runtimeFacts optional 生命周期（R3.1-B3）** | without `ctx.runtimeFacts`：Web 完整工作；appears：facts 出现；unloads：facts 消失、Web 继续（无残留引用） |
+| **subprocess executionWorld（R3.1-B1）** | `LocalSubprocessRuntime.executionWorld='local'`、`E2BSubprocessRuntime.executionWorld='remote'`；`runtime-facts-host` 读该字段而非 instanceof / platform 猜测；`runtime_inspect kind=command` 的 `world` 同一权威 |
 | runtime-facts invariant | 注册/生命周期 owner 关系断言 |
 | runtime-facts HMR | dispose fiber 后 fact 与 context contributor 移除 |
 | web settings live resolve | `searchProvider` 热改后下一次 `search` 用新 provider；执行中调用用旧值 |
@@ -404,7 +448,7 @@ installSettingsSection(ctx, WEB_SETTINGS_NAMESPACE, WEB_SETTINGS_SCHEMA, entry, 
 
 ## 14. Rollout Order
 
-1. **runtime-facts 包**（SD + 三正交维度 + sync context contributor + invariant + 单测）——独立可落地。
+1. **subprocess seam `executionWorld`（SD + local + e2b）+ runtime-facts 包**（SD + 三正交维度 + sync context contributor + invariant + 单测）——独立可落地。
 2. **web settings namespace + WebRuntime live resolve**（B2/B5）。
 3. **exa/perplexity apiKeyEnv 迁移 + provider 状态 fact（inspect）**（B3/B5）。
 4. **`web.search-selected` + capability-visible projection**（B6/B8/B15；relevance 集中求值）。
@@ -416,6 +460,9 @@ installSettingsSection(ctx, WEB_SETTINGS_NAMESPACE, WEB_SETTINGS_SCHEMA, entry, 
 
 - 通用 provider fallback（preference ordering × availability × transient failure）：V1 只做状态投影 + 显式失败。
 - **统一 provider readiness protocol + `web.search-operable`**（`WebSearchProvider` 统一 credential/readiness interface；V1 无，R3-5）。
+- `host.shell`（`ShellExecutor` 补 dialect/shellName 自述或参数化查询，若出现真实 shell 诊断需求；R3.1-B1）。
+- `web-search.<id>.registered` → parameterized inspection `runtime_inspect kind=web-provider`（不动态造 FactKey；R3.1-B4）。
+- `SubprocessRuntime.describeExecutionWorld()` 扩展（remote backend / platform / arch；R3.1-B1，V1 不做）。
 - provider credential fact（`credential-configured`）契约公开化（V1 以 exa/perplexity 内部落地）。
 - **async 事实进自动 projection**（如需要）：注册 order=120 的 ordered placeholder 后异步替换 text（waterfall append 无法实现 order=120，R3-6 约束）。
 - OS keychain credential provider（`repository-facts.md §4.2` deferred）。

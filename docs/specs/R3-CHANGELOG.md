@@ -101,7 +101,9 @@
 
 ## 10. Coding-ready 判断（R3 后）
 
-**是，Coding-ready。** 8 项必改全部收敛，V1 范围闭合（baseline 自动投影 ≤4 个 sync fact；provider 状态走 `runtime_inspect`；无 operable；无 async waterfall；无 V1 级 unresolved 设计问题）。R2 的 6 项 unresolved 中 3 项已解决、3 项明确归 V2 observation（见 §9）。
+> **R3.1 更新**：用户对照源码评审后，指出 R3 的 "Coding-ready=是" 判断过早——还有 3 个真实 Blocking（B1 execution-world 无权威源、B2 web.server-url static 缓存、B3 optional 依赖未闭合）外加 1 个建议删减（`web-search.<id>.registered`）。R3.1 errata（§12）修完后，判定更新为 **Coding-ready=是**。
+
+**R3 收敛时的判断（已被 R3.1 修订）**：8 项必改全部收敛，V1 范围闭合（baseline 自动投影 ≤4 个 sync fact；provider 状态走 `runtime_inspect`；无 operable；无 async waterfall；无 V1 级 unresolved 设计问题）。R2 的 6 项 unresolved 中 3 项已解决、3 项明确归 V2 observation（见 §9）。
 
 实现期封闭验证项（**非 blocking**，batch 落地必测，不阻塞开工）：
 
@@ -118,3 +120,49 @@
 - `2026-08-23-runtime-awareness-implementation-file-map.md`：重写（sync contributor、`visible.ts`、`proxy.ts` 5 scalar、web 包删 operable、批次 4 无 operable）。
 - `2026-08-23-runtime-awareness-repository-facts.md`：**不改**（证据文档，R3 未引入新仓库事实）。
 - 本文件：`R3-CHANGELOG.md`。
+
+## 12. R3.1 errata（用户评审后追加，Coding Agent 视角）
+
+用户对照源码继续往"真写代码会不会卡住"这一层评审，指出 R3 尚有 **3 个真实 Blocking + 1 个建议删减**。全部为局部修订，不需要新一轮大设计。
+
+### R3.1-B1（Blocking）— `runtime.execution-world` / `host.shell` 无权威数据源
+
+**源码验证（全部成立）**：
+- `SubprocessRuntime`（`packages/subprocess/subprocess/src/index.ts:102-142`）只有 `resolveExecutable` / `spawn` / `spawnTerminal`，**无 `world`/`kind`/`platform`/`describe()` 自述**。
+- `E2BSubprocessRuntime extends SubprocessRuntime`（`packages/e2b/subprocess-e2b/src/index.ts:52`）、`LocalSubprocessRuntime`（`subprocess-local/src/index.ts:37`）均未补标准化 execution-world 属性。
+- `ShellExecutor`（`packages/shell/shell/src/index.ts:65-101`）只有 `sandboxMode` / `resolve` / `run` / `start`，**无 `dialect`/`shellName`/`implementation`**。
+- 若不做修正，Coding Agent 只能 `instanceof LocalSubprocessRuntime` / `instanceof E2BSubprocessRuntime` / 猜 `process.platform` / 查 plugin name——全部违背 authority / ONE FACT ONE OWNER。
+
+**决策**：
+- `SubprocessRuntime` seam 补最小自述：`abstract readonly executionWorld: ExecutionWorldKind`（`'local' | 'remote'`）；`LocalSubprocessRuntime.executionWorld = 'local'`；`E2BSubprocessRuntime.executionWorld = 'remote'`。`runtime.execution-world` 读该字段；`runtime_inspect kind=command` 的 `world` 也用同一字段。未来 `describeExecutionWorld()`（remote backend/platform/arch）V2 不做。
+- **`host.shell` 直接删出 V1**：模型已通过可见 Tool（`bash`/`pwsh`）知道自己有哪种 shell；不为单个 inspect fact 改 `ShellExecutor` seam。
+
+**文档影响**：architecture-decision（§2 Matrix、§4、§6、§7 rejected、B11）、implementation-spec（§1/§2.2/§2.3/§4/§6/§8/§12/§14/§15）、file-map（§1.2/§1.3/§2/§7/§8）。
+
+### R3.1-B2（Blocking）— `web.server-url` 不能按 static + 注册时缓存
+
+**源码验证（成立）**：`WebServer` 的 `private listenedPort!: number`（`packages/host/webserver/src/index.ts:86`），`get port()` 返回它（:93-94），而 `listenedPort` 由异步 `Service.init()` 的 `server.listen()` 成功回调才赋值（:233-236）。`port = 0` 时由 OS 动态分配真正端口。若注册时立即 cache，可能缓存 `undefined` / `0` / 错误旧端口。
+
+**决策**：`web.server-url` → `evaluation: sync, freshness: dynamic, exposure: inspect`（读取 getter 近零成本，无需 cache）。同理 `runtime.execution-world` 也改 `dynamic`（subprocess 可热换）。**通用规则：凡值来自另一个可热加载 Service Provider 的 fact 一律 `dynamic`**；V1 真正的 `static` 仅 `host.os` / `host.arch` / `host.pid` / `host.proxy.*`（进程常量 / launch-environment 启动快照）。
+
+**文档影响**：architecture-decision（§2/§4）、implementation-spec（§2.2/§4/§6）、file-map（§1.2）。
+
+### R3.1-B3（Blocking）— Web / Provider → runtimeFacts optional 依赖 + 生命周期未闭合
+
+**源码验证（成立）**：file-map 的 dependency summary 只写"fact 声明依赖 runtime-facts（optional）"文案，依赖表本身没列 `@deepseek-ai/dsh-runtime-facts`；且未明确生命周期，Coding Agent 容易直接 `static inject = ['settings', 'runtimeFacts']` 把 Runtime Awareness 变成 Web 硬依赖。
+
+**决策**：`web` / `web-search-exa` / `web-search-perplexity` 把 `@deepseek-ai/dsh-runtime-facts` 列为 **optional peer/type dependency**，运行时经 `ctx.inject(['runtimeFacts'], cb)` + `effect` disposer 接线（与 `installSettingsSection` 同构，`packages/settings/settings/src/index.ts:870-896`）。生命周期必须测试：without runtimeFacts → Web 完整工作；appears → facts 出现；unloads → disposer 撤回、Web 继续。
+
+**文档影响**：implementation-spec（新增 §2.4、§8、§12）、architecture-decision（§6）、file-map（§2/§7/§8）、vertical-slice（§9）。
+
+### R3.1-B4（建议删减）— `web-search.<id>.registered` 动态 fact
+
+**源码验证（成立）**：`WebSearchProvider.id: string`（`packages/web/web/src/types.ts:102-103`）无 kebab segment grammar 约束。自动生成 `web-search.${provider.id}.registered` 会把第三方合法 id（`foo/v2`、`my.search`、`SearchAPI`）变成 FactKey 冲突，四种处理（改 grammar / escaping / 运行时拒绝 / hardcode）都不漂亮，且 V1 不需要该事实。
+
+**决策**：V1 不注册 `web-search.<id>.registered`。保留 `web.search-selected`（baseline）+ `web-search.<id>.local-available` / `credential-configured`（inspect）。已注册 provider 清单留给 parameterized inspection（`runtime_inspect kind=web-provider`，V2），不动态造 FactKey。
+
+**文档影响**：architecture-decision（§2 Matrix、§5.1、§7 rejected）、implementation-spec（§1/§4/§15）、vertical-slice（§4/§8）、file-map（§2）。
+
+### R3.1 后 Coding-ready 判定
+
+**是，Coding-ready。** 3 个 Blocking + 1 个删减全部闭合，架构主体（settings → domain owner → sync state → registry → relevance projection → Agent；long-tail → runtime_inspect）保持，未引入新设计面。实现期封闭验证项保留 R3 §10 的 4 条 + 新增：`SubprocessRuntime.executionWorld` 三实现值单测、`ctx.inject(['runtimeFacts'])` 三态生命周期测试。

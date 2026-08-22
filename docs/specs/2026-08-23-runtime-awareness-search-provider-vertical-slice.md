@@ -71,12 +71,13 @@ async search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearch
 | 状态 | 含义 | evaluation | freshness | exposure | 来源 | 位置 |
 |---|---|---|---|---|---|---|
 | **Preference** | 用户希望用谁 | sync | dynamic | （不进模型） | settings `web.searchProvider`（user 或 base） | `source()` |
-| **registered** | provider 是否已注册到 ctx.web | sync | dynamic | **inspect** | `WebRuntime` 注册表 | `web-search.exa.registered` |
 | **locally-available** | 本地配置可解析（非网络） | sync | dynamic | **inspect** | `provider.available()` | `web-search.exa.local-available` |
 | **selected** | 当前实际选中谁 | sync | **dynamic** | **baseline**（relevance: `web_search`） | `WebRuntime.resolveProvider()` | `web.search-selected` |
 | **credential-configured** | API key 引用是否有值 | **async** | dynamic | **inspect** | `credentials.describe(ref).configured` | `web-search.exa.credential-configured` |
 | **reachable** | 网络可达 | **async** | dynamic | **inspect** | 网络探针 | `net.reachable`（V1 仅 inspect） |
 | **operable** | 具备执行前提 | — | — | **V2** | 统一 readiness protocol | `web.search-operable`（V1 删除，R3-5） |
+
+**`registered` 是状态词词汇之一（B14），但 V1 不注册 `web-search.<id>.registered` fact（R3.1-B4）**：`WebSearchProvider.id: string` 不保证 kebab grammar，动态拼接 FactKey 会与第三方合法 id 冲突；provider 是否已注册由 `WebRuntime` selection 隐式体现（未注册则 `selected` 无法命中）。
 
 **不合并成一个字段、不用 "ready"（B14）**：`web.searchProvider` 只表达 preference；effective 由 selection 计算。选不出来时 effective = 错误码（`WEB_PROVIDER_CONFIGURED_UNAVAILABLE` 等），模型在 `search()` 调用看到错误码，不是被改写的 preference。
 
@@ -128,7 +129,7 @@ refs:
 
 ## 8. Runtime State → Tool → Agent（链路验证）
 
-- **runtime state**（registry facts，owner 闭合 B5）：自动投影只含 `web.search-selected`（owner = web 包，sync/dynamic/baseline，relevance `web_search`）；provider 状态走 inspect——`web-search.exa.registered`（web 包）、`web-search.exa.local-available`（web-search-exa 包，sync）、`web-search.exa.credential-configured`（web-search-exa 包，async）。
+- **runtime state**（registry facts，owner 闭合 B5）：自动投影只含 `web.search-selected`（owner = web 包，sync/dynamic/baseline，relevance `web_search`）；provider 状态走 inspect——`web-search.exa.local-available`（web-search-exa 包，sync）、`web-search.exa.credential-configured`（web-search-exa 包，async）。`web-search.<id>.registered` 不在 V1（R3.1-B4）。
 - **tool execution**：`tool-web` 的 `web_search` 不感知 provider（只调 `ctx.web.search`，`packages/web/tool-web/src/search.ts:364-372`）——provider 交换不改变模型提问方式（`repository-facts.md §5.1`）。
 - **Agent runtime context**（sync projection）：`systemPrompt.context(order=120)` 的 `text` 每次 assembly 求值 → `RuntimeContextProjection` 注入。Agent 看到：
 
@@ -155,3 +156,4 @@ Host runtime facts:
 6. `runtime_inspect kind=facts` 返回 baseline + requested；未知 key 标注 `unknown`；async probe 失败标注 `probe-failure`；async fact（`credential-configured`）不出现在自动 projection。
 7. secret-leak 测试通过（输出不含 `user:pass@`、不含 apiKey 值、不含 proxy raw URL）。
 8. 全部 `verify-*` 门、单测、e2e 绿；runtime-context snapshot 测试覆盖 replay 重建一致性。
+9. Web/Provider 的 fact 贡献经 `ctx.inject(['runtimeFacts'])` **optional** 接线：无 `runtimeFacts` 时 web 完整工作；`runtimeFacts` unload 后 facts 撤回、web 继续（R3.1-B3）。
