@@ -30,7 +30,7 @@ host 平面的持久任务队列（`ctx.taskQueue`）。设计见 [docs/specs/20
 
 ## Cordis API
 
-Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — this section is byte-identical in both language sides of the page. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
 <a id="ctxtaskqueue--taskqueue-abstract-seam"></a>
 
@@ -146,7 +146,7 @@ abstract ackNotification(notificationId: NotificationId, messageId: string): Pro
 abstract listNotifications(filter: { ownerSessionId: string }): NotificationRecord[]
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:167`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queue-events"></a>
 
@@ -167,7 +167,7 @@ A task reached the canceled terminal state.
 'task-queue/canceled'(payload: { taskId: TaskId }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:124`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queuecreated--emit"></a>
 
@@ -184,7 +184,7 @@ A task's `created` change committed (fsync + fold before emission).
 'task-queue/created'(payload: { taskId: TaskId }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:85`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queuedismissed--emit"></a>
 
@@ -203,7 +203,7 @@ A terminal task's `dismissed` flag was toggled (soft-conclude or restore). The t
 'task-queue/dismissed'(payload: { taskId: TaskId; dismissed: boolean }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:132`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queuedrained--emit"></a>
 
@@ -220,7 +220,7 @@ The queue drained (no live starting/running/stopping work remains).
 'task-queue/drained'(payload: { pending: number }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:138`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queuefailed--emit"></a>
 
@@ -238,7 +238,7 @@ A task exhausted its attempts or failed without retry.
 'task-queue/failed'(payload: { taskId: TaskId; reason: string }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:111`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queuefaulted--emit"></a>
 
@@ -255,7 +255,7 @@ The queue entered `faulted`; operator recovery or restart required.
 'task-queue/faulted'(payload: { reason: string }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:152`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queueorphan-unknown--emit"></a>
 
@@ -274,7 +274,7 @@ A crash left a possibly-orphaned child or an unrecognized inbox entry.
 'task-queue/orphan-unknown'(payload: { taskId?: TaskId; priorStatus?: TaskStatus; reason?: string }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:146`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queuerequeued--emit"></a>
 
@@ -292,7 +292,7 @@ A failed attempt requeued to pending with backoff.
 'task-queue/requeued'(payload: { taskId: TaskId; reason: string }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:118`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queuerunning--emit"></a>
 
@@ -309,7 +309,7 @@ A task entered `running` (pid persisted).
 'task-queue/running'(payload: { taskId: TaskId }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:98`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queuestarting--emit"></a>
 
@@ -327,7 +327,7 @@ A task entered `starting` (attempt incremented).
 'task-queue/starting'(payload: { taskId: TaskId; attempt: number }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:92`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 
 <a id="task-queuesucceeded--emit"></a>
 
@@ -344,5 +344,5 @@ A task settled successfully.
 'task-queue/succeeded'(payload: { taskId: TaskId }): void
 ```
 
-Source: [`packages/task-queue/task-queue/src/index.ts:104`](../../packages/task-queue/task-queue/src/index.ts)
+Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
 <!-- END GENERATED cordis-surface -->

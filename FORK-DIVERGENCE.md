@@ -4,7 +4,7 @@ A manually maintained record of current deliberate differences between this fork
 
 ## Identity
 
-- The official upstream tips and this fork's `master` share merge base `141eb6fef8` (upstream dsh-v0.1.0-rc.8). This fork's `master` currently sits 46 commits ahead of that base; upstream has no commits this fork lacks.
+- The official upstream tips and this fork's `master` share merge base `b150a551b8` (upstream dsh-v0.1.1-rc.2). This fork's `master` currently sits 49 commits ahead of that base; upstream has no commits this fork lacks.
 - Official upstream: `https://github.com/deepseek-ai/deepseek-harness.git`
 - This fork: `https://github.com/changanhua/deepseek-harness.git`
 
