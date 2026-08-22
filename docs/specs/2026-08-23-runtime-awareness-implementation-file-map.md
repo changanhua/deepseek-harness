@@ -8,12 +8,12 @@
 
 | 文件 | 内容 |
 |---|---|
-| `package.json` | 名 `@deepseek-ai/dsh-runtime-facts`；`type: module`；`main: lib/index.js`；`types: lib/types/index.d.ts`；`exports` 含 `.` / `./invariant` / `./src/*`；peerDeps：`@deepseek-ai/cordis`、`@deepseek-ai/dsh-system-prompt`（`systemPrompt.context` 注册 + `AssembleContext`）、`@deepseek-ai/dsh-tools`（`ctx.tools.get` 集中求值 relevance，R2-B2）、`@deepseek-ai/dsh-credentials`（optional，`ctx.get`）、`@deepseek-ai/dsh-invariants`、`@deepseek-ai/schemastery` |
-| `tsconfig.json` | 继承 `tsconfig.base.json`；references 到 `system-prompt`、`tools`、`credentials`、`invariants`；注册到 context 所在 aggregate |
+| `package.json` | 名 `@deepseek-ai/dsh-runtime-facts`；`type: module`；`main: lib/index.js`；`types: lib/types/index.d.ts`；`exports` 含 `.` / `./invariant` / `./src/*`；peerDeps：`@deepseek-ai/cordis`、`@deepseek-ai/dsh-system-prompt`（`systemPrompt.context` 注册 + `AssembleContext`）、`@deepseek-ai/dsh-tools`（`ctx.tools.get` 集中求值 relevance，R2-B2）、`@deepseek-ai/dsh-invariants`、`@deepseek-ai/schemastery` |
+| `tsconfig.json` | 继承 `tsconfig.base.json`；references 到 `system-prompt`、`tools`、`invariants`；注册到 context 所在 aggregate |
 | `tsdown.config.ts` | 标准 tsdown 构建（参照 `time-context/tsdown.config.ts`） |
 | `src/types.ts` | `RuntimeFactKey`（每段 `^[a-z][a-z0-9-]*$`）、`RuntimeFactEvaluation`（sync/async）、`RuntimeFactFreshness`（static/dynamic）、`RuntimeFactExposure`（baseline/inspect）、`RuntimeFactValue`（scalar）、`RuntimeFactObservationResult`（ok/unknown/unavailable/probe-failure）、`RuntimeFactContext`、`RuntimeFact`（含 `relevance`）、`RuntimeFactInfo`（`implementation-spec.md §2.1`） |
 | `src/index.ts` | `RuntimeFacts` Service（`registerFact` / `list` / `inspect`（async）/ `render`（sync））+ `Config` + `ctx.systemPrompt.context({ name: 'runtime-facts', order: 120, text })` **sync contributor**（R3：无 waterfall 监听器；text 内调 `render({ scope })`） |
-| `src/visible.ts` | `visible(ctx, relevance)`：声明式 relevance 集中求值（`ctx.get('tools').get(name, scope)`，scope 未定义 → false；R3-3） |
+| `src/visible.ts` | `visible(serviceCtx, factContext, relevance)`：声明式 relevance 集中求值；tool service 从 RuntimeFacts 持有的 Cordis `serviceCtx.get('tools')` 读取，agent scope 只从 `factContext.scope` 读取；scope 未定义 → false（R3-3，避免把 `RuntimeFactContext` 误当 Cordis Context） |
 | `src/invariant.ts` | `./invariant`：注册集合 ↔ 渲染结果一致、dispose 后移除、`static` fact 缓存一次 / `dynamic` 每次求值、async fact 不进入 `render()`、async probe 错误 contained |
 | `tests/runtime-facts.spec.ts` | key 校验（拒绝 `executionWorld` 等非 kebab）、三正交维度求值、四种结果状态、`relevance` 过滤（经 ctx.tools 集中求值，scope 未定义 → 不投影）、渲染排序、dispose 移除、HMR-safety |
 | `tests/runtime-facts.freshness.spec.ts` | `static` 缓存一次；`dynamic` 每次求值（`web.search-selected` 随 preference 变化更新，B5） |
@@ -26,7 +26,7 @@
 
 | 文件 | 内容 |
 |---|---|
-| `package.json` | 名 `@deepseek-ai/dsh-runtime-facts-host`；peerDeps 增：`@deepseek-ai/dsh-runtime-facts`、`@deepseek-ai/dsh-subprocess`（`runtime.execution-world` 读 `executionWorld`）、`@deepseek-ai/dsh-launch-environment`（`host.proxy.*` 快照）、`@deepseek-ai/dsh-home-paths`（可选）、**`@deepseek-ai/dsh-host-webserver`（`web.server-url` → `ctx.webServer`，R2-P3）** |
+| `package.json` | 名 `@deepseek-ai/dsh-runtime-facts-host`；peerDeps 增：`@deepseek-ai/dsh-runtime-facts`、`@deepseek-ai/dsh-subprocess`（`runtime.execution-world` 读 `executionWorld`）、`@deepseek-ai/dsh-launch-environment`（`host.proxy.*` 快照）、**`@deepseek-ai/dsh-host-webserver`（`web.server-url` → `ctx.webServer`，R2-P3）** |
 | `tsconfig.json` / `tsdown.config.ts` | 标准；references 到上列包 |
 | `src/index.ts` | function plugin：注册 §4 清单 host facts（`host.os`/`host.arch`/`runtime.execution-world` baseline；`host.pid`/`web.server-url` inspect） |
 | `src/proxy.ts` | proxy sanitizer + **5 个 scalar fact 注册**（`host.proxy.configured`/`scheme`/`host`/`port`/`source`，同一 launch-environment 快照派生；R3-2） |
@@ -38,7 +38,7 @@
 
 | 文件 | 内容 |
 |---|---|
-| `package.json` | 名 `@deepseek-ai/dsh-tool-runtime-inspect`；peerDeps：`@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-system-prompt`、`@deepseek-ai/dsh-runtime-facts`、**`@deepseek-ai/dsh-subprocess`（`kind=command` → `resolveExecutable`，R2-B3）**、`@deepseek-ai/dsh-credentials`（optional） |
+| `package.json` | 名 `@deepseek-ai/dsh-tool-runtime-inspect`；peerDeps：`@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-system-prompt`、`@deepseek-ai/dsh-runtime-facts`、**`@deepseek-ai/dsh-subprocess`（`kind=command` → `resolveExecutable`，R2-B3）** |
 | `tsconfig.json` / `tsdown.config.ts` | 标准；注册到 extensions 所在 aggregate |
 | `src/index.ts` | `runtime_inspect` tool（tagged union：`{kind:"facts", keys?}` / `{kind:"command", command}`）+ `systemPrompt.section` 稳定指导 |
 | `src/command.ts` | `kind=command` 执行：`ctx.subprocess.resolveExecutable(command, env?, signal)` → structured result `{resolved, world}` / `{status:'unavailable', reason}`；`world` 来自 `ctx.subprocess.executionWorld`（R3.1-B1） |
@@ -101,9 +101,9 @@
 
 | 包 | 新增依赖 | 理由 |
 |---|---|---|
-| `runtime-facts` | cordis, system-prompt, **tools**, credentials(optional), invariants, schemastery | tools：`ctx.tools.get` 集中求值 relevance（B2/B15，R3-3）；system-prompt：`systemPrompt.context` 注册 |
-| `runtime-facts-host` | runtime-facts, **subprocess**, **launch-environment**, **host-webserver**, home-paths(可选), shell(可选) | execution-world 委托 subprocess；proxy 快照 launch-environment；**server-url 委托 `ctx.webServer`（必须列 webserver）** |
-| `tool-runtime-inspect` | tools, system-prompt, runtime-facts, **subprocess**, credentials(optional) | **command resolve 走 `ctx.subprocess.resolveExecutable`（必须列 subprocess）** |
+| `runtime-facts` | cordis, system-prompt, **tools**, invariants, schemastery | tools：`ctx.tools.get` 集中求值 relevance（B2/B15，R3-3）；system-prompt：`systemPrompt.context` 注册。`runtime-facts` 本体不直接消费 credentials。 |
+| `runtime-facts-host` | runtime-facts, **subprocess**, **launch-environment**, **host-webserver** | execution-world 委托 subprocess；proxy 快照 launch-environment；**server-url 委托 `ctx.webServer`（必须列 webserver）**。V1 无 `host.shell`/`DSH_HOME` fact，因此不依赖 shell/home-paths。 |
+| `tool-runtime-inspect` | tools, system-prompt, runtime-facts, **subprocess** | **command resolve 走 `ctx.subprocess.resolveExecutable`（必须列 subprocess）**；facts 查询只经 runtime-facts registry，不直接消费 credentials。 |
 | `web`（MOD） | settings, credentials, **runtime-facts（optional peer/type）** | `installSettingsSection`、`credentialRef`；`ctx.inject(['runtimeFacts'])` optional 接线（R3.1-B3） |
 | `web-search-exa` / `web-search-perplexity`（MOD） | settings, credentials, **runtime-facts（optional peer/type）** | 同上 + provider 状态 fact 经 optional inject 声明 |
 
