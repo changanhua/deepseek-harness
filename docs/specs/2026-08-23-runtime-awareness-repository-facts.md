@@ -1,6 +1,6 @@
-# Runtime Awareness + User Preference Plane — Repository Facts
+# Runtime Awareness + User Preference Plane — Repository Facts（R2）
 
-> 文档性质：固定版本调查基线（design 前的事实盘点），供架构评审。调查对象：本仓库工作树（master，`dsh` 0.1.0-rc 系）。调查日期：2026-08-23。证据规则：每条判断都附 `相对路径:行号`；行号以本次调查时的工作树为准，本文不引用也不依赖任何未提交的并行工作（work-observatory 等）。
+> 文档性质：固定版本调查基线（design 前的事实盘点），供架构评审。调查对象：本仓库工作树（master，`dsh` 0.1.0-rc 系）。调查日期：2026-08-23。证据规则：每条判断都附 `相对路径:行号`；行号以本次调查时的工作树为准，本文不引用也不依赖任何未提交的并行工作（work-observatory 等）。R2 补充：§5.4.1（provider availability 语义）、§6.1（assemble async）、§6.4（ctx.tools visibility authority）、§1（package group 契约）。
 
 ## 0. 阅读规则与证据边界
 
@@ -44,6 +44,8 @@
 | `ctx.agentDefaultModel` | `packages/core/agent-default-model` | core | 默认模型选择，settings 消费范例 |
 
 证据：`docs/capability-seams.md:437-499`（表格）。
+
+**Package group 契约（R2-P1 证据）**：`context/` 组 = "Product plugins that add model-visible request context WITHOUT defining a tool"（`packages/context/README.md:5`）；`extensions/` 组 = "the agent modifies its own runtime"，其中 `tool-cordis` 是 model-facing runtime inspection tool（注册 `ctx.tools`，`packages/extensions/README.md:5-9`）。**设计含义：定义 tool 的插件（如未来的 `tool-runtime-inspect`）不得放 `context/` 组，应放 `extensions/` 组（tool-cordis 先例）。**
 
 ---
 
@@ -176,6 +178,10 @@ tool 绝不因 provider 缺失/未配置/歧义而注销；执行期解析并抛
 
 证据：`docs/config-catalog.md:3201-3273`；`packages/web/web-search-*/README.md`。
 
+### 5.4.1 provider availability 语义（R2-B1 证据）
+
+`WebSearchProvider.available(): boolean` 是 cheap local synchronous 检查、禁止 network（`packages/web/web/src/types.ts:102-108`）。它只证明"本地配置可解析"，**不证明外部凭据/服务实际可用**：web-search-deepseek 的 `available()` 只检查 `apiKey` 非空或 `resolveApiKey` 函数存在（`packages/web/web-search-deepseek/src/provider.ts:189-191`），credential 实际缺失在 `search()` 才 `WEB_PROVIDER_CREDENTIAL_MISSING`（:283,298）。`ctx.credentials.resolve/describe` 是 **async**（`docs/subsystems/credentials.md:140`）。**结论：`registered` / `locally-available` 是 sync 观察；`credential-configured` / `reachable` 是 async 观察；`operable` 仅在操作边界权威。**
+
 ### 5.5 模型可见面
 
 `dsh-tool-web` 注册 `web_search` / `web_fetch` tool + 一条 systemPrompt section 指导（`packages/web/tool-web/src/search.ts:316-375`）。**模型看不到"当前用哪个 provider / 是否 ready"**——tool 描述只谈查询与结果。capability-visible 投影在此为空白。
@@ -189,6 +195,7 @@ tool 绝不因 provider 缺失/未配置/歧义而注销；执行期解析并抛
 - `ctx.systemPrompt.context({name, order, text})` 注册动态 context 贡献者；`text` 可为每次 assembly 求值的函数（`packages/core/system-prompt/src/index.ts:77-85,398-407`）。
 - 每次模型请求前 `systemPrompt.assemble()` → `renderContextSections()` → `RuntimeContextProjection.project()` 生成/去重 **user/message**（source `@deepseek-ai/dsh-system-prompt`，form `snapshot`，带 sections 归属）→ append 到 session log（`packages/core/agent-loop/src/agent.ts:230-239`；`packages/core/agent-loop/src/runtime-context.ts:12-75`）。
 - `RuntimeContextProjection` 负责：只在新 snapshot 变化时注入、replacement 时发 `CLEARED` 标记、从 log 恢复 retained 状态（replay）、dedupe（`runtime-context.ts:24-75`）。
+- `systemPrompt.assemble()` 是 **async**，其 `system-prompt/assemble` waterfall 返回权威 assembly（`packages/core/system-prompt/src/index.ts:532-535`）；agent-loop `preStep` 已 `await assemble()`（`packages/core/agent-loop/src/agent.ts:230`）。因此 async fact（credential describe / probe）可以在 waterfall 内 await 后注入——**async projection 不改 agent-loop**。
 - 渲染模板：`Current runtime context. This snapshot supersedes earlier runtime-context snapshots.`（`packages/core/system-prompt/src/index.ts:236-240`）——这正是模型侧看到的动态 context。
 
 ### 6.2 为什么是尾部快照而不是动态 system section（关键约束）
@@ -207,7 +214,11 @@ DeepSeek 匹配完整前缀做 KV-cache；改 system section 会使缓存失效�
 
 **capability-neutral 演进**：sandbox-policy 曾删掉 family-registration 注册表，context 只陈述所有 enforcement 方言共享的条件化事实（`.agents/notes/implemented/simplification/2026-07-31-capability-neutral-sandbox-policy-context.md:15-19`）——projection 要"陈述事实，不盘点能力"。
 
-### 6.4 shell 环境事实（`ctx.shellEnv`）
+### 6.4 tool/capability visibility authority = `ctx.tools`（R2-B2 证据）
+
+`ToolRuntime` 是"某 scope 可见哪些工具"的唯一 authority：`get(name, scope?)`（`packages/core/tools/src/index.ts:1204`）、`schemas(scope?)`（:1234）、`restrict(filter)`（:1071）、`view(scope)`（:1152-1236，含 inherited + scoped own + restrictions + reserved transport）。`ctx.systemPrompt` 是 prompt assembly 的 owner（经 `systemPrompt.tools()` 收集 schema），**不是** visibility resolver。**设计含义：capability-visible projection 的可见性判定必须问 `ctx.tools`（`get(name, scope)`），不得从 systemPrompt 内部反查工具名、不得复制 visibility resolver。**
+
+### 6.5 shell 环境事实（`ctx.shellEnv`）
 
 - `ShellEnvRegistry`：built-ins `DSH_HOME` / `DSH_SHELL='1'` / `DSH_SESSION_ID`（+`DSH_SESSION_JSONL` 由 contributor 提供）；插件 `register(contributor)` 声明 `{name, variables, resolve(execution)}`，key 冲突 fail loud（`packages/shell/shell-env/src/index.ts:39-145`）。
 - 每次模型 shell 调用 `collect(execution)` 重建可信快照；executor 丢弃 ambient `DSH_*` 再注入（`shell-env/src/index.ts:83-87,152-176`）。
