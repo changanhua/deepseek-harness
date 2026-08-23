@@ -96,7 +96,7 @@
 | 2. async waterfall 每步延迟 | **解决**：R3-4 弃用 async waterfall（sync projection 无 preStep 延迟）。 |
 | 3. `ctx.tools.get` 与 assemble scope 一致性 | **收窄**：可见性求值收进 `RuntimeFacts.visible()` 一处；降为**实现期验证项**（file-map §8 batch 4 首个集成测试），不再是设计级 blocking。 |
 | 4. 第三方 provider fact 契约 | **保持 V2**：V1 以 exa/perplexity 内部落地，契约公开化 V2。 |
-| 5. `host.proxy` sanitize 覆盖面 | **保持 V2**：V1 只 `HTTP_PROXY`/`HTTPS_PROXY` 拆 5 scalar；`ALL_PROXY`/`no_proxy`/CA 变量 V2。 |
+| 5. `host.proxy` sanitize 覆盖面 | **V1 已落地** `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` 及其小写变体（实现比最初 spec 更宽容，sanitize 一视同仁；`no_proxy`/CA 等更多敏感网络配置策略 V2）。 |
 | 6. `net.reachable` probe 定义 | **保持 V2**：V1 仅 inspect、默认不内置。 |
 
 ## 10. Coding-ready 判断（R3 后）
@@ -162,6 +162,12 @@
 **决策**：V1 不注册 `web-search.<id>.registered`。保留 `web.search-selected`（baseline）+ `web-search.<id>.local-available` / `credential-configured`（inspect）。已注册 provider 清单留给 parameterized inspection（`runtime_inspect kind=web-provider`，V2），不动态造 FactKey。
 
 **文档影响**：architecture-decision（§2 Matrix、§5.1、§7 rejected）、implementation-spec（§1/§4/§15）、vertical-slice（§4/§8）、file-map（§2）。
+
+### R3.1-B5（落地对齐）— `host.proxy.*` 变量覆盖范围
+
+**实现落地**：`runtime-facts-host/src/proxy.ts` 的 `PROXY_VARIABLES` 覆盖 `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY` 及小写变体（优先级 HTTPS→HTTP→ALL，大写先小写后）——比最初 spec 的"V1 只 HTTP_PROXY/HTTPS_PROXY"更宽容。sanitize 对全部变量一视同仁（丢弃 user/pass/token/query/path），无额外安全差异，且保留标准 `ALL_PROXY` 能力，因此**文档对齐实现**（§9 第 5 行更新；implementation-spec 远程修订已把 proxy 措辞泛化，不再限制变量名）。`no_proxy`/带凭据的 CA 变量等更多策略仍归 V2。
+
+**文档影响**：R3-CHANGELOG（§9 第 5 行）。
 
 ### R3.1 后 Coding-ready 判定
 
