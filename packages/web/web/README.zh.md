@@ -45,6 +45,10 @@
 
 `searchProvider`／`fetchProvider` 偏好可通过 `web` settings namespace（`settings.yaml`）由用户编辑，并分层叠加于 composition entry（`searchProvider`／`fetchProvider` 配置加同一字段的环境变量覆盖）之上。`WebRuntime` 在每次 `search()`／`fetch()` 调用时实时读取该 section，因此用户层的编辑无需重启或重新注册提供方即可在下次调用生效；正在进行的调用保持其开始时解析的偏好快照。未挂载 settings provider 的部署完全按原来的 composition entry 运行。`WEB_SETTINGS_NAMESPACE`／`WEB_SETTINGS_SCHEMA` 承载该 section；接线遵循 `installSettingsSection`（`@deepseek-ai/dsh-settings`）。
 
+## 运行时 fact（`web.search-selected`）
+
+当可选的 `@deepseek-ai/dsh-runtime-facts` 服务挂载时，`WebRuntime` 注册一个 baseline 运行时 fact：`web.search-selected`（sync、dynamic、owner `web`）。其 `resolveSync` 通过 `selectedSearchProviderId()` 读取实时 settings source——与 `search()` 相同的选择路径但不抛异常——返回选中的提供方 id，或在无明确选中提供方时返回 `undefined`（观测为 `unavailable`）。该 fact 声明 `relevance: { tools: ['web_search'] }`，因此仅当 `web_search` 工具对 assembly scope 可见时才投影进 runtime-context snapshot；可见性由 runtime-facts 注册表通过 `ctx.tools.get` 集中求值。settings 层偏好变更会在下次 assembly 更新，无需重新注册（fact 为 `dynamic`）。未挂载 runtime-facts 服务时，web seam 照常工作。投影层不预判可操作性；模型从 `search()` 抛出的 `WebError` code 获知失败原因。
+
 ## 词汇
 
 `WebSearchRequest`（`query`、`maxResults?`）→ `WebSearchResult`（`content?`、`sources[]`、`truncated`）；每个 `WebSearchSource` 都有必填 `url` 与可选 `title`／`snippet`／`publishedAt`（Perplexity 引用可能只含 URL）。`WebFetchRequest`（`url`）→ `WebFetchResult`（最终 `url`、`statusCode`、`body`、`truncated`）；取消作为可选的直接 `AbortSignal` 参数传给 `search()`／`fetch()`。`WebFetchBody` 是这里拥有的封闭判别联合（`html` | `text`）；消费方使用 `switch` 实现穷尽检查，因此新增类型会导致编译失败，直到处理完毕。完整约定见 `src/types.ts`，其中也包含 `WebError` code 分类体系。

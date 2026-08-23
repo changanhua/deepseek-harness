@@ -7,8 +7,10 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import { factKey } from '@deepseek-ai/dsh-runtime-facts'
 import z from '@deepseek-ai/schemastery'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-runtime-facts'
 import type {
   WebFetchProvider,
   WebFetchRequest,
@@ -113,6 +115,46 @@ export class WebRuntime extends Service {
       // fact needs rebuilding when the settings document changes.
       onChange: () => {},
     })
+    // Runtime awareness is optional: without `ctx.runtimeFacts` the web seam
+    // still works and no search-selection fact is projected or inspectable
+    // (R3.1-B3 lifecycle).
+    ctx.inject(['runtimeFacts'], (rctx) => {
+      rctx.effect(() => {
+        const dispose = rctx.runtimeFacts.registerFact({
+          key: factKey('web.search-selected'),
+          owner: 'web',
+          description: 'Currently selected search provider id.',
+          evaluation: 'sync',
+          freshness: 'dynamic',
+          exposure: 'baseline',
+          relevance: { tools: ['web_search'] },
+          resolveSync: () => this.selectedSearchProviderId(),
+        })
+        return () => void dispose()
+      })
+    })
+  }
+
+  /**
+   * Resolve the currently selected search provider id without throwing. Returns
+   * `undefined` when no provider is unambiguously selected (no configured id and
+   * zero or multiple usable providers, or a configured id that is missing or
+   * unavailable). The projection layer treats `undefined` as `unavailable`
+   * rather than pre-judging operability; the model discovers failure reasons
+   * from the `WebError` codes thrown by {@link search}.
+   * @returns the selected provider id, or `undefined` when selection is unresolved.
+   */
+  selectedSearchProviderId(): string | undefined {
+    try {
+      const section = this.source()
+      const provider = resolveProvider({
+        providers: this.searchProviders,
+        ...section.searchProvider !== undefined ? { configuredId: section.searchProvider } : {},
+      })
+      return provider.id
+    } catch {
+      return undefined
+    }
   }
 
   /**
