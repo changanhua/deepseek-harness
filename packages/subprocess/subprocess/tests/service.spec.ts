@@ -16,6 +16,8 @@ import type {
  * is all an implementation owes the abstract class.
  */
 class StubSubprocessRuntime extends SubprocessRuntime {
+  readonly executionWorld = 'local' as const
+
   async resolveExecutable(command: string): Promise<string> {
     return `/bin/${command}`
   }
@@ -54,6 +56,7 @@ describe('SubprocessRuntime seam', () => {
   it('a concrete subclass registers as ctx.subprocess and serves the abstract API', async () => {
     const ctx = new Context()
     await ctx.plugin(StubSubprocessRuntime)
+    expect(ctx.subprocess.executionWorld).toBe('local')
     const handle = ctx.subprocess.spawn({
       argv: ['true'],
       cwd: '/stub',

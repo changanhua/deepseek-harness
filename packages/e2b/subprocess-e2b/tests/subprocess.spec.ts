@@ -1627,6 +1627,12 @@ describe('E2BSubprocessRuntime', () => {
     return { ctx, fiber }
   }
 
+  it('identifies the provider execution world as remote', async () => {
+    const { ctx, fiber } = await service()
+    expect(ctx.subprocess.executionWorld).toBe('remote')
+    await fiber.dispose()
+  })
+
   it('registers handles and disposal terminates and joins live remote groups regardless of sandbox policy', async () => {
     const fake = new FakeSandbox()
     fake.trapsTerm = true

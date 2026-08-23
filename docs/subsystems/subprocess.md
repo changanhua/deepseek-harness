@@ -6,6 +6,15 @@ The subprocess seam is split across a Service Definition ([dsh-subprocess](../..
 
 Source: [`packages/subprocess/subprocess/src/types.ts`](../../packages/subprocess/subprocess/src/types.ts) and [`packages/subprocess/subprocess/src/index.ts`](../../packages/subprocess/subprocess/src/index.ts)
 
+## Execution-world identity
+
+Each Service Provider reports the authoritative coarse location for its path and process namespace. Consumers use this field instead of inferring location from platform, package identity, or concrete service class.
+
+```ts type-equiv
+/** Execution namespace exposed by one subprocess Service Provider. */
+type ExecutionWorldKind = 'local' | 'remote'
+```
+
 ## Executable lookup
 
 One provider's spawn working directories, executable paths, ordinary processes, and terminal sessions inhabit the same path and process namespace as the mounted filesystem provider. `resolveExecutable(command, env?, signal?)` verifies absolute executable paths or resolves bare names through the provider's scrubbed `PATH` plus deliberate overrides.
@@ -246,7 +255,7 @@ The terminal spec fully specifies argv, cwd, environment overrides, dimensions, 
 
 ## Service behavior
 
-The abstract [`SubprocessRuntime`](../../packages/subprocess/subprocess/src/index.ts) Service Definition specifies execution-world coordinates, executable lookup, ordinary `spawn`, and `spawnTerminal`. [`LocalSubprocessRuntime`](../../packages/subprocess/subprocess-local/src/index.ts) provides them with detached process trees, per-disposition wiring, credential scrubbing, `node-pty`, platform process inspection, and terminate-and-join disposal. See [`dsh-subprocess`](../../packages/subprocess/subprocess/README.md) for the Service Definition contract and [`dsh-subprocess-local`](../../packages/subprocess/subprocess-local/README.md) for local mechanics.
+The abstract [`SubprocessRuntime`](../../packages/subprocess/subprocess/src/index.ts) Service Definition specifies the `executionWorld` classification, execution-world coordinates, executable lookup, ordinary `spawn`, and `spawnTerminal`. [`LocalSubprocessRuntime`](../../packages/subprocess/subprocess-local/src/index.ts) reports `local`; the E2B provider reports `remote`. See [`dsh-subprocess`](../../packages/subprocess/subprocess/README.md) for the Service Definition contract and [`dsh-subprocess-local`](../../packages/subprocess/subprocess-local/README.md) for local mechanics.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

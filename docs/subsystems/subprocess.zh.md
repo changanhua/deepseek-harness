@@ -6,6 +6,15 @@
 
 源码：[`packages/subprocess/subprocess/src/types.ts`](../../packages/subprocess/subprocess/src/types.ts) 与 [`packages/subprocess/subprocess/src/index.ts`](../../packages/subprocess/subprocess/src/index.ts)
 
+## 执行环境标识
+
+每个 Service Provider 都会报告其路径与进程命名空间的权威粗粒度位置。消费方使用该字段，而不从平台、包标识或具体服务 class 推断位置。
+
+```ts type-equiv
+/** Execution namespace exposed by one subprocess Service Provider. */
+type ExecutionWorldKind = 'local' | 'remote'
+```
+
 ## 可执行文件查找
 
 一个提供方的 spawn 工作目录、可执行文件路径、普通进程与终端会话，和挂载的文件系统提供方处于同一路径与进程命名空间。`resolveExecutable(command, env?, signal?)` 验证绝对可执行文件路径，或通过提供方清理后的 `PATH` 加有意覆盖来解析裸名称。
@@ -246,7 +255,7 @@ interface SubprocessOutcome {
 
 ## 服务行为
 
-抽象的 [`SubprocessRuntime`](../../packages/subprocess/subprocess/src/index.ts) Service Definition 规定执行世界坐标、可执行文件查找、普通 `spawn` 与 `spawnTerminal`。[`LocalSubprocessRuntime`](../../packages/subprocess/subprocess-local/src/index.ts) 以 detached 进程树、按处置方式接线、凭据清除、`node-pty`、平台进程检查，以及先终止再等待退出的资源释放提供这些能力。Service Definition 约定见 [`dsh-subprocess`](../../packages/subprocess/subprocess/README.zh.md)，本地机制见 [`dsh-subprocess-local`](../../packages/subprocess/subprocess-local/README.zh.md)。
+抽象的 [`SubprocessRuntime`](../../packages/subprocess/subprocess/src/index.ts) Service Definition 规定 `executionWorld` 分类、执行环境坐标、可执行文件查找、普通 `spawn` 与 `spawnTerminal`。[`LocalSubprocessRuntime`](../../packages/subprocess/subprocess-local/src/index.ts) 报告 `local`；E2B 提供方报告 `remote`。Service Definition 约定见 [`dsh-subprocess`](../../packages/subprocess/subprocess/README.zh.md)，本地机制见 [`dsh-subprocess-local`](../../packages/subprocess/subprocess-local/README.zh.md)。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
