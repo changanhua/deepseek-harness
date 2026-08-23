@@ -90,6 +90,9 @@ function validateFact(fact: RuntimeFact): void {
   } else if (fact.resolveAsync === undefined || fact.resolveSync !== undefined) {
     throw new TypeError(`runtime fact "${fact.key}" with evaluation "async" must declare only resolveAsync`)
   }
+  if (fact.exposure === 'baseline' && fact.evaluation !== 'sync') {
+    throw new TypeError(`runtime fact "${fact.key}" with exposure "baseline" must use synchronous evaluation`)
+  }
   const tools = fact.relevance?.tools
   if (tools === undefined) return
   if (tools.length === 0) {
@@ -250,17 +253,37 @@ export class RuntimeFacts extends Service {
     fact: RuntimeFact,
     context: RuntimeFactContext,
   ): Promise<RuntimeFactObservationResult> {
+    if (fact.evaluation === 'sync') {
+      if (fact.freshness === 'static') {
+        return this.staticObservations.get(fact.key) ?? { status: 'unavailable' }
+      }
+      return this.observeSync(fact, context)
+    }
+
+    // A static async observation is global only when no caller-specific scope
+    // or cancellation authority participates. Scoped/cancellable inspections
+    // probe independently so one caller cannot poison or cancel another's
+    // registration-lifetime cache.
+    const cacheableStatic = fact.freshness === 'static'
+      && context.scope === undefined
+      && context.signal === undefined
+    if (!cacheableStatic) return await this.observeAsync(fact, context)
+
     const cached = this.staticObservations.get(fact.key)
-    if (fact.freshness === 'static' && cached !== undefined) return cached
-    if (fact.evaluation === 'sync') return this.observeSync(fact, context)
+    if (cached !== undefined) return cached
     const existing = this.pendingStaticObservations.get(fact.key)
-    if (fact.freshness === 'static' && existing !== undefined) return await existing
-    const pending = this.observeAsync(fact, context)
-    if (fact.freshness !== 'static') return await pending
+    if (existing !== undefined) return await existing
+
+    const pending = this.observeAsync(fact, {})
     this.pendingStaticObservations.set(fact.key, pending)
     try {
       const result = await pending
-      if (this.facts.get(fact.key) === fact) this.staticObservations.set(fact.key, result)
+      // Transient probe failures are never registration-lifetime facts. A
+      // later inspection must be allowed to recover; stable ok/unavailable
+      // observations may be reused for the registration lifetime.
+      if (result.status !== 'probe-failure' && this.facts.get(fact.key) === fact) {
+        this.staticObservations.set(fact.key, result)
+      }
       return result
     } finally {
       this.pendingStaticObservations.delete(fact.key)
