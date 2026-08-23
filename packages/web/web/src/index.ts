@@ -7,10 +7,9 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import { factKey } from '@deepseek-ai/dsh-runtime-facts'
+import type { RuntimeFactKey } from '@deepseek-ai/dsh-runtime-facts'
 import z from '@deepseek-ai/schemastery'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
-import type {} from '@deepseek-ai/dsh-runtime-facts'
 import type {
   WebFetchProvider,
   WebFetchRequest,
@@ -73,6 +72,9 @@ export const WEB_SETTINGS_SCHEMA: z<WebSettingsSection> = z.object({
   fetchProvider: z.string(),
 })
 
+/** Stable runtime-fact key; the registry validates the branded value at registration. */
+const WEB_SEARCH_SELECTED_FACT = 'web.search-selected' as RuntimeFactKey
+
 /**
  * The web access service. Registered as `ctx.web` (one instance per context).
  *
@@ -115,13 +117,13 @@ export class WebRuntime extends Service {
       // fact needs rebuilding when the settings document changes.
       onChange: () => {},
     })
-    // Runtime awareness is optional: without `ctx.runtimeFacts` the web seam
-    // still works and no search-selection fact is projected or inspectable
-    // (R3.1-B3 lifecycle).
+    // Runtime awareness is optional. Only a type dependency on runtime-facts is
+    // emitted from this package; the service itself is discovered dynamically.
+    // Without it the web seam remains fully functional.
     ctx.inject(['runtimeFacts'], (rctx) => {
       rctx.effect(() => {
         const dispose = rctx.runtimeFacts.registerFact({
-          key: factKey('web.search-selected'),
+          key: WEB_SEARCH_SELECTED_FACT,
           owner: 'web',
           description: 'Currently selected search provider id.',
           evaluation: 'sync',
@@ -130,21 +132,20 @@ export class WebRuntime extends Service {
           relevance: { tools: ['web_search'] },
           resolveSync: () => this.selectedSearchProviderId(),
         })
-        return () => void dispose()
+        return async () => {
+          await dispose()
+        }
       })
     })
   }
 
   /**
-   * Resolve the currently selected search provider id without throwing. Returns
-   * `undefined` when no provider is unambiguously selected (no configured id and
-   * zero or multiple usable providers, or a configured id that is missing or
-   * unavailable). The projection layer treats `undefined` as `unavailable`
-   * rather than pre-judging operability; the model discovers failure reasons
-   * from the `WebError` codes thrown by {@link search}.
+   * Resolve the currently selected search provider id without throwing. This is
+   * internal derived state for runtime awareness, not a second public selection
+   * API: execution still resolves through {@link search} and {@link resolveProvider}.
    * @returns the selected provider id, or `undefined` when selection is unresolved.
    */
-  selectedSearchProviderId(): string | undefined {
+  private selectedSearchProviderId(): string | undefined {
     try {
       const section = this.source()
       const provider = resolveProvider({
