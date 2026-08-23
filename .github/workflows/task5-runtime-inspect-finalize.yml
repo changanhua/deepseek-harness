@@ -3,6 +3,8 @@ name: Task 5 runtime inspect finalize
 on:
   push:
     branches: [docs/runtime-awareness-design]
+  pull_request:
+    branches: [docs/runtime-awareness-design]
 
 permissions:
   contents: write
