@@ -61,8 +61,9 @@ export const Config: z<Config> = z.object({
   searchRecency: z.union(['day', 'week', 'month', 'year'] as const),
 })
 
-/** User-persistable provider preferences. Secret values are deliberately absent. */
+/** User-persistable provider preferences. Secret values are deliberately impossible. */
 interface PerplexitySettingsSection {
+  apiKey?: never
   apiKeyEnv?: string
   baseURL?: string
   model?: string
@@ -71,6 +72,10 @@ interface PerplexitySettingsSection {
 }
 
 const PERPLEXITY_SETTINGS_SCHEMA: z<PerplexitySettingsSection> = z.object({
+  // Explicitly reject a raw `apiKey` even if a settings provider preserves
+  // unknown raw keys. This is hidden because configuration surfaces should
+  // never offer a literal-secret field on the user preference plane.
+  apiKey: z.never().hidden(),
   apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_ENV),
   baseURL: z.string(),
   model: z.string(),
@@ -129,6 +134,7 @@ function resolveOptions(
 /** Register the Perplexity search provider with `ctx.web`. */
 export function apply(ctx: Context, config: Config): void {
   const entry = settingsEntry(config)
+  credentialRef(entry.apiKeyEnv ?? DEFAULT_API_KEY_ENV)
   let current: () => PerplexitySettingsSection = () => entry
   installSettingsSection(ctx, WEB_SEARCH_PERPLEXITY_SETTINGS_NAMESPACE, PERPLEXITY_SETTINGS_SCHEMA, entry, {
     setSource: (source) => {
@@ -137,6 +143,7 @@ export function apply(ctx: Context, config: Config): void {
     // The registration carries no resolved value: the provider projects the
     // section per search, so a committed change needs no re-registration.
     onChange: () => {},
+    validate: value => { credentialRef(value.apiKeyEnv ?? DEFAULT_API_KEY_ENV) },
   })
   const provider = new PerplexitySearchProvider(() => resolveOptions(ctx, current(), config.apiKey))
   ctx.web.registerSearchProvider(provider)
