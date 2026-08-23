@@ -47,7 +47,11 @@
 
 ## 运行时 fact（`web.search-selected`）
 
-当可选的 `@deepseek-ai/dsh-runtime-facts` 服务挂载时，`WebRuntime` 注册一个 baseline 运行时 fact：`web.search-selected`（sync、dynamic、owner `web`）。其 `resolveSync` 通过 `selectedSearchProviderId()` 读取实时 settings source——与 `search()` 相同的选择路径但不抛异常——返回选中的提供方 id，或在无明确选中提供方时返回 `undefined`（观测为 `unavailable`）。该 fact 声明 `relevance: { tools: ['web_search'] }`，因此仅当 `web_search` 工具对 assembly scope 可见时才投影进 runtime-context snapshot；可见性由 runtime-facts 注册表通过 `ctx.tools.get` 集中求值。settings 层偏好变更会在下次 assembly 更新，无需重新注册（fact 为 `dynamic`）。未挂载 runtime-facts 服务时，web seam 照常工作。投影层不预判可操作性；模型从 `search()` 抛出的 `WebError` code 获知失败原因。
+当可选的 `@deepseek-ai/dsh-runtime-facts` 服务挂载时，`WebRuntime` 注册一个 baseline 运行时 fact：`web.search-selected`（sync、dynamic、owner `web`）。其 resolver 读取实时 settings source，并使用与 `search()` 相同的内部提供方选择策略；若能够明确选中提供方则返回其 id，否则返回 `undefined`（观测为 `unavailable`）。这项派生状态不会扩出第二套 public provider-selection API。
+
+该 fact 声明 `relevance: { tools: ['web_search'] }`，因此仅当 `web_search` 工具对**当前 assembly 的同一个 scope**可见时才投影进 runtime-context snapshot；可见性由 runtime-facts 注册表集中通过 `ctx.tools.get(name, scope)` 求值。settings 偏好或 provider registry 拓扑发生变化时，因为 fact 是 `dynamic`，下一次 assembly 会直接反映新的 effective provider，无需重新注册。
+
+这里对 runtime-facts 的依赖是**可选 peer/type dependency**：`web` 生成的运行时代码不会 import runtime-facts 的值；实际生命周期只由 `ctx.inject(['runtimeFacts'], ...)` 接线。因此 runtimeFacts 未出现时 web seam 完整工作；service unload 时 fact 被撤回但 web 不受影响；service 再次出现时 fact 自动重新注册。投影层不发明 readiness 或 fallback 状态；真正的执行失败仍由 `search()` 的 `WebError` code 负责。
 
 ## 词汇
 
@@ -55,11 +59,11 @@
 
 ## 模型体验
 
-通过 `dsh-tool-web` 间接影响；该工具会保留有界的规范化提供方数据，或者原样保留以下失败：已配置的提供方缺失、提供方不可用、无提供方、存在多个提供方以及 `Error: <message>`；本注册表自身不贡献提示词或 schema。
+`dsh-tool-web` 继续拥有 `web_search`／`web_fetch` 的工具 schema、描述、提示、调用与结果。除此之外，当 runtime-facts 挂载时，本 seam 只会在当前 assembly scope 确实可见 `web_search` 的情况下贡献动态 `web.search-selected` runtime-context 行。模型因此能看到**当前真正生效的搜索提供方身份**，但不会看到 provider readiness、credential value 或 Web 内部实现细节；若无法明确选择提供方，则该 fact 不投影，而不是猜测。
 
 #### KV Cache 影响
 
-不会直接导致 KV Cache 失效；请求前缀变更由上述消费方负责。
+`web.search-selected` 属于动态 runtime-context snapshot，而不是稳定 system prompt。effective provider 不变时，其 context 文本保持不变；settings 或 provider 拓扑变化导致 effective selected id 改变时，下一次 assembly 的该段上下文随之变化。本实现没有新增 agent-loop 或第二套 prompt 机制。
 
 ## 已知限制与暂缓事项
 
