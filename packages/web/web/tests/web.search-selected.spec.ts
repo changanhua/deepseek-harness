@@ -95,6 +95,19 @@ describe('web.search-selected dynamic freshness', () => {
     await bench.ctx.fiber.dispose()
   })
 
+  it('derives auto-selection through the same provider-resolution semantics', async () => {
+    const bench = await boot()
+    bench.ctx.web.registerSearchProvider(mockSearchProvider('exa'))
+
+    await expect(bench.ctx.runtimeFacts.inspect([factKey('web.search-selected')]))
+      .resolves.toEqual({ 'web.search-selected': { status: 'ok', value: 'exa' } })
+
+    bench.ctx.web.registerSearchProvider(mockSearchProvider('perplexity'))
+    await expect(bench.ctx.runtimeFacts.inspect([factKey('web.search-selected')]))
+      .resolves.toEqual({ 'web.search-selected': { status: 'unavailable' } })
+    await bench.ctx.fiber.dispose()
+  })
+
   it('reports unavailable when no provider is unambiguously selected', async () => {
     const bench = await boot()
     await expect(bench.ctx.runtimeFacts.inspect([factKey('web.search-selected')]))
@@ -134,16 +147,22 @@ describe('web.search-selected capability-visible projection', () => {
     await bench.ctx.fiber.dispose()
   })
 
-  it('flows through systemPrompt.assemble with the assembly scope', async () => {
+  it('passes the exact systemPrompt assembly scope into ctx.tools.get', async () => {
     const bench = await boot({ searchProvider: 'exa' })
     bench.ctx.web.registerSearchProvider(mockSearchProvider('exa'))
     const scope = {}
+    let observedScope: object | undefined
     bench.ctx.provide('tools', {
-      get: (name: string, candidate?: object) =>
-        name === 'web_search' && candidate === scope ? { name } : undefined,
+      get: (name: string, candidate?: object) => {
+        if (name === 'web_search') observedScope = candidate
+        return name === 'web_search' && candidate === scope ? { name } : undefined
+      },
     } as never)
+
     const assembly = await bench.ctx.systemPrompt.assemble({ scope })
     const entry = assembly.contexts.find(item => item.name === 'runtime-facts')
+
+    expect(observedScope).toBe(scope)
     expect(entry?.text).toContain('- web.search-selected: exa')
     await bench.ctx.fiber.dispose()
   })
@@ -160,15 +179,20 @@ describe('runtimeFacts optional lifecycle', () => {
     await ctx.fiber.dispose()
   })
 
-  it('withdraws the fact when the runtime-facts service unloads', async () => {
+  it('tracks runtimeFacts unload and reload while the web seam keeps working', async () => {
     const bench = await boot({ searchProvider: 'exa' })
     bench.ctx.web.registerSearchProvider(mockSearchProvider('exa'))
     await expect(bench.ctx.runtimeFacts.inspect([factKey('web.search-selected')]))
-      .resolves.toMatchObject({ 'web.search-selected': { status: 'ok' } })
+      .resolves.toEqual({ 'web.search-selected': { status: 'ok', value: 'exa' } })
 
     await bench.runtimeFactsFiber.dispose()
-
+    expect(bench.ctx.get('runtimeFacts')).toBeUndefined()
     await expect(bench.ctx.web.search({ query: 'q' })).resolves.toMatchObject({ sources: [] })
+
+    const runtimeFactsFiber = bench.ctx.plugin(RuntimeFacts, {})
+    await runtimeFactsFiber.await()
+    await expect(bench.ctx.runtimeFacts.inspect([factKey('web.search-selected')]))
+      .resolves.toEqual({ 'web.search-selected': { status: 'ok', value: 'exa' } })
     await bench.ctx.fiber.dispose()
   })
 })
