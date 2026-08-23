@@ -1,1 +1,2 @@
 temporary trigger for Task 5 lockfile and bundle wiring
+retry: repository packageManager pnpm
