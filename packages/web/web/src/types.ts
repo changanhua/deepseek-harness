@@ -96,6 +96,18 @@ export type WebFetchBody =
   | { readonly kind: 'text'; readonly content: string }
 
 /**
+ * The web preference section stored and composed by the settings seam.
+ * `WebRuntime` reads it live at every call; the composition entry is the base
+ * layer, the user settings layer overrides it. Omitted ids keep auto-selection.
+ */
+export interface WebSettingsSection {
+  /** Explicit search provider id. Omitted = auto-select when exactly one usable. */
+  readonly searchProvider?: string
+  /** Explicit fetch provider id. Omitted = auto-select when exactly one usable. */
+  readonly fetchProvider?: string
+}
+
+/**
  * A search-capable backend. Registered with `ctx.web.registerSearchProvider`.
  * `id` is a stable string, unique within the search capability kind.
  */

@@ -41,6 +41,10 @@ Selection never depends on registration, config, or HMR order. A capability has 
 
 The failure branches throw `WebError`, whose structured code (plus message detail — the missing id, the ambiguous candidate set) is the direct callers route on. A provider's own `available()` is a cheap local check (credential presence, parseable config) that feeds this execution-time selection and **must not make network calls**; `dsh-tool-web` never calls it — the tool executes through `ctx.web.search()`/`fetch()` and routes on the thrown codes, so provider selection has one owner.
 
+## Preference (`web` settings section)
+
+The `searchProvider`/`fetchProvider` preference is user-editable through the `web` settings namespace (`settings.yaml`), layered over the composition entry (`searchProvider`/`fetchProvider` config plus the same-field env override). `WebRuntime` reads the section live at every `search()`/`fetch()` call, so a user-layer edit reaches the next call without a restart or provider re-registration; an in-flight call keeps the preference snapshot it resolved when it started. A deployment without a settings provider uses the composition entry exactly as before. `WEB_SETTINGS_NAMESPACE` / `WEB_SETTINGS_SCHEMA` carry the section; the wiring follows `installSettingsSection` (`@deepseek-ai/dsh-settings`).
+
 ## Vocabulary
 
 `WebSearchRequest` (`query`, `maxResults?`) → `WebSearchResult` (`content?`, `sources[]`, `truncated`); each `WebSearchSource` has a required `url` and optional `title`/`snippet`/`publishedAt` (Perplexity citations may be URL-only). `WebFetchRequest` (`url`) → `WebFetchResult` (final `url`, `statusCode`, `body`, `truncated`); cancellation is a direct optional `AbortSignal` argument to `search()`/`fetch()`. `WebFetchBody` is a CLOSED discriminated union (`html` | `text`) owned here — consumers `switch` to exhaustiveness so a new kind breaks their compilation until handled. See `src/types.ts` for the full contracts and the `WebError` code taxonomy.
