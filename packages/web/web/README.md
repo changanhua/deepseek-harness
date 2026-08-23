@@ -47,7 +47,9 @@ The `searchProvider`/`fetchProvider` preference is user-editable through the `we
 
 ## Runtime fact (`web.search-selected`)
 
-When the optional `@deepseek-ai/dsh-runtime-facts` service is mounted, `WebRuntime` registers one baseline runtime fact: `web.search-selected` (sync, dynamic, owner `web`). Its `resolveSync` reads the live settings source through `selectedSearchProviderId()` — the same selection path as `search()` without the throw — and returns the selected provider id, or `undefined` (observed as `unavailable`) when no provider is unambiguously selected. The fact declares `relevance: { tools: ['web_search'] }`, so it projects into the runtime-context snapshot only when the `web_search` tool is visible to the assembly scope; the runtime-facts registry evaluates visibility centrally through `ctx.tools.get`. A settings-layer preference change updates the next assembly without re-registration because the fact is `dynamic`. Without the runtime-facts service the web seam works unchanged. The projection layer does not pre-judge operability; the model discovers failure reasons from the `WebError` codes thrown by `search()`.
+When the optional `@deepseek-ai/dsh-runtime-facts` service is mounted, `WebRuntime` registers one baseline runtime fact: `web.search-selected` (sync, dynamic, owner `web`). Its resolver reads the live settings source and runs the same internal provider-selection policy as `search()`, returning the selected provider id or `undefined` (observed as `unavailable`) when no provider is unambiguously selected. No second public selection API is exposed for this derived state. The fact declares `relevance: { tools: ['web_search'] }`, so it projects into the runtime-context snapshot only when the `web_search` tool is visible to the exact assembly scope; the runtime-facts registry evaluates visibility centrally through `ctx.tools.get(name, scope)`. A settings-layer preference or provider-registry change updates the next assembly without re-registration because the fact is `dynamic`.
+
+The runtime-facts package is an **optional peer/type dependency** here: emitted web runtime code does not import a runtime-facts value. `ctx.inject(['runtimeFacts'], ...)` owns the lifecycle instead, so the web seam works before the service appears, withdraws its fact when the service unloads, and re-registers it if the service appears again. The projection layer does not invent readiness or fallback state; execution failures remain owned by the `WebError` codes from `search()`.
 
 ## Vocabulary
 
@@ -55,11 +57,11 @@ When the optional `@deepseek-ai/dsh-runtime-facts` service is mounted, `WebRunti
 
 ## Model Experience
 
-Indirectly, through `dsh-tool-web`, which retains bounded normalized provider data or the exact configured-provider, unavailable-provider, no-provider, multiple-provider, and `Error: <message>` failures while this registry contributes no prompt or schema itself.
+`dsh-tool-web` still owns the `web_search` / `web_fetch` tool schemas, descriptions, guidance, calls, and results. Separately, when runtime-facts is mounted, this seam contributes the dynamic `web.search-selected` runtime-context line only for an assembly scope where `web_search` is actually visible. The model therefore sees the effective search-provider identity without provider readiness, credential values, or Web implementation details; if selection is unresolved the fact is omitted rather than guessed.
 
 #### KV Cache effect
 
-No direct invalidation; the named consumer owns any request-prefix changes.
+`web.search-selected` is part of the dynamic runtime-context snapshot rather than the stable system prompt. An unchanged effective provider produces unchanged context text; a settings/provider-topology change that changes the effective selected id changes that request context on the next assembly. No additional agent-loop or prompt mechanism is introduced.
 
 ## Known Limitations and Deferred Work
 
