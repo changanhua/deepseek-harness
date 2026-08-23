@@ -41,17 +41,19 @@ function mockSearchProvider(id: string, available = true): WebSearchProvider {
 
 async function boot(config: { searchProvider?: string } = {}): Promise<{
   ctx: Context
+  webFiber: Fiber
   runtimeFactsFiber: Fiber
   settingsFiber: Fiber
 }> {
   const ctx = new Context()
-  await ctx.plugin(WebRuntime, config)
+  const webFiber = ctx.plugin(WebRuntime, config)
+  await webFiber.await()
   await ctx.plugin(SystemPrompt, {})
   const runtimeFactsFiber = ctx.plugin(RuntimeFacts, {})
   await runtimeFactsFiber.await()
   const settingsFiber = ctx.plugin(MemorySettings)
   await settingsFiber.await()
-  return { ctx, runtimeFactsFiber, settingsFiber }
+  return { ctx, webFiber, runtimeFactsFiber, settingsFiber }
 }
 
 afterEach(() => {
@@ -177,6 +179,19 @@ describe('runtimeFacts optional lifecycle', () => {
     await expect(ctx.web.search({ query: 'q' })).resolves.toMatchObject({ sources: [] })
     expect(ctx.get('runtimeFacts')).toBeUndefined()
     await ctx.fiber.dispose()
+  })
+
+  it('withdraws the fact when the contributing WebRuntime unloads', async () => {
+    const bench = await boot({ searchProvider: 'exa' })
+    bench.ctx.web.registerSearchProvider(mockSearchProvider('exa'))
+    await expect(bench.ctx.runtimeFacts.inspect([factKey('web.search-selected')]))
+      .resolves.toEqual({ 'web.search-selected': { status: 'ok', value: 'exa' } })
+
+    await bench.webFiber.dispose()
+
+    await expect(bench.ctx.runtimeFacts.inspect([factKey('web.search-selected')]))
+      .resolves.toEqual({ 'web.search-selected': { status: 'unknown' } })
+    await bench.ctx.fiber.dispose()
   })
 
   it('tracks runtimeFacts unload and reload while the web seam keeps working', async () => {
