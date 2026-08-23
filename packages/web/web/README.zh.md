@@ -41,6 +41,10 @@
 
 失败分支会抛出 `WebError`；调用方按其结构化 code（加消息细节：缺失 id、歧义候选集合）路由。提供方自身的 `available()` 是便宜的局部检查（凭据是否存在、配置是否可解析），供执行时选择使用，且**禁止发起网络调用**；`dsh-tool-web` 永远不会调用它。工具通过 `ctx.web.search()`／`fetch()` 执行，并按抛出的 code 路由，因此提供方选择只有一个归属方。
 
+## 偏好（`web` settings section）
+
+`searchProvider`／`fetchProvider` 偏好可通过 `web` settings namespace（`settings.yaml`）由用户编辑，并分层叠加于 composition entry（`searchProvider`／`fetchProvider` 配置加同一字段的环境变量覆盖）之上。`WebRuntime` 在每次 `search()`／`fetch()` 调用时实时读取该 section，因此用户层的编辑无需重启或重新注册提供方即可在下次调用生效；正在进行的调用保持其开始时解析的偏好快照。未挂载 settings provider 的部署完全按原来的 composition entry 运行。`WEB_SETTINGS_NAMESPACE`／`WEB_SETTINGS_SCHEMA` 承载该 section；接线遵循 `installSettingsSection`（`@deepseek-ai/dsh-settings`）。
+
 ## 词汇
 
 `WebSearchRequest`（`query`、`maxResults?`）→ `WebSearchResult`（`content?`、`sources[]`、`truncated`）；每个 `WebSearchSource` 都有必填 `url` 与可选 `title`／`snippet`／`publishedAt`（Perplexity 引用可能只含 URL）。`WebFetchRequest`（`url`）→ `WebFetchResult`（最终 `url`、`statusCode`、`body`、`truncated`）；取消作为可选的直接 `AbortSignal` 参数传给 `search()`／`fetch()`。`WebFetchBody` 是这里拥有的封闭判别联合（`html` | `text`）；消费方使用 `switch` 实现穷尽检查，因此新增类型会导致编译失败，直到处理完毕。完整约定见 `src/types.ts`，其中也包含 `WebError` code 分类体系。
