@@ -45,6 +45,18 @@
 # `dsh.client` rows are the browser roster the modules node half scans into
 # window.__DSH_BOOT__; the modules row is simultaneously a host row.
 - insert:
+    # Runtime Awareness host plane: facts are authoritative state; the tool is
+    # the explicit long-tail inspection surface. All three are web-profile
+    # composition, not Agent-owned facts or provider heuristics.
+    - id: runtime-facts
+      name: '@deepseek-ai/dsh-runtime-facts'
+
+    - id: runtime-facts-host
+      name: '@deepseek-ai/dsh-runtime-facts-host'
+
+    - id: tool-runtime-inspect
+      name: '@deepseek-ai/dsh-tool-runtime-inspect'
+
     - id: code-runtime
       name: '@deepseek-ai/dsh-code-runtime-worker-thread'
 
