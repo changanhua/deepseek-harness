@@ -10,7 +10,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { factKey } from '@deepseek-ai/dsh-runtime-facts'
+import type { RuntimeFactKey } from '@deepseek-ai/dsh-runtime-facts'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import z from '@deepseek-ai/schemastery'
@@ -39,10 +39,12 @@ export const name = 'web-search-exa'
 export const inject = ['web']
 
 const DEFAULT_API_KEY_ENV = 'EXA_API_KEY'
+const EXA_LOCAL_AVAILABLE_FACT = 'web-search.exa.local-available' as RuntimeFactKey
+const EXA_CREDENTIAL_CONFIGURED_FACT = 'web-search.exa.credential-configured' as RuntimeFactKey
 
 /** Plugin config (all optional — `apply` fills env-var and constant defaults). */
 export interface Config {
-  /** Literal Exa API key. Deprecated: prefer {@link apiKeyEnv} so no secret enters configuration files. */
+  /** Literal Exa API key. Deprecated composition-only compatibility; never persisted through user settings. */
   apiKey?: string
   /** Credential reference resolved for each search; defaults to `EXA_API_KEY`. */
   apiKeyEnv?: string
@@ -65,24 +67,56 @@ export const Config: z<Config> = z.object({
   highlightsPerResult: z.number().step(1).min(1),
 })
 
+/** User-persistable provider preferences. Secret values are deliberately absent. */
+interface ExaSettingsSection {
+  apiKeyEnv?: string
+  baseURL?: string
+  searchType?: 'auto' | 'keyword' | 'neural'
+  numResults?: number
+  highlightsPerResult?: number
+}
+
+const EXA_SETTINGS_SCHEMA: z<ExaSettingsSection> = z.object({
+  apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_ENV),
+  baseURL: z.string(),
+  searchType: z.union(['auto', 'keyword', 'neural'] as const),
+  numResults: z.number().step(1).min(1),
+  highlightsPerResult: z.number().step(1).min(1),
+})
+
 /** Settings namespace carrying this provider's endpoint, retrieval, and key reference. */
 export const WEB_SEARCH_EXA_SETTINGS_NAMESPACE = settingsNamespace('web-search-exa')
+
+function settingsEntry(config: Config): ExaSettingsSection {
+  return {
+    ...config.apiKeyEnv === undefined ? {} : { apiKeyEnv: config.apiKeyEnv },
+    ...config.baseURL === undefined ? {} : { baseURL: config.baseURL },
+    ...config.searchType === undefined ? {} : { searchType: config.searchType },
+    ...config.numResults === undefined ? {} : { numResults: config.numResults },
+    ...config.highlightsPerResult === undefined ? {} : { highlightsPerResult: config.highlightsPerResult },
+  }
+}
 
 /**
  * Project one resolved section into the options the provider serves its next
  * search with. Environment fallbacks stay here rather than in the provider:
  * every value it reads is already fully defaulted.
  * @param ctx - plugin context supplying the credential and environment planes.
- * @param config - the currently authoritative section.
+ * @param settings - the currently authoritative user/composition preference section.
+ * @param literalApiKey - deprecated composition-only literal, which retains legacy precedence.
  * @returns options for one search.
  */
-function resolveOptions(ctx: Context, config: Config): ExaSearchProviderOptions {
-  const apiKeyEnv = credentialRef(config.apiKeyEnv ?? DEFAULT_API_KEY_ENV)
-  const literalApiKey = config.apiKey !== undefined && config.apiKey.length > 0
-    ? config.apiKey
+function resolveOptions(
+  ctx: Context,
+  settings: ExaSettingsSection,
+  literalApiKey: string | undefined,
+): ExaSearchProviderOptions {
+  const apiKeyEnv = credentialRef(settings.apiKeyEnv ?? DEFAULT_API_KEY_ENV)
+  const literal = literalApiKey !== undefined && literalApiKey.length > 0
+    ? literalApiKey
     : undefined
   return {
-    ...literalApiKey === undefined ? {} : { apiKey: literalApiKey },
+    ...literal === undefined ? {} : { apiKey: literal },
     resolveApiKey: async () => {
       const credentials = ctx.get('credentials')
       if (credentials !== undefined) return (await credentials.resolve(apiKeyEnv))?.value
@@ -91,17 +125,18 @@ function resolveOptions(ctx: Context, config: Config): ExaSearchProviderOptions 
       return ambient !== undefined && ambient.value.length > 0 ? ambient.value : undefined
     },
     apiKeyEnv,
-    baseURL: config.baseURL ?? EXA_DEFAULT_BASE_URL,
-    searchType: config.searchType ?? EXA_DEFAULT_SEARCH_TYPE,
-    highlightsPerResult: config.highlightsPerResult ?? EXA_DEFAULT_HIGHLIGHTS_PER_RESULT,
-    ...config.numResults !== undefined ? { numResults: config.numResults } : {},
+    baseURL: settings.baseURL ?? EXA_DEFAULT_BASE_URL,
+    searchType: settings.searchType ?? EXA_DEFAULT_SEARCH_TYPE,
+    highlightsPerResult: settings.highlightsPerResult ?? EXA_DEFAULT_HIGHLIGHTS_PER_RESULT,
+    ...settings.numResults !== undefined ? { numResults: settings.numResults } : {},
   }
 }
 
 /** Register the Exa search provider with `ctx.web`. */
 export function apply(ctx: Context, config: Config): void {
-  let current: () => Config = () => config
-  installSettingsSection(ctx, WEB_SEARCH_EXA_SETTINGS_NAMESPACE, Config, config, {
+  const entry = settingsEntry(config)
+  let current: () => ExaSettingsSection = () => entry
+  installSettingsSection(ctx, WEB_SEARCH_EXA_SETTINGS_NAMESPACE, EXA_SETTINGS_SCHEMA, entry, {
     setSource: (source) => {
       current = source
     },
@@ -109,15 +144,16 @@ export function apply(ctx: Context, config: Config): void {
     // section per search, so a committed change needs no re-registration.
     onChange: () => {},
   })
-  const provider = new ExaSearchProvider(() => resolveOptions(ctx, current()))
+  const provider = new ExaSearchProvider(() => resolveOptions(ctx, current(), config.apiKey))
   ctx.web.registerSearchProvider(provider)
-  // Runtime awareness is optional: without it the provider still works and
-  // no facts are projected or inspectable (R3.1-B3 lifecycle).
+  // Runtime awareness is optional: the type-only dependency below is erased
+  // from emitted JS, so the provider module still loads when the optional
+  // runtime-facts package/service is absent.
   ctx.inject(['runtimeFacts'], (rctx) => {
     rctx.effect(() => {
       const disposers = [
         rctx.runtimeFacts.registerFact({
-          key: factKey('web-search.exa.local-available'),
+          key: EXA_LOCAL_AVAILABLE_FACT,
           owner: 'web-search-exa',
           description: 'Whether the Exa search provider is locally available.',
           evaluation: 'sync',
@@ -126,7 +162,7 @@ export function apply(ctx: Context, config: Config): void {
           resolveSync: () => provider.available(),
         }),
         rctx.runtimeFacts.registerFact({
-          key: factKey('web-search.exa.credential-configured'),
+          key: EXA_CREDENTIAL_CONFIGURED_FACT,
           owner: 'web-search-exa',
           description: 'Whether the Exa API key reference is configured.',
           evaluation: 'async',
@@ -141,7 +177,9 @@ export function apply(ctx: Context, config: Config): void {
           },
         }),
       ]
-      return () => disposers.forEach(dispose => dispose())
+      return async () => {
+        await Promise.all(disposers.map(dispose => dispose()))
+      }
     })
   })
 }
