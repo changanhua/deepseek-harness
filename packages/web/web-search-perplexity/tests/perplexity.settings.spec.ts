@@ -74,13 +74,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/**
- * Run one search and return the request Perplexity received. A fresh `Response`
- * per call because a body can only be read once, and the call history is cleared
- * because repeated `spyOn` returns the same spy.
- * @param ctx - context whose `ctx.web` serves the search.
- * @returns the parsed request body Perplexity received.
- */
+/** Run one search and return the request Perplexity received. */
 async function searchOnce(ctx: Context): Promise<Record<string, unknown>> {
   const fetchSpy = vi.spyOn(globalThis, 'fetch')
     .mockImplementation(() => Promise.resolve(jsonResponse(ONE_RESULT)))
@@ -107,15 +101,23 @@ describe('web-search-perplexity settings section', () => {
     await bench.ctx.fiber.dispose()
   })
 
-  it('keeps the literal key out of every described layer', async () => {
+  it('rejects literal apiKey writes so a secret can never persist in user settings', async () => {
     const bench = await boot()
-    await bench.ctx.settings.update(WEB_SEARCH_PERPLEXITY_SETTINGS_NAMESPACE, { apiKey: 'pplx-stored-secret' })
+    const settings = bench.ctx.settings as MemorySettings
 
-    const [descriptor] = bench.ctx.settings.describe({ redactSecrets: true })
-      .filter(row => String(row.ns) === 'web-search-perplexity')
+    await expect(bench.ctx.settings.update(WEB_SEARCH_PERPLEXITY_SETTINGS_NAMESPACE, {
+      apiKey: 'pplx-stored-secret',
+    })).rejects.toThrow()
 
-    expect(JSON.stringify(descriptor)).not.toContain('pplx-stored-secret')
-    expect(descriptor?.secrets).toEqual([{ path: ['apiKey'], set: true }])
+    expect(JSON.stringify(settings.doc)).not.toContain('pplx-stored-secret')
+    await bench.ctx.fiber.dispose()
+  })
+
+  it('rejects an invalid credential reference at the settings write boundary', async () => {
+    const bench = await boot()
+    await expect(bench.ctx.settings.update(WEB_SEARCH_PERPLEXITY_SETTINGS_NAMESPACE, {
+      apiKeyEnv: 'not a credential ref',
+    })).rejects.toThrow(/credential ref/)
     await bench.ctx.fiber.dispose()
   })
 
@@ -169,7 +171,7 @@ describe('web-search-perplexity credential resolution', () => {
     await bench.ctx.fiber.dispose()
   })
 
-  it('lets a non-empty literal apiKey win over the stored credential', async () => {
+  it('lets a non-empty composition literal apiKey win over the stored credential', async () => {
     const bench = await boot({ apiKey: 'literal-key' })
     await withCredential(bench.ctx, 'PERPLEXITY_API_KEY', 'stored-key')
 
@@ -256,6 +258,31 @@ describe('web-search-perplexity runtime facts', () => {
     await expect(bench.ctx.runtimeFacts.inspect([factKey('web-search.perplexity.local-available')]))
       .resolves.toEqual({ 'web-search.perplexity.local-available': { status: 'unknown' } })
     await bench.ctx.fiber.dispose()
+  })
+
+  it('tracks runtimeFacts service unload and reload while the provider keeps working', async () => {
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, { searchProvider: PERPLEXITY_PROVIDER_ID })
+    await ctx.plugin(SystemPrompt, {})
+    const providerFiber = ctx.plugin(perplexityPlugin, { apiKey: 'pplx-key' })
+    await providerFiber.await()
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockImplementation(() => Promise.resolve(jsonResponse(ONE_RESULT)))
+
+    await expect(ctx.web.search({ query: 'before-facts' })).resolves.toMatchObject({ content: 'answer' })
+
+    const factsFiber = ctx.plugin(RuntimeFacts, {})
+    await factsFiber.await()
+    expect(ctx.runtimeFacts.list().map(info => info.key)).toContain('web-search.perplexity.local-available')
+
+    await factsFiber.dispose()
+    await expect(ctx.web.search({ query: 'after-unload' })).resolves.toMatchObject({ content: 'answer' })
+
+    const factsFiber2 = ctx.plugin(RuntimeFacts, {})
+    await factsFiber2.await()
+    expect(ctx.runtimeFacts.list().map(info => info.key)).toContain('web-search.perplexity.local-available')
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    await ctx.fiber.dispose()
   })
 
   it('keeps the provider fully working without a runtime-facts service', async () => {
