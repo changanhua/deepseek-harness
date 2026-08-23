@@ -9,7 +9,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { factKey } from '@deepseek-ai/dsh-runtime-facts'
+import type { RuntimeFactKey } from '@deepseek-ai/dsh-runtime-facts'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import z from '@deepseek-ai/schemastery'
@@ -33,10 +33,12 @@ export const name = 'web-search-perplexity'
 export const inject = ['web']
 
 const DEFAULT_API_KEY_ENV = 'PERPLEXITY_API_KEY'
+const PERPLEXITY_LOCAL_AVAILABLE_FACT = 'web-search.perplexity.local-available' as RuntimeFactKey
+const PERPLEXITY_CREDENTIAL_CONFIGURED_FACT = 'web-search.perplexity.credential-configured' as RuntimeFactKey
 
 /** Plugin config (all optional — `apply` fills env-var and constant defaults). */
 export interface Config {
-  /** Literal Perplexity API key. Deprecated: prefer {@link apiKeyEnv} so no secret enters configuration files. */
+  /** Literal Perplexity API key. Deprecated composition-only compatibility; never persisted through user settings. */
   apiKey?: string
   /** Credential reference resolved for each search; defaults to `PERPLEXITY_API_KEY`. */
   apiKeyEnv?: string
@@ -59,24 +61,56 @@ export const Config: z<Config> = z.object({
   searchRecency: z.union(['day', 'week', 'month', 'year'] as const),
 })
 
+/** User-persistable provider preferences. Secret values are deliberately absent. */
+interface PerplexitySettingsSection {
+  apiKeyEnv?: string
+  baseURL?: string
+  model?: string
+  maxTokens?: number
+  searchRecency?: 'day' | 'week' | 'month' | 'year'
+}
+
+const PERPLEXITY_SETTINGS_SCHEMA: z<PerplexitySettingsSection> = z.object({
+  apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_ENV),
+  baseURL: z.string(),
+  model: z.string(),
+  maxTokens: z.number().step(1).min(1),
+  searchRecency: z.union(['day', 'week', 'month', 'year'] as const),
+})
+
 /** Settings namespace carrying this provider's endpoint, model, and key reference. */
 export const WEB_SEARCH_PERPLEXITY_SETTINGS_NAMESPACE = settingsNamespace('web-search-perplexity')
+
+function settingsEntry(config: Config): PerplexitySettingsSection {
+  return {
+    ...config.apiKeyEnv === undefined ? {} : { apiKeyEnv: config.apiKeyEnv },
+    ...config.baseURL === undefined ? {} : { baseURL: config.baseURL },
+    ...config.model === undefined ? {} : { model: config.model },
+    ...config.maxTokens === undefined ? {} : { maxTokens: config.maxTokens },
+    ...config.searchRecency === undefined ? {} : { searchRecency: config.searchRecency },
+  }
+}
 
 /**
  * Project one resolved section into the options the provider serves its next
  * search with. Environment fallbacks stay here rather than in the provider:
  * every value it reads is already fully defaulted.
  * @param ctx - plugin context supplying the credential and environment planes.
- * @param config - the currently authoritative section.
+ * @param settings - the currently authoritative user/composition preference section.
+ * @param literalApiKey - deprecated composition-only literal, which retains legacy precedence.
  * @returns options for one search.
  */
-function resolveOptions(ctx: Context, config: Config): PerplexitySearchProviderOptions {
-  const apiKeyEnv = credentialRef(config.apiKeyEnv ?? DEFAULT_API_KEY_ENV)
-  const literalApiKey = config.apiKey !== undefined && config.apiKey.length > 0
-    ? config.apiKey
+function resolveOptions(
+  ctx: Context,
+  settings: PerplexitySettingsSection,
+  literalApiKey: string | undefined,
+): PerplexitySearchProviderOptions {
+  const apiKeyEnv = credentialRef(settings.apiKeyEnv ?? DEFAULT_API_KEY_ENV)
+  const literal = literalApiKey !== undefined && literalApiKey.length > 0
+    ? literalApiKey
     : undefined
   return {
-    ...literalApiKey === undefined ? {} : { apiKey: literalApiKey },
+    ...literal === undefined ? {} : { apiKey: literal },
     resolveApiKey: async () => {
       const credentials = ctx.get('credentials')
       if (credentials !== undefined) return (await credentials.resolve(apiKeyEnv))?.value
@@ -85,17 +119,18 @@ function resolveOptions(ctx: Context, config: Config): PerplexitySearchProviderO
       return ambient !== undefined && ambient.value.length > 0 ? ambient.value : undefined
     },
     apiKeyEnv,
-    baseURL: config.baseURL ?? PERPLEXITY_DEFAULT_BASE_URL,
-    model: config.model ?? PERPLEXITY_DEFAULT_MODEL,
-    maxTokens: config.maxTokens ?? PERPLEXITY_DEFAULT_MAX_TOKENS,
-    ...config.searchRecency !== undefined ? { searchRecency: config.searchRecency } : {},
+    baseURL: settings.baseURL ?? PERPLEXITY_DEFAULT_BASE_URL,
+    model: settings.model ?? PERPLEXITY_DEFAULT_MODEL,
+    maxTokens: settings.maxTokens ?? PERPLEXITY_DEFAULT_MAX_TOKENS,
+    ...settings.searchRecency !== undefined ? { searchRecency: settings.searchRecency } : {},
   }
 }
 
 /** Register the Perplexity search provider with `ctx.web`. */
 export function apply(ctx: Context, config: Config): void {
-  let current: () => Config = () => config
-  installSettingsSection(ctx, WEB_SEARCH_PERPLEXITY_SETTINGS_NAMESPACE, Config, config, {
+  const entry = settingsEntry(config)
+  let current: () => PerplexitySettingsSection = () => entry
+  installSettingsSection(ctx, WEB_SEARCH_PERPLEXITY_SETTINGS_NAMESPACE, PERPLEXITY_SETTINGS_SCHEMA, entry, {
     setSource: (source) => {
       current = source
     },
@@ -103,15 +138,16 @@ export function apply(ctx: Context, config: Config): void {
     // section per search, so a committed change needs no re-registration.
     onChange: () => {},
   })
-  const provider = new PerplexitySearchProvider(() => resolveOptions(ctx, current()))
+  const provider = new PerplexitySearchProvider(() => resolveOptions(ctx, current(), config.apiKey))
   ctx.web.registerSearchProvider(provider)
-  // Runtime awareness is optional: without it the provider still works and
-  // no facts are projected or inspectable (R3.1-B3 lifecycle).
+  // Runtime awareness is optional: the type-only dependency below is erased
+  // from emitted JS, so the provider module still loads when the optional
+  // runtime-facts package/service is absent.
   ctx.inject(['runtimeFacts'], (rctx) => {
     rctx.effect(() => {
       const disposers = [
         rctx.runtimeFacts.registerFact({
-          key: factKey('web-search.perplexity.local-available'),
+          key: PERPLEXITY_LOCAL_AVAILABLE_FACT,
           owner: 'web-search-perplexity',
           description: 'Whether the Perplexity search provider is locally available.',
           evaluation: 'sync',
@@ -120,7 +156,7 @@ export function apply(ctx: Context, config: Config): void {
           resolveSync: () => provider.available(),
         }),
         rctx.runtimeFacts.registerFact({
-          key: factKey('web-search.perplexity.credential-configured'),
+          key: PERPLEXITY_CREDENTIAL_CONFIGURED_FACT,
           owner: 'web-search-perplexity',
           description: 'Whether the Perplexity API key reference is configured.',
           evaluation: 'async',
@@ -135,7 +171,9 @@ export function apply(ctx: Context, config: Config): void {
           },
         }),
       ]
-      return () => disposers.forEach(dispose => dispose())
+      return async () => {
+        await Promise.all(disposers.map(dispose => dispose()))
+      }
     })
   })
 }
