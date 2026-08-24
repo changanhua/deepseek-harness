@@ -96,7 +96,7 @@
 | 2. async waterfall 每步延迟 | **解决**：R3-4 弃用 async waterfall（sync projection 无 preStep 延迟）。 |
 | 3. `ctx.tools.get` 与 assemble scope 一致性 | **收窄**：可见性求值收进 `RuntimeFacts.visible()` 一处；降为**实现期验证项**（file-map §8 batch 4 首个集成测试），不再是设计级 blocking。 |
 | 4. 第三方 provider fact 契约 | **保持 V2**：V1 以 exa/perplexity 内部落地，契约公开化 V2。 |
-| 5. `host.proxy` sanitize 覆盖面 | **保持 V2**：V1 只 `HTTP_PROXY`/`HTTPS_PROXY` 拆 5 scalar；`ALL_PROXY`/`no_proxy`/CA 变量 V2。 |
+| 5. `host.proxy` sanitize 覆盖面 | **V1 已落地** `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` 及其小写变体（实现比最初 spec 更宽容，sanitize 一视同仁；`no_proxy`/CA 等更多敏感网络配置策略 V2）。 |
 | 6. `net.reachable` probe 定义 | **保持 V2**：V1 仅 inspect、默认不内置。 |
 
 ## 10. Coding-ready 判断（R3 后）

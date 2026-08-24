@@ -399,6 +399,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The model-facing shell tools and hook bridges consume this seam; sandboxed, remote, or PowerShell executors replace bash-local without touching them.',
   },
   {
+    key: 'runtimeFacts',
+    pkg: 'runtime-facts',
+    title: 'Owned runtime-fact registry',
+    mode: 'core',
+    consumers: ['runtime-facts-host', 'tool-runtime-inspect', 'web', 'web-search-exa', 'web-search-perplexity'],
+    note: 'Owns fact declarations, centralized tool-relevance evaluation, and the order-120 baseline projection; providers register inspect-only or baseline facts and the inspection tool reads them on demand.',
+  },
+  {
     key: 'shellEnv',
     pkg: 'shell-env',
     title: 'Managed bash environment registry',
@@ -581,6 +589,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     mode: 'core',
     consumers: ['connection'],
     note: 'The transport-agnostic host gateway face: it dispatches browser API calls, and each open host stream subscribes to the events it forwards rather than being pushed to through a broadcast verb.',
+  },
+  {
+    key: 'workObservatory',
+    pkg: 'work-observatory',
+    title: 'Work observatory host service',
+    mode: 'core',
+    consumers: ['ui-work-observatory'],
+    note: 'The Typert Remote service exposes agent/client wall-clock accounting and range reads over the Host remote namespace; the client plugin renders the read-only section through ctx.remote.workObservatory.',
   },
   {
     key: 'dynamicCordisRunner',
