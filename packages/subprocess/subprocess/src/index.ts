@@ -18,6 +18,7 @@ export type {
   CollectedOutput,
   DshEnvironment,
   DshEnvironmentKey,
+  ExecutionWorldKind,
   SubprocessCollect,
   SubprocessCollectedOutputs,
   SubprocessHandle,
@@ -103,6 +104,9 @@ export abstract class SubprocessRuntime extends Service {
   constructor(ctx: Context) {
     super(ctx, 'subprocess')
   }
+
+  /** Whether filesystem paths, executables, and processes live on the host or a remote provider. */
+  abstract readonly executionWorld: import('./types.ts').ExecutionWorldKind
 
   /**
    * Resolve one configured executable in this provider's execution world.

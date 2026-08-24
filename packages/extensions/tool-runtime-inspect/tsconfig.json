@@ -9,22 +9,19 @@
   ],
   "references": [
     {
-      "path": "../../../vendor/cosmokit"
-    },
-    {
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../../../vendor/schemastery"
+      "path": "../../core/tools"
     },
     {
-      "path": "../../settings/settings"
+      "path": "../../core/system-prompt"
     },
     {
       "path": "../../context/runtime-facts"
     },
     {
-      "path": "../../llm/llm"
+      "path": "../../subprocess/subprocess"
     },
     {
       "path": "../../runtime-diagnostics/invariants"
