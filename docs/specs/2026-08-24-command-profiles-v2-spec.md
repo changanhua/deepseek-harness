@@ -1,6 +1,6 @@
 # Command Profiles V2 — Architecture + Implementation Spec
 
-> 前置：Runtime Awareness V1（`docs/specs/2026-08-23-runtime-awareness-implementation-spec.md`）已冻结。V2 引入 **Command Knowledge Plane**：Agent 不需要先知道"该查什么 X"，就能从"能力"映射到"候选 executable 名"。本 spec 小而硬，重点评审三件事：**merge/provenance**、**candidate ≠ existence**、**profile identity**。通过后直接实现最小切片，不做多轮大设计。
+> 前置：Runtime Awareness V1（`docs/specs/2026-08-23-runtime-awareness-implementation-spec.md`）已冻结。V2 引入 **Command Knowledge Plane**：Agent 不需要先知道"该查什么 X"，就能从"能力"映射到"候选 executable 名"。本 spec 小而硬。评审结论：**方向批准**，4 个 blocking（B1 provenance 存储单位 / B2 user 全新 profile / B3 candidate 语法边界 / B4 precedence≠attempt order）已吸收（见 §9）。通过后直接实现最小切片，不做多轮大设计。
 >
 > 一句话：**RuntimeFacts = current reality；CommandProfiles = stable knowledge；两者平行，互不依赖。**
 
@@ -51,23 +51,63 @@ V2 补一层：**"这个能力可能对应哪些命令？"** —— 这是稳定
 
 ### 2.2 Schema（V2 最小版）
 
+> **数据模型核心（评审 B1）**：registry **不存"最终长什么样"，而存"谁贡献了什么"**，再计算 effective profile。`Contribution` 是存储单位，`Resolved Candidate` 是 merge 后视图。这与 V1 同构：`Settings/owners → Effective Runtime State` 在这里是 `Knowledge contributions → Effective Command Profile`。
+
 ```ts
-/** 一个候选 executable 名，带来源标注（provenance）。 */
-interface CommandCandidate {
-  command: string
+/** 存储单位：一条来源对某个 profile 的贡献。 */
+interface CommandProfileContribution {
+  contributorId: string                 // 谁贡献的（builtin 包名 / plugin id / 'settings'）
   source: 'builtin' | 'plugin' | 'user'
+  profileId: string                     // 目标 profile 的稳定 ID
+
+  displayName?: string                  // 全新 user profile 需要；否则可省略
+  description?: string
+  aliases?: string[]
+  tags?: string[]
+  candidates?: CommandCandidateName[]
+
+  candidateMode?: 'append' | 'replace'  // 仅 user 来源有效；默认 append
+  disabled?: boolean                    // 仅 user 来源有效
 }
 
-/** 稳定知识：一个 CLI 能力是什么、通常怎么探测。 */
-interface CommandProfile {
+/** 候选 executable 名：一个 executable lookup token，不是 invocation recipe（评审 B3）。 */
+type CommandCandidateName = string      // 约束：bare executable，见 §2.5
+
+/** merge 后视图：一条候选名 + 它的完整 provenance。 */
+interface ResolvedCommandCandidate {
+  command: CommandCandidateName
+  provenance: Array<{
+    source: 'builtin' | 'plugin' | 'user'
+    contributorId: string
+  }>
+}
+
+/** effective profile：registry merge 后对外呈现。 */
+interface ResolvedCommandProfile {
   id: string                 // 稳定 ID，见 §3
   displayName: string
   description: string
-  aliases: string[]          // 检索别名（不含 executable）
+  aliases: string[]
   tags: string[]
-  candidates: CommandCandidate[]  // 候选名，绝不表示已安装
+  candidates: ResolvedCommandCandidate[]  // 候选名，绝不表示已安装
 }
 ```
+
+**为什么 Contribution 是存储单位（评审 B1 核心）**：
+
+- **provenance 不丢**：builtin + plugin-A + user 都贡献 `gh` 时，resolved 是：
+  ```json
+  {
+    "command": "gh",
+    "provenance": [
+      {"source":"builtin","contributorId":"dsh-command-profiles-builtin"},
+      {"source":"plugin","contributorId":"foo-plugin"},
+      {"source":"user","contributorId":"settings"}
+    ]
+  }
+  ```
+- **plugin 精确 dispose**：卸载 plugin-A 只撤掉 `contributorId: foo-plugin` 那条，builtin/user provenance 保留。
+- **调试可知来源**：模型和开发者都能看到"gh 这个候选名是谁声明的"。
 
 ### 2.3 显式否定（用户钉死）
 
@@ -77,34 +117,53 @@ available / installed / resolved / authenticated / version
 ```
 一个都不要。否则 Knowledge / Reality 又混回去。
 
-### 2.4 User 覆盖面（用户修正 2）
+### 2.4 Candidate 语法边界（评审 B3）
 
-用户可对已有 profile 增删候选，但必须显式声明，且**保留 provenance**：
+**candidate 是 executable identifier，不是 invocation recipe。**
+
+- **只允许 bare executable**：`gh`、`claude`、`codex`、`opencode`、`volc`、`my-company-cli`。
+- **禁止**：
+  ```
+  空白参数（如 "npx foo"）
+  shell expression / 管道（如 "foo | bar"）
+  subcommand（如 "gh repo"）
+  启动参数（如 "python -m foo"）
+  路径（如 "C:\\Program Files\\foo.exe"）
+  ```
+- **登记时 fail loud**：非法 candidate 名（含空白/`|`/`&&`/路径分隔符/`-` 开头参数）注册即拒绝，不做静默归一。
+- **deferred**：launcher recipes / argv templates（如 `python -m foo`、`npx foo`）→ **V2+**，本 spec 不做。
+
+> 否则 Knowledge → Runtime Inspector 这条链不类型安全：`runtime_inspect(command="npx foo")` 语义直接坏掉。
+
+### 2.5 User 覆盖面（评审 B2）
+
+用户 schema 是 **partial contribution**，不是完整 profile 定义。分两种情况：
 
 ```yaml
 commandProfiles:
   profiles:
+    # 情况 1：patch 已有 profile（partial patch，无需重复 displayName/description）
     - id: github-cli
       candidates: [mygh]        # 追加（默认）
-      # candidateMode: replace  # 只有显式 replace 才替换 built-in 候选
-      disabled: false
+      # candidateMode: replace  # 显式 replace 才替换 built-in 候选
+      # disabled: true          # 显式禁用整个 profile
+
+    # 情况 2：全新 user profile（必须满足 resolved required fields）
+    - id: my-feishu
+      displayName: My Feishu CLI   # 必填（全新 profile）
+      description: 我的飞书自动化 CLI  # 必填（全新 profile）
+      aliases: [feishu-sync, my-feishu]
+      tags: [feishu, automation]
+      candidates: [feishu-sync]
 ```
 
-- 默认 `candidateMode: 'append'`：`gh`（builtin）与 `mygh`（user）**并存**，`gh` 不被静默吃掉。
-- 显式 `candidateMode: 'replace'`：用 user 列表替换 built-in 候选（用户确实把 gh 重命名成 mygh 时）。
-- 合并后 candidates 保留 source：
+规则：
 
-```json
-{
-  "id": "github-cli",
-  "candidates": [
-    { "command": "gh", "source": "builtin" },
-    { "command": "mygh", "source": "user" }
-  ]
-}
-```
+- **已有 profile** → user 可 partial patch：只改提供的字段，其余继承 resolved 结果（displayName/description/aliases/tags 来自 built-in/plugin 或先前 user patch）。
+- **全新 user profile** → merge 后**必须满足 `ResolvedCommandProfile` 的 required 字段**（displayName/description）。缺则 fail loud（settings 校验层报错，不静默降级）。
+- 两种情况都保留 provenance：user 贡献的每条字段/候选都带 `source: 'user', contributorId: 'settings'`。
 
-> **知识 registry 最怕 silent override**——因此任何贡献都带 source，模型能看到"这个候选名是谁声明的"。
+> 这解决"user 想定义一个全新自研 CLI，但 displayName/aliases/tags 从哪来"的问题：**patch 继承，全新必填**。
 
 ## 3. Contribution 与 Merge/Provenance（重点评审 1）
 
@@ -121,13 +180,40 @@ commandProfiles:
 ### 3.2 Merge 规则（V2 最小版）
 
 ```
-built-in + plugin + user candidates  → 默认 append
-user candidateMode: replace          → user 列表替换前两层
+built-in + plugin + user candidates  → 默认 append（provenance 保留）
+user candidateMode: replace          → 只暴露 user candidates（显式切断 lower layers）
 user disabled: true                  → 整个 profile 不出现在查询结果
 ```
 
-- 重复 candidate 名去重（保留最高优先级来源：user > plugin > builtin）。
-- 同一来源内同 ID 再次注册：built-in 重复注册 fail loud；plugin/user 重复按 append 合并。
+#### 3.2.1 Contribution precedence（去重，评审 B1）
+
+重复 candidate **不覆盖**，而是**合并 provenance**：
+
+```
+同 command 多条 contribution → 合并为一条 ResolvedCommandCandidate，provenance 数组保留全部来源
+```
+
+例如 builtin + plugin-A + user 都贡献 `gh` → 一条 `gh`，provenance 含 3 个条目（见 §2.2）。**没有"保留最高优先级来源"这种覆盖**——provenance 永不丢失。
+
+同一来源内同 profileId 再次注册：
+- built-in：重复注册 **fail loud**（包内 bug，不允许静默）。
+- plugin/user：按 append 合并（provenance 各自带 contributorId）。
+
+#### 3.2.2 Candidate attempt order（展示/尝试顺序，评审 B4）
+
+**Contribution precedence ≠ Candidate attempt order。** 去重只看"存在哪些"，顺序决定"模型先试谁"：
+
+```
+user candidate    → 用户明确配置，优先尝试
+builtin candidate → verified canonical knowledge，次之
+plugin candidate  → 扩展知识，最后
+```
+
+即默认展示/尝试顺序：**user > builtin > plugin**（组内按注册序或 id 字典序稳定）。
+
+`candidateMode: replace` 是用户**显式切断 lower layers**：只暴露 user candidates（builtin/plugin 全部隐去），这才是"plugin 无 override 权"的真正实现——plugin 即使 append 了候选，排序也在 builtin 之后，无法把模型导向 `weird-gh`。
+
+> **plugin contribution ≠ authority override**，且不因"排在前面"而获得事实上的优先权。
 
 ### 3.3 Lifecycle
 
@@ -148,6 +234,15 @@ interface CommandProfileQuery {
 
 匹配域（按序）：`id` 精确/前缀 → `aliases` 精确 → `displayName` 包含 → `tags` 精确 → `description` token 匹配。**不引入 embedding/vector/search subsystem**——几十个 profile 用不上第二套搜索基础设施；真实使用证明 lexical 不够再考虑。
 
+**确定性排序**（评审：避免测试非确定）：
+
+```
+normalization: trim + case-insensitive（匹配与返回排序都应用）
+same-rank tie-break: profile.id lexical ascending
+```
+
+同一匹配域内的结果按 `profile.id` 字典序稳定输出，不依赖 Map/register 顺序。
+
 ### 4.2 返回（bounded）
 
 ```json
@@ -157,13 +252,13 @@ interface CommandProfileQuery {
     "displayName": "GitHub CLI",
     "description": "Official GitHub command-line interface",
     "candidates": [
-      { "command": "gh", "source": "builtin" }
+      { "command": "gh", "provenance": [{ "source": "builtin", "contributorId": "dsh-command-profiles-builtin" }] }
     ]
   }]
 }
 ```
 
-只返回匹配的 profile 元数据 + 候选名（带 source）。**不返回 availability**。
+只返回匹配的 profile 元数据 + 候选名（带完整 provenance）。**不返回 availability**。
 
 ### 4.3 模型规则（prompt，钉死 candidate ≠ existence）
 
@@ -174,10 +269,11 @@ interface CommandProfileQuery {
 ### 5.1 Service（SD 包 `packages/context/command-profile`）
 
 - `ctx.commandProfiles` 注册表：
-  - `register(profile, source)` —— built-in/plugin 用；返回 disposer。
-  - `query(input): CommandProfileMatch[]` —— 确定性检索 + merge 后视图。
+  - `contribute(contribution, contributorId, source)` —— 存储一条 contribution；返回 disposer（plugin 卸载时撤回**自己的** contribution）。
+  - `resolve(id): ResolvedCommandProfile` —— 单 profile 的 merge 后视图（含 provenance）。
+  - `query(input): ResolvedCommandProfile[]` —— 确定性检索 + merge 后视图，按 §3.2.2 顺序输出候选。
   - `get(id)` / `list()` —— 程序化访问（供 tool 与测试）。
-- **不 probe executable**，不依赖 `ctx.runtimeFacts`。
+- 内部存 **contributions**，查询时 merge 计算 effective profile；**不 probe executable**，不依赖 `ctx.runtimeFacts`。
 
 ### 5.2 Tool（`packages/extensions/tool-command-profile`）
 
@@ -188,7 +284,9 @@ interface CommandProfileQuery {
 
 ### 5.3 Settings namespace（user 来源）
 
-- `commandProfiles.profiles` 数组：`{ id, description?, candidates?, candidateMode?, disabled? }`。
+- `commandProfiles.profiles` 数组（partial contribution）：`{ id, displayName?, description?, aliases?, tags?, candidates?, candidateMode?, disabled? }`。
+  - **全新 profile**：`displayName`/`description` 必填（settings 校验层 fail loud）。
+  - **patch 已有 profile**：只提供要改的字段。
 - 由 `command-profile` 包（或独立 host provider）经 `installSettingsSection` 注册，live resolve。
 - 参考 V1 `web` settings namespace 模式（`settingsNamespace('commandProfiles')`）。
 
@@ -203,7 +301,7 @@ interface CommandProfileQuery {
 | `codex-cli` | Codex CLI | `codex` |
 | `opencode-cli` | OpenCode | `opencode` |
 
-**依据**：这 4 个的 executable 名是稳定、无歧义、可验证的（本仓库开发环境已实测 `codex`/`claude`/`opencode` 解析；`gh` 为 GitHub 官方标准名）。
+**依据**：built-in admission 依据 **canonical product identity / authoritative documentation**（如 GitHub 官方 `gh` 为 CLI 标准名）；**本机 resolvability 不作为知识正确性的依据**。这维持"Knowledge correctness ≠ Runtime presence"——某命令本机没装，不代表 built-in 知识错了；某命令本机装了，也不代表它是 canonical 名。
 
 ### 6.2 明确不放进 built-in（V2）
 
@@ -239,11 +337,18 @@ no CLI recommendation ranking
 
 ### 7.3 测试（单元层）
 
-- merge/provenance：append vs replace vs disabled；来源优先级；去重。
-- lifecycle：built-in 卸载撤回；user settings 变更 live 生效。
-- 查询：id/alias/displayName/tag/description 各匹配域；limit 截断。
+**merge/provenance（评审 B1，必测）：**
+1. 两个 plugin 对同 candidate 贡献（如 `gh`），卸载其中一个 → **只撤掉自己的 provenance**，另一个 plugin + builtin 保留。
+2. builtin + plugin + user 同时贡献 `gh` → dedupe 后**一条 candidate，provenance 三者都存在**（不覆盖）。
+3. user 新建完整 profile → 可通过 alias / displayName 检索到；缺 displayName/description 的**全新** user profile fail loud。
+4. plugin appended candidate **不排在 canonical builtin candidate 前**（attempt order: user > builtin > plugin）。
+5. `npx foo` / `python -m foo` / `gh --hostname x` / 含空白的 candidate 登记 **fail loud**（语法边界 B3）。
+
+**其余：**
+- lifecycle：built-in 卸载撤回；user settings 变更 live 生效；contributorId 精确 dispose。
+- 查询：id/alias/displayName/tag/description 各匹配域；trim + case-insensitive；same-rank `id` 字典序；limit 截断。
 - **不 probe**：query 返回不含 availability，且不触发任何 subprocess 调用。
-- tool：参数校验、object-root schema、bounded 结果。
+- tool：参数校验、object-root schema、bounded 结果、candidate 语法校验。
 
 ## 8. Package / File Changes（最小切片）
 
@@ -255,8 +360,18 @@ no CLI recommendation ranking
 
 文档：本 spec + 对应 Agent Note（merge/provenance 决策记录）。
 
-## 9. 评审重点（3 件事）
+## 9. 评审结论与已吸收修正
 
-1. **merge/provenance**：append 默认、replace 显式、user > plugin > builtin、source 永不丢失——是否合理？plugin 无 override 权是否够？
-2. **candidate ≠ existence**：`command_profile` 返回绝不含 availability、绝不 probe——边界是否钉死？模型规则是否够防"看到候选就当已安装"？
-3. **profile identity**：稳定 ID 的粒度（`github-cli` vs `volcengine-cloud-cli`/`vecli`/`ark-cli` 分离）是否对？built-in 只放 4 个 verified、火山/飞书走 user/plugin——是否同意？
+**方向批准；4 个 blocking 已吸收，可进入实现。**
+
+| Blocking | 修法（本节落点） |
+|---|---|
+| **B1** Provenance 不丢 + plugin 精确 dispose | §2.2：Contribution 是存储单位、ResolvedCandidate 带 provenance 数组、contributorId 精确撤回；§3.2.1 去重合并 provenance 而非覆盖 |
+| **B2** user 定义不了全新自研 CLI | §2.5：patch 已有（partial）vs 全新必填（displayName/description）；§5.3 settings 校验 |
+| **B3** candidate 语法边界 | §2.4：bare executable only、登记 fail loud、launcher recipes deferred V2+ |
+| **B4** contribution precedence ≠ candidate attempt order | §3.2.2：展示顺序 user > builtin > plugin；replace 显式切断 lower layers |
+
+**3 个通过项：**
+1. **candidate ≠ existence**：批准。架构（registry 不 probe）+ DTO（返回禁 availability）+ prompt（candidate → runtime_inspect）三层同时约束。
+2. **lexical query**：批准，已补确定性（trim + case-insensitive + same-rank `id` 字典序）。
+3. **built-in 4 个**：批准。已修正证据文字（canonical identity / authoritative doc，本机 resolvability 不作为依据）。
