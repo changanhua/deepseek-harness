@@ -1,6 +1,6 @@
 # Command Profiles V2 — Architecture + Implementation Spec
 
-> 前置：Runtime Awareness V1（`docs/specs/2026-08-23-runtime-awareness-implementation-spec.md`）已冻结。V2 引入 **Command Knowledge Plane**：Agent 不需要先知道"该查什么 X"，就能从"能力"映射到"候选 executable 名"。本 spec 小而硬。评审结论：**方向批准**，4 个 blocking（B1 provenance 存储单位 / B2 user 全新 profile / B3 candidate 语法边界 / B4 precedence≠attempt order）已吸收（见 §9）。通过后直接实现最小切片，不做多轮大设计。
+> 前置：Runtime Awareness V1（`docs/specs/2026-08-23-runtime-awareness-implementation-spec.md`）已冻结。V2 引入 **Command Knowledge Plane**：Agent 不需要先知道"该查什么 X"，就能从"能力"映射到"候选 executable 名"。本 spec 小而硬。评审结论：**Implementation-ready**——B1（provenance 存储单位）/ B2（user 全新 profile）/ B3（candidate 语法边界）/ B4（precedence≠attempt order）/ B5（metadata merge semantics）全部吸收（见 §9）。通过后直接实现最小切片，不做多轮大设计。
 >
 > 一句话：**RuntimeFacts = current reality；CommandProfiles = stable knowledge；两者平行，互不依赖。**
 
@@ -109,6 +109,8 @@ interface ResolvedCommandProfile {
 - **plugin 精确 dispose**：卸载 plugin-A 只撤掉 `contributorId: foo-plugin` 那条，builtin/user provenance 保留。
 - **调试可知来源**：模型和开发者都能看到"gh 这个候选名是谁声明的"。
 
+**Metadata provenance（文案修正）**：registry **内部**为 `displayName`/`description`/`aliases`/`tags` 也保留 contribution provenance（谁贡献了什么）；但 V2 model-facing resolved DTO **仅对 candidates 暴露 provenance**，metadata provenance 留在 registry 内部，供未来 debug / operator projection 使用——不把每个字段的 DTO 都复杂化。
+
 ### 2.3 显式否定（用户钉死）
 
 `command_profile` 的返回值**绝不包含**：
@@ -172,10 +174,22 @@ commandProfiles:
 | 来源 | 权限 |
 |---|---|
 | **built-in** | 注册新 profile；**已验证**的 knowledge（见 §6） |
-| **plugin** | 默认只能：新增 profile；给已有 profile **追加** candidates/aliases/tags。**无 override 权** |
-| **user** | 最终拥有 override / disable 权（`candidateMode: replace` / `disabled: true`） |
+| **plugin** | 默认只能：新增 profile；给已有 profile **追加** candidates/aliases/tags。**无 override 权，不得修改 identity scalar**（displayName/description，§3.1.1） |
+| **user** | 最终拥有 override / disable 权（`candidateMode: replace` / `disabled: true` / 覆盖 identity scalar） |
 
 > **plugin contribution ≠ authority override。** 一个第三方 plugin 注册 `id = github-cli, command = evil-gh-wrapper` 不能抢走公共知识语义——它只能追加，且模型能看到 source。
+
+### 3.1.1 Definition owner（评审 B5）
+
+每个 profile 有且仅有一个 **definition owner**，它拥有 identity scalar（`displayName`/`description`）：
+
+```
+builtin profile 存在        → builtin 是 definition owner
+否则某 plugin 创建新 profile → 该 plugin 是 definition owner
+否则 user 创建             → user 是 definition owner
+```
+
+关键规则：**第二个 plugin 不允许通过相同 profileId 再定义 `displayName`/`description`**——它只能贡献 `aliases`/`tags`/`candidates`。若试图修改 identity scalar → **fail loud**。这保证不会产生 load-order authority。
 
 ### 3.2 Merge 规则（V2 最小版）
 
@@ -214,6 +228,28 @@ plugin candidate  → 扩展知识，最后
 `candidateMode: replace` 是用户**显式切断 lower layers**：只暴露 user candidates（builtin/plugin 全部隐去），这才是"plugin 无 override 权"的真正实现——plugin 即使 append 了候选，排序也在 builtin 之后，无法把模型导向 `weird-gh`。
 
 > **plugin contribution ≠ authority override**，且不因"排在前面"而获得事实上的优先权。
+
+#### 3.2.3 Metadata merge（displayName/description/aliases/tags，评审 B5）
+
+**identity scalars（displayName/description）：**
+
+```
+user 显式值 > profile definition owner（§3.1.1）> 其他 contribution 不得修改
+```
+
+- 非 definition owner 的 contribution 声明 identity scalar → **fail loud**。
+- user 显式值覆盖 definition owner（如 `builtin description=A, user description=B` → 取 B）。
+- 无 user 覆盖时取 definition owner 的值。
+
+**aliases / tags：**
+
+```
+aliases = union(active contributions)
+tags    = union(active contributions)
+```
+
+- 去重 + case normalization 用于比较，返回保留 canonical spelling。
+- 展示顺序：**user → definition owner → plugin contributorId lexical**（不依赖插件加载顺序）。
 
 ### 3.3 Lifecycle
 
@@ -269,11 +305,13 @@ same-rank tie-break: profile.id lexical ascending
 ### 5.1 Service（SD 包 `packages/context/command-profile`）
 
 - `ctx.commandProfiles` 注册表：
-  - `contribute(contribution, contributorId, source)` —— 存储一条 contribution；返回 disposer（plugin 卸载时撤回**自己的** contribution）。
-  - `resolve(id): ResolvedCommandProfile` —— 单 profile 的 merge 后视图（含 provenance）。
+  - `contribute(contribution: CommandProfileContribution): () => void` —— **provenance identity 由 contribution 自包含**（`contributorId`/`source`/`profileId` 都在 contribution 内），无双入口；返回 disposer（plugin 卸载时撤回**自己的** contribution）。
+  - `resolve(id): ResolvedCommandProfile` —— 单 profile 的 merge 后视图（candidates 带 provenance）。
   - `query(input): ResolvedCommandProfile[]` —— 确定性检索 + merge 后视图，按 §3.2.2 顺序输出候选。
   - `get(id)` / `list()` —— 程序化访问（供 tool 与测试）。
-- 内部存 **contributions**，查询时 merge 计算 effective profile；**不 probe executable**，不依赖 `ctx.runtimeFacts`。
+- 内部存 **contributions**，查询时 merge 计算 effective profile（identity scalar 按 §3.2.3、aliases/tags union、candidates 按 §3.2.1/3.2.2）；**不 probe executable**，不依赖 `ctx.runtimeFacts`。
+
+> **无双入口**：`CommandProfileContribution` 是唯一 provenance identity 载体，不存在第二个 `source`/`contributorId` 参数与其竞争。
 
 ### 5.2 Tool（`packages/extensions/tool-command-profile`）
 
@@ -287,6 +325,7 @@ same-rank tie-break: profile.id lexical ascending
 - `commandProfiles.profiles` 数组（partial contribution）：`{ id, displayName?, description?, aliases?, tags?, candidates?, candidateMode?, disabled? }`。
   - **全新 profile**：`displayName`/`description` 必填（settings 校验层 fail loud）。
   - **patch 已有 profile**：只提供要改的字段。
+  - **`id` 必须唯一**：`profiles` 内重复 user profile ID 在 settings validation 阶段 **fail loud**（不允许两条同 id 的 user contribution，避免顺序语义/precedence 定义）。即 **user contribution = 每个 profileId 恰好 0 或 1 条**。plugin 仍允许多 contributorId → 同一 profileId（那是插件模型需要的）。
 - 由 `command-profile` 包（或独立 host provider）经 `installSettingsSection` 注册，live resolve。
 - 参考 V1 `web` settings namespace 模式（`settingsNamespace('commandProfiles')`）。
 
@@ -344,6 +383,17 @@ no CLI recommendation ranking
 4. plugin appended candidate **不排在 canonical builtin candidate 前**（attempt order: user > builtin > plugin）。
 5. `npx foo` / `python -m foo` / `gh --hostname x` / 含空白的 candidate 登记 **fail loud**（语法边界 B3）。
 
+**metadata merge（评审 B5）：**
+
+6. 第二个 plugin 以相同 profileId 声明 `displayName`/`description` → **fail loud**（definition owner 保护）。
+7. builtin `description=A` + user `description=B` → 取 B（user 覆盖 definition owner）；无 user 覆盖时取 owner 值。
+8. aliases/tags union：多 contribution 合并去重，case-normalized 比较但保留 canonical spelling；顺序 user → owner → plugin contributorId lexical。
+
+**接口钉死：**
+
+9. `contribute()` 无双入口：provenance identity 只来自 contribution 自身（无第二个 source/contributorId 参数可竞争）。
+10. user settings 同 `id` 重复 → settings validation **fail loud**（每个 profileId 恰好 0 或 1 条 user contribution）。
+
 **其余：**
 - lifecycle：built-in 卸载撤回；user settings 变更 live 生效；contributorId 精确 dispose。
 - 查询：id/alias/displayName/tag/description 各匹配域；trim + case-insensitive；same-rank `id` 字典序；limit 截断。
@@ -362,7 +412,7 @@ no CLI recommendation ranking
 
 ## 9. 评审结论与已吸收修正
 
-**方向批准；4 个 blocking 已吸收，可进入实现。**
+**Implementation-ready。5 个 blocking + 2 个接口钉死 + 1 处文案已全部吸收。**
 
 | Blocking | 修法（本节落点） |
 |---|---|
@@ -370,8 +420,26 @@ no CLI recommendation ranking
 | **B2** user 定义不了全新自研 CLI | §2.5：patch 已有（partial）vs 全新必填（displayName/description）；§5.3 settings 校验 |
 | **B3** candidate 语法边界 | §2.4：bare executable only、登记 fail loud、launcher recipes deferred V2+ |
 | **B4** contribution precedence ≠ candidate attempt order | §3.2.2：展示顺序 user > builtin > plugin；replace 显式切断 lower layers |
+| **B5** 非 candidate 字段 merge 未闭合 | §3.1.1 definition owner + §3.2.3：identity scalar = user 显式值 > owner、aliases/tags = union（去重 + canonical spelling + user→owner→plugin lexical 顺序）、第二个 plugin 改 scalar fail loud |
+
+**2 个接口钉死：**
+1. `contribute(contribution)` 自包含 provenance identity（§5.1，无双入口）。
+2. user settings 同 `id` 唯一（§5.3，重复 fail loud；plugin 仍允许多 contributorId）。
+
+**1 处文案修正：**
+- metadata provenance：registry 内部全字段保留；model-facing DTO 仅 candidates 暴露（§2.2）。
 
 **3 个通过项：**
 1. **candidate ≠ existence**：批准。架构（registry 不 probe）+ DTO（返回禁 availability）+ prompt（candidate → runtime_inspect）三层同时约束。
 2. **lexical query**：批准，已补确定性（trim + case-insensitive + same-rank `id` 字典序）。
 3. **built-in 4 个**：批准。已修正证据文字（canonical identity / authoritative doc，本机 resolvability 不作为依据）。
+
+**Effective merge 总览：**
+
+```
+identity scalars: user override > definition owner
+aliases/tags:     union all active contributions
+candidates:       merge + dedupe + full provenance; order = user > builtin > plugin
+disabled:         user only
+replace:          user only
+```
