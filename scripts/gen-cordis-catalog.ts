@@ -651,10 +651,6 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   WorkflowAgentEndInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
   WorkflowAgentInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
   WorkflowResultInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
-  ClientObservation: 'work-observatory client observation is owned by packages/host/work-observatory/README.md',
-  ClientObservationAck: 'work-observatory client acknowledgement is owned by packages/host/work-observatory/README.md',
-  WorkObservatoryRange: 'work-observatory range vocabulary is owned by packages/host/work-observatory/README.md',
-  WorkObservatoryRangeRequest: 'work-observatory range request is owned by packages/host/work-observatory/README.md',
 }
 
 /** Repository data policy consumed by the Cordis catalog projector. */

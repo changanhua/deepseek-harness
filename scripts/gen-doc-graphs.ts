@@ -591,14 +591,6 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The transport-agnostic host gateway face: it dispatches browser API calls, and each open host stream subscribes to the events it forwards rather than being pushed to through a broadcast verb.',
   },
   {
-    key: 'workObservatory',
-    pkg: 'work-observatory',
-    title: 'Work observatory host service',
-    mode: 'core',
-    consumers: ['ui-work-observatory'],
-    note: 'The Typert Remote service exposes agent/client wall-clock accounting and range reads over the Host remote namespace; the client plugin renders the read-only section through ctx.remote.workObservatory.',
-  },
-  {
     key: 'dynamicCordisRunner',
     pkg: 'cordis-host-runner',
     title: 'Dynamic Cordis package host runner',
