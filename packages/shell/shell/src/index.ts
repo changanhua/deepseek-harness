@@ -37,6 +37,16 @@ export type {
 export { parseExitStatus } from './render.ts'
 export type { ParsedExitStatus } from './render.ts'
 
+/**
+ * Command language / dialect used by the mounted {@link ShellExecutor} for
+ * model shell commands. This is a protocol vocabulary (model-facing), not a
+ * display string or an install name: `'pwsh'` covers the PowerShell family
+ * (`pwsh` and Windows PowerShell), `'bash'` covers POSIX shells the bash
+ * executor drives. A future provider with a genuinely different command
+ * language extends the union instead of inventing a string.
+ */
+export type ShellDialect = 'bash' | 'pwsh'
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     shell: ShellExecutor
@@ -66,6 +76,14 @@ export abstract class ShellExecutor extends Service {
   constructor(ctx: Context) {
     super(ctx, 'shell')
   }
+
+  /**
+   * The command language this executor drives, as the model must know it
+   * (heredoc syntax, quoting, and pipeline operators differ between families).
+   * Declared by the concrete executor, inherited by sandbox/remote subclasses,
+   * and projected as the `shell.dialect` runtime fact by `runtime-facts-host`.
+   */
+  abstract readonly dialect: ShellDialect
 
   /**
    * The sandbox mode this executor applies by default, or `undefined` when it

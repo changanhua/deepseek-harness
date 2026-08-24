@@ -101,6 +101,7 @@ async function callUntilText(
 }
 
 class RecordingSandboxExecutor extends ShellExecutor {
+  readonly dialect = 'bash' as const
   readonly modes: Array<string | undefined> = []
 
   override get sandboxMode() {
@@ -154,6 +155,7 @@ class RecordingSandboxExecutor extends ShellExecutor {
 
 /** Test executor that records whether the background start boundary was crossed. */
 class CountingStartExecutor extends ShellExecutor {
+  readonly dialect = 'bash' as const
   starts = 0
 
   resolve(request: ShellExecRequest): ShellExecSpec {
@@ -1067,6 +1069,7 @@ describe('the model-facing bash tool builds its request from named args only (no
    * hands back an already-settled fake handle so the task registration completes.
    */
   class RecordingBashExecutor extends ShellExecutor {
+    readonly dialect = 'bash' as const
     readonly requests: ShellExecRequest[] = []
     resolve(request: ShellExecRequest): ShellExecSpec {
       this.requests.push(request)

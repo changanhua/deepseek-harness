@@ -48,6 +48,7 @@ function runResult(stdout: string, overrides: Partial<ShellRunResult> = {}): She
 
 /** A scriptable fake `ctx.shell` recording the command it was asked to run. */
 class FakeBash extends ShellExecutor {
+  readonly dialect = 'bash' as const
   commands: string[] = []
   result: ShellRunResult = runResult(`${tmuxLine()}\n`)
   runError?: Error
