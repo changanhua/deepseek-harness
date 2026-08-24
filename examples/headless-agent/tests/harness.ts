@@ -19,6 +19,8 @@ import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import RuntimeFacts from '@deepseek-ai/dsh-runtime-facts'
 import * as RuntimeFactsHost from '@deepseek-ai/dsh-runtime-facts-host'
+import CommandProfiles from '@deepseek-ai/dsh-command-profile'
+import * as ToolCommandProfile from '@deepseek-ai/dsh-tool-command-profile'
 import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import WebRuntime from '@deepseek-ai/dsh-web'
@@ -168,6 +170,8 @@ export async function runtimeAwarenessHarness(
   await ctx.plugin(MemorySettings)
   await ctx.plugin(RuntimeFacts, {})
   await ctx.plugin(RuntimeFactsHost)
+  await ctx.plugin(CommandProfiles)
+  await ctx.plugin(ToolCommandProfile)
   await ctx.plugin(WebRuntime, { searchProvider: 'exa' })
   await ctx.plugin(WebSearchExa, { apiKey: 'test-key' })
   await ctx.plugin(ToolRuntimeInspect)

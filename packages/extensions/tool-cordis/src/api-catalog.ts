@@ -562,6 +562,44 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'commandProfiles',
+    summary: 'Registry for command-knowledge contributions with merge and query.',
+    description: 'Registry for command-knowledge contributions with merge and query.',
+    methods: [
+      {
+        signature: 'contribute(contribution: CommandProfileContribution): () => void',
+        description: 'Register one knowledge record for a profile.',
+        parameters: [{ name: 'contribution', description: 'self-contained provenance identity and fields.' }],
+        returns: 'the effect disposer retracting exactly this record.',
+        throws: ['TypeError or Error when the record is malformed or violates a merge rule.'],
+      },
+      {
+        signature: 'resolve(id: string): ResolvedCommandProfile | undefined',
+        description: 'Resolve one profile\'s effective view, or `undefined` when the profile is absent or explicitly disabled by the user.',
+        parameters: [{ name: 'id', description: 'stable profile id.' }],
+        returns: 'the merged profile with candidates carrying full provenance.',
+      },
+      {
+        signature: 'query(input: CommandProfileQuery): ResolvedCommandProfile[]',
+        description: 'Deterministic lexical query over profiles, bounded by CommandProfileQuery.limit.',
+        parameters: [{ name: 'input', description: 'query text and optional result cap.' }],
+        returns: 'matched effective profiles in rank order, then id order.',
+      },
+      {
+        signature: 'get(id: string): ResolvedCommandProfile | undefined',
+        description: 'Programmatic single-profile access; identical to resolve.',
+        parameters: [{ name: 'id', description: 'stable profile id.' }],
+        returns: 'the merged profile, or `undefined` when absent or disabled.',
+      },
+      {
+        signature: 'list(): ResolvedCommandProfile[]',
+        description: 'Every active profile\'s effective view in id order.',
+        parameters: [],
+        returns: 'profiles that are neither absent nor user-disabled.',
+      },
+    ],
+  },
+  {
     key: 'commands',
     summary: 'Human-command registry.',
     description: 'Human-command registry. Plain-context definitions are global; definitions registered through a command-injected child of an agent context shadow globals for that agent.',
@@ -1135,6 +1173,38 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'runtimeFacts',
+    summary: 'Registry for uniquely owned runtime facts.',
+    description: 'Registry for uniquely owned runtime facts.',
+    methods: [
+      {
+        signature: 'registerFact(declaration: RuntimeFact): () => Promise<void>',
+        description: 'Register one uniquely owned fact for the calling plugin fiber.',
+        parameters: [{ name: 'declaration', description: 'resolver, ownership, projection, and freshness declaration.' }],
+        returns: 'the exact effect disposer that removes the fact and its cached observation.',
+        throws: ['when the declaration is malformed or its key already has an owner.'],
+      },
+      {
+        signature: 'list(): RuntimeFactInfo[]',
+        description: 'List resolver-free fact declarations in code-unit key order.',
+        parameters: [],
+        returns: 'detached metadata that callers may not use to mutate a registration.',
+      },
+      {
+        signature: 'async inspect( keys: readonly RuntimeFactKey[], context: RuntimeFactContext = {}, ): Promise<Record<string, RuntimeFactObservationResult>>',
+        description: 'Observe selected facts, awaiting asynchronous resolvers while containing each failure.',
+        parameters: [{ name: 'keys', description: 'valid fact keys; an unregistered key produces `unknown`.' }, { name: 'context', description: 'optional scope and cancellation signal.' }],
+        returns: 'one observation per requested key.',
+      },
+      {
+        signature: 'render(context: RuntimeFactContext): string',
+        description: 'Render available synchronous baseline facts in code-unit key order.',
+        parameters: [{ name: 'context', description: 'scope used for centralized tool-relevance filtering.' }],
+        returns: 'the complete compact snapshot, or an empty string when none is active.',
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
@@ -1629,6 +1699,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Abstract bash execution service. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.shell` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nImplementations must honor these semantics:\n\n- run rejects only for infrastructure failures. Nonzero exits, timeout kills, and abort kills resolve with a ShellRunResult.\n- start returns immediately; no timeout applies to background processes. `done` settles at process close and never rejects; spawn failures settle as `killed` with the error on stderr.\n- ShellProcess.readOutput is incremental: consecutive reads never repeat output. Lossy reads report truncation and available spill files.\n- A still-running background process is stopped and awaited when its owning composition tears down. With the subprocess seam that boundary is `ctx.subprocess` disposal, so a background process survives an executor-only reload.',
     methods: [
       {
+        signature: 'abstract readonly dialect: ShellDialect',
+        description: 'The command language this executor drives, as the model must know it (heredoc syntax, quoting, and pipeline operators differ between families). Declared by the concrete executor, inherited by sandbox/remote subclasses, and projected as the `shell.dialect` runtime fact by `runtime-facts-host`.',
+        parameters: [],
+      },
+      {
         signature: 'abstract resolve(request: ShellExecRequest): ShellExecSpec',
         description: 'Apply implementation-owned defaults and caps to a request before execution.',
         parameters: [{ name: 'request', description: 'the caller\'s request; omitted fields get this implementation\'s defaults, capped fields are clamped.' }],
@@ -1875,6 +1950,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: 'Abstract subprocess service.',
     description: 'Abstract subprocess service. Subclass, implement spawn, and load the subclass as a plugin — it registers as `ctx.subprocess` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nImplementations must honor these semantics:\n\n- Executable paths belong to one execution world shared with the mounted filesystem provider.\n- spawn returns immediately with a live handle; `done` resolves at process close with exit facts and rejects only for spawn-level failures.\n- Collect-mode readers are offset-based and non-consuming, so independent readers never consume one another\'s output; lossy reads report truncation and the spill file holding the complete stream when one exists. Piped streams are handed to the caller raw and never buffered here.\n- SubprocessHandle.terminate (and the spec\'s abort signal) escalates SIGTERM→grace→SIGKILL — the only termination verb — tree-scoped on every platform. SubprocessHandle.waitForExit observes whole-tree liveness, so a consumer-owned teardown ladder can hold each tier on real quiescence.\n- Disposal of the service terminates all still-running managed processes and awaits their exit.\n- spawnTerminal owns terminal allocation, text transport, foreground groups, signalling, and whole-session quiescence behind one awaited termination method; readiness and persistent-shell policy stay in the PTY consumer. Its output stream ends after queued terminal output when the top-level process exits.',
     methods: [
+      {
+        signature: 'abstract readonly executionWorld: import(\'./types.ts\').ExecutionWorldKind',
+        description: 'Whether filesystem paths, executables, and processes live on the host or a remote provider.',
+        parameters: [],
+      },
       {
         signature: 'abstract resolveExecutable( command: string, env?: Readonly<Record<string, string>>, signal?: AbortSignal, ): Promise<string>',
         description: 'Resolve one configured executable in this provider\'s execution world. Absolute paths are verified; bare names use the provider\'s scrubbed PATH plus explicit environment overrides. Relative paths containing separators are rejected: the resolution base is undefined, so providers fail loud instead of guessing.',
@@ -3243,6 +3323,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CollectedOutput {\n    text: string;\n    truncated: boolean;\n    spillPath?: string;\n}',
   },
   {
+    name: 'CommandCandidateName',
+    declaration: 'export type CommandCandidateName = string;',
+  },
+  {
+    name: 'CommandCandidateProvenance',
+    declaration: 'export interface CommandCandidateProvenance {\n    readonly source: CommandProfileSource;\n    readonly contributorId: string;\n}',
+  },
+  {
     name: 'CommandDefinition',
     declaration: 'export interface CommandDefinition {\n    readonly name: string;\n    readonly description: string;\n    readonly input?: CommandInputDescriptor;\n    readonly recordInput?: boolean;\n    readonly handler: (invocation: CommandInvocation) => CommandResult | Promise<CommandResult>;\n}',
   },
@@ -3265,6 +3353,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CommandInvocation',
     declaration: 'export interface CommandInvocation {\n    readonly commandId: CommandId;\n    readonly agent: Agent;\n    readonly rawInput: string;\n    readonly attachments: readonly ImageBlock[];\n    readonly signal: AbortSignal;\n}',
+  },
+  {
+    name: 'CommandProfileCandidateMode',
+    declaration: 'export type CommandProfileCandidateMode = \'append\' | \'replace\';',
+  },
+  {
+    name: 'CommandProfileContribution',
+    declaration: 'export interface CommandProfileContribution {\n    readonly contributorId: string;\n    readonly source: CommandProfileSource;\n    readonly profileId: string;\n    readonly displayName?: string;\n    readonly description?: string;\n    readonly aliases?: readonly string[];\n    readonly tags?: readonly string[];\n    readonly candidates?: readonly CommandCandidateName[];\n    readonly candidateMode?: CommandProfileCandidateMode;\n    readonly disabled?: boolean;\n}',
+  },
+  {
+    name: 'CommandProfileQuery',
+    declaration: 'export interface CommandProfileQuery {\n    readonly query: string;\n    readonly limit?: number;\n}',
+  },
+  {
+    name: 'CommandProfileSource',
+    declaration: 'export type CommandProfileSource = \'builtin\' | \'plugin\' | \'user\';',
   },
   {
     name: 'CommandResult',
@@ -3521,6 +3625,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
+  },
+  {
+    name: 'ExecutionWorldKind',
+    declaration: 'export type ExecutionWorldKind = \'local\' | \'remote\';',
   },
   {
     name: 'ExecutorAdapter',
@@ -4151,6 +4259,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResolvedAlwaysRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'always\';\n}',
   },
   {
+    name: 'ResolvedCommandCandidate',
+    declaration: 'export interface ResolvedCommandCandidate {\n    readonly command: CommandCandidateName;\n    readonly provenance: readonly CommandCandidateProvenance[];\n}',
+  },
+  {
+    name: 'ResolvedCommandProfile',
+    declaration: 'export interface ResolvedCommandProfile {\n    readonly id: string;\n    readonly displayName: string;\n    readonly description: string;\n    readonly aliases: readonly string[];\n    readonly tags: readonly string[];\n    readonly candidates: readonly ResolvedCommandCandidate[];\n}',
+  },
+  {
     name: 'ResolvedCredential',
     declaration: 'export interface ResolvedCredential {\n    value: string;\n    source: string;\n}',
   },
@@ -4213,6 +4329,46 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RunRecord',
     declaration: 'export interface RunRecord {\n    runId: RunId;\n    attempt: number;\n    pid: number | null;\n    plannedStartedAt: string | null;\n    actualStartedAt: string | null;\n    logPath: string | null;\n    commandFingerprint: string | null;\n    terminationUnverified?: boolean;\n}',
+  },
+  {
+    name: 'RuntimeFact',
+    declaration: 'export interface RuntimeFact {\n    readonly key: RuntimeFactKey;\n    readonly owner: string;\n    readonly description: string;\n    readonly evaluation: RuntimeFactEvaluation;\n    readonly freshness: RuntimeFactFreshness;\n    readonly exposure: RuntimeFactExposure;\n    readonly relevance?: RuntimeFactRelevance;\n    readonly resolveSync?: (context: RuntimeFactContext) => RuntimeFactValue | undefined;\n    readonly resolveAsync?: (context: RuntimeFactContext, signal?: AbortSignal) => Promise<RuntimeFactValue | undefined>;\n}',
+  },
+  {
+    name: 'RuntimeFactContext',
+    declaration: 'export interface RuntimeFactContext {\n    readonly scope?: ScopeKey;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'RuntimeFactEvaluation',
+    declaration: 'export type RuntimeFactEvaluation = \'sync\' | \'async\';',
+  },
+  {
+    name: 'RuntimeFactExposure',
+    declaration: 'export type RuntimeFactExposure = \'baseline\' | \'inspect\';',
+  },
+  {
+    name: 'RuntimeFactFreshness',
+    declaration: 'export type RuntimeFactFreshness = \'static\' | \'dynamic\';',
+  },
+  {
+    name: 'RuntimeFactInfo',
+    declaration: 'export interface RuntimeFactInfo {\n    readonly key: RuntimeFactKey;\n    readonly owner: string;\n    readonly description: string;\n    readonly evaluation: RuntimeFactEvaluation;\n    readonly freshness: RuntimeFactFreshness;\n    readonly exposure: RuntimeFactExposure;\n    readonly relevance?: RuntimeFactRelevance;\n}',
+  },
+  {
+    name: 'RuntimeFactKey',
+    declaration: 'export type RuntimeFactKey = Branded<\'RuntimeFactKey\'>;',
+  },
+  {
+    name: 'RuntimeFactObservationResult',
+    declaration: 'export type RuntimeFactObservationResult<T extends RuntimeFactValue = RuntimeFactValue> = {\n    readonly status: \'ok\';\n    readonly value: T;\n} | {\n    readonly status: \'unknown\';\n} | {\n    readonly status: \'unavailable\';\n} | {\n    readonly status: \'probe-failure\';\n    readonly reason?: string;\n};',
+  },
+  {
+    name: 'RuntimeFactRelevance',
+    declaration: 'export interface RuntimeFactRelevance {\n    readonly tools: readonly string[];\n}',
+  },
+  {
+    name: 'RuntimeFactValue',
+    declaration: 'export type RuntimeFactValue = string | boolean | number;',
   },
   {
     name: 'SandboxEnforcement',
