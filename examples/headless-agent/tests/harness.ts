@@ -162,6 +162,9 @@ export async function runtimeAwarenessHarness(
     },
   })
   await ctx.plugin(LocalSubprocessRuntime)
+  await ctx.plugin(BashEnvPlugin)
+  await ctx.plugin(LocalBashExecutor, { cwd: workdir, timeoutMs: 30_000 })
+  await ctx.plugin(ToolBash)
   await ctx.plugin(MemorySettings)
   await ctx.plugin(RuntimeFacts, {})
   await ctx.plugin(RuntimeFactsHost)

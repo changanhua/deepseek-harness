@@ -18,6 +18,9 @@ import { runtimeAwarenessHarness, finalText, waitForIdle } from './harness.ts'
  *   Known → use the baseline fact already in context.
  *   Unknown but inspectable → inspect instead of guessing or shell-probing.
  *   Authoritative source exists → query it, never fabricate.
+ *   Unavailable → accept the inspection result, never invent a path.
+ *   Resolved once → do not re-inspect mechanically within the turn.
+ *   Resolvable ≠ usable → an execution failure does not revoke resolution.
  *
  * Assertions read the session's tool-call events and the final assistant text
  * (both durable, model-visible state), never the model's own claims.
@@ -130,5 +133,63 @@ describe.skipIf(!credentialAvailable)('runtime awareness model behavior', () => 
       expect(Array.isArray(keys)).toBe(true)
       expect((keys as unknown[]).some(key => String(key).includes('credential-configured'))).toBe(true)
     }
+  }, 120_000)
+
+  it('accepts an unavailable inspection instead of fabricating a resolvable path (Unknown → unavailable)', async () => {
+    const { agent } = await bootAgent()
+    const events = await turn(agent,
+      'Is the `opencode` command available in this environment? '
+      + 'Use the authoritative runtime inspection tool if one exists; do not guess or invent a path.',
+    )
+
+    const calls = toolCalls(events)
+    const inspect = calls.find(call => call.name === 'runtime_inspect')
+    expect(inspect, 'expected a runtime_inspect call for opencode').toBeDefined()
+    expect(inspect!.args.kind).toBe('command')
+    expect(String(inspect!.args.command)).toContain('opencode')
+    // The model must not fabricate a resolution for a command the environment
+    // does not provide: an honest answer states unavailable (or lack of
+    // resolvability), never a guessed executable path.
+    const text = finalText(events).toLowerCase()
+    expect(text).not.toMatch(/c:\\[^ ]*opencode/i)
+    expect(text).not.toMatch(/\/[^ ]*\/opencode/i)
+  }, 120_000)
+
+  it('does not re-inspect a command already resolved this turn (known → use, no repeat)', async () => {
+    const { agent } = await bootAgent()
+    const events = await turn(agent,
+      'First, use the authoritative runtime inspection tool to check whether `codex` is resolvable. '
+      + 'Then answer whether it is resolvable in this environment.',
+    )
+
+    const calls = toolCalls(events)
+    const inspectCalls = calls.filter(call => call.name === 'runtime_inspect')
+    // The tool must have been used at least once to establish resolvability…
+    expect(inspectCalls.length).toBeGreaterThan(0)
+    // …but the follow-up answer must not mechanically repeat the same command
+    // inspection: a single resolution proves resolvability for the turn.
+    const commandInspects = inspectCalls.filter(call => call.args.kind === 'command')
+    const codexInspects = commandInspects.filter(call => String(call.args.command).toLowerCase().includes('codex'))
+    expect(codexInspects.length).toBeLessThanOrEqual(1)
+  }, 120_000)
+
+  it('does not treat resolvable as usable after an execution failure (resolvable ≠ usable)', async () => {
+    const { agent } = await bootAgent()
+    const events = await turn(agent,
+      'Run the `node` command with an invalid flag so the execution fails (for example `node --definitely-not-a-flag`). '
+      + 'Then answer: does the failed execution mean the `node` executable is NOT resolvable? '
+      + 'Use the authoritative runtime inspection tool if you need to confirm resolution.',
+    )
+
+    const calls = toolCalls(events)
+    const bashCalls = calls.filter(call => call.name === 'bash')
+    // The model must actually execute the failing command, not infer the outcome.
+    expect(bashCalls.length).toBeGreaterThan(0)
+    // A failure to start cleanly is not a resolution failure: the model must
+    // keep resolution and usability distinct rather than claiming the command
+    // is missing after an execution error.
+    const text = finalText(events).toLowerCase()
+    expect(text).not.toMatch(/not resolvable/)
+    expect(text).not.toMatch(/does not exist/)
   }, 120_000)
 })
