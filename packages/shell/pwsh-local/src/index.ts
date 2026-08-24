@@ -128,6 +128,9 @@ export function assertServiceablePwshConfig(config: Config): void {
 export class PwshLocalExecutor extends ShellExecutor {
   static inject = ['subprocess']
 
+  /** The command language this executor drives. */
+  readonly dialect = 'pwsh' as const
+
   static Config: z<Config> = z.object({
     cwd: z.string(),
     timeoutMs: z.number().default(120_000),

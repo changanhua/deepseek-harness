@@ -17,10 +17,21 @@ export const name = 'tool-runtime-inspect'
 /** Services required to expose authoritative runtime inspection. */
 export const inject = ['tools', 'systemPrompt', 'runtimeFacts', 'subprocess']
 
-/** Stable guidance; dynamic runtime values never enter this section. */
+/**
+ * Stable guidance; dynamic runtime values never enter this section.
+ *
+ * The command rule is deliberately conditional: inspect only when resolution
+ * is unknown, never before every CLI use. A successful tool execution or a
+ * prior `runtime_inspect` already proves resolvability for the current turn.
+ */
 export const RUNTIME_INSPECT_SYSTEM_PROMPT =
   'Runtime and host facts are available through DSH runtime context and runtime_inspect. '
-  + 'Use runtime_inspect instead of inferring command resolution, network routing, process ownership, or host configuration when authoritative runtime facts are available.'
+  + 'Use runtime_inspect instead of inferring command resolution, network routing, process ownership, or host configuration when authoritative runtime facts are available. '
+  + 'When a task depends on a CLI or executable and its resolvability is not already proven, '
+  + 'inspect command resolution rather than assuming it is missing, guessing its executable path, or suggesting installation. '
+  + 'Do not treat an inspect result as "usable": it proves the command is resolvable in the execution world, '
+  + 'not that it starts cleanly, is authenticated, or succeeds. '
+  + 'Once a command has executed successfully this turn, or a runtime_inspect resolved it, do not re-inspect it mechanically.'
 
 type RuntimeInspectArgs =
   | { readonly kind: 'facts'; readonly keys?: readonly string[] }
