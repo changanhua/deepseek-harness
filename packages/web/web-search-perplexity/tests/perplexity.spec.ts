@@ -66,20 +66,20 @@ describe('Perplexity response mapping', () => {
 
 describe('PerplexitySearchProvider availability', () => {
   it('is unavailable without a key', () => {
-    expect(new PerplexitySearchProvider({ ...options, apiKey: '' }).available()).toBe(false)
+    expect(new PerplexitySearchProvider(() => ({ ...options, apiKey: '' })).available()).toBe(false)
   })
 
   it('is available with a key', () => {
-    expect(new PerplexitySearchProvider(options).available()).toBe(true)
+    expect(new PerplexitySearchProvider(() => options).available()).toBe(true)
   })
 
   it('is misconfigured when the base URL is unparseable', () => {
-    expect(new PerplexitySearchProvider({ ...options, baseURL: 'not a url' }).available()).toBe(false)
+    expect(new PerplexitySearchProvider(() => ({ ...options, baseURL: 'not a url' })).available()).toBe(false)
   })
 
   it('is misconfigured when maxTokens is not a positive integer', () => {
-    expect(new PerplexitySearchProvider({ ...options, maxTokens: 0 }).available()).toBe(false)
-    expect(new PerplexitySearchProvider({ ...options, maxTokens: 1.5 }).available()).toBe(false)
+    expect(new PerplexitySearchProvider(() => ({ ...options, maxTokens: 0 })).available()).toBe(false)
+    expect(new PerplexitySearchProvider(() => ({ ...options, maxTokens: 1.5 })).available()).toBe(false)
   })
 })
 
@@ -87,7 +87,7 @@ describe('PerplexitySearchProvider request mapping', () => {
   it('sends a chat-completions request with the query, model and max_tokens', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ choices: [{ message: { content: 'a' } }], citations: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await new PerplexitySearchProvider(options).search({ query: 'hello' })
+    await new PerplexitySearchProvider(() => options).search({ query: 'hello' })
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://api.perplexity.test/chat/completions')
     expect(init).toMatchObject({ method: 'POST', redirect: 'error' })
@@ -98,10 +98,10 @@ describe('PerplexitySearchProvider request mapping', () => {
   it('sends search_recency_filter when configured, and omits it otherwise', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ choices: [{ message: { content: 'a' } }], citations: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await new PerplexitySearchProvider({ ...options, searchRecency: 'week' }).search({ query: 'q' })
+    await new PerplexitySearchProvider(() => ({ ...options, searchRecency: 'week' })).search({ query: 'q' })
     expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toMatchObject({ search_recency_filter: 'week' })
 
-    await new PerplexitySearchProvider(options).search({ query: 'q' })
+    await new PerplexitySearchProvider(() => options).search({ query: 'q' })
     expect(JSON.parse((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body as string)).not.toHaveProperty('search_recency_filter')
   })
 
@@ -109,7 +109,7 @@ describe('PerplexitySearchProvider request mapping', () => {
     const fetchMock = vi.fn(async () => jsonResponse({ citations: [] }))
     vi.stubGlobal('fetch', fetchMock)
     const controller = new AbortController()
-    await new PerplexitySearchProvider(options).search({ query: 'q' }, controller.signal)
+    await new PerplexitySearchProvider(() => options).search({ query: 'q' }, controller.signal)
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(init.signal).toBe(controller.signal)
   })
@@ -118,63 +118,63 @@ describe('PerplexitySearchProvider request mapping', () => {
 describe('PerplexitySearchProvider error handling', () => {
   it('maps an HTTP error to WEB_PROVIDER_ERROR with the provider message', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ error: { message: 'rate limited' } }, { status: 429 })))
-    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+    await expect(new PerplexitySearchProvider(() => options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR', message: 'rate limited' }))
   })
 
   it('handles a string-form error body', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ error: 'bad request' }, { status: 400 })))
-    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+    await expect(new PerplexitySearchProvider(() => options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ message: 'bad request' }))
   })
 
   it('maps a well-formed body of the wrong shape to WEB_PROVIDER_ERROR, not a raw TypeError', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ search_results: null }, { status: 200 })))
-    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+    await expect(new PerplexitySearchProvider(() => options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
   })
 
   it('keeps a status-line message when the error body is not JSON', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('upstream error', { status: 503 })))
-    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+    await expect(new PerplexitySearchProvider(() => options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ message: 'Perplexity API error (HTTP 503)' }))
   })
 
   it('keeps the status-line message when the JSON error body carries no detail', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({}, { status: 500 })))
-    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+    await expect(new PerplexitySearchProvider(() => options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ message: 'Perplexity API error (HTTP 500)' }))
   })
 
   it('maps an abort to WEB_ABORTED', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new DOMException('aborted', 'AbortError'))))
-    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+    await expect(new PerplexitySearchProvider(() => options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_ABORTED' }))
   })
 
   it('maps an unparseable success body to WEB_PROVIDER_ERROR', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('not json', { status: 200 })))
-    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+    await expect(new PerplexitySearchProvider(() => options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
   })
 
   it('surfaces an abort during success-body parse as WEB_ABORTED, not provider error', async () => {
     const body = { json: () => Promise.reject(new DOMException('aborted', 'AbortError')), ok: true, status: 200 }
     vi.stubGlobal('fetch', vi.fn(async () => body as unknown as Response))
-    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+    await expect(new PerplexitySearchProvider(() => options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_ABORTED' }))
   })
 
   it('surfaces an abort during error-body parse as WEB_ABORTED', async () => {
     const body = { json: () => Promise.reject(new DOMException('aborted', 'AbortError')), ok: false, status: 500 }
     vi.stubGlobal('fetch', vi.fn(async () => body as unknown as Response))
-    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+    await expect(new PerplexitySearchProvider(() => options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_ABORTED' }))
   })
 
   it('maps a network failure to WEB_PROVIDER_ERROR', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('connection refused'))))
-    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+    await expect(new PerplexitySearchProvider(() => options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
   })
 })
@@ -227,7 +227,7 @@ describe('web-search-perplexity plugin registration', () => {
     }
   })
 
-  it('is unavailable when neither config nor env supplies a key', async () => {
+  it('reports an actionable credential error when neither config nor env supplies a key', async () => {
     const prev = process.env.PERPLEXITY_API_KEY
     delete process.env.PERPLEXITY_API_KEY
     try {
@@ -235,7 +235,7 @@ describe('web-search-perplexity plugin registration', () => {
       await ctx.plugin(WebRuntime, { searchProvider: PERPLEXITY_PROVIDER_ID })
       await ctx.plugin(perplexityPlugin, {})
       await expect(ctx.web.search({ query: 'q' }))
-        .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_CONFIGURED_UNAVAILABLE' }))
+        .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_CREDENTIAL_MISSING' }))
     } finally {
       if (prev !== undefined) process.env.PERPLEXITY_API_KEY = prev
     }
