@@ -407,6 +407,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns fact declarations, centralized tool-relevance evaluation, and the order-120 baseline projection; providers register inspect-only or baseline facts and the inspection tool reads them on demand.',
   },
   {
+    key: 'commandProfiles',
+    pkg: 'command-profile',
+    title: 'Command knowledge registry',
+    mode: 'core',
+    consumers: ['tool-command-profile'],
+    note: 'Stores contributor knowledge records and computes effective profiles at read time; the tool maps an ability to candidate executable names and never asserts installation.',
+  },
+  {
     key: 'shellEnv',
     pkg: 'shell-env',
     title: 'Managed bash environment registry',

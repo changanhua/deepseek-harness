@@ -63,6 +63,8 @@ import LocalTaskQueue from '@deepseek-ai/dsh-task-queue-local'
 import * as ToolTaskQueue from '@deepseek-ai/dsh-tool-task-queue'
 import RuntimeFacts from '@deepseek-ai/dsh-runtime-facts'
 import * as ToolRuntimeInspect from '@deepseek-ai/dsh-tool-runtime-inspect'
+import CommandProfiles from '@deepseek-ai/dsh-command-profile'
+import * as ToolCommandProfile from '@deepseek-ai/dsh-tool-command-profile'
 import type TeamService from '@deepseek-ai/dsh-experimental-agent-team'
 import * as ToolTeam from '@deepseek-ai/dsh-experimental-tool-agent-team'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
@@ -440,6 +442,19 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider; command inspection reports that provider\'s execution world without probing through a separate host path.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-command-profile',
+    dir: 'tool-command-profile',
+    source: 'packages/extensions/tool-command-profile/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.commandProfiles'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(CommandProfiles)
+      await ctx.plugin(ToolCommandProfile)
+    },
+    note:
+      'Lexical lookup of command-knowledge profiles: candidate executable names with provenance, never an availability assertion; presence is confirmed through runtime_inspect.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-skill',

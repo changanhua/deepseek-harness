@@ -56,6 +56,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/core/agent-default-model': { kind: 'indirect', reason: 'The service supplies a ModelSelection; request assembly and adapters own the model-visible request.' },
   'packages/preset/agent-presets': { kind: 'indirect', reason: 'The mount installs a preset\'s own plugins, which own every model-facing registration it makes visible.' },
   'packages/task-queue/task-queue': { kind: 'indirect', reason: 'The contract seam registers no model surface; dsh-tool-task-queue owns the model-facing tools and prompt section.' },
+  'packages/context/command-profile': { kind: 'indirect', reason: 'The registry registers no prompt, schema, or result of its own; dsh-tool-command-profile owns the command_profile tool and its prompt section.' },
   'packages/task-queue/task-queue-local': { kind: 'indirect', reason: 'The durable backend registers no model surface; dsh-tool-task-queue owns the model-facing tools and prompt section.' },
   'packages/task-queue/tool-task-queue': { kind: 'indirect', reason: 'The toolkit registers the seven task_queue_* tools, the tool:task-queue prompt section, and the notification outbox hooks; tool schemas are catalogued in docs/tool-catalog.md, and the prompt section text is declared in the package README.' },
   'packages/task-queue/command-task-queue': { kind: 'none', reason: 'The human-facing /queue command renders records directly; registers no model surface.' },

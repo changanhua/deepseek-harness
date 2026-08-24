@@ -44,7 +44,7 @@ V2 补一层：**"这个能力可能对应哪些命令？"** —— 这是稳定
 ### 2.1 命名（用户修正 1）
 
 - Service：`ctx.commandProfiles`
-- Settings namespace：`commandProfiles`
+- Settings namespace：`command-profiles`（settings 平台要求小写 kebab namespace；service key 仍是 `ctx.commandProfiles`）
 - Model-facing tool：`command_profile`
 
 避免 `commands` 与 shell command / tool command 混淆。明确它是**知识配置**，不是 PATH、不是 Runtime State。
@@ -142,7 +142,7 @@ available / installed / resolved / authenticated / version
 用户 schema 是 **partial contribution**，不是完整 profile 定义。分两种情况：
 
 ```yaml
-commandProfiles:
+command-profiles:
   profiles:
     # 情况 1：patch 已有 profile（partial patch，无需重复 displayName/description）
     - id: github-cli
@@ -255,7 +255,7 @@ tags    = union(active contributions)
 
 - built-in：注册于包 apply，随插件生命周期卸载。
 - plugin：`ctx.effect` 注册，卸载即撤回。
-- user：settings namespace `commandProfiles` 读入，live 更新（settings 变更后下次查询生效）。
+- user：settings namespace `command-profiles` 读入，live 更新（settings 变更后下次查询生效）。
 
 ## 4. 查询语义（重点评审 2：candidate ≠ existence）
 
@@ -322,12 +322,12 @@ same-rank tie-break: profile.id lexical ascending
 
 ### 5.3 Settings namespace（user 来源）
 
-- `commandProfiles.profiles` 数组（partial contribution）：`{ id, displayName?, description?, aliases?, tags?, candidates?, candidateMode?, disabled? }`。
+- `command-profiles.profiles` 数组（partial contribution）：`{ id, displayName?, description?, aliases?, tags?, candidates?, candidateMode?, disabled? }`。
   - **全新 profile**：`displayName`/`description` 必填（settings 校验层 fail loud）。
   - **patch 已有 profile**：只提供要改的字段。
   - **`id` 必须唯一**：`profiles` 内重复 user profile ID 在 settings validation 阶段 **fail loud**（不允许两条同 id 的 user contribution，避免顺序语义/precedence 定义）。即 **user contribution = 每个 profileId 恰好 0 或 1 条**。plugin 仍允许多 contributorId → 同一 profileId（那是插件模型需要的）。
 - 由 `command-profile` 包（或独立 host provider）经 `installSettingsSection` 注册，live resolve。
-- 参考 V1 `web` settings namespace 模式（`settingsNamespace('commandProfiles')`）。
+- 参考 V1 `web` settings namespace 模式（`settingsNamespace('command-profiles')`）。
 
 ## 6. Built-in Profiles（重点评审 3：不能写错知识）
 
@@ -406,7 +406,7 @@ no CLI recommendation ranking
 |---|---|---|
 | `packages/context/command-profile`（新） | Command Profile registry（SD） | `ctx.commandProfiles` |
 | `packages/extensions/tool-command-profile`（新） | model-facing `command_profile` tool（Consumer） | 注册 `ctx.tools` + prompt section |
-| `packages/context/command-profile` 内 | user settings namespace（`commandProfiles`） | `installSettingsSection` |
+| `packages/context/command-profile` 内 | user settings namespace（`command-profiles`） | `installSettingsSection` |
 
 文档：本 spec + 对应 Agent Note（merge/provenance 决策记录）。
 

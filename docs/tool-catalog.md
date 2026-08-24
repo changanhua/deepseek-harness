@@ -32,6 +32,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`, `ctx.lsp`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The lsp tool keeps provider selection and language-server subprocesses behind ctx.lsp, so its model-visible schema stays stable across providers. Requires a registered provider (e.g. `@deepseek-ai/dsh-lsp-stdio`) at runtime; without one, a query returns the structured `LSP_UNAVAILABLE` error rather than changing the schema. |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
 | `@deepseek-ai/dsh-tool-runtime-inspect` | `runtime_inspect` | `ctx.tools`, `ctx.systemPrompt`, `ctx.runtimeFacts`, `ctx.subprocess` | `tool/call`, `tool/result` | - | Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider; command inspection reports that provider's execution world without probing through a separate host path. |
+| `@deepseek-ai/dsh-tool-command-profile` | `command_profile` | `ctx.tools`, `ctx.systemPrompt`, `ctx.commandProfiles` | `tool/call`, `tool/result` | - | Lexical lookup of command-knowledge profiles: candidate executable names with provenance, never an availability assertion; presence is confirmed through runtime_inspect. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
 | `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered tool name is the load-time `toolName` config (default `subagent`); the schema above is that default. The shipped compositions load this package once per subagent backend, so the model additionally sees `subagent_fork` bound to the fork backend. Each instance's description, `run_in_background` parameter, and system-prompt policy follow its own `backgroundMode` and `enableRunInBackground`, so the two shipped schemas are not identical: `subagent` is `continuable` and defaults omitted calls to background with automatic settlement delivery, while `subagent_fork` stays `one-shot` and defaults them to foreground — see `packages/bundle/base/cordis.patch.yml` and `examples/acp-agent/cordis.yml`. |
@@ -1281,6 +1282,38 @@ Inspect authoritative DSH runtime state without guessing. kind="facts" returns s
 Source: [`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts)
 
 Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider; command inspection reports that provider's execution world without probing through a separate host path.
+
+<a id="deepseek-aidsh-tool-command-profile"></a>
+
+## `@deepseek-ai/dsh-tool-command-profile`
+
+### `command_profile`
+
+Look up command profiles: stable knowledge about which executables a capability maps to. Profiles name candidate executables only — they do not prove installation or availability; use runtime_inspect to confirm a candidate in the current execution world.
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Lookup text matched against command profile ids, aliases, display names, tags, and descriptions."
+    },
+    "limit": {
+      "type": "number",
+      "description": "Maximum number of matching profiles to return; an integer from 1 to 10, defaulting to 5."
+    }
+  },
+  "required": [
+    "query"
+  ]
+}
+```
+
+Source: [`packages/extensions/tool-command-profile/src/index.ts`](../packages/extensions/tool-command-profile/src/index.ts)
+
+Lexical lookup of command-knowledge profiles: candidate executable names with provenance, never an availability assertion; presence is confirmed through runtime_inspect.
 
 <a id="deepseek-aidsh-tool-skill"></a>
 
