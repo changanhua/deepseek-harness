@@ -19,7 +19,12 @@ import type { CodeRuntime } from '@deepseek-ai/dsh-code-runtime'
 // augmentation. The seam stays optional at runtime — see `serviceAsk`.
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type { ToolCallView, ToolResultView } from './presentation.ts'
-import { assertSupportedJsonSchema, validateJsonSchemaValue } from './json-schema.ts'
+import {
+  assertObjectJsonSchema,
+  assertSupportedJsonSchema,
+  JsonSchemaError,
+  validateJsonSchemaValue,
+} from './json-schema.ts'
 import type { JsonSchemaNode } from './json-schema.ts'
 import { createRunCodeTool, RUN_CODE_NAME, SDK_SECTION_ORDER } from './code-mode.ts'
 import type { CodeSdkLanguage } from './code-mode.ts'
@@ -1043,6 +1048,14 @@ export class ToolRuntime extends Service {
       throw new TypeError(`tool "${name}" must declare output { schema, render, presentationMeta? }`)
     }
     assertSupportedJsonSchema(output.schema)
+    try {
+      assertObjectJsonSchema(definition.parameters)
+    } catch (error: unknown) {
+      if (error instanceof JsonSchemaError) {
+        throw new Error(`tool "${name}" parameters must be an object-rooted JSON Schema (model-facing function calling requires type: "object"): ${error.violations.join('; ')}`)
+      }
+      throw error
+    }
     const timeoutMs = definition.timeoutMs
     if (timeoutMs !== undefined
       && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) {

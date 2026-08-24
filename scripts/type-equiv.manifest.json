@@ -102,6 +102,56 @@
       "source": "packages/llm/llm/src/types.ts"
     },
     {
+      "doc": "docs/subsystems/runtime-facts.md",
+      "symbol": "RuntimeFactKey",
+      "source": "packages/context/runtime-facts/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/runtime-facts.md",
+      "symbol": "RuntimeFactValue",
+      "source": "packages/context/runtime-facts/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/runtime-facts.md",
+      "symbol": "RuntimeFactObservationResult",
+      "source": "packages/context/runtime-facts/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/runtime-facts.md",
+      "symbol": "RuntimeFactEvaluation",
+      "source": "packages/context/runtime-facts/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/runtime-facts.md",
+      "symbol": "RuntimeFactFreshness",
+      "source": "packages/context/runtime-facts/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/runtime-facts.md",
+      "symbol": "RuntimeFactExposure",
+      "source": "packages/context/runtime-facts/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/runtime-facts.md",
+      "symbol": "RuntimeFactContext",
+      "source": "packages/context/runtime-facts/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/runtime-facts.md",
+      "symbol": "RuntimeFactRelevance",
+      "source": "packages/context/runtime-facts/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/runtime-facts.md",
+      "symbol": "RuntimeFact",
+      "source": "packages/context/runtime-facts/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/runtime-facts.md",
+      "symbol": "RuntimeFactInfo",
+      "source": "packages/context/runtime-facts/src/types.ts"
+    },
+    {
       "doc": "docs/subsystems/llm-streaming.md",
       "symbol": "LlmCallConfig",
       "source": "packages/llm/llm/src/call-config.ts"

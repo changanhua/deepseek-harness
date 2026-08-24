@@ -20,7 +20,7 @@
 |---|---|
 | `packages/subprocess/subprocess`（SD） | `SubprocessRuntime` 增 `abstract readonly executionWorld: ExecutionWorldKind`（`'local' | 'remote'`），execution-world 的唯一权威（R3.1-B1） |
 | `packages/subprocess/subprocess-local` | `LocalSubprocessRuntime.executionWorld = 'local'` |
-| `packages/subprocess/subprocess-e2b` | `E2BSubprocessRuntime.executionWorld = 'remote'` |
+| `packages/e2b/subprocess-e2b` | `E2BSubprocessRuntime.executionWorld = 'remote'` |
 | `packages/web/web` | 注册 `web` settings namespace；`searchProvider`/`fetchProvider` live resolve（`installSettingsSection`）；经 `ctx.inject(['runtimeFacts'], cb)` **optional** 导出 `web.search-selected`（owner 归 `web` 包，R2-B5；R3.1-B3：不导出 `web.search-operable`，R3-5；不注册 `web-search.<id>.registered`，R3.1-B4） |
 | `packages/web/web-search-exa` | 增 `apiKeyEnv` + settings namespace，走 `ctx.credentials`；经 optional inject 声明 `web-search.exa.local-available`（sync）与 `web-search.exa.credential-configured`（async）fact（owner 归 provider 包，R2-B5；V1 均 `exposure='inspect'`） |
 | `packages/web/web-search-perplexity` | 同上（`perplexity` id） |

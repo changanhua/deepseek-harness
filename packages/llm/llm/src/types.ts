@@ -333,7 +333,11 @@ export type StreamChunk =
 export interface ToolSchema {
   name: string
   description: string
-  /** JSON Schema object for the arguments. */
+  /**
+   * Object-rooted JSON Schema for the arguments. Adapters pass this value to
+   * providers verbatim; tool registries must reject roots without
+   * `type: "object"` before exposing them to a model request.
+   */
   parameters: Record<string, unknown>
 }
 

@@ -105,7 +105,9 @@ describe('RuntimeFacts asynchronous inspection', () => {
       resolveAsync: async (_context, signal) => {
         calls += 1
         if (signal !== undefined) {
-          await new Promise<void>(resolve => signal.addEventListener('abort', () => { resolve() }, { once: true }))
+          await new Promise<void>((resolve) => {
+            signal.addEventListener('abort', () => { resolve() }, { once: true })
+          })
         }
         return true
       },

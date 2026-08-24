@@ -561,7 +561,7 @@ interface FinishReasonMap {
 
 `FinishReason = FinishReasonMap[keyof FinishReasonMap]`。`TokenUsage`（逐调用计量，含不相交的缓存字段）详见[下文](#tokenusage)。
 
-`GenerateOptions.tools` 携带 `ToolSchema`——工具的 JSON Schema 描述，发送给模型。它声明在 dsh-llm（而非 dsh-tools）中，正是因为它是循环每一步组装请求的一部分：
+`GenerateOptions.tools` 携带 `ToolSchema`——工具的 JSON Schema 描述，发送给模型。其参数 schema 采用 object 根，因为适配器会把 `parameters` 原样传给提供方；`ctx.tools.register()` 会在组装前拒绝其他根。它声明在 dsh-llm（而非 dsh-tools）中，正是因为它是循环每一步组装请求的一部分：
 
 ```ts type-equiv
 /**
@@ -574,7 +574,11 @@ interface FinishReasonMap {
 interface ToolSchema {
   name: string
   description: string
-  /** JSON Schema object for the arguments. */
+  /**
+   * Object-rooted JSON Schema for the arguments. Adapters pass this value to
+   * providers verbatim; tool registries must reject roots without
+   * `type: "object"` before exposing them to a model request.
+   */
   parameters: Record<string, unknown>
 }
 ```
