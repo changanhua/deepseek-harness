@@ -12,6 +12,9 @@ import type { Readable, Writable } from 'node:stream'
 /** Namespace prefix reserved for DeepSeek Harness-managed child environment facts. */
 export const DSH_ENV_PREFIX = 'DSH_' as const
 
+/** Execution namespace exposed by one subprocess Service Provider. */
+export type ExecutionWorldKind = 'local' | 'remote'
+
 /** One environment key inside the managed {@link DSH_ENV_PREFIX} namespace. */
 export type DshEnvironmentKey = `${typeof DSH_ENV_PREFIX}${string}`
 

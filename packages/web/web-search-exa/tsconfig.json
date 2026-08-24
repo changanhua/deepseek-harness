@@ -21,6 +21,15 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../credentials/credentials"
+    },
+    {
+      "path": "../../context/runtime-facts"
+    },
+    {
+      "path": "../../settings/settings"
+    },
+    {
       "path": "../web"
     },
     {
