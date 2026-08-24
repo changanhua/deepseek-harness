@@ -52,7 +52,7 @@
 |---|---|---|
 | `packages/subprocess/subprocess` | `src/index.ts` | `SubprocessRuntime` 增 `abstract readonly executionWorld: ExecutionWorldKind`（`'local' | 'remote'`）+ `src/types.ts` 增 `ExecutionWorldKind`（R3.1-B1） |
 | `packages/subprocess/subprocess-local` | `src/index.ts` | `LocalSubprocessRuntime.executionWorld = 'local'` |
-| `packages/subprocess/subprocess-e2b` | `src/index.ts` | `E2BSubprocessRuntime.executionWorld = 'remote'` |
+| `packages/e2b/subprocess-e2b` | `src/index.ts` | `E2BSubprocessRuntime.executionWorld = 'remote'` |
 | `packages/web/web` | `src/index.ts` | 增 `WEB_SETTINGS_NAMESPACE`/`WEB_SETTINGS_SCHEMA`；构造内 `installSettingsSection`（base = config + env 同一字段）；`search()`/`fetch()` 改读 `source()`；经 `ctx.inject(['runtimeFacts'])` optional 导出 `web.search-selected`（sync/dynamic/baseline，relevance `web_search`，owner 归 `web` 包，R2-B5；R3.1-B3）。**不导出 `web.search-operable`**（R3-5）、**不注册 `web-search.<id>.registered`**（R3.1-B4） |
 | `packages/web/web` | `src/types.ts` | `WebSettingsSection` 类型 |
 | `packages/web/web` | `README.md` | 补 settings section、live resolve、状态词语义 |

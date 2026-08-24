@@ -61,6 +61,8 @@ import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import LocalTaskQueue from '@deepseek-ai/dsh-task-queue-local'
 import * as ToolTaskQueue from '@deepseek-ai/dsh-tool-task-queue'
+import RuntimeFacts from '@deepseek-ai/dsh-runtime-facts'
+import * as ToolRuntimeInspect from '@deepseek-ai/dsh-tool-runtime-inspect'
 import type TeamService from '@deepseek-ai/dsh-experimental-agent-team'
 import * as ToolTeam from '@deepseek-ai/dsh-experimental-tool-agent-team'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
@@ -424,6 +426,20 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-runtime-inspect',
+    dir: 'tool-runtime-inspect',
+    source: 'packages/extensions/tool-runtime-inspect/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.runtimeFacts', 'ctx.subprocess'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(RuntimeFacts)
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(ToolRuntimeInspect)
+    },
+    note:
+      'Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider; command inspection reports that provider\'s execution world without probing through a separate host path.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-skill',

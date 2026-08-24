@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-24-runtime-inspect-flat-parameter-schema.md
+2026-08-24-runtime-inspect-flat-parameter-schema.md: 3deb64c8acb70c496f7562392c6617c2c334921c
+2026-08-24-runtime-inspect-flat-parameter-schema.zh.md: 7a8cf9172756a96ce29ffe7aaec9a7b66695b444
