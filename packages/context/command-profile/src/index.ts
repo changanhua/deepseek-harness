@@ -58,7 +58,7 @@ const MAX_QUERY_LIMIT = 10
 /** Attempt-order rank per contribution source (user first). */
 const SOURCE_RANK: Record<CommandProfileSource, number> = { user: 0, builtin: 1, plugin: 2 }
 
-/** One stored contribution. Array order is registration order. */
+/** One stored contribution. */
 interface ContributionRecord {
   readonly contribution: CommandProfileContribution
 }
@@ -67,6 +67,13 @@ interface ContributionRecord {
 interface ContributorIdentity {
   readonly source: CommandProfileSource
   readonly contributorId: string
+}
+
+/** The fields that determine whether one contribution can define a profile by itself. */
+interface DefinitionFields {
+  readonly displayName?: string
+  readonly description?: string
+  readonly candidates?: readonly string[]
 }
 
 /** User-persistable partial profile contribution. */
@@ -154,10 +161,11 @@ export class CommandProfiles extends Service {
   }
 
   /**
-   * Resolve one profile's effective view, or `undefined` when the profile is
-   * absent or explicitly disabled by the user.
+   * Resolve one profile's effective view. Contributions without a currently
+   * complete definition remain dormant so plugin unload/reload never turns a
+   * read into an exception.
    * @param id - stable profile id.
-   * @returns the merged profile with candidates carrying full provenance.
+   * @returns the merged profile, or `undefined` when absent, disabled, or orphaned.
    */
   resolve(id: string): ResolvedCommandProfile | undefined {
     const records = this.contributions.get(id)
@@ -166,17 +174,17 @@ export class CommandProfiles extends Service {
     if (userRecords.some(record => record.contribution.disabled === true)) return undefined
 
     const owner = this.definitionOwner(records)
-    const ownerRecord = owner === undefined
-      ? undefined
-      : records.find(record => record.contribution.source === owner.source
-        && record.contribution.contributorId === owner.contributorId)
+    if (owner === undefined) return undefined
+    const ownerRecord = records.find(record => record.contribution.source === owner.source
+      && record.contribution.contributorId === owner.contributorId
+      && isCompleteDefinition(record.contribution))
+    if (ownerRecord === undefined) return undefined
+
     const userDisplayName = userRecords.map(record => record.contribution.displayName).find(value => value !== undefined)
     const userDescription = userRecords.map(record => record.contribution.description).find(value => value !== undefined)
-    const displayName = userDisplayName ?? ownerRecord?.contribution.displayName
-    const description = userDescription ?? ownerRecord?.contribution.description
-    if (displayName === undefined || description === undefined) {
-      throw new Error(`command profile ${JSON.stringify(id)} resolved without displayName or description`)
-    }
+    const displayName = userDisplayName ?? ownerRecord.contribution.displayName
+    const description = userDescription ?? ownerRecord.contribution.description
+    if (displayName === undefined || description === undefined) return undefined
 
     return {
       id,
@@ -188,11 +196,7 @@ export class CommandProfiles extends Service {
     }
   }
 
-  /**
-   * Deterministic lexical query over profiles, bounded by {@link CommandProfileQuery.limit}.
-   * @param input - query text and optional result cap.
-   * @returns matched effective profiles in rank order, then id order.
-   */
+  /** Deterministic lexical query over effective profiles. */
   query(input: CommandProfileQuery): ResolvedCommandProfile[] {
     const queryText = input.query.trim()
     if (queryText.length === 0) return []
@@ -211,10 +215,7 @@ export class CommandProfiles extends Service {
     return scored.slice(0, limit).map(entry => entry.profile)
   }
 
-  /**
-   * Every active profile's effective view in id order.
-   * @returns profiles that are neither absent nor user-disabled.
-   */
+  /** Every active profile's effective view in id order. */
   list(): ResolvedCommandProfile[] {
     return [...this.contributions.keys()]
       .map(id => this.resolve(id))
@@ -222,14 +223,7 @@ export class CommandProfiles extends Service {
       .sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
   }
 
-  /**
-   * Register one owned record with full provenance. The only internal entry
-   * point: the built-in seed and the settings adapter produce `builtin` and
-   * `user` records here; the public {@link contribute} pins `source: 'plugin'`.
-   * @param contribution - fully-attributed knowledge record.
-   * @returns the effect disposer retracting exactly this record.
-   * @throws TypeError or Error when the record is malformed or violates a merge rule.
-   */
+  /** Register one owned record with full provenance. */
   private registerContribution(contribution: CommandProfileContribution): () => void {
     this.validateContribution(contribution)
     const record: ContributionRecord = { contribution }
@@ -248,21 +242,15 @@ export class CommandProfiles extends Service {
         if (current.length === 0) this.contributions.delete(contribution.profileId)
       }
     }, `commandProfiles.contribute(${JSON.stringify(contribution.profileId)}, ${JSON.stringify(contribution.contributorId)})`)
-    // The effect disposer settles asynchronously; the retraction itself is
-    // synchronous bookkeeping, so the public disposer is a plain void call.
     return () => {
       void dispose()
     }
   }
 
   /**
-   * Prospective validation of a whole settings section before any old user
-   * contribution is retracted. A partial update is legal only when a non-user
-   * lower layer (builtin or plugin) already defines the profile; a pure
-   * user-defined profile must supply the full identity and a candidate on
-   * every update.
-   * @param value - the resolved settings section, schema-valid by construction.
-   * @throws Error when the section would leave a profile malformed.
+   * Prospective validation before settings persistence. This duplicates the
+   * contribution-level shape checks intentionally: settings validation is the
+   * admission gate, while registerContribution is the invariant defense.
    */
   private validateSettingsSection(value: CommandProfilesSettingsSection): void {
     const seen = new Set<string>()
@@ -271,10 +259,15 @@ export class CommandProfiles extends Service {
         throw new Error(`commandProfiles settings contain duplicate user profile id ${JSON.stringify(profile.id)}`)
       }
       seen.add(profile.id)
-      if (!this.hasLowerLayerDefinition(profile.id)
-        && (profile.displayName === undefined
-          || profile.description === undefined
-          || (profile.candidates?.length ?? 0) === 0)) {
+      this.validateProfileFields(
+        profile.id,
+        profile.displayName,
+        profile.description,
+        profile.aliases,
+        profile.tags,
+        profile.candidates,
+      )
+      if (!this.hasLowerLayerDefinition(profile.id) && !isCompleteDefinition(profile)) {
         throw new Error(
           `new user command profile ${JSON.stringify(profile.id)} requires displayName, description, and at least one candidate`,
         )
@@ -282,9 +275,10 @@ export class CommandProfiles extends Service {
     }
   }
 
-  /** Whether a non-user (builtin or plugin) contribution already defines the profile. */
+  /** Whether a complete non-user definition currently anchors this profile. */
   private hasLowerLayerDefinition(profileId: string): boolean {
-    return (this.contributions.get(profileId) ?? []).some(record => record.contribution.source !== 'user')
+    return (this.contributions.get(profileId) ?? []).some(record =>
+      record.contribution.source !== 'user' && isCompleteDefinition(record.contribution))
   }
 
   private validateContribution(contribution: CommandProfileContribution): void {
@@ -294,58 +288,49 @@ export class CommandProfiles extends Service {
         + ' (alphanumeric start, then alphanumeric, dot, underscore, or dash)',
       )
     }
-    if (!PROFILE_ID_PATTERN.test(contribution.profileId)) {
-      throw new TypeError(
-        `profileId ${JSON.stringify(contribution.profileId)} must match ${String(PROFILE_ID_PATTERN)}`,
-      )
-    }
+    this.validateProfileFields(
+      contribution.profileId,
+      contribution.displayName,
+      contribution.description,
+      contribution.aliases,
+      contribution.tags,
+      contribution.candidates,
+    )
     if (contribution.source !== 'user') {
-      if (contribution.candidateMode !== undefined) {
-        throw new TypeError('candidateMode is only valid for user contributions')
-      }
-      if (contribution.disabled !== undefined) {
-        throw new TypeError('disabled is only valid for user contributions')
-      }
+      if (contribution.candidateMode !== undefined) throw new TypeError('candidateMode is only valid for user contributions')
+      if (contribution.disabled !== undefined) throw new TypeError('disabled is only valid for user contributions')
     }
-    if (contribution.displayName !== undefined && !isNonBlank(contribution.displayName)) {
-      throw new TypeError(`displayName ${JSON.stringify(contribution.displayName)} must be non-blank with no surrounding whitespace`)
-    }
-    if (contribution.description !== undefined && !isNonBlank(contribution.description)) {
-      throw new TypeError(`description ${JSON.stringify(contribution.description)} must be non-blank with no surrounding whitespace`)
-    }
-    for (const alias of contribution.aliases ?? []) {
-      if (!isNonBlank(alias)) {
-        throw new TypeError(`alias ${JSON.stringify(alias)} must be non-blank with no surrounding whitespace`)
-      }
-    }
-    for (const tag of contribution.tags ?? []) {
-      if (!isNonBlank(tag)) {
-        throw new TypeError(`tag ${JSON.stringify(tag)} must be non-blank with no surrounding whitespace`)
-      }
-    }
-    for (const candidate of contribution.candidates ?? []) validateCandidate(candidate)
 
     const existing = this.contributions.get(contribution.profileId) ?? []
-    if (contribution.source === 'builtin' && existing.some(record => record.contribution.source === 'builtin')) {
-      throw new Error(`builtin command profile ${JSON.stringify(contribution.profileId)} is already registered`)
-    }
-    // A brand-new profile must be complete at registration; a malformed record
-    // is rejected here, never left to blow up at resolve time.
-    if (existing.length === 0) {
-      if (contribution.displayName === undefined || contribution.description === undefined) {
-        throw new Error(
-          `new command profile ${JSON.stringify(contribution.profileId)} requires displayName and description`,
-        )
+    if (contribution.source === 'builtin') {
+      if (existing.some(record => record.contribution.source === 'builtin')) {
+        throw new Error(`builtin command profile ${JSON.stringify(contribution.profileId)} is already registered`)
       }
-      if ((contribution.candidates?.length ?? 0) === 0) {
-        throw new Error(
-          `new command profile ${JSON.stringify(contribution.profileId)} requires at least one candidate`,
-        )
+      if (!isCompleteDefinition(contribution)) {
+        throw new Error(`builtin command profile ${JSON.stringify(contribution.profileId)} must be a complete definition`)
       }
     }
-    if (contribution.displayName !== undefined || contribution.description !== undefined) {
-      const owner = this.definitionOwner(existing)
-      if (owner !== undefined && contribution.source === 'plugin') {
+
+    const owner = this.definitionOwner(existing)
+    if (contribution.source === 'plugin') {
+      // The first plugin record for a truly new id must define the profile.
+      if (existing.length === 0 && !isCompleteDefinition(contribution)) {
+        throw new Error(
+          `new command profile ${JSON.stringify(contribution.profileId)} requires displayName, description, and at least one candidate`,
+        )
+      }
+      // An orphaned id may retain append-only partial records. A plugin that
+      // supplies identity fields while no owner exists must supply a complete
+      // definition and thereby become the new owner.
+      if (owner === undefined
+        && (contribution.displayName !== undefined || contribution.description !== undefined)
+        && !isCompleteDefinition(contribution)) {
+        throw new Error(
+          `plugin ${JSON.stringify(contribution.contributorId)} must provide a complete definition to claim orphaned profile `
+          + JSON.stringify(contribution.profileId),
+        )
+      }
+      if (owner !== undefined && (contribution.displayName !== undefined || contribution.description !== undefined)) {
         if (owner.source !== 'plugin' || owner.contributorId !== contribution.contributorId) {
           throw new Error(
             `plugin ${JSON.stringify(contribution.contributorId)} may not redefine identity fields for profile `
@@ -356,24 +341,54 @@ export class CommandProfiles extends Service {
     }
   }
 
+  /** Validate fields shared by settings admission and contribution registration. */
+  private validateProfileFields(
+    profileId: string,
+    displayName?: string,
+    description?: string,
+    aliases?: readonly string[],
+    tags?: readonly string[],
+    candidates?: readonly string[],
+  ): void {
+    if (!PROFILE_ID_PATTERN.test(profileId)) {
+      throw new TypeError(`profileId ${JSON.stringify(profileId)} must match ${String(PROFILE_ID_PATTERN)}`)
+    }
+    if (displayName !== undefined && !isNonBlank(displayName)) {
+      throw new TypeError(`displayName ${JSON.stringify(displayName)} must be non-blank with no surrounding whitespace`)
+    }
+    if (description !== undefined && !isNonBlank(description)) {
+      throw new TypeError(`description ${JSON.stringify(description)} must be non-blank with no surrounding whitespace`)
+    }
+    for (const alias of aliases ?? []) {
+      if (!isNonBlank(alias)) throw new TypeError(`alias ${JSON.stringify(alias)} must be non-blank with no surrounding whitespace`)
+    }
+    for (const tag of tags ?? []) {
+      if (!isNonBlank(tag)) throw new TypeError(`tag ${JSON.stringify(tag)} must be non-blank with no surrounding whitespace`)
+    }
+    for (const candidate of candidates ?? []) validateCandidate(candidate)
+  }
+
+  /** Select an owner only from contributions that can define the profile alone. */
   private definitionOwner(records: readonly ContributionRecord[]): ContributorIdentity | undefined {
-    const builtin = records.find(record => record.contribution.source === 'builtin')
+    const builtin = records.find(record =>
+      record.contribution.source === 'builtin' && isCompleteDefinition(record.contribution))
     if (builtin !== undefined) {
       return { source: 'builtin', contributorId: builtin.contribution.contributorId }
     }
-    const firstPlugin = records.find(record => record.contribution.source === 'plugin')
-    if (firstPlugin !== undefined) {
-      return { source: 'plugin', contributorId: firstPlugin.contribution.contributorId }
+    const plugin = records.find(record =>
+      record.contribution.source === 'plugin' && isCompleteDefinition(record.contribution))
+    if (plugin !== undefined) {
+      return { source: 'plugin', contributorId: plugin.contribution.contributorId }
+    }
+    const user = records.find(record =>
+      record.contribution.source === 'user' && isCompleteDefinition(record.contribution))
+    if (user !== undefined) {
+      return { source: 'user', contributorId: user.contribution.contributorId }
     }
     return undefined
   }
 
-  /**
-   * Merge candidates with full provenance. Candidates sort by their highest
-   * source rank (user > builtin > plugin), then lexically by command name —
-   * never by registration order. Each candidate's provenance sorts by source
-   * rank, then contributor id lexically.
-   */
+  /** Merge candidates with full provenance and deterministic attempt order. */
   private mergeCandidates(records: readonly ContributionRecord[]): ResolvedCommandCandidate[] {
     const replaceMode = records
       .filter(record => record.contribution.source === 'user')
@@ -417,7 +432,7 @@ export class CommandProfiles extends Service {
 
   private mergeTokens(
     records: readonly ContributionRecord[],
-    ownerRecord: ContributionRecord | undefined,
+    ownerRecord: ContributionRecord,
     field: 'aliases' | 'tags',
   ): string[] {
     const result: string[] = []
@@ -431,9 +446,7 @@ export class CommandProfiles extends Service {
     for (const record of records.filter(item => item.contribution.source === 'user')) {
       for (const value of record.contribution[field] ?? []) add(value)
     }
-    if (ownerRecord !== undefined) {
-      for (const value of ownerRecord.contribution[field] ?? []) add(value)
-    }
+    for (const value of ownerRecord.contribution[field] ?? []) add(value)
     const remaining = records
       .filter(record => record !== ownerRecord && record.contribution.source === 'plugin')
       .sort((left, right) => left.contribution.contributorId < right.contribution.contributorId ? -1
@@ -458,13 +471,7 @@ export class CommandProfiles extends Service {
   private reloadUserContributions(): void {
     for (const dispose of this.userDisposers) dispose()
     this.userDisposers.length = 0
-    const profiles = this.userSource().profiles
-    const seen = new Set<string>()
-    for (const profile of profiles) {
-      if (seen.has(profile.id)) {
-        throw new Error(`commandProfiles settings contain duplicate user profile id ${JSON.stringify(profile.id)}`)
-      }
-      seen.add(profile.id)
+    for (const profile of this.userSource().profiles) {
       this.userDisposers.push(this.registerContribution({
         contributorId: USER_CONTRIBUTOR_ID,
         source: 'user',
@@ -479,6 +486,13 @@ export class CommandProfiles extends Service {
       }))
     }
   }
+}
+
+/** Whether one contribution can stand alone as the profile's definition owner. */
+function isCompleteDefinition(value: DefinitionFields): boolean {
+  return value.displayName !== undefined
+    && value.description !== undefined
+    && (value.candidates?.length ?? 0) > 0
 }
 
 function isNonBlank(value: string): boolean {
