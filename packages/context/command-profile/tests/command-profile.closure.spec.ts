@@ -169,4 +169,32 @@ describe('definition-owner lifecycle closure', () => {
     expect(resolved?.description).toBe('user standalone definition')
     expect(resolved?.candidates.map(candidate => candidate.command)).toEqual(['user-cli'])
   })
+
+  it('allows a complete plugin definition to become lower-layer owner after a user-only definition', async () => {
+    const subject = await boot()
+    await setProfiles(subject, [{
+      id: 'my-cli',
+      displayName: 'User CLI',
+      description: 'user definition',
+      candidates: ['user-cli'],
+    }])
+
+    subject.commandProfiles.contribute({
+      contributorId: 'plugin-a',
+      profileId: 'my-cli',
+      displayName: 'Plugin CLI',
+      description: 'plugin canonical definition',
+      candidates: ['plugin-cli'],
+    })
+
+    const overlaid = subject.commandProfiles.resolve('my-cli')
+    expect(overlaid?.displayName).toBe('User CLI')
+    expect(overlaid?.candidates.map(candidate => candidate.command))
+      .toEqual(['user-cli', 'plugin-cli'])
+
+    await setProfiles(subject, [])
+    const pluginOnly = subject.commandProfiles.resolve('my-cli')
+    expect(pluginOnly?.displayName).toBe('Plugin CLI')
+    expect(pluginOnly?.candidates.map(candidate => candidate.command)).toEqual(['plugin-cli'])
+  })
 })
