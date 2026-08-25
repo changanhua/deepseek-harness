@@ -1,10 +1,10 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "dsh-intelligence/evals/holdout-task.schema.json",
-  "title": "Holdout Task (prompt/rubric split)",
-  "description": "私有 holdout 任务。prompt 与 rubric 物理分离：模型只能读到 `prompt` 面；Evaluator 只能读 `rubric` 面。`additionalProperties:false` 从 schema 层禁止把 expected_design / baseline_trap 等答案混进 prompt。",
+  "$id": "dsh-intelligence/evals/holdout-rubric.schema.json",
+  "title": "Holdout Task Rubric",
+  "description": "私有 holdout 任务的 Evaluator 可见面：不可见判卷标准，绝不进入模型输入。`additionalProperties:false` 禁止判卷标准以外的字段。",
   "type": "object",
-  "required": ["id", "category", "prompt", "rubric"],
+  "required": ["id", "category", "rubric"],
   "properties": {
     "id": { "type": "string", "pattern": "^holdout-\\d{3}$" },
     "category": {
@@ -19,23 +19,14 @@
         "repo-tool-vs-plugin"
       ]
     },
-    "prompt": {
-      "description": "模型可见面：只含需求与约束，绝不含答案。",
-      "type": "object",
-      "required": ["requirement", "constraints"],
-      "properties": {
-        "requirement": { "type": "string" },
-        "constraints": { "type": "array", "items": { "type": "string" } }
-      },
-      "additionalProperties": false
-    },
     "rubric": {
-      "description": "Evaluator 可见面：不可见判卷标准，绝不进入模型输入。",
+      "description": "Evaluator 可见面：不可见判卷标准。",
       "type": "object",
       "required": ["blocking_findings", "expected_properties", "forbidden_patterns"],
       "properties": {
         "blocking_findings": {
           "type": "array",
+          "minItems": 1,
           "items": {
             "type": "object",
             "required": ["id", "severity", "rule_id", "condition"],

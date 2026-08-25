@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "dsh-intelligence/evals/scoring.schema.json",
   "title": "Scoring / Rubric",
-  "description": "第一轮最看重的四个指标；其次为成本与设计指标。分数只来自 normalized findings（由不可变 raw output 派生），禁止 eval → knowledge 自动晋升。",
+  "description": "第一轮最看重的四个指标；其次为成本与设计指标。指标先记原始计数（blocking / unsupported inventions / hallucinated symbols），evidence_grounding_rate = 有证据支持的 required claims / required claims。分数只来自 normalized findings（由不可变 raw output 派生），禁止 eval → knowledge 自动晋升。",
   "type": "object",
   "required": ["primary_metrics", "secondary_metrics", "weights", "promotion_policy"],
   "properties": {
@@ -10,8 +10,8 @@
       "type": "array",
       "items": { "type": "string", "enum": [
         "architecture_blocking_findings",
-        "unsupported_invention_rate",
-        "hallucinated_symbol_rate",
+        "unsupported_inventions",
+        "hallucinated_symbols",
         "evidence_grounding_rate"
       ] }
     },

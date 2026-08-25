@@ -38,11 +38,39 @@ function typeMatches(value: unknown, type: string): boolean {
   }
 }
 
-/** 校验 `value` 是否符合本项目 schema 用到的 JSON Schema 子集。 */
-export function validateSchema(value: unknown, schema: unknown, path = '$'): SchemaError[] {
+/** 解析 schema 文档内部的本地 `$ref`（`#/$defs/...`、`#/properties/...`）。外部引用不支持，返回 undefined。 */
+function resolveLocalRef(root: unknown, ref: string): unknown {
+  if (!ref.startsWith('#/')) return undefined
+  const parts = ref.slice(2).split('/').map(part => part.replace(/~1/g, '/').replace(/~0/g, '~'))
+  let node: unknown = root
+  for (const part of parts) {
+    if (node === null || typeof node !== 'object' || !(part in (node as Record<string, unknown>))) return undefined
+    node = (node as Record<string, unknown>)[part]
+  }
+  return node
+}
+
+/**
+ * 校验 `value` 是否符合本项目 schema 用到的 JSON Schema 子集。
+ * @param value 待校验数据。
+ * @param schema schema 文档（支持 `$ref`/`$defs` 本地引用）。
+ * @param path 错误路径前缀。
+ * @param root schema 文档根（递归解析 `$ref` 用）。
+ * @returns 错误列表，空表示通过。
+ */
+export function validateSchema(value: unknown, schema: unknown, path = '$', root: unknown = schema): SchemaError[] {
   const errors: SchemaError[] = []
   if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) return errors
   const s = schema as Record<string, unknown>
+
+  if (typeof s.$ref === 'string') {
+    const target = resolveLocalRef(root, s.$ref)
+    if (target === undefined) {
+      errors.push({ path, message: `unresolved $ref ${s.$ref}` })
+      return errors
+    }
+    return validateSchema(value, target, path, root)
+  }
 
   if (typeof s.const !== 'undefined') {
     if (value !== s.const) errors.push({ path, message: `expected const ${JSON.stringify(s.const)}` })
@@ -82,7 +110,7 @@ export function validateSchema(value: unknown, schema: unknown, path = '$'): Sch
     }
     if (s.items !== undefined) {
       value.forEach((item, index) => {
-        errors.push(...validateSchema(item, s.items, `${path}[${index}]`))
+        errors.push(...validateSchema(item, s.items, `${path}[${index}]`, root))
       })
     }
   }
@@ -96,7 +124,13 @@ export function validateSchema(value: unknown, schema: unknown, path = '$'): Sch
     }
     if (s.properties !== undefined && typeof s.properties === 'object') {
       for (const [key, subSchema] of Object.entries(s.properties as Record<string, unknown>)) {
-        if (key in obj) errors.push(...validateSchema(obj[key], subSchema, `${path}.${key}`))
+        if (key in obj) errors.push(...validateSchema(obj[key], subSchema, `${path}.${key}`, root))
+      }
+    }
+    if (s.additionalProperties === false && s.properties !== undefined && typeof s.properties === 'object') {
+      const known = new Set(Object.keys(s.properties as Record<string, unknown>))
+      for (const key of Object.keys(obj)) {
+        if (!known.has(key)) errors.push({ path: `${path}.${key}`, message: `unexpected property ${key}` })
       }
     }
   }

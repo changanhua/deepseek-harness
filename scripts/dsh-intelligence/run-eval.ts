@@ -5,12 +5,15 @@
  * `.dsh-intelligence/private-evals/`，由外部 adapter 生成 baseline/full findings。
  */
 
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { load as loadYaml } from 'js-yaml'
+import { validateSchema } from './validate-adp.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const EVALS_DIR = join(ROOT, '.agents', 'dsh-intelligence', 'evals')
 
 export interface FindingInput {
   severity: 'P0' | 'P1' | 'P2'
@@ -116,6 +119,10 @@ export function runPairedTrial(baseline: TrialGroup[], full: TrialGroup[]): Pair
 // Private-holdout paired eval 协议（.dsh-intelligence/private-evals/**，永不提交）
 // ---------------------------------------------------------------------------
 
+const SHA256_RE = /^sha256:[0-9a-f]{64}$/
+const EVIDENCE_GROUNDED = 'evidence.grounded'
+const MANIFEST_TASK_RE = /^holdout-\d{3}$/
+
 export interface HoldoutPrompt {
   requirement: string
   constraints: string[]
@@ -142,6 +149,11 @@ export interface HoldoutTask {
   rubric: HoldoutRubric
 }
 
+export interface SuiteManifest {
+  suite_id: string
+  tasks: string[]
+}
+
 export interface TrialIdentity {
   prompt_hash: string
   model: string
@@ -150,13 +162,25 @@ export interface TrialIdentity {
   seed: number | null
 }
 
+export interface EvaluatorProvenance {
+  evaluator_type: 'deterministic' | 'llm'
+  evaluator_model?: string
+  evaluator_prompt_hash: string
+  rubric_hash: string
+  source_output_hash: string
+  evaluator_version: string
+  normalized_findings_hash: string
+}
+
 export interface TrialArm {
   system: 'baseline-no-intelligence' | 'full-intelligence'
   identity: TrialIdentity
+  raw_output_ref: string
   raw_output_hash: string
   execution_status: 'success' | 'failed' | 'missing'
   normalized_findings: FindingInput[]
   metrics: Record<string, unknown>
+  evaluator: EvaluatorProvenance
 }
 
 export interface HoldoutTrialResult {
@@ -166,6 +190,15 @@ export interface HoldoutTrialResult {
   identity?: TrialIdentity
   arms?: { baseline: TrialArm; intelligence: TrialArm }
   comparison?: Comparison | null
+}
+
+export interface PrimaryMetrics {
+  architectureBlockingFindings: number
+  unsupportedInventions: number
+  hallucinatedSymbols: number
+  groundedRequiredClaims: number
+  requiredClaims: number
+  evidenceGroundingRate: number
 }
 
 export interface Comparison {
@@ -178,31 +211,29 @@ export interface Comparison {
   verdict: 'baseline_better' | 'intelligence_better' | 'tie'
 }
 
-export interface PrimaryMetrics {
-  architectureBlockingFindings: number
-  unsupportedInventionRate: number
-  hallucinatedSymbolRate: number
-  evidenceGroundingRate: number
+export interface TaskLoadResult {
+  manifest: SuiteManifest
+  tasks: HoldoutTask[]
+  /** manifest 任务缺文件 / schema 失败 / id 不一致 —— 判 INVALID，绝不静默跳过。 */
+  fatalErrors: string[]
+  /** manifest 之外的多余任务 —— 仅提示。 */
+  warnings: string[]
 }
 
-/** 读 private holdout tasks：按 `<id>.prompt.yaml` + `<id>.rubric.yaml` 配对。 */
-export function loadPrivateTasks(tasksDir: string): HoldoutTask[] {
-  if (!existsSync(tasksDir)) return []
-  const tasks: HoldoutTask[] = []
-  for (const file of readdirSync(tasksDir).filter(name => name.endsWith('.prompt.yaml'))) {
-    const id = file.replace(/\.prompt\.yaml$/, '')
-    const rubricFile = join(tasksDir, `${id}.rubric.yaml`)
-    if (!existsSync(rubricFile)) continue
-    const promptDoc = loadYaml(readFileSync(join(tasksDir, file), 'utf8')) as HoldoutTask
-    const rubricDoc = loadYaml(readFileSync(rubricFile, 'utf8')) as HoldoutTask
-    tasks.push({
-      id: promptDoc.id ?? id,
-      category: promptDoc.category ?? '',
-      prompt: promptDoc.prompt,
-      rubric: rubricDoc.rubric,
-    })
-  }
-  return tasks
+export interface EvalContext {
+  /** 读取 arm 引用的 raw output 文件内容；文件缺失返回 null。 */
+  readRawFile?: (arm: TrialArm) => string | null
+  /** 该任务 rubric 文件原文（校验 evaluator.rubric_hash 与当前任务文件一致）。 */
+  rubricContent?: string | undefined
+}
+
+/** sha256(content) 的 64 位 hex；raw / rubric / findings 的不可变指纹都用它。 */
+export function sha256Hex(content: string): string {
+  return createHash('sha256').update(content, 'utf8').digest('hex')
+}
+
+function loadEvalSchema(name: string): unknown {
+  return JSON.parse(readFileSync(join(EVALS_DIR, name), 'utf8'))
 }
 
 /** 协议 2：paired identity 必须一致；返回不一致原因（空 = 一致）。 */
@@ -216,25 +247,99 @@ export function validatePairIdentity(baseline: TrialIdentity, intelligence: Tria
   return reasons
 }
 
-/** 主指标：第一轮最看重的四个。分数只来自 normalized findings（由不可变 raw 派生）。 */
+/** 读 suite manifest（tasks 目录锁定任务全集；缺失/非法即套件失败）。 */
+export function loadSuiteManifest(tasksDir: string): SuiteManifest {
+  const manifestFile = join(tasksDir, 'manifest.yaml')
+  if (!existsSync(manifestFile)) throw new Error(`suite manifest missing: ${manifestFile}`)
+  const doc = loadYaml(readFileSync(manifestFile, 'utf8')) as Partial<SuiteManifest>
+  if (typeof doc.suite_id !== 'string' || doc.suite_id.length === 0) {
+    throw new Error(`suite manifest must declare non-empty suite_id: ${manifestFile}`)
+  }
+  if (!Array.isArray(doc.tasks) || doc.tasks.length === 0) {
+    throw new Error(`suite manifest must declare a non-empty tasks list: ${manifestFile}`)
+  }
+  for (const id of doc.tasks) {
+    if (typeof id !== 'string' || !MANIFEST_TASK_RE.test(id)) {
+      throw new Error(`suite manifest task id must match ${MANIFEST_TASK_RE}: ${id}`)
+    }
+  }
+  return { suite_id: doc.suite_id, tasks: [...doc.tasks] }
+}
+
+/**
+ * 按 manifest 驱动加载 private holdout tasks：manifest 是任务全集，目录里多出来 / 少掉的都显式暴露。
+ * prompt / rubric 各用独立 schema 真校验（additionalProperties:false 结构上禁止答案混入 prompt）。
+ */
+export function loadPrivateTasks(tasksDir: string): TaskLoadResult {
+  if (!existsSync(tasksDir)) throw new Error(`tasks dir missing: ${tasksDir}`)
+  const manifest = loadSuiteManifest(tasksDir)
+  const promptSchema = loadEvalSchema('holdout-prompt.schema.json')
+  const rubricSchema = loadEvalSchema('holdout-rubric.schema.json')
+  const tasks: HoldoutTask[] = []
+  const fatalErrors: string[] = []
+  const warnings: string[] = []
+
+  const seen = new Set<string>()
+  for (const id of manifest.tasks) {
+    const promptFile = join(tasksDir, `${id}.prompt.yaml`)
+    const rubricFile = join(tasksDir, `${id}.rubric.yaml`)
+    seen.add(id)
+    const missing: string[] = []
+    if (!existsSync(promptFile)) missing.push('prompt')
+    if (!existsSync(rubricFile)) missing.push('rubric')
+    if (missing.length > 0) {
+      fatalErrors.push(`manifest task ${id} missing ${missing.join(' and ')} file`)
+      continue
+    }
+    const promptDoc = loadYaml(readFileSync(promptFile, 'utf8'))
+    const rubricDoc = loadYaml(readFileSync(rubricFile, 'utf8'))
+    const promptErrors = validateSchema(promptDoc, promptSchema)
+    const rubricErrors = validateSchema(rubricDoc, rubricSchema)
+    const docIdMismatch: string[] = []
+    if ((promptDoc as { id?: unknown }).id !== id) docIdMismatch.push('prompt.id')
+    if ((rubricDoc as { id?: unknown }).id !== id) docIdMismatch.push('rubric.id')
+    if (promptErrors.length > 0 || rubricErrors.length > 0 || docIdMismatch.length > 0) {
+      const parts = [
+        ...promptErrors.map(error => `prompt${error.path} ${error.message}`),
+        ...rubricErrors.map(error => `rubric${error.path} ${error.message}`),
+        ...docIdMismatch.map(field => `${field} != ${id}`),
+      ]
+      fatalErrors.push(`task ${id} load failed: ${parts.join('; ')}`)
+      continue
+    }
+    tasks.push({
+      id,
+      category: (promptDoc as HoldoutTask).category,
+      prompt: (promptDoc as HoldoutTask).prompt,
+      rubric: (rubricDoc as HoldoutTask).rubric,
+    })
+  }
+  for (const file of readdirSync(tasksDir)) {
+    const match = /^(.+)\.prompt\.yaml$/.exec(file)
+    const extraId = match?.[1]
+    if (extraId !== undefined && !seen.has(extraId)) warnings.push(`extra task not in manifest: ${extraId}`)
+  }
+  return { manifest, tasks, fatalErrors, warnings }
+}
+
+/** 主指标：先记原始计数；evidence_grounding_rate = grounded required claims / required claims（required=0 视为全 grounded）。 */
 export function computePrimaryMetrics(findings: FindingInput[], rubric?: HoldoutRubric): PrimaryMetrics {
-  const total = findings.length
-  const blocking = findings.filter(finding => finding.severity === 'P0').length
-  const unsupportedInvention = findings.filter(finding => /invent|invention/.test(finding.rule_id ?? '')).length
-  const hallucinated = findings.filter(finding => finding.rule_id === 'hallucinated-symbol').length
-  const evidenceGap = findings.filter(finding => finding.rule_id === 'evidence.gap' || finding.rule_id === 'evidence.ungrounded').length
+  const requiredClaims = rubric ? rubric.expected_properties.length : 0
+  const groundedRequiredClaims = findings.filter(finding => finding.rule_id === EVIDENCE_GROUNDED).length
   return {
-    architectureBlockingFindings: blocking,
-    unsupportedInventionRate: total > 0 ? unsupportedInvention / total : 0,
-    hallucinatedSymbolRate: total > 0 ? hallucinated / total : 0,
-    evidenceGroundingRate: total > 0 ? 1 - evidenceGap / total : (rubric?.expected_properties?.length ? 0 : 1),
+    architectureBlockingFindings: findings.filter(finding => finding.severity === 'P0').length,
+    unsupportedInventions: findings.filter(finding => /invent|invention/.test(finding.rule_id ?? '')).length,
+    hallucinatedSymbols: findings.filter(finding => finding.rule_id === 'hallucinated-symbol').length,
+    groundedRequiredClaims,
+    requiredClaims,
+    evidenceGroundingRate: requiredClaims > 0 ? Math.min(groundedRequiredClaims, requiredClaims) / requiredClaims : 1,
   }
 }
 
 function compareArms(baseline: PrimaryMetrics, intelligence: PrimaryMetrics): Comparison {
   const blockingDelta = baseline.architectureBlockingFindings - intelligence.architectureBlockingFindings
-  const unsupportedDelta = baseline.unsupportedInventionRate - intelligence.unsupportedInventionRate
-  const hallucinatedDelta = baseline.hallucinatedSymbolRate - intelligence.hallucinatedSymbolRate
+  const unsupportedDelta = baseline.unsupportedInventions - intelligence.unsupportedInventions
+  const hallucinatedDelta = baseline.hallucinatedSymbols - intelligence.hallucinatedSymbols
   const groundingDelta = intelligence.evidenceGroundingRate - baseline.evidenceGroundingRate
   const score = blockingDelta + unsupportedDelta + hallucinatedDelta + groundingDelta
   const verdict = score > 0 ? 'intelligence_better' : score < 0 ? 'baseline_better' : 'tie'
@@ -249,25 +354,94 @@ function compareArms(baseline: PrimaryMetrics, intelligence: PrimaryMetrics): Co
   }
 }
 
+function rawImmutableReasons(arm: TrialArm, label: string, ctx: EvalContext): string[] {
+  const reasons: string[] = []
+  if (typeof arm.raw_output_hash !== 'string' || !SHA256_RE.test(arm.raw_output_hash)) {
+    reasons.push(`${label} raw output not immutable (expected sha256:64hex, got ${arm.raw_output_hash})`)
+    return reasons
+  }
+  if (typeof arm.raw_output_ref !== 'string' || arm.raw_output_ref.length === 0) {
+    reasons.push(`${label} raw_output_ref missing`)
+    return reasons
+  }
+  if (ctx.readRawFile) {
+    const content = ctx.readRawFile(arm)
+    if (content === null) {
+      reasons.push(`${label} raw output file missing: ${arm.raw_output_ref}`)
+    } else {
+      const actual = sha256Hex(content)
+      if (`sha256:${actual}` !== arm.raw_output_hash) {
+        reasons.push(`${label} raw output hash mismatch: declared ${arm.raw_output_hash} vs file sha256:${actual}`)
+      }
+    }
+  }
+  return reasons
+}
+
+function evaluatorReasons(arm: TrialArm, label: string, ctx: EvalContext): string[] {
+  const reasons: string[] = []
+  const evaluator: unknown = arm.evaluator
+  if (!evaluator || typeof evaluator !== 'object') {
+    reasons.push(`${label} evaluator provenance missing`)
+    return reasons
+  }
+  const record = evaluator as Record<string, unknown>
+  if (record.evaluator_type !== 'deterministic' && record.evaluator_type !== 'llm') {
+    reasons.push(`${label} invalid evaluator_type`)
+  }
+  for (const field of ['evaluator_prompt_hash', 'rubric_hash', 'source_output_hash', 'normalized_findings_hash'] as const) {
+    const hash = record[field]
+    if (typeof hash !== 'string' || !SHA256_RE.test(hash)) {
+      reasons.push(`${label} evaluator ${field} not a sha256:64hex hash`)
+    }
+  }
+  if (typeof record.evaluator_version !== 'string' || record.evaluator_version.length === 0) {
+    reasons.push(`${label} evaluator_version missing`)
+  }
+  if (record.source_output_hash !== arm.raw_output_hash) {
+    reasons.push(`${label} evaluator source_output_hash does not match raw_output_hash`)
+  }
+  const findings = arm.normalized_findings as FindingInput[] | undefined
+  const findingsHash = sha256Hex(JSON.stringify(findings ?? []))
+  if (record.normalized_findings_hash !== `sha256:${findingsHash}`) {
+    reasons.push(`${label} normalized_findings_hash does not match findings content`)
+  }
+  if (typeof ctx.rubricContent === 'string') {
+    const rubricHash = sha256Hex(ctx.rubricContent)
+    if (record.rubric_hash !== `sha256:${rubricHash}`) {
+      reasons.push(`${label} evaluator rubric_hash does not match task rubric file`)
+    }
+  }
+  return reasons
+}
+
 /**
- * 协议 4（fail-closed）+ 5（raw immutable）+ 2（paired identity）：
- * 任一致命条件 → INVALID，绝不按 0 finding 计分。
+ * 协议 2/3/4/5/7 fail-closed 汇总：任一致命条件 → INVALID，绝不按 0 finding 计分。
+ * ctx 提供 raw 文件读取与 rubric 原文复验；不传则跳过文件级校验。
  */
 export function evaluateHoldoutTrial(
   task: HoldoutTask,
   baseline: TrialArm,
   intelligence: TrialArm,
+  ctx: EvalContext = {},
 ): HoldoutTrialResult {
   const reasons: string[] = []
-  if (!task?.rubric || !Array.isArray(task.rubric.blocking_findings) || task.rubric.blocking_findings.length === 0) {
+  const rubric = task.rubric as HoldoutRubric | undefined
+  if (!rubric || !Array.isArray(rubric.blocking_findings) || rubric.blocking_findings.length === 0) {
     reasons.push('evaluator missing rubric')
   }
   if (baseline.execution_status !== 'success') reasons.push('baseline model execution failed')
   if (intelligence.execution_status !== 'success') reasons.push('intelligence model execution failed')
-  if (!/^sha256:/.test(baseline.raw_output_hash)) reasons.push('baseline raw output not immutable (missing sha256 hash)')
-  if (!/^sha256:/.test(intelligence.raw_output_hash)) reasons.push('intelligence raw output not immutable (missing sha256 hash)')
-  if (typeof baseline.metrics?.architectureBlockingFindings !== 'number') reasons.push('baseline missing required metrics')
-  if (typeof intelligence.metrics?.architectureBlockingFindings !== 'number') reasons.push('intelligence missing required metrics')
+  if (baseline.system !== 'baseline-no-intelligence') reasons.push(`baseline system must be baseline-no-intelligence, got ${baseline.system}`)
+  if (intelligence.system !== 'full-intelligence') reasons.push(`intelligence system must be full-intelligence, got ${intelligence.system}`)
+  reasons.push(...rawImmutableReasons(baseline, 'baseline', ctx))
+  reasons.push(...rawImmutableReasons(intelligence, 'intelligence', ctx))
+  reasons.push(...evaluatorReasons(baseline, 'baseline', ctx))
+  reasons.push(...evaluatorReasons(intelligence, 'intelligence', ctx))
+  const baselineMetricsRecord = baseline.metrics as Record<string, unknown> | undefined
+  const intelligenceMetricsRecord = intelligence.metrics as Record<string, unknown> | undefined
+  if (typeof baselineMetricsRecord?.architectureBlockingFindings !== 'number') reasons.push('baseline missing required metrics')
+  if (typeof intelligenceMetricsRecord?.architectureBlockingFindings !== 'number') reasons.push('intelligence missing required metrics')
   reasons.push(...validatePairIdentity(baseline.identity, intelligence.identity))
 
   if (reasons.length > 0) {
@@ -305,26 +479,51 @@ function argValue(args: string[], flag: string): string | undefined {
   return equal?.slice(flag.length + 1)
 }
 
-/** 私有 holdout 模式：读 tasks 目录 + run 目录，产出 comparison.json 与四主指标汇总。 */
+/** 私有 holdout 模式：按 manifest 枚举任务，产出 comparison.json 与四主指标汇总；无 VALID trial → 抛错（非零退出）。 */
 function runPrivateHoldout(runDir: string, tasksDir: string): void {
-  const tasks = loadPrivateTasks(tasksDir)
-  const results: HoldoutTrialResult[] = tasks.map((task) => {
-    const baseFile = join(runDir, 'baseline', `${task.id}.json`)
-    const fullFile = join(runDir, 'intelligence', `${task.id}.json`)
+  const loaded = loadPrivateTasks(tasksDir)
+  const { manifest, tasks, fatalErrors, warnings } = loaded
+
+  const rubricContents = new Map<string, string>()
+  for (const task of tasks) {
+    rubricContents.set(task.id, readFileSync(join(tasksDir, `${task.id}.rubric.yaml`), 'utf8'))
+  }
+
+  const results: HoldoutTrialResult[] = []
+  for (const id of manifest.tasks) {
+    const task = tasks.find(candidate => candidate.id === id)
+    if (!task) {
+      const taskError = fatalErrors.find(error => error.includes(`task ${id} `) || error.includes(`task ${id}:`))
+      results.push({ task_id: id, status: 'INVALID', invalid_reasons: [taskError ?? 'task load failed'] })
+      continue
+    }
+    const baseFile = join(runDir, 'baseline', `${id}.json`)
+    const fullFile = join(runDir, 'intelligence', `${id}.json`)
     if (!existsSync(baseFile) || !existsSync(fullFile)) {
-      return { task_id: task.id, status: 'INVALID', invalid_reasons: ['missing arm output file'] }
+      results.push({ task_id: id, status: 'INVALID', invalid_reasons: ['missing arm output file'] })
+      continue
     }
     const baseline = JSON.parse(readFileSync(baseFile, 'utf8')) as TrialArm
     const intelligence = JSON.parse(readFileSync(fullFile, 'utf8')) as TrialArm
-    return evaluateHoldoutTrial(task, baseline, intelligence)
-  })
+    const ctx: EvalContext = {
+      readRawFile: (arm) => {
+        const rawPath = resolve(runDir, arm.raw_output_ref)
+        return existsSync(rawPath) ? readFileSync(rawPath, 'utf8') : null
+      },
+      rubricContent: rubricContents.get(id),
+    }
+    results.push(evaluateHoldoutTrial(task, baseline, intelligence, ctx))
+  }
 
   const valid = results.filter(result => result.status === 'VALID')
   const invalid = results.filter(result => result.status === 'INVALID')
   const summary = {
+    suite_id: manifest.suite_id,
     tasks: results.length,
     valid: valid.length,
     invalid: invalid.length,
+    fatalErrors: [...new Set(fatalErrors)],
+    warnings: [...new Set(warnings)],
     invalidReasons: [...new Set(invalid.flatMap(result => result.invalid_reasons))],
     verdicts: Object.fromEntries(
       ['intelligence_better', 'baseline_better', 'tie'].map(v => [v, valid.filter(r => r.comparison?.verdict === v).length]),
@@ -340,6 +539,10 @@ function runPrivateHoldout(runDir: string, tasksDir: string): void {
   const comparisonFile = join(runDir, 'comparison.json')
   writeFileSync(comparisonFile, `${JSON.stringify({ results, summary }, null, 2)}\n`, 'utf8')
   console.log(JSON.stringify({ suite: 'private-holdout', summary, comparison: comparisonFile }, null, 2))
+
+  if (valid.length === 0) {
+    throw new Error(`private-holdout suite produced no VALID trial (tasks=${results.length}, invalid=${invalid.length})`)
+  }
 }
 
 function mean(values: number[]): number {
@@ -352,7 +555,12 @@ function main(): void {
   const tasksDirArg = argValue(args, '--tasks-dir')
 
   if (runDir && tasksDirArg) {
-    runPrivateHoldout(resolve(ROOT, runDir), resolve(ROOT, tasksDirArg))
+    try {
+      runPrivateHoldout(resolve(ROOT, runDir), resolve(ROOT, tasksDirArg))
+    } catch (error) {
+      console.error(`private-holdout suite failed: ${error instanceof Error ? error.message : String(error)}`)
+      process.exit(1)
+    }
     return
   }
 

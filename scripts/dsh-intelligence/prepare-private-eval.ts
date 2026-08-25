@@ -3,7 +3,8 @@
  *
  * 边界：
  *  - 写 `.dsh-intelligence/private-evals/**`（gitignored，永不提交）；
- *  - prompt 模板只含 requirement/constraints；rubric 模板只含判卷标准，二者分离；
+ *  - tasks/ 下有 suite manifest（任务全集）+ 每题的 prompt / rubric 分面模板，二者由
+ *    `run-eval.ts` 按 manifest 驱动、分 schema 真校验；
  *  - 不生成答案、不注入 retrieval/snapshot/晋升、不读取 visible-tasks 内容。
  *
  * 用法：tsx scripts/dsh-intelligence/prepare-private-eval.ts --init
@@ -50,7 +51,14 @@ rubric:
     P2: 1
 `
 
-const MANIFEST_TEMPLATE = `{
+const TASKS_MANIFEST_TEMPLATE = `# Private holdout suite manifest
+# manifest 是任务全集：evaluator 只按这里的列表枚举，目录里多出来 / 少掉的都显式暴露，绝不静默跳过。
+suite_id: phase0-v4flash-001
+tasks:
+  - holdout-000
+`
+
+const RUN_MANIFEST_TEMPLATE = `{
   "run_id": "<run-id>",
   "created_at": "",
   "identity": { "prompt_hash": "", "model": "", "temperature": 0, "max_tokens": 0, "seed": null },
@@ -69,13 +77,15 @@ export function initPrivateEvalSkeleton(root = ROOT): string[] {
   mkdir(tasksDir); mkdir(join(sampleRun, 'baseline')); mkdir(join(sampleRun, 'intelligence'))
   created.push(tasksDir, join(sampleRun, 'baseline'), join(sampleRun, 'intelligence'))
 
-  const promptFile = join(tasksDir, 'task-000.prompt.yaml')
-  const rubricFile = join(tasksDir, 'task-000.rubric.yaml')
-  const manifestFile = join(sampleRun, 'manifest.json')
+  const tasksManifestFile = join(tasksDir, 'manifest.yaml')
+  const promptFile = join(tasksDir, 'holdout-000.prompt.yaml')
+  const rubricFile = join(tasksDir, 'holdout-000.rubric.yaml')
+  const runManifestFile = join(sampleRun, 'manifest.json')
   for (const [file, content] of [
+    [tasksManifestFile, TASKS_MANIFEST_TEMPLATE],
     [promptFile, PROMPT_TEMPLATE],
     [rubricFile, RUBRIC_TEMPLATE],
-    [manifestFile, MANIFEST_TEMPLATE],
+    [runManifestFile, RUN_MANIFEST_TEMPLATE],
   ] as const) {
     if (!existsSync(file)) { writeFileSync(file, content, 'utf8'); created.push(file) }
   }
