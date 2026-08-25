@@ -1,4 +1,4 @@
-# Pattern seed — candidate，未晋升
+# Pattern seed — candidate，未晋升；默认检索不会加载 candidates/
 schema_version: 1
 id: pattern-owned-durable-scheduler
 title: Scheduler owns subprocess lifecycle

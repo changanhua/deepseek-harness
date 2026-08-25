@@ -1,4 +1,4 @@
-# Phase 0 holdout — domain records vs Settings
+# Phase 0 visible regression — domain records vs Settings
 schema_version: 1
 id: task-settings-domain-data
 title: Persist domain workspace records
@@ -11,5 +11,5 @@ baseline_trap: >-
   把领域记录、workspace graph 或运行结果塞进 Settings（用户可调部署参数域）。
 expected_design:
   - 领域数据由领域 owner 保存（domain-store），Settings 只存用户可调参数
-  - dsh_placement.configuration 不指向 settings 承载领域记录
+  - Settings 可保存 tunable，但不得成为领域记录的 source of truth
   - 对 Agent/Session 只引用不重定义

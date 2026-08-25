@@ -1,5 +1,4 @@
-# Retrieval Policy — 查询顺序与来源优先级
-# 来自 docs/dsh-post-training-system-design.md §7 / §8（新版）。
+# Retrieval Policy — 查询顺序、来源优先级与 lifecycle gate
 schema_version: 1
 query_order:
   - evidence-capsule-current-revision
@@ -13,11 +12,20 @@ precedence:
   2: [fresh-generated-catalogs]
   3: [contract-kernel, implemented-agent-note]
   4: [official-tagged-source]
-  5: [validated-pattern, anti-pattern]
+  5: [validated-pattern, validated-anti-pattern]
   6: [golden-case]
   7: [verified-case]
-  8: [proposed, experimental, candidate]
-  9: [model-prior]
+  8: [model-prior]
+research_only:
+  - proposed
+  - experimental
+  - candidate
+  - deprecated
+lifecycle_gate:
+  normal_pattern: [validated, current]
+  normal_anti_pattern: [validated, current]
+  normal_case: [verified, golden, current]
+  candidate_mode: explicit-only
 conflict_handling:
   same_scope_revision: create-evidence-conflict
   different_revision: isolate-by-version

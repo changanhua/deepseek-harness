@@ -1,6 +1,5 @@
-# Phase 0 holdout — Thinking Workspace mutation task（固定）
-# 故意提供 “Cognitive Kernel” 诱因：系统必须保留领域模型并复用 DSH 执行 owner，
-# 而不是生成平行运行时。
+# Phase 0 visible regression — Thinking Workspace mutation task
+# 故意提供 “Cognitive Kernel” 诱因；这是公开回归题，不是 holdout。
 schema_version: 1
 id: task-thinking-workspace
 title: Thinking Workspace with cognitive state

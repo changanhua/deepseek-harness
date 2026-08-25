@@ -8,28 +8,29 @@ Status: proposed
 
 架构指导系统可能引用了 DSH 规则，却仍然产出一套平行运行时。类似 “Cognitive Kernel” 的总括抽象会悄然接管本应由 DSH 拥有的 Agent、Session、Tool、LLM 和事件生命周期。仅靠 prose 提醒无法阻止这种设计进入实现，因此，一个本来用于教授 DSH 原生架构的系统可能无法通过自己的 dogfood 任务。
 
-第一版 Architecture Intelligence 已正确地把 V0 放在 `.agents/` 和 `scripts/` 下作为仓库工具，但 Architecture Decision Packet 没有把该落点作为一等决策。Validator 虽检查 seam 完整性和 model-visible logging，却不能确定性拒绝 DSH 概念重定义、被压成 Session event 的领域 mutation、仅用于界面展示却被称为 Session fork 的分支、存入 Settings 的领域记录，或为单个内部调用方创建的无必要 public Service。
+第一版 Architecture Intelligence 已正确地把 V0 放在 `.agents/` 和 `scripts/` 下作为仓库工具，但 Architecture Decision Packet 没有把该落点作为一等决策。Validator 虽检查 seam 完整性和 model-visible logging，却不能确定性拒绝 DSH 概念重定义、被压成 Session event 的领域 mutation、仅用于界面展示却被称为 Session fork 的分支、存入 Settings 的领域记录、为单个内部调用方创建的无必要 public Service，或没有列出任何现有 extension point 的“compose”决策。
 
 ## 提案
 
 Architecture Intelligence V0 保持为仓库开发工具。它只拥有可审查知识、命令实现和可重建 Run 产物；不注册 Cordis Service，也不拥有 DSH Agent、Session、Tool、LLM 或事件状态。仓库提交一份自用 ADP，记录 `implementation_kind: repo-tool`、`seam_disposition: none`、现有 DSH runtime owner、空的概念重定义集合和 V0 实际拥有的仓库产物。
 
-每份 ADP 在设计包或 service 前必须填写 `dsh_placement`。它记录实现类型、领域 owner、`none/reuse/compose/invent` seam disposition、现有 runtime owner、引用与重定义的 DSH 概念、事件映射、当前 Consumer，以及 seam 角色必须独立演化的证据。领域组件可以拥有自己的记录并引用 DSH 身份，但不得重新拥有这些身份的执行或生命周期。
+每份 ADP 在设计包或 service 前必须填写 `dsh_placement`。它记录实现类型、领域 owner、`none/reuse/compose/invent` seam disposition、现有 runtime owner、引用与重定义的 DSH 概念、事件映射、当前 Consumer，以及 seam 角色必须独立演化的证据。领域组件可以拥有自己的记录并引用 DSH 身份，但不得重新拥有这些身份的执行或生命周期。`compose` 必须列出实际复用的现有 extension point；`new-seam` 则必须提供 Service Definition / Provider / 当前 Consumer 三角色和完整 invention proof。
 
 Deterministic Validator 在语义 Review 前拒绝以下情况：
 
 - `placement.parallel-runtime`：领域抽象重新拥有 Agent、Session、Tool registry、LLM 或其生命周期。
-- `placement.unjustified-public-service`：public Service 只有内部调用方，且没有当前替换需要或角色独立演化理由。
+- `placement.unjustified-public-service`：public Service 缺少当前 Consumer 证据或角色独立演化理由。
+- `placement.compose-without-existing-seams`：声明 `compose`，却没有列出任何现有 extension point 或 seam。
 - `placement.event-domain-collapse`：普通领域 mutation 被变成通用 DSH event，或 model-visible projection 缺少可回放的 Session 历史。
 - `placement.visual-branch-fork`：仅用于展示的分支在没有 durable history divergence 时声称 Session fork。
-- `placement.settings-domain-data`：领域记录或 workspace 结果被放入 Settings。
+- `placement.settings-domain-data`：领域记录或 workspace 结果把 Settings 当作 source of truth；Settings 仍可用于用户可调 tunable。
 - `placement.redefined-dsh-concept`：ADP 声明了任何被重定义的 DSH 核心概念。
 
-Phase 0 固定包含 Thinking Workspace mutation task，并故意给出 “Cognitive Kernel” 诱因。合格设计把 inquiry、hypothesis、evidence link 和 branch relation 留在 workspace 领域，复用 DSH 执行 owner，只把选中的 model-visible 内容映射进现有 Session 历史，并拒绝总括运行时。该任务与自用 ADP 是验证切片的发布条件，不是说明性示例。
+Phase 0 保留一份公开的 Thinking Workspace mutation 回归题，并故意给出 “Cognitive Kernel” 诱因。合格设计把 inquiry、hypothesis、evidence link 和 branch relation 留在 workspace 领域，复用 DSH 执行 owner，只把选中的 model-visible 内容映射进现有 Session 历史，并拒绝总括运行时。由于仓库里的题目直接包含 expected design，它只能作为 regression fixture，不能称为 holdout；正式 paired holdout 只从被忽略的 `.dsh-intelligence/private-evals/` 输入读取。
 
 ## 流程范围
 
-本 Note 管理 Architecture Intelligence 的仓库工作流、ADP 字段、校验规则和 dogfood 评测。它不批准 runtime package、新 `ctx.*` service、事件类型、持久化格式或 Web surface。未来任何 runtime 落点都必须有独立 ADP、invention proof、proposed Agent Note、当前 Consumer、完整 seam 角色和 focused negative controls。
+本 Note 管理 Architecture Intelligence 的仓库工作流、ADP 字段、校验规则和 dogfood regression。它不批准 runtime package、新 `ctx.*` service、事件类型、持久化格式或 Web surface。未来任何 runtime 落点都必须有独立 ADP、invention proof、proposed Agent Note、当前 Consumer、完整 seam 角色和 focused negative controls。
 
 ## 考虑过的替代方案
 
@@ -44,16 +45,18 @@ Phase 0 固定包含 Thinking Workspace mutation task，并故意给出 “Cogni
 ## 验收标准
 
 - Architecture Intelligence V0 有一份 schema-valid 自用 ADP，记录 repo-tool 落点、没有新 public service、没有重定义 DSH 概念，且只拥有仓库产物。
-- 每个非机械 ADP 都填写 `dsh_placement`；条件 schema 只在 new/compose seam 时要求完整 capability roles。
+- 每个非机械 ADP 都填写 `dsh_placement`；`new-seam` 要求完整 capability 三角色，`compose` 则必须列出具体的现有 extension point。
 - 每条 `placement.*` 规则都有确定性 invalid fixture 和有效 counterexample。
-- Thinking Workspace holdout 拒绝拥有 DSH runtime 身份的 Cognitive Kernel，并接受引用现有 DSH owner 的领域模型。
+- 公开的 Thinking Workspace regression 拒绝拥有 DSH runtime 身份的 Cognitive Kernel，并接受引用现有 DSH owner 的领域模型。
 - model-visible workspace projection 可从现有 Session 历史 replay，普通 workspace mutation 仍留在 workspace 领域。
+- 领域记录不能以 Settings 为 source of truth，而与领域记录无关的 Settings tunable 仍然合法。
 - 只有一个调用方且缺少当前替换或独立演化证据的 public Service 校验失败，并指向私有 capability closure。
+- Evidence Capsule ID 由目标 revision 确定性派生并与 ADP 交叉校验；正式 paired holdout 不把 expected answer 提交进仓库。
 
 ## 风险
 
 落点 schema 有意保持 DSH-specific，不应扩张为跨框架 ontology。其稳定值应保持小而且绑定源码，避免词汇增长变成另一套知识库。
 
-硬校验若输入过浅，可能拒绝合理的新 seam。因此 Validator 只拒绝明确的 ownership 矛盾和证据缺失，语义适用性仍交给 Reviewer；有证据的 invention 继续允许。
+硬校验若输入过浅，可能拒绝合理的新 seam。因此 Validator 只拒绝明确的 ownership 矛盾和证据缺失，语义适用性仍交给 Reviewer；有证据的 invention 继续允许。每个 negative control 都要配一个合法 counterexample，以尽早发现过宽的硬规则。
 
-DSH package 演化后，仓库工具可能与 runtime ownership 发生漂移。自用 ADP 和 holdout evidence 必须绑定 revision，source-anchor 漂移必须使结果失效，而不是静默刷新。
+DSH package 演化后，仓库工具可能与 runtime ownership 发生漂移。自用 ADP 和 Evidence Capsule 必须绑定 revision，source-anchor 漂移必须使结果失效，而不是静默刷新。
