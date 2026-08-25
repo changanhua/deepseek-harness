@@ -86,7 +86,9 @@ function assertCasePrerequisites(record: CandidateRecord): void {
     throw new Error('case promotion requires source_adp')
   }
   const verification = record.verification ?? {}
-  if (!nonEmptyArray(verification.blocked_findings) && !nonEmptyArray(verification.runtime_observations) && !nonEmptyArray(verification.verification_refs)) {
+  if (!nonEmptyArray(verification.blocked_findings)
+      && !nonEmptyArray(verification.runtime_observations)
+      && !nonEmptyArray(verification.verification_refs)) {
     throw new Error('case promotion requires verification evidence')
   }
 }

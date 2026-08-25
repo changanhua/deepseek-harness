@@ -345,7 +345,7 @@ export function checkPlacementRules(adp: AdpLike): Finding[] {
     ...(placement.event_mapping?.live_execution_signals ?? []),
   ]
   const parallelSignal = signals.find(signal => forbiddenOwners.has(normalized(signal)))
-  const ownedByUmbrella = Array.isArray(adp.state) && adp.state.some(state => {
+  const ownedByUmbrella = Array.isArray(adp.state) && adp.state.some((state) => {
     const owner = normalized(state.authoritative_owner ?? '')
     return owner.includes('cognitivekernel') || owner.includes('agentruntime') || forbiddenOwners.has(owner)
   })
@@ -414,7 +414,7 @@ export function checkPlacementRules(adp: AdpLike): Finding[] {
   }
 
   if (Array.isArray(adp.state)) {
-    const settingsOwnedState = adp.state.find(state => {
+    const settingsOwnedState = adp.state.find((state) => {
       const source = `${state.source_of_truth ?? ''} ${state.authoritative_owner ?? ''}`
       return /(^|[^a-z])(?:ctx\.)?settings([^a-z]|$)/i.test(source)
     })

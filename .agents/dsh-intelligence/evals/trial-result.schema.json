@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsh-intelligence/evals/trial-result.schema.json",
+  "title": "Paired Trial Result",
+  "description": "一次 baseline vs intelligence paired trial。identity 必须一致；任一致命条件（缺 task / id 不一致 / prompt hash 不一致 / 模型失败 / 缺 rubric / 缺必需 metrics）→ status=INVALID，绝不按 0 finding 计分。",
+  "type": "object",
+  "required": ["task_id", "identity", "arms", "status"],
+  "properties": {
+    "task_id": { "type": "string", "pattern": "^holdout-\\d{3}$" },
+    "identity": {
+      "type": "object",
+      "required": ["prompt_hash", "model", "temperature", "max_tokens"],
+      "properties": {
+        "prompt_hash": { "type": "string", "pattern": "^sha256:" },
+        "model": { "type": "string" },
+        "temperature": { "type": "number" },
+        "max_tokens": { "type": "integer" },
+        "seed": { "type": ["integer", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "arms": {
+      "type": "object",
+      "required": ["baseline", "intelligence"],
+      "properties": {
+        "baseline": { "$ref": "#/$defs/arm" },
+        "intelligence": { "$ref": "#/$defs/arm" }
+      },
+      "additionalProperties": false
+    },
+    "status": { "type": "string", "enum": ["VALID", "INVALID"] },
+    "invalid_reasons": { "type": "array", "items": { "type": "string" } },
+    "comparison": { "$ref": "#/$defs/comparison" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "arm": {
+      "type": "object",
+      "required": ["system", "raw_output_hash", "execution_status", "normalized_findings", "metrics"],
+      "properties": {
+        "system": { "type": "string", "enum": ["baseline-no-intelligence", "full-intelligence"] },
+        "raw_output_hash": { "type": "string", "pattern": "^sha256:" },
+        "execution_status": { "type": "string", "enum": ["success", "failed", "missing"] },
+        "normalized_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule_id", "severity"],
+            "properties": {
+              "rule_id": { "type": "string" },
+              "severity": { "type": "string", "enum": ["P0", "P1", "P2"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "metrics": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "comparison": {
+      "type": "object",
+      "properties": {
+        "blocking_findings_delta": { "type": "integer" },
+        "unsupported_invention_delta": { "type": "integer" },
+        "hallucinated_symbol_delta": { "type": "integer" },
+        "evidence_grounding_delta": { "type": "number" },
+        "verdict": { "type": "string", "enum": ["baseline_better", "intelligence_better", "tie", "invalid"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}
