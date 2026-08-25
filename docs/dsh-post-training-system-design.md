@@ -1,6 +1,7 @@
 # DSH Architecture Intelligence Layer：认知与后训练系统设计
 
 日期：2026-08-25
+
 证据基线：本地 checkout `17605f61be04443711cba6a8fa81cb1eaff66363`（分支 `runtime-awareness-clean`）；官方已发布基线 [`dsh-v0.1.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2)，提交 `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`。
 
 ## 结论先行
@@ -27,6 +28,8 @@
 - **Architecture Decision Packet（ADP）**：回答“这项需求的角色、状态 owner、生命周期、持久化、并发、模型可见性与验证义务是什么”。
 
 Skill 只负责驱动流程和加载所需材料；Case 是某次任务的不可变证据；Pattern 是跨案例验证后的迁移规则；Validator 把本可机械发现的错误挡在写代码之前。真正的模型微调放到 V2，前提是系统已经积累了版本明确、经过 Review 和运行验证的高质量轨迹。
+
+这里的 “Layer” 是仓库级开发工作流，不是 DSH 运行时控制平面。V0 只拥有 `.agents/dsh-intelligence/` 中的可审查知识、`scripts/dsh-intelligence/` 中的命令和 `.dsh-intelligence/` 中的可重建运行产物；它不拥有 Agent、Session、Tool、LLM、Cordis Service 或运行时事件域。以后若确有部分能力需要进入 `packages/`，该变化必须先由本系统自己的 ADP 证明现有 extension point 不足、说明完整 seam 角色和独立演化理由，并通过本文定义的 DSH 落点校验。
 
 ## 证据边界
 
@@ -171,6 +174,7 @@ Skill 只负责驱动流程和加载所需材料；Case 是某次任务的不可
 | Positive-only bias | 只看到最终成功代码，不知道初稿为何错 | Case 保存错误方案和 findings；Anti-pattern 是一等条目 |
 | Context dilution | 规则、源码、案例过多，关键 owner/lifecycle 条款被稀释 | 常驻 ≤1,200 tokens；每轮最多 3 个 precedent、6 个证据片段 |
 | Premature architecture | Pattern 让 Agent 套模板，未理解需求就创建新 seam | Adapt/Invent 门禁；先列现有 extension point 和两个替代方案 |
+| Parallel runtime mimicry | 用 `Cognitive Kernel`、`Agent Runtime` 等总括名重新拥有 Agent、Session、Tool、LLM 或事件生命周期 | ADP 强制 `dsh_placement`；Validator 拒绝重定义 DSH 身份、owner 和生命周期 |
 | Pattern ossification | 一次成功变成永久规则，阻碍 DSH 迭代 | Pattern 晋升至少需要独立证据；记录适用/禁用条件和 revalidation trigger |
 | Runtime overreach | 一次 HTTP 200、一个 listener 或一次命令成功被当成完整 vertical | 证据类型明确；观察事实不得推出未测试的 durable/replay/UX 结论 |
 | Self-review illusion | 同一模型重复 checklist，仍保留相同盲点 | Reviewer 先独立重建分类/owner；机器校验先执行；高风险再升级模型或人 |
@@ -189,9 +193,9 @@ Skill 只负责驱动流程和加载所需材料；Case 是某次任务的不可
 | 级别 | 组件 | 职责 |
 |---|---|---|
 | Must Have | Evidence Capsule Builder（Fact Engine） | 先锁定 repo/revision/profile，再采集静态源码事实和有范围的 runtime observation；不做架构判断，也不把“可注册”写成“正在运行” |
-| Must Have | Architecture Packet Engine | 风险分类、受限检索、生成/维护 ADP；把自然语言需求转换成可检查决策 |
+| Must Have | Architecture Packet Workflow | 风险分类、受限检索、生成/维护 ADP；把自然语言需求转换成可检查决策；它是 Architect Skill 与 `validate-adp.ts` 的组合，不是运行时引擎 |
 | Must Have | Validator + Reviewer | 机器拒绝缺项/冲突；语义 Reviewer 独立检查 seam、owner、生命周期和验证充分性 |
-| Must Have | Knowledge & Eval Ledger | 保存 Run/Artifact/Candidate/Knowledge 关系，控制晋升/废弃，并执行 paired eval |
+| Must Have | Knowledge & Eval Artifact Ledger | 以仓库产物保存 Run/Artifact/Candidate/Knowledge 关系，控制晋升/废弃，并执行 paired eval；V0 不注册 live store/service |
 | Should Have | Architect 与 Reviewer Skills | 新增 Architect 入口并扩展现有 `dsh-code-review`；提供角色隔离，正文保持薄 |
 | Should Have | Runtime probe adapters | 对接 `dsh --dump-config`、`runtime_inspect`、`cordis_inspect_*`；无运行时则明确 unavailable |
 | Should Have | Implementer Skill | 消费 accepted ADP 并在偏离时生成 amendment；V0 可先用现有 AGENTS/测试规则加 handoff 模板 |
@@ -199,7 +203,7 @@ Skill 只负责驱动流程和加载所需材料；Case 是某次任务的不可
 | Later | Distillation/fine-tuning | 用 validated ADP、rejected alternatives、findings 和外部轨迹训练 |
 | Later | UI/graph/vector service | 只有词法检索、人工 Review 或规模指标出现瓶颈后再做 |
 
-Contract Kernel 和 Bounded Retriever 是共享 artifact/内部子系统，不增加独立运行服务：Architecture Packet Engine 使用它们生成 ADP，Validator 和 Reviewer 使用相同规则 ID 检查 ADP。
+Contract Kernel 和 Bounded Retriever 是共享 artifact/内部函数，不增加独立运行服务：Architecture Packet Workflow 使用它们生成 ADP，Validator 和 Reviewer 使用相同规则 ID 检查 ADP。Architecture Intelligence 本身先提交一份 `implementation_kind: repo-tool` 的自用 ADP；若它反而提出新的 `ctx.*`、Agent/Session owner 或通用事件域，Validator 必须像审查任何其他设计一样拒绝它。
 
 ### B2. 必须常驻上下文的知识
 
@@ -208,15 +212,15 @@ Contract Kernel 和 Bounded Retriever 是共享 artifact/内部子系统，不�
 | ID | 规则 |
 |---|---|
 | C01 | 当前 repo revision、profile 和 Evidence Capsule ID 未锁定时，不得声称当前 API 或运行状态。 |
-| C02 | 新行为优先使用 documented extension point；修改 agent loop 必须更新架构文档。 |
-| C03 | capability seam 必须说明 Service Definition、Service Provider 和 Consumer；单个角色不是完整 seam。 |
+| C02 | 新行为优先使用 documented extension point；领域模型可以引用 DSH Agent、Session、Tool、Skill，但不得重定义这些身份、owner 或生命周期；修改 agent loop 必须更新架构文档。 |
+| C03 | capability seam 必须说明 Service Definition、Service Provider 和当前 Consumer；角色只有在需要独立演化时才拆包，同一包可以承担多个角色；单个角色不是完整 seam。 |
 | C04 | 每个状态只有一个 authoritative owner；派生值说明来源和 freshness。 |
 | C05 | 所有注册都是 effect，必须说明 reload、unload 和 dispose-to-quiescence。 |
-| C06 | 任何 model-visible 输入都必须可由 session log 重建。 |
+| C06 | 先区分领域/工作区 mutation、model-visible projection 与 live capability event；只有进入模型请求的内容必须可由 session log 重建，普通领域 mutation 不得被强塞成通用 SessionEvent。 |
 | C07 | durable state 必须说明持久化、恢复、replay、并发、取消和失败语义。 |
 | C08 | 部署可调参数属于 validated config；默认值由 owner 的 `resolve(request): spec` 显式决定。 |
 | C09 | misconfiguration 在最早可判定点失败，不静默跳过缺失 referent。 |
-| C10 | Adapt/Compose 优先；Invent 必须通过 invention proof。 |
+| C10 | Adapt/Compose/私有 capability closure 优先；只有当前 Consumer 需要公开替换能力或角色确需独立演化时才建立 public service；Invent 必须通过 invention proof。 |
 | C11 | 测试、HTTP、模型自评和 runtime observation 只证明各自观察的问题，不互相替代。 |
 | C12 | ADP 未 accepted 不进入非机械实现；证据、未知项和设计偏离必须写入 artifact。 |
 
@@ -310,7 +314,7 @@ CLOSED
 
 1. 当前 generated capability map 和源码中没有满足需求义务的 extension point。
 2. 至少两个适配方案被逐条证明不满足，而不是“没找到相似 Case”。
-3. 新能力的三个 seam 角色或“不应成为 seam”的理由完整。
+3. 新能力的三个 seam 角色、当前 Consumer 与角色独立演化理由完整；若只有一个包内调用方且没有独立演化需要，应保留为私有 capability closure，而不是公开 Service Definition。
 4. owner、生命周期、配置、持久化、恢复、并发、模型可见性与可观测性义务闭合。
 5. 说明对 profile/bundle、host/client、wire、存储格式和兼容性的影响。
 6. 有 proposed Agent Note、最小 vertical、负向测试和撤回/禁用路径。
@@ -326,6 +330,17 @@ Reviewer 分两层：
 2. **Semantic Reviewer**：先根据原始需求和 Evidence Capsule 独立形成分类、首选 seam 和 owner 假设，再读取 Architect ADP，逐项构造失败场景。
 
 Reviewer 必须覆盖：seam、state owner、lifecycle、effect ownership、host/client、persistence、restart/recovery、replay、concurrency、configuration plane、model-visible state、hidden state、observability、verification。每个 finding 包含 severity、rule ID、文件/证据、可触发的失败、修复义务和验证方法；没有证据的偏好只能作为 suggestion。
+
+V0 至少实现以下 DSH 落点硬检查；这些检查先于语义 Review，不能用说明文字豁免：
+
+| Rule ID | 确定性拒绝条件 | 修复方向 |
+|---|---|---|
+| `placement.parallel-runtime` | 领域抽象重新拥有或重定义 Agent、Session、Tool registry、LLM 或其生命周期 | 保留领域 owner，只引用 `ctx.agents`、`ctx.sessions`、`ctx.tools`、`ctx.llm` 等现有 owner |
+| `placement.unjustified-public-service` | 新 public Service 只有包内调用方，且没有当前 Consumer 的替换需要或角色独立演化证据 | 改为私有 capability closure/领域模块，或补齐完整 seam 与 invention proof |
+| `placement.event-domain-collapse` | 普通领域 mutation 被映射为通用 DSH event，或 model-visible projection 没有可回放 SessionEvent | 分开 domain mutation、session-log projection 与 live capability event |
+| `placement.visual-branch-fork` | 仅因 UI 分支展示就声明 Session fork，但没有 durable history divergence | 使用领域分支引用；只有真实会话历史分叉才调用 Session fork |
+| `placement.settings-domain-data` | 把领域记录、workspace graph 或运行结果存进 Settings | Settings 只保存用户可调部署参数；领域数据由领域 owner 保存 |
+| `placement.redefined-dsh-concept` | `dsh_placement.dsh_concepts.redefines` 非空 | 删除平行身份；通过引用、组合或现有 Consumer 接入 DSH |
 
 ### B10. 新经验进入知识体系
 
@@ -370,7 +385,7 @@ Task Classifier                           │
        ↓                                  │
 Bounded Retriever ← Contract/Pattern/Anti-pattern/Case
        ↓                                  │
-Architecture Packet Engine               │
+Architecture Packet Workflow             │
   └─ Architecture Decision Packet (ADP)  │
        ↓                                  │
 Deterministic Validator ──fail────────────┘
@@ -387,7 +402,7 @@ Candidate Extractor
        ↓
 Review + Validation + Promotion
        ↓
-Knowledge & Eval Ledger ───────────────→ Retriever / Eval Corpus
+Knowledge & Eval Artifact Ledger ──────→ Retriever / Eval Corpus
 ```
 
 ### 2. 推荐目录结构
@@ -417,9 +432,10 @@ Knowledge & Eval Ledger ───────────────→ Retriev
 │   │   ├── task-taxonomy.yaml
 │   │   ├── routing-policy.yaml
 │   │   └── token-budgets.yaml
-│   └── evals/
-│       ├── rubrics/
-│       └── visible-tasks/                # examples only; never the holdout
+│   ├── evals/
+│   │   ├── rubrics/
+│   │   └── visible-tasks/                # examples only; never the holdout
+│   └── self-adp.yaml                     # V0 proves its own repo-tool placement
 ├── skills/
 │   ├── dsh-architect/SKILL.md
 │   ├── dsh-implementer/SKILL.md
@@ -451,9 +467,9 @@ scripts/
 | 组件 | 输入 | 输出 | 权威性 | 生命周期 | 常驻上下文 |
 |---|---|---|---|---|---|
 | Evidence Capsule Builder | repo/profile/runtime scope | `evidence.json` + source refs | 对已观察字段有范围/时间限定的事实权威；不拥有架构结论 | 每个 Run 新建；revision/profile 变化即失效 | 只常驻 ID、revision 与摘要 |
-| Architecture Packet Engine | requirement、Evidence Capsule、最多 3 个 precedent | `adp.yaml`、未知项、alternatives | 决策候选；通过 Review 后才成为本任务 accepted design | 从 intake 到 close，可追加 amendment，不覆写旧版 | 常驻当前 ADP 摘要 |
+| Architecture Packet Workflow | requirement、Evidence Capsule、最多 3 个 precedent | `adp.yaml`、未知项、alternatives | 决策候选；通过 Review 后才成为本任务 accepted design | 从 intake 到 close，可追加 amendment，不覆写旧版 | 常驻当前 ADP 摘要 |
 | Validator + Reviewer | raw requirement、evidence、ADP、后续 diff/verification | machine errors、structured findings、accept/block | Validator 对 schema/rule 是权威；Reviewer 对语义是审核意见，不覆盖源码事实 | 每个 ADP revision 和实现 diff 运行 | 只注入 findings 摘要 |
-| Knowledge & Eval Ledger | Run artifacts、findings、测试、runtime evidence、使用记录 | candidate、promoted records、metrics | 只有 validated/current 记录可参与正常检索；Case/Pattern 均低于 Contract | append-only lineage；支持 supersede/deprecate/quarantine | 不常驻，按需检索 |
+| Knowledge & Eval Artifact Ledger | Run artifacts、findings、测试、runtime evidence、使用记录 | candidate、promoted records、metrics | 只有 validated/current 记录可参与正常检索；Case/Pattern 均低于 Contract | 仅追加 lineage；支持 supersede/deprecate/quarantine | 不常驻，按需检索 |
 
 ### 4. Evidence Capsule（事实 IR）
 
@@ -506,6 +522,25 @@ evidence:
   capsule_id: evidence:...
   required_refs: []
   unresolved_facts: []
+dsh_placement:
+  implementation_kind: repo-tool | domain-component | existing-consumer | new-seam
+  domain_owner: ''
+  seam_disposition: none | reuse | compose | invent
+  existing_runtime_owners:
+    agent_execution: ctx.agents
+    model_history: ctx.sessions
+    tool_registry: ctx.tools
+    inference: ctx.llm
+  dsh_concepts:
+    references: []
+    redefines: []
+  event_mapping:
+    domain_mutations: []
+    model_visible_projection: []
+    live_execution_signals: []
+  public_service_justification:
+    current_consumers: []
+    independent_role_evolution: []
 alternatives:
   - id: adapt-jobs
     mode: adapt
@@ -581,7 +616,15 @@ verification:
 open_questions: []
 ```
 
-IR 不是要求模型填写更多 prose，而是让遗漏可见、让 Validator 能拒绝不完整设计。T0/T1 使用 schema 的条件分支，只要求相关字段。
+`dsh_placement` 先决定设计落在 DSH 的哪里，再允许讨论包和 service：
+
+- `repo-tool` 只拥有仓库开发产物和调用进程内的文件操作，不注册 Cordis Service，也不拥有 DSH 运行状态。
+- `domain-component` 可以拥有自己的领域记录和工作区状态，但对 Agent、Session、Tool、Skill 只保存引用或配置；模型执行、历史、工具注册与推理仍由现有 DSH owner 负责。
+- `existing-consumer` 通过 documented extension point 消费现有能力，不为包内编排额外制造 `ctx.*`。
+- `new-seam` 才要求 `capability` 三角色、当前 Consumer、独立演化证据与完整 invention proof；一个内部调用方默认使用私有 capability closure。
+- `event_mapping` 必须把领域 mutation、进入模型历史的投影和只描述实时执行的 capability event 分开。UI 展示分支不是 Session fork；只有持久会话历史实际分叉时才使用 fork。
+
+IR 不是要求模型填写更多 prose，而是让遗漏可见、让 Validator 能拒绝不完整设计。`capability` 等 section 按 `implementation_kind` 条件启用：T0/T1 和无新 seam 的领域组件不为凑字段虚构 Service Definition。
 
 ### 6. Agent 主流程
 
@@ -589,18 +632,19 @@ IR 不是要求模型填写更多 prose，而是让遗漏可见、让 Validator 
 2. 读取原始需求，提取可观察结果、明确非目标、写入 `task.json`；不提出方案。
 3. 生成 Evidence Capsule；只有任务涉及实际运行实例时才调用 `--dump-config`、`runtime_inspect` 或 `cordis_inspect_*`，每条运行观察保存 scope 和时间。
 4. 运行确定性风险触发器：`durable/restart/queue` 强制 state+recovery；`ctx.* / provider` 强制 seam roles；`tool/prompt/model-visible` 强制 session-log；`UI/remote` 强制 host/client/wire；`settings/default/credential` 强制 configuration+secret。
-5. 根据分类先查 generated catalog，再定位 exact source symbol；每个关键 API 至少有一个当前 revision source ref。
-6. 检索最多三个 precedent：一个 Contract/official or local source precedent、一个 Pattern/Anti-pattern、一个 Case。读取摘要后只展开真正匹配的详情。
-7. 写“相同约束/不同约束/不可迁移点”，防止直接复制 Case。
-8. 生成至少两个 alternative；机械任务可声明 `single-obvious-path` 并给证据。每个方案写满足项、违反项、owner 与失败场景。
-9. 选择 Adapt/Compose 或进入 invention proof；未通过就回到检索/alternatives。
-10. 生成 ADP，逐个状态填写 owner、durability、mutation ordering、replay、recovery、cancellation、terminal state，并把每个关键选择写成可证伪的 proof obligation。
-11. 运行 `validate-adp`；机器错误全部清零，不允许用 Reviewer prose 豁免 schema。
-12. Reviewer 先独立形成 task class/seam/owner 假设，再对比 ADP，检查 15 个强制主题并输出 structured findings。
-13. blocker 清零后形成 accepted ADP 和 verification matrix；Implementer 只能在此范围内实施。
-14. 实现发现证据错误或必须改变 owner/seam/proof obligation 时，创建 ADP amendment，禁止静默偏离。
-15. 运行 focused tests、negative controls、snapshot/gates 和所需真实 entry path；分别记录通过、失败、未运行和不适用。
-16. 关闭 Run，计算指标；只有触发条件命中时生成 candidate，等待显式 promotion。
+5. 先填写 `dsh_placement`：指出领域 owner、现有 DSH owner、概念引用、事件映射和 `none/reuse/compose/invent` disposition；出现 DSH 概念重定义时立即停止。
+6. 根据分类先查 generated catalog，再定位 exact source symbol；每个关键 API 至少有一个当前 revision source ref。
+7. 检索最多三个 precedent：一个 Contract/official or local source precedent、一个 Pattern/Anti-pattern、一个 Case。读取摘要后只展开真正匹配的详情。
+8. 写“相同约束/不同约束/不可迁移点”，防止直接复制 Case。
+9. 生成至少两个 alternative；机械任务可声明 `single-obvious-path` 并给证据。每个方案写满足项、违反项、owner 与失败场景。
+10. 选择 Adapt/Compose/私有 capability closure，或进入 invention proof；未通过就回到检索/alternatives。
+11. 生成 ADP，逐个状态填写 owner、durability、mutation ordering、replay、recovery、cancellation、terminal state，并把每个关键选择写成可证伪的 proof obligation。
+12. 运行 `validate-adp`；机器错误全部清零，不允许用 Reviewer prose 豁免 schema。
+13. Reviewer 先独立形成 task class/seam/owner 假设，再对比 ADP，检查强制主题并输出 structured findings。
+14. blocker 清零后形成 accepted ADP 和 verification matrix；Implementer 只能在此范围内实施。
+15. 实现发现证据错误或必须改变 owner/seam/proof obligation 时，创建 ADP amendment，禁止静默偏离。
+16. 运行 focused tests、negative controls、snapshot/gates 和所需真实 entry path；分别记录通过、失败、未运行和不适用。
+17. 关闭 Run，计算指标；只有触发条件命中时生成 candidate，等待显式 promotion。
 
 ### 7. Retrieval Policy
 
@@ -793,17 +837,50 @@ Anti-pattern 的核心不是“不要这样”，而是可复现的失败机制�
 
 ### 13. V0 验证切片与 MVP
 
+#### Architecture Intelligence V0 的自用 ADP
+
+V0 必须先用自己的 schema 固定以下落点；这份 `self-adp.yaml` 是 Phase 0 的第一个验收产物，不是事后声明：
+
+```yaml
+dsh_placement:
+  implementation_kind: repo-tool
+  domain_owner: repository-development-workflow
+  seam_disposition: none
+  existing_runtime_owners:
+    agent_execution: ctx.agents
+    model_history: ctx.sessions
+    tool_registry: ctx.tools
+    inference: ctx.llm
+  dsh_concepts:
+    references: [Agent, Session, Tool, Skill, SessionEvent, capability-seam]
+    redefines: []
+  event_mapping:
+    domain_mutations: [repository-artifact-write]
+    model_visible_projection: []
+    live_execution_signals: []
+  public_service_justification:
+    current_consumers: []
+    independent_role_evolution: []
+owned_artifacts:
+  canonical: [.agents/dsh-intelligence]
+  executable: [scripts/dsh-intelligence]
+  rebuildable: [.dsh-intelligence]
+forbidden_runtime_ownership: [Agent, Session, ToolRegistry, Llm, CordisService, SessionEventDomain]
+```
+
+脚本可以在调用进程内读写这些仓库产物，但不通过 Cordis 注册，不参与 Agent/Session lifecycle，也不把自身 Run 伪装为 DSH session event。若未来需求改变任一字段，先提交新的 ADP 和 proposed Agent Note，再决定是否进入 `packages/`。
+
 #### Phase 0：3～5 个工作日验证切片
 
 先验证 `Target Lock → Evidence Capsule → ADP → validate-adp` 能否减少设计错误，不先建设完整知识体系。
 
-1. 定义 Evidence Capsule 和 ADP 两个最小 JSON Schema，只覆盖 target/evidence/alternatives/capability/state/lifecycle/proof obligations/verification。
+1. 定义 Evidence Capsule 和 ADP 两个最小 JSON Schema，覆盖 target/evidence/dsh placement/alternatives/按条件启用的 capability/state/lifecycle/proof obligations/verification，并提交通过校验的 `self-adp.yaml`。
 2. 实现 `snapshot.ts` 的静态部分：repo、revision、branch/dirty scope、merge base 和 generated catalog digests；runtime adapters 暂按输入 artifact 接入。
-3. 写 C01～C12 Contract Kernel，并实现八条高频硬检查：证据 pin、seam 三角色、唯一 owner、effect/dispose、durable recovery/replay、model-visible log、configuration owner、invention proof。
+3. 写 C01～C12 Contract Kernel，并实现既有八条硬检查以及 `placement.parallel-runtime`、`placement.unjustified-public-service`、`placement.event-domain-collapse`、`placement.visual-branch-fork`、`placement.settings-domain-data`、`placement.redefined-dsh-concept`。
 4. 新增 Architect 薄入口；Reviewer 直接复用现有 `dsh-code-review`，只增加 ADP/证据读取协议和结构化 finding 输出。
-5. 用一个 Pattern、一个 Anti-pattern 和四个不直接复制 Task Queue 的 holdout tasks 跑 baseline/full paired trial。
+5. 用一个 Pattern、一个 Anti-pattern 和四个不直接复制 Task Queue 的 holdout tasks 跑 baseline/full paired trial；其中固定包含 Thinking Workspace mutation task，故意提供 “Cognitive Kernel” 诱因，要求系统保留领域模型并复用 DSH 执行 owner，而不是生成平行运行时。
 
-验证切片通过条件：至少 3/4 任务降低 weighted blocking finding score；accepted ADP 的可静态判定 hallucinated symbol 为零；没有新增 P0；中位设计耗时不超过 baseline 的 1.5 倍。未通过时只修改 schema、Kernel 或硬检查，不继续扩建 Case Library。
+验证切片通过条件：`self-adp.yaml` 明确 `repo-tool/none` 且无新 `ctx.*`；Thinking Workspace 输出 `领域模型 + 现有 DSH 执行 owner + model-visible SessionEvent 投影`，拒绝总括 Cognitive Kernel；至少 3/4 任务降低 weighted blocking finding score；accepted ADP 的可静态判定 hallucinated symbol 为零；所有 `placement.*` blocker 为零；没有新增 P0；中位设计耗时不超过 baseline 的 1.5 倍。未通过时只修改 schema、Kernel 或硬检查，不继续扩建 Case Library。
 
 #### Phase 1：切片通过后的 1～2 周 MVP
 
@@ -816,6 +893,7 @@ Anti-pattern 的核心不是“不要这样”，而是可复现的失败机制�
 #### MVP 验收
 
 - 所有 accepted ADP schema-valid，关键 API 证据都有当前 revision pointer，每个 proof obligation 都有 falsification 与 verification reference。
+- 所有 accepted ADP 都有可核对的 `dsh_placement`；不存在 DSH 核心概念重定义、错误 Session fork、领域记录进入 Settings 或无理由 public service。
 - accepted ADP 中不存在可由当前生成目录/源码判定的 hallucinated symbol。
 - full system 在至少 6/8 holdout tasks 上降低 weighted blocking finding score，且没有新增 P0。
 - 中位检索载荷 ≤6,000 model tokens；总设计耗时不超过 baseline 的 1.5 倍。
@@ -834,7 +912,7 @@ Anti-pattern 的核心不是“不要这样”，而是可复现的失败机制�
 
 ### V0：外部认知脚手架
 
-- 结构化证据、ADP、机器校验、词法检索、一个新 Architect Skill、扩展后的 `dsh-code-review`、人工 promotion。
+- 仓库级结构化证据、带 `dsh_placement` 的 ADP、机器校验、词法检索、一个新 Architect Skill、扩展后的 `dsh-code-review`、人工 promotion；无 runtime plugin、无新 `ctx.*`、无平行 Agent/Session/Event 域。
 - 目标：在写代码前减少错误 seam、owner 和生命周期漏项。
 
 ### V1：闭环开发系统
@@ -859,6 +937,8 @@ Anti-pattern 的核心不是“不要这样”，而是可复现的失败机制�
 
 - Task classification exact-match / multi-label F1。
 - Seam 首次选择正确率，以及三角色完整率。
+- DSH Placement Accuracy：领域 owner、现有 runtime owner 与 `none/reuse/compose/invent` disposition 的正确率。
+- Parallel Runtime Rejection Rate 与 unjustified public service 拒绝率。
 - State owner 完整率与冲突数。
 - lifecycle/restart/replay/concurrency obligation 覆盖率。
 - hallucinated API/symbol 数。
@@ -932,6 +1012,32 @@ startup recovery race 若首次出现，只生成 Anti-pattern candidate；验�
 ```
 
 原流程依赖 V4-Flash 自行记住十几个关系；新流程只要求它在有限候选中做语义判断，其余事实定位、字段完整性、机械冲突和晋升治理由系统承担。
+
+## 示例：Thinking Workspace 不得变成 Cognitive Kernel
+
+Thinking Workspace 可以拥有 inquiry、hypothesis、evidence link、branch relation 和 synthesis 等领域记录，但不得重新定义 DSH Agent、Session、Tool、Skill 或统一事件基类。它的 ADP 应先固定如下关系：
+
+```text
+Thinking Workspace domain owner
+  ├─ owns: inquiry graph / hypothesis / evidence link / branch relation
+  ├─ references: AgentId / SessionId / Tool name / Skill name
+  └─ does not own: agent execution / model history / tool registry / inference
+
+Existing DSH runtime owners
+  ├─ ctx.agents   → agent execution and lifecycle
+  ├─ ctx.sessions → durable model history and real session fork
+  ├─ ctx.tools    → tool registration and visibility
+  └─ ctx.llm      → inference
+
+Event mapping
+  ├─ workspace edit       → domain-store mutation
+  ├─ selected model input → existing model-visible SessionEvent/projection
+  └─ live progress        → existing capability event only when a current Consumer needs it
+```
+
+普通的 workspace 分支只是领域图中的引用，不产生 Session fork；只有用户选择从某个历史位置继续并形成独立 durable model history 时，才调用现有 Session fork。workspace 数据保存在领域 owner 中，Settings 只保存布局偏好、默认视图等用户可调参数。若 UI 与同包领域模块是唯一调用关系，先用私有 capability closure；只有存在当前可替换 Consumer 或角色确需独立演化，并完成三个 seam 角色与 invention proof，才允许新增 public Service Definition。
+
+因此，任何把上述关系压成一个拥有 Agent/Session/Tool/Event lifecycle 的 “Cognitive Kernel” 方案，都必须命中 `placement.parallel-runtime` 与 `placement.redefined-dsh-concept`，在写代码前失败。这个 mutation task 是 Phase 0 的强制 dogfood，不是可选示例。
 
 ## 最终取舍
 
