@@ -1,0 +1,2 @@
+- list "Background jobs":
+  - listitem: pwsh Start-Sleep -Seconds 45 killed before exit {{duration}}
