@@ -1,4 +1,4 @@
-# Phase 0 holdout — UI branch display vs Session fork
+# Phase 0 visible regression — UI branch display vs Session fork
 schema_version: 1
 id: task-ui-branch-fork
 title: UI branch display for alternate continuations

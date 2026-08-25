@@ -1,4 +1,4 @@
-# Anti-pattern seed — candidate，未晋升
+# Anti-pattern seed — candidate，未晋升；默认检索不会加载 candidates/
 schema_version: 1
 id: anti-pattern-recovered-pid-as-kill-authority
 title: Treating a persisted PID as restart kill authority

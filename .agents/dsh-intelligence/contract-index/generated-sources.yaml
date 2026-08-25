@@ -1,4 +1,4 @@
-# 生成目录清单 — 由 scripts/gen-*.ts 生成；snapshot.ts 对这些产物做 digest
+# 生成目录清单 — 由 scripts/gen-*.ts 生成；snapshot.ts 对文件或目录做确定性 digest
 schema_version: 1
 generated:
   - kind: config-catalog
@@ -10,6 +10,15 @@ generated:
   - kind: cordis-api
     path: docs/cordis-api
     generator: scripts/gen-cordis-api.ts
+  - kind: capability-seams
+    path: docs/capability-seams.md
+    generator: scripts/gen-doc-graphs.ts
+  - kind: event-producer-consumer
+    path: docs/event-producer-consumer.md
+    generator: scripts/gen-doc-graphs.ts
+  - kind: tool-catalog
+    path: docs/tool-catalog.md
+    generator: scripts/gen-tool-catalog.ts
   - kind: module-graph
     path: docs/module-graph.md
     generator: scripts/gen-module-graph.ts

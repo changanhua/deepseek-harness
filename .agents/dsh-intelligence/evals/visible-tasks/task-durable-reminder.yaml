@@ -1,4 +1,4 @@
-# Phase 0 holdout — durable cross-session reminder
+# Phase 0 visible regression — durable cross-session reminder
 schema_version: 1
 id: task-durable-reminder
 title: Durable cross-session reminder with subprocess scheduling
