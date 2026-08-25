@@ -47,3 +47,16 @@ description: Use when reviewing a pull request in the deepseek-harness repo — 
 ## Reporting findings
 
 State the defect, location, impact, and evidence. Place a localized defect inline on the tightest relevant diff range; use a PR-level comment for cross-cutting architecture, scope, or review-wide synthesis. Separate blockers from suggestions and omit issues already enforced by a green gate. Use the existing GitHub review thread for replies. When receiving review, verify each claim and fix or rebut it on technical grounds without performative agreement.
+
+
+## Architecture Intelligence: ADP and evidence input protocol
+
+When the diff or PR carries an Architecture Decision Packet (`.dsh-intelligence/runs/<run-id>/adp.yaml`) and its Evidence Capsule (`evidence.json`), review them as first-class inputs, not as the author's self-report.
+
+1. **Run the machine checks first.** Execute `tsx scripts/dsh-intelligence/validate-adp.ts <adp.yaml>` and treat every schema error and every `placement.*` / kernel `error` finding as blocking. Machine findings cannot be waived by prose.
+2. **Check `dsh_placement` before package/service design.** Confirm the design actually lands where it claims:
+   - `implementation_kind: repo-tool` must not register Cordis Services, own Agent/Session/Tool/LLM state, or add `ctx.*`.
+   - `domain-component` must only reference `ctx.agents`/`ctx.sessions`/`ctx.tools`/`ctx.llm`; it must not re-own their execution or lifecycle.
+   - `new-seam` requires the Service Definition / Provider / current Consumer triple, current consumers, independent-role-evolution evidence, and a complete invention proof; a single in-package caller defaults to a private capability closure.
+3. **Verify the event mapping split.** Domain mutations, model-visible projections, and live execution signals must stay separate; a model-visible projection needs a replayable SessionEvent; a UI-only branch is not a Session fork without durable history divergence.
+4. **Report structured findings.** Emit each finding with `severity: blocking|suggestion`, `rule_id` (e.g. `placement.parallel-runtime`, `durable.recovery`, `C03`), `evidence`, the failure it can trigger, the fix obligation, and the verification method. Preference without evidence is only a suggestion; do not let suggestions block.

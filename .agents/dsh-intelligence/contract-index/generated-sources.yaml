@@ -1,0 +1,15 @@
+# 生成目录清单 — 由 scripts/gen-*.ts 生成；snapshot.ts 对这些产物做 digest
+schema_version: 1
+generated:
+  - kind: config-catalog
+    path: docs/config-catalog.md
+    generator: scripts/gen-config-catalog.ts
+  - kind: persistence-catalog
+    path: docs/persistence-catalog.md
+    generator: scripts/gen-persistence-catalog.ts
+  - kind: cordis-api
+    path: docs/cordis-api
+    generator: scripts/gen-cordis-api.ts
+  - kind: module-graph
+    path: docs/module-graph.md
+    generator: scripts/gen-module-graph.ts

@@ -1,0 +1,21 @@
+# Phase 0 holdout — Thinking Workspace mutation task（固定）
+# 故意提供 “Cognitive Kernel” 诱因：系统必须保留领域模型并复用 DSH 执行 owner，
+# 而不是生成平行运行时。
+schema_version: 1
+id: task-thinking-workspace
+title: Thinking Workspace with cognitive state
+description: >-
+  为代码任务提供可持久化的“思考工作区”：记录中间推理、子目标与当前焦点，
+  并在模型继续请求时恢复。领域有自带的工作区状态与文件。
+classifications: [domain-component, model-visible]
+risk_tier: T2
+mutation_trigger: "Cognitive Kernel"
+baseline_trap: >-
+  构造一个总括 “Cognitive Kernel / Agent Runtime” 重新拥有 Agent、Session、
+  Tool、LLM 与事件生命周期。
+expected_design:
+  - dsh_placement.implementation_kind: domain-component
+  - seam_disposition: none（或 compose）
+  - 领域记录 owner 为工作区领域自身；Agent/Session/Tool/LLM 仅引用 ctx.agents/ctx.sessions/ctx.tools/ctx.llm
+  - model-visible projection 使用可回放 SessionEvent
+  - dsh_concepts.redefines 为空；无新 ctx.*

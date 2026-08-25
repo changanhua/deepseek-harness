@@ -1,0 +1,58 @@
+# DSH Contract Kernel — C01..C12
+# 常驻 ≤1,200 model tokens；每条规则带来源指针；Validator finding 直接引用 rule id。
+# 规则来自 docs/dsh-post-training-system-design.md §B2（新版 DSH-native placement）。
+schema_version: 1
+budget_tokens_max: 1200
+rules:
+  - id: C01
+    statement: >-
+      当前 repo revision、profile 和 Evidence Capsule ID 未锁定时，不得声称当前 API 或运行状态。
+    source_refs: [packages/context/runtime-facts/README.md, docs/dsh-post-training-system-design.md]
+  - id: C02
+    statement: >-
+      新行为优先使用 documented extension point；领域模型可以引用 DSH Agent、Session、Tool、Skill，
+      但不得重定义这些身份、owner 或生命周期；修改 agent loop 必须更新架构文档。
+    source_refs: [docs/architecture.md, docs/dsh-post-training-system-design.md]
+  - id: C03
+    statement: >-
+      capability seam 必须说明 Service Definition、Service Provider 和当前 Consumer；角色只有在需要独立演化时才拆包，
+      同一包可以承担多个角色；单个角色不是完整 seam。
+    source_refs: [docs/architecture.md, .agents/notes/implemented/architecture/2026-06-13-capability-seams.md]
+  - id: C04
+    statement: >-
+      每个状态只有一个 authoritative owner；派生值说明来源和 freshness。
+    source_refs: [packages/context/runtime-facts/README.md]
+  - id: C05
+    statement: >-
+      所有注册都是 effect，必须说明 reload、unload 和 dispose-to-quiescence。
+    source_refs: [docs/architecture.md, packages/AGENTS.md]
+  - id: C06
+    statement: >-
+      先区分领域/工作区 mutation、model-visible projection 与 live capability event；只有进入模型请求的内容必须可由 session log 重建，
+      普通领域 mutation 不得被强塞成通用 SessionEvent。
+    source_refs: [examples/headless-agent/tests/runtime-awareness.behavior.e2e.ts, docs/architecture.md]
+  - id: C07
+    statement: >-
+      durable state 必须说明持久化、恢复、replay、并发、取消和失败语义。
+    source_refs: [packages/task-queue/task-queue/README.md]
+  - id: C08
+    statement: >-
+      部署可调参数属于 validated config；默认值由 owner 的 resolve(request): spec 显式决定。
+    source_refs: [docs/architecture.md, docs/config-catalog.md]
+  - id: C09
+    statement: >-
+      misconfiguration 在最早可判定点失败，不静默跳过缺失 referent。
+    source_refs: [docs/architecture.md, docs/config-catalog.md]
+  - id: C10
+    statement: >-
+      Adapt/Compose/私有 capability closure 优先；只有当前 Consumer 需要公开替换能力或角色确需独立演化时才建立 public service；
+      Invent 必须通过 invention proof。
+    source_refs: [docs/architecture.md, docs/dsh-post-training-system-design.md]
+  - id: C11
+    statement: >-
+      测试、HTTP、模型自评和 runtime observation 只证明各自观察的问题，不互相替代。
+    source_refs: [examples/headless-agent/tests/runtime-awareness.behavior.e2e.ts]
+  - id: C12
+    statement: >-
+      ADP 未 accepted 不进入非机械实现；证据、未知项和设计偏离必须写入 artifact。
+    source_refs: [docs/dsh-post-training-system-design.md]

@@ -1,0 +1,27 @@
+# Retrieval Policy — 查询顺序与来源优先级
+# 来自 docs/dsh-post-training-system-design.md §7 / §8（新版）。
+schema_version: 1
+query_order:
+  - evidence-capsule-current-revision
+  - generated-catalogs
+  - exact-source-types-jsdoc
+  - agent-note-readme
+  - pattern-anti-pattern
+  - version-compatible-case
+precedence:
+  1: [evidence-capsule-direct, current-source-config]
+  2: [fresh-generated-catalogs]
+  3: [contract-kernel, implemented-agent-note]
+  4: [official-tagged-source]
+  5: [validated-pattern, anti-pattern]
+  6: [golden-case]
+  7: [verified-case]
+  8: [proposed, experimental, candidate]
+  9: [model-prior]
+conflict_handling:
+  same_scope_revision: create-evidence-conflict
+  different_revision: isolate-by-version
+constraints:
+  precedent_max: 3
+  fragments_per_step_max: 6
+  default_payload_tokens_max: 6000
