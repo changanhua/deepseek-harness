@@ -42,6 +42,20 @@ export async function runMutationTransaction<T>(
   }
 }
 
+/**
+ * Wait until the current mutation chain for `owner` is fully quiescent.
+ * Callers must stop admitting new work before using this as a shutdown fence.
+ * The loop re-reads the tail because an operation that was already in flight
+ * can enqueue a successor before its own tail clears.
+ */
+export async function waitForMutationDrain(owner: object): Promise<void> {
+  while (true) {
+    const tail = tails.get(owner)
+    if (tail === undefined) return
+    await tail
+  }
+}
+
 /** Outcome classes for the post-failure committed/uncommitted determination. */
 export type FaultDetermination =
   | { kind: 'committed' }

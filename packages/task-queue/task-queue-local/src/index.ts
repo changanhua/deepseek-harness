@@ -33,7 +33,7 @@ import { runLogPath, DIR_MODE, FILE_MODE } from './paths.ts'
 import { TaskQueueStore, FaultedError } from './store.ts'
 import { acquireQueueOwnership } from './lock.ts'
 import type { QueueOwnership } from './lock.ts'
-import { runMutationTransaction } from './fifo.ts'
+import { runMutationTransaction, waitForMutationDrain } from './fifo.ts'
 import { scanInbox, quarantineInboxFile } from './inbox.ts'
 import { builtinAdapters } from './executors.ts'
 import { TaskScheduler, commandFingerprint, renderRunLog } from './scheduler.ts'
@@ -133,16 +133,27 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
       void this.bootPromise.then(() => {
         if (!this.disposed) this.scheduler.start()
       })
-      return () => {
+      return async () => {
+        // Close admission before stopping the scheduler so no new public
+        // mutation can enter while ownership is being handed off.
         this.disposed = true
         this.scheduler.stop()
         for (const handle of this.liveHandles.values()) {
           try { handle.terminate() } catch { /* best-effort teardown */ }
         }
+
+        // boot() itself may still be acquiring ownership/replaying/reclaiming.
+        // Cordis awaits async disposers, so keep the lock until every possible
+        // old-owner write (boot, scheduler execution, or queued FIFO mutation)
+        // has reached quiescence.
+        await this.bootPromise
+        await this.scheduler.drain()
+        await waitForMutationDrain(this)
         this.liveHandles.clear()
-        // Fire-and-forget: the disposer is synchronous, and a leftover lock
-        // file is recovered by the stale-takeover path on the next acquire.
-        void this.ownership?.release()
+
+        const ownership = this.ownership
+        this.ownership = undefined
+        await ownership?.release()
       }
     }, 'task-queue.lifecycle()')
   }
@@ -197,6 +208,9 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   }
 
   private assertAdmitting(): void {
+    if (this.disposed) {
+      throw new Error('task queue is shutting down')
+    }
     if (this.serviceState === 'faulted') {
       throw new FaultedError(this.faultReason ?? 'task queue is faulted')
     }
@@ -537,6 +551,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
 
   async claim(task: Task): Promise<ClaimedAttempt | undefined> {
     return this.mutate(async () => {
+      if (this.disposed) return undefined
       const current = this.folded.tasksById.get(task.id)
       if (current === undefined || current.status !== 'pending') return undefined
       const attempt = current.attempt + 1
@@ -573,7 +588,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     void run // diagnostic correlation lives in the committed run record
     return this.mutate(async () => {
       const current = this.folded.tasksById.get(task.id)
-      if (current === undefined || current.status !== 'starting' || this.stopping.has(task.id)) {
+      if (this.disposed || current === undefined || current.status !== 'starting' || this.stopping.has(task.id)) {
         return undefined
       }
       let handle: SubprocessHandle

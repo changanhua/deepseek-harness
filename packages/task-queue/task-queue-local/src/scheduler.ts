@@ -97,6 +97,7 @@ export class TaskScheduler {
   private timer: ReturnType<typeof setInterval> | undefined
   private running = false
   private readonly ticking = new Set<Promise<void>>()
+  private readonly executing = new Set<Promise<void>>()
 
   constructor(private readonly host: SchedulerHost) {}
 
@@ -109,11 +110,24 @@ export class TaskScheduler {
     void this.tick()
   }
 
-  /** Stop the loop; in-flight ticks continue independently (they hold FIFO order). */
+  /** Stop accepting new ticks/claims; already-started work may still settle. */
   stop(): void {
     this.running = false
     if (this.timer !== undefined) clearInterval(this.timer)
     this.timer = undefined
+  }
+
+  /**
+   * Wait until every tick and detached execution that existed before/while
+   * stopping has finished. Call {@link stop} first so the sets can quiesce.
+   * The loop intentionally re-snapshots after each await: a tick may have
+   * passed its running check just before stop, complete a claim, and register
+   * one final execution while the first snapshot is being awaited.
+   */
+  async drain(): Promise<void> {
+    while (this.ticking.size > 0 || this.executing.size > 0) {
+      await Promise.allSettled([...this.ticking, ...this.executing])
+    }
   }
 
   /** One scheduler pass: housekeeping FIFO, then claim/execute. */
@@ -143,9 +157,18 @@ export class TaskScheduler {
       if (perExecutor >= this.host.maxConcurrentPerExecutor) continue
       const claimed = await this.host.claim(task)
       if (claimed === undefined) continue
+      // stop() may have raced the awaited claim. Do not launch a new detached
+      // execution after shutdown has begun; crash recovery will reclaim the
+      // persisted `starting` task on the next owner if the claim already won.
+      if (!this.running) return
       used.byExecutor.set(task.executor, perExecutor + 1)
       remainingGlobal -= 1
-      void this.execute(claimed)
+      const execution = this.execute(claimed)
+      this.executing.add(execution)
+      void execution.then(
+        () => this.executing.delete(execution),
+        () => this.executing.delete(execution),
+      )
     }
   }
 
