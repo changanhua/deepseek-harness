@@ -485,7 +485,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/context/command-profile/src/index.ts:34`](../packages/context/command-profile/src/index.ts)
+Source: [`packages/context/command-profile/src/index.ts:35`](../packages/context/command-profile/src/index.ts)
 
 <a id="deepseek-aidsh-compaction-basic"></a>
 
