@@ -121,19 +121,11 @@ export class CommandProfiles extends Service {
   private readonly userDisposers: Array<() => void> = []
   private userSource: () => CommandProfilesSettingsSection = () => EMPTY_SETTINGS_SECTION
 
-  /**
-   * Create the registry, register the built-in profiles, and attach the user
-   * settings namespace. Both registrations ride the owning fiber.
-   * @param ctx - service owner context.
-   * @param config - built-in seed control.
-   */
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'commandProfiles')
     this.includeBuiltins = config.includeBuiltins ?? true
     if (this.includeBuiltins) {
-      for (const contribution of BUILTIN_COMMAND_PROFILE_CONTRIBUTIONS) {
-        this.registerContribution(contribution)
-      }
+      for (const contribution of BUILTIN_COMMAND_PROFILE_CONTRIBUTIONS) this.registerContribution(contribution)
     }
     installSettingsSection(ctx, COMMAND_PROFILES_SETTINGS_NAMESPACE, COMMAND_PROFILES_SETTINGS_SCHEMA, EMPTY_SETTINGS_SECTION, {
       setSource: (source) => {
@@ -148,25 +140,12 @@ export class CommandProfiles extends Service {
     })
   }
 
-  /**
-   * Register one plugin knowledge record for a profile. Provenance authority is
-   * fixed to `plugin`; builtin and user records are produced only by the
-   * registry's built-in seed and the settings adapter.
-   * @param contribution - the plugin's record; source is implied.
-   * @returns the effect disposer retracting exactly this record.
-   * @throws TypeError or Error when the record is malformed or violates a merge rule.
-   */
+  /** Register one plugin knowledge record; public provenance is always plugin authority. */
   contribute(contribution: CommandProfilePluginContribution): () => void {
     return this.registerContribution({ ...contribution, source: 'plugin' })
   }
 
-  /**
-   * Resolve one profile's effective view. Contributions without a currently
-   * complete definition remain dormant so plugin unload/reload never turns a
-   * read into an exception.
-   * @param id - stable profile id.
-   * @returns the merged profile, or `undefined` when absent, disabled, or orphaned.
-   */
+  /** Resolve one effective profile, hiding absent, disabled, and orphaned contributions. */
   resolve(id: string): ResolvedCommandProfile | undefined {
     const records = this.contributions.get(id)
     if (records === undefined || records.length === 0) return undefined
@@ -229,11 +208,8 @@ export class CommandProfiles extends Service {
     const record: ContributionRecord = { contribution }
     const dispose = this.ctx.effect(() => {
       const existing = this.contributions.get(contribution.profileId)
-      if (existing === undefined) {
-        this.contributions.set(contribution.profileId, [record])
-      } else {
-        existing.push(record)
-      }
+      if (existing === undefined) this.contributions.set(contribution.profileId, [record])
+      else existing.push(record)
       return () => {
         const current = this.contributions.get(contribution.profileId)
         if (current === undefined) return
@@ -247,11 +223,7 @@ export class CommandProfiles extends Service {
     }
   }
 
-  /**
-   * Prospective validation before settings persistence. This duplicates the
-   * contribution-level shape checks intentionally: settings validation is the
-   * admission gate, while registerContribution is the invariant defense.
-   */
+  /** Settings admission gate: reject bad shapes before persistence. */
   private validateSettingsSection(value: CommandProfilesSettingsSection): void {
     const seen = new Set<string>()
     for (const profile of value.profiles) {
@@ -313,15 +285,11 @@ export class CommandProfiles extends Service {
 
     const owner = this.definitionOwner(existing)
     if (contribution.source === 'plugin') {
-      // The first plugin record for a truly new id must define the profile.
       if (existing.length === 0 && !isCompleteDefinition(contribution)) {
         throw new Error(
           `new command profile ${JSON.stringify(contribution.profileId)} requires displayName, description, and at least one candidate`,
         )
       }
-      // An orphaned id may retain append-only partial records. A plugin that
-      // supplies identity fields while no owner exists must supply a complete
-      // definition and thereby become the new owner.
       if (owner === undefined
         && (contribution.displayName !== undefined || contribution.description !== undefined)
         && !isCompleteDefinition(contribution)) {
@@ -331,10 +299,17 @@ export class CommandProfiles extends Service {
         )
       }
       if (owner !== undefined && (contribution.displayName !== undefined || contribution.description !== undefined)) {
-        if (owner.source !== 'plugin' || owner.contributorId !== contribution.contributorId) {
+        if (owner.source === 'builtin'
+          || (owner.source === 'plugin' && owner.contributorId !== contribution.contributorId)) {
           throw new Error(
             `plugin ${JSON.stringify(contribution.contributorId)} may not redefine identity fields for profile `
             + `${JSON.stringify(contribution.profileId)} owned by ${owner.source}/${owner.contributorId}`,
+          )
+        }
+        if (owner.source === 'user' && !isCompleteDefinition(contribution)) {
+          throw new Error(
+            `plugin ${JSON.stringify(contribution.contributorId)} must provide a complete definition to supersede user-owned profile `
+            + JSON.stringify(contribution.profileId),
           )
         }
       }
@@ -372,19 +347,13 @@ export class CommandProfiles extends Service {
   private definitionOwner(records: readonly ContributionRecord[]): ContributorIdentity | undefined {
     const builtin = records.find(record =>
       record.contribution.source === 'builtin' && isCompleteDefinition(record.contribution))
-    if (builtin !== undefined) {
-      return { source: 'builtin', contributorId: builtin.contribution.contributorId }
-    }
+    if (builtin !== undefined) return { source: 'builtin', contributorId: builtin.contribution.contributorId }
     const plugin = records.find(record =>
       record.contribution.source === 'plugin' && isCompleteDefinition(record.contribution))
-    if (plugin !== undefined) {
-      return { source: 'plugin', contributorId: plugin.contribution.contributorId }
-    }
+    if (plugin !== undefined) return { source: 'plugin', contributorId: plugin.contribution.contributorId }
     const user = records.find(record =>
       record.contribution.source === 'user' && isCompleteDefinition(record.contribution))
-    if (user !== undefined) {
-      return { source: 'user', contributorId: user.contribution.contributorId }
-    }
+    if (user !== undefined) return { source: 'user', contributorId: user.contribution.contributorId }
     return undefined
   }
 
