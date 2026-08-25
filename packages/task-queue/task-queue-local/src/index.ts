@@ -100,6 +100,17 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   private readonly bootPromise: Promise<void>
   private ownership: QueueOwnership | undefined
 
+  /**
+   * Stable identity key for the service mutation FIFO. Cordis exposes services
+   * through a tracing proxy whose method `this` is a per-call shadow, not the
+   * owning instance; using `this` directly as the WeakMap key in
+   * `runMutationTransaction`/`waitForMutationDrain` would break serialization
+   * and the shutdown fence. A plain object read back through any proxy resolves
+   * to this same reference, so every caller — scheduler internals (real `this`)
+   * and model-facing tools (shadow `this`) — shares one FIFO chain.
+   */
+  private readonly fifoKey: object = Object.create(null)
+
   private folded: FoldedQueue = { tasksById: new Map(), notificationsById: new Map(), lastSeq: 0 }
   private nextSeq = 1
   private serviceState: ServiceState = 'running'
@@ -148,7 +159,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
         // has reached quiescence.
         await this.bootPromise
         await this.scheduler.drain()
-        await waitForMutationDrain(this)
+        await waitForMutationDrain(this.fifoKey)
         this.liveHandles.clear()
 
         const ownership = this.ownership
@@ -161,7 +172,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   /* ------------------------------------------------------------ FIFO/mutate -- */
 
   mutate<T>(fn: () => Promise<T>): Promise<T> {
-    return runMutationTransaction(this, fn)
+    return runMutationTransaction(this.fifoKey, fn)
   }
 
   /* ----------------------------------------------------------------- boot -- */

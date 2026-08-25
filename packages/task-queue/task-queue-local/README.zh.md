@@ -29,7 +29,9 @@
 
 ## 跨进程单写者所有权锁
 
-`LocalTaskQueue` 在读取持久日志或回收崩溃任务之前，先对 queue root 获取 `owner.lock`。锁通过原子 `link(2)` 从一个完整写入的临时文件创建，因此同一 `queueRoot` 上的第二个宿主进程在能 `recover()` 第一个进程的存活任务之前就会被拒绝。记录 pid 已死（前一宿主崩溃）的锁会被归档到 `quarantine/` 并接管；由存活 pid、其他机器或同一进程持有的锁会拒绝启动。不支持跨机器共享 queue root。拆卸时锁以 best-effort 释放；残留文件会在下次 acquire 时由 stale-takeover 路径恢复。
+`LocalTaskQueue` 在读取持久日志或回收崩溃任务之前，先对 queue root 获取 `owner.lock`。锁通过原子 `link(2)` 从一个完整写入的临时文件创建，因此同一 `queueRoot` 上的第二个宿主进程在能 `recover()` 第一个进程的存活任务之前就会被拒绝。记录 pid 已死（前一宿主崩溃）的锁会被归档到 `quarantine/` 并接管；由存活 pid、其他机器或同一进程持有的锁会拒绝启动。不支持跨机器共享 queue root。
+
+shutdown 时锁是真实的 fence，而非 best-effort 产物：async disposer 先关闭准入并停止调度器，然后依次 await boot 完成、调度器 drain（每个 tick 与 detached execution）与服务 mutation FIFO drain，最后才释放锁。因此第二个宿主无法在第一个宿主仍可能 append 时获取——包括在途的 enqueue/ack mutation 或运行中 subprocess 的终态 settle。shutdown 赢得竞态时已 claim 但尚未 spawn 的任务在磁盘上保持 `starting`，由下一个宿主的 crash recovery 接管；它绝不会在 stop 之后被 spawn。非优雅退出残留的锁文件会在下次 acquire 时由 stale-takeover 路径恢复。
 
 ## Mutation FIFO 与 faulted 协议
 
