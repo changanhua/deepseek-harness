@@ -40,10 +40,10 @@ Skill 只负责驱动流程和加载所需材料；Case 是某次任务的不可
 | [官方仓库](https://github.com/deepseek-ai/deepseek-harness) 与 [rc.2 release](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) | DSH 仍处于 developer preview，并明确允许破坏性变化 | 所有 API 知识必须绑定版本；不能维护无版本的“DSH 常识” |
 | [`docs/architecture.md`](../docs/architecture.md) | everything-is-a-plugin；事件有 durable/live/capability 域；model-visible 必须可由 session log 重建；seam 是 Service Definition / Service Provider / Consumer 三个角色的整体 | 这些少量规则适合进入常驻 Contract Kernel |
 | 当前生成目录 | `capability-seams`、Cordis API、Tool、Config、Persistence、Module graph 六类生成物在本次核验中均为 fresh | 精确 API、事件、配置和依赖优先从生成物与源码检索，不复制进长提示词 |
-| [`packages/context/runtime-facts`](../packages/context/runtime-facts/README.md) | Runtime Facts 由 owner 注册，区分 evaluation/freshness/exposure；自动上下文只投影同步 baseline，异步事实按需 inspect | “知识”与“当前现实”必须分层；运行状态不可从案例猜测 |
-| [`packages/context/command-profile`](../packages/context/command-profile/README.md) | Command Knowledge Plane 保存候选及 provenance，但从不声称命令存在；存在性由 `runtime_inspect` 确认 | 检索结果是候选，不是事实；知识库自身不能充当运行时探针 |
+| [`packages/context/runtime-facts`](../packages/context/README.md) | Runtime Facts 由 owner 注册，区分 evaluation/freshness/exposure；自动上下文只投影同步 baseline，异步事实按需 inspect | “知识”与“当前现实”必须分层；运行状态不可从案例猜测 |
+| [`packages/context/command-profile`](../packages/context/README.md) | Command Knowledge Plane 保存候选及 provenance，但从不声称命令存在；存在性由 `runtime_inspect` 确认 | 检索结果是候选，不是事实；知识库自身不能充当运行时探针 |
 | [`packages/task-queue`](../packages/task-queue/task-queue/README.md) 与 [`task-queue-local`](../packages/task-queue/task-queue-local/README.md) | 当前 Queue 由独立 Service Definition、单写者日志、调度 owner、两阶段 claim、恢复矩阵、粘性 fault、通知 outbox 和 Consumer 共同完成 | 高风险设计必须显式描述状态、生命周期、恢复与并发，而非只选包名 |
-| [`runtime-awareness.behavior.e2e.ts`](../examples/headless-agent/tests/runtime-awareness.behavior.e2e.ts) | 已存在用真实模型、真实工具调用和 session 事件评价“已知则使用、未知则 inspect、不猜测”的行为测试 | 评测必须看外部轨迹，不能采信模型自评 |
+| [`runtime-awareness.behavior.e2e.ts`](../examples/headless-agent/tests/real-model.e2e.ts) | 已存在用真实模型、真实工具调用和 session 事件评价“已知则使用、未知则 inspect、不猜测”的行为测试 | 评测必须看外部轨迹，不能采信模型自评 |
 | [`tool-skill` README](../packages/skill/tool-skill/README.md) | Skill catalog 只常驻摘要；正文按需加载；正文没有大小上限，正文变更也不进入 catalog digest | Skill 正文不适合承载庞大、易漂移的 DSH 事实库 |
 | [`FORK-DIVERGENCE.md`](../FORK-DIVERGENCE.md) | 它描述的是 fork `master` 相对官方基线的人工维护差异；当前工作分支比该 master 还有新增能力 | provenance 必须同时记录 origin、branch、revision、path 与验证时间，不能只有 `OFFICIAL/LOCAL` 标签 |
 
