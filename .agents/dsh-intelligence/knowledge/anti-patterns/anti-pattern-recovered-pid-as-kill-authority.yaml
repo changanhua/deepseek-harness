@@ -1,0 +1,41 @@
+# Anti-pattern seed — candidate，未晋升
+schema_version: 1
+id: anti-pattern-recovered-pid-as-kill-authority
+title: Treating a persisted PID as restart kill authority
+status: candidate
+tempting_solution: >-
+  把上次运行的 subprocess PID 持久化，重启后用该 PID 直接 kill/管理新进程。
+why_it_looks_reasonable: >-
+  PID 是“最近的执行者”，看起来能接续生命周期；写入成本低，无需新 owner。
+failure_mechanism: >-
+  重启后 PID 已被 OS 回收或复用给无关进程；kill 会误杀，或误判任务仍在运行，
+  绕过 scheduler 的 spawn/terminate/wait 独占语义，破坏恢复矩阵与并发序列化。
+violation_signals:
+  static_queries:
+    - state 里出现 persisted-pid 且作为 kill authority
+  adp_signals:
+    - lifecycle.crash / restart_recovery 未说明 scheduler 独占 spawn/terminate/wait
+    - state.authoritative_owner 把进程生命周期交给非 scheduler
+  runtime_signals:
+    - 重启后 kill 目标与任务记录不一致
+harm:
+  - 误杀无关进程（P0）
+  - 恢复与并发状态错乱（P1）
+false_positive_conditions:
+  - 单进程、无重启场景，PID 仅在进程内短期使用
+safe_alternatives:
+  - scheduler 独占 spawn/terminate/wait，用 token/handle 而非 PID 管理
+  - 恢复矩阵先声明在途/已提交任务，再决定行动
+repair_steps:
+  - 移除持久 PID kill 路径
+  - 补 scheduler owner 与两阶段 claim
+verification_obligations:
+  - 负向控制：重启后 kill 旧 PID 不生效
+evidence_refs: []
+provenance:
+  origin: model-generated
+  artifact_kind: anti-pattern
+  lifecycle: candidate
+  revision: ''
+revalidation_triggers:
+  - subprocess 生命周期语义变更

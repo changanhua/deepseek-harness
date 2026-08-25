@@ -43,3 +43,6 @@ worktrees/
 **/src/*.js
 **/src/*.js.map
 **/src/*.d.ts.map
+
+# DSH Architecture Intelligence generated artifacts (rebuildable, never tracked)
+.dsh-intelligence/

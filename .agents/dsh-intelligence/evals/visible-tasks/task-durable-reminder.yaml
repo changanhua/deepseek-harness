@@ -1,0 +1,18 @@
+# Phase 0 holdout — durable cross-session reminder
+schema_version: 1
+id: task-durable-reminder
+title: Durable cross-session reminder with subprocess scheduling
+description: >-
+  让用户能创建跨 session 的提醒任务，到期后由调度器触发一个子进程动作；
+  进程崩溃重启后提醒与在途动作必须恢复，不能重复触发也不能丢失。
+classifications: [durable-state, orchestration, subprocess]
+risk_tier: T2
+mutation_trigger: "jobs-local"
+baseline_trap: >-
+  直接类比 ctx.jobs（process-local background job registry），
+  忽略跨进程持久化、重启恢复与两阶段 claim；或把调度进程生命周期交给持久 PID。
+expected_design:
+  - state 每个字段一个 authoritative owner；durability 明确 domain-store
+  - 重启恢复矩阵、replay、cancellation、mutation 序列化闭合
+  - scheduler 独占 spawn/terminate/wait；无 persisted-PID kill 权威
+  - 新 seam 才给 capability 三角色；否则 existing-consumer/私有 closure

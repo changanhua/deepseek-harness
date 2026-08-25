@@ -1,0 +1,11 @@
+# 仓库规则索引 — 只放指针 + digest，不复制 API prose
+schema_version: 1
+rules:
+  - pointer: AGENTS.md
+    kind: repository-rule
+  - pointer: packages/AGENTS.md
+    kind: package-rule
+  - pointer: docs/defensive-patterns.md
+    kind: defensive-pattern
+  - pointer: docs/testing.md
+    kind: testing-rule
