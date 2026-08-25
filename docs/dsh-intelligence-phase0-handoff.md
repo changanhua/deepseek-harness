@@ -35,7 +35,7 @@
 ### `.agents/dsh-intelligence/`
 - `contract-kernel/kernel.yaml`（C01–C12，新版含 DSH-native 约束）+ `sources.yaml`
 - `schemas/`：`evidence-capsule`、`architecture-decision-packet`（含 `dsh_placement`）、`implementer-handoff`
-- `evals/`：`README.md`、`holdout-task.schema.json`、`trial-result.schema.json`、`scoring.schema.json`
+- `evals/`：`README.md`、`holdout-prompt.schema.json`、`holdout-rubric.schema.json`、`trial-result.schema.json`、`scoring.schema.json`
 - `self-adp.yaml`（repo-tool / none / 零平行运行时）
 - `retrieval/`（task-taxonomy、routing-policy、token-budgets）、`contract-index/`
 - `knowledge/`：pattern + anti-pattern 种子在 `candidates/`（未晋升）
@@ -53,22 +53,23 @@
 ### Skills
 - 新增 `dsh-architect`、`dsh-implementer`；扩展 `dsh-code-review`（ADP/证据输入协议 + structured finding）。
 
-## 5. private-eval 六个锁定协议
+## 5. private-eval 七个锁定协议
 
 1. **Private boundary**：`.dsh-intelligence/private-evals/**` 不参与 retrieval、snapshot、晋升；Architect Skill 不读取。
 2. **Paired identity**：baseline/full 必须同一 `task_id + prompt_hash + model + temperature + max_tokens + seed`。
-3. **Baseline 真的是 baseline**：baseline 不注入 Kernel/Pattern/Retriever/ADP；full 才启用。
-4. **Fail closed**：缺 task / id 不一致 / hash 不一致 / 模型失败 / 缺 rubric / 缺必需 metrics → `INVALID`，绝不按 0 finding 计分。
-5. **Raw output immutable**：模型原始输出先 `sha256:` 落盘，再 `normalized findings → score`。
+3. **Baseline 真的是 baseline**：`system` 硬校验（baseline=`baseline-no-intelligence`、full=`full-intelligence`），错一个整对 `INVALID`——这是实验的因果变量。
+4. **Fail closed**：`tasks/manifest.yaml` 锁定任务全集，manifest 任务缺 prompt / 缺 rubric / schema 失败 / id 不一致显式 `INVALID`，绝不静默跳过；0 个 VALID 套件以非零码退出。
+5. **Raw output immutable**：模型原始输出落盘 `<id>.raw.txt`，arm 记录 `raw_output_ref` + `sha256:<64hex>` 声明 hash，运行时重读文件复验，不符即 `INVALID`。
 6. **禁止 eval → knowledge 晋升**：失败只能 `failure → candidate lesson`，不能 `failure → Pattern validated`。
+7. **Evaluator provenance**：arm 记录 `evaluator_type / evaluator_prompt_hash / rubric_hash / source_output_hash / evaluator_version / normalized_findings_hash`；运行时校验 `source_output_hash` = raw hash、`normalized_findings_hash` = findings 序列化 sha256、`rubric_hash` = 任务 rubric 文件 sha256。
 
-**prompt/rubric 分离**：模型只读 `<id>.prompt.yaml`（`id/requirement/constraints`）；evaluator 只读 `<id>.rubric.yaml`（`blocking_findings/expected_properties/forbidden_patterns`）。schema 用 `additionalProperties:false` 从结构上禁止 `expected_design/baseline_trap` 混入 prompt。
+**prompt/rubric 分离**：模型只读 `<id>.prompt.yaml`（`id/category/prompt`）；evaluator 只读 `<id>.rubric.yaml`（`id/category/rubric`）。两个面各有独立 schema（`holdout-prompt.schema.json` / `holdout-rubric.schema.json`），加载器读取时**真执行**校验，`additionalProperties:false` 从结构上禁止 `expected_design/baseline_trap` 混入 prompt。
 
 ## 6. 验证状态
 
 | 检查 | 结果 |
 |---|---|
-| vitest（dsh-intelligence） | ✅ 38/38 |
+| vitest（dsh-intelligence） | ✅ 59/59 |
 | oxlint | ✅ 0 errors |
 | `self-adp.yaml` validate | ✅ PASS |
 | Evidence schema | ✅ PASS |
@@ -81,14 +82,14 @@
 
 - **不推进 Phase 1**。Phase 0 成立的唯一硬标准：CI 绿 → 私有 holdout → V4-Flash baseline vs Intelligence paired eval，证明 blocker / seam / hallucination 指标真实下降。
 - 第一轮 **8–12 道** private holdout，题型：2×seam、2×state/durability、2×model-visible/event、1×Settings、1×Preset、1×compose-vs-invent、1×repo-tool-vs-plugin；≥2 题"看似该 invent 实为 reuse/compose"+2 题确实该 invent。
-- 第一轮主指标：`Architecture Blocking Findings ↓`、`Unsupported Invention Rate ↓`、`Hallucinated Symbol Rate ↓`、`Evidence Grounding Rate ↑`；次看 `Design Delta`、`Seam Pass@1`、`Placement Pass@1`、`Token Cost`、`Latency`。
+- 第一轮主指标：`Architecture Blocking Findings ↓`、`Unsupported Inventions ↓`、`Hallucinated Symbols ↓`、`Evidence Grounding Rate ↑`（= grounded required claims / rubric 的 expected properties 数）；次看 `Design Delta`、`Seam Pass@1`、`Placement Pass@1`、`Token Cost`、`Latency`。
 - 不扩 Case Library；不改文档证据语义（链接指向 master 存在目标即可）。
 
 ## 8. 待办 / 下一步
 
 1. 等 PR #7 CI 的 4 个 pending 出结果（尤其 `node24 / static` 与 Intelligence 内容相关）。
-2. **在真实模型环境**（当前开发机无 V4-Flash）写 8–12 道 holdout 到 `.dsh-intelligence/private-evals/tasks/`（prompt/rubric 分离）。
-3. 跑 baseline（无 Intelligence）与 full（启用 Intelligence）两组，命令：
+2. **在真实模型环境**（当前开发机无 V4-Flash）写 8–12 道 holdout 到 `.dsh-intelligence/private-evals/tasks/`：先有 `manifest.yaml`（`suite_id` + 任务全集），每题 `<id>.prompt.yaml` + `<id>.rubric.yaml`（分 schema，见协议 7）。
+3. 跑 baseline（无 Intelligence）与 full（启用 Intelligence）两组，每组为每道题落盘 `<id>.raw.txt` 与 arm 记录 `<id>.json`（含 `raw_output_ref` / `raw_output_hash` / `evaluator` provenance），再执行：
    ```sh
    npx tsx scripts/dsh-intelligence/run-eval.ts \
      --run-dir .dsh-intelligence/private-evals/runs/<run-id> \
@@ -103,7 +104,7 @@
 - 无 ajv/zod：JSON Schema 校验为 `validate-adp.ts` 内自研轻量校验器（schema 文件作契约）。
 - `gh pr create`（GraphQL）对本账号报权限错误：用 REST `gh api -X POST repos/.../pulls` 创建；`gh pr edit` 正常。
 - push 偶发 SSL 握手失败：重试即可。
-- `prepare-private-eval.ts` 生成 `task-000` 模板，仅作结构示例，**不是真实 holdout**。
+- `prepare-private-eval.ts` 生成 `holdout-000` 模板 + `manifest.yaml`，仅作结构示例，**不是真实 holdout**。
 
 ## 10. 环境
 
