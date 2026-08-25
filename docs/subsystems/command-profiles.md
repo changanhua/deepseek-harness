@@ -41,6 +41,32 @@ interface CommandProfileContribution {
 }
 ```
 
+The public plugin entry point pins authority to `plugin`: `contribute()` accepts only this record type, so a plugin cannot claim builtin or user provenance and never carries the user-only `candidateMode`/`disabled` flags.
+
+```ts type-equiv
+/**
+ * A public plugin knowledge record. `source` is fixed to `plugin`: plugins may
+ * not claim builtin or user authority, and the user-only `candidateMode` and
+ * `disabled` flags are absent from the public API.
+ */
+interface CommandProfilePluginContribution {
+  /** Who contributed this record (a plugin id). */
+  readonly contributorId: string
+  /** The target profile's stable id. */
+  readonly profileId: string
+  /** Human display name; required to define a brand-new profile. */
+  readonly displayName?: string
+  /** One-line description; required to define a brand-new profile. */
+  readonly description?: string
+  /** Additional lookup names for this profile. */
+  readonly aliases?: readonly string[]
+  /** Free-form discovery tags. */
+  readonly tags?: readonly string[]
+  /** Candidate executable names for this profile; at least one to define a brand-new profile. */
+  readonly candidates?: readonly CommandCandidateName[]
+}
+```
+
 ```ts type-equiv
 /** Who contributed a knowledge record. */
 type CommandProfileSource = 'builtin' | 'plugin' | 'user'
@@ -126,12 +152,14 @@ Registry for command-knowledge contributions with merge and query.
 
 ```ts cordis-catalog
 /**
- * Register one knowledge record for a profile.
- * @param contribution - self-contained provenance identity and fields.
+ * Register one plugin knowledge record for a profile. Provenance authority is
+ * fixed to `plugin`; builtin and user records are produced only by the
+ * registry's built-in seed and the settings adapter.
+ * @param contribution - the plugin's record; source is implied.
  * @returns the effect disposer retracting exactly this record.
  * @throws TypeError or Error when the record is malformed or violates a merge rule.
  */
-contribute(contribution: CommandProfileContribution): () => void
+contribute(contribution: CommandProfilePluginContribution): () => void
 
 /**
  * Resolve one profile's effective view, or `undefined` when the profile is
@@ -147,13 +175,6 @@ resolve(id: string): ResolvedCommandProfile | undefined
  * @returns matched effective profiles in rank order, then id order.
  */
 query(input: CommandProfileQuery): ResolvedCommandProfile[]
-
-/**
- * Programmatic single-profile access; identical to {@link resolve}.
- * @param id - stable profile id.
- * @returns the merged profile, or `undefined` when absent or disabled.
- */
-get(id: string): ResolvedCommandProfile | undefined
 
 /**
  * Every active profile's effective view in id order.
