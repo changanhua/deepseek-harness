@@ -11,10 +11,12 @@
  * The host task-queue Service is read via `ctx.get('taskQueue')` (optional):
  * with no backend composed the tools still register but reject with a clear
  * `@deepseek-ai/dsh-task-queue-local` message, and the pre-step/finalizer hooks
- * no-op. The durable-notification outbox protocol (pre-step prepares messages
- * only — it never flushes or acks; the append is observed through the
- * `session/event` firehose and the CAS ack runs only after a successful
- * `ctx.sessions.flush`) follows design §7.4.
+ * no-op. The durable-notification outbox protocol (the pre-step prepares
+ * injected messages but never flushes or acks them; the append is observed
+ * through the `session/event` firehose and the CAS ack runs only after a
+ * successful `ctx.sessions.flush`; a candidate whose marker already sits in
+ * the session — the append-before-ack crash window — is not re-injected but
+ * handed straight to the same finalizer) follows design §7.4.
  *
  * @module @deepseek-ai/dsh-tool-task-queue
  */
@@ -22,7 +24,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
@@ -70,6 +72,8 @@ interface NotificationCandidate {
   ownerSessionId: string
   title: string
   status: string
+  /** Result summary from the task's outcome, when the task succeeded. */
+  resultSummary?: string
 }
 
 /**
@@ -122,8 +126,11 @@ function textOf(content: readonly ContentBlock[]): string {
 /** Render one notification candidate into a notice user-message. */
 function renderNotification(candidate: NotificationCandidate): ReturnType<typeof createUserMessage> {
   const summary = `task ${candidate.taskId} ${candidate.status}`
-  const text = `Background task "${candidate.title || candidate.taskId}" reached ${candidate.status}.\n`
-    + 'Inspect it with task_queue_status, or retry with task_queue_retry if it failed.\n'
+  let text = `Background task "${candidate.title || candidate.taskId}" reached ${candidate.status}.\n`
+  if (candidate.resultSummary !== undefined) {
+    text += `Outcome: ${candidate.resultSummary}\n`
+  }
+  text += 'Inspect it with task_queue_status for details.\n'
     + markerLine(candidate.notificationId, candidate.messageId)
   return createUserMessage({
     content: [{ type: 'text', text }],
@@ -369,8 +376,10 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true } } },
         render: (_args, value) => [{ type: 'text', text: `enqueued task ${value.id}` }],
       },
-      async execute(args, _exec) {
+      async execute(args, exec) {
         const spec = validateEnqueueSpec(args.spec)
+        const ownerSessionId = ownerSessionIdOf(exec)
+        if (ownerSessionId !== undefined) spec.ownerSessionId = ownerSessionId
         const id = await resolveTaskQueue().enqueueFromTool(spec)
         return { id }
       },
@@ -391,11 +400,16 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { ids: { type: 'array', required: true, items: { type: 'string' } } } },
         render: (_args, value) => [{ type: 'text', text: `enqueued ${value.ids.length} tasks: ${value.ids.join(', ')}` }],
       },
-      async execute(args, _exec) {
+      async execute(args, exec) {
         if (args.specs.length > BATCH_LIMIT) {
           throw new Error(`task_queue_enqueue_batch: at most ${BATCH_LIMIT} specs per call (got ${args.specs.length})`)
         }
-        const specs = args.specs.map((raw: unknown) => validateEnqueueSpec(raw))
+        const ownerSessionId = ownerSessionIdOf(exec)
+        const specs = args.specs.map((raw: unknown) => {
+          const spec = validateEnqueueSpec(raw)
+          if (ownerSessionId !== undefined) spec.ownerSessionId = ownerSessionId
+          return spec
+        })
         const ids = await resolveTaskQueue().enqueueBatchFromTool(specs)
         return { ids }
       },
@@ -481,8 +495,11 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { outcome: { type: 'string', required: true, enum: ['canceled', 'stopping'] } } },
         render: (_args, value) => [{ type: 'text', text: `task ${value.outcome === 'canceled' ? 'canceled' : 'stop requested (stopping)'}` }],
       },
-      async execute(args, _exec) {
-        return { outcome: await resolveTaskQueue().cancel(TaskId(args.id)) }
+      async execute(args, exec) {
+        const tq = resolveTaskQueue()
+        const task = tq.get(TaskId(args.id))
+        assertOwnerOrHost(exec, task.ownerSessionId)
+        return { outcome: await tq.cancel(TaskId(args.id)) }
       },
       presentCall: args => ({ card: 'generic', title: `Cancel task ${args.id}`, kind: 'execute', rawInput: args.id }),
     }),
@@ -494,8 +511,11 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true } } },
         render: (_args, value) => [{ type: 'text', text: `task ${value.id} returned to pending` }],
       },
-      async execute(args, _exec) {
-        return { id: await resolveTaskQueue().retry(TaskId(args.id)) }
+      async execute(args, exec) {
+        const tq = resolveTaskQueue()
+        const task = tq.get(TaskId(args.id))
+        assertOwnerOrHost(exec, task.ownerSessionId)
+        return { id: await tq.retry(TaskId(args.id)) }
       },
       presentCall: args => ({ card: 'generic', title: `Retry task ${args.id}`, kind: 'execute', rawInput: args.id }),
     }),
@@ -510,9 +530,12 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, dismissed: { type: 'boolean', required: true } } },
         render: (_args, value) => [{ type: 'text', text: `task ${value.id} ${value.dismissed ? 'dismissed' : 'restored'}` }],
       },
-      async execute(args, _exec) {
+      async execute(args, exec) {
+        const tq = resolveTaskQueue()
+        const task = tq.get(TaskId(args.id))
+        assertOwnerOrHost(exec, task.ownerSessionId)
         const dismissed = args.dismissed !== false
-        await resolveTaskQueue().dismiss(TaskId(args.id), dismissed)
+        await tq.dismiss(TaskId(args.id), dismissed)
         return { id: args.id, dismissed }
       },
       presentCall: args => ({ card: 'generic', title: `Dismiss task ${args.id}`, kind: 'execute', rawInput: args.id }),
@@ -525,8 +548,11 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, dismissed: { type: 'boolean', required: true } } },
         render: (_args, value) => [{ type: 'text', text: `task ${value.id} restored` }],
       },
-      async execute(args, _exec) {
-        await resolveTaskQueue().dismiss(TaskId(args.id), false)
+      async execute(args, exec) {
+        const tq = resolveTaskQueue()
+        const task = tq.get(TaskId(args.id))
+        assertOwnerOrHost(exec, task.ownerSessionId)
+        await tq.dismiss(TaskId(args.id), false)
         return { id: args.id, dismissed: false }
       },
       presentCall: args => ({ card: 'generic', title: `Restore task ${args.id}`, kind: 'execute', rawInput: args.id }),
@@ -617,10 +643,12 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
   // --- pre-step hook ------------------------------------------------------
   /**
    * Read this session's pending notifications and propose candidate messages.
-   * Sorts by `terminalSeq`, skips anything already `inFlight` or whose marker
-   * is already in the session (append-before-ack crash), and marks the chosen
-   * messageIds `inFlight`. This never flushes and never acks — the finalizer
-   * does that only after observing the append (design §7.4).
+   * Sorts by `terminalSeq`, skips anything already `inFlight`. A candidate
+   * whose marker is already present in the session (append-before-ack crash)
+   * is not re-injected — instead the pre-step starts the same flush→CAS
+   * finalizer the `session/event` listener would have run before the crash
+   * (design §7.4 step 6). This hook never flushes and never acks an injected
+   * candidate — the finalizer does that only after observing the append.
    */
   const preStep = (agent: Agent, decision: PreStepDecision): PreStepDecision => {
     if (taskQueue === undefined || decision.kind === 'reject') return decision
@@ -632,9 +660,14 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
     const candidates = records
       .filter(r => r.status === 'pending')
       .filter(r => !inFlight.has(r.messageId))
-      .filter(r => !already.has(r.messageId))
       .sort((a, b) => a.terminalSeq - b.terminalSeq)
-    const messages = candidates.map((record): ReturnType<typeof createUserMessage> => {
+    const messages: ReturnType<typeof createUserMessage>[] = []
+    for (const record of candidates) {
+      if (already.has(record.messageId)) {
+        inFlight.add(record.messageId)
+        void finalize(session, record.notificationId, record.messageId)
+        continue
+      }
       const task = safeGetTask(taskQueue, record.taskId)
       const candidate: NotificationCandidate = {
         notificationId: record.notificationId,
@@ -644,11 +677,12 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         ownerSessionId: record.ownerSessionId,
         title: task?.title ?? record.taskId,
         status: task?.status ?? 'failed',
+        ...(task?.resultSummary !== undefined ? { resultSummary: task.resultSummary } : {}),
       }
       inFlight.add(record.messageId)
       chosenIds.add(record.messageId)
-      return renderNotification(candidate)
-    })
+      messages.push(renderNotification(candidate))
+    }
     return {
       kind: 'enter',
       messages: [...decision.messages, ...messages],
@@ -727,13 +761,49 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
 }
 
 /** Look up a task without throwing (missing record → undefined). */
-function safeGetTask(taskQueue: TaskQueue, id: string): { title: string; status: string } | undefined {
+function safeGetTask(taskQueue: TaskQueue, id: string): { title: string; status: string; resultSummary?: string } | undefined {
   try {
     const task = taskQueue.get(TaskId(id))
-    return { title: task.title, status: task.status }
+    const result: { title: string; status: string; resultSummary?: string } = {
+      title: task.title,
+      status: task.status,
+    }
+    if (task.result?.summary !== undefined) result.resultSummary = task.result.summary
+    return result
   } catch {
     return undefined
   }
+}
+
+/**
+ * Enforce that the caller is either the task's owner Agent or a host operator
+ * (no Agent context). The model cannot set `ownerSessionId` itself, so the
+ * Agent identity derived from the tool execution is the only authority path.
+ * @param exec - the tool execution context carrying the caller Agent.
+ * @param ownerSessionId - the task's owner session id; `null` for unowned tasks.
+ * @throws when a non-owner Agent attempts to operate on another session's task.
+ */
+function assertOwnerOrHost(exec: ToolRunContext, ownerSessionId: string | null): void {
+  const callerSession = exec.agent?.session.id
+  if (callerSession === undefined) return // host-operator: no Agent context
+  if (callerSession === ownerSessionId) return // agent-owner: matches
+  throw new Error(
+    `task_queue: this task is owned by session ${ownerSessionId ?? '(none)'}, `
+    + `but the caller is session ${callerSession}. Only the task's owner or a host operator can cancel, retry, or dismiss it.`,
+  )
+}
+
+/**
+ * The session that owns a task admitted through the model tools. The model
+ * cannot set `ownerSessionId` itself — `validateEnqueueSpec` strips it from
+ * model input — so the initiator Agent recorded on the tool execution is the
+ * only source; a call with no Agent (host-plane dispatch) admits an unowned
+ * task, which then produces no notification.
+ * @param exec - the tool execution context carrying the initiator Agent.
+ * @returns the owning session id, or `undefined` when the call has no Agent.
+ */
+function ownerSessionIdOf(exec: ToolRunContext): string | undefined {
+  return exec.agent?.session.id
 }
 
 /** Tool-task-queue plugin configuration (reserved; currently empty). */

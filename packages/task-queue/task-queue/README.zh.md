@@ -10,7 +10,7 @@
 - `list(filter?)` 与 `get(id)` 返回只读投影；`get` 对未知 id 抛错。
 - `cancel(id)` 返回 `'canceled'`（pending 任务）或 `'stopping'`（starting/running 任务上持久化的取消意图）。`retry(id)` 清零 `attempt` 并把 failed 任务重新入队。
 - `stats()` 报告 `serviceState`（`running`/`paused`/`faulted`）、可选 `fault`、按状态计数与按执行器计数。
-- `registerExecutor(name, adapter)` 注册 prepare-only 适配器并返回其 disposer。
+- `registerExecutor(name, adapter)` 注册 prepare-only 适配器并返回其 disposer。适配器的可选 `normalize()` 方法将原始进程输出转换为 Agent 可消费的 `summary` 与可选 `assistantText`——这是将进程队列升级为工作队列的关键 seam。调度器在 exit code 0 时调用 `normalize()`；若适配器未提供，则生成合理的默认摘要。
 - `pause()`/`resume()` 闸控 admission；`resume()` 必须拒绝 `faulted` 队列。
 - `ackNotification(notificationId, messageId)` 用 CAS 确认一条 pending 投递记录；已 acknowledged 且 messageId 匹配的记录是幂等 no-op。`listNotifications({ ownerSessionId })` 按 `terminalSeq` 列出一个会话的记录。
 
@@ -19,6 +19,8 @@
 ## 任务模型
 
 `Task` 携带完整持久快照：状态（`pending`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`canceled`）、`attempt`/`maxAttempts`、`backoffMs`、`delayUntil`、`timeoutMs`、`outputDir`、tags、`lastError`、`result`、`ownerSessionId`、受信 `source`/`receiptId`，以及每次 attempt 的 `RunRecord[]`（`runId`、attempt、仅供诊断的 `pid`、时间戳、日志路径、命令指纹、`terminationUnverified`）。
+
+`TaskResult`（在 `succeeded` 时填充）携带人类可读的 `summary`（如 "exit 0, 3.2s, 2 output files"）、可选的 `assistantText`（DSH/Claude/Codex 等编码 agent 执行器产生的语义结果）、`exitCode`/`signal`、wall-clock `durationMs`、可选的 `logPath`（本次 attempt 的 run log）、有界 `stdoutTail`/`stderrTail`（各最多 4 KiB）、以及 `outputFiles`（output 目录下的一级产物文件名）。完整输出始终在 run log 与 output 目录中可查；tail 截断仅作为 Agent 可消费的摘要投影。
 
 `attempt` 只在领取时（`pending → starting`）递增一次。失败回 `pending` 且 `attempt` 不变，退避延迟 = `backoffMs * 2^(attempt-1)`；耗尽 `maxAttempts` 进入 `failed`。宿主崩溃时 `starting`/`running` 走失败路径恢复，`stopping` 恢复为 `canceled` 并标 `terminationUnverified`——持久化 pid 只作诊断，绝不是跨重启的终止授权。
 

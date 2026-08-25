@@ -101,7 +101,7 @@ describe('markRunning', () => {
 describe('settleSucceeded', () => {
   it('settles a running task with result and null terminalSeq', () => {
     const running = markRunning(claimTask(task(), RunId('r'), NOW, '/l', 'f'), 1, NOW)
-    const result: TaskResult = { exitCode: 0, signal: null, durationMs: 10, outputFiles: ['a.txt'] }
+    const result: TaskResult = { summary: 'exit 0', exitCode: 0, signal: null, durationMs: 10, outputFiles: ['a.txt'] }
     const out = settleSucceeded(running, result, NOW)
     expect(out.status).toBe('succeeded')
     expect(out.result).toEqual(result)
@@ -109,7 +109,7 @@ describe('settleSucceeded', () => {
   })
 
   it('rejects from non-running', () => {
-    expect(() => settleSucceeded(task({ status: 'pending' }), { exitCode: 0, signal: null, durationMs: 0 }, NOW)).toThrow(/settle succeeded/)
+    expect(() => settleSucceeded(task({ status: 'pending' }), { summary: 'exit 0', exitCode: 0, signal: null, durationMs: 0 }, NOW)).toThrow(/settle succeeded/)
   })
 })
 

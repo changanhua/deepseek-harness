@@ -4,6 +4,10 @@
 
 `ctx.taskQueue` 的面向模型工具包：八个 `task_queue_*` 工具、一个工具指引提示词区段、一个 pre-step 候选通知钩子，以及 append→flush→CAS-ack 通知 finalizer。一次 apply 即注册全部内容——钩子不会被拆进多个会重复监听的挂载。宿主 Service 通过 `ctx.get('taskQueue')` 可选读取：未组装后端时工具仍会注册，但其 `execute` 会带明确的加载指引报错，pre-step/finalizer 钩子则直接空转。
 
+`enqueue` 与 `enqueue_batch` 会把调用方 session 绑定为任务的 `ownerSessionId`，使终态通知能路由到正确的会话。模型无法自行设置该字段——`validateEnqueueSpec` 会从模型输入中剥离它——因此只有受信代码路径能注入。无 Agent 的宿主面调用（例如 inbox 扫描）产生无主任务，不生成通知。
+
+`cancel`、`retry`、`dismiss`、`undismiss` 实施 owner 授权检查：调用方 Agent 必须是任务的所有者（其 session id 与 `ownerSessionId` 匹配），或者调用方为无 Agent 上下文的宿主操作员。非 owner 的 Agent 尝试操作其他会话的任务将被拒绝并给出明确提示。无主任务（无 `ownerSessionId`）只能由宿主操作员操作。
+
 ## 工具
 
 - `task_queue_enqueue(spec)` 入队一个持久的、跨会话的任务。`spec` 必含 `title`、`prompt`、`executor`，可选携带 `priority`、`maxAttempts`、`backoffMs`、`delayUntil`、`timeoutMs`、`outputDir`、`tags`、`idempotencyKey`。它拒绝 `executor: 'shell'`（仅限 inbox），并把 `idempotencyKey` 校验为 1–128 字节且不含 NUL。
@@ -29,7 +33,7 @@ Use the task_queue_* tools for durable cross-session work. Enqueue a batch first
 
 ## Pre-step 候选通知
 
-pre-step 钩子通过 `listNotifications` 读取该会话的待处理 outbox 通知，按 `terminalSeq` 排序，并提出候选通知消息。它跳过已经 `inFlight`、marker 已出现在会话 user 消息中（append 先于 ack 发生，例如崩溃）、或已不再是 `pending` 的记录。每条提议的消息都内嵌一条稳定的 marker 行：
+pre-step 钩子通过 `listNotifications` 读取该会话的待处理 outbox 通知，按 `terminalSeq` 排序，并提出候选通知消息。它跳过已经 `inFlight` 或已不再是 `pending` 的记录。对于 marker 已出现在会话 user 消息中的候选——即 append-before-ack 崩溃窗口——不会重新注入，而是直接交给同一个 flush→CAS finalizer 处理，因此消息在 ack 持久化之前已 append 的通知，能被可靠消费而不重复。每条提议的消息都内嵌一条稳定的 marker 行。当任务成功并带有结果时，消息中包含 outcome `summary`，使 Agent 无需额外调用 `task_queue_status` 即可消费结果：
 
 ```
 [task-queue-notification <notificationId> <messageId>]
@@ -69,3 +73,5 @@ pre-step 钩子通过 `listNotifications` 读取该会话的待处理 outbox 通
 - **无后端即无投递**——未组合 `@deepseek-ai/dsh-task-queue-local` 时，工具以清晰的加载错误拒绝，pre-step/finalizer 钩子 no-op，不产生任何通知。
 - **`shell` 仅限 inbox**——模型面工具设计上永远不能入队 `shell` 任务（授权 §6.3）；只有 inbox 准入路径可以。
 - **通知 at-least-once**——append 与 ack 之间崩溃会重新注入通知（按稳定 marker 去重），同一次完成可能浮现两次。
+- **无主任务不产生通知**——无 Agent 的宿主面调用（例如 inbox 扫描）创建的任务不带 `ownerSessionId`，其终态不会通知。
+- **Owner 授权在工具层实现**——`cancel`/`retry`/`dismiss`/`undismiss` 在调用 Service 前检查所有权；Service 本身不强制 ownership，且 `task_queue_status`/`task_queue_list` 对任何调用方暴露任务数据。后续版本可能将授权检查下沉到 Service seam。

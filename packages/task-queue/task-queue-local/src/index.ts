@@ -13,7 +13,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { randomUUID } from 'node:crypto'
-import { mkdir, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type {
   SubprocessHandle, SubprocessOutcome, SubprocessSpawnSpec,
@@ -31,6 +31,8 @@ import {
 } from '@deepseek-ai/dsh-task-queue'
 import { runLogPath, DIR_MODE, FILE_MODE } from './paths.ts'
 import { TaskQueueStore, FaultedError } from './store.ts'
+import { acquireQueueOwnership } from './lock.ts'
+import type { QueueOwnership } from './lock.ts'
 import { runMutationTransaction } from './fifo.ts'
 import { scanInbox, quarantineInboxFile } from './inbox.ts'
 import { builtinAdapters } from './executors.ts'
@@ -44,6 +46,10 @@ const DEFAULT_MAX_CONCURRENT_PER_EXECUTOR = 1
 const DEFAULT_INTERVAL_MS = 1_000
 /** Extra time beyond `timeoutMs` before a stalled `stopping` task is force-reclaimed. */
 const DEFAULT_STOPPING_GRACE_MS = 5_000
+/** Bounded stdout/stderr tail embedded into a succeeded `TaskResult`, in UTF-8 bytes. */
+const RESULT_TAIL_BYTES = 4_096
+/** Bounded stderr tail appended to a failed task's `lastError`, in UTF-8 bytes. */
+const LAST_ERROR_TAIL_BYTES = 2_048
 
 /** Admission config schema (schemastery). */
 export interface Config {
@@ -92,6 +98,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   private readonly liveHandles = new Map<string, SubprocessHandle>()
   private readonly stopping = new Set<string>()
   private readonly bootPromise: Promise<void>
+  private ownership: QueueOwnership | undefined
 
   private folded: FoldedQueue = { tasksById: new Map(), notificationsById: new Map(), lastSeq: 0 }
   private nextSeq = 1
@@ -133,6 +140,9 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
           try { handle.terminate() } catch { /* best-effort teardown */ }
         }
         this.liveHandles.clear()
+        // Fire-and-forget: the disposer is synchronous, and a leftover lock
+        // file is recovered by the stale-takeover path on the next acquire.
+        void this.ownership?.release()
       }
     }, 'task-queue.lifecycle()')
   }
@@ -147,6 +157,9 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
 
   private async boot(): Promise<void> {
     try {
+      // Single-writer ownership first: a second host on the same queue root
+      // must fail before it can recover/reclaim the first host's live tasks.
+      this.ownership = await acquireQueueOwnership(this.store.paths.root)
       const recovered = await this.store.recover()
       this.folded = recovered.folded
       this.nextSeq = recovered.nextSeq
@@ -585,6 +598,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
   async settle(task: Task, outcome: SubprocessOutcome, handle: SubprocessHandle): Promise<void> {
     const stdout = handle.collected.stdout?.readFrom(0).text ?? ''
     const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
+    const logPath = task.runs[task.runs.length - 1]?.logPath ?? undefined
     await this.writeRunLog(task.id, task.attempt, renderRunLog(stdout, stderr))
     await this.mutate(async () => {
       const current = this.folded.tasksById.get(task.id)
@@ -604,12 +618,29 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
       }
       if (current.status !== 'running') return
       if (outcome.exitCode === 0) {
-        const result: TaskResult = { exitCode: 0, signal: null, durationMs: 0 }
+        const durationMs = attemptDurationMs(current, Date.now())
+        const tails = resultTails(stdout, stderr)
+        const files = await listOutputFiles(current.outputDir)
+        const adapter = this.adapters.get(current.executor)
+        const normalized = adapter?.normalize?.(current, stdout, stderr)
+        const summary = normalized?.summary ?? defaultSummary(durationMs, tails, files)
+        const result: TaskResult = {
+          summary,
+          ...(normalized?.assistantText !== undefined ? { assistantText: normalized.assistantText } : {}),
+          exitCode: 0,
+          signal: null,
+          durationMs,
+          ...(logPath !== undefined ? { logPath } : {}),
+          ...tails,
+          ...files,
+        }
         const succeeded = settleSucceeded(current, result, new Date().toISOString())
         await this.commitTerminal(succeeded)
         this.ctx.emit('task-queue/succeeded', { taskId: task.id })
       } else {
-        const reason = outcome.signal !== null ? `terminated by ${outcome.signal}` : `exit code ${String(outcome.exitCode)}`
+        const base = outcome.signal !== null ? `terminated by ${outcome.signal}` : `exit code ${String(outcome.exitCode)}`
+        const stderrTail = tailText(stderr, LAST_ERROR_TAIL_BYTES)
+        const reason = stderrTail === '' ? base : `${base}\n${stderrTail}`
         await this.settleFailure(current, false, reason)
       }
     })
@@ -731,6 +762,73 @@ function createdChange(seq: number, state: Task): TaskChange {
 /** The `dismissed` op is the soft-conclude toggle; it carries the full task state but never a notification. */
 function dismissedChange(seq: number, state: Task): TaskChange {
   return { seq, version: 1, op: 'dismissed', taskId: state.id, state, at: new Date().toISOString() }
+}
+
+/** Keep the last `maxBytes` UTF-8 bytes of `text` without splitting a code point. */
+function tailText(text: string, maxBytes: number): string {
+  if (text === '') return ''
+  if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text
+  const buffer = Buffer.from(text, 'utf8')
+  // Walk back over continuation bytes so the cut cannot land mid code point.
+  // `buffer[end]` is `number | undefined` under noUncheckedIndexedAccess; a
+  // continuation byte is `0b10xxxxxx`, and `0` (the fallback) is not one, so
+  // the loop stops correctly on an out-of-range read.
+  let end = maxBytes
+  while (end > 0 && ((buffer[end] ?? 0) & 0xc0) === 0x80) end -= 1
+  return buffer.subarray(0, end).toString('utf8')
+}
+
+/**
+ * Default human-readable summary for a process executor whose adapter does not
+ * provide a {@link ExecutorAdapter.normalize} method. The summary combines
+ * duration, tail presence, and output file count into a one-liner the owner
+ * Agent can consume without an extra `task_queue_status` round-trip.
+ */
+function defaultSummary(
+  durationMs: number,
+  tails: Pick<TaskResult, 'stdoutTail' | 'stderrTail'>,
+  files: { outputFiles?: string[] },
+): string {
+  const parts: string[] = ['exit 0']
+  const sec = (durationMs / 1000).toFixed(1)
+  parts.push(`${sec}s`)
+  if (tails.stdoutTail !== undefined) parts.push('stdout captured')
+  if (tails.stderrTail !== undefined) parts.push('stderr captured')
+  if (files.outputFiles !== undefined && files.outputFiles.length > 0) {
+    parts.push(`${files.outputFiles.length} output file${files.outputFiles.length === 1 ? '' : 's'}`)
+  }
+  return parts.join(', ')
+}
+
+/** The bounded output tails of a succeeded attempt, omitting empty streams. */
+function resultTails(stdout: string, stderr: string): Pick<TaskResult, 'stdoutTail' | 'stderrTail'> {
+  const stdoutTail = tailText(stdout, RESULT_TAIL_BYTES)
+  const stderrTail = tailText(stderr, RESULT_TAIL_BYTES)
+  return {
+    ...(stdoutTail !== '' ? { stdoutTail } : {}),
+    ...(stderrTail !== '' ? { stderrTail } : {}),
+  }
+}
+
+/** Wall-clock span of the current attempt, from the persisted spawn timestamp. */
+function attemptDurationMs(task: Task, nowMs: number): number {
+  const startedAt = task.runs[task.runs.length - 1]?.actualStartedAt
+  if (startedAt === null || startedAt === undefined) return 0
+  const start = Date.parse(startedAt)
+  if (Number.isNaN(start)) return 0
+  return Math.max(0, nowMs - start)
+}
+
+/** Top-level artifact files of `outputDir`, relative to it; `undefined` when unreadable. */
+async function listOutputFiles(outputDir: string): Promise<{ outputFiles?: string[] }> {
+  if (outputDir === '') return {}
+  try {
+    const entries = await readdir(outputDir, { withFileTypes: true })
+    const files = entries.filter(entry => entry.isFile()).map(entry => entry.name).sort()
+    return files.length > 0 ? { outputFiles: files } : {}
+  } catch {
+    return {}
+  }
 }
 
 /** Project one task's durable state onto its summary view.

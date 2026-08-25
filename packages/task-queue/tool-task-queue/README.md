@@ -4,6 +4,10 @@ English | [中文](README.zh.md)
 
 The model-facing toolkit for `ctx.taskQueue`: eight `task_queue_*` tools, one tool-guidance prompt section, a pre-step candidate-notification hook, and the append→flush→CAS-ack notification finalizer. One apply registers everything — the hooks are never split across duplicate-listening mounts. The host Service is read optionally through `ctx.get('taskQueue')`: with no backend composed the tools still register, but their `execute` rejects with a clear load message, and the pre-step/finalizer hooks no-op.
 
+`enqueue` and `enqueue_batch` bind the calling session as the task's `ownerSessionId` so terminal notifications reach the right session. The model cannot set this field itself — `validateEnqueueSpec` strips it from model input — so only the trusted code path injects it. A host-plane dispatch with no Agent (e.g. an inbox scan) produces an ownerless task that generates no notification.
+
+`cancel`, `retry`, `dismiss`, and `undismiss` enforce owner authorization: the calling Agent must be the task's owner (its session id matches `ownerSessionId`), or the call must be a host-operator dispatch with no Agent context. A non-owner Agent attempting to operate on another session's task is rejected with a clear message. Unowned tasks (no `ownerSessionId`) can only be operated on by a host operator.
+
 ## Tools
 
 - `task_queue_enqueue(spec)` enqueues one durable, cross-session task. `spec` requires `title`, `prompt`, and `executor`, and optionally carries `priority`, `maxAttempts`, `backoffMs`, `delayUntil`, `timeoutMs`, `outputDir`, `tags`, and `idempotencyKey`. It rejects `executor: 'shell'` (inbox-only) and validates `idempotencyKey` as 1–128 bytes without NUL.
@@ -29,7 +33,7 @@ Use the task_queue_* tools for durable cross-session work. Enqueue a batch first
 
 ## Pre-step notification candidates
 
-The pre-step hook reads the session's pending outbox notifications via `listNotifications`, sorts them by `terminalSeq`, and proposes candidate notice messages. It skips records that are already `inFlight`, whose marker is already present in the session's user messages (an append happened before the ack, e.g. a crash), or that are no longer `pending`. Each proposed message embeds a stable marker line:
+The pre-step hook reads the session's pending outbox notifications via `listNotifications`, sorts them by `terminalSeq`, and proposes candidate notice messages. It skips records that are already `inFlight`, or that are no longer `pending`. A candidate whose marker is already present in the session's user messages — the append-before-ack crash window — is not re-injected; instead the pre-step hands it straight to the same flush→CAS finalizer, so a notification whose message was appended before the ack persisted is reliably consumed without a duplicate. Each proposed message embeds a stable marker line. When the task succeeded with a result, the message includes the outcome `summary` so the Agent can consume the result without an extra `task_queue_status` round-trip:
 
 ```
 [task-queue-notification <notificationId> <messageId>]
@@ -69,3 +73,5 @@ No direct invalidation; this package owns its tool descriptions and prompt-secti
 - **No backend, no delivery** — with no `@deepseek-ai/dsh-task-queue-local` composed, the tools reject with a clear load message and the pre-step/finalizer hooks no-op; no notifications are produced.
 - **`shell` is inbox-only** — the model-facing tools can never enqueue a `shell` task, by design (authorization §6.3); only the inbox admission path may.
 - **Notification at-least-once** — a crash between append and ack re-injects the notice (deduped by the stable marker), which may surface a completion twice.
+- **Ownerless tasks produce no notification** — a host-plane dispatch with no Agent (e.g. an inbox scan) creates a task with no `ownerSessionId`; its terminal state stays silent.
+- **Owner authorization is at the tool layer** — `cancel`/`retry`/`dismiss`/`undismiss` check ownership before calling the Service; the Service itself does not enforce ownership, and `task_queue_status`/`task_queue_list` expose task data to any caller. A future revision may push the authorization check into the Service seam.

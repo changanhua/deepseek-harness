@@ -26,18 +26,33 @@ export type TaskStatus =
   | 'canceled'
 
 /**
- * Success summary attached to a settled task. `exitCode`/`signal` mirror the
- * subprocess outcome; `durationMs` is the wall-clock execution span.
+ * Agent-consumable outcome of a settled task. `summary` is the human-readable
+ * one-liner the owner Agent reads directly; `assistantText` is the semantic
+ * result produced by a coding-agent executor (DSH/Claude/Codex — absent for
+ * process executors). `exitCode`/`signal` mirror the subprocess outcome;
+ * `durationMs` is the wall-clock execution span. The optional fields carry the
+ * bounded projection of the attempt: the full output stays in the run log and
+ * `outputDir`, never in the durable change record.
  */
 export interface TaskResult {
+  /** Human-readable one-liner summary of the outcome (e.g. "exit 0, 3.2s, 2 output files"). */
+  summary: string
+  /** Semantic result produced by a coding-agent executor; absent for process executors. */
+  assistantText?: string
   /** Exit code; null when the process died from a signal. */
   exitCode: number | null
   /** Terminating signal; null on normal exit. */
   signal: string | null
-  /** Execution duration in milliseconds. */
+  /** Execution duration in milliseconds (spawn → settle). */
   durationMs: number
   /** Paths of produced artifacts, relative to the output directory. */
   outputFiles?: string[]
+  /** This attempt's merged run log path, for audit and diagnosis. */
+  logPath?: string
+  /** Bounded tail of collected stdout; absent when empty or uncollected. */
+  stdoutTail?: string
+  /** Bounded tail of collected stderr; absent when empty or uncollected. */
+  stderrTail?: string
 }
 
 /**
@@ -226,11 +241,23 @@ export interface QueueExecutorView {
 }
 
 /**
- * A pluggable executor. It only produces a fully-specified spawn request; the
- * scheduler is the sole spawn/terminate/waitForExit owner and passes the
- * attempt-scoped abort signal to constrain both `prepare` and the eventual
- * spawn.
+ * A pluggable executor. `prepare` produces a fully-specified spawn request;
+ * the scheduler is the sole spawn/terminate/waitForExit owner. After the
+ * process exits, the scheduler calls `normalize` (when defined) to produce a
+ * human-readable `summary` and optional `assistantText` from the executor's
+ * raw output — this is the seam that turns a process queue into a work queue.
  */
 export type ExecutorAdapter = {
   prepare(task: Task, run: RunRecord, signal: AbortSignal): Promise<SubprocessSpawnSpec>
+  /**
+   * Normalize raw process output into an Agent-consumable summary and optional
+   * semantic text. Called only on exit code 0; the scheduler provides a
+   * sensible default when this is absent.
+   * @param task - the settled task snapshot.
+   * @param stdout - the collected stdout text.
+   * @param stderr - the collected stderr text.
+   * @returns at minimum a `summary` string; `assistantText` is the semantic
+   * result from coding-agent executors.
+   */
+  normalize?(task: Task, stdout: string, stderr: string): { summary: string; assistantText?: string }
 }

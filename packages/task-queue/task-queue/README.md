@@ -10,7 +10,7 @@ The durable cross-session task-queue contract (`ctx.taskQueue`). The abstract `T
 - `list(filter?)` and `get(id)` return read-only projections. `get` throws for an unknown id.
 - `cancel(id)` resolves `'canceled'` (a pending task) or `'stopping'` (a cancel intent persisted on starting/running work). `retry(id)` resets `attempt` and requeues a failed task.
 - `stats()` reports `serviceState` (`running`/`paused`/`faulted`), an optional `fault`, per-status counts, and per-executor counts.
-- `registerExecutor(name, adapter)` adds a prepare-only adapter and returns its disposer.
+- `registerExecutor(name, adapter)` adds a prepare-only adapter and returns its disposer. The adapter's optional `normalize()` method converts raw process output into an Agent-consumable `summary` and optional `assistantText` — the seam that turns a process queue into a work queue. The scheduler calls `normalize()` on exit code 0; when absent it provides a sensible default summary.
 - `pause()`/`resume()` gate admission; `resume()` must reject a `faulted` queue.
 - `ackNotification(notificationId, messageId)` acks a pending outbox record with a CAS; an already-acknowledged record with a matching message id is an idempotent no-op. `listNotifications({ ownerSessionId })` lists one session's records by `terminalSeq`.
 
@@ -19,6 +19,8 @@ All mutations serialize through the backend's service FIFO and are fail-closed o
 ## Task model
 
 `Task` carries the full durable snapshot: status (`pending`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`canceled`), `attempt`/`maxAttempts`, `backoffMs`, `delayUntil`, `timeoutMs`, `outputDir`, tags, `lastError`, `result`, `ownerSessionId`, the trusted `source`/`receiptId`, and the per-attempt `RunRecord[]` (`runId`, attempt, diagnostic `pid`, timestamps, log path, command fingerprint, `terminationUnverified`).
+
+`TaskResult` (populated on `succeeded`) carries a human-readable `summary` (e.g. "exit 0, 3.2s, 2 output files"), optional `assistantText` (the semantic result from coding-agent executors like DSH/Claude/Codex), `exitCode`/`signal`, wall-clock `durationMs`, optional `logPath` (this attempt's run log), bounded `stdoutTail`/`stderrTail` (up to 4 KiB each), and `outputFiles` (top-level artifact names in the output directory). Full output stays in the run log and output directory; the tails are an Agent-consumable projection only.
 
 `attempt` increments exactly once, at claim (`pending → starting`). Failure requeues to `pending` with `attempt` unchanged and a backoff delay of `backoffMs * 2^(attempt-1)`; exhausting `maxAttempts` enters `failed`. A host crash recovers `starting`/`running` to the failure path and `stopping` to `canceled` with `terminationUnverified` — a persisted pid is diagnostic only and is never a cross-restart kill token.
 

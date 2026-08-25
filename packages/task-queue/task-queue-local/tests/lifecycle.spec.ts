@@ -184,6 +184,63 @@ describe('LocalTaskQueue lifecycle', () => {
     await expect(access(result)).rejects.toThrow()
   })
 
+  it('records durationMs, logPath, output tails, and outputFiles on a succeeded task', async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-task-queue-result-'))
+    const script = join(root, 'produce.cjs')
+    const outputDir = join(root, 'output')
+    await writeFile(script, [
+      'const { writeFileSync } = require(\'node:fs\')',
+      'process.stdout.write(\'hello-stdout\\n\')',
+      'process.stderr.write(\'hello-stderr\\n\')',
+      'writeFileSync(process.argv[2], \'artifact\\n\')',
+      '',
+    ].join('\n'), 'utf8')
+
+    context = new Context()
+    await context.plugin(LocalSubprocessRuntime)
+    await context.plugin(LocalTaskQueue, {
+      queueRoot: root,
+      intervalMs: 5,
+      maxConcurrent: 1,
+      maxConcurrentPerExecutor: 1,
+      executors: { node: { enabled: true } },
+    } as never)
+
+    const queue = context.taskQueue as unknown as {
+      enqueueFromTool(spec: unknown): Promise<string>
+      get(id: string): {
+        status: string
+        result: {
+          summary: string
+          exitCode: number
+          durationMs: number
+          logPath?: string
+          stdoutTail?: string
+          stderrTail?: string
+          outputFiles?: string[]
+        } | null
+      }
+    }
+
+    const id = await queue.enqueueFromTool({
+      title: 'result enrichment',
+      prompt: JSON.stringify({ script, args: [join(outputDir, 'artifact.txt')] }),
+      executor: 'node',
+      maxAttempts: 1,
+      outputDir,
+    })
+    await waitFor(() => queue.get(id).status === 'succeeded')
+
+    const result = queue.get(id).result!
+    expect(result.summary).toMatch(/^exit 0, \d+\.\ds/)
+    expect(result.exitCode).toBe(0)
+    expect(result.durationMs).toBeGreaterThan(0)
+    expect(result.logPath).toMatch(/runs[\\/].+[\\/]run-1\.log$/)
+    expect(result.stdoutTail).toContain('hello-stdout')
+    expect(result.stderrTail).toContain('hello-stderr')
+    expect(result.outputFiles).toEqual(['artifact.txt'])
+  })
+
   describe('dismiss', () => {
     async function mountDismissQueue(): Promise<{
       queue: {

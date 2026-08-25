@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-[`@deepseek-ai/dsh-task-queue`](../task-queue/README.md) 约定的 host 平面持久实现：`LocalTaskQueue` 把每一条任务与通知记录写进组合层配置的 `queueRoot` 目录（随附的 base 行中为 `$DSH_HOME/task-queue/`）下的单写者 segment 日志，跨进程重启仍存活，并由一个调度器按可配置的并发上限领取、spawn 并结算任务。作为插件加载后即注册为 `ctx.taskQueue`。
+[`@deepseek-ai/dsh-task-queue`](../task-queue/README.md) 约定的 host 平面持久实现：`LocalTaskQueue` 把每一条任务与通知记录写进组合层配置的 `queueRoot` 目录（随附的 base 行中为 `$DSH_HOME/task-queue/`）下的单写者 segment 日志，跨进程重启仍存活，并由一个调度器按可配置的并发上限领取、spawn 并结算任务。它会在读取持久日志前对 `queueRoot` 原子获取跨进程所有权锁，因此第二个宿主进程在恢复或回收第一个进程的存活任务之前就会被拒绝。作为插件加载后即注册为 `ctx.taskQueue`。
 
 ## Service
 
@@ -27,6 +27,10 @@
 
 启动时折叠所有封段与 active 尾部，校验文件名范围与 seq 连续；损坏的完整行、封段的半行、任何 seq 缺口或重复都会以 `FaultedError` 直接失败关闭。只有 active 段的尾部残行会被修复——截断到最后一个完整换行并 fsync。只有当快照的 sha256 state 摘要与逐行 lastChange 摘要都与持久日志一致时才信任它；任何不匹配都会丢弃快照并从最早段全量折叠。
 
+## 跨进程单写者所有权锁
+
+`LocalTaskQueue` 在读取持久日志或回收崩溃任务之前，先对 queue root 获取 `owner.lock`。锁通过原子 `link(2)` 从一个完整写入的临时文件创建，因此同一 `queueRoot` 上的第二个宿主进程在能 `recover()` 第一个进程的存活任务之前就会被拒绝。记录 pid 已死（前一宿主崩溃）的锁会被归档到 `quarantine/` 并接管；由存活 pid、其他机器或同一进程持有的锁会拒绝启动。不支持跨机器共享 queue root。拆卸时锁以 best-effort 释放；残留文件会在下次 acquire 时由 stale-takeover 路径恢复。
+
 ## Mutation FIFO 与 faulted 协议
 
 每一次持久 mutation——入队、批量、inbox 导入、结算、取消意图、重试、通知确认——都经同一条以服务实例为键的 promise 链串行执行，因此并发入队、inbox 扫描与结算回调不会交错。append/fsync 失败并不等于转移未发生，所以服务进入 `faulted`，拒绝新 mutation，并重读日志判定：已提交（seq 与 payload 均在）→ 对账并清除 fault；未提交且前一行尾完整 → 转移确实未发生，保留原始 I/O 错误；无法判定 → 保持 fail-closed，绝不自动 resume。spawn 之后的 `running` 发布是唯一重试特例：在下一个 seq 下重试同一规范 payload，而不是二次 spawn 进程。
@@ -43,7 +47,7 @@
 
 ## 执行器
 
-适配器只做 prepare：返回完整指定的 `SubprocessSpawnSpec`，绝不直接触碰 `child_process`——spawn、terminate、wait 全部由调度器经 `ctx.subprocess` 完成。内置 `claude`、`codex`、`opencode`、`arkcli`、`node` 与 `shell`。它们都以任务输出目录为 `cwd`、以有界 spill 收集 stdout/stderr，且不传 `env`，让 subprocess 服务的 scrub 后父环境生效。`node` 执行从任务 prompt 的 `{ "script": string, "args"?: string[] }` JSON 解析出的本地 Node 脚本，脚本必须存在于磁盘。`shell` 执行从任务 prompt 的 `{ "argv": string[] }` JSON 解析出的 argv 数组，且被一切工具入口拒绝——只有 inbox 准入能入队它，因此模型 prompt 永远无法变成任意命令。执行器必须在 host 配置中显式启用；未知或未启用的执行器在准入时即被拒绝，spawn 的 `ENOENT` 会让该 attempt 立即失败，而不是进入重试风暴。
+适配器只做 prepare：返回完整指定的 `SubprocessSpawnSpec`，绝不直接触碰 `child_process`——spawn、terminate、wait 全部由调度器经 `ctx.subprocess` 完成。适配器还可提供可选的 `normalize(task, stdout, stderr)` 方法，将原始进程输出转换为 Agent 可消费的结果：至少包含人类可读的 `summary`，编码 agent 执行器（DSH/Claude/Codex）还可提供 `assistantText`。若适配器未提供 `normalize`，调度器会从 exit code、duration、tail 存在性与输出文件数量生成合理的默认摘要。内置 `claude`、`codex`、`opencode`、`arkcli`、`node` 与 `shell`。它们都以任务输出目录为 `cwd`、以有界 spill 收集 stdout/stderr，且不传 `env`，让 subprocess 服务的 scrub 后父环境生效。`node` 执行从任务 prompt 的 `{ "script": string, "args"?: string[] }` JSON 解析出的本地 Node 脚本，脚本必须存在于磁盘。`shell` 执行从任务 prompt 的 `{ "argv": string[] }` JSON 解析出的 argv 数组，且被一切工具入口拒绝——只有 inbox 准入能入队它，因此模型 prompt 永远无法变成任意命令。执行器必须在 host 配置中显式启用；未知或未启用的执行器在准入时即被拒绝，spawn 的 `ENOENT` 会让该 attempt 立即失败，而不是进入重试风暴。
 
 ## 权限
 
@@ -62,3 +66,4 @@
 - **至少一次执行语义**：`spawn` 与 `running` 提交之间崩溃可能导致同一 attempt 执行两次；`attempt` 只在领取时递增，恢复出的 pid 仅作诊断，绝不作为跨重启 kill 的授权。
 - **未实现 segment GC**：封段永不删除，因此恢复不依赖未定义的 base-segment 协议，但队列目录会无限增长。
 - **faulted 状态刻意保持粘滞**：无法判定的提交会一直 fail-closed，直到运营恢复与重启；设计上 `resume()` 无法清除它。
+- **所有权锁仅限单机**：两台机器共享同一 queue root（例如通过网络文件系统）会被启动时拒绝；stale-takeover 路径仅处理同机 pid 死亡。
