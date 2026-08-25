@@ -39,3 +39,7 @@ apps/web/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
+# tsc 产物误入 src/（正常构建输出 lib/；手写声明如 css-modules.d.ts 不匹配，保持可跟踪）
+**/src/*.js
+**/src/*.js.map
+**/src/*.d.ts.map
