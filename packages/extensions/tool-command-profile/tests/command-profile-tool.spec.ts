@@ -1,10 +1,30 @@
 import { Context } from '@deepseek-ai/cordis'
-import CommandProfiles from '@deepseek-ai/dsh-command-profile'
+import CommandProfiles, { COMMAND_PROFILES_SETTINGS_NAMESPACE } from '@deepseek-ai/dsh-command-profile'
+import { SettingsProvider } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it } from 'vitest'
 import * as ToolCommandProfile from '../src/index.ts'
+
+/** Smallest real settings provider: one in-memory document, always writable. */
+class MemorySettings extends SettingsProvider {
+  doc: Record<string, unknown> = {}
+
+  get writable(): boolean {
+    return true
+  }
+
+  protected load(): Promise<Record<string, unknown>> {
+    return Promise.resolve(structuredClone(this.doc))
+  }
+
+  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
+    this.doc = { ...this.doc, [ns]: structuredClone(section) }
+    return Promise.resolve()
+  }
+}
 
 async function boot(): Promise<{
   ctx: Context
@@ -14,6 +34,7 @@ async function boot(): Promise<{
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(MemorySettings)
   await ctx.plugin(CommandProfiles)
   const fiber = await ctx.plugin(ToolCommandProfile)
   let n = 0
@@ -74,16 +95,16 @@ describe('command_profile execution', () => {
     await fiber.dispose()
   })
 
-  it('supports lexical lookup by alias and description', async () => {
+  it('supports lexical lookup of a user-defined profile by alias and description', async () => {
     const { ctx, call, fiber } = await boot()
-    ctx.commandProfiles.contribute({
-      contributorId: 'settings',
-      source: 'user',
-      profileId: 'my-feishu',
-      displayName: 'My Feishu CLI',
-      description: 'My Feishu automation CLI',
-      aliases: ['feishu-sync'],
-      candidates: ['feishu-sync'],
+    await ctx.settings.update(COMMAND_PROFILES_SETTINGS_NAMESPACE, {
+      profiles: [{
+        id: 'my-feishu',
+        displayName: 'My Feishu CLI',
+        description: 'My Feishu automation CLI',
+        aliases: ['feishu-sync'],
+        candidates: ['feishu-sync'],
+      }],
     })
     const byAlias = await call({ query: 'feishu-sync' })
     expect(byAlias.isError).toBe(false)

@@ -57,6 +57,12 @@
     - id: tool-runtime-inspect
       name: '@deepseek-ai/dsh-tool-runtime-inspect'
 
+    - id: command-profile
+      name: '@deepseek-ai/dsh-command-profile'
+
+    - id: tool-command-profile
+      name: '@deepseek-ai/dsh-tool-command-profile'
+
     - id: code-runtime
       name: '@deepseek-ai/dsh-code-runtime-worker-thread'
 

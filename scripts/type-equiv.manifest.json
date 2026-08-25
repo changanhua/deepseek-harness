@@ -158,6 +158,11 @@
     },
     {
       "doc": "docs/subsystems/command-profiles.md",
+      "symbol": "CommandProfilePluginContribution",
+      "source": "packages/context/command-profile/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/command-profiles.md",
       "symbol": "CommandProfileSource",
       "source": "packages/context/command-profile/src/types.ts"
     },

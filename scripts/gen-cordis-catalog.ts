@@ -320,6 +320,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   RuntimeFactKey: 'runtime-facts.md',
   RuntimeFactObservationResult: 'runtime-facts.md',
   CommandProfileContribution: 'command-profiles.md',
+  CommandProfilePluginContribution: 'command-profiles.md',
   CommandProfileQuery: 'command-profiles.md',
   ResolvedCommandProfile: 'command-profiles.md',
   CodeRunRequest: 'code-runtime.md',

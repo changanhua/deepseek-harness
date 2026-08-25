@@ -16,6 +16,7 @@ import type {
   CommandCandidateProvenance,
   CommandProfileCandidateMode,
   CommandProfileContribution,
+  CommandProfilePluginContribution,
   CommandProfileQuery,
   CommandProfileSource,
   ResolvedCommandCandidate,
@@ -57,10 +58,9 @@ const MAX_QUERY_LIMIT = 10
 /** Attempt-order rank per contribution source (user first). */
 const SOURCE_RANK: Record<CommandProfileSource, number> = { user: 0, builtin: 1, plugin: 2 }
 
-/** One stored contribution plus its registration order. */
+/** One stored contribution. Array order is registration order. */
 interface ContributionRecord {
   readonly contribution: CommandProfileContribution
-  readonly order: number
 }
 
 /** A contributor identity used by merge rules. */
@@ -112,7 +112,6 @@ export class CommandProfiles extends Service {
   private readonly contributions = new Map<string, ContributionRecord[]>()
   private readonly includeBuiltins: boolean
   private readonly userDisposers: Array<() => void> = []
-  private nextOrder = 0
   private userSource: () => CommandProfilesSettingsSection = () => EMPTY_SETTINGS_SECTION
 
   /**
@@ -126,7 +125,7 @@ export class CommandProfiles extends Service {
     this.includeBuiltins = config.includeBuiltins ?? true
     if (this.includeBuiltins) {
       for (const contribution of BUILTIN_COMMAND_PROFILE_CONTRIBUTIONS) {
-        this.contribute(contribution)
+        this.registerContribution(contribution)
       }
     }
     installSettingsSection(ctx, COMMAND_PROFILES_SETTINGS_NAMESPACE, COMMAND_PROFILES_SETTINGS_SCHEMA, EMPTY_SETTINGS_SECTION, {
@@ -143,34 +142,15 @@ export class CommandProfiles extends Service {
   }
 
   /**
-   * Register one knowledge record for a profile.
-   * @param contribution - self-contained provenance identity and fields.
+   * Register one plugin knowledge record for a profile. Provenance authority is
+   * fixed to `plugin`; builtin and user records are produced only by the
+   * registry's built-in seed and the settings adapter.
+   * @param contribution - the plugin's record; source is implied.
    * @returns the effect disposer retracting exactly this record.
    * @throws TypeError or Error when the record is malformed or violates a merge rule.
    */
-  contribute(contribution: CommandProfileContribution): () => void {
-    this.validateContribution(contribution)
-    const record: ContributionRecord = { contribution, order: this.nextOrder++ }
-    const dispose = this.ctx.effect(() => {
-      const existing = this.contributions.get(contribution.profileId)
-      if (existing === undefined) {
-        this.contributions.set(contribution.profileId, [record])
-      } else {
-        existing.push(record)
-      }
-      return () => {
-        const current = this.contributions.get(contribution.profileId)
-        if (current === undefined) return
-        const index = current.indexOf(record)
-        if (index >= 0) current.splice(index, 1)
-        if (current.length === 0) this.contributions.delete(contribution.profileId)
-      }
-    }, `commandProfiles.contribute(${JSON.stringify(contribution.profileId)}, ${JSON.stringify(contribution.contributorId)})`)
-    // The effect disposer settles asynchronously; the retraction itself is
-    // synchronous bookkeeping, so the public disposer is a plain void call.
-    return () => {
-      void dispose()
-    }
+  contribute(contribution: CommandProfilePluginContribution): () => void {
+    return this.registerContribution({ ...contribution, source: 'plugin' })
   }
 
   /**
@@ -182,14 +162,13 @@ export class CommandProfiles extends Service {
   resolve(id: string): ResolvedCommandProfile | undefined {
     const records = this.contributions.get(id)
     if (records === undefined || records.length === 0) return undefined
-    const ordered = [...records].sort((left, right) => left.order - right.order)
-    const userRecords = ordered.filter(record => record.contribution.source === 'user')
+    const userRecords = records.filter(record => record.contribution.source === 'user')
     if (userRecords.some(record => record.contribution.disabled === true)) return undefined
 
-    const owner = this.definitionOwner(ordered)
+    const owner = this.definitionOwner(records)
     const ownerRecord = owner === undefined
       ? undefined
-      : ordered.find(record => record.contribution.source === owner.source
+      : records.find(record => record.contribution.source === owner.source
         && record.contribution.contributorId === owner.contributorId)
     const userDisplayName = userRecords.map(record => record.contribution.displayName).find(value => value !== undefined)
     const userDescription = userRecords.map(record => record.contribution.description).find(value => value !== undefined)
@@ -203,9 +182,9 @@ export class CommandProfiles extends Service {
       id,
       displayName,
       description,
-      aliases: this.mergeTokens(ordered, ownerRecord, 'aliases'),
-      tags: this.mergeTokens(ordered, ownerRecord, 'tags'),
-      candidates: this.mergeCandidates(ordered),
+      aliases: this.mergeTokens(records, ownerRecord, 'aliases'),
+      tags: this.mergeTokens(records, ownerRecord, 'tags'),
+      candidates: this.mergeCandidates(records),
     }
   }
 
@@ -233,15 +212,6 @@ export class CommandProfiles extends Service {
   }
 
   /**
-   * Programmatic single-profile access; identical to {@link resolve}.
-   * @param id - stable profile id.
-   * @returns the merged profile, or `undefined` when absent or disabled.
-   */
-  get(id: string): ResolvedCommandProfile | undefined {
-    return this.resolve(id)
-  }
-
-  /**
    * Every active profile's effective view in id order.
    * @returns profiles that are neither absent nor user-disabled.
    */
@@ -252,6 +222,48 @@ export class CommandProfiles extends Service {
       .sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
   }
 
+  /**
+   * Register one owned record with full provenance. The only internal entry
+   * point: the built-in seed and the settings adapter produce `builtin` and
+   * `user` records here; the public {@link contribute} pins `source: 'plugin'`.
+   * @param contribution - fully-attributed knowledge record.
+   * @returns the effect disposer retracting exactly this record.
+   * @throws TypeError or Error when the record is malformed or violates a merge rule.
+   */
+  private registerContribution(contribution: CommandProfileContribution): () => void {
+    this.validateContribution(contribution)
+    const record: ContributionRecord = { contribution }
+    const dispose = this.ctx.effect(() => {
+      const existing = this.contributions.get(contribution.profileId)
+      if (existing === undefined) {
+        this.contributions.set(contribution.profileId, [record])
+      } else {
+        existing.push(record)
+      }
+      return () => {
+        const current = this.contributions.get(contribution.profileId)
+        if (current === undefined) return
+        const index = current.indexOf(record)
+        if (index >= 0) current.splice(index, 1)
+        if (current.length === 0) this.contributions.delete(contribution.profileId)
+      }
+    }, `commandProfiles.contribute(${JSON.stringify(contribution.profileId)}, ${JSON.stringify(contribution.contributorId)})`)
+    // The effect disposer settles asynchronously; the retraction itself is
+    // synchronous bookkeeping, so the public disposer is a plain void call.
+    return () => {
+      void dispose()
+    }
+  }
+
+  /**
+   * Prospective validation of a whole settings section before any old user
+   * contribution is retracted. A partial update is legal only when a non-user
+   * lower layer (builtin or plugin) already defines the profile; a pure
+   * user-defined profile must supply the full identity and a candidate on
+   * every update.
+   * @param value - the resolved settings section, schema-valid by construction.
+   * @throws Error when the section would leave a profile malformed.
+   */
   private validateSettingsSection(value: CommandProfilesSettingsSection): void {
     const seen = new Set<string>()
     for (const profile of value.profiles) {
@@ -259,16 +271,20 @@ export class CommandProfiles extends Service {
         throw new Error(`commandProfiles settings contain duplicate user profile id ${JSON.stringify(profile.id)}`)
       }
       seen.add(profile.id)
-      if (this.isNewProfile(profile.id) && (profile.displayName === undefined || profile.description === undefined)) {
+      if (!this.hasLowerLayerDefinition(profile.id)
+        && (profile.displayName === undefined
+          || profile.description === undefined
+          || (profile.candidates?.length ?? 0) === 0)) {
         throw new Error(
-          `new user command profile ${JSON.stringify(profile.id)} requires displayName and description`,
+          `new user command profile ${JSON.stringify(profile.id)} requires displayName, description, and at least one candidate`,
         )
       }
     }
   }
 
-  private isNewProfile(profileId: string): boolean {
-    return (this.contributions.get(profileId)?.length ?? 0) === 0
+  /** Whether a non-user (builtin or plugin) contribution already defines the profile. */
+  private hasLowerLayerDefinition(profileId: string): boolean {
+    return (this.contributions.get(profileId) ?? []).some(record => record.contribution.source !== 'user')
   }
 
   private validateContribution(contribution: CommandProfileContribution): void {
@@ -313,9 +329,18 @@ export class CommandProfiles extends Service {
     if (contribution.source === 'builtin' && existing.some(record => record.contribution.source === 'builtin')) {
       throw new Error(`builtin command profile ${JSON.stringify(contribution.profileId)} is already registered`)
     }
-    if (contribution.source === 'user' && existing.length === 0) {
+    // A brand-new profile must be complete at registration; a malformed record
+    // is rejected here, never left to blow up at resolve time.
+    if (existing.length === 0) {
       if (contribution.displayName === undefined || contribution.description === undefined) {
-        throw new Error(`new user command profile ${JSON.stringify(contribution.profileId)} requires displayName and description`)
+        throw new Error(
+          `new command profile ${JSON.stringify(contribution.profileId)} requires displayName and description`,
+        )
+      }
+      if ((contribution.candidates?.length ?? 0) === 0) {
+        throw new Error(
+          `new command profile ${JSON.stringify(contribution.profileId)} requires at least one candidate`,
+        )
       }
     }
     if (contribution.displayName !== undefined || contribution.description !== undefined) {
@@ -343,15 +368,20 @@ export class CommandProfiles extends Service {
     return undefined
   }
 
-  private mergeCandidates(ordered: readonly ContributionRecord[]): ResolvedCommandCandidate[] {
-    const replaceMode = ordered
+  /**
+   * Merge candidates with full provenance. Candidates sort by their highest
+   * source rank (user > builtin > plugin), then lexically by command name —
+   * never by registration order. Each candidate's provenance sorts by source
+   * rank, then contributor id lexically.
+   */
+  private mergeCandidates(records: readonly ContributionRecord[]): ResolvedCommandCandidate[] {
+    const replaceMode = records
       .filter(record => record.contribution.source === 'user')
       .some(record => record.contribution.candidateMode === 'replace')
     const sources = replaceMode
-      ? ordered.filter(record => record.contribution.source === 'user')
-      : ordered
+      ? records.filter(record => record.contribution.source === 'user')
+      : records
     const provenanceByCommand = new Map<string, Map<string, CommandCandidateProvenance>>()
-    const firstOrder = new Map<string, number>()
     for (const record of sources) {
       for (const command of record.contribution.candidates ?? []) {
         let byContributor = provenanceByCommand.get(command)
@@ -363,24 +393,30 @@ export class CommandProfiles extends Service {
           `${record.contribution.source}:${record.contribution.contributorId}`,
           { source: record.contribution.source, contributorId: record.contribution.contributorId },
         )
-        if (!firstOrder.has(command)) firstOrder.set(command, record.order)
       }
     }
     const candidates: ResolvedCommandCandidate[] = []
     for (const [command, byContributor] of provenanceByCommand) {
-      candidates.push({ command, provenance: [...byContributor.values()] })
+      candidates.push({
+        command,
+        provenance: [...byContributor.values()].sort((left, right) => {
+          const rankDiff = SOURCE_RANK[left.source] - SOURCE_RANK[right.source]
+          if (rankDiff !== 0) return rankDiff
+          return left.contributorId < right.contributorId ? -1 : left.contributorId > right.contributorId ? 1 : 0
+        }),
+      })
     }
     candidates.sort((left, right) => {
       const leftRank = Math.min(...left.provenance.map(provenance => SOURCE_RANK[provenance.source]))
       const rightRank = Math.min(...right.provenance.map(provenance => SOURCE_RANK[provenance.source]))
       if (leftRank !== rightRank) return leftRank - rightRank
-      return (firstOrder.get(left.command) ?? 0) - (firstOrder.get(right.command) ?? 0)
+      return left.command < right.command ? -1 : left.command > right.command ? 1 : 0
     })
     return candidates
   }
 
   private mergeTokens(
-    ordered: readonly ContributionRecord[],
+    records: readonly ContributionRecord[],
     ownerRecord: ContributionRecord | undefined,
     field: 'aliases' | 'tags',
   ): string[] {
@@ -392,13 +428,13 @@ export class CommandProfiles extends Service {
       seen.add(key)
       result.push(value)
     }
-    for (const record of ordered.filter(item => item.contribution.source === 'user')) {
+    for (const record of records.filter(item => item.contribution.source === 'user')) {
       for (const value of record.contribution[field] ?? []) add(value)
     }
     if (ownerRecord !== undefined) {
       for (const value of ownerRecord.contribution[field] ?? []) add(value)
     }
-    const remaining = ordered
+    const remaining = records
       .filter(record => record !== ownerRecord && record.contribution.source === 'plugin')
       .sort((left, right) => left.contribution.contributorId < right.contribution.contributorId ? -1
         : left.contribution.contributorId > right.contribution.contributorId ? 1 : 0)
@@ -429,7 +465,7 @@ export class CommandProfiles extends Service {
         throw new Error(`commandProfiles settings contain duplicate user profile id ${JSON.stringify(profile.id)}`)
       }
       seen.add(profile.id)
-      this.userDisposers.push(this.contribute({
+      this.userDisposers.push(this.registerContribution({
         contributorId: USER_CONTRIBUTOR_ID,
         source: 'user',
         profileId: profile.id,

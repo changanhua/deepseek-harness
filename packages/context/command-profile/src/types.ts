@@ -38,6 +38,28 @@ export interface CommandProfileContribution {
   readonly disabled?: boolean
 }
 
+/**
+ * A public plugin knowledge record. `source` is fixed to `plugin`: plugins may
+ * not claim builtin or user authority, and the user-only `candidateMode` and
+ * `disabled` flags are absent from the public API.
+ */
+export interface CommandProfilePluginContribution {
+  /** Who contributed this record (a plugin id). */
+  readonly contributorId: string
+  /** The target profile's stable id. */
+  readonly profileId: string
+  /** Human display name; required to define a brand-new profile. */
+  readonly displayName?: string
+  /** One-line description; required to define a brand-new profile. */
+  readonly description?: string
+  /** Additional lookup names for this profile. */
+  readonly aliases?: readonly string[]
+  /** Free-form discovery tags. */
+  readonly tags?: readonly string[]
+  /** Candidate executable names for this profile; at least one to define a brand-new profile. */
+  readonly candidates?: readonly CommandCandidateName[]
+}
+
 /** Provenance of one candidate: who contributed it. */
 export interface CommandCandidateProvenance {
   readonly source: CommandProfileSource

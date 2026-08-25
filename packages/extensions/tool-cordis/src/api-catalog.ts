@@ -567,9 +567,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Registry for command-knowledge contributions with merge and query.',
     methods: [
       {
-        signature: 'contribute(contribution: CommandProfileContribution): () => void',
-        description: 'Register one knowledge record for a profile.',
-        parameters: [{ name: 'contribution', description: 'self-contained provenance identity and fields.' }],
+        signature: 'contribute(contribution: CommandProfilePluginContribution): () => void',
+        description: 'Register one plugin knowledge record for a profile. Provenance authority is fixed to `plugin`; builtin and user records are produced only by the registry\'s built-in seed and the settings adapter.',
+        parameters: [{ name: 'contribution', description: 'the plugin\'s record; source is implied.' }],
         returns: 'the effect disposer retracting exactly this record.',
         throws: ['TypeError or Error when the record is malformed or violates a merge rule.'],
       },
@@ -584,12 +584,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Deterministic lexical query over profiles, bounded by CommandProfileQuery.limit.',
         parameters: [{ name: 'input', description: 'query text and optional result cap.' }],
         returns: 'matched effective profiles in rank order, then id order.',
-      },
-      {
-        signature: 'get(id: string): ResolvedCommandProfile | undefined',
-        description: 'Programmatic single-profile access; identical to resolve.',
-        parameters: [{ name: 'id', description: 'stable profile id.' }],
-        returns: 'the merged profile, or `undefined` when absent or disabled.',
       },
       {
         signature: 'list(): ResolvedCommandProfile[]',
@@ -3355,12 +3349,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CommandInvocation {\n    readonly commandId: CommandId;\n    readonly agent: Agent;\n    readonly rawInput: string;\n    readonly attachments: readonly ImageBlock[];\n    readonly signal: AbortSignal;\n}',
   },
   {
-    name: 'CommandProfileCandidateMode',
-    declaration: 'export type CommandProfileCandidateMode = \'append\' | \'replace\';',
-  },
-  {
-    name: 'CommandProfileContribution',
-    declaration: 'export interface CommandProfileContribution {\n    readonly contributorId: string;\n    readonly source: CommandProfileSource;\n    readonly profileId: string;\n    readonly displayName?: string;\n    readonly description?: string;\n    readonly aliases?: readonly string[];\n    readonly tags?: readonly string[];\n    readonly candidates?: readonly CommandCandidateName[];\n    readonly candidateMode?: CommandProfileCandidateMode;\n    readonly disabled?: boolean;\n}',
+    name: 'CommandProfilePluginContribution',
+    declaration: 'export interface CommandProfilePluginContribution {\n    readonly contributorId: string;\n    readonly profileId: string;\n    readonly displayName?: string;\n    readonly description?: string;\n    readonly aliases?: readonly string[];\n    readonly tags?: readonly string[];\n    readonly candidates?: readonly CommandCandidateName[];\n}',
   },
   {
     name: 'CommandProfileQuery',

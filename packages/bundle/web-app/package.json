@@ -108,6 +108,8 @@
     "@deepseek-ai/dsh-runtime-facts": "workspace:^",
     "@deepseek-ai/dsh-runtime-facts-host": "workspace:^",
     "@deepseek-ai/dsh-tool-runtime-inspect": "workspace:^",
+    "@deepseek-ai/dsh-command-profile": "workspace:^",
+    "@deepseek-ai/dsh-tool-command-profile": "workspace:^",
     "@deepseek-ai/dsh-session-projection-cache": "workspace:^",
     "@deepseek-ai/dsh-session-reference": "workspace:^",
     "@deepseek-ai/dsh-session-log-export": "workspace:^",
