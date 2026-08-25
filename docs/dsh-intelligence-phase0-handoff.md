@@ -1,6 +1,8 @@
 # DSH Architecture Intelligence Layer — Phase 0 交接文档
 
 日期：2026-08-25
+
+
 目的：把 Phase 0（验证切片 + private-eval 实验台）的当前状态、边界与下一步完整交接，任何接手者可基于本文件继续，无需重读全部历史。
 
 ## 1. 项目一句话
@@ -19,11 +21,11 @@
 ## 3. Git / PR 状态
 
 - 本地工作分支：`intelligence/phase0`（基于 `origin/master` = `d546f0fa`）。
-- **PR #7（干净，合并候选）**：head `43f636d787`，6 commits / 49 files / +4487 / −0，base=`master`，mergeable MERGEABLE。
-  https://github.com/changanhua/deepseek-harness/pull/7
+- **PR #7（干净，合并候选）**：head `43f636d787`，6 commits / 49 files / +4487 / −0，base=`master`，mergeable MERGEABLE。 https://github.com/changanhua/deepseek-harness/pull/7
+
 - **PR #6（旧，保留作历史）**：`docs/architecture-intelligence`，30 commits / 216 files，继承 runtime-awareness 工作线，CI 被 release version / build 产物问题污染。
-- CI（PR #7）：8 pass / 4 fail / 4 pending（node24 static、coverage、snapshots、windows native）。
-  4 个 fail **均为仓库基线**，与本 PR 无关：
+- CI（PR #7）：8 pass / 4 fail / 4 pending（node24 static、coverage、snapshots、windows native）。4 个 fail 均为仓库基线，与本 PR 无关：
+
   - `Issue policy / lifecycle`：workflow 把 repo 硬编码成不存在的 `deepseek-harness/deepseek-harness` → 404。
   - `Pack npm tarballs`：`dsh release members must share one version`（master 基线版本漂移）。
   - `python node24`：`verify-runtime-closure` 构建产物缺失（环境/基线）。
