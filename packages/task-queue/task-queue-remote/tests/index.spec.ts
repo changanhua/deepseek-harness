@@ -7,6 +7,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import {
+  TASK_QUEUE_HOST_ACCESS,
   RunId,
   TaskId,
 } from '@deepseek-ai/dsh-task-queue'
@@ -77,26 +78,32 @@ function makeQueue(overrides: Partial<TaskQueue> = {}): {
   const queue = {
     enqueueFromTool: async () => TaskId('tq-x'),
     enqueueBatchFromTool: async () => [],
-    list(filter?: never) {
+    list(access: unknown, filter?: never) {
+      expect(access).toBe(TASK_QUEUE_HOST_ACCESS)
       listCalls.push(filter)
       return [summary('tq-1', 'running'), summary('tq-2', 'failed')]
     },
-    get(id: TaskId): Task {
+    get(access: unknown, id: TaskId): Task {
+      expect(access).toBe(TASK_QUEUE_HOST_ACCESS)
       if (String(id) !== 'tq-1') throw new Error(`unknown task ${id}`)
       return task('tq-1')
     },
-    cancel(id: TaskId) {
+    cancel(access: unknown, id: TaskId) {
+      expect(access).toBe(TASK_QUEUE_HOST_ACCESS)
       cancelCalls.push(String(id))
       return Promise.resolve('stopping' as const)
     },
-    retry(id: TaskId) {
+    retry(access: unknown, id: TaskId) {
+      expect(access).toBe(TASK_QUEUE_HOST_ACCESS)
       retryCalls.push(String(id))
       return Promise.resolve(id)
     },
-    async dismiss(id: TaskId, dismissed: boolean) {
+    async dismiss(access: unknown, id: TaskId, dismissed: boolean) {
+      expect(access).toBe(TASK_QUEUE_HOST_ACCESS)
       dismissCalls.push({ id: String(id), dismissed })
     },
-    stats(): QueueStats {
+    stats(access: unknown): QueueStats {
+      expect(access).toBe(TASK_QUEUE_HOST_ACCESS)
       return {
         serviceState: 'faulted',
         fault: { reason: 'append error' },
@@ -108,8 +115,8 @@ function makeQueue(overrides: Partial<TaskQueue> = {}): {
     },
     registerExecutor: () => () => {},
     listExecutors: () => [{ name: 'codex', enabled: true, toolAllowed: true }],
-    pause: () => {},
-    resume: () => {},
+    pause: (access: unknown) => { expect(access).toBe(TASK_QUEUE_HOST_ACCESS) },
+    resume: (access: unknown) => { expect(access).toBe(TASK_QUEUE_HOST_ACCESS) },
     ackNotification: async () => {},
     listNotifications: () => [],
     ...overrides,
@@ -201,7 +208,7 @@ describe('task-queue-remote service', () => {
 
   it('readRunLog rejects a run without a log path', async () => {
     const { service } = mount({
-      get(id: TaskId) {
+      get(_access, id: TaskId) {
         const base = {
           id,
           title: 'tq-1',

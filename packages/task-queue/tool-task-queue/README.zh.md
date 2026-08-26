@@ -4,9 +4,9 @@
 
 `ctx.taskQueue` 的面向模型工具包：`task_queue_*` 工具、一个工具指引提示词区段、一个 pre-step 候选通知钩子，以及 append→flush→CAS-ack 通知 finalizer。一次 apply 即注册全部内容——钩子不会被拆进多个会重复监听的挂载。宿主 Service 通过 `ctx.get('taskQueue')` 可选读取：未组装后端时工具仍会注册，但其 `execute` 会带明确的加载指引报错，pre-step/finalizer 钩子则直接空转。
 
-`enqueue` 与 `enqueue_batch` 会把调用方 session 绑定为任务的 `ownerSessionId`，使终态通知能路由到正确的会话。模型无法自行设置该字段——`validateEnqueueSpec` 会从模型输入中剥离它——因此只有受信代码路径能注入。无 Agent 的宿主面调用（例如 inbox 扫描）产生无主任务，不生成通知。
+`enqueue` 与 `enqueue_batch` 从调用方会话派生不透明的 Agent 授权。Service 把该授权的会话绑定为 `ownerSessionId`，因此即便 `validateEnqueueSpec` 也会从模型输入中剥离此字段，模型仍不可能选择 owner。无 Agent 的宿主面调用使用显式宿主授权，并可产生不生成通知的无主任务。
 
-`cancel`、`retry`、`dismiss`、`undismiss` 实施 owner 授权检查：调用方 Agent 必须是任务的所有者（其 session id 与 `ownerSessionId` 匹配），或者调用方为无 Agent 上下文的宿主操作员。非 owner 的 Agent 尝试操作其他会话的任务将被拒绝并给出明确提示。无主任务（无 `ownerSessionId`）只能由宿主操作员操作。
+每个任务数据工具都把同一个授权传给 `ctx.taskQueue`。因此 `list`、`status`、`stats` 只暴露调用会话的任务；`cancel`、`retry`、`dismiss`、`undismiss` 只能更改这些任务；通知列举与确认也限定在该会话。外部会话任务、无主任务与不存在的任务 id 均返回相同的未知任务错误。宿主面调用仍保留全队列访问权。
 
 ## 工具
 
@@ -76,4 +76,4 @@ pre-step 钩子通过 `listNotifications` 读取该会话的待处理 outbox 通
 - **`shell` 仅限 inbox**——模型面工具设计上永远不能入队 `shell` 任务（授权 §6.3）；只有 inbox 准入路径可以。
 - **通知 at-least-once**——append 与 ack 之间崩溃会重新注入通知（按稳定 marker 去重），同一次完成可能浮现两次。
 - **无主任务不产生通知**——无 Agent 的宿主面调用（例如 inbox 扫描）创建的任务不带 `ownerSessionId`，其终态不会通知。
-- **Owner 授权在工具层实现**——`cancel`/`retry`/`dismiss`/`undismiss` 在调用 Service 前检查所有权；Service 本身不强制 ownership，且 `task_queue_status`/`task_queue_list` 对任何调用方暴露任务数据。后续版本可能将授权检查下沉到 Service seam。
+- **宿主面信任是显式的**——无 Agent 的调用使用 `TASK_QUEUE_HOST_ACCESS`，可以读取或控制所有任务。只有受信宿主插件可以这样派发；模型调用始终携带会话级授权。

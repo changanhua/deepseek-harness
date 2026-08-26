@@ -10,6 +10,7 @@ import {
 } from '../src/index.ts'
 import type { ToolTaskQueueDeps } from '../src/index.ts'
 import type { TaskQueue } from '@deepseek-ai/dsh-task-queue'
+import { taskQueueAgentAccess } from '@deepseek-ai/dsh-task-queue'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -66,20 +67,20 @@ async function poll(predicate: () => boolean, timeoutMs = 5_000): Promise<void> 
 }
 
 interface QueueLike {
-  enqueueFromTool(spec: unknown): Promise<import('@deepseek-ai/dsh-task-queue').TaskId>
-  get(id: import('@deepseek-ai/dsh-task-queue').TaskId): {
+  enqueueFromTool(access: import('@deepseek-ai/dsh-task-queue').TaskQueueAccess, spec: unknown): Promise<import('@deepseek-ai/dsh-task-queue').TaskId>
+  get(access: import('@deepseek-ai/dsh-task-queue').TaskQueueAccess, id: import('@deepseek-ai/dsh-task-queue').TaskId): {
     status: string
     result: { summary: string; exitCode: number; stdoutTail?: string } | null
     ownerSessionId: string | null
   }
-  listNotifications(filter: { ownerSessionId: string }): Array<{
+  listNotifications(access: import('@deepseek-ai/dsh-task-queue').TaskQueueAccess): Array<{
     notificationId: import('@deepseek-ai/dsh-task-queue').NotificationId
     messageId: string
     status: string
     ownerSessionId: string
     taskId: import('@deepseek-ai/dsh-task-queue').TaskId
   }>
-  ackNotification(notificationId: import('@deepseek-ai/dsh-task-queue').NotificationId, messageId: string): Promise<void>
+  ackNotification(access: import('@deepseek-ai/dsh-task-queue').TaskQueueAccess, notificationId: import('@deepseek-ai/dsh-task-queue').NotificationId, messageId: string): Promise<void>
 }
 
 describe('vertical business loop', () => {
@@ -137,11 +138,11 @@ describe('vertical business loop', () => {
     // Step 2: wait for the task to succeed and produce a notification.
     await poll(() => {
       let status = 'unknown'
-      try { status = queue.get(taskId as never).status } catch { /* boot */ }
+      try { status = queue.get(taskQueueAgentAccess('s-owner-A'), taskId as never).status } catch { /* boot */ }
       return status === 'succeeded'
     })
 
-    const task = queue.get(taskId as never)
+    const task = queue.get(taskQueueAgentAccess('s-owner-A'), taskId as never)
     expect(task.status).toBe('succeeded')
     expect(task.result?.summary).toMatch(/^exit 0/)
     expect(task.result?.exitCode).toBe(0)
@@ -149,8 +150,8 @@ describe('vertical business loop', () => {
     expect(task.ownerSessionId).toBe('s-owner-A')
 
     // Step 3: a notification must exist for the owner session.
-    await poll(() => queue.listNotifications({ ownerSessionId: 's-owner-A' }).length > 0)
-    const notifications = queue.listNotifications({ ownerSessionId: 's-owner-A' })
+    await poll(() => queue.listNotifications(taskQueueAgentAccess('s-owner-A')).length > 0)
+    const notifications = queue.listNotifications(taskQueueAgentAccess('s-owner-A'))
     expect(notifications).toHaveLength(1)
     expect(notifications[0]!.status).toBe('pending')
     expect(notifications[0]!.ownerSessionId).toBe('s-owner-A')
@@ -181,11 +182,11 @@ describe('vertical business loop', () => {
 
     // Step 6: the finalizer must flush and CAS-ack the notification.
     await poll(() => {
-      const ns = queue.listNotifications({ ownerSessionId: 's-owner-A' })
+      const ns = queue.listNotifications(taskQueueAgentAccess('s-owner-A'))
       return ns.length === 1 && ns[0]!.status === 'acknowledged'
     })
     expect(flushSpy).toHaveBeenCalled()
-    const acked = queue.listNotifications({ ownerSessionId: 's-owner-A' })[0]!
+    const acked = queue.listNotifications(taskQueueAgentAccess('s-owner-A'))[0]!
     expect(acked.status).toBe('acknowledged')
 
     // Step 7: a second pre-step must not re-inject the acknowledged notification.
@@ -238,14 +239,14 @@ describe('vertical business loop', () => {
 
     await poll(() => {
       let status = 'unknown'
-      try { status = queue.get(taskId as never).status } catch { /* boot */ }
+      try { status = queue.get(taskQueueAgentAccess('s-recover'), taskId as never).status } catch { /* boot */ }
       return status === 'succeeded'
     })
-    await poll(() => queue.listNotifications({ ownerSessionId: 's-recover' }).length > 0)
+    await poll(() => queue.listNotifications(taskQueueAgentAccess('s-recover')).length > 0)
 
     // Simulate the append-before-ack crash: the marker was appended to the
     // session before the ack persisted, then the process crashed.
-    const notifications = queue.listNotifications({ ownerSessionId: 's-recover' })
+    const notifications = queue.listNotifications(taskQueueAgentAccess('s-recover'))
     const record = notifications[0]!
     expect(record.status).toBe('pending')
     appendText(session, `Background task "crash recovery" reached succeeded.\n${markerLine(record.notificationId, record.messageId)}`)
@@ -265,7 +266,7 @@ describe('vertical business loop', () => {
 
     // The finalizer was launched; wait for the CAS ack.
     await poll(() => {
-      const ns = queue.listNotifications({ ownerSessionId: 's-recover' })
+      const ns = queue.listNotifications(taskQueueAgentAccess('s-recover'))
       return ns.length === 1 && ns[0]!.status === 'acknowledged'
     })
     expect(flushSpy).toHaveBeenCalled()

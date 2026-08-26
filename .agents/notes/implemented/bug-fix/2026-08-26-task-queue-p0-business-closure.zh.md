@@ -20,7 +20,7 @@ Status: implemented
 
 ### 1. Owner session 绑定
 
-`ownerSessionIdOf(exec)` 在工具层从 `exec.agent?.session.id` 提取调用方 session id。`task_queue_enqueue` 与 `task_queue_enqueue_batch` 调用它并将结果写入 `spec.ownerSessionId` 后再传给 service。模型无法自行设置 `ownerSessionId`——`validateEnqueueSpec` 不接受此字段（它不在 `SPEC_PARAM.properties` 中）——因此只有受信代码路径能注入。无 Agent 的宿主面调用（inbox 扫描）产生无主任务，不生成通知。
+`dsh-tool-task-queue` 从 `exec.agent?.session.id` 派生不透明授权，并将其传给 `enqueueFromTool` 或 `enqueueBatchFromTool`。Service 把 Agent 授权的精确会话绑定为 `ownerSessionId`；`validateEnqueueSpec` 也从模型输入中排除此字段。宿主面派发使用显式宿主授权，并可产生不生成通知的无主任务。放置方式与授权约定由 [Service 授权 Agent Note](../architecture/2026-08-26-task-queue-service-authorization.zh.md) 持有。
 
 下游 `createTask` 与 `commitTerminal` 已有 `ownerSessionId ?? null` 和 `ownerSessionId === null → 无通知` 的逻辑，无需改动。
 
@@ -48,9 +48,9 @@ Node.js 不暴露 `flock()`。`proper-lockfile` 等库使用 `rename` 或 `open(
 
 完整 stdout 可能很大（按收集上限 256 KiB × 2 流）。写入 change record 会膨胀持久日志与 snapshot。4 KiB tail 足够 Agent 判断任务是否产出了有用结果；完整输出始终在 run log 与 output 目录中可查。
 
-### 为什么 owner 绑定在工具层而非 `enqueueFromTool` 内部
+### 已取代的 owner 绑定位置
 
-`enqueueFromTool` 是 service 层受信入口，inbox 扫描也走它，inbox 任务天然无 owner。把绑定放在工具层保持了 service 的来源无关性：工具负责从执行上下文提取 owner，inbox 负责不提供 owner，service 不关心来源。
+原始 P0 收敛把 owner 绑定在工具包装层，因为工具与 inbox 准入的归属语义不同。该放置方式已被 [Service 授权](../architecture/2026-08-26-task-queue-service-authorization.zh.md) 取代：调用方现在提供显式 Agent 或宿主授权，Service 在不依赖 Agent 生命周期的前提下解析有主与无主准入。
 
 ### 5. TaskOutcome：summary 与 normalize seam
 
@@ -60,9 +60,9 @@ Node.js 不暴露 `flock()`。`proper-lockfile` 等库使用 `rename` 或 `open(
 
 ### 6. cancel / retry / dismiss 的 owner 授权
 
-`assertOwnerOrHost(exec, ownerSessionId)` 强制调用方要么是任务的所有者 Agent（其 session id 匹配 `ownerSessionId`），要么是宿主操作员（无 Agent 上下文）。非 owner Agent 尝试操作其他会话的任务将被拒绝并给出明确提示。无主任务（`ownerSessionId === null`）只能由宿主操作员操作——任何 Agent 都不能认领。
+现在每个任务数据 Service 操作都要求不透明的 Agent-owner 或宿主授权。Agent 授权限定于精确的 `ownerSessionId`；宿主授权可以操作有主与无主任务。记录不存在与无权访问的 id 表现相同。
 
-检查在工具层应用于 `cancel`、`retry`、`dismiss`、`undismiss`。Service 本身不强制 ownership，`task_queue_status`/`task_queue_list` 仍对任何调用方暴露任务数据。将授权检查下沉到 Service seam 留待后续版本。
+Service 对准入、list/status/stats、cancel/retry/dismiss 以及通知 list/ack 实施该规则。工具包装层只从受信执行元数据派生授权；命令与 Remote 消费方传递显式宿主授权。详见 [取代旧放置方式的授权决策](../architecture/2026-08-26-task-queue-service-authorization.zh.md)。
 
 ### 7. 通知中包含 outcome summary
 
@@ -85,7 +85,7 @@ Inspect it with task_queue_status for details.
 
 ## Alternatives considered
 
-**在 `enqueueFromTool` 内部注入 `ownerSessionId` 而非工具层。** 这需要把 session id 传过 service 接口，把 service 契约耦合到 agent 生命周期。service 已有两个调用方（工具与 inbox），各有不同的所有权语义，在调用方边界做区分更干净。
+**在 `enqueueFromTool` 内部注入 `ownerSessionId` 而非工具层。** 原始 P0 变更拒绝此方案，因为裸 session id 会把 Service 耦合到 Agent 生命周期，且工具与 inbox 调用方语义不同。[Service 授权](../architecture/2026-08-26-task-queue-service-authorization.zh.md) 后来以不透明的 Agent 或宿主授权取代该放置方式，既保留调用方差异，也无需传递合成 session。
 
 **用 `flock` 或 `proper-lockfile` 做跨进程锁。** 拒绝，因为 Node.js 不暴露 `flock`，且 `proper-lockfile` 基于 `rename` 的方案在 Windows NTFS 上不保证原子性。`link(2)` 是单次 syscall，在队列运行的每个平台上都有正确的语义。
 
@@ -93,7 +93,7 @@ Inspect it with task_queue_status for details.
 
 **在 append-before-ack 场景下重新注入已 append 的消息。** 拒绝，因为会在会话中产生重复通知。marker 是稳定的，CAS ack 是幂等的，直接启动 finalizer 既正确又不重复。
 
-**把 owner 授权下沉到 Service seam。** 暂缓。Service 目前没有"调用方身份"概念（它接收纯 `TaskId` 参数）。为每个 mutation 添加 session 参数需要 inbox 扫描（宿主面运行）携带合成身份，且 remote backend 需要转发它。工具层检查对当前单宿主部署模式足够。
+**把 owner 授权下沉到 Service seam。** 最初因 Service 只接收纯 id、且裸 session 参数会迫使宿主调用方合成身份而暂缓。后来以不同形式采纳了该方案：[取代旧方案的决策](../architecture/2026-08-26-task-queue-service-authorization.zh.md) 使用闭合的 Agent 或宿主授权，并要求每个直接消费方传递它。
 
 **将 `summary` 设为 optional 并提供默认值。** 拒绝。每个 `succeeded` 任务都应产出人类可读的摘要；当适配器省略 `normalize` 时始终生成默认值，因此 `summary` 在实践中从不缺失。设为 optional 会掩盖"每个 succeeded 任务都有摘要"这一不变式。
 
@@ -106,10 +106,10 @@ Inspect it with task_queue_status for details.
 - 原 `lock.ts` 会静默接管自己锁（将其当作 stale 处理）的同进程重入现在被显式拒绝。
 - `ExecutorAdapter` 现在有 `normalize` seam，将原始进程输出转换为 Agent 可消费的结果。适配器省略时调度器生成合理的默认摘要。
 - 通知消息现在对 succeeded 任务包含 outcome `summary`，owner Agent 无需额外 `task_queue_status` 调用即可消费结果。
-- `cancel`、`retry`、`dismiss`、`undismiss` 在工具层强制 owner 授权：只有任务的所有者 Agent 或宿主操作员可操作。非 owner Agent 被拒绝并给出明确提示。无主任务只能由宿主操作员操作。
+- Service 对读取、计数、mutation、通知与准入统一实施 owner 授权。Agent 调用方只能看到自身任务；显式宿主消费方保留全队列访问。精确授权决策见 [Service 授权 Agent Note](../architecture/2026-08-26-task-queue-service-authorization.zh.md)。
 
 ## Testing
 
-- `packages/task-queue/tool-task-queue/tests/index.spec.ts`（42 个测试）：append-before-ack 测试现在验证 finalizer 被启动（flush 被调用、ack 完成、inFlight 清除）。三个测试验证 `enqueue`、`enqueue_batch` 与宿主面调用的 owner 绑定。十个授权测试验证 owner 可以 cancel/retry/dismiss、非 owner 被拒绝、宿主操作员被允许。两个通知摘要测试验证 outcome 行的包含/排除。
+- `packages/task-queue/tool-task-queue/tests/index.spec.ts`（44 个测试）：append-before-ack 测试验证 finalizer 被启动（flush 被调用、ack 完成、inFlight 清除）。准入测试验证 `enqueue`、`enqueue_batch` 与宿主面调用的 owner 绑定；授权测试经 Service access 验证作用域 list/status/stats 以及 owner 与宿主 mutation；通知摘要测试验证 outcome 行。
 - `packages/task-queue/task-queue-local/tests/lock.spec.ts`（7 个测试）：首次 acquire、二次 acquire 拒绝、不可读内容、跨主机拒绝、存活 pid 拒绝、stale-takeover、release 后重新 acquire。
 - `packages/task-queue/task-queue-local/tests/lifecycle.spec.ts`（9 个测试）：真实 `node` 任务产出 stdout、stderr 与 output 文件，断言 `summary` 匹配预期模式、`durationMs > 0`、`logPath` 匹配、`stdoutTail`/`stderrTail` 包含预期字符串、`outputFiles` 列出产物。

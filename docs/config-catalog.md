@@ -2472,7 +2472,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/task-queue/task-queue-local/src/index.ts:74`](../packages/task-queue/task-queue-local/src/index.ts)
+Source: [`packages/task-queue/task-queue-local/src/index.ts:77`](../packages/task-queue/task-queue-local/src/index.ts)
 
 <a id="deepseek-aidsh-task-queue-remote"></a>
 
@@ -2957,7 +2957,7 @@ Requires: `tools` · `systemPrompt` · `sessions`
 export interface Config {}
 ```
 
-Source: [`packages/task-queue/tool-task-queue/src/index.ts:815`](../packages/task-queue/tool-task-queue/src/index.ts)
+Source: [`packages/task-queue/tool-task-queue/src/index.ts:796`](../packages/task-queue/tool-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 

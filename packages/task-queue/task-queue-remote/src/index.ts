@@ -12,7 +12,7 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import { readFile } from 'node:fs/promises'
-import { TaskId } from '@deepseek-ai/dsh-task-queue'
+import { TASK_QUEUE_HOST_ACCESS, TaskId } from '@deepseek-ai/dsh-task-queue'
 import type {
   TaskQueue,
   TaskSummary,
@@ -82,7 +82,7 @@ export class TaskQueueRemoteService extends TypertRemoteService {
   @Remote('list')
   list(filter?: QueueListFilterView): QueueTaskSummaryView[] {
     // The wire filter mirrors the seam's ListFilter one-to-one.
-    return this.queue.list(filter).map(toSummaryView)
+    return this.queue.list(TASK_QUEUE_HOST_ACCESS, filter).map(toSummaryView)
   }
 
   /**
@@ -92,7 +92,7 @@ export class TaskQueueRemoteService extends TypertRemoteService {
    */
   @Remote('get')
   get(id: string): QueueTaskView {
-    const task = this.queue.get(TaskId(id))
+    const task = this.queue.get(TASK_QUEUE_HOST_ACCESS, TaskId(id))
     return {
       ...toSummaryView(task),
       prompt: task.prompt,
@@ -130,7 +130,7 @@ export class TaskQueueRemoteService extends TypertRemoteService {
   executors(): QueueExecutorView[] {
     const live = new Set(['starting', 'running', 'stopping'])
     const liveByExecutor = new Map<string, number>()
-    for (const task of this.queue.list()) {
+    for (const task of this.queue.list(TASK_QUEUE_HOST_ACCESS)) {
       if (live.has(task.status)) {
         liveByExecutor.set(task.executor, (liveByExecutor.get(task.executor) ?? 0) + 1)
       }
@@ -149,7 +149,7 @@ export class TaskQueueRemoteService extends TypertRemoteService {
    */
   @Remote('readRunLog')
   async readRunLog(id: string, runId: string): Promise<string> {
-    const task = this.queue.get(TaskId(id))
+    const task = this.queue.get(TASK_QUEUE_HOST_ACCESS, TaskId(id))
     const run = task.runs.find(r => r.runId === runId)
     if (run === undefined || run.logPath === null) {
       throw new Error(`run ${runId} has no log path`)
@@ -163,7 +163,7 @@ export class TaskQueueRemoteService extends TypertRemoteService {
    */
   @Remote('stats')
   stats(): QueueStatsView {
-    const stats = this.queue.stats()
+    const stats = this.queue.stats(TASK_QUEUE_HOST_ACCESS)
     return {
       serviceState: stats.serviceState,
       fault: stats.fault === undefined ? null : { reason: stats.fault.reason },
@@ -181,7 +181,7 @@ export class TaskQueueRemoteService extends TypertRemoteService {
    */
   @Remote('cancel')
   async cancel(id: string): Promise<QueueCancelOutcomeView> {
-    return await this.queue.cancel(TaskId(id))
+    return await this.queue.cancel(TASK_QUEUE_HOST_ACCESS, TaskId(id))
   }
 
   /**
@@ -191,7 +191,7 @@ export class TaskQueueRemoteService extends TypertRemoteService {
    */
   @Remote('retry')
   async retry(id: string): Promise<string> {
-    return await this.queue.retry(TaskId(id))
+    return await this.queue.retry(TASK_QUEUE_HOST_ACCESS, TaskId(id))
   }
 
   /**
@@ -203,7 +203,7 @@ export class TaskQueueRemoteService extends TypertRemoteService {
    */
   @Remote('dismiss')
   async dismiss(id: string, dismissed: boolean): Promise<void> {
-    await this.queue.dismiss(TaskId(id), dismissed)
+    await this.queue.dismiss(TASK_QUEUE_HOST_ACCESS, TaskId(id), dismissed)
   }
 
   /**
@@ -212,7 +212,7 @@ export class TaskQueueRemoteService extends TypertRemoteService {
    */
   @Remote('pause')
   pause(): void {
-    this.queue.pause()
+    this.queue.pause(TASK_QUEUE_HOST_ACCESS)
   }
 
   /**
@@ -222,7 +222,7 @@ export class TaskQueueRemoteService extends TypertRemoteService {
    */
   @Remote('resume')
   resume(): void {
-    this.queue.resume()
+    this.queue.resume(TASK_QUEUE_HOST_ACCESS)
   }
 }
 

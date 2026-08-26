@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import LocalTaskQueue from '../src/index.ts'
+import { TASK_QUEUE_HOST_ACCESS } from '@deepseek-ai/dsh-task-queue'
+import type { TaskQueueAccess } from '@deepseek-ai/dsh-task-queue'
 import { TaskQueueStore } from '../src/store.ts'
 import { acquireQueueOwnership } from '../src/lock.ts'
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -18,10 +20,13 @@ import { join } from 'node:path'
  */
 
 interface OwnedQueue {
-  enqueueFromTool(spec: unknown): Promise<string>
-  get(id: string): { status: string }
-  ackNotification(notificationId: unknown, messageId: string): Promise<void>
-  listNotifications(filter: { ownerSessionId: string }): Array<{
+  enqueueFromTool(access: TaskQueueAccess, spec: unknown): Promise<string>
+  get(access: TaskQueueAccess, id: string): { status: string }
+  cancel(access: TaskQueueAccess, id: string): Promise<unknown>
+  retry(access: TaskQueueAccess, id: string): Promise<unknown>
+  dismiss(access: TaskQueueAccess, id: string, dismissed: boolean): Promise<void>
+  ackNotification(access: TaskQueueAccess, notificationId: unknown, messageId: string): Promise<void>
+  listNotifications(access: TaskQueueAccess): Array<{
     notificationId: string
     messageId: string
     ownerSessionId: string
@@ -104,14 +109,14 @@ describe('shutdown ownership fence', () => {
 
     // Host A mounts and owns the root.
     const a = await mountQueue(root)
-    const id = await a.queue.enqueueFromTool({
+    const id = await a.queue.enqueueFromTool(TASK_QUEUE_HOST_ACCESS, {
       title: 'slow settle',
       prompt: JSON.stringify({ script, args: [join(outputDir, 'artifact.txt')] }),
       executor: 'node',
       maxAttempts: 1,
       outputDir,
     })
-    await poll(() => a.queue.get(id).status === 'running')
+    await poll(() => a.queue.get(TASK_QUEUE_HOST_ACCESS, id).status === 'running')
 
     // Gate the terminal settlement: the running task's executor produces its
     // output, but its `succeeded` durable write is held open until we release it.
@@ -170,7 +175,7 @@ describe('shutdown ownership fence', () => {
 
     // Start the enqueue (unawaited); it has cleared admission and is stalled
     // on its durable append, holding the FIFO tail.
-    const enqueuePromise = a.queue.enqueueFromTool({
+    const enqueuePromise = a.queue.enqueueFromTool(TASK_QUEUE_HOST_ACCESS, {
       title: 'stalled mutation',
       prompt: JSON.stringify({ script, args: [join(root, 'out.txt')] }),
       executor: 'node',
@@ -202,14 +207,14 @@ describe('shutdown ownership fence', () => {
     const { script, outputDir } = await writeProductiveScript(root)
 
     const a = await mountQueue(root)
-    const id = await a.queue.enqueueFromTool({
+    const id = await a.queue.enqueueFromTool(TASK_QUEUE_HOST_ACCESS, {
       title: 'dispose fence',
       prompt: JSON.stringify({ script, args: [join(outputDir, 'artifact.txt')] }),
       executor: 'node',
       maxAttempts: 1,
       outputDir,
     })
-    await poll(() => a.queue.get(id).status === 'running')
+    await poll(() => a.queue.get(TASK_QUEUE_HOST_ACCESS, id).status === 'running')
 
     // Hold the terminal settle so the execution is still in flight at disposal.
     // oxlint-disable-next-line no-invalid-void-type -- Promise.withResolvers<void>() is a valid use of the void generic.
@@ -227,18 +232,18 @@ describe('shutdown ownership fence', () => {
 
     // New public admission/control must now be rejected.
     const queue = a.queue as unknown as {
-      enqueueFromTool(spec: unknown): Promise<string>
-      cancel(id: string): Promise<string>
-      retry(id: string): Promise<string>
-      dismiss(id: string, dismissed: boolean): Promise<void>
+      enqueueFromTool(access: TaskQueueAccess, spec: unknown): Promise<string>
+      cancel(access: TaskQueueAccess, id: string): Promise<string>
+      retry(access: TaskQueueAccess, id: string): Promise<string>
+      dismiss(access: TaskQueueAccess, id: string, dismissed: boolean): Promise<void>
     }
-    await expect(queue.enqueueFromTool({
+    await expect(queue.enqueueFromTool(TASK_QUEUE_HOST_ACCESS, {
       title: 'after dispose', prompt: JSON.stringify({ script }), executor: 'node', maxAttempts: 1, outputDir: join(root, 'o2'),
     })).rejects.toThrow(/shutting down/)
-    await expect(queue.cancel(id)).rejects.toThrow(/shutting down/)
-    await expect(queue.retry(id)).rejects.toThrow(/shutting down/)
-    await expect(queue.dismiss(id, true)).rejects.toThrow(/shutting down/)
-    await expect(a.queue.ackNotification('missing', 'missing')).rejects.toThrow(/shutting down/)
+    await expect(queue.cancel(TASK_QUEUE_HOST_ACCESS, id)).rejects.toThrow(/shutting down/)
+    await expect(queue.retry(TASK_QUEUE_HOST_ACCESS, id)).rejects.toThrow(/shutting down/)
+    await expect(queue.dismiss(TASK_QUEUE_HOST_ACCESS, id, true)).rejects.toThrow(/shutting down/)
+    await expect(a.queue.ackNotification(TASK_QUEUE_HOST_ACCESS, 'missing', 'missing')).rejects.toThrow(/shutting down/)
 
     // The in-flight settle is still allowed to complete, and disposal finishes.
     settleGate.resolve()
@@ -252,7 +257,7 @@ describe('shutdown ownership fence', () => {
     const { script, outputDir } = await writeProductiveScript(root)
 
     const a = await mountQueue(root)
-    const id = await a.queue.enqueueFromTool({
+    const id = await a.queue.enqueueFromTool(TASK_QUEUE_HOST_ACCESS, {
       title: 'handoff',
       prompt: JSON.stringify({ script, args: [join(outputDir, 'artifact.txt')] }),
       executor: 'node',
@@ -260,17 +265,17 @@ describe('shutdown ownership fence', () => {
       outputDir,
       ownerSessionId: 's-owner-handoff',
     })
-    await poll(() => a.queue.get(id).status === 'succeeded')
+    await poll(() => a.queue.get(TASK_QUEUE_HOST_ACCESS, id).status === 'succeeded')
 
     // Record A's durable view before teardown.
-    const before = a.queue.get(id) as unknown as {
+    const before = a.queue.get(TASK_QUEUE_HOST_ACCESS, id) as unknown as {
       status: string
       result: { summary: string; exitCode: number } | null
       runs: unknown[]
       ownerSessionId: string | null
       attempt: number
     }
-    const beforeNotifications = a.queue.listNotifications({ ownerSessionId: 's-owner-handoff' })
+    const beforeNotifications = a.queue.listNotifications(TASK_QUEUE_HOST_ACCESS)
     expect(before.ownerSessionId).toBe('s-owner-handoff')
     expect(beforeNotifications).toHaveLength(1)
     await a.context.fiber.dispose()
@@ -279,9 +284,9 @@ describe('shutdown ownership fence', () => {
     // poll until the recovered task is visible before asserting state.
     const b = await mountQueue(root)
     await poll(() => {
-      try { return b.queue.get(id).status === 'succeeded' } catch { return false }
+      try { return b.queue.get(TASK_QUEUE_HOST_ACCESS, id).status === 'succeeded' } catch { return false }
     })
-    const after = b.queue.get(id) as unknown as {
+    const after = b.queue.get(TASK_QUEUE_HOST_ACCESS, id) as unknown as {
       status: string
       result: { summary: string; exitCode: number } | null
       runs: unknown[]
@@ -294,7 +299,7 @@ describe('shutdown ownership fence', () => {
     expect(after.runs).toEqual(before.runs)
     expect(after.ownerSessionId).toBe(before.ownerSessionId)
     expect(after.attempt).toBe(before.attempt)
-    expect(b.queue.listNotifications({ ownerSessionId: 's-owner-handoff' })).toEqual(beforeNotifications)
+    expect(b.queue.listNotifications(TASK_QUEUE_HOST_ACCESS)).toEqual(beforeNotifications)
 
     // Read the durable log and assert seq continuity (no gap, no duplicate).
     const lines = (await readFile(join(root, 'active.jsonl'), 'utf8')).trim().split('\n').filter(Boolean)

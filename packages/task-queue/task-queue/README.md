@@ -6,13 +6,15 @@ The durable cross-session task-queue contract (`ctx.taskQueue`). The abstract `T
 
 ## Service contract
 
-- `enqueueFromTool(spec)` admits one task with `source: 'tool'`; the backend rejects `executor: 'shell'` and assigns the receipt. `enqueueBatchFromTool(specs)` is the bounded batch form (200 per call).
-- `list(filter?)` and `get(id)` return read-only projections. `get` throws for an unknown id.
-- `cancel(id)` resolves `'canceled'` (a pending task) or `'stopping'` (a cancel intent persisted on starting/running work). `retry(id)` resets `attempt` and requeues a failed task.
-- `stats()` reports `serviceState` (`running`/`paused`/`faulted`), an optional `fault`, per-status counts, and per-executor counts.
+Every task-data operation accepts an opaque `TaskQueueAccess` first. `taskQueueAgentAccess(sessionId)` mints a grant restricted to that exact owner session; `TASK_QUEUE_HOST_ACCESS` is the singleton whole-queue grant for trusted host-plane plugins. Runtime validation accepts only registered grant object identities, not copied fields. Missing and unauthorized task or notification ids produce the same unknown-record error, so the Service does not reveal whether another session owns a supplied id.
+
+- `enqueueFromTool(access, spec)` admits one task with `source: 'tool'`; an Agent grant binds `ownerSessionId` from the grant, while host access may admit an explicitly owned or ownerless task. The backend rejects `executor: 'shell'`, assigns the receipt, and namespaces supplied idempotency keys by the authenticated actor. `enqueueBatchFromTool(access, specs)` is the bounded batch form (200 per call).
+- `list(access, filter?)` and `get(access, id)` return only tasks visible to the grant. Ownership filtering happens before public filters and `limit`.
+- `cancel(access, id)` resolves `'canceled'` (a pending task) or `'stopping'` (a cancel intent persisted on starting/running work). `retry(access, id)` resets `attempt` and requeues a failed task; `dismiss(access, id, dismissed)` changes only an accessible terminal task.
+- `stats(access)` reports global service health plus per-status and per-executor counts computed only from tasks visible to the grant.
 - `registerExecutor(name, adapter)` adds a prepare-only adapter and returns its disposer. The adapter's optional `normalize()` method converts raw process output into an Agent-consumable `summary` and optional `assistantText` — the seam that turns a process queue into a work queue. The scheduler calls `normalize()` on exit code 0; when absent it provides a sensible default summary.
-- `pause()`/`resume()` gate admission; `resume()` must reject a `faulted` queue.
-- `ackNotification(notificationId, messageId)` acks a pending outbox record with a CAS; an already-acknowledged record with a matching message id is an idempotent no-op. `listNotifications({ ownerSessionId })` lists one session's records by `terminalSeq`.
+- `pause(TASK_QUEUE_HOST_ACCESS)`/`resume(TASK_QUEUE_HOST_ACCESS)` gate admission and are host-only; `resume()` must reject a `faulted` queue.
+- `ackNotification(access, notificationId, messageId)` acks an accessible pending outbox record with a CAS; an already-acknowledged record with a matching message id is an idempotent no-op. `listNotifications(access)` returns one Agent session's records or the complete host view by `terminalSeq`.
 
 All mutations serialize through the backend's service FIFO and are fail-closed on append error — the queue enters `faulted` and no caller may `resume()` it away.
 

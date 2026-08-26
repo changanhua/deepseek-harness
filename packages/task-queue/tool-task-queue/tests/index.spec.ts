@@ -15,6 +15,7 @@ import type {
   NotificationRecord,
   QueueStats,
   Task,
+  TaskQueueAccess,
   TaskQueue,
 } from '@deepseek-ai/dsh-task-queue'
 import { TaskId, NotificationId, RunId } from '@deepseek-ai/dsh-task-queue'
@@ -29,37 +30,72 @@ function makeQueue(overrides: Partial<Pick<TaskQueue, 'list' | 'get' | 'stats' |
   const enqueued: EnqueueSpec[] = []
   const acks: { notificationId: string; messageId: string }[] = []
   const pendingNotifications: NotificationRecord[] = []
-  const tasks = new Map<string, { title: string; status: string }>()
+  const tasks = new Map<string, { title: string; status: string; ownerSessionId: string | null }>()
+  const getTask = (access: TaskQueueAccess, id: TaskId): Task => {
+    const overridden = overrides.get?.(access, id)
+    if (overridden !== undefined) {
+      if (access.kind === 'agent' && overridden.ownerSessionId !== access.ownerSessionId) {
+        throw new Error(`unknown task ${id}`)
+      }
+      return overridden
+    }
+    const task = tasks.get(id)
+    if (task === undefined
+      || (access.kind === 'agent' && task.ownerSessionId !== access.ownerSessionId)) {
+      throw new Error(`unknown task ${id}`)
+    }
+    return {
+      id, title: task.title, prompt: '', executor: 'claude', status: task.status as never,
+      priority: 10, attempt: 0, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
+      timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
+      lastError: null, result: null, ownerSessionId: task.ownerSessionId, source: 'tool',
+      receiptId: 'r', terminalSeq: null, runs: [], dismissed: false,
+    }
+  }
   const taskQueue = {
-    async enqueueFromTool(spec: EnqueueSpec): Promise<TaskId> {
-      enqueued.push(spec)
-      tasks.set(`tq-${enqueued.length}`, { title: spec.title, status: 'pending' })
+    async enqueueFromTool(access: TaskQueueAccess, spec: EnqueueSpec): Promise<TaskId> {
+      const admitted = access.kind === 'agent' ? { ...spec, ownerSessionId: access.ownerSessionId } : spec
+      enqueued.push(admitted)
+      tasks.set(`tq-${enqueued.length}`, {
+        title: admitted.title,
+        status: 'pending',
+        ownerSessionId: admitted.ownerSessionId ?? null,
+      })
       return TaskId(`tq-${enqueued.length}`)
     },
-    async enqueueBatchFromTool(specs: EnqueueSpec[]): Promise<TaskId[]> {
-      return specs.map((spec) => {
-        enqueued.push(spec)
-        tasks.set(`tq-${enqueued.length}`, { title: spec.title, status: 'pending' })
-        return TaskId(`tq-${enqueued.length}`)
-      })
-    },
-    list() { return [] },
-    get(id: TaskId): Task {
-      const task = tasks.get(id)
-      if (task === undefined) throw new Error(`unknown task ${id}`)
-      return {
-        id, title: task.title, prompt: '', executor: 'claude', status: task.status as never,
-        priority: 10, attempt: 0, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
-        timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
-        lastError: null, result: null, ownerSessionId: null, source: 'tool',
-        receiptId: 'r', terminalSeq: null, runs: [], dismissed: false,
+    async enqueueBatchFromTool(access: TaskQueueAccess, specs: readonly EnqueueSpec[]): Promise<TaskId[]> {
+      const ids: TaskId[] = []
+      for (const spec of specs) {
+        const admitted = access.kind === 'agent' ? { ...spec, ownerSessionId: access.ownerSessionId } : spec
+        enqueued.push(admitted)
+        const id = TaskId(`tq-${enqueued.length}`)
+        tasks.set(id, {
+          title: admitted.title,
+          status: 'pending',
+          ownerSessionId: admitted.ownerSessionId ?? null,
+        })
+        ids.push(id)
       }
+      return ids
     },
-    async cancel(): Promise<'canceled' | 'stopping'> { return 'canceled' },
-    async retry(id: TaskId): Promise<TaskId> { return id },
-    async dismiss(_id: TaskId, _dismissed: boolean): Promise<void> {},
-    stats(): QueueStats {
-      return {
+    list(access: TaskQueueAccess, filter?: Parameters<TaskQueue['list']>[1]) {
+      return overrides.list?.(access, filter) ?? []
+    },
+    get: getTask,
+    async cancel(access: TaskQueueAccess, id: TaskId): Promise<'canceled' | 'stopping'> {
+      getTask(access, id)
+      return 'canceled'
+    },
+    async retry(access: TaskQueueAccess, id: TaskId): Promise<TaskId> {
+      getTask(access, id)
+      return id
+    },
+    async dismiss(access: TaskQueueAccess, id: TaskId, dismissed: boolean): Promise<void> {
+      getTask(access, id)
+      await overrides.dismiss?.(access, id, dismissed)
+    },
+    stats(access: TaskQueueAccess): QueueStats {
+      return overrides.stats?.(access) ?? {
         serviceState: 'running',
         byStatus: { pending: 0, starting: 0, running: 0, stopping: 0, succeeded: 0, failed: 0, canceled: 0 },
         byExecutor: {},
@@ -67,15 +103,18 @@ function makeQueue(overrides: Partial<Pick<TaskQueue, 'list' | 'get' | 'stats' |
         byDismissed: 0,
       }
     },
-    async ackNotification(notificationId: string, messageId: string): Promise<void> {
+    async ackNotification(_access: TaskQueueAccess, notificationId: string, messageId: string): Promise<void> {
       acks.push({ notificationId, messageId })
     },
-    listNotifications() { return pendingNotifications },
+    listNotifications(access: TaskQueueAccess) {
+      return access.kind === 'host'
+        ? pendingNotifications
+        : pendingNotifications.filter(record => record.ownerSessionId === access.ownerSessionId)
+    },
     registerExecutor() { return () => {} },
     listExecutors() { return [{ name: 'codex', enabled: true, toolAllowed: true }] },
     pause() {},
     resume() {},
-    ...overrides,
   } as unknown as TaskQueue
   return { taskQueue, enqueued, acks, pendingNotifications }
 }
@@ -200,8 +239,8 @@ describe('tool schema validation (through execute)', () => {
   it('task_queue_dismiss soft-concludes a terminal task and returns dismissed=true', async () => {
     const calls: { id: string; dismissed: boolean }[] = []
     const queue = makeQueue({
-      dismiss: async (id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
-      get: (id: TaskId) => ({
+      dismiss: async (_access, id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+      get: (_access, id: TaskId) => ({
         id, title: 't', prompt: '', executor: 'claude', status: 'succeeded',
         priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
         timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
@@ -219,8 +258,8 @@ describe('tool schema validation (through execute)', () => {
   it('task_queue_dismiss with dismissed:false restores (undo path)', async () => {
     const calls: { id: string; dismissed: boolean }[] = []
     const queue = makeQueue({
-      dismiss: async (id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
-      get: (id: TaskId) => ({
+      dismiss: async (_access, id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+      get: (_access, id: TaskId) => ({
         id, title: 't', prompt: '', executor: 'claude', status: 'succeeded',
         priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
         timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
@@ -238,8 +277,8 @@ describe('tool schema validation (through execute)', () => {
   it('task_queue_undismiss restores to attention (dismissed=false)', async () => {
     const calls: { id: string; dismissed: boolean }[] = []
     const queue = makeQueue({
-      dismiss: async (id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
-      get: (id: TaskId) => ({
+      dismiss: async (_access, id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+      get: (_access, id: TaskId) => ({
         id, title: 't', prompt: '', executor: 'claude', status: 'succeeded',
         priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
         timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
@@ -496,6 +535,39 @@ describe('owner authorization', () => {
     }
   }
 
+  it('passes the exact caller session to list and stats', async () => {
+    const seen: string[] = []
+    const queue = makeQueue({
+      list: (access) => {
+        if (access.kind === 'agent') seen.push(`list:${access.ownerSessionId}`)
+        return []
+      },
+      stats: (access) => {
+        if (access.kind === 'agent') seen.push(`stats:${access.ownerSessionId}`)
+        return {
+          serviceState: 'running',
+          byStatus: { pending: 0, starting: 0, running: 0, stopping: 0, succeeded: 0, failed: 0, canceled: 0 },
+          byExecutor: {},
+          undismissedFailed: 0,
+          byDismissed: 0,
+        }
+      },
+    })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const exec = { agent: fakeAgent(Session.create(ownerSession)) } as never
+    await kit.tools.find(tool => tool.name === 'task_queue_list')!.execute({}, exec)
+    await kit.tools.find(tool => tool.name === 'task_queue_stats')!.execute({}, exec)
+    expect(seen).toEqual(['list:s-1', 'stats:s-1'])
+  })
+
+  it('hides a foreign task from status with the Service unknown-task error', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const status = kit.tools.find(tool => tool.name === 'task_queue_status')!
+    const agent = fakeAgent(Session.create(otherSession))
+    await expect(status.execute({ id: 'tq-1' }, { agent } as never)).rejects.toThrow(/unknown task/)
+  })
+
   it('allows the owner Agent to cancel their own task', async () => {
     const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
     const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
@@ -529,7 +601,7 @@ describe('owner authorization', () => {
     const cancel = kit.tools.find(t => t.name === 'task_queue_cancel')!
     const agent = fakeAgent(Session.create(otherSession))
     await expect(cancel.execute({ id: 'tq-1' }, { agent } as never))
-      .rejects.toThrow(/owned by session/)
+      .rejects.toThrow(/unknown task/)
   })
 
   it('rejects a non-owner Agent from retrying another session\'s task', async () => {
@@ -538,7 +610,7 @@ describe('owner authorization', () => {
     const retry = kit.tools.find(t => t.name === 'task_queue_retry')!
     const agent = fakeAgent(Session.create(otherSession))
     await expect(retry.execute({ id: 'tq-1' }, { agent } as never))
-      .rejects.toThrow(/owned by session/)
+      .rejects.toThrow(/unknown task/)
   })
 
   it('rejects a non-owner Agent from dismissing another session\'s task', async () => {
@@ -547,7 +619,7 @@ describe('owner authorization', () => {
     const dismiss = kit.tools.find(t => t.name === 'task_queue_dismiss')!
     const agent = fakeAgent(Session.create(otherSession))
     await expect(dismiss.execute({ id: 'tq-1' }, { agent } as never))
-      .rejects.toThrow(/owned by session/)
+      .rejects.toThrow(/unknown task/)
   })
 
   it('allows host-operator (no Agent) to cancel any task', async () => {
@@ -580,7 +652,7 @@ describe('owner authorization', () => {
     const cancel = kit.tools.find(t => t.name === 'task_queue_cancel')!
     const agent = fakeAgent(Session.create(otherSession))
     await expect(cancel.execute({ id: 'tq-1' }, { agent } as never))
-      .rejects.toThrow(/owned by session/)
+      .rejects.toThrow(/unknown task/)
   })
 })
 
@@ -600,7 +672,7 @@ describe('notification summary', () => {
         priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
         timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
         lastError: null, result: { summary: 'exit 0, 2.5s, 1 output file', exitCode: 0, signal: null, durationMs: 2500 },
-        ownerSessionId: null, source: 'tool' as const,
+        ownerSessionId: 's', source: 'tool' as const,
         receiptId: 'r', terminalSeq: 1, runs: [], dismissed: false,
       }),
     })
@@ -633,7 +705,7 @@ describe('notification summary', () => {
         priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
         timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
         lastError: null, result: null,
-        ownerSessionId: null, source: 'tool' as const,
+        ownerSessionId: 's', source: 'tool' as const,
         receiptId: 'r', terminalSeq: 1, runs: [], dismissed: false,
       }),
     })
