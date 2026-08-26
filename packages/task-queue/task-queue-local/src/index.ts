@@ -541,6 +541,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     const now = Date.now()
     return [...this.folded.tasksById.values()]
       .filter(t => t.status === 'pending' && t.attempt < t.maxAttempts && !this.stopping.has(t.id))
+      .filter(t => this.adapters.has(t.executor))
       .filter(t => t.delayUntil === null || Date.parse(t.delayUntil) <= now)
       .sort((a, b) => a.priority !== b.priority ? a.priority - b.priority
         : a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0)

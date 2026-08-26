@@ -94,6 +94,7 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
     "@deepseek-ai/dsh-jobs-local": "workspace:^",
     "@deepseek-ai/dsh-task-queue": "workspace:^",
+    "@deepseek-ai/dsh-task-queue-executor-dsh": "workspace:^",
     "@deepseek-ai/dsh-task-queue-local": "workspace:^",
     "@deepseek-ai/dsh-task-queue-remote": "workspace:^",
     "@deepseek-ai/dsh-tool-task-queue": "workspace:^",

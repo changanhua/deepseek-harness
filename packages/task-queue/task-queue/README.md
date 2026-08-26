@@ -18,7 +18,7 @@ All mutations serialize through the backend's service FIFO and are fail-closed o
 
 ## Task model
 
-`Task` carries the full durable snapshot: status (`pending`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`canceled`), `attempt`/`maxAttempts`, `backoffMs`, `delayUntil`, `timeoutMs`, `outputDir`, tags, `lastError`, `result`, `ownerSessionId`, the trusted `source`/`receiptId`, and the per-attempt `RunRecord[]` (`runId`, attempt, diagnostic `pid`, timestamps, log path, command fingerprint, `terminationUnverified`).
+`Task` carries the full durable snapshot: status (`pending`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`canceled`), `attempt`/`maxAttempts`, `backoffMs`, `delayUntil`, `timeoutMs`, optional `workspaceDir`, `outputDir`, tags, `lastError`, `result`, `ownerSessionId`, the trusted `source`/`receiptId`, and the per-attempt `RunRecord[]` (`runId`, attempt, diagnostic `pid`, timestamps, log path, command fingerprint, `terminationUnverified`). `workspaceDir` is the process working directory for executors that operate on an existing checkout, while `outputDir` remains the queue-owned artifact directory; old records without `workspaceDir` materialize it from `outputDir`.
 
 `TaskResult` (populated on `succeeded`) carries a human-readable `summary` (e.g. "exit 0, 3.2s, 2 output files"), optional `assistantText` (the semantic result from coding-agent executors like DSH/Claude/Codex), `exitCode`/`signal`, wall-clock `durationMs`, optional `logPath` (this attempt's run log), bounded `stdoutTail`/`stderrTail` (up to 4 KiB each), and `outputFiles` (top-level artifact names in the output directory). Full output stays in the run log and output directory; the tails are an Agent-consumable projection only.
 
@@ -38,7 +38,7 @@ All mutations serialize through the backend's service FIFO and are fail-closed o
 
 ## Model Experience
 
-Indirectly, through [`dsh-tool-task-queue`](../tool-task-queue/README.md), which renders the seven `task_queue_*` tools, the `tool:task-queue` prompt section, and the notification outbox notices; this contract registers no model surface of its own.
+Indirectly, through [`dsh-tool-task-queue`](../tool-task-queue/README.md), which renders the `task_queue_*` tools, the `tool:task-queue` prompt section, and the notification outbox notices; this contract registers no model surface of its own.
 
 #### KV Cache effect
 

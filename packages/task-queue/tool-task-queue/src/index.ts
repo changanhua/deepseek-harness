@@ -2,7 +2,7 @@
  * Agent-facing task-queue toolkit. Loading this plugin once registers, in a
  * single apply (no second listener-duplicating mount):
  *
- * 1. the eight `task_queue_*` tools,
+ * 1. the `task_queue_*` tools,
  * 2. the `tool:task-queue` system-prompt section,
  * 3. the `agent/pre-step` candidate-notification hook, and
  * 4. the `session/event` append→flush→CAS-ack finalizer plus the `turn/end`
@@ -204,6 +204,10 @@ export function validateEnqueueSpec(raw: unknown): EnqueueSpec {
     }
     out.timeoutMs = spec.timeoutMs
   }
+  if (spec.workspaceDir !== undefined) {
+    if (typeof spec.workspaceDir !== 'string') throw new Error('task_queue_enqueue: `workspaceDir` must be a string')
+    out.workspaceDir = spec.workspaceDir
+  }
   if (spec.outputDir !== undefined) {
     if (typeof spec.outputDir !== 'string') throw new Error('task_queue_enqueue: `outputDir` must be a string')
     out.outputDir = spec.outputDir
@@ -239,13 +243,14 @@ const SPEC_PARAM = {
   properties: {
     title: { type: 'string', required: true, description: 'One-line title.' },
     prompt: { type: 'string', required: true, description: 'Complete instruction handed to the executor.' },
-    executor: { type: 'string', required: true, description: "Registered executor name. Built-ins: claude/codex/opencode/arkcli (CLI coding agents) and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set." },
+    executor: { type: 'string', required: true, description: "Registered executor name. Shipped executors include dsh (restricted Harness worker), claude/codex/opencode/arkcli (CLI agents), and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set." },
     priority: { type: 'integer', description: 'Lower is higher precedence (default 10).' },
     maxAttempts: { type: 'integer', description: 'Total execution attempts; default 3.' },
     backoffMs: { type: 'integer', description: 'Backoff base in ms (default 30000).' },
     delayUntil: { type: 'string', description: 'ISO timestamp; not claimable before it.' },
     timeoutMs: { type: 'integer', description: 'Per-execution timeout in ms (default 1800000).' },
-    outputDir: { type: 'string', description: 'Output directory.' },
+    workspaceDir: { type: 'string', description: 'Executor working directory. Defaults to outputDir for compatibility.' },
+    outputDir: { type: 'string', description: 'Artifact directory scanned into result.outputFiles.' },
     tags: TAGS_PARAM,
     idempotencyKey: { type: 'string', description: 'Cross-call dedupe key (1–128 bytes, no NUL).' },
   },
@@ -338,7 +343,7 @@ export function buildSection(): { name: string; order: number; text: string } {
       + 'queued ids — do not inline a batch of 3 or more independent tasks, long-running jobs, or anything that '
       + 'may need retry or should survive the session. At session start, call task_queue_stats to see the backlog, '
       + 'and task_queue_executors to see which executors this deployment enables. For batch LLM/script work use '
-      + 'the node executor with a local script (prompt JSON { script, args? }); use claude/codex/opencode/arkcli '
+      + 'the node executor with a local script (prompt JSON { script, args? }); use dsh/claude/codex/opencode/arkcli '
       + 'only for full coding-agent jobs. Never submit shell (inbox-only). When a task is failed, report it '
       + 'proactively and suggest task_queue_retry. For a failure you have diagnosed and will not retry, '
       + 'task_queue_dismiss soft-concludes it (leaves attention, keeps the record); task_queue_undismiss '
@@ -813,7 +818,7 @@ export interface Config {}
 export const Config: z<Config> = z.object({})
 
 /**
- * Register all eight tools, the system-prompt section, the pre-step hook, and
+ * Register all task-queue tools, the system-prompt section, the pre-step hook, and
  * the session/event finalizer in one apply. The host task-queue Service is
  * read optionally via `ctx.get('taskQueue')`.
  */

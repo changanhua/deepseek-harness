@@ -2416,6 +2416,32 @@ export interface Config {
 
 Source: [`packages/core/system-prompt/src/index.ts:186`](../packages/core/system-prompt/src/index.ts)
 
+<a id="deepseek-aidsh-task-queue-executor-dsh"></a>
+
+## `@deepseek-ai/dsh-task-queue-executor-dsh`
+
+Requires: `taskQueue`
+
+```ts config-catalog
+/** Deployment configuration for the DSH executor provider. */
+export interface Config {
+  /** DSH launch argv prefix, for example `[process.execPath, process.argv[1]]`. */
+  launcher: string[]
+  /** Harness home explicitly forwarded after the subprocess environment scrub. */
+  dshHome: string
+  /** Dedicated one-shot profile name. */
+  profile?: string
+  /** Maximum UTF-8 bytes persisted as semantic assistant text. */
+  maxAssistantBytes?: number
+  /** In-memory bytes collected per output stream before spill. */
+  collectBytes?: number
+  /** Grace before subprocess termination escalates. */
+  graceMs?: number
+}
+```
+
+Source: [`packages/task-queue/task-queue-executor-dsh/src/index.ts:30`](../packages/task-queue/task-queue-executor-dsh/src/index.ts)
+
 <a id="deepseek-aidsh-task-queue-local"></a>
 
 ## `@deepseek-ai/dsh-task-queue-local`
@@ -2446,7 +2472,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/task-queue/task-queue-local/src/index.ts:68`](../packages/task-queue/task-queue-local/src/index.ts)
+Source: [`packages/task-queue/task-queue-local/src/index.ts:74`](../packages/task-queue/task-queue-local/src/index.ts)
 
 <a id="deepseek-aidsh-task-queue-remote"></a>
 
@@ -2931,7 +2957,7 @@ Requires: `tools` · `systemPrompt` · `sessions`
 export interface Config {}
 ```
 
-Source: [`packages/task-queue/tool-task-queue/src/index.ts:740`](../packages/task-queue/tool-task-queue/src/index.ts)
+Source: [`packages/task-queue/tool-task-queue/src/index.ts:815`](../packages/task-queue/tool-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 

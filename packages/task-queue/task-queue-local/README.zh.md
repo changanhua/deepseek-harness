@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-[`@deepseek-ai/dsh-task-queue`](../task-queue/README.md) 约定的 host 平面持久实现：`LocalTaskQueue` 把每一条任务与通知记录写进组合层配置的 `queueRoot` 目录（随附的 base 行中为 `$DSH_HOME/task-queue/`）下的单写者 segment 日志，跨进程重启仍存活，并由一个调度器按可配置的并发上限领取、spawn 并结算任务。它会在读取持久日志前对 `queueRoot` 原子获取跨进程所有权锁，因此第二个宿主进程在恢复或回收第一个进程的存活任务之前就会被拒绝。作为插件加载后即注册为 `ctx.taskQueue`。
+[`@deepseek-ai/dsh-task-queue`](../task-queue/README.zh.md) 约定的 host 平面持久实现：`LocalTaskQueue` 把每一条任务与通知记录写进组合层配置的 `queueRoot` 目录（随附的 base 行中为 `$DSH_HOME/task-queue/`）下的单写者 segment 日志，跨进程重启仍存活，并由一个调度器按可配置的并发上限领取、spawn 并结算任务。它会在读取持久日志前对 `queueRoot` 原子获取跨进程所有权锁，因此第二个宿主进程在恢复或回收第一个进程的存活任务之前就会被拒绝。作为插件加载后即注册为 `ctx.taskQueue`。
 
 ## Service
 
@@ -43,13 +43,13 @@ shutdown 时锁是真实的 fence，而非 best-effort 产物：async disposer �
 
 ## 调度
 
-启动恢复完成后才启动调度器，持久 mutation 方法也会等启动完成后返回，因此恢复状态不会覆盖启动期间入队的任务；服务声明 `subprocess` 为必需的插件依赖。tick 循环（默认 1 秒）先处理 inbox，再按优先级升序、同优先级 FIFO 顺序领取可用的 `pending` 任务，受全局 `maxConcurrent`（默认 2）与每执行器 `maxConcurrentPerExecutor`（默认 1）约束。领取分两阶段：先在 FIFO 内写 `starting`（`attempt` 唯一在此递增，run record 不含 pid），随后在 FIFO 外由适配器 `prepare(task, run, signal)` 产出 spawn spec，最后回到 FIFO 内原子地重检任务仍为 `starting`、经 `ctx.subprocess.spawn(spec)` spawn、并带真实 pid 写 `running`。在 prepare 期间被取消的任务绝不会被 spawn。`exitCode === 0` 结算为 `succeeded`；其余走失败路径——按 `backoffMs * 2^(attempt-1)` 退避重入队直到 `maxAttempts`，之后进 `failed`。attempt 级 `AbortSignal`（同时传入 spec 的 `signal`）兑现 `timeoutMs`，超时会升级为进程树终止。
+启动恢复完成后才启动调度器，持久 mutation 方法也会等启动完成后返回，因此恢复状态不会覆盖启动期间入队的任务；服务声明 `subprocess` 为必需的插件依赖。tick 循环（默认 1 秒）先处理 inbox，再从执行器已启用且当前已有注册适配器的 `pending` 任务中，按优先级升序、同优先级 FIFO 顺序领取，受全局 `maxConcurrent`（默认 2）与每执行器 `maxConcurrentPerExecutor`（默认 1）约束。因此，已启用的外部执行器可以在提供方挂载前接纳任务，但任务会保持 `pending`，不会提前消耗 attempt。领取分两阶段：先在 FIFO 内写 `starting`（`attempt` 唯一在此递增，run record 不含 pid），随后在 FIFO 外由适配器 `prepare(task, run, signal)` 产出 spawn spec，最后回到 FIFO 内原子地重检任务仍为 `starting`、经 `ctx.subprocess.spawn(spec)` spawn、并带真实 pid 写 `running`。在 prepare 期间被取消的任务绝不会被 spawn。prepare 或 spawn 失败会从 `starting` 按普通重试／耗尽策略结算；`exitCode === 0` 结算为 `succeeded`；其他退出也走同一失败路径——按 `backoffMs * 2^(attempt-1)` 退避重入队直到 `maxAttempts`，之后进 `failed`。attempt 级 `AbortSignal`（同时传入 spec 的 `signal`）兑现 `timeoutMs`，超时会升级为进程树终止。
 
 崩溃回收恰在启动时执行一次：`starting`/`running`/`stopping` 任务是上一个宿主进程的遗留（不存在对应 live handle），按恢复矩阵结算（绝不向恢复出的 pid 发信号）并各自发出 `task-queue/orphan-unknown`。正常 tick 从不回收，否则一个已 spawn 的任务会每秒被回退一次。
 
 ## 执行器
 
-适配器只做 prepare：返回完整指定的 `SubprocessSpawnSpec`，绝不直接触碰 `child_process`——spawn、terminate、wait 全部由调度器经 `ctx.subprocess` 完成。适配器还可提供可选的 `normalize(task, stdout, stderr)` 方法，将原始进程输出转换为 Agent 可消费的结果：至少包含人类可读的 `summary`，编码 agent 执行器（DSH/Claude/Codex）还可提供 `assistantText`。若适配器未提供 `normalize`，调度器会从 exit code、duration、tail 存在性与输出文件数量生成合理的默认摘要。内置 `claude`、`codex`、`opencode`、`arkcli`、`node` 与 `shell`。它们都以任务输出目录为 `cwd`、以有界 spill 收集 stdout/stderr，且不传 `env`，让 subprocess 服务的 scrub 后父环境生效。`node` 执行从任务 prompt 的 `{ "script": string, "args"?: string[] }` JSON 解析出的本地 Node 脚本，脚本必须存在于磁盘。`shell` 执行从任务 prompt 的 `{ "argv": string[] }` JSON 解析出的 argv 数组，且被一切工具入口拒绝——只有 inbox 准入能入队它，因此模型 prompt 永远无法变成任意命令。执行器必须在 host 配置中显式启用；未知或未启用的执行器在准入时即被拒绝，spawn 的 `ENOENT` 会让该 attempt 立即失败，而不是进入重试风暴。
+适配器只做 prepare：返回完整指定的 `SubprocessSpawnSpec`，绝不直接触碰 `child_process`——spawn、terminate、wait 全部由调度器经 `ctx.subprocess` 完成。适配器还可提供可选的 `normalize(task, stdout, stderr)` 方法，将原始进程输出转换为 Agent 可消费的结果：至少包含人类可读的 `summary`，编码 agent 执行器（DSH/Claude/Codex）还可提供 `assistantText`。若适配器未提供 `normalize`，调度器会从 exit code、duration、tail 存在性与输出文件数量生成合理的默认摘要。本包持有内置的 `claude`、`codex`、`opencode`、`arkcli`、`node` 与 `shell` 适配器；它们都以任务输出目录为 `cwd`、以有界 spill 收集 stdout/stderr，且不传 `env`，让 subprocess 服务的 scrub 后父环境生效。独立打包的 [`dsh` 提供方](../task-queue-executor-dsh/README.zh.md) 则在 `workspaceDir` 中运行受限 Harness worker，并保留 `outputDir` 存放产物。`node` 执行从任务 prompt 的 `{ "script": string, "args"?: string[] }` JSON 解析出的本地 Node 脚本，脚本必须存在于磁盘。`shell` 执行从任务 prompt 的 `{ "argv": string[] }` JSON 解析出的 argv 数组，且被一切工具入口拒绝——只有 inbox 准入能入队它，因此模型 prompt 永远无法变成任意命令。执行器必须在 host 配置中显式启用；未知或未启用的执行器在准入时即被拒绝，spawn 的 `ENOENT` 会让该 attempt 立即失败，而不是进入重试风暴。
 
 ## 权限
 
@@ -57,7 +57,7 @@ shutdown 时锁是真实的 fence，而非 best-effort 产物：async disposer �
 
 ## Model Experience
 
-间接地，经由 [`dsh-tool-task-queue`](../tool-task-queue/README.md)，它渲染 7 个 `task_queue_*` 工具、`tool:task-queue` 提示词段落与通知投递消息；此后端自身不注册任何模型面。
+间接地，经由 [`dsh-tool-task-queue`](../tool-task-queue/README.zh.md)，它渲染 `task_queue_*` 工具、`tool:task-queue` 提示词段落与通知投递消息；此后端自身不注册任何模型面。
 
 #### KV Cache effect
 

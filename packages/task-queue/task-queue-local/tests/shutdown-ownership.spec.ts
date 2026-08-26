@@ -21,7 +21,12 @@ interface OwnedQueue {
   enqueueFromTool(spec: unknown): Promise<string>
   get(id: string): { status: string }
   ackNotification(notificationId: unknown, messageId: string): Promise<void>
-  listNotifications(filter: { ownerSessionId: string }): unknown[]
+  listNotifications(filter: { ownerSessionId: string }): Array<{
+    notificationId: string
+    messageId: string
+    ownerSessionId: string
+    status: string
+  }>
   mutate<T>(fn: () => Promise<T>): Promise<T>
 }
 
@@ -233,6 +238,7 @@ describe('shutdown ownership fence', () => {
     await expect(queue.cancel(id)).rejects.toThrow(/shutting down/)
     await expect(queue.retry(id)).rejects.toThrow(/shutting down/)
     await expect(queue.dismiss(id, true)).rejects.toThrow(/shutting down/)
+    await expect(a.queue.ackNotification('missing', 'missing')).rejects.toThrow(/shutting down/)
 
     // The in-flight settle is still allowed to complete, and disposal finishes.
     settleGate.resolve()
@@ -252,6 +258,7 @@ describe('shutdown ownership fence', () => {
       executor: 'node',
       maxAttempts: 1,
       outputDir,
+      ownerSessionId: 's-owner-handoff',
     })
     await poll(() => a.queue.get(id).status === 'succeeded')
 
@@ -263,6 +270,9 @@ describe('shutdown ownership fence', () => {
       ownerSessionId: string | null
       attempt: number
     }
+    const beforeNotifications = a.queue.listNotifications({ ownerSessionId: 's-owner-handoff' })
+    expect(before.ownerSessionId).toBe('s-owner-handoff')
+    expect(beforeNotifications).toHaveLength(1)
     await a.context.fiber.dispose()
 
     // Host B acquires the same root and recovers the log. Boot is async, so
@@ -281,9 +291,10 @@ describe('shutdown ownership fence', () => {
 
     expect(after.status).toBe(before.status)
     expect(after.result).toEqual(before.result)
-    expect(after.runs).toHaveLength(before.runs.length)
+    expect(after.runs).toEqual(before.runs)
     expect(after.ownerSessionId).toBe(before.ownerSessionId)
     expect(after.attempt).toBe(before.attempt)
+    expect(b.queue.listNotifications({ ownerSessionId: 's-owner-handoff' })).toEqual(beforeNotifications)
 
     // Read the durable log and assert seq continuity (no gap, no duplicate).
     const lines = (await readFile(join(root, 'active.jsonl'), 'utf8')).trim().split('\n').filter(Boolean)

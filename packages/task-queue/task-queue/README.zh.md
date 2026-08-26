@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-跨会话持久任务队列的契约（`ctx.taskQueue`）。抽象 `TaskQueue` 服务与其词汇表——任务模型、两阶段状态机、change 记录 schema、fold 与 canonical digest 规则、执行器适配器形状、`task-queue/*` 事件面——让 [`dsh-task-queue-local`](../task-queue-local/README.md) 的持久后端与 [`dsh-tool-task-queue`](../tool-task-queue/README.md) 的 agent 工具集共享同一套身份与 mutation 语义。设计文档见 [docs/specs/2026-08-14-task-queue-design.md](../../../docs/specs/2026-08-14-task-queue-design.md)。
+跨会话持久任务队列的契约（`ctx.taskQueue`）。抽象 `TaskQueue` 服务与其词汇表——任务模型、两阶段状态机、change 记录 schema、fold 与 canonical digest 规则、执行器适配器形状、`task-queue/*` 事件面——让 [`dsh-task-queue-local`](../task-queue-local/README.zh.md) 的持久后端与 [`dsh-tool-task-queue`](../tool-task-queue/README.zh.md) 的 agent 工具集共享同一套身份与 mutation 语义。设计文档见 [docs/specs/2026-08-14-task-queue-design.md](../../../docs/specs/2026-08-14-task-queue-design.md)。
 
 ## Service 契约
 
@@ -18,7 +18,7 @@
 
 ## 任务模型
 
-`Task` 携带完整持久快照：状态（`pending`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`canceled`）、`attempt`/`maxAttempts`、`backoffMs`、`delayUntil`、`timeoutMs`、`outputDir`、tags、`lastError`、`result`、`ownerSessionId`、受信 `source`/`receiptId`，以及每次 attempt 的 `RunRecord[]`（`runId`、attempt、仅供诊断的 `pid`、时间戳、日志路径、命令指纹、`terminationUnverified`）。
+`Task` 携带完整持久快照：状态（`pending`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`canceled`）、`attempt`/`maxAttempts`、`backoffMs`、`delayUntil`、`timeoutMs`、可选 `workspaceDir`、`outputDir`、tags、`lastError`、`result`、`ownerSessionId`、受信 `source`/`receiptId`，以及每次 attempt 的 `RunRecord[]`（`runId`、attempt、仅供诊断的 `pid`、时间戳、日志路径、命令指纹、`terminationUnverified`）。需要操作现有 checkout 的执行器以 `workspaceDir` 作为进程工作目录，`outputDir` 仍是队列持有的产物目录；缺少 `workspaceDir` 的旧记录会在物化时沿用 `outputDir`。
 
 `TaskResult`（在 `succeeded` 时填充）携带人类可读的 `summary`（如 "exit 0, 3.2s, 2 output files"）、可选的 `assistantText`（DSH/Claude/Codex 等编码 agent 执行器产生的语义结果）、`exitCode`/`signal`、wall-clock `durationMs`、可选的 `logPath`（本次 attempt 的 run log）、有界 `stdoutTail`/`stderrTail`（各最多 4 KiB）、以及 `outputFiles`（output 目录下的一级产物文件名）。完整输出始终在 run log 与 output 目录中可查；tail 截断仅作为 Agent 可消费的摘要投影。
 
@@ -38,7 +38,7 @@
 
 ## Model Experience
 
-间接地，经由 [`dsh-tool-task-queue`](../tool-task-queue/README.md)，它渲染 7 个 `task_queue_*` 工具、`tool:task-queue` 提示词段落与通知投递消息；本契约自身不注册任何模型面。
+间接地，经由 [`dsh-tool-task-queue`](../tool-task-queue/README.zh.md)，它渲染 `task_queue_*` 工具、`tool:task-queue` 提示词段落与通知投递消息；本契约自身不注册任何模型面。
 
 #### KV Cache effect
 

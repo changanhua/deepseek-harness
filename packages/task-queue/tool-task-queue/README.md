@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-The model-facing toolkit for `ctx.taskQueue`: eight `task_queue_*` tools, one tool-guidance prompt section, a pre-step candidate-notification hook, and the append→flush→CAS-ack notification finalizer. One apply registers everything — the hooks are never split across duplicate-listening mounts. The host Service is read optionally through `ctx.get('taskQueue')`: with no backend composed the tools still register, but their `execute` rejects with a clear load message, and the pre-step/finalizer hooks no-op.
+The model-facing toolkit for `ctx.taskQueue`: the `task_queue_*` tools, one tool-guidance prompt section, a pre-step candidate-notification hook, and the append→flush→CAS-ack notification finalizer. One apply registers everything — the hooks are never split across duplicate-listening mounts. The host Service is read optionally through `ctx.get('taskQueue')`: with no backend composed the tools still register, but their `execute` rejects with a clear load message, and the pre-step/finalizer hooks no-op.
 
 `enqueue` and `enqueue_batch` bind the calling session as the task's `ownerSessionId` so terminal notifications reach the right session. The model cannot set this field itself — `validateEnqueueSpec` strips it from model input — so only the trusted code path injects it. A host-plane dispatch with no Agent (e.g. an inbox scan) produces an ownerless task that generates no notification.
 
@@ -10,16 +10,18 @@ The model-facing toolkit for `ctx.taskQueue`: eight `task_queue_*` tools, one to
 
 ## Tools
 
-- `task_queue_enqueue(spec)` enqueues one durable, cross-session task. `spec` requires `title`, `prompt`, and `executor`, and optionally carries `priority`, `maxAttempts`, `backoffMs`, `delayUntil`, `timeoutMs`, `outputDir`, `tags`, and `idempotencyKey`. It rejects `executor: 'shell'` (inbox-only) and validates `idempotencyKey` as 1–128 bytes without NUL.
+- `task_queue_enqueue(spec)` enqueues one durable, cross-session task. `spec` requires `title`, `prompt`, and `executor`, and optionally carries `priority`, `maxAttempts`, `backoffMs`, `delayUntil`, `timeoutMs`, `workspaceDir`, `outputDir`, `tags`, and `idempotencyKey`. `workspaceDir` selects the executor working directory and defaults to `outputDir`; `outputDir` remains the artifact directory. It rejects `executor: 'shell'` (inbox-only) and validates `idempotencyKey` as 1–128 bytes without NUL.
 - `task_queue_enqueue_batch(specs)` enqueues up to 200 tasks in one batch. Any spec whose `executor` is `shell` rejects the whole call.
 - `task_queue_list(status?, executor?, tags?, limit?)` lists summary projections, filtered by status/executor/tags and bounded by limit. Use it before enqueueing to avoid duplicate work.
 - `task_queue_status(id)` returns the full durable task record, projecting the nullable `delayUntil`/`lastError`/`result` fields away so the closed output schema stays clean.
 - `task_queue_cancel(id)` cancels a pending task (or requests stop of a starting/running one), returning `{ outcome: 'canceled' | 'stopping' }`.
 - `task_queue_retry(id)` returns a failed task to pending (attempts reset).
+- `task_queue_dismiss(id)` removes a diagnosed failed task from the needs-attention projection without deleting its durable record.
+- `task_queue_undismiss(id)` restores a dismissed failed task to the needs-attention projection.
 - `task_queue_stats()` returns service state (`running`/`paused`/`faulted`), per-status counts, an optional fault reason, and per-executor counts. Use it at session start to see the backlog.
 - `task_queue_executors()` lists the registered executors with their enabled gates and whether the model tools may submit each (`shell` is inbox-only). Call it before enqueueing to pick a valid executor.
 
-`enqueue` and `batch` use a `execute`-kind card; `list`, `status`, and `stats` use a `read`-kind card; `cancel` and `retry` use an `execute`-kind card.
+`enqueue` and `batch` use an `execute`-kind card; `list`, `status`, and `stats` use a `read`-kind card; mutations use an `execute`-kind card.
 
 The tools surface the queue's use-when semantics: enqueue when you have three or more independent tasks, long-running work, something that may need retry, or anything that should survive the session; inline a single quick interaction instead.
 
@@ -28,7 +30,7 @@ The tools surface the queue's use-when semantics: enqueue when you have three or
 The plugin registers one independently ordered section, `tool:task-queue` (order `107`, after `tool:jobs`):
 
 ```markdown
-Use the task_queue_* tools for durable cross-session work. Enqueue a batch first, then report the queued ids — do not inline a batch of 3 or more independent tasks, long-running jobs, or anything that may need retry or should survive the session. At session start, call task_queue_stats to see the backlog, and task_queue_executors to see which executors this deployment enables. For batch LLM/script work use the node executor with a local script (prompt JSON { script, args? }); use claude/codex/opencode/arkcli only for full coding-agent jobs. Never submit shell (inbox-only). When a task is failed, report it proactively and suggest task_queue_retry. Do not re-enqueue duplicate work: call task_queue_list first to check for an existing matching task. Your responsibilities are delivery (enqueue), monitoring (list/status/stats/executors), failure triage (retry/cancel), and reporting results.
+Use the task_queue_* tools for durable cross-session work. Enqueue a batch first, then report the queued ids — do not inline a batch of 3 or more independent tasks, long-running jobs, or anything that may need retry or should survive the session. At session start, call task_queue_stats to see the backlog, and task_queue_executors to see which executors this deployment enables. For batch LLM/script work use the node executor with a local script (prompt JSON { script, args? }); use dsh/claude/codex/opencode/arkcli only for full coding-agent jobs. Never submit shell (inbox-only). When a task is failed, report it proactively and suggest task_queue_retry. For a failure you have diagnosed and will not retry, task_queue_dismiss soft-concludes it (leaves attention, keeps the record); task_queue_undismiss restores it. Do not re-enqueue duplicate work: call task_queue_list first to check for an existing matching task. Your responsibilities are delivery (enqueue), monitoring (list/status/stats/executors), failure triage (retry/cancel), and reporting results.
 ```
 
 ## Pre-step notification candidates
@@ -62,7 +64,7 @@ Config values fail validation loudly at load when malformed.
 
 ## Model Experience
 
-Indirectly, through its own registered surface — the eight `task_queue_*` tools whose canonical schemas are catalogued in [docs/tool-catalog.md](../../../docs/tool-catalog.md), the `tool:task-queue` prompt section declared above under "System prompt", and marker-bearing `user/message` notices whose durability the finalizer asserts.
+Indirectly, through its own registered surface — the `task_queue_*` tools whose canonical schemas are catalogued in [docs/tool-catalog.md](../../../docs/tool-catalog.md), the `tool:task-queue` prompt section declared above under "System prompt", and marker-bearing `user/message` notices whose durability the finalizer asserts.
 
 #### KV Cache effect
 

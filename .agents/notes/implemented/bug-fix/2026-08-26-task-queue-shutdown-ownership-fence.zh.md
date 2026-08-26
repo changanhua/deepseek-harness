@@ -49,7 +49,8 @@ Cordis 通过 tracing proxy（`createTraceable`）暴露服务。经 `ctx.taskQu
 
 ## Testing
 
-- `packages/task-queue/task-queue-local/tests/shutdown-ownership.spec.ts`（新建，4 个测试）：running execution 尚在 settle 时持有 `owner.lock`、仅当 dispose 完成后才释放；在途 FIFO mutation（gate 住的 `created` append）完成前不释放所有权——该测试在没有 `fifoKey` 修复时失败；dispose 后拒绝一切公开 mutation 同时放行在途 settle；owner handoff 保留持久状态（status/result/runs/ownerSessionId/attempt 一致、seq 严格连续、无重复 seq）。
+- `packages/task-queue/task-queue-local/tests/shutdown-ownership.spec.ts`（新建，4 个测试）：running execution 尚在 settle 时持有 `owner.lock`、仅当 dispose 完成后才释放；在途 FIFO mutation（gate 住的 `created` append）完成前不释放所有权——该测试在没有 `fifoKey` 修复时失败；dispose 后拒绝一切公开 mutation 同时放行在途 settle；owner handoff 保留持久状态（status/result/runs/ownerSessionId/attempt 与 notification 一致、seq 严格连续、无重复 seq）。
+- `packages/task-queue/task-queue-local/tests/fifo.spec.ts` 验证 shutdown drain 会继续等待在途 operation 入队的 successor，而不是在原 tail 完成后过早返回。
 - `packages/task-queue/task-queue-local/tests/scheduler.spec.ts`（+2 个测试）：stop 与已 await 的 claim 竞态时绝不 spawn 或 prepare；`drain()` 在已停止的 tick 与其 execution 全部落定后 resolve。
 - `packages/task-queue/tool-task-queue/tests/vertical-integration.spec.ts`（新建，2 个测试）：黄金纵向链路——真实 LocalTaskQueue + LocalSubprocessRuntime + 工具入队绑定 `ownerSessionId`，任务 settle 出 summary，为 owner session 生成持久通知，pre-step 注入带 outcome summary 的 marker 消息，session append 驱动 flush → CAS ack，通知转 acknowledged，第二次 pre-step 不再注入；append-before-ack 恢复——marker 已持久在 session 而通知仍 pending 时不重复注入，但仍由 pre-step 启动的 finalizer 完成 flush 与 CAS ack。
 

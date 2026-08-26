@@ -2418,13 +2418,41 @@ export interface Config {
 
 来源：[`packages/core/system-prompt/src/index.ts:186`](../packages/core/system-prompt/src/index.ts)
 
+<a id="deepseek-aidsh-task-queue-executor-dsh"></a>
+
+## `@deepseek-ai/dsh-task-queue-executor-dsh`
+
+需要：`taskQueue`
+
+```ts config-catalog
+/** Deployment configuration for the DSH executor provider. */
+export interface Config {
+  /** DSH launch argv prefix, for example `[process.execPath, process.argv[1]]`. */
+  launcher: string[]
+  /** Harness home explicitly forwarded after the subprocess environment scrub. */
+  dshHome: string
+  /** Dedicated one-shot profile name. */
+  profile?: string
+  /** Maximum UTF-8 bytes persisted as semantic assistant text. */
+  maxAssistantBytes?: number
+  /** In-memory bytes collected per output stream before spill. */
+  collectBytes?: number
+  /** Grace before subprocess termination escalates. */
+  graceMs?: number
+}
+```
+
+来源：[`packages/task-queue/task-queue-executor-dsh/src/index.ts:30`](../packages/task-queue/task-queue-executor-dsh/src/index.ts)
+
 <a id="deepseek-aidsh-task-queue-local"></a>
 
 ## `@deepseek-ai/dsh-task-queue-local`
 
+需要：`subprocess`
+
 ```ts config-catalog
 /** Config with every optional field defaulted (schemastery output shape). */
-export type ResolvedConfig = Required<Pick<Config, 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs'>> & Config
+export type ResolvedConfig = Required<Pick<Config, 'queueRoot' | 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs' | 'stoppingGraceMs'>> & Config
 
 /** Admission config schema (schemastery). */
 export interface Config {
@@ -2434,8 +2462,10 @@ export interface Config {
   maxConcurrentPerExecutor?: number
   /** Scheduler tick interval in milliseconds. */
   intervalMs?: number
-  /** Queue root directory; defaults to `$DSH_HOME/task-queue`. */
-  queueRoot?: string
+  /** Extra time beyond `timeoutMs` before a stalled `stopping` task is force-reclaimed. */
+  stoppingGraceMs?: number
+  /** Queue root directory; the composing row resolves it explicitly, for example `dshHomePath('task-queue')`. */
+  queueRoot: string
   /** Per-executor enablement; a disabled executor rejects admission. */
   executors?: Record<string, {
     /** Whether this executor may run tasks. */
@@ -2444,7 +2474,20 @@ export interface Config {
 }
 ```
 
-来源：[`packages/task-queue/task-queue-local/src/index.ts:64`](../packages/task-queue/task-queue-local/src/index.ts)
+来源：[`packages/task-queue/task-queue-local/src/index.ts:74`](../packages/task-queue/task-queue-local/src/index.ts)
+
+<a id="deepseek-aidsh-task-queue-remote"></a>
+
+## `@deepseek-ai/dsh-task-queue-remote`
+
+需要：`taskQueue`
+
+```ts config-catalog
+/** The panel remote's configuration (reserved; the surface needs none today). */
+export type Config = Record<string, never>
+```
+
+来源：[`packages/task-queue/task-queue-remote/src/index.ts:43`](../packages/task-queue/task-queue-remote/src/index.ts)
 
 <a id="deepseek-aidsh-terminal-bash"></a>
 
@@ -2916,7 +2959,7 @@ export interface Config {
 export interface Config {}
 ```
 
-来源：[`packages/task-queue/tool-task-queue/src/index.ts:656`](../packages/task-queue/tool-task-queue/src/index.ts)
+来源：[`packages/task-queue/tool-task-queue/src/index.ts:815`](../packages/task-queue/tool-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { determineFault, FaultedError, runMutationTransaction } from '../src/fifo.ts'
+import { determineFault, FaultedError, runMutationTransaction, waitForMutationDrain } from '../src/fifo.ts'
 
 describe('runMutationTransaction serialization', () => {
   it('runs operations one at a time in submission order per owner', async () => {
@@ -51,6 +51,34 @@ describe('runMutationTransaction serialization', () => {
     await expect(runMutationTransaction(owner, async () => { throw new Error('boom') })).rejects.toThrow('boom')
     const result = await runMutationTransaction(owner, async () => 'ok')
     expect(result).toBe('ok')
+  })
+
+  it('drains a successor enqueued by an in-flight operation', async () => {
+    const owner = {}
+    // oxlint-disable-next-line no-invalid-void-type -- Promise.withResolvers<void>() is a valid use of the void generic.
+    const releaseFirst = Promise.withResolvers<void>()
+    // oxlint-disable-next-line no-invalid-void-type -- Promise.withResolvers<void>() is a valid use of the void generic.
+    const successorQueued = Promise.withResolvers<void>()
+    let successorCompleted = false
+
+    const first = runMutationTransaction(owner, async () => {
+      void runMutationTransaction(owner, async () => {
+        successorCompleted = true
+      })
+      successorQueued.resolve()
+      await releaseFirst.promise
+    })
+    await successorQueued.promise
+
+    let drained = false
+    const drain = waitForMutationDrain(owner).then(() => { drained = true })
+    await Promise.resolve()
+    expect(drained).toBe(false)
+    expect(successorCompleted).toBe(false)
+
+    releaseFirst.resolve()
+    await Promise.all([first, drain])
+    expect(successorCompleted).toBe(true)
   })
 })
 

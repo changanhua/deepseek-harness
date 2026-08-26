@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-`ctx.taskQueue` 的面向模型工具包：八个 `task_queue_*` 工具、一个工具指引提示词区段、一个 pre-step 候选通知钩子，以及 append→flush→CAS-ack 通知 finalizer。一次 apply 即注册全部内容——钩子不会被拆进多个会重复监听的挂载。宿主 Service 通过 `ctx.get('taskQueue')` 可选读取：未组装后端时工具仍会注册，但其 `execute` 会带明确的加载指引报错，pre-step/finalizer 钩子则直接空转。
+`ctx.taskQueue` 的面向模型工具包：`task_queue_*` 工具、一个工具指引提示词区段、一个 pre-step 候选通知钩子，以及 append→flush→CAS-ack 通知 finalizer。一次 apply 即注册全部内容——钩子不会被拆进多个会重复监听的挂载。宿主 Service 通过 `ctx.get('taskQueue')` 可选读取：未组装后端时工具仍会注册，但其 `execute` 会带明确的加载指引报错，pre-step/finalizer 钩子则直接空转。
 
 `enqueue` 与 `enqueue_batch` 会把调用方 session 绑定为任务的 `ownerSessionId`，使终态通知能路由到正确的会话。模型无法自行设置该字段——`validateEnqueueSpec` 会从模型输入中剥离它——因此只有受信代码路径能注入。无 Agent 的宿主面调用（例如 inbox 扫描）产生无主任务，不生成通知。
 
@@ -10,16 +10,18 @@
 
 ## 工具
 
-- `task_queue_enqueue(spec)` 入队一个持久的、跨会话的任务。`spec` 必含 `title`、`prompt`、`executor`，可选携带 `priority`、`maxAttempts`、`backoffMs`、`delayUntil`、`timeoutMs`、`outputDir`、`tags`、`idempotencyKey`。它拒绝 `executor: 'shell'`（仅限 inbox），并把 `idempotencyKey` 校验为 1–128 字节且不含 NUL。
+- `task_queue_enqueue(spec)` 入队一个持久的、跨会话的任务。`spec` 必含 `title`、`prompt`、`executor`，可选携带 `priority`、`maxAttempts`、`backoffMs`、`delayUntil`、`timeoutMs`、`workspaceDir`、`outputDir`、`tags`、`idempotencyKey`。`workspaceDir` 选择执行器工作目录，默认沿用 `outputDir`；`outputDir` 仍是产物目录。它拒绝 `executor: 'shell'`（仅限 inbox），并把 `idempotencyKey` 校验为 1–128 字节且不含 NUL。
 - `task_queue_enqueue_batch(specs)` 一次批量入队至多 200 个任务。任一 spec 的 `executor` 为 `shell` 都会让整个调用被拒绝。
 - `task_queue_list(status?, executor?, tags?, limit?)` 列出摘要投影，按 status/executor/tags 过滤并受 limit 约束。入队前先调用它以避免重复工作。
 - `task_queue_status(id)` 返回任务的完整持久记录，并把可空的 `delayUntil`/`lastError`/`result` 字段投影掉，使闭合的输出 schema 保持整洁。
 - `task_queue_cancel(id)` 取消一个 pending 任务（或请求停止一个 starting/running 任务），返回 `{ outcome: 'canceled' | 'stopping' }`。
 - `task_queue_retry(id)` 把一个 failed 任务送回 pending（重试次数清零）。
+- `task_queue_dismiss(id)` 从 needs-attention 投影中移除一个已诊断的 failed 任务，但不删除其持久记录。
+- `task_queue_undismiss(id)` 把一个已 dismiss 的 failed 任务恢复进 needs-attention 投影。
 - `task_queue_stats()` 返回服务状态（`running`/`paused`/`faulted`）、各状态计数、可选的 fault 原因，以及各执行器计数。会话开始时调用它查看积压。
 - `task_queue_executors()` 列出已注册的执行器及其启用状态，并标记模型工具是否可提交（`shell` 为 inbox-only）。入队前调用它选择可用的执行器。
 
-`enqueue` 与 `batch` 使用 `execute` 类卡片；`list`、`status`、`stats` 使用 `read` 类卡片；`cancel` 与 `retry` 使用 `execute` 类卡片。
+`enqueue` 与 `batch` 使用 `execute` 类卡片；`list`、`status`、`stats` 使用 `read` 类卡片；mutation 使用 `execute` 类卡片。
 
 工具承载了队列的“何时使用”语义：当你有三个及以上独立任务、长耗时任务、可能需要重试的任务，或任何要跨会话存活的任务时入队；单条快速交互则内联完成。
 
@@ -28,7 +30,7 @@
 插件注册一个独立排序的区段 `tool:task-queue`（order `107`，位于 `tool:jobs` 之后）：
 
 ```markdown
-Use the task_queue_* tools for durable cross-session work. Enqueue a batch first, then report the queued ids — do not inline a batch of 3 or more independent tasks, long-running jobs, or anything that may need retry or should survive the session. At session start, call task_queue_stats to see the backlog, and task_queue_executors to see which executors this deployment enables. For batch LLM/script work use the node executor with a local script (prompt JSON { script, args? }); use claude/codex/opencode/arkcli only for full coding-agent jobs. Never submit shell (inbox-only). When a task is failed, report it proactively and suggest task_queue_retry. Do not re-enqueue duplicate work: call task_queue_list first to check for an existing matching task. Your responsibilities are delivery (enqueue), monitoring (list/status/stats/executors), failure triage (retry/cancel), and reporting results.
+Use the task_queue_* tools for durable cross-session work. Enqueue a batch first, then report the queued ids — do not inline a batch of 3 or more independent tasks, long-running jobs, or anything that may need retry or should survive the session. At session start, call task_queue_stats to see the backlog, and task_queue_executors to see which executors this deployment enables. For batch LLM/script work use the node executor with a local script (prompt JSON { script, args? }); use dsh/claude/codex/opencode/arkcli only for full coding-agent jobs. Never submit shell (inbox-only). When a task is failed, report it proactively and suggest task_queue_retry. For a failure you have diagnosed and will not retry, task_queue_dismiss soft-concludes it (leaves attention, keeps the record); task_queue_undismiss restores it. Do not re-enqueue duplicate work: call task_queue_list first to check for an existing matching task. Your responsibilities are delivery (enqueue), monitoring (list/status/stats/executors), failure triage (retry/cancel), and reporting results.
 ```
 
 ## Pre-step 候选通知
@@ -62,7 +64,7 @@ pre-step 钩子通过 `listNotifications` 读取该会话的待处理 outbox 通
 
 ## Model Experience
 
-本工具集是任务队列的模型面：8 个 `task_queue_*` 工具的规范 schema 归档于 [docs/tool-catalog.md](../../../docs/tool-catalog.md)；`tool:task-queue` 提示词段落的全文在上方"系统提示词"一节声明；通知投递以带 marker 行的 `user/message` 注入，持久性由 finalizer 断言。
+本工具集是任务队列的模型面：`task_queue_*` 工具的规范 schema 归档于 [docs/tool-catalog.md](../../../docs/tool-catalog.zh.md)；`tool:task-queue` 提示词段落的全文在上方"系统提示词"一节声明；通知投递以带 marker 行的 `user/message` 注入，持久性由 finalizer 断言。
 
 #### KV Cache effect
 

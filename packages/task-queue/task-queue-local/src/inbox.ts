@@ -74,6 +74,10 @@ export function validateInboxSpec(value: unknown): { spec: EnqueueSpec } | { rea
     if (typeof v.timeoutMs !== 'number' || !Number.isFinite(v.timeoutMs) || v.timeoutMs <= 0) return { reason: 'invalid timeoutMs' }
     spec.timeoutMs = v.timeoutMs
   }
+  if (v.workspaceDir !== undefined) {
+    if (typeof v.workspaceDir !== 'string') return { reason: 'invalid workspaceDir' }
+    spec.workspaceDir = v.workspaceDir
+  }
   if (v.outputDir !== undefined) {
     if (typeof v.outputDir !== 'string') return { reason: 'invalid outputDir' }
     spec.outputDir = v.outputDir

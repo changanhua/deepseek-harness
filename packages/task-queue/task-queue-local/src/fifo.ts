@@ -47,6 +47,8 @@ export async function runMutationTransaction<T>(
  * Callers must stop admitting new work before using this as a shutdown fence.
  * The loop re-reads the tail because an operation that was already in flight
  * can enqueue a successor before its own tail clears.
+ * @param owner - the exact service instance whose mutation chain must drain.
+ * @returns a promise that resolves after the mutation chain becomes quiescent.
  */
 export async function waitForMutationDrain(owner: object): Promise<void> {
   while (true) {

@@ -250,9 +250,15 @@ describe('vertical business loop', () => {
     expect(record.status).toBe('pending')
     appendText(session, `Background task "crash recovery" reached succeeded.\n${markerLine(record.notificationId, record.messageId)}`)
 
+    // Persist the marker before recreating the toolkit, while the queue
+    // notification is still pending.
+    expect(await flushSpy(session)).toBe(true)
+    flushSpy.mockClear()
+    const restartedKit = createToolTaskQueue(deps)
+
     // The next pre-step sees the marker already present. It must NOT re-inject
     // a duplicate message, but it MUST start the finalizer to flush and ack.
-    const decision = kit.preStep(agent, { kind: 'enter', messages: [] } as PreStepDecision)
+    const decision = restartedKit.preStep(agent, { kind: 'enter', messages: [] } as PreStepDecision)
     expect(decision.kind).toBe('enter')
     if (decision.kind !== 'enter') throw new Error('expected enter')
     expect(decision.messages).toHaveLength(0) // no duplicate injection

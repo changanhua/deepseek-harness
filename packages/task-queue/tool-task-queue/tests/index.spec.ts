@@ -137,10 +137,11 @@ describe('validateEnqueueSpec', () => {
     const spec = validateEnqueueSpec({
       title: 't', prompt: 'p', executor: 'codex',
       priority: 1, maxAttempts: 5, backoffMs: 1000, delayUntil: '2026-01-01T00:00:00Z',
-      timeoutMs: 60000, outputDir: '/tmp/o', tags: ['a', 'b'], idempotencyKey: 'k',
+      timeoutMs: 60000, workspaceDir: '/tmp/repo', outputDir: '/tmp/o', tags: ['a', 'b'], idempotencyKey: 'k',
     })
     expect(spec.priority).toBe(1)
     expect(spec.maxAttempts).toBe(5)
+    expect(spec.workspaceDir).toBe('/tmp/repo')
     expect(spec.tags).toEqual(['a', 'b'])
     expect(spec.idempotencyKey).toBe('k')
   })
@@ -475,6 +476,7 @@ describe('system-prompt section', () => {
     expect(section.text).toContain('task_queue_retry')
     expect(section.text).toContain('task_queue_list')
     expect(section.text).toContain('task_queue_dismiss')
+    expect(section.text).toContain('use dsh/claude/codex/opencode/arkcli')
     expect(section.text).toMatch(/Enqueue a batch first/)
     expect(section.text).toMatch(/just 3 or more|3 or more independent tasks/)
   })

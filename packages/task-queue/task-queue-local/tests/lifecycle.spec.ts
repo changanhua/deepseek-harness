@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import LocalTaskQueue from '../src/index.ts'
+import type { ExecutorAdapter } from '@deepseek-ai/dsh-task-queue'
 import { TaskQueueStore } from '../src/store.ts'
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -32,6 +33,53 @@ afterEach(async () => {
 })
 
 describe('LocalTaskQueue lifecycle', () => {
+  it('leaves an enabled external executor pending until its adapter registers', async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-task-queue-external-'))
+    const script = join(root, 'worker.cjs')
+    await writeFile(script, 'process.stdout.write("semantic result")\n', 'utf8')
+    context = new Context()
+    await context.plugin(LocalSubprocessRuntime)
+    await context.plugin(LocalTaskQueue, {
+      queueRoot: root,
+      intervalMs: 5,
+      maxConcurrent: 1,
+      maxConcurrentPerExecutor: 1,
+      executors: { dsh: { enabled: true } },
+    } as never)
+
+    const queue = context.taskQueue
+    const id = await queue.enqueueFromTool({
+      title: 'late provider', prompt: 'run', executor: 'dsh', maxAttempts: 1,
+      workspaceDir: join(root, 'workspace'), outputDir: join(root, 'output'),
+    })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(queue.get(id).status).toBe('pending')
+    expect(queue.get(id).attempt).toBe(0)
+
+    const adapter: ExecutorAdapter = {
+      async prepare() {
+        return {
+          argv: [process.execPath, script],
+          cwd: root!,
+          stdio: {
+            stdin: 'ignore',
+            stdout: { maxBytes: 1024 },
+            stderr: { maxBytes: 1024 },
+          },
+          graceMs: 100,
+        }
+      },
+      normalize(_task, stdout) {
+        return { summary: 'external completed', assistantText: stdout }
+      },
+    }
+    queue.registerExecutor('dsh', adapter)
+    await waitFor(() => queue.get(id).status === 'succeeded')
+    expect(queue.get(id).result).toMatchObject({
+      summary: 'external completed', assistantText: 'semantic result', exitCode: 0,
+    })
+  })
+
   it('does not overwrite an admission made while startup recovery is finishing', async () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-task-queue-lifecycle-'))
     const script = join(root, 'task.cjs')

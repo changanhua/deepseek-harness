@@ -202,6 +202,13 @@ describe('TaskQueueStore corruption fails closed', () => {
       .toThrow(FaultedError)
   })
 
+  it('throws FaultedError when workspaceDir is present but not a string', () => {
+    expect(() => parseChangeLine({
+      ...createdChange(1, 'tq-1'),
+      state: { ...task('tq-1'), workspaceDir: 7 },
+    })).toThrow(FaultedError)
+  })
+
   it('rejects a sealed segment with a torn final line', async () => {
     const store = new TaskQueueStore(root)
     await store.appendActive(createdChange(1, 'tq-1'))

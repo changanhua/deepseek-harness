@@ -279,6 +279,7 @@
     { "path": "./packages/jobs/tool-jobs" },
     { "path": "./packages/task-queue/task-queue" },
     { "path": "./packages/task-queue/task-queue-local" },
+    { "path": "./packages/task-queue/task-queue-executor-dsh" },
     { "path": "./packages/task-queue/tool-task-queue" },
     { "path": "./packages/task-queue/command-task-queue" },
     { "path": "./packages/task-queue/task-queue-remote" },

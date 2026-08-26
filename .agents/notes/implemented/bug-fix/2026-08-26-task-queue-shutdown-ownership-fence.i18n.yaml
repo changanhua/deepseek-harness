@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-26-task-queue-shutdown-ownership-fence.md
-2026-08-26-task-queue-shutdown-ownership-fence.md: ee4a1edf2370672d3ce7e12740696b8aa38cd873
-2026-08-26-task-queue-shutdown-ownership-fence.zh.md: f49c45d1b94c34ed3c35d13342707a0c1031e935
+2026-08-26-task-queue-shutdown-ownership-fence.md: 54e5ded9545b475d082d20bd09bbdc28041b2d4e
+2026-08-26-task-queue-shutdown-ownership-fence.zh.md: 6ebf22dde913be5185042949e5794ca4b80fc465

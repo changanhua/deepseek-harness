@@ -97,6 +97,8 @@ export interface Task {
   backoffMs: number
   delayUntil: string | null
   timeoutMs: number
+  /** Executor working directory; legacy records omit it and materialize to `outputDir`. */
+  workspaceDir?: string
   outputDir: string
   tags: string[]
   createdAt: string
@@ -190,6 +192,8 @@ export interface EnqueueSpec {
   backoffMs?: number
   delayUntil?: string
   timeoutMs?: number
+  /** Executor working directory, separate from the artifact directory. */
+  workspaceDir?: string
   outputDir?: string
   tags?: string[]
   ownerSessionId?: string

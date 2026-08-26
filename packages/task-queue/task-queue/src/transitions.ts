@@ -44,6 +44,7 @@ export function createTask(
     backoffMs: spec.backoffMs ?? 30_000,
     delayUntil: spec.delayUntil ?? null,
     timeoutMs: spec.timeoutMs ?? CREATE_TIMEOUT_MS,
+    workspaceDir: spec.workspaceDir ?? spec.outputDir ?? `output/${id}`,
     outputDir: spec.outputDir ?? `output/${id}`,
     tags: spec.tags ?? [],
     createdAt: now,
@@ -143,16 +144,19 @@ export function settleSucceeded(task: Task, result: TaskResult, now: string): Ta
 }
 
 /**
- * Settle a failed run. Legal only from `running`. If `attempt >= maxAttempts`
+ * Settle a failed attempt. Legal from `starting` (prepare failure) or
+ * `running` (spawned process failure). If `attempt >= maxAttempts`
  * the task is exhausted (`failed`); otherwise it requeues to `pending` with a
  * backoff delay `backoffMs * 2^(attempt-1)` from `now`, `attempt` unchanged.
- * @param task - the `running` task whose attempt failed.
+ * @param task - the `starting` or `running` task whose attempt failed.
  * @param error - the failure reason recorded into `lastError`.
  * @param now - ISO timestamp for `updatedAt` and the backoff delay base.
  * @returns a new `failed` task when attempts are exhausted, else a `pending` task with a backoff delay.
  */
 export function settleFailed(task: Task, error: string, now: string): Task {
-  assertStatus(task, 'running', 'settle failed')
+  if (task.status !== 'starting' && task.status !== 'running') {
+    throw new Error(`cannot settle failed task ${task.id}: expected starting or running, got ${task.status}`)
+  }
   const lastError = error === '' ? 'task failed' : error
   if (task.attempt >= task.maxAttempts) {
     return { ...task, status: 'failed', lastError, updatedAt: now, terminalSeq: null }
