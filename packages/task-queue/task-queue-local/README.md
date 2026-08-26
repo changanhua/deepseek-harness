@@ -6,18 +6,18 @@ Durable host-plane implementation of the [`@deepseek-ai/dsh-task-queue`](../task
 
 ## Service
 
-`LocalTaskQueue` extends the contract's `TaskQueue` service and registers as `ctx.taskQueue`. All reads return durable state; all writes go through one service-level mutation FIFO.
+`LocalTaskQueue` extends the contract's `TaskQueue` service and registers as `ctx.taskQueue`. Every public task-data operation validates an opaque Agent-owner or host access grant before returning data or entering the service-level mutation FIFO. An Agent sees only tasks and notifications whose `ownerSessionId` exactly matches its grant; the singleton host grant sees the whole queue. Missing and unauthorized ids fail identically.
 
-- `enqueueFromTool(spec) → TaskId` — the trusted tool ingress. It rejects `executor: 'shell'`, requires the executor to be explicitly enabled, and derives an idempotent receipt: `tool:key:<idempotencyKey>` when the caller supplies a key (a repeat returns the existing task id), otherwise `tool:auto:<uuid>` (single-admission identity, no cross-call dedup).
-- `enqueueBatchFromTool(specs) → TaskId[]` — up to 200 specs per call.
-- `list(filter?)` / `get(id)` — read summaries or a full task; `list` filters by status, executor, and tags.
-- `cancel(id)` — `pending` cancels immediately; `starting`/`running` records the `stopping` intent and returns `'stopping'`; terminal tasks are a no-op returning `'canceled'`.
-- `retry(id)` — returns a `failed` or `canceled` task to `pending` with a zeroed attempt.
-- `stats()` — `serviceState` (with a fault reason when faulted), per-status counts, and per-executor counts.
+- `enqueueFromTool(access, spec) → TaskId` — the trusted tool ingress. Agent access overwrites any supplied owner with its authenticated session; host access preserves an explicit owner or admits an ownerless task. It rejects `executor: 'shell'`, requires the executor to be explicitly enabled, and namespaces a supplied `idempotencyKey` by Agent session or host before deduplication; otherwise it assigns `tool:auto:<uuid>`.
+- `enqueueBatchFromTool(access, specs) → TaskId[]` — up to 200 specs per call under one access grant.
+- `list(access, filter?)` / `get(access, id)` — read visible summaries or a full visible task; ownership filtering precedes status, executor, tags, and limit filters.
+- `cancel(access, id)` — `pending` cancels immediately; `starting`/`running` records the `stopping` intent and returns `'stopping'`; terminal tasks are a no-op returning `'canceled'`.
+- `retry(access, id)` — returns an accessible `failed` or `canceled` task to `pending` with a zeroed attempt.
+- `stats(access)` — global `serviceState` (with a fault reason when faulted), plus per-status and per-executor counts scoped to visible tasks.
 - `registerExecutor(name, adapter)` — installs a prepare-only adapter; returns a disposer that removes it.
-- `pause()` / `resume()` — `pause` only from `running`, `resume` only from `paused`. `resume()` on a faulted queue is rejected; faulted can only clear through the fault resolution protocol or an operator restart.
-- `ackNotification(notificationId, messageId)` — CAS-acknowledges a `pending` notification born from a terminal change; a mismatched status or message id fails without touching any other record.
-- `listNotifications({ ownerSessionId })` — reconstructs the pending-notification outbox for one session, ordered by terminal seq.
+- `pause(hostAccess)` / `resume(hostAccess)` — host-only controls; `pause` only from `running`, `resume` only from `paused`. `resume()` on a faulted queue is rejected; faulted can only clear through the fault resolution protocol or an operator restart.
+- `ackNotification(access, notificationId, messageId)` — CAS-acknowledges an accessible `pending` notification born from a terminal change; a mismatched status or message id fails without touching any other record.
+- `listNotifications(access)` — reconstructs the visible notification outbox, ordered by terminal seq.
 
 Events are published only after the corresponding change is fsynced and folded into memory: `task-queue/created`, `task-queue/starting`, `task-queue/running`, `task-queue/succeeded`, `task-queue/failed`, `task-queue/requeued`, `task-queue/canceled`, and `task-queue/orphan-unknown`, `task-queue/faulted` for recovery and failure signals.
 

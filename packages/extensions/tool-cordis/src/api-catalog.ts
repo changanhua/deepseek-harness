@@ -1941,53 +1941,53 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'taskQueue',
     summary: 'Abstract durable task queue.',
-    description: 'Abstract durable task queue. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.taskQueue` (one implementation per context; loading a second throws, cordis\' standard duplicate-service behavior).\n\nMutations are serialized through the backend\'s service FIFO and are fail-closed on append error (the queue enters `faulted`); `resume()` must never clear `faulted`. `source`/`receiptId` are assigned only by the trusted entry points, so the tool-surface methods accept a spec without them.',
+    description: 'Abstract durable task queue. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.taskQueue` (one implementation per context; loading a second throws, cordis\' standard duplicate-service behavior).\n\nTask-data methods require an opaque access grant minted by this package. Agent grants see only their exact owner session; the singleton host grant is reserved for trusted host-plane consumers. Mutations are serialized through the backend\'s service FIFO and are fail-closed on append error (the queue enters `faulted`); `resume()` must never clear `faulted`.',
     methods: [
       {
-        signature: 'abstract enqueueFromTool(spec: EnqueueSpec): Promise<TaskId>',
+        signature: 'abstract enqueueFromTool(access: TaskQueueAccess, spec: EnqueueSpec): Promise<TaskId>',
         description: 'Enqueue a single tool-originated task; rejects `executor: \'shell\'`.',
-        parameters: [{ name: 'spec', description: 'the validated admission spec (source/receipt assigned by the entry).' }],
+        parameters: [{ name: 'access', description: 'authenticated Agent-owner or host-plane access.' }, { name: 'spec', description: 'the validated admission spec (source/receipt assigned by the entry).' }],
         returns: 'the minted task id.',
       },
       {
-        signature: 'abstract enqueueBatchFromTool(specs: EnqueueSpec[]): Promise<TaskId[]>',
+        signature: 'abstract enqueueBatchFromTool(access: TaskQueueAccess, specs: readonly EnqueueSpec[]): Promise<TaskId[]>',
         description: 'Enqueue tool-originated tasks in one batch (bounded, e.g. 200).',
-        parameters: [{ name: 'specs', description: 'the validated admission specs; any `shell` rejects the whole batch.' }],
+        parameters: [{ name: 'access', description: 'authenticated Agent-owner or host-plane access.' }, { name: 'specs', description: 'the validated admission specs; any `shell` rejects the whole batch.' }],
         returns: 'the minted task ids, in spec order.',
       },
       {
-        signature: 'abstract list(filter?: ListFilter): TaskSummary[]',
+        signature: 'abstract list(access: TaskQueueAccess, filter?: ListFilter): TaskSummary[]',
         description: 'List summary projections, filtered by status/executor/tags, bounded by limit.',
-        parameters: [{ name: 'filter', description: 'optional status/executor/tags filters and a result limit.' }],
+        parameters: [{ name: 'access', description: 'access whose visible tasks may be returned.' }, { name: 'filter', description: 'optional status/executor/tags filters and a result limit.' }],
         returns: 'fresh summary rows.',
       },
       {
-        signature: 'abstract get(id: TaskId): Task',
+        signature: 'abstract get(access: TaskQueueAccess, id: TaskId): Task',
         description: 'Return the full durable state of one task.',
-        parameters: [{ name: 'id', description: 'the task id to look up.' }],
+        parameters: [{ name: 'access', description: 'access that must be allowed to see the task.' }, { name: 'id', description: 'the task id to look up.' }],
         returns: 'the durable task snapshot; throws for an unknown id.',
       },
       {
-        signature: 'abstract cancel(id: TaskId): Promise<\'canceled\' | \'stopping\'>',
+        signature: 'abstract cancel(access: TaskQueueAccess, id: TaskId): Promise<\'canceled\' | \'stopping\'>',
         description: 'Cancel a task: pending → canceled; starting/running → stopping intent.',
-        parameters: [{ name: 'id', description: 'the task id to cancel.' }],
+        parameters: [{ name: 'access', description: 'access that must be allowed to control the task.' }, { name: 'id', description: 'the task id to cancel.' }],
         returns: '`canceled` for a directly-canceled pending task, `stopping` when a cancel intent was persisted.',
       },
       {
-        signature: 'abstract retry(id: TaskId): Promise<TaskId>',
+        signature: 'abstract retry(access: TaskQueueAccess, id: TaskId): Promise<TaskId>',
         description: 'Retry a failed task; returns the (unchanged) task id.',
-        parameters: [{ name: 'id', description: 'the failed task id to requeue.' }],
+        parameters: [{ name: 'access', description: 'access that must be allowed to control the task.' }, { name: 'id', description: 'the failed task id to requeue.' }],
         returns: 'the same task id, now pending with `attempt` reset.',
       },
       {
-        signature: 'abstract dismiss(id: TaskId, dismissed: boolean): Promise<void>',
+        signature: 'abstract dismiss(access: TaskQueueAccess, id: TaskId, dismissed: boolean): Promise<void>',
         description: 'Soft-conclude (or restore) a terminal task by toggling its `dismissed` flag. Only succeeded/failed/canceled tasks may be dismissed; a non- terminal task throws. Same-value dismiss is an idempotent no-op (no change record, no event). The task\'s `status` and audit record are unchanged; a dismissed task leaves the attention badge/filters but keeps its record, and requeuing (retry) resets `dismissed` to false.',
-        parameters: [{ name: 'id', description: 'the terminal task id to dismiss or restore.' }, { name: 'dismissed', description: 'true to conclude, false to restore.' }],
+        parameters: [{ name: 'access', description: 'access that must be allowed to control the task.' }, { name: 'id', description: 'the terminal task id to dismiss or restore.' }, { name: 'dismissed', description: 'true to conclude, false to restore.' }],
       },
       {
-        signature: 'abstract stats(): QueueStats',
+        signature: 'abstract stats(access: TaskQueueAccess): QueueStats',
         description: 'Aggregate service state and per-status/per-executor counters.',
-        parameters: [],
+        parameters: [{ name: 'access', description: 'access whose visible tasks contribute to the counters.' }],
         returns: 'the current service state, optional fault, and counters.',
       },
       {
@@ -2003,25 +2003,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'one view per registered executor, name order.',
       },
       {
-        signature: 'abstract pause(): void',
+        signature: 'abstract pause(access: TaskQueueHostAccess): void',
         description: 'Pause the queue (running → paused only).',
-        parameters: [],
+        parameters: [{ name: 'access', description: 'trusted host-plane access.' }],
       },
       {
-        signature: 'abstract resume(): void',
+        signature: 'abstract resume(access: TaskQueueHostAccess): void',
         description: 'Resume the queue (paused → running only; faulted rejected).',
-        parameters: [],
+        parameters: [{ name: 'access', description: 'trusted host-plane access.' }],
       },
       {
-        signature: 'abstract ackNotification(notificationId: NotificationId, messageId: string): Promise<void>',
+        signature: 'abstract ackNotification(access: TaskQueueAccess, notificationId: NotificationId, messageId: string): Promise<void>',
         description: 'Acknowledge a pending notification with a CAS (spec §7.4): only a `pending` record whose `messageId` matches `messageId` transitions to `acknowledged`. An already-acknowledged record with a matching message id is an idempotent no-op.',
-        parameters: [{ name: 'notificationId', description: 'the outbox record to acknowledge.' }, { name: 'messageId', description: 'the stable message id the record must match.' }],
+        parameters: [{ name: 'access', description: 'access that must own the notification, or host access.' }, { name: 'notificationId', description: 'the outbox record to acknowledge.' }, { name: 'messageId', description: 'the stable message id the record must match.' }],
       },
       {
-        signature: 'abstract listNotifications(filter: { ownerSessionId: string }): NotificationRecord[]',
-        description: 'List notification outbox records for one owner session, ordered by `terminalSeq` ascending. The pre-step hook consumes this to propose candidate notice messages (spec §7.4 step 4).',
-        parameters: [{ name: 'filter', description: '.ownerSessionId - the session whose outbox records to list.' }],
-        returns: 'the session\'s notification records in terminal order.',
+        signature: 'abstract listNotifications(access: TaskQueueAccess): NotificationRecord[]',
+        description: 'List visible notification outbox records ordered by `terminalSeq` ascending. An Agent grant returns only its session\'s records; host access returns the whole outbox.',
+        parameters: [{ name: 'access', description: 'access whose visible notifications may be returned.' }],
+        returns: 'visible notification records in terminal order.',
       },
     ],
   },
@@ -3516,7 +3516,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'EnqueueSpec',
-    declaration: 'export interface EnqueueSpec {\n    title: string;\n    prompt: string;\n    executor: string;\n    priority?: number;\n    maxAttempts?: number;\n    backoffMs?: number;\n    delayUntil?: string;\n    timeoutMs?: number;\n    outputDir?: string;\n    tags?: string[];\n    ownerSessionId?: string;\n    idempotencyKey?: string;\n}',
+    declaration: 'export interface EnqueueSpec {\n    title: string;\n    prompt: string;\n    executor: string;\n    priority?: number;\n    maxAttempts?: number;\n    backoffMs?: number;\n    delayUntil?: string;\n    timeoutMs?: number;\n    workspaceDir?: string;\n    outputDir?: string;\n    tags?: string[];\n    ownerSessionId?: string;\n    idempotencyKey?: string;\n}',
   },
   {
     name: 'EpochHeader',
@@ -3524,7 +3524,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ExecutorAdapter',
-    declaration: 'export type ExecutorAdapter = {\n    prepare(task: Task, run: RunRecord, signal: AbortSignal): Promise<SubprocessSpawnSpec>;\n};',
+    declaration: 'export type ExecutorAdapter = {\n    prepare(task: Task, run: RunRecord, signal: AbortSignal): Promise<SubprocessSpawnSpec>;\n    normalize?(task: Task, stdout: string, stderr: string): {\n        summary: string;\n        assistantText?: string;\n    };\n};',
   },
   {
     name: 'FileDiff',
@@ -4840,15 +4840,27 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'Task',
-    declaration: 'export interface Task {\n    id: TaskId;\n    title: string;\n    prompt: string;\n    executor: string;\n    status: TaskStatus;\n    priority: number;\n    attempt: number;\n    maxAttempts: number;\n    backoffMs: number;\n    delayUntil: string | null;\n    timeoutMs: number;\n    outputDir: string;\n    tags: string[];\n    createdAt: string;\n    updatedAt: string;\n    lastError: string | null;\n    result: TaskResult | null;\n    ownerSessionId: string | null;\n    source: \'tool\' | \'inbox\';\n    receiptId: string;\n    terminalSeq: number | null;\n    runs: RunRecord[];\n    dismissed: boolean;\n}',
+    declaration: 'export interface Task {\n    id: TaskId;\n    title: string;\n    prompt: string;\n    executor: string;\n    status: TaskStatus;\n    priority: number;\n    attempt: number;\n    maxAttempts: number;\n    backoffMs: number;\n    delayUntil: string | null;\n    timeoutMs: number;\n    workspaceDir?: string;\n    outputDir: string;\n    tags: string[];\n    createdAt: string;\n    updatedAt: string;\n    lastError: string | null;\n    result: TaskResult | null;\n    ownerSessionId: string | null;\n    source: \'tool\' | \'inbox\';\n    receiptId: string;\n    terminalSeq: number | null;\n    runs: RunRecord[];\n    dismissed: boolean;\n}',
   },
   {
     name: 'TaskId',
     declaration: 'export type TaskId = Branded<\'TaskId\'>;',
   },
   {
+    name: 'TaskQueueAccess',
+    declaration: 'export type TaskQueueAccess = TaskQueueAgentAccess | TaskQueueHostAccess;',
+  },
+  {
+    name: 'TaskQueueAgentAccess',
+    declaration: 'export interface TaskQueueAgentAccess {\n    readonly kind: \'agent\';\n    readonly ownerSessionId: string;\n    readonly [TASK_QUEUE_ACCESS_BRAND]: true;\n}',
+  },
+  {
+    name: 'TaskQueueHostAccess',
+    declaration: 'export interface TaskQueueHostAccess {\n    readonly kind: \'host\';\n    readonly [TASK_QUEUE_ACCESS_BRAND]: true;\n}',
+  },
+  {
     name: 'TaskResult',
-    declaration: 'export interface TaskResult {\n    exitCode: number | null;\n    signal: string | null;\n    durationMs: number;\n    outputFiles?: string[];\n}',
+    declaration: 'export interface TaskResult {\n    summary: string;\n    assistantText?: string;\n    exitCode: number | null;\n    signal: string | null;\n    durationMs: number;\n    outputFiles?: string[];\n    logPath?: string;\n    stdoutTail?: string;\n    stderrTail?: string;\n}',
   },
   {
     name: 'TaskStatus',

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
+import { TASK_QUEUE_HOST_ACCESS } from '@deepseek-ai/dsh-task-queue'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import LocalTaskQueue from '@deepseek-ai/dsh-task-queue-local'
 import { startMockLlmServer } from '@deepseek-ai/dsh-llm-mock-server'
@@ -83,7 +84,7 @@ describe.skipIf(!existsSync(dshBin))('task queue → restricted real DSH worker'
         graceMs: 1000,
       })
 
-      const id = await context.taskQueue.enqueueFromTool({
+      const id = await context.taskQueue.enqueueFromTool(TASK_QUEUE_HOST_ACCESS, {
         title: 'real DSH vertical',
         prompt: 'Read the background task context and report success without invoking recursive work.',
         executor: 'dsh',
@@ -93,11 +94,11 @@ describe.skipIf(!existsSync(dshBin))('task queue → restricted real DSH worker'
         outputDir,
       })
       await waitFor(() => {
-        const status = context!.taskQueue.get(id).status
+        const status = context!.taskQueue.get(TASK_QUEUE_HOST_ACCESS, id).status
         return status === 'succeeded' || status === 'failed' || status === 'canceled'
       })
 
-      const settled = context.taskQueue.get(id)
+      const settled = context.taskQueue.get(TASK_QUEUE_HOST_ACCESS, id)
       expect(settled.status, settled.lastError ?? undefined).toBe('succeeded')
       expect(settled.result).toMatchObject({
         summary: 'dsh worker completed with semantic result',

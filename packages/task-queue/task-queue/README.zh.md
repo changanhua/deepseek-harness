@@ -6,13 +6,15 @@
 
 ## Service 契约
 
-- `enqueueFromTool(spec)` 以 `source: 'tool'` 接纳单条任务；后端拒绝 `executor: 'shell'` 并分配 receipt。`enqueueBatchFromTool(specs)` 是有界批量形式（每次上限 200）。
-- `list(filter?)` 与 `get(id)` 返回只读投影；`get` 对未知 id 抛错。
-- `cancel(id)` 返回 `'canceled'`（pending 任务）或 `'stopping'`（starting/running 任务上持久化的取消意图）。`retry(id)` 清零 `attempt` 并把 failed 任务重新入队。
-- `stats()` 报告 `serviceState`（`running`/`paused`/`faulted`）、可选 `fault`、按状态计数与按执行器计数。
+每个任务数据操作都把不透明的 `TaskQueueAccess` 作为第一个参数。`taskQueueAgentAccess(sessionId)` 签发只限于该精确归属会话的授权；`TASK_QUEUE_HOST_ACCESS` 是受信宿主面插件使用的单例全队列授权。运行时校验只接受已登记的授权对象身份，不接受字段副本。任务或通知 id 不存在与无权访问时均返回相同的未知记录错误，因此 Service 不会泄露某个 id 是否由其他会话持有。
+
+- `enqueueFromTool(access, spec)` 以 `source: 'tool'` 接纳单条任务；Agent 授权从自身绑定 `ownerSessionId`，宿主授权则可接纳显式有主或无主任务。后端拒绝 `executor: 'shell'`、分配 receipt，并按已认证调用主体隔离显式幂等键。`enqueueBatchFromTool(access, specs)` 是有界批量形式（每次上限 200）。
+- `list(access, filter?)` 与 `get(access, id)` 只返回该授权可见的任务；归属过滤先于公开过滤器和 `limit` 执行。
+- `cancel(access, id)` 返回 `'canceled'`（pending 任务）或 `'stopping'`（starting/running 任务上持久化的取消意图）。`retry(access, id)` 清零 `attempt` 并把 failed 任务重新入队；`dismiss(access, id, dismissed)` 只更改可访问的终态任务。
+- `stats(access)` 报告全局服务健康状态，以及只由该授权可见任务计算出的按状态与按执行器计数。
 - `registerExecutor(name, adapter)` 注册 prepare-only 适配器并返回其 disposer。适配器的可选 `normalize()` 方法将原始进程输出转换为 Agent 可消费的 `summary` 与可选 `assistantText`——这是将进程队列升级为工作队列的关键 seam。调度器在 exit code 0 时调用 `normalize()`；若适配器未提供，则生成合理的默认摘要。
-- `pause()`/`resume()` 闸控 admission；`resume()` 必须拒绝 `faulted` 队列。
-- `ackNotification(notificationId, messageId)` 用 CAS 确认一条 pending 投递记录；已 acknowledged 且 messageId 匹配的记录是幂等 no-op。`listNotifications({ ownerSessionId })` 按 `terminalSeq` 列出一个会话的记录。
+- `pause(TASK_QUEUE_HOST_ACCESS)`/`resume(TASK_QUEUE_HOST_ACCESS)` 只允许宿主授权闸控准入；`resume()` 必须拒绝 `faulted` 队列。
+- `ackNotification(access, notificationId, messageId)` 用 CAS 确认一条可访问的 pending 投递记录；已 acknowledged 且 messageId 匹配的记录是幂等 no-op。`listNotifications(access)` 按 `terminalSeq` 返回一个 Agent 会话的记录，或宿主可见的完整记录。
 
 所有 mutation 都经后端的服务级 FIFO 串行化，append 出错即 fail-closed——队列进入 `faulted`，任何调用方都不能用 `resume()` 把它带走。
 

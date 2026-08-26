@@ -6,18 +6,18 @@
 
 ## Service
 
-`LocalTaskQueue` 继承约定包里的 `TaskQueue` 服务，注册为 `ctx.taskQueue`。所有读操作都返回持久状态，所有写操作都经过一个服务级 mutation FIFO。
+`LocalTaskQueue` 继承约定包里的 `TaskQueue` 服务，注册为 `ctx.taskQueue`。每个公开任务数据操作在返回数据或进入服务级 mutation FIFO 前，都会校验不透明的 Agent-owner 或宿主授权。Agent 只能看到 `ownerSessionId` 与其授权精确匹配的任务和通知；单例宿主授权可见整个队列。记录不存在与无权访问的失败表现相同。
 
-- `enqueueFromTool(spec) → TaskId`：可信工具入口。它拒绝 `executor: 'shell'`，要求执行器被显式启用，并生成幂等 receipt：调用方提供 `idempotencyKey` 时为 `tool:key:<idempotencyKey>`（重复调用返回既有任务 id），否则为 `tool:auto:<uuid>`（仅作为单次准入身份，不承诺跨调用去重）。
-- `enqueueBatchFromTool(specs) → TaskId[]`：每次调用最多 200 条。
-- `list(filter?)` / `get(id)`：读取摘要或完整任务；`list` 可按 status、executor、tags 过滤。
-- `cancel(id)`：`pending` 直接取消；`starting`/`running` 落 `stopping` 意图并返回 `'stopping'`；终止态任务是空操作并返回 `'canceled'`。
-- `retry(id)`：把 `failed` 或 `canceled` 任务清零 attempt 后回到 `pending`。
-- `stats()`：返回 `serviceState`（faulted 时附原因）、各状态计数与各执行器计数。
+- `enqueueFromTool(access, spec) → TaskId`：可信工具入口。Agent 授权会用已认证会话覆盖任何传入 owner；宿主授权保留显式 owner，或接纳无主任务。它拒绝 `executor: 'shell'`，要求执行器被显式启用，并在去重前按 Agent 会话或宿主隔离传入的 `idempotencyKey`；未传 key 时分配 `tool:auto:<uuid>`。
+- `enqueueBatchFromTool(access, specs) → TaskId[]`：同一授权下每次调用最多 200 条。
+- `list(access, filter?)` / `get(access, id)`：读取可见摘要或完整任务；归属过滤先于 status、executor、tags 与 limit 过滤。
+- `cancel(access, id)`：`pending` 直接取消；`starting`/`running` 落 `stopping` 意图并返回 `'stopping'`；终止态任务是空操作并返回 `'canceled'`。
+- `retry(access, id)`：把可访问的 `failed` 或 `canceled` 任务清零 attempt 后回到 `pending`。
+- `stats(access)`：返回全局 `serviceState`（faulted 时附原因），以及仅按可见任务计算的各状态与各执行器计数。
 - `registerExecutor(name, adapter)`：安装 prepare-only 适配器；返回一个移除它的 disposer。
-- `pause()` / `resume()`：`pause` 仅允许自 `running`，`resume` 仅允许自 `paused`。对 faulted 队列调用 `resume()` 会被拒绝；faulted 只能经 fault 判定协议退出或由运营者重启。
-- `ackNotification(notificationId, messageId)`：对终态变更产生的 `pending` 通知做 CAS 确认；status 或 message id 不匹配时失败，且不改动任何其他记录。
-- `listNotifications({ ownerSessionId })`：按 terminalSeq 排序重建某一会话的待通知 outbox。
+- `pause(hostAccess)` / `resume(hostAccess)`：仅限宿主的控制操作；`pause` 仅允许自 `running`，`resume` 仅允许自 `paused`。对 faulted 队列调用 `resume()` 会被拒绝；faulted 只能经 fault 判定协议退出或由运营者重启。
+- `ackNotification(access, notificationId, messageId)`：对终态变更产生的可访问 `pending` 通知做 CAS 确认；status 或 message id 不匹配时失败，且不改动任何其他记录。
+- `listNotifications(access)`：按 terminalSeq 排序重建可见通知 outbox。
 
 事件只有在对应 change 完成 fsync 并折叠进内存后才发布：`task-queue/created`、`task-queue/starting`、`task-queue/running`、`task-queue/succeeded`、`task-queue/failed`、`task-queue/requeued`、`task-queue/canceled`，以及用于恢复与故障信号的 `task-queue/orphan-unknown`、`task-queue/faulted`。
 

@@ -20,7 +20,7 @@ An implementation review of the task-queue on current master identified four P0 
 
 ### 1. Owner session binding
 
-`ownerSessionIdOf(exec)` extracts the calling session id from `exec.agent?.session.id` in the tool layer. `task_queue_enqueue` and `task_queue_enqueue_batch` call it and write the result into `spec.ownerSessionId` before passing the spec to the service. The model cannot set `ownerSessionId` itself — `validateEnqueueSpec` does not accept it (it is absent from `SPEC_PARAM.properties`) — so only the trusted code path injects it. A host-plane dispatch with no Agent (inbox scan) produces an ownerless task that generates no notification.
+`dsh-tool-task-queue` derives an opaque access grant from `exec.agent?.session.id` and passes it to `enqueueFromTool` or `enqueueBatchFromTool`. The Service binds an Agent grant's exact session as `ownerSessionId`; `validateEnqueueSpec` also excludes the field from model input. A host-plane dispatch uses explicit host access and may produce an ownerless task that generates no notification. The placement and access contract are owned by [the Service authorization note](../architecture/2026-08-26-task-queue-service-authorization.md).
 
 The downstream `createTask` and `commitTerminal` already had the `ownerSessionId ?? null` and `ownerSessionId === null → no notification` logic; no changes were needed there.
 
@@ -48,9 +48,9 @@ A heartbeat introduces timers and extra I/O. Pid-liveness with `kill(pid, 0)` is
 
 Full stdout can be large (up to 256 KiB × 2 streams per the collect cap). Writing it into a change record would bloat the durable log and snapshot. A 4 KiB tail is enough for the Agent to decide whether the task produced useful output; the complete output is always available in the run log and output directory.
 
-### Why owner binding lives in the tool layer, not in `enqueueFromTool`
+### Superseded owner-binding placement
 
-`enqueueFromTool` is the service-level trusted entry point, and inbox scans also use it. Inbox tasks are naturally ownerless. Keeping the binding in the tool layer preserves the service's source-agnostic design: the tool extracts the owner from the execution context, the inbox provides no owner, and the service does not care about the source.
+The original P0 closure bound the owner in the tool wrapper because tool and inbox admission have different ownership semantics. That placement is superseded by [Service authorization](../architecture/2026-08-26-task-queue-service-authorization.md): the caller now supplies an explicit Agent or host grant, and the Service resolves owned versus ownerless admission without depending on the Agent lifecycle.
 
 ### 5. TaskOutcome: summary and normalize seam
 
@@ -60,9 +60,9 @@ Full stdout can be large (up to 256 KiB × 2 streams per the collect cap). Writi
 
 ### 6. Owner authorization on cancel / retry / dismiss
 
-`assertOwnerOrHost(exec, ownerSessionId)` enforces that the caller is either the task's owner Agent (its session id matches `ownerSessionId`) or a host operator (no Agent context). A non-owner Agent attempting to operate on another session's task is rejected with a clear message. Unowned tasks (`ownerSessionId === null`) can only be operated on by a host operator — no Agent can claim them.
+Every task-data Service operation now requires opaque Agent-owner or host access. Agent access is restricted to an exact `ownerSessionId`; host access can operate on owned and ownerless tasks. Missing and unauthorized ids fail identically.
 
-The check is applied at the tool layer in `cancel`, `retry`, `dismiss`, and `undismiss`. The Service itself does not enforce ownership, and `task_queue_status`/`task_queue_list` still expose task data to any caller. Pushing the authorization check into the Service seam is deferred to a future revision.
+The Service enforces the rule for admission, list/status/stats, cancel/retry/dismiss, and notification list/ack. The tool wrapper only derives access from trusted execution metadata; command and Remote consumers pass explicit host access. See [the superseding authorization decision](../architecture/2026-08-26-task-queue-service-authorization.md).
 
 ### 7. Notification outcome summary
 
@@ -85,7 +85,7 @@ Failed tasks omit the `Outcome:` line since they have no `result`.
 
 ## Alternatives considered
 
-**Inject `ownerSessionId` inside `enqueueFromTool` instead of the tool layer.** This would require passing a session id through the service interface, coupling the service contract to the agent lifecycle. The service already has two callers (tools and inbox) with different ownership semantics, and keeping the distinction at the caller boundary is cleaner.
+**Inject `ownerSessionId` inside `enqueueFromTool` instead of the tool layer.** The original P0 change rejected this because a raw session id would couple the service to the Agent lifecycle and tool/inbox callers have different semantics. [Service authorization](../architecture/2026-08-26-task-queue-service-authorization.md) later superseded that placement with an opaque Agent-or-host grant, preserving the caller distinction without passing a synthetic session.
 
 **Use `flock` or `proper-lockfile` for the cross-process lock.** Rejected because `flock` is not exposed by Node.js and `proper-lockfile`'s `rename`-based approach does not guarantee atomicity on Windows NTFS. `link(2)` is a single syscall with the right semantics on every platform the queue runs on.
 
@@ -93,7 +93,7 @@ Failed tasks omit the `Outcome:` line since they have no `result`.
 
 **Re-inject the already-appended message in the append-before-ack case.** Rejected because it would produce a duplicate notice in the session. The marker is stable and the CAS ack is idempotent, so starting the finalizer directly is both correct and non-duplicating.
 
-**Push owner authorization into the Service seam.** Deferred. The Service currently has no concept of "caller identity" (it receives plain `TaskId` arguments). Adding a session parameter to every mutation would require the inbox scan (which runs host-plane) to carry a synthetic identity, and the remote backend would need to forward it. The tool-layer check is sufficient for the current single-host deployment model.
+**Push owner authorization into the Service seam.** Originally deferred because the Service received plain ids and a raw session parameter would force host callers to synthesize identity. This alternative was later adopted in a different form: [the superseding decision](../architecture/2026-08-26-task-queue-service-authorization.md) uses a closed Agent-or-host access grant and requires every direct consumer to propagate it.
 
 **Make `summary` optional with a default.** Rejected. Every `succeeded` task should produce a human-readable summary; a default is always generated when the adapter omits `normalize`, so `summary` is never absent in practice. Making it optional would hide the invariant that every succeeded task has a summary.
 
@@ -106,10 +106,10 @@ Failed tasks omit the `Outcome:` line since they have no `result`.
 - The same-process re-entry that the original `lock.ts` would have silently taken over (treating its own lock as stale) is now explicitly refused.
 - `ExecutorAdapter` now has a `normalize` seam that turns raw process output into an Agent-consumable outcome. The scheduler generates a sensible default when the adapter omits it.
 - Notification messages now include the outcome `summary` for succeeded tasks, so the owner Agent can consume the result without an extra `task_queue_status` round-trip.
-- `cancel`, `retry`, `dismiss`, and `undismiss` enforce owner authorization at the tool layer: only the task's owner Agent or a host operator can operate. Non-owner Agents are rejected with a clear message. Unowned tasks can only be operated on by a host operator.
+- The Service enforces owner authorization across reads, counters, mutations, notifications, and admission. Agent callers see only their own tasks; explicit host consumers retain whole-queue access. The exact access decision lives in [the Service authorization note](../architecture/2026-08-26-task-queue-service-authorization.md).
 
 ## Testing
 
-- `packages/task-queue/tool-task-queue/tests/index.spec.ts` (42 tests): the append-before-ack test now verifies the finalizer is started (flush called, ack completed, inFlight cleared). Three tests verify owner binding on `enqueue`, `enqueue_batch`, and host-plane dispatch. Ten authorization tests verify owner can cancel/retry/dismiss, non-owner is rejected, and host-operator is allowed. Two notification summary tests verify the outcome line is included/excluded.
+- `packages/task-queue/tool-task-queue/tests/index.spec.ts` (44 tests): the append-before-ack test verifies the finalizer is started (flush called, ack completed, inFlight cleared). Admission tests verify owner binding on `enqueue`, `enqueue_batch`, and host-plane dispatch; authorization tests verify scoped list/status/stats plus owner and host mutations through Service access; notification summary tests verify the outcome line.
 - `packages/task-queue/task-queue-local/tests/lock.spec.ts` (7 tests): first acquire, second-acquire refusal, unreadable content, cross-host refusal, live-pid refusal, stale-takeover, and release-then-reacquire.
 - `packages/task-queue/task-queue-local/tests/lifecycle.spec.ts` (9 tests): a real `node` task produces stdout, stderr, and an output file, and asserts `summary` matches the expected pattern, `durationMs > 0`, `logPath` matches, `stdoutTail`/`stderrTail` contain the expected strings, and `outputFiles` lists the artifact.

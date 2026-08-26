@@ -1781,7 +1781,7 @@ Enqueue one durable, cross-session task on the host task queue. Use the queue fo
         },
         "executor": {
           "type": "string",
-          "description": "Registered executor name. Built-ins: claude/codex/opencode/arkcli (CLI coding agents) and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
+          "description": "Registered executor name. Shipped executors include dsh (restricted Harness worker), claude/codex/opencode/arkcli (CLI agents), and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
         },
         "priority": {
           "type": "integer",
@@ -1803,9 +1803,13 @@ Enqueue one durable, cross-session task on the host task queue. Use the queue fo
           "type": "integer",
           "description": "Per-execution timeout in ms (default 1800000)."
         },
+        "workspaceDir": {
+          "type": "string",
+          "description": "Executor working directory. Defaults to outputDir for compatibility."
+        },
         "outputDir": {
           "type": "string",
-          "description": "Output directory."
+          "description": "Artifact directory scanned into result.outputFiles."
         },
         "tags": {
           "type": "array",
@@ -1859,7 +1863,7 @@ Enqueue up to 200 tasks in one batch. Use for 3 or more independent tasks. Rejec
           },
           "executor": {
             "type": "string",
-            "description": "Registered executor name. Built-ins: claude/codex/opencode/arkcli (CLI coding agents) and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
+            "description": "Registered executor name. Shipped executors include dsh (restricted Harness worker), claude/codex/opencode/arkcli (CLI agents), and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
           },
           "priority": {
             "type": "integer",
@@ -1881,9 +1885,13 @@ Enqueue up to 200 tasks in one batch. Use for 3 or more independent tasks. Rejec
             "type": "integer",
             "description": "Per-execution timeout in ms (default 1800000)."
           },
+          "workspaceDir": {
+            "type": "string",
+            "description": "Executor working directory. Defaults to outputDir for compatibility."
+          },
           "outputDir": {
             "type": "string",
-            "description": "Output directory."
+            "description": "Artifact directory scanned into result.outputFiles."
           },
           "tags": {
             "type": "array",

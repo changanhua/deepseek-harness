@@ -2,11 +2,11 @@
 
 [English](task-queue.md) | 中文
 
-host 平面的持久任务队列（`ctx.taskQueue`）。设计见 [docs/specs/2026-08-14-task-queue-design.md](../specs/2026-08-14-task-queue-design.md)；契约包是 [`packages/task-queue/task-queue`](../../packages/task-queue/task-queue/README.md)，持久后端是 [`dsh-task-queue-local`](../../packages/task-queue/task-queue-local/README.md)，模型面工具集是 [`dsh-tool-task-queue`](../../packages/task-queue/tool-task-queue/README.md)。
+host 平面的持久任务队列（`ctx.taskQueue`）。设计见 [docs/specs/2026-08-14-task-queue-design.md](../specs/2026-08-14-task-queue-design.md)；契约包是 [`packages/task-queue/task-queue`](../../packages/task-queue/task-queue/README.zh.md)，持久后端是 [`dsh-task-queue-local`](../../packages/task-queue/task-queue-local/README.zh.md)，模型面工具集是 [`dsh-tool-task-queue`](../../packages/task-queue/tool-task-queue/README.zh.md)。
 
 ## Service
 
-`ctx.taskQueue` 是由 `LocalTaskQueue`（`@deepseek-ai/dsh-task-queue-local`）实现的抽象 `TaskQueue` seam。受信入口（`enqueueFromTool`、inbox 扫描）是唯一分配 `source`/`receiptId` 的地方；调度器是唯一 spawn 进程的点、也是 live `SubprocessHandle` 的唯一持有者。所有 mutation 都经服务级 FIFO 串行化；append/fsync 失败进入粘滞的 `faulted` 状态，`resume()` 无法清除。
+`ctx.taskQueue` 是由 `LocalTaskQueue`（`@deepseek-ai/dsh-task-queue-local`）实现的抽象 `TaskQueue` seam。每次任务数据调用都携带不透明的 `TaskQueueAccess`：`taskQueueAgentAccess(sessionId)` 把准入、读取、计数、通知与 mutation 限定在该精确归属会话，`TASK_QUEUE_HOST_ACCESS` 则向受信宿主面插件提供全队列视图，并且 pause/resume 必须使用它。归属过滤先于公开过滤器与 limit；无权访问和记录不存在的 id 表现相同；显式幂等键按已认证调用主体隔离。受信入口是唯一分配 `source`/`receiptId` 的地方；调度器是唯一 spawn 进程的点、也是 live `SubprocessHandle` 的唯一持有者。所有 mutation 都经服务级 FIFO 串行化；append/fsync 失败进入粘滞的 `faulted` 状态，`resume()` 无法清除。
 
 ## 任务模型与状态机
 
@@ -38,50 +38,56 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 Abstract durable task queue. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.taskQueue` (one implementation per context; loading a second throws, cordis' standard duplicate-service behavior).
 
-Mutations are serialized through the backend's service FIFO and are fail-closed on append error (the queue enters `faulted`); `resume()` must never clear `faulted`. `source`/`receiptId` are assigned only by the trusted entry points, so the tool-surface methods accept a spec without them.
+Task-data methods require an opaque access grant minted by this package. Agent grants see only their exact owner session; the singleton host grant is reserved for trusted host-plane consumers. Mutations are serialized through the backend's service FIFO and are fail-closed on append error (the queue enters `faulted`); `resume()` must never clear `faulted`.
 
 ```ts cordis-catalog
 /**
  * Enqueue a single tool-originated task; rejects `executor: 'shell'`.
+ * @param access - authenticated Agent-owner or host-plane access.
  * @param spec - the validated admission spec (source/receipt assigned by the entry).
  * @returns the minted task id.
  */
-abstract enqueueFromTool(spec: EnqueueSpec): Promise<TaskId>
+abstract enqueueFromTool(access: TaskQueueAccess, spec: EnqueueSpec): Promise<TaskId>
 
 /**
  * Enqueue tool-originated tasks in one batch (bounded, e.g. 200).
+ * @param access - authenticated Agent-owner or host-plane access.
  * @param specs - the validated admission specs; any `shell` rejects the whole batch.
  * @returns the minted task ids, in spec order.
  */
-abstract enqueueBatchFromTool(specs: EnqueueSpec[]): Promise<TaskId[]>
+abstract enqueueBatchFromTool(access: TaskQueueAccess, specs: readonly EnqueueSpec[]): Promise<TaskId[]>
 
 /**
  * List summary projections, filtered by status/executor/tags, bounded by limit.
+ * @param access - access whose visible tasks may be returned.
  * @param filter - optional status/executor/tags filters and a result limit.
  * @returns fresh summary rows.
  */
-abstract list(filter?: ListFilter): TaskSummary[]
+abstract list(access: TaskQueueAccess, filter?: ListFilter): TaskSummary[]
 
 /**
  * Return the full durable state of one task.
+ * @param access - access that must be allowed to see the task.
  * @param id - the task id to look up.
  * @returns the durable task snapshot; throws for an unknown id.
  */
-abstract get(id: TaskId): Task
+abstract get(access: TaskQueueAccess, id: TaskId): Task
 
 /**
  * Cancel a task: pending → canceled; starting/running → stopping intent.
+ * @param access - access that must be allowed to control the task.
  * @param id - the task id to cancel.
  * @returns `canceled` for a directly-canceled pending task, `stopping` when a cancel intent was persisted.
  */
-abstract cancel(id: TaskId): Promise<'canceled' | 'stopping'>
+abstract cancel(access: TaskQueueAccess, id: TaskId): Promise<'canceled' | 'stopping'>
 
 /**
  * Retry a failed task; returns the (unchanged) task id.
+ * @param access - access that must be allowed to control the task.
  * @param id - the failed task id to requeue.
  * @returns the same task id, now pending with `attempt` reset.
  */
-abstract retry(id: TaskId): Promise<TaskId>
+abstract retry(access: TaskQueueAccess, id: TaskId): Promise<TaskId>
 
 /**
  * Soft-conclude (or restore) a terminal task by toggling its `dismissed`
@@ -90,16 +96,18 @@ abstract retry(id: TaskId): Promise<TaskId>
  * change record, no event). The task's `status` and audit record are
  * unchanged; a dismissed task leaves the attention badge/filters but keeps
  * its record, and requeuing (retry) resets `dismissed` to false.
+ * @param access - access that must be allowed to control the task.
  * @param id - the terminal task id to dismiss or restore.
  * @param dismissed - true to conclude, false to restore.
  */
-abstract dismiss(id: TaskId, dismissed: boolean): Promise<void>
+abstract dismiss(access: TaskQueueAccess, id: TaskId, dismissed: boolean): Promise<void>
 
 /**
  * Aggregate service state and per-status/per-executor counters.
+ * @param access - access whose visible tasks contribute to the counters.
  * @returns the current service state, optional fault, and counters.
  */
-abstract stats(): QueueStats
+abstract stats(access: TaskQueueAccess): QueueStats
 
 /**
  * Register an executor adapter; returns a disposer that unregisters it.
@@ -118,32 +126,35 @@ abstract listExecutors(): QueueExecutorView[]
 
 /**
  * Pause the queue (running → paused only).
+ * @param access - trusted host-plane access.
  */
-abstract pause(): void
+abstract pause(access: TaskQueueHostAccess): void
 
 /**
  * Resume the queue (paused → running only; faulted rejected).
+ * @param access - trusted host-plane access.
  */
-abstract resume(): void
+abstract resume(access: TaskQueueHostAccess): void
 
 /**
  * Acknowledge a pending notification with a CAS (spec §7.4): only a
  * `pending` record whose `messageId` matches `messageId` transitions to
  * `acknowledged`. An already-acknowledged record with a matching message id
  * is an idempotent no-op.
+ * @param access - access that must own the notification, or host access.
  * @param notificationId - the outbox record to acknowledge.
  * @param messageId - the stable message id the record must match.
  */
-abstract ackNotification(notificationId: NotificationId, messageId: string): Promise<void>
+abstract ackNotification(access: TaskQueueAccess, notificationId: NotificationId, messageId: string): Promise<void>
 
 /**
- * List notification outbox records for one owner session, ordered by
- * `terminalSeq` ascending. The pre-step hook consumes this to propose
- * candidate notice messages (spec §7.4 step 4).
- * @param filter.ownerSessionId - the session whose outbox records to list.
- * @returns the session's notification records in terminal order.
+ * List visible notification outbox records ordered by `terminalSeq`
+ * ascending. An Agent grant returns only its session's records; host access
+ * returns the whole outbox.
+ * @param access - access whose visible notifications may be returned.
+ * @returns visible notification records in terminal order.
  */
-abstract listNotifications(filter: { ownerSessionId: string }): NotificationRecord[]
+abstract listNotifications(access: TaskQueueAccess): NotificationRecord[]
 ```
 
 Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)

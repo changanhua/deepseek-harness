@@ -4,9 +4,9 @@ English | [中文](README.zh.md)
 
 The model-facing toolkit for `ctx.taskQueue`: the `task_queue_*` tools, one tool-guidance prompt section, a pre-step candidate-notification hook, and the append→flush→CAS-ack notification finalizer. One apply registers everything — the hooks are never split across duplicate-listening mounts. The host Service is read optionally through `ctx.get('taskQueue')`: with no backend composed the tools still register, but their `execute` rejects with a clear load message, and the pre-step/finalizer hooks no-op.
 
-`enqueue` and `enqueue_batch` bind the calling session as the task's `ownerSessionId` so terminal notifications reach the right session. The model cannot set this field itself — `validateEnqueueSpec` strips it from model input — so only the trusted code path injects it. A host-plane dispatch with no Agent (e.g. an inbox scan) produces an ownerless task that generates no notification.
+`enqueue` and `enqueue_batch` derive an opaque Agent grant from the calling session. The Service binds that grant's session as `ownerSessionId`, so the model cannot select an owner even though `validateEnqueueSpec` also strips the field from model input. A host-plane dispatch with no Agent uses the explicit host grant and may produce an ownerless task that generates no notification.
 
-`cancel`, `retry`, `dismiss`, and `undismiss` enforce owner authorization: the calling Agent must be the task's owner (its session id matches `ownerSessionId`), or the call must be a host-operator dispatch with no Agent context. A non-owner Agent attempting to operate on another session's task is rejected with a clear message. Unowned tasks (no `ownerSessionId`) can only be operated on by a host operator.
+Every task-data tool passes the same grant to `ctx.taskQueue`. `list`, `status`, and `stats` therefore expose only the calling session's tasks; `cancel`, `retry`, `dismiss`, and `undismiss` can change only those tasks; notification listing and acknowledgement are scoped to that session. A foreign, ownerless, or nonexistent task id produces the same unknown-task error. Host-plane dispatches retain whole-queue access.
 
 ## Tools
 
@@ -76,4 +76,4 @@ No direct invalidation; this package owns its tool descriptions and prompt-secti
 - **`shell` is inbox-only** — the model-facing tools can never enqueue a `shell` task, by design (authorization §6.3); only the inbox admission path may.
 - **Notification at-least-once** — a crash between append and ack re-injects the notice (deduped by the stable marker), which may surface a completion twice.
 - **Ownerless tasks produce no notification** — a host-plane dispatch with no Agent (e.g. an inbox scan) creates a task with no `ownerSessionId`; its terminal state stays silent.
-- **Owner authorization is at the tool layer** — `cancel`/`retry`/`dismiss`/`undismiss` check ownership before calling the Service; the Service itself does not enforce ownership, and `task_queue_status`/`task_queue_list` expose task data to any caller. A future revision may push the authorization check into the Service seam.
+- **Host-plane trust is explicit** — calls without an Agent use `TASK_QUEUE_HOST_ACCESS` and can read or control every task. Only trusted host plugins may dispatch this way; model calls always carry a session-scoped grant.

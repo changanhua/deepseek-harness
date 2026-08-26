@@ -16,11 +16,19 @@
 
 ## 契约
 
-- 命令名 `queue`，全局注册（与 `command-feedback`/`command-goal` 相同的主机平面方式）。
+- 命令名 `queue`，全局注册（与 `command-feedback`/`command-goal` 相同的宿主面方式）。每次 Service 调用都携带 `TASK_QUEUE_HOST_ACCESS`，因此人类操作员可以跨会话检查并控制有主与无主任务。
 - `recordInput` 保持默认 `true`：命令输入记入 `command/run` 生命周期事件，留审计痕迹。
 - 本包不注册任何模型面；模型侧请用 `@deepseek-ai/dsh-tool-task-queue`。
 
-## 已知限制
+## Model Experience
+
+无。本包面向人类的 `/queue` 命令直接渲染记录，不注册任何模型面。
+
+#### KV Cache effect
+
+无；本包从不组装模型输入。
+
+## 已知限制与暂缓事项
 
 - **无后端即无操作**——未组合 `@deepseek-ai/dsh-task-queue-local` 时所有子命令都返回加载指引错误。
 - 命令只做投影与直控，不做入队（入队属于模型工具或 inbox 准入路径）。

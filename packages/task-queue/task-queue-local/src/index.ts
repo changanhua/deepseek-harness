@@ -18,11 +18,14 @@ import { dirname, join } from 'node:path'
 import type {
   SubprocessHandle, SubprocessOutcome, SubprocessSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
-import { TaskQueue, TaskId, RunId, NotificationId } from '@deepseek-ai/dsh-task-queue'
+import {
+  TaskQueue, TaskId, RunId, NotificationId,
+  assertTaskQueueAccess, assertTaskQueueHostAccess,
+} from '@deepseek-ai/dsh-task-queue'
 import type {
   Task, TaskStatus, EnqueueSpec, ListFilter, TaskSummary, QueueExecutorView, QueueStats, ServiceState,
   ExecutorAdapter, RunRecord, FoldedQueue, ChangeRecord, NotificationRecord,
-  TaskResult,
+  TaskResult, TaskQueueAccess, TaskQueueHostAccess,
 } from '@deepseek-ai/dsh-task-queue'
 import {
   createTask, claimTask, markRunning, settleSucceeded, settleFailed,
@@ -282,15 +285,33 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     }
   }
 
+  private canAccessTask(access: TaskQueueAccess, task: Task): boolean {
+    return access.kind === 'host' || task.ownerSessionId === access.ownerSessionId
+  }
+
+  private requireAccessibleTask(access: TaskQueueAccess, id: TaskId): Task {
+    const task = this.folded.tasksById.get(id)
+    if (task === undefined || !this.canAccessTask(access, task)) {
+      throw new Error(`unknown task ${id}`)
+    }
+    return task
+  }
+
   /* -------------------------------------------------------------- ingress -- */
 
-  async enqueueFromTool(spec: EnqueueSpec): Promise<TaskId> {
+  async enqueueFromTool(access: TaskQueueAccess, spec: EnqueueSpec): Promise<TaskId> {
     await this.bootPromise
+    assertTaskQueueAccess(access)
     this.assertAdmitting()
     if (spec.executor === 'shell') throw new Error('shell executor is not allowed from tools')
     this.assertExecutorEnabled(spec.executor)
+    const admittedSpec: EnqueueSpec = access.kind === 'agent'
+      ? { ...spec, ownerSessionId: access.ownerSessionId }
+      : spec
     const receiptId = spec.idempotencyKey !== undefined
-      ? `tool:key:${spec.idempotencyKey}`
+      ? access.kind === 'agent'
+        ? `tool:agent:${access.ownerSessionId.length}:${access.ownerSessionId}:key:${spec.idempotencyKey}`
+        : `tool:host:key:${spec.idempotencyKey}`
       : `tool:auto:${randomUUID()}`
     const existing = this.receiptExists('tool', receiptId)
     if (existing !== undefined) return existing.id
@@ -298,7 +319,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     return this.mutate(async () => {
       const again = this.receiptExists('tool', receiptId)
       if (again !== undefined) return again.id
-      const task = createTask(TaskId(`tq-${randomUUID()}`), spec, 'tool', receiptId, new Date().toISOString())
+      const task = createTask(TaskId(`tq-${randomUUID()}`), admittedSpec, 'tool', receiptId, new Date().toISOString())
       const change = createdChange(this.nextSeq, task)
       await this.commit(change)
       this.ctx.emit('task-queue/created', { taskId: task.id })
@@ -306,19 +327,21 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     })
   }
 
-  async enqueueBatchFromTool(specs: readonly EnqueueSpec[]): Promise<TaskId[]> {
+  async enqueueBatchFromTool(access: TaskQueueAccess, specs: readonly EnqueueSpec[]): Promise<TaskId[]> {
+    assertTaskQueueAccess(access)
     if (specs.length > MAX_BATCH_SIZE) {
       throw new Error(`batch size ${specs.length} exceeds ${MAX_BATCH_SIZE}`)
     }
     const ids: TaskId[] = []
-    for (const spec of specs) ids.push(await this.enqueueFromTool(spec))
+    for (const spec of specs) ids.push(await this.enqueueFromTool(access, spec))
     return ids
   }
 
   /* ---------------------------------------------------------------- reads -- */
 
-  list(filter?: ListFilter): TaskSummary[] {
-    let tasks = [...this.folded.tasksById.values()]
+  list(access: TaskQueueAccess, filter?: ListFilter): TaskSummary[] {
+    assertTaskQueueAccess(access)
+    let tasks = [...this.folded.tasksById.values()].filter(task => this.canAccessTask(access, task))
     if (filter?.status !== undefined) tasks = tasks.filter(t => t.status === filter.status)
     if (filter?.executor !== undefined) tasks = tasks.filter(t => t.executor === filter.executor)
     if (filter?.tags !== undefined && filter.tags.length > 0) {
@@ -329,20 +352,19 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     return tasks.map(taskToSummary)
   }
 
-  get(id: TaskId): Task {
-    const task = this.folded.tasksById.get(id)
-    if (task === undefined) throw new Error(`unknown task ${id}`)
-    return task
+  get(access: TaskQueueAccess, id: TaskId): Task {
+    assertTaskQueueAccess(access)
+    return this.requireAccessibleTask(access, id)
   }
 
   /* -------------------------------------------------------------- control -- */
 
-  async cancel(id: TaskId): Promise<'canceled' | 'stopping'> {
+  async cancel(access: TaskQueueAccess, id: TaskId): Promise<'canceled' | 'stopping'> {
     await this.bootPromise
+    assertTaskQueueAccess(access)
     this.assertAdmitting()
     const outcome = await this.mutate(async () => {
-      const task = this.folded.tasksById.get(id)
-      if (task === undefined) throw new Error(`unknown task ${id}`)
+      const task = this.requireAccessibleTask(access, id)
       if (isTerminalStatus(task.status)) return 'canceled' as const
       if (task.status === 'pending') {
         const canceled = cancelPending(task, 'canceled', new Date().toISOString())
@@ -374,12 +396,12 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     return outcome
   }
 
-  async retry(id: TaskId): Promise<TaskId> {
+  async retry(access: TaskQueueAccess, id: TaskId): Promise<TaskId> {
     await this.bootPromise
+    assertTaskQueueAccess(access)
     this.assertAdmitting()
     return this.mutate(async () => {
-      const task = this.folded.tasksById.get(id)
-      if (task === undefined) throw new Error(`unknown task ${id}`)
+      const task = this.requireAccessibleTask(access, id)
       const retried = retryTask(task, new Date().toISOString())
       await this.commit(changeFor(this.nextSeq, retried))
       this.ctx.emit('task-queue/requeued', { taskId: id, reason: 'manual retry' })
@@ -387,12 +409,12 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     })
   }
 
-  async dismiss(id: TaskId, dismissed: boolean): Promise<void> {
+  async dismiss(access: TaskQueueAccess, id: TaskId, dismissed: boolean): Promise<void> {
     await this.bootPromise
+    assertTaskQueueAccess(access)
     this.assertAdmitting()
     await this.mutate(async () => {
-      const task = this.folded.tasksById.get(id)
-      if (task === undefined) throw new Error(`unknown task ${id}`)
+      const task = this.requireAccessibleTask(access, id)
       // Idempotent short-circuit: same value → no change record, no event, no updatedAt.
       if (task.dismissed === dismissed) return
       const updated = dismissTask(task, dismissed, new Date().toISOString())
@@ -401,7 +423,8 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     })
   }
 
-  stats(): QueueStats {
+  stats(access: TaskQueueAccess): QueueStats {
+    assertTaskQueueAccess(access)
     const byStatus: Record<TaskStatus, number> = {
       pending: 0, starting: 0, running: 0, stopping: 0, succeeded: 0, failed: 0, canceled: 0,
     }
@@ -409,6 +432,7 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     let undismissedFailed = 0
     let byDismissed = 0
     for (const task of this.folded.tasksById.values()) {
+      if (!this.canAccessTask(access, task)) continue
       byStatus[task.status] += 1
       byExecutor[task.executor] = (byExecutor[task.executor] ?? 0) + 1
       if (task.dismissed) byDismissed += 1
@@ -440,22 +464,28 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     }))
   }
 
-  pause(): void {
+  pause(access: TaskQueueHostAccess): void {
+    assertTaskQueueHostAccess(access)
     if (this.serviceState === 'running') this.serviceState = 'paused'
     else throw new Error(`cannot pause from ${this.serviceState}`)
   }
 
-  resume(): void {
+  resume(access: TaskQueueHostAccess): void {
+    assertTaskQueueHostAccess(access)
     if (this.serviceState === 'paused') this.serviceState = 'running'
     else if (this.serviceState === 'faulted') throw new Error('cannot resume a faulted queue')
   }
 
-  async ackNotification(notificationId: NotificationId, messageId: string): Promise<void> {
+  async ackNotification(access: TaskQueueAccess, notificationId: NotificationId, messageId: string): Promise<void> {
     await this.bootPromise
+    assertTaskQueueAccess(access)
     this.assertAdmitting()
     await this.mutate(async () => {
       const existing = this.folded.notificationsById.get(notificationId)
-      if (existing === undefined) throw new Error(`unknown notification ${notificationId}`)
+      if (existing === undefined
+        || (access.kind === 'agent' && existing.ownerSessionId !== access.ownerSessionId)) {
+        throw new Error(`unknown notification ${notificationId}`)
+      }
       if (existing.status === 'acknowledged') return
       if (existing.status !== 'pending' || existing.messageId !== messageId) {
         throw new Error('notification CAS mismatch')
@@ -472,9 +502,10 @@ export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
     })
   }
 
-  listNotifications(filter: { ownerSessionId: string }): NotificationRecord[] {
+  listNotifications(access: TaskQueueAccess): NotificationRecord[] {
+    assertTaskQueueAccess(access)
     return [...this.folded.notificationsById.values()]
-      .filter(n => n.ownerSessionId === filter.ownerSessionId)
+      .filter(n => access.kind === 'host' || n.ownerSessionId === access.ownerSessionId)
       .sort((a, b) => a.terminalSeq - b.terminalSeq)
   }
 
