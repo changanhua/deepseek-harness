@@ -15,9 +15,20 @@ Read, in order:
 3. relevant files under `evidence/`
 4. the lesson, lab, case, or tooling artifact being changed
 
+Then run, when the repository execution environment is available:
+
+```bash
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts check
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts status
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts next
+```
+
+Do not guess current mastery state from chat history when these derivations are available.
+
 ## Invariants
 
 - `CURRICULUM.yaml` is the single curriculum/capability graph truth.
+- `evidence/**/*.yaml` is the learning fact layer; status is derived, never manually declared.
 - Do not create a second manual progress ledger.
 - Do not mark mastery because content was read or a learner said “懂了”.
 - Mastery requires evidence of transfer to an unseen example or real engineering task.
@@ -49,9 +60,10 @@ An evidence record should capture:
 - target DSH commit/version when relevant;
 - learner prediction or design before reveal;
 - observed source/runtime facts;
-- verification result;
+- `evidence_items` outcomes that drive unit completion;
+- `assessment.demonstrated` outcomes that drive capability state;
 - misconception or failure if any;
-- assessment and next-routing implication.
+- next-routing implication.
 
 Do not rewrite old evidence merely to make the learner look successful; append a later correction instead.
 
@@ -65,6 +77,10 @@ DSH changes quickly. If implementation details drift:
 4. record evidence with source version/commit;
 5. do not keep stale APIs for narrative consistency.
 
-## Tooling direction
+## Tooling contract
 
-Future `tooling/next`, `tooling/status`, and `tooling/check` should derive state from `CURRICULUM.yaml + evidence/`. They must not introduce another authoritative progress store.
+`tooling/dsh-mastery.ts` and `tooling/runtime.ts` implement the current `check / status / next` semantics.
+
+They may evolve, but they must remain pure derivations over repository facts and must not introduce another authoritative progress store.
+
+Changes to the derivation rules require tests in `scripts/dsh-mastery.spec.ts`. The real repository learning tree must continue to pass `validateLab()`.
