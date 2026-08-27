@@ -66,6 +66,8 @@ pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts status
 pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts next
 ```
 
+三个命令也支持 `--json`，供 Teacher Agent / Codex / 自动化直接消费结构化状态。
+
 - `check`：验证 curriculum DAG、引用、evidence schema、source pin、case reveal 顺序和单一状态源。
 - `status`：从 evidence 推导 unit completion 与 capability state。
 - `next`：按 prerequisite 和未满足 evidence 推荐下一训练单元。
@@ -82,7 +84,7 @@ pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts next
 - `labs/`：需要 trace、修改、运行或验证的训练。
 - `cases/`：真实系统重构。
 - `evidence/`：成功、失败、误判和修正证据；学习状态由此推导。
-- `references/`：固定源码版本、source anchors 等可追溯参考。
+- `references/`：固定源码版本、source anchors，以及只能在 prediction 后使用的 after-reveal assessment keys。
 - `templates/`：lesson / lab / case-study 模板。
 - `tooling/`：`next` / `status` / `check` 的实现和协议说明。
 - `scripts/dsh-mastery.spec.ts`：接入仓库现有 Vitest gate 的学习 Runtime 测试。
@@ -99,7 +101,7 @@ pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts next
 > 模型先验或历史聊天
 ```
 
-源码训练应固定 commit。第一条真实 request trace 使用 `references/source-baseline.yaml` 固定版本，避免“课程没变但源码已经换了”的伪稳定。
+源码训练应固定 commit。第一条真实 request trace 使用 `references/source-baseline.yaml` 固定版本；对应验收基准放在 `references/after-reveal/request-trace-v1.md`，只有学习者已经写下 prediction 后才允许用于对照。
 
 ## 默认训练路径
 
