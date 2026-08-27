@@ -1,51 +1,89 @@
-# DSH Mastery
+# DSH Mastery Lab
 
-这是一个面向真实 DeepSeek Harness（DSH）工程实践的长期学习项目。
+DSH Mastery Lab 是一套面向真实 DeepSeek Harness 源码与真实设计任务的工程训练系统，而不是以“读完课程”为完成标准的教程。
 
-目标不是“看懂一些源码”或“会调用几个工具”，而是逐步形成能够独立判断 DSH 架构的心智模型：面对一个需求，知道它应该进入哪一层、依赖哪些 seam、状态归谁、生命周期如何闭合、怎样验证设计是否成立。
+## Mission
 
-## 核心目标
+通过源码取证、可执行实验、设计挑战和真实项目重构，训练独立追踪、判断、修改、设计和审查 DSH / Agent Runtime 的能力。
 
-学习完成后，应能稳定回答：
+核心变化是：从依赖模型替自己做架构判断，逐步转向自己做架构判断、让模型辅助取证和实现，并能够审查模型给出的设计。
 
-1. 模型这一轮到底看到了什么？
-2. 模型到底能做什么？
-3. 系统真正的状态在哪里？
-4. 谁拥有这个状态？
-5. 哪些状态必须跨 turn / session / process 存活？
-6. Tool / Service / Provider / Plugin / Preset / Settings 分别解决什么问题？
-7. 一个需求应该挂在哪个 DSH seam 上？
-8. 一个插件卸载、重启、失败后会发生什么？
-9. UI 是真值还是投影？
-10. 如何用测试、trace 和官方实现验证设计，而不是靠感觉？
+## North Star
 
-## 学习方法
+面对一个未见过的 DSH 需求，在进入实现之前，学习者能否先给出基本正确的架构判断：
 
-本课程坚持：
+- 模型如何 SEE 这个能力或事实；
+- 模型如何 ACT；
+- authoritative state 由谁 OWN；
+- 什么必须 SURVIVE turn / session / process / machine；
+- 应该选择哪个 DSH seam；
+- host / client / state / model-visible surface 如何分工；
+- 失败、重启、恢复和验证如何处理。
 
-- 心智模型先于源码细节。
-- 先追一条真实数据流，再读相关文件。
-- 先判断 state ownership，再讨论代码结构。
-- 先解释“为什么”，再解释“怎么写”。
-- 每节课必须包含可验证的学习目标与练习。
-- 不以术语记忆代替架构理解。
-- 不把某个偶然实现当成 DSH 框架契约。
-- 课程事实以当前 DSH 源码为准，教程与旧经验只作为辅助证据。
+## 能力等级
 
-## 文件结构
+- L0 User：能运行和使用 DSH。
+- L1 Navigator：能定位主要模块和源码入口。
+- L2 Reader：能追一条真实请求、状态或生命周期路径。
+- L3 Modifier：能安全修改已有能力并预测影响面。
+- L4 Designer：能独立设计中等复杂度 DSH capability。
+- L5 Reviewer：能系统审查 DSH 设计。
+- L6 Runtime Engineer：能修改核心机制、设计新的 seam 和 runtime primitive。
 
-- `TEACHING-CONTRACT.md`：长期教学契约，防止课程方向漂移。
-- `PROJECT-INSTRUCTIONS.md`：可复制到 ChatGPT Project 的固定指令。
-- `CURRICULUM.md`：课程路线与每阶段验收标准。
-- `PROGRESS.md`：学习状态，只记录已经验证的掌握情况。
-- `lessons/`：正式课程。
+## 训练循环
 
-## 当前起点
+```text
+Concept
+→ Mental Model
+→ Source Trace
+→ Prediction
+→ Experiment / Modification
+→ Failure / Review
+→ Evidence
+→ Assessment
+→ Next Unit
+```
 
-第一阶段不要求直接写复杂插件。先建立：
+“看过”“听懂了”“解释过”都不是完成证据。
 
-`Agent Runtime → State Ownership → Capability → Lifecycle → DSH Composition`
+## Repository model
 
-的稳定心智模型。
+- `TRAINING-CONTRACT.md`：训练原则、证据规则与权威层级。
+- `CURRICULUM.yaml`：唯一课程/能力图真值。
+- `PROJECT-INSTRUCTIONS.md`：ChatGPT Project 的薄启动协议。
+- `AGENTS.md`：任何 Agent 修改本目录时必须遵守的规则。
+- `lessons/`：建立心智模型。
+- `labs/`：需要 trace、修改、运行或验证的训练。
+- `cases/`：真实系统重构。
+- `evidence/`：掌握证据；学习状态由 evidence 推导。
+- `templates/`：lesson / lab / case-study 模板。
+- `tooling/`：未来 `next` / `status` / `check` 执行器契约。
 
-第一课见：`lessons/01-agent-runtime.md`。
+## Source authority
+
+涉及 DSH 当前事实时：
+
+```text
+当前目标版本源码 / 运行证据
+> 官方契约与当前 README/types
+> 已验证的 Lab / Case evidence
+> 教学材料
+> 模型先验或历史聊天
+```
+
+## 默认训练路径
+
+```text
+Agent Runtime
+→ Request Trace
+→ Tool / Service / Provider
+→ Cordis Lifecycle
+→ State Ownership
+→ Persistence / Recovery
+→ Model-visible Context
+→ Small Plugin Lab
+→ Real Case Reconstruction
+→ Independent Design / Review
+```
+
+这只是推荐路径，不是固定课表。如果 evidence 表明 prerequisite 未掌握，应回到对应能力补练，而不是机械推进。
