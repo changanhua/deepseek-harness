@@ -63,7 +63,7 @@ CI/Agent 修改学习系统后应先跑它。
 文本示意：
 
 ```text
-DSH Mastery Lab: 2/12 units complete
+DSH Mastery Lab: 2/13 units complete
 
 state_ownership          strong [evidence/...yaml, evidence/...yaml]
 source_navigation        partial [evidence/...yaml]
@@ -93,7 +93,7 @@ reason: earliest ready unit on the default path
 evidence needed: source_trace_with_files_and_responsibilities, prediction_vs_actual_diff
 ```
 
-JSON 会同时返回 unit `id/type/path/trains/prerequisites/reason/unmetEvidence`，因此 Teacher Agent 可以直接加载对应文件。
+JSON 会同时返回 unit `id/type/path/trains/prerequisites/reason/unmetEvidence`，因此 Teacher Agent 可以直接加载对应文件。若默认训练路径已经全部完成，返回 `defaultPathComplete: true`；这不代表所有可选 unit 都已完成。
 
 ## Tests
 
