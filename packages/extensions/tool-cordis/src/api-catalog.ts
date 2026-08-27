@@ -998,6 +998,31 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'imageGeneration',
+    summary: 'Shared provider registry and two-phase image generation dispatcher.',
+    description: 'Shared provider registry and two-phase image generation dispatcher.',
+    methods: [
+      {
+        signature: 'registerProvider(provider: ImageGenerationProvider): () => void',
+        description: 'Register one provider for the calling fiber\'s lifetime. Throws ImageGenerationError with `IMAGE_GENERATION_PROVIDER_DUPLICATE` when the id is already registered.',
+        parameters: [{ name: 'provider', description: 'provider keyed by its stable id.' }],
+        returns: 'disposer that removes this exact registration.',
+      },
+      {
+        signature: 'async resolve( request: ImageGenerationRequest, context: ImageGenerationContext, ): Promise<ResolvedImageGenerationSpec>',
+        description: 'Select a provider and resolve all execution facts before generation starts. Rejects with ImageGenerationError for blank sizes, a missing explicit provider, no providers, or ambiguous automatic selection. Provider validation failures and cancellation rejections pass through unchanged; providers must honor `context.signal`.',
+        parameters: [{ name: 'request', description: 'provider/model/format requirements without a prompt.' }, { name: 'context', description: 'cancellation context forwarded unchanged to the provider.' }],
+        returns: 'fully resolved facts stamped with the selected provider id.',
+      },
+      {
+        signature: 'generate(input: ImageGenerationInput, context: ImageGenerationContext): Promise<ImageGenerationResult>',
+        description: 'Generate images through the provider recorded in a resolved input. Throws ImageGenerationError with `IMAGE_GENERATION_PROVIDER_MISSING` when the resolved provider has been disposed. Provider failures and cancellation rejections pass through unchanged; providers must honor `context.signal`.',
+        parameters: [{ name: 'input', description: 'prompt and spec returned by {@link resolve}.' }, { name: 'context', description: 'cancellation context forwarded unchanged to the provider.' }],
+        returns: 'provider result with provider/model attribution and encoded images.',
+      },
+    ],
+  },
+  {
     key: 'inspector',
     summary: 'Shared Host/Client service façade over the realm\'s source publisher.',
     description: 'Shared Host/Client service façade over the realm\'s source publisher.',
@@ -2391,88 +2416,32 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'taskQueue',
-    summary: 'Abstract durable task queue.',
-    description: 'Abstract durable task queue. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.taskQueue` (one implementation per context; loading a second throws, cordis\' standard duplicate-service behavior).\n\nTask-data methods require an opaque access grant minted by this package. Agent grants see only their exact owner session; the singleton host grant is reserved for trusted host-plane consumers. Mutations are serialized through the backend\'s service FIFO and are fail-closed on append error (the queue enters `faulted`); `resume()` must never clear `faulted`.',
+    summary: 'Durable typed work queue whose provider verifies authority before facade creation.',
+    description: 'Durable typed work queue whose provider verifies authority before facade creation.',
     methods: [
       {
-        signature: 'abstract enqueueFromTool(access: TaskQueueAccess, spec: EnqueueSpec): Promise<TaskId>',
-        description: 'Enqueue a single tool-originated task; rejects `executor: \'shell\'`.',
-        parameters: [{ name: 'access', description: 'authenticated Agent-owner or host-plane access.' }, { name: 'spec', description: 'the validated admission spec (source/receipt assigned by the entry).' }],
-        returns: 'the minted task id.',
+        signature: 'abstract forAgent(authority: VerifiedAgentAuthority): AgentWorkQueue',
+        description: 'Bind queue operations to verified Agent authority.',
+        parameters: [{ name: 'authority', description: 'Opaque capability verified by the provider.' }],
+        returns: 'Agent-scoped operations.',
       },
       {
-        signature: 'abstract enqueueBatchFromTool(access: TaskQueueAccess, specs: readonly EnqueueSpec[]): Promise<TaskId[]>',
-        description: 'Enqueue tool-originated tasks in one batch (bounded, e.g. 200).',
-        parameters: [{ name: 'access', description: 'authenticated Agent-owner or host-plane access.' }, { name: 'specs', description: 'the validated admission specs; any `shell` rejects the whole batch.' }],
-        returns: 'the minted task ids, in spec order.',
+        signature: 'abstract forOperator(authority: VerifiedOperatorAuthority): OperatorWorkQueue',
+        description: 'Bind queue operations to verified operator authority.',
+        parameters: [{ name: 'authority', description: 'Opaque operator capability verified by the provider.' }],
+        returns: 'Operator-only operations.',
       },
       {
-        signature: 'abstract list(access: TaskQueueAccess, filter?: ListFilter): TaskSummary[]',
-        description: 'List summary projections, filtered by status/executor/tags, bounded by limit.',
-        parameters: [{ name: 'access', description: 'access whose visible tasks may be returned.' }, { name: 'filter', description: 'optional status/executor/tags filters and a result limit.' }],
-        returns: 'fresh summary rows.',
+        signature: 'abstract registerHandler<K extends WorkKind>(handler: WorkHandler<K>): () => void',
+        description: 'Register one typed WorkHandler.',
+        parameters: [{ name: 'handler', description: 'Typed handler to register.' }],
+        returns: 'A disposer for exactly this registration.',
       },
       {
-        signature: 'abstract get(access: TaskQueueAccess, id: TaskId): Task',
-        description: 'Return the full durable state of one task.',
-        parameters: [{ name: 'access', description: 'access that must be allowed to see the task.' }, { name: 'id', description: 'the task id to look up.' }],
-        returns: 'the durable task snapshot; throws for an unknown id.',
-      },
-      {
-        signature: 'abstract cancel(access: TaskQueueAccess, id: TaskId): Promise<\'canceled\' | \'stopping\'>',
-        description: 'Cancel a task: pending → canceled; starting/running → stopping intent.',
-        parameters: [{ name: 'access', description: 'access that must be allowed to control the task.' }, { name: 'id', description: 'the task id to cancel.' }],
-        returns: '`canceled` for a directly-canceled pending task, `stopping` when a cancel intent was persisted.',
-      },
-      {
-        signature: 'abstract retry(access: TaskQueueAccess, id: TaskId): Promise<TaskId>',
-        description: 'Retry a failed task; returns the (unchanged) task id.',
-        parameters: [{ name: 'access', description: 'access that must be allowed to control the task.' }, { name: 'id', description: 'the failed task id to requeue.' }],
-        returns: 'the same task id, now pending with `attempt` reset.',
-      },
-      {
-        signature: 'abstract dismiss(access: TaskQueueAccess, id: TaskId, dismissed: boolean): Promise<void>',
-        description: 'Soft-conclude (or restore) a terminal task by toggling its `dismissed` flag. Only succeeded/failed/canceled tasks may be dismissed; a non- terminal task throws. Same-value dismiss is an idempotent no-op (no change record, no event). The task\'s `status` and audit record are unchanged; a dismissed task leaves the attention badge/filters but keeps its record, and requeuing (retry) resets `dismissed` to false.',
-        parameters: [{ name: 'access', description: 'access that must be allowed to control the task.' }, { name: 'id', description: 'the terminal task id to dismiss or restore.' }, { name: 'dismissed', description: 'true to conclude, false to restore.' }],
-      },
-      {
-        signature: 'abstract stats(access: TaskQueueAccess): QueueStats',
-        description: 'Aggregate service state and per-status/per-executor counters.',
-        parameters: [{ name: 'access', description: 'access whose visible tasks contribute to the counters.' }],
-        returns: 'the current service state, optional fault, and counters.',
-      },
-      {
-        signature: 'abstract registerExecutor(name: string, adapter: ExecutorAdapter): () => void',
-        description: 'Register an executor adapter; returns a disposer that unregisters it.',
-        parameters: [{ name: 'name', description: 'the registry name tasks select with `executor`.' }, { name: 'adapter', description: 'the prepare-only adapter producing spawn specs.' }],
-        returns: 'a disposer removing exactly this registration.',
-      },
-      {
-        signature: 'abstract listExecutors(): QueueExecutorView[]',
-        description: 'List registered executors with their deployment gates. The model-facing `task_queue_executors` tool projects this without exposing adapter code.',
+        signature: 'abstract listKinds(): readonly WorkKind[]',
+        description: 'List registered WorkKinds.',
         parameters: [],
-        returns: 'one view per registered executor, name order.',
-      },
-      {
-        signature: 'abstract pause(access: TaskQueueHostAccess): void',
-        description: 'Pause the queue (running → paused only).',
-        parameters: [{ name: 'access', description: 'trusted host-plane access.' }],
-      },
-      {
-        signature: 'abstract resume(access: TaskQueueHostAccess): void',
-        description: 'Resume the queue (paused → running only; faulted rejected).',
-        parameters: [{ name: 'access', description: 'trusted host-plane access.' }],
-      },
-      {
-        signature: 'abstract ackNotification(access: TaskQueueAccess, notificationId: NotificationId, messageId: string): Promise<void>',
-        description: 'Acknowledge a pending notification with a CAS (spec §7.4): only a `pending` record whose `messageId` matches `messageId` transitions to `acknowledged`. An already-acknowledged record with a matching message id is an idempotent no-op.',
-        parameters: [{ name: 'access', description: 'access that must own the notification, or host access.' }, { name: 'notificationId', description: 'the outbox record to acknowledge.' }, { name: 'messageId', description: 'the stable message id the record must match.' }],
-      },
-      {
-        signature: 'abstract listNotifications(access: TaskQueueAccess): NotificationRecord[]',
-        description: 'List visible notification outbox records ordered by `terminalSeq` ascending. An Agent grant returns only its session\'s records; host access returns the whole outbox.',
-        parameters: [{ name: 'access', description: 'access whose visible notifications may be returned.' }],
-        returns: 'visible notification records in terminal order.',
+        returns: 'Registered WorkKinds in stable order.',
       },
     ],
   },
@@ -3397,92 +3366,12 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [],
   },
   {
-    name: 'task-queue/canceled',
+    name: 'task-queue/changed',
     mode: 'emit',
-    signature: '\'task-queue/canceled\'(payload: { taskId: TaskId }): void',
-    summary: 'A task reached the canceled terminal state.',
-    description: 'A task reached the canceled terminal state.',
-    parameters: [{ name: 'payload', description: '.taskId - the canceled task id.' }],
-  },
-  {
-    name: 'task-queue/created',
-    mode: 'emit',
-    signature: '\'task-queue/created\'(payload: { taskId: TaskId }): void',
-    summary: 'A task\'s `created` change committed (fsync + fold before emission).',
-    description: 'A task\'s `created` change committed (fsync + fold before emission).',
-    parameters: [{ name: 'payload', description: '.taskId - the admitted task id.' }],
-  },
-  {
-    name: 'task-queue/dismissed',
-    mode: 'emit',
-    signature: '\'task-queue/dismissed\'(payload: { taskId: TaskId; dismissed: boolean }): void',
-    summary: 'A terminal task\'s `dismissed` flag was toggled (soft-conclude or restore).',
-    description: 'A terminal task\'s `dismissed` flag was toggled (soft-conclude or restore). The task\'s `status` and audit record are unchanged.',
-    parameters: [{ name: 'payload', description: '.dismissed - the new dismissed flag value.' }],
-  },
-  {
-    name: 'task-queue/drained',
-    mode: 'emit',
-    signature: '\'task-queue/drained\'(payload: { pending: number }): void',
-    summary: 'The queue drained (no live starting/running/stopping work remains).',
-    description: 'The queue drained (no live starting/running/stopping work remains).',
-    parameters: [{ name: 'payload', description: '.pending - the pending count at drain time.' }],
-  },
-  {
-    name: 'task-queue/failed',
-    mode: 'emit',
-    signature: '\'task-queue/failed\'(payload: { taskId: TaskId; reason: string }): void',
-    summary: 'A task exhausted its attempts or failed without retry.',
-    description: 'A task exhausted its attempts or failed without retry.',
-    parameters: [{ name: 'payload', description: '.reason - the failure summary.' }],
-  },
-  {
-    name: 'task-queue/faulted',
-    mode: 'emit',
-    signature: '\'task-queue/faulted\'(payload: { reason: string }): void',
-    summary: 'The queue entered `faulted`; operator recovery or restart required.',
-    description: 'The queue entered `faulted`; operator recovery or restart required.',
-    parameters: [{ name: 'payload', description: '.reason - the fault summary.' }],
-  },
-  {
-    name: 'task-queue/orphan-unknown',
-    mode: 'emit',
-    signature: '\'task-queue/orphan-unknown\'(payload: { taskId?: TaskId; priorStatus?: TaskStatus; reason?: string }): void',
-    summary: 'A crash left a possibly-orphaned child or an unrecognized inbox entry.',
-    description: 'A crash left a possibly-orphaned child or an unrecognized inbox entry.',
-    parameters: [{ name: 'payload', description: '.reason - the diagnostic detail, when known.' }],
-  },
-  {
-    name: 'task-queue/requeued',
-    mode: 'emit',
-    signature: '\'task-queue/requeued\'(payload: { taskId: TaskId; reason: string }): void',
-    summary: 'A failed attempt requeued to pending with backoff.',
-    description: 'A failed attempt requeued to pending with backoff.',
-    parameters: [{ name: 'payload', description: '.reason - the failure summary.' }],
-  },
-  {
-    name: 'task-queue/running',
-    mode: 'emit',
-    signature: '\'task-queue/running\'(payload: { taskId: TaskId }): void',
-    summary: 'A task entered `running` (pid persisted).',
-    description: 'A task entered `running` (pid persisted).',
-    parameters: [{ name: 'payload', description: '.taskId - the spawned task id.' }],
-  },
-  {
-    name: 'task-queue/starting',
-    mode: 'emit',
-    signature: '\'task-queue/starting\'(payload: { taskId: TaskId; attempt: number }): void',
-    summary: 'A task entered `starting` (attempt incremented).',
-    description: 'A task entered `starting` (attempt incremented).',
-    parameters: [{ name: 'payload', description: '.attempt - the attempt ordinal that just started.' }],
-  },
-  {
-    name: 'task-queue/succeeded',
-    mode: 'emit',
-    signature: '\'task-queue/succeeded\'(payload: { taskId: TaskId }): void',
-    summary: 'A task settled successfully.',
-    description: 'A task settled successfully.',
-    parameters: [{ name: 'payload', description: '.taskId - the succeeded task id.' }],
+    signature: '\'task-queue/changed\'(payload: { seq: number; changeId: string }): void',
+    summary: 'Emitted after one complete ChangeSet is durable and folded.',
+    description: 'Emitted after one complete ChangeSet is durable and folded.',
+    parameters: [{ name: 'payload', description: 'Durable ChangeSet identity.' }],
   },
   {
     name: 'tools/change',
@@ -3605,6 +3494,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AdapterRegistrationHandle {\n    (): void;\n    replace(providers: string[]): void;\n}',
   },
   {
+    name: 'AdmissionContext',
+    declaration: 'export interface AdmissionContext {\n    readonly signal: AbortSignal;\n}',
+  },
+  {
     name: 'Agent',
     declaration: 'export interface Agent {\n    readonly id: SessionId;\n}',
   },
@@ -3655,6 +3548,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AgentStatus',
     declaration: 'export type AgentStatus = \'idle\' | \'running\';',
+  },
+  {
+    name: 'AgentWorkQueue',
+    declaration: 'export interface AgentWorkQueue {\n    enqueue<K extends WorkKind>(request: EnqueueRequest<K>): Promise<WorkId>;\n    enqueueBatch<K extends WorkKind>(request: BatchRequest<K>): Promise<BatchId>;\n    list(): readonly WorkView[];\n    get(id: WorkId): WorkView;\n    cancel(id: WorkId): Promise<void>;\n    retry(id: WorkId): Promise<void>;\n    pendingNotifications(): readonly Notification[];\n    acknowledgeNotification(id: NotificationId, messageId: string): Promise<void>;\n}',
   },
   {
     name: 'ApiKeyRecord',
@@ -3737,6 +3634,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AttemptId',
+    declaration: 'export type AttemptId = Branded<\'AttemptId\'>;',
+  },
+  {
+    name: 'AttemptOutcome',
+    declaration: 'export type AttemptOutcome<K extends WorkKind> = {\n    readonly status: \'succeeded\';\n    readonly output: WorkOutput<K>;\n} | {\n    readonly status: \'failed\';\n    readonly failure: WorkFailure;\n} | {\n    readonly status: \'unknown\';\n    readonly failure: WorkFailure;\n} | {\n    readonly status: \'canceled\';\n};',
+  },
+  {
+    name: 'AttemptStatus',
+    declaration: 'export type AttemptStatus = \'starting\' | \'running\' | \'unknown\' | \'succeeded\' | \'failed\' | \'canceled\';',
+  },
+  {
+    name: 'Attention',
+    declaration: 'export interface Attention {\n    readonly id: AttentionId;\n    readonly workId: WorkId;\n    readonly kind: \'completion\' | \'failure\' | \'unknown\';\n    readonly status: \'pending\' | \'resolved\';\n    readonly createdAt: string;\n    readonly resolvedAt: string | null;\n}',
+  },
+  {
+    name: 'AttentionId',
+    declaration: 'export type AttentionId = Branded<\'AttentionId\'>;',
+  },
+  {
     name: 'AuthorizationEntry',
     declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
   },
@@ -3799,6 +3716,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'BashEnvVariableInfo',
     declaration: 'export interface BashEnvVariableInfo extends BashEnvVariable {\n    contributor: string;\n    key: DshEnvironmentKey;\n}',
+  },
+  {
+    name: 'BatchId',
+    declaration: 'export type BatchId = Branded<\'BatchId\'>;',
+  },
+  {
+    name: 'BatchItem',
+    declaration: 'export interface BatchItem<K extends WorkKind> {\n    readonly title: string;\n    readonly input: WorkInput<K>;\n    readonly tags?: readonly string[];\n}',
+  },
+  {
+    name: 'BatchRequest',
+    declaration: 'export interface BatchRequest<K extends WorkKind> {\n    readonly kind: K;\n    readonly items: readonly BatchItem<K>[];\n    readonly sharedPayload: JsonValue;\n    readonly idempotencyKey: string;\n    readonly maxParallel: number;\n}',
   },
   {
     name: 'BorrowedSessionSource',
@@ -4181,8 +4110,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EncodedImageAttachment {\n    mediaType: ImageMediaType;\n    data: string;\n    name?: string;\n}',
   },
   {
-    name: 'EnqueueSpec',
-    declaration: 'export interface EnqueueSpec {\n    title: string;\n    prompt: string;\n    executor: string;\n    priority?: number;\n    maxAttempts?: number;\n    backoffMs?: number;\n    delayUntil?: string;\n    timeoutMs?: number;\n    workspaceDir?: string;\n    outputDir?: string;\n    tags?: string[];\n    ownerSessionId?: string;\n    idempotencyKey?: string;\n}',
+    name: 'EnqueueRequest',
+    declaration: 'export interface EnqueueRequest<K extends WorkKind> {\n    readonly kind: K;\n    readonly title: string;\n    readonly input: WorkInput<K>;\n    readonly idempotencyKey: string;\n    readonly tags?: readonly string[];\n}',
   },
   {
     name: 'EpochHeader',
@@ -4191,10 +4120,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ExecutionWorldKind',
     declaration: 'export type ExecutionWorldKind = \'local\' | \'remote\';',
-  },
-  {
-    name: 'ExecutorAdapter',
-    declaration: 'export type ExecutorAdapter = {\n    prepare(task: Task, run: RunRecord, signal: AbortSignal): Promise<SubprocessSpawnSpec>;\n    normalize?(task: Task, stdout: string, stderr: string): {\n        summary: string;\n        assistantText?: string;\n    };\n};',
   },
   {
     name: 'FileDiff',
@@ -4261,6 +4186,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
   },
   {
+    name: 'GeneratedImage',
+    declaration: 'export interface GeneratedImage {\n    readonly bytes: Uint8Array;\n    readonly mediaType: string;\n    readonly width: number;\n    readonly height: number;\n}',
+  },
+  {
     name: 'GenerateOptions',
     declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n}',
   },
@@ -4325,8 +4254,36 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ImageBlock {\n    type: \'image\';\n    attachment: ImageAttachmentRef;\n}',
   },
   {
+    name: 'ImageGenerationContext',
+    declaration: 'export interface ImageGenerationContext {\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'ImageGenerationInput',
+    declaration: 'export interface ImageGenerationInput {\n    readonly prompt: string;\n    readonly spec: ResolvedImageGenerationSpec;\n}',
+  },
+  {
+    name: 'ImageGenerationProvider',
+    declaration: 'export interface ImageGenerationProvider {\n    readonly id: string;\n    resolve(request: ImageGenerationRequest, context: ImageGenerationContext): Promise<ImageGenerationProviderSpec>;\n    generate(input: ImageGenerationInput, context: ImageGenerationContext): Promise<ImageGenerationResult>;\n}',
+  },
+  {
+    name: 'ImageGenerationProviderSpec',
+    declaration: 'export type ImageGenerationProviderSpec = Omit<ResolvedImageGenerationSpec, \'provider\'>;',
+  },
+  {
+    name: 'ImageGenerationRequest',
+    declaration: 'export interface ImageGenerationRequest {\n    readonly provider?: string;\n    readonly model?: string;\n    readonly size: string;\n    readonly outputFormat: ImageOutputFormat;\n    readonly watermark: boolean;\n}',
+  },
+  {
+    name: 'ImageGenerationResult',
+    declaration: 'export interface ImageGenerationResult {\n    readonly provider: string;\n    readonly model: string;\n    readonly images: readonly GeneratedImage[];\n}',
+  },
+  {
     name: 'ImageMediaType',
     declaration: 'export type ImageMediaType = \'image/png\' | \'image/jpeg\' | \'image/webp\' | \'image/gif\';',
+  },
+  {
+    name: 'ImageOutputFormat',
+    declaration: 'export type ImageOutputFormat = \'png\' | \'jpeg\';',
   },
   {
     name: 'ImageRequestPolicy',
@@ -4441,10 +4398,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type JsonSchemaType = \'object\' | \'array\' | \'string\' | \'number\' | \'integer\' | \'boolean\' | \'null\';',
   },
   {
-    name: 'JsonValue',
-    declaration: 'export type JsonValue = null | boolean | number | string | JsonValue[] | {\n    [key: string]: JsonValue;\n};',
-  },
-  {
     name: 'KnobState',
     declaration: 'export interface KnobState {\n    preset: string | null;\n    sandbox: SandboxMode | null;\n    approval: ApprovalPolicy | null;\n}',
   },
@@ -4465,8 +4418,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n}',
   },
   {
-    name: 'ListFilter',
-    declaration: 'export interface ListFilter {\n    status?: TaskStatus;\n    executor?: string;\n    tags?: string[];\n    limit?: number;\n}',
+    name: 'LiveAttempt',
+    declaration: 'export interface LiveAttempt<K extends WorkKind> {\n    readonly done: Promise<AttemptOutcome<K>>;\n    cancel(reason: string): Promise<void>;\n}',
   },
   {
     name: 'LlmAdapter',
@@ -4705,12 +4658,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
   },
   {
-    name: 'NotificationId',
-    declaration: 'export type NotificationId = Branded<\'NotificationId\'>;',
+    name: 'Notification',
+    declaration: 'export interface Notification {\n    readonly id: NotificationId;\n    readonly workId: WorkId;\n    readonly terminalSeq: number;\n    readonly attemptId: AttemptId | null;\n    readonly resultId: ResultId | null;\n    readonly ownerSessionId: string;\n    readonly messageId: string;\n    readonly status: \'pending\' | \'acknowledged\';\n    readonly createdAt: string;\n    readonly acknowledgedAt: string | null;\n}',
   },
   {
-    name: 'NotificationRecord',
-    declaration: 'export interface NotificationRecord {\n    notificationId: NotificationId;\n    taskId: TaskId;\n    runId: RunId;\n    attempt: number;\n    terminalSeq: number;\n    ownerSessionId: string;\n    messageId: string;\n    status: \'pending\' | \'acknowledged\';\n    acknowledgedAt: string | null;\n}',
+    name: 'NotificationId',
+    declaration: 'export type NotificationId = Branded<\'NotificationId\'>;',
   },
   {
     name: 'ObjectJsonSchema',
@@ -4721,12 +4674,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface OneShotSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'one-shot\';\n    readonly label?: string;\n}',
   },
   {
+    name: 'OperatorWorkQueue',
+    declaration: 'export interface OperatorWorkQueue {\n    list(): readonly WorkView[];\n    get(id: WorkId): WorkView;\n    cancel(id: WorkId): Promise<void>;\n    retry(id: WorkId): Promise<void>;\n    pause(): void;\n    resume(): void;\n    resolveUnknown(workId: WorkId, resolution: UnknownResolution): Promise<void>;\n    pendingAttentions(): readonly Attention[];\n}',
+  },
+  {
     name: 'PermissionSelect',
     declaration: 'export interface PermissionSelect {\n    options: PresetOption[];\n    currentValue: string;\n}',
   },
   {
     name: 'PostToolDecision',
     declaration: 'export type PostToolDecision = {\n    kind: \'accept\';\n    content?: ContentBlock[];\n    value?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'accept\';\n    value: JsonValue;\n    content?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'block\';\n    feedback: ContentBlock[];\n    additionalContexts?: UserMessage[];\n};',
+  },
+  {
+    name: 'PrepareContext',
+    declaration: 'export interface PrepareContext {\n    readonly attemptId: AttemptId;\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'PreparedAdapterCall',
@@ -4747,6 +4708,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PreparedReferencedMessage',
     declaration: 'export interface PreparedReferencedMessage {\n    content: ContentBlock[];\n    additionalContext?: UserMessage;\n}',
+  },
+  {
+    name: 'PreparedWork',
+    declaration: 'export type PreparedWork<K extends WorkKind> = WorkKindMap[K] extends WorkKindDefinition<unknown, unknown, infer T, unknown> ? T : never;',
   },
   {
     name: 'PrepareSessionOptions',
@@ -4829,10 +4794,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PtcDispatchLog {\n    readonly exec: ToolExecution;\n    readonly agent?: Agent;\n    readonly subCallId: ToolCallId;\n    readonly name: string;\n    readonly isError: boolean;\n    readonly content: ContentBlock[];\n}',
   },
   {
-    name: 'QueueStats',
-    declaration: 'export interface QueueStats {\n    serviceState: ServiceState;\n    fault?: {\n        reason: string;\n    };\n    byStatus: Record<TaskStatus, number>;\n    byExecutor: Record<string, number>;\n    undismissedFailed: number;\n    byDismissed: number;\n}',
-  },
-  {
     name: 'ReadFileLine',
     declaration: 'export interface ReadFileLine {\n    number: number;\n    text: string;\n}',
   },
@@ -4889,6 +4850,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResolvedCredential {\n    value: string;\n    source: string;\n}',
   },
   {
+    name: 'ResolvedImageGenerationSpec',
+    declaration: 'export interface ResolvedImageGenerationSpec {\n    readonly provider: string;\n    readonly model: string;\n    readonly size: string;\n    readonly outputFormat: ImageOutputFormat;\n    readonly watermark: boolean;\n    readonly providerSpec?: unknown;\n}',
+  },
+  {
     name: 'ResolvedNormalRetryPolicy',
     declaration: 'export interface ResolvedNormalRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'normal\';\n    readonly maxRetries: number;\n    readonly retryableCodes: readonly string[];\n}',
   },
@@ -4905,24 +4870,28 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResolvedSubagentStartRequest extends SubagentStartRequest {\n    readonly descriptor: SubagentDescriptorData;\n}',
   },
   {
+    name: 'ResolvedWork',
+    declaration: 'export type ResolvedWork<K extends WorkKind> = WorkKindMap[K] extends WorkKindDefinition<unknown, infer T, unknown, unknown> ? T : never;',
+  },
+  {
+    name: 'ResourceClaim',
+    declaration: 'export interface ResourceClaim {\n    readonly resource: string;\n    readonly units: number;\n}',
+  },
+  {
     name: 'RestoredSessionOptions',
     declaration: 'export interface RestoredSessionOptions {\n    readonly seed: SessionEvent[];\n    readonly meta: SessionHeader;\n    readonly seedSource: \'persistence\';\n}',
+  },
+  {
+    name: 'ResultId',
+    declaration: 'export type ResultId = Branded<\'ResultId\'>;',
   },
   {
     name: 'ResumeAgentOptions',
     declaration: 'export interface ResumeAgentOptions {\n    readonly resumeSessionId: SessionId;\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
   },
   {
-    name: 'RunId',
-    declaration: 'export type RunId = Branded<\'RunId\'>;',
-  },
-  {
     name: 'RunnerFailureRule',
     declaration: 'export interface RunnerFailureRule {\n    allowedExitCodes?: readonly number[];\n    fatalSignatures: readonly string[];\n    informationalLines?: readonly string[];\n}',
-  },
-  {
-    name: 'RunRecord',
-    declaration: 'export interface RunRecord {\n    runId: RunId;\n    attempt: number;\n    pid: number | null;\n    plannedStartedAt: string | null;\n    actualStartedAt: string | null;\n    logPath: string | null;\n    commandFingerprint: string | null;\n    terminationUnverified?: boolean;\n}',
   },
   {
     name: 'RuntimeFact',
@@ -5035,10 +5004,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SendTeamMessageResult',
     declaration: 'export interface SendTeamMessageResult {\n    readonly messageId: TeamMessageId;\n    readonly status: \'accepted\' | \'queued\';\n}',
-  },
-  {
-    name: 'ServiceState',
-    declaration: 'export type ServiceState = \'running\' | \'paused\' | \'faulted\';',
   },
   {
     name: 'Session',
@@ -5545,6 +5510,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ShellSandboxInfo {\n    mode: SandboxMode;\n    denied: boolean;\n    enforcement?: SandboxEnforcement;\n    runnerFailed?: boolean;\n}',
   },
   {
+    name: 'SideEffectState',
+    declaration: 'export type SideEffectState = \'not-started\' | \'started\' | \'unknown\';',
+  },
+  {
     name: 'SkillCandidate',
     declaration: 'export interface SkillCandidate extends SkillSummary {\n    readonly rank: number;\n    readonly locator: unknown;\n    readonly path?: string;\n    readonly metadata?: Readonly<Record<string, unknown>>;\n    readonly origin?: SkillCandidateOrigin;\n}',
   },
@@ -5639,6 +5608,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SpillSource',
     declaration: 'export interface SpillSource {\n    toolName: string;\n    callId: ToolCallId;\n    label: string;\n}',
+  },
+  {
+    name: 'StartContext',
+    declaration: 'export interface StartContext {\n    readonly attemptId: AttemptId;\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'StorageBackend',
@@ -5831,38 +5804,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TableValueOf',
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
-  },
-  {
-    name: 'Task',
-    declaration: 'export interface Task {\n    id: TaskId;\n    title: string;\n    prompt: string;\n    executor: string;\n    status: TaskStatus;\n    priority: number;\n    attempt: number;\n    maxAttempts: number;\n    backoffMs: number;\n    delayUntil: string | null;\n    timeoutMs: number;\n    workspaceDir?: string;\n    outputDir: string;\n    tags: string[];\n    createdAt: string;\n    updatedAt: string;\n    lastError: string | null;\n    result: TaskResult | null;\n    ownerSessionId: string | null;\n    source: \'tool\' | \'inbox\';\n    receiptId: string;\n    terminalSeq: number | null;\n    runs: RunRecord[];\n    dismissed: boolean;\n}',
-  },
-  {
-    name: 'TaskId',
-    declaration: 'export type TaskId = Branded<\'TaskId\'>;',
-  },
-  {
-    name: 'TaskQueueAccess',
-    declaration: 'export type TaskQueueAccess = TaskQueueAgentAccess | TaskQueueHostAccess;',
-  },
-  {
-    name: 'TaskQueueAgentAccess',
-    declaration: 'export interface TaskQueueAgentAccess {\n    readonly kind: \'agent\';\n    readonly ownerSessionId: string;\n    readonly [TASK_QUEUE_ACCESS_BRAND]: true;\n}',
-  },
-  {
-    name: 'TaskQueueHostAccess',
-    declaration: 'export interface TaskQueueHostAccess {\n    readonly kind: \'host\';\n    readonly [TASK_QUEUE_ACCESS_BRAND]: true;\n}',
-  },
-  {
-    name: 'TaskResult',
-    declaration: 'export interface TaskResult {\n    summary: string;\n    assistantText?: string;\n    exitCode: number | null;\n    signal: string | null;\n    durationMs: number;\n    outputFiles?: string[];\n    logPath?: string;\n    stdoutTail?: string;\n    stderrTail?: string;\n}',
-  },
-  {
-    name: 'TaskStatus',
-    declaration: 'export type TaskStatus = \'pending\' | \'starting\' | \'running\' | \'stopping\' | \'succeeded\' | \'failed\' | \'canceled\';',
-  },
-  {
-    name: 'TaskSummary',
-    declaration: 'export interface TaskSummary {\n    id: TaskId;\n    title: string;\n    executor: string;\n    status: TaskStatus;\n    priority: number;\n    attempt: number;\n    maxAttempts: number;\n    createdAt: string;\n    updatedAt: string;\n    lastError: string | null;\n    tags: string[];\n    ownerSessionId: string | null;\n    dismissed: boolean;\n}',
   },
   {
     name: 'TeamId',
@@ -6221,12 +6162,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TypertTypeModel {\n    readonly name: string;\n    readonly declaration: string;\n}',
   },
   {
+    name: 'UnknownResolution',
+    declaration: 'export type UnknownResolution = {\n    readonly kind: \'confirm-failed\';\n    readonly failure: WorkFailure;\n} | {\n    readonly kind: \'authorize-retry\';\n};',
+  },
+  {
     name: 'UpdateTeamTaskRequest',
     declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
   },
   {
     name: 'UserMessage',
     declaration: 'export interface UserMessage extends Message {\n    readonly role: \'user\';\n}',
+  },
+  {
+    name: 'VerifiedAgentAuthority',
+    declaration: 'export interface VerifiedAgentAuthority {\n    readonly kind: \'agent\';\n    readonly sessionId: string;\n}',
+  },
+  {
+    name: 'VerifiedOperatorAuthority',
+    declaration: 'export interface VerifiedOperatorAuthority {\n    readonly kind: \'operator\';\n}',
   },
   {
     name: 'VerifiedWebhookDelivery',
@@ -6341,6 +6294,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WebUpgradeRoute {\n    path: string;\n    handler: (req: IncomingMessage, socket: Duplex, head: Buffer) => void | Promise<void>;\n}',
   },
   {
+    name: 'WorkAttempt',
+    declaration: 'export interface WorkAttempt {\n    readonly id: AttemptId;\n    readonly workId: WorkId;\n    readonly ordinal: number;\n    readonly status: AttemptStatus;\n    readonly startedAt: string;\n    readonly runningAt: string | null;\n    readonly finishedAt: string | null;\n    readonly failure: WorkFailure | null;\n}',
+  },
+  {
+    name: 'WorkFailure',
+    declaration: 'export interface WorkFailure {\n    readonly category: string;\n    readonly sideEffect: SideEffectState;\n    readonly retriable: boolean;\n    readonly message: string;\n}',
+  },
+  {
     name: 'WorkflowAgentEndInfo',
     declaration: 'export interface WorkflowAgentEndInfo extends WorkflowAgentInfo {\n    outcome: WorkflowAgentOutcome;\n}',
   },
@@ -6387,6 +6348,46 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkflowStopReason',
     declaration: 'export type WorkflowStopReason = \'completed\' | \'cancelled\' | \'error\';',
+  },
+  {
+    name: 'WorkHandler',
+    declaration: 'export interface WorkHandler<K extends WorkKind> {\n    readonly kind: K;\n    resolveAdmission(input: WorkInput<K>, context: AdmissionContext): Promise<ResolvedWork<K>>;\n    resources(resolved: ResolvedWork<K>): readonly ResourceClaim[];\n    policy(resolved: ResolvedWork<K>): WorkPolicy;\n    prepare(resolved: ResolvedWork<K>, context: PrepareContext): Promise<PreparedWork<K>>;\n    start(prepared: PreparedWork<K>, context: StartContext): LiveAttempt<K>;\n}',
+  },
+  {
+    name: 'WorkId',
+    declaration: 'export type WorkId = Branded<\'WorkId\'>;',
+  },
+  {
+    name: 'WorkInput',
+    declaration: 'export type WorkInput<K extends WorkKind> = WorkKindMap[K] extends WorkKindDefinition<infer T, unknown, unknown, unknown> ? T : never;',
+  },
+  {
+    name: 'WorkItem',
+    declaration: 'export interface WorkItem<K extends WorkKind = WorkKind> {\n    readonly id: WorkId;\n    readonly kind: K;\n    readonly title: string;\n    readonly intent: WorkInput<K>;\n    readonly intentDigest: string;\n    readonly resolved: ResolvedWork<K>;\n    readonly policy: WorkPolicy;\n    readonly resources: readonly ResourceClaim[];\n    readonly tags: readonly string[];\n    readonly batchId: BatchId | null;\n    readonly ownerSessionId: string | null;\n    readonly createdAt: string;\n}',
+  },
+  {
+    name: 'WorkKind',
+    declaration: 'export type WorkKind = Extract<keyof WorkKindMap, string>;',
+  },
+  {
+    name: 'WorkKindDefinition',
+    declaration: 'export interface WorkKindDefinition<Input, Resolved, Prepared, Output> {\n    readonly input: Input;\n    readonly resolved: Resolved;\n    readonly prepared: Prepared;\n    readonly output: Output;\n}',
+  },
+  {
+    name: 'WorkKindMap',
+    declaration: 'export interface WorkKindMap {\n}',
+  },
+  {
+    name: 'WorkOutput',
+    declaration: 'export type WorkOutput<K extends WorkKind> = WorkKindMap[K] extends WorkKindDefinition<unknown, unknown, unknown, infer T> ? T : never;',
+  },
+  {
+    name: 'WorkPolicy',
+    declaration: 'export interface WorkPolicy {\n    readonly maxAttempts: number;\n}',
+  },
+  {
+    name: 'WorkResult',
+    declaration: 'export interface WorkResult<K extends WorkKind = WorkKind> {\n    readonly id: ResultId;\n    readonly workId: WorkId;\n    readonly attemptId: AttemptId;\n    readonly kind: K;\n    readonly output: WorkOutput<K>;\n    readonly createdAt: string;\n}',
   },
   {
     name: 'Workspace',
@@ -6451,6 +6452,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceView',
     declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+  },
+  {
+    name: 'WorkState',
+    declaration: 'export interface WorkState {\n    readonly workId: WorkId;\n    readonly status: WorkStatus;\n    readonly attemptCount: number;\n    readonly activeAttemptId: AttemptId | null;\n    readonly resultId: ResultId | null;\n    readonly failure: WorkFailure | null;\n    readonly cancelRequestedAt: string | null;\n    readonly updatedAt: string;\n}',
+  },
+  {
+    name: 'WorkStatus',
+    declaration: 'export type WorkStatus = \'queued\' | \'starting\' | \'running\' | \'unknown\' | \'succeeded\' | \'failed\' | \'canceled\';',
+  },
+  {
+    name: 'WorkView',
+    declaration: 'export interface WorkView {\n    readonly work: WorkItem;\n    readonly state: WorkState;\n    readonly attempts: readonly WorkAttempt[];\n    readonly result: WorkResult | null;\n}',
   },
 ]
 

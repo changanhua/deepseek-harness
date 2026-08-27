@@ -11,7 +11,7 @@ import { errorMessage, TeamError } from './error.ts'
 import type { TeamFoldState } from './fold.ts'
 import type { TeamJournal } from './journal.ts'
 import type { TeamRuntimeLifecycle } from './lifecycle.ts'
-import { messageAccepted } from './session-message.ts'
+import { messageAccepted } from '@deepseek-ai/dsh-agent'
 import { TeamId } from './types.ts'
 import type {
   SpawnTeammateRequest,

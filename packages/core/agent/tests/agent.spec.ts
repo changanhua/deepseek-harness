@@ -5,6 +5,7 @@ import { Session, SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 import AgentRegistry, {
   agentEvents,
   Inbox,
+  messageAccepted,
 } from '@deepseek-ai/dsh-agent'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 
@@ -139,6 +140,35 @@ describe('Inbox', () => {
 
     inbox.clear()
     expect(session.events).toHaveLength(beforeClear + 2)
+  })
+})
+
+describe('messageAccepted', () => {
+  it('finds a stable identity in accepted history or either pending inbox', () => {
+    const session = Session.create(SessionId('message-accepted'))
+    const turn = createUserMessage({ content: [{ type: 'text', text: 'turn' }], source: { kind: 'user' } })
+    const step = createUserMessage({ content: [{ type: 'text', text: 'step' }], source: { kind: 'user' } })
+    const claimed = createUserMessage({ content: [{ type: 'text', text: 'claimed' }], source: { kind: 'user' } })
+    session.append('agent/inbox/spliced', { target: 'next-turn', start: 0, inserted: [turn] })
+    session.append('agent/inbox/spliced', { target: 'next-step', start: 0, inserted: [step] })
+    session.append('user/message', claimed, { surfaceOp: 'append' })
+
+    expect(messageAccepted(session.events, message => message.id === turn.id)).toBe(true)
+    expect(messageAccepted(session.events, message => message.id === step.id)).toBe(true)
+    expect(messageAccepted(session.events, message => message.id === claimed.id)).toBe(true)
+  })
+
+  it('excludes a caller-selected inherited seed and removed pending messages', () => {
+    const session = Session.create(SessionId('message-accepted-suffix'))
+    const inherited = createUserMessage({ content: [{ type: 'text', text: 'inherited' }], source: { kind: 'user' } })
+    const removed = createUserMessage({ content: [{ type: 'text', text: 'removed' }], source: { kind: 'user' } })
+    session.append('user/message', inherited, { surfaceOp: 'append' })
+    session.append('agent/inbox/spliced', { target: 'next-turn', start: 0, inserted: [removed] })
+    session.append('agent/inbox/spliced', { target: 'next-turn', start: 0, removedCount: 1, inserted: [] })
+
+    const suffix = session.events.slice(1)
+    expect(messageAccepted(suffix, message => message.id === inherited.id)).toBe(false)
+    expect(messageAccepted(suffix, message => message.id === removed.id)).toBe(false)
   })
 })
 

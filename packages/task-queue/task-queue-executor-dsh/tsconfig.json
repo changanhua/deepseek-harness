@@ -18,6 +18,9 @@
       "path": "../../subprocess/subprocess"
     },
     {
+      "path": "../../util/output-retention"
+    },
+    {
       "path": "../../runtime-diagnostics/invariants"
     }
   ]

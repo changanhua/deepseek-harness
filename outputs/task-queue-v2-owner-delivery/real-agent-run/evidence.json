@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "recordedAt": "2026-08-27T07:30:19.508Z",
+  "profile": "task-worker",
+  "providerBundle": "@liustack/modlens@3.23.1",
+  "workId": "21e5bb63-f4df-4601-b81a-0ae501606684",
+  "attemptId": "6eaf06ee-0628-4c5b-bd23-962bb6f63e98",
+  "resultId": "560d01eb-ea52-4e90-ad50-86430f1d88ab",
+  "notificationId": "cf427f8c-8f3c-47c3-a240-576438e5fa74",
+  "messageId": "task-queue-notification:cf427f8c-8f3c-47c3-a240-576438e5fa74",
+  "terminalSeq": 4,
+  "ownerSessionId": "queue-v2-real-owner-1787815804570",
+  "status": "succeeded",
+  "processExitCode": 0,
+  "flushBeforeAcknowledge": true,
+  "stableMessageContainsWorkerOutput": false,
+  "explicitResultContainsMarker": true,
+  "queueRoot": "outputs/task-queue-v2-owner-delivery/real-agent-run/runtime/run-1787815804555/queue",
+  "sessionRoot": "outputs/task-queue-v2-owner-delivery/real-agent-run/runtime/run-1787815804555/sessions"
+}

@@ -1,917 +1,724 @@
-/**
- * Durable host-plane task queue backend (`ctx.taskQueue`) (§2, §7.1).
- *
- * Composes the single-writer segment store, the service-level mutation FIFO
- * (with the faulted resolution protocol), the inbox scanner, the scheduler,
- * and the built-in preparable executors into one `LocalTaskQueue` service.
- * Trusted ingress (`enqueueFromTool`, inbox scan) is the only place `source`
- * is assigned; the scheduler is the only point that spawns processes and the
- * only owner of live `SubprocessHandle`s — which are disposed on teardown.
- * @module @deepseek-ai/dsh-task-queue-local
- */
-
+/** Queue v2 local provider: isolated durable admission and handler registry. */
+import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { randomUUID } from 'node:crypto'
-import { mkdir, readdir, unlink, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import type {
-  SubprocessHandle, SubprocessOutcome, SubprocessSpawnSpec,
-} from '@deepseek-ai/dsh-subprocess'
 import {
-  TaskQueue, TaskId, RunId, NotificationId,
-  assertTaskQueueAccess, assertTaskQueueHostAccess,
+  assertVerifiedAgentAuthority, assertVerifiedOperatorAuthority, canAutoRetry, digestIntent,
+  AttentionId, NotificationId, lookupReceipt, TaskQueue, WorkId, AttemptId, BatchId, ResultId,
 } from '@deepseek-ai/dsh-task-queue'
 import type {
-  Task, TaskStatus, EnqueueSpec, ListFilter, TaskSummary, QueueExecutorView, QueueStats, ServiceState,
-  ExecutorAdapter, RunRecord, FoldedQueue, ChangeRecord, NotificationRecord,
-  TaskResult, TaskQueueAccess, TaskQueueHostAccess,
+  AgentWorkQueue, BatchRequest, ChangeSet, EnqueueRequest, LiveAttempt, OperatorWorkQueue,
+  ResourceClaim, UnknownResolution, VerifiedAgentAuthority, VerifiedOperatorAuthority, WorkFailure, WorkHandler,
+  ResolvedWork, WorkItem, WorkKind, WorkPolicy, WorkView,
 } from '@deepseek-ai/dsh-task-queue'
-import {
-  createTask, claimTask, markRunning, settleSucceeded, settleFailed,
-  requestStop, settleCanceled, cancelPending, retryTask, dismissTask, recoverTaskAfterCrash,
-  isTerminalStatus, applyChange,
-} from '@deepseek-ai/dsh-task-queue'
-import { runLogPath, DIR_MODE, FILE_MODE } from './paths.ts'
-import { TaskQueueStore, FaultedError } from './store.ts'
-import { acquireQueueOwnership } from './lock.ts'
-import type { QueueOwnership } from './lock.ts'
-import { runMutationTransaction, waitForMutationDrain } from './fifo.ts'
-import { scanInbox, quarantineInboxFile } from './inbox.ts'
-import { builtinAdapters } from './executors.ts'
-import { TaskScheduler, commandFingerprint, renderRunLog } from './scheduler.ts'
-import type { SchedulerHost, ClaimedAttempt } from './scheduler.ts'
+import { WorkQueueStore } from './v2-store.ts'
 
-/** Maximum batch size for `enqueueBatchFromTool` (§7.1). */
-const MAX_BATCH_SIZE = 200
-const DEFAULT_MAX_CONCURRENT = 2
-const DEFAULT_MAX_CONCURRENT_PER_EXECUTOR = 1
-const DEFAULT_INTERVAL_MS = 1_000
-/** Extra time beyond `timeoutMs` before a stalled `stopping` task is force-reclaimed. */
-const DEFAULT_STOPPING_GRACE_MS = 5_000
-/** Bounded stdout/stderr tail embedded into a succeeded `TaskResult`, in UTF-8 bytes. */
-const RESULT_TAIL_BYTES = 4_096
-/** Bounded stderr tail appended to a failed task's `lastError`, in UTF-8 bytes. */
-const LAST_ERROR_TAIL_BYTES = 2_048
-
-/** Admission config schema (schemastery). */
-export interface Config {
-  /** Maximum concurrent starting/running/stopping tasks across all executors. */
-  maxConcurrent?: number
-  /** Maximum concurrent starting/running/stopping tasks per one executor. */
-  maxConcurrentPerExecutor?: number
-  /** Scheduler tick interval in milliseconds. */
-  intervalMs?: number
-  /** Extra time beyond `timeoutMs` before a stalled `stopping` task is force-reclaimed. */
-  stoppingGraceMs?: number
-  /** Queue root directory; the composing row resolves it explicitly, for example `dshHomePath('task-queue')`. */
-  queueRoot: string
-  /** Per-executor enablement; a disabled executor rejects admission. */
-  executors?: Record<string, {
-    /** Whether this executor may run tasks. */
-    enabled: boolean
-  }>
+interface Execution {
+  readonly workId: WorkId
+  readonly claims: readonly ResourceClaim[]
+  readonly controller: AbortController
+  live: LiveAttempt<WorkKind> | null
+  settled: Promise<void> | null
 }
 
-/** Config with every optional field defaulted (schemastery output shape). */
-export type ResolvedConfig = Required<Pick<Config, 'queueRoot' | 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs' | 'stoppingGraceMs'>> & Config
+function failure(category: string, error: unknown, sideEffect: WorkFailure['sideEffect'], retriable: boolean): WorkFailure {
+  return { category, sideEffect, retriable, message: error instanceof Error ? error.message : 'Queue operation failed' }
+}
 
-/**
- * Durable host-plane task queue backend. Composes the segment store, the
- * mutation FIFO (with the faulted protocol), the inbox scanner, the scheduler,
- * and the built-in executor adapters; registers as `ctx.taskQueue` and is the
- * only owner of live `SubprocessHandle`s.
- */
-export class LocalTaskQueue extends TaskQueue implements SchedulerHost {
-  static inject = ['subprocess']
+function firstWorkId(ids: readonly WorkId[]): WorkId {
+  const id = ids[0]
+  if (id === undefined) throw new Error('task queue receipt contains no WorkItems')
+  return id
+}
 
+function isAborted(signal: AbortSignal): boolean { return signal.aborted }
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000
+
+/** Local Queue v2 configuration. */
+export interface Config {
+  /** Schema-v3 Queue root; the composing row must keep older formats in a separate directory. */
+  queueRoot: string
+  /** Maximum simultaneous prepared or live attempts. */
+  maxConcurrent?: number
+  /** Deployment capacity by handler-declared resource name. */
+  resourceCapacity?: Record<string, number>
+  /** Maximum time teardown waits before unresolved executions become unknown. */
+  shutdownTimeoutMs?: number
+}
+
+/** Durable v2 provider. Handler registration remains effect-scoped at composition sites. */
+export class LocalTaskQueue extends TaskQueue {
   static Config: z<Config> = z.object({
-    maxConcurrent: z.number().step(1).min(1).default(DEFAULT_MAX_CONCURRENT),
-    maxConcurrentPerExecutor: z.number().step(1).min(1).default(DEFAULT_MAX_CONCURRENT_PER_EXECUTOR),
-    intervalMs: z.number().step(1).min(1).default(DEFAULT_INTERVAL_MS),
-    stoppingGraceMs: z.number().step(1).min(0).default(DEFAULT_STOPPING_GRACE_MS),
     queueRoot: z.string(),
-    executors: z.dict(z.object({ enabled: z.boolean() })).default({}),
+    maxConcurrent: z.number().min(1).step(1).default(8),
+    resourceCapacity: z.dict(z.number().min(1).step(1)).default({}),
+    shutdownTimeoutMs: z.number().min(1).step(1).default(DEFAULT_SHUTDOWN_TIMEOUT_MS),
   })
+  private readonly store: WorkQueueStore
+  private readonly handlers = new Map<WorkKind, WorkHandler<WorkKind>>()
+  private readonly ready: Promise<void>
+  private readonly pendingAdmissions = new Map<string, {
+    readonly intentDigest: string
+    readonly result: Promise<WorkId | BatchId>
+  }>()
+  private readonly maxConcurrent: number
+  private readonly resourceCapacity: Readonly<Record<string, number>>
+  private readonly shutdownTimeoutMs: number
+  private readonly executing = new Map<AttemptId, Execution>()
+  private pumping = false
+  private paused = false
+  private closing = false
+  private shutdownPromise: Promise<void> | undefined
 
-  private readonly store: TaskQueueStore
-  private readonly adapters: Map<string, ExecutorAdapter>
-  private readonly enabledExecutors: Set<string>
-  private readonly scheduler: TaskScheduler
-  private readonly liveHandles = new Map<string, SubprocessHandle>()
-  private readonly stopping = new Set<string>()
-  private readonly bootPromise: Promise<void>
-  private ownership: QueueOwnership | undefined
-
-  /**
-   * Stable identity key for the service mutation FIFO. Cordis exposes services
-   * through a tracing proxy whose method `this` is a per-call shadow, not the
-   * owning instance; using `this` directly as the WeakMap key in
-   * `runMutationTransaction`/`waitForMutationDrain` would break serialization
-   * and the shutdown fence. A plain object read back through any proxy resolves
-   * to this same reference, so every caller — scheduler internals (real `this`)
-   * and model-facing tools (shadow `this`) — shares one FIFO chain.
-   */
-  private readonly fifoKey: object = Object.create(null)
-
-  private folded: FoldedQueue = { tasksById: new Map(), notificationsById: new Map(), lastSeq: 0 }
-  private nextSeq = 1
-  private serviceState: ServiceState = 'running'
-  private faultReason: string | undefined
-  private disposed = false
-
-  readonly maxConcurrent: number
-  readonly maxConcurrentPerExecutor: number
-  readonly intervalMs: number
-  /** Extra time beyond `timeoutMs` before a stalled `stopping` task is force-reclaimed. */
-  readonly stoppingGraceMs: number
-
-  constructor(ctx: Context, config: ResolvedConfig) {
+  /** @param ctx - Cordis context. @param config - isolated v2 root. */
+  constructor(ctx: Context, config: Config) {
     super(ctx)
-    this.maxConcurrent = config.maxConcurrent
-    this.maxConcurrentPerExecutor = config.maxConcurrentPerExecutor
-    this.intervalMs = config.intervalMs
-    this.stoppingGraceMs = config.stoppingGraceMs
+    this.store = new WorkQueueStore(config.queueRoot)
+    this.maxConcurrent = config.maxConcurrent ?? 8
+    this.resourceCapacity = Object.freeze({ ...config.resourceCapacity })
+    this.shutdownTimeoutMs = config.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS
+    this.ready = this.initialize()
+    const shutdown = () => this.shutdown()
+    this.ctx.effect(function* () { yield shutdown }, 'task-queue-v2 ownership')
+  }
 
-    this.store = new TaskQueueStore(config.queueRoot)
-    this.enabledExecutors = new Set(
-      Object.entries(config.executors ?? {})
-        .filter(([, cfg]) => cfg.enabled === true)
-        .map(([name]) => name),
-    )
-    this.adapters = builtinAdapters({})
-    this.scheduler = new TaskScheduler(this)
-    this.bootPromise = this.boot()
+  /** Bind queue methods to an issued agent authority. */
+  forAgent(authority: VerifiedAgentAuthority): AgentWorkQueue {
+    assertVerifiedAgentAuthority(authority)
+    return {
+      enqueue: request => this.enqueue(authority, request),
+      enqueueBatch: request => this.enqueueBatch(authority, request),
+      list: () => this.listForAgent(authority),
+      get: id => this.viewForAgent(authority, id),
+      cancel: id => this.cancelForAgent(authority, id),
+      retry: id => this.retryForAgent(authority, id),
+      pendingNotifications: () => this.pendingNotifications(authority),
+      acknowledgeNotification: (id, messageId) => this.acknowledgeNotification(authority, id, messageId),
+    }
+  }
 
-    ctx.effect(() => {
-      void this.bootPromise.then(() => {
-        if (!this.disposed) this.scheduler.start()
-      })
-      return async () => {
-        // Close admission before stopping the scheduler so no new public
-        // mutation can enter while ownership is being handed off.
-        this.disposed = true
-        this.scheduler.stop()
-        for (const handle of this.liveHandles.values()) {
-          try { handle.terminate() } catch { /* best-effort teardown */ }
-        }
+  /** Bind queue methods to an issued operator authority. */
+  forOperator(authority: VerifiedOperatorAuthority): OperatorWorkQueue {
+    assertVerifiedOperatorAuthority(authority)
+    return {
+      list: () => this.listAll(),
+      get: id => this.view(id),
+      cancel: id => this.cancel(id),
+      retry: id => this.retry(id),
+      pause: () => { this.paused = true },
+      resume: () => { this.paused = false; void this.pump() },
+      resolveUnknown: (id, resolution) => this.resolveUnknown(id, resolution),
+      pendingAttentions: () => this.pendingAttentions(),
+    }
+  }
 
-        // boot() itself may still be acquiring ownership/replaying/reclaiming.
-        // Cordis awaits async disposers, so keep the lock until every possible
-        // old-owner write (boot, scheduler execution, or queued FIFO mutation)
-        // has reached quiescence.
-        await this.bootPromise
-        await this.scheduler.drain()
-        await waitForMutationDrain(this.fifoKey)
-        this.liveHandles.clear()
+  /** Register one handler and return its exact disposer. */
+  registerHandler<K extends WorkKind>(handler: WorkHandler<K>): () => void {
+    if (this.handlers.has(handler.kind)) {
+      throw new Error(`task queue handler already registered for ${String(handler.kind)}`)
+    }
+    this.handlers.set(handler.kind, handler)
+    void this.pump()
+    return () => { if (this.handlers.get(handler.kind) === handler) this.handlers.delete(handler.kind) }
+  }
 
-        const ownership = this.ownership
-        this.ownership = undefined
-        await ownership?.release()
+  /** Return stable registered kinds. */
+  listKinds(): readonly WorkKind[] { return Object.freeze([...this.handlers.keys()].sort()) }
+
+  private async enqueue<K extends WorkKind>(authority: VerifiedAgentAuthority, request: EnqueueRequest<K>): Promise<WorkId> {
+    this.assertAccepting()
+    const intentDigest = digestIntent(request.input)
+    return this.admitOnce(authority, request.idempotencyKey, intentDigest, () => this.admitSingle(authority, request, intentDigest))
+  }
+
+  private async admitSingle<K extends WorkKind>(
+    authority: VerifiedAgentAuthority,
+    request: EnqueueRequest<K>,
+    intentDigest: string,
+  ): Promise<WorkId> {
+    await this.ready
+    const handler = this.requireHandler(request.kind)
+    const owner = { type: 'agent' as const, sessionId: authority.sessionId }
+    const prior = lookupReceipt(this.store.current(), owner, 'agent', request.idempotencyKey, intentDigest)
+    if (prior !== null) return firstWorkId(prior)
+    const resolved = await handler.resolveAdmission(request.input, { signal: new AbortController().signal })
+    const resources = this.resolveClaims(handler, resolved)
+    const policy = this.resolvePolicy(handler, resolved)
+    return this.store.transaction(async () => {
+      this.assertAccepting()
+      const committed = lookupReceipt(this.store.current(), owner, 'agent', request.idempotencyKey, intentDigest)
+      if (committed !== null) return firstWorkId(committed)
+      const now = new Date().toISOString()
+      const id = WorkId(randomUUID())
+      const work: WorkItem = {
+        id, kind: request.kind, title: request.title, intent: request.input, intentDigest, resolved,
+        policy, resources, tags: request.tags ?? [], batchId: null,
+        ownerSessionId: authority.sessionId, createdAt: now,
       }
-    }, 'task-queue.lifecycle()')
-  }
-
-  /* ------------------------------------------------------------ FIFO/mutate -- */
-
-  mutate<T>(fn: () => Promise<T>): Promise<T> {
-    return runMutationTransaction(this.fifoKey, fn)
-  }
-
-  /* ----------------------------------------------------------------- boot -- */
-
-  private async boot(): Promise<void> {
-    try {
-      // Single-writer ownership first: a second host on the same queue root
-      // must fail before it can recover/reclaim the first host's live tasks.
-      this.ownership = await acquireQueueOwnership(this.store.paths.root)
-      const recovered = await this.store.recover()
-      this.folded = recovered.folded
-      this.nextSeq = recovered.nextSeq
-      // Crash reclaim runs ONCE at boot: live starting/running/stopping tasks
-      // are leftovers of the previous host process (no live handle exists for
-      // them). Never reclaim during normal ticks — a spawned task would be
-      // reverted every second (§4.3).
-      await this.reclaimCrashed()
-    } catch (error) {
-      this.enterFaulted(String(error))
-    }
-  }
-
-  /** Recover starting/running/stopping tasks left by a previous host process. */
-  private async reclaimCrashed(): Promise<void> {
-    for (const task of this.folded.tasksById.values()) {
-      if (task.status === 'starting' || task.status === 'running' || task.status === 'stopping') {
-        const { task: recovered, orphan } = recoverTaskAfterCrash(task, new Date().toISOString())
-        if (orphan) {
-          this.ctx.emit('task-queue/orphan-unknown', { taskId: task.id, priorStatus: task.status })
-        }
-        await this.commit(changeFor(this.nextSeq, recovered))
-        this.stopping.delete(task.id)
-      }
-    }
-  }
-
-  /* --------------------------------------------------------------- helpers -- */
-
-  private enterFaulted(reason: string): void {
-    if (this.serviceState === 'faulted') return
-    this.serviceState = 'faulted'
-    this.faultReason = reason
-    this.ctx.emit('task-queue/faulted', { reason })
-  }
-
-  private assertAdmitting(): void {
-    if (this.disposed) {
-      throw new Error('task queue is shutting down')
-    }
-    if (this.serviceState === 'faulted') {
-      throw new FaultedError(this.faultReason ?? 'task queue is faulted')
-    }
-    if (this.serviceState === 'paused') {
-      throw new Error('task queue is paused')
-    }
-  }
-
-  private receiptExists(source: Task['source'], receiptId: string): Task | undefined {
-    for (const task of this.folded.tasksById.values()) {
-      if (task.source === source && task.receiptId === receiptId) return task
-    }
-    return undefined
-  }
-
-  private assertExecutorEnabled(executor: string): void {
-    if (!this.enabledExecutors.has(executor)) {
-      throw new Error(`executor "${executor}" is not enabled`)
-    }
-  }
-
-  /* ------------------------------------------------------------ durable fold -- */
-
-  /** Append + fsync one change, then fold it into memory (§4.1/§4.2). */
-  private async commit(change: ChangeRecord): Promise<void> {
-    try {
-      await this.store.appendActive(change)
-      this.nextSeq = change.seq + 1
-      applyChange(this.folded, change)
-    } catch (error) {
-      await this.resolveFault(change, error)
-      throw error
-    }
-  }
-
-  /**
-   * §4.2 faulted protocol: after an append/fsync failure, re-read the durable
-   * log and decide whether the change committed. Committed → reconcile and
-   * clear fault; uncommitted/undecidable → stay faulted (no auto resume).
-   */
-  private async resolveFault(change: ChangeRecord, original: unknown): Promise<void> {
-    this.enterFaulted(String(original))
-    try {
-      const recovered = await this.store.recover()
-      const seqConsistent = recovered.nextSeq - 1 >= change.seq
-      const committed = change.op === 'notification-acknowledged'
-        ? recovered.folded.notificationsById.get(change.notificationId)?.status === 'acknowledged'
-        : recovered.folded.tasksById.get(change.taskId) !== undefined
-      if (committed && seqConsistent) {
-        this.folded = recovered.folded
-        this.nextSeq = recovered.nextSeq
-        this.serviceState = 'running'
-        this.faultReason = undefined
-      }
-      // else: stay faulted (uncommitted still throws the original error; undecidable stays faulted).
-    } catch {
-      // undecidable: stay faulted.
-    }
-  }
-
-  private canAccessTask(access: TaskQueueAccess, task: Task): boolean {
-    return access.kind === 'host' || task.ownerSessionId === access.ownerSessionId
-  }
-
-  private requireAccessibleTask(access: TaskQueueAccess, id: TaskId): Task {
-    const task = this.folded.tasksById.get(id)
-    if (task === undefined || !this.canAccessTask(access, task)) {
-      throw new Error(`unknown task ${id}`)
-    }
-    return task
-  }
-
-  /* -------------------------------------------------------------- ingress -- */
-
-  async enqueueFromTool(access: TaskQueueAccess, spec: EnqueueSpec): Promise<TaskId> {
-    await this.bootPromise
-    assertTaskQueueAccess(access)
-    this.assertAdmitting()
-    if (spec.executor === 'shell') throw new Error('shell executor is not allowed from tools')
-    this.assertExecutorEnabled(spec.executor)
-    const admittedSpec: EnqueueSpec = access.kind === 'agent'
-      ? { ...spec, ownerSessionId: access.ownerSessionId }
-      : spec
-    const receiptId = spec.idempotencyKey !== undefined
-      ? access.kind === 'agent'
-        ? `tool:agent:${access.ownerSessionId.length}:${access.ownerSessionId}:key:${spec.idempotencyKey}`
-        : `tool:host:key:${spec.idempotencyKey}`
-      : `tool:auto:${randomUUID()}`
-    const existing = this.receiptExists('tool', receiptId)
-    if (existing !== undefined) return existing.id
-
-    return this.mutate(async () => {
-      const again = this.receiptExists('tool', receiptId)
-      if (again !== undefined) return again.id
-      const task = createTask(TaskId(`tq-${randomUUID()}`), admittedSpec, 'tool', receiptId, new Date().toISOString())
-      const change = createdChange(this.nextSeq, task)
-      await this.commit(change)
-      this.ctx.emit('task-queue/created', { taskId: task.id })
-      return task.id
-    })
-  }
-
-  async enqueueBatchFromTool(access: TaskQueueAccess, specs: readonly EnqueueSpec[]): Promise<TaskId[]> {
-    assertTaskQueueAccess(access)
-    if (specs.length > MAX_BATCH_SIZE) {
-      throw new Error(`batch size ${specs.length} exceeds ${MAX_BATCH_SIZE}`)
-    }
-    const ids: TaskId[] = []
-    for (const spec of specs) ids.push(await this.enqueueFromTool(access, spec))
-    return ids
-  }
-
-  /* ---------------------------------------------------------------- reads -- */
-
-  list(access: TaskQueueAccess, filter?: ListFilter): TaskSummary[] {
-    assertTaskQueueAccess(access)
-    let tasks = [...this.folded.tasksById.values()].filter(task => this.canAccessTask(access, task))
-    if (filter?.status !== undefined) tasks = tasks.filter(t => t.status === filter.status)
-    if (filter?.executor !== undefined) tasks = tasks.filter(t => t.executor === filter.executor)
-    if (filter?.tags !== undefined && filter.tags.length > 0) {
-      const wanted = filter.tags
-      tasks = tasks.filter(t => wanted.some(tag => t.tags.includes(tag)))
-    }
-    if (filter?.limit !== undefined && filter.limit > 0) tasks = tasks.slice(0, filter.limit)
-    return tasks.map(taskToSummary)
-  }
-
-  get(access: TaskQueueAccess, id: TaskId): Task {
-    assertTaskQueueAccess(access)
-    return this.requireAccessibleTask(access, id)
-  }
-
-  /* -------------------------------------------------------------- control -- */
-
-  async cancel(access: TaskQueueAccess, id: TaskId): Promise<'canceled' | 'stopping'> {
-    await this.bootPromise
-    assertTaskQueueAccess(access)
-    this.assertAdmitting()
-    const outcome = await this.mutate(async () => {
-      const task = this.requireAccessibleTask(access, id)
-      if (isTerminalStatus(task.status)) return 'canceled' as const
-      if (task.status === 'pending') {
-        const canceled = cancelPending(task, 'canceled', new Date().toISOString())
-        await this.commit(changeFor(this.nextSeq, canceled))
-        this.ctx.emit('task-queue/canceled', { taskId: id })
-        return 'canceled' as const
-      }
-      const stopping = requestStop(task, 'cancel requested', new Date().toISOString())
-      this.stopping.add(id)
-      await this.commit(changeFor(this.nextSeq, stopping))
-      return 'stopping' as const
-    })
-    // The cancel intent is persisted; now actually stop the live process so it
-    // does not keep running (and keep occupying a concurrency slot) until it
-    // ends on its own. settle() then finalizes stopping→canceled once the
-    // terminated handle's `done` fires. Without this terminate() the subprocess
-    // would run to completion — e.g. still producing its output file — despite
-    // the user having canceled it.
-    if (outcome === 'stopping') {
-      const handle = this.liveHandles.get(id)
-      if (handle !== undefined) {
-        // terminate() is void, idempotent, and never throws (it only begins the
-        // SIGTERM→grace→SIGKILL escalation). The eventual stopping→canceled
-        // transition happens in settle() when the terminated handle's `done`
-        // fires; we do not await here — cancel returns 'stopping' immediately.
-        try { handle.terminate() } catch { /* best-effort */ }
-      }
-    }
-    return outcome
-  }
-
-  async retry(access: TaskQueueAccess, id: TaskId): Promise<TaskId> {
-    await this.bootPromise
-    assertTaskQueueAccess(access)
-    this.assertAdmitting()
-    return this.mutate(async () => {
-      const task = this.requireAccessibleTask(access, id)
-      const retried = retryTask(task, new Date().toISOString())
-      await this.commit(changeFor(this.nextSeq, retried))
-      this.ctx.emit('task-queue/requeued', { taskId: id, reason: 'manual retry' })
+      const change = this.change([
+        { type: 'work/admitted', work },
+        {
+          type: 'receipt/recorded',
+          receipt: {
+            owner, source: 'agent', key: request.idempotencyKey, intentDigest,
+            workIds: [id], batchId: null, createdAt: now,
+          },
+        },
+      ])
+      await this.store.append(change)
+      this.ctx.emit('task-queue/changed', { seq: change.seq, changeId: change.changeId })
+      void this.pump()
       return id
     })
   }
 
-  async dismiss(access: TaskQueueAccess, id: TaskId, dismissed: boolean): Promise<void> {
-    await this.bootPromise
-    assertTaskQueueAccess(access)
-    this.assertAdmitting()
-    await this.mutate(async () => {
-      const task = this.requireAccessibleTask(access, id)
-      // Idempotent short-circuit: same value → no change record, no event, no updatedAt.
-      if (task.dismissed === dismissed) return
-      const updated = dismissTask(task, dismissed, new Date().toISOString())
-      await this.commit(dismissedChange(this.nextSeq, updated))
-      this.ctx.emit('task-queue/dismissed', { taskId: id, dismissed })
+  private async enqueueBatch<K extends WorkKind>(authority: VerifiedAgentAuthority, request: BatchRequest<K>): Promise<BatchId> {
+    this.assertAccepting()
+    const intentDigest = digestIntent({
+      kind: request.kind,
+      items: request.items,
+      sharedPayload: request.sharedPayload,
+      maxParallel: request.maxParallel,
     })
+    return this.admitOnce(authority, request.idempotencyKey, intentDigest, () => this.admitBatch(authority, request, intentDigest))
   }
 
-  stats(access: TaskQueueAccess): QueueStats {
-    assertTaskQueueAccess(access)
-    const byStatus: Record<TaskStatus, number> = {
-      pending: 0, starting: 0, running: 0, stopping: 0, succeeded: 0, failed: 0, canceled: 0,
+  private async admitBatch<K extends WorkKind>(
+    authority: VerifiedAgentAuthority,
+    request: BatchRequest<K>,
+    intentDigest: string,
+  ): Promise<BatchId> {
+    await this.ready
+    if (request.items.length === 0
+      || !Number.isSafeInteger(request.maxParallel)
+      || request.maxParallel < 1) {
+      throw new Error('task queue Batch requires items and positive maxParallel')
     }
-    const byExecutor: Record<string, number> = {}
-    let undismissedFailed = 0
-    let byDismissed = 0
-    for (const task of this.folded.tasksById.values()) {
-      if (!this.canAccessTask(access, task)) continue
-      byStatus[task.status] += 1
-      byExecutor[task.executor] = (byExecutor[task.executor] ?? 0) + 1
-      if (task.dismissed) byDismissed += 1
-      if (task.status === 'failed' && !task.dismissed) undismissedFailed += 1
+    const handler = this.requireHandler(request.kind)
+    const owner = { type: 'agent' as const, sessionId: authority.sessionId }
+    const prior = lookupReceipt(this.store.current(), owner, 'agent', request.idempotencyKey, intentDigest)
+    if (prior !== null) {
+      const priorWork = this.store.current().worksById.get(firstWorkId(prior))
+      if (priorWork?.batchId === null || priorWork?.batchId === undefined) {
+        throw new Error('task queue Batch receipt does not reference a Batch WorkItem')
+      }
+      return priorWork.batchId
     }
-    return {
-      serviceState: this.serviceState,
-      ...(this.faultReason !== undefined ? { fault: { reason: this.faultReason } } : {}),
-      byStatus,
-      byExecutor,
-      undismissedFailed,
-      byDismissed,
-    }
-  }
-
-  registerExecutor(name: string, adapter: ExecutorAdapter): () => void {
-    this.adapters.set(name, adapter)
-    return () => {
-      if (this.adapters.get(name) === adapter) this.adapters.delete(name)
-    }
-  }
-
-  listExecutors(): QueueExecutorView[] {
-    return [...this.adapters.keys()].sort().map(name => ({
-      name,
-      enabled: this.enabledExecutors.has(name),
-      // `shell` is the only inbox-only built-in: tools must never submit it.
-      toolAllowed: name !== 'shell',
+    const admitted = await Promise.all(request.items.map(async (item) => {
+      const resolved = await handler.resolveAdmission(item.input, { signal: new AbortController().signal })
+      return { item, resolved, resources: this.resolveClaims(handler, resolved), policy: this.resolvePolicy(handler, resolved) }
     }))
-  }
-
-  pause(access: TaskQueueHostAccess): void {
-    assertTaskQueueHostAccess(access)
-    if (this.serviceState === 'running') this.serviceState = 'paused'
-    else throw new Error(`cannot pause from ${this.serviceState}`)
-  }
-
-  resume(access: TaskQueueHostAccess): void {
-    assertTaskQueueHostAccess(access)
-    if (this.serviceState === 'paused') this.serviceState = 'running'
-    else if (this.serviceState === 'faulted') throw new Error('cannot resume a faulted queue')
-  }
-
-  async ackNotification(access: TaskQueueAccess, notificationId: NotificationId, messageId: string): Promise<void> {
-    await this.bootPromise
-    assertTaskQueueAccess(access)
-    this.assertAdmitting()
-    await this.mutate(async () => {
-      const existing = this.folded.notificationsById.get(notificationId)
-      if (existing === undefined
-        || (access.kind === 'agent' && existing.ownerSessionId !== access.ownerSessionId)) {
-        throw new Error(`unknown notification ${notificationId}`)
+    return this.store.transaction(async () => {
+      this.assertAccepting()
+      const committed = lookupReceipt(this.store.current(), owner, 'agent', request.idempotencyKey, intentDigest)
+      if (committed !== null) {
+        const priorWork = this.store.current().worksById.get(firstWorkId(committed))
+        if (priorWork?.batchId === null || priorWork?.batchId === undefined) throw new Error('task queue Batch receipt does not reference a Batch WorkItem')
+        return priorWork.batchId
       }
-      if (existing.status === 'acknowledged') return
-      if (existing.status !== 'pending' || existing.messageId !== messageId) {
-        throw new Error('notification CAS mismatch')
-      }
-      const acknowledged: NotificationRecord = {
-        ...existing, status: 'acknowledged', acknowledgedAt: new Date().toISOString(),
-      }
-      const change: ChangeRecord = {
-        seq: this.nextSeq, version: 1, op: 'notification-acknowledged',
-        notificationId, expectedStatus: 'pending', expectedMessageId: messageId,
-        state: acknowledged, at: new Date().toISOString(),
-      }
-      await this.commit(change)
+      const now = new Date().toISOString()
+      const batchId = BatchId(randomUUID())
+      const works = admitted.map(({ item, resolved, resources, policy }): WorkItem => ({
+        id: WorkId(randomUUID()), kind: request.kind, title: item.title, intent: item.input,
+        intentDigest: digestIntent(item.input), resolved, policy, resources, tags: item.tags ?? [],
+        batchId, ownerSessionId: authority.sessionId, createdAt: now,
+      }))
+      const events: ChangeSet['events'] = [
+        { type: 'batch/admitted', batch: { id: batchId, kind: request.kind, sharedPayload: request.sharedPayload, workIds: works.map(work => work.id), maxParallel: request.maxParallel, createdAt: now } },
+        ...works.map(work => ({ type: 'work/admitted' as const, work })),
+        { type: 'receipt/recorded', receipt: { owner, source: 'agent', key: request.idempotencyKey, intentDigest, workIds: works.map(work => work.id), batchId, createdAt: now } },
+      ]
+      const change = this.change(events)
+      await this.store.append(change)
+      this.ctx.emit('task-queue/changed', { seq: change.seq, changeId: change.changeId })
+      void this.pump()
+      return batchId
     })
   }
 
-  listNotifications(access: TaskQueueAccess): NotificationRecord[] {
-    assertTaskQueueAccess(access)
-    return [...this.folded.notificationsById.values()]
-      .filter(n => access.kind === 'host' || n.ownerSessionId === access.ownerSessionId)
-      .sort((a, b) => a.terminalSeq - b.terminalSeq)
+  private view(id: WorkId): WorkView {
+    const folded = this.store.current()
+    const work = folded.worksById.get(id)
+    const state = folded.statesByWorkId.get(id)
+    if (work === undefined || state === undefined) throw new Error(`unknown WorkItem ${id}`)
+    const attempts = [...folded.attemptsById.values()].filter(attempt => attempt.workId === id)
+    return Object.freeze({
+      work,
+      state,
+      attempts: Object.freeze(attempts),
+      result: state.resultId === null ? null : folded.resultsById.get(state.resultId) ?? null,
+    })
   }
 
-  /* ---------------------------------------------------------- SchedulerHost -- */
+  /** Read one WorkItem only when its durable owner matches the issued Agent authority. */
+  private viewForAgent(authority: VerifiedAgentAuthority, id: WorkId): WorkView {
+    const view = this.view(id)
+    if (view.work.ownerSessionId !== authority.sessionId) throw new Error(`WorkItem ${id} is not owned by this Agent session`)
+    return view
+  }
 
-  async housekeeping(): Promise<void> {
-    await this.reapStalledStopping()
-    for (const entry of await scanInbox(this.store.paths.root)) {
-      if (entry.kind === 'invalid-filename') continue
-      if (entry.kind === 'invalid-content') {
-        await quarantineInboxFile(this.store.paths.root, `${entry.receiptId}.json`)
-        continue
+  /** List only WorkItems whose durable owner matches the issued Agent authority. */
+  private listForAgent(authority: VerifiedAgentAuthority): readonly WorkView[] {
+    return Object.freeze(
+      [...this.store.current().worksById.values()]
+        .filter(work => work.ownerSessionId === authority.sessionId)
+        .map(work => this.view(work.id)),
+    )
+  }
+
+  /** List the complete durable projection for trusted operator surfaces. */
+  private listAll(): readonly WorkView[] {
+    return Object.freeze([...this.store.current().worksById.values()].map(work => this.view(work.id)))
+  }
+
+  private pendingNotifications(authority: VerifiedAgentAuthority): readonly import('@deepseek-ai/dsh-task-queue').Notification[] {
+    return Object.freeze([...this.store.current().notificationsById.values()]
+      .filter(value => value.ownerSessionId === authority.sessionId && value.status === 'pending')
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)))
+  }
+
+  private async acknowledgeNotification(authority: VerifiedAgentAuthority, id: NotificationId, messageId: string): Promise<void> {
+    const notification = this.store.current().notificationsById.get(id)
+    if (notification === undefined || notification.ownerSessionId !== authority.sessionId) throw new Error(`Notification ${id} is not owned by this Agent session`)
+    await this.commit([{ type: 'notification/acknowledged', notificationId: id, expectedMessageId: messageId, at: new Date().toISOString() }])
+  }
+
+  private pendingAttentions(): readonly import('@deepseek-ai/dsh-task-queue').Attention[] {
+    return Object.freeze([...this.store.current().attentionsById.values()]
+      .filter(value => value.status === 'pending')
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)))
+  }
+
+  /** Cancel a WorkItem after applying the Agent ownership fence. */
+  private async cancelForAgent(authority: VerifiedAgentAuthority, id: WorkId): Promise<void> {
+    this.viewForAgent(authority, id)
+    await this.cancel(id)
+  }
+
+  /** Retry a WorkItem after applying the Agent ownership fence. */
+  private async retryForAgent(authority: VerifiedAgentAuthority, id: WorkId): Promise<void> {
+    this.viewForAgent(authority, id)
+    await this.retry(id)
+  }
+
+  private async cancel(id: WorkId): Promise<void> {
+    await this.ready
+    const state = this.store.current().statesByWorkId.get(id)
+    if (state === undefined) throw new Error(`unknown WorkItem ${id}`)
+    if (state.status === 'succeeded' || state.status === 'failed' || state.status === 'canceled') throw new Error(`cannot cancel terminal WorkItem ${id}`)
+    const now = new Date().toISOString()
+    if (state.status === 'queued') {
+      const work = this.store.current().worksById.get(id)
+      const events: Array<ChangeSet['events'][number]> = [{ type: 'cancel/requested', workId: id, at: now }, { type: 'work/canceled', workId: id, at: now }]
+      if (work?.ownerSessionId !== null && work !== undefined) events.push(this.notification(id, null, null, work.ownerSessionId, now))
+      await this.commit(events)
+      return
+    }
+    await this.commit([{ type: 'cancel/requested', workId: id, at: now }])
+    const execution = state.activeAttemptId === null ? undefined : this.executing.get(state.activeAttemptId)
+    execution?.controller.abort('canceled by owner')
+    if (execution?.live !== null && execution?.live !== undefined) await execution.live.cancel('canceled by owner')
+  }
+
+  private async retry(id: WorkId): Promise<void> {
+    await this.ready
+    const state = this.store.current().statesByWorkId.get(id)
+    if (state?.status !== 'failed') throw new Error(`manual retry requires failed WorkItem ${id}`)
+    await this.commit([{ type: 'work/manual-retry-authorized', workId: id, at: new Date().toISOString() }])
+    void this.pump()
+  }
+
+  private async resolveUnknown(id: WorkId, resolution: UnknownResolution): Promise<void> {
+    await this.ready
+    const state = this.store.current().statesByWorkId.get(id)
+    if (state?.status !== 'unknown' || state.activeAttemptId === null) throw new Error(`unknown resolution requires active unknown WorkItem ${id}`)
+    const at = new Date().toISOString()
+    const attention = [...this.store.current().attentionsById.values()].find(value => value.workId === id && value.status === 'pending')
+    const work = this.store.current().worksById.get(id)
+    const events: Array<ChangeSet['events'][number]> = [{ type: 'unknown/resolved', attemptId: state.activeAttemptId, resolution, at }]
+    if (attention !== undefined) events.push({ type: 'attention/resolved', attentionId: attention.id, at })
+    if (resolution.kind === 'confirm-failed' && work?.ownerSessionId !== null && work !== undefined) {
+      events.push(this.notification(id, state.activeAttemptId, null, work.ownerSessionId, at))
+    }
+    await this.commit(events)
+    void this.pump()
+  }
+
+  private async pump(): Promise<void> {
+    if (this.pumping || this.dispatchIsPaused()) return
+    this.pumping = true
+    try {
+      await this.ready
+      while (this.executing.size < this.maxConcurrent) {
+        if (this.dispatchIsPaused()) break
+        const claimed = await this.claimNext()
+        if (claimed === null) break
+        const settled = this.execute(claimed).finally(() => {
+          this.executing.delete(claimed.attemptId)
+          void this.pump()
+        })
+        claimed.execution.settled = settled
+        void settled.catch(() => undefined)
       }
-      const existing = this.receiptExists('inbox', entry.receiptId)
-      if (existing !== undefined) {
-        await this.deleteInboxFile(entry.receiptId)
-        continue
-      }
-      if (this.serviceState !== 'running') continue
-      const task = createTask(TaskId(`tq-${randomUUID()}`), entry.spec, 'inbox', entry.receiptId, new Date().toISOString())
-      await this.commit(createdChange(this.nextSeq, task))
-      this.ctx.emit('task-queue/created', { taskId: task.id })
-      await this.deleteInboxFile(entry.receiptId)
+    } finally {
+      this.pumping = false
     }
   }
 
-  private async deleteInboxFile(receiptId: string): Promise<void> {
-    await unlink(join(this.store.paths.root, 'inbox', `${receiptId}.json`)).catch((error) => {
-      console.error(`task-queue: cannot delete inbox file ${receiptId}.json: ${String(error)}`)
+  private dispatchIsPaused(): boolean { return this.paused || this.closing }
+
+  private async claimNext(): Promise<{
+    readonly attemptId: AttemptId
+    readonly handler: WorkHandler<WorkKind>
+    readonly work: WorkItem
+    readonly execution: Execution
+  } | null> {
+    return this.store.transaction(async () => {
+      const candidate = [...this.store.current().worksById.values()].find((work) => {
+        const state = this.store.current().statesByWorkId.get(work.id)
+        const handler = this.handlers.get(work.kind)
+        return state?.status === 'queued' && handler !== undefined && this.canClaim(work)
+      })
+      if (candidate === undefined) return null
+      const handler = this.requireHandler(candidate.kind)
+      const claims = candidate.resources
+      const attemptId = AttemptId(randomUUID())
+      const now = new Date().toISOString()
+      const state = this.store.current().statesByWorkId.get(candidate.id)
+      if (state?.status !== 'queued') throw new Error('task queue claim candidate is no longer queued')
+      await this.commitInTransaction([{
+        type: 'attempt/started',
+        attempt: {
+          id: attemptId, workId: candidate.id, ordinal: state.attemptCount + 1, startedAt: now,
+        },
+      }])
+      const execution: Execution = { workId: candidate.id, claims, controller: new AbortController(), live: null, settled: null }
+      this.executing.set(attemptId, execution)
+      return { attemptId, handler, work: candidate, execution }
     })
   }
 
-  /**
-   * Watchdog for `stopping` tasks whose settle callback was lost (e.g. the
-   * subprocess exited without firing `done`, or the callback raced away).
-   * Normally cancel → terminate → settle turns `stopping` into `canceled` in
-   * seconds. If that never happens, force-reclaim after `timeoutMs` plus a
-   * grace period so the queue self-heals without a host restart.
-   */
-  private async reapStalledStopping(): Promise<void> {
-    const now = Date.now()
-    const stalled = [...this.folded.tasksById.values()].filter((task) => {
-      if (task.status !== 'stopping') return false
-      const startedAt = Date.parse(task.updatedAt)
-      if (Number.isNaN(startedAt)) return false
-      return now - startedAt > task.timeoutMs + this.stoppingGraceMs
-    })
-    for (const task of stalled) {
-      // One last best-effort terminate in case the handle is still around.
-      const handle = this.liveHandles.get(task.id)
-      if (handle !== undefined) {
-        try { handle.terminate() } catch { /* best-effort */ }
-      }
-      // Reuse crash recovery: it marks the last run terminationUnverified and
-      // finalizes stopping -> canceled, exactly what a lost settle needs.
-      const { task: recovered } = recoverTaskAfterCrash(task, new Date().toISOString())
-      await this.commitTerminal(recovered)
-      this.ctx.emit('task-queue/canceled', { taskId: task.id })
-      this.stopping.delete(task.id)
-    }
-  }
-
-  eligibleTasks(): Task[] {
-    const now = Date.now()
-    return [...this.folded.tasksById.values()]
-      .filter(t => t.status === 'pending' && t.attempt < t.maxAttempts && !this.stopping.has(t.id))
-      .filter(t => this.adapters.has(t.executor))
-      .filter(t => t.delayUntil === null || Date.parse(t.delayUntil) <= now)
-      .sort((a, b) => a.priority !== b.priority ? a.priority - b.priority
-        : a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0)
-  }
-
-  occupiedSlots(): { global: number; byExecutor: Map<string, number> } {
-    const byExecutor = new Map<string, number>()
-    let global = 0
-    for (const task of this.folded.tasksById.values()) {
-      if (task.status === 'starting' || task.status === 'running') {
-        global += 1
-        byExecutor.set(task.executor, (byExecutor.get(task.executor) ?? 0) + 1)
-      } else if (task.status === 'stopping' && this.liveHandles.has(task.id)) {
-        global += 1
-      }
-    }
-    return { global, byExecutor }
-  }
-
-  async claim(task: Task): Promise<ClaimedAttempt | undefined> {
-    return this.mutate(async () => {
-      if (this.disposed) return undefined
-      const current = this.folded.tasksById.get(task.id)
-      if (current === undefined || current.status !== 'pending') return undefined
-      const attempt = current.attempt + 1
-      const plannedStartedAt = new Date().toISOString()
-      const logPath = runLogPath(this.store.paths.root, task.id, attempt)
-      const run: RunRecord = {
-        runId: RunId(randomUUID()),
-        attempt,
-        pid: null,
-        plannedStartedAt,
-        actualStartedAt: null,
-        logPath,
-        commandFingerprint: null,
-      }
-      const starting = claimTask(current, run.runId, plannedStartedAt, logPath, '')
-      await this.commit(changeFor(this.nextSeq, starting))
-      this.ctx.emit('task-queue/starting', { taskId: task.id, attempt })
-      return { task: starting, run }
-    })
-  }
-
-  async prepare(task: Task, run: RunRecord, signal: AbortSignal): Promise<SubprocessSpawnSpec> {
-    const adapter = this.adapters.get(task.executor)
-    if (adapter === undefined) {
-      throw new Error(`unknown executor "${task.executor}"`)
-    }
-    const spec = await adapter.prepare(task, run, signal)
-    // Stamp the resolved argv fingerprint onto the run record for diagnostics.
-    void commandFingerprint(spec.argv)
-    return spec
-  }
-
-  async spawnAndMark(task: Task, run: RunRecord, spec: SubprocessSpawnSpec): Promise<SubprocessHandle | undefined> {
-    void run // diagnostic correlation lives in the committed run record
-    return this.mutate(async () => {
-      const current = this.folded.tasksById.get(task.id)
-      if (this.disposed || current === undefined || current.status !== 'starting' || this.stopping.has(task.id)) {
-        return undefined
-      }
-      let handle: SubprocessHandle
-      try {
-        handle = this.ctx.subprocess.spawn(spec)
-      } catch (error) {
-        const reason = (error as NodeJS.ErrnoException)?.code === 'ENOENT'
-          ? `executable not found: ${String(spec.argv[0])}`
-          : `spawn failed: ${String(error)}`
-        await this.settleFailure(current, true, reason)
-        return undefined
-      }
-      this.liveHandles.set(task.id, handle)
-      const running = markRunning(current, handle.pid, new Date().toISOString())
-      await this.commit(changeFor(this.nextSeq, running))
-      this.ctx.emit('task-queue/running', { taskId: task.id })
-      void handle.done.then(() => { this.liveHandles.delete(task.id) }, () => { this.liveHandles.delete(task.id) })
-      return handle
-    })
-  }
-
-  async settle(task: Task, outcome: SubprocessOutcome, handle: SubprocessHandle): Promise<void> {
-    const stdout = handle.collected.stdout?.readFrom(0).text ?? ''
-    const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
-    const logPath = task.runs[task.runs.length - 1]?.logPath ?? undefined
-    await this.writeRunLog(task.id, task.attempt, renderRunLog(stdout, stderr))
-    await this.mutate(async () => {
-      const current = this.folded.tasksById.get(task.id)
-      if (current === undefined) return
-      if (current.status === 'stopping') {
-        // Canceled while running: the process has now ended, so finalize as
-        // canceled. Without this, `settle` would early-return on the
-        // `status !== 'running'` guard below and the task would stick in
-        // `stopping` forever (the cancel intent was persisted but never
-        // settled). The outcome's exit code/signal is irrelevant here — a
-        // cancel is a cancel regardless of how the terminated process exited.
-        const canceled = settleCanceled(current, new Date().toISOString())
-        await this.commitTerminal(canceled)
-        this.ctx.emit('task-queue/canceled', { taskId: task.id })
-        this.stopping.delete(task.id)
+  private async execute(claimed: {
+    readonly attemptId: AttemptId
+    readonly handler: WorkHandler<WorkKind>
+    readonly work: WorkItem
+    readonly execution: Execution
+  }): Promise<void> {
+    const { attemptId, handler, work, execution } = claimed
+    try {
+      const prepared = await handler.prepare(work.resolved, { attemptId, signal: execution.controller.signal })
+      if (isAborted(execution.controller.signal)) {
+        await this.settleCanceled(work.id)
         return
       }
-      if (current.status !== 'running') return
-      if (outcome.exitCode === 0) {
-        const durationMs = attemptDurationMs(current, Date.now())
-        const tails = resultTails(stdout, stderr)
-        const files = await listOutputFiles(current.outputDir)
-        const adapter = this.adapters.get(current.executor)
-        const normalized = adapter?.normalize?.(current, stdout, stderr)
-        const summary = normalized?.summary ?? defaultSummary(durationMs, tails, files)
-        const result: TaskResult = {
-          summary,
-          ...(normalized?.assistantText !== undefined ? { assistantText: normalized.assistantText } : {}),
-          exitCode: 0,
-          signal: null,
-          durationMs,
-          ...(logPath !== undefined ? { logPath } : {}),
-          ...tails,
-          ...files,
-        }
-        const succeeded = settleSucceeded(current, result, new Date().toISOString())
-        await this.commitTerminal(succeeded)
-        this.ctx.emit('task-queue/succeeded', { taskId: task.id })
+      let live: LiveAttempt<WorkKind>
+      try {
+        live = handler.start(prepared, { attemptId, signal: execution.controller.signal })
+      } catch (error) {
+        await this.settleFailure(attemptId, failure('start-threw', error, 'unknown', false))
+        return
+      }
+      execution.live = live
+      try {
+        await this.commit([{ type: 'attempt/running', attemptId, at: new Date().toISOString() }])
+      } catch (error) {
+        await this.settleUnknown(attemptId, failure('post-start-durability', error, 'unknown', false))
+        return
+      }
+      const outcome = await live.done
+      if (outcome.status === 'succeeded') {
+        await this.settleSuccess(attemptId, outcome.output)
+      } else if (outcome.status === 'failed') {
+        if (isAborted(execution.controller.signal)) await this.settleCanceled(work.id)
+        else await this.settleFailure(attemptId, outcome.failure)
+      } else if (outcome.status === 'unknown') {
+        await this.settleUnknown(attemptId, outcome.failure)
       } else {
-        const base = outcome.signal !== null ? `terminated by ${outcome.signal}` : `exit code ${String(outcome.exitCode)}`
-        const stderrTail = tailText(stderr, LAST_ERROR_TAIL_BYTES)
-        const reason = stderrTail === '' ? base : `${base}\n${stderrTail}`
-        await this.settleFailure(current, false, reason)
+        await this.settleCanceled(work.id)
+      }
+    } catch (error) {
+      if (isAborted(execution.controller.signal)) await this.settleCanceled(work.id)
+      else await this.settleFailure(attemptId, failure('prepare-threw', error, 'not-started', true))
+    }
+  }
+
+  private async settleFailure(attemptId: AttemptId, value: WorkFailure): Promise<void> {
+    await this.store.transaction(async () => {
+      const attempt = this.store.current().attemptsById.get(attemptId)
+      const state = this.store.current().statesByWorkId.get(attempt?.workId ?? WorkId(''))
+      const work = attempt === undefined ? undefined : this.store.current().worksById.get(attempt.workId)
+      if ((state?.status === 'starting' || state?.status === 'running') && work !== undefined) {
+        const now = new Date().toISOString()
+        const events: Array<ChangeSet['events'][number]> = [{ type: 'attempt/failed', attemptId, failure: value, at: now }]
+        if (canAutoRetry(value) && state.attemptCount < work.policy.maxAttempts) {
+          events.push({ type: 'work/auto-retry-authorized', workId: work.id, at: now })
+        } else if (work.ownerSessionId !== null) {
+          events.push(this.notification(work.id, attemptId, null, work.ownerSessionId, now))
+        }
+        await this.commitInTransaction(events)
       }
     })
   }
 
-  async settleFailure(task: Task, noRetry: boolean, reason: string): Promise<void> {
-    const current = this.folded.tasksById.get(task.id)
-    if (current === undefined) return
-    if (this.stopping.has(task.id)) {
-      // A cancel intent already moved it to stopping; finalize as canceled.
-      const canceled = settleCanceled(current, new Date().toISOString())
-      await this.commitTerminal(canceled)
-      this.ctx.emit('task-queue/canceled', { taskId: task.id })
-      this.stopping.delete(task.id)
-      return
-    }
-    if (noRetry || current.attempt >= current.maxAttempts) {
-      const failed = settleFailed(current, reason, new Date().toISOString())
-      await this.commitTerminal(failed)
-      this.ctx.emit('task-queue/failed', { taskId: task.id, reason })
-    } else {
-      const backoff = current.backoffMs * Math.pow(2, current.attempt - 1)
-      const delayUntil = new Date(Date.now() + backoff).toISOString()
-      const requeued: Task = {
-        ...current, status: 'pending', lastError: reason, delayUntil, updatedAt: new Date().toISOString(),
+  private async settleSuccess(attemptId: AttemptId, output: unknown): Promise<void> {
+    await this.store.transaction(async () => {
+      const attempt = this.store.current().attemptsById.get(attemptId)
+      const state = this.store.current().statesByWorkId.get(attempt?.workId ?? WorkId(''))
+      const work = attempt === undefined ? undefined : this.store.current().worksById.get(attempt.workId)
+      if (attempt === undefined || work === undefined || state?.status !== 'running') return
+      const now = new Date().toISOString()
+      if (state.cancelRequestedAt !== null) {
+        const events: Array<ChangeSet['events'][number]> = [{ type: 'work/canceled', workId: work.id, at: now }]
+        if (work.ownerSessionId !== null) events.push(this.notification(work.id, attemptId, null, work.ownerSessionId, now))
+        await this.commitInTransaction(events)
+        return
       }
-      await this.commit(changeFor(this.nextSeq, requeued))
-      this.ctx.emit('task-queue/requeued', { taskId: task.id, reason })
-    }
+      const resultId = ResultId(randomUUID())
+      const events: Array<ChangeSet['events'][number]> = [{
+        type: 'attempt/succeeded', attemptId,
+        result: { id: resultId, workId: work.id, attemptId, kind: work.kind, output: output, createdAt: now }, at: now,
+      }]
+      if (work.ownerSessionId !== null) events.push(this.notification(work.id, attemptId, resultId, work.ownerSessionId, now))
+      await this.commitInTransaction(events)
+    })
   }
 
-  /**
-   * Commit a terminal transition; if the task has an owner, atomically create
-   * a durable `NotificationRecord` in the same change (§7.4).
-   */
-  private async commitTerminal(task: Task): Promise<void> {
-    const notification = task.ownerSessionId === null
-      ? undefined
-      : this.buildNotification(task, task.ownerSessionId)
-    const change = changeFor(this.nextSeq, task)
-    if (notification !== undefined) change.notification = notification
-    await this.commit(change)
-  }
-
-  private buildNotification(task: Task, ownerSessionId: string): NotificationRecord {
-    const lastRun = task.runs[task.runs.length - 1]
+  private notification(workId: WorkId, attemptId: AttemptId | null, resultId: ResultId | null, ownerSessionId: string, at: string): ChangeSet['events'][number] {
+    const id = NotificationId(randomUUID())
     return {
-      notificationId: NotificationId(randomUUID()),
-      taskId: task.id,
-      runId: lastRun?.runId ?? RunId(''),
-      attempt: task.attempt,
-      terminalSeq: this.nextSeq,
-      ownerSessionId,
-      messageId: randomUUID(),
-      status: 'pending',
-      acknowledgedAt: null,
+      type: 'notification/created',
+      notification: {
+        id, workId, terminalSeq: this.store.current().lastSeq + 1,
+        attemptId, resultId, ownerSessionId, messageId: `task-queue-notification:${id}`,
+        status: 'pending', createdAt: at, acknowledgedAt: null,
+      },
     }
   }
 
-  async writeRunLog(taskId: string, attempt: number, body: string): Promise<void> {
-    const path = runLogPath(this.store.paths.root, taskId, attempt)
-    await mkdir(dirname(path), { recursive: true, mode: DIR_MODE }).catch((error) => {
-      // Best-effort by contract, but never silent: surface the failure on stderr
-      // so the host log can explain a missing run log.
-      console.error(`task-queue: cannot create run-log dir for ${path}: ${String(error)}`)
-    })
-    await writeFile(path, body, { mode: FILE_MODE }).catch((error) => {
-      console.error(`task-queue: cannot write run log ${path}: ${String(error)}`)
+  private async settleUnknown(attemptId: AttemptId, value: WorkFailure): Promise<void> {
+    await this.store.transaction(async () => {
+      const events = this.unknownEvents(attemptId, value, new Date().toISOString())
+      if (events.length > 0) await this.commitInTransaction(events)
     })
   }
 
-  halted(): boolean {
-    return this.disposed || this.serviceState === 'faulted' || this.serviceState === 'paused'
+  private async initialize(): Promise<void> {
+    await this.store.open()
+    await this.recoverOrphanedAttempts()
   }
 
-  private drained = true
+  private async recoverOrphanedAttempts(): Promise<void> {
+    await this.store.transaction(async () => {
+      const at = new Date().toISOString()
+      const events: Array<ChangeSet['events'][number]> = []
+      for (const attempt of this.store.current().attemptsById.values()) {
+        if (attempt.status === 'starting' || attempt.status === 'running') {
+          events.push(...this.unknownEvents(attempt.id, {
+            category: 'host-restart', sideEffect: 'unknown', retriable: false,
+            message: 'Queue host restarted before this attempt reached a durable terminal state',
+          }, at))
+        }
+      }
+      if (events.length > 0) await this.commitInTransaction(events)
+    })
+  }
 
-  /** Emit `task-queue/drained` exactly once per drained transition (§7.2). */
-  notifyDrain(): void {
-    const live = [...this.folded.tasksById.values()]
-      .some(t => t.status === 'starting' || t.status === 'running' || t.status === 'stopping')
-    if (live) {
-      this.drained = false
+  private unknownEvents(attemptId: AttemptId, value: WorkFailure, at: string): readonly ChangeSet['events'][number][] {
+    const attempt = this.store.current().attemptsById.get(attemptId)
+    const state = attempt === undefined ? undefined : this.store.current().statesByWorkId.get(attempt.workId)
+    if (attempt === undefined || state === undefined || (state.status !== 'starting' && state.status !== 'running')) return []
+    return [
+      { type: 'attempt/unknown', attemptId, failure: value, at },
+      {
+        type: 'attention/created',
+        attention: {
+          id: AttentionId(randomUUID()), workId: attempt.workId, kind: 'unknown',
+          status: 'pending', createdAt: at, resolvedAt: null,
+        },
+      },
+    ]
+  }
+
+  private shutdown(): Promise<void> {
+    if (this.shutdownPromise !== undefined) return this.shutdownPromise
+    this.closing = true
+    this.shutdownPromise = this.shutdownActiveExecutions()
+    return this.shutdownPromise
+  }
+
+  private async shutdownActiveExecutions(): Promise<void> {
+    try {
+      await this.ready
+    } catch {
+      await this.store.close()
       return
     }
-    if (!this.drained) {
-      this.drained = true
-      this.ctx.emit('task-queue/drained', { pending: this.folded.tasksById.size })
+    await this.store.drain()
+    const executions = [...this.executing.entries()]
+    await this.store.transaction(async () => {
+      const at = new Date().toISOString()
+      const events: Array<ChangeSet['events'][number]> = []
+      for (const [, execution] of executions) {
+        const state = this.store.current().statesByWorkId.get(execution.workId)
+        if ((state?.status === 'starting' || state?.status === 'running') && state.cancelRequestedAt === null) {
+          events.push({ type: 'cancel/requested', workId: execution.workId, at })
+        }
+      }
+      if (events.length > 0) await this.commitInTransaction(events)
+    })
+    const cancelErrors = new Map<AttemptId, string>()
+    const cancelRequests = executions.map(([attemptId, execution]) => {
+      execution.controller.abort('task queue provider is shutting down')
+      if (execution.live === null) return Promise.resolve()
+      return Promise.resolve()
+        .then(() => execution.live?.cancel('task queue provider is shutting down'))
+        .catch((error: unknown) => {
+          cancelErrors.set(attemptId, error instanceof Error ? error.message : 'cancel threw a non-Error value')
+        })
+    })
+    await this.waitForShutdown(executions.map(([, execution]) => execution), cancelRequests)
+    await this.store.transaction(async () => {
+      const at = new Date().toISOString()
+      const events: Array<ChangeSet['events'][number]> = []
+      for (const [attemptId] of executions) {
+        const detail = cancelErrors.get(attemptId)
+        events.push(...this.unknownEvents(attemptId, {
+          category: 'shutdown', sideEffect: 'unknown', retriable: false,
+          message: detail === undefined
+            ? 'Queue host shutdown exceeded the execution settlement deadline'
+            : `Queue host shutdown could not cancel this execution: ${detail}`,
+        }, at))
+      }
+      if (events.length > 0) await this.commitInTransaction(events)
+    })
+    await this.store.drain()
+    await this.store.close()
+  }
+
+  private async waitForShutdown(executions: readonly Execution[], cancelRequests: readonly Promise<void>[]): Promise<void> {
+    if (executions.length === 0 && cancelRequests.length === 0) return
+    let timer: NodeJS.Timeout | undefined
+    try {
+      await Promise.race([
+        Promise.allSettled([
+          ...executions.map(execution => execution.settled ?? Promise.resolve()),
+          ...cancelRequests,
+        ]).then(() => undefined),
+        new Promise<void>((resolve) => { timer = setTimeout(resolve, this.shutdownTimeoutMs) }),
+      ])
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
     }
   }
-}
 
-/** Task-op change records (never the ack variant). */
-type TaskChange = Extract<ChangeRecord, { taskId: TaskId }>
+  private assertAccepting(): void {
+    if (this.closing) throw new Error('task queue provider is shutting down and no longer accepts admission')
+  }
 
-/** Map a task's status to the change op that must accompany it on the wire. */
-function opForStatus(status: TaskStatus): TaskChange['op'] {
-  switch (status) {
-    case 'pending': return 'requeued'
-    case 'starting': return 'starting'
-    case 'running': return 'running'
-    case 'stopping': return 'stopping'
-    case 'succeeded': return 'succeeded'
-    case 'failed': return 'failed'
-    case 'canceled': return 'canceled'
+  private async settleCanceled(workId: WorkId): Promise<void> {
+    await this.store.transaction(async () => {
+      const state = this.store.current().statesByWorkId.get(workId)
+      const work = this.store.current().worksById.get(workId)
+      if (state !== undefined
+        && work !== undefined
+        && state.activeAttemptId !== null
+        && state.cancelRequestedAt !== null
+        && (state.status === 'starting' || state.status === 'running')) {
+        const at = new Date().toISOString()
+        const events: Array<ChangeSet['events'][number]> = [{ type: 'work/canceled', workId, at }]
+        if (work.ownerSessionId !== null) events.push(this.notification(workId, state.activeAttemptId, null, work.ownerSessionId, at))
+        await this.commitInTransaction(events)
+      }
+    })
+  }
+
+  private canClaim(work: WorkItem): boolean {
+    if (work.batchId !== null) {
+      const batch = this.store.current().batchesById.get(work.batchId)
+      if (batch === undefined) throw new Error(`task queue WorkItem ${work.id} references an unknown Batch`)
+      const activeInBatch = [...this.executing.values()].filter(
+        execution => this.store.current().worksById.get(execution.workId)?.batchId === batch.id,
+      ).length
+      if (activeInBatch >= batch.maxParallel) return false
+    }
+    return work.resources.every((claim) => {
+      const used = [...this.executing.values()].reduce((sum, execution) => {
+        const matching = execution.claims.find(existing => existing.resource === claim.resource)
+        return sum + (matching?.units ?? 0)
+      }, 0)
+      return (this.resourceCapacity[claim.resource] ?? 0) >= claim.units + used
+    })
+  }
+
+  private assertClaims(claims: readonly ResourceClaim[]): void {
+    for (const claim of claims) {
+      const capacity = this.resourceCapacity[claim.resource]
+      if (!Number.isSafeInteger(claim.units)
+        || claim.units < 1
+        || capacity === undefined) {
+        throw new Error(`task queue resource ${claim.resource} has no declared positive capacity`)
+      }
+      if (claim.units > capacity) {
+        throw new Error(`task queue resource ${claim.resource} claim ${claim.units} exceeds declared capacity ${capacity}`)
+      }
+    }
+  }
+
+  private resolveClaims<K extends WorkKind>(handler: WorkHandler<K>, resolved: ResolvedWork<K>): readonly ResourceClaim[] {
+    const claims = Object.freeze(handler.resources(resolved).map(claim => Object.freeze({ ...claim })))
+    this.assertClaims(claims)
+    return claims
+  }
+
+  private resolvePolicy<K extends WorkKind>(handler: WorkHandler<K>, resolved: ResolvedWork<K>): WorkPolicy {
+    const policy = Object.freeze({ ...handler.policy(resolved) })
+    if (!Number.isSafeInteger(policy.maxAttempts) || policy.maxAttempts < 1) {
+      throw new Error('task queue WorkHandler returned invalid maxAttempts')
+    }
+    return policy
+  }
+
+  private admitOnce<T extends WorkId | BatchId>(
+    authority: VerifiedAgentAuthority,
+    key: string,
+    intentDigest: string,
+    admit: () => Promise<T>,
+  ): Promise<T> {
+    const pendingKey = `${authority.sessionId}:agent:${key}`
+    const existing = this.pendingAdmissions.get(pendingKey)
+    if (existing !== undefined) {
+      if (existing.intentDigest !== intentDigest) return Promise.reject(new Error(`idempotency conflict for key ${key}`))
+      return existing.result as Promise<T>
+    }
+    const result = Promise.resolve().then(admit)
+    this.pendingAdmissions.set(pendingKey, { intentDigest, result })
+    const clear = () => {
+      if (this.pendingAdmissions.get(pendingKey)?.result === result) this.pendingAdmissions.delete(pendingKey)
+    }
+    void result.then(clear, clear)
+    return result
+  }
+
+  private async commit(events: ChangeSet['events']): Promise<void> {
+    await this.store.transaction(() => this.commitInTransaction(events))
+  }
+
+  private async commitInTransaction(events: ChangeSet['events']): Promise<void> {
+    const change = this.change(events)
+    await this.store.append(change)
+    this.ctx.emit('task-queue/changed', { seq: change.seq, changeId: change.changeId })
+  }
+
+  private change(events: ChangeSet['events']): ChangeSet {
+    return { seq: this.store.current().lastSeq + 1, changeId: randomUUID(), at: new Date().toISOString(), events }
+  }
+
+  private requireHandler(kind: WorkKind): WorkHandler<WorkKind> {
+    const handler = this.handlers.get(kind)
+    if (handler === undefined) throw new Error(`task queue handler is not registered for ${String(kind)}`)
+    return handler
   }
 }
 
-/** Build a change record whose op matches the task's final status. */
-function changeFor(seq: number, state: Task): TaskChange {
-  return { seq, version: 1, op: opForStatus(state.status), taskId: state.id, state, at: new Date().toISOString() }
-}
-
-/** The `created` op is reserved for first admission, not generic mutations. */
-function createdChange(seq: number, state: Task): TaskChange {
-  return { seq, version: 1, op: 'created', taskId: state.id, state, at: new Date().toISOString() }
-}
-
-/** The `dismissed` op is the soft-conclude toggle; it carries the full task state but never a notification. */
-function dismissedChange(seq: number, state: Task): TaskChange {
-  return { seq, version: 1, op: 'dismissed', taskId: state.id, state, at: new Date().toISOString() }
-}
-
-/** Keep the last `maxBytes` UTF-8 bytes of `text` without splitting a code point. */
-function tailText(text: string, maxBytes: number): string {
-  if (text === '') return ''
-  if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text
-  const buffer = Buffer.from(text, 'utf8')
-  // Walk back over continuation bytes so the cut cannot land mid code point.
-  // `buffer[end]` is `number | undefined` under noUncheckedIndexedAccess; a
-  // continuation byte is `0b10xxxxxx`, and `0` (the fallback) is not one, so
-  // the loop stops correctly on an out-of-range read.
-  let end = maxBytes
-  while (end > 0 && ((buffer[end] ?? 0) & 0xc0) === 0x80) end -= 1
-  return buffer.subarray(0, end).toString('utf8')
-}
-
-/**
- * Default human-readable summary for a process executor whose adapter does not
- * provide a {@link ExecutorAdapter.normalize} method. The summary combines
- * duration, tail presence, and output file count into a one-liner the owner
- * Agent can consume without an extra `task_queue_status` round-trip.
- */
-function defaultSummary(
-  durationMs: number,
-  tails: Pick<TaskResult, 'stdoutTail' | 'stderrTail'>,
-  files: { outputFiles?: string[] },
-): string {
-  const parts: string[] = ['exit 0']
-  const sec = (durationMs / 1000).toFixed(1)
-  parts.push(`${sec}s`)
-  if (tails.stdoutTail !== undefined) parts.push('stdout captured')
-  if (tails.stderrTail !== undefined) parts.push('stderr captured')
-  if (files.outputFiles !== undefined && files.outputFiles.length > 0) {
-    parts.push(`${files.outputFiles.length} output file${files.outputFiles.length === 1 ? '' : 's'}`)
-  }
-  return parts.join(', ')
-}
-
-/** The bounded output tails of a succeeded attempt, omitting empty streams. */
-function resultTails(stdout: string, stderr: string): Pick<TaskResult, 'stdoutTail' | 'stderrTail'> {
-  const stdoutTail = tailText(stdout, RESULT_TAIL_BYTES)
-  const stderrTail = tailText(stderr, RESULT_TAIL_BYTES)
-  return {
-    ...(stdoutTail !== '' ? { stdoutTail } : {}),
-    ...(stderrTail !== '' ? { stderrTail } : {}),
-  }
-}
-
-/** Wall-clock span of the current attempt, from the persisted spawn timestamp. */
-function attemptDurationMs(task: Task, nowMs: number): number {
-  const startedAt = task.runs[task.runs.length - 1]?.actualStartedAt
-  if (startedAt === null || startedAt === undefined) return 0
-  const start = Date.parse(startedAt)
-  if (Number.isNaN(start)) return 0
-  return Math.max(0, nowMs - start)
-}
-
-/** Top-level artifact files of `outputDir`, relative to it; `undefined` when unreadable. */
-async function listOutputFiles(outputDir: string): Promise<{ outputFiles?: string[] }> {
-  if (outputDir === '') return {}
-  try {
-    const entries = await readdir(outputDir, { withFileTypes: true })
-    const files = entries.filter(entry => entry.isFile()).map(entry => entry.name).sort()
-    return files.length > 0 ? { outputFiles: files } : {}
-  } catch {
-    return {}
-  }
-}
-
-/** Project one task's durable state onto its summary view.
- * @param task - the full durable task state.
- * @returns the summary projection for list/status schemas. */
-export function taskToSummary(task: Task): TaskSummary {
-  // The seam's TaskSummary type is regenerated into lib by the host build; the
-  // projection intentionally carries lastError so list and status schemas stay
-  // in lockstep. The cast bridges pre-rebuild lib types while keeping the wire
-  // contract stable.
-  return {
-    id: task.id,
-    title: task.title,
-    executor: task.executor,
-    status: task.status,
-    priority: task.priority,
-    attempt: task.attempt,
-    maxAttempts: task.maxAttempts,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-    lastError: task.lastError,
-    tags: task.tags,
-    ownerSessionId: task.ownerSessionId,
-    dismissed: task.dismissed,
-  } as TaskSummary
-}
-
+export { WorkQueueStore } from './v2-store.ts'
 export default LocalTaskQueue

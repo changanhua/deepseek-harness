@@ -2,21 +2,22 @@
 
 English | [中文](README.zh.md)
 
-The human-facing `/queue` slash command over `ctx.taskQueue`: `list`, `stats`, `status`, `retry`, and `cancel` — rendered directly by the dispatching UI, with no model involvement. The backend is read optionally, so the command still registers without one and reports a load-guidance error on every execution instead of resolving a half-composed service.
+The human-facing `/queue` slash command over `ctx.taskQueue`: `list`, `stats`, `status`, `retry`, `cancel`, `pause`, and `resume`, rendered directly by the dispatching UI with no model involvement. The backend is read optionally, so the command still registers without one and reports that Queue v2 is not mounted instead of capturing a half-composed service.
 
 ## Commands
 
-- `/queue list [limit]` lists summary projections (id, status, attempt, executor, title, tags); `limit` must be a positive integer. Call it before enqueuing to avoid duplicate work.
-- `/queue stats` prints the service state (`running`/`paused`/`faulted`, with the fault reason), per-status counters, and per-executor counters.
-- `/queue status <id>` prints one task's full durable record (status/attempt/backoff/timeout/delay/tags/owner session/last error/result/run records).
-- `/queue retry <id>` sends a failed task back to `pending` (attempts reset) and returns the new task id.
-- `/queue cancel <id>` cancels a pending task, or persists a stop intent for a starting/running one (`canceled` / `stopping`).
+- `/queue list [limit]` lists Work id, status, attempt count and limit, WorkKind, and title; `limit` must be a positive integer.
+- `/queue stats` prints counts for queued, starting, running, unknown, succeeded, failed, and canceled WorkItems.
+- `/queue status <id>` prints the list summary plus creation/update timestamps and the current structured failure message when present.
+- `/queue retry <id>` authorizes another attempt for an existing failed WorkItem and preserves its durable identity and attempt history.
+- `/queue cancel <id>` cancels queued work atomically or records cancellation intent for starting/running work before requesting live cancellation.
+- `/queue pause` and `/queue resume` stop or restart dispatch; admission and operator inspection remain available while paused.
 
-A bare or unknown subcommand returns the usage text; a missing or invalid id returns an error; without a backend the command returns load guidance naming `@deepseek-ai/dsh-task-queue-local`.
+A bare or unknown subcommand returns the usage text; a missing or invalid id returns an error; without a backend every subcommand reports that Queue v2 is not mounted.
 
 ## Contract
 
-- Command name `queue`, registered globally (the same host-plane pattern as `command-feedback`/`command-goal`). Every Service call carries `TASK_QUEUE_HOST_ACCESS`, so the human operator can inspect and control owned and ownerless tasks across sessions.
+- Command name `queue`, registered globally (the same host-plane pattern as `command-feedback`/`command-goal`).
 - `recordInput` stays at its default `true`: command input is recorded in the `command/run` lifecycle event for audit.
 - This package registers no model surface; for the agent-facing toolkit use `@deepseek-ai/dsh-tool-task-queue`.
 
@@ -30,5 +31,5 @@ None; this package never assembles model input.
 
 ## Known Limitations and Deferred Work
 
-- **No backend, no operations** — without `@deepseek-ai/dsh-task-queue-local` mounted, every subcommand reports the load-guidance error.
-- The command only projects and controls; it never enqueues (enqueueing belongs to the model tools or the inbox admission path).
+- **No backend, no operations** — without a `ctx.taskQueue` Provider mounted, every subcommand reports that Queue v2 is unavailable.
+- The command exposes the trusted operator facade but does not admit WorkItems or resolve unknown outcomes; WorkKind Consumers own admission and Remote/UI own the restricted unknown-resolution flow.

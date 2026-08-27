@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "recordedAt": "2026-08-27T15:32:53.976Z",
+  "ownerSessionId": "operation-workspace-owner",
+  "workId": "19e86fde-b2ed-4306-8597-d9fcac1e65d1",
+  "processPid": 34948,
+  "processExitCode": 0,
+  "processExitedBeforeCanceledObservation": true,
+  "status": "canceled",
+  "resultIsNull": true,
+  "realSubprocess": true,
+  "canceledThroughQueueWorkspace": true,
+  "statusAfterRefresh": "canceled"
+}

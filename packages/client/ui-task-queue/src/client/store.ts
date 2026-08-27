@@ -1,296 +1,186 @@
-/**
- * The Queue workspace's client store: a framework-neutral snapshot/subscribe
- * surface over the panel Remote (`ctx.remote.taskQueue`). It owns the refresh
- * chain — full snapshot reads (stats + list), detail reads (get), and the
- * steering verbs (cancel/retry/pause/resume) — and re-reads after every
- * successful mutation, so the view never fabricates a state the host did not
- * confirm. The plugin polls the snapshot while mounted; the panel also
- * refreshes on open and offers a manual refresh.
- */
+/** Client mirror for the Queue v2 single-snapshot Remote. */
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  QueueCancelOutcomeView,
-  QueueStatsView,
-  QueueTaskSummaryView,
-  QueueTaskView,
+  QueueSnapshotView, QueueStatsView, QueueUnknownResolutionInput, QueueWorkSummaryView, QueueWorkView,
 } from '@deepseek-ai/dsh-task-queue-remote/views'
 
-/** Local mirror of the remote executor view; kept until lib types regenerate. */
-export interface QueueExecutorView {
-  name: string
-  enabled: boolean
-  toolAllowed: boolean
-  running: number
-}
-
-/** The narrow Remote face the store drives; test fakes satisfy exactly this. */
+/** The narrow Queue v2 Remote face driven by this store. */
 export interface QueueRemoteFace {
-  stats(): Promise<RemoteResult<QueueStatsView>>
-  list(filter: { status?: QueueTaskSummaryView['status']; limit?: number }): Promise<RemoteResult<QueueTaskSummaryView[]>>
-  executors(): Promise<RemoteResult<QueueExecutorView[]>>
-  get(id: string): Promise<RemoteResult<QueueTaskView>>
-  readRunLog(id: string, runId: string): Promise<RemoteResult<string>>
-  cancel(id: string): Promise<RemoteResult<QueueCancelOutcomeView>>
-  retry(id: string): Promise<RemoteResult<string>>
-  dismiss(id: string, dismissed?: boolean): Promise<RemoteResult<void>>
+  snapshot(input?: { detailId?: string }): Promise<RemoteResult<QueueSnapshotView>>
+  cancel(id: string): Promise<RemoteResult<void>>
+  retry(id: string): Promise<RemoteResult<void>>
+  resolveUnknown(id: string, resolution: QueueUnknownResolutionInput): Promise<RemoteResult<void>>
   pause(): Promise<RemoteResult<void>>
   resume(): Promise<RemoteResult<void>>
 }
-
-/** One store snapshot; the view subscribes through getSnapshot/subscribe. */
+/** Browser state derived from one Queue Remote snapshot. */
 export interface QueueSnapshot {
   stats: QueueStatsView | null
-  summaries: QueueTaskSummaryView[]
-  executors: QueueExecutorView[]
+  rows: QueueWorkSummaryView[]
   selectedId: string | null
-  detail: QueueTaskView | null
+  detail: QueueWorkView | null
   loading: boolean
   refreshing: boolean
   error: string | null
+  /** ISO timestamp of the most recent successful snapshot read; null before the first success. */
+  lastSuccessfulRefreshAt: string | null
 }
-
-/** A mutation's outcome for view feedback; the snapshot already refreshed on success. */
-export interface QueueActionResult {
-  ok: boolean
-  message: string
-}
-
+/** Result displayed after a Queue mutation. */
+export interface QueueActionResult { ok: boolean; message: string }
 const EMPTY: QueueSnapshot = {
-  stats: null,
-  summaries: [],
-  executors: [],
-  selectedId: null,
-  detail: null,
-  loading: false,
-  refreshing: false,
-  error: null,
+  stats: null, rows: [], selectedId: null, detail: null, loading: false, refreshing: false, error: null,
+  lastSuccessfulRefreshAt: null,
 }
+function value<T>(result: RemoteResult<T>): T { if (!result.ok) throw new Error(result.error.message); return result.value }
 
-/** Read the RemoteResult value or throw its wire error message. */
-function valueOf<T>(result: RemoteResult<T>): T {
-  if (!result.ok) throw new Error(result.error.message)
-  return result.value
-}
-
-/**
- * Queue panel store.
- */
+/** Store whose every refresh is exactly one host snapshot. */
 export class QueueStore {
   #snapshot: QueueSnapshot = EMPTY
   #listeners = new Set<() => void>()
   #disposed = false
-
+  #refreshTail: Promise<void> = Promise.resolve()
   constructor(private readonly remote: QueueRemoteFace) {}
-
-  /** Current snapshot for synchronous readers. */
+  /**
+   * Read the current browser projection.
+   * @returns Current immutable-by-convention browser snapshot.
+   */
   getSnapshot = (): QueueSnapshot => this.#snapshot
-
-  /** Subscribe to snapshot changes; returns the unsubscribe disposer. */
+  /**
+   * Subscribe to snapshot changes.
+   * @param listener Callback invoked after each update.
+   * @returns Subscription disposer.
+   */
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener)
     return () => { this.#listeners.delete(listener) }
   }
-
-  /** Drop listeners and reject further updates. */
-  dispose(): void {
-    this.#disposed = true
-    this.#listeners.clear()
-  }
-
+  /** Stop updates and release every listener. */
+  dispose(): void { this.#disposed = true; this.#listeners.clear() }
   #set(patch: Partial<QueueSnapshot>): void {
     if (this.#disposed) return
     this.#snapshot = { ...this.#snapshot, ...patch }
-    for (const listener of [...this.#listeners]) listener()
+    for (const listener of this.#listeners) listener()
   }
-
   /**
-   * Re-read the stats and summary rows in one refresh. A failure keeps the
-   * previous snapshot and surfaces the wire message; a missing backend reads
-   * as a load-guidance error rather than a blank panel.
+   * Replace browser state from one Remote snapshot.
+   * @returns Completion after the refresh settles.
    */
   async refresh(): Promise<void> {
     if (this.#disposed) return
-    this.#set({ refreshing: true, error: null })
-    try {
-      const [stats, list, executors] = await Promise.all([
-        this.remote.stats(),
-        this.remote.list({}),
-        this.remote.executors(),
-      ])
-      const detail = this.#snapshot.selectedId === null
-        ? null
-        : await this.remote.get(this.#snapshot.selectedId).then(valueOf).catch((error) => {
-          console.error(`task-queue: failed to load detail ${String(this.#snapshot.selectedId)}: ${String(error)}`)
-          return null
+    const read = async (): Promise<void> => {
+      this.#set({ refreshing: true, error: null })
+      try {
+        const input = this.#snapshot.selectedId === null ? {} : { detailId: this.#snapshot.selectedId }
+        const next = value(await this.remote.snapshot(input))
+        this.#set({
+          stats: next.stats,
+          rows: next.rows,
+          detail: next.detail,
+          loading: false,
+          refreshing: false,
+          lastSuccessfulRefreshAt: new Date().toISOString(),
         })
-      this.#set({
-        stats: valueOf(stats),
-        summaries: valueOf(list),
-        executors: valueOf(executors),
-        detail,
-        loading: false,
-        refreshing: false,
-        error: null,
-      })
-    } catch (error: unknown) {
-      this.#set({
-        refreshing: false,
-        error: error instanceof Error ? error.message : String(error),
-      })
+      } catch (error) {
+        this.#set({ refreshing: false, error: error instanceof Error ? error.message : 'Queue refresh failed' })
+      }
     }
+    const queued = this.#refreshTail.then(read, read)
+    this.#refreshTail = queued.then(() => undefined, () => undefined)
+    await queued
   }
-
-  /** Select one task and read its full durable state.
-   * @param id - the task id to select. */
+  /**
+   * Select one WorkItem and load its detail.
+   * @param id WorkItem identifier.
+   * @returns Completion after the detail refresh.
+   */
   async select(id: string): Promise<void> {
     if (this.#disposed) return
-    this.#set({ selectedId: id, loading: true, error: null })
+    this.#set({ selectedId: id, loading: true })
+    await this.refresh()
+  }
+  async #act(action: () => Promise<RemoteResult<void>>, message: string): Promise<QueueActionResult> {
     try {
-      this.#set({ detail: valueOf(await this.remote.get(id)), loading: false })
-    } catch (error: unknown) {
-      this.#set({
-        detail: null,
-        loading: false,
-        error: error instanceof Error ? error.message : String(error),
-      })
+      value(await action())
+      await this.refresh()
+      return { ok: true, message }
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : 'Queue action failed' }
     }
   }
-
-  /** Read one run's log from the host.
-   * @param id - the owning task id.
-   * @param runId - the run id to read.
-   * @returns the run log content, or a failure message. */
-  async readRunLog(id: string, runId: string): Promise<{ ok: true; content: string } | { ok: false; message: string }> {
-    try {
-      return { ok: true, content: valueOf(await this.remote.readRunLog(id, runId)) }
-    } catch (error: unknown) {
-      return { ok: false, message: error instanceof Error ? error.message : String(error) }
-    }
-  }
-
-  /** Cancel one task, then confirm the change from the host.
-   * @param id - the task id to cancel.
-   * @returns the action outcome. */
+  /**
+   * Cancel one WorkItem and refresh the projection.
+   * @param id WorkItem identifier.
+   * @returns Display result after cancellation and refresh.
+   */
   async cancel(id: string): Promise<QueueActionResult> {
-    try {
-      const outcome = valueOf(await this.remote.cancel(id))
-      await this.refresh()
-      return { ok: true, message: outcome === 'canceled' ? 'task canceled' : 'task stopping' }
-    } catch (error: unknown) {
-      return { ok: false, message: error instanceof Error ? error.message : String(error) }
-    }
+    return await this.#act(() => this.remote.cancel(id), `Cancellation requested for ${id}.`)
   }
-
-  /** Cancel many tasks, then confirm from the host.
-   * @param ids - the task ids to cancel.
-   * @returns the action outcome, collecting per-id failures. */
-  async cancelMany(ids: string[]): Promise<QueueActionResult> {
-    if (ids.length === 0) return { ok: true, message: 'no tasks' }
-    const failures: string[] = []
-    for (const id of ids) {
-      try {
-        valueOf(await this.remote.cancel(id))
-      } catch (error: unknown) {
-        failures.push(`${id}: ${error instanceof Error ? error.message : String(error)}`)
-      }
-    }
-    await this.refresh()
-    if (failures.length > 0) return { ok: false, message: failures.join('; ') }
-    return { ok: true, message: `canceled ${ids.length}` }
-  }
-
-  /** Re-queue many tasks, then confirm from the host.
-   * @param ids - the task ids to re-queue.
-   * @returns the action outcome, collecting per-id failures. */
-  async retryMany(ids: string[]): Promise<QueueActionResult> {
-    if (ids.length === 0) return { ok: true, message: 'no tasks' }
-    const failures: string[] = []
-    for (const id of ids) {
-      try {
-        valueOf(await this.remote.retry(id))
-      } catch (error: unknown) {
-        failures.push(`${id}: ${error instanceof Error ? error.message : String(error)}`)
-      }
-    }
-    await this.refresh()
-    if (failures.length > 0) return { ok: false, message: failures.join('; ') }
-    return { ok: true, message: `retried ${ids.length}` }
-  }
-
-  /** Dismiss one terminal task (default dismissed=true), then confirm from the host.
-   * @param id - the task id to dismiss.
-   * @param dismissed - whether to dismiss (true) or restore (false).
-   * @returns the action outcome. */
-  async dismiss(id: string, dismissed: boolean = true): Promise<QueueActionResult> {
-    try {
-      valueOf(await this.remote.dismiss(id, dismissed))
-      await this.refresh()
-      return { ok: true, message: dismissed ? 'task dismissed' : 'task restored' }
-    } catch (error: unknown) {
-      return { ok: false, message: error instanceof Error ? error.message : String(error) }
-    }
-  }
-
-  /** Restore one dismissed task to attention.
-   * @param id - the task id to restore.
-   * @returns the action outcome. */
-  async undismiss(id: string): Promise<QueueActionResult> {
-    return this.dismiss(id, false)
-  }
-
-  /** Dismiss/restore many tasks, then confirm from the host.
-   * @param ids - the task ids to dismiss or restore.
-   * @param dismissed - whether to dismiss (true) or restore (false).
-   * @returns the action outcome, collecting per-id failures. */
-  async dismissMany(ids: string[], dismissed: boolean): Promise<QueueActionResult> {
-    if (ids.length === 0) return { ok: true, message: 'no tasks' }
-    const failures: string[] = []
-    for (const id of ids) {
-      try {
-        valueOf(await this.remote.dismiss(id, dismissed))
-      } catch (error: unknown) {
-        failures.push(`${id}: ${error instanceof Error ? error.message : String(error)}`)
-      }
-    }
-    await this.refresh()
-    if (failures.length > 0) return { ok: false, message: failures.join('; ') }
-    return { ok: true, message: `${dismissed ? 'dismissed' : 'restored'} ${ids.length}` }
-  }
-
-  /** Re-queue one task, then confirm the change from the host.
-   * @param id - the task id to re-queue.
-   * @returns the action outcome. */
+  /**
+   * Retry one WorkItem and refresh the projection.
+   * @param id WorkItem identifier.
+   * @returns Display result after retry and refresh.
+   */
   async retry(id: string): Promise<QueueActionResult> {
-    try {
-      valueOf(await this.remote.retry(id))
-      await this.refresh()
-      return { ok: true, message: 'task re-queued' }
-    } catch (error: unknown) {
-      return { ok: false, message: error instanceof Error ? error.message : String(error) }
-    }
+    return await this.#act(() => this.remote.retry(id), `Retried ${id}.`)
   }
-
-  /** Pause the service switch, then confirm from the host.
-   * @returns the action outcome. */
+  /**
+   * Apply one operator resolution to an unknown WorkItem and refresh the projection.
+   * @param id WorkItem identifier.
+   * @param resolution Operator resolution selected by the browser.
+   * @returns Display result after durable resolution and refresh.
+   */
+  async resolveUnknown(id: string, resolution: QueueUnknownResolutionInput): Promise<QueueActionResult> {
+    return await this.#act(
+      () => this.remote.resolveUnknown(id, resolution),
+      `Unknown attempt retry authorized for ${id}.`,
+    )
+  }
+  /**
+   * Pause dispatch and refresh the projection.
+   * @returns Display result after pausing dispatch and refreshing.
+   */
   async pause(): Promise<QueueActionResult> {
-    try {
-      valueOf(await this.remote.pause())
-      await this.refresh()
-      return { ok: true, message: 'queue paused' }
-    } catch (error: unknown) {
-      return { ok: false, message: error instanceof Error ? error.message : String(error) }
-    }
+    return await this.#act(() => this.remote.pause(), 'Dispatch paused.')
   }
-
-  /** Resume the service switch, then confirm from the host.
-   * @returns the action outcome. */
+  /**
+   * Resume dispatch and refresh the projection.
+   * @returns Display result after resuming dispatch and refreshing.
+   */
   async resume(): Promise<QueueActionResult> {
-    try {
-      valueOf(await this.remote.resume())
-      await this.refresh()
-      return { ok: true, message: 'queue resumed' }
-    } catch (error: unknown) {
-      return { ok: false, message: error instanceof Error ? error.message : String(error) }
+    return await this.#act(() => this.remote.resume(), 'Dispatch resumed.')
+  }
+  /**
+   * Cancel several WorkItems and refresh once.
+   * @param ids WorkItems to cancel.
+   * @returns Combined display result after refresh.
+   */
+  async cancelMany(ids: readonly string[]): Promise<QueueActionResult> {
+    return await this.#many(ids, id => this.remote.cancel(id), 'Canceled')
+  }
+  /**
+   * Retry several WorkItems and refresh once.
+   * @param ids WorkItems to retry.
+   * @returns Combined display result after refresh.
+   */
+  async retryMany(ids: readonly string[]): Promise<QueueActionResult> {
+    return await this.#many(ids, id => this.remote.retry(id), 'Retried')
+  }
+  async #many(
+    ids: readonly string[],
+    action: (id: string) => Promise<RemoteResult<void>>,
+    verb: string,
+  ): Promise<QueueActionResult> {
+    const errors: string[] = []
+    for (const id of ids) {
+      try {
+        value(await action(id))
+      } catch (error) {
+        errors.push(`${id}: ${error instanceof Error ? error.message : 'Queue action failed'}`)
+      }
     }
+    await this.refresh()
+    return errors.length === 0
+      ? { ok: true, message: `${verb} ${ids.length} WorkItems.` }
+      : { ok: false, message: errors.join('; ') }
   }
 }

@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-27-queue-v2-reuse-boundaries.md
+2026-08-27-queue-v2-reuse-boundaries.md: 16a66b9eab1bb5b28722a29c1cea04cacf35b4a3
+2026-08-27-queue-v2-reuse-boundaries.zh.md: d25f2be384ebc25d0ec6e68227f72cd3ba8b3841

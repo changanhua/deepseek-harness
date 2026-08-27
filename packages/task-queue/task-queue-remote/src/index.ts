@@ -1,229 +1,156 @@
-/**
- * The browser panel's Host remote face over the durable task queue: a thin
- * Typert Remote service exposing the read shapes (list/stats/get), the two
- * high-frequency steering verbs (cancel/retry), and the service-level
- * pause/resume switch of `ctx.taskQueue` as plain JSON wire views. The Client
- * reaches it as `ctx.remote.taskQueue` — the wire namespace — while the
- * Service key stays `taskQueueRemote` so it never collides with the queue
- * backend itself. Enqueue, executor registration, and notification acks are
- * deliberately NOT exposed: those are tool- and operator-bound surfaces.
- * @module @deepseek-ai/dsh-task-queue-remote
- */
-
+/** Browser Remote over the trusted Queue v2 operator facade. */
 import { Context } from '@deepseek-ai/cordis'
-import { readFile } from 'node:fs/promises'
-import { TASK_QUEUE_HOST_ACCESS, TaskId } from '@deepseek-ai/dsh-task-queue'
-import type {
-  TaskQueue,
-  TaskSummary,
-} from '@deepseek-ai/dsh-task-queue'
+import { canonicalJson, createVerifiedOperatorAuthority } from '@deepseek-ai/dsh-task-queue'
+import type { OperatorWorkQueue, UnknownResolution, WorkView } from '@deepseek-ai/dsh-task-queue'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  QueueCancelOutcomeView,
-  QueueExecutorView,
-  QueueListFilterView,
-  QueueStatsView,
-  QueueTaskSummaryView,
-  QueueTaskView,
+  QueueJsonValue, QueueSnapshotInput, QueueSnapshotView, QueueStatsView, QueueUnknownResolutionInput,
+  QueueTaskOutcome, QueueTaskState, QueueWorkSummaryView, QueueWorkView,
 } from './views.ts'
 
 export type {
-  QueueCancelOutcomeView,
-  QueueExecutorView,
-  QueueListFilterView,
-  QueueRunView,
-  QueueStatsView,
-  QueueTaskResultView,
-  QueueTaskStatus,
-  QueueTaskSummaryView,
-  QueueTaskView,
+  QueueSnapshotInput, QueueSnapshotView, QueueStatsView, QueueUnknownResolutionInput, QueueFailureInput,
+  QueueTaskOutcome, QueueTaskState, QueueWorkAttemptView, QueueWorkStatus, QueueWorkSummaryView, QueueWorkView,
 } from './views.ts'
-
-/** The panel remote's configuration (reserved; the surface needs none today). */
+/** Reserved Remote plugin configuration. */
 export type Config = Record<string, never>
 
-/** Project one summary row onto its wire view. */
-function toSummaryView(task: TaskSummary): QueueTaskSummaryView {
+function summary(view: WorkView): QueueWorkSummaryView {
+  const presentation = present(view)
   return {
-    id: task.id,
-    title: task.title,
-    executor: task.executor,
-    status: task.status,
-    priority: task.priority,
-    attempt: task.attempt,
-    maxAttempts: task.maxAttempts,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-    tags: [...task.tags],
-    ownerSessionId: task.ownerSessionId,
-    dismissed: task.dismissed,
+    id: view.work.id, kind: view.work.kind, title: view.work.title, status: view.state.status,
+    state: presentation.state, outcome: presentation.outcome,
+    attemptCount: view.state.attemptCount, maxAttempts: view.work.policy.maxAttempts,
+    batchId: view.work.batchId, ownerSessionId: view.work.ownerSessionId,
+    createdAt: view.work.createdAt, updatedAt: view.state.updatedAt,
   }
 }
+/** Project detailed durable states into the four states used by the MVP operator UI. */
+function present(view: WorkView): { state: QueueTaskState; outcome: QueueTaskOutcome } {
+  switch (view.state.status) {
+    case 'queued': return { state: 'queued', outcome: null }
+    case 'starting':
+    case 'running': return { state: 'running', outcome: null }
+    case 'unknown': return { state: 'attention', outcome: null }
+    case 'succeeded': return { state: 'done', outcome: 'succeeded' }
+    case 'failed': return { state: 'done', outcome: 'failed' }
+    case 'canceled': return { state: 'done', outcome: 'canceled' }
+  }
+}
+function detail(view: WorkView): QueueWorkView {
+  return {
+    ...summary(view),
+    failure: view.state.failure,
+    attempts: view.attempts.map(attempt => ({
+      id: attempt.id, ordinal: attempt.ordinal, status: attempt.status, startedAt: attempt.startedAt,
+      runningAt: attempt.runningAt, finishedAt: attempt.finishedAt,
+      failure: attempt.failure === null
+        ? null
+        : { category: attempt.failure.category, message: attempt.failure.message },
+    })),
+    result: view.result === null
+      ? null
+      : { id: view.result.id, output: remoteJson(view.result.output), createdAt: view.result.createdAt },
+  }
+}
+function stats(views: readonly WorkView[], paused: boolean): QueueStatsView {
+  const byStatus: QueueStatsView['byStatus'] = { queued: 0, starting: 0, running: 0, unknown: 0, succeeded: 0, failed: 0, canceled: 0 }
+  const byKind: Record<string, number> = {}
+  for (const view of views) { byStatus[view.state.status] += 1; byKind[view.work.kind] = (byKind[view.work.kind] ?? 0) + 1 }
+  return { paused, byStatus, byKind }
+}
 
-/** Host service: the browser panel's Remote contribution over ctx.taskQueue. */
+function unknownResolution(input: unknown): UnknownResolution {
+  if (input !== null && typeof input === 'object' && 'kind' in input) {
+    if (input.kind === 'authorize-retry') return { kind: 'authorize-retry' }
+    if (input.kind === 'confirm-failed' && 'failure' in input) {
+      const value = input.failure
+      if (value !== null
+        && typeof value === 'object'
+        && 'category' in value
+        && 'message' in value
+        && 'sideEffect' in value
+        && 'retriable' in value
+        && typeof value.category === 'string'
+        && typeof value.message === 'string'
+        && (value.sideEffect === 'not-started' || value.sideEffect === 'started' || value.sideEffect === 'unknown')
+        && typeof value.retriable === 'boolean') {
+        return {
+          kind: 'confirm-failed',
+          failure: {
+            category: value.category,
+            message: value.message,
+            sideEffect: value.sideEffect,
+            retriable: value.retriable,
+          },
+        }
+      }
+    }
+  }
+  throw new Error('Queue Remote does not accept reconcile or unverified success')
+}
+
+/** Host service contributing the `taskQueue` Remote namespace. */
 export class TaskQueueRemoteService extends TypertRemoteService {
   static inject = ['taskQueue']
-
-  private readonly queue: TaskQueue
-
+  private readonly queue: OperatorWorkQueue
+  private paused = false
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'taskQueueRemote', { namespace: 'taskQueue' })
     void config
-    // `inject` guarantees the queue backend is live before this service
-    // activates; the seam methods are the only reads/writes used below.
-    this.queue = ctx.taskQueue
+    this.queue = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
   }
 
   /**
-   * List summary projections, filtered by status/executor/tags, bounded by limit.
-   * @param filter - optional status/executor/tags filters and a result limit.
-   * @returns fresh summary rows as wire views.
+   * Return rows, aggregate counters, and optional detail from one durable read.
+   * @param input Row filters, limit, and optional detail id.
+   * @returns One internally consistent Queue snapshot.
    */
-  @Remote('list')
-  list(filter?: QueueListFilterView): QueueTaskSummaryView[] {
-    // The wire filter mirrors the seam's ListFilter one-to-one.
-    return this.queue.list(TASK_QUEUE_HOST_ACCESS, filter).map(toSummaryView)
-  }
-
-  /**
-   * Return the full durable state of one task as its wire view.
-   * @param id - the task id (`tq-<uuid>`).
-   * @returns the projected durable snapshot; throws for an unknown id.
-   */
-  @Remote('get')
-  get(id: string): QueueTaskView {
-    const task = this.queue.get(TASK_QUEUE_HOST_ACCESS, TaskId(id))
+  @Remote('snapshot')
+  snapshot(input: QueueSnapshotInput): QueueSnapshotView {
+    const all = [...this.queue.list()].sort(
+      (left, right) => right.state.updatedAt.localeCompare(left.state.updatedAt)
+        || right.work.id.localeCompare(left.work.id),
+    )
+    const statuses = input.statuses
+    const selected = statuses === undefined ? all : all.filter(view => statuses.includes(view.state.status))
+    const limit = input.limit === undefined ? Math.max(selected.length, 1) : input.limit
+    if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('Queue snapshot limit must be a positive integer')
+    const requested = input.detailId === undefined ? null : all.find(view => view.work.id === input.detailId) ?? null
     return {
-      ...toSummaryView(task),
-      prompt: task.prompt,
-      backoffMs: task.backoffMs,
-      delayUntil: task.delayUntil,
-      timeoutMs: task.timeoutMs,
-      outputDir: task.outputDir,
-      lastError: task.lastError,
-      result: task.result === null ? null : {
-        exitCode: task.result.exitCode,
-        signal: task.result.signal,
-        durationMs: task.result.durationMs,
-        outputFiles: [...task.result.outputFiles ?? []],
-      },
-      source: task.source,
-      receiptId: task.receiptId,
-      runs: task.runs.map(run => ({
-        runId: run.runId,
-        attempt: run.attempt,
-        pid: run.pid,
-        plannedStartedAt: run.plannedStartedAt,
-        actualStartedAt: run.actualStartedAt,
-        logPath: run.logPath,
-        commandFingerprint: run.commandFingerprint,
-        terminationUnverified: run.terminationUnverified === true,
-      })),
+      stats: stats(all, this.paused), rows: selected.slice(0, limit).map(summary),
+      detail: requested === null ? null : detail(requested),
     }
   }
-
   /**
-   * List executor registration/enable gates plus current live task counts.
-   * @returns one row per registered executor.
-   */
-  @Remote('executors')
-  executors(): QueueExecutorView[] {
-    const live = new Set(['starting', 'running', 'stopping'])
-    const liveByExecutor = new Map<string, number>()
-    for (const task of this.queue.list(TASK_QUEUE_HOST_ACCESS)) {
-      if (live.has(task.status)) {
-        liveByExecutor.set(task.executor, (liveByExecutor.get(task.executor) ?? 0) + 1)
-      }
-    }
-    return this.queue.listExecutors().map(executor => ({
-      ...executor,
-      running: liveByExecutor.get(executor.name) ?? 0,
-    }))
-  }
-
-  /**
-   * Read the on-disk run log for one completed/attempted run.
-   * @param id - the task id (`tq-<uuid>`).
-   * @param runId - the run id to read.
-   * @returns the merged stdout/stderr log body as UTF-8 text.
-   */
-  @Remote('readRunLog')
-  async readRunLog(id: string, runId: string): Promise<string> {
-    const task = this.queue.get(TASK_QUEUE_HOST_ACCESS, TaskId(id))
-    const run = task.runs.find(r => r.runId === runId)
-    if (run === undefined || run.logPath === null) {
-      throw new Error(`run ${runId} has no log path`)
-    }
-    return await readFile(run.logPath, 'utf8')
-  }
-
-  /**
-   * Aggregate service state and per-status/per-executor counters.
-   * @returns the current service state, optional fault, and counters.
-   */
-  @Remote('stats')
-  stats(): QueueStatsView {
-    const stats = this.queue.stats(TASK_QUEUE_HOST_ACCESS)
-    return {
-      serviceState: stats.serviceState,
-      fault: stats.fault === undefined ? null : { reason: stats.fault.reason },
-      byStatus: { ...stats.byStatus },
-      byExecutor: { ...stats.byExecutor },
-      undismissedFailed: stats.undismissedFailed,
-      byDismissed: stats.byDismissed,
-    }
-  }
-
-  /**
-   * Cancel a task: pending → canceled; starting/running → stopping intent.
-   * @param id - the task id to cancel.
-   * @returns `canceled` for a directly-canceled pending task, `stopping` when a cancel intent was persisted.
+   * Request cancellation for one WorkItem.
+   * @param id WorkItem identifier.
    */
   @Remote('cancel')
-  async cancel(id: string): Promise<QueueCancelOutcomeView> {
-    return await this.queue.cancel(TASK_QUEUE_HOST_ACCESS, TaskId(id))
-  }
-
+  async cancel(id: string): Promise<void> { await this.queue.cancel(id as never) }
   /**
-   * Retry a failed task; returns the (unchanged) task id, now pending.
-   * @param id - the failed task id to requeue.
-   * @returns the same task id, now pending with `attempt` reset.
+   * Manually retry one failed WorkItem.
+   * @param id WorkItem identifier.
    */
   @Remote('retry')
-  async retry(id: string): Promise<string> {
-    return await this.queue.retry(TASK_QUEUE_HOST_ACCESS, TaskId(id))
-  }
-
+  async retry(id: string): Promise<void> { await this.queue.retry(id as never) }
   /**
-   * Soft-conclude (or restore) a terminal task by toggling its `dismissed`
-   * flag. A dismissed task leaves the attention badge/filters but keeps its
-   * record; requeuing resets `dismissed` to false.
-   * @param id - the terminal task id (`tq-<uuid>`).
-   * @param dismissed - true to conclude, false to restore.
+   * Resolve an unknown WorkItem through the trusted operator facade.
+   * @param id WorkItem identifier.
+   * @param resolution Browser-safe operator resolution.
+   * @returns Completion after the durable resolution append.
    */
-  @Remote('dismiss')
-  async dismiss(id: string, dismissed: boolean): Promise<void> {
-    await this.queue.dismiss(TASK_QUEUE_HOST_ACCESS, TaskId(id), dismissed)
+  @Remote('resolveUnknown')
+  async resolveUnknown(id: string, resolution: QueueUnknownResolutionInput): Promise<void> {
+    await this.queue.resolveUnknown(id as never, unknownResolution(resolution))
   }
-
-  /**
-   * Pause the queue (running → paused only). The seam rejects a faulted
-   * queue, so the panel cannot fake-clear a service fault.
-   */
+  /** Pause dispatch while retaining admissions and operator actions. */
   @Remote('pause')
-  pause(): void {
-    this.queue.pause(TASK_QUEUE_HOST_ACCESS)
-  }
-
-  /**
-   * Resume the queue (paused → running only; faulted rejected). A faulted
-   * service needs operator recovery, so the panel disables this until the
-   * service state leaves `faulted`.
-   */
+  pause(): void { this.queue.pause(); this.paused = true }
+  /** Resume dispatch. */
   @Remote('resume')
-  resume(): void {
-    this.queue.resume(TASK_QUEUE_HOST_ACCESS)
-  }
+  resume(): void { this.queue.resume(); this.paused = false }
 }
-
+/** Validate and copy a result output before it crosses the JSON Remote boundary. */
+function remoteJson(value: unknown): QueueJsonValue { return JSON.parse(canonicalJson(value)) as QueueJsonValue }
 export default TaskQueueRemoteService

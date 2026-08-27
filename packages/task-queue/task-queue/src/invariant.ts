@@ -1,5 +1,5 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-task-queue`.
+ * Package-owned invariant companion for the typed work-queue definition.
  * @module @deepseek-ai/dsh-task-queue/invariant
  */
 
@@ -15,9 +15,8 @@ export const name = 'task-queue-invariant'
 export const inject = ['invariants']
 
 /**
- * No runtime invariant: the seam package owns no composition rows of its own;
- * the backend implementation (`dsh-task-queue-local`) owns its durable-log
- * invariants at registration time.
+ * No runtime invariant: this Service Definition owns no runtime state; its
+ * provider owns durable ChangeSet and scheduling invariants.
  */
 const install: InvariantInstaller = () => {}
 

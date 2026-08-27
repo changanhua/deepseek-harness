@@ -29,12 +29,17 @@ describe('gen-tool-catalog collectToolCatalog', () => {
       'ask_user_question', 'bash', 'bash', 'cordis_define', 'cordis_inspect_list',
       'cordis_inspect_query', 'cordis_inspect_self', 'cordis_run', 'cordis_stop',
       'cordis_undefine', 'create_goal', 'edit', 'exit_plan_mode', 'followup_task', 'get_goal', 'glob', 'grep',
+      'image_generate_enqueue', 'image_generate_enqueue_batch',
       'interrupt_agent', 'interrupt_agent', 'job_kill', 'job_list', 'job_output',
-      'list_agents', 'list_agents', 'list_subagent_models', 'lsp', 'pwsh', 'pwsh', 'ralph',
+      'list_agents', 'list_agents', 'lsp', 'operation_run_enqueue', 'operation_run_enqueue_batch',
+      'pwsh', 'pwsh', 'ralph',
       'read', 'read_image', 'report', 'run_code', 'schedule_create', 'schedule_delete',
       'schedule_list', 'send_message', 'send_message', 'session_event_read', 'session_event_search',
       'session_event_trace', 'session_search', 'session_trace', 'skill', 'spawn_teammate',
-      'str_replace_editor', 'subagent', 'team_task_create',
+      'str_replace_editor', 'subagent', 'task_queue_cancel', 'task_queue_enqueue',
+      'task_queue_enqueue_batch', 'task_queue_kinds', 'task_queue_list', 'task_queue_result',
+      'task_queue_retry', 'task_queue_stats', 'task_queue_status',
+      'team_task_create',
       'team_task_get', 'team_task_list', 'team_task_update', 'terminal_close', 'terminal_list',
       'terminal_open', 'terminal_read', 'terminal_send', 'terminal_signal', 'todo_write',
       'update_goal', 'wait_agent', 'web_fetch', 'web_search', 'workflow', 'write',
@@ -88,7 +93,7 @@ describe('gen-tool-catalog collectToolCatalog', () => {
     // agents surface this one package as both `subagent` and `subagent_fork`.
     const catalog = await collectToolCatalog()
     const subagent = catalog.find(entry => entry.pkg === '@deepseek-ai/dsh-tool-subagent')
-    expect(subagent?.schemas.map(s => s.name)).toEqual(['list_subagent_models', 'subagent'])
+    expect(subagent?.schemas.map(s => s.name)).toEqual(['subagent'])
     expect(subagent?.note).toMatch(/subagent_fork/)
   })
 })

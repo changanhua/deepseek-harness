@@ -15,6 +15,7 @@ This table connects model-visible tool names to the plugin package and service s
 
 | Tool package | Model-visible names | Requires | Writes / affects | Shipped aliases | Deployment note |
 | --- | --- | --- | --- | --- | --- |
+| `@deepseek-ai/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`, `task_queue_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 agent.run@1 admission` | - | The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields. |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`, `ctx.userQuestions` | `tool/call`, `tool/result after a UI/provider answers the question` | - | ask_user_question pauses the tool call until the active UI provider returns a human answer. |
 | `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`, `ctx.codeRuntime (execution time)`, `ctx.systemPrompt` | `tool/call`, `one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call`, `tool/result` | - | Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: ptc` / `mode: both` (see the PTC mode Agent Note). Under `ptc` it is the registry's only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime's language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result. |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`, `ctx.systemPrompt`, `ctx.userQuestions (execution time, opportunistic)` | `tool/call`, `plan/mode inactive on an approved review`, `tool/result` | - | exit_plan_mode stays in the model-facing schema while planning is inactive so transitions add no tool-catalog churn on top of the plan-policy change. Its execute path rejects calls outside plan mode; in plan mode it presents the plan over the user-questions seam (approve / keep planning with feedback), and approval logs plan mode inactive at the step boundary. |
@@ -34,15 +35,95 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-runtime-inspect` | `runtime_inspect` | `ctx.tools`, `ctx.systemPrompt`, `ctx.runtimeFacts`, `ctx.subprocess` | `tool/call`, `tool/result` | - | Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider; command inspection reports that provider's execution world without probing through a separate host path. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
-| `@deepseek-ai/dsh-tool-subagent` | `list_subagent_models`, `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt`, `ctx.llm for model discovery and selected-route validation` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered delegation name is the load-time `toolName` config (default `subagent`); the default schema above has model selection off, while the discovery schema is shown as the fixed companion available in an enabled Session. Web presets sample the Plugins preference for each new top-level Session and preserve that decision for its child Sessions; `subagent_fork` remains fixed-route. Each instance independently controls whether it reads model-selection settings and its background behavior through `modelSelectionSettings`, `backgroundMode`, and `enableRunInBackground`. |
+| `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered tool name is the load-time `toolName` config (default `subagent`); the schema above is that default. The shipped compositions load this package once per subagent backend, so the model additionally sees `subagent_fork` bound to the fork backend. Each instance's description, `run_in_background` parameter, and system-prompt policy follow its own `backgroundMode` and `enableRunInBackground`, so the two shipped schemas are not identical: `subagent` is `continuable` and defaults omitted calls to background with automatic settlement delivery, while `subagent_fork` stays `one-shot` and defaults them to foreground — see `packages/bundle/base/cordis.patch.yml` and `examples/acp-agent/cordis.yml`. |
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message` | `ctx.tools`, `ctx.subagents`, `ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries). |
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`, `ctx.systemPrompt`, `a live continuable in-process child Agent` | `tool/call`, `tool/result`, `a user-role message in the direct parent session` | - | Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently. |
+| `@deepseek-ai/dsh-tool-image-generation-task-queue` | `image_generate_enqueue`, `image_generate_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 image.generate@1 admission` | - | The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority; provider discovery and execution belong to the registered WorkHandler. |
+| `@deepseek-ai/dsh-tool-operation-run-task-queue` | `operation_run_enqueue`, `operation_run_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 operation.run@1 admission` | - | The typed allowlisted-operation admission consumer. It admits only a host-configured `operationId`; executable, argv, cwd, environment, credentials, resources, and execution policy remain outside the tool schema. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
-| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_dismiss`, `task_queue_enqueue`, `task_queue_enqueue_batch`, `task_queue_executors`, `task_queue_list`, `task_queue_retry`, `task_queue_stats`, `task_queue_status`, `task_queue_undismiss` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessions (notification finalizer flush)`, `ctx.taskQueue (optional host service)` | `tool/call`, `tool/result`, `user/message notification candidates via agent/pre-step`, `task-queue/* notification acks` | - | The durable cross-session task-queue controller: ten `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools. |
+| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_kinds`, `task_queue_list`, `task_queue_result`, `task_queue_retry`, `task_queue_stats`, `task_queue_status` | `ctx.tools`, `ctx.taskQueue`, `ctx.sessions`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 owner-scoped controls`, `user/message from durable terminal Notifications` | - | The WorkKind-independent durable controller: `task_queue_*` inspection, result, cancellation, retry, and kind tools over the host `ctx.taskQueue` service, plus replay-safe owner Notification delivery through `ctx.sessions`. Work handlers, admission Consumers, and host resource capacity are composed separately. |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`, `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
+
+<a id="deepseek-aidsh-tool-agent-run-task-queue"></a>
+
+## `@deepseek-ai/dsh-tool-agent-run-task-queue`
+
+### `task_queue_enqueue`
+
+Durably enqueue one restricted Harness worker request.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "idempotencyKey": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "title",
+    "prompt",
+    "idempotencyKey"
+  ]
+}
+```
+
+Source: [`packages/task-queue/tool-agent-run-task-queue/src/index.ts`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
+
+### `task_queue_enqueue_batch`
+
+Atomically enqueue restricted Harness worker requests.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "prompt"
+        ]
+      }
+    },
+    "idempotencyKey": {
+      "type": "string"
+    },
+    "maxParallel": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "items",
+    "idempotencyKey",
+    "maxParallel"
+  ]
+}
+```
+
+Source: [`packages/task-queue/tool-agent-run-task-queue/src/index.ts`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
+
+The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields.
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -1582,28 +1663,6 @@ The five read-only tools hide provider cursors and authorize every result from t
 
 ## `@deepseek-ai/dsh-tool-subagent`
 
-### `list_subagent_models`
-
-Discover LLM routes for subagents without changing the current Agent. Call with no arguments to list registered providers, with `provider` to list its advertised models, or with `provider` and `model` to inspect that exact model and its reasoning efforts. Catalog membership is advisory: an adapter may accept an unlisted model id. Use the returned ids with a delegation tool's `provider`, `model`, and `reasoning_effort` fields.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "provider": {
-      "type": "string",
-      "description": "Registered LLM provider id. Omit to list providers."
-    },
-    "model": {
-      "type": "string",
-      "description": "Exact model id to inspect. Requires provider; omit to list that provider's advertised models."
-    }
-  }
-}
-```
-
-Source: [`packages/subagent/tool-subagent/src/list-models.ts`](../packages/subagent/tool-subagent/src/list-models.ts)
-
 ### `subagent`
 
 Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. Give it a complete, standalone prompt: it does not see this conversation. This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.
@@ -1634,7 +1693,7 @@ Delegate a self-contained task to a subagent (a separate agent that works in its
 
 Source: [`packages/subagent/tool-subagent/src/index.ts`](../packages/subagent/tool-subagent/src/index.ts)
 
-The registered delegation name is the load-time `toolName` config (default `subagent`); the default schema above has model selection off, while the discovery schema is shown as the fixed companion available in an enabled Session. Web presets sample the Plugins preference for each new top-level Session and preserve that decision for its child Sessions; `subagent_fork` remains fixed-route. Each instance independently controls whether it reads model-selection settings and its background behavior through `modelSelectionSettings`, `backgroundMode`, and `enableRunInBackground`.
+The registered tool name is the load-time `toolName` config (default `subagent`); the schema above is that default. The shipped compositions load this package once per subagent backend, so the model additionally sees `subagent_fork` bound to the fork backend. Each instance's description, `run_in_background` parameter, and system-prompt policy follow its own `backgroundMode` and `enableRunInBackground`, so the two shipped schemas are not identical: `subagent` is `continuable` and defaults omitted calls to background with automatic settlement delivery, while `subagent_fork` stays `one-shot` and defaults them to foreground — see `packages/bundle/base/cordis.patch.yml` and `examples/acp-agent/cordis.yml`.
 
 <a id="deepseek-aidsh-tool-subagent-control"></a>
 
@@ -1738,6 +1797,227 @@ Source: [`packages/subagent/tool-subagent-report/src/index.ts`](../packages/suba
 
 Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently.
 
+<a id="deepseek-aidsh-tool-image-generation-task-queue"></a>
+
+## `@deepseek-ai/dsh-tool-image-generation-task-queue`
+
+### `image_generate_enqueue`
+
+Durably enqueue one image-generation request. Supply the finished visual prompt and requested output settings; the host resolves the ArkCLI Agent Plan model before generation begins.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "Complete visual prompt."
+    },
+    "size": {
+      "type": "string",
+      "description": "Requested provider-supported size, for example 1920x1920."
+    },
+    "outputFormat": {
+      "type": "string",
+      "description": "Image container.",
+      "enum": [
+        "png",
+        "jpeg"
+      ]
+    },
+    "watermark": {
+      "type": "boolean",
+      "description": "Whether the output contains a watermark."
+    },
+    "provider": {
+      "type": "string",
+      "description": "Explicit provider id. Omit only when exactly one image provider is configured."
+    },
+    "model": {
+      "type": "string",
+      "description": "Optional provider model selector."
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "Stable dedupe key for this logical image request."
+    }
+  },
+  "required": [
+    "prompt",
+    "size",
+    "outputFormat",
+    "watermark",
+    "idempotencyKey"
+  ]
+}
+```
+
+Source: [`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts)
+
+### `image_generate_enqueue_batch`
+
+Atomically enqueue individually titled image-generation requests from completed prompts.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Title for this WorkItem."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Complete visual prompt."
+          },
+          "size": {
+            "type": "string",
+            "description": "Requested provider-supported size, for example 1920x1920."
+          },
+          "outputFormat": {
+            "type": "string",
+            "description": "Image container.",
+            "enum": [
+              "png",
+              "jpeg"
+            ]
+          },
+          "watermark": {
+            "type": "boolean",
+            "description": "Whether the output contains a watermark."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Explicit provider id. Omit only when exactly one image provider is configured."
+          },
+          "model": {
+            "type": "string",
+            "description": "Optional provider model selector."
+          }
+        },
+        "required": [
+          "title",
+          "prompt",
+          "size",
+          "outputFormat",
+          "watermark"
+        ]
+      }
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "Stable dedupe key for this logical image Batch."
+    },
+    "maxParallel": {
+      "type": "integer",
+      "description": "Positive Batch concurrency bound."
+    }
+  },
+  "required": [
+    "items",
+    "idempotencyKey",
+    "maxParallel"
+  ]
+}
+```
+
+Source: [`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts)
+
+The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority; provider discovery and execution belong to the registered WorkHandler.
+
+<a id="deepseek-aidsh-tool-operation-run-task-queue"></a>
+
+## `@deepseek-ai/dsh-tool-operation-run-task-queue`
+
+### `operation_run_enqueue`
+
+Durably enqueue one host-configured operation by its operation id.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title for this WorkItem."
+    },
+    "operationId": {
+      "type": "string",
+      "description": "Host-configured operation id."
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "Stable dedupe key for this logical operation."
+    }
+  },
+  "required": [
+    "title",
+    "operationId",
+    "idempotencyKey"
+  ],
+  "additionalProperties": false
+}
+```
+
+Source: [`packages/task-queue/tool-operation-run-task-queue/src/index.ts`](../packages/task-queue/tool-operation-run-task-queue/src/index.ts)
+
+### `operation_run_enqueue_batch`
+
+Atomically enqueue individually titled host-configured operations.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Title for this WorkItem."
+          },
+          "operationId": {
+            "type": "string",
+            "description": "Host-configured operation id."
+          }
+        },
+        "required": [
+          "title",
+          "operationId"
+        ]
+      }
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "Stable dedupe key for this logical operation batch."
+    },
+    "maxParallel": {
+      "type": "integer",
+      "description": "Positive batch concurrency bound."
+    }
+  },
+  "required": [
+    "items",
+    "idempotencyKey",
+    "maxParallel"
+  ],
+  "additionalProperties": false
+}
+```
+
+Source: [`packages/task-queue/tool-operation-run-task-queue/src/index.ts`](../packages/task-queue/tool-operation-run-task-queue/src/index.ts)
+
+The typed allowlisted-operation admission consumer. It admits only a host-configured `operationId`; executable, argv, cwd, environment, credentials, resources, and execution policy remain outside the tool schema.
+
 <a id="deepseek-aidsh-tool-jobs"></a>
 
 ## `@deepseek-ai/dsh-tool-jobs`
@@ -1817,15 +2097,14 @@ The kind-agnostic background-job controller: background bash commands, PTY sends
 
 ### `task_queue_cancel`
 
-Cancel a pending task (or request stop of a starting/running one) by id.
+Cancel one non-terminal WorkItem owned by this Agent session.
 
 ```json
 {
   "type": "object",
   "properties": {
     "id": {
-      "type": "string",
-      "description": "Task id to cancel."
+      "type": "string"
     }
   },
   "required": [
@@ -1836,196 +2115,9 @@ Cancel a pending task (or request stop of a starting/running one) by id.
 
 Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
 
-### `task_queue_dismiss`
+### `task_queue_kinds`
 
-Soft-conclude a terminal task (succeeded/failed/canceled) by id: it leaves the attention badge and "needs attention" filter but keeps its record. Reversible with task_queue_undismiss. Use for failures you have diagnosed and decided not to retry.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "description": "Terminal task id to dismiss."
-    },
-    "dismissed": {
-      "type": "boolean",
-      "description": "true to conclude (default), false to restore."
-    }
-  },
-  "required": [
-    "id"
-  ]
-}
-```
-
-Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
-
-### `task_queue_enqueue`
-
-Enqueue one durable, cross-session task on the host task queue. Use the queue for batch work (3 or more independent tasks), long-running jobs, work that may need retry, or anything that should survive the session; use inline execution for a single quick interaction. Rejects executor "shell".
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "spec": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "title": {
-          "type": "string",
-          "description": "One-line title."
-        },
-        "prompt": {
-          "type": "string",
-          "description": "Complete instruction handed to the executor."
-        },
-        "executor": {
-          "type": "string",
-          "description": "Registered executor name. Shipped executors include dsh (restricted Harness worker), claude/codex/opencode/arkcli (CLI agents), and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
-        },
-        "priority": {
-          "type": "integer",
-          "description": "Lower is higher precedence (default 10)."
-        },
-        "maxAttempts": {
-          "type": "integer",
-          "description": "Total execution attempts; default 3."
-        },
-        "backoffMs": {
-          "type": "integer",
-          "description": "Backoff base in ms (default 30000)."
-        },
-        "delayUntil": {
-          "type": "string",
-          "description": "ISO timestamp; not claimable before it."
-        },
-        "timeoutMs": {
-          "type": "integer",
-          "description": "Per-execution timeout in ms (default 1800000)."
-        },
-        "workspaceDir": {
-          "type": "string",
-          "description": "Executor working directory. Defaults to outputDir for compatibility."
-        },
-        "outputDir": {
-          "type": "string",
-          "description": "Artifact directory scanned into result.outputFiles."
-        },
-        "tags": {
-          "type": "array",
-          "description": "Free-form filter tags.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "idempotencyKey": {
-          "type": "string",
-          "description": "Cross-call dedupe key (1–128 bytes, no NUL)."
-        }
-      },
-      "required": [
-        "title",
-        "prompt",
-        "executor"
-      ]
-    }
-  },
-  "required": [
-    "spec"
-  ]
-}
-```
-
-Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
-
-### `task_queue_enqueue_batch`
-
-Enqueue up to 200 tasks in one batch. Use for 3 or more independent tasks. Rejects any executor "shell".
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "specs": {
-      "type": "array",
-      "description": "Task specs to enqueue (at most 200).",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "title": {
-            "type": "string",
-            "description": "One-line title."
-          },
-          "prompt": {
-            "type": "string",
-            "description": "Complete instruction handed to the executor."
-          },
-          "executor": {
-            "type": "string",
-            "description": "Registered executor name. Shipped executors include dsh (restricted Harness worker), claude/codex/opencode/arkcli (CLI agents), and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
-          },
-          "priority": {
-            "type": "integer",
-            "description": "Lower is higher precedence (default 10)."
-          },
-          "maxAttempts": {
-            "type": "integer",
-            "description": "Total execution attempts; default 3."
-          },
-          "backoffMs": {
-            "type": "integer",
-            "description": "Backoff base in ms (default 30000)."
-          },
-          "delayUntil": {
-            "type": "string",
-            "description": "ISO timestamp; not claimable before it."
-          },
-          "timeoutMs": {
-            "type": "integer",
-            "description": "Per-execution timeout in ms (default 1800000)."
-          },
-          "workspaceDir": {
-            "type": "string",
-            "description": "Executor working directory. Defaults to outputDir for compatibility."
-          },
-          "outputDir": {
-            "type": "string",
-            "description": "Artifact directory scanned into result.outputFiles."
-          },
-          "tags": {
-            "type": "array",
-            "description": "Free-form filter tags.",
-            "items": {
-              "type": "string"
-            }
-          },
-          "idempotencyKey": {
-            "type": "string",
-            "description": "Cross-call dedupe key (1–128 bytes, no NUL)."
-          }
-        },
-        "required": [
-          "title",
-          "prompt",
-          "executor"
-        ]
-      }
-    }
-  },
-  "required": [
-    "specs"
-  ]
-}
-```
-
-Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
-
-### `task_queue_executors`
-
-List the executors this task queue has registered, with whether each is enabled for admission and whether the model tools may submit it. Call this before enqueueing to pick a valid executor.
+List typed WorkKinds enabled by this host.
 
 ```json
 {
@@ -2038,32 +2130,32 @@ Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-qu
 
 ### `task_queue_list`
 
-List queued tasks with optional status/executor/tags filters and a limit. Use before enqueueing to avoid duplicates.
+List this Agent session's durable WorkItems.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_result`
+
+Read the typed terminal result or failure for one WorkItem owned by this Agent session.
 
 ```json
 {
   "type": "object",
   "properties": {
-    "status": {
-      "type": "string",
-      "description": "Filter by status (pending/starting/running/stopping/succeeded/failed/canceled)."
-    },
-    "executor": {
-      "type": "string",
-      "description": "Filter by executor name."
-    },
-    "tags": {
-      "type": "array",
-      "description": "Free-form filter tags.",
-      "items": {
-        "type": "string"
-      }
-    },
-    "limit": {
-      "type": "integer",
-      "description": "Maximum tasks to return."
+    "id": {
+      "type": "string"
     }
-  }
+  },
+  "required": [
+    "id"
+  ]
 }
 ```
 
@@ -2071,15 +2163,14 @@ Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-qu
 
 ### `task_queue_retry`
 
-Retry a failed task (attempts reset, returns to pending).
+Retry one failed WorkItem owned by this Agent session.
 
 ```json
 {
   "type": "object",
   "properties": {
     "id": {
-      "type": "string",
-      "description": "Failed task id to retry."
+      "type": "string"
     }
   },
   "required": [
@@ -2092,7 +2183,7 @@ Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-qu
 
 ### `task_queue_stats`
 
-Aggregate queue health: service state, per-status counts, and per-executor counts. Use at session start to see the backlog.
+Count this Agent session's WorkItems by lifecycle status.
 
 ```json
 {
@@ -2105,15 +2196,14 @@ Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-qu
 
 ### `task_queue_status`
 
-Get the full record of one task by id.
+Read one WorkItem owned by this Agent session.
 
 ```json
 {
   "type": "object",
   "properties": {
     "id": {
-      "type": "string",
-      "description": "Task id returned by enqueue."
+      "type": "string"
     }
   },
   "required": [
@@ -2124,28 +2214,7 @@ Get the full record of one task by id.
 
 Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
 
-### `task_queue_undismiss`
-
-Restore a dismissed terminal task to attention by id. Reverses task_queue_dismiss.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "description": "Dismissed task id to restore."
-    }
-  },
-  "required": [
-    "id"
-  ]
-}
-```
-
-Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
-
-The durable cross-session task-queue controller: ten `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools.
+The WorkKind-independent durable controller: `task_queue_*` inspection, result, cancellation, retry, and kind tools over the host `ctx.taskQueue` service, plus replay-safe owner Notification delivery through `ctx.sessions`. Work handlers, admission Consumers, and host resource capacity are composed separately.
 
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 

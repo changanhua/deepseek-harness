@@ -194,7 +194,14 @@ flowchart LR
   pkg_task_queue["task-queue"]
   svc_taskQueue["ctx.taskQueue<br/>Durable cross-session task queue"]
   pkg_task_queue_local["task-queue-local"]
+  pkg_task_queue_executor_dsh["task-queue-executor-dsh"]
+  pkg_image_generation_task_queue["image-generation-task-queue"]
   pkg_tool_task_queue["tool-task-queue"]
+  pkg_tool_agent_run_task_queue["tool-agent-run-task-queue"]
+  pkg_tool_image_generation_task_queue["tool-image-generation-task-queue"]
+  pkg_image_generation["image-generation"]
+  svc_imageGeneration["ctx.imageGeneration<br/>Image generation provider registry"]
+  pkg_image_generation_arkcli["image-generation-arkcli"]
   svc_web["ctx.web<br/>Web access provider registry"]
   pkg_web_search_deepseek["web-search-deepseek"]
   pkg_web_fetch_http["web-fetch-http"]
@@ -267,6 +274,8 @@ flowchart LR
   pkg_host_directory_picker_browse --> svc_directoryPicker
   pkg_host_directory_picker_native --> svc_directoryPicker
   pkg_host_webserver --> svc_webServer
+  pkg_image_generation --> svc_imageGeneration
+  pkg_image_generation_arkcli --> svc_imageGeneration
   pkg_inspector --> svc_inspector
   pkg_invariants --> svc_invariants
   pkg_jobs --> svc_jobs
@@ -374,6 +383,7 @@ flowchart LR
   svc_e2b --> pkg_subprocess_e2b
   svc_fileReferences --> pkg_api_session_controller
   svc_fs --> pkg_tool_fs
+  svc_imageGeneration --> pkg_image_generation_task_queue
   svc_invariants --> pkg_agent
   svc_invariants --> pkg_agent_loop
   svc_invariants --> pkg_scope
@@ -449,6 +459,10 @@ flowchart LR
   svc_systemPrompt --> pkg_tool_terminal
   svc_systemPrompt --> pkg_tool_web
   svc_systemPrompt --> pkg_tools
+  svc_taskQueue --> pkg_image_generation_task_queue
+  svc_taskQueue --> pkg_task_queue_executor_dsh
+  svc_taskQueue --> pkg_tool_agent_run_task_queue
+  svc_taskQueue --> pkg_tool_image_generation_task_queue
   svc_taskQueue --> pkg_tool_task_queue
   svc_terminals --> pkg_tool_terminal
   svc_tokenMeter --> pkg_compaction_basic
@@ -540,7 +554,8 @@ flowchart LR
 | `ctx.agentTeams` | `core` | [`experimental-agent-team`](../packages/experimental/agent-team) | - | [`experimental-tool-agent-team`](../packages/experimental/tool-agent-team), [`experimental-client-ui-agent-team`](../packages/experimental/client-ui-agent-team) | - | Owns the implicit-root roster, durable peer mailbox, shared task DAG, continuable-child lifecycle, and generated Team Remote methods; tool-agent-team contributes model controls and client-ui-agent-team mounts the browser contribution. |
 | `ctx.inspector` | `core` | `inspector` | - | - | - | Owns the Worker-hosted CDP target and the transport-independent Host and Client observation and Cordis-tree query API. |
 | `ctx.jobs` | `seam` | [`jobs`](../packages/jobs/jobs) | [`jobs-local`](../packages/jobs/jobs-local) | [`tool-bash`](../packages/shell/tool-bash), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-jobs`](../packages/jobs/tool-jobs) | - | Producers (background bash, PTY sends, and subagent delegations) register running work; tool-jobs is the model-facing controller that reads, lists, and kills it; jobs-local is the process-local registry. |
-| `ctx.taskQueue` | `seam` | [`task-queue`](../packages/task-queue/task-queue) | [`task-queue-local`](../packages/task-queue/task-queue-local) | [`tool-task-queue`](../packages/task-queue/tool-task-queue) | - | The host-plane service admits tool and inbox tasks, persists a single-writer segment change log, and runs the two-phase scheduler; task-queue-local is the durable backend with the mutation FIFO and faulted protocol; tool-task-queue exposes the seven task_queue_* tools plus the notification outbox hooks. |
+| `ctx.taskQueue` | `seam` | [`task-queue`](../packages/task-queue/task-queue) | [`task-queue-local`](../packages/task-queue/task-queue-local) | [`task-queue-executor-dsh`](../packages/task-queue/task-queue-executor-dsh), [`image-generation-task-queue`](../packages/image/image-generation-task-queue), [`tool-task-queue`](../packages/task-queue/tool-task-queue), [`tool-agent-run-task-queue`](../packages/task-queue/tool-agent-run-task-queue), [`tool-image-generation-task-queue`](../packages/image/tool-image-generation-task-queue) | - | The host-plane service persists typed WorkItems and atomic ChangeSets, enforces resource and Batch limits, and recovers uncertain attempts; WorkKind handlers own execution, WorkKind-specific tools own admission, and tool-task-queue owns generic control, explicit result reads, and stable owner delivery. |
+| `ctx.imageGeneration` | `seam` | [`image-generation`](../packages/image/image-generation) | [`image-generation-arkcli`](../packages/image/image-generation-arkcli) | [`image-generation-task-queue`](../packages/image/image-generation-task-queue) | - | Providers resolve the selected image model before generation and return decoded image bytes; the Queue image handler saves those bytes through ctx.attachments and returns Attachment references. |
 | `ctx.web` | `seam` | [`web`](../packages/web/web) | [`web-search-exa`](../packages/web/web-search-exa), [`web-search-perplexity`](../packages/web/web-search-perplexity), [`web-search-deepseek`](../packages/web/web-search-deepseek), [`web-fetch-http`](../packages/web/web-fetch-http) | [`tool-web`](../packages/web/tool-web) | - | Search and fetch providers register into one ctx.web seam; tool-web owns the stable model-facing names. |
 | `ctx.spillStore` | `seam` | [`spill`](../packages/spill/spill) | [`spill-local`](../packages/spill/spill-local) | [`spill-policy`](../packages/spill/spill-policy) | - | The backend saves oversized tool text and returns a model-facing locator plus retrieval hint; spill-policy is the tools/post-execute consumer that decides when to spill. |
 | `ctx.directoryPicker` | `seam` | [`host-directory-picker`](../packages/host/directory-picker) | [`host-directory-picker-native`](../packages/host/directory-picker-native), [`host-directory-picker-browse`](../packages/host/directory-picker-browse) | [`api-workspace-controller`](../packages/api/workspace-controller) | - | Discriminated interaction capability: the native backend opens one OS chooser on the host display, the browse backend serves listing/creation primitives for the in-app browser; dual-face backends fill ui-workspace directory-flow slots from their browser halves (no wire advertisement). |

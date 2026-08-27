@@ -1,180 +1,455 @@
 /**
- * The center-column Queue workspace: service state and capacity,
- * filters + search, the task list, and the selected task's detail. Default
- * view answers "is the service healthy, what is running, what needs me, and
- * what is the outcome"; internal fields (receipt, fingerprints, run pids)
- * stay behind the explicit Diagnostics disclosure. Every write verb reports
- * pending → success/failure through the aria-live feedback region and the
- * store re-reads the host after each success — the view never fabricates a
- * state the backend did not confirm.
+ * Queue V1.1 operator workbench: a master-detail page where an operator finds
+ * the next task needing attention, reads its latest attempt, and performs the
+ * permitted action without raw JSON or an accidental duplicate execution. All
+ * sorting, filtering, age, and dot decisions come from `view-model.ts`; all
+ * reads and mutations stay on the shared `QueueStore`.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import type { ReactNode } from 'react'
 import clsx from 'clsx'
-import { Button, StateDot, IconRefreshOutline16, IconPauseOutline16, IconPlayOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button,
+  JsonTree,
+  Pill,
+  RiskConfirmation,
+  StateDot,
+  Toast,
+  writeClipboard,
+} from '@deepseek-ai/dsh-client-ui-primitives'
+import type { JsonTreeLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+import type {
+  QueueJsonValue, QueueTaskState, QueueWorkSummaryView, QueueWorkView,
+} from '@deepseek-ai/dsh-task-queue-remote/views'
 import type { QueueWorkspaceProps } from './contract/slots.ts'
-import type { QueueExecutorView, QueueSnapshot } from './store.ts'
-import type { QueueTaskStatus, QueueTaskView } from '@deepseek-ai/dsh-task-queue-remote/views'
-import { DONE_STATUSES, LIVE_STATUSES, STATUS_DOT, STATUS_LABEL_KEY, isAttention } from './status.ts'
+import type { QueueActionResult } from './store.ts'
+import type { TaskQueueKey } from './locales.ts'
+import {
+  countQueueRows, dotFor, projectQueueRows, queueAge,
+} from './view-model.ts'
+import type { QueueAge, QueueFilter } from './view-model.ts'
 import css from './QueueWorkspace.module.css'
 
-type Filter = 'all' | 'live' | 'attention' | 'done' | 'dismissed'
+/** One in-flight mutation, scoped to its work ID so other rows stay usable. */
+type PendingKind = 'cancel' | 'retry' | 'authorize-retry' | 'confirm-failed'
+type PendingAction = {
+  workId: string
+  kind: PendingKind
+} | null
 
-const FILTERS: Filter[] = ['all', 'live', 'attention', 'done', 'dismissed']
+/** The dialog waiting on a checked risk acknowledgement. */
+type ConfirmationKind = 'cancel' | 'authorize-retry'
+type Confirmation = {
+  workId: string
+  kind: ConfirmationKind
+} | null
 
-/** Service-state dot semantic (healthy green / paused amber / faulted red). */
-const SERVICE_DOT = { running: 'done', paused: 'warning', faulted: 'error' } as const
+/** A mutation failure that stays visible beside its row and in the detail. */
+type ActionError = { workId: string; message: string } | null
+/** One success Toast, keyed by sequence so repeats restart the cycle. */
+type Feedback = { sequence: number; message: string } | null
 
-/** One transient write-outcome message; auto-clears. */
-interface Feedback { tone: 'ok' | 'err'; text: string }
+const FILTERS: readonly QueueFilter[] = ['all', 'active', 'attention', 'done']
 
-/**
- * Render the Queue workspace.
- * @param props - shell.view owner share + injected store + locale seat.
- * @returns the workspace element tree.
- */
+const TIME_UNIT_KEY: Readonly<Record<QueueAge['unit'], TaskQueueKey>> = {
+  seconds: 'time.secondsAgo',
+  minutes: 'time.minutesAgo',
+  hours: 'time.hoursAgo',
+  days: 'time.daysAgo',
+}
+
+const OUTCOME_KEY: Readonly<Record<'succeeded' | 'failed' | 'canceled', TaskQueueKey>> = {
+  succeeded: 'outcome.succeeded',
+  failed: 'outcome.failed',
+  canceled: 'outcome.canceled',
+}
+
+function stateKey(state: QueueTaskState): 'status.queued' | 'status.running' | 'status.attention' | 'status.done' {
+  return `status.${state}`
+}
+
+/** Localized JsonTree copy/aria labels for this render site. */
+function jsonTreeLabels(t: QueueWorkspaceProps['t']): JsonTreeLabels {
+  return {
+    copyValue: t('jsonTree.copyValue'),
+    copyJson: t('jsonTree.copyJson'),
+    copyPath: t('jsonTree.copyPath'),
+    copyPrettyJson: t('jsonTree.copyPrettyJson'),
+    copyCompactJson: t('jsonTree.copyCompactJson'),
+    copied: t('jsonTree.copied'),
+    copyFailed: t('jsonTree.copyFailed'),
+    collapseNode: t('jsonTree.collapseNode'),
+    expandNode: t('jsonTree.expandNode'),
+    copyButtonTitle: action => t('jsonTree.copyButtonTitle', { action }),
+  }
+}
+
+/** Localized relative age from one clock reading. */
+function ageLabel(age: QueueAge, t: QueueWorkspaceProps['t']): string {
+  return t(TIME_UNIT_KEY[age.unit], { value: age.value })
+}
+
+/** Local, human-readable timestamp for summary and attempt sections. */
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString()
+}
+
+/** Narrow a JSON value to an array without widening through `Array.isArray`'s `any[]` guard. */
+function isQueueArray(value: QueueJsonValue): value is readonly QueueJsonValue[] {
+  return Array.isArray(value)
+}
+
+/** Render the operator workspace over one shared QueueStore. */
 export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
-  const snapshot = useSyncExternalStore<QueueSnapshot>(queue.subscribe, queue.getSnapshot)
-  const [filter, setFilter] = useState<Filter>('all')
+  const snapshot = useSyncExternalStore(queue.subscribe, queue.getSnapshot, queue.getSnapshot)
+  const [filter, setFilter] = useState<QueueFilter>('all')
   const [query, setQuery] = useState('')
-  const [diag, setDiag] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState<Feedback | null>(null)
-  const feedbackTimer = useRef<number | undefined>(undefined)
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null)
+  const [confirmation, setConfirmation] = useState<Confirmation>(null)
+  const [failureReason, setFailureReason] = useState('')
+  const [acknowledged, setAcknowledged] = useState(false)
+  const [actionError, setActionError] = useState<ActionError>(null)
+  const [feedback, setFeedback] = useState<Feedback>(null)
 
-  // Re-hydrate the panel on every mount (the frame unmounts inactive module
-  // views, so opening the workspace is the refresh trigger; the plugin poll
-  // keeps the badge live in between).
-  useEffect(() => { void queue.refresh() }, [queue])
+  useEffect(() => {
+    void queue.refresh()
+  }, [queue])
 
-  useEffect(() => () => { window.clearTimeout(feedbackTimer.current) }, [])
+  // A selection change invalidates the previous task's reason and task-scoped error.
+  useEffect(() => {
+    setFailureReason('')
+    setActionError(null)
+  }, [snapshot.selectedId])
 
-  const stats = snapshot.stats
-  const serviceState = stats?.serviceState ?? null
+  const rows = useMemo(
+    () => projectQueueRows(snapshot.rows, filter, query),
+    [snapshot.rows, filter, query],
+  )
+  const counts = useMemo(() => countQueueRows(snapshot.rows), [snapshot.rows])
+  const nowMs = Date.now()
+  const detail = snapshot.detail
+  const confirmationRow = confirmation === null
+    ? null
+    : snapshot.rows.find(row => row.id === confirmation.workId) ?? null
 
-  /** Run one steering verb with pending → confirmed feedback. */
-  async function runAction(action: () => Promise<{ ok: boolean; message: string }>): Promise<void> {
-    setBusy(true)
-    const outcome = await action()
-    setBusy(false)
-    showFeedback(outcome.ok ? 'ok' : 'err', outcome.message)
+  const isPending = (workId: string): boolean => pendingAction?.workId === workId
+
+  /**
+   * Run one row-scoped mutation: lock only this work ID, emit a Toast on
+   * success, keep the failure beside the row, and unlock when the same
+   * pending entry still owns the slot.
+   */
+  async function act(
+    workId: string,
+    kind: PendingKind,
+    action: () => Promise<QueueActionResult>,
+    successMessage: string,
+  ): Promise<void> {
+    if (pendingAction !== null) return
+    setPendingAction({ workId, kind })
+    setActionError(null)
+    try {
+      const result = await action()
+      if (result.ok) {
+        setFeedback({ sequence: Date.now(), message: successMessage })
+      } else {
+        setActionError({ workId, message: result.message })
+      }
+    } finally {
+      setPendingAction(current =>
+        current !== null && current.workId === workId && current.kind === kind ? null : current,
+      )
+    }
   }
 
-  function showFeedback(tone: Feedback['tone'], text: string): void {
-    setFeedback({ tone, text })
-    window.clearTimeout(feedbackTimer.current)
-    feedbackTimer.current = window.setTimeout(() => { setFeedback(null) }, 2600)
+  function openConfirmation(workId: string, kind: ConfirmationKind): void {
+    setAcknowledged(false)
+    setConfirmation({ workId, kind })
   }
 
-  const rows = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return snapshot.summaries.filter((task) => {
-      if (filter === 'live' && !LIVE_STATUSES.includes(task.status)) return false
-      if (filter === 'attention' && !isAttention(task)) return false
-      if (filter === 'done' && !DONE_STATUSES.includes(task.status)) return false
-      if (filter === 'dismissed' && !task.dismissed) return false
-      if (q !== '' && !task.title.toLowerCase().includes(q) && !task.id.toLowerCase().includes(q)) return false
-      return true
+  function closeConfirmation(): void {
+    setAcknowledged(false)
+    setConfirmation(null)
+  }
+
+  function confirmConfirmation(): void {
+    if (confirmation === null) return
+    const { workId, kind } = confirmation
+    setAcknowledged(false)
+    setConfirmation(null)
+    if (kind === 'cancel') {
+      void act(workId, 'cancel', () => queue.cancel(workId), t('feedback.canceled'))
+    } else {
+      void act(
+        workId,
+        'authorize-retry',
+        () => queue.resolveUnknown(workId, { kind: 'authorize-retry' }),
+        t('feedback.retried'),
+      )
+    }
+  }
+
+  function confirmFailed(): void {
+    if (detail === null) return
+    const reason = failureReason.trim()
+    if (reason === '') return
+    void act(
+      detail.id,
+      'confirm-failed',
+      () => queue.resolveUnknown(detail.id, {
+        kind: 'confirm-failed',
+        failure: {
+          category: 'operator-confirmed',
+          message: reason,
+          sideEffect: 'unknown',
+          retriable: false,
+        },
+      }),
+      t('feedback.failed'),
+    )
+  }
+
+  async function copyId(): Promise<void> {
+    if (detail === null) return
+    const ok = await writeClipboard(detail.id)
+    setFeedback({
+      sequence: Date.now(),
+      message: ok ? t('detail.copySucceeded') : t('detail.copyFailed'),
     })
-  }, [snapshot.summaries, filter, query])
+  }
 
-  const running = stats?.byStatus.running ?? 0
-  const starting = stats?.byStatus.starting ?? 0
-  const failed = stats?.undismissedFailed ?? 0
-  const dismissedCount = stats?.byDismissed ?? 0
-  const total = snapshot.summaries.length
+  function renderEmpty(): ReactNode {
+    if (query.trim() !== '') {
+      return (
+        <div className={css.empty}>
+          <p>{t('empty.search')}</p>
+          <Button size="sm" onClick={() => { setQuery('') }}>{t('search.clear')}</Button>
+        </div>
+      )
+    }
+    const copy = filter === 'all'
+      ? t('empty.all')
+      : filter === 'active'
+        ? t('empty.active')
+        : filter === 'attention'
+          ? t('empty.attention')
+          : t('empty.done')
+    return <p className={css.empty}>{copy}</p>
+  }
 
-  const canCancel = (status: QueueTaskStatus) => status === 'pending' || status === 'starting' || status === 'running'
-  // Canceled tasks are not retryable: retry only requeues a failure (backend
-  // `retryTask` accepts `failed` only), so a canceled row gets dismiss/restore
-  // but no retry button.
-  const canRetry = (status: QueueTaskStatus) => status === 'failed'
-  const canDismiss = (task: { status: QueueTaskStatus; dismissed: boolean }) =>
-    (task.status === 'succeeded' || task.status === 'failed' || task.status === 'canceled') && !task.dismissed
-  const canUndismiss = (task: { dismissed: boolean }) => task.dismissed
+  function rowAction(row: QueueWorkSummaryView): ReactNode {
+    if (row.state === 'attention') {
+      return (
+        <Button size="sm" disabled={isPending(row.id)} onClick={() => { void queue.select(row.id) }}>
+          {t('list.actions.handle')}
+        </Button>
+      )
+    }
+    if (row.state === 'queued' || row.state === 'running') {
+      return (
+        <Button size="sm" disabled={isPending(row.id)} onClick={() => { openConfirmation(row.id, 'cancel') }}>
+          {t('list.actions.cancel')}
+        </Button>
+      )
+    }
+    if (row.outcome === 'failed') {
+      return (
+        <Button
+          size="sm"
+          disabled={isPending(row.id)}
+          onClick={() => { void act(row.id, 'retry', () => queue.retry(row.id), t('feedback.retried')) }}
+        >
+          {t('list.actions.retry')}
+        </Button>
+      )
+    }
+    return null
+  }
+
+  function detailActions(view: QueueWorkView): ReactNode {
+    if (view.state === 'attention') {
+      return (
+        <div className={css.actionGroup}>
+          <div className={css.actionRow}>
+            <Button size="sm" disabled={isPending(view.id)} onClick={() => { openConfirmation(view.id, 'authorize-retry') }}>
+              {t('list.actions.confirmRetry')}
+            </Button>
+          </div>
+          <div className={css.actionRow}>
+            <label className={css.reasonField}>
+              <span>{t('attention.reasonLabel')}</span>
+              <input
+                aria-label={`${t('attention.reasonLabel')} ${view.title}`}
+                value={failureReason}
+                onChange={(event) => { setFailureReason(event.target.value) }}
+              />
+            </label>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isPending(view.id) || failureReason.trim() === ''}
+              onClick={confirmFailed}
+            >
+              {t('list.actions.confirmFailed')}
+            </Button>
+          </div>
+          <p className={css.reasonHelp}>{t('attention.reasonHelp')}</p>
+        </div>
+      )
+    }
+    if (view.state === 'queued' || view.state === 'running') {
+      return (
+        <Button size="sm" disabled={isPending(view.id)} onClick={() => { openConfirmation(view.id, 'cancel') }}>
+          {t('list.actions.cancel')}
+        </Button>
+      )
+    }
+    if (view.outcome === 'failed') {
+      return (
+        <Button
+          size="sm"
+          disabled={isPending(view.id)}
+          onClick={() => { void act(view.id, 'retry', () => queue.retry(view.id), t('feedback.retried')) }}
+        >
+          {t('list.actions.retry')}
+        </Button>
+      )
+    }
+    return null
+  }
+
+  function renderResult(output: QueueJsonValue): ReactNode {
+    if (output !== null && typeof output === 'object') {
+      return (
+        <JsonTree
+          data={isQueueArray(output) ? [...output] : output}
+          label={t('detail.result')}
+          labels={jsonTreeLabels(t)}
+        />
+      )
+    }
+    return <p className={css.resultPrimitive}>{String(output)}</p>
+  }
+
+  function renderDetail(view: QueueWorkView): ReactNode {
+    return (
+      <div className={css.detailBody}>
+        <div className={css.detailHead}>
+          <h3 className={css.detailTitle}>{view.title}</h3>
+          <span className={css.detailState}>
+            {t(stateKey(view.state))}
+            {view.outcome !== null && <b> · {t(OUTCOME_KEY[view.outcome])}</b>}
+          </span>
+          <Button size="sm" variant="outline" onClick={() => { void copyId() }}>{t('detail.copyId')}</Button>
+        </div>
+        <section className={css.section} aria-label={t('detail.summary')}>
+          <h4 className={css.sectionLabel}>{t('detail.summary')}</h4>
+          <div className={css.kv}>
+            <div><span>{t('detail.kind')}</span><b>{view.kind}</b></div>
+            <div><span>{t('detail.owner')}</span><b>{view.ownerSessionId ?? t('detail.ownerNone')}</b></div>
+            <div><span>{t('list.columns.attempt')}</span><b>{view.attemptCount}/{view.maxAttempts}</b></div>
+            <div><span>{t('detail.created')}</span><b>{formatDateTime(view.createdAt)}</b></div>
+            <div><span>{t('detail.updated')}</span><b>{formatDateTime(view.updatedAt)}</b></div>
+          </div>
+        </section>
+        {view.failure !== null && (
+          <section className={css.section} aria-label={t('detail.issue')}>
+            <h4 className={css.sectionLabel}>{t('detail.issue')}</h4>
+            <div className={css.failureBox}>
+              <p className={css.failureRow}><strong>{t('detail.issue.category')}</strong>：{view.failure.category}</p>
+              <p className={css.failureRow}>{view.failure.message}</p>
+              <p className={css.failureRow}><strong>{t('detail.issue.sideEffect')}</strong>：{view.failure.sideEffect}</p>
+              <p className={css.failureRow}>
+                <strong>{t('detail.issue.retriable')}</strong>：
+                {view.failure.retriable ? t('detail.issue.retriableYes') : t('detail.issue.retriableNo')}
+              </p>
+            </div>
+          </section>
+        )}
+        <section className={css.section} aria-label={t('detail.actions')}>
+          <h4 className={css.sectionLabel}>{t('detail.actions')}</h4>
+          {detailActions(view)}
+          {actionError !== null && actionError.workId === view.id && (
+            <p className={css.detailError} role="alert">{actionError.message}</p>
+          )}
+        </section>
+        <section className={css.section} aria-label={t('detail.attempts')}>
+          <h4 className={css.sectionLabel}>{t('detail.attempts')}</h4>
+          {view.attempts.length === 0 ? <p>{t('detail.attemptsNone')}</p> : (
+            <ul className={css.attemptList}>
+              {view.attempts.map(attempt => (
+                <li key={attempt.id} className={css.attemptRow}>
+                  <span className={css.attemptOrdinal}>#{attempt.ordinal}</span>
+                  <span>{attempt.status}</span>
+                  <span>{t('detail.attempts.started')}：{formatDateTime(attempt.startedAt)}</span>
+                  {attempt.finishedAt !== null && (
+                    <span>{t('detail.attempts.finished')}：{formatDateTime(attempt.finishedAt)}</span>
+                  )}
+                  {attempt.failure !== null && (
+                    <span className={css.attemptFailure}>
+                      {t('detail.attempts.failure')}：{attempt.failure.message}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section className={css.section} aria-label={t('detail.result')}>
+          <h4 className={css.sectionLabel}>{t('detail.result')}</h4>
+          {view.result === null ? <p>{t('detail.resultNone')}</p> : renderResult(view.result.output)}
+        </section>
+        <details className={css.advanced}>
+          <summary>{t('detail.advanced')}</summary>
+          <JsonTree data={{ work: view }} label={t('detail.advanced')} expandTopLevel={false} labels={jsonTreeLabels(t)} />
+        </details>
+      </div>
+    )
+  }
+
+  const isRetryConfirmation = confirmation?.kind === 'authorize-retry'
+  const confirmationTitle = isRetryConfirmation ? t('attention.retryTitle') : t('attention.cancelTitle')
+  const confirmationDescription = isRetryConfirmation
+    ? t('attention.retryDescription', { title: confirmationRow?.title ?? '' })
+    : confirmationRow?.state === 'queued'
+      ? t('attention.cancelQueuedDescription')
+      : t('attention.cancelRunningDescription')
+  const confirmationAcknowledge = isRetryConfirmation
+    ? t('attention.retryAcknowledge')
+    : t('attention.cancelAcknowledge')
 
   return (
-    <div className={css.workspace}>
+    <section className={css.workspace} aria-label={t('view.title')}>
       <header className={css.head}>
-        <div>
-          <h1 className={css.title}>{t('view.title')}</h1>
-          <p className={css.subtitle}>{t('view.subtitle')}</p>
+        <div className={css.headMeta}>
+          <h2 className={css.title}>{t('view.title')}</h2>
+          <span className={css.refreshMeta} role="status">
+            {snapshot.refreshing
+              ? t('view.updating')
+              : snapshot.lastSuccessfulRefreshAt === null
+                ? ''
+                : t('view.updated', { time: ageLabel(queueAge(snapshot.lastSuccessfulRefreshAt, nowMs), t) })}
+          </span>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          icon={<IconRefreshOutline16 />}
-          disabled={busy || snapshot.refreshing}
-          onClick={() => { void queue.refresh() }}
-        >
-          {t('view.refresh')}
-        </Button>
+        <Button onClick={() => { void queue.refresh() }} disabled={snapshot.refreshing}>{t('view.refresh')}</Button>
       </header>
-
-      {serviceState === 'faulted' && (
-        <div className={css.faultBanner} role="alert">
-          <StateDot state="error" />
-          <span>{t('service.faultBanner')}</span>
+      {snapshot.error !== null && (
+        <div className={css.errorBanner} role="alert">
+          {t('view.updateFailed', { message: snapshot.error })}
         </div>
       )}
-
-      <div className={clsx(css.serviceBar, serviceState === 'faulted' && css.faulted, serviceState === 'paused' && css.paused)}>
-        {serviceState === null
-          ? <span className={css.serviceText}>{t('service.running')}</span>
-          : (
-            <>
-              <StateDot state={SERVICE_DOT[serviceState]} />
-              <span className={css.serviceText}>
-                {serviceState === 'running' ? t('service.running') : serviceState === 'paused' ? t('service.paused') : t('service.faulted')}
-              </span>
-            </>
-          )}
-        <span className={css.capacity}>
-          {running} {t('service.capacity')}{starting > 0 ? ` · ${starting} ${t('status.starting')}` : ''}
-        </span>
-        <div className={css.serviceActions}>
-          {serviceState === 'running' && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<IconPauseOutline16 />}
-              disabled={busy}
-              onClick={() => { void runAction(() => queue.pause()) }}
-            >
-              {t('service.pause')}
-            </Button>
-          )}
-          {(serviceState === 'paused' || serviceState === 'faulted') && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<IconPlayOutline16 />}
-              disabled={busy || serviceState === 'faulted'}
-              title={serviceState === 'faulted' ? t('service.resumeDisabled') : undefined}
-              onClick={() => { void runAction(() => queue.resume()) }}
-            >
-              {t('service.resume')}
-            </Button>
-          )}
-        </div>
-      </div>
-
       <div className={css.shell}>
-        <section className={css.listPane} aria-label={t('view.title')}>
+        <section className={css.listPane} aria-label={t('list.title')}>
           <div className={css.toolbar}>
-            {FILTERS.map(kind => (
-              <button
-                key={kind}
-                type="button"
-                className={clsx(css.filter, filter === kind && css.filterActive)}
-                aria-pressed={filter === kind}
-                onClick={() => { setFilter(kind) }}
+            {FILTERS.map(value => (
+              <Pill
+                key={value}
+                active={filter === value}
+                aria-pressed={filter === value}
+                onClick={() => { setFilter(value) }}
               >
-                {t(`filter.${kind}`)}
-                {kind === 'all' && <span className={css.count}>{total}</span>}
-                {kind === 'attention' && failed > 0 && <span className={css.count}>{failed}</span>}
-                {kind === 'dismissed' && dismissedCount > 0 && <span className={css.count}>{dismissedCount}</span>}
-              </button>
+                {t(`filter.${value}`)} <span className={css.count}>{counts[value]}</span>
+              </Pill>
             ))}
             <input
               className={css.search}
@@ -183,333 +458,56 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
               value={query}
               onChange={(event) => { setQuery(event.target.value) }}
             />
-            {snapshot.summaries.some(task => task.status === 'failed' && !task.dismissed) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                onClick={() => {
-                  const ids = snapshot.summaries
-                    .filter(task => task.status === 'failed' && !task.dismissed)
-                    .map(task => task.id)
-                  void runAction(() => queue.retryMany(ids))
-                }}
-              >
-                {t('list.actions.retryAllFailed')}
-              </Button>
-            )}
-            {failed > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                onClick={() => {
-                  if (!window.confirm(t('list.actions.dismissAllFailedConfirm'))) return
-                  void runAction(() => queue.dismissMany(snapshot.summaries.filter(task => task.status === 'failed' && !task.dismissed).map(task => task.id), true))
-                }}
-              >
-                {t('list.actions.dismissAllFailed')}
-              </Button>
-            )}
-            {snapshot.summaries.some(task => LIVE_STATUSES.includes(task.status)) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                onClick={() => {
-                  const ids = snapshot.summaries
-                    .filter(task => LIVE_STATUSES.includes(task.status))
-                    .map(task => task.id)
-                  void runAction(() => queue.cancelMany(ids))
-                }}
-              >
-                {t('list.actions.cancelAllLive')}
-              </Button>
-            )}
           </div>
-          {rows.length === 0
-            ? <div className={css.empty}>{t('list.empty')}</div>
-            : (
-              <ul className={css.rows}>
-                {rows.map(task => (
-                  <li key={task.id}>
-                    <button
-                      type="button"
-                      className={clsx(css.row, snapshot.selectedId === task.id && css.rowSelected)}
-                      onClick={() => { void queue.select(task.id) }}
-                    >
-                      <div className={css.rowMain}>
-                        <span className={css.rowTitle}>{task.title}</span>
-                        <span className={css.rowId}>{task.id}</span>
-                      </div>
-                      <span className={clsx(css.status, css[task.status])}>
-                        <StateDot state={STATUS_DOT[task.status]} size={10} />
-                        {t(STATUS_LABEL_KEY[task.status])}
-                      </span>
-                      <span className={css.executor}>{task.executor}</span>
-                      <span className={css.attempt}>
-                        {task.attempt}/{task.maxAttempts}
-                      </span>
-                      <span className={css.updated}>{task.updatedAt.slice(11, 16)}</span>
-                      <span className={css.rowActions}>
-                        {canCancel(task.status) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              void runAction(() => queue.cancel(task.id))
-                            }}
-                          >
-                            {t('list.actions.cancel')}
-                          </Button>
-                        )}
-                        {canRetry(task.status) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              void runAction(() => queue.retry(task.id))
-                            }}
-                          >
-                            {t('list.actions.retry')}
-                          </Button>
-                        )}
-                        {canDismiss(task) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              void runAction(() => queue.dismiss(task.id))
-                            }}
-                          >
-                            {t('list.actions.dismiss')}
-                          </Button>
-                        )}
-                        {canUndismiss(task) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              void runAction(() => queue.undismiss(task.id))
-                            }}
-                          >
-                            {t('list.actions.undismiss')}
-                          </Button>
-                        )}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-        </section>
-        <QueueDetail
-          task={snapshot.detail}
-          selected={snapshot.selectedId !== null}
-          loading={snapshot.loading}
-          diag={diag}
-          setDiag={setDiag}
-          t={t}
-          executors={snapshot.executors}
-          onReadRunLog={(taskId, runId) => queue.readRunLog(taskId, runId)}
-        />
-      </div>
-
-      {snapshot.error !== null && (
-        <div className={css.errorBanner} role="alert">
-          <StateDot state="error" />
-          <span>{snapshot.error}</span>
-        </div>
-      )}
-
-      <div className={css.feedback} role="status" aria-live="polite">
-        {feedback !== null && (
-          <span className={clsx(css.feedbackText, feedback.tone === 'err' && css.feedbackErr)}>{feedback.text}</span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/** Right-hand task detail, driven by the store's selected detail view. */
-function QueueDetail({ task, selected, loading, diag, setDiag, t, executors, onReadRunLog }: {
-  task: QueueTaskView | null
-  selected: boolean
-  loading: boolean
-  diag: boolean
-  setDiag: (open: boolean) => void
-  t: QueueWorkspaceProps['t']
-  executors: QueueExecutorView[]
-  onReadRunLog: (taskId: string, runId: string) => Promise<{ ok: true; content: string } | { ok: false; message: string }>
-}) {
-  const [log, setLog] = useState<{ runId: string; content: string | null; loading: boolean; error: string | null } | null>(null)
-  async function loadRunLog(runId: string): Promise<void> {
-    if (task === null) return
-    setLog({ runId, content: null, loading: true, error: null })
-    const result = await onReadRunLog(task.id, runId)
-    if (result.ok) {
-      setLog({ runId, content: result.content, loading: false, error: null })
-    } else {
-      setLog({ runId, content: null, loading: false, error: result.message })
-    }
-  }
-
-  if (!selected && task === null) {
-    return (
-      <aside className={css.detailPane}>
-        <div className={css.detailHead}>{t('detail.title')}</div>
-        <div className={css.detailEmpty}>{t('detail.select')}</div>
-      </aside>
-    )
-  }
-  if (task === null) {
-    return (
-      <aside className={css.detailPane}>
-        <div className={css.detailHead}>{t('detail.title')}</div>
-        <div className={css.detailEmpty}>{loading ? '…' : t('detail.select')}</div>
-      </aside>
-    )
-  }
-  const kv = (label: string, value: string) => (
-    <div className={css.kv} key={label}><span>{label}</span><b>{value}</b></div>
-  )
-  return (
-    <aside className={css.detailPane}>
-      <div className={css.detailHead}>
-        <span className={css.detailTitle}>{task.title}</span>
-        <span className={clsx(css.status, css[task.status])}>
-          <StateDot state={STATUS_DOT[task.status]} size={10} />
-          {t(STATUS_LABEL_KEY[task.status])}
-        </span>
-      </div>
-      <div className={css.detailBody}>
-        <section className={css.section}>
-          <div className={css.sectionLabel}>{t('detail.executor')}</div>
-          <div className={css.card}>
-            {kv(t('detail.executor'), task.executor)}
-            {kv(t('detail.priority'), String(task.priority))}
-            {kv(t('list.columns.attempt'), `${task.attempt}/${task.maxAttempts}`)}
-            {kv(t('detail.created'), task.createdAt.slice(0, 19).replace('T', ' '))}
-            {kv(t('detail.updated'), task.updatedAt.slice(0, 19).replace('T', ' '))}
-            {kv(t('detail.owner'), task.ownerSessionId ?? t('detail.ownerNone'))}
-          </div>
-        </section>
-
-        {task.tags.length > 0 && (
-          <section className={css.section}>
-            <div className={css.sectionLabel}>Tags</div>
-            <div className={css.card}>
-              {task.tags.map(tag => <span key={tag} className={css.tag}>{tag}</span>)}
-            </div>
-          </section>
-        )}
-
-        {task.prompt !== '' && (
-          <section className={css.section}>
-            <div className={css.sectionLabel}>{t('detail.prompt')}</div>
-            <div className={clsx(css.card, css.prompt)}>{task.prompt}</div>
-          </section>
-        )}
-
-        {task.status === 'failed' && (
-          <section className={css.section}>
-            <div className={css.sectionLabel}>{t('detail.error')}</div>
-            <div className={css.errorBox}>
-              {task.lastError ?? '—'}
-              <div className={css.errorNext}>{t('detail.errorNext')}</div>
-            </div>
-          </section>
-        )}
-
-        {task.status === 'stopping' && (
-          <section className={css.section}>
-            <div className={clsx(css.card, css.note)}>{t('detail.stopping')}</div>
-          </section>
-        )}
-
-        {task.status === 'canceled' && (
-          <section className={css.section}>
-            <div className={clsx(css.card, css.note)}>{t('detail.canceled')}</div>
-          </section>
-        )}
-
-        {task.dismissed && (
-          <section className={css.section}>
-            <div className={clsx(css.card, css.note)}>{t('detail.dismissed')}</div>
-          </section>
-        )}
-
-        {task.result !== null && (
-          <section className={css.section}>
-            <div className={css.sectionLabel}>{t('detail.result')}</div>
-            <div className={css.card}>
-              {kv(t('detail.result.exit'), String(task.result.exitCode))}
-              {kv(t('detail.result.duration'), `${(task.result.durationMs / 1000).toFixed(1)} s`)}
-              {task.result.outputFiles.length > 0 && (
-                <div className={css.artifacts}>
-                  {task.result.outputFiles.map(file => (
-                    <div key={file} className={css.artifact}><span className={css.artifactDot} />{file}</div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
-        <section className={css.section}>
-          <div className={css.sectionLabel}>{t('detail.runs')}</div>
-          <div className={css.card}>
-            {task.runs.length === 0
-              ? <div className={css.note}>{t('detail.runs.none')}</div>
-              : task.runs.map(run => (
-                <div key={run.runId} className={css.runRow}>
-                  <span className={css.runAttempt}>{t('detail.runs.attempt')} {run.attempt}</span>
-                  <span className={css.runMeta}>
-                    {run.logPath ?? '—'} · {run.actualStartedAt?.slice(11, 19) ?? '—'}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={log?.runId === run.runId && log.loading}
-                    onClick={() => { void loadRunLog(run.runId) }}
+          {rows.length === 0 ? renderEmpty() : (
+            <ul className={css.rows}>
+              {rows.map(row => (
+                <li
+                  key={row.id}
+                  className={clsx(css.row, snapshot.selectedId === row.id && css.rowSelected)}
+                >
+                  <button
+                    type="button"
+                    className={css.rowSelect}
+                    aria-current={snapshot.selectedId === row.id ? 'true' : undefined}
+                    onClick={() => { void queue.select(row.id) }}
                   >
-                    {log?.runId === run.runId && log.loading ? '…' : t('detail.runs.viewLog')}
-                  </Button>
-                  {log?.runId === run.runId && log.error !== null && (
-                    <div className={css.runLogError}>{log.error}</div>
+                    <StateDot state={dotFor(row)} />
+                    <span className={css.rowState}>{t(stateKey(row.state))}</span>
+                    <span className={css.rowTitle}>{row.title}</span>
+                    <span className={css.rowOwner}>{row.ownerSessionId ?? t('detail.ownerNone')}</span>
+                    <span className={css.rowAttempt}>{t('list.columns.attempt')} {row.attemptCount}/{row.maxAttempts}</span>
+                    <span className={css.rowAge}>{ageLabel(queueAge(row.updatedAt, nowMs), t)}</span>
+                  </button>
+                  <div className={css.rowActions}>{rowAction(row)}</div>
+                  {actionError !== null && actionError.workId === row.id && (
+                    <p className={css.rowError} role="alert">{actionError.message}</p>
                   )}
-                  {log?.runId === run.runId && log.content !== null && (
-                    <pre className={css.runLog}>{log.content}</pre>
-                  )}
-                </div>
+                </li>
               ))}
-          </div>
-        </section>
-
-        <section className={css.section}>
-          <button type="button" className={css.diagToggle} aria-expanded={diag} onClick={() => { setDiag(!diag) }}>
-            {t('detail.diagnostics')}
-            <span>{diag ? t('detail.diagnostics.close') : t('detail.diagnostics.open')}</span>
-          </button>
-          {diag && (
-            <div className={css.diagContent}>
-              id: {task.id} · source: {task.source} · receipt: {task.receiptId}{'\n'}
-              outputDir: {task.outputDir} · backoff: {task.backoffMs} ms · timeout: {task.timeoutMs} ms{'\n'}
-              delayUntil: {task.delayUntil ?? '—'} · ownerSessionId: {task.ownerSessionId ?? '—'}
-              {executors.map(e => `\nexecutor ${e.name}: enabled=${e.enabled} toolAllowed=${e.toolAllowed} live=${e.running}`).join('')}
-              {task.runs.map(run => `\nrun ${run.attempt}: pid=${run.pid ?? '—'} fp=${run.commandFingerprint ?? '—'} unverified=${run.terminationUnverified}`).join('')}
-            </div>
+            </ul>
           )}
         </section>
+        <aside className={css.detailPane} aria-label={t('detail.title')}>
+          {detail === null ? <p className={css.detailEmpty}>{t('detail.select')}</p> : renderDetail(detail)}
+        </aside>
       </div>
-    </aside>
+      {feedback !== null && (
+        <Toast key={feedback.sequence} text={feedback.message} onDone={() => { setFeedback(null) }} />
+      )}
+      <RiskConfirmation
+        open={confirmation !== null}
+        title={confirmationTitle}
+        description={confirmationDescription}
+        acknowledgeLabel={confirmationAcknowledge}
+        cancelLabel={t('dialog.cancel')}
+        closeLabel={t('dialog.cancel')}
+        confirmLabel={t('dialog.confirm')}
+        acknowledged={acknowledged}
+        onAcknowledgedChange={setAcknowledged}
+        onCancel={closeConfirmation}
+        onConfirm={confirmConfirmation}
+      />
+    </section>
   )
 }

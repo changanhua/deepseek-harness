@@ -90,6 +90,11 @@
 # registered by one plugin apply.
 - id: tool-task-queue
   name: '@deepseek-ai/dsh-tool-task-queue'
+  config:
+    maxNotificationsPerStep: 1
+
+- id: tool-agent-run-task-queue
+  name: '@deepseek-ai/dsh-tool-agent-run-task-queue'
 
 # ── skills ──────────────────────────────────────────────────────────────────
 

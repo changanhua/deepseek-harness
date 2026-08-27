@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "recordedAt": "2026-08-27T15:32:29.445Z",
+  "consumerTool": "operation_run_enqueue",
+  "ownerSessionId": "operation-v2-owner",
+  "workId": "f71efd2a-d25f-475b-a8ed-bb97f37e1877",
+  "attemptId": "2aa2ad4d-6c38-47da-9a3a-c97ebfb8f8c3",
+  "resultId": "0d876efb-e58a-46e6-bb21-8bc1330434b3",
+  "notificationId": "c1a961cd-ead0-4d78-923e-923c74ee83bf",
+  "notificationMessageId": "task-queue-notification:c1a961cd-ead0-4d78-923e-923c74ee83bf",
+  "resolvedRevision": "fixture.echo/v1",
+  "status": "succeeded",
+  "reopened": true,
+  "stdoutBytes": 19,
+  "stdoutTruncated": false,
+  "notificationAckAfterFlush": true
+}

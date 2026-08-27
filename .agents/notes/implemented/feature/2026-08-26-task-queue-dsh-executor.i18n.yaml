@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-26-task-queue-dsh-executor.md
-2026-08-26-task-queue-dsh-executor.md: 99d78a63e221ec21435c42e1e313de320e35efd9
-2026-08-26-task-queue-dsh-executor.zh.md: 12879dfb5b24e2e8e8045f00a892b0d03bd8805c
+2026-08-26-task-queue-dsh-executor.md: 33280fd5e993cc0e4dc05c2a4328acde1fb785a5
+2026-08-26-task-queue-dsh-executor.zh.md: 346c54ada0c8496b3fdbb8ab1c6a41cc43e30889

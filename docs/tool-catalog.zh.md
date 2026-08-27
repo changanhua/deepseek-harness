@@ -19,8 +19,9 @@
 
 | 工具包 | 模型可见名称 | 依赖 | 写入／影响 | 随产品发布的别名 | 部署说明 |
 | --- | --- | --- | --- | --- | --- |
+| `@deepseek-ai/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`、`task_queue_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 agent.run@1 admission` | - | 类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，而不暴露 executor、profile、model、credential 或 shell 路由字段。 |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`、`ctx.userQuestions` | `tool/call`、`tool/result after a UI/provider answers the question` | - | ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类答案。 |
-| `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`、`ctx.codeRuntime (execution time)`、`ctx.systemPrompt` | `tool/call`、`one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call`、`tool/result` | - | 在 `mode: ptc`／`mode: both` 下，它由工具注册表所有，作为可过滤能力层之外的保留传输机制（参见 PTC mode Agent Note）。在 `ptc` 下，它是注册表对协议格式（wire format）的唯一贡献；其他可见能力在使用已加载运行时语言生成的 SDK 章节中声明。程序通过 binding 调用这些能力，调用按照原生并发约定调度：启动顺序和策略遵循提交顺序，并发安全的函数体最多重叠执行 `maxParallelSubCalls` 个。调用会重新进入完整且受守卫保护的工具流水线，并将每个嵌套执行关联到此外层结果。 |
+| `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`、`ctx.codeRuntime (execution time)`、`ctx.systemPrompt` | `tool/call`、`one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call`、`tool/result` | - | 在 `mode: code`／`mode: both` 下，它由工具注册表所有，作为可过滤能力层之外的保留传输机制（参见 Code Mode Agent Note）。在 `code` 下，它是注册表对协议格式（wire format）的唯一贡献；其他可见能力在使用已加载运行时语言生成的 SDK 章节中声明。程序通过 binding 调用这些能力，调用按照原生并发约定调度：启动顺序和策略遵循提交顺序，并发安全的函数体最多重叠执行 `maxParallelSubCalls` 个。调用会重新进入完整且受守卫保护的工具流水线，并将每个嵌套执行关联到此外层结果。 |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`、`ctx.systemPrompt`、`ctx.userQuestions (execution time, opportunistic)` | `tool/call`、`plan/mode inactive on an approved review`、`tool/result` | - | 规划未激活时，exit_plan_mode 仍保留在面向模型的 schema 中，这样状态转换不会在规划策略变更之外额外造成工具目录变动。其执行路径会拒绝规划模式之外的调用；在规划模式下，它通过用户交互 seam 提交计划（批准／根据反馈继续规划），批准后会在步骤边界记录规划模式已停用。 |
 | `@deepseek-ai/dsh-tool-bash` | `bash` | `ctx.tools`、`ctx.shell`、`ctx.systemPrompt`、`ctx.shellEnv`、`ctx.jobs at call time for run_in_background` | `tool/call`、`tool/result` | - | bash 工具是 bash 执行器 seam 面向模型的消费方。使用 `run_in_background` 的运行会注册到通用 `ctx.jobs` 运行时，并通过 `job_*` 工具（来自 `@deepseek-ai/dsh-tool-jobs`）收集／停止；禁用 `enableRunInBackground` 配置（默认为 true）后，该参数会被完全移除。 |
 | `@deepseek-ai/dsh-tool-pwsh` | `pwsh` | `ctx.tools`、`ctx.shell`、`ctx.systemPrompt`、`ctx.shellEnv`、`ctx.jobs at call time for run_in_background` | `tool/call`、`tool/result` | - | pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费方（由 `@deepseek-ai/dsh-pwsh-local` 等 PowerShell 执行器为 `ctx.shell` 提供后端）；除沙箱接口外，它逐项对应 bash 工具调用。使用 `run_in_background` 的运行会注册到通用 `ctx.jobs` 运行时，并通过 `job_*` 工具收集／停止；托管的 `DSH_*` 环境来自 `@deepseek-ai/dsh-shell-env`。每次调用都在新进程中运行，不使用持久 PTY 会话。路径采用原生 `C:\...` 形式，变量采用 `$env:NAME`。 |
@@ -35,18 +36,97 @@
 | `@deepseek-ai/dsh-schedule` | `schedule_create`、`schedule_delete`、`schedule_list` | `ctx.tools`、`ctx.sessions`、Session 持久化、未来创建的 live 根 Agent | `tool/call`、`schedule/change create or delete`、`tool/result` | - | 仅在选择启用的 Schedule 插件加载后创建的 live 根 Agent scope 内注册。版本 1 接受 after_seconds、显式绝对 at 和有界固定速率 every_seconds，并披露 session-local 交付；管理读取与变更必须通过共享的 Session 持久化 barrier。 |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`、`ctx.lsp`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，因此其模型可见 schema 在更换提供方时保持稳定。运行时要求已注册提供方，例如 `@deepseek-ai/dsh-lsp-stdio`；如果没有提供方，查询会返回结构化 `LSP_UNAVAILABLE` 错误，而不会改变 schema。 |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`、`ctx.workflowEngine`、`ctx.subagents`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents every fresh round)` | `tool/call`、`tool/result`、`workflow and child session events during execution` | - | 固定的前台工作流会在每个 Round 启动一个全新的结构化子级；模型只能选择不可变目标和可选的 Round 上限。 |
-| `@deepseek-ai/dsh-tool-runtime-inspect` | `runtime_inspect` | `ctx.tools`、`ctx.runtimeFacts`、`ctx.subprocess` | `tool/call`、`tool/result` | - | 只读检查已注册的运行时事实，并通过当前 subprocess 提供方解析可执行文件；命令检查会报告该提供方的执行世界，不会另经宿主路径探测。 |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`、`ctx.agents`、`ctx.skills` | `tool/call`、`tool/result`、`user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`、`session_event_search`、`session_event_trace`、`session_search`、`session_trace` | `ctx.tools`、`ctx.systemPrompt`、`ctx.sessionQuery`、`a calling Agent for workspace authority` | `tool/call`、`tool/result` | - | 这 5 个只读工具会隐藏提供方游标，并根据不可变的调用 agent 会话为每个结果授权。该包需要选择启用；需要强制截止时间或限制行内输出的组合还会挂载通用超时或 spill 策略。 |
-| `@deepseek-ai/dsh-tool-subagent` | `list_subagent_models`、`subagent` | `ctx.tools`、`ctx.subagents`、`ctx.systemPrompt`、`用于模型发现和所选路由校验的 ctx.llm` | `tool/call`、`tool/result`、`child session events through the chosen provider` | `subagent`、`subagent_fork` | 注册的委派工具名称取决于加载时 `toolName` 配置（默认为 `subagent`）；上述默认 schema 关闭模型选择，而发现 schema 则展示为已启用 Session 中可用的固定配套工具。Web preset 会在每个新顶层 Session 创建时读取插件页偏好，并为其子 Session 保留该决定；`subagent_fork` 始终使用固定路由。每个实例通过 `modelSelectionSettings`、`backgroundMode` 与 `enableRunInBackground` 独立控制是否读取模型选择设置及其后台行为。 |
+| `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`、`ctx.subagents`、`ctx.systemPrompt` | `tool/call`、`tool/result`、`child session events through the chosen provider` | `subagent`、`subagent_fork` | 注册的工具名称取决于加载时 `toolName` 配置（默认为 `subagent`）；上述 schema 对应默认值。随产品发布的组合会为每个 subagent 后端加载一次该包，因此模型还会看到绑定到 fork 后端的 `subagent_fork`。每个实例的描述、`run_in_background` 参数与 system prompt 策略取决于它自己的 `backgroundMode` 和 `enableRunInBackground`，因此两个随附 schema 并不相同：`subagent` 为 `continuable`，省略参数时默认后台运行，并由 runtime 自动投递结束结果；`subagent_fork` 保持 `one-shot`，省略参数时默认前台运行。详见 `packages/bundle/base/cordis.patch.yml` 和 `examples/acp-agent/cordis.yml`。 |
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`、`list_agents`、`send_message` | `ctx.tools`、`ctx.subagents`、`ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`、`tool/result`、`child session events through ctx.subagents` | - | 这些是控制可继续后台 subagent 的全局命名工具：绑定提供方的 `tool-subagent` 实例注册不同的委派工具；本包注册一次 `send_message` 和 `interrupt_agent`，另由 `list_agents` 通过单独加载的 `/list-agents` 插件提供，其目录行使用 sessionProjections 和实时 Agent 注册表。 |
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`、`ctx.systemPrompt`、`a live continuable in-process child Agent` | `tool/call`、`tool/result`、`a user-role message in the direct parent session` | - | 按可继续的进程内子级注册，而非全局注册，因此该 schema 仅在这种子级内部可见，并且不受其全局 `toolFilter` 影响。同一份贡献还会安装子级作用域的 `tool:report` 系统提示词 section，本目录不渲染该 section。面向父级的 `send_message` 工具单独安装。 |
+| `@deepseek-ai/dsh-tool-image-generation-task-queue` | `image_generate_enqueue`、`image_generate_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 image.generate@1 admission` | - | 类型化的图像准入消费者。`image_generate_enqueue` 通过活动 Agent 权限记录 `image.generate@1` 意图；提供方发现和执行属于已注册的 WorkHandler。 |
+| `@deepseek-ai/dsh-tool-operation-run-task-queue` | `operation_run_enqueue`、`operation_run_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 operation.run@1 admission` | - | 类型化的 allowlist operation 准入消费者。它只接纳宿主配置的 `operationId`；executable、argv、cwd、environment、credential、resource 和 execution policy 均不在工具 schema 中。 |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`、`job_list`、`job_output` | `ctx.tools`、`ctx.jobs`、`ctx.systemPrompt` | `tool/call`、`tool/result`、`user/message via agent.inject() for background completion notices` | - | 与任务种类无关的后台任务控制器：后台 bash 命令、PTY 发送和 subagent 都通过相同的 3 个工具读取、列出和终止。加载该插件会挂接控制器，从而启用生产方的 `ctx.jobs.start()`。 |
-| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`、`task_queue_dismiss`、`task_queue_enqueue`、`task_queue_enqueue_batch`、`task_queue_executors`、`task_queue_list`、`task_queue_retry`、`task_queue_stats`、`task_queue_status`、`task_queue_undismiss` | `ctx.tools`、`ctx.systemPrompt`、`ctx.sessions (notification finalizer flush)`、`ctx.taskQueue (optional host service)` | `tool/call`、`tool/result`、`user/message notification candidates via agent/pre-step`、`task-queue/* notification acks` | - | 持久的跨会话任务队列控制器：10 个 `task_queue_*` 工具运行在宿主 `ctx.taskQueue` 服务之上。所有执行器默认禁用，因此本目录以空执行器集合启动；部署需在 host 行中启用确切的 CLI 二进制。`shell` 仅限 inbox，工具永不接受。 |
+| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`、`task_queue_kinds`、`task_queue_list`、`task_queue_result`、`task_queue_retry`、`task_queue_stats`、`task_queue_status` | `ctx.tools`、`ctx.taskQueue`、`ctx.sessions`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 owner-scoped controls`、`来自持久终态 Notification 的 user/message` | - | 与 WorkKind 无关的持久控制器：通过宿主 `ctx.taskQueue` service 提供 `task_queue_*` 检查、结果读取、取消、重试和 WorkKind 工具，并通过 `ctx.sessions` 提供可重放安全的 owner Notification delivery。Work handler、admission Consumer 和宿主 resource capacity 分别组合。 |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`、`interrupt_agent`、`list_agents`、`send_message`、`spawn_teammate`、`team_task_create`、`team_task_get`、`team_task_list`、`team_task_update`、`wait_agent` | `ctx.tools`、`ctx.systemPrompt`、`ctx.agentTeams`、`an exact live Team member Agent` | `tool/call`、`team/member`、`team/message/queued`、`team/message/delivered`、`team/task`、`tool/result` | - | 这 10 个工具限定于隐式 Team Lead 与持久 teammate 作用域。随产品发布的 dsh-base bundle 默认禁用该包；文档中的 Agent Teams profile patch 会启用它，并禁用旧 continuable child 的同名控制工具。 |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
+
+<a id="deepseek-aidsh-tool-agent-run-task-queue"></a>
+
+## `@deepseek-ai/dsh-tool-agent-run-task-queue`
+
+### `task_queue_enqueue`
+
+持久化入队一个受限的 Harness worker 请求。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "idempotencyKey": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "title",
+    "prompt",
+    "idempotencyKey"
+  ]
+}
+```
+
+来源：[`packages/task-queue/tool-agent-run-task-queue/src/index.ts`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
+
+### `task_queue_enqueue_batch`
+
+原子性地入队多个受限的 Harness worker 请求。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "prompt"
+        ]
+      }
+    },
+    "idempotencyKey": {
+      "type": "string"
+    },
+    "maxParallel": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "items",
+    "idempotencyKey",
+    "maxParallel"
+  ]
+}
+```
+
+来源：[`packages/task-queue/tool-agent-run-task-queue/src/index.ts`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
+
+类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，而不暴露 executor、profile、model、credential 或 shell 路由字段。
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -150,9 +230,9 @@ ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类�
 }
 ```
 
-来源：[`packages/core/tools/src/ptc.ts`](../packages/core/tools/src/ptc.ts)
+来源：[`packages/core/tools/src/code-mode.ts`](../packages/core/tools/src/code-mode.ts)
 
-在 `mode: ptc`／`mode: both` 下，它由工具注册表所有，作为可过滤能力层之外的保留传输机制（参见 PTC mode Agent Note）。在 `ptc` 下，它是注册表对协议格式的唯一贡献；其他可见能力在使用已加载运行时语言生成的 SDK 章节中声明。程序通过 binding 调用这些能力，调用按照原生并发约定调度：启动顺序和策略遵循提交顺序，并发安全的函数体最多重叠执行 `maxParallelSubCalls` 个。调用会重新进入完整且受守卫保护的工具流水线，并将每个嵌套执行关联到此外层结果。
+在 `mode: code`／`mode: both` 下，它由工具注册表所有，作为可过滤能力层之外的保留传输机制（参见 Code Mode Agent Note）。在 `code` 下，它是注册表对协议格式的唯一贡献；其他可见能力在使用已加载运行时语言生成的 SDK 章节中声明。程序通过 binding 调用这些能力，调用按照原生并发约定调度：启动顺序和策略遵循提交顺序，并发安全的函数体最多重叠执行 `maxParallelSubCalls` 个。调用会重新进入完整且受守卫保护的工具流水线，并将每个嵌套执行关联到此外层结果。
 
 <a id="deepseek-aidsh-plan-mode"></a>
 
@@ -573,7 +653,6 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 * 如果 `path` 是文件，`view` 会显示应用 `cat -n` 后的结果。如果 `path` 是目录，`view` 会列出最多向下 2 层的非隐藏文件和目录
 * 如果指定的 `create` 命令目标 `path` 已作为文件存在，则不能使用该命令
 * 如果 `command` 产生较长输出，输出会被截断并标记为 `<response clipped>`
-* 当前命令不使用某个参数时，值为 `null` 的占位参数视为未提供。必填参数仍须提供值；删除匹配内容时应省略 `str_replace.new_str`，而不是将其设为 `null`
 
 使用 `str_replace` 命令时请注意：
 
@@ -600,62 +679,27 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
       "description": "Absolute path to file or directory, e.g. `/repo/file.py` or `/repo`."
     },
     "file_text": {
-      "oneOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Required string parameter of `create` command, with the content of the file to be created. A null placeholder is treated as omitted by commands that do not use this parameter."
+      "type": "string",
+      "description": "Required parameter of `create` command, with the content of the file to be created."
     },
     "insert_line": {
-      "oneOf": [
-        {
-          "type": "integer"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Required integer parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`. A null placeholder is treated as omitted by commands that do not use this parameter."
+      "type": "integer",
+      "description": "Required parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`."
     },
     "new_str": {
-      "oneOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Optional string parameter of `str_replace` command containing the new string (if omitted, no string will be added). Required string parameter of `insert` command containing the string to insert. A null placeholder is accepted only by commands that do not use this parameter."
+      "type": "string",
+      "description": "Optional parameter of `str_replace` command containing the new string (if not given, no string will be added). Required parameter of `insert` command containing the string to insert."
     },
     "old_str": {
-      "oneOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Required string parameter of `str_replace` command containing the string in `path` to replace. A null placeholder is treated as omitted by commands that do not use this parameter."
+      "type": "string",
+      "description": "Required parameter of `str_replace` command containing the string in `path` to replace."
     },
     "view_range": {
-      "oneOf": [
-        {
-          "type": "array",
-          "items": {
-            "type": "integer"
-          }
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Optional parameter of `view` command when `path` points to a file. If omitted or null, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file."
+      "type": "array",
+      "description": "Optional parameter of `view` command when `path` points to a file. If none is given, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file.",
+      "items": {
+        "type": "integer"
+      }
     }
   },
   "required": [
@@ -1281,49 +1325,6 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 固定的前台工作流会在每个 Round 启动一个全新的结构化子级；模型只能选择不可变目标和可选的 Round 上限。
 
-<a id="deepseek-aidsh-tool-runtime-inspect"></a>
-
-## `@deepseek-ai/dsh-tool-runtime-inspect`
-
-### `runtime_inspect`
-
-当任务依赖尚未证实的事实或可执行文件时，检查 DSH 权威运行时状态。kind="facts" 返回选定的已注册运行时事实；省略 keys 可检查当前注册的全部事实，包括仅供异步检查的事实。kind="command" 通过当前 subprocess 提供方解析一个可执行文件并报告其执行世界。解析成功只证明命令可发现，不证明它能启动、已认证或会成功。该工具不会独立探测命令，也不暴露凭据值。
-
-```json
-{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "kind": {
-      "type": "string",
-      "enum": [
-        "facts",
-        "command"
-      ],
-      "description": "Inspect registered runtime facts, or resolve one executable through the active subprocess provider."
-    },
-    "keys": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Runtime fact keys to inspect. Omit to inspect every currently registered fact."
-    },
-    "command": {
-      "type": "string",
-      "description": "Absolute executable path or bare command name to resolve in the active execution world."
-    }
-  },
-  "required": [
-    "kind"
-  ]
-}
-```
-
-来源：[`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts)
-
-只读检查已注册的运行时事实，并通过当前 subprocess 提供方解析可执行文件；命令检查会报告该提供方的执行世界，不会另经宿主路径探测。
-
 <a id="deepseek-aidsh-tool-skill"></a>
 
 ## `@deepseek-ai/dsh-tool-skill`
@@ -1588,28 +1589,6 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ## `@deepseek-ai/dsh-tool-subagent`
 
-### `list_subagent_models`
-
-发现 subagent 可用的 LLM 路由，不更改当前 Agent。无参数调用会列出已注册提供方；提供 `provider` 时会列出其公布的模型；同时提供 `provider` 和 `model` 时会检查该精确模型及其推理强度。目录条目只提供建议：adapter 可能接受未列出的模型 id。把返回的 id 用于委派工具的 `provider`、`model` 与 `reasoning_effort` 字段。
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "provider": {
-      "type": "string",
-      "description": "Registered LLM provider id. Omit to list providers."
-    },
-    "model": {
-      "type": "string",
-      "description": "Exact model id to inspect. Requires provider; omit to list that provider's advertised models."
-    }
-  }
-}
-```
-
-来源：[`packages/subagent/tool-subagent/src/list-models.ts`](../packages/subagent/tool-subagent/src/list-models.ts)
-
 ### `subagent`
 
 将一项自包含任务委派给 subagent（在自身上下文中工作的独立 agent），用它卸载聚焦且独立的工作，例如研究、限定范围的实现或分析，以免消耗当前对话的上下文。subagent 会返回结果，但不会返回中间步骤。请提供完整、独立的提示词，因为它看不到当前对话。此调用默认等待结果。设置 `run_in_background: true` 可返回 job id；使用 `job_output` 收集结果，使用 `job_kill` 停止任务。
@@ -1640,7 +1619,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 来源：[`packages/subagent/tool-subagent/src/index.ts`](../packages/subagent/tool-subagent/src/index.ts)
 
-注册的委派工具名称取决于加载时 `toolName` 配置（默认为 `subagent`）；上述默认 schema 关闭模型选择，而发现 schema 则展示为已启用 Session 中可用的固定配套工具。Web preset 会在每个新顶层 Session 创建时读取插件页偏好，并为其子 Session 保留该决定；`subagent_fork` 始终使用固定路由。每个实例通过 `modelSelectionSettings`、`backgroundMode` 与 `enableRunInBackground` 独立控制是否读取模型选择设置及其后台行为。
+注册的工具名称取决于加载时 `toolName` 配置（默认为 `subagent`）；上述 schema 对应默认值。随产品发布的组合会为每个 subagent 后端加载一次该包，因此模型还会看到绑定到 fork 后端的 `subagent_fork`。每个实例的描述、`run_in_background` 参数与 system prompt 策略取决于它自己的 `backgroundMode` 和 `enableRunInBackground`，因此两个随附 schema 并不相同：`subagent` 为 `continuable`，省略参数时默认后台运行，并由 runtime 自动投递结束结果；`subagent_fork` 保持 `one-shot`，省略参数时默认前台运行。详见 `packages/bundle/base/cordis.patch.yml` 和 `examples/acp-agent/cordis.yml`。
 
 <a id="deepseek-aidsh-tool-subagent-control"></a>
 
@@ -1744,6 +1723,227 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 按可继续的进程内子级注册，而非全局注册，因此该 schema 仅在这种子级内部可见，并且不受其全局 `toolFilter` 影响。同一份贡献还会安装子级作用域的 `tool:report` 系统提示词 section，本目录不渲染该 section。面向父级的 `send_message` 工具单独安装。
 
+<a id="deepseek-aidsh-tool-image-generation-task-queue"></a>
+
+## `@deepseek-ai/dsh-tool-image-generation-task-queue`
+
+### `image_generate_enqueue`
+
+持久化入队一个图像生成请求。提供完成的视觉提示词和所需输出设置；宿主会在生成开始前解析 ArkCLI Agent Plan 模型。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "Complete visual prompt."
+    },
+    "size": {
+      "type": "string",
+      "description": "Requested provider-supported size, for example 1920x1920."
+    },
+    "outputFormat": {
+      "type": "string",
+      "description": "Image container.",
+      "enum": [
+        "png",
+        "jpeg"
+      ]
+    },
+    "watermark": {
+      "type": "boolean",
+      "description": "Whether the output contains a watermark."
+    },
+    "provider": {
+      "type": "string",
+      "description": "Explicit provider id. Omit only when exactly one image provider is configured."
+    },
+    "model": {
+      "type": "string",
+      "description": "Optional provider model selector."
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "Stable dedupe key for this logical image request."
+    }
+  },
+  "required": [
+    "prompt",
+    "size",
+    "outputFormat",
+    "watermark",
+    "idempotencyKey"
+  ]
+}
+```
+
+来源：[`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts)
+
+### `image_generate_enqueue_batch`
+
+从完成的提示词原子性地入队多个带独立标题的图像生成请求。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Title for this WorkItem."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Complete visual prompt."
+          },
+          "size": {
+            "type": "string",
+            "description": "Requested provider-supported size, for example 1920x1920."
+          },
+          "outputFormat": {
+            "type": "string",
+            "description": "Image container.",
+            "enum": [
+              "png",
+              "jpeg"
+            ]
+          },
+          "watermark": {
+            "type": "boolean",
+            "description": "Whether the output contains a watermark."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Explicit provider id. Omit only when exactly one image provider is configured."
+          },
+          "model": {
+            "type": "string",
+            "description": "Optional provider model selector."
+          }
+        },
+        "required": [
+          "title",
+          "prompt",
+          "size",
+          "outputFormat",
+          "watermark"
+        ]
+      }
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "Stable dedupe key for this logical image Batch."
+    },
+    "maxParallel": {
+      "type": "integer",
+      "description": "Positive Batch concurrency bound."
+    }
+  },
+  "required": [
+    "items",
+    "idempotencyKey",
+    "maxParallel"
+  ]
+}
+```
+
+来源：[`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts)
+
+类型化的图像准入消费者。`image_generate_enqueue` 通过活动 Agent 权限记录 `image.generate@1` 意图；提供方发现和执行属于已注册的 WorkHandler。
+
+<a id="deepseek-aidsh-tool-operation-run-task-queue"></a>
+
+## `@deepseek-ai/dsh-tool-operation-run-task-queue`
+
+### `operation_run_enqueue`
+
+按 operation id 持久入队一个宿主配置的 operation。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title for this WorkItem."
+    },
+    "operationId": {
+      "type": "string",
+      "description": "Host-configured operation id."
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "Stable dedupe key for this logical operation."
+    }
+  },
+  "required": [
+    "title",
+    "operationId",
+    "idempotencyKey"
+  ],
+  "additionalProperties": false
+}
+```
+
+来源：[`packages/task-queue/tool-operation-run-task-queue/src/index.ts`](../packages/task-queue/tool-operation-run-task-queue/src/index.ts)
+
+### `operation_run_enqueue_batch`
+
+原子入队多个各自带标题的宿主配置 operation。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Title for this WorkItem."
+          },
+          "operationId": {
+            "type": "string",
+            "description": "Host-configured operation id."
+          }
+        },
+        "required": [
+          "title",
+          "operationId"
+        ]
+      }
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "Stable dedupe key for this logical operation batch."
+    },
+    "maxParallel": {
+      "type": "integer",
+      "description": "Positive batch concurrency bound."
+    }
+  },
+  "required": [
+    "items",
+    "idempotencyKey",
+    "maxParallel"
+  ],
+  "additionalProperties": false
+}
+```
+
+来源：[`packages/task-queue/tool-operation-run-task-queue/src/index.ts`](../packages/task-queue/tool-operation-run-task-queue/src/index.ts)
+
+类型化的 allowlist operation 准入消费者。它只接纳宿主配置的 `operationId`；executable、argv、cwd、environment、credential、resource 和 execution policy 均不在工具 schema 中。
+
 <a id="deepseek-aidsh-tool-jobs"></a>
 
 ## `@deepseek-ai/dsh-tool-jobs`
@@ -1823,15 +2023,14 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `task_queue_cancel`
 
-按 id 取消一个 pending 任务（或请求停止一个 starting/running 任务）。
+取消此 Agent 会话拥有的一个非终态 WorkItem。
 
 ```json
 {
   "type": "object",
   "properties": {
     "id": {
-      "type": "string",
-      "description": "Task id to cancel."
+      "type": "string"
     }
   },
   "required": [
@@ -1842,196 +2041,9 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 来源：[`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
 
-### `task_queue_dismiss`
+### `task_queue_kinds`
 
-按 id 软结束一个终态任务（succeeded/failed/canceled）：它会离开注意徽标和「需要注意」筛选，但保留记录。可用 `task_queue_undismiss` 撤销。适用于已经诊断且决定不再重试的失败任务。
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "description": "Terminal task id to dismiss."
-    },
-    "dismissed": {
-      "type": "boolean",
-      "description": "true to conclude (default), false to restore."
-    }
-  },
-  "required": [
-    "id"
-  ]
-}
-```
-
-来源：[`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
-
-### `task_queue_enqueue`
-
-在宿主任务队列上入队一个持久的、跨会话的任务。对于批量工作（3 个及以上独立任务）、长耗时任务、可能需要重试的任务，或任何要跨会话存活的任务，请使用队列；单条快速交互则内联执行。拒绝 executor "shell"。
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "spec": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "title": {
-          "type": "string",
-          "description": "One-line title."
-        },
-        "prompt": {
-          "type": "string",
-          "description": "Complete instruction handed to the executor."
-        },
-        "executor": {
-          "type": "string",
-          "description": "Registered executor name. Shipped executors include dsh (restricted Harness worker), claude/codex/opencode/arkcli (CLI agents), and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
-        },
-        "priority": {
-          "type": "integer",
-          "description": "Lower is higher precedence (default 10)."
-        },
-        "maxAttempts": {
-          "type": "integer",
-          "description": "Total execution attempts; default 3."
-        },
-        "backoffMs": {
-          "type": "integer",
-          "description": "Backoff base in ms (default 30000)."
-        },
-        "delayUntil": {
-          "type": "string",
-          "description": "ISO timestamp; not claimable before it."
-        },
-        "timeoutMs": {
-          "type": "integer",
-          "description": "Per-execution timeout in ms (default 1800000)."
-        },
-        "workspaceDir": {
-          "type": "string",
-          "description": "Executor working directory. Defaults to outputDir for compatibility."
-        },
-        "outputDir": {
-          "type": "string",
-          "description": "Artifact directory scanned into result.outputFiles."
-        },
-        "tags": {
-          "type": "array",
-          "description": "Free-form filter tags.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "idempotencyKey": {
-          "type": "string",
-          "description": "Cross-call dedupe key (1–128 bytes, no NUL)."
-        }
-      },
-      "required": [
-        "title",
-        "prompt",
-        "executor"
-      ]
-    }
-  },
-  "required": [
-    "spec"
-  ]
-}
-```
-
-来源：[`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
-
-### `task_queue_enqueue_batch`
-
-一次批量入队至多 200 个任务。用于 3 个及以上独立任务。任一 executor 为 "shell" 都会被拒绝。
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "specs": {
-      "type": "array",
-      "description": "Task specs to enqueue (at most 200).",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "title": {
-            "type": "string",
-            "description": "One-line title."
-          },
-          "prompt": {
-            "type": "string",
-            "description": "Complete instruction handed to the executor."
-          },
-          "executor": {
-            "type": "string",
-            "description": "Registered executor name. Shipped executors include dsh (restricted Harness worker), claude/codex/opencode/arkcli (CLI agents), and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set."
-          },
-          "priority": {
-            "type": "integer",
-            "description": "Lower is higher precedence (default 10)."
-          },
-          "maxAttempts": {
-            "type": "integer",
-            "description": "Total execution attempts; default 3."
-          },
-          "backoffMs": {
-            "type": "integer",
-            "description": "Backoff base in ms (default 30000)."
-          },
-          "delayUntil": {
-            "type": "string",
-            "description": "ISO timestamp; not claimable before it."
-          },
-          "timeoutMs": {
-            "type": "integer",
-            "description": "Per-execution timeout in ms (default 1800000)."
-          },
-          "workspaceDir": {
-            "type": "string",
-            "description": "Executor working directory. Defaults to outputDir for compatibility."
-          },
-          "outputDir": {
-            "type": "string",
-            "description": "Artifact directory scanned into result.outputFiles."
-          },
-          "tags": {
-            "type": "array",
-            "description": "Free-form filter tags.",
-            "items": {
-              "type": "string"
-            }
-          },
-          "idempotencyKey": {
-            "type": "string",
-            "description": "Cross-call dedupe key (1–128 bytes, no NUL)."
-          }
-        },
-        "required": [
-          "title",
-          "prompt",
-          "executor"
-        ]
-      }
-    }
-  },
-  "required": [
-    "specs"
-  ]
-}
-```
-
-来源：[`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
-
-### `task_queue_executors`
-
-列出本任务队列已注册的执行器，以及各执行器是否允许接纳任务、是否允许模型工具提交。入队前调用它以选择有效执行器。
+列出此宿主启用的类型化 WorkKind。
 
 ```json
 {
@@ -2044,32 +2056,32 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `task_queue_list`
 
-列出已入队任务，支持可选的 status/executor/tags 过滤和 limit 限制。入队前先调用它以避免重复。
+列出此 Agent 会话的持久 WorkItem。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+### `task_queue_result`
+
+读取此 Agent 会话拥有的一个 WorkItem 的类型化终态结果或失败信息。
 
 ```json
 {
   "type": "object",
   "properties": {
-    "status": {
-      "type": "string",
-      "description": "Filter by status (pending/starting/running/stopping/succeeded/failed/canceled)."
-    },
-    "executor": {
-      "type": "string",
-      "description": "Filter by executor name."
-    },
-    "tags": {
-      "type": "array",
-      "description": "Free-form filter tags.",
-      "items": {
-        "type": "string"
-      }
-    },
-    "limit": {
-      "type": "integer",
-      "description": "Maximum tasks to return."
+    "id": {
+      "type": "string"
     }
-  }
+  },
+  "required": [
+    "id"
+  ]
 }
 ```
 
@@ -2077,15 +2089,14 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `task_queue_retry`
 
-重试一个 failed 任务（重试次数清零，回到 pending）。
+重试此 Agent 会话拥有的一个失败 WorkItem。
 
 ```json
 {
   "type": "object",
   "properties": {
     "id": {
-      "type": "string",
-      "description": "Failed task id to retry."
+      "type": "string"
     }
   },
   "required": [
@@ -2098,7 +2109,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `task_queue_stats`
 
-队列健康聚合信息：服务状态、各状态任务计数，以及各执行器计数。会话开始时调用它查看积压。
+按生命周期状态统计此 Agent 会话的 WorkItem。
 
 ```json
 {
@@ -2111,15 +2122,14 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `task_queue_status`
 
-按 id 获取一个任务的完整记录。
+读取此 Agent 会话拥有的一个 WorkItem。
 
 ```json
 {
   "type": "object",
   "properties": {
     "id": {
-      "type": "string",
-      "description": "Task id returned by enqueue."
+      "type": "string"
     }
   },
   "required": [
@@ -2130,28 +2140,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 来源：[`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
 
-### `task_queue_undismiss`
-
-按 id 把已 dismiss 的终态任务恢复到注意状态。它是 `task_queue_dismiss` 的逆操作。
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "description": "Dismissed task id to restore."
-    }
-  },
-  "required": [
-    "id"
-  ]
-}
-```
-
-来源：[`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
-
-持久的跨会话任务队列控制器：10 个 `task_queue_*` 工具运行在宿主 `ctx.taskQueue` 服务之上。所有执行器默认禁用，因此本目录以空执行器集合启动；部署需在 host 行中启用确切的 CLI 二进制。`shell` 仅限 inbox，工具永不接受。
+持久的跨会话类型化工作控制器：`task_queue_*` 工具通过宿主 `ctx.taskQueue` 服务运行。Work handler 与宿主资源容量分别组合；本目录只渲染通用工具界面，因此无需 handler。
 
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 

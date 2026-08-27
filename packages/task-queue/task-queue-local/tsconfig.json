@@ -5,7 +5,11 @@
     "outDir": "lib/types"
   },
   "include": [
-    "src"
+    "src/index.ts",
+    "src/v2-store.ts",
+    "src/lock.ts",
+    "src/paths.ts",
+    "src/invariant.ts"
   ],
   "references": [
     {

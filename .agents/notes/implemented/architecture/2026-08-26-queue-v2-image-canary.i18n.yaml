@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-26-queue-v2-image-canary.md
+2026-08-26-queue-v2-image-canary.md: 1cf4ec4b61020005f20f3a7276aa78109ef55f8b
+2026-08-26-queue-v2-image-canary.zh.md: 12d34cd49be4c662f3290b029fc3c3ea1fc0443e

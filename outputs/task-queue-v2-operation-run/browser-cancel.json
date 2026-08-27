@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "recordedAt": "2026-08-27T15:32:53.519Z",
+  "consumerTool": "operation_run_enqueue",
+  "ownerSessionId": "operation-workspace-owner",
+  "workId": "8a4b00a8-bb9a-47b0-85dc-dc5f781b426f",
+  "parentPid": 10272,
+  "childPid": 34580,
+  "parentAliveBeforeCancel": true,
+  "childAliveBeforeCancel": true,
+  "treeExitedBeforeCanceledObservation": true,
+  "statusAfterRefresh": "canceled",
+  "statusAfterReload": "canceled",
+  "freshWebBuild": true,
+  "pageErrors": 0,
+  "consoleWarnings": 0,
+  "unexpectedFailedRequests": 0
+}

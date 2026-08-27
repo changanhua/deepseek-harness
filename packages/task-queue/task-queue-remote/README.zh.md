@@ -2,38 +2,32 @@
 
 [English](README.md) | 中文
 
-浏览器面板在持久任务队列上的宿主远程面：一个轻量的 Typert Remote 服务，把 `ctx.taskQueue` 的读取形态（`list` / `stats` / `get`）与操作动词（`cancel` / `retry` / `pause` / `resume`）暴露为纯 JSON 线缆视图。
+Queue v2 operator facade 的宿主 Remote。生成的浏览器命名空间是 `ctx.remote.taskQueue`；Cordis 服务键保持为 `taskQueueRemote`，避免与 Queue provider 冲突。
 
-客户端通过 `ctx.remote.taskQueue`（线缆命名空间）访问；Cordis 服务键保持为 `taskQueueRemote`，避免与队列后端自身冲突。服务声明 `inject: ['taskQueue']`，因此只会在挂载了队列后端（`@deepseek-ai/dsh-task-queue-local`）的组合中激活。每次队列调用都携带显式 `TASK_QUEUE_HOST_ACCESS` 授权，因为该 Remote 是受信宿主操作员面，而不是 Agent-owner 面。
+## Remote 方法
 
-## 线缆视图
+- `snapshot(input)` 通过一次 operator 读取返回聚合状态计数、有限 WorkItem 行与可选的所选详情。每行都包含四状态 operator 投影（`queued`、`running`、`attention`、`done`）和已结束时的 outcome。未传 limit 时也能接受空 Queue。
+- `cancel(id)` 请求取消一个 WorkItem。
+- `retry(id)` 重试一个失败 WorkItem。
+- `resolveUnknown(id, resolution)` 对 unknown attempt 应用受限 operator 决定。浏览器输入可以授权另一次 Attempt或确认失败；不能 reconcile 实时 ownership，也不能提供未经验证的成功 result。
+- `pause()` 与 `resume()` 控制派发，但不禁用准入或 operator 操作。
 
-客户端安全的数据词汇位于 `./views` 子路径，它不引用任何宿主面——浏览器程序可以直接解析：
-
-- `QueueTaskSummaryView` —— 一行列表（状态、executor、尝试次数、标签、归属）。
-- `QueueTaskView` —— 完整持久状态（提示词、结果、运行记录、receipt），供详情面板使用。
-- `QueueStatsView` —— 服务状态（`running` / `paused` / `faulted`）、故障原因，以及按状态 / 按 executor 的计数。
-- `QueueCancelOutcomeView` —— `'canceled'`（等待中任务直接取消）或 `'stopping'`（已为运行中工作持久化取消意图）。
-
-`faulted` 是粘性且 fail-closed 的：`resume` 会拒绝它，界面将其视为操作员恢复状态，而不是单个任务的失败。
-
-## 排除的面
-
-入队、executor 注册与通知确认刻意不在此暴露——它们属于工具面（`@deepseek-ai/dsh-tool-task-queue`）与操作员的 `/queue` 命令（`@deepseek-ai/dsh-command-task-queue`）。
+`./views` 导出拥有 JSON-compatible 浏览器类型：`QueueWorkSummaryView`、`QueueWorkAttemptView`、`QueueWorkView`、`QueueStatsView`、`QueueSnapshotInput`、`QueueSnapshotView` 与 `QueueUnknownResolutionInput`。结果 output 在跨越 Remote transport 前会经过 canonicalize。
 
 ## 消费方
 
-- `@deepseek-ai/dsh-client-ui-task-queue` —— Queue 模块工作区。
-- `@deepseek-ai/dsh-api-remotes` —— 把生成的 Remote 贡献挂进浏览器装配（`ctx.remote.taskQueue`）。
+- `@deepseek-ai/dsh-client-ui-task-queue` 渲染 Queue 工作台。
+- `@deepseek-ai/dsh-api-remotes` 挂载生成的 Remote contribution。
 
 ## Model Experience
 
-无。本浏览器面板线缆面只渲染持久记录，不注册任何模型面。
+None, as 此浏览器 Remote 传输 Queue 记录且不注册模型界面。
 
 #### KV Cache effect
 
 无；本包从不组装模型输入。
 
-## 已知限制与暂缓事项
+## 已知限制与延后工作
 
-- 入队、执行器注册与通知确认不会在这里暴露；它们属于工具面与操作员的 `/queue` 命令。
+- Remote 暴露 operator 读取、取消、重试、unknown resolution 与派发暂停控制；准入保留在类型化宿主和模型工具入口。
+- 批量 UI 操作目前为每个 WorkItem 发送一次 Remote mutation，并在最后刷新一次。

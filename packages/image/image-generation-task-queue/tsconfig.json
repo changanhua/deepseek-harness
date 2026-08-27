@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
+  "include": ["src"],
+  "references": [
+    { "path": "../../task-queue/task-queue" },
+    { "path": "../image-generation" },
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../runtime-diagnostics/invariants" }
+  ]
+}

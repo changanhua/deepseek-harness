@@ -5,11 +5,38 @@
  */
 
 import type { MessageId } from '@deepseek-ai/dsh-llm'
-import type { Session, SessionEventMap, UserMessage } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionEventMap, UserMessage } from '@deepseek-ai/dsh-session'
 import type { InboxTarget } from './types.ts'
 
 /** Mutable state privately owned by an {@link Inbox}. */
 type InboxState = Record<InboxTarget, UserMessage[]>
+
+type InboxProjection = Record<InboxTarget, UserMessage[]>
+
+/** Fold Session inbox splices into the messages still awaiting a claim. */
+function pendingInboxMessages(events: readonly SessionEvent[]): UserMessage[] {
+  const inbox: InboxProjection = { 'next-turn': [], 'next-step': [] }
+  for (const event of events) {
+    if (event.type !== 'agent/inbox/spliced') continue
+    const pending = inbox[event.data.target]
+    pending.splice(event.data.start, event.data.removedCount ?? 0, ...event.data.inserted)
+  }
+  return [...inbox['next-turn'], ...inbox['next-step']]
+}
+
+/**
+ * Test whether a message is already model-visible or remains durably pending.
+ * @param events - One Session's event suffix; callers exclude inherited seed events when needed.
+ * @param predicate - Stable identity check for the message.
+ * @returns Whether accepted history or the pending inbox contains a match.
+ */
+export function messageAccepted(
+  events: readonly SessionEvent[],
+  predicate: (message: UserMessage) => boolean,
+): boolean {
+  return events.some(event => event.type === 'user/message' && predicate(event.data))
+    || pendingInboxMessages(events).some(predicate)
+}
 
 /** Live notifications committed by inbox mutations. */
 export interface InboxNotifications {

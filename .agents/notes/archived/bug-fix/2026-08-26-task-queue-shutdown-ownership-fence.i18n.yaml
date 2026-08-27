@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/archived/bug-fix/2026-08-26-task-queue-shutdown-ownership-fence.md
+2026-08-26-task-queue-shutdown-ownership-fence.md: d1b9e3874c89c599a4dce7a62efc46b75a58451b
+2026-08-26-task-queue-shutdown-ownership-fence.zh.md: 7b9105fc2c7a17974adcf52146013ab8dd3fcc3f

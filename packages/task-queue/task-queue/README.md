@@ -2,52 +2,32 @@
 
 English | [中文](README.zh.md)
 
-The durable cross-session task-queue contract (`ctx.taskQueue`). The abstract `TaskQueue` service and its vocabulary — the task model, the two-phase state machine, the change-record schema, the fold and canonical digest rules, the executor adapter shape, and the `task-queue/*` event surface — let the durable backend in [`dsh-task-queue-local`](../task-queue-local/README.md) and the agent toolkit in [`dsh-tool-task-queue`](../tool-task-queue/README.md) share one identity and mutation semantics. The design lives in [docs/specs/2026-08-14-task-queue-design.md](../../../docs/specs/2026-08-14-task-queue-design.md).
+The durable typed-work Queue Service Definition (`ctx.taskQueue`). Concrete work kinds extend `WorkKindMap`; providers register a `WorkHandler` that resolves caller intent, derives retry policy, declares resource claims at admission, prepares dispatch, and synchronously starts a `LiveAttempt`.
 
-## Service contract
+## Domain model
 
-Every task-data operation accepts an opaque `TaskQueueAccess` first. `taskQueueAgentAccess(sessionId)` mints a grant restricted to that exact owner session; `TASK_QUEUE_HOST_ACCESS` is the singleton whole-queue grant for trusted host-plane plugins. Runtime validation accepts only registered grant object identities, not copied fields. Missing and unauthorized task or notification ids produce the same unknown-record error, so the Service does not reveal whether another session owns a supplied id.
+`WorkItem` is immutable and keeps its title, admission-derived policy and resource claims, tags, optional Batch membership, canonical caller intent, SHA-256 digest, and resolved execution specification separate. `BatchItem` preserves each member's title and tags before the Batch is admitted. `WorkState`, `WorkAttempt`, `WorkResult`, `Batch`, `Attention`, `Notification`, and `Receipt` are independent durable records. `unknown` is non-terminal and blocks another attempt until an operator confirms failure or authorizes retry.
 
-- `enqueueFromTool(access, spec)` admits one task with `source: 'tool'`; an Agent grant binds `ownerSessionId` from the grant, while host access may admit an explicitly owned or ownerless task. The backend rejects `executor: 'shell'`, assigns the receipt, and namespaces supplied idempotency keys by the authenticated actor. `enqueueBatchFromTool(access, specs)` is the bounded batch form (200 per call).
-- `list(access, filter?)` and `get(access, id)` return only tasks visible to the grant. Ownership filtering happens before public filters and `limit`.
-- `cancel(access, id)` resolves `'canceled'` (a pending task) or `'stopping'` (a cancel intent persisted on starting/running work). `retry(access, id)` resets `attempt` and requeues a failed task; `dismiss(access, id, dismissed)` changes only an accessible terminal task.
-- `stats(access)` reports global service health plus per-status and per-executor counts computed only from tasks visible to the grant.
-- `registerExecutor(name, adapter)` adds a prepare-only adapter and returns its disposer. The adapter's optional `normalize()` method converts raw process output into an Agent-consumable `summary` and optional `assistantText` — the seam that turns a process queue into a work queue. The scheduler calls `normalize()` on exit code 0; when absent it provides a sensible default summary.
-- `pause(TASK_QUEUE_HOST_ACCESS)`/`resume(TASK_QUEUE_HOST_ACCESS)` gate admission and are host-only; `resume()` must reject a `faulted` queue.
-- `ackNotification(access, notificationId, messageId)` acks an accessible pending outbox record with a CAS; an already-acknowledged record with a matching message id is an idempotent no-op. `listNotifications(access)` returns one Agent session's records or the complete host view by `terminalSeq`.
+`WorkFailure` always reports `category`, `sideEffect`, `retriable`, and `message`. Automatic retry is permitted only when `retriable` is true and `sideEffect` is `not-started`.
 
-All mutations serialize through the backend's service FIFO and are fail-closed on append error — the queue enters `faulted` and no caller may `resume()` it away.
+## Durability and idempotency
 
-## Task model
+`ChangeSet { seq, changeId, at, events }` is the only persistence unit. Its `DomainEvent` entries are logical facts committed together; callers cannot persist a lifecycle snapshot. The fold derives WorkState from admission, Attempt, cancellation, retry, and unknown-resolution events. It rejects sequence gaps, duplicate change ids, partial or heterogeneous Batch admission, invalid Attempt ownership or ordinals, mismatched Result ownership or kind, conflicting Receipt records, unsafe automatic retry, and invalid Attention or Notification acknowledgement CAS operations without partially updating the projection.
 
-`Task` carries the full durable snapshot: status (`pending`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`canceled`), `attempt`/`maxAttempts`, `backoffMs`, `delayUntil`, `timeoutMs`, optional `workspaceDir`, `outputDir`, tags, `lastError`, `result`, `ownerSessionId`, the trusted `source`/`receiptId`, and the per-attempt `RunRecord[]` (`runId`, attempt, diagnostic `pid`, timestamps, log path, command fingerprint, `terminationUnverified`). `workspaceDir` is the process working directory for executors that operate on an existing checkout, while `outputDir` remains the queue-owned artifact directory; old records without `workspaceDir` materialize it from `outputDir`.
+Callers canonicalize and digest intent before external resolution. A matching idempotency key and digest returns the original Work ids; the same key with another digest is a conflict.
 
-`TaskResult` (populated on `succeeded`) carries a human-readable `summary` (e.g. "exit 0, 3.2s, 2 output files"), optional `assistantText` (the semantic result from coding-agent executors like DSH/Claude/Codex), `exitCode`/`signal`, wall-clock `durationMs`, optional `logPath` (this attempt's run log), bounded `stdoutTail`/`stderrTail` (up to 4 KiB each), and `outputFiles` (top-level artifact names in the output directory). Full output stays in the run log and output directory; the tails are an Agent-consumable projection only.
+## Authority
 
-`attempt` increments exactly once, at claim (`pending → starting`). Failure requeues to `pending` with `attempt` unchanged and a backoff delay of `backoffMs * 2^(attempt-1)`; exhausting `maxAttempts` enters `failed`. A host crash recovers `starting`/`running` to the failure path and `stopping` to `canceled` with `terminationUnverified` — a persisted pid is diagnostic only and is never a cross-restart kill token.
-
-## Change records and folding
-
-`ChangeRecord` is a discriminated union: task ops (`created`/`starting`/`running`/`stopping`/`succeeded`/`failed`/`requeued`/`canceled`) carry a full post-op `state` snapshot plus an optional atomically-created `notification` on terminal transitions; the `notification-acknowledged` op carries a CAS triple (`notificationId`, `expectedStatus: 'pending'`, `expectedMessageId`).
-
-`foldChanges` folds an ordered stream fail-closed: strict `seq` monotonicity (`lastSeq + 1`), task-op identity (`state.id === taskId`), terminal notification consistency, and CAS ack semantics all throw rather than skip a bad record. `applyChange` is the incremental single-change fold the backend uses after each committed append.
-
-`canonicalJson` and `canonicalQueueState` serialize deterministically (UTF-8, no extra whitespace, recursive key sort, tasks/notifications by id ascending) so snapshot digests never depend on runtime object insertion order.
-
-## Events
-
-`task-queue/created`, `task-queue/starting`, `task-queue/running`, `task-queue/succeeded`, `task-queue/failed`, `task-queue/requeued`, `task-queue/canceled`, `task-queue/drained`, `task-queue/orphan-unknown`, `task-queue/faulted` — each emitted only after the corresponding change is fsynced and folded.
+The provider verifies initiator identity and passes an opaque `VerifiedAgentAuthority` or `VerifiedOperatorAuthority` to `forAgent()` or `forOperator()`. The Service Definition neither accepts a caller-supplied session id nor exposes a public operator facade. Acknowledging an Attention record does not resolve unknown work.
 
 ## Model Experience
 
-Indirectly, through [`dsh-tool-task-queue`](../tool-task-queue/README.md), which renders the `task_queue_*` tools, the `tool:task-queue` prompt section, and the notification outbox notices; this contract registers no model surface of its own.
+Indirectly, through model-facing Queue consumers that own tool schemas and result rendering.
 
 #### KV Cache effect
 
-No direct invalidation; the named consumer owns any request-prefix changes.
+None.
 
 ## Known Limitations and Deferred Work
 
-- **At-least-once execution** — a crash between spawn and the running record may leave an unknown orphan; attempts and per-attempt logs make repeats traceable.
-- **No segment GC** — sealed segments are never deleted in v1, so recovery never depends on a GC protocol.
-- **`faulted` is sticky** — only a successful log redetermination or operator recovery + restart clears it.
+- This package defines and folds the domain. A provider owns persistence, resource capacity, scheduling, and crash recovery. Typed WorkKind results may reference bytes owned by another service, such as Attachments; Queue defines no generic path writer.

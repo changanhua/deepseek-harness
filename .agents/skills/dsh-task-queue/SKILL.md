@@ -1,125 +1,62 @@
 ---
 name: dsh-task-queue
-description: Use before submitting or managing durable cross-session background tasks through task_queue_* tools, to choose the right executor, encode payloads correctly, monitor, retry, or cancel work, and configure concurrency and model endpoints.
+description: Use before submitting or managing durable cross-session work through Queue v2 tools. Select a composed typed WorkKind, enqueue through its specific admission tool, and inspect, cancel, retry, or read results through generic task_queue_* controls. Do not use it to choose legacy executor names or construct arbitrary shell, argv, provider, or credential payloads.
 ---
 
 # DSH Task Queue
 
-Use the `task_queue_*` tools for durable, cross-session background work. Consult this skill before enqueueing anything.
+Queue is the durable scheduling and owner-delivery substrate. A typed WorkKind owns execution semantics; its Consumer owns model-facing admission. Queue is not a generic executor registry.
 
-## When to use the queue
+Use Queue when even one task must survive the current turn or Session, needs durable retry/cancellation/result history, consumes bounded shared capacity, or belongs in an atomic Batch. Keep a quick single-turn action inline when durability adds no value. Task count alone does not decide the route.
 
-- **Three or more** independent tasks, a long-running job, work that may need retry, or anything that must survive the session.
-- Inline execution (via bash) is only for a single quick interaction. Everything else goes through the queue.
+## Route before enqueueing
 
-## Before enqueueing — always do these three checks
+1. Call `task_queue_kinds`. Continue only when the required WorkKind is present. If the tool or kind is absent, report that the host has not composed the capability; do not construct a payload for a missing admission tool.
+2. Call `task_queue_list` or `task_queue_status` when matching work may already exist. Reuse the same stable `idempotencyKey` for the same logical request instead of enqueueing a duplicate.
+3. Choose the WorkKind-specific admission tool. Never add fields that its schema does not expose.
 
-1. **`task_queue_executors`** — call this first. Only use executors whose `enabled` and `toolAllowed` are both `true`. If the executor you need is not enabled, ask the user to enable it in `packages/bundle/base/cordis.patch.yml` under the `task-queue` row's `executors` map.
-2. **`task_queue_stats`** — call at session start to see the backlog and avoid duplicate work.
-3. **`task_queue_list`** — call before enqueueing to check for existing matching tasks (use `tags` filter).
+| WorkKind | Admission tools | Use it for | Caller controls |
+| --- | --- | --- | --- |
+| `agent.run@1` | `task_queue_enqueue`, `task_queue_enqueue_batch` | A restricted Harness worker request | title, prompt, idempotency key, and Batch concurrency |
+| `image.generate@1` | `image_generate_enqueue`, `image_generate_enqueue_batch` | Durable image generation whose result is stored as Attachment references | finished visual request, provider/model selectors allowed by the schema, idempotency key, and Batch concurrency |
+| `operation.run@1` | `operation_run_enqueue`, `operation_run_enqueue_batch` | A finite operation whose entire process definition is fixed by the host | title, host-documented operation id, idempotency key, and Batch concurrency |
 
-## Executors — what they actually do
+If the work does not fit a composed WorkKind, run it through its owning capability or propose a domain-specific WorkKind. Do not fall back to a legacy `node`, `shell`, `codex`, `claude`, `opencode`, or `arkcli` executor name.
 
-| Executor | What it runs | Prompt format | When to use |
-|----------|-------------|---------------|-------------|
-| `node` | A local Node.js script | JSON: `{"script":"<abs path>","args":["..."]}` | **Batch LLM calls**, data transforms, scripted work |
-| `arkcli` | `arkcli +chat <prompt>` | Plain text (the full instruction) | Quick one-off ARK model calls; **not for batch** |
-| `claude` / `codex` / `opencode` | Full CLI coding agent | Plain text (the full instruction) | Interactive coding tasks |
-| `shell` | **Forbidden** | — | Inbox-only; tools always reject it |
+## Allowlisted operations
 
-**For batch LLM pipelines (like douban-top250): always use `node` executor.** The `arkcli` adapter is basic — it only passes the prompt as a positional arg to `arkcli +chat`, with no support for `--instructions`, `--model`, or `--text-format`. The `node` executor gives you full control via your own script.
+Call `operation_run_enqueue` only after `task_queue_kinds` returns `operation.run@1` and the exact `operationId` is known from host documentation or configuration. If no operation catalog is available, ask for the configured identifier or explain that the deployment must add one.
 
-## How `node` executor payload works
+If execution needs a credential, `operation.run@1` is the wrong WorkKind: route through the domain capability or a WorkKind that owns credential references and operation-boundary resolution. Never place the value in host argv or an Agent payload.
 
-The `prompt` field must be a JSON string:
+Single admission contains exactly:
 
-```json
-{
-  "script": "C:\Users\xbh\deepseek-harness\scripts\douban-top250\step1-prompt.mjs",
-  "args": ["--db", "C:\Users\xbh\.dsh\task-queue\results\douban-top250.db", "{\"rank\":1,\"title\":\"肖申克的救赎\",\"year\":1994,\"director\":\"弗兰克·德拉邦特 Frank Darabont\"}"]
-}
+```text
+operation_run_enqueue({ title, operationId, idempotencyKey })
 ```
 
-- `script`: **absolute path** to the `.mjs` file. On Windows use `C:\Users\...` (double backslashes in JSON).
-- `args`: array of strings passed to `node <script> [args...]`.
-- The script's `cwd` is set to the task's output directory.
+Batch admission contains exactly:
 
-## Enqueueing a batch — exact tool call
-
-Use `task_queue_enqueue_batch` for 3+ tasks. Each spec has `title`, `prompt`, `executor`, and optional `tags`:
-
-```
-task_queue_enqueue_batch({
-  specs: [
-    {
-      title: "stage1: 肖申克的救赎",
-      prompt: '{"script":"C:\\Users\\xbh\\deepseek-harness\\scripts\\douban-top250\\step1-prompt.mjs","args":["--db","C:\\Users\\xbh\\.dsh\\task-queue\\results\\douban-top250.db","{\\"rank\\":1,\\"title\\":\\"肖申克的救赎\\",\\"year\\":1994,\\"director\\":\\"弗兰克·德拉邦特 Frank Darabont\\"}"]}',
-      executor: "node",
-      tags: ["douban-top250", "stage1"]
-    },
-    // ... more specs, up to 200 per call
-  ]
+```text
+operation_run_enqueue_batch({
+  items: [{ title, operationId }],
+  idempotencyKey,
+  maxParallel,
 })
 ```
 
-**Important**: the `args` array elements are strings. The movie JSON inside `args` must be a string (not a nested object). Escape quotes properly for JSON-within-JSON.
+`maxParallel` is a positive safe integer. Do not send executable paths, argv, cwd, environment values, shell text, credentials, profiles, model names, providers, or generic JSON parameters. An operation id never encodes those controls. Unknown identifiers are configuration errors, not an invitation to guess or synthesize a command.
 
-## Concurrency configuration
+## Batches and capacity
 
-In `packages/bundle/base/cordis.patch.yml`, under the `task-queue` row:
+Use a Batch when the items form one atomic admission set and share a meaningful concurrency bound. Use separate WorkItems when they have independent idempotency or lifecycle decisions. `maxParallel` bounds that Batch; host `resourceCapacity` and global Queue concurrency may impose a lower effective rate.
 
-```yaml
-executors:
-  node:
-    enabled: true
-maxConcurrent: 4          # total concurrent tasks across all executors
-maxConcurrentPerExecutor: 2  # concurrent tasks per executor type
-intervalMs: 1000          # scheduler poll interval
-```
+## Observe and steer
 
-- `maxConcurrent`: raise this to speed up batch processing (default 2).
-- `maxConcurrentPerExecutor`: limit per executor type to avoid rate limits.
-- To enable `arkcli` executor, add `arkcli: { enabled: true }` under `executors`.
+- Report returned Work or Batch ids immediately. Let durable owner Notifications carry terminal completion across turns instead of continuously polling.
+- Use `task_queue_status` for lifecycle state and `task_queue_result` for the typed terminal output or failure. Executor output is not injected into the owner Notification.
+- Use `task_queue_cancel` for an accepted WorkItem that should stop. A process-backed WorkKind reaches `canceled` only after it proves the process tree has exited; an unprovable outcome becomes `unknown` for operator attention.
+- Use `task_queue_retry` for a failed WorkItem when retry is appropriate. Do not re-enqueue the same logical work, and do not treat `unknown` as succeeded or safe to retry without operator resolution.
+- Use `task_queue_stats` for backlog and capacity context when scheduling or diagnosing several WorkItems.
 
-## Model endpoint switching (for node scripts)
-
-Scripts using `lib.mjs`'s `callLlm` resolve the API key in this order (first wins):
-
-1. `DOUBAN_LLM_API_KEY` env var
-2. `OPENCODE_GO_API_KEY` env var
-3. `ARK_API_KEY` env var
-4. `DEEPSEEK_API_KEY` env var
-5. `~/.dsh/douban-top250.env` file (same key names)
-6. `~/.dsh/.credentials.yaml` (`OPENCODE_GO_API_KEY`)
-
-Base URL resolution:
-
-1. `DOUBAN_LLM_BASE_URL` env var
-2. `OPENCODE_BASE_URL` env var
-3. `ARK_BASE_URL` env var
-4. Default: `https://opencode.ai/zen/go/v1`
-
-Model resolution: `DOUBAN_LLM_MODEL` env var, default `deepseek-v4-flash`.
-
-To switch to ARK, set `ARK_API_KEY` and `ARK_BASE_URL` in `~/.dsh/douban-top250.env`:
-```
-ARK_API_KEY=ark-your-ark-api-key-here
-ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
-```
-
-**Note**: ARK Agent Plan keys only work through `arkcli +chat`, not via direct HTTP. If using `node` executor with `callLlm`, use OpenCode Go or a standard ARK API key.
-
-## Monitoring and triage
-
-- After enqueueing, report the queued ids and queue health (`task_queue_stats`).
-- `task_queue_status <id>` for one task's full record (including `lastError`).
-- Failed task: report proactively, suggest `task_queue_retry`. Do **not** re-enqueue the same work.
-- `task_queue_cancel <id>` for pending work or a live stop request.
-
-## Common mistakes to avoid
-
-1. **Don't run scripts via bash when there are 3+ tasks.** Use the queue.
-2. **Don't guess executor names.** Always call `task_queue_executors` first.
-3. **Don't put nested objects in `args`.** Each arg must be a string.
-4. **Don't forget `--db` flag.** Scripts default to `$DSH_HOME/task-queue/results/douban-top250.db`; override with `--db` if needed.
-5. **Don't re-enqueue completed work.** Check `task_queue_list` first; `done` rows are skipped by scripts, but enqueuing wastes queue slots.
+Keep the user-facing update compact: selected WorkKind, ids, current state, and the next meaningful action. Do not expose resolved argv, cwd, environment, credentials, spill paths, or other host-only execution facts.

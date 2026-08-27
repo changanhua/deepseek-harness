@@ -18,12 +18,11 @@ export function badgeFor(snapshot: QueueSnapshot, t: QueueNavEntryProps['t']):
   { text: string; kind: 'hot' | 'idle' | 'plain' } | undefined {
   const stats = snapshot.stats
   if (stats === null) return undefined
-  if (stats.serviceState === 'faulted') return { text: t('nav.queue.faulted'), kind: 'hot' }
-  const undismissedFailed = stats.undismissedFailed ?? 0
-  if (undismissedFailed > 0) return { text: `${undismissedFailed} ${t('nav.queue.failed')}`, kind: 'hot' }
-  const running = stats.byStatus.running ?? 0
+  const needsOperator = stats.byStatus.unknown + stats.byStatus.failed
+  if (needsOperator > 0) return { text: `${needsOperator} ${t('nav.queue.failed')}`, kind: 'hot' }
+  const running = stats.byStatus.running
   if (running > 0) return { text: `${running} ${t('nav.queue.running')}`, kind: 'idle' }
-  return { text: t('nav.queue.idle'), kind: 'plain' }
+  return { text: stats.paused ? 'paused' : t('nav.queue.idle'), kind: 'plain' }
 }
 
 /**

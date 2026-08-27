@@ -922,6 +922,58 @@ export interface Config {
 
 Source: [`packages/host/webserver/src/index.ts:59`](../packages/host/webserver/src/index.ts)
 
+<a id="deepseek-aidsh-image-generation-arkcli"></a>
+
+## `@deepseek-ai/dsh-image-generation-arkcli`
+
+Requires: `imageGeneration` · `subprocess`
+
+```ts config-catalog
+/** Deployment limits for ArkCLI process output and decoded image resources. */
+export interface Config {
+  /** ArkCLI executable name or absolute host path. */
+  executable?: string
+  /** Fixed arguments placed before every ArkCLI subcommand, for host launchers such as `node.exe arkcli.js`. */
+  argvPrefix?: string[]
+  /** Maximum complete stdout bytes accepted from one ArkCLI invocation. */
+  stdoutMaxBytes?: number
+  /** Maximum stderr tail bytes retained for private failure classification. */
+  stderrMaxBytes?: number
+  /** Process-tree termination grace passed to the subprocess service. */
+  graceMs?: number
+  /** Bound for each process-tree quiescence probe after exit or cancellation. */
+  quiescenceTimeoutMs?: number
+  /** Maximum encoded bytes read from the generated file. */
+  maxImageBytes?: number
+  /** Maximum decoded pixels accepted from the generated image. */
+  maxImagePixels?: number
+  /** Minimum requested image pixels admitted before generation. */
+  minImagePixels?: number
+  /** Minimum admitted width-to-height ratio. */
+  minAspectRatio?: number
+  /** Maximum admitted width-to-height ratio. */
+  maxAspectRatio?: number
+}
+```
+
+Source: [`packages/image/image-generation-arkcli/src/index.ts:72`](../packages/image/image-generation-arkcli/src/index.ts)
+
+<a id="deepseek-aidsh-image-generation-task-queue"></a>
+
+## `@deepseek-ai/dsh-image-generation-task-queue`
+
+Requires: `taskQueue` · `imageGeneration` · `attachments`
+
+```ts config-catalog
+/** Queue retry policy supplied by the deployment composition. */
+export interface Config {
+  /** Maximum admitted attempts for one image WorkItem. */
+  readonly maxAttempts?: number
+}
+```
+
+Source: [`packages/image/image-generation-task-queue/src/index.ts:11`](../packages/image/image-generation-task-queue/src/index.ts)
+
 <a id="deepseek-aidsh-invariants"></a>
 
 ## `@deepseek-ai/dsh-invariants`
@@ -1524,6 +1576,50 @@ export interface Config {
 ```
 
 Source: [`packages/feedback/message-feedback/src/index.ts:49`](../packages/feedback/message-feedback/src/index.ts)
+
+<a id="deepseek-aidsh-operation-run-task-queue"></a>
+
+## `@deepseek-ai/dsh-operation-run-task-queue`
+
+Requires: `taskQueue` · `subprocess`
+
+```ts config-catalog
+/** Host-owned allowlist supplied to the operation WorkKind bridge. */
+export interface Config {
+  /** Closed map from caller-visible ids to trusted, fixed operation definitions. */
+  readonly operations: Readonly<Record<string, OperationDefinition>>
+}
+
+/** Trusted host definition for one allowlisted operation revision. */
+export interface OperationDefinition {
+  /** Stable host revision persisted with admitted WorkItems. */
+  readonly revision: string
+  /** Host-facing explanation of the named operation. */
+  readonly description: string
+  /** Fixed, secret-free process vector selected by trusted deployment configuration. */
+  readonly argv: readonly string[]
+  /** Existing working directory validated before process start. */
+  readonly cwd: string
+  /** Queue resource capacity key claimed by every Attempt. */
+  readonly resource: string
+  /** Positive resource units claimed by every Attempt. */
+  readonly units: number
+  /** Positive upper bound on durable Attempts for one WorkItem. */
+  readonly maxAttempts: number
+  /** Positive byte bound for subprocess output collection. */
+  readonly collectBytes: number
+  /** Positive byte bound for stdout exposed in a successful Result. */
+  readonly resultBytes: number
+  /** Positive byte bound for the stderr tail retained in a failure. */
+  readonly failureTailBytes: number
+  /** Positive millisecond grace between process termination stages. */
+  readonly graceMs: number
+  /** Positive millisecond execution deadline. */
+  readonly timeoutMs: number
+}
+```
+
+Source: [`packages/task-queue/operation-run-task-queue/src/index.ts:21`](../packages/task-queue/operation-run-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-permission-presets"></a>
 
@@ -2586,59 +2682,53 @@ Source: [`packages/core/system-prompt/src/index.ts:237`](../packages/core/system
 
 ## `@deepseek-ai/dsh-task-queue-executor-dsh`
 
-Requires: `taskQueue`
+Requires: `taskQueue` · `subprocess`
 
 ```ts config-catalog
-/** Deployment configuration for the DSH executor provider. */
+/** Deployment configuration for the restricted DSH worker handler. */
 export interface Config {
-  /** DSH launch argv prefix, for example `[process.execPath, process.argv[1]]`. */
+  /** Executable and fixed argv prefix used to launch the worker. */
   launcher: string[]
-  /** Harness home explicitly forwarded after the subprocess environment scrub. */
+  /** DSH home exposed to the restricted worker process. */
   dshHome: string
-  /** Dedicated one-shot profile name. */
+  /** Working directory allowed for every admitted request. */
+  workspaceDir: string
+  /** DSH profile loaded by the worker. */
   profile?: string
-  /** Maximum UTF-8 bytes persisted as semantic assistant text. */
+  /** Maximum UTF-8 bytes persisted from the semantic worker answer. */
   maxAssistantBytes?: number
-  /** In-memory bytes collected per output stream before spill. */
+  /** Maximum stdout bytes retained before spill collection. */
   collectBytes?: number
-  /** Grace before subprocess termination escalates. */
+  /** Maximum UTF-8 bytes retained from nonzero-exit stderr. */
+  failureTailBytes?: number
+  /** Grace period for worker termination. */
   graceMs?: number
+  /** Maximum attempts permitted for one admitted worker request. */
+  maxAttempts?: number
 }
 ```
 
-Source: [`packages/task-queue/task-queue-executor-dsh/src/index.ts:30`](../packages/task-queue/task-queue-executor-dsh/src/index.ts)
+Source: [`packages/task-queue/task-queue-executor-dsh/src/index.ts:36`](../packages/task-queue/task-queue-executor-dsh/src/index.ts)
 
 <a id="deepseek-aidsh-task-queue-local"></a>
 
 ## `@deepseek-ai/dsh-task-queue-local`
 
-Requires: `subprocess`
-
 ```ts config-catalog
-/** Config with every optional field defaulted (schemastery output shape). */
-export type ResolvedConfig = Required<Pick<Config, 'queueRoot' | 'maxConcurrent' | 'maxConcurrentPerExecutor' | 'intervalMs' | 'stoppingGraceMs'>> & Config
-
-/** Admission config schema (schemastery). */
+/** Local Queue v2 configuration. */
 export interface Config {
-  /** Maximum concurrent starting/running/stopping tasks across all executors. */
-  maxConcurrent?: number
-  /** Maximum concurrent starting/running/stopping tasks per one executor. */
-  maxConcurrentPerExecutor?: number
-  /** Scheduler tick interval in milliseconds. */
-  intervalMs?: number
-  /** Extra time beyond `timeoutMs` before a stalled `stopping` task is force-reclaimed. */
-  stoppingGraceMs?: number
-  /** Queue root directory; the composing row resolves it explicitly, for example `dshHomePath('task-queue')`. */
+  /** Schema-v3 Queue root; the composing row must keep older formats in a separate directory. */
   queueRoot: string
-  /** Per-executor enablement; a disabled executor rejects admission. */
-  executors?: Record<string, {
-    /** Whether this executor may run tasks. */
-    enabled: boolean
-  }>
+  /** Maximum simultaneous prepared or live attempts. */
+  maxConcurrent?: number
+  /** Deployment capacity by handler-declared resource name. */
+  resourceCapacity?: Record<string, number>
+  /** Maximum time teardown waits before unresolved executions become unknown. */
+  shutdownTimeoutMs?: number
 }
 ```
 
-Source: [`packages/task-queue/task-queue-local/src/index.ts:77`](../packages/task-queue/task-queue-local/src/index.ts)
+Source: [`packages/task-queue/task-queue-local/src/index.ts:38`](../packages/task-queue/task-queue-local/src/index.ts)
 
 <a id="deepseek-aidsh-task-queue-remote"></a>
 
@@ -2647,11 +2737,11 @@ Source: [`packages/task-queue/task-queue-local/src/index.ts:77`](../packages/tas
 Requires: `taskQueue`
 
 ```ts config-catalog
-/** The panel remote's configuration (reserved; the surface needs none today). */
+/** Reserved Remote plugin configuration. */
 export type Config = Record<string, never>
 ```
 
-Source: [`packages/task-queue/task-queue-remote/src/index.ts:43`](../packages/task-queue/task-queue-remote/src/index.ts)
+Source: [`packages/task-queue/task-queue-remote/src/index.ts:16`](../packages/task-queue/task-queue-remote/src/index.ts)
 
 <a id="deepseek-aidsh-terminal-bash"></a>
 
@@ -2747,6 +2837,19 @@ export type TokenMeterConfig = Record<string, never>
 ```
 
 Source: [`packages/llm/token-meter/src/types.ts:12`](../packages/llm/token-meter/src/types.ts)
+
+<a id="deepseek-aidsh-tool-agent-run-task-queue"></a>
+
+## `@deepseek-ai/dsh-tool-agent-run-task-queue`
+
+Requires: `tools` · `taskQueue`
+
+```ts config-catalog
+/** Reserved admission-tool configuration. */
+export interface Config {}
+```
+
+Source: [`packages/task-queue/tool-agent-run-task-queue/src/index.ts:12`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-bash"></a>
 
@@ -2912,6 +3015,19 @@ export interface Config {
 ```
 
 Source: [`packages/lsp/tool-lsp/src/index.ts:58`](../packages/lsp/tool-lsp/src/index.ts)
+
+<a id="deepseek-aidsh-tool-operation-run-task-queue"></a>
+
+## `@deepseek-ai/dsh-tool-operation-run-task-queue`
+
+Requires: `tools` · `taskQueue`
+
+```ts config-catalog
+/** Reserved admission-tool configuration. */
+export interface Config {}
+```
+
+Source: [`packages/task-queue/tool-operation-run-task-queue/src/index.ts:16`](../packages/task-queue/tool-operation-run-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-pwsh"></a>
 
@@ -3121,14 +3237,17 @@ Source: [`packages/subagent/tool-subagent-report/src/index.ts:27`](../packages/s
 
 ## `@deepseek-ai/dsh-tool-task-queue`
 
-Requires: `tools` · `systemPrompt` · `sessions`
+Requires: `tools` · `taskQueue` · `sessions`
 
 ```ts config-catalog
-/** Tool-task-queue plugin configuration (reserved; currently empty). */
-export interface Config {}
+/** Required owner delivery bound. */
+export interface Config {
+  /** Maximum pending owner Notifications appended during one Agent pre-step. */
+  readonly maxNotificationsPerStep: number
+}
 ```
 
-Source: [`packages/task-queue/tool-task-queue/src/index.ts:796`](../packages/task-queue/tool-task-queue/src/index.ts)
+Source: [`packages/task-queue/tool-task-queue/src/index.ts:237`](../packages/task-queue/tool-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 
@@ -3568,6 +3687,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-host-directory-picker-auto` — requires `webServer` · `loader` ([`packages/host/directory-picker-auto/src/index.ts`](../packages/host/directory-picker-auto/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker-native` ([`packages/host/directory-picker-native/src/index.ts`](../packages/host/directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-host-plugin-inventory` — requires `loader` ([`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts))
+- `@deepseek-ai/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))
 - `@deepseek-ai/dsh-llm` ([`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts))
 - `@deepseek-ai/dsh-lsp` ([`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts))
 - `@deepseek-ai/dsh-runtime-facts-host` — requires `runtimeFacts` ([`packages/context/runtime-facts-host/src/index.ts`](../packages/context/runtime-facts-host/src/index.ts))
@@ -3584,6 +3704,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-tool-ask-user` — requires `tools` · `userQuestions` ([`packages/interaction/tool-ask-user/src/index.ts`](../packages/interaction/tool-ask-user/src/index.ts))
 - `@deepseek-ai/dsh-tool-call-timeout-policy` — requires `tools` ([`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts))
 - `@deepseek-ai/dsh-tool-cordis` — requires `tools` · `systemPrompt` · `dynamicCordisRunner` · `cordisInspect` ([`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts))
+- `@deepseek-ai/dsh-tool-image-generation-task-queue` — requires `tools` · `taskQueue` ([`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts))
 - `@deepseek-ai/dsh-tool-runtime-inspect` — requires `tools` · `runtimeFacts` · `subprocess` ([`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts))
 - `@deepseek-ai/dsh-tool-subagent-control` — requires `tools` · `subagents` ([`packages/subagent/tool-subagent-control/src/index.ts`](../packages/subagent/tool-subagent-control/src/index.ts))
 - `@deepseek-ai/dsh-user-questions` ([`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts))

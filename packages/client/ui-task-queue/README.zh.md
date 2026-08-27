@@ -2,42 +2,34 @@
 
 [English](README.md) | 中文
 
-Queue 模块的浏览器面：侧栏的一级 Queue 导航入口（带实时状态徽标），以及位于
-中心列、基于 taskQueue Remote 的 Queue 工作区。
+Queue v2 的浏览器工作台。一个共享 `QueueStore` 通过 `ctx.remote.taskQueue` snapshot 同时服务侧栏入口与中心列工作区。
 
-工作区一屏回答四个问题：服务是否健康、正在运行什么、什么需要人
-处理、所选任务产出了什么。默认视图展示服务状态与容量、状态筛选与搜索、任务
-列表和所选任务详情；内部字段（receipt、运行 pid、command fingerprint）保留在
-显式的 Diagnostics 展开之后。
+## 壳层贡献
 
-## 壳层契约
+- `sidebar.modules` 注册 `queue-module`。徽标报告 failed/unknown attention、运行数量、暂停状态或 idle。
+- `shell.view` 注册 `queue` 工作区，同时保留下层 conversation 的挂载状态。
 
-- `sidebar.modules` —— 导航入口（`id: queue-module`），注册进侧栏壳位于会话
-  区域与底脚之间的模块座位。徽标由 store 的 stats 推导（`N running`、
-  `N failed`、`faulted` 或 `idle`）。
-- `shell.view` —— 中心列模块视图（`id: queue`），当 `queue` 模块激活时由框架
-  的模块环渲染。会话保持在下方挂载，切回时状态不丢。
+## 工作区
 
-## 数据流
+工作台把耐久记录投影为四种 operator 状态——待执行、运行中、需处理和已结束——并把每个终态 outcome（已成功、已失败、已取消）保留在已结束状态内部。行按 operator 紧急度排序（需处理、运行中、待执行、已结束），再按更新时间排序；四个筛选（全部、进行中、需处理、已完成）统计每个投影。搜索对标题或 ID 大小写不敏感。
 
-一个 `QueueStore`（snapshot/subscribe）同时服务两个入口。它读取
-`ctx.remote.taskQueue`（stats 与 list 并行），通过 `get` 选择任务详情，并且
-每次变更（`cancel` / `retry` / `pause` / `resume`）成功后都先向宿主重新读取
-再更新快照 —— 视图从不编造后端未确认的状态。5 秒轮询让徽标保持实时；工作区
-挂载时刷新并提供手动刷新。每次写操作都通过 aria-live 区域报告 进行中 →
-成功/失败。
+主从布局在紧凑任务列表旁展示一个结构化详情面板。选中一行会展示类型、owner、尝试进度与时间戳，以及当前失败、每次尝试和结果。刷新失败后，store 保留最后一次成功的行、详情与刷新时间戳，页面会在错误横幅旁如实标注它们。
 
-## 模型体验
+动作限定在选中的行：待执行或运行中的任务可取消，失败任务可重试，需处理任务既可确认重试（需先显式勾选已知悉可能产生重复副作用）也可填写原因后确认失败。未知重试一律描述为“确认重试”，绝不说“安全重试”。成功反馈使用 toast；变更失败会保留在对应行旁边。
 
-无。本浏览器端队列面板只呈现持久任务记录，不注册模型接口。
+Store 通过一次 `snapshot()` 调用读取行、计数与可选详情。mutation 后会刷新，并使用一条串行的五秒轮询链，因此旧响应不能覆盖较新的读取结果。
 
-#### KV Cache 影响
+## Model Experience
 
-无；本包不组装模型输入。
+None, as 此浏览器工作台渲染 Queue 记录且不注册模型界面。
 
-## 已知限制
+#### KV Cache effect
 
-- 尚未转发 `task-queue/*` 事件：在这些事件加入 remote 白名单之前，轮询是刷新
-  的底线。
-- 容量读数只显示实时计数（`N running · M starting`），没有分母：
-  `QueueStats` 不暴露 `maxConcurrent`，界面绝不凭空发明一个。
+无；本包从不组装模型输入。
+
+## 已知限制与延后工作
+
+- 因 Queue 生命周期事件尚未转发到浏览器，刷新依赖轮询。
+- Result output 通过 JSON tree 渲染；artifact 专属预览仍属延后工作。
+- 不提供 `confirm-succeeded` 的结果编辑；UI 仅保留重试与确认失败。
+- Batch 范围操作与服务端分页仍属延后工作，除非真实量级要求它们。

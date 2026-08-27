@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-task-queue",
-  "description": "Cross-session durable task queue seam (ctx.taskQueue) for the DeepSeek Harness — task model, two-phase state machine, change-record schema, fold and canonical digest rules, and the Service Definition",
+  "description": "Durable typed-work queue Service Definition, immutable domain records, atomic ChangeSet fold, authority API, and WorkHandler registry",
   "version": "0.1.0-rc.5",
   "publishConfig": {
     "access": "public"

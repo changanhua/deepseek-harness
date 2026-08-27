@@ -5,21 +5,26 @@
 - id: hmr
   disabled: true
 
-# Shell and process-job surfaces.
+# Process jobs stay unavailable. Foreground shell is retained as a sandboxed
+# worker capability so installed Skills can invoke their required CLIs.
 - id: jobs
   disabled: true
 - id: bash-sandbox
-  disabled: true
+  disabled: !!js process.platform === 'win32'
 - id: pwsh-sandbox
-  disabled: true
+  disabled: !!js process.platform !== 'win32'
 - id: shell-env
-  disabled: true
+  disabled: false
 - id: permission
   disabled: true
 - id: tool-bash
-  disabled: true
+  disabled: !!js process.platform === 'win32'
+  config:
+    enableRunInBackground: false
 - id: tool-pwsh
-  disabled: true
+  disabled: !!js process.platform !== 'win32'
+  config:
+    enableRunInBackground: false
 - id: tool-jobs
   disabled: true
 
@@ -29,6 +34,12 @@
 - id: task-queue-executor-dsh
   disabled: true
 - id: tool-task-queue
+  disabled: true
+- id: tool-agent-run-task-queue
+  disabled: true
+- id: image-generation-task-queue
+  disabled: true
+- id: tool-image-generation-task-queue
   disabled: true
 - id: command-task-queue
   disabled: true

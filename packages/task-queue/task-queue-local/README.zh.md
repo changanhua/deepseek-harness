@@ -2,70 +2,39 @@
 
 [English](README.md) | 中文
 
-[`@deepseek-ai/dsh-task-queue`](../task-queue/README.zh.md) 约定的 host 平面持久实现：`LocalTaskQueue` 把每一条任务与通知记录写进组合层配置的 `queueRoot` 目录（随附的 base 行中为 `$DSH_HOME/task-queue/`）下的单写者 segment 日志，跨进程重启仍存活，并由一个调度器按可配置的并发上限领取、spawn 并结算任务。它会在读取持久日志前对 `queueRoot` 原子获取跨进程所有权锁，因此第二个宿主进程在恢复或回收第一个进程的存活任务之前就会被拒绝。作为插件加载后即注册为 `ctx.taskQueue`。
+typed Queue v2 `ctx.taskQueue` 服务的本地持久 Provider。`LocalTaskQueue` 持有一个 schema-versioned Queue root、准入、派发、attempt 生命周期与 operator facade。WorkKind 包通过服务注册 `WorkHandler`，不持有持久 scheduler 或 attachment 存储。
 
-## Service
+## 持久状态
 
-`LocalTaskQueue` 继承约定包里的 `TaskQueue` 服务，注册为 `ctx.taskQueue`。每个公开任务数据操作在返回数据或进入服务级 mutation FIFO 前，都会校验不透明的 Agent-owner 或宿主授权。Agent 只能看到 `ownerSessionId` 与其授权精确匹配的任务和通知；单例宿主授权可见整个队列。记录不存在与无权访问的失败表现相同。
+配置的 `queueRoot` 包含带 `schemaVersion: 3` 的 `manifest.json`、append-only `active.jsonl`、可选的 digest-checked `snapshot.json` 与 owner lock。Provider 在恢复前获取独占所有权。live owner 会拒绝第二个 host；stale owner lock 在接管前移入 quarantine。其他 schema 版本会被拒绝，不会被解码或迁移。
 
-- `enqueueFromTool(access, spec) → TaskId`：可信工具入口。Agent 授权会用已认证会话覆盖任何传入 owner；宿主授权保留显式 owner，或接纳无主任务。它拒绝 `executor: 'shell'`，要求执行器被显式启用，并在去重前按 Agent 会话或宿主隔离传入的 `idempotencyKey`；未传 key 时分配 `tool:auto:<uuid>`。
-- `enqueueBatchFromTool(access, specs) → TaskId[]`：同一授权下每次调用最多 200 条。
-- `list(access, filter?)` / `get(access, id)`：读取可见摘要或完整任务；归属过滤先于 status、executor、tags 与 limit 过滤。
-- `cancel(access, id)`：`pending` 直接取消；`starting`/`running` 落 `stopping` 意图并返回 `'stopping'`；终止态任务是空操作并返回 `'canceled'`。
-- `retry(access, id)`：把可访问的 `failed` 或 `canceled` 任务清零 attempt 后回到 `pending`。
-- `stats(access)`：返回全局 `serviceState`（faulted 时附原因），以及仅按可见任务计算的各状态与各执行器计数。
-- `registerExecutor(name, adapter)`：安装 prepare-only 适配器；返回一个移除它的 disposer。
-- `pause(hostAccess)` / `resume(hostAccess)`：仅限宿主的控制操作；`pause` 仅允许自 `running`，`resume` 仅允许自 `paused`。对 faulted 队列调用 `resume()` 会被拒绝；faulted 只能经 fault 判定协议退出或由运营者重启。
-- `ackNotification(access, notificationId, messageId)`：对终态变更产生的可访问 `pending` 通知做 CAS 确认；status 或 message id 不匹配时失败，且不改动任何其他记录。
-- `listNotifications(access)`：按 terminalSeq 排序重建可见通知 outbox。
-
-事件只有在对应 change 完成 fsync 并折叠进内存后才发布：`task-queue/created`、`task-queue/starting`、`task-queue/running`、`task-queue/succeeded`、`task-queue/failed`、`task-queue/requeued`、`task-queue/canceled`，以及用于恢复与故障信号的 `task-queue/orphan-unknown`、`task-queue/faulted`。
-
-## 持久存储
-
-队列根目录包含追加写的 `active.jsonl`、已封段的 `segments/<first>-<last>.jsonl`、可丢弃的 `snapshot.json` 缓存，以及 `inbox/`、`quarantine/`、`runs/<taskId>/` 和 `output/<taskId>/`。每条新变更写一行 JSON，遵循 `open('a')` → 写入 → `fsync(文件)`，首次创建时再 fsync 父目录。当 active 段超过 10000 行或 8 MB 时，先 fsync 该段，再改名为 `segments/` 下的封段，跨目录 rename 后 fsync 两个父目录，随后独占新建并 fsync 新的 active，最后重写快照。
-
-启动时折叠所有封段与 active 尾部，校验文件名范围与 seq 连续；损坏的完整行、封段的半行、任何 seq 缺口或重复都会以 `FaultedError` 直接失败关闭。只有 active 段的尾部残行会被修复——截断到最后一个完整换行并 fsync。只有当快照的 sha256 state 摘要与逐行 lastChange 摘要都与持久日志一致时才信任它；任何不匹配都会丢弃快照并从最早段全量折叠。
-
-## 跨进程单写者所有权锁
-
-`LocalTaskQueue` 在读取持久日志或回收崩溃任务之前，先对 queue root 获取 `owner.lock`。锁通过原子 `link(2)` 从一个完整写入的临时文件创建，因此同一 `queueRoot` 上的第二个宿主进程在能 `recover()` 第一个进程的存活任务之前就会被拒绝。记录 pid 已死（前一宿主崩溃）的锁会被归档到 `quarantine/` 并接管；由存活 pid、其他机器或同一进程持有的锁会拒绝启动。不支持跨机器共享 queue root。
-
-shutdown 时锁是真实的 fence，而非 best-effort 产物：async disposer 先关闭准入并停止调度器，然后依次 await boot 完成、调度器 drain（每个 tick 与 detached execution）与服务 mutation FIFO drain，最后才释放锁。因此第二个宿主无法在第一个宿主仍可能 append 时获取——包括在途的 enqueue/ack mutation 或运行中 subprocess 的终态 settle。shutdown 赢得竞态时已 claim 但尚未 spawn 的任务在磁盘上保持 `starting`，由下一个宿主的 crash recovery 接管；它绝不会在 stop 之后被 spawn。非优雅退出残留的锁文件会在下次 acquire 时由 stale-takeover 路径恢复。
-
-## Mutation FIFO 与 faulted 协议
-
-每一次持久 mutation——入队、批量、inbox 导入、结算、取消意图、重试、通知确认——都经同一条以服务实例为键的 promise 链串行执行，因此并发入队、inbox 扫描与结算回调不会交错。append/fsync 失败并不等于转移未发生，所以服务进入 `faulted`，拒绝新 mutation，并重读日志判定：已提交（seq 与 payload 均在）→ 对账并清除 fault；未提交且前一行尾完整 → 转移确实未发生，保留原始 I/O 错误；无法判定 → 保持 fail-closed，绝不自动 resume。spawn 之后的 `running` 发布是唯一重试特例：在下一个 seq 下重试同一规范 payload，而不是二次 spawn 进程。
-
-## Inbox
-
-外部生产者投递任务的方式是：写 `inbox/<uuid>.tmp`（独占）、fsync、改名为 `<uuid>.json`、再 fsync inbox 目录——两次 fsync 都是断电持久协议的一部分，因此调度器只会看到完整文件。basename 必须是严格 UUID，内容必须通过严格的入队 schema 校验。非 UUID basename 被忽略，非法内容被移入 `quarantine/` 而非入队。`receiptId` 即 UUID basename：重复扫描到已提交 receipt 时只删除文件、不创建第二个任务，且文件只在 `created` change 提交后才删除。
+每个持久 mutation 都是一个 `ChangeSet`。准入会在派发前持久化 caller intent、resolved facts、Handler 推导的重试 policy 与已校验的 resource claims。local transaction FIFO 串行化最终 receipt 复查和 append，而 `WorkHandler.resolveAdmission()` 与 `prepare()` 在 FIFO 外执行。Batch 幂等 digest 覆盖 WorkKind、有序 items、shared payload 与 `maxParallel`；复用 key 时任一 Batch-shaping input 改变都会冲突。启动时会先把持久化的 `starting` 和 `running` Attempt 转为带 pending Attention 的 `unknown`，再派发；关闭时会用一个 `shutdownTimeoutMs` 同时约束 cancel request 与 execution settlement，并在释放 root lock 前把未完成 Attempt 标为 `unknown`。
 
 ## 调度
 
-启动恢复完成后才启动调度器，持久 mutation 方法也会等启动完成后返回，因此恢复状态不会覆盖启动期间入队的任务；服务声明 `subprocess` 为必需的插件依赖。tick 循环（默认 1 秒）先处理 inbox，再从执行器已启用且当前已有注册适配器的 `pending` 任务中，按优先级升序、同优先级 FIFO 顺序领取，受全局 `maxConcurrent`（默认 2）与每执行器 `maxConcurrentPerExecutor`（默认 1）约束。因此，已启用的外部执行器可以在提供方挂载前接纳任务，但任务会保持 `pending`，不会提前消耗 attempt。领取分两阶段：先在 FIFO 内写 `starting`（`attempt` 唯一在此递增，run record 不含 pid），随后在 FIFO 外由适配器 `prepare(task, run, signal)` 产出 spawn spec，最后回到 FIFO 内原子地重检任务仍为 `starting`、经 `ctx.subprocess.spawn(spec)` spawn、并带真实 pid 写 `running`。在 prepare 期间被取消的任务绝不会被 spawn。prepare 或 spawn 失败会从 `starting` 按普通重试／耗尽策略结算；`exitCode === 0` 结算为 `succeeded`；其他退出也走同一失败路径——按 `backoffMs * 2^(attempt-1)` 退避重入队直到 `maxAttempts`，之后进 `failed`。attempt 级 `AbortSignal`（同时传入 spec 的 `signal`）兑现 `timeoutMs`，超时会升级为进程树终止。
+Handler 声明 `ResourceClaim`，准入会拒绝未在部署 `resourceCapacity` 声明的 claim。`maxConcurrent`、持久化 resource claims 与 Batch 的 `maxParallel` 共同限制派发；未使用的 host capacity 仍可供其他符合条件的 Batch 使用。`pause()` 只暂停新派发：读取、准入、取消、acknowledgement 与受限 unknown resolution 仍可用。
 
-崩溃回收恰在启动时执行一次：`starting`/`running`/`stopping` 任务是上一个宿主进程的遗留（不存在对应 live handle），按恢复矩阵结算（绝不向恢复出的 pid 发信号）并各自发出 `task-queue/orphan-unknown`。正常 tick 从不回收，否则一个已 spawn 的任务会每秒被回退一次。
+## 配置
 
-## 执行器
+| key | 默认值 | 含义 |
+|---|---|---|
+| `queueRoot` | 必填 | 隔离的 schema-v3 Queue root |
+| `maxConcurrent` | `8` | prepared 或 live attempt 的最大数量 |
+| `shutdownTimeoutMs` | `5000` | teardown 将未完成 Attempt 标为 unknown 前等待的时间 |
+| `resourceCapacity` | `{}` | handler claim 可用的资源 units |
 
-适配器只做 prepare：返回完整指定的 `SubprocessSpawnSpec`，绝不直接触碰 `child_process`——spawn、terminate、wait 全部由调度器经 `ctx.subprocess` 完成。适配器还可提供可选的 `normalize(task, stdout, stderr)` 方法，将原始进程输出转换为 Agent 可消费的结果：至少包含人类可读的 `summary`，编码 agent 执行器（DSH/Claude/Codex）还可提供 `assistantText`。若适配器未提供 `normalize`，调度器会从 exit code、duration、tail 存在性与输出文件数量生成合理的默认摘要。本包持有内置的 `claude`、`codex`、`opencode`、`arkcli`、`node` 与 `shell` 适配器；它们都以任务输出目录为 `cwd`、以有界 spill 收集 stdout/stderr，且不传 `env`，让 subprocess 服务的 scrub 后父环境生效。独立打包的 [`dsh` 提供方](../task-queue-executor-dsh/README.zh.md) 则在 `workspaceDir` 中运行受限 Harness worker，并保留 `outputDir` 存放产物。`node` 执行从任务 prompt 的 `{ "script": string, "args"?: string[] }` JSON 解析出的本地 Node 脚本，脚本必须存在于磁盘。`shell` 执行从任务 prompt 的 `{ "argv": string[] }` JSON 解析出的 argv 数组，且被一切工具入口拒绝——只有 inbox 准入能入队它，因此模型 prompt 永远无法变成任意命令。执行器必须在 host 配置中显式启用；未知或未启用的执行器在准入时即被拒绝，spawn 的 `ENOENT` 会让该 attempt 立即失败，而不是进入重试风暴。
+shipped base composition 使用 `$DSH_HOME/task-queue-v3`、全局并发 `3`、image-generation capacity `3` 与 agent-run capacity `1`。
 
-## 权限
+## 模型体验
 
-队列目录（`task-queue/`、`segments/`、`inbox/`、`quarantine/`、`runs/`、`output/`）以 `0o700` 创建；文件（`active.jsonl`、封段、`snapshot.json`、run 日志）以 `0o600` 创建。任何进入路径的不可信 id 都会先经 `encodeSegment` 编码。Windows 上不强制执行这些 mode，所有权依赖当前用户的目录 ACL。
+间接通过拥有准入 schema 与结果的 [`dsh-tool-task-queue`](../tool-task-queue/README.zh.md) 及 WorkKind 专属工具产生影响。
 
-## Model Experience
+#### KV Cache 影响
 
-间接地，经由 [`dsh-tool-task-queue`](../tool-task-queue/README.zh.md)，它渲染 `task_queue_*` 工具、`tool:task-queue` 提示词段落与通知投递消息；此后端自身不注册任何模型面。
+不直接失效；模型可见变更由上述工具持有。
 
-#### KV Cache effect
+## 已知限制与延后工作
 
-无直接失效；命名的消费者拥有任何 request-prefix 变更。
-
-## 已知限制与暂缓事项
-
-- **至少一次执行语义**：`spawn` 与 `running` 提交之间崩溃可能导致同一 attempt 执行两次；`attempt` 只在领取时递增，恢复出的 pid 仅作诊断，绝不作为跨重启 kill 的授权。
-- **未实现 segment GC**：封段永不删除，因此恢复不依赖未定义的 base-segment 协议，但队列目录会无限增长。
-- **faulted 状态刻意保持粘滞**：无法判定的提交会一直 fail-closed，直到运营恢复与重启；设计上 `resume()` 无法清除它。
-- **所有权锁仅限单机**：两台机器共享同一 queue root（例如通过网络文件系统）会被启动时拒绝；stale-takeover 路径仅处理同机 pid 死亡。
+- Provider 只接受 schema-v3 root，不提供早期 schema 的 decoder 或 migrator。
+- `unknown` 有意保持非终态，不能自动重试。
+- owner lock 是 local-host coordination，不是 multi-host scheduling。

@@ -77,6 +77,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   e2b: 'subprocess.md',
   fileReferences: 'session-reference.md',
   fs: 'filesystem.md',
+  imageGeneration: 'task-queue.md',
   goals: 'goal.md',
   inspector: 'extensions.md',
   webServer: 'web-server.md',
@@ -657,6 +658,18 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  AgentWorkQueue: 'typed Queue Agent facade is owned by packages/task-queue/task-queue/README.md',
+  ImageGenerationContext: 'image-generation invocation context is owned by packages/image/image-generation/README.md',
+  ImageGenerationInput: 'image-generation input is owned by packages/image/image-generation/README.md',
+  ImageGenerationProvider: 'image-generation provider is owned by packages/image/image-generation/README.md',
+  ImageGenerationRequest: 'image-generation request is owned by packages/image/image-generation/README.md',
+  ImageGenerationResult: 'image-generation result is owned by packages/image/image-generation/README.md',
+  OperatorWorkQueue: 'typed Queue operator facade is owned by packages/task-queue/task-queue/README.md',
+  ResolvedImageGenerationSpec: 'resolved image-generation facts are owned by packages/image/image-generation/README.md',
+  VerifiedAgentAuthority: 'Queue Agent authority is owned by packages/task-queue/task-queue/README.md',
+  VerifiedOperatorAuthority: 'Queue operator authority is owned by packages/task-queue/task-queue/README.md',
+  WorkHandler: 'typed Queue handler interface is owned by packages/task-queue/task-queue/README.md',
+  WorkKind: 'typed Queue WorkKind registry is owned by packages/task-queue/task-queue/README.md',
   z: 'schemastery schema constructor is owned by vendor/schemastery (vendored upstream)',
   TaskQueueAccess: 'task-queue access vocabulary is owned by packages/task-queue/task-queue/README.md',
   TaskQueueHostAccess: 'task-queue host access vocabulary is owned by packages/task-queue/task-queue/README.md',

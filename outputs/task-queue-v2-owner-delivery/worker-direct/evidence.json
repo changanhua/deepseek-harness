@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "recordedAt": "2026-08-27T10:04:27.3953710+00:00",
+  "profile": "task-worker",
+  "composition": {
+    "queueDisabled": true,
+    "jobsDisabled": true,
+    "goalDisabled": true,
+    "subagentDisabled": true,
+    "workflowDisabled": true,
+    "ralphDisabled": true,
+    "hmrDisabled": true,
+    "windowsForegroundPowerShellEnabled": true,
+    "backgroundExecutionEnabled": false,
+    "providerBundle": "@liustack/modlens@3.23.1"
+  },
+  "directRun": {
+    "startedAt": "2026-08-27T10:04:00.1843692+00:00",
+    "finishedAt": "2026-08-27T10:04:27.3953710+00:00",
+    "redactedArgv": [
+      "<node>",
+      "--import",
+      "tsx/esm",
+      "<dsh-entry>",
+      "--profile",
+      "task-worker",
+      "--patch",
+      "<worker-patch>",
+      "<task>"
+    ],
+    "expectedMarker": "QUEUE-WORKER-DIRECT-OK",
+    "markerObserved": true,
+    "exitCode": 0,
+    "status": "succeeded",
+    "errorCode": null,
+    "resolvedProvider": "modlens-huoshancoding",
+    "stdoutBytes": 23,
+    "boundedStdoutMarker": "QUEUE-WORKER-DIRECT-OK",
+    "stderrBytes": 222,
+    "boundedStderr": "[modlens] vision provider discovery sweep failed: Error: cannot get required service \"llm\" in inactive context\n[modlens] vision provider discovery sweep failed: Error: cannot get required service \"llm\" in inactive context\n"
+  },
+  "diagnostic": "The shared agent-default-model Settings section selected modlens-huoshancoding, while the isolated task-worker profile initially lacked the provider bundle. Installing the same @liustack/modlens version used by the Web profile closed the selected provider route without changing the global model selection or copying credentials."
+}

@@ -1,0 +1,226 @@
+{
+  "version": 1,
+  "recordedAt": "2026-08-27T06:44:13.867Z",
+  "profile": "agent-plan_cn-beijing_personal",
+  "resource": "doubao-seedream-5.0-lite",
+  "batchId": "2cd643c7-1a56-4877-8b1e-fb13215f81e5",
+  "maxParallel": 3,
+  "maximumObservedGenerationCalls": 3,
+  "generationCalls": 10,
+  "taskWorkerStarts": 0,
+  "notificationIds": [
+    "1031b2de-cc18-4408-8992-e048eade1859",
+    "6a50cdac-acba-4946-b900-fab69fb0f449",
+    "819903e7-f096-4a94-b6fa-d9a124313f50",
+    "352d7a58-abf1-4f16-8901-a41c819d928e",
+    "58b467f2-9d7c-4120-b327-5df025cd2ab6",
+    "2f320b37-3565-41ef-97f7-701ec765035b",
+    "91d49adf-5d7b-4ad5-8abe-2699f058f7b3",
+    "b8b452c0-d521-4ef5-a22d-c75f49323482",
+    "05c3e8d8-4c4a-4170-a298-5e5360591cd5",
+    "b765389c-f8f2-4b6f-a823-7a2e87f5e8fc"
+  ],
+  "queueRoot": "outputs/task-queue-v2-owner-delivery/real-image-batch/runtime/queue",
+  "results": [
+    {
+      "workId": "7ce7dddf-9af1-4566-b501-5aa3680b823a",
+      "attemptId": "399e8b4c-9b2f-44d4-a83d-3b6c1d82c62d",
+      "resultId": "cf738108-5e0c-4d2e-af58-f2ce477e9e55",
+      "title": "Crime and Punishment",
+      "status": "succeeded",
+      "provider": "arkcli",
+      "model": "doubao-seedream-5.0-lite",
+      "attachment": {
+        "attachmentId": "sha256:3216bff569d10f236387dac139e45a950b62956e8a22efad0bfccc5deb4aa028",
+        "mediaType": "image/png",
+        "width": 1920,
+        "height": 1920,
+        "bytes": 2776489,
+        "name": "image-1.png"
+      },
+      "sha256": "3216bff569d10f236387dac139e45a950b62956e8a22efad0bfccc5deb4aa028",
+      "width": 1920,
+      "height": 1920
+    },
+    {
+      "workId": "2a6df307-e9b1-40e7-bc08-65d8d27deaaa",
+      "attemptId": "1fd6fc54-5128-4f51-b257-13c7c457af99",
+      "resultId": "ce2de808-9f2c-45ba-b9ba-6039db57bad3",
+      "title": "Moby-Dick",
+      "status": "succeeded",
+      "provider": "arkcli",
+      "model": "doubao-seedream-5.0-lite",
+      "attachment": {
+        "attachmentId": "sha256:e3e96c5080ed537b58bd26f193fa297ffebc41811f2bc8a0ac180baccba772ef",
+        "mediaType": "image/jpeg",
+        "width": 1920,
+        "height": 1920,
+        "bytes": 1280486,
+        "name": "image-1.png"
+      },
+      "sha256": "e3e96c5080ed537b58bd26f193fa297ffebc41811f2bc8a0ac180baccba772ef",
+      "width": 1920,
+      "height": 1920
+    },
+    {
+      "workId": "a4e24757-ac95-4b24-a6d3-3838b1c0a650",
+      "attemptId": "2b14dd47-e440-4afe-b511-0146b56f768d",
+      "resultId": "9ba44a21-6d80-48dd-ab0f-4430cc3177be",
+      "title": "The Brothers Karamazov",
+      "status": "succeeded",
+      "provider": "arkcli",
+      "model": "doubao-seedream-5.0-lite",
+      "attachment": {
+        "attachmentId": "sha256:423c856a5a97c6738b1c02a075616161fab48432f47b847b291bc5e4c2a7c4a9",
+        "mediaType": "image/jpeg",
+        "width": 1920,
+        "height": 1920,
+        "bytes": 818008,
+        "name": "image-1.png"
+      },
+      "sha256": "423c856a5a97c6738b1c02a075616161fab48432f47b847b291bc5e4c2a7c4a9",
+      "width": 1920,
+      "height": 1920
+    },
+    {
+      "workId": "cc27fe0a-5ee8-4d60-8d2b-68a5bc4e3579",
+      "attemptId": "e3d7f8b0-8a8a-4f81-947b-ccc6e131508e",
+      "resultId": "cc856153-dc38-4f24-8bfc-d4a8d5301116",
+      "title": "Wuthering Heights",
+      "status": "succeeded",
+      "provider": "arkcli",
+      "model": "doubao-seedream-5.0-lite",
+      "attachment": {
+        "attachmentId": "sha256:e50fe314acdb8dfb6e7bd0865f36a0c2bed4dc1f7c919f2c226683c590d3986d",
+        "mediaType": "image/jpeg",
+        "width": 1920,
+        "height": 1920,
+        "bytes": 497283,
+        "name": "image-1.png"
+      },
+      "sha256": "e50fe314acdb8dfb6e7bd0865f36a0c2bed4dc1f7c919f2c226683c590d3986d",
+      "width": 1920,
+      "height": 1920
+    },
+    {
+      "workId": "0c8a8ac4-51d1-440b-97e0-731b48984071",
+      "attemptId": "9d4b33e9-ae91-4758-b8db-4df38756bfba",
+      "resultId": "187634fb-4e85-4840-ab88-16e0c2621783",
+      "title": "The Great Gatsby",
+      "status": "succeeded",
+      "provider": "arkcli",
+      "model": "doubao-seedream-5.0-lite",
+      "attachment": {
+        "attachmentId": "sha256:201ae7e15dbb9822160725498db98fb16b8439924f5ffa7d1affcfca908deeba",
+        "mediaType": "image/jpeg",
+        "width": 1920,
+        "height": 1920,
+        "bytes": 912061,
+        "name": "image-1.png"
+      },
+      "sha256": "201ae7e15dbb9822160725498db98fb16b8439924f5ffa7d1affcfca908deeba",
+      "width": 1920,
+      "height": 1920
+    },
+    {
+      "workId": "42b483a5-e73b-44d7-8968-2b3deaca84d0",
+      "attemptId": "9a62ac2b-733e-4514-84a9-41d6f8630d75",
+      "resultId": "bd51c751-9f32-4494-84b7-4c3ecc973430",
+      "title": "One Hundred Years of Solitude",
+      "status": "succeeded",
+      "provider": "arkcli",
+      "model": "doubao-seedream-5.0-lite",
+      "attachment": {
+        "attachmentId": "sha256:dce8682f6f0819d37194ab6d840edbfb6a94960cf2a7606a3fbc2fa0138f8bc5",
+        "mediaType": "image/jpeg",
+        "width": 1920,
+        "height": 1920,
+        "bytes": 1423353,
+        "name": "image-1.png"
+      },
+      "sha256": "dce8682f6f0819d37194ab6d840edbfb6a94960cf2a7606a3fbc2fa0138f8bc5",
+      "width": 1920,
+      "height": 1920
+    },
+    {
+      "workId": "f51a3024-e964-4d90-bbc7-ba960fbfa555",
+      "attemptId": "1c52d7dc-042a-4177-933e-8bda6641ff6f",
+      "resultId": "ae608d6f-da74-490b-9bff-93166cb2f06c",
+      "title": "Les Misérables",
+      "status": "succeeded",
+      "provider": "arkcli",
+      "model": "doubao-seedream-5.0-lite",
+      "attachment": {
+        "attachmentId": "sha256:b2a1fdc13e9c17c7f5e897b9e5a2f0f4552c9ad63f30f56a05ff78c971ae5bf9",
+        "mediaType": "image/jpeg",
+        "width": 1920,
+        "height": 1920,
+        "bytes": 1822145,
+        "name": "image-1.png"
+      },
+      "sha256": "b2a1fdc13e9c17c7f5e897b9e5a2f0f4552c9ad63f30f56a05ff78c971ae5bf9",
+      "width": 1920,
+      "height": 1920
+    },
+    {
+      "workId": "606411c5-7570-4cff-abaa-bb23d9f57ca7",
+      "attemptId": "e9893a69-be52-4495-8630-e9f07de626d6",
+      "resultId": "e5edaa8a-e20e-4d17-a972-f9a935317509",
+      "title": "The Trial",
+      "status": "succeeded",
+      "provider": "arkcli",
+      "model": "doubao-seedream-5.0-lite",
+      "attachment": {
+        "attachmentId": "sha256:77d740bc8b9bbc2901b03b1d8ac02ca5b29c090e36007d9f385a3091f8d7b3d3",
+        "mediaType": "image/png",
+        "width": 1920,
+        "height": 1920,
+        "bytes": 2790401,
+        "name": "image-1.png"
+      },
+      "sha256": "77d740bc8b9bbc2901b03b1d8ac02ca5b29c090e36007d9f385a3091f8d7b3d3",
+      "width": 1920,
+      "height": 1920
+    },
+    {
+      "workId": "4f8d208b-209c-449d-93d9-2509b422177b",
+      "attemptId": "991d1549-0b40-4b04-ba19-10c3aeb174bd",
+      "resultId": "aa4cd368-82d5-4364-b791-1f1d12fedfaa",
+      "title": "Anna Karenina",
+      "status": "succeeded",
+      "provider": "arkcli",
+      "model": "doubao-seedream-5.0-lite",
+      "attachment": {
+        "attachmentId": "sha256:510756a6cbdebebf79a2f5db3bcaf8c78110041f2651c1a124c55ea762c4b978",
+        "mediaType": "image/jpeg",
+        "width": 1920,
+        "height": 1920,
+        "bytes": 592668,
+        "name": "image-1.png"
+      },
+      "sha256": "510756a6cbdebebf79a2f5db3bcaf8c78110041f2651c1a124c55ea762c4b978",
+      "width": 1920,
+      "height": 1920
+    },
+    {
+      "workId": "0302d2de-f9d5-4042-9b29-db386fb691a0",
+      "attemptId": "9b45a066-b6cc-4214-96c5-5c9f68f5c43a",
+      "resultId": "97e92f63-0e8f-428a-a2ec-5450987392bd",
+      "title": "Don Quixote",
+      "status": "succeeded",
+      "provider": "arkcli",
+      "model": "doubao-seedream-5.0-lite",
+      "attachment": {
+        "attachmentId": "sha256:7f2bc73a5900d45500f3537ea4ac1b5a77f8f83b8e180b181870ee07d696dbf0",
+        "mediaType": "image/jpeg",
+        "width": 1920,
+        "height": 1920,
+        "bytes": 1380591,
+        "name": "image-1.png"
+      },
+      "sha256": "7f2bc73a5900d45500f3537ea4ac1b5a77f8f83b8e180b181870ee07d696dbf0",
+      "width": 1920,
+      "height": 1920
+    }
+  ]
+}

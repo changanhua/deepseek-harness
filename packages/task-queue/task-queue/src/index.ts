@@ -1,356 +1,79 @@
-/**
- * The task-queue Service Definition (`ctx.taskQueue`). It owns the contract for
- * durable task admission, the two-phase state machine, the change-record schema,
- * and the executor registry. The durable backend lives in
- * `@deepseek-ai/dsh-task-queue-local`.
- * @module @deepseek-ai/dsh-task-queue
- */
-
+/** Queue v2 Service Definition and public domain API. */
 import { Context, Service } from '@deepseek-ai/cordis'
 import type {
-  EnqueueSpec, ExecutorAdapter, ListFilter, NotificationId, NotificationRecord,
-  QueueExecutorView, QueueStats, Task, TaskId, TaskStatus, TaskSummary,
+  AgentWorkQueue, OperatorWorkQueue, VerifiedAgentAuthority, VerifiedOperatorAuthority,
+  WorkHandler, WorkKind,
 } from './types.ts'
 
-const TASK_QUEUE_ACCESS_BRAND: unique symbol = Symbol('dsh.task-queue.access')
-const TASK_QUEUE_ACCESS_GRANTS = new WeakSet<object>()
-
-/** Access granted to one Agent session for its owned task records. */
-export interface TaskQueueAgentAccess {
-  readonly kind: 'agent'
-  readonly ownerSessionId: string
-  readonly [TASK_QUEUE_ACCESS_BRAND]: true
-}
-
-/** Whole-queue access granted to trusted host-plane consumers. */
-export interface TaskQueueHostAccess {
-  readonly kind: 'host'
-  readonly [TASK_QUEUE_ACCESS_BRAND]: true
-}
-
-/** Authenticated access accepted by task-data Service operations. */
-export type TaskQueueAccess = TaskQueueAgentAccess | TaskQueueHostAccess
-
-const hostAccess: TaskQueueHostAccess = {
-  kind: 'host',
-  [TASK_QUEUE_ACCESS_BRAND]: true as const,
-}
-TASK_QUEUE_ACCESS_GRANTS.add(hostAccess)
-
-/** Singleton whole-queue grant for trusted host-plane plugins. */
-export const TASK_QUEUE_HOST_ACCESS: TaskQueueHostAccess = Object.freeze(hostAccess)
-
-/**
- * Mint task-queue access for one authenticated Agent session.
- * @param ownerSessionId - Exact session id supplied by the live tool execution context.
- * @returns An opaque access grant restricted to that session's tasks.
- */
-export function taskQueueAgentAccess(ownerSessionId: string): TaskQueueAgentAccess {
-  if (ownerSessionId.length === 0) throw new Error('task queue agent access requires a session id')
-  const access: TaskQueueAgentAccess = {
-    kind: 'agent', ownerSessionId, [TASK_QUEUE_ACCESS_BRAND]: true as const,
-  }
-  TASK_QUEUE_ACCESS_GRANTS.add(access)
-  return Object.freeze(access)
-}
-
-/**
- * Reject values that were not minted by this Service Definition.
- * @param access - Candidate access supplied to an implementation method.
- * @returns Nothing when the access grant is authentic.
- */
-export function assertTaskQueueAccess(access: unknown): asserts access is TaskQueueAccess {
-  if (typeof access !== 'object' || access === null || !TASK_QUEUE_ACCESS_GRANTS.has(access)) {
-    throw new Error('task queue access is required')
-  }
-}
-
-/**
- * Require the singleton trusted host-plane grant.
- * @param access - Candidate host access supplied to a host-only operation.
- * @returns Nothing when the singleton host grant was supplied.
- */
-export function assertTaskQueueHostAccess(access: unknown): asserts access is TaskQueueHostAccess {
-  if (access !== TASK_QUEUE_HOST_ACCESS) throw new Error('task queue host access is required')
-}
+/** Declaration-merging registry populated at the package root by WorkHandler packages. */
+export interface WorkKindMap {}
 
 export type {
-  ChangeRecord,
-  EnqueueSpec,
-  ExecutorAdapter,
-  ListFilter,
-  NotificationRecord,
-  QueueExecutorView,
-  QueueStats,
-  RunRecord,
-  ServiceState,
-  Task,
-  TaskResult,
-  TaskStatus,
-  TaskSummary,
+  AdmissionContext, AgentWorkQueue, Attention, AttemptOutcome, AttemptStatus,
+  Batch, BatchItem, BatchRequest, ChangeSet, DomainEvent, EnqueueRequest, JsonValue, LiveAttempt, Notification,
+  OperatorWorkQueue, PreparedWork, PrepareContext, QueueFoldSnapshot, Receipt, ResolvedWork, ResourceClaim,
+  SideEffectState, StartContext, UnknownResolution, VerifiedAgentAuthority, VerifiedOperatorAuthority,
+  WorkAttempt, WorkFailure, WorkHandler, WorkInput, WorkItem, WorkKind, WorkKindDefinition,
+  WorkOutput, WorkPolicy, WorkResult, WorkState, WorkStatus, WorkView,
 } from './types.ts'
-export {
-  NotificationId,
-  RunId,
-  TaskId,
-} from './brand.ts'
-export {
-  isTerminalStatus,
-  createTask,
-  claimTask,
-  markRunning,
-  settleSucceeded,
-  settleFailed,
-  requestStop,
-  settleCanceled,
-  cancelPending,
-  retryTask,
-  dismissTask,
-  recoverTaskAfterCrash,
-} from './transitions.ts'
-export {
-  canonicalJson,
-  canonicalQueueState,
-} from './canonical.ts'
+export { AttentionId, AttemptId, BatchId, NotificationId, ResultId, WorkId } from './brand.ts'
+export { createVerifiedAgentAuthority, createVerifiedOperatorAuthority, assertVerifiedAgentAuthority, assertVerifiedOperatorAuthority } from './authority.ts'
+export { applyChange, foldChanges, hydrateFoldedQueue, lookupReceipt, snapshotFoldedQueue } from './fold.ts'
 export type { FoldedQueue } from './fold.ts'
-export { foldChanges, applyChange, materializeTask } from './fold.ts'
+export { canAutoRetry, isTerminalState } from './transitions.ts'
+export { canonicalJson, canonicalQueueState, digestIntent } from './canonical.ts'
 
-/**
- * Event names published after the corresponding change is fsync'd and memory is
- * updated (spec §7.2). Names mirror the persistent ops one-to-one.
- */
+/** Event names emitted only after a ChangeSet or fault is committed. */
 export const TASK_QUEUE_EVENTS = {
-  created: 'task-queue/created',
-  starting: 'task-queue/starting',
-  running: 'task-queue/running',
-  succeeded: 'task-queue/succeeded',
-  failed: 'task-queue/failed',
-  requeued: 'task-queue/requeued',
-  canceled: 'task-queue/canceled',
-  dismissed: 'task-queue/dismissed',
-  drained: 'task-queue/drained',
-  orphanUnknown: 'task-queue/orphan-unknown',
-  faulted: 'task-queue/faulted',
+  changed: 'task-queue/changed',
 } as const
 
 declare module '@deepseek-ai/cordis' {
-  interface Context {
-    taskQueue: TaskQueue
-  }
-
+  interface Context { taskQueue: TaskQueue }
   interface Events {
     /**
-     * A task's `created` change committed (fsync + fold before emission).
-     * @param payload.taskId - the admitted task id.
+     * Emitted after one complete ChangeSet is durable and folded.
+     * @param payload - Durable ChangeSet identity.
      * @mode emit
      */
-    'task-queue/created'(payload: { taskId: TaskId }): void
-    /**
-     * A task entered `starting` (attempt incremented).
-     * @param payload.taskId - the claimed task id.
-     * @param payload.attempt - the attempt ordinal that just started.
-     * @mode emit
-     */
-    'task-queue/starting'(payload: { taskId: TaskId; attempt: number }): void
-    /**
-     * A task entered `running` (pid persisted).
-     * @param payload.taskId - the spawned task id.
-     * @mode emit
-     */
-    'task-queue/running'(payload: { taskId: TaskId }): void
-    /**
-     * A task settled successfully.
-     * @param payload.taskId - the succeeded task id.
-     * @mode emit
-     */
-    'task-queue/succeeded'(payload: { taskId: TaskId }): void
-    /**
-     * A task exhausted its attempts or failed without retry.
-     * @param payload.taskId - the failed task id.
-     * @param payload.reason - the failure summary.
-     * @mode emit
-     */
-    'task-queue/failed'(payload: { taskId: TaskId; reason: string }): void
-    /**
-     * A failed attempt requeued to pending with backoff.
-     * @param payload.taskId - the requeued task id.
-     * @param payload.reason - the failure summary.
-     * @mode emit
-     */
-    'task-queue/requeued'(payload: { taskId: TaskId; reason: string }): void
-    /**
-     * A task reached the canceled terminal state.
-     * @param payload.taskId - the canceled task id.
-     * @mode emit
-     */
-    'task-queue/canceled'(payload: { taskId: TaskId }): void
-    /**
-     * A terminal task's `dismissed` flag was toggled (soft-conclude or restore).
-     * The task's `status` and audit record are unchanged.
-     * @param payload.taskId - the dismissed/restored task id.
-     * @param payload.dismissed - the new dismissed flag value.
-     * @mode emit
-     */
-    'task-queue/dismissed'(payload: { taskId: TaskId; dismissed: boolean }): void
-    /**
-     * The queue drained (no live starting/running/stopping work remains).
-     * @param payload.pending - the pending count at drain time.
-     * @mode emit
-     */
-    'task-queue/drained'(payload: { pending: number }): void
-    /**
-     * A crash left a possibly-orphaned child or an unrecognized inbox entry.
-     * @param payload.taskId - the recovered task id, when known.
-     * @param payload.priorStatus - the pre-recovery status, when known.
-     * @param payload.reason - the diagnostic detail, when known.
-     * @mode emit
-     */
-    'task-queue/orphan-unknown'(payload: { taskId?: TaskId; priorStatus?: TaskStatus; reason?: string }): void
-    /**
-     * The queue entered `faulted`; operator recovery or restart required.
-     * @param payload.reason - the fault summary.
-     * @mode emit
-     */
-    'task-queue/faulted'(payload: { reason: string }): void
+    'task-queue/changed'(payload: { seq: number; changeId: string }): void
   }
 }
 
-/**
- * Abstract durable task queue. Subclass, implement the abstract methods, and
- * load the subclass as a plugin — it registers as `ctx.taskQueue` (one
- * implementation per context; loading a second throws, cordis' standard
- * duplicate-service behavior).
- *
- * Task-data methods require an opaque access grant minted by this package.
- * Agent grants see only their exact owner session; the singleton host grant
- * is reserved for trusted host-plane consumers. Mutations are serialized
- * through the backend's service FIFO and are fail-closed on append error (the
- * queue enters `faulted`); `resume()` must never clear `faulted`.
- */
+/** Durable typed work queue whose provider verifies authority before facade creation. */
 export abstract class TaskQueue extends Service {
+  /** @param ctx - Cordis context receiving the service. */
   constructor(ctx: Context) {
-    // `abstract` erases at runtime; fail loud at load rather than far from the
-    // misconfiguration.
-    if (new.target === TaskQueue) {
-      throw new Error('@deepseek-ai/dsh-task-queue is the abstract task queue seam; load an implementation such as @deepseek-ai/dsh-task-queue-local instead')
-    }
+    if (new.target === TaskQueue) throw new Error('@deepseek-ai/dsh-task-queue is abstract; load a durable provider')
     super(ctx, 'taskQueue')
   }
 
   /**
-   * Enqueue a single tool-originated task; rejects `executor: 'shell'`.
-   * @param access - authenticated Agent-owner or host-plane access.
-   * @param spec - the validated admission spec (source/receipt assigned by the entry).
-   * @returns the minted task id.
+   * Bind queue operations to verified Agent authority.
+   * @param authority - Opaque capability verified by the provider.
+   * @returns Agent-scoped operations.
    */
-  abstract enqueueFromTool(access: TaskQueueAccess, spec: EnqueueSpec): Promise<TaskId>
+  abstract forAgent(authority: VerifiedAgentAuthority): AgentWorkQueue
 
   /**
-   * Enqueue tool-originated tasks in one batch (bounded, e.g. 200).
-   * @param access - authenticated Agent-owner or host-plane access.
-   * @param specs - the validated admission specs; any `shell` rejects the whole batch.
-   * @returns the minted task ids, in spec order.
+   * Bind queue operations to verified operator authority.
+   * @param authority - Opaque operator capability verified by the provider.
+   * @returns Operator-only operations.
    */
-  abstract enqueueBatchFromTool(access: TaskQueueAccess, specs: readonly EnqueueSpec[]): Promise<TaskId[]>
+  abstract forOperator(authority: VerifiedOperatorAuthority): OperatorWorkQueue
 
   /**
-   * List summary projections, filtered by status/executor/tags, bounded by limit.
-   * @param access - access whose visible tasks may be returned.
-   * @param filter - optional status/executor/tags filters and a result limit.
-   * @returns fresh summary rows.
+   * Register one typed WorkHandler.
+   * @param handler - Typed handler to register.
+   * @returns A disposer for exactly this registration.
    */
-  abstract list(access: TaskQueueAccess, filter?: ListFilter): TaskSummary[]
+  abstract registerHandler<K extends WorkKind>(handler: WorkHandler<K>): () => void
 
   /**
-   * Return the full durable state of one task.
-   * @param access - access that must be allowed to see the task.
-   * @param id - the task id to look up.
-   * @returns the durable task snapshot; throws for an unknown id.
+   * List registered WorkKinds.
+   * @returns Registered WorkKinds in stable order.
    */
-  abstract get(access: TaskQueueAccess, id: TaskId): Task
-
-  /**
-   * Cancel a task: pending → canceled; starting/running → stopping intent.
-   * @param access - access that must be allowed to control the task.
-   * @param id - the task id to cancel.
-   * @returns `canceled` for a directly-canceled pending task, `stopping` when a cancel intent was persisted.
-   */
-  abstract cancel(access: TaskQueueAccess, id: TaskId): Promise<'canceled' | 'stopping'>
-
-  /**
-   * Retry a failed task; returns the (unchanged) task id.
-   * @param access - access that must be allowed to control the task.
-   * @param id - the failed task id to requeue.
-   * @returns the same task id, now pending with `attempt` reset.
-   */
-  abstract retry(access: TaskQueueAccess, id: TaskId): Promise<TaskId>
-
-  /**
-   * Soft-conclude (or restore) a terminal task by toggling its `dismissed`
-   * flag. Only succeeded/failed/canceled tasks may be dismissed; a non-
-   * terminal task throws. Same-value dismiss is an idempotent no-op (no
-   * change record, no event). The task's `status` and audit record are
-   * unchanged; a dismissed task leaves the attention badge/filters but keeps
-   * its record, and requeuing (retry) resets `dismissed` to false.
-   * @param access - access that must be allowed to control the task.
-   * @param id - the terminal task id to dismiss or restore.
-   * @param dismissed - true to conclude, false to restore.
-   */
-  abstract dismiss(access: TaskQueueAccess, id: TaskId, dismissed: boolean): Promise<void>
-
-  /**
-   * Aggregate service state and per-status/per-executor counters.
-   * @param access - access whose visible tasks contribute to the counters.
-   * @returns the current service state, optional fault, and counters.
-   */
-  abstract stats(access: TaskQueueAccess): QueueStats
-
-  /**
-   * Register an executor adapter; returns a disposer that unregisters it.
-   * @param name - the registry name tasks select with `executor`.
-   * @param adapter - the prepare-only adapter producing spawn specs.
-   * @returns a disposer removing exactly this registration.
-   */
-  abstract registerExecutor(name: string, adapter: ExecutorAdapter): () => void
-
-  /**
-   * List registered executors with their deployment gates. The model-facing
-   * `task_queue_executors` tool projects this without exposing adapter code.
-   * @returns one view per registered executor, name order.
-   */
-  abstract listExecutors(): QueueExecutorView[]
-
-  /**
-   * Pause the queue (running → paused only).
-   * @param access - trusted host-plane access.
-   */
-  abstract pause(access: TaskQueueHostAccess): void
-
-  /**
-   * Resume the queue (paused → running only; faulted rejected).
-   * @param access - trusted host-plane access.
-   */
-  abstract resume(access: TaskQueueHostAccess): void
-
-  /**
-   * Acknowledge a pending notification with a CAS (spec §7.4): only a
-   * `pending` record whose `messageId` matches `messageId` transitions to
-   * `acknowledged`. An already-acknowledged record with a matching message id
-   * is an idempotent no-op.
-   * @param access - access that must own the notification, or host access.
-   * @param notificationId - the outbox record to acknowledge.
-   * @param messageId - the stable message id the record must match.
-   */
-  abstract ackNotification(access: TaskQueueAccess, notificationId: NotificationId, messageId: string): Promise<void>
-
-  /**
-   * List visible notification outbox records ordered by `terminalSeq`
-   * ascending. An Agent grant returns only its session's records; host access
-   * returns the whole outbox.
-   * @param access - access whose visible notifications may be returned.
-   * @returns visible notification records in terminal order.
-   */
-  abstract listNotifications(access: TaskQueueAccess): NotificationRecord[]
+  abstract listKinds(): readonly WorkKind[]
 }
 
 export default TaskQueue

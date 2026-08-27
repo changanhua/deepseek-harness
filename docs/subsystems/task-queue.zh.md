@@ -2,27 +2,43 @@
 
 [English](task-queue.md) | 中文
 
-host 平面的持久任务队列（`ctx.taskQueue`）。设计见 [docs/specs/2026-08-14-task-queue-design.md](../specs/2026-08-14-task-queue-design.md)；契约包是 [`packages/task-queue/task-queue`](../../packages/task-queue/task-queue/README.zh.md)，持久后端是 [`dsh-task-queue-local`](../../packages/task-queue/task-queue-local/README.zh.md)，模型面工具集是 [`dsh-tool-task-queue`](../../packages/task-queue/tool-task-queue/README.zh.md)。
+host 平面的 typed work queue（`ctx.taskQueue`）。契约包是 [`dsh-task-queue`](../../packages/task-queue/task-queue/README.zh.md)，持久 Provider 是 [`dsh-task-queue-local`](../../packages/task-queue/task-queue-local/README.zh.md)，通用模型工具集是 [`dsh-tool-task-queue`](../../packages/task-queue/tool-task-queue/README.zh.md)。
 
 ## Service
 
-`ctx.taskQueue` 是由 `LocalTaskQueue`（`@deepseek-ai/dsh-task-queue-local`）实现的抽象 `TaskQueue` seam。每次任务数据调用都携带不透明的 `TaskQueueAccess`：`taskQueueAgentAccess(sessionId)` 把准入、读取、计数、通知与 mutation 限定在该精确归属会话，`TASK_QUEUE_HOST_ACCESS` 则向受信宿主面插件提供全队列视图，并且 pause/resume 必须使用它。归属过滤先于公开过滤器与 limit；无权访问和记录不存在的 id 表现相同；显式幂等键按已认证调用主体隔离。受信入口是唯一分配 `source`/`receiptId` 的地方；调度器是唯一 spawn 进程的点、也是 live `SubprocessHandle` 的唯一持有者。所有 mutation 都经服务级 FIFO 串行化；append/fsync 失败进入粘滞的 `faulted` 状态，`resume()` 无法清除。
+`ctx.taskQueue` 是由 `LocalTaskQueue`（`@deepseek-ai/dsh-task-queue-local`）实现的抽象 `TaskQueue` seam。Agent 与 operator facade 需要 verified authority。`WorkHandler` 解析不可变 admission facts、推导重试 policy、声明资源、准备 dispatch，并同步返回 `LiveAttempt`；Provider 持久化准入时的 policy 和 claims，再持有持久 scheduling 与 attempt settlement。
 
-## 任务模型与状态机
+## Work 模型与状态机
 
-`TaskStatus` 是 `'pending' | 'starting' | 'running' | 'stopping' | 'succeeded' | 'failed' | 'canceled'`。两阶段执行态（`starting` 在 spawn 之前、`running` 在 pid 持久化之后）存在的原因：pid 在 `ctx.subprocess.spawn` 返回前不可知；`stopping` 是终止之前持久化的取消意图。`attempt` 只在领取时递增一次。失败回 `pending`，退避 = `backoffMs * 2^(attempt-1)`；耗尽 `maxAttempts` 进入 `failed`。宿主崩溃时 `starting`/`running` 走失败路径恢复，`stopping` 恢复为 `canceled` 并标 `terminationUnverified`——持久化 pid 只作诊断，绝不是跨重启的终止授权。
+`WorkItem` 存储 caller intent 与 resolved facts。`WorkState` 从原子 `ChangeSet` event-derived：`queued`、`starting`、`running`、`unknown`、`succeeded`、`failed` 或 `canceled`。handler 可开始 side effect 前必须先持久化 `attempt/started`；crash 后无法证明的 outcome 变为 `unknown`。operator 可以确认失败或授权另一次 Attempt，但不能确认未经验证的成功。
 
-## 持久日志
+## 持久 store
 
-后端维护单写者 segment 日志（`active.jsonl`、封段 `segments/<first>-<last>.jsonl`、带校验的 `snapshot.json` 缓存）。每个 change 都是 append + fsync；折叠是 fail-closed 的（严格 `seq` 单调、任务 op 身份、终态通知一致性、CAS ack 语义）。只有 active 段的撕裂尾部可以截断修复；封段半行与非法完整行会让队列进入 faulted。
+schema-v3 root 包含 `manifest.json`、append-only `active.jsonl`、digest-checked `snapshot.json` 与独占 owner lock。Provider 会拒绝其他 schema 版本。启动时会在派发前把每个 stranded `starting` 或 `running` Attempt 记录为带 pending Attention 的 `unknown`；关闭时会持有 root lock，直到 active execution 已结算或记录为 unknown。`ChangeSet` folding 是 fail-closed。Queue 持久化 typed JSON result；字节存储属于 `ctx.attachments` 等服务，而不是 Queue 本地路径写入器。
 
-## 执行器
+## 调度
 
-执行器是 prepare-only 适配器：每个只返回 `SubprocessSpawnSpec`，由调度器单独调用 `ctx.subprocess.spawn`、持有 handle 并结算该 attempt。内置 `claude`、`codex`、`opencode`、`arkcli` 与 `shell`。每个执行器默认禁用，必须在 host 行显式启用；`shell` 仅限 inbox，模型面工具永不接受。
+Handler 声明 `ResourceClaim`，准入会针对部署 `resourceCapacity` 校验并记录到每个 WorkItem。全局 `maxConcurrent`、持久化 claims 与 Batch `maxParallel` 限制派发。`pause()` 只影响新派发。shipped image handler 是 `image.generate@1`；`agent.run@1` 是受限 DSH worker handler；`operation.run@1` 占用 `operation-run` capacity。
+
+## Host operation
+
+`operation.run@1` 将一个 host-configured operation definition bridge 为持久 work。准入只接收 `operationId`；Bridge 解析封闭的 host allowlist，并将 operation id、revision、argv、working directory、resource claim、retry policy、output limits 与 timing limits 持久化为 immutable facts。它通过 `ctx.subprocess` 启动已解析的 argv，保留有界 output，并且只会在 subprocess tree quiescence 后结算；cancellation 与 timeout 都会终止该树。
+
+Operation definition 是受信任的部署配置，且必须无秘密。Bridge 会把 credential-shaped 字段和常见 argv carrier 结构作为纵深防御予以拒绝；有限 host allowlist 仍负责评审不透明位置文本，需要凭据的工作属于 domain-specific WorkKind。
+
+`dsh-tool-operation-run-task-queue` 向实时 Agent Session 提供 `operation_run_enqueue` 与 `operation_run_enqueue_batch`，只返回持久 Work id。通用 Queue tools 仍持有 result 读取与 owner Notification 投递，因此 execution output 仅经由通用 result path 抵达 owner。Bridge 和 Consumer 是 CLI 可解析的 package，但 base bundle 默认不挂载二者。
+
+operation work 是 host allowlisted subprocess bridge，不是 `agent.run@1` 的受限 DSH executor、Skill invocation 或 Workflow orchestration；这些机制保留各自的 configuration 与 lifecycle。
+
+## 模型工具与投递
+
+WorkKind 专属 Consumer 持有准入 schema：`dsh-tool-agent-run-task-queue` 准入 `agent.run@1`，`dsh-tool-image-generation-task-queue` 准入 `image.generate@1`，`dsh-tool-operation-run-task-queue` 准入 `operation.run@1`。通用 `dsh-tool-task-queue` 保持 WorkKind 无关，并持有列表、取消、显式 typed result 读取与 replay-safe owner Notification 投递。terminal Notification 只包含稳定 metadata 与 Result id，绝不包含 executor 输出。owner Session 仅在消息持久 flush 后确认它。
+
+图片 result 包含通过 `ctx.attachments` 生成的 Attachment reference；Queue 不复制或重新解释图片字节。当前实现不提供自动 Goal continuation、byte-exact 通用 artifact 存储、operator 确认 unknown work 成功或多宿主调度。
 
 ## 事件
 
-`task-queue/created`、`task-queue/starting`、`task-queue/running`、`task-queue/succeeded`、`task-queue/failed`、`task-queue/requeued`、`task-queue/canceled`、`task-queue/drained`、`task-queue/orphan-unknown` 与 `task-queue/faulted`——每个都在对应 change 完成 fsync 并折叠后才发布。
+`task-queue/changed` 只在完整 `ChangeSet` 持久化并 folding 后发布。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -32,129 +48,82 @@ host 平面的持久任务队列（`ctx.taskQueue`）。设计见 [docs/specs/20
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctximagegeneration--imagegeneration"></a>
+
+### `ctx.imageGeneration` — `ImageGeneration`
+
+Shared provider registry and two-phase image generation dispatcher.
+
+```ts cordis-catalog
+/**
+ * Register one provider for the calling fiber's lifetime.
+ * Throws {@link ImageGenerationError} with
+ * `IMAGE_GENERATION_PROVIDER_DUPLICATE` when the id is already registered.
+ * @param provider - provider keyed by its stable id.
+ * @returns disposer that removes this exact registration.
+ */
+registerProvider(provider: ImageGenerationProvider): () => void
+
+/**
+ * Select a provider and resolve all execution facts before generation starts.
+ * Rejects with {@link ImageGenerationError} for blank sizes, a missing
+ * explicit provider, no providers, or ambiguous automatic selection.
+ * Provider validation failures and cancellation rejections pass through
+ * unchanged; providers must honor `context.signal`.
+ * @param request - provider/model/format requirements without a prompt.
+ * @param context - cancellation context forwarded unchanged to the provider.
+ * @returns fully resolved facts stamped with the selected provider id.
+ */
+async resolve( request: ImageGenerationRequest, context: ImageGenerationContext, ): Promise<ResolvedImageGenerationSpec>
+
+/**
+ * Generate images through the provider recorded in a resolved input.
+ * Throws {@link ImageGenerationError} with
+ * `IMAGE_GENERATION_PROVIDER_MISSING` when the resolved provider has been
+ * disposed. Provider failures and cancellation rejections pass through
+ * unchanged; providers must honor `context.signal`.
+ * @param input - prompt and spec returned by {@link resolve}.
+ * @param context - cancellation context forwarded unchanged to the provider.
+ * @returns provider result with provider/model attribution and encoded images.
+ */
+generate(input: ImageGenerationInput, context: ImageGenerationContext): Promise<ImageGenerationResult>
+```
+
+Source: [`packages/image/image-generation/src/index.ts`](../../packages/image/image-generation/src/index.ts)
+
 <a id="ctxtaskqueue--taskqueue-abstract-seam"></a>
 
 ### `ctx.taskQueue` — `TaskQueue` (abstract seam)
 
-Abstract durable task queue. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.taskQueue` (one implementation per context; loading a second throws, cordis' standard duplicate-service behavior).
-
-Task-data methods require an opaque access grant minted by this package. Agent grants see only their exact owner session; the singleton host grant is reserved for trusted host-plane consumers. Mutations are serialized through the backend's service FIFO and are fail-closed on append error (the queue enters `faulted`); `resume()` must never clear `faulted`.
+Durable typed work queue whose provider verifies authority before facade creation.
 
 ```ts cordis-catalog
 /**
- * Enqueue a single tool-originated task; rejects `executor: 'shell'`.
- * @param access - authenticated Agent-owner or host-plane access.
- * @param spec - the validated admission spec (source/receipt assigned by the entry).
- * @returns the minted task id.
+ * Bind queue operations to verified Agent authority.
+ * @param authority - Opaque capability verified by the provider.
+ * @returns Agent-scoped operations.
  */
-abstract enqueueFromTool(access: TaskQueueAccess, spec: EnqueueSpec): Promise<TaskId>
+abstract forAgent(authority: VerifiedAgentAuthority): AgentWorkQueue
 
 /**
- * Enqueue tool-originated tasks in one batch (bounded, e.g. 200).
- * @param access - authenticated Agent-owner or host-plane access.
- * @param specs - the validated admission specs; any `shell` rejects the whole batch.
- * @returns the minted task ids, in spec order.
+ * Bind queue operations to verified operator authority.
+ * @param authority - Opaque operator capability verified by the provider.
+ * @returns Operator-only operations.
  */
-abstract enqueueBatchFromTool(access: TaskQueueAccess, specs: readonly EnqueueSpec[]): Promise<TaskId[]>
+abstract forOperator(authority: VerifiedOperatorAuthority): OperatorWorkQueue
 
 /**
- * List summary projections, filtered by status/executor/tags, bounded by limit.
- * @param access - access whose visible tasks may be returned.
- * @param filter - optional status/executor/tags filters and a result limit.
- * @returns fresh summary rows.
+ * Register one typed WorkHandler.
+ * @param handler - Typed handler to register.
+ * @returns A disposer for exactly this registration.
  */
-abstract list(access: TaskQueueAccess, filter?: ListFilter): TaskSummary[]
+abstract registerHandler<K extends WorkKind>(handler: WorkHandler<K>): () => void
 
 /**
- * Return the full durable state of one task.
- * @param access - access that must be allowed to see the task.
- * @param id - the task id to look up.
- * @returns the durable task snapshot; throws for an unknown id.
+ * List registered WorkKinds.
+ * @returns Registered WorkKinds in stable order.
  */
-abstract get(access: TaskQueueAccess, id: TaskId): Task
-
-/**
- * Cancel a task: pending → canceled; starting/running → stopping intent.
- * @param access - access that must be allowed to control the task.
- * @param id - the task id to cancel.
- * @returns `canceled` for a directly-canceled pending task, `stopping` when a cancel intent was persisted.
- */
-abstract cancel(access: TaskQueueAccess, id: TaskId): Promise<'canceled' | 'stopping'>
-
-/**
- * Retry a failed task; returns the (unchanged) task id.
- * @param access - access that must be allowed to control the task.
- * @param id - the failed task id to requeue.
- * @returns the same task id, now pending with `attempt` reset.
- */
-abstract retry(access: TaskQueueAccess, id: TaskId): Promise<TaskId>
-
-/**
- * Soft-conclude (or restore) a terminal task by toggling its `dismissed`
- * flag. Only succeeded/failed/canceled tasks may be dismissed; a non-
- * terminal task throws. Same-value dismiss is an idempotent no-op (no
- * change record, no event). The task's `status` and audit record are
- * unchanged; a dismissed task leaves the attention badge/filters but keeps
- * its record, and requeuing (retry) resets `dismissed` to false.
- * @param access - access that must be allowed to control the task.
- * @param id - the terminal task id to dismiss or restore.
- * @param dismissed - true to conclude, false to restore.
- */
-abstract dismiss(access: TaskQueueAccess, id: TaskId, dismissed: boolean): Promise<void>
-
-/**
- * Aggregate service state and per-status/per-executor counters.
- * @param access - access whose visible tasks contribute to the counters.
- * @returns the current service state, optional fault, and counters.
- */
-abstract stats(access: TaskQueueAccess): QueueStats
-
-/**
- * Register an executor adapter; returns a disposer that unregisters it.
- * @param name - the registry name tasks select with `executor`.
- * @param adapter - the prepare-only adapter producing spawn specs.
- * @returns a disposer removing exactly this registration.
- */
-abstract registerExecutor(name: string, adapter: ExecutorAdapter): () => void
-
-/**
- * List registered executors with their deployment gates. The model-facing
- * `task_queue_executors` tool projects this without exposing adapter code.
- * @returns one view per registered executor, name order.
- */
-abstract listExecutors(): QueueExecutorView[]
-
-/**
- * Pause the queue (running → paused only).
- * @param access - trusted host-plane access.
- */
-abstract pause(access: TaskQueueHostAccess): void
-
-/**
- * Resume the queue (paused → running only; faulted rejected).
- * @param access - trusted host-plane access.
- */
-abstract resume(access: TaskQueueHostAccess): void
-
-/**
- * Acknowledge a pending notification with a CAS (spec §7.4): only a
- * `pending` record whose `messageId` matches `messageId` transitions to
- * `acknowledged`. An already-acknowledged record with a matching message id
- * is an idempotent no-op.
- * @param access - access that must own the notification, or host access.
- * @param notificationId - the outbox record to acknowledge.
- * @param messageId - the stable message id the record must match.
- */
-abstract ackNotification(access: TaskQueueAccess, notificationId: NotificationId, messageId: string): Promise<void>
-
-/**
- * List visible notification outbox records ordered by `terminalSeq`
- * ascending. An Agent grant returns only its session's records; host access
- * returns the whole outbox.
- * @param access - access whose visible notifications may be returned.
- * @returns visible notification records in terminal order.
- */
-abstract listNotifications(access: TaskQueueAccess): NotificationRecord[]
+abstract listKinds(): readonly WorkKind[]
 ```
 
 Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
@@ -163,196 +132,19 @@ Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queu
 
 ### `task-queue/*` events
 
-<a id="task-queuecanceled--emit"></a>
+<a id="task-queuechanged--emit"></a>
 
-#### `task-queue/canceled` — emit
+#### `task-queue/changed` — emit
 
-A task reached the canceled terminal state.
-
-```ts cordis-catalog
-/**
- * A task reached the canceled terminal state.
- * @param payload.taskId - the canceled task id.
- * @mode emit
- */
-'task-queue/canceled'(payload: { taskId: TaskId }): void
-```
-
-Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
-
-<a id="task-queuecreated--emit"></a>
-
-#### `task-queue/created` — emit
-
-A task's `created` change committed (fsync + fold before emission).
+Emitted after one complete ChangeSet is durable and folded.
 
 ```ts cordis-catalog
 /**
- * A task's `created` change committed (fsync + fold before emission).
- * @param payload.taskId - the admitted task id.
+ * Emitted after one complete ChangeSet is durable and folded.
+ * @param payload - Durable ChangeSet identity.
  * @mode emit
  */
-'task-queue/created'(payload: { taskId: TaskId }): void
-```
-
-Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
-
-<a id="task-queuedismissed--emit"></a>
-
-#### `task-queue/dismissed` — emit
-
-A terminal task's `dismissed` flag was toggled (soft-conclude or restore). The task's `status` and audit record are unchanged.
-
-```ts cordis-catalog
-/**
- * A terminal task's `dismissed` flag was toggled (soft-conclude or restore).
- * The task's `status` and audit record are unchanged.
- * @param payload.taskId - the dismissed/restored task id.
- * @param payload.dismissed - the new dismissed flag value.
- * @mode emit
- */
-'task-queue/dismissed'(payload: { taskId: TaskId; dismissed: boolean }): void
-```
-
-Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
-
-<a id="task-queuedrained--emit"></a>
-
-#### `task-queue/drained` — emit
-
-The queue drained (no live starting/running/stopping work remains).
-
-```ts cordis-catalog
-/**
- * The queue drained (no live starting/running/stopping work remains).
- * @param payload.pending - the pending count at drain time.
- * @mode emit
- */
-'task-queue/drained'(payload: { pending: number }): void
-```
-
-Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
-
-<a id="task-queuefailed--emit"></a>
-
-#### `task-queue/failed` — emit
-
-A task exhausted its attempts or failed without retry.
-
-```ts cordis-catalog
-/**
- * A task exhausted its attempts or failed without retry.
- * @param payload.taskId - the failed task id.
- * @param payload.reason - the failure summary.
- * @mode emit
- */
-'task-queue/failed'(payload: { taskId: TaskId; reason: string }): void
-```
-
-Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
-
-<a id="task-queuefaulted--emit"></a>
-
-#### `task-queue/faulted` — emit
-
-The queue entered `faulted`; operator recovery or restart required.
-
-```ts cordis-catalog
-/**
- * The queue entered `faulted`; operator recovery or restart required.
- * @param payload.reason - the fault summary.
- * @mode emit
- */
-'task-queue/faulted'(payload: { reason: string }): void
-```
-
-Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
-
-<a id="task-queueorphan-unknown--emit"></a>
-
-#### `task-queue/orphan-unknown` — emit
-
-A crash left a possibly-orphaned child or an unrecognized inbox entry.
-
-```ts cordis-catalog
-/**
- * A crash left a possibly-orphaned child or an unrecognized inbox entry.
- * @param payload.taskId - the recovered task id, when known.
- * @param payload.priorStatus - the pre-recovery status, when known.
- * @param payload.reason - the diagnostic detail, when known.
- * @mode emit
- */
-'task-queue/orphan-unknown'(payload: { taskId?: TaskId; priorStatus?: TaskStatus; reason?: string }): void
-```
-
-Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
-
-<a id="task-queuerequeued--emit"></a>
-
-#### `task-queue/requeued` — emit
-
-A failed attempt requeued to pending with backoff.
-
-```ts cordis-catalog
-/**
- * A failed attempt requeued to pending with backoff.
- * @param payload.taskId - the requeued task id.
- * @param payload.reason - the failure summary.
- * @mode emit
- */
-'task-queue/requeued'(payload: { taskId: TaskId; reason: string }): void
-```
-
-Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
-
-<a id="task-queuerunning--emit"></a>
-
-#### `task-queue/running` — emit
-
-A task entered `running` (pid persisted).
-
-```ts cordis-catalog
-/**
- * A task entered `running` (pid persisted).
- * @param payload.taskId - the spawned task id.
- * @mode emit
- */
-'task-queue/running'(payload: { taskId: TaskId }): void
-```
-
-Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
-
-<a id="task-queuestarting--emit"></a>
-
-#### `task-queue/starting` — emit
-
-A task entered `starting` (attempt incremented).
-
-```ts cordis-catalog
-/**
- * A task entered `starting` (attempt incremented).
- * @param payload.taskId - the claimed task id.
- * @param payload.attempt - the attempt ordinal that just started.
- * @mode emit
- */
-'task-queue/starting'(payload: { taskId: TaskId; attempt: number }): void
-```
-
-Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)
-
-<a id="task-queuesucceeded--emit"></a>
-
-#### `task-queue/succeeded` — emit
-
-A task settled successfully.
-
-```ts cordis-catalog
-/**
- * A task settled successfully.
- * @param payload.taskId - the succeeded task id.
- * @mode emit
- */
-'task-queue/succeeded'(payload: { taskId: TaskId }): void
+'task-queue/changed'(payload: { seq: number; changeId: string }): void
 ```
 
 Source: [`packages/task-queue/task-queue/src/index.ts`](../../packages/task-queue/task-queue/src/index.ts)

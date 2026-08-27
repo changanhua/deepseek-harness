@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/archived/bug-fix/2026-08-26-task-queue-p0-business-closure.md
+2026-08-26-task-queue-p0-business-closure.md: ceddcafb70b5c1fb46c8db53329b2b23f1ae514b
+2026-08-26-task-queue-p0-business-closure.zh.md: 6e5e4e4a8190540d537b579bcc5cbda698221865

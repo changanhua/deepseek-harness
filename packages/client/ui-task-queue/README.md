@@ -2,39 +2,26 @@
 
 English | [中文](README.zh.md)
 
-The Queue module's browser surface: the sidebar's first-level Queue navigation
-entry with a live status badge, and the center-column Queue workspace over the
-taskQueue Remote.
+Browser workbench for Queue v2. One shared `QueueStore` supplies the sidebar entry and center-column workspace from `ctx.remote.taskQueue` snapshots.
 
-The workspace answers four questions at a glance: is the service
-healthy, what is running, what needs a person, and what did the selected task
-produce. The default view shows service state and capacity, status filters and
-search, the task list, and the selected task's detail; internal fields
-(receipt, run pids, command fingerprints) stay behind the explicit
-Diagnostics disclosure.
+## Shell contributions
 
-## Shell contracts
+- `sidebar.modules` registers `queue-module`. Its badge reports failed/unknown attention, running count, paused state, or idle.
+- `shell.view` registers the `queue` workspace without unmounting the conversation underneath.
 
-- `sidebar.modules` — the navigation entry (`id: queue-module`), registered
-  into the sidebar shell's module seat between the session region and the
-  foot. The badge derives from the store's stats (`N running`, `N failed`,
-  `faulted`, or `idle`).
-- `shell.view` — the center-column module view (`id: queue`), rendered by the
-  frame's module ring while the `queue` module is active. The conversation
-  stays mounted underneath, so switching back loses nothing.
+## Workspace
 
-## Data flow
+The workbench projects durable records into four operator states — queued, running, attention, and done — and keeps each terminal outcome (succeeded, failed, canceled) inside the done state. Rows sort by operator urgency (attention, running, queued, done) and then by update time, and the four filters (all, active, attention, done) count every projection. Search matches title or id case-insensitively.
 
-One `QueueStore` (snapshot/subscribe) serves both entries. It reads
-`ctx.remote.taskQueue` (stats + list in parallel), selects task details via
-`get`, and confirms every mutation (`cancel` / `retry` / `pause` / `resume`)
-by re-reading the host before updating the snapshot. A 5-second poll keeps the
-badge live; the workspace refreshes on mount and offers a manual refresh.
-Every write reports pending → success/failure through an aria-live region.
+A master-detail layout shows one compact task list beside one structured detail pane. Selecting a row exposes kind, owner, attempt progress, and timestamps, plus the current failure, every attempt, and the result. After a failed refresh the store retains the last successful rows, detail, and refresh timestamp, and the page labels them honestly beside an error banner.
+
+Actions are scoped to the selected row: cancel for queued or running work, retry for failed work, and an attention decision that either authorizes another attempt after an explicit duplicate-side-effect acknowledgement or confirms failure with an operator-supplied reason. Unknown retry is described as “confirm retry”, never “safe retry”. Success feedback uses a toast; a mutation failure stays visible beside its row.
+
+The store reads rows, counters, and optional detail through one `snapshot()` call. It refreshes after mutations and uses one serialized five-second polling chain, so an older response cannot overwrite a later read.
 
 ## Model Experience
 
-None, as this browser-side queue panel renders durable task records and registers no model surface.
+None, as this browser-side workbench renders Queue records and registers no model surface.
 
 #### KV Cache effect
 
@@ -42,8 +29,7 @@ None; this package never assembles model input.
 
 ## Known Limitations and Deferred Work
 
-- No forwarded `task-queue/*` events yet: the poll is the refresh floor until
-  the events join the remote allowlist.
-- The capacity readout shows live counts (`N running · M starting`) without a
-  denominator: `QueueStats` does not expose `maxConcurrent`, and the UI never
-  invents one.
+- Refresh uses polling because Queue lifecycle events are not forwarded to the browser.
+- Result output renders through a JSON tree; artifact-specific previews remain deferred.
+- `confirm-succeeded` result editing is not offered; the UI keeps retry and confirmed failure only.
+- Batch-wide actions and server-side pagination remain deferred if real volume requires them.

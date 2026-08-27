@@ -16,12 +16,23 @@ import type { QueueNavEntryInjected, QueueWorkspaceInjected } from '../src/clien
 /** Controllable panel Remote face for the apply bench. */
 function makeRemoteFace() {
   return {
-    stats: vi.fn(async () => ({ ok: true as const, value: { serviceState: 'running' as const, fault: null, byStatus: {}, byExecutor: {}, undismissedFailed: 0, byDismissed: 0 } })),
-    list: vi.fn(async () => ({ ok: true as const, value: [] })),
-    get: vi.fn(async () => ({ ok: false as const, error: { code: 'internal', message: 'no', details: {} } })),
-    cancel: vi.fn(async () => ({ ok: true as const, value: 'canceled' as const })),
-    retry: vi.fn(async () => ({ ok: true as const, value: 'tq-1' })),
-    dismiss: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    snapshot: vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        stats: {
+          paused: false,
+          byStatus: {
+            queued: 0, starting: 0, running: 0, unknown: 0,
+            succeeded: 0, failed: 0, canceled: 0,
+          },
+          byKind: {},
+        },
+        rows: [],
+        detail: null,
+      },
+    })),
+    cancel: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    retry: vi.fn(async () => ({ ok: true as const, value: undefined })),
     pause: vi.fn(async () => ({ ok: true as const, value: undefined })),
     resume: vi.fn(async () => ({ ok: true as const, value: undefined })),
   }
@@ -72,7 +83,7 @@ describe('ui-task-queue client apply', () => {
     expect(entries[0]!.locale).toBe('taskQueue')
     const face = (entries[0]!.inject as unknown as () => QueueWorkspaceInjected)()
     expect(face.queue).toBeDefined()
-    expect(face.queue.getSnapshot().summaries).toEqual([])
+    expect(face.queue.getSnapshot().rows).toEqual([])
     await fiber.dispose()
     expect(b.slots.entries('shell.view')).toHaveLength(0)
   })
@@ -96,10 +107,9 @@ describe('ui-task-queue client apply', () => {
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     expect(b.registerLocale).toHaveBeenCalledWith('taskQueue', expect.any(Object))
-    // The initial refresh reads the remote on mount.
+    // The initial refresh reads one internally consistent snapshot on mount.
     await vi.waitFor(() => {
-      expect(b.remote.stats).toHaveBeenCalled()
-      expect(b.remote.list).toHaveBeenCalled()
+      expect(b.remote.snapshot).toHaveBeenCalledWith({})
     })
     await fiber.dispose()
   })
