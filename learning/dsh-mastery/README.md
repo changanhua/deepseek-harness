@@ -46,6 +46,32 @@ Concept
 
 “看过”“听懂了”“解释过”都不是完成证据。
 
+## Zero-manual-progress model
+
+项目没有 `PROGRESS.md`。学习状态每次都从下面两类事实重新推导：
+
+```text
+CURRICULUM.yaml
++
+evidence/**/*.yaml
+        ↓
+status / next / check
+```
+
+常用命令：
+
+```bash
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts check
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts status
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts next
+```
+
+- `check`：验证 curriculum DAG、引用、evidence schema、source pin、case reveal 顺序和单一状态源。
+- `status`：从 evidence 推导 unit completion 与 capability state。
+- `next`：按 prerequisite 和未满足 evidence 推荐下一训练单元。
+
+这些命令**不写状态**，因此执行器可以被替换而不会产生双写。
+
 ## Repository model
 
 - `TRAINING-CONTRACT.md`：训练原则、证据规则与权威层级。
@@ -55,9 +81,11 @@ Concept
 - `lessons/`：建立心智模型。
 - `labs/`：需要 trace、修改、运行或验证的训练。
 - `cases/`：真实系统重构。
-- `evidence/`：掌握证据；学习状态由 evidence 推导。
+- `evidence/`：成功、失败、误判和修正证据；学习状态由此推导。
+- `references/`：固定源码版本、source anchors 等可追溯参考。
 - `templates/`：lesson / lab / case-study 模板。
-- `tooling/`：未来 `next` / `status` / `check` 执行器契约。
+- `tooling/`：`next` / `status` / `check` 的实现和协议说明。
+- `scripts/dsh-mastery.spec.ts`：接入仓库现有 Vitest gate 的学习 Runtime 测试。
 
 ## Source authority
 
@@ -70,6 +98,8 @@ Concept
 > 教学材料
 > 模型先验或历史聊天
 ```
+
+源码训练应固定 commit。第一条真实 request trace 使用 `references/source-baseline.yaml` 固定版本，避免“课程没变但源码已经换了”的伪稳定。
 
 ## 默认训练路径
 
