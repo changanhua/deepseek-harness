@@ -13,12 +13,12 @@
 
 不要把 Project 历史聊天当作进度真值，也不要维护第二份手工 progress 状态。
 
-如果当前执行环境可以运行仓库命令，先执行：
+如果当前执行环境可以运行仓库命令，优先使用机器接口：
 
 ```bash
-pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts check
-pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts status
-pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts next
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts check --json
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts status --json
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts next --json
 ```
 
 如果不能执行，也必须按照相同协议从 `CURRICULUM.yaml + evidence/` 推导，不得凭聊天印象宣布某能力已掌握。
