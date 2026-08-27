@@ -74,13 +74,20 @@ evidence needed: source_trace_with_files_and_responsibilities, prediction_vs_act
 
 ## Tests
 
-核心推导规则有 Vitest 覆盖：
+核心推导规则接入仓库现有 Vitest discovery（`scripts/**/*.spec.ts`），不另造测试系统：
 
 ```bash
-pnpm exec vitest run learning/dsh-mastery/tooling/runtime.spec.ts
+pnpm exec vitest run scripts/dsh-mastery.spec.ts
 ```
 
-覆盖：prerequisite routing、source pin、case reveal guard、跨任务 mastery、禁止第二进度库。
+覆盖：
+
+- 当前真实 `learning/dsh-mastery/` 自检必须为零错误；
+- prerequisite routing；
+- source pin；
+- case reveal guard；
+- 跨任务 mastery；
+- 禁止第二进度库。
 
 ## Design boundary
 
