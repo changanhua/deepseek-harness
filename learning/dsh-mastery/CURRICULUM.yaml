@@ -1,0 +1,224 @@
+version: 1
+name: DSH Mastery Lab
+mission: >-
+  Build independent judgment for tracing, modifying, designing, and reviewing
+  DeepSeek Harness and Agent Runtime systems through source-grounded learning
+  and executable practice.
+north_star: >-
+  Before implementation, the learner can make a basically correct architecture
+  judgment for an unseen DSH requirement and can defend that judgment with source
+  evidence, lifecycle reasoning, state ownership, and a verification plan.
+
+target_level: L5
+
+levels:
+  L0:
+    name: User
+    exit: Can run and use DSH.
+  L1:
+    name: Navigator
+    exit: Can locate major modules and source entry points for a behavior.
+  L2:
+    name: Reader
+    exit: Can reconstruct a real request, state, or lifecycle trace.
+  L3:
+    name: Modifier
+    exit: Can safely modify an existing capability and predict affected surfaces.
+  L4:
+    name: Designer
+    exit: Can independently design a medium-complexity DSH capability.
+  L5:
+    name: Reviewer
+    exit: Can systematically find architectural flaws in unfamiliar DSH designs.
+  L6:
+    name: Runtime Engineer
+    exit: Can modify core runtime mechanisms or justify a new seam/primitive.
+
+capabilities:
+  runtime_mental_model:
+    description: Compress an engineered agent into runtime, state, capability, agent, and surface responsibilities.
+  source_navigation:
+    description: Find the minimum source path needed to explain one concrete behavior.
+  request_tracing:
+    description: Reconstruct how facts, calls, events, and results move through one DSH execution.
+  state_ownership:
+    description: Identify authoritative state, projections, and lifetime boundaries.
+  seam_selection:
+    description: Choose among Tool, Service, Provider, Plugin, Event, Prompt, Settings, Preset, Slot, and dynamic runtime extension.
+  capability_boundary:
+    description: Separate model-facing commands from domain services and replaceable providers.
+  cordis_lifecycle:
+    description: Reason about Context, injection, activation, effect ownership, disposal, and dynamic composition.
+  persistence_recovery:
+    description: Reason about restart, replay, idempotency, lease, attempt, crash recovery, and durable state.
+  model_visibility:
+    description: Decide what should be pushed into context, exposed through tools, or kept hidden.
+  host_client_boundary:
+    description: Separate authoritative host behavior from browser projections and client interaction surfaces.
+  architecture_review:
+    description: Detect incorrect ownership, lifecycle leaks, fake durability, hidden state, stale projections, and unnecessary primitives.
+  independent_design:
+    description: Produce and defend a design before reading an existing solution.
+
+units:
+  - id: mental-model-agent-runtime
+    type: lesson
+    path: lessons/01-agent-runtime.md
+    trains: [runtime_mental_model, state_ownership, capability_boundary]
+    prerequisites: []
+    evidence:
+      - answer_unseen_background_task_analysis
+      - explain_why_task_queue_is_not_only_tools
+
+  - id: trace-real-request
+    type: trace
+    path: labs/02-request-trace.md
+    trains: [source_navigation, request_tracing, runtime_mental_model]
+    prerequisites: [mental-model-agent-runtime]
+    evidence:
+      - source_trace_with_files_and_responsibilities
+      - prediction_vs_actual_diff
+
+  - id: tool-service-provider
+    type: lesson
+    path: lessons/03-tool-service-provider.md
+    trains: [capability_boundary, seam_selection]
+    prerequisites: [mental-model-agent-runtime]
+    evidence:
+      - classify_unseen_capability_examples
+      - defend_two_rejected_alternatives
+
+  - id: cordis-minimal-runtime
+    type: lesson
+    path: lessons/04-cordis-runtime.md
+    trains: [cordis_lifecycle, seam_selection]
+    prerequisites: [trace-real-request, tool-service-provider]
+    evidence:
+      - explain_activation_and_disposal_story
+      - identify_lifecycle_leaks
+
+  - id: state-ownership-lab
+    type: lab
+    path: labs/05-state-ownership.md
+    trains: [state_ownership, persistence_recovery, host_client_boundary]
+    prerequisites: [cordis-minimal-runtime]
+    evidence:
+      - ownership_map
+      - crash_scenario_reasoning
+      - projection_vs_truth_classification
+
+  - id: persistence-recovery-lab
+    type: lab
+    path: labs/06-persistence-recovery.md
+    trains: [persistence_recovery, state_ownership]
+    prerequisites: [state-ownership-lab]
+    evidence:
+      - restart_experiment
+      - duplicate_or_replay_experiment
+      - recovery_design_review
+
+  - id: model-visible-context
+    type: lesson
+    path: lessons/07-model-visible-context.md
+    trains: [model_visibility, seam_selection]
+    prerequisites: [state-ownership-lab]
+    evidence:
+      - design_push_pull_runtime_awareness_surface
+      - identify_staleness_and_authority_risks
+
+  - id: small-plugin-lab
+    type: lab
+    path: labs/08-small-plugin.md
+    trains: [seam_selection, cordis_lifecycle, capability_boundary, source_navigation]
+    prerequisites: [cordis-minimal-runtime, state-ownership-lab]
+    evidence:
+      - working_change
+      - tests_or_runtime_verification
+      - architecture_delta_explanation
+
+  - id: case-runtime-awareness
+    type: case_study
+    path: cases/runtime-awareness.md
+    trains: [model_visibility, state_ownership, architecture_review, independent_design]
+    prerequisites: [model-visible-context, small-plugin-lab]
+    reveal_policy: reconstruct_before_reading_existing_design
+    evidence:
+      - independent_design_before_reveal
+      - review_findings
+      - redesigned_contract
+
+  - id: case-task-queue
+    type: case_study
+    path: cases/task-queue.md
+    trains: [persistence_recovery, state_ownership, architecture_review, independent_design]
+    prerequisites: [persistence-recovery-lab, small-plugin-lab]
+    reveal_policy: reconstruct_before_reading_existing_design
+    evidence:
+      - independent_design_before_reveal
+      - failure_scenarios
+      - redesigned_lifecycle
+
+  - id: case-observability-orchestration
+    type: case_study
+    path: cases/observability-orchestration.md
+    trains: [architecture_review, persistence_recovery, state_ownership, independent_design]
+    prerequisites: [case-task-queue]
+    evidence:
+      - invariant_set
+      - concurrency_or_time_semantics_review
+      - architecture_tradeoff_report
+
+  - id: unseen-design-challenge
+    type: challenge
+    path: labs/90-unseen-design-challenge.md
+    trains: [independent_design, architecture_review, seam_selection, state_ownership, persistence_recovery]
+    prerequisites:
+      - case-runtime-awareness
+      - case-task-queue
+    evidence:
+      - problem_definition
+      - see_act_own_survive
+      - source_precedent
+      - alternatives_and_tradeoffs
+      - verification_plan
+      - post_review_revision
+
+  - id: reviewer-challenge
+    type: challenge
+    path: labs/91-reviewer-challenge.md
+    trains: [architecture_review, source_navigation, independent_design]
+    prerequisites: [unseen-design-challenge]
+    evidence:
+      - blocking_findings
+      - severity_and_evidence
+      - minimal_corrective_design
+
+routing:
+  default_path:
+    - mental-model-agent-runtime
+    - trace-real-request
+    - tool-service-provider
+    - cordis-minimal-runtime
+    - state-ownership-lab
+    - persistence-recovery-lab
+    - model-visible-context
+    - small-plugin-lab
+    - case-runtime-awareness
+    - case-task-queue
+    - unseen-design-challenge
+    - reviewer-challenge
+  rules:
+    - Never advance only because a lesson was read.
+    - Prefer the earliest unmet prerequisite exposed by recent evidence.
+    - A real engineering task may temporarily replace the default next unit when it exercises the same capability.
+    - Failed evidence is retained and may route the learner backward.
+    - Case-study solutions remain hidden until the independent-design evidence exists.
+
+assessment:
+  progress_source: derived
+  inputs:
+    - CURRICULUM.yaml
+    - evidence/
+  no_manual_progress_file: true
+  mastery_requires_transfer: true
+  transfer_definition: Correct reasoning on an example not used in the teaching explanation.
