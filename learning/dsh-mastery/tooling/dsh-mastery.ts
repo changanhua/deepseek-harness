@@ -71,9 +71,9 @@ async function main(): Promise<void> {
     const recommendation = recommendNext(curriculum, evidence)
     if (json) {
       printJson(recommendation === undefined
-        ? { complete: true, recommendation: null }
+        ? { defaultPathComplete: true, recommendation: null }
         : {
-            complete: false,
+            defaultPathComplete: false,
             recommendation: {
               id: recommendation.unit.id,
               type: recommendation.unit.type,
