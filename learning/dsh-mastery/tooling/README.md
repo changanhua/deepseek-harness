@@ -1,46 +1,95 @@
 # Learning Runtime Tooling
 
-目标是让学习状态尽量由机器推导，而不是由人维护 Markdown checklist。
+目标是让学习状态由机器推导，而不是由人维护 Markdown checklist。
 
-## Planned commands
+V1 只有一个 CLI：
 
-### `next`
-
-输入：`CURRICULUM.yaml + evidence/`
-
-输出：推荐的下一训练单元及原因：
-
-- unmet prerequisite；
-- 最近失败 evidence；
-- 当前工程任务可替代的训练机会；
-- case reveal 是否已满足前置条件。
-
-### `status`
-
-从 evidence 推导 capability 状态，而不是读取手写完成表。
-
-建议输出：
-
-```text
-state_ownership       strong
-source_navigation     partial
-cordis_lifecycle      weak
-architecture_review   insufficient evidence
+```bash
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts check
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts status
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts next
 ```
 
-状态必须能回链到 evidence 文件。
+它不写任何隐藏状态；每次运行都重新读取：
 
-### `check`
+```text
+CURRICULUM.yaml
++
+evidence/**/*.yaml
+```
 
-验证：
+## `check`
+
+验证学习 Runtime 本身有没有结构性错误：
 
 - `CURRICULUM.yaml` 引用的 unit path 是否存在；
+- unit id 是否唯一；
+- capability / prerequisite / routing id 是否有效；
 - prerequisite 是否形成合法 DAG；
-- evidence 的 unit/capability id 是否有效；
-- source-grounded evidence 是否缺 commit/version；
-- case study 是否在 independent reconstruction 前被提前 reveal；
-- 不允许出现第二个 authoritative progress file。
+- evidence 的 unit/capability/evidence-item id 是否有效；
+- source-grounded evidence 是否固定 repository + commit；
+- case study 是否在 independent reconstruction evidence 前被提前 reveal；
+- `PROGRESS.md` / `progress.yaml` 等第二个手工进度库是否重新出现。
 
-## Non-goal
+CI/Agent 修改学习系统后应先跑它。
 
-第一版不需要复杂 Web UI、数据库或学习推荐模型。先保证文件协议稳定，等真实 evidence 累积后再实现自动评分和路由。
+## `status`
+
+从 evidence 推导：
+
+- unit completion；
+- capability state；
+- 支撑 capability 判断的 evidence 文件。
+
+示意：
+
+```text
+DSH Mastery Lab: 2/12 units complete
+
+state_ownership          strong [evidence/...yaml, evidence/...yaml]
+source_navigation        partial [evidence/...yaml]
+cordis_lifecycle         insufficient evidence
+```
+
+V1 的 `strong` 刻意保守：至少需要两个不同 unit / 任务上的 pass，避免把“刚学会复述”当成迁移能力。
+
+## `next`
+
+按 `routing.default_path` 与 prerequisite 计算下一训练单元。
+
+规则：
+
+1. 已完成 unit 跳过；
+2. 被 prerequisite 阻塞时，返回最早未完成的 prerequisite；
+3. 已经尝试但 evidence 为 partial/fail 的 unit 优先继续修正；
+4. 输出仍缺的 evidence item，而不是只说“继续第几课”。
+
+示意：
+
+```text
+trace-real-request -> labs/02-request-trace.md
+reason: earliest ready unit on the default path
+evidence needed: source_trace_with_files_and_responsibilities, prediction_vs_actual_diff
+```
+
+## Tests
+
+核心推导规则有 Vitest 覆盖：
+
+```bash
+pnpm exec vitest run learning/dsh-mastery/tooling/runtime.spec.ts
+```
+
+覆盖：prerequisite routing、source pin、case reveal guard、跨任务 mastery、禁止第二进度库。
+
+## Design boundary
+
+V1 不做：
+
+- Web UI；
+- 数据库；
+- LLM 自动打分；
+- 自动修改 evidence；
+- 复杂推荐模型。
+
+原因是先让**状态协议和证据语义稳定**。未来 `status/next/check` 可以换实现，但不能再引入一个与 Git evidence 并行的权威状态源。
