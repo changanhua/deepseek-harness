@@ -10,7 +10,17 @@ pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts status
 pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts next
 ```
 
-它不写任何隐藏状态；每次运行都重新读取：
+三个命令都支持 `--json`：
+
+```bash
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts check --json
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts status --json
+pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts next --json
+```
+
+人类终端默认读文本；Agent / 自动化应优先读 JSON，避免解析自然语言。
+
+CLI 不写任何隐藏状态；每次运行都重新读取：
 
 ```text
 CURRICULUM.yaml
@@ -31,6 +41,15 @@ evidence/**/*.yaml
 - case study 是否在 independent reconstruction evidence 前被提前 reveal；
 - `PROGRESS.md` / `progress.yaml` 等第二个手工进度库是否重新出现。
 
+JSON 形状：
+
+```json
+{
+  "ok": true,
+  "issues": []
+}
+```
+
 CI/Agent 修改学习系统后应先跑它。
 
 ## `status`
@@ -41,7 +60,7 @@ CI/Agent 修改学习系统后应先跑它。
 - capability state；
 - 支撑 capability 判断的 evidence 文件。
 
-示意：
+文本示意：
 
 ```text
 DSH Mastery Lab: 2/12 units complete
@@ -50,6 +69,8 @@ state_ownership          strong [evidence/...yaml, evidence/...yaml]
 source_navigation        partial [evidence/...yaml]
 cordis_lifecycle         insufficient evidence
 ```
+
+JSON 还会返回每个 unit 的 `complete / attempts / evidenceItems`，适合 Agent 做下一步规划。
 
 V1 的 `strong` 刻意保守：至少需要两个不同 unit / 任务上的 pass，避免把“刚学会复述”当成迁移能力。
 
@@ -64,13 +85,15 @@ V1 的 `strong` 刻意保守：至少需要两个不同 unit / 任务上的 pass
 3. 已经尝试但 evidence 为 partial/fail 的 unit 优先继续修正；
 4. 输出仍缺的 evidence item，而不是只说“继续第几课”。
 
-示意：
+文本示意：
 
 ```text
 trace-real-request -> labs/02-request-trace.md
 reason: earliest ready unit on the default path
 evidence needed: source_trace_with_files_and_responsibilities, prediction_vs_actual_diff
 ```
+
+JSON 会同时返回 unit `id/type/path/trains/prerequisites/reason/unmetEvidence`，因此 Teacher Agent 可以直接加载对应文件。
 
 ## Tests
 
