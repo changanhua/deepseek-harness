@@ -3,23 +3,31 @@
 import { deriveCapabilityStatuses, deriveUnitStatuses, loadCurriculum, loadEvidence, recommendNext, validateLab } from './runtime.ts'
 
 function usage(): never {
-  console.error('Usage: pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts <check|status|next>')
+  console.error('Usage: pnpm exec tsx learning/dsh-mastery/tooling/dsh-mastery.ts <check|status|next> [--json]')
   process.exit(2)
 }
 
+function printJson(value: unknown): void {
+  console.log(JSON.stringify(value, null, 2))
+}
+
 async function main(): Promise<void> {
-  const command = process.argv[2]
+  const args = process.argv.slice(2)
+  const json = args.includes('--json')
+  const command = args.find(arg => !arg.startsWith('--'))
   if (!command) usage()
 
   if (command === 'check') {
     const issues = await validateLab()
-    if (issues.length === 0) {
+    if (json) {
+      printJson({ ok: !issues.some(issue => issue.severity === 'error'), issues })
+    } else if (issues.length === 0) {
       console.log('DSH Mastery Lab: check passed')
-      return
-    }
-    for (const issue of issues) {
-      const location = issue.path ? ` (${issue.path})` : ''
-      console.log(`${issue.severity.toUpperCase()} ${issue.code}${location}: ${issue.message}`)
+    } else {
+      for (const issue of issues) {
+        const location = issue.path ? ` (${issue.path})` : ''
+        console.log(`${issue.severity.toUpperCase()} ${issue.code}${location}: ${issue.message}`)
+      }
     }
     if (issues.some(issue => issue.severity === 'error')) process.exitCode = 1
     return
@@ -30,10 +38,29 @@ async function main(): Promise<void> {
 
   if (command === 'status') {
     const units = [...deriveUnitStatuses(curriculum, evidence).values()]
+    const capabilities = deriveCapabilityStatuses(curriculum, evidence)
     const completed = units.filter(unit => unit.complete).length
+    if (json) {
+      printJson({
+        name: curriculum.name,
+        targetLevel: curriculum.target_level,
+        completedUnits: completed,
+        totalUnits: units.length,
+        units: units.map(status => ({
+          id: status.unit.id,
+          type: status.unit.type,
+          path: status.unit.path,
+          complete: status.complete,
+          attempts: status.attempts,
+          evidenceItems: status.evidenceItems,
+        })),
+        capabilities,
+      })
+      return
+    }
     console.log(`${curriculum.name}: ${completed}/${units.length} units complete`)
     console.log('')
-    for (const status of deriveCapabilityStatuses(curriculum, evidence)) {
+    for (const status of capabilities) {
       const refs = status.evidenceFiles.length > 0 ? ` [${status.evidenceFiles.join(', ')}]` : ''
       console.log(`${status.capability.padEnd(24)} ${status.state}${refs}`)
     }
@@ -42,6 +69,23 @@ async function main(): Promise<void> {
 
   if (command === 'next') {
     const recommendation = recommendNext(curriculum, evidence)
+    if (json) {
+      printJson(recommendation === undefined
+        ? { complete: true, recommendation: null }
+        : {
+            complete: false,
+            recommendation: {
+              id: recommendation.unit.id,
+              type: recommendation.unit.type,
+              path: recommendation.unit.path,
+              trains: recommendation.unit.trains,
+              prerequisites: recommendation.unit.prerequisites,
+              reason: recommendation.reason,
+              unmetEvidence: recommendation.unmetEvidence,
+            },
+          })
+      return
+    }
     if (!recommendation) {
       console.log('No incomplete unit remains on the configured default path.')
       return
