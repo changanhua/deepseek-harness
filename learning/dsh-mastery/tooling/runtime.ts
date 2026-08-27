@@ -119,7 +119,10 @@ function isOutcome(value: unknown): value is EvidenceOutcome {
 
 async function readYaml<T>(filePath: string): Promise<T> {
   const raw = await readFile(filePath, 'utf8')
-  return yaml.load(raw) as T
+  // JSON_SCHEMA deliberately keeps YAML timestamps as strings. Evidence is a
+  // repository protocol, not a js-yaml object graph whose scalar types may
+  // depend on implicit timestamp coercion.
+  return yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as T
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -147,7 +150,11 @@ async function listYamlFiles(dir: string): Promise<string[]> {
 }
 
 function evidenceSortKey(item: LoadedEvidence): string {
-  return `${item.record.recorded_at ?? ''}\u0000${item.path}`
+  const timestamp = Date.parse(item.record.recorded_at)
+  const timeKey = Number.isNaN(timestamp)
+    ? item.record.recorded_at
+    : timestamp.toString().padStart(15, '0')
+  return `${timeKey}\u0000${item.path}`
 }
 
 export async function loadCurriculum(root = defaultLabRoot()): Promise<Curriculum> {
@@ -218,7 +225,9 @@ export function deriveCapabilityStatuses(curriculum: Curriculum, evidence: Loade
     if (values.length === 0) {
       return { capability, state: 'insufficient evidence', passUnits: [], evidenceFiles: [] }
     }
-    const latest = values.at(-1)?.outcome
+    // Guarded by the non-empty branch above; avoid optional-undefined leaking
+    // into exactOptionalPropertyTypes output.
+    const latest = values.at(-1)!.outcome
     const passUnits = [...new Set(values.filter(item => item.outcome === 'pass').map(item => item.unit))]
     let state: CapabilityState
     if (latest === 'fail') state = 'weak'
