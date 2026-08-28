@@ -264,9 +264,9 @@ describe('new-profile completeness (fail loud)', () => {
   it('rejects a plugin defining a new profile without identity fields or candidates', async () => {
     const { ctx, fiber } = await boot({ includeBuiltins: false })
     expect(() => ctx.commandProfiles.contribute({ contributorId: 'plugin-a', profileId: 'my-cli', candidates: ['my-cli'] }))
-      .toThrow(/requires displayName and description/)
+      .toThrow(/requires displayName, description, and at least one candidate/)
     expect(() => ctx.commandProfiles.contribute(pluginContribution('my-cli', { candidates: [] })))
-      .toThrow(/requires at least one candidate/)
+      .toThrow(/requires displayName, description, and at least one candidate/)
     await fiber.dispose()
   })
 })
