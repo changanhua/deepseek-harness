@@ -10,7 +10,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import type TaskQueue from '@deepseek-ai/dsh-task-queue'
-import { TaskId } from '@deepseek-ai/dsh-task-queue'
+import { TASK_QUEUE_HOST_ACCESS, TaskId } from '@deepseek-ai/dsh-task-queue'
 import type { ListFilter, QueueStats, Task, TaskSummary } from '@deepseek-ai/dsh-task-queue'
 
 export const name = 'command-task-queue'
@@ -90,7 +90,7 @@ function list(queue: TaskQueue, rest: readonly string[]): CommandResult {
     }
     filter.limit = limit
   }
-  const summaries = queue.list(filter)
+  const summaries = queue.list(TASK_QUEUE_HOST_ACCESS, filter)
   if (summaries.length === 0) return { kind: 'success', text: 'The queue is empty.' }
   return { kind: 'success', text: summaries.map(renderSummary).join('\n') }
 }
@@ -99,7 +99,7 @@ function status(queue: TaskQueue, rest: readonly string[]): CommandResult {
   if (rest.length !== 1) return usage()
   const id = rest[0] ?? ''
   try {
-    return { kind: 'success', text: renderTask(queue.get(TaskId(id))) }
+    return { kind: 'success', text: renderTask(queue.get(TASK_QUEUE_HOST_ACCESS, TaskId(id))) }
   } catch (error) {
     return { kind: 'error', text: `No task with id ${id}.` + (error instanceof Error ? ` (${error.message})` : '') }
   }
@@ -109,7 +109,7 @@ async function retry(queue: TaskQueue, rest: readonly string[]): Promise<Command
   if (rest.length !== 1) return usage()
   const id = rest[0] ?? ''
   try {
-    const requeued = await queue.retry(TaskId(id))
+    const requeued = await queue.retry(TASK_QUEUE_HOST_ACCESS, TaskId(id))
     return {
       kind: 'success',
       text: requeued === id ? `Task ${id} re-queued.` : `Task ${id} re-queued as ${requeued}.`,
@@ -123,7 +123,7 @@ async function cancel(queue: TaskQueue, rest: readonly string[]): Promise<Comman
   if (rest.length !== 1) return usage()
   const id = rest[0] ?? ''
   try {
-    const outcome = await queue.cancel(TaskId(id))
+    const outcome = await queue.cancel(TASK_QUEUE_HOST_ACCESS, TaskId(id))
     return {
       kind: 'success',
       text: outcome === 'canceled'
@@ -151,7 +151,7 @@ function execute(invocation: CommandInvocation, ctx: Context): CommandResult | P
 }
 
 function stats(queue: TaskQueue): CommandResult {
-  return { kind: 'success', text: renderStats(queue.stats()) }
+  return { kind: 'success', text: renderStats(queue.stats(TASK_QUEUE_HOST_ACCESS)) }
 }
 
 /** Register the global `/queue` command for every composed command adapter. */

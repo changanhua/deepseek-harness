@@ -159,6 +159,9 @@ describe('loadProfile', () => {
     }
     expect(readProfileManifest('t', resolveProfileDir('web', home)).dsh?.profile?.bundles)
       .toEqual([...PROFILE_TEMPLATES.web ?? []])
+    expect(PROFILE_TEMPLATES['task-worker']).toEqual([
+      '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless',
+    ])
   })
 
   it('normalizes only the exact installation-owned headless bundle tuple', () => {

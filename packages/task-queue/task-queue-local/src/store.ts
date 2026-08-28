@@ -72,6 +72,7 @@ function isTaskSnapshot(value: unknown): value is Task {
   if (typeof v.maxAttempts !== 'number') return false
   if (typeof v.prompt !== 'string') return false
   if (typeof v.title !== 'string') return false
+  if (v.workspaceDir !== undefined && typeof v.workspaceDir !== 'string') return false
   if (!Array.isArray(v.runs)) return false
   if (!Array.isArray(v.tags)) return false
   return true

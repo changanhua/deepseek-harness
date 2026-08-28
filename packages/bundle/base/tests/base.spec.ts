@@ -37,9 +37,14 @@ describe('dsh-base bundle', () => {
     })
     expect(rows.filter(row => row.id === 'subagent-codex')).toHaveLength(1)
     expect(rows.filter(row => row.id === 'subagent-claude-code')).toHaveLength(1)
+    expect(rows.find(row => row.id === 'task-queue')?.config).toMatchObject({
+      executors: { dsh: { enabled: true } },
+    })
+    expect(rows.filter(row => row.id === 'task-queue-executor-dsh')).toHaveLength(1)
     expect(manifest.dependencies).toMatchObject({
       '@deepseek-ai/dsh-subagent-codex': 'workspace:^',
       '@deepseek-ai/dsh-subagent-claude-code': 'workspace:^',
+      '@deepseek-ai/dsh-task-queue-executor-dsh': 'workspace:^',
     })
   })
 

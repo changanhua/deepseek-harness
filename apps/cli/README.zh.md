@@ -13,7 +13,7 @@
 | `dsh web` | `--profile web` 的别名。 |
 | `dsh plugin --profile <name> <pnpm args>` | 通过在 profile 目录中转发给 pnpm 来管理该 profile 的插件。 |
 
-运行命令时所在的目录将作为默认 workspace 根目录。`web` 和 `headless` profile 在首次使用时会从随附模板自动初始化；其他任何 profile 都必须通过 `dsh plugin` 创建。
+运行命令时所在的目录将作为默认 workspace 根目录。`web`、`headless` 与内部使用的 `task-worker` profile 在首次使用时会从随附模板自动初始化；任务队列 DSH 执行器启动 `task-worker` 时会添加包自有的限制 overlay。其他任何 profile 都必须通过 `dsh plugin` 创建。
 
 ## 应用参数
 

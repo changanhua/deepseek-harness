@@ -567,6 +567,8 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   z: 'schemastery schema constructor is owned by vendor/schemastery (vendored upstream)',
+  TaskQueueAccess: 'task-queue access vocabulary is owned by packages/task-queue/task-queue/README.md',
+  TaskQueueHostAccess: 'task-queue host access vocabulary is owned by packages/task-queue/task-queue/README.md',
   TaskId: 'task-queue task identity is owned by packages/task-queue/task-queue/README.md',
   RunId: 'task-queue run identity is owned by packages/task-queue/task-queue/README.md',
   NotificationId: 'task-queue notification identity is owned by packages/task-queue/task-queue/README.md',

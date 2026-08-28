@@ -61,18 +61,21 @@ export function applyChange(folded: FoldedQueue, change: ChangeRecord): void {
 type TaskChange = Exclude<ChangeRecord, { op: 'notification-acknowledged' }>
 
 /**
- * Normalize a task entering the folded queue so `dismissed` is always a
- * defined boolean. `dismissed` (soft-conclude) was added to the persisted Task
- * state after the first releases, so logs and snapshots written before that
- * flag carry no value; folding it to the well-defined `false` (never
- * dismissed) prevents leaking `undefined` into projections, which the gateway
- * rejects as non-JSON-safe. Every task materialized into `folded.tasksById`
- * goes through this function, so all readers see a boolean.
+ * Normalize a task entering the folded queue so later optional durable fields
+ * have defined semantics. Old records without `dismissed` are never dismissed;
+ * old records without `workspaceDir` keep the former behavior by running in
+ * `outputDir`. Every task materialized into `folded.tasksById` goes through
+ * this function.
  * @param state - the task state read from a change record or snapshot.
  * @returns the task with a defined `dismissed` field.
  */
 export function materializeTask(state: Task): Task {
-  return state.dismissed === undefined ? { ...state, dismissed: false } : state
+  if (state.dismissed !== undefined && state.workspaceDir !== undefined) return state
+  return {
+    ...state,
+    ...(state.workspaceDir === undefined ? { workspaceDir: state.outputDir } : {}),
+    ...(state.dismissed === undefined ? { dismissed: false } : {}),
+  }
 }
 
 function applyTaskOp(

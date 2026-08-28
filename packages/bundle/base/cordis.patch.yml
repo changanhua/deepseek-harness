@@ -233,10 +233,27 @@
         maxConcurrentPerExecutor: 3
         intervalMs: 1000
         executors:
+          dsh:
+            enabled: true
           node:
             enabled: true
           arkcli:
             enabled: true
+
+    # Restricted Harness worker provider. The launcher argv is explicit so
+    # source runs retain their tsx loader and installed runs retain lib/bin.js;
+    # credentials stay in the managed DSH_HOME document rather than crossing
+    # the subprocess environment scrub.
+    - id: task-queue-executor-dsh
+      name: '@deepseek-ai/dsh-task-queue-executor-dsh'
+      inject: [taskQueue]
+      config:
+        launcher: !!js "[process.execPath, ...process.execArgv, process.argv[1]].filter(part => typeof part === 'string' && part.length > 0)"
+        dshHome: !!js dshHomePath()
+        profile: task-worker
+        maxAssistantBytes: 65536
+        collectBytes: 262144
+        graceMs: 5000
 
     - id: tool-task-queue
       name: '@deepseek-ai/dsh-tool-task-queue'

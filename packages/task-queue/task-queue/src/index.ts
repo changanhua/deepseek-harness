@@ -12,6 +12,68 @@ import type {
   QueueExecutorView, QueueStats, Task, TaskId, TaskStatus, TaskSummary,
 } from './types.ts'
 
+const TASK_QUEUE_ACCESS_BRAND: unique symbol = Symbol('dsh.task-queue.access')
+const TASK_QUEUE_ACCESS_GRANTS = new WeakSet<object>()
+
+/** Access granted to one Agent session for its owned task records. */
+export interface TaskQueueAgentAccess {
+  readonly kind: 'agent'
+  readonly ownerSessionId: string
+  readonly [TASK_QUEUE_ACCESS_BRAND]: true
+}
+
+/** Whole-queue access granted to trusted host-plane consumers. */
+export interface TaskQueueHostAccess {
+  readonly kind: 'host'
+  readonly [TASK_QUEUE_ACCESS_BRAND]: true
+}
+
+/** Authenticated access accepted by task-data Service operations. */
+export type TaskQueueAccess = TaskQueueAgentAccess | TaskQueueHostAccess
+
+const hostAccess: TaskQueueHostAccess = {
+  kind: 'host',
+  [TASK_QUEUE_ACCESS_BRAND]: true as const,
+}
+TASK_QUEUE_ACCESS_GRANTS.add(hostAccess)
+
+/** Singleton whole-queue grant for trusted host-plane plugins. */
+export const TASK_QUEUE_HOST_ACCESS: TaskQueueHostAccess = Object.freeze(hostAccess)
+
+/**
+ * Mint task-queue access for one authenticated Agent session.
+ * @param ownerSessionId - Exact session id supplied by the live tool execution context.
+ * @returns An opaque access grant restricted to that session's tasks.
+ */
+export function taskQueueAgentAccess(ownerSessionId: string): TaskQueueAgentAccess {
+  if (ownerSessionId.length === 0) throw new Error('task queue agent access requires a session id')
+  const access: TaskQueueAgentAccess = {
+    kind: 'agent', ownerSessionId, [TASK_QUEUE_ACCESS_BRAND]: true as const,
+  }
+  TASK_QUEUE_ACCESS_GRANTS.add(access)
+  return Object.freeze(access)
+}
+
+/**
+ * Reject values that were not minted by this Service Definition.
+ * @param access - Candidate access supplied to an implementation method.
+ * @returns Nothing when the access grant is authentic.
+ */
+export function assertTaskQueueAccess(access: unknown): asserts access is TaskQueueAccess {
+  if (typeof access !== 'object' || access === null || !TASK_QUEUE_ACCESS_GRANTS.has(access)) {
+    throw new Error('task queue access is required')
+  }
+}
+
+/**
+ * Require the singleton trusted host-plane grant.
+ * @param access - Candidate host access supplied to a host-only operation.
+ * @returns Nothing when the singleton host grant was supplied.
+ */
+export function assertTaskQueueHostAccess(access: unknown): asserts access is TaskQueueHostAccess {
+  if (access !== TASK_QUEUE_HOST_ACCESS) throw new Error('task queue host access is required')
+}
+
 export type {
   ChangeRecord,
   EnqueueSpec,
@@ -159,10 +221,11 @@ declare module '@deepseek-ai/cordis' {
  * implementation per context; loading a second throws, cordis' standard
  * duplicate-service behavior).
  *
- * Mutations are serialized through the backend's service FIFO and are
- * fail-closed on append error (the queue enters `faulted`); `resume()` must
- * never clear `faulted`. `source`/`receiptId` are assigned only by the trusted
- * entry points, so the tool-surface methods accept a spec without them.
+ * Task-data methods require an opaque access grant minted by this package.
+ * Agent grants see only their exact owner session; the singleton host grant
+ * is reserved for trusted host-plane consumers. Mutations are serialized
+ * through the backend's service FIFO and are fail-closed on append error (the
+ * queue enters `faulted`); `resume()` must never clear `faulted`.
  */
 export abstract class TaskQueue extends Service {
   constructor(ctx: Context) {
@@ -176,45 +239,51 @@ export abstract class TaskQueue extends Service {
 
   /**
    * Enqueue a single tool-originated task; rejects `executor: 'shell'`.
+   * @param access - authenticated Agent-owner or host-plane access.
    * @param spec - the validated admission spec (source/receipt assigned by the entry).
    * @returns the minted task id.
    */
-  abstract enqueueFromTool(spec: EnqueueSpec): Promise<TaskId>
+  abstract enqueueFromTool(access: TaskQueueAccess, spec: EnqueueSpec): Promise<TaskId>
 
   /**
    * Enqueue tool-originated tasks in one batch (bounded, e.g. 200).
+   * @param access - authenticated Agent-owner or host-plane access.
    * @param specs - the validated admission specs; any `shell` rejects the whole batch.
    * @returns the minted task ids, in spec order.
    */
-  abstract enqueueBatchFromTool(specs: EnqueueSpec[]): Promise<TaskId[]>
+  abstract enqueueBatchFromTool(access: TaskQueueAccess, specs: readonly EnqueueSpec[]): Promise<TaskId[]>
 
   /**
    * List summary projections, filtered by status/executor/tags, bounded by limit.
+   * @param access - access whose visible tasks may be returned.
    * @param filter - optional status/executor/tags filters and a result limit.
    * @returns fresh summary rows.
    */
-  abstract list(filter?: ListFilter): TaskSummary[]
+  abstract list(access: TaskQueueAccess, filter?: ListFilter): TaskSummary[]
 
   /**
    * Return the full durable state of one task.
+   * @param access - access that must be allowed to see the task.
    * @param id - the task id to look up.
    * @returns the durable task snapshot; throws for an unknown id.
    */
-  abstract get(id: TaskId): Task
+  abstract get(access: TaskQueueAccess, id: TaskId): Task
 
   /**
    * Cancel a task: pending → canceled; starting/running → stopping intent.
+   * @param access - access that must be allowed to control the task.
    * @param id - the task id to cancel.
    * @returns `canceled` for a directly-canceled pending task, `stopping` when a cancel intent was persisted.
    */
-  abstract cancel(id: TaskId): Promise<'canceled' | 'stopping'>
+  abstract cancel(access: TaskQueueAccess, id: TaskId): Promise<'canceled' | 'stopping'>
 
   /**
    * Retry a failed task; returns the (unchanged) task id.
+   * @param access - access that must be allowed to control the task.
    * @param id - the failed task id to requeue.
    * @returns the same task id, now pending with `attempt` reset.
    */
-  abstract retry(id: TaskId): Promise<TaskId>
+  abstract retry(access: TaskQueueAccess, id: TaskId): Promise<TaskId>
 
   /**
    * Soft-conclude (or restore) a terminal task by toggling its `dismissed`
@@ -223,16 +292,18 @@ export abstract class TaskQueue extends Service {
    * change record, no event). The task's `status` and audit record are
    * unchanged; a dismissed task leaves the attention badge/filters but keeps
    * its record, and requeuing (retry) resets `dismissed` to false.
+   * @param access - access that must be allowed to control the task.
    * @param id - the terminal task id to dismiss or restore.
    * @param dismissed - true to conclude, false to restore.
    */
-  abstract dismiss(id: TaskId, dismissed: boolean): Promise<void>
+  abstract dismiss(access: TaskQueueAccess, id: TaskId, dismissed: boolean): Promise<void>
 
   /**
    * Aggregate service state and per-status/per-executor counters.
+   * @param access - access whose visible tasks contribute to the counters.
    * @returns the current service state, optional fault, and counters.
    */
-  abstract stats(): QueueStats
+  abstract stats(access: TaskQueueAccess): QueueStats
 
   /**
    * Register an executor adapter; returns a disposer that unregisters it.
@@ -251,32 +322,35 @@ export abstract class TaskQueue extends Service {
 
   /**
    * Pause the queue (running → paused only).
+   * @param access - trusted host-plane access.
    */
-  abstract pause(): void
+  abstract pause(access: TaskQueueHostAccess): void
 
   /**
    * Resume the queue (paused → running only; faulted rejected).
+   * @param access - trusted host-plane access.
    */
-  abstract resume(): void
+  abstract resume(access: TaskQueueHostAccess): void
 
   /**
    * Acknowledge a pending notification with a CAS (spec §7.4): only a
    * `pending` record whose `messageId` matches `messageId` transitions to
    * `acknowledged`. An already-acknowledged record with a matching message id
    * is an idempotent no-op.
+   * @param access - access that must own the notification, or host access.
    * @param notificationId - the outbox record to acknowledge.
    * @param messageId - the stable message id the record must match.
    */
-  abstract ackNotification(notificationId: NotificationId, messageId: string): Promise<void>
+  abstract ackNotification(access: TaskQueueAccess, notificationId: NotificationId, messageId: string): Promise<void>
 
   /**
-   * List notification outbox records for one owner session, ordered by
-   * `terminalSeq` ascending. The pre-step hook consumes this to propose
-   * candidate notice messages (spec §7.4 step 4).
-   * @param filter.ownerSessionId - the session whose outbox records to list.
-   * @returns the session's notification records in terminal order.
+   * List visible notification outbox records ordered by `terminalSeq`
+   * ascending. An Agent grant returns only its session's records; host access
+   * returns the whole outbox.
+   * @param access - access whose visible notifications may be returned.
+   * @returns visible notification records in terminal order.
    */
-  abstract listNotifications(filter: { ownerSessionId: string }): NotificationRecord[]
+  abstract listNotifications(access: TaskQueueAccess): NotificationRecord[]
 }
 
 export default TaskQueue

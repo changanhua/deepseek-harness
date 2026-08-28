@@ -76,6 +76,8 @@ flowchart LR
   cfg --> plugin_dsh_base_tool_jobs
   plugin_dsh_base_task_queue["task-queue<br/>@deepseek-ai/dsh-task-queue-local"]
   cfg --> plugin_dsh_base_task_queue
+  plugin_dsh_base_task_queue_executor_dsh["task-queue-executor-dsh<br/>@deepseek-ai/dsh-task-queue-executor-dsh"]
+  cfg --> plugin_dsh_base_task_queue_executor_dsh
   plugin_dsh_base_tool_task_queue["tool-task-queue<br/>@deepseek-ai/dsh-tool-task-queue"]
   cfg --> plugin_dsh_base_tool_task_queue
   plugin_dsh_base_fs_observation_policy["fs-observation-policy<br/>@deepseek-ai/dsh-fs-observation-policy"]
@@ -214,6 +216,7 @@ flowchart LR
 | `tool-pwsh` | `@deepseek-ai/dsh-tool-pwsh` |
 | `tool-jobs` | `@deepseek-ai/dsh-tool-jobs` |
 | `task-queue` | `@deepseek-ai/dsh-task-queue-local` |
+| `task-queue-executor-dsh` | `@deepseek-ai/dsh-task-queue-executor-dsh` |
 | `tool-task-queue` | `@deepseek-ai/dsh-tool-task-queue` |
 | `fs-observation-policy` | `@deepseek-ai/dsh-fs-observation-policy` |
 | `tool-fs` | `@deepseek-ai/dsh-tool-fs` |

@@ -2,7 +2,7 @@
  * Agent-facing task-queue toolkit. Loading this plugin once registers, in a
  * single apply (no second listener-duplicating mount):
  *
- * 1. the eight `task_queue_*` tools,
+ * 1. the `task_queue_*` tools,
  * 2. the `tool:task-queue` system-prompt section,
  * 3. the `agent/pre-step` candidate-notification hook, and
  * 4. the `session/event` append→flush→CAS-ack finalizer plus the `turn/end`
@@ -11,10 +11,12 @@
  * The host task-queue Service is read via `ctx.get('taskQueue')` (optional):
  * with no backend composed the tools still register but reject with a clear
  * `@deepseek-ai/dsh-task-queue-local` message, and the pre-step/finalizer hooks
- * no-op. The durable-notification outbox protocol (pre-step prepares messages
- * only — it never flushes or acks; the append is observed through the
- * `session/event` firehose and the CAS ack runs only after a successful
- * `ctx.sessions.flush`) follows design §7.4.
+ * no-op. The durable-notification outbox protocol (the pre-step prepares
+ * injected messages but never flushes or acks them; the append is observed
+ * through the `session/event` firehose and the CAS ack runs only after a
+ * successful `ctx.sessions.flush`; a candidate whose marker already sits in
+ * the session — the append-before-ack crash window — is not re-injected but
+ * handed straight to the same finalizer) follows design §7.4.
  *
  * @module @deepseek-ai/dsh-tool-task-queue
  */
@@ -22,7 +24,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
@@ -33,9 +35,15 @@ import type {
   ListFilter,
   QueueStats,
   TaskQueue,
+  TaskQueueAccess,
   TaskSummary,
 } from '@deepseek-ai/dsh-task-queue'
-import { TaskId, NotificationId } from '@deepseek-ai/dsh-task-queue'
+import {
+  TASK_QUEUE_HOST_ACCESS,
+  TaskId,
+  NotificationId,
+  taskQueueAgentAccess,
+} from '@deepseek-ai/dsh-task-queue'
 
 /** Stable per-notification message id, embedded in the marker line. */
 type MessageId = string
@@ -70,6 +78,8 @@ interface NotificationCandidate {
   ownerSessionId: string
   title: string
   status: string
+  /** Result summary from the task's outcome, when the task succeeded. */
+  resultSummary?: string
 }
 
 /**
@@ -122,8 +132,11 @@ function textOf(content: readonly ContentBlock[]): string {
 /** Render one notification candidate into a notice user-message. */
 function renderNotification(candidate: NotificationCandidate): ReturnType<typeof createUserMessage> {
   const summary = `task ${candidate.taskId} ${candidate.status}`
-  const text = `Background task "${candidate.title || candidate.taskId}" reached ${candidate.status}.\n`
-    + 'Inspect it with task_queue_status, or retry with task_queue_retry if it failed.\n'
+  let text = `Background task "${candidate.title || candidate.taskId}" reached ${candidate.status}.\n`
+  if (candidate.resultSummary !== undefined) {
+    text += `Outcome: ${candidate.resultSummary}\n`
+  }
+  text += 'Inspect it with task_queue_status for details.\n'
     + markerLine(candidate.notificationId, candidate.messageId)
   return createUserMessage({
     content: [{ type: 'text', text }],
@@ -197,6 +210,10 @@ export function validateEnqueueSpec(raw: unknown): EnqueueSpec {
     }
     out.timeoutMs = spec.timeoutMs
   }
+  if (spec.workspaceDir !== undefined) {
+    if (typeof spec.workspaceDir !== 'string') throw new Error('task_queue_enqueue: `workspaceDir` must be a string')
+    out.workspaceDir = spec.workspaceDir
+  }
   if (spec.outputDir !== undefined) {
     if (typeof spec.outputDir !== 'string') throw new Error('task_queue_enqueue: `outputDir` must be a string')
     out.outputDir = spec.outputDir
@@ -232,13 +249,14 @@ const SPEC_PARAM = {
   properties: {
     title: { type: 'string', required: true, description: 'One-line title.' },
     prompt: { type: 'string', required: true, description: 'Complete instruction handed to the executor.' },
-    executor: { type: 'string', required: true, description: "Registered executor name. Built-ins: claude/codex/opencode/arkcli (CLI coding agents) and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set." },
+    executor: { type: 'string', required: true, description: "Registered executor name. Shipped executors include dsh (restricted Harness worker), claude/codex/opencode/arkcli (CLI agents), and node (local Node script; prompt must be JSON { script, args? }). Never 'shell' (inbox-only). Query task_queue_executors for the currently enabled set." },
     priority: { type: 'integer', description: 'Lower is higher precedence (default 10).' },
     maxAttempts: { type: 'integer', description: 'Total execution attempts; default 3.' },
     backoffMs: { type: 'integer', description: 'Backoff base in ms (default 30000).' },
     delayUntil: { type: 'string', description: 'ISO timestamp; not claimable before it.' },
     timeoutMs: { type: 'integer', description: 'Per-execution timeout in ms (default 1800000).' },
-    outputDir: { type: 'string', description: 'Output directory.' },
+    workspaceDir: { type: 'string', description: 'Executor working directory. Defaults to outputDir for compatibility.' },
+    outputDir: { type: 'string', description: 'Artifact directory scanned into result.outputFiles.' },
     tags: TAGS_PARAM,
     idempotencyKey: { type: 'string', description: 'Cross-call dedupe key (1–128 bytes, no NUL).' },
   },
@@ -331,7 +349,7 @@ export function buildSection(): { name: string; order: number; text: string } {
       + 'queued ids — do not inline a batch of 3 or more independent tasks, long-running jobs, or anything that '
       + 'may need retry or should survive the session. At session start, call task_queue_stats to see the backlog, '
       + 'and task_queue_executors to see which executors this deployment enables. For batch LLM/script work use '
-      + 'the node executor with a local script (prompt JSON { script, args? }); use claude/codex/opencode/arkcli '
+      + 'the node executor with a local script (prompt JSON { script, args? }); use dsh/claude/codex/opencode/arkcli '
       + 'only for full coding-agent jobs. Never submit shell (inbox-only). When a task is failed, report it '
       + 'proactively and suggest task_queue_retry. For a failure you have diagnosed and will not retry, '
       + 'task_queue_dismiss soft-concludes it (leaves attention, keeps the record); task_queue_undismiss '
@@ -369,9 +387,9 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true } } },
         render: (_args, value) => [{ type: 'text', text: `enqueued task ${value.id}` }],
       },
-      async execute(args, _exec) {
+      async execute(args, exec) {
         const spec = validateEnqueueSpec(args.spec)
-        const id = await resolveTaskQueue().enqueueFromTool(spec)
+        const id = await resolveTaskQueue().enqueueFromTool(taskQueueAccessOf(exec), spec)
         return { id }
       },
       presentCall: args => ({ card: 'generic', title: 'Enqueue task', kind: 'execute', rawInput: args.spec }),
@@ -391,12 +409,12 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { ids: { type: 'array', required: true, items: { type: 'string' } } } },
         render: (_args, value) => [{ type: 'text', text: `enqueued ${value.ids.length} tasks: ${value.ids.join(', ')}` }],
       },
-      async execute(args, _exec) {
+      async execute(args, exec) {
         if (args.specs.length > BATCH_LIMIT) {
           throw new Error(`task_queue_enqueue_batch: at most ${BATCH_LIMIT} specs per call (got ${args.specs.length})`)
         }
         const specs = args.specs.map((raw: unknown) => validateEnqueueSpec(raw))
-        const ids = await resolveTaskQueue().enqueueBatchFromTool(specs)
+        const ids = await resolveTaskQueue().enqueueBatchFromTool(taskQueueAccessOf(exec), specs)
         return { ids }
       },
       presentCall: args => ({ card: 'generic', title: `Enqueue ${args.specs.length} tasks`, kind: 'execute' }),
@@ -416,13 +434,13 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
           ? [{ type: 'text', text: '(no tasks)' }]
           : [{ type: 'text', text: (tasks as TaskSummary[]).map(t => `${t.id} [${t.executor}] ${t.status} — ${t.title}`).join('\n') }],
       },
-      execute(args, _exec) {
+      execute(args, exec) {
         const filter: ListFilter = {}
         if (args.status !== undefined) filter.status = args.status as TaskSummary['status']
         if (args.executor !== undefined) filter.executor = args.executor
         if (args.tags !== undefined) filter.tags = args.tags
         if (args.limit !== undefined) filter.limit = args.limit
-        return Promise.resolve(resolveTaskQueue().list(filter))
+        return Promise.resolve(resolveTaskQueue().list(taskQueueAccessOf(exec), filter))
       },
       presentCall: () => ({ card: 'generic', title: 'List tasks', kind: 'read' }),
     }),
@@ -447,8 +465,8 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         },
         render: (_args, value) => [{ type: 'text', text: `${value.id} [${value.executor}] ${value.status} — ${value.title}` }],
       },
-      async execute(args, _exec) {
-        const task = resolveTaskQueue().get(TaskId(args.id))
+      async execute(args, exec) {
+        const task = resolveTaskQueue().get(taskQueueAccessOf(exec), TaskId(args.id))
         // Project null-able fields away so the output schema stays closed.
         return {
           id: task.id,
@@ -481,8 +499,9 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { outcome: { type: 'string', required: true, enum: ['canceled', 'stopping'] } } },
         render: (_args, value) => [{ type: 'text', text: `task ${value.outcome === 'canceled' ? 'canceled' : 'stop requested (stopping)'}` }],
       },
-      async execute(args, _exec) {
-        return { outcome: await resolveTaskQueue().cancel(TaskId(args.id)) }
+      async execute(args, exec) {
+        const tq = resolveTaskQueue()
+        return { outcome: await tq.cancel(taskQueueAccessOf(exec), TaskId(args.id)) }
       },
       presentCall: args => ({ card: 'generic', title: `Cancel task ${args.id}`, kind: 'execute', rawInput: args.id }),
     }),
@@ -494,8 +513,9 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true } } },
         render: (_args, value) => [{ type: 'text', text: `task ${value.id} returned to pending` }],
       },
-      async execute(args, _exec) {
-        return { id: await resolveTaskQueue().retry(TaskId(args.id)) }
+      async execute(args, exec) {
+        const tq = resolveTaskQueue()
+        return { id: await tq.retry(taskQueueAccessOf(exec), TaskId(args.id)) }
       },
       presentCall: args => ({ card: 'generic', title: `Retry task ${args.id}`, kind: 'execute', rawInput: args.id }),
     }),
@@ -510,9 +530,10 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, dismissed: { type: 'boolean', required: true } } },
         render: (_args, value) => [{ type: 'text', text: `task ${value.id} ${value.dismissed ? 'dismissed' : 'restored'}` }],
       },
-      async execute(args, _exec) {
+      async execute(args, exec) {
+        const tq = resolveTaskQueue()
         const dismissed = args.dismissed !== false
-        await resolveTaskQueue().dismiss(TaskId(args.id), dismissed)
+        await tq.dismiss(taskQueueAccessOf(exec), TaskId(args.id), dismissed)
         return { id: args.id, dismissed }
       },
       presentCall: args => ({ card: 'generic', title: `Dismiss task ${args.id}`, kind: 'execute', rawInput: args.id }),
@@ -525,8 +546,9 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         schema: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, dismissed: { type: 'boolean', required: true } } },
         render: (_args, value) => [{ type: 'text', text: `task ${value.id} restored` }],
       },
-      async execute(args, _exec) {
-        await resolveTaskQueue().dismiss(TaskId(args.id), false)
+      async execute(args, exec) {
+        const tq = resolveTaskQueue()
+        await tq.dismiss(taskQueueAccessOf(exec), TaskId(args.id), false)
         return { id: args.id, dismissed: false }
       },
       presentCall: args => ({ card: 'generic', title: `Restore task ${args.id}`, kind: 'execute', rawInput: args.id }),
@@ -553,8 +575,8 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
           return [{ type: 'text', text: fault.length > 0 ? `${line} — fault: ${fault}` : line }]
         },
       },
-      execute(_args, _exec) {
-        const stats: QueueStats = resolveTaskQueue().stats()
+      execute(_args, exec) {
+        const stats: QueueStats = resolveTaskQueue().stats(taskQueueAccessOf(exec))
         // Normalize the contract's byStatus record into the declared counts shape.
         const counts = {
           pending: stats.byStatus.pending ?? 0,
@@ -617,25 +639,33 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
   // --- pre-step hook ------------------------------------------------------
   /**
    * Read this session's pending notifications and propose candidate messages.
-   * Sorts by `terminalSeq`, skips anything already `inFlight` or whose marker
-   * is already in the session (append-before-ack crash), and marks the chosen
-   * messageIds `inFlight`. This never flushes and never acks — the finalizer
-   * does that only after observing the append (design §7.4).
+   * Sorts by `terminalSeq`, skips anything already `inFlight`. A candidate
+   * whose marker is already present in the session (append-before-ack crash)
+   * is not re-injected — instead the pre-step starts the same flush→CAS
+   * finalizer the `session/event` listener would have run before the crash
+   * (design §7.4 step 6). This hook never flushes and never acks an injected
+   * candidate — the finalizer does that only after observing the append.
    */
   const preStep = (agent: Agent, decision: PreStepDecision): PreStepDecision => {
     if (taskQueue === undefined || decision.kind === 'reject') return decision
     const session = agent.session
-    const records = taskQueue.listNotifications({ ownerSessionId: session.id })
+    const access = taskQueueAgentAccess(session.id)
+    const records = taskQueue.listNotifications(access)
     if (records.length === 0) return decision
     const already = markersInEvents(sessionEvents(session))
     const chosenIds = new Set<MessageId>()
     const candidates = records
       .filter(r => r.status === 'pending')
       .filter(r => !inFlight.has(r.messageId))
-      .filter(r => !already.has(r.messageId))
       .sort((a, b) => a.terminalSeq - b.terminalSeq)
-    const messages = candidates.map((record): ReturnType<typeof createUserMessage> => {
-      const task = safeGetTask(taskQueue, record.taskId)
+    const messages: ReturnType<typeof createUserMessage>[] = []
+    for (const record of candidates) {
+      if (already.has(record.messageId)) {
+        inFlight.add(record.messageId)
+        void finalize(session, record.notificationId, record.messageId)
+        continue
+      }
+      const task = safeGetTask(taskQueue, access, record.taskId)
       const candidate: NotificationCandidate = {
         notificationId: record.notificationId,
         messageId: record.messageId,
@@ -644,11 +674,12 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         ownerSessionId: record.ownerSessionId,
         title: task?.title ?? record.taskId,
         status: task?.status ?? 'failed',
+        ...(task?.resultSummary !== undefined ? { resultSummary: task.resultSummary } : {}),
       }
       inFlight.add(record.messageId)
       chosenIds.add(record.messageId)
-      return renderNotification(candidate)
-    })
+      messages.push(renderNotification(candidate))
+    }
     return {
       kind: 'enter',
       messages: [...decision.messages, ...messages],
@@ -708,7 +739,11 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
         inFlight.delete(messageId)
         return
       }
-      await taskQueue.ackNotification(NotificationId(notificationId), messageId)
+      await taskQueue.ackNotification(
+        taskQueueAgentAccess(session.id),
+        NotificationId(notificationId),
+        messageId,
+      )
       inFlight.delete(messageId)
     } catch {
       // Ack failure or flush rejection: keep the notification pending for the
@@ -727,13 +762,34 @@ export function createToolTaskQueue(deps: ToolTaskQueueDeps): ToolTaskQueueKit {
 }
 
 /** Look up a task without throwing (missing record → undefined). */
-function safeGetTask(taskQueue: TaskQueue, id: string): { title: string; status: string } | undefined {
+function safeGetTask(
+  taskQueue: TaskQueue,
+  access: TaskQueueAccess,
+  id: string,
+): { title: string; status: string; resultSummary?: string } | undefined {
   try {
-    const task = taskQueue.get(TaskId(id))
-    return { title: task.title, status: task.status }
+    const task = taskQueue.get(access, TaskId(id))
+    const result: { title: string; status: string; resultSummary?: string } = {
+      title: task.title,
+      status: task.status,
+    }
+    if (task.result?.summary !== undefined) result.resultSummary = task.result.summary
+    return result
   } catch {
     return undefined
   }
+}
+
+/**
+ * Resolve task-queue access from trusted execution metadata. Agent calls are
+ * restricted to their exact session; calls without an Agent are host-plane.
+ * @param exec - the tool execution context carrying the authenticated Agent.
+ * @returns the session-scoped or host-plane access grant.
+ */
+function taskQueueAccessOf(exec: ToolRunContext): TaskQueueAccess {
+  return exec.agent === undefined
+    ? TASK_QUEUE_HOST_ACCESS
+    : taskQueueAgentAccess(exec.agent.session.id)
 }
 
 /** Tool-task-queue plugin configuration (reserved; currently empty). */
@@ -743,7 +799,7 @@ export interface Config {}
 export const Config: z<Config> = z.object({})
 
 /**
- * Register all eight tools, the system-prompt section, the pre-step hook, and
+ * Register all task-queue tools, the system-prompt section, the pre-step hook, and
  * the session/event finalizer in one apply. The host task-queue Service is
  * read optionally via `ctx.get('taskQueue')`.
  */

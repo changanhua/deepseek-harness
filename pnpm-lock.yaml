@@ -291,6 +291,9 @@ importers:
       '@deepseek-ai/dsh-tool-task-queue':
         specifier: workspace:^
         version: link:../../packages/task-queue/tool-task-queue
+      '@deepseek-ai/dsh-task-queue-executor-dsh':
+        specifier: workspace:^
+        version: link:../../packages/task-queue/task-queue-executor-dsh
       '@deepseek-ai/dsh-tool-todo':
         specifier: workspace:^
         version: link:../../packages/todo/tool-todo
@@ -1195,6 +1198,9 @@ importers:
       '@deepseek-ai/dsh-task-queue':
         specifier: workspace:^
         version: link:../../task-queue/task-queue
+      '@deepseek-ai/dsh-task-queue-executor-dsh':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue-executor-dsh
       '@deepseek-ai/dsh-task-queue-local':
         specifier: workspace:^
         version: link:../../task-queue/task-queue-local
@@ -8305,6 +8311,34 @@ importers:
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:^
         version: link:../../subprocess/subprocess
+
+  packages/task-queue/task-queue-executor-dsh:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-llm-mock-server':
+        specifier: workspace:^
+        version: link:../../test-support/llm-mock-server
+      '@deepseek-ai/dsh-subprocess':
+        specifier: workspace:^
+        version: link:../../subprocess/subprocess
+      '@deepseek-ai/dsh-subprocess-local':
+        specifier: workspace:^
+        version: link:../../subprocess/subprocess-local
+      '@deepseek-ai/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../task-queue
+      '@deepseek-ai/dsh-task-queue-local':
+        specifier: workspace:^
+        version: link:../task-queue-local
 
   packages/task-queue/task-queue-local:
     dependencies:

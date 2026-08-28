@@ -15,6 +15,7 @@ import type {
   NotificationRecord,
   QueueStats,
   Task,
+  TaskQueueAccess,
   TaskQueue,
 } from '@deepseek-ai/dsh-task-queue'
 import { TaskId, NotificationId, RunId } from '@deepseek-ai/dsh-task-queue'
@@ -29,37 +30,72 @@ function makeQueue(overrides: Partial<Pick<TaskQueue, 'list' | 'get' | 'stats' |
   const enqueued: EnqueueSpec[] = []
   const acks: { notificationId: string; messageId: string }[] = []
   const pendingNotifications: NotificationRecord[] = []
-  const tasks = new Map<string, { title: string; status: string }>()
+  const tasks = new Map<string, { title: string; status: string; ownerSessionId: string | null }>()
+  const getTask = (access: TaskQueueAccess, id: TaskId): Task => {
+    const overridden = overrides.get?.(access, id)
+    if (overridden !== undefined) {
+      if (access.kind === 'agent' && overridden.ownerSessionId !== access.ownerSessionId) {
+        throw new Error(`unknown task ${id}`)
+      }
+      return overridden
+    }
+    const task = tasks.get(id)
+    if (task === undefined
+      || (access.kind === 'agent' && task.ownerSessionId !== access.ownerSessionId)) {
+      throw new Error(`unknown task ${id}`)
+    }
+    return {
+      id, title: task.title, prompt: '', executor: 'claude', status: task.status as never,
+      priority: 10, attempt: 0, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
+      timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
+      lastError: null, result: null, ownerSessionId: task.ownerSessionId, source: 'tool',
+      receiptId: 'r', terminalSeq: null, runs: [], dismissed: false,
+    }
+  }
   const taskQueue = {
-    async enqueueFromTool(spec: EnqueueSpec): Promise<TaskId> {
-      enqueued.push(spec)
-      tasks.set(`tq-${enqueued.length}`, { title: spec.title, status: 'pending' })
+    async enqueueFromTool(access: TaskQueueAccess, spec: EnqueueSpec): Promise<TaskId> {
+      const admitted = access.kind === 'agent' ? { ...spec, ownerSessionId: access.ownerSessionId } : spec
+      enqueued.push(admitted)
+      tasks.set(`tq-${enqueued.length}`, {
+        title: admitted.title,
+        status: 'pending',
+        ownerSessionId: admitted.ownerSessionId ?? null,
+      })
       return TaskId(`tq-${enqueued.length}`)
     },
-    async enqueueBatchFromTool(specs: EnqueueSpec[]): Promise<TaskId[]> {
-      return specs.map((spec) => {
-        enqueued.push(spec)
-        tasks.set(`tq-${enqueued.length}`, { title: spec.title, status: 'pending' })
-        return TaskId(`tq-${enqueued.length}`)
-      })
-    },
-    list() { return [] },
-    get(id: TaskId): Task {
-      const task = tasks.get(id)
-      if (task === undefined) throw new Error(`unknown task ${id}`)
-      return {
-        id, title: task.title, prompt: '', executor: 'claude', status: task.status as never,
-        priority: 10, attempt: 0, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
-        timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
-        lastError: null, result: null, ownerSessionId: null, source: 'tool',
-        receiptId: 'r', terminalSeq: null, runs: [], dismissed: false,
+    async enqueueBatchFromTool(access: TaskQueueAccess, specs: readonly EnqueueSpec[]): Promise<TaskId[]> {
+      const ids: TaskId[] = []
+      for (const spec of specs) {
+        const admitted = access.kind === 'agent' ? { ...spec, ownerSessionId: access.ownerSessionId } : spec
+        enqueued.push(admitted)
+        const id = TaskId(`tq-${enqueued.length}`)
+        tasks.set(id, {
+          title: admitted.title,
+          status: 'pending',
+          ownerSessionId: admitted.ownerSessionId ?? null,
+        })
+        ids.push(id)
       }
+      return ids
     },
-    async cancel(): Promise<'canceled' | 'stopping'> { return 'canceled' },
-    async retry(id: TaskId): Promise<TaskId> { return id },
-    async dismiss(_id: TaskId, _dismissed: boolean): Promise<void> {},
-    stats(): QueueStats {
-      return {
+    list(access: TaskQueueAccess, filter?: Parameters<TaskQueue['list']>[1]) {
+      return overrides.list?.(access, filter) ?? []
+    },
+    get: getTask,
+    async cancel(access: TaskQueueAccess, id: TaskId): Promise<'canceled' | 'stopping'> {
+      getTask(access, id)
+      return 'canceled'
+    },
+    async retry(access: TaskQueueAccess, id: TaskId): Promise<TaskId> {
+      getTask(access, id)
+      return id
+    },
+    async dismiss(access: TaskQueueAccess, id: TaskId, dismissed: boolean): Promise<void> {
+      getTask(access, id)
+      await overrides.dismiss?.(access, id, dismissed)
+    },
+    stats(access: TaskQueueAccess): QueueStats {
+      return overrides.stats?.(access) ?? {
         serviceState: 'running',
         byStatus: { pending: 0, starting: 0, running: 0, stopping: 0, succeeded: 0, failed: 0, canceled: 0 },
         byExecutor: {},
@@ -67,15 +103,18 @@ function makeQueue(overrides: Partial<Pick<TaskQueue, 'list' | 'get' | 'stats' |
         byDismissed: 0,
       }
     },
-    async ackNotification(notificationId: string, messageId: string): Promise<void> {
+    async ackNotification(_access: TaskQueueAccess, notificationId: string, messageId: string): Promise<void> {
       acks.push({ notificationId, messageId })
     },
-    listNotifications() { return pendingNotifications },
+    listNotifications(access: TaskQueueAccess) {
+      return access.kind === 'host'
+        ? pendingNotifications
+        : pendingNotifications.filter(record => record.ownerSessionId === access.ownerSessionId)
+    },
     registerExecutor() { return () => {} },
     listExecutors() { return [{ name: 'codex', enabled: true, toolAllowed: true }] },
     pause() {},
     resume() {},
-    ...overrides,
   } as unknown as TaskQueue
   return { taskQueue, enqueued, acks, pendingNotifications }
 }
@@ -137,10 +176,11 @@ describe('validateEnqueueSpec', () => {
     const spec = validateEnqueueSpec({
       title: 't', prompt: 'p', executor: 'codex',
       priority: 1, maxAttempts: 5, backoffMs: 1000, delayUntil: '2026-01-01T00:00:00Z',
-      timeoutMs: 60000, outputDir: '/tmp/o', tags: ['a', 'b'], idempotencyKey: 'k',
+      timeoutMs: 60000, workspaceDir: '/tmp/repo', outputDir: '/tmp/o', tags: ['a', 'b'], idempotencyKey: 'k',
     })
     expect(spec.priority).toBe(1)
     expect(spec.maxAttempts).toBe(5)
+    expect(spec.workspaceDir).toBe('/tmp/repo')
     expect(spec.tags).toEqual(['a', 'b'])
     expect(spec.idempotencyKey).toBe('k')
   })
@@ -199,7 +239,14 @@ describe('tool schema validation (through execute)', () => {
   it('task_queue_dismiss soft-concludes a terminal task and returns dismissed=true', async () => {
     const calls: { id: string; dismissed: boolean }[] = []
     const queue = makeQueue({
-      dismiss: async (id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+      dismiss: async (_access, id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+      get: (_access, id: TaskId) => ({
+        id, title: 't', prompt: '', executor: 'claude', status: 'succeeded',
+        priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
+        timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
+        lastError: null, result: null, ownerSessionId: null, source: 'tool',
+        receiptId: 'r', terminalSeq: null, runs: [], dismissed: false,
+      }),
     })
     const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
     const dismiss = kit.tools.find(t => t.name === 'task_queue_dismiss')!
@@ -211,7 +258,14 @@ describe('tool schema validation (through execute)', () => {
   it('task_queue_dismiss with dismissed:false restores (undo path)', async () => {
     const calls: { id: string; dismissed: boolean }[] = []
     const queue = makeQueue({
-      dismiss: async (id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+      dismiss: async (_access, id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+      get: (_access, id: TaskId) => ({
+        id, title: 't', prompt: '', executor: 'claude', status: 'succeeded',
+        priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
+        timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
+        lastError: null, result: null, ownerSessionId: null, source: 'tool',
+        receiptId: 'r', terminalSeq: null, runs: [], dismissed: true,
+      }),
     })
     const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
     const dismiss = kit.tools.find(t => t.name === 'task_queue_dismiss')!
@@ -223,7 +277,14 @@ describe('tool schema validation (through execute)', () => {
   it('task_queue_undismiss restores to attention (dismissed=false)', async () => {
     const calls: { id: string; dismissed: boolean }[] = []
     const queue = makeQueue({
-      dismiss: async (id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+      dismiss: async (_access, id: TaskId, dismissed: boolean) => { calls.push({ id: String(id), dismissed }) },
+      get: (_access, id: TaskId) => ({
+        id, title: 't', prompt: '', executor: 'claude', status: 'succeeded',
+        priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
+        timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
+        lastError: null, result: null, ownerSessionId: null, source: 'tool',
+        receiptId: 'r', terminalSeq: null, runs: [], dismissed: true,
+      }),
     })
     const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
     const undismiss = kit.tools.find(t => t.name === 'task_queue_undismiss')!
@@ -237,6 +298,41 @@ describe('tool schema validation (through execute)', () => {
     const enqueue = kit.tools.find(t => t.name === 'task_queue_enqueue')!
     await expect(enqueue.execute({ spec: { title: 't', prompt: 'p', executor: 'claude' } }, {} as never))
       .rejects.toThrow(/task-queue-local/)
+  })
+
+  it('task_queue_enqueue binds the caller session as ownerSessionId', async () => {
+    const queue = makeQueue()
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const enqueue = kit.tools.find(t => t.name === 'task_queue_enqueue')!
+    const agent = fakeAgent(Session.create(SessionId('s-1')))
+    await enqueue.execute({ spec: { title: 't', prompt: 'p', executor: 'claude' } }, { agent } as never)
+    expect(queue.enqueued).toHaveLength(1)
+    expect(queue.enqueued[0]!.ownerSessionId).toBe('s-1')
+  })
+
+  it('task_queue_enqueue_batch binds the caller session as ownerSessionId on every spec', async () => {
+    const queue = makeQueue()
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const batch = kit.tools.find(t => t.name === 'task_queue_enqueue_batch')!
+    const agent = fakeAgent(Session.create(SessionId('s-1')))
+    await batch.execute({
+      specs: [
+        { title: 'a', prompt: 'a', executor: 'claude' },
+        { title: 'b', prompt: 'b', executor: 'codex' },
+      ],
+    }, { agent } as never)
+    expect(queue.enqueued).toHaveLength(2)
+    expect(queue.enqueued[0]!.ownerSessionId).toBe('s-1')
+    expect(queue.enqueued[1]!.ownerSessionId).toBe('s-1')
+  })
+
+  it('leaves ownerSessionId unset for a call with no Agent (host-plane dispatch)', async () => {
+    const queue = makeQueue()
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const enqueue = kit.tools.find(t => t.name === 'task_queue_enqueue')!
+    await enqueue.execute({ spec: { title: 't', prompt: 'p', executor: 'claude' } }, {} as never)
+    expect(queue.enqueued).toHaveLength(1)
+    expect(queue.enqueued[0]!.ownerSessionId).toBeUndefined()
   })
 })
 
@@ -284,17 +380,22 @@ describe('pre-step candidate generation', () => {
     expect(enterMessages(out)).toHaveLength(0)
   })
 
-  it('skips messageIds already present in the session (append-before-ack)', () => {
+  it('starts the finalizer for messageIds already present in the session (append-before-ack)', async () => {
     const queue = makeQueue()
+    const flush = vi.fn<() => Promise<boolean>>(async () => true)
     queue.pendingNotifications.push(rec({ notificationId: NotificationId('n1'), messageId: 'm1', terminalSeq: 1 }))
     const session = Session.create(SessionId('s'))
     appendText(session, `done.\n${markerLine('n1', 'm1')}`)
-    const kit = createToolTaskQueue(makeDeps(queue.taskQueue, { sessionEvents: s => s.events }))
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue, { sessionEvents: s => s.events, flushSession: flush }))
     const out = kit.preStep(fakeAgent(session), enterDecision())
-    // Not re-injected (the marker exists); it is NOT marked inFlight either,
-    // because the finalizer path handles it, not the pre-step.
+    // Not re-injected (the marker exists); instead the pre-step hands the
+    // already-appended marker straight to the flush→CAS finalizer.
     expect(enterMessages(out)).toHaveLength(0)
-    expect(kit.inFlight.has('m1')).toBe(false)
+    expect(kit.inFlight.has('m1')).toBe(true)
+    await vi.waitFor(() => expect(flush).toHaveBeenCalled())
+    await vi.waitFor(() => expect(queue.acks).toHaveLength(1))
+    expect(queue.acks[0]).toEqual({ notificationId: NotificationId('n1'), messageId: 'm1' })
+    await vi.waitFor(() => expect(kit.inFlight.has('m1')).toBe(false))
   })
 
   it('skips acknowledged notifications', () => {
@@ -414,7 +515,218 @@ describe('system-prompt section', () => {
     expect(section.text).toContain('task_queue_retry')
     expect(section.text).toContain('task_queue_list')
     expect(section.text).toContain('task_queue_dismiss')
+    expect(section.text).toContain('use dsh/claude/codex/opencode/arkcli')
     expect(section.text).toMatch(/Enqueue a batch first/)
     expect(section.text).toMatch(/just 3 or more|3 or more independent tasks/)
+  })
+})
+
+describe('owner authorization', () => {
+  const ownerSession = SessionId('s-1')
+  const otherSession = SessionId('s-2')
+
+  function taskWithOwner(ownerSessionId: string | null): Task {
+    return {
+      id: TaskId('tq-1'), title: 't', prompt: '', executor: 'claude', status: 'succeeded',
+      priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
+      timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
+      lastError: null, result: null, ownerSessionId, source: 'tool',
+      receiptId: 'r', terminalSeq: 1, runs: [], dismissed: false,
+    }
+  }
+
+  it('passes the exact caller session to list and stats', async () => {
+    const seen: string[] = []
+    const queue = makeQueue({
+      list: (access) => {
+        if (access.kind === 'agent') seen.push(`list:${access.ownerSessionId}`)
+        return []
+      },
+      stats: (access) => {
+        if (access.kind === 'agent') seen.push(`stats:${access.ownerSessionId}`)
+        return {
+          serviceState: 'running',
+          byStatus: { pending: 0, starting: 0, running: 0, stopping: 0, succeeded: 0, failed: 0, canceled: 0 },
+          byExecutor: {},
+          undismissedFailed: 0,
+          byDismissed: 0,
+        }
+      },
+    })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const exec = { agent: fakeAgent(Session.create(ownerSession)) } as never
+    await kit.tools.find(tool => tool.name === 'task_queue_list')!.execute({}, exec)
+    await kit.tools.find(tool => tool.name === 'task_queue_stats')!.execute({}, exec)
+    expect(seen).toEqual(['list:s-1', 'stats:s-1'])
+  })
+
+  it('hides a foreign task from status with the Service unknown-task error', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const status = kit.tools.find(tool => tool.name === 'task_queue_status')!
+    const agent = fakeAgent(Session.create(otherSession))
+    await expect(status.execute({ id: 'tq-1' }, { agent } as never)).rejects.toThrow(/unknown task/)
+  })
+
+  it('allows the owner Agent to cancel their own task', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const cancel = kit.tools.find(t => t.name === 'task_queue_cancel')!
+    const agent = fakeAgent(Session.create(ownerSession))
+    const out = await cancel.execute({ id: 'tq-1' }, { agent } as never)
+    expect(out).toEqual({ outcome: 'canceled' })
+  })
+
+  it('allows the owner Agent to retry their own task', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const retry = kit.tools.find(t => t.name === 'task_queue_retry')!
+    const agent = fakeAgent(Session.create(ownerSession))
+    const out = await retry.execute({ id: 'tq-1' }, { agent } as never)
+    expect(out).toEqual({ id: 'tq-1' })
+  })
+
+  it('allows the owner Agent to dismiss their own task', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const dismiss = kit.tools.find(t => t.name === 'task_queue_dismiss')!
+    const agent = fakeAgent(Session.create(ownerSession))
+    const out = await dismiss.execute({ id: 'tq-1' }, { agent } as never)
+    expect(out).toEqual({ id: 'tq-1', dismissed: true })
+  })
+
+  it('rejects a non-owner Agent from canceling another session\'s task', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const cancel = kit.tools.find(t => t.name === 'task_queue_cancel')!
+    const agent = fakeAgent(Session.create(otherSession))
+    await expect(cancel.execute({ id: 'tq-1' }, { agent } as never))
+      .rejects.toThrow(/unknown task/)
+  })
+
+  it('rejects a non-owner Agent from retrying another session\'s task', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const retry = kit.tools.find(t => t.name === 'task_queue_retry')!
+    const agent = fakeAgent(Session.create(otherSession))
+    await expect(retry.execute({ id: 'tq-1' }, { agent } as never))
+      .rejects.toThrow(/unknown task/)
+  })
+
+  it('rejects a non-owner Agent from dismissing another session\'s task', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const dismiss = kit.tools.find(t => t.name === 'task_queue_dismiss')!
+    const agent = fakeAgent(Session.create(otherSession))
+    await expect(dismiss.execute({ id: 'tq-1' }, { agent } as never))
+      .rejects.toThrow(/unknown task/)
+  })
+
+  it('allows host-operator (no Agent) to cancel any task', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const cancel = kit.tools.find(t => t.name === 'task_queue_cancel')!
+    const out = await cancel.execute({ id: 'tq-1' }, {} as never)
+    expect(out).toEqual({ outcome: 'canceled' })
+  })
+
+  it('allows host-operator (no Agent) to retry any task', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const retry = kit.tools.find(t => t.name === 'task_queue_retry')!
+    const out = await retry.execute({ id: 'tq-1' }, {} as never)
+    expect(out).toEqual({ id: 'tq-1' })
+  })
+
+  it('allows host-operator (no Agent) to dismiss any task', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(ownerSession) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const dismiss = kit.tools.find(t => t.name === 'task_queue_dismiss')!
+    const out = await dismiss.execute({ id: 'tq-1' }, {} as never)
+    expect(out).toEqual({ id: 'tq-1', dismissed: true })
+  })
+
+  it('rejects a non-owner Agent from operating on an unowned task', async () => {
+    const queue = makeQueue({ get: () => taskWithOwner(null) })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue))
+    const cancel = kit.tools.find(t => t.name === 'task_queue_cancel')!
+    const agent = fakeAgent(Session.create(otherSession))
+    await expect(cancel.execute({ id: 'tq-1' }, { agent } as never))
+      .rejects.toThrow(/unknown task/)
+  })
+})
+
+describe('notification summary', () => {
+  function textOf(msg: { content: readonly { type: string; text?: string }[] }): string {
+    let out = ''
+    for (const block of msg.content) {
+      if (block.type === 'text' && block.text !== undefined) out += block.text
+    }
+    return out
+  }
+
+  it('includes result summary in the notification message when the task succeeded with one', () => {
+    const queue = makeQueue({
+      get: () => ({
+        id: TaskId('tq-1'), title: 'my task', prompt: '', executor: 'claude', status: 'succeeded' as const,
+        priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
+        timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
+        lastError: null, result: { summary: 'exit 0, 2.5s, 1 output file', exitCode: 0, signal: null, durationMs: 2500 },
+        ownerSessionId: 's', source: 'tool' as const,
+        receiptId: 'r', terminalSeq: 1, runs: [], dismissed: false,
+      }),
+    })
+    const session = Session.create(SessionId('s'))
+    queue.pendingNotifications.push({
+      notificationId: NotificationId('n1'),
+      taskId: TaskId('tq-1'),
+      runId: RunId('r1'),
+      attempt: 1,
+      terminalSeq: 1,
+      ownerSessionId: session.id,
+      messageId: 'm1',
+      status: 'pending',
+      acknowledgedAt: null,
+    })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue, {
+      sessionEvents: s => s.events,
+    }))
+    const decision = kit.preStep(fakeAgent(session), { kind: 'enter', messages: [] })
+    expect(decision.kind).toBe('enter')
+    if (decision.kind !== 'enter') throw new Error('expected enter decision')
+    expect(decision.messages).toHaveLength(1)
+    expect(textOf(decision.messages[0]!)).toContain('exit 0, 2.5s, 1 output file')
+  })
+
+  it('omits the outcome line when the task has no result summary', () => {
+    const queue = makeQueue({
+      get: () => ({
+        id: TaskId('tq-1'), title: 'my task', prompt: '', executor: 'claude', status: 'failed' as const,
+        priority: 10, attempt: 1, maxAttempts: 3, backoffMs: 30_000, delayUntil: null,
+        timeoutMs: 1_800_000, outputDir: '', tags: [], createdAt: '', updatedAt: '',
+        lastError: null, result: null,
+        ownerSessionId: 's', source: 'tool' as const,
+        receiptId: 'r', terminalSeq: 1, runs: [], dismissed: false,
+      }),
+    })
+    const session = Session.create(SessionId('s'))
+    queue.pendingNotifications.push({
+      notificationId: NotificationId('n1'),
+      taskId: TaskId('tq-1'),
+      runId: RunId('r1'),
+      attempt: 1,
+      terminalSeq: 1,
+      ownerSessionId: session.id,
+      messageId: 'm1',
+      status: 'pending',
+      acknowledgedAt: null,
+    })
+    const kit = createToolTaskQueue(makeDeps(queue.taskQueue, {
+      sessionEvents: s => s.events,
+    }))
+    const decision = kit.preStep(fakeAgent(session), { kind: 'enter', messages: [] })
+    expect(decision.kind).toBe('enter')
+    if (decision.kind !== 'enter') throw new Error('expected enter decision')
+    expect(textOf(decision.messages[0]!)).not.toContain('Outcome:')
   })
 })

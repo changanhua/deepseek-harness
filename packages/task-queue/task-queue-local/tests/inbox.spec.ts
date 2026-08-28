@@ -47,7 +47,7 @@ describe('validateInboxSpec', () => {
     const full = {
       title: 't', prompt: 'p', executor: 'claude',
       priority: 1, maxAttempts: 5, backoffMs: 100, delayUntil: '2026-01-01T00:00:00.000Z',
-      timeoutMs: 1000, outputDir: '/out', tags: ['a', 'b'], ownerSessionId: 'sess-1',
+      timeoutMs: 1000, workspaceDir: '/repo', outputDir: '/out', tags: ['a', 'b'], ownerSessionId: 'sess-1',
     }
     const result = validateInboxSpec(full)
     expect('spec' in result).toBe(true)
@@ -67,6 +67,7 @@ describe('validateInboxSpec', () => {
     [{ ...valid, delayUntil: 123 }, /delayUntil/],
     [{ ...valid, timeoutMs: 0 }, /timeoutMs/],
     [{ ...valid, timeoutMs: -5 }, /timeoutMs/],
+    [{ ...valid, workspaceDir: 7 }, /workspaceDir/],
     [{ ...valid, outputDir: 7 }, /outputDir/],
     [{ ...valid, tags: 'nope' }, /tags/],
     [{ ...valid, tags: [1, 2] }, /tags/],

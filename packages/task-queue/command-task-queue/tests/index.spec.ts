@@ -8,7 +8,7 @@ import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type TaskQueue from '@deepseek-ai/dsh-task-queue'
-import { TaskId } from '@deepseek-ai/dsh-task-queue'
+import { TASK_QUEUE_HOST_ACCESS, TaskId } from '@deepseek-ai/dsh-task-queue'
 import type { QueueStats, Task, TaskSummary } from '@deepseek-ai/dsh-task-queue'
 import * as commandTaskQueue from '../src/index.ts'
 
@@ -143,9 +143,9 @@ describe('command-task-queue', () => {
       text: 'tq-1  pending  attempt 0/3  arkcli  illustrate chapter one  [castle]\n'
         + 'tq-2  running  attempt 1/3  codex  illustrate chapter one',
     })
-    expect(queue.list).toHaveBeenCalledWith({})
+    expect(queue.list).toHaveBeenCalledWith(TASK_QUEUE_HOST_ACCESS, {})
     await run(test, ' list 5')
-    expect(queue.list).toHaveBeenLastCalledWith({ limit: 5 })
+    expect(queue.list).toHaveBeenLastCalledWith(TASK_QUEUE_HOST_ACCESS, { limit: 5 })
     await test.ctx.fiber.dispose()
   })
 
@@ -176,7 +176,7 @@ describe('command-task-queue', () => {
 
   it('renders one full record through status and rejects unknown ids', async () => {
     const queue = {
-      get: vi.fn((id: string) => id === 'tq-1' ? task() : (() => { throw new Error(`unknown task ${id}`) })()),
+      get: vi.fn((_access, id: string) => id === 'tq-1' ? task() : (() => { throw new Error(`unknown task ${id}`) })()),
     } as unknown as TaskQueue
     const test = await harness(queue)
     const result = await run(test, ' status tq-1')
@@ -190,12 +190,12 @@ describe('command-task-queue', () => {
 
   it('requeues through retry and reports both cancel outcomes', async () => {
     const queue = {
-      retry: vi.fn(async (id: string) => TaskId(id)),
-      cancel: vi.fn(async (id: string) => id === 'tq-stop' ? 'stopping' : 'canceled'),
+      retry: vi.fn(async (_access, id: string) => TaskId(id)),
+      cancel: vi.fn(async (_access, id: string) => id === 'tq-stop' ? 'stopping' : 'canceled'),
     } as unknown as TaskQueue
     const test = await harness(queue)
     expect(await run(test, ' retry tq-1')).toEqual({ kind: 'success', text: 'Task tq-1 re-queued.' })
-    expect(queue.retry).toHaveBeenCalledWith(TaskId('tq-1'))
+    expect(queue.retry).toHaveBeenCalledWith(TASK_QUEUE_HOST_ACCESS, TaskId('tq-1'))
     expect(await run(test, ' cancel tq-1')).toEqual({ kind: 'success', text: 'Task tq-1 canceled.' })
     expect(await run(test, ' cancel tq-stop')).toEqual({
       kind: 'success',

@@ -241,3 +241,49 @@ describe('TaskScheduler concurrency slots', () => {
     scheduler.stop()
   })
 })
+
+describe('TaskScheduler stop race after claim', () => {
+  it('does not launch a subprocess when stop() races the awaited claim', async () => {
+    // The claim resolves, but stop() was called while it was in flight.
+    // The scheduler must not register a new execution or spawn after stop.
+    // oxlint-disable-next-line no-invalid-void-type -- Promise.withResolvers<void>() is a valid use of the void generic.
+    const gate = Promise.withResolvers<void>()
+    const base = makeHost({ eligible: [task('tq-1')] })
+    let claimCalled = false
+    base.host.claim = async (): Promise<ClaimedAttempt | undefined> => {
+      base.calls.claim += 1
+      claimCalled = true
+      // Hold the claim open so the test can stop() before it resolves.
+      await gate.promise
+      return { task: { ...task('tq-1'), status: 'starting', attempt: 1 }, run: run(1) }
+    }
+    const scheduler = new TaskScheduler(base.host)
+    schedulers.push(scheduler)
+    scheduler.start()
+
+    // Wait until the claim is in flight, then stop before it resolves.
+    await waitFor(() => claimCalled)
+    scheduler.stop()
+    // Release the claim so runClaims can proceed to the post-claim check.
+    gate.resolve()
+
+    // Give the detached tick a beat to finish; it must NOT spawn.
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(base.calls.spawnAndMark).toBe(0)
+    expect(base.calls.prepare).toBe(0)
+  })
+
+  it('drain() resolves once the stopped tick and its executions settle', async () => {
+    const { host } = makeHost({ eligible: [task('tq-1')] })
+    const scheduler = new TaskScheduler(host)
+    schedulers.push(scheduler)
+    scheduler.start()
+    // Let one tick start, then stop and drain.
+    await new Promise(resolve => setTimeout(resolve, 20))
+    scheduler.stop()
+    await scheduler.drain()
+    // After drain, both ticking and executing are empty.
+    // (No assertion on internal sets; the fact that drain resolved means
+    // every tick and execution that was in flight has settled.)
+  })
+})

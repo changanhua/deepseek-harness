@@ -49,6 +49,21 @@ describe('isTerminalStatus', () => {
   })
 })
 
+describe('createTask', () => {
+  it('persists an explicit workspace separately from the artifact directory', () => {
+    const created = createTask(TaskId('tq-workspace'), {
+      title: 'workspace',
+      prompt: 'run',
+      executor: 'dsh',
+      workspaceDir: '/repo',
+      outputDir: '/artifacts',
+    }, 'tool', 'receipt', NOW)
+
+    expect(created.workspaceDir).toBe('/repo')
+    expect(created.outputDir).toBe('/artifacts')
+  })
+})
+
 describe('claimTask', () => {
   it('claims a pending task: attempt+1, starting, fresh run record with null pid', () => {
     const out = claimTask(task(), RunId('run-1'), NOW, '/log/run-1.log', 'fp-1')
@@ -101,7 +116,7 @@ describe('markRunning', () => {
 describe('settleSucceeded', () => {
   it('settles a running task with result and null terminalSeq', () => {
     const running = markRunning(claimTask(task(), RunId('r'), NOW, '/l', 'f'), 1, NOW)
-    const result: TaskResult = { exitCode: 0, signal: null, durationMs: 10, outputFiles: ['a.txt'] }
+    const result: TaskResult = { summary: 'exit 0', exitCode: 0, signal: null, durationMs: 10, outputFiles: ['a.txt'] }
     const out = settleSucceeded(running, result, NOW)
     expect(out.status).toBe('succeeded')
     expect(out.result).toEqual(result)
@@ -109,11 +124,19 @@ describe('settleSucceeded', () => {
   })
 
   it('rejects from non-running', () => {
-    expect(() => settleSucceeded(task({ status: 'pending' }), { exitCode: 0, signal: null, durationMs: 0 }, NOW)).toThrow(/settle succeeded/)
+    expect(() => settleSucceeded(task({ status: 'pending' }), { summary: 'exit 0', exitCode: 0, signal: null, durationMs: 0 }, NOW)).toThrow(/settle succeeded/)
   })
 })
 
 describe('settleFailed', () => {
+  it('requeues a starting task when adapter preparation fails', () => {
+    const starting = claimTask(task(), RunId('r'), NOW, '/l', '')
+    const out = settleFailed(starting, 'prepare failed', NOW)
+    expect(out.status).toBe('pending')
+    expect(out.lastError).toBe('prepare failed')
+    expect(out.runs[0]!.pid).toBeNull()
+  })
+
   it('requeues to pending with exponential backoff when attempt < maxAttempts', () => {
     const running = markRunning(claimTask(task(), RunId('r'), NOW, '/l', 'f'), 1, NOW) // attempt 1
     const out = settleFailed(running, 'boom', NOW)

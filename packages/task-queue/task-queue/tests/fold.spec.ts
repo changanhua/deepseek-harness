@@ -95,6 +95,11 @@ describe('foldChanges', () => {
     expect(f.tasksById.get(TaskId('tq-1'))!.dismissed).toBe(false)
   })
 
+  it('defaults a missing workspace to the artifact directory for legacy records', () => {
+    const f = foldChanges([taskOp(1, task('tq-1'))])
+    expect(f.tasksById.get(TaskId('tq-1'))!.workspaceDir).toBe('/out')
+  })
+
   it('rejects a task op whose state.taskId mismatches change.taskId', () => {
     const t = task('tq-1')
     const bad: ChangeRecord = { ...taskOp(1, t), taskId: TaskId('tq-2') }
