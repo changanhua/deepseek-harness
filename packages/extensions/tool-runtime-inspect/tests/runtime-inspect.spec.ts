@@ -59,8 +59,8 @@ async function boot(): Promise<{
   return { ctx, fiber, call }
 }
 
-describe('runtime_inspect schema and prompt', () => {
-  it('registers a flat object-rooted parameter schema and stable guidance', async () => {
+describe('runtime_inspect schema', () => {
+  it('registers a flat object-rooted parameter schema without persistent prompt guidance', async () => {
     const { ctx, fiber } = await boot()
     const schema = ctx.tools.schemas().find(candidate => candidate.name === 'runtime_inspect')
     expect(schema?.parameters).toMatchObject({
@@ -73,8 +73,7 @@ describe('runtime_inspect schema and prompt', () => {
     })
     expect(schema?.parameters).not.toHaveProperty('oneOf')
     const assembled = await ctx.systemPrompt.assemble()
-    expect(assembled.sections.find(section => section.name === 'tool:runtime-inspect')?.text)
-      .toBe(RuntimeInspect.RUNTIME_INSPECT_SYSTEM_PROMPT)
+    expect(assembled.sections.map(section => section.name)).not.toContain('tool:runtime-inspect')
     await fiber.dispose()
   })
 
@@ -188,16 +187,12 @@ describe('runtime_inspect command', () => {
 })
 
 describe('runtime_inspect lifecycle', () => {
-  it('withdraws both the tool and its prompt section when the plugin unloads', async () => {
+  it('withdraws the tool when the plugin unloads', async () => {
     const { ctx, fiber } = await boot()
     expect(ctx.tools.schemas().map(schema => schema.name)).toContain('runtime_inspect')
-    expect((await ctx.systemPrompt.assemble()).sections.map(section => section.name))
-      .toContain('tool:runtime-inspect')
 
     await fiber.dispose()
 
     expect(ctx.tools.schemas().map(schema => schema.name)).not.toContain('runtime_inspect')
-    expect((await ctx.systemPrompt.assemble()).sections.map(section => section.name))
-      .not.toContain('tool:runtime-inspect')
   })
 })

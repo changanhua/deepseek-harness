@@ -1245,7 +1245,7 @@ A fixed foreground workflow starts one fresh structured child per round; the mod
 
 ### `runtime_inspect`
 
-Inspect authoritative DSH runtime state without guessing. kind="facts" returns selected registered runtime facts; omit keys to inspect every registered fact, including async inspect-only facts. kind="command" resolves one executable through the active subprocess provider and reports its execution world. This tool never probes commands independently and does not expose credential values.
+Inspect authoritative DSH runtime state when a task depends on an unproven fact or executable. kind="facts" returns selected registered runtime facts; omit keys to inspect every registered fact, including async inspect-only facts. kind="command" resolves one executable through the active subprocess provider and reports its execution world. Resolution proves only that the command is discoverable, not that it starts, is authenticated, or succeeds. This tool never probes commands independently and does not expose credential values.
 
 ```json
 {

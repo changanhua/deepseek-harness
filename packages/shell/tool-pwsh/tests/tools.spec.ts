@@ -42,7 +42,6 @@ const testToolSignal = new AbortController().signal
  * handle.
  */
 class FakeBash extends ShellExecutor {
-  readonly dialect = 'pwsh' as const
   requests: ShellExecRequest[] = []
   specs: ShellExecSpec[] = []
   startCalls = 0
@@ -163,7 +162,6 @@ async function setupWithTasks(toolConfig: Partial<ToolPwsh.Config> = {}, dshHome
  * escalation and rendering surfaces are testable without a real backend.
  */
 class ConfiningFakeBash extends ShellExecutor {
-  readonly dialect = 'pwsh' as const
   requests: ShellExecRequest[] = []
   modes: Array<string | undefined> = []
 

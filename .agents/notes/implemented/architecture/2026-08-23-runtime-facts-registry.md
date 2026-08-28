@@ -24,13 +24,13 @@ The registry contributes one order-120 `systemPrompt.context` entry. Its synchro
 
 A fact may declare required tool names through `relevance`. The registry, not each provider, evaluates those names against the authoritative `ctx.tools` registry for the current scope. An absent scope or hidden required tool suppresses the row. The resulting text enters the agent loop's existing sourced runtime-context replacement path, so a changed value is logged and replayable without adding a new Session event type.
 
-The Web host composition mounts the registry and Host provider, while agent presets decide whether the model may call `runtime_inspect`. The `standard` and `code` presets mount the tool in their own scopes; `minimal` omits it and suppresses runtime context, preserving its fixed two-tool composition.
+The Web host composition mounts the registry and Host provider, while agent presets decide whether the model may call `runtime_inspect`. The `standard` and `code` presets mount the tool in their own scopes; the tool contributes no separate system-prompt section. `minimal` omits it and suppresses runtime context, preserving its fixed two-tool composition.
 
 ### Host provider delegates changing facts
 
-`@deepseek-ai/dsh-runtime-facts-host` owns the initial Host inventory. `host.arch` and `host.os` are static baseline facts. `runtime.execution-world` is a dynamic baseline fact delegated to `ctx.subprocess.executionWorld`; the local provider reports `local` and E2B reports `remote`, so consumers do not infer location from platform or class identity. This extends rather than replaces the [portable execution-world decision](2026-07-28-portable-execution-world-consumers.md).
+`@deepseek-ai/dsh-runtime-facts-host` owns the initial Host inventory. `runtime.execution-world` is its only baseline fact and delegates dynamically to `ctx.subprocess.executionWorld`; the local provider reports `local` and E2B reports `remote`, so consumers do not infer location from platform or class identity. This extends rather than replaces the [portable execution-world decision](2026-07-28-portable-execution-world-consumers.md).
 
-`host.pid`, five sanitized `host.proxy.*` scalars, and `web.server-url` remain inspect-only. Proxy metadata comes from one launch-environment snapshot and discards credentials, raw URL, path, query, and fragment. The Web URL delegates to the current `ctx.webServer` bind and the execution world delegates to the current subprocess service; both are dynamic because those services can hot-load. Missing optional services make their facts unavailable rather than guessed.
+`host.os`, `host.arch`, `host.pid`, five sanitized `host.proxy.*` scalars, and `web.server-url` are inspect-only. Proxy metadata comes from one launch-environment snapshot and discards credentials, raw URL, path, query, and fragment. The Web URL delegates to the current `ctx.webServer` bind and the execution world delegates to the current subprocess service; both are dynamic because those services can hot-load. Missing optional services make their facts unavailable rather than guessed.
 
 ## Verification
 
@@ -47,6 +47,8 @@ Focused registry suites pin key and declaration validation, duplicate ownership,
 **Encode timing and visibility as one fact kind.** Rejected because resolver timing, cache lifetime, and model exposure vary independently. A combined enum would either permit invalid ambiguity or grow a product of unrelated states.
 
 **Register process facts as one object.** Rejected because scalar keys allow independent exposure and unavailable states, deterministic rendering, and field-level sanitization without a nested value protocol.
+
+**Project host platform and shell language automatically.** Rejected because scoped shell tools already identify their command language, architecture rarely changes ordinary decisions, and repeating those details in every retained runtime snapshot adds context without establishing command availability. OS and architecture remain inspectable; command resolution stays with `runtime_inspect`.
 
 ## Consequences
 

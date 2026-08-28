@@ -24,13 +24,13 @@ Status: implemented
 
 事实可通过 `relevance` 声明必要工具名称。注册表而非各提供方会针对当前作用域，在权威 `ctx.tools` 注册表上求值这些名称。缺少作用域或必要工具不可见会抑制该行。结果文本进入 agent loop 现有的带来源运行时上下文替换路径，因此值发生变化时可记录、可回放，而无需添加新的 Session 事件类型。
 
-Web host 组合挂载注册表与 Host provider，agent preset 决定模型是否可以调用 `runtime_inspect`。`standard` 与 `code` preset 在各自作用域中挂载该工具；`minimal` 省略它并抑制 runtime context，从而保持固定的双工具组合。
+Web host 组合挂载注册表与 Host provider，agent preset 决定模型是否可以调用 `runtime_inspect`。`standard` 与 `code` preset 在各自作用域中挂载该工具；该工具不贡献单独的 system-prompt section。`minimal` 省略它并抑制 runtime context，从而保持固定的双工具组合。
 
 ### 宿主提供方委托变化事实
 
-`@deepseek-ai/dsh-runtime-facts-host` 拥有初始 Host 清单。`host.arch` 与 `host.os` 是 static baseline 事实。`runtime.execution-world` 是委托给 `ctx.subprocess.executionWorld` 的 dynamic baseline 事实；本地提供方报告 `local`，E2B 报告 `remote`，因此消费方不从平台或 class 标识推断位置。这是对[可移植执行环境决策](2026-07-28-portable-execution-world-consumers.zh.md)的扩展，而不是替代。
+`@deepseek-ai/dsh-runtime-facts-host` 拥有初始 Host 清单。`runtime.execution-world` 是其唯一 baseline 事实，并动态委托给 `ctx.subprocess.executionWorld`；本地提供方报告 `local`，E2B 报告 `remote`，因此消费方不从平台或 class 标识推断位置。这是对[可移植执行环境决策](2026-07-28-portable-execution-world-consumers.zh.md)的扩展，而不是替代。
 
-`host.pid`、五个清理后的 `host.proxy.*` 标量及 `web.server-url` 保持 inspect-only。代理元数据来自一个启动环境快照，并丢弃凭据、原始 URL、路径、查询与片段。Web URL 委托给当前 `ctx.webServer` 绑定，执行环境委托给当前 subprocess 服务；两者都是 dynamic，因为这些服务可以热加载。可选服务缺失时，其事实为 unavailable，而不会进行猜测。
+`host.os`、`host.arch`、`host.pid`、五个清理后的 `host.proxy.*` 标量及 `web.server-url` 仅供 inspect。代理元数据来自一个启动环境快照，并丢弃凭据、原始 URL、路径、查询与片段。Web URL 委托给当前 `ctx.webServer` 绑定，执行环境委托给当前 subprocess 服务；两者都是 dynamic，因为这些服务可以热加载。可选服务缺失时，其事实为 unavailable，而不会进行猜测。
 
 ## 验证
 
@@ -47,6 +47,8 @@ Web host 组合挂载注册表与 Host provider，agent preset 决定模型是�
 **用一种事实类别编码时序与可见性。** 拒绝，因为 resolver 时序、缓存生命周期与模型暴露方式相互独立。组合 enum 要么允许无效歧义，要么膨胀为无关状态的乘积。
 
 **把进程事实注册为一个对象。** 拒绝，因为标量键允许独立暴露与 unavailable 状态、确定性渲染和字段级清理，而无需嵌套值协议。
+
+**自动投影宿主平台与 shell 语言。** 拒绝，因为作用域内的 shell 工具已经表明命令语言，架构极少改变普通决策，而在每份保留的运行时快照中重复这些细节会增加上下文，却不能证明命令可用。OS 与架构仍可检查；命令解析仍归 `runtime_inspect`。
 
 ## 后果
 

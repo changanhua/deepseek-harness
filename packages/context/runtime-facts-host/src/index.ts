@@ -9,7 +9,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { factKey } from '@deepseek-ai/dsh-runtime-facts'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import type {} from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import { sanitizeProxy } from './proxy.ts'
 
@@ -31,7 +30,7 @@ export function apply(ctx: Context): void {
     description: 'Operating system of the host process.',
     evaluation: 'sync',
     freshness: 'static',
-    exposure: 'baseline',
+    exposure: 'inspect',
     resolveSync: () => process.platform,
   })
   ctx.runtimeFacts.registerFact({
@@ -40,7 +39,7 @@ export function apply(ctx: Context): void {
     description: 'CPU architecture of the host process.',
     evaluation: 'sync',
     freshness: 'static',
-    exposure: 'baseline',
+    exposure: 'inspect',
     resolveSync: () => process.arch,
   })
   ctx.runtimeFacts.registerFact({
@@ -51,15 +50,6 @@ export function apply(ctx: Context): void {
     freshness: 'dynamic',
     exposure: 'baseline',
     resolveSync: () => ctx.get('subprocess')?.executionWorld,
-  })
-  ctx.runtimeFacts.registerFact({
-    key: factKey('shell.dialect'),
-    owner,
-    description: 'Command language of the active shell executor.',
-    evaluation: 'sync',
-    freshness: 'dynamic',
-    exposure: 'baseline',
-    resolveSync: () => ctx.get('shell')?.dialect,
   })
   ctx.runtimeFacts.registerFact({
     key: factKey('host.pid'),

@@ -10,7 +10,6 @@ import type { ShellExecRequest, ShellExecSpec, ShellProcess, ShellProcessRead, S
  * owes the abstract class.
  */
 class StubExecutor extends ShellExecutor {
-  readonly dialect = 'bash' as const
   resolve(request: ShellExecRequest): ShellExecSpec {
     return {
       command: request.command,

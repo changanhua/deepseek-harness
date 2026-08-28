@@ -8,30 +8,13 @@ import type { Context } from '@deepseek-ai/cordis'
 import { factKey } from '@deepseek-ai/dsh-runtime-facts'
 import { ToolArgsError, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import type { JsonSchemaNode, ToolDefinition } from '@deepseek-ai/dsh-tools'
-import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import { inspectCommand } from './command.ts'
 
 /** Cordis plugin name used by Loader diagnostics. */
 export const name = 'tool-runtime-inspect'
 /** Services required to expose authoritative runtime inspection. */
-export const inject = ['tools', 'systemPrompt', 'runtimeFacts', 'subprocess']
-
-/**
- * Stable guidance; dynamic runtime values never enter this section.
- *
- * The command rule is deliberately conditional: inspect only when resolution
- * is unknown, never before every CLI use. A successful tool execution or a
- * prior `runtime_inspect` already proves resolvability for the current turn.
- */
-export const RUNTIME_INSPECT_SYSTEM_PROMPT =
-  'Runtime and host facts are available through DSH runtime context and runtime_inspect. '
-  + 'Use runtime_inspect instead of inferring command resolution, network routing, process ownership, or host configuration when authoritative runtime facts are available. '
-  + 'When a task depends on a CLI or executable and its resolvability is not already proven, '
-  + 'inspect command resolution rather than assuming it is missing, guessing its executable path, or suggesting installation. '
-  + 'Do not treat an inspect result as "usable": it proves the command is resolvable in the execution world, '
-  + 'not that it starts cleanly, is authenticated, or succeeds. '
-  + 'Once a command has executed successfully this turn, or a runtime_inspect resolved it, do not re-inspect it mechanically.'
+export const inject = ['tools', 'runtimeFacts', 'subprocess']
 
 type RuntimeInspectArgs =
   | { readonly kind: 'facts'; readonly keys?: readonly string[] }
@@ -91,9 +74,11 @@ function createRuntimeInspectTool(ctx: Context): ToolDefinition {
   return {
     name: 'runtime_inspect',
     description:
-      'Inspect authoritative DSH runtime state without guessing. kind="facts" returns selected registered runtime facts; '
+      'Inspect authoritative DSH runtime state when a task depends on an unproven fact or executable. '
+      + 'kind="facts" returns selected registered runtime facts; '
       + 'omit keys to inspect every registered fact, including async inspect-only facts. kind="command" resolves one '
-      + 'executable through the active subprocess provider and reports its execution world. This tool never probes '
+      + 'executable through the active subprocess provider and reports its execution world. Resolution proves only '
+      + 'that the command is discoverable, not that it starts, is authenticated, or succeeds. This tool never probes '
       + 'commands independently and does not expose credential values.',
     parameters: RUNTIME_INSPECT_PARAMETERS as Record<string, unknown>,
     output: {
@@ -118,15 +103,7 @@ function createRuntimeInspectTool(ctx: Context): ToolDefinition {
   }
 }
 
-/**
- * Register the stable guidance and the `runtime_inspect` tool.
- * @param ctx - Cordis context carrying tools, prompt, facts, and subprocess seams.
- */
+/** Register the `runtime_inspect` tool. @param ctx - Context carrying tools, facts, and subprocess services. */
 export function apply(ctx: Context): void {
-  ctx.systemPrompt.section({
-    name: 'tool:runtime-inspect',
-    order: 116,
-    text: RUNTIME_INSPECT_SYSTEM_PROMPT,
-  })
   ctx.tools.register(createRuntimeInspectTool(ctx))
 }

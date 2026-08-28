@@ -237,7 +237,7 @@ Model-facing schema（R2-B3：tagged union，facts / command）：
 
 - **禁止为每个 command 预注册 fact**（B16）：command 是 parameterized inspector，不枚举。
 - 只暴露安全事实；secret 永不出现。`apiKeyEnv` 只回 `credential-configured`。
-- 注册到 `ctx.tools` + 一条 `systemPrompt.section` 稳定指导："Use runtime_inspect to query authoritative host/runtime facts or resolve a command instead of guessing environment details."
+- 只注册到 `ctx.tools`；使用指导保留在 tool description，不额外贡献常驻 `systemPrompt.section`。
 
 ### 2.4 Web / Provider → runtimeFacts optional 接线（R3.1-B3，生命周期契约）
 
@@ -319,8 +319,8 @@ installSettingsSection(ctx, WEB_SETTINGS_NAMESPACE, WEB_SETTINGS_SCHEMA, entry, 
 
 | key | owner | evaluation | freshness | exposure | 值示例 | 来源 |
 |---|---|---|---|---|---|---|
-| `host.os` | runtime-facts-host | sync | static | baseline | `win32` | `process.platform` |
-| `host.arch` | runtime-facts-host | sync | static | baseline | `x64` | `process.arch` |
+| `host.os` | runtime-facts-host | sync | static | inspect | `win32` | `process.platform` |
+| `host.arch` | runtime-facts-host | sync | static | inspect | `x64` | `process.arch` |
 | `runtime.execution-world` | runtime-facts-host | sync | **dynamic** | baseline | `local` | `SubprocessRuntime.executionWorld`（seam 权威，R3.1-B1） |
 | `web.search-selected` | `web` 包（selection） | sync | **dynamic** | baseline（relevance: `web_search`） | `exa` | `resolveProvider()` 结果 |
 | `web-search.exa.local-available` | `web-search-exa` 包 | sync | dynamic | **inspect** | `true` | `provider.available()` |

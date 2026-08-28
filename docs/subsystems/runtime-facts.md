@@ -106,7 +106,7 @@ One active owner may register each key. Registration validates resolver exclusiv
 
 ## Host provider
 
-The Host provider registers `host.arch`, `host.os`, and `runtime.execution-world` as baseline facts. It keeps PID, sanitized proxy metadata, and the current bound Web-server URL inspect-only. Process constants and the launch-environment proxy snapshot are static; execution world and Web URL are dynamic because their Service Providers may hot-load. The [subprocess subsystem](subprocess.md) owns the authoritative local/remote classification.
+The Host provider registers `runtime.execution-world` as its only baseline fact. It keeps OS, architecture, PID, sanitized proxy metadata, and the current bound Web-server URL inspect-only. Process constants and the launch-environment proxy snapshot are static; execution world and Web URL are dynamic because their Service Providers may hot-load. The [subprocess subsystem](subprocess.md) owns the authoritative local/remote classification.
 
 ## Runtime-context projection
 

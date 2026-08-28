@@ -102,9 +102,6 @@ export function assertServiceableBashConfig(config: Config): void {
 export class LocalBashExecutor extends ShellExecutor {
   static inject = ['subprocess']
 
-  /** The command language this executor drives. */
-  readonly dialect = 'bash' as const
-
   static Config: z<Config> = z.object({
     cwd: z.string(),
     timeoutMs: z.number().default(120_000),

@@ -1661,11 +1661,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Abstract bash execution service. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.shell` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nImplementations must honor these semantics:\n\n- run rejects only for infrastructure failures. Nonzero exits, timeout kills, and abort kills resolve with a ShellRunResult.\n- start returns immediately; no timeout applies to background processes. `done` settles at process close and never rejects; spawn failures settle as `killed` with the error on stderr.\n- ShellProcess.readOutput is incremental: consecutive reads never repeat output. Lossy reads report truncation and available spill files.\n- A still-running background process is stopped and awaited when its owning composition tears down. With the subprocess seam that boundary is `ctx.subprocess` disposal, so a background process survives an executor-only reload.',
     methods: [
       {
-        signature: 'abstract readonly dialect: ShellDialect',
-        description: 'The command language this executor drives, as the model must know it (heredoc syntax, quoting, and pipeline operators differ between families). Declared by the concrete executor, inherited by sandbox/remote subclasses, and projected as the `shell.dialect` runtime fact by `runtime-facts-host`.',
-        parameters: [],
-      },
-      {
         signature: 'abstract resolve(request: ShellExecRequest): ShellExecSpec',
         description: 'Apply implementation-owned defaults and caps to a request before execution.',
         parameters: [{ name: 'request', description: 'the caller\'s request; omitted fields get this implementation\'s defaults, capped fields are clamped.' }],

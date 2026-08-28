@@ -32,31 +32,11 @@ The schema forbids fields from the other variant and arbitrary extra fields. The
 
 ## Model Experience
 
-### System prompt
-
-#### What the model sees
-
-The package contributes one stable guidance section; runtime values themselves remain outside this stable text.
-
-##### Runtime inspection guidance
-
-```markdown
-Runtime and host facts are available through DSH runtime context and runtime_inspect. Use runtime_inspect instead of inferring command resolution, network routing, process ownership, or host configuration when authoritative runtime facts are available.
-```
-
-#### Token effect
-
-Fixed guidance cost per request while the plugin is loaded; changing runtime facts does not change this section.
-
-#### KV Cache effect
-
-Prefix-stable while the plugin and guidance text are unchanged. Runtime fact changes do not invalidate this stable prompt section.
-
 ### `runtime_inspect` tool
 
 #### What the model sees
 
-The model sees one `runtime_inspect` tool with a tagged `kind: "facts" | "command"` request: `facts` accepts optional `keys`, while `command` requires one `command` string and exposes no `env` field.
+The package contributes no separate system-prompt section; usage guidance stays in the tool description. The model sees one `runtime_inspect` tool with a tagged `kind: "facts" | "command"` request: `facts` accepts optional `keys`, while `command` requires one `command` string and exposes no `env` field.
 
 #### Token effect
 

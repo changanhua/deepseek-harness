@@ -28,7 +28,7 @@
 |---|---|
 | `package.json` | 名 `@deepseek-ai/dsh-runtime-facts-host`；peerDeps 增：`@deepseek-ai/dsh-runtime-facts`、`@deepseek-ai/dsh-subprocess`（`runtime.execution-world` 读 `executionWorld`）、`@deepseek-ai/dsh-launch-environment`（`host.proxy.*` 快照）、`@deepseek-ai/dsh-home-paths`（可选）、**`@deepseek-ai/dsh-host-webserver`（`web.server-url` → `ctx.webServer`，R2-P3）** |
 | `tsconfig.json` / `tsdown.config.ts` | 标准；references 到上列包 |
-| `src/index.ts` | function plugin：注册 §4 清单 host facts（`host.os`/`host.arch`/`runtime.execution-world` baseline；`host.pid`/`web.server-url` inspect） |
+| `src/index.ts` | function plugin：注册 §4 清单 host facts（`runtime.execution-world` baseline；`host.os`/`host.arch`/`host.pid`/`web.server-url` inspect） |
 | `src/proxy.ts` | proxy sanitizer + **5 个 scalar fact 注册**（`host.proxy.configured`/`scheme`/`host`/`port`/`source`，同一 launch-environment 快照派生；R3-2） |
 | `src/invariant.ts` | 注册/所有者关系 |
 | `tests/*.spec.ts` | 各 fact 求值、owner 委托（webServer/subprocess/launch-environment 缺席回退 unavailable 不炸）、**proxy sanitize 单测（含 `user:pass@`/token/query 剥离；5 个 scalar 各自类型）** |
@@ -38,9 +38,9 @@
 
 | 文件 | 内容 |
 |---|---|
-| `package.json` | 名 `@deepseek-ai/dsh-tool-runtime-inspect`；peerDeps：`@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-system-prompt`、`@deepseek-ai/dsh-runtime-facts`、**`@deepseek-ai/dsh-subprocess`（`kind=command` → `resolveExecutable`，R2-B3）**、`@deepseek-ai/dsh-credentials`（optional） |
+| `package.json` | 名 `@deepseek-ai/dsh-tool-runtime-inspect`；peerDeps：`@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-runtime-facts`、**`@deepseek-ai/dsh-subprocess`（`kind=command` → `resolveExecutable`，R2-B3）**、`@deepseek-ai/dsh-credentials`（optional） |
 | `tsconfig.json` / `tsdown.config.ts` | 标准；注册到 extensions 所在 aggregate |
-| `src/index.ts` | `runtime_inspect` tool（tagged union：`{kind:"facts", keys?}` / `{kind:"command", command}`）+ `systemPrompt.section` 稳定指导 |
+| `src/index.ts` | `runtime_inspect` tool（tagged union：`{kind:"facts", keys?}` / `{kind:"command", command}`）；使用指导由 tool description 承载 |
 | `src/command.ts` | `kind=command` 执行：`ctx.subprocess.resolveExecutable(command, env?, signal)` → structured result `{resolved, world}` / `{status:'unavailable', reason}`；`world` 来自 `ctx.subprocess.executionWorld`（R3.1-B1） |
 | `src/invariant.ts` | 工具注册/生命周期 |
 | `tests/*.spec.ts` | schema、facts 四态结果（含 async `credential-configured`）、command 解析（resolved / PATH 未命中 unavailable）、secret 不出现在输出、**secret-leak（proxy/`user:pass@`/apiKey 值）** |

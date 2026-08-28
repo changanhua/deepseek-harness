@@ -32,31 +32,11 @@ Schema 禁止混入另一个变体的字段和任意额外字段。command 变�
 
 ## Model Experience
 
-### System prompt
-
-#### What the model sees
-
-本包贡献一段稳定 guidance；runtime value 本身不会进入这段稳定文本。
-
-##### Runtime inspection guidance
-
-```markdown
-Runtime and host facts are available through DSH runtime context and runtime_inspect. Use runtime_inspect instead of inferring command resolution, network routing, process ownership, or host configuration when authoritative runtime facts are available.
-```
-
-#### Token effect
-
-插件加载期间，每次请求的 guidance 成本固定；runtime fact 改变不会修改该 section。
-
-#### KV Cache effect
-
-只要插件与 guidance 文本不变，请求前缀保持稳定。runtime fact 的变化不会使这段稳定 prompt 失效。
-
 ### `runtime_inspect` tool
 
 #### What the model sees
 
-模型看到一个 `runtime_inspect` 工具，请求由 `kind: "facts" | "command"` 判别：`facts` 接受可选 `keys`，`command` 必须提供一个 `command` 字符串，且不暴露 `env` 字段。
+本包不贡献单独的 system-prompt section；使用说明保留在工具描述中。模型看到一个 `runtime_inspect` 工具，请求由 `kind: "facts" | "command"` 判别：`facts` 接受可选 `keys`，`command` 必须提供一个 `command` 字符串，且不暴露 `env` 字段。
 
 #### Token effect
 

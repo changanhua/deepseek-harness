@@ -8,8 +8,8 @@
 
 | 键 | 新鲜度 | 暴露方式 | 来源 |
 |---|---|---|---|
-| `host.arch` | static | baseline | `process.arch` |
-| `host.os` | static | baseline | `process.platform` |
+| `host.arch` | static | inspect | `process.arch` |
+| `host.os` | static | inspect | `process.platform` |
 | `runtime.execution-world` | dynamic | baseline | `ctx.subprocess.executionWorld` |
 | `host.pid` | static | inspect | `process.pid` |
 | `host.proxy.configured` | static | inspect | 启动环境 |
@@ -33,20 +33,18 @@
 
 #### 模型看到的内容
 
-模型通过 runtime-facts 快照看到 `host.arch` 与 `host.os`；挂载 subprocess 提供方时还会看到 `runtime.execution-world`。PID、代理元数据和 Web URL 仅供 inspect，不进入自动上下文。
+挂载 subprocess 提供方时，模型通过 runtime-facts 快照只看到 `runtime.execution-world`。OS、架构、PID、代理元数据和 Web URL 仅供 inspect，不进入自动上下文。
 
 ##### 典型片段
 
 ```markdown
 Host runtime facts:
-- host.arch: x64
-- host.os: win32
 - runtime.execution-world: local
 ```
 
 #### Token 影响
 
-有条件产生，且最多包含三行 baseline。static 宿主行在插件生命周期内不变；execution-world 行随 subprocess 服务出现、变化或消失。
+有条件产生，且最多包含一行 baseline；该行随 subprocess 服务出现、变化或消失。
 
 #### KV Cache 影响
 

@@ -8,8 +8,8 @@ Host-process Service Provider for [`@deepseek-ai/dsh-runtime-facts`](../runtime-
 
 | Key | Freshness | Exposure | Source |
 |---|---|---|---|
-| `host.arch` | static | baseline | `process.arch` |
-| `host.os` | static | baseline | `process.platform` |
+| `host.arch` | static | inspect | `process.arch` |
+| `host.os` | static | inspect | `process.platform` |
 | `runtime.execution-world` | dynamic | baseline | `ctx.subprocess.executionWorld` |
 | `host.pid` | static | inspect | `process.pid` |
 | `host.proxy.configured` | static | inspect | launch environment |
@@ -33,20 +33,18 @@ The provider has no Cordis plugin config. Load `dsh-runtime-facts` first; subpro
 
 #### What the model sees
 
-Through the runtime-facts snapshot, the model sees `host.arch` and `host.os`; it also sees `runtime.execution-world` while a subprocess provider is mounted. PID, proxy metadata, and the Web URL are inspect-only and do not enter automatic context.
+Through the runtime-facts snapshot, the model sees only `runtime.execution-world` while a subprocess provider is mounted. OS, architecture, PID, proxy metadata, and the Web URL are inspect-only and do not enter automatic context.
 
 ##### Typical fragment
 
 ```markdown
 Host runtime facts:
-- host.arch: x64
-- host.os: win32
 - runtime.execution-world: local
 ```
 
 #### Token effect
 
-Conditional and bounded by three baseline rows. Static host rows remain constant for the plugin lifetime; the execution-world row appears, changes, or disappears with the subprocess service.
+Conditional and bounded by one baseline row, which appears, changes, or disappears with the subprocess service.
 
 #### KV Cache effect
 

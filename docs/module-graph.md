@@ -1097,7 +1097,6 @@ flowchart TD
   pkg_tool_runtime_inspect --> pkg_invariants
   pkg_tool_runtime_inspect --> pkg_runtime_facts
   pkg_tool_runtime_inspect --> pkg_subprocess
-  pkg_tool_runtime_inspect --> pkg_system_prompt
   pkg_tool_runtime_inspect --> pkg_tools
   pkg_host_apiproxy --> pkg_agent_presets
   pkg_host_apiproxy --> pkg_cordis_host_runner
@@ -1738,7 +1737,7 @@ flowchart TD
 | [`runtime-facts-host`](../packages/context/runtime-facts-host) | `context` | [`host-webserver`](../packages/host/webserver), [`invariants`](../packages/runtime-diagnostics/invariants), [`launch-environment`](../packages/util/launch-environment), [`runtime-facts`](../packages/context/runtime-facts), [`subprocess`](../packages/subprocess/subprocess), [`system-prompt`](../packages/core/system-prompt) |
 | [`experimental-agent-team`](../packages/experimental/agent-team) | `experimental` | [`agent`](../packages/core/agent), [`brand`](../packages/util/brand), [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`subagent`](../packages/subagent/subagent) |
 | [`tool-cordis`](../packages/extensions/tool-cordis) | `extensions` | [`agent`](../packages/core/agent), [`cordis-host-runner`](../packages/extensions/cordis-host-runner), [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools) |
-| [`tool-runtime-inspect`](../packages/extensions/tool-runtime-inspect) | `extensions` | [`invariants`](../packages/runtime-diagnostics/invariants), [`runtime-facts`](../packages/context/runtime-facts), [`subprocess`](../packages/subprocess/subprocess), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools) |
+| [`tool-runtime-inspect`](../packages/extensions/tool-runtime-inspect) | `extensions` | [`invariants`](../packages/runtime-diagnostics/invariants), [`runtime-facts`](../packages/context/runtime-facts), [`subprocess`](../packages/subprocess/subprocess), [`tools`](../packages/core/tools) |
 | [`host-apiproxy`](../packages/host/apiproxy) | `host` | [`agent-presets`](../packages/preset/agent-presets), [`cordis-host-runner`](../packages/extensions/cordis-host-runner), [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`sdk-protocol`](../packages/sdk/protocol) | `sdk` | [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`subagent`](../packages/subagent/subagent) |
 | [`tool-bash`](../packages/shell/tool-bash) | `shell` | [`agent`](../packages/core/agent), [`invariants`](../packages/runtime-diagnostics/invariants), [`jobs`](../packages/jobs/jobs), [`llm`](../packages/llm/llm), [`sandbox`](../packages/sandbox/sandbox), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`shell`](../packages/shell/shell), [`shell-env`](../packages/shell/shell-env), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools), [`user-approval`](../packages/interaction/user-approval) |

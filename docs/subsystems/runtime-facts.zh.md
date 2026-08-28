@@ -106,7 +106,7 @@ interface RuntimeFactInfo {
 
 ## 宿主提供方
 
-Host 提供方把 `host.arch`、`host.os` 与 `runtime.execution-world` 注册为 baseline 事实。它让 PID、清理后的代理元数据和当前已绑定 Web 服务器 URL 保持 inspect-only。进程常量与启动环境代理快照为 static；执行环境与 Web URL 为 dynamic，因为其 Service Provider 可以热加载。[subprocess 子系统](subprocess.zh.md)拥有权威的 local/remote 分类。
+Host 提供方只把 `runtime.execution-world` 注册为 baseline 事实。OS、架构、PID、清理后的代理元数据和当前已绑定 Web 服务器 URL 仅供 inspect。进程常量与启动环境代理快照为 static；执行环境与 Web URL 为 dynamic，因为其 Service Provider 可以热加载。[subprocess 子系统](subprocess.zh.md)拥有权威的 local/remote 分类。
 
 ## 运行时上下文投影
 

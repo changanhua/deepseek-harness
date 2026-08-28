@@ -7,13 +7,11 @@ import { describe, expect, it } from 'vitest'
 
 async function boot(options: {
   subprocess?: { executionWorld: 'local' | 'remote' }
-  shell?: { dialect: 'bash' | 'pwsh' }
   webServer?: { host: '127.0.0.1' | '0.0.0.0'; port: number }
   env?: Record<string, string>
 } = {}) {
   const ctx = new Context()
   if (options.subprocess !== undefined) ctx.provide('subprocess', options.subprocess as never)
-  if (options.shell !== undefined) ctx.provide('shell', options.shell as never)
   if (options.webServer !== undefined) ctx.provide('webServer', options.webServer as never)
   ctx.provide('launchEnvironment', createLaunchEnvironmentSnapshot([
     { source: 'process', values: options.env ?? {} },
@@ -38,45 +36,28 @@ describe('runtime-facts-host', () => {
       'host.proxy.scheme',
       'host.proxy.source',
       'runtime.execution-world',
-      'shell.dialect',
       'web.server-url',
     ])
     expect(new Set(infos.map(info => info.owner))).toEqual(new Set(['runtime-facts-host']))
   })
 
-  it('projects only cheap baseline host facts and delegates the execution world to subprocess', async () => {
+  it('projects only the execution world and keeps host details inspect-only', async () => {
     const subprocess: { executionWorld: 'local' | 'remote' } = { executionWorld: 'local' }
     const { ctx } = await boot({ subprocess })
     expect(ctx.runtimeFacts.render({})).toBe([
       'Host runtime facts:',
-      `- host.arch: ${process.arch}`,
-      `- host.os: ${process.platform}`,
       '- runtime.execution-world: local',
     ].join('\n'))
+    await expect(ctx.runtimeFacts.inspect([
+      factKey('host.arch'),
+      factKey('host.os'),
+    ])).resolves.toEqual({
+      'host.arch': { status: 'ok', value: process.arch },
+      'host.os': { status: 'ok', value: process.platform },
+    })
 
     subprocess.executionWorld = 'remote'
     expect(ctx.runtimeFacts.render({})).toContain('- runtime.execution-world: remote')
-  })
-
-  it('projects shell.dialect as a dynamic baseline and follows a provider swap', async () => {
-    const shell: { dialect: 'bash' | 'pwsh' } = { dialect: 'pwsh' }
-    const { ctx } = await boot({ shell })
-    expect(ctx.runtimeFacts.render({})).toContain('- shell.dialect: pwsh')
-    await expect(ctx.runtimeFacts.inspect([factKey('shell.dialect')])).resolves.toEqual({
-      'shell.dialect': { status: 'ok', value: 'pwsh' },
-    })
-
-    // The fact is dynamic: a hot provider swap is reflected on the next read
-    // without re-registration or cache invalidation.
-    shell.dialect = 'bash'
-    expect(ctx.runtimeFacts.render({})).toContain('- shell.dialect: bash')
-  })
-
-  it('reports shell.dialect unavailable when no shell executor is mounted', async () => {
-    const { ctx } = await boot()
-    await expect(ctx.runtimeFacts.inspect([factKey('shell.dialect')])).resolves.toEqual({
-      'shell.dialect': { status: 'unavailable' },
-    })
   })
 
   it('reports unavailable for optional providers without hiding process constants', async () => {
