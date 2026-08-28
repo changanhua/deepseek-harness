@@ -153,32 +153,32 @@ Registry for command-knowledge contributions with merge and query.
 ```ts cordis-catalog
 /**
  * Register one plugin knowledge record for a profile. Provenance authority is
- * fixed to `plugin`; builtin and user records are produced only by the
- * registry's built-in seed and the settings adapter.
- * @param contribution - the plugin's record; source is implied.
- * @returns the effect disposer retracting exactly this record.
- * @throws TypeError or Error when the record is malformed or violates a merge rule.
+ * fixed to `plugin`; builtin and user records come only from the registry's
+ * builtin seed and settings adapter.
+ * @param contribution - The plugin record; its source is implied.
+ * @returns The effect disposer that retracts exactly this record.
+ * @throws When the record is malformed or violates a merge rule.
  */
 contribute(contribution: CommandProfilePluginContribution): () => void
 
 /**
- * Resolve one profile's effective view, or `undefined` when the profile is
- * absent or explicitly disabled by the user.
- * @param id - stable profile id.
- * @returns the merged profile with candidates carrying full provenance.
+ * Resolve one profile's effective view.
+ * @param id - Stable profile identifier.
+ * @returns The merged profile with candidate provenance, or `undefined` when
+ * the profile is absent, disabled, or has no active definition owner.
  */
 resolve(id: string): ResolvedCommandProfile | undefined
 
 /**
- * Deterministic lexical query over profiles, bounded by {@link CommandProfileQuery.limit}.
- * @param input - query text and optional result cap.
- * @returns matched effective profiles in rank order, then id order.
+ * Run a deterministic lexical query bounded by {@link CommandProfileQuery.limit}.
+ * @param input - Query text and optional result limit.
+ * @returns Matching effective profiles in rank order, then identifier order.
  */
 query(input: CommandProfileQuery): ResolvedCommandProfile[]
 
 /**
- * Every active profile's effective view in id order.
- * @returns profiles that are neither absent nor user-disabled.
+ * List every active profile's effective view.
+ * @returns Effective profiles with active definition owners in identifier order.
  */
 list(): ResolvedCommandProfile[]
 ```

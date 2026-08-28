@@ -140,12 +140,24 @@ export class CommandProfiles extends Service {
     })
   }
 
-  /** Register one plugin knowledge record; public provenance is always plugin authority. */
+  /**
+   * Register one plugin knowledge record for a profile. Provenance authority is
+   * fixed to `plugin`; builtin and user records come only from the registry's
+   * builtin seed and settings adapter.
+   * @param contribution - The plugin record; its source is implied.
+   * @returns The effect disposer that retracts exactly this record.
+   * @throws When the record is malformed or violates a merge rule.
+   */
   contribute(contribution: CommandProfilePluginContribution): () => void {
     return this.registerContribution({ ...contribution, source: 'plugin' })
   }
 
-  /** Resolve one effective profile, hiding absent, disabled, and orphaned contributions. */
+  /**
+   * Resolve one profile's effective view.
+   * @param id - Stable profile identifier.
+   * @returns The merged profile with candidate provenance, or `undefined` when
+   * the profile is absent, disabled, or has no active definition owner.
+   */
   resolve(id: string): ResolvedCommandProfile | undefined {
     const records = this.contributions.get(id)
     if (records === undefined || records.length === 0) return undefined
@@ -175,7 +187,11 @@ export class CommandProfiles extends Service {
     }
   }
 
-  /** Deterministic lexical query over effective profiles. */
+  /**
+   * Run a deterministic lexical query bounded by {@link CommandProfileQuery.limit}.
+   * @param input - Query text and optional result limit.
+   * @returns Matching effective profiles in rank order, then identifier order.
+   */
   query(input: CommandProfileQuery): ResolvedCommandProfile[] {
     const queryText = input.query.trim()
     if (queryText.length === 0) return []
@@ -194,7 +210,10 @@ export class CommandProfiles extends Service {
     return scored.slice(0, limit).map(entry => entry.profile)
   }
 
-  /** Every active profile's effective view in id order. */
+  /**
+   * List every active profile's effective view.
+   * @returns Effective profiles with active definition owners in identifier order.
+   */
   list(): ResolvedCommandProfile[] {
     return [...this.contributions.keys()]
       .map(id => this.resolve(id))
