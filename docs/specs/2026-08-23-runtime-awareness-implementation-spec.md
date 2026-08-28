@@ -41,8 +41,11 @@
 
 **三正交维度（R3-1）**：`evaluation`（怎么求值）与 `freshness`（值会不会变）正交；`exposure`（进不进自动 context）独立。每次观察返回 discriminated result：
 
-```ts ignore-check
+```ts
 // packages/context/runtime-facts/src/types.ts
+import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { ScopeKey } from '@deepseek-ai/dsh-scope'
+
 /** fact 名。品牌类型：每段 ^[a-z][a-z0-9-]*$，段以 '.' 分隔（机械校验）。 */
 type RuntimeFactKey = Branded<'RuntimeFactKey'>
 
@@ -122,13 +125,21 @@ export class RuntimeFacts extends Service {
 
 **sync projection consumer（R3-4）**：不注册 async waterfall 监听器；注册普通 sync context contributor（`packages/core/system-prompt/src/index.ts:398`，order 升序 join；sandbox `sandbox:policy` 用 order=110）：
 
-```ts ignore-check
-// runtimeFacts 构造内（全局注册；scope 过滤经 text 收到的 AssembleContext.scope）
-ctx.systemPrompt.context({
-  name: 'runtime-facts',
-  order: 120,   // sandbox:policy=110 之后；天然有序，无 R3-6 的 waterfall 排序问题
-  text: (ac) => this.render({ scope: ac.scope }),
-})
+```ts
+import type { Context } from '@deepseek-ai/cordis'
+import type { RuntimeFactContext } from '@deepseek-ai/dsh-runtime-facts'
+import type {} from '@deepseek-ai/dsh-system-prompt'
+
+function contributeRuntimeFacts(
+  ctx: Context,
+  render: (context: RuntimeFactContext) => string,
+): () => void {
+  return ctx.systemPrompt.context({
+    name: 'runtime-facts',
+    order: 120,
+    text: context => render(context.scope === undefined ? {} : { scope: context.scope }),
+  })
+}
 ```
 
 - **不改 Agent Loop**：`RuntimeContextProjection` 在 assemble 之后照常消费渲染文本（`packages/core/agent-loop/src/runtime-context.ts`）。
