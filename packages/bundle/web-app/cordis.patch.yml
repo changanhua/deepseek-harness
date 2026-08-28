@@ -45,6 +45,14 @@
 # `dsh.client` rows are the browser roster the modules node half scans into
 # window.__DSH_BOOT__; the modules row is simultaneously a host row.
 - insert:
+    # Runtime Awareness host plane: the registry and Host provider stay shared;
+    # model-facing inspection is selected by each agent preset.
+    - id: runtime-facts
+      name: '@deepseek-ai/dsh-runtime-facts'
+
+    - id: runtime-facts-host
+      name: '@deepseek-ai/dsh-runtime-facts-host'
+
     - id: code-runtime
       name: '@deepseek-ai/dsh-code-runtime-worker-thread'
 

@@ -1135,6 +1135,38 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'runtimeFacts',
+    summary: 'Registry for uniquely owned runtime facts.',
+    description: 'Registry for uniquely owned runtime facts.',
+    methods: [
+      {
+        signature: 'registerFact(declaration: RuntimeFact): () => Promise<void>',
+        description: 'Register one uniquely owned fact for the calling plugin fiber.',
+        parameters: [{ name: 'declaration', description: 'resolver, ownership, projection, and freshness declaration.' }],
+        returns: 'the exact effect disposer that removes the fact and its cached observation.',
+        throws: ['when the declaration is malformed or its key already has an owner.'],
+      },
+      {
+        signature: 'list(): RuntimeFactInfo[]',
+        description: 'List resolver-free fact declarations in code-unit key order.',
+        parameters: [],
+        returns: 'detached metadata that callers may not use to mutate a registration.',
+      },
+      {
+        signature: 'async inspect( keys: readonly RuntimeFactKey[], context: RuntimeFactContext = {}, ): Promise<Record<string, RuntimeFactObservationResult>>',
+        description: 'Observe selected facts, awaiting asynchronous resolvers while containing each failure.',
+        parameters: [{ name: 'keys', description: 'valid fact keys; an unregistered key produces `unknown`.' }, { name: 'context', description: 'optional scope and cancellation signal.' }],
+        returns: 'one observation per requested key.',
+      },
+      {
+        signature: 'render(context: RuntimeFactContext): string',
+        description: 'Render available synchronous baseline facts in code-unit key order.',
+        parameters: [{ name: 'context', description: 'scope used for centralized tool-relevance filtering.' }],
+        returns: 'the complete compact snapshot, or an empty string when none is active.',
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
@@ -1875,6 +1907,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: 'Abstract subprocess service.',
     description: 'Abstract subprocess service. Subclass, implement spawn, and load the subclass as a plugin — it registers as `ctx.subprocess` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nImplementations must honor these semantics:\n\n- Executable paths belong to one execution world shared with the mounted filesystem provider.\n- spawn returns immediately with a live handle; `done` resolves at process close with exit facts and rejects only for spawn-level failures.\n- Collect-mode readers are offset-based and non-consuming, so independent readers never consume one another\'s output; lossy reads report truncation and the spill file holding the complete stream when one exists. Piped streams are handed to the caller raw and never buffered here.\n- SubprocessHandle.terminate (and the spec\'s abort signal) escalates SIGTERM→grace→SIGKILL — the only termination verb — tree-scoped on every platform. SubprocessHandle.waitForExit observes whole-tree liveness, so a consumer-owned teardown ladder can hold each tier on real quiescence.\n- Disposal of the service terminates all still-running managed processes and awaits their exit.\n- spawnTerminal owns terminal allocation, text transport, foreground groups, signalling, and whole-session quiescence behind one awaited termination method; readiness and persistent-shell policy stay in the PTY consumer. Its output stream ends after queued terminal output when the top-level process exits.',
     methods: [
+      {
+        signature: 'abstract readonly executionWorld: import(\'./types.ts\').ExecutionWorldKind',
+        description: 'Whether filesystem paths, executables, and processes live on the host or a remote provider.',
+        parameters: [],
+      },
       {
         signature: 'abstract resolveExecutable( command: string, env?: Readonly<Record<string, string>>, signal?: AbortSignal, ): Promise<string>',
         description: 'Resolve one configured executable in this provider\'s execution world. Absolute paths are verified; bare names use the provider\'s scrubbed PATH plus explicit environment overrides. Relative paths containing separators are rejected: the resolution base is undefined, so providers fail loud instead of guessing.',
@@ -3523,6 +3560,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
   },
   {
+    name: 'ExecutionWorldKind',
+    declaration: 'export type ExecutionWorldKind = \'local\' | \'remote\';',
+  },
+  {
     name: 'ExecutorAdapter',
     declaration: 'export type ExecutorAdapter = {\n    prepare(task: Task, run: RunRecord, signal: AbortSignal): Promise<SubprocessSpawnSpec>;\n    normalize?(task: Task, stdout: string, stderr: string): {\n        summary: string;\n        assistantText?: string;\n    };\n};',
   },
@@ -4213,6 +4254,46 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RunRecord',
     declaration: 'export interface RunRecord {\n    runId: RunId;\n    attempt: number;\n    pid: number | null;\n    plannedStartedAt: string | null;\n    actualStartedAt: string | null;\n    logPath: string | null;\n    commandFingerprint: string | null;\n    terminationUnverified?: boolean;\n}',
+  },
+  {
+    name: 'RuntimeFact',
+    declaration: 'export interface RuntimeFact {\n    readonly key: RuntimeFactKey;\n    readonly owner: string;\n    readonly description: string;\n    readonly evaluation: RuntimeFactEvaluation;\n    readonly freshness: RuntimeFactFreshness;\n    readonly exposure: RuntimeFactExposure;\n    readonly relevance?: RuntimeFactRelevance;\n    readonly resolveSync?: (context: RuntimeFactContext) => RuntimeFactValue | undefined;\n    readonly resolveAsync?: (context: RuntimeFactContext, signal?: AbortSignal) => Promise<RuntimeFactValue | undefined>;\n}',
+  },
+  {
+    name: 'RuntimeFactContext',
+    declaration: 'export interface RuntimeFactContext {\n    readonly scope?: ScopeKey;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'RuntimeFactEvaluation',
+    declaration: 'export type RuntimeFactEvaluation = \'sync\' | \'async\';',
+  },
+  {
+    name: 'RuntimeFactExposure',
+    declaration: 'export type RuntimeFactExposure = \'baseline\' | \'inspect\';',
+  },
+  {
+    name: 'RuntimeFactFreshness',
+    declaration: 'export type RuntimeFactFreshness = \'static\' | \'dynamic\';',
+  },
+  {
+    name: 'RuntimeFactInfo',
+    declaration: 'export interface RuntimeFactInfo {\n    readonly key: RuntimeFactKey;\n    readonly owner: string;\n    readonly description: string;\n    readonly evaluation: RuntimeFactEvaluation;\n    readonly freshness: RuntimeFactFreshness;\n    readonly exposure: RuntimeFactExposure;\n    readonly relevance?: RuntimeFactRelevance;\n}',
+  },
+  {
+    name: 'RuntimeFactKey',
+    declaration: 'export type RuntimeFactKey = Branded<\'RuntimeFactKey\'>;',
+  },
+  {
+    name: 'RuntimeFactObservationResult',
+    declaration: 'export type RuntimeFactObservationResult<T extends RuntimeFactValue = RuntimeFactValue> = {\n    readonly status: \'ok\';\n    readonly value: T;\n} | {\n    readonly status: \'unknown\';\n} | {\n    readonly status: \'unavailable\';\n} | {\n    readonly status: \'probe-failure\';\n    readonly reason?: string;\n};',
+  },
+  {
+    name: 'RuntimeFactRelevance',
+    declaration: 'export interface RuntimeFactRelevance {\n    readonly tools: readonly string[];\n}',
+  },
+  {
+    name: 'RuntimeFactValue',
+    declaration: 'export type RuntimeFactValue = string | boolean | number;',
   },
   {
     name: 'SandboxEnforcement',

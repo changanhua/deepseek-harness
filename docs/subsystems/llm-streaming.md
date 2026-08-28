@@ -555,7 +555,7 @@ interface FinishReasonMap {
 
 `FinishReason = FinishReasonMap[keyof FinishReasonMap]`. `TokenUsage` (per-call accounting with disjoint cache fields) is detailed [below](#tokenusage).
 
-`GenerateOptions.tools` carries `ToolSchema` — the JSON-schema description of a tool, as sent to the model. It is declared in dsh-llm (not dsh-tools) precisely because it is part of the request the loop assembles every step:
+`GenerateOptions.tools` carries `ToolSchema` — the JSON-schema description of a tool, as sent to the model. Its argument schema is object-rooted because adapters pass `parameters` to providers verbatim; `ctx.tools.register()` rejects other roots before assembly. It is declared in dsh-llm (not dsh-tools) precisely because it is part of the request the loop assembles every step:
 
 ```ts type-equiv
 /**
@@ -568,7 +568,11 @@ interface FinishReasonMap {
 interface ToolSchema {
   name: string
   description: string
-  /** JSON Schema object for the arguments. */
+  /**
+   * Object-rooted JSON Schema for the arguments. Adapters pass this value to
+   * providers verbatim; tool registries must reject roots without
+   * `type: "object"` before exposing them to a model request.
+   */
   parameters: Record<string, unknown>
 }
 ```

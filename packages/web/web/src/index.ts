@@ -7,7 +7,9 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import type { RuntimeFactKey } from '@deepseek-ai/dsh-runtime-facts'
 import z from '@deepseek-ai/schemastery'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {
   WebFetchProvider,
   WebFetchRequest,
@@ -15,6 +17,7 @@ import type {
   WebSearchProvider,
   WebSearchRequest,
   WebSearchResult,
+  WebSettingsSection,
 } from './types.ts'
 import { WebError } from './types.ts'
 
@@ -30,6 +33,7 @@ export type {
   WebSearchRequest,
   WebSearchResult,
   WebSearchSource,
+  WebSettingsSection,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -59,6 +63,18 @@ export interface WebRuntimeConfig {
   readonly fetchProvider?: string
 }
 
+/** Settings namespace carrying the default search/fetch provider preference. */
+export const WEB_SETTINGS_NAMESPACE = settingsNamespace('web')
+
+/** Stored and composed search/fetch provider preference. */
+export const WEB_SETTINGS_SCHEMA: z<WebSettingsSection> = z.object({
+  searchProvider: z.string(),
+  fetchProvider: z.string(),
+})
+
+/** Stable runtime-fact key; the registry validates the branded value at registration. */
+const WEB_SEARCH_SELECTED_FACT = 'web.search-selected' as RuntimeFactKey
+
 /**
  * The web access service. Registered as `ctx.web` (one instance per context).
  *
@@ -84,13 +100,62 @@ export class WebRuntime extends Service {
 
   private searchProviders = new Map<string, WebSearchProvider>()
   private fetchProviders = new Map<string, WebFetchProvider>()
-  private readonly searchProviderId: string | undefined
-  private readonly fetchProviderId: string | undefined
+  private source: () => WebSettingsSection
 
   constructor(ctx: Context, config: WebRuntimeConfig = {}) {
     super(ctx, 'web')
-    this.searchProviderId = config.searchProvider ?? process.env.DSH_WEB_SEARCH_PROVIDER
-    this.fetchProviderId = config.fetchProvider ?? process.env.DSH_WEB_FETCH_PROVIDER
+    const searchProvider = config.searchProvider ?? process.env.DSH_WEB_SEARCH_PROVIDER
+    const fetchProvider = config.fetchProvider ?? process.env.DSH_WEB_FETCH_PROVIDER
+    const entry: WebSettingsSection = {
+      ...searchProvider !== undefined ? { searchProvider } : {},
+      ...fetchProvider !== undefined ? { fetchProvider } : {},
+    }
+    this.source = () => entry
+    installSettingsSection(ctx, WEB_SETTINGS_NAMESPACE, WEB_SETTINGS_SCHEMA, entry, {
+      setSource: (current) => { this.source = current },
+      // Provider selection resolves live at every call, so no registration-level
+      // fact needs rebuilding when the settings document changes.
+      onChange: () => {},
+    })
+    // Runtime awareness is optional. Only a type dependency on runtime-facts is
+    // emitted from this package; the service itself is discovered dynamically.
+    // Without it the web seam remains fully functional.
+    ctx.inject(['runtimeFacts'], (rctx) => {
+      rctx.effect(() => {
+        const dispose = rctx.runtimeFacts.registerFact({
+          key: WEB_SEARCH_SELECTED_FACT,
+          owner: 'web',
+          description: 'Currently selected search provider id.',
+          evaluation: 'sync',
+          freshness: 'dynamic',
+          exposure: 'baseline',
+          relevance: { tools: ['web_search'] },
+          resolveSync: () => this.selectedSearchProviderId(),
+        })
+        return async () => {
+          await dispose()
+        }
+      })
+    })
+  }
+
+  /**
+   * Resolve the currently selected search provider id without throwing. This is
+   * internal derived state for runtime awareness, not a second public selection
+   * API: execution still resolves through {@link search} and {@link resolveProvider}.
+   * @returns the selected provider id, or `undefined` when selection is unresolved.
+   */
+  private selectedSearchProviderId(): string | undefined {
+    try {
+      const section = this.source()
+      const provider = resolveProvider({
+        providers: this.searchProviders,
+        ...section.searchProvider !== undefined ? { configuredId: section.searchProvider } : {},
+      })
+      return provider.id
+    } catch {
+      return undefined
+    }
   }
 
   /**
@@ -138,9 +203,10 @@ export class WebRuntime extends Service {
    * @returns the provider's results, capped to `request.maxResults`.
    */
   async search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult> {
+    const section = this.source()
     const provider = resolveProvider({
       providers: this.searchProviders,
-      ...this.searchProviderId !== undefined ? { configuredId: this.searchProviderId } : {},
+      ...section.searchProvider !== undefined ? { configuredId: section.searchProvider } : {},
     })
     const result = await provider.search(request, signal)
     return capSources(result, request.maxResults)
@@ -155,9 +221,10 @@ export class WebRuntime extends Service {
    * @returns the retrieval outcome; non-2xx responses resolve descriptively.
    */
   async fetch(request: WebFetchRequest, signal?: AbortSignal): Promise<WebFetchResult> {
+    const section = this.source()
     const provider = resolveProvider({
       providers: this.fetchProviders,
-      ...this.fetchProviderId !== undefined ? { configuredId: this.fetchProviderId } : {},
+      ...section.fetchProvider !== undefined ? { configuredId: section.fetchProvider } : {},
     })
     return provider.fetch(request, signal)
   }

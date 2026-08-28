@@ -399,6 +399,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The model-facing shell tools and hook bridges consume this seam; sandboxed, remote, or PowerShell executors replace bash-local without touching them.',
   },
   {
+    key: 'runtimeFacts',
+    pkg: 'runtime-facts',
+    title: 'Owned runtime-fact registry',
+    mode: 'core',
+    consumers: ['runtime-facts-host', 'tool-runtime-inspect', 'web', 'web-search-exa', 'web-search-perplexity'],
+    note: 'Owns fact declarations, centralized tool-relevance evaluation, and the order-120 baseline projection; providers register inspect-only or baseline facts and the inspection tool reads them on demand.',
+  },
+  {
     key: 'shellEnv',
     pkg: 'shell-env',
     title: 'Managed bash environment registry',

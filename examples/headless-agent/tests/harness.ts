@@ -15,6 +15,16 @@ import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import * as SessionCheckpointPolicy from '@deepseek-ai/dsh-session-checkpoint-policy'
 import { BasicCompactionEngine } from '@deepseek-ai/dsh-compaction-basic'
 import type { BasicCompactionConfig } from '@deepseek-ai/dsh-compaction-basic'
+import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
+import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
+import RuntimeFacts from '@deepseek-ai/dsh-runtime-facts'
+import * as RuntimeFactsHost from '@deepseek-ai/dsh-runtime-facts-host'
+import { SettingsProvider } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
+import WebRuntime from '@deepseek-ai/dsh-web'
+import * as WebSearchExa from '@deepseek-ai/dsh-web-search-exa'
+import * as ToolRuntimeInspect from '@deepseek-ai/dsh-tool-runtime-inspect'
+import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
 
 /**
  * Shared harness for the headless-agent e2e suites: the full plugin stack
@@ -80,6 +90,90 @@ export async function codingHarness(workdir: string, options: CodingHarnessOptio
     await ctx.plugin(JsonlSessionPersistence, { root: options.persistenceRoot })
     await ctx.plugin(SessionCheckpointPolicy)
   }
+  return ctx
+}
+
+/** The smallest real settings provider: one in-memory document, always writable. */
+export class MemorySettings extends SettingsProvider {
+  doc: Record<string, unknown> = {}
+
+  get writable(): boolean {
+    return true
+  }
+
+  protected load(): Promise<Record<string, unknown>> {
+    return Promise.resolve(structuredClone(this.doc))
+  }
+
+  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
+    this.doc = { ...this.doc, [ns]: structuredClone(section) }
+    return Promise.resolve()
+  }
+}
+
+/** Options for {@link runtimeAwarenessHarness}. */
+export interface RuntimeAwarenessHarnessOptions {
+  /** Deployment persona for the tree (per-context, not per-agent). */
+  persona?: string
+  /**
+   * The pi-ai provider route the agent turns run against. Must name a route the
+   * {@link LlmPiAi} config declares; defaults to the host `huoshancoding` route.
+   */
+  provider?: string
+  /** Credential reference resolved from the host credentials document. */
+  apiKeyEnv?: string
+  /** OpenAI-compatible endpoint for the route. */
+  baseURL?: string
+  /** Model id served by the route. */
+  model?: string
+}
+
+/**
+ * Boot the full Runtime Awareness stack for a real-model behavior eval: the
+ * agent loop, credential + pi-ai LLM plane, host subprocess, runtime-facts
+ * registry + host provider, the web seam with an Exa search provider, and the
+ * `runtime_inspect` tool. The Exa provider carries a dummy key so its fact
+ * renders as available; behavior evals never issue a real search.
+ */
+export async function runtimeAwarenessHarness(
+  workdir: string,
+  options: RuntimeAwarenessHarnessOptions = {},
+): Promise<Context> {
+  void workdir
+  const provider = options.provider ?? 'huoshancoding'
+  const ctx = new Context()
+  await mountAgentLoopTestDependencies(ctx, {
+    systemPrompt: { persona: options.persona ?? '' },
+  })
+  await ctx.plugin(AgentLoop, { agents: [] })
+  await ctx.plugin(LocalCredentialProvider, {})
+  await ctx.plugin(LlmPiAi, {
+    providers: {
+      [provider]: {
+        apiKeyEnv: options.apiKeyEnv ?? 'HUOSHANCODING_API_KEY',
+        api: 'openai-responses',
+        baseURL: options.baseURL ?? 'https://ark.cn-beijing.volces.com/api/coding/v3',
+        models: [{
+          id: options.model ?? 'deepseek-v4-flash-ga-260731',
+          contextWindow: 128_000,
+          maxTokens: 32_768,
+        }],
+      },
+    },
+  })
+  await ctx.plugin(LocalSubprocessRuntime)
+  await ctx.plugin(BashEnvPlugin)
+  await ctx.plugin(LocalBashExecutor, { cwd: workdir, timeoutMs: 30_000 })
+  await ctx.plugin(ToolBash)
+  await ctx.plugin(MemorySettings)
+  await ctx.plugin(RuntimeFacts, {})
+  await ctx.plugin(RuntimeFactsHost)
+  await ctx.plugin(WebRuntime, { searchProvider: 'exa' })
+  await ctx.plugin(WebSearchExa, { apiKey: 'test-key' })
+  await ctx.plugin(ToolRuntimeInspect)
+  await ctx.plugin(ToolWeb)
+  // The eval turns do not touch the filesystem; the workdir exists so a future
+  // scenario that probes the shell has a valid cwd to start from.
   return ctx
 }
 
