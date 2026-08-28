@@ -235,7 +235,6 @@
       // generated package region.
       "@deepseek-ai/dsh-host-capability-registry": ["./packages/host/capability-registry/src"],
       "@deepseek-ai/dsh-host-capability-registry/invariant": ["./packages/host/capability-registry/src/invariant.ts"],
-      "@deepseek-ai/dsh-host-capability-registry/types": ["./packages/host/capability-registry/src/types.ts"],
       "@deepseek-ai/dsh-client-ui-capability": ["./packages/client/ui-capability/src"],
       "@deepseek-ai/dsh-client-ui-capability/client": ["./packages/client/ui-capability/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-capability/invariant": ["./packages/client/ui-capability/src/invariant.ts"],
