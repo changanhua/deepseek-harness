@@ -74,14 +74,21 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+function requestUrl(input: RequestInfo | URL | undefined): string {
+  if (typeof input === 'string') return input
+  if (input instanceof URL) return input.href
+  return input?.url ?? ''
+}
+
 /** Run one search and return the request Exa received. */
 async function searchOnce(ctx: Context): Promise<Record<string, unknown>> {
   const fetchSpy = vi.spyOn(globalThis, 'fetch')
     .mockImplementation(() => Promise.resolve(jsonResponse(ONE_RESULT)))
   fetchSpy.mockClear()
   await ctx.web.search({ query: 'anything' })
-  const init = fetchSpy.mock.calls.at(-1)?.[1] as RequestInit | undefined
-  return init?.body !== undefined ? JSON.parse(String(init.body)) as Record<string, unknown> : {}
+  const body = fetchSpy.mock.calls.at(-1)?.[1]?.body
+  if (typeof body !== 'string') throw new TypeError('Exa request body must be JSON text')
+  return JSON.parse(body) as Record<string, unknown>
 }
 
 describe('web-search-exa settings section', () => {
@@ -97,7 +104,7 @@ describe('web-search-exa settings section', () => {
     const next = await searchOnce(bench.ctx)
     expect(next).toMatchObject({ type: 'keyword' })
     const fetchSpy = vi.mocked(globalThis.fetch)
-    expect(String(fetchSpy.mock.calls.at(-1)?.[0] ?? '')).toContain('https://api.stored.test')
+    expect(requestUrl(fetchSpy.mock.calls.at(-1)?.[0])).toContain('https://api.stored.test')
     await bench.ctx.fiber.dispose()
   })
 
@@ -130,13 +137,13 @@ describe('web-search-exa settings section', () => {
       .mockImplementation(() => Promise.resolve(jsonResponse(ONE_RESULT)))
     fetchSpy.mockClear()
     await bench.ctx.web.search({ query: 'q' })
-    expect(String(fetchSpy.mock.calls.at(-1)?.[0] ?? '')).toContain('https://api.stored.test')
+    expect(requestUrl(fetchSpy.mock.calls.at(-1)?.[0])).toContain('https://api.stored.test')
 
     await bench.settingsFiber.dispose()
 
     fetchSpy.mockClear()
     await bench.ctx.web.search({ query: 'q' })
-    expect(String(fetchSpy.mock.calls.at(-1)?.[0] ?? '')).toContain('https://api.entry.test')
+    expect(requestUrl(fetchSpy.mock.calls.at(-1)?.[0])).toContain('https://api.entry.test')
     await bench.ctx.fiber.dispose()
   })
 
