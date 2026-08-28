@@ -51,6 +51,11 @@
   name: '@deepseek-ai/dsh-tool-pwsh'
   disabled: !!js process.platform !== 'win32'
 
+# Runtime facts stay on the host; this preset opts its agents into explicit
+# fact and executable inspection without making the tool global.
+- id: tool-runtime-inspect
+  name: '@deepseek-ai/dsh-tool-runtime-inspect'
+
 # ── filesystem ──────────────────────────────────────────────────────────────
 
 # Both register into the host `tools` registry and provide nothing, so

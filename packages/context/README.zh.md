@@ -12,6 +12,5 @@
 | [`time-context/`](time-context/README.zh.md) | 当前时间与耗时上下文 | — |
 | [`tmux-context/`](tmux-context/README.zh.md) | tmux 位置上下文 | — |
 | [`agent-instructions/`](agent-instructions/README.zh.md) | 工作区指令上下文 | — |
-| [`command-profile/`](command-profile/README.zh.md) | 命令知识注册表：贡献、合并与词法查询 | `ctx.commandProfiles` |
 
 会话引用见 [docs/subsystems/session-reference.md](../../docs/subsystems/session-reference.zh.md)；[`agent-instructions` 决策记录](../../.agents/notes/implemented/feature/2026-06-24-workspace-context.zh.md)规定了其按 agent（智能体）/会话隔离与生命周期拆分。

@@ -228,6 +228,9 @@ importers:
       '@deepseek-ai/dsh-skill-filesystem':
         specifier: workspace:^
         version: link:../../packages/skill/skill-filesystem
+      '@deepseek-ai/dsh-task-queue-executor-dsh':
+        specifier: workspace:^
+        version: link:../../packages/task-queue/task-queue-executor-dsh
       '@deepseek-ai/dsh-terminal':
         specifier: workspace:^
         version: link:../../packages/terminal/terminal
@@ -276,6 +279,9 @@ importers:
       '@deepseek-ai/dsh-tool-ralph':
         specifier: workspace:^
         version: link:../../packages/workflow/tool-ralph
+      '@deepseek-ai/dsh-tool-runtime-inspect':
+        specifier: workspace:^
+        version: link:../../packages/extensions/tool-runtime-inspect
       '@deepseek-ai/dsh-tool-skill':
         specifier: workspace:^
         version: link:../../packages/skill/tool-skill
@@ -291,9 +297,6 @@ importers:
       '@deepseek-ai/dsh-tool-task-queue':
         specifier: workspace:^
         version: link:../../packages/task-queue/tool-task-queue
-      '@deepseek-ai/dsh-task-queue-executor-dsh':
-        specifier: workspace:^
-        version: link:../../packages/task-queue/task-queue-executor-dsh
       '@deepseek-ai/dsh-tool-todo':
         specifier: workspace:^
         version: link:../../packages/todo/tool-todo
@@ -469,9 +472,6 @@ importers:
       '@deepseek-ai/dsh-command-goal':
         specifier: workspace:*
         version: link:../packages/goal/command-goal
-      '@deepseek-ai/dsh-command-profile':
-        specifier: workspace:*
-        version: link:../packages/context/command-profile
       '@deepseek-ai/dsh-commands':
         specifier: workspace:*
         version: link:../packages/interaction/commands
@@ -691,9 +691,6 @@ importers:
       '@deepseek-ai/dsh-tool-call-timeout-policy':
         specifier: workspace:*
         version: link:../packages/guard/timeout-policy
-      '@deepseek-ai/dsh-tool-command-profile':
-        specifier: workspace:*
-        version: link:../packages/extensions/tool-command-profile
       '@deepseek-ai/dsh-tool-cordis':
         specifier: workspace:*
         version: link:../packages/extensions/tool-cordis
@@ -1470,9 +1467,6 @@ importers:
       '@deepseek-ai/dsh-code-runtime-worker-thread':
         specifier: workspace:^
         version: link:../../code-runtime/code-runtime-worker-thread
-      '@deepseek-ai/dsh-command-profile':
-        specifier: workspace:^
-        version: link:../../context/command-profile
       '@deepseek-ai/dsh-cordis-client-runner':
         specifier: workspace:^
         version: link:../../extensions/cordis-client-runner
@@ -1545,12 +1539,6 @@ importers:
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:^
         version: link:../../subprocess/subprocess
-      '@deepseek-ai/dsh-tool-command-profile':
-        specifier: workspace:^
-        version: link:../../extensions/tool-command-profile
-      '@deepseek-ai/dsh-tool-runtime-inspect':
-        specifier: workspace:^
-        version: link:../../extensions/tool-runtime-inspect
       '@deepseek-ai/dsh-web-frontend':
         specifier: workspace:^
         version: link:../../../apps/web
@@ -3702,22 +3690,6 @@ importers:
         specifier: workspace:^
         version: link:../../core/tools
 
-  packages/context/command-profile:
-    dependencies:
-      '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
-        version: link:../../../vendor/schemastery
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-settings':
-        specifier: workspace:^
-        version: link:../../settings/settings
-
   packages/context/file-reference:
     dependencies:
       zod:
@@ -4589,24 +4561,6 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
-
-  packages/extensions/tool-command-profile:
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-command-profile':
-        specifier: workspace:^
-        version: link:../../context/command-profile
-      '@deepseek-ai/dsh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-system-prompt':
-        specifier: workspace:^
-        version: link:../../core/system-prompt
-      '@deepseek-ai/dsh-tools':
-        specifier: workspace:^
-        version: link:../../core/tools
 
   packages/extensions/tool-cordis:
     devDependencies:

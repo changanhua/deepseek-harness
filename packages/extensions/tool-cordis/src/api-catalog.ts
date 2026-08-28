@@ -562,38 +562,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
-    key: 'commandProfiles',
-    summary: 'Registry for command-knowledge contributions with merge and query.',
-    description: 'Registry for command-knowledge contributions with merge and query.',
-    methods: [
-      {
-        signature: 'contribute(contribution: CommandProfilePluginContribution): () => void',
-        description: 'Register one plugin knowledge record for a profile. Provenance authority is fixed to `plugin`; builtin and user records come only from the registry\'s builtin seed and settings adapter.',
-        parameters: [{ name: 'contribution', description: 'The plugin record; its source is implied.' }],
-        returns: 'The effect disposer that retracts exactly this record.',
-        throws: ['When the record is malformed or violates a merge rule.'],
-      },
-      {
-        signature: 'resolve(id: string): ResolvedCommandProfile | undefined',
-        description: 'Resolve one profile\'s effective view.',
-        parameters: [{ name: 'id', description: 'Stable profile identifier.' }],
-        returns: 'The merged profile with candidate provenance, or `undefined` when the profile is absent, disabled, or has no active definition owner.',
-      },
-      {
-        signature: 'query(input: CommandProfileQuery): ResolvedCommandProfile[]',
-        description: 'Run a deterministic lexical query bounded by CommandProfileQuery.limit.',
-        parameters: [{ name: 'input', description: 'Query text and optional result limit.' }],
-        returns: 'Matching effective profiles in rank order, then identifier order.',
-      },
-      {
-        signature: 'list(): ResolvedCommandProfile[]',
-        description: 'List every active profile\'s effective view.',
-        parameters: [],
-        returns: 'Effective profiles with active definition owners in identifier order.',
-      },
-    ],
-  },
-  {
     key: 'commands',
     summary: 'Human-command registry.',
     description: 'Human-command registry. Plain-context definitions are global; definitions registered through a command-injected child of an agent context shadow globals for that agent.',
@@ -3317,14 +3285,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CollectedOutput {\n    text: string;\n    truncated: boolean;\n    spillPath?: string;\n}',
   },
   {
-    name: 'CommandCandidateName',
-    declaration: 'export type CommandCandidateName = string;',
-  },
-  {
-    name: 'CommandCandidateProvenance',
-    declaration: 'export interface CommandCandidateProvenance {\n    readonly source: CommandProfileSource;\n    readonly contributorId: string;\n}',
-  },
-  {
     name: 'CommandDefinition',
     declaration: 'export interface CommandDefinition {\n    readonly name: string;\n    readonly description: string;\n    readonly input?: CommandInputDescriptor;\n    readonly recordInput?: boolean;\n    readonly handler: (invocation: CommandInvocation) => CommandResult | Promise<CommandResult>;\n}',
   },
@@ -3347,18 +3307,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CommandInvocation',
     declaration: 'export interface CommandInvocation {\n    readonly commandId: CommandId;\n    readonly agent: Agent;\n    readonly rawInput: string;\n    readonly attachments: readonly ImageBlock[];\n    readonly signal: AbortSignal;\n}',
-  },
-  {
-    name: 'CommandProfilePluginContribution',
-    declaration: 'export interface CommandProfilePluginContribution {\n    readonly contributorId: string;\n    readonly profileId: string;\n    readonly displayName?: string;\n    readonly description?: string;\n    readonly aliases?: readonly string[];\n    readonly tags?: readonly string[];\n    readonly candidates?: readonly CommandCandidateName[];\n}',
-  },
-  {
-    name: 'CommandProfileQuery',
-    declaration: 'export interface CommandProfileQuery {\n    readonly query: string;\n    readonly limit?: number;\n}',
-  },
-  {
-    name: 'CommandProfileSource',
-    declaration: 'export type CommandProfileSource = \'builtin\' | \'plugin\' | \'user\';',
   },
   {
     name: 'CommandResult',
@@ -4247,14 +4195,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResolvedAlwaysRetryPolicy',
     declaration: 'export interface ResolvedAlwaysRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'always\';\n}',
-  },
-  {
-    name: 'ResolvedCommandCandidate',
-    declaration: 'export interface ResolvedCommandCandidate {\n    readonly command: CommandCandidateName;\n    readonly provenance: readonly CommandCandidateProvenance[];\n}',
-  },
-  {
-    name: 'ResolvedCommandProfile',
-    declaration: 'export interface ResolvedCommandProfile {\n    readonly id: string;\n    readonly displayName: string;\n    readonly description: string;\n    readonly aliases: readonly string[];\n    readonly tags: readonly string[];\n    readonly candidates: readonly ResolvedCommandCandidate[];\n}',
   },
   {
     name: 'ResolvedCredential',

@@ -152,51 +152,6 @@
       "source": "packages/context/runtime-facts/src/types.ts"
     },
     {
-      "doc": "docs/subsystems/command-profiles.md",
-      "symbol": "CommandProfileContribution",
-      "source": "packages/context/command-profile/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/command-profiles.md",
-      "symbol": "CommandProfilePluginContribution",
-      "source": "packages/context/command-profile/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/command-profiles.md",
-      "symbol": "CommandProfileSource",
-      "source": "packages/context/command-profile/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/command-profiles.md",
-      "symbol": "CommandCandidateName",
-      "source": "packages/context/command-profile/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/command-profiles.md",
-      "symbol": "CommandProfileCandidateMode",
-      "source": "packages/context/command-profile/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/command-profiles.md",
-      "symbol": "CommandCandidateProvenance",
-      "source": "packages/context/command-profile/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/command-profiles.md",
-      "symbol": "ResolvedCommandCandidate",
-      "source": "packages/context/command-profile/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/command-profiles.md",
-      "symbol": "ResolvedCommandProfile",
-      "source": "packages/context/command-profile/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/command-profiles.md",
-      "symbol": "CommandProfileQuery",
-      "source": "packages/context/command-profile/src/types.ts"
-    },
-    {
       "doc": "docs/subsystems/llm-streaming.md",
       "symbol": "LlmCallConfig",
       "source": "packages/llm/llm/src/call-config.ts"

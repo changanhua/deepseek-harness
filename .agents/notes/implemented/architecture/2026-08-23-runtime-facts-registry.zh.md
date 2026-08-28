@@ -24,6 +24,8 @@ Status: implemented
 
 事实可通过 `relevance` 声明必要工具名称。注册表而非各提供方会针对当前作用域，在权威 `ctx.tools` 注册表上求值这些名称。缺少作用域或必要工具不可见会抑制该行。结果文本进入 agent loop 现有的带来源运行时上下文替换路径，因此值发生变化时可记录、可回放，而无需添加新的 Session 事件类型。
 
+Web host 组合挂载注册表与 Host provider，agent preset 决定模型是否可以调用 `runtime_inspect`。`standard` 与 `code` preset 在各自作用域中挂载该工具；`minimal` 省略它并抑制 runtime context，从而保持固定的双工具组合。
+
 ### 宿主提供方委托变化事实
 
 `@deepseek-ai/dsh-runtime-facts-host` 拥有初始 Host 清单。`host.arch` 与 `host.os` 是 static baseline 事实。`runtime.execution-world` 是委托给 `ctx.subprocess.executionWorld` 的 dynamic baseline 事实；本地提供方报告 `local`，E2B 报告 `remote`，因此消费方不从平台或 class 标识推断位置。这是对[可移植执行环境决策](2026-07-28-portable-execution-world-consumers.zh.md)的扩展，而不是替代。

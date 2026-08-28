@@ -24,6 +24,8 @@ The registry contributes one order-120 `systemPrompt.context` entry. Its synchro
 
 A fact may declare required tool names through `relevance`. The registry, not each provider, evaluates those names against the authoritative `ctx.tools` registry for the current scope. An absent scope or hidden required tool suppresses the row. The resulting text enters the agent loop's existing sourced runtime-context replacement path, so a changed value is logged and replayable without adding a new Session event type.
 
+The Web host composition mounts the registry and Host provider, while agent presets decide whether the model may call `runtime_inspect`. The `standard` and `code` presets mount the tool in their own scopes; `minimal` omits it and suppresses runtime context, preserving its fixed two-tool composition.
+
 ### Host provider delegates changing facts
 
 `@deepseek-ai/dsh-runtime-facts-host` owns the initial Host inventory. `host.arch` and `host.os` are static baseline facts. `runtime.execution-world` is a dynamic baseline fact delegated to `ctx.subprocess.executionWorld`; the local provider reports `local` and E2B reports `remote`, so consumers do not infer location from platform or class identity. This extends rather than replaces the [portable execution-world decision](2026-07-28-portable-execution-world-consumers.md).

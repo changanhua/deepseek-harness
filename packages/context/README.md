@@ -8,7 +8,6 @@ Product plugins that add model-visible request context without defining a tool. 
 |---|---|---|
 | [`runtime-facts/`](runtime-facts/README.md) | Owned runtime-fact registry and synchronous baseline projection | `ctx.runtimeFacts` |
 | [`runtime-facts-host/`](runtime-facts-host/README.md) | Host-process runtime-fact provider | — |
-| [`command-profile/`](command-profile/README.md) | Command-knowledge registry: contributions, merge, and lexical query | `ctx.commandProfiles` |
 | [`session-reference/`](session-reference/README.md) | Bounded snapshots of other sessions | `ctx.sessionReferenceResolver` |
 | [`file-reference/`](file-reference/README.md) | File-reference discovery seam and `@file` grammar | `ctx.fileReferences` |
 | [`file-reference-local/`](file-reference-local/README.md) | Local-filesystem file-reference provider | — |
