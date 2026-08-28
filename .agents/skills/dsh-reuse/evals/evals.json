@@ -1,0 +1,23 @@
+{
+  "skill_name": "dsh-reuse",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我准备给 DSH 加一个 durable cron workflow，让模型编排的 workflow 可以每晚自动恢复执行。先判断项目已有 Goal、Schedule、Workflow、Queue 能复用什么，是否真的需要新系统，并给出最小依赖设计。",
+      "expected_output": "Separates reminder delivery, same-session goals, live workflows, and durable typed Queue work; labels committed, current-WIP, and runtime evidence; recommends reuse/bridge/build and avoids a universal scheduler without proof.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "想给 task-queue 做批量高质量生图。每个任务现在启动 DSH Agent 写提示词，我想找 GitHub 生图提示词 Skill 复用。分析本地和社区已有能力，给出是否直接装、怎么接入、哪些代码真正需要新增。",
+      "expected_output": "Audits DSH Skills, Queue WorkKinds/Batch, image Provider seams, and primary community Skill sources; distinguishes current WIP from shipped capability; chooses pinned vendor/fork plus one batch compile and a Handler Bridge instead of per-item Agents or automatic install.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "修一下 ui-task-queue 里状态标签的中文翻译，行为和接口都不变。",
+      "expected_output": "Recognizes an already-scoped mechanical localization edit and does not invoke a repository-wide feature reuse audit.",
+      "files": []
+    }
+  ]
+}
