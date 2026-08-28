@@ -1,6 +1,6 @@
 /**
- * The sidebar's Queue module entry: a first-level navigation row (design
- * §3.1) with a status badge derived from the shared store's stats — the badge
+ * The sidebar's Queue module entry: a first-level navigation row with a status
+ * badge derived from the shared store's stats — the badge
  * only says whether attention is needed, never the whole queue. Wide renders
  * the labeled row; the collapsed rail renders the icon with the badge.
  */

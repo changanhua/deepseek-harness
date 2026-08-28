@@ -1,10 +1,12 @@
 # Client UI Task Queue
 
+English | [中文](README.zh.md)
+
 The Queue module's browser surface: the sidebar's first-level Queue navigation
 entry with a live status badge, and the center-column Queue workspace over the
 taskQueue Remote.
 
-The workspace (design §4) answers four questions at a glance: is the service
+The workspace answers four questions at a glance: is the service
 healthy, what is running, what needs a person, and what did the selected task
 produce. The default view shows service state and capacity, status filters and
 search, the task list, and the selected task's detail; internal fields

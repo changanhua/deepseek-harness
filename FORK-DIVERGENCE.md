@@ -4,7 +4,7 @@ A manually maintained record of current deliberate differences between this fork
 
 ## Identity
 
-- The official upstream tips and this fork's `master` share merge base `b150a551b8` (upstream dsh-v0.1.1-rc.2). This fork's `master` currently sits 49 commits ahead of that base; upstream has no commits this fork lacks.
+- The official upstream tip and this fork share merge base `cd5ef81481` (upstream `dsh-v0.1.2-alpha.1`). After the reconciliation merge, the fork sits 96 commits ahead of that base; upstream has no commits this fork lacks.
 - Official upstream: `https://github.com/deepseek-ai/deepseek-harness.git`
 - This fork: `https://github.com/changanhua/deepseek-harness.git`
 
@@ -24,8 +24,11 @@ A manually maintained record of current deliberate differences between this fork
 | 10 | `.agents/notes/implemented/feature/2026-07-30-web-read-card.{md,zh.md}` | Fixed a dead fragment anchor. |
 | 11 | `packages/host/capability-registry/README.md` | Removed a dead link to a nonexistent `README.zh.md`. |
 | 12 | `packages/bundle/web-app` | Fork allows `--host 0.0.0.0` (LAN publishing on a trusted network, warning only); upstream rejects it for safety. Kept as a deliberate fork choice. |
-| 13 | `packages/task-queue/*`, `packages/client/ui-task-queue` | Fork-only durable cross-session task-queue capability: service seam, local/remote backends, seven `task_queue_*` tools, `/queue` command, and browser Queue workspace. Upstream has no equivalent. |
+| 13 | `packages/task-queue/*`, `packages/client/ui-task-queue` | Fork-only durable cross-session task-queue capability: service seam, local/remote backends, ten `task_queue_*` tools, `/queue` command, and browser Queue workspace. Upstream has no equivalent. |
 | 14 | `docs/specs/` | Fork-only design-spec documents (research baseline, task-queue design, UI prototypes). |
+| 15 | `packages/context/runtime-facts*`, `packages/extensions/tool-runtime-inspect` | Fork-only owned runtime-fact registry, Host fact projection, and read-only inspection tool. |
+| 16 | `packages/host/capability-registry`, `packages/client/ui-capability`, `packages/client/ui-settings-skills` | Fork-only read-only capability and Skills-management projection over the `capabilityRegistry` Remote. |
+| 17 | `packages/client/ui-layout`, `packages/client/ui-sidebar` | Fork keeps the `shell.view`/`sidebar.modules` module ring so Queue and Capability views can replace the center view without unmounting conversation state. |
 
 ## Non-divergence workspace residue
 

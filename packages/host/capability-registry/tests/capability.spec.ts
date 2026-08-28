@@ -74,7 +74,7 @@ async function harness(fakeEntries: FakeEntry[] = []): Promise<{
 }
 
 describe('CapabilityRegistryGateway', () => {
-  it('publishes one direct list method under the capabilityRegistry namespace', async () => {
+  it('publishes direct list and management methods under the capabilityRegistry namespace', async () => {
     const { gateway } = await harness()
     expect(gateway.typertRemote).toMatchObject({
       serviceKey: 'capabilityRegistry',
@@ -82,6 +82,7 @@ describe('CapabilityRegistryGateway', () => {
     })
     expect(remoteMethods(gateway)).toEqual([
       { method: 'list', invocation: { kind: 'direct' } },
+      { method: 'management', invocation: { kind: 'direct' } },
     ])
   })
 

@@ -4,16 +4,18 @@
  * workspace view, both over one shared QueueStore driven by the panel Remote
  * (`ctx.remote.taskQueue`). The plugin owns the refresh chain: a 5s snapshot
  * poll keeps the badge live and the workspace re-reads on mount and after
- * every mutation; no forwarded-event dependency in v1 (a poll is the honest
- * floor until the `task-queue/*` events join the remote allowlist).
+ * every mutation. A poll is the refresh floor until `task-queue/*` events
+ * join the remote allowlist.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // Type-only: pulls the generated Remote API and ctx.remote merge through the Client assembly boundary.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the `shell.view` SlotMap merge (ui-layout).
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: pulls the `sidebar.modules` SlotMap merge (ui-sidebar).
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+// Type-only: supplies the renderer-owned ctx.slots service.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-task-queue-remote/remote'

@@ -16,7 +16,7 @@ This table connects model-visible tool names to the plugin package and service s
 | Tool package | Model-visible names | Requires | Writes / affects | Shipped aliases | Deployment note |
 | --- | --- | --- | --- | --- | --- |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`, `ctx.userQuestions` | `tool/call`, `tool/result after a UI/provider answers the question` | - | ask_user_question pauses the tool call until the active UI provider returns a human answer. |
-| `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`, `ctx.codeRuntime (execution time)`, `ctx.systemPrompt` | `tool/call`, `one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call`, `tool/result` | - | Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: code` / `mode: both` (see the Code Mode Agent Note). Under `code` it is the registry's only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime's language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result. |
+| `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`, `ctx.codeRuntime (execution time)`, `ctx.systemPrompt` | `tool/call`, `one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call`, `tool/result` | - | Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: ptc` / `mode: both` (see the PTC mode Agent Note). Under `ptc` it is the registry's only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime's language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result. |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`, `ctx.systemPrompt`, `ctx.userQuestions (execution time, opportunistic)` | `tool/call`, `plan/mode inactive on an approved review`, `tool/result` | - | exit_plan_mode stays in the model-facing schema while planning is inactive so transitions add no tool-catalog churn on top of the plan-policy change. Its execute path rejects calls outside plan mode; in plan mode it presents the plan over the user-questions seam (approve / keep planning with feedback), and approval logs plan mode inactive at the step boundary. |
 | `@deepseek-ai/dsh-tool-bash` | `bash` | `ctx.tools`, `ctx.shell`, `ctx.systemPrompt`, `ctx.shellEnv`, `ctx.jobs at call time for run_in_background` | `tool/call`, `tool/result` | - | The bash tool is the model-facing consumer of the bash executor seam. A `run_in_background` run registers with the generic `ctx.jobs` runtime and is collected/stopped through the `job_*` tools from `@deepseek-ai/dsh-tool-jobs`; the `enableRunInBackground` config (default true) removes the parameter entirely when disabled. |
 | `@deepseek-ai/dsh-tool-pwsh` | `pwsh` | `ctx.tools`, `ctx.shell`, `ctx.systemPrompt`, `ctx.shellEnv`, `ctx.jobs at call time for run_in_background` | `tool/call`, `tool/result` | - | The pwsh tool is the PowerShell-dialect consumer of the bash executor seam for Windows compositions (a PowerShell executor such as `@deepseek-ai/dsh-pwsh-local` backs `ctx.shell`); it mirrors the bash tool call-for-call minus sandbox controls — `run_in_background` runs register with the generic `ctx.jobs` runtime and are collected/stopped through the `job_*` tools, and the managed `DSH_*` environment comes from `@deepseek-ai/dsh-shell-env`. Each call runs in a fresh process (no persistent PTY session), with native `C:\...` paths and `$env:NAME` variables. |
@@ -34,11 +34,11 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-runtime-inspect` | `runtime_inspect` | `ctx.tools`, `ctx.systemPrompt`, `ctx.runtimeFacts`, `ctx.subprocess` | `tool/call`, `tool/result` | - | Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider; command inspection reports that provider's execution world without probing through a separate host path. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
-| `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered tool name is the load-time `toolName` config (default `subagent`); the schema above is that default. The shipped compositions load this package once per subagent backend, so the model additionally sees `subagent_fork` bound to the fork backend. Each instance's description, `run_in_background` parameter, and system-prompt policy follow its own `backgroundMode` and `enableRunInBackground`, so the two shipped schemas are not identical: `subagent` is `continuable` and defaults omitted calls to background with automatic settlement delivery, while `subagent_fork` stays `one-shot` and defaults them to foreground — see `packages/bundle/base/cordis.patch.yml` and `examples/acp-agent/cordis.yml`. |
+| `@deepseek-ai/dsh-tool-subagent` | `list_subagent_models`, `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt`, `ctx.llm for model discovery and selected-route validation` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered delegation name is the load-time `toolName` config (default `subagent`); the default schema above has model selection off, while the discovery schema is shown as the fixed companion available in an enabled Session. Web presets sample the Plugins preference for each new top-level Session and preserve that decision for its child Sessions; `subagent_fork` remains fixed-route. Each instance independently controls whether it reads model-selection settings and its background behavior through `modelSelectionSettings`, `backgroundMode`, and `enableRunInBackground`. |
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message` | `ctx.tools`, `ctx.subagents`, `ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries). |
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`, `ctx.systemPrompt`, `a live continuable in-process child Agent` | `tool/call`, `tool/result`, `a user-role message in the direct parent session` | - | Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
-| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_dismiss`, `task_queue_enqueue`, `task_queue_enqueue_batch`, `task_queue_executors`, `task_queue_list`, `task_queue_retry`, `task_queue_stats`, `task_queue_status`, `task_queue_undismiss` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessions (notification finalizer flush)`, `ctx.taskQueue (optional host service)` | `tool/call`, `tool/result`, `user/message notification candidates via agent/pre-step`, `task-queue/* notification acks` | - | The durable cross-session task-queue controller: seven `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools. |
+| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_dismiss`, `task_queue_enqueue`, `task_queue_enqueue_batch`, `task_queue_executors`, `task_queue_list`, `task_queue_retry`, `task_queue_stats`, `task_queue_status`, `task_queue_undismiss` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessions (notification finalizer flush)`, `ctx.taskQueue (optional host service)` | `tool/call`, `tool/result`, `user/message notification candidates via agent/pre-step`, `task-queue/* notification acks` | - | The durable cross-session task-queue controller: ten `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools. |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`, `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
@@ -146,9 +146,9 @@ Execute a TypeScript program against the available tools. Takes two required arg
 }
 ```
 
-Source: [`packages/core/tools/src/code-mode.ts`](../packages/core/tools/src/code-mode.ts)
+Source: [`packages/core/tools/src/ptc.ts`](../packages/core/tools/src/ptc.ts)
 
-Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: code` / `mode: both` (see the Code Mode Agent Note). Under `code` it is the registry's only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime's language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result.
+Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: ptc` / `mode: both` (see the PTC mode Agent Note). Under `ptc` it is the registry's only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime's language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result.
 
 <a id="deepseek-aidsh-plan-mode"></a>
 
@@ -568,6 +568,7 @@ Custom editing tool for viewing, creating and editing files
 * If `path` is a file, `view` displays the result of applying `cat -n`. If `path` is a directory, `view` lists non-hidden files and directories up to 2 levels deep
 * The `create` command cannot be used if the specified `path` already exists as a file
 * If a `command` generates a long output, it will be truncated and marked with `<response clipped>`
+* A null placeholder for a parameter unused by the selected command is treated as omitted. Required parameters still need values; omit `str_replace.new_str` rather than setting it to null when deleting a match
 
 Notes for using the `str_replace` command:
 * The `old_str` parameter should match EXACTLY one or more consecutive lines from the original file. Be mindful of whitespaces!
@@ -593,27 +594,62 @@ Notes for using the `str_replace` command:
       "description": "Absolute path to file or directory, e.g. `/repo/file.py` or `/repo`."
     },
     "file_text": {
-      "type": "string",
-      "description": "Required parameter of `create` command, with the content of the file to be created."
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Required string parameter of `create` command, with the content of the file to be created. A null placeholder is treated as omitted by commands that do not use this parameter."
     },
     "insert_line": {
-      "type": "integer",
-      "description": "Required parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`."
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Required integer parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`. A null placeholder is treated as omitted by commands that do not use this parameter."
     },
     "new_str": {
-      "type": "string",
-      "description": "Optional parameter of `str_replace` command containing the new string (if not given, no string will be added). Required parameter of `insert` command containing the string to insert."
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Optional string parameter of `str_replace` command containing the new string (if omitted, no string will be added). Required string parameter of `insert` command containing the string to insert. A null placeholder is accepted only by commands that do not use this parameter."
     },
     "old_str": {
-      "type": "string",
-      "description": "Required parameter of `str_replace` command containing the string in `path` to replace."
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Required string parameter of `str_replace` command containing the string in `path` to replace. A null placeholder is treated as omitted by commands that do not use this parameter."
     },
     "view_range": {
-      "type": "array",
-      "description": "Optional parameter of `view` command when `path` points to a file. If none is given, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file.",
-      "items": {
-        "type": "integer"
-      }
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Optional parameter of `view` command when `path` points to a file. If omitted or null, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file."
     }
   },
   "required": [
@@ -1546,6 +1582,28 @@ The five read-only tools hide provider cursors and authorize every result from t
 
 ## `@deepseek-ai/dsh-tool-subagent`
 
+### `list_subagent_models`
+
+Discover LLM routes for subagents without changing the current Agent. Call with no arguments to list registered providers, with `provider` to list its advertised models, or with `provider` and `model` to inspect that exact model and its reasoning efforts. Catalog membership is advisory: an adapter may accept an unlisted model id. Use the returned ids with a delegation tool's `provider`, `model`, and `reasoning_effort` fields.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string",
+      "description": "Registered LLM provider id. Omit to list providers."
+    },
+    "model": {
+      "type": "string",
+      "description": "Exact model id to inspect. Requires provider; omit to list that provider's advertised models."
+    }
+  }
+}
+```
+
+Source: [`packages/subagent/tool-subagent/src/list-models.ts`](../packages/subagent/tool-subagent/src/list-models.ts)
+
 ### `subagent`
 
 Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. Give it a complete, standalone prompt: it does not see this conversation. This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.
@@ -1576,7 +1634,7 @@ Delegate a self-contained task to a subagent (a separate agent that works in its
 
 Source: [`packages/subagent/tool-subagent/src/index.ts`](../packages/subagent/tool-subagent/src/index.ts)
 
-The registered tool name is the load-time `toolName` config (default `subagent`); the schema above is that default. The shipped compositions load this package once per subagent backend, so the model additionally sees `subagent_fork` bound to the fork backend. Each instance's description, `run_in_background` parameter, and system-prompt policy follow its own `backgroundMode` and `enableRunInBackground`, so the two shipped schemas are not identical: `subagent` is `continuable` and defaults omitted calls to background with automatic settlement delivery, while `subagent_fork` stays `one-shot` and defaults them to foreground — see `packages/bundle/base/cordis.patch.yml` and `examples/acp-agent/cordis.yml`.
+The registered delegation name is the load-time `toolName` config (default `subagent`); the default schema above has model selection off, while the discovery schema is shown as the fixed companion available in an enabled Session. Web presets sample the Plugins preference for each new top-level Session and preserve that decision for its child Sessions; `subagent_fork` remains fixed-route. Each instance independently controls whether it reads model-selection settings and its background behavior through `modelSelectionSettings`, `backgroundMode`, and `enableRunInBackground`.
 
 <a id="deepseek-aidsh-tool-subagent-control"></a>
 
@@ -2087,7 +2145,7 @@ Restore a dismissed terminal task to attention by id. Reverses task_queue_dismis
 
 Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
 
-The durable cross-session task-queue controller: seven `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools.
+The durable cross-session task-queue controller: ten `task_queue_*` tools over the host `ctx.taskQueue` service. All executors default to disabled, so the catalog boots with an empty executor set; a deployment enables exact CLI binaries in the host row. `shell` is inbox-only and never accepted by the tools.
 
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 

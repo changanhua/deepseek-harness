@@ -6,14 +6,16 @@
  * loads a snapshot when a session is current and re-reads on retry; no
  * forwarded-event dependency in V0 (a manual refresh is the honest floor).
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only: pulls the generated Remote API and ctx.remote merge through the Client assembly boundary.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the `shell.view` SlotMap merge (ui-layout).
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: pulls the `sidebar.modules` SlotMap merge (ui-sidebar).
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+// Type-only: supplies the renderer-owned ctx.slots service.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the capabilityRegistry Remote type merge.

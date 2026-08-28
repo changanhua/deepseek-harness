@@ -62,9 +62,9 @@ Examples:
 
 /**
  * Parse and provide the Web invocation as an ordinary Cordis service. The
- * command's action publishes the flags this invocation named; `--host 0.0.0.0`
- * or a non-numeric `--port` is a usage error, so on rejection (and on `--help`)
- * nothing is provided.
+ * command's action publishes the flags this invocation named. Binding
+ * `0.0.0.0` is allowed with a warning; a non-numeric `--port` is a usage
+ * error, so on rejection (and on `--help`) nothing is provided.
  * @param ctx - plugin context carrying the command line.
  */
 export function apply(ctx: Context): void {
@@ -73,7 +73,7 @@ export function apply(ctx: Context): void {
     const options = program.opts<WebOptions>()
     if (options.host === '0.0.0.0') {
       // Fork choice (user): allow LAN publishing on a trusted home network.
-      // Deliberately NO hard guard here anymore. There is still no login on
+      // There is no login on
       // the GUI, so binding all interfaces exposes "drive the agent / run
       // shell commands on this machine" to everyone who can reach the port.
       console.warn('warning: binding dsh web to 0.0.0.0 exposes the unauthenticated web GUI to the network; only do this on a trusted network')

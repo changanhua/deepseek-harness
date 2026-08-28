@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { isOrdinary, ordinarySessionsOf, resolveTarget } from '../src/client/controller.ts'
 import { createSkillsFeatureController } from '../src/client/skills-feature-store.ts'
-import { createSkillsSnapshotController } from '../src/client/skills-snapshot.ts'
-import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
+import {
+  createSkillsSnapshotController,
+  type SkillManagementRemoteFace,
+} from '../src/client/skills-snapshot.ts'
 
 const S1 = 's1' as SessionId
 const S2 = 's2' as SessionId
@@ -30,7 +32,7 @@ describe('ordinary session resolution', () => {
   })
 })
 
-describe('resolveTarget (§3.4 fallback ladder)', () => {
+describe('resolveTarget fallback ladder', () => {
   it('keeps an adopted session while it still exists', () => {
     expect(resolveTarget(S1, new Set([S1, S2]), S2)).toEqual({ mode: 'explicit', sessionId: S1 })
   })
@@ -73,8 +75,8 @@ describe('SkillsSnapshotController', () => {
   }
 
   it('loads a snapshot and publishes it through the observable source', async () => {
-    const api = { skillManagement: { snapshot: vi.fn(async () => ({ rpcId: 'r', result: { ok: true, value } })) } } as unknown as Pick<IApiClient, 'skillManagement'>
-    const controller = createSkillsSnapshotController(api)
+    const remote = { management: vi.fn(async () => ({ ok: true as const, value })) } as SkillManagementRemoteFace
+    const controller = createSkillsSnapshotController(remote)
     const listener = vi.fn()
     controller.source.subscribe(listener)
     controller.load(S1)
@@ -84,16 +86,16 @@ describe('SkillsSnapshotController', () => {
   })
 
   it('keeps last-good snapshot and surfaces an error on a failed refresh', async () => {
-    const api = { skillManagement: { snapshot: vi.fn(async () => ({ rpcId: 'r', result: { ok: false, error: { code: 'internal', message: 'boom', details: {} } } })) } } as unknown as Pick<IApiClient, 'skillManagement'>
-    const controller = createSkillsSnapshotController(api)
+    const remote = { management: vi.fn(async () => ({ ok: false as const, error: { code: 'internal', message: 'boom', details: {} } })) } as SkillManagementRemoteFace
+    const controller = createSkillsSnapshotController(remote)
     controller.load(S1)
     await vi.waitFor(() => expect(controller.source.getSnapshot().status).toBe('error'))
     expect(controller.source.getSnapshot().error).toContain('boom')
   })
 
   it('retry re-uses the addressed session and reset clears the slot', async () => {
-    const api = { skillManagement: { snapshot: vi.fn(async () => ({ rpcId: 'r', result: { ok: true, value } })) } } as unknown as Pick<IApiClient, 'skillManagement'>
-    const controller = createSkillsSnapshotController(api)
+    const remote = { management: vi.fn(async () => ({ ok: true as const, value })) } as SkillManagementRemoteFace
+    const controller = createSkillsSnapshotController(remote)
     controller.load(S1)
     await vi.waitFor(() => expect(controller.source.getSnapshot().status).toBe('ready'))
     controller.reset()
@@ -101,20 +103,22 @@ describe('SkillsSnapshotController', () => {
     controller.load(S2)
     await vi.waitFor(() => expect(controller.source.getSnapshot().sessionId).toBe(S2))
     controller.retry()
-    expect(api.skillManagement.snapshot).toHaveBeenLastCalledWith({ sessionId: S2 })
+    expect(remote.management).toHaveBeenLastCalledWith({ sessionId: S2 })
   })
 
   it('an older response never overwrites a newer addressing slot', async () => {
     const resolvers: Array<(response: unknown) => void> = []
-    const api = { skillManagement: { snapshot: vi.fn(() => new Promise((resolve) => { resolvers.push(resolve) })) } } as unknown as Pick<IApiClient, 'skillManagement'>
-    const controller = createSkillsSnapshotController(api)
+    const remote = {
+      management: vi.fn(() => new Promise((resolve) => { resolvers.push(resolve) })),
+    } as unknown as SkillManagementRemoteFace
+    const controller = createSkillsSnapshotController(remote)
     controller.load(S1)
     controller.load(S2)
-    expect(api.skillManagement.snapshot).toHaveBeenCalledTimes(2)
+    expect(remote.management).toHaveBeenCalledTimes(2)
     // The first response lands after the second load superseded it: it must not
     // publish, because the slot belongs to S2 now.
-    resolvers[0]!({ rpcId: 'r', result: { ok: true, value } })
-    resolvers[1]!({ rpcId: 'r', result: { ok: true, value } })
+    resolvers[0]!({ ok: true, value })
+    resolvers[1]!({ ok: true, value })
     await vi.waitFor(() => expect(controller.source.getSnapshot().status).toBe('ready'))
     expect(controller.source.getSnapshot().sessionId).toBe(S2)
   })

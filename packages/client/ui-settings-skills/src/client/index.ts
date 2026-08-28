@@ -1,21 +1,23 @@
 /**
- * Skills management feature plugin, browser half (§5). It provisions one
- * shared viewing state (the adopted session, §3.4), one apply-private
- * snapshot controller (the `skillManagement.snapshot` remote), and registers
- * the session title-bar Popover (§5.1) and the Settings Skills section (§5.2).
+ * Skills management feature plugin, browser half. It provisions one shared
+ * viewing state for the adopted session, one apply-private snapshot controller
+ * over `capabilityRegistry.management`, and registers the session title-bar
+ * Popover and the Settings Skills section.
  * The inject face carries only plain callbacks plus the snapshot/adopted
  * hooks compartment; components never see the controller, the ctx, or a
  * hand-made hook. Export discipline: packages/client/AGENTS.md.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // Type-only: pulls the settings section + conversation header action slot
 // declarations, the locale Context merge, and the api-remotes forwarded key face.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only: supplies the renderer-owned ctx.slots service.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-import { createSkillsSnapshotController } from './skills-snapshot.ts'
+import type {} from '@deepseek-ai/dsh-host-capability-registry/remote'
+import { createSkillsSnapshotController, type SkillManagementRemoteFace } from './skills-snapshot.ts'
 import { createSkillsFeatureController } from './skills-feature-store.ts'
 import { SkillsSection } from './SkillsSection.tsx'
 import { SkillsPopover } from './SkillsPopover.tsx'
@@ -45,7 +47,7 @@ const SKILLS_SECTION_ID = 'skills'
  * one is NOT constrained, so registrations depend on each slot through
  * `slots.inject()`.
  */
-export const inject = ['slots', 'locale', 'connection']
+export const inject = ['slots', 'locale', 'connection', 'remote', 'remote.capabilityRegistry']
 
 /**
  * Register the Skills section and the header Popover once their slot
@@ -55,10 +57,11 @@ export const inject = ['slots', 'locale', 'connection']
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-skills: dictionaries')
 
-  const connection = ctx.get('connection') as ConnectionHandle
-  const snapshot = createSkillsSnapshotController(connection.api)
+  const snapshot = createSkillsSnapshotController(
+    ctx.remote.capabilityRegistry as unknown as SkillManagementRemoteFace,
+  )
   // One shared viewing source for both registrations: an adoption made in the
-  // header Popover is visible to the Settings section (§3.4). The value rides
+  // header Popover is visible to the Settings section. The value rides
   // the inject `hooks` compartment (not a `store` seat): the two slots live in
   // different scopes (root settings section vs per-session header action), and
   // the slot system pins a shared store handle to one scope.

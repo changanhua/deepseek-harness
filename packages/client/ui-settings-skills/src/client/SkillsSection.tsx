@@ -1,8 +1,8 @@
 /**
- * Skills Settings section (§5.2): the session-addressed management projection
- * over the read-only `skillManagement.snapshot` remote. The derived target
+ * Skills Settings section: the session-addressed management projection over
+ * the read-only `capabilityRegistry.management` Remote. The derived target
  * comes from the feature store's adopted session + the ordinary-session facts
- * (§3.4); a cold selection renders an empty state rather than querying the
+ * available ordinary-session facts; a cold selection renders an empty state rather than querying the
  * host global registry. The page shows the selected-first effective list,
  * same-name shadow groups, invocation states, provenance labels, structured
  * diagnostics, and the incomplete/standing limitations, with an explicit
@@ -43,7 +43,7 @@ export function SkillsSection({ close, useAdopted, followCurrent, useSessions, u
 
   const entries = snapshotState.snapshot?.entries ?? NO_ENTRIES
   const diagnostics = snapshotState.snapshot?.diagnostics ?? NO_DIAGNOSTICS
-  // §5.2: the effective list leads with selected candidates but still shows
+  // The effective list leads with selected candidates but still shows
   // same-name shadow groups, so every candidate participates in the search.
   const ordered = useMemo(
     () => [...entries].sort((a, b) => Number(b.selected) - Number(a.selected)),

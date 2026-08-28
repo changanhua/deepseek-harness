@@ -1,7 +1,7 @@
 /**
  * Status presentation helpers: the canonical queue statuses map onto the
  * shared StateDot semantic plus always-visible text labels, so state is never
- * carried by color alone (design §11).
+ * carried by color alone.
  */
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { QueueTaskStatus } from '@deepseek-ai/dsh-task-queue-remote/views'

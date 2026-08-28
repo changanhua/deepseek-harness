@@ -1,5 +1,5 @@
 /**
- * Pure session-resolution helpers for the Skills management feature (§3.4).
+ * Pure session-resolution helpers for the Skills management feature.
  * Everything here is a deterministic function of (a) the feature store's
  * adopted-session fact, (b) the current sessions list and (c) the current
  * selection. No subscription machinery, no host access — components derive
@@ -32,7 +32,7 @@ export function isOrdinary(row: OrdinarySessionRow): boolean {
 }
 
 /**
- * Project a sessions-list map onto the ordinary-session facts §3.4 needs.
+ * Project a sessions-list map onto the ordinary-session facts used for target resolution.
  * Blank and subagent rows are excluded: a management query addresses a real
  * ordinary session, never the host global registry on a cold/blank selection.
  * @param byId - the list store's row map.
@@ -55,7 +55,7 @@ export function ordinarySessionsOf(
 }
 
 /**
- * Resolve the target to address, applying the §3.4 fallback ladder: a
+ * Resolve the target to address: a
  * deliberately adopted session wins while it still exists; otherwise follow
  * the current ordinary session; otherwise render the empty state.
  * @param adopted - the feature store's adopted session (undefined = following).

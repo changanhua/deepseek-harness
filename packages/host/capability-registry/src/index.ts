@@ -3,10 +3,11 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-skill'
+import type { SkillCandidate, SkillManagementResult } from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-tools'
 import { scopeOf, type ScopeKey } from '@deepseek-ai/dsh-scope'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { isJsonValue } from '@deepseek-ai/dsh-session'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from 'zod'
 import type {
@@ -15,6 +16,10 @@ import type {
   CapabilitySnapshot,
   CapabilityTool,
   McpServerEntryId,
+  SkillDiagnostic,
+  SkillEntryId,
+  SkillManagementOrigin,
+  SkillManagementSnapshot,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -22,6 +27,76 @@ export type * from './types.ts'
 /** Brand an MCP server entry id at the owning boundary. */
 function mcpServerEntryId(value: string): McpServerEntryId {
   return value as McpServerEntryId
+}
+
+/** Brand the stable identity projected for one discovered skill candidate. */
+function skillEntryId(candidate: SkillCandidate): SkillEntryId {
+  return `${candidate.provider}:${candidate.source}:${candidate.name}:${String(candidate.rank)}` as SkillEntryId
+}
+
+/** Project a provider-declared origin, with an explicit runtime fallback. */
+function skillOrigin(candidate: SkillCandidate): SkillManagementOrigin {
+  const origin = candidate.origin
+  if (origin === undefined) {
+    return { kind: 'runtime', provider: candidate.provider, layerLabel: 'Runtime' }
+  }
+  const details = origin.details !== undefined && isJsonValue(origin.details)
+    ? origin.details as SkillManagementOrigin['details']
+    : undefined
+  return {
+    kind: origin.kind,
+    provider: origin.provider,
+    layerLabel: origin.layerLabel,
+    ...details === undefined ? {} : { details },
+  }
+}
+
+/** Project the registry management observation onto the stable Remote fields. */
+function managementSnapshot(
+  sessionId: SessionId,
+  fidelity: 'live' | 'standing',
+  result: SkillManagementResult,
+): SkillManagementSnapshot {
+  return {
+    sessionId,
+    fidelity,
+    complete: result.complete,
+    entries: result.entries.map((entry) => {
+      const candidate = entry.candidate
+      return {
+        id: skillEntryId(candidate),
+        summary: {
+          name: candidate.name,
+          description: candidate.description,
+          ...candidate.whenToUse === undefined ? {} : { whenToUse: candidate.whenToUse },
+          invocation: { ...candidate.invocation },
+          source: candidate.source,
+          provider: candidate.provider,
+          ...candidate.resourceBase === undefined ? {} : { resourceKind: candidate.resourceBase.kind },
+        },
+        selected: entry.selected,
+        ...(entry.shadowedBy === undefined || entry.shadowReason === undefined) ? {} : {
+          shadow: { by: skillEntryId(entry.shadowedBy), reason: entry.shadowReason },
+        },
+        origin: skillOrigin(candidate),
+        actions: { edit: false, remove: false, setInvocation: false },
+      }
+    }),
+    diagnostics: result.diagnostics.map((diagnostic) => {
+      const details = diagnostic.details !== undefined && isJsonValue(diagnostic.details)
+        ? diagnostic.details as SkillDiagnostic['details']
+        : undefined
+      return {
+        code: diagnostic.code,
+        severity: diagnostic.severity,
+        stage: diagnostic.stage,
+        message: diagnostic.message,
+        ...diagnostic.provider === undefined ? {} : { provider: diagnostic.provider },
+        ...diagnostic.candidatePath === undefined ? {} : { location: diagnostic.candidatePath },
+        ...details === undefined ? {} : { details },
+      }
+    }),
+  }
 }
 
 /** The Loader module specifier for the MCP client bridge. */
@@ -69,6 +144,24 @@ export class CapabilityRegistryGateway extends TypertRemoteService {
     const mcpServers = this.projectMcpServers(scope)
     const tools = this.projectTools(mcpServers, scope)
     return { sessionId, skills, tools, mcpServers }
+  }
+
+  /**
+   * Read every discovered skill candidate, shadow edge, and diagnostic.
+   * @param request - viewing session whose live Agent selects scoped layers.
+   * @returns the complete read-only management snapshot.
+   */
+  @Remote('management')
+  async management(request: { sessionId: SessionId }): Promise<SkillManagementSnapshot> {
+    const scope = this.resolveSessionScope(request.sessionId)
+    const result = await this.ctx.skills.managementSnapshot(
+      scope === undefined ? {} : { scope },
+    )
+    return managementSnapshot(
+      request.sessionId,
+      scope === undefined ? 'standing' : 'live',
+      result,
+    )
   }
 
   /** Project skills through the registry's management snapshot for the session scope. */

@@ -10,7 +10,7 @@
  */
 
 import type { HostObservable, PropsLocale, PropsRuntime, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SkillsSnapshotState } from './skills-snapshot.ts'
 import type { SkillsFeatureState } from './skills-feature-store.ts'
 import type { NS } from './locales.ts'

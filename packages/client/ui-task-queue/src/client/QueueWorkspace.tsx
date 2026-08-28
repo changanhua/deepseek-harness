@@ -1,5 +1,5 @@
 /**
- * The center-column Queue workspace (design §4): service state and capacity,
+ * The center-column Queue workspace: service state and capacity,
  * filters + search, the task list, and the selected task's detail. Default
  * view answers "is the service healthy, what is running, what needs me, and
  * what is the outcome"; internal fields (receipt, fingerprints, run pids)

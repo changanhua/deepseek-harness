@@ -1,11 +1,11 @@
 /**
- * Session title-bar Skills Popover (§5.1): the small per-session entry beside
+ * Session title-bar Skills Popover: the small per-session entry beside
  * the title. It shows the final effective skills for ITS ordinary session with
  * model/user invocation state, an incomplete/standing hint, and a diagnostic
- * count, plus a "Manage all" affordance that adopts this session (§3.4) and
+ * count, plus a "Manage all" affordance that adopts this session and
  * opens the Skills Settings section via the injected navigator callback. A
  * subagent address renders dormant — it has no ordinary attached session, so
- * it never issues a management request (§5.1).
+ * it never issues a management request.
  */
 
 import { useEffect, useMemo, useState } from 'react'

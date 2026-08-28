@@ -2,7 +2,7 @@
  * The Skills feature viewing state controller: a small observable source
  * carrying only interaction state that must survive across the two
  * registrations (the Popover adopts, the section reads) — the
- * deliberately-adopted session chosen by "Manage all" (§3.4). Snapshot data
+ * deliberately-adopted session chosen by "Manage all". Snapshot data
  * does NOT live here: that is business data owned by the apply-private
  * snapshot controller.
  *
@@ -14,7 +14,7 @@
 
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 
 /** Feature viewing state: the deliberately-adopted session, if any. */
 export interface SkillsFeatureState {

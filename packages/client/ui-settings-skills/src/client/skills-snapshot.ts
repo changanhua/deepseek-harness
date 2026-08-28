@@ -1,15 +1,22 @@
 /**
  * The Skills management snapshot controller (apply-private). It owns the
- * single response-addressable slot for the read-only `skillManagement.snapshot`
- * remote: a bare observable (HostObservable) the inject `hooks` compartment
+ * single response-addressable slot for the read-only
+ * `capabilityRegistry.management` Remote: a bare observable (HostObservable) the inject `hooks` compartment
  * hands to the renderer as `useSnapshot`, plus plain load/retry/reset
  * callbacks the inject face exposes. Fetch state stays here, never in a
  * component and never in a viewing store (the object-layer rule).
  */
 
-import type { IApiClient, SessionId, SkillManagementSnapshot } from '@deepseek-ai/dsh-api-remotes/client'
+import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SkillManagementSnapshot } from '@deepseek-ai/dsh-host-capability-registry/types'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+
+/** Narrow management Remote consumed by the snapshot controller. */
+export interface SkillManagementRemoteFace {
+  management(request: { sessionId: SessionId }): Promise<RemoteResult<SkillManagementSnapshot>>
+}
 
 /** One snapshot state observable value. */
 export interface SkillsSnapshotState {
@@ -46,9 +53,7 @@ export interface SkillsSnapshotController {
  * @param api - the wire face restricted to the management domain.
  * @returns the controller.
  */
-export function createSkillsSnapshotController(
-  api: Pick<IApiClient, 'skillManagement'>,
-): SkillsSnapshotController {
+export function createSkillsSnapshotController(remote: SkillManagementRemoteFace): SkillsSnapshotController {
   const store = createSnapshotStore<SkillsSnapshotState>({
     status: 'idle', error: null, sessionId: undefined, snapshot: undefined,
   })
@@ -75,19 +80,19 @@ export function createSkillsSnapshotController(
       draft.sessionId = sessionId
     })
     void (async () => {
-      let response: Awaited<ReturnType<IApiClient['skillManagement']['snapshot']>>
+      let response: RemoteResult<SkillManagementSnapshot>
       try {
-        response = await api.skillManagement.snapshot({ sessionId })
+        response = await remote.management({ sessionId })
       } catch (error) {
         publishFailure(generation_, messageOf(error))
         return
       }
       if (generation_ !== generation) return
-      if (!response.result.ok) {
-        publishFailure(generation_, `${response.result.error.code}: ${response.result.error.message}`)
+      if (!response.ok) {
+        publishFailure(generation_, `${response.error.code}: ${response.error.message}`)
         return
       }
-      const value = response.result.ok ? response.result.value : undefined
+      const value = response.value
       store.update((draft) => {
         draft.status = 'ready'
         draft.error = null

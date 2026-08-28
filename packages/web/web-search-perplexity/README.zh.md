@@ -1,35 +1,114 @@
+---
+description: "ctx.web 的 Perplexity 搜索提供方：部署方如何挂载 OpenAI 兼容的 Perplexity 搜索，获得生成答案与引用。"
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-web-search-perplexity
 
 [English](README.md) | 中文
 
-由 [Perplexity](https://perplexity.ai) 支持的 `WebSearchProvider`，用于 harness [web 能力 seam](../web/README.zh.md)（`ctx.web`）。它调用 Perplexity 的 OpenAI 兼容 `POST /chat/completions` 端点，把生成答案与引用映射为 seam 规范化的 `WebSearchResult`。
+## 概述
 
-这是一个**实现**包：它向 `ctx.web` 注册提供方，经可选的 `ctx.credentials` seam 在每次搜索时解析凭证，且不注册面向模型的工具。与 `@deepseek-ai/dsh-llm-deepseek` 一样，它是函数／命名空间插件（`inject: ['web']`）。OpenAI 兼容协议格式（wire format）是提供方私有细节，并**不**使该提供方依赖 `ctx.llm`。挂载 runtime-facts 服务时，它贡献两个仅 inspect 的提供方 fact（`web-search.perplexity.local-available` 与 `web-search.perplexity.credential-configured`）——投影是可选的，没有该服务时提供方行为与此前完全一致。
+有了 `dsh-web-search-perplexity`，harness 可以通过 Perplexity 搜索 web，一次调用同时获得模型生成的答案与可引用来源。当部署持有 Perplexity API 密钥、并希望获得生成答案时选择它。Perplexity 没有结果数量控制，因此返回的来源会在事后被截断到请求的上限。Perplexity 省略结构化结果元数据时，来源回退为只含 URL 的引用。面向模型的 `web_search` 工具位于 `dsh-tool-web`。
 
-## 配置
+## 目录
 
-| 配置键 | 默认值 | 含义 |
-|---|---|---|
-| `apiKey` | （省略） | 字面量 Perplexity API 密钥。优先用 `apiKeyEnv`，使配置不含 secret；非空字面量优先。 |
-| `apiKeyEnv` | `PERPLEXITY_API_KEY` | 每次搜索经 `ctx.credentials` 解析的凭证引用；该 seam 缺席时回退进程环境。缺失值使调用以 `WEB_PROVIDER_CREDENTIAL_MISSING` 失败。 |
-| `baseURL` | `https://api.perplexity.ai` | 端点基址；追加 `/chat/completions`。无法解析时提供方不可用。 |
-| `model` | `sonar` | 搜索模型名称。 |
-| `maxTokens` | `1024` | 生成答案 token 上限（`max_tokens`）。必须是正整数。 |
-| `searchRecency` | （未设置） | 以 `search_recency_filter` 发送的新近程度窗口：`day`、`week`、`month` 或 `year`。未设置时不发送过滤条件。 |
+- [使用本包](#use-this-package)
+- [理解实现](#understand-the-implementation)
+- [进一步探索](#further-exploration)
+- [模型体验](#model-experience)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
+## 使用本包
+
+在已加载 web 服务的组合中挂载本提供方；它以 `perplexity` 搜索提供方身份注册，因此当它是唯一可用的搜索后端时，`ctx.web.search()` 会自动解析到它——也可以用 `searchProvider: perplexity` 固定。
+
+### 何时选择
+
+当部署持有 Perplexity API 密钥、并希望一次搜索同时获得模型生成的答案与可引用来源时选择此后端。密钥为空或端点基址无法解析时，提供方不可用——每次搜索调用都会以结构化错误失败。
+
+### 最小配置
+
+加载 web 服务与本提供方；API 密钥回退到启动环境中的 `$PERPLEXITY_API_KEY`，其余设置都有安全默认值。
 
 ```yaml
-- id: web-search-perplexity
-  name: '@deepseek-ai/dsh-web-search-perplexity'
+- name: '@deepseek-ai/dsh-web'
+- name: '@deepseek-ai/dsh-web-search-perplexity'
   config:
-    apiKeyEnv: PERPLEXITY_API_KEY
+    apiKey: !!js process.env.PERPLEXITY_API_KEY
 ```
 
-上述条目是 `web-search-perplexity` Settings section 的 base 层：覆盖它的 user 层会在**下一次**搜索生效，因为提供方按调用投影 section 而非在注册时捕获。因此端点或模型变化时，seam 的提供方选择不会闪烁。`apiKey` 带有 `role('secret')`，因此在任何层都不会出现在 `describe()` 响应中——配置界面只能得知 `apiKeyEnv` 所命名的凭证域是否持有值，永远不会得知某层是否携带字面量密钥。
+| 字段 | 默认值 | 含义 |
+|---|---|---|
+| `apiKey` | `$PERPLEXITY_API_KEY` | Perplexity API 密钥；为空或缺失时提供方不可用 |
+| `baseURL` | `https://api.perplexity.ai` | 端点基址；追加 `/chat/completions`。无法解析时提供方不可用 |
+| `model` | `sonar` | 搜索模型名称 |
+| `maxTokens` | `1024` | 生成答案 token 上限（`max_tokens`）；必须是正整数 |
+| `searchRecency` | （未设置） | 以 `search_recency_filter` 发送的新近程度窗口：`day`、`week`、`month` 或 `year`。未设置时不发送过滤条件 |
 
-## 映射
+生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-web-search-perplexity)是每个受支持字段及其 JSDoc 的穷尽式真源。
 
-`content` ← `choices[0].message.content`（生成答案）。`sources[]` 优先使用结构化 `search_results[]`（`url`、`title`、`snippet`、`publishedAt` ← `date`），否则回退到只含 URL 的 `citations[]` 数组；仅当不存在 `search_results` 时才采取这条回退路径。这些源只携带 `url`，因此 seam 上的 `title`／`snippet`／`publishedAt` 是可选字段。提供方失败以 `WebError` `WEB_PROVIDER_ERROR` 呈现；凭证缺失以 `WEB_PROVIDER_CREDENTIAL_MISSING` 呈现；中止请求以 `WEB_ABORTED` 呈现。HTTP 重定向会在访问 `Location` 指向的目标之前被拒绝，并以 `WEB_PROVIDER_ERROR` 呈现。Perplexity 没有结果数量控制，因此 seam 会强制执行 `maxResults`（截断 `sources[]` 并设置 `truncated`）。
+### 搜索返回什么
 
+`content` 携带 Perplexity 的生成答案。`sources[]` 优先使用结构化 `search_results[]`（`url`、`title`、`snippet`、`publishedAt` 取自 `date`），仅当 `search_results` 缺失时才回退到只含 URL 的 `citations[]` 数组——这正是服务上 `title`／`snippet`／`publishedAt` 为可选字段的原因。Perplexity 不公开结果数量控制，因此服务通过截断并标记来强制执行 `maxResults`。
+
+### 失败与恢复
+
+提供方失败——HTTP 错误、网络失败、响应体无法解析或结构不符——以 `WebError` `WEB_PROVIDER_ERROR` 呈现；中止请求以 `WEB_ABORTED` 呈现。HTTP 重定向会在访问 `Location` 指向的目标之前被拒绝，并以 `WEB_PROVIDER_ERROR` 呈现。调用方按 code 路由；面向模型的 `web_search` 工具会在自己的错误包装层内把失败呈现给模型。
+
+-----
+
+<a id="understand-the-implementation"></a>
+## 理解实现
+
+<details>
+<summary>实现细节——点击展开</summary>
+
+本节解释提供方背后的设计决策；可观察行为已在[使用本包](#use-this-package)中完整说明。
+
+### 设计理念
+
+该提供方是 Perplexity chat-completions 端点之上的薄适配器，遵循两条刻意的规则：
+
+- **生成答案作为 `content` 受到信任。** 与其他搜索后端不同，Perplexity 返回模型生成的答案，本提供方将其作为规范化 `content` 字段透传。
+- **结构化来源优先；只含 URL 的引用是回退。** `search_results[]` 携带可移植字段；`citations[]` 只携带 URL，服务词汇把这些字段设为可选，正是为了这种情况。
+
+### 源码地图
+
+| 文件 | 职责 |
+|---|---|
+| [`src/index.ts`](src/index.ts) | 插件入口：配置 schema、环境变量回退、提供方注册 |
+| [`src/provider.ts`](src/provider.ts) | `PerplexitySearchProvider`：请求分发、中止分类、答案与来源映射 |
+| [`src/types.ts`](src/types.ts) | chat-completions 响应的 Perplexity 协议类型 |
+| [`src/invariant.ts`](src/invariant.ts) | 不变式伴生插件（无运行时不变式；约定在服务处强制执行） |
+
+### 请求与映射流程
+
+`search()` 以 `redirect: 'error'` 把查询连同模型、token 上限与可选新近程度过滤条件 POST 到 `{baseURL}/chat/completions`。响应的 `content` 变为 `content`；存在 `search_results[]` 时它变为 `sources[]`，否则每个 `citations[]` 条目变为只含 URL 的来源；服务在返回路径上应用最终的 `maxResults` 上限。中止——名为 `AbortError` 的 `DOMException`——变为 `WEB_ABORTED`；其余情况变为 `WEB_PROVIDER_ERROR`。
+
+</details>
+
+-----
+
+<a id="further-exploration"></a>
+## 进一步探索
+
+当包级约定不够用时阅读以下页面。它们从共享词汇逐步进入服务、面向模型的工具与设计依据。
+
+- [web 子系统](../../../docs/subsystems/web.zh.md)——穷尽式的搜索请求／结果词汇与错误码。
+- [web 包映射](../README.zh.md)——六包家族与各角色。
+- [dsh-web](../web/README.zh.md)——本提供方注册进入的 web 服务。
+- [dsh-tool-web](../tool-web/README.zh.md)——渲染本提供方来源的面向模型 `web_search` 工具。
+- [生成配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-web-search-perplexity)——每个受支持配置字段及其源声明。
+- [web 能力 seam 决策](../../../.agents/notes/implemented/architecture/2026-06-24-web-capability-seam.zh.md)——搜索与抓取为何共用一项提供方选择服务。
+
+-----
+
+<a id="model-experience"></a>
 ## 模型体验
 
 ### 辅助 Perplexity 请求
@@ -40,7 +119,7 @@
 
 #### Token 影响
 
-每次搜索会产生独立的提供方 token；`maxTokens` 限制生成答案。
+每次搜索都会产生独立的提供方 token；`maxTokens` 限制生成答案。
 
 #### KV Cache 影响
 
@@ -50,20 +129,39 @@
 
 #### 模型看到的内容
 
-通过 [`dsh-tool-web`](../tool-web/README.zh.md)，会话模型会看到生成答案及结构化结果元数据，或只含 URL 的引用。该提供方确切的错误消息为 `Perplexity search aborted`、`Perplexity search request failed: <error>`、`Perplexity search credential resolution failed: <error>`、`Perplexity search has no API key for "<ref>"; store it through the credentials service (the web Models page writes it), export it in the launching environment, or set a literal "apiKey" in the web-search-perplexity config` 和 `Perplexity returned an unprocessable response body: <error>`；HTTP 失败保留提供方消息。错误包装层属于消费方。
+通过 `dsh-tool-web`，会话模型会看到生成答案及结构化结果元数据，或只含 URL 的引用。该提供方确切的错误消息为 `Perplexity search aborted`、`Perplexity search request failed: <error>` 和 `Perplexity returned an unprocessable response body: <error>`；HTTP 失败保留提供方消息。错误包装层属于消费方。
 
 #### Token 影响
 
-注册不会直接产生会话 token。答案与源 token 取决于数据，源数量受服务限制；保留的结果或错误会重复发送，直到发生压缩（compaction）。
+注册不会直接产生会话 token。答案与来源 token 取决于数据，来源数量受服务限制；保留的结果或错误会重复发送，直到发生压缩（compaction）。
 
 #### KV Cache 影响
 
 仅追加；新可见内容位于可复用请求前缀之后，不会使现有 KV Cache 条目失效。
 
-## 已知限制与暂缓事项
+## 已知限制与延期工作
 
-- **引用回退源只含 URL**：Perplexity 省略结构化 `search_results[]` 时，源不含 `title`／`snippet`／`publishedAt`，因此工具只渲染纯主机名标签。
-- **动态凭证可用性在操作内解析**：同步 `available()` 契约只能确认存在解析器，无法查询异步凭证存储。因此被选中的无密钥提供方会以 `WEB_PROVIDER_CREDENTIAL_MISSING` 使搜索失败；稳定的搜索 schema 仍保持注册。调用方取消会在本地与本次 preflight 竞争，但无法强制任意凭证后端本身停止工作。
-- **超量返回的来源仍会增加 token 消耗和延迟**：协议没有结果数量控制，`maxResults` 只能由 seam 在事后截断。
-- **只公开 `model`／`maxTokens`／`searchRecency`**：Perplexity 的其他搜索控制项（域名过滤条件、`web_search_options` 上下文大小、图片）有待提供方无关的 Service Definition 字段支持（见 [seam Agent Note](../../../.agents/notes/implemented/architecture/2026-06-24-web-capability-seam.zh.md)）。
-- **按错误形状分类中止**：只有 `DOMException` 且名为 `AbortError` 时才映射为 `WEB_ABORTED`；携带自定义原因的中止（例如 `dsh-timeout` 的 `TimeoutReason`）会呈现为 `WEB_PROVIDER_ERROR`。
+<a id="known-limitations-and-deferred-work"></a>
+
+
+这些限制说明提供方在哪些情况下不合适。它们是当前包约束。
+
+- **引用回退来源只含 URL**——Perplexity 省略结构化 `search_results[]` 时，来源不含 `title`／`snippet`／`publishedAt`，因此工具只渲染纯主机名标签。
+- **动态凭据可用性在操作内解析**——同步 `available()` 检查只能确认 resolver 存在，不能查询异步凭据存储。选中的无密钥提供方因此以 `WEB_PROVIDER_CREDENTIAL_MISSING` 失败；稳定搜索 schema 仍保持注册。
+- **超量返回的来源仍会增加 token 消耗与延迟**——协议没有结果数量控制，`maxResults` 只能由服务在事后截断。
+- **只公开 `model`／`maxTokens`／`searchRecency`**——Perplexity 的其他搜索控制项（域名过滤条件、`web_search_options` 上下文大小、图片）等待提供方无关的服务字段（见 [seam Agent Note](../../../.agents/notes/implemented/architecture/2026-06-24-web-capability-seam.zh.md)）。
+- **按错误形状分类中止**——只有名为 `AbortError` 的 `DOMException` 才映射为 `WEB_ABORTED`；携带自定义原因的中止（例如 `dsh-timeout` 的 `TimeoutReason`）呈现为 `WEB_PROVIDER_ERROR`。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+本开发备注是维护者的工作上下文：开放问题与尚未决定的探索方向。它明确不具权威性——已交付的行为、限制与既定理由以上文和相关 Agent Note 为准。
+
+#### 未来：更宽的 Perplexity 控制面
+
+Perplexity 的域名过滤条件、`web_search_options` 上下文大小与图片支持仍未公开。公开它们需要先有提供方无关的服务字段，让家族以一个协调一致的控制项、而非厂商专有参数的方式新增。
+
+</details>

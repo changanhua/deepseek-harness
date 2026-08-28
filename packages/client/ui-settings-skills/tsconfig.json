@@ -15,7 +15,7 @@
       "path": "../ui-slots"
     },
     {
-      "path": "../runtime"
+      "path": "../store"
     },
     {
       "path": "../ui-renderer"
@@ -34,6 +34,15 @@
     },
     {
       "path": "../../api/remotes/tsconfig.client.json"
+    },
+    {
+      "path": "../../host/capability-registry"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../typert/protocol"
     }
   ]
 }

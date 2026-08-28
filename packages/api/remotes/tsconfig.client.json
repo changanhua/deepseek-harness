@@ -55,7 +55,22 @@
       "path": "../../settings/settings"
     },
     {
-      "path": "../../skill/skill"
+      "path": "../../subagent/subagent"
+    },
+    {
+      "path": "../../interaction/user-approval"
+    },
+    {
+      "path": "../../interaction/user-questions"
+    },
+    {
+      "path": "../session-controller/tsconfig.client.json"
+    },
+    {
+      "path": "../settings-controller"
+    },
+    {
+      "path": "../workspace-controller/tsconfig.client.json"
     },
     {
       "path": "../../typert/protocol"
