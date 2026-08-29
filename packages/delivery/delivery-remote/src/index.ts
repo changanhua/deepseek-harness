@@ -101,13 +101,21 @@ const DEFAULT_INTERNALS: DeliveryRemoteInternals = {
 
 const MAX_BROWSER_EVIDENCE_BYTES = 256 * 1024
 
+interface GuardedAdmission {
+  readonly dependencies: DeliveryQueueBridgeDependencies
+  readonly failureSignal: () => AbortSignal | undefined
+}
+
 function guardedAdmission(
   dependencies: DeliveryQueueBridgeDependencies,
   signal: AbortSignal,
   operation: 'startChange' | 'startVerification',
-): DeliveryQueueBridgeDependencies {
-  const active = (): void => { requireActive(signal, operation) }
-  return {
+): GuardedAdmission {
+  let queueCommitted = false
+  const active = (): void => {
+    if (!queueCommitted) requireActive(signal, operation)
+  }
+  const guarded: DeliveryQueueBridgeDependencies = {
     delivery: {
       getWorkPacket(packetId) {
         active()
@@ -138,7 +146,7 @@ function guardedAdmission(
       async enqueue(request) {
         active()
         const workId = await dependencies.queue.enqueue(request)
-        active()
+        queueCommitted = true
         return workId
       },
     },
@@ -162,6 +170,10 @@ function guardedAdmission(
         return range
       },
     },
+  }
+  return {
+    dependencies: guarded,
+    failureSignal: () => queueCommitted ? undefined : signal,
   }
 }
 
@@ -313,18 +325,19 @@ export class DeliveryRemoteService extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<DeliveryDispatchBindingView> {
     requireActive(signal, 'startChange')
+    const admission = guardedAdmission({
+      delivery: this.ctx.delivery,
+      queue: this.queue,
+      repoWorkspace: this.ctx.repoWorkspace,
+    }, signal, 'startChange')
     try {
-      const binding = await this.internals.startCodeChange(guardedAdmission({
-        delivery: this.ctx.delivery,
-        queue: this.queue,
-        repoWorkspace: this.ctx.repoWorkspace,
-      }, signal, 'startChange'), {
+      const binding = await this.internals.startCodeChange(admission.dependencies, {
         packetId: WorkPacketId(input.packetId),
         executorId: ExecutorId(input.executorId),
       })
       return projectDispatchBinding(binding)
     } catch (error) {
-      throw remoteFailure('startChange', error, signal)
+      throw remoteFailure('startChange', error, admission.failureSignal())
     }
   }
 
@@ -340,18 +353,23 @@ export class DeliveryRemoteService extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<DeliveryDispatchBindingView> {
     requireActive(signal, 'startVerification')
+    const admission = guardedAdmission({
+      delivery: this.ctx.delivery,
+      queue: this.queue,
+      repoWorkspace: this.ctx.repoWorkspace,
+    }, signal, 'startVerification')
     try {
-      const binding = await this.internals.startVerification(guardedAdmission({
-        delivery: this.ctx.delivery,
-        queue: this.queue,
-        repoWorkspace: this.ctx.repoWorkspace,
-      }, signal, 'startVerification'), {
+      const binding = await this.internals.startVerification(admission.dependencies, {
         packetId: WorkPacketId(input.packetId),
         changeBindingId: DispatchBindingId(input.changeBindingId),
       })
       return projectDispatchBinding(binding)
     } catch (error) {
-      throw remoteFailure('startVerification', error, signal)
+      throw remoteFailure(
+        'startVerification',
+        error,
+        admission.failureSignal(),
+      )
     }
   }
 

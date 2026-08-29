@@ -1,4 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
+import { DeliveryError } from '@deepseek-ai/dsh-delivery'
 import {
   DispatchBindingId,
   EvidenceId,
@@ -25,6 +26,7 @@ import {
   submittingBindingFixture,
 } from '@deepseek-ai/dsh-delivery-testkit'
 import {
+  DeliveryTaskQueueError,
   startCodeChange as bridgeStartCodeChange,
   startVerification as bridgeStartVerification,
 } from '@deepseek-ai/dsh-delivery-task-queue'
@@ -484,6 +486,209 @@ describe('Delivery Remote explicit operations', () => {
     })
     expect(beginDispatch).not.toHaveBeenCalled()
     expect(enqueue).not.toHaveBeenCalled()
+  })
+
+  it('binds a committed change Work when cancellation races with Queue enqueue', async () => {
+    const packet = readyWorkPacketFixture()
+    const bindingId = DispatchBindingId('binding-change-commit-race')
+    const workId = WorkId('work-change-commit-race')
+    const submitting = submittingBindingFixture({ id: bindingId, packetId: packet.id })
+    const bound = boundBindingFixture({
+      ...submitting,
+      phase: 'bound',
+      queueWorkId: QueueWorkIdRef(String(workId)),
+    })
+    let settleEnqueue!: (value: WorkId) => void
+    const enqueue = vi.fn(() => new Promise<WorkId>((resolve) => { settleEnqueue = resolve }))
+    const bindDispatch = vi.fn(async () => bound)
+    const harness = makeHarness({
+      delivery: {
+        getWorkPacket: vi.fn(() => packet),
+        beginDispatch: vi.fn(async () => submitting),
+        bindDispatch,
+      },
+      operator: { enqueue },
+      internals: {
+        startCodeChange: bridgeStartCodeChange as unknown as TestInternals['startCodeChange'],
+      },
+    })
+    const controller = new AbortController()
+
+    const operation = harness.service.startChange({
+      packetId: String(packet.id), executorId: String(bound.executorId),
+    }, controller.signal)
+    await vi.waitFor(() => { expect(enqueue).toHaveBeenCalledOnce() })
+    controller.abort('operator-cancelled')
+    settleEnqueue(workId)
+
+    await expect(operation).resolves.toMatchObject({
+      id: bindingId,
+      queueWorkId: String(workId),
+    })
+    expect(enqueue).toHaveBeenCalledOnce()
+    expect(bindDispatch).toHaveBeenCalledOnce()
+    expect(bindDispatch).toHaveBeenCalledWith({
+      bindingId,
+      queueWorkId: QueueWorkIdRef(String(workId)),
+    })
+  })
+
+  it('binds a committed verification Work when cancellation races with Queue enqueue', async () => {
+    const packet = readyWorkPacketFixture()
+    const changeBinding = boundBindingFixture({
+      id: DispatchBindingId('binding-verify-commit-change'),
+      packetId: packet.id,
+      queueWorkId: QueueWorkIdRef('work-verify-commit-change'),
+    })
+    const claim = completedClaimFixture({
+      packetId: packet.id,
+      queueWorkId: changeBinding.queueWorkId,
+      queueAttemptId: QueueAttemptIdRef('work-verify-commit-change-attempt'),
+    })
+    const work = succeededWork({
+      id: String(changeBinding.queueWorkId),
+      kind: 'code.change@1',
+      intent: { packetId: packet.id },
+      resolved: {
+        packetId: packet.id,
+        contractRevisionId: packet.contractRevisionId,
+        repositoryId: packet.repositoryId,
+        baseCommit: packet.baseCommit,
+        executorId: changeBinding.executorId,
+        policyDigest: Sha256Digest(`sha256:${'9'.repeat(64)}`),
+      },
+      output: { completionClaim: claim },
+    })
+    const bound = verificationBinding(packet)
+    const submitting = { ...bound, phase: 'submitting' as const, queueWorkId: null }
+    const workId = WorkId(String(bound.queueWorkId))
+    let settleEnqueue!: (value: WorkId) => void
+    const enqueue = vi.fn(() => new Promise<WorkId>((resolve) => { settleEnqueue = resolve }))
+    const bindDispatch = vi.fn(async () => bound)
+    const harness = makeHarness({
+      delivery: {
+        getWorkPacket: vi.fn(() => packet),
+        getDispatchBinding: vi.fn(() => changeBinding),
+        beginDispatch: vi.fn(async () => submitting),
+        bindDispatch,
+      },
+      operator: { get: vi.fn(() => work), enqueue },
+      repository: {
+        inspectRevision: vi.fn(async (request: { repositoryId: string; commit: string }) => request),
+        inspectRange: vi.fn(async () => ({
+          repositoryId: packet.repositoryId,
+          baseCommit: packet.baseCommit,
+          targetCommit: claim.checkpointCommit,
+          descendsFromBase: true,
+          changedPaths: claim.changedPaths,
+        })),
+      },
+      internals: {
+        startVerification: bridgeStartVerification as unknown as TestInternals['startVerification'],
+      },
+    })
+    const controller = new AbortController()
+
+    const operation = harness.service.startVerification({
+      packetId: String(packet.id), changeBindingId: String(changeBinding.id),
+    }, controller.signal)
+    await vi.waitFor(() => { expect(enqueue).toHaveBeenCalledOnce() })
+    controller.abort('operator-cancelled')
+    settleEnqueue(workId)
+
+    await expect(operation).resolves.toMatchObject({
+      id: bound.id,
+      queueWorkId: String(workId),
+    })
+    expect(enqueue).toHaveBeenCalledOnce()
+    expect(bindDispatch).toHaveBeenCalledOnce()
+  })
+
+  it('reports a post-commit bind failure and reconciles the same Work on retry', async () => {
+    const packet = readyWorkPacketFixture()
+    const bindingId = DispatchBindingId('binding-change-bind-retry')
+    const workId = WorkId('work-change-bind-retry')
+    const submitting = submittingBindingFixture({ id: bindingId, packetId: packet.id })
+    const bound = boundBindingFixture({
+      ...submitting,
+      phase: 'bound',
+      queueWorkId: QueueWorkIdRef(String(workId)),
+    })
+    let settleFirstEnqueue!: (value: WorkId) => void
+    const enqueue = vi.fn()
+      .mockImplementationOnce(() => new Promise<WorkId>((resolve) => { settleFirstEnqueue = resolve }))
+      .mockResolvedValue(workId)
+    const bindDispatch = vi.fn()
+      .mockRejectedValueOnce(new DeliveryError('unavailable', 'Delivery bind is unavailable'))
+      .mockResolvedValue(bound)
+    const harness = makeHarness({
+      delivery: {
+        getWorkPacket: vi.fn(() => packet),
+        beginDispatch: vi.fn(async () => submitting),
+        bindDispatch,
+      },
+      operator: { enqueue },
+      internals: {
+        startCodeChange: bridgeStartCodeChange as unknown as TestInternals['startCodeChange'],
+      },
+    })
+    const controller = new AbortController()
+
+    const first = harness.service.startChange({
+      packetId: String(packet.id), executorId: String(bound.executorId),
+    }, controller.signal)
+    await vi.waitFor(() => { expect(enqueue).toHaveBeenCalledOnce() })
+    controller.abort('operator-cancelled')
+    settleFirstEnqueue(workId)
+
+    await expect(first).rejects.toMatchObject({
+      failure: expect.objectContaining({ code: 'unavailable' }),
+    })
+    expect(bindDispatch).toHaveBeenCalledOnce()
+
+    await expect(harness.service.startChange({
+      packetId: String(packet.id), executorId: String(bound.executorId),
+    }, new AbortController().signal)).resolves.toMatchObject({
+      id: bindingId,
+      queueWorkId: String(workId),
+    })
+    expect(enqueue).toHaveBeenCalledTimes(2)
+    expect(bindDispatch).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not invent a Queue commit when enqueue fails before or after cancellation', async () => {
+    for (const [abort, expectedCode] of [[false, 'unavailable'], [true, 'cancelled']] as const) {
+      const packet = readyWorkPacketFixture()
+      const submitting = submittingBindingFixture({ packetId: packet.id })
+      let rejectEnqueue!: (error: DeliveryTaskQueueError) => void
+      const enqueue = vi.fn(() => new Promise<WorkId>((_resolve, reject) => {
+        rejectEnqueue = reject
+      }))
+      const bindDispatch = vi.fn()
+      const harness = makeHarness({
+        delivery: {
+          getWorkPacket: vi.fn(() => packet),
+          beginDispatch: vi.fn(async () => submitting),
+          bindDispatch,
+        },
+        operator: { enqueue },
+        internals: {
+          startCodeChange: bridgeStartCodeChange as unknown as TestInternals['startCodeChange'],
+        },
+      })
+      const controller = new AbortController()
+      const operation = harness.service.startChange({
+        packetId: String(packet.id), executorId: 'codex-fixture',
+      }, controller.signal)
+      await vi.waitFor(() => { expect(enqueue).toHaveBeenCalledOnce() })
+      if (abort) controller.abort('operator-cancelled')
+      rejectEnqueue(new DeliveryTaskQueueError('unavailable', 'Queue unavailable'))
+
+      await expect(operation).rejects.toMatchObject({
+        failure: expect.objectContaining({ code: expectedCode }),
+      })
+      expect(bindDispatch).not.toHaveBeenCalled()
+    }
   })
 
   it('passes an active signal through successful change and verification admission commits', async () => {
