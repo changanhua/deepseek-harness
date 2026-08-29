@@ -49,7 +49,8 @@ Zero direct tokens; this package only reserves an empty composition boundary.
 
 None; this package never assembles model input.
 
-<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - **The bundle is intentionally unavailable** — provider, bridge, Remote, and UI rows plus complete acceptance scenarios are required before any profile can name this bundle.

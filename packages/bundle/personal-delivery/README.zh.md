@@ -49,7 +49,8 @@ Bundle 只包含 composition。它不实现 scheduler、不复制 Queue state、
 
 无；本包从不组装模型输入。
 
-<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - **Bundle 刻意不可用** — 任何 profile 命名此 bundle 前，必须加入 provider、bridge、Remote 与 UI rows，并证明完整 acceptance scenarios。
