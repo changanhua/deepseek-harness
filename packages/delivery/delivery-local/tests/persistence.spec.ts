@@ -327,9 +327,9 @@ describe('LocalDelivery persistence', () => {
     const fixture = readyWorkPacketFixture({
       contractRevisionId: contract.id,
       repositoryId: contract.repositoryId,
-      baseCommit: contract.baseSelectionRule.kind === 'commit'
-        ? contract.baseSelectionRule.commit
-        : undefined,
+      ...(contract.baseSelectionRule.kind === 'commit'
+        ? { baseCommit: contract.baseSelectionRule.commit }
+        : {}),
       acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
     })
     const packetRequest = {
