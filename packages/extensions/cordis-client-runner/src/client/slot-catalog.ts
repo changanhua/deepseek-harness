@@ -1943,6 +1943,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'root\' (client-ui-layout), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-architecture ArchitectureWorkspace id \'architecture\'',
       'client-ui-capability CapabilityWorkspace id \'capability\'',
       'client-ui-task-queue QueueWorkspace id \'queue\'',
     ],
@@ -2122,6 +2123,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'sidebar\' (client-ui-sidebar), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-architecture ArchitectureNavEntry id \'architecture-module\'',
       'client-ui-capability CapabilityNavEntry id \'capability-module\'',
       'client-ui-task-queue QueueNavEntry id \'queue-module\'',
     ],

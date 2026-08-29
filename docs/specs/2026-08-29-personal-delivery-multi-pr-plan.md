@@ -1,6 +1,6 @@
 # Personal Delivery Multi-PR Plan
 
-Status: execution plan; parallel implementation remains gated
+Status: PR-C0 execution plan; Wave 1 remains gated on one merged C0 SHA
 
 Baseline: `80719bfbb8d8409b1b0b812843ec686fac62f907`
 
@@ -69,7 +69,7 @@ Gate B uses this decision order:
 1. Extract a parent-free request around the explicit-input Codex app-server driver and prove the lifecycle without fabricating a Parent.
 2. Fall back to a governed `codex exec --json` subprocess adapter only if the executable proof shows that extraction cannot preserve cancellation and quiescence.
 
-Gate B does not create or finalize `ctx.codeExecutors`, and its feasibility entry is not exported from the package root. PR-C0 owns the production package-boundary decision and introduces an executor capability only if the completed evidence plus a second replaceable implementation or another independent consumer justify it. A Delivery package must not deep-import the source-only entry merely because the monorepo can resolve it.
+Gate B does not create or finalize `ctx.codeExecutors`, and its feasibility entry is not exported from the package root. PR-C0 records the production decision: no executor service is justified, and the selected explicit-cwd app-server transport is exposed only through the narrow `@deepseek-ai/dsh-subagent-codex/app-server-run` production subpath for the Delivery runner. A Delivery package must not deep-import a source-only entry merely because the monorepo can resolve it.
 
 ## PR ownership
 
@@ -80,30 +80,36 @@ Gate B does not create or finalize `ctx.codeExecutors`, and its feasibility entr
 | PR-D0 | Three implementation specs and proposed architecture rationale | `docs/specs/2026-08-29-personal-delivery-*`, `docs/specs/2026-08-29-delivery-protocol-v1.md`, matching Agent Note triplet | Document gates and link checks pass. |
 | PR-GA | Gate A Queue capability and safety fix | Gate A paths above plus its minimal generated Cordis API refresh | Focused Queue tests, catalog freshness, and repository typecheck pass. |
 | PR-GB | Gate B parent-free Codex entry and executable proof | `packages/subagent/subagent-codex/**` and gate fixtures only | Real worktree/cancel/quiescence proof passes. |
-| PR-C0 | Executable protocol, runtime schemas, golden fixtures, fake providers, frozen Delivery/Git-workspace/evidence Service Definitions, Gate-justified executor surface, and empty package scaffolds | `packages/delivery/delivery-protocol/**`, `delivery/**`, `repo-workspace/**`, `delivery-evidence/**`, `delivery-testkit/**`, remaining scaffold paths, and one-time shared manifests | JSON round-trip, invalid-fixture, fake-provider contract, typecheck, package-invariant, and loader-smoke checks pass. |
+| PR-C0 | Executable protocol, runtime schemas, golden fixtures, fake providers, frozen Delivery/Git-workspace/evidence Service Definitions, Gate-justified executor boundary, and explicit unavailable/empty package scaffolds | `packages/delivery/delivery-protocol/**`, `delivery/**`, `repo-workspace/**`, `delivery-evidence/**`, `delivery-testkit/**`, remaining scaffold paths, and one-time shared manifests | JSON round-trip, invalid-fixture, fake-provider authority-contract, typecheck, package-invariant, and loader-smoke checks pass; production-facing local providers remain unavailable. |
 
-PR-C0 creates every planned package manifest and local tsconfig before Wave 1, then performs the single pre-wave update to the root lockfile, TypeScript aggregate references, package group map, and generated catalogs. Those shared files freeze at the PR-C0 merge SHA. Wave 1 never edits them; after Wave 1 opens, PR-I2 is their sole owner if integration requires a deterministic refresh.
+PR-C0 creates every planned package manifest and local tsconfig before Wave 1, then performs the single pre-wave update to the root lockfile, TypeScript aggregate references, package group map, and generated catalogs. Those shared files freeze at the PR-C0 merge SHA. Local Delivery, Git-workspace, evidence, runner, verifier, intake, Remote, Queue-handler registration, UI, and bundle packages are honest unavailable or empty scaffolds at that SHA; C0 does not claim their planned behavior. Wave 1 never edits shared files; after Wave 1 opens, PR-I2 is their sole owner if integration requires a deterministic refresh.
 
 ### Wave 1
 
 | PR | Provides | Exclusive implementation ownership | Consumes |
 | --- | --- | --- | --- |
-| PR-D1 | ContractRevision, Packet, Binding, Decision persistence and projections | `packages/delivery/delivery-local/**` | Protocol, Storage |
-| PR-D2 | Attempt worktree lease, checkpoint Git facts, and P0 local evidence bytes | `packages/delivery/repo-workspace-git-local/**`, `packages/delivery/delivery-evidence-local/**` | Protocol, Subprocess |
-| PR-D3 | `code.change@1` execution adapter selected by Gate B | Gate-B-selected runner package under `packages/delivery/**` | Frozen protocol/workspace/evidence definitions and fakes, selected Codex path |
-| PR-D4 | Trusted fixed-argv verification and verdict production | `packages/delivery/delivery-verifier/**` | Frozen protocol/workspace/evidence definitions and fakes, Subprocess |
-| PR-D5 | Explicit GitHub Issue URL import and revision idempotency | `packages/delivery/delivery-github-intake/**` | Protocol and frozen Delivery definition/fake |
-| PR-D6 | Delivery Remote and workbench projection | `packages/delivery/delivery-remote/**`, `packages/client/ui-delivery/**` | Protocol golden fixtures, Remote/UI slots |
+| PR-D1 | Replace the C0 unavailable boundary with ContractRevision, Packet, Binding, Decision persistence and projections | `packages/delivery/delivery-local/**` | Protocol, Storage |
+| PR-D2 | Replace the C0 unavailable boundaries with Attempt worktree lease, checkpoint Git facts, and P0 local evidence bytes | `packages/delivery/repo-workspace-git-local/**`, `packages/delivery/delivery-evidence-local/**` | Protocol, Subprocess |
+| PR-D3 | Replace the C0 unavailable runner with the `code.change@1` execution adapter selected by Gate B | Gate-B-selected runner package under `packages/delivery/**` | Frozen protocol/workspace/evidence definitions and fakes, selected Codex path |
+| PR-D4 | Replace the C0 unavailable verifier with trusted fixed-argv verification, Protocol-owned path-boundary findings, and verdict production | `packages/delivery/delivery-verifier/**` | Frozen protocol/workspace/evidence definitions and fakes, Subprocess |
+| PR-D5 | Replace the C0 unavailable network/adoption boundary using the frozen strict Work Brief parser, explicit GitHub Issue URL import, and revision idempotency | `packages/delivery/delivery-github-intake/**` | Protocol and frozen Delivery definition/fake |
+| PR-D6 | Replace the C0 unavailable/empty Remote and UI boundaries with Delivery host projection and workbench UI | `packages/delivery/delivery-remote/**`, `packages/client/ui-delivery/**` | Protocol golden fixtures, Remote/UI slots |
 
 Wave 1 branches start from one PR-C0 merge SHA. Each PR may edit only its owned paths and package-local tests/README/Agent Note triplet. It may not edit another implementation directory, Protocol V1 exports, Bundle/Profile files, base/web-app composition, root lockfile, TypeScript aggregates, package group maps, generated catalogs, `FORK-DIVERGENCE.md`, or global navigation.
 
 PR-D3 through PR-D6 develop against PR-C0 definitions, fakes, and golden fixtures; none waits for another Wave 1 provider. PR-C0 freezes the Gate-selected runner package name before Wave 1, and no Wave branch renames it.
 
+PR-D3 and PR-D4 enforce their configured output budgets below a hard 64 MiB ceiling. PR-D3 also declares its output-retention behavior before execution. PR-D4's focused negative suite must create a lexically valid repository-relative cwd whose symlink resolves outside the lease root and prove that `lstat`/`realpath` containment rejects it before any process starts.
+
+PR-D5 does not invent an Issue template. C0 exports and golden-tests the exact `dsh-delivery-work-brief@1` marker/YAML grammar, the strict schema for every Contract-owned field, and the mapping to `ContractRevisionDraft`. The Remote requires a configured repository selection; GitHub snapshot facts and the prior same-Issue revision remain host-derived.
+
+PR-D1 and PR-D6 must preserve the C0 authority boundary. Packet creation resolves the Contract's configured base through the trusted repository provider and derives its non-empty plan only from the Contract field or an integrity-read Git blob at that exact base, with a 64 KiB limit. Both reuse Protocol's frozen plan-document parser and resolved-plan constructor rather than copying Fake behavior. The browser may select existing Contract, Packet, and binding references, but it never allocates durable object ids or supplies an idempotency key, actor, base proof, resolved plan, target commit, completion claim, or verdict. Decision recording resolves the exact change and verification Queue Work/Attempt results selected through Delivery-bound references; ordinary acceptance integrity-reads every referenced `EvidenceRef` before commit. The single-user D6 adapter takes actor identity only from the C0-frozen host `operatorId` config (default `local-operator`), never from the browser DTO.
+
 ### Integration wave
 
-PR-I1 exclusively owns `packages/delivery/delivery-task-queue/**`. The Bridge registers `code.change@1` and `code.verify@1`, persists a `submitting` binding before trusted ownerless Queue admission, conditionally binds the returned Work id, and reconciles unfinished handshakes with the same idempotency key. It maps Packet/Work/Attempt/Verdict identities and rebuilds its projection from durable bindings plus Queue views on activation. It may respond to `task-queue/changed` for freshness, but event delivery is not its recovery authority. A completed claim may enqueue verification; no code path automatically accepts delivery.
+PR-I1 exclusively owns `packages/delivery/delivery-task-queue/**` and the runner/verifier Loader Config. Its defaults are executor `codex`, permission `never`, grace `5000` ms, model-output limit `64` KiB, verification-output limit `64` KiB, resource `agent-run`, `maxAttempts: 1`, and verifier version `personal-delivery-v1`; no Wave 1 package publishes a competing Loader Config. It replaces C0's unavailable handler-registration boundary while preserving the frozen host-only admission functions. The Bridge registers `code.change@1` and `code.verify@1`, persists a `submitting` binding before trusted ownerless Queue admission, conditionally binds the returned Work id, and reconciles unfinished handshakes with the same idempotency key. Verification start accepts only Packet plus a selected change binding: before either Delivery or Queue mutation, it resolves that bound Work's exact successful Result/Attempt, validates the completed claim and identities, derives target plus Packet plan digest, and proves ancestry from the persisted exact base. Protocol admission requires the completed claim to name at least one evidence id; exact matching Git evidence remains a verifier/acceptance integrity-read obligation rather than an I1 admission claim. It maps Packet/Work/Attempt/Verdict identities and rebuilds its projection from durable bindings plus Queue views on activation. It may respond to `task-queue/changed` for freshness, but event delivery is not its recovery authority. No code path automatically accepts delivery.
 
-PR-I2 exclusively owns `packages/bundle/personal-delivery/**` plus final integration fixtures. It owns the Personal Delivery Bundle/Profile, final composition, root shared-file refresh, fork divergence record, and vertical E2E. It is the only post-Wave-1 PR allowed to modify Bundle/Profile patches, the root lockfile, TypeScript aggregate references, generated catalogs, document publication maps, or final E2E fixtures.
+PR-I2 exclusively owns `packages/bundle/personal-delivery/**` plus final integration fixtures. It replaces C0's deliberately empty patch with the Personal Delivery Bundle/Profile and owns final composition, root shared-file refresh, fork divergence record, and vertical E2E. It is the only post-Wave-1 PR allowed to modify Bundle/Profile patches, the root lockfile, TypeScript aggregate references, generated catalogs, document publication maps, or final E2E fixtures.
 
 ## Required PR contract
 
@@ -133,7 +139,10 @@ The integration branch is not ready for rollup until:
 - every Wave 1 package passes focused tests against the frozen protocol;
 - Queue restart and Delivery reconciliation agree without replaying transient events;
 - a crash before Queue admission and a crash after Queue admission but before binding both converge on one Work id;
-- the exact target commit verified is the commit offered for human acceptance;
+- verification admission rejects invalid or mismatched change bindings, Work results, Attempt identities, target ancestry, and Packet plan identity before either Delivery or Queue mutates;
+- the exact target commit derived from the bound successful change result is the commit verified and offered for human acceptance, including after the original base ref moves;
+- ordinary acceptance derives the claim, verification intent, and verdict from the exact two Delivery-bound Queue Work/Attempt results and integrity-reads every referenced evidence object;
+- shell command-string modes are rejected while direct fixed argv that names a trusted script file remains valid;
 - `pnpm run test:docs`, relevant typechecks/tests, loader smoke, build, and `git diff --check` pass;
 - generated output is regenerated once by the integration owner and has no unexplained diff.
 

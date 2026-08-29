@@ -1,0 +1,580 @@
+{
+  "fixtureVersion": 1,
+  "fixtureIds": {
+    "source-ref.github": "/sourceRefs/0",
+    "contract.ready": "/contractRevisions/0",
+    "plan-document.git-blob": "/verificationPlanDocuments/0",
+    "plan.contract-field": "/verificationPlans/0",
+    "packet.contract-plan": "/workPackets/0",
+    "binding.change-submitting": "/dispatchBindings/0",
+    "binding.change-bound": "/dispatchBindings/1",
+    "binding.verify-submitting": "/dispatchBindings/2",
+    "binding.verify-bound": "/dispatchBindings/3",
+    "claim.completed": "/completionClaims/0",
+    "claim.blocked": "/completionClaims/1",
+    "claim.needs-decision": "/completionClaims/2",
+    "claim.needs-scope-change": "/completionClaims/3",
+    "verdict.passed": "/verificationVerdicts/0",
+    "verdict.failed-command": "/verificationVerdicts/1",
+    "verdict.needs-human-review": "/verificationVerdicts/2",
+    "decision.accepted": "/acceptanceDecisions/0",
+    "decision.rejected": "/acceptanceDecisions/1",
+    "decision.waived": "/acceptanceDecisions/2",
+    "evidence.change-checkpoint": "/evidenceRefs/0",
+    "evidence.verification-output": "/evidenceRefs/1",
+    "resume.with-checkpoint": "/resumeCapsules/0",
+    "work-kind.change-intent": "/codeChangeIntents/0",
+    "work-kind.change-resolved": "/resolvedCodeChanges/0",
+    "work-kind.change-output": "/codeChangeOutputs/0",
+    "work-kind.verify-intent": "/codeVerifyIntents/0",
+    "work-kind.verify-resolved": "/resolvedCodeVerifies/0",
+    "work-kind.verify-output": "/codeVerifyOutputs/0"
+  },
+  "sourceRefs": [
+    {
+      "schemaVersion": 1,
+      "id": "source-1",
+      "provider": "github",
+      "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
+      "issueNumber": 13,
+      "canonicalUrl": "https://github.com/deepseek-ai/deepseek-harness/issues/13",
+      "updatedAt": "2026-08-29T12:00:00.000Z",
+      "title": "Personal Delivery MVP",
+      "body": "Implement delivery protocol fixtures.",
+      "contentDigest": "sha256:ee0f2bd15755cb84da488599454e11c97454c5534c62e465b7aad794a8184d86",
+      "createdAt": "2026-08-29T12:01:00.000Z"
+    }
+  ],
+  "contractRevisions": [
+    {
+      "schemaVersion": 1,
+      "id": "contract-1",
+      "previousRevisionId": null,
+      "sourceRef": {
+        "schemaVersion": 1,
+        "id": "source-1",
+        "provider": "github",
+        "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
+        "issueNumber": 13,
+        "canonicalUrl": "https://github.com/deepseek-ai/deepseek-harness/issues/13",
+        "updatedAt": "2026-08-29T12:00:00.000Z",
+        "title": "Personal Delivery MVP",
+        "body": "Implement delivery protocol fixtures.",
+        "contentDigest": "sha256:ee0f2bd15755cb84da488599454e11c97454c5534c62e465b7aad794a8184d86",
+        "createdAt": "2026-08-29T12:01:00.000Z"
+      },
+      "repositoryId": "repo-dsh",
+      "outcome": "Publish an executable, frozen Delivery Protocol V1.",
+      "context": "Independent consumers share this contract without redefining it.",
+      "allowedScope": ["Add the Delivery protocol package."],
+      "forbiddenScope": ["Do not modify Queue core."],
+      "acceptanceClauses": [
+        { "id": "acceptance-1", "text": "Every durable object round-trips through its strict schema." }
+      ],
+      "openDecisions": [],
+      "baseSelectionRule": { "kind": "commit", "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      "verificationSource": {
+        "kind": "contract-field",
+        "checks": [
+          {
+            "id": "check-typecheck",
+            "name": "TypeScript project build",
+            "argv": ["pnpm", "exec", "tsc", "-b", "tsconfig.host.json"],
+            "cwd": ".",
+            "timeoutMs": 120000,
+            "severity": "required",
+            "expectedExitCodes": [0]
+          }
+        ]
+      },
+      "referenceLinks": [
+        { "label": "Issue", "url": "https://github.com/deepseek-ai/deepseek-harness/issues/13" }
+      ],
+      "createdAt": "2026-08-29T12:02:00.000Z"
+    }
+  ],
+  "verificationPlanDocuments": [
+    {
+      "format": "delivery-verification-plan@1",
+      "checks": [
+        {
+          "id": "check-typecheck",
+          "name": "TypeScript project build",
+          "argv": ["pnpm", "exec", "tsc", "-b", "tsconfig.host.json"],
+          "cwd": ".",
+          "timeoutMs": 120000,
+          "severity": "required",
+          "expectedExitCodes": [0]
+        }
+      ]
+    }
+  ],
+  "verificationPlans": [
+    {
+      "checks": [
+        {
+          "id": "check-typecheck",
+          "name": "TypeScript project build",
+          "argv": ["pnpm", "exec", "tsc", "-b", "tsconfig.host.json"],
+          "cwd": ".",
+          "timeoutMs": 120000,
+          "severity": "required",
+          "expectedExitCodes": [0]
+        }
+      ],
+      "provenance": {
+        "kind": "contract-field",
+        "contractRevisionId": "contract-1",
+        "field": "verificationSource"
+      },
+      "digest": "sha256:eac6c40626ebd3afc85db4b315b661679a598442378212b96e6324d666997f00"
+    }
+  ],
+  "workPackets": [
+    {
+      "schemaVersion": 1,
+      "id": "packet-1",
+      "contractRevisionId": "contract-1",
+      "repositoryId": "repo-dsh",
+      "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "objective": "Publish the frozen Delivery Protocol V1 contract.",
+      "allowedPaths": [{ "kind": "subtree", "path": "packages/delivery" }],
+      "forbiddenPaths": [{ "kind": "exact", "path": "pnpm-lock.yaml" }],
+      "acceptanceClauseIds": ["acceptance-1"],
+      "verificationPlan": {
+        "checks": [
+          {
+            "id": "check-typecheck",
+            "name": "TypeScript project build",
+            "argv": ["pnpm", "exec", "tsc", "-b", "tsconfig.host.json"],
+            "cwd": ".",
+            "timeoutMs": 120000,
+            "severity": "required",
+            "expectedExitCodes": [0]
+          }
+        ],
+        "provenance": {
+          "kind": "contract-field",
+          "contractRevisionId": "contract-1",
+          "field": "verificationSource"
+        },
+        "digest": "sha256:eac6c40626ebd3afc85db4b315b661679a598442378212b96e6324d666997f00"
+      },
+      "stopConditions": ["Stop before changing Queue core."],
+      "executorPreference": { "mode": "required", "executorId": "codex" },
+      "packetDigest": "sha256:7e51e503c73a79dcfcd6bdae0c8f1758c49ce5f370fe2adb4280897218c90adc",
+      "createdAt": "2026-08-29T12:03:00.000Z"
+    }
+  ],
+  "dispatchBindings": [
+    {
+      "schemaVersion": 1,
+      "id": "binding-change-submitting",
+      "packetId": "packet-1",
+      "kind": "code.change@1",
+      "inputDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "idempotencyKey": "delivery:packet-1:code.change@1",
+      "phase": "submitting",
+      "queueWorkId": null,
+      "executorId": "codex",
+      "createdAt": "2026-08-29T12:04:00.000Z",
+      "updatedAt": "2026-08-29T12:04:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "binding-change-bound",
+      "packetId": "packet-1",
+      "kind": "code.change@1",
+      "inputDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "idempotencyKey": "delivery:packet-1:code.change@1",
+      "phase": "bound",
+      "queueWorkId": "work-change-1",
+      "executorId": "codex",
+      "createdAt": "2026-08-29T12:04:00.000Z",
+      "updatedAt": "2026-08-29T12:04:01.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "binding-verify-submitting",
+      "packetId": "packet-1",
+      "kind": "code.verify@1",
+      "inputDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "idempotencyKey": "delivery:packet-1:code.verify@1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "phase": "submitting",
+      "queueWorkId": null,
+      "executorId": null,
+      "createdAt": "2026-08-29T12:06:00.000Z",
+      "updatedAt": "2026-08-29T12:06:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "binding-verify-bound",
+      "packetId": "packet-1",
+      "kind": "code.verify@1",
+      "inputDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "idempotencyKey": "delivery:packet-1:code.verify@1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "phase": "bound",
+      "queueWorkId": "work-verify-1",
+      "executorId": null,
+      "createdAt": "2026-08-29T12:06:00.000Z",
+      "updatedAt": "2026-08-29T12:06:01.000Z"
+    }
+  ],
+  "completionClaims": [
+    {
+      "schemaVersion": 1,
+      "id": "claim-completed",
+      "packetId": "packet-1",
+      "queueWorkId": "work-change-1",
+      "queueAttemptId": "attempt-change-1",
+      "disposition": "completed",
+      "summary": "Published the protocol contract.",
+      "completedWork": ["Added schemas and fixtures."],
+      "remainingWork": [],
+      "checkpointCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "changedPaths": ["packages/delivery/delivery-protocol/src/index.ts"],
+      "evidenceIds": ["evidence-git"],
+      "resumeCapsuleEvidenceId": null,
+      "createdAt": "2026-08-29T12:05:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "claim-blocked",
+      "packetId": "packet-1",
+      "queueWorkId": "work-change-2",
+      "queueAttemptId": "attempt-change-2",
+      "disposition": "blocked",
+      "summary": "A repository decision is missing.",
+      "completedWork": [],
+      "remainingWork": ["Select the repository."],
+      "checkpointCommit": null,
+      "changedPaths": [],
+      "evidenceIds": [],
+      "resumeCapsuleEvidenceId": null,
+      "blocker": "The repository id is unresolved.",
+      "nextSmallestAction": "Select one configured repository.",
+      "createdAt": "2026-08-29T12:05:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "claim-decision",
+      "packetId": "packet-1",
+      "queueWorkId": "work-change-3",
+      "queueAttemptId": "attempt-change-3",
+      "disposition": "needs-decision",
+      "summary": "Two supported boundaries remain.",
+      "completedWork": [],
+      "remainingWork": ["Apply the selected boundary."],
+      "checkpointCommit": null,
+      "changedPaths": [],
+      "evidenceIds": [],
+      "resumeCapsuleEvidenceId": null,
+      "question": "Should the runner remain package-private?",
+      "createdAt": "2026-08-29T12:05:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "claim-scope",
+      "packetId": "packet-1",
+      "queueWorkId": "work-change-4",
+      "queueAttemptId": "attempt-change-4",
+      "disposition": "needs-scope-change",
+      "summary": "The requested file is outside the Packet.",
+      "completedWork": [],
+      "remainingWork": ["Approve or reject the scope delta."],
+      "checkpointCommit": null,
+      "changedPaths": [],
+      "evidenceIds": [],
+      "resumeCapsuleEvidenceId": null,
+      "proposedScopeDelta": "Allow packages/delivery/README.md.",
+      "reason": "The package requires a discoverable subsystem link.",
+      "createdAt": "2026-08-29T12:05:00.000Z"
+    }
+  ],
+  "verificationVerdicts": [
+    {
+      "schemaVersion": 1,
+      "id": "verdict-passed",
+      "packetId": "packet-1",
+      "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "verificationPlanDigest": "sha256:eac6c40626ebd3afc85db4b315b661679a598442378212b96e6324d666997f00",
+      "status": "passed",
+      "ancestryResult": "descendant",
+      "checkResults": [
+        {
+          "checkId": "check-typecheck",
+          "checkDigest": "sha256:64b5a8f1642ba7d7bd47537bfc6a03e15419b3ea99d20f9963852caa6fa47827",
+          "severity": "required",
+          "durationMs": 4123,
+          "evidenceIds": ["evidence-verify"],
+          "status": "exited",
+          "exitCode": 0,
+          "expected": true
+        }
+      ],
+      "evidenceIntegrityFindings": [
+        { "evidenceId": "evidence-git", "required": true, "status": "verified" },
+        { "evidenceId": "evidence-verify", "required": true, "status": "verified" }
+      ],
+      "changedPathFindings": [],
+      "evidenceIds": ["evidence-git", "evidence-verify"],
+      "verifierVersion": "delivery-verifier@0.1.2-alpha.1",
+      "reviewReasons": [],
+      "completedAt": "2026-08-29T12:07:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "verdict-failed",
+      "packetId": "packet-1",
+      "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "verificationPlanDigest": "sha256:eac6c40626ebd3afc85db4b315b661679a598442378212b96e6324d666997f00",
+      "status": "failed",
+      "ancestryResult": "descendant",
+      "checkResults": [
+        {
+          "checkId": "check-typecheck",
+          "checkDigest": "sha256:64b5a8f1642ba7d7bd47537bfc6a03e15419b3ea99d20f9963852caa6fa47827",
+          "severity": "required",
+          "durationMs": 2100,
+          "evidenceIds": ["evidence-verify"],
+          "status": "exited",
+          "exitCode": 1,
+          "expected": false
+        }
+      ],
+      "evidenceIntegrityFindings": [
+        { "evidenceId": "evidence-verify", "required": true, "status": "verified" }
+      ],
+      "changedPathFindings": [],
+      "evidenceIds": ["evidence-verify"],
+      "verifierVersion": "delivery-verifier@0.1.2-alpha.1",
+      "reviewReasons": [],
+      "completedAt": "2026-08-29T12:07:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "verdict-review",
+      "packetId": "packet-1",
+      "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "verificationPlanDigest": "sha256:eac6c40626ebd3afc85db4b315b661679a598442378212b96e6324d666997f00",
+      "status": "needs-human-review",
+      "ancestryResult": "descendant",
+      "checkResults": [],
+      "evidenceIntegrityFindings": [
+        { "evidenceId": "evidence-screenshot", "required": false, "status": "missing" }
+      ],
+      "changedPathFindings": [],
+      "evidenceIds": ["evidence-screenshot"],
+      "verifierVersion": "delivery-verifier@0.1.2-alpha.1",
+      "reviewReasons": ["The optional screenshot is unavailable."],
+      "completedAt": "2026-08-29T12:07:00.000Z"
+    }
+  ],
+  "acceptanceDecisions": [
+    {
+      "schemaVersion": 1,
+      "id": "decision-accepted",
+      "packetId": "packet-1",
+      "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "verdictId": "verdict-passed",
+      "decision": "accepted",
+      "reason": "The matching verdict passed.",
+      "actor": { "kind": "human", "actorId": "user-local" },
+      "decisionNonce": "decision-nonce-1",
+      "decidedAt": "2026-08-29T12:08:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "decision-rejected",
+      "packetId": "packet-1",
+      "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "verdictId": "verdict-failed",
+      "decision": "rejected",
+      "reason": "The required check failed.",
+      "actor": { "kind": "human", "actorId": "user-local" },
+      "decisionNonce": "decision-nonce-2",
+      "decidedAt": "2026-08-29T12:08:00.000Z"
+    },
+    {
+      "schemaVersion": 1,
+      "id": "decision-waived",
+      "packetId": "packet-1",
+      "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "verdictId": "verdict-review",
+      "decision": "waived",
+      "reason": "The optional screenshot is not required for this local-only change.",
+      "actor": { "kind": "human", "actorId": "user-local" },
+      "decisionNonce": "decision-nonce-3",
+      "decidedAt": "2026-08-29T12:08:00.000Z"
+    }
+  ],
+  "evidenceRefs": [
+    {
+      "schemaVersion": 1,
+      "id": "evidence-git",
+      "kind": "checkpoint-metadata",
+      "mediaType": "application/json",
+      "uri": "dsh-evidence://sha256/74c24dae6de5def220b3b9c31540dbb31934b9e5b6dbd37427ee1f21abe7e7e6",
+      "byteLength": 11,
+      "digest": "sha256:74c24dae6de5def220b3b9c31540dbb31934b9e5b6dbd37427ee1f21abe7e7e6",
+      "createdAt": "2026-08-29T12:05:00.000Z",
+      "provenance": {
+        "kind": "change-attempt",
+        "packetId": "packet-1",
+        "queueWorkId": "work-change-1",
+        "queueAttemptId": "attempt-change-1"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "evidence-verify",
+      "kind": "verification-output",
+      "mediaType": "text/plain; charset=utf-8",
+      "uri": "dsh-evidence://sha256/fbaacd1df6f28aa2ed91cd75533e1fb2844323408cf6057423cae3e0387ea0dc",
+      "byteLength": 20,
+      "digest": "sha256:fbaacd1df6f28aa2ed91cd75533e1fb2844323408cf6057423cae3e0387ea0dc",
+      "createdAt": "2026-08-29T12:07:00.000Z",
+      "provenance": {
+        "kind": "verification-check",
+        "packetId": "packet-1",
+        "queueWorkId": "work-verify-1",
+        "queueAttemptId": "attempt-verify-1",
+        "checkId": "check-typecheck"
+      }
+    }
+  ],
+  "resumeCapsules": [
+    {
+      "schemaVersion": 1,
+      "contractRevisionId": "contract-1",
+      "packetId": "packet-1",
+      "objective": "Publish the frozen Delivery Protocol V1 contract.",
+      "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "checkpointCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "completedChanges": ["Added runtime schemas."],
+      "latestAttempt": {
+        "queueWorkId": "work-change-1",
+        "queueAttemptId": "attempt-change-1",
+        "status": "failed",
+        "sideEffect": "started",
+        "startedAt": "2026-08-29T12:04:00.000Z",
+        "finishedAt": "2026-08-29T12:05:00.000Z"
+      },
+      "failingChecks": [
+        { "checkId": "check-typecheck", "summary": "Typecheck failed.", "evidenceIds": ["evidence-verify"] }
+      ],
+      "decisions": ["Keep the protocol Queue-independent."],
+      "rejectedApproaches": ["Do not add a public executor registry."],
+      "openQuestions": [],
+      "knownRisks": ["Independent consumers depend on this frozen shape."],
+      "nextSmallestAction": "Fix the reported type error.",
+      "relevantFiles": ["packages/delivery/delivery-protocol/src/schemas.ts"],
+      "evidenceIds": ["evidence-verify"],
+      "compiledAt": "2026-08-29T12:09:00.000Z"
+    }
+  ],
+  "codeChangeIntents": [{ "packetId": "packet-1" }],
+  "resolvedCodeChanges": [
+    {
+      "packetId": "packet-1",
+      "contractRevisionId": "contract-1",
+      "repositoryId": "repo-dsh",
+      "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "executorId": "codex",
+      "policyDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ],
+  "codeChangeOutputs": [
+    {
+      "completionClaim": {
+        "schemaVersion": 1,
+        "id": "claim-completed",
+        "packetId": "packet-1",
+        "queueWorkId": "work-change-1",
+        "queueAttemptId": "attempt-change-1",
+        "disposition": "completed",
+        "summary": "Published the protocol contract.",
+        "completedWork": ["Added schemas and fixtures."],
+        "remainingWork": [],
+        "checkpointCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "changedPaths": ["packages/delivery/delivery-protocol/src/index.ts"],
+        "evidenceIds": ["evidence-git"],
+        "resumeCapsuleEvidenceId": null,
+        "createdAt": "2026-08-29T12:05:00.000Z"
+      }
+    }
+  ],
+  "codeVerifyIntents": [
+    {
+      "packetId": "packet-1",
+      "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "verificationPlanDigest": "sha256:eac6c40626ebd3afc85db4b315b661679a598442378212b96e6324d666997f00"
+    }
+  ],
+  "resolvedCodeVerifies": [
+    {
+      "packetId": "packet-1",
+      "contractRevisionId": "contract-1",
+      "repositoryId": "repo-dsh",
+      "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "trustedPlan": {
+        "checks": [
+          {
+            "id": "check-typecheck",
+            "name": "TypeScript project build",
+            "argv": ["pnpm", "exec", "tsc", "-b", "tsconfig.host.json"],
+            "cwd": ".",
+            "timeoutMs": 120000,
+            "severity": "required",
+            "expectedExitCodes": [0]
+          }
+        ],
+        "provenance": {
+          "kind": "contract-field",
+          "contractRevisionId": "contract-1",
+          "field": "verificationSource"
+        },
+        "digest": "sha256:eac6c40626ebd3afc85db4b315b661679a598442378212b96e6324d666997f00"
+      }
+    }
+  ],
+  "codeVerifyOutputs": [
+    {
+      "verificationVerdict": {
+        "schemaVersion": 1,
+        "id": "verdict-passed",
+        "packetId": "packet-1",
+        "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "verificationPlanDigest": "sha256:eac6c40626ebd3afc85db4b315b661679a598442378212b96e6324d666997f00",
+        "status": "passed",
+        "ancestryResult": "descendant",
+        "checkResults": [
+          {
+            "checkId": "check-typecheck",
+            "checkDigest": "sha256:64b5a8f1642ba7d7bd47537bfc6a03e15419b3ea99d20f9963852caa6fa47827",
+            "severity": "required",
+            "durationMs": 4123,
+            "evidenceIds": ["evidence-verify"],
+            "status": "exited",
+            "exitCode": 0,
+            "expected": true
+          }
+        ],
+        "evidenceIntegrityFindings": [
+          { "evidenceId": "evidence-git", "required": true, "status": "verified" },
+          { "evidenceId": "evidence-verify", "required": true, "status": "verified" }
+        ],
+        "changedPathFindings": [],
+        "evidenceIds": ["evidence-git", "evidence-verify"],
+        "verifierVersion": "delivery-verifier@0.1.2-alpha.1",
+        "reviewReasons": [],
+        "completedAt": "2026-08-29T12:07:00.000Z"
+      }
+    }
+  ]
+}

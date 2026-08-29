@@ -770,6 +770,98 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'delivery',
+    summary: 'Durable Personal Delivery records and their idempotent write operations.',
+    description: 'Durable Personal Delivery records and their idempotent write operations. Providers allocate ids and timestamps, validate protocol objects at the storage boundary, and serialize writes. The service does not persist Queue lifecycle, executor handles, verification bytes, or UI lanes.',
+    methods: [
+      {
+        signature: 'abstract adoptContractRevision(request: AdoptContractRevisionRequest): Promise<ContractRevision>',
+        description: 'Adopt one exact source snapshot as an immutable Contract revision.',
+        parameters: [{ name: 'request', description: 'Source, interpreted revision, and deterministic idempotency key.' }],
+        returns: 'the existing or newly committed revision.',
+      },
+      {
+        signature: 'abstract createWorkPacket( request: CreateWorkPacketRequest, resolveVerificationSource?: VerificationSourceResolver, ): Promise<WorkPacket>',
+        description: 'Create one immutable Packet after the repository provider resolved the Contract base.',
+        parameters: [{ name: 'request', description: 'Ready Contract id, verified base, caller-selected Packet fields, and idempotency key.' }, { name: 'resolveVerificationSource', description: 'Host-only Git blob resolver used when the Contract names a blob source.' }],
+        returns: 'the existing or newly committed Packet.',
+      },
+      {
+        signature: 'abstract beginDispatch(request: BeginDispatchRequest): Promise<DispatchBinding>',
+        description: 'Commit the submitting side of one Delivery-to-Queue admission handshake.',
+        parameters: [{ name: 'request', description: 'Packet, WorkKind, canonical Queue input digest, and idempotency identity.' }],
+        returns: 'the existing or newly committed submitting binding.',
+      },
+      {
+        signature: 'abstract bindDispatch(request: BindDispatchRequest): Promise<DispatchBinding & { readonly phase: \'bound\' }>',
+        description: 'Bind a submitting handshake to the one Queue Work id returned for it.',
+        parameters: [{ name: 'request', description: 'Binding id and returned Queue Work identity.' }],
+        returns: 'the bound record; repeating the same work id is idempotent.',
+      },
+      {
+        signature: 'abstract recordAcceptanceDecision( request: RecordAcceptanceDecisionRequest, resolveCandidate: AcceptanceCandidateResolver, resolveEvidence: AcceptanceEvidenceResolver, ): Promise<AcceptanceDecision>',
+        description: 'Record a human decision after resolving Queue facts for two bound dispatches.',
+        parameters: [{ name: 'request', description: 'Human fields and Delivery-owned change/verification binding ids.' }, { name: 'resolveCandidate', description: 'Host-only resolver invoked with the two validated Queue Work ids.' }, { name: 'resolveEvidence', description: 'Host-only resolve-and-integrity-read capability invoked for exact evidence ids.' }],
+        returns: 'the existing or newly committed decision.',
+      },
+      {
+        signature: 'abstract getContractRevision(id: ContractRevisionId): ContractRevision | undefined',
+        description: 'Read one adopted Contract revision.',
+        parameters: [{ name: 'id', description: 'Durable revision identity.' }],
+        returns: 'the revision or `undefined` when absent.',
+      },
+      {
+        signature: 'abstract getWorkPacket(id: WorkPacketId): WorkPacket | undefined',
+        description: 'Read one immutable Packet.',
+        parameters: [{ name: 'id', description: 'Durable Packet identity.' }],
+        returns: 'the Packet or `undefined` when absent.',
+      },
+      {
+        signature: 'abstract getDispatchBinding(id: DispatchBindingId): DispatchBinding | undefined',
+        description: 'Read one dispatch handshake.',
+        parameters: [{ name: 'id', description: 'Durable binding identity.' }],
+        returns: 'the current binding projection or `undefined` when absent.',
+      },
+      {
+        signature: 'abstract snapshot(): DeliverySnapshot',
+        description: 'Read a stable fresh snapshot of every Delivery-owned record.',
+        parameters: [],
+        returns: 'committed records in provider-defined stable order.',
+      },
+    ],
+  },
+  {
+    key: 'deliveryEvidence',
+    summary: 'Immutable evidence publication and verified reads.',
+    description: 'Immutable evidence publication and verified reads. Providers derive id, URI, byte length, digest, and creation time; callers supply none of them.',
+    methods: [
+      {
+        signature: 'abstract save(input: SaveDeliveryEvidence, signal?: AbortSignal): Promise<EvidenceRef>',
+        description: 'Publish one immutable byte object atomically.',
+        parameters: [{ name: 'input', description: 'Kind, media type, bytes, and owning execution provenance.' }, { name: 'signal', description: 'Optional cancellation for provider work.' }],
+        returns: 'the durable reference after the bytes are committed.',
+      },
+      {
+        signature: 'abstract resolve(id: EvidenceId, signal?: AbortSignal): Promise<EvidenceRef | undefined>',
+        description: 'Resolve durable metadata from an Evidence id retained by a Claim, Verdict, or Resume Capsule.',
+        parameters: [{ name: 'id', description: 'Durable evidence identity.' }, { name: 'signal', description: 'Optional cancellation for provider index work.' }],
+        returns: 'detached immutable metadata, or `undefined` when the object is absent.',
+      },
+      {
+        signature: 'abstract read(ref: EvidenceRef, signal?: AbortSignal): Promise<StoredDeliveryEvidence>',
+        description: 'Read one object and verify its identity, length, and digest against the reference.',
+        parameters: [{ name: 'ref', description: 'Durable reference to verify and read.' }, { name: 'signal', description: 'Optional cancellation for provider work.' }],
+        returns: 'a detached byte copy and the validated reference.',
+      },
+      {
+        signature: 'bind(provenance: EvidenceRef[\'provenance\']): BoundDeliveryEvidenceWriter',
+        description: 'Bind one immutable provenance before handing a writer to a runner or verifier.',
+        parameters: [{ name: 'provenance', description: 'Work/Attempt or verification-check provenance.' }],
+        returns: 'a writer that cannot replace or omit that provenance.',
+      },
+    ],
+  },
+  {
     key: 'directoryPicker',
     summary: 'Abstract directory-picking service.',
     description: 'Abstract directory-picking service. Subclass, implement `capability()`, and load the subclass as a plugin — it registers as `ctx.directoryPicker` (one implementation per context; loading a second throws, cordis\' standard duplicate-service behavior). The capability object must be stable for the service lifetime: consumers may capture it across calls.',
@@ -1303,6 +1395,49 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Select whether plan mode should be active. Between turns the method appends the change immediately because no in-turn pre-step will run until another prompt starts a turn. The open-turn fold is the idle signal: agent status stays `running` through post-turn checkpointing, when no further in-turn pre-step runs. During an open turn the selection remains pending until the next accepted in-turn pre-step. Repeated selection of the current or already-pending state is a no-op.',
         parameters: [{ name: 'agent', description: 'The agent to switch.' }, { name: 'active', description: 'Whether plan mode should be active.' }],
         returns: 'what happened: `committed` (logged now), `queued` (awaiting the next accepted in-turn pre-step), `cancelled` (an opposite pending selection was cleared; the logged state already matches), or `noop` (already in that state).',
+      },
+    ],
+  },
+  {
+    key: 'repoWorkspace',
+    summary: 'Configured repository resolver and Attempt-owned isolated checkout factory.',
+    description: 'Configured repository resolver and Attempt-owned isolated checkout factory. Inspection performs no checkout or process side effect. Opened leases expose an operation-local absolute cwd and retain ownership until awaited close.',
+    methods: [
+      {
+        signature: 'abstract resolveBase(request: ResolveRepositoryBaseRequest): Promise<VerifiedRepositoryBase>',
+        description: 'Resolve a Contract base-selection rule and prove its point-in-time full commit. A `ref-head` result captures the ref value observed by this operation; later ref movement cannot alter the returned proof.',
+        parameters: [{ name: 'request', description: 'Configured repository, exact Contract rule, and cancellation.' }],
+        returns: 'a provider-minted immutable base proof.',
+      },
+      {
+        signature: 'abstract inspectRevision(request: InspectRepositoryRevisionRequest): Promise<VerifiedRepositoryRevision>',
+        description: 'Resolve a configured repository and prove that it contains one full commit.',
+        parameters: [{ name: 'request', description: 'Stable repository id, full commit, and optional cancellation.' }],
+        returns: 'an opaque proof safe to pass to Delivery and checkout operations.',
+      },
+      {
+        signature: 'abstract readBlob(request: ReadRepositoryBlobRequest): Promise<VerifiedRepositoryBlob>',
+        description: 'Read and prove one complete bounded blob from an exact verified base tree. Providers resolve `base.commit:path` through Git object storage; a checkout cwd or ambient filesystem path is never authoritative.',
+        parameters: [{ name: 'request', description: 'Verified base, normalized path, explicit byte limit, and cancellation.' }],
+        returns: 'exact Git metadata plus fresh detached bytes.',
+      },
+      {
+        signature: 'abstract inspectRange(request: InspectRepositoryRangeRequest): Promise<RepositoryRangeFacts>',
+        description: 'Derive ancestry and the complete changed-path set for two verified revisions.',
+        parameters: [{ name: 'request', description: 'Verified base and target in the same repository.' }],
+        returns: 'ancestry and changed-path facts; non-ancestry resolves as `false`.',
+      },
+      {
+        signature: 'abstract openChange(request: OpenChangeWorkspaceRequest): Promise<ChangeWorkspaceLease>',
+        description: 'Open the writable checkout owned by one change Attempt.',
+        parameters: [{ name: 'request', description: 'Attempt identity and verified base revision.' }],
+        returns: 'an idempotently recovered or newly created change lease.',
+      },
+      {
+        signature: 'abstract openVerification(request: OpenVerificationWorkspaceRequest): Promise<VerificationWorkspaceLease>',
+        description: 'Open an isolated checkout pinned to one verification target.',
+        parameters: [{ name: 'request', description: 'Attempt identity plus verified base and target revisions.' }],
+        returns: 'an idempotently recovered or newly created verification lease.',
       },
     ],
   },
@@ -3490,12 +3625,44 @@ export const EVENT_API: readonly EventApiEntry[] = [
 /** Shapes of every exported type the Service and Event signatures reference (transitively), sorted by name. */
 export const TYPE_API: readonly TypeApiEntry[] = [
   {
+    name: 'AcceptanceCandidateFacts',
+    declaration: 'export interface AcceptanceCandidateFacts {\n    readonly completionClaim: CompletionClaim;\n    readonly changeQueueAttemptId: QueueAttemptIdRef;\n    readonly verificationIntent: CodeVerifyIntent;\n    readonly verificationVerdict: VerificationVerdict;\n    readonly verificationQueueAttemptId: QueueAttemptIdRef;\n}',
+  },
+  {
+    name: 'AcceptanceCandidateResolver',
+    declaration: 'export type AcceptanceCandidateResolver = (changeQueueWorkId: QueueWorkIdRef, verificationQueueWorkId: QueueWorkIdRef) => Promise<AcceptanceCandidateFacts>;',
+  },
+  {
+    name: 'AcceptanceClause',
+    declaration: 'export interface AcceptanceClause {\n    readonly id: AcceptanceClauseId;\n    readonly text: string;\n}',
+  },
+  {
+    name: 'AcceptanceClauseId',
+    declaration: 'export type AcceptanceClauseId = Branded<\'DeliveryAcceptanceClauseId\'>;',
+  },
+  {
+    name: 'AcceptanceDecision',
+    declaration: 'export interface AcceptanceDecision {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: AcceptanceDecisionId;\n    readonly packetId: WorkPacketId;\n    readonly targetCommit: GitCommitId;\n    readonly verdictId: VerificationVerdictId;\n    readonly decision: \'accepted\' | \'rejected\' | \'waived\';\n    readonly reason: string;\n    readonly actor: {\n        readonly kind: \'human\';\n        readonly actorId: string;\n    };\n    readonly decisionNonce: string;\n    readonly decidedAt: string;\n}',
+  },
+  {
+    name: 'AcceptanceDecisionId',
+    declaration: 'export type AcceptanceDecisionId = Branded<\'DeliveryAcceptanceDecisionId\'>;',
+  },
+  {
+    name: 'AcceptanceEvidenceResolver',
+    declaration: 'export type AcceptanceEvidenceResolver = (evidenceId: EvidenceId) => Promise<EvidenceRef | undefined>;',
+  },
+  {
     name: 'AdapterRegistrationHandle',
     declaration: 'export interface AdapterRegistrationHandle {\n    (): void;\n    replace(providers: string[]): void;\n}',
   },
   {
     name: 'AdmissionContext',
     declaration: 'export interface AdmissionContext {\n    readonly signal: AbortSignal;\n}',
+  },
+  {
+    name: 'AdoptContractRevisionRequest',
+    declaration: 'export interface AdoptContractRevisionRequest {\n    readonly idempotencyKey: string;\n    readonly source: SourceRefDraft;\n    readonly revision: ContractRevisionDraft;\n}',
   },
   {
     name: 'Agent',
@@ -3706,6 +3873,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export class BackendRegistry {\n    register(name: string, backend: StorageBackend): () => void;\n    get(name: string): StorageBackend;\n    names(): string[];\n}',
   },
   {
+    name: 'BaseSelectionRule',
+    declaration: 'export type BaseSelectionRule = {\n    readonly kind: \'commit\';\n    readonly commit: GitCommitId;\n} | {\n    readonly kind: \'ref-head\';\n    readonly ref: string;\n};',
+  },
+  {
     name: 'BashEnvContributor',
     declaration: 'export interface BashEnvContributor {\n    name: string;\n    variables: Readonly<Record<DshEnvironmentKey, BashEnvVariable>>;\n    resolve(execution: ToolExecution): Readonly<Partial<Record<DshEnvironmentKey, string>>>;\n}',
   },
@@ -3730,12 +3901,32 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BatchRequest<K extends WorkKind> {\n    readonly kind: K;\n    readonly items: readonly BatchItem<K>[];\n    readonly sharedPayload: JsonValue;\n    readonly idempotencyKey: string;\n    readonly maxParallel: number;\n}',
   },
   {
+    name: 'BeginDispatchRequest',
+    declaration: 'export type BeginDispatchRequest = BeginDispatchCommon & ({\n    readonly kind: \'code.change@1\';\n    readonly executorId: ExecutorId;\n} | {\n    readonly kind: \'code.verify@1\';\n});',
+  },
+  {
+    name: 'BindDispatchRequest',
+    declaration: 'export interface BindDispatchRequest {\n    readonly bindingId: DispatchBindingId;\n    readonly queueWorkId: QueueWorkIdRef;\n}',
+  },
+  {
     name: 'BorrowedSessionSource',
     declaration: 'export type BorrowedSessionSource = Disposable & ({\n    readonly source: \'prepared\';\n    readonly inspection: SessionInspection;\n    readonly revision: SessionPersistenceRevision;\n    readonly preparedSession: Session;\n} | {\n    readonly source: \'live\';\n    readonly inspection: SessionInspection;\n});',
   },
   {
+    name: 'BoundDeliveryEvidenceWriter',
+    declaration: 'export interface BoundDeliveryEvidenceWriter {\n    save(input: SaveBoundDeliveryEvidence, signal?: AbortSignal): Promise<EvidenceRef>;\n}',
+  },
+  {
     name: 'Branded',
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
+  },
+  {
+    name: 'ChangedPathFinding',
+    declaration: 'export interface ChangedPathFinding {\n    readonly path: RepositoryRelativePath;\n    readonly kind: \'forbidden\' | \'outside-allowed\';\n}',
+  },
+  {
+    name: 'ChangeWorkspaceLease',
+    declaration: 'export interface ChangeWorkspaceLease extends RepositoryWorkspaceLease {\n    readonly baseCommit: GitCommitId;\n    checkpoint(request: CreateCheckpointRequest): Promise<RepositoryCheckpoint>;\n}',
   },
   {
     name: 'ChunkRowEvent',
@@ -3772,6 +3963,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CodeRunResult',
     declaration: 'export interface CodeRunResult {\n    value?: CodeJsonValue;\n    logs: string[];\n    error?: CodeRunFailure;\n}',
+  },
+  {
+    name: 'CodeVerifyIntent',
+    declaration: 'export interface CodeVerifyIntent {\n    readonly packetId: WorkPacketId;\n    readonly targetCommit: GitCommitId;\n    readonly verificationPlanDigest: Sha256Digest;\n}',
   },
   {
     name: 'CollectedOutput',
@@ -3822,6 +4017,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CompactionTrigger = \'pressure\' | \'context-overflow\';',
   },
   {
+    name: 'CompletionClaim',
+    declaration: 'export type CompletionClaim = CompletionClaimCommon & ({\n    readonly disposition: \'completed\';\n    readonly checkpointCommit: GitCommitId;\n} | {\n    readonly disposition: \'blocked\';\n    readonly blocker: string;\n    readonly nextSmallestAction: string;\n} | {\n    readonly disposition: \'needs-decision\';\n    readonly question: string;\n} | {\n    readonly disposition: \'needs-scope-change\';\n    readonly proposedScopeDelta: string;\n    readonly reason: string;\n});',
+  },
+  {
+    name: 'CompletionClaimCommon',
+    declaration: 'export interface CompletionClaimCommon {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: CompletionClaimId;\n    readonly packetId: WorkPacketId;\n    readonly queueWorkId: QueueWorkIdRef;\n    readonly queueAttemptId: QueueAttemptIdRef;\n    readonly summary: string;\n    readonly completedWork: readonly string[];\n    readonly remainingWork: readonly string[];\n    readonly checkpointCommit: GitCommitId | null;\n    readonly changedPaths: readonly RepositoryRelativePath[];\n    readonly evidenceIds: readonly EvidenceId[];\n    readonly resumeCapsuleEvidenceId: EvidenceId | null;\n    readonly createdAt: string;\n}',
+  },
+  {
+    name: 'CompletionClaimId',
+    declaration: 'export type CompletionClaimId = Branded<\'DeliveryCompletionClaimId\'>;',
+  },
+  {
     name: 'ConfinedArgv',
     declaration: 'export interface ConfinedArgv {\n    argv: string[];\n    enforcement: SandboxEnforcement;\n    denialSignatures: readonly string[];\n    runnerFailureRules: readonly RunnerFailureRule[];\n}',
   },
@@ -3868,6 +4075,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ContinuableSubagentDescriptorData',
     declaration: 'export interface ContinuableSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'continuable\';\n    readonly label: string;\n    readonly agentProvider?: string;\n    readonly agentModel?: string;\n    readonly agentReasoningEffort?: ReasoningEffortId;\n    readonly persona?: string;\n    readonly toolFilter?: ToolRestriction;\n}',
+  },
+  {
+    name: 'ContractRevision',
+    declaration: 'export interface ContractRevision {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: ContractRevisionId;\n    readonly previousRevisionId: ContractRevisionId | null;\n    readonly sourceRef: SourceRef;\n    readonly repositoryId: RepositoryId | null;\n    readonly outcome: string | null;\n    readonly context: string;\n    readonly allowedScope: readonly string[];\n    readonly forbiddenScope: readonly string[];\n    readonly acceptanceClauses: readonly AcceptanceClause[];\n    readonly openDecisions: readonly OpenDecision[];\n    readonly baseSelectionRule: BaseSelectionRule | null;\n    readonly verificationSource: ContractVerificationSource | null;\n    readonly referenceLinks: readonly ReferenceLink[];\n    readonly createdAt: string;\n}',
+  },
+  {
+    name: 'ContractRevisionDraft',
+    declaration: 'export interface ContractRevisionDraft {\n    readonly previousRevisionId: ContractRevisionId | null;\n    readonly repositoryId: RepositoryId | null;\n    readonly outcome: string | null;\n    readonly context: string;\n    readonly allowedScope: readonly string[];\n    readonly forbiddenScope: readonly string[];\n    readonly acceptanceClauses: readonly {\n        readonly id: AcceptanceClauseId;\n        readonly text: string;\n    }[];\n    readonly openDecisions: ContractRevision[\'openDecisions\'];\n    readonly baseSelectionRule: ContractRevision[\'baseSelectionRule\'];\n    readonly verificationSource: ContractRevision[\'verificationSource\'];\n    readonly referenceLinks: ContractRevision[\'referenceLinks\'];\n}',
+  },
+  {
+    name: 'ContractRevisionId',
+    declaration: 'export type ContractRevisionId = Branded<\'DeliveryContractRevisionId\'>;',
+  },
+  {
+    name: 'ContractVerificationSource',
+    declaration: 'export type ContractVerificationSource = {\n    readonly kind: \'contract-field\';\n    readonly checks: readonly VerificationCheck[];\n} | {\n    readonly kind: \'git-blob\';\n    readonly path: RepositoryRelativePath;\n    readonly format: \'delivery-verification-plan@1\';\n};',
   },
   {
     name: 'CordisDynamicPackageId',
@@ -3942,6 +4165,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CreateAgentOptions {\n    readonly sessionId: SessionId;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly seedLength?: number;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n    readonly seed?: readonly SessionEvent[];\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
   },
   {
+    name: 'CreateCheckpointRequest',
+    declaration: 'export interface CreateCheckpointRequest {\n    readonly message: string;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
     name: 'CreateGoalRequest',
     declaration: 'export interface CreateGoalRequest {\n    readonly objective: string;\n    readonly maxGoalRounds?: number;\n}',
   },
@@ -3956,6 +4183,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CreateTeamTaskRequest',
     declaration: 'export interface CreateTeamTaskRequest {\n    readonly subject: string;\n    readonly description: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n}',
+  },
+  {
+    name: 'CreateWorkPacketRequest',
+    declaration: 'export interface CreateWorkPacketRequest {\n    readonly idempotencyKey: string;\n    readonly contractRevisionId: ContractRevisionId;\n    readonly repository: VerifiedRepositoryBase;\n    readonly packet: WorkPacketDraft;\n}',
   },
   {
     name: 'CredentialInfo',
@@ -3998,6 +4229,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type DeepSeekLlmApiJson = null | boolean | number | string | DeepSeekLlmApiJson[] | {\n    [key: string]: DeepSeekLlmApiJson;\n};',
   },
   {
+    name: 'DeliverySchemaVersion',
+    declaration: 'export type DeliverySchemaVersion = 1;',
+  },
+  {
+    name: 'DeliverySnapshot',
+    declaration: 'export interface DeliverySnapshot {\n    readonly contractRevisions: readonly ContractRevision[];\n    readonly workPackets: readonly WorkPacket[];\n    readonly dispatchBindings: readonly DispatchBinding[];\n    readonly acceptanceDecisions: readonly AcceptanceDecision[];\n}',
+  },
+  {
     name: 'DiffCallView',
     declaration: 'export interface DiffCallView {\n    card: \'diff\';\n    title: string;\n    diffs: FileDiff[];\n    locations?: FileLocation[];\n}',
   },
@@ -4032,6 +4271,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'DirectoryRegistrationHandle',
     declaration: 'export interface DirectoryRegistrationHandle {\n    (): void;\n    replace(entries: readonly LlmConfigurableProvider[]): void;\n}',
+  },
+  {
+    name: 'DispatchBinding',
+    declaration: 'export type DispatchBinding = {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: DispatchBindingId;\n    readonly packetId: WorkPacketId;\n    readonly inputDigest: Sha256Digest;\n    readonly idempotencyKey: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n} & ({\n    readonly phase: \'submitting\';\n    readonly queueWorkId: null;\n} | {\n    readonly phase: \'bound\';\n    readonly queueWorkId: QueueWorkIdRef;\n}) & ({\n    readonly kind: \'code.change@1\';\n    readonly executorId: ExecutorId;\n} | {\n    readonly kind: \'code.verify@1\';\n    readonly executorId: null;\n});',
+  },
+  {
+    name: 'DispatchBindingId',
+    declaration: 'export type DispatchBindingId = Branded<\'DeliveryDispatchBindingId\'>;',
   },
   {
     name: 'Domain',
@@ -4118,8 +4365,36 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
   },
   {
+    name: 'EvidenceId',
+    declaration: 'export type EvidenceId = Branded<\'DeliveryEvidenceId\'>;',
+  },
+  {
+    name: 'EvidenceIntegrityFinding',
+    declaration: 'export interface EvidenceIntegrityFinding {\n    readonly evidenceId: EvidenceId;\n    readonly required: boolean;\n    readonly status: \'verified\' | \'missing\' | \'digest-mismatch\' | \'size-mismatch\';\n}',
+  },
+  {
+    name: 'EvidenceKind',
+    declaration: 'export type EvidenceKind = \'log\' | \'git-diff-metadata\' | \'patch\' | \'checkpoint-metadata\' | \'verification-output\' | \'screenshot\' | \'resume-capsule\';',
+  },
+  {
+    name: 'EvidenceProvenance',
+    declaration: 'export type EvidenceProvenance = {\n    readonly kind: \'change-attempt\';\n    readonly packetId: WorkPacketId;\n    readonly queueWorkId: QueueWorkIdRef;\n    readonly queueAttemptId: QueueAttemptIdRef;\n} | {\n    readonly kind: \'verification-check\';\n    readonly packetId: WorkPacketId;\n    readonly queueWorkId: QueueWorkIdRef;\n    readonly queueAttemptId: QueueAttemptIdRef;\n    readonly checkId: VerificationCheckId;\n};',
+  },
+  {
+    name: 'EvidenceRef',
+    declaration: 'export interface EvidenceRef {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: EvidenceId;\n    readonly kind: EvidenceKind;\n    readonly mediaType: string;\n    readonly uri: string;\n    readonly byteLength: number;\n    readonly digest: Sha256Digest;\n    readonly createdAt: string;\n    readonly provenance: EvidenceProvenance;\n}',
+  },
+  {
     name: 'ExecutionWorldKind',
     declaration: 'export type ExecutionWorldKind = \'local\' | \'remote\';',
+  },
+  {
+    name: 'ExecutorId',
+    declaration: 'export type ExecutorId = Branded<\'DeliveryExecutorId\'>;',
+  },
+  {
+    name: 'ExecutorPreference',
+    declaration: 'export type ExecutorPreference = {\n    readonly mode: \'any\';\n} | {\n    readonly mode: \'preferred\' | \'required\';\n    readonly executorId: ExecutorId;\n};',
   },
   {
     name: 'FileDiff',
@@ -4200,6 +4475,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GenericResultView',
     declaration: 'export interface GenericResultView {\n    card: \'generic\';\n    title?: string;\n    content?: ContentBlock[];\n}',
+  },
+  {
+    name: 'GitBlobId',
+    declaration: 'export type GitBlobId = Branded<\'DeliveryGitBlobId\'>;',
+  },
+  {
+    name: 'GitCommitId',
+    declaration: 'export type GitCommitId = Branded<\'DeliveryGitCommitId\'>;',
+  },
+  {
+    name: 'GitHubRepositoryRef',
+    declaration: 'export interface GitHubRepositoryRef {\n    readonly owner: string;\n    readonly name: string;\n}',
   },
   {
     name: 'GoalActivation',
@@ -4316,6 +4603,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'InspectorJsonValue',
     declaration: 'export type InspectorJsonValue = InspectorJsonPrimitive | readonly InspectorJsonValue[] | InspectorJsonObject;',
+  },
+  {
+    name: 'InspectRepositoryRangeRequest',
+    declaration: 'export interface InspectRepositoryRangeRequest {\n    readonly base: VerifiedRepositoryRevision;\n    readonly target: VerifiedRepositoryRevision;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'InspectRepositoryRevisionRequest',
+    declaration: 'export interface InspectRepositoryRevisionRequest {\n    readonly repositoryId: RepositoryId;\n    readonly commit: GitCommitId;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'InvariantFailure',
@@ -4674,8 +4969,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface OneShotSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'one-shot\';\n    readonly label?: string;\n}',
   },
   {
+    name: 'OpenChangeWorkspaceRequest',
+    declaration: 'export interface OpenChangeWorkspaceRequest {\n    readonly ownerAttemptId: QueueAttemptIdRef;\n    readonly base: VerifiedRepositoryRevision;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'OpenDecision',
+    declaration: 'export interface OpenDecision {\n    readonly id: string;\n    readonly question: string;\n}',
+  },
+  {
+    name: 'OpenVerificationWorkspaceRequest',
+    declaration: 'export interface OpenVerificationWorkspaceRequest {\n    readonly ownerAttemptId: QueueAttemptIdRef;\n    readonly base: VerifiedRepositoryRevision;\n    readonly target: VerifiedRepositoryRevision;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
     name: 'OperatorWorkQueue',
     declaration: 'export interface OperatorWorkQueue {\n    enqueue<K extends WorkKind>(request: EnqueueRequest<K>): Promise<WorkId>;\n    enqueueBatch<K extends WorkKind>(request: BatchRequest<K>): Promise<BatchId>;\n    list(): readonly WorkView[];\n    get(id: WorkId): WorkView;\n    cancel(id: WorkId): Promise<void>;\n    retry(id: WorkId): Promise<void>;\n    pause(): void;\n    resume(): void;\n    resolveUnknown(workId: WorkId, resolution: UnknownResolution): Promise<void>;\n    pendingAttentions(): readonly Attention[];\n}',
+  },
+  {
+    name: 'PathRule',
+    declaration: 'export interface PathRule {\n    readonly kind: \'exact\' | \'subtree\';\n    readonly path: RepositoryRelativePath;\n}',
   },
   {
     name: 'PermissionSelect',
@@ -4794,8 +5105,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PtcDispatchLog {\n    readonly exec: ToolExecution;\n    readonly agent?: Agent;\n    readonly subCallId: ToolCallId;\n    readonly name: string;\n    readonly isError: boolean;\n    readonly content: ContentBlock[];\n}',
   },
   {
+    name: 'QueueAttemptIdRef',
+    declaration: 'export type QueueAttemptIdRef = Branded<\'DeliveryQueueAttemptIdRef\'>;',
+  },
+  {
+    name: 'QueueWorkIdRef',
+    declaration: 'export type QueueWorkIdRef = Branded<\'DeliveryQueueWorkIdRef\'>;',
+  },
+  {
     name: 'ReadFileLine',
     declaration: 'export interface ReadFileLine {\n    number: number;\n    text: string;\n}',
+  },
+  {
+    name: 'ReadRepositoryBlobRequest',
+    declaration: 'export interface ReadRepositoryBlobRequest {\n    readonly base: VerifiedRepositoryBase;\n    readonly path: RepositoryRelativePath;\n    readonly maxBytes: number;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'ReadResultView',
@@ -4810,8 +5133,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ReasoningEffortId = Branded<\'ReasoningEffortId\'>;',
   },
   {
+    name: 'RecordAcceptanceDecisionRequest',
+    declaration: 'export interface RecordAcceptanceDecisionRequest {\n    readonly idempotencyKey: string;\n    readonly packetId: WorkPacketId;\n    readonly changeBindingId: DispatchBindingId;\n    readonly verificationBindingId: DispatchBindingId;\n    readonly decision: AcceptanceDecision[\'decision\'];\n    readonly reason: string;\n    readonly actorId: string;\n    readonly decisionNonce: string;\n}',
+  },
+  {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
+  },
+  {
+    name: 'ReferenceLink',
+    declaration: 'export interface ReferenceLink {\n    readonly label: string;\n    readonly url: string;\n}',
   },
   {
     name: 'RemoteEventHostInfo',
@@ -4820,6 +5151,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ReplayEnvelope',
     declaration: 'export interface ReplayEnvelope {\n    response: unknown;\n    blocks?: readonly unknown[];\n}',
+  },
+  {
+    name: 'RepositoryCheckpoint',
+    declaration: 'export interface RepositoryCheckpoint {\n    readonly repositoryId: RepositoryId;\n    readonly baseCommit: GitCommitId;\n    readonly checkpointCommit: GitCommitId;\n    readonly changedPaths: readonly RepositoryRelativePath[];\n    readonly clean: true;\n    readonly descendsFromBase: true;\n}',
+  },
+  {
+    name: 'RepositoryId',
+    declaration: 'export type RepositoryId = Branded<\'DeliveryRepositoryId\'>;',
+  },
+  {
+    name: 'RepositoryRangeFacts',
+    declaration: 'export interface RepositoryRangeFacts {\n    readonly repositoryId: RepositoryId;\n    readonly baseCommit: GitCommitId;\n    readonly targetCommit: GitCommitId;\n    readonly descendsFromBase: boolean;\n    readonly changedPaths: readonly RepositoryRelativePath[];\n}',
+  },
+  {
+    name: 'RepositoryRelativePath',
+    declaration: 'export type RepositoryRelativePath = Branded<\'DeliveryRepositoryRelativePath\'>;',
+  },
+  {
+    name: 'RepositoryWorkspaceDisposition',
+    declaration: 'export type RepositoryWorkspaceDisposition = \'remove\' | \'preserve\';',
+  },
+  {
+    name: 'RepositoryWorkspaceLease',
+    declaration: 'export interface RepositoryWorkspaceLease {\n    readonly ownerAttemptId: QueueAttemptIdRef;\n    readonly repositoryId: RepositoryId;\n    readonly cwd: string;\n    close(disposition: RepositoryWorkspaceDisposition): Promise<void>;\n}',
   },
   {
     name: 'RequestContext',
@@ -4872,6 +5227,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResolvedWork',
     declaration: 'export type ResolvedWork<K extends WorkKind> = WorkKindMap[K] extends WorkKindDefinition<unknown, infer T, unknown, unknown> ? T : never;',
+  },
+  {
+    name: 'ResolveRepositoryBaseRequest',
+    declaration: 'export interface ResolveRepositoryBaseRequest {\n    readonly repositoryId: RepositoryId;\n    readonly selectionRule: BaseSelectionRule;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'ResolveVerificationSourceRequest',
+    declaration: 'export interface ResolveVerificationSourceRequest {\n    readonly repository: VerifiedRepositoryBase;\n    readonly path: RepositoryRelativePath;\n    readonly maxBytes: number;\n}',
   },
   {
     name: 'ResourceClaim',
@@ -4952,6 +5315,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SandboxPolicyRequest',
     declaration: 'export interface SandboxPolicyRequest {\n    session?: Session;\n    mode?: SandboxMode;\n}',
+  },
+  {
+    name: 'SaveBoundDeliveryEvidence',
+    declaration: 'export interface SaveBoundDeliveryEvidence {\n    readonly kind: EvidenceRef[\'kind\'];\n    readonly mediaType: string;\n    readonly data: Uint8Array;\n}',
+  },
+  {
+    name: 'SaveDeliveryEvidence',
+    declaration: 'export interface SaveDeliveryEvidence {\n    readonly kind: EvidenceRef[\'kind\'];\n    readonly mediaType: string;\n    readonly data: Uint8Array;\n    readonly provenance: EvidenceRef[\'provenance\'];\n}',
   },
   {
     name: 'SaveImageAttachment',
@@ -5482,6 +5853,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SettingsUpdateSource = \'update\' | \'provider\';',
   },
   {
+    name: 'Sha256Digest',
+    declaration: 'export type Sha256Digest = Branded<\'DeliverySha256Digest\'>;',
+  },
+  {
     name: 'ShellExecRequest',
     declaration: 'export interface ShellExecRequest {\n    command: string;\n    workdir?: string | undefined;\n    timeoutMs?: number | undefined;\n    stdoutMaxBytes?: number | undefined;\n    signal?: AbortSignal | undefined;\n    stdin?: string | undefined;\n    env?: Record<string, string> | undefined;\n    dshEnv?: DshEnvironment | undefined;\n    sandboxPolicy?: SandboxExecutionPolicy | undefined;\n}',
   },
@@ -5586,6 +5961,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
   },
   {
+    name: 'SourceRef',
+    declaration: 'export interface SourceRef {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: SourceRefId;\n    readonly provider: \'github\';\n    readonly repository: GitHubRepositoryRef;\n    readonly issueNumber: number;\n    readonly canonicalUrl: string;\n    readonly updatedAt: string;\n    readonly title: string;\n    readonly body: string;\n    readonly contentDigest: Sha256Digest;\n    readonly createdAt: string;\n}',
+  },
+  {
+    name: 'SourceRefDraft',
+    declaration: 'export interface SourceRefDraft {\n    readonly repository: SourceRef[\'repository\'];\n    readonly issueNumber: number;\n    readonly canonicalUrl: string;\n    readonly updatedAt: string;\n    readonly title: string;\n    readonly body: string;\n    readonly contentDigest: Sha256Digest;\n}',
+  },
+  {
+    name: 'SourceRefId',
+    declaration: 'export type SourceRefId = Branded<\'DeliverySourceRefId\'>;',
+  },
+  {
     name: 'SpawnTeammateRequest',
     declaration: 'export interface SpawnTeammateRequest {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly signal: AbortSignal;\n}',
   },
@@ -5620,6 +6007,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'StorageForms',
     declaration: 'export interface StorageForms {\n}',
+  },
+  {
+    name: 'StoredDeliveryEvidence',
+    declaration: 'export interface StoredDeliveryEvidence {\n    readonly ref: EvidenceRef;\n    readonly data: Uint8Array;\n}',
   },
   {
     name: 'StoredImageAttachment',
@@ -6174,12 +6565,60 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface UserMessage extends Message {\n    readonly role: \'user\';\n}',
   },
   {
+    name: 'VerificationCheck',
+    declaration: 'export interface VerificationCheck {\n    readonly id: VerificationCheckId;\n    readonly name: string;\n    readonly argv: readonly string[];\n    readonly cwd: \'.\' | RepositoryRelativePath;\n    readonly timeoutMs: number;\n    readonly severity: \'required\' | \'optional\';\n    readonly expectedExitCodes: readonly number[];\n}',
+  },
+  {
+    name: 'VerificationCheckId',
+    declaration: 'export type VerificationCheckId = Branded<\'DeliveryVerificationCheckId\'>;',
+  },
+  {
+    name: 'VerificationCheckResult',
+    declaration: 'export type VerificationCheckResult = {\n    readonly checkId: VerificationCheckId;\n    readonly checkDigest: Sha256Digest;\n    readonly severity: \'required\' | \'optional\';\n    readonly durationMs: number;\n    readonly evidenceIds: readonly EvidenceId[];\n} & ({\n    readonly status: \'exited\';\n    readonly exitCode: number;\n    readonly expected: boolean;\n} | {\n    readonly status: \'timed-out\';\n});',
+  },
+  {
+    name: 'VerificationPlan',
+    declaration: 'export interface VerificationPlan {\n    readonly checks: readonly VerificationCheck[];\n    readonly provenance: VerificationPlanProvenance;\n    readonly digest: Sha256Digest;\n}',
+  },
+  {
+    name: 'VerificationPlanProvenance',
+    declaration: 'export type VerificationPlanProvenance = {\n    readonly kind: \'contract-field\';\n    readonly contractRevisionId: ContractRevisionId;\n    readonly field: \'verificationSource\';\n} | {\n    readonly kind: \'git-blob\';\n    readonly baseCommit: GitCommitId;\n    readonly path: RepositoryRelativePath;\n    readonly blobId: GitBlobId;\n};',
+  },
+  {
+    name: 'VerificationSourceResolver',
+    declaration: 'export type VerificationSourceResolver = (request: ResolveVerificationSourceRequest) => Promise<VerifiedRepositoryBlob>;',
+  },
+  {
+    name: 'VerificationVerdict',
+    declaration: 'export interface VerificationVerdict {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: VerificationVerdictId;\n    readonly packetId: WorkPacketId;\n    readonly targetCommit: GitCommitId;\n    readonly baseCommit: GitCommitId;\n    readonly verificationPlanDigest: Sha256Digest;\n    readonly status: \'passed\' | \'failed\' | \'needs-human-review\';\n    readonly ancestryResult: \'descendant\' | \'not-descendant\';\n    readonly checkResults: readonly VerificationCheckResult[];\n    readonly evidenceIntegrityFindings: readonly EvidenceIntegrityFinding[];\n    readonly changedPathFindings: readonly ChangedPathFinding[];\n    readonly evidenceIds: readonly EvidenceId[];\n    readonly verifierVersion: string;\n    readonly reviewReasons: readonly string[];\n    readonly completedAt: string;\n}',
+  },
+  {
+    name: 'VerificationVerdictId',
+    declaration: 'export type VerificationVerdictId = Branded<\'DeliveryVerificationVerdictId\'>;',
+  },
+  {
+    name: 'VerificationWorkspaceLease',
+    declaration: 'export interface VerificationWorkspaceLease extends RepositoryWorkspaceLease {\n    readonly baseCommit: GitCommitId;\n    readonly targetCommit: GitCommitId;\n}',
+  },
+  {
     name: 'VerifiedAgentAuthority',
     declaration: 'export interface VerifiedAgentAuthority {\n    readonly kind: \'agent\';\n    readonly sessionId: string;\n}',
   },
   {
     name: 'VerifiedOperatorAuthority',
     declaration: 'export interface VerifiedOperatorAuthority {\n    readonly kind: \'operator\';\n}',
+  },
+  {
+    name: 'VerifiedRepositoryBase',
+    declaration: 'export interface VerifiedRepositoryBase extends VerifiedRepositoryRevision {\n    readonly selectionRule: BaseSelectionRule;\n    readonly [verifiedRepositoryBaseBrand]: true;\n}',
+  },
+  {
+    name: 'VerifiedRepositoryBlob',
+    declaration: 'export interface VerifiedRepositoryBlob {\n    readonly repositoryId: RepositoryId;\n    readonly commit: GitCommitId;\n    readonly path: RepositoryRelativePath;\n    readonly blobId: GitBlobId;\n    readonly bytes: Uint8Array;\n    readonly [verifiedRepositoryBlobBrand]: true;\n}',
+  },
+  {
+    name: 'VerifiedRepositoryRevision',
+    declaration: 'export interface VerifiedRepositoryRevision {\n    readonly repositoryId: RepositoryId;\n    readonly commit: GitCommitId;\n    readonly [verifiedRepositoryRevisionBrand]: true;\n}',
   },
   {
     name: 'VerifiedWebhookDelivery',
@@ -6380,6 +6819,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkOutput',
     declaration: 'export type WorkOutput<K extends WorkKind> = WorkKindMap[K] extends WorkKindDefinition<unknown, unknown, unknown, infer T> ? T : never;',
+  },
+  {
+    name: 'WorkPacket',
+    declaration: 'export interface WorkPacket {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: WorkPacketId;\n    readonly contractRevisionId: ContractRevisionId;\n    readonly repositoryId: RepositoryId;\n    readonly baseCommit: GitCommitId;\n    readonly objective: string;\n    readonly allowedPaths: readonly PathRule[];\n    readonly forbiddenPaths: readonly PathRule[];\n    readonly acceptanceClauseIds: readonly AcceptanceClauseId[];\n    readonly verificationPlan: VerificationPlan;\n    readonly stopConditions: readonly string[];\n    readonly executorPreference: ExecutorPreference;\n    readonly packetDigest: Sha256Digest;\n    readonly createdAt: string;\n}',
+  },
+  {
+    name: 'WorkPacketDraft',
+    declaration: 'export interface WorkPacketDraft {\n    readonly objective: string;\n    readonly allowedPaths: WorkPacket[\'allowedPaths\'];\n    readonly forbiddenPaths: WorkPacket[\'forbiddenPaths\'];\n    readonly acceptanceClauseIds: readonly AcceptanceClauseId[];\n    readonly stopConditions: readonly string[];\n    readonly executorPreference: WorkPacket[\'executorPreference\'];\n}',
+  },
+  {
+    name: 'WorkPacketId',
+    declaration: 'export type WorkPacketId = Branded<\'DeliveryWorkPacketId\'>;',
   },
   {
     name: 'WorkPolicy',
