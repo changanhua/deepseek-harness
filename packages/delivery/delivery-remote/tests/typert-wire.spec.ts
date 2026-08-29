@@ -4,7 +4,6 @@ import {
   readyWorkPacketFixture,
 } from '@deepseek-ai/dsh-delivery-testkit'
 import { describe, expect, it, vi } from 'vitest'
-import { TYPERT_REMOTE } from '../lib/typert.remote-client.js'
 
 vi.mock('zod', async () => import('../../delivery-protocol/node_modules/zod/index.js'))
 
@@ -12,17 +11,43 @@ interface ResultSchema {
   parse(value: unknown): unknown
 }
 
-function resultSchema(method: string): ResultSchema {
-  const descriptor = TYPERT_REMOTE.descriptors.find(candidate => candidate.method === method)
+interface RemoteDescriptorCandidate {
+  readonly method: string
+  readonly result: {
+    readonly mode: string
+    readonly schema?: ResultSchema
+  }
+}
+
+interface GeneratedRemoteModule {
+  readonly TYPERT_REMOTE: {
+    readonly descriptors: readonly RemoteDescriptorCandidate[]
+  }
+}
+
+async function generatedRemote(): Promise<GeneratedRemoteModule['TYPERT_REMOTE']> {
+  const builtUrl = new URL('../lib/typert.remote-client.js', import.meta.url).href
+  const generated = await import(builtUrl) as GeneratedRemoteModule
+  return generated.TYPERT_REMOTE
+}
+
+async function resultSchema(method: string): Promise<ResultSchema> {
+  const remote = await generatedRemote()
+  const descriptor = remote.descriptors.find(
+    (candidate: RemoteDescriptorCandidate) => candidate.method === method,
+  )
   if (descriptor === undefined) throw new Error(`Missing Delivery descriptor: ${method}`)
   if (descriptor.result.mode !== 'strict') {
     throw new Error(`Delivery descriptor is not strict: ${method}`)
+  }
+  if (descriptor.result.schema === undefined) {
+    throw new Error(`Delivery descriptor has no result schema: ${method}`)
   }
   return descriptor.result.schema
 }
 
 describe('Delivery Typert browser result schemas', () => {
-  it('strip Host-only decision identity from record and snapshot results', () => {
+  it('strip Host-only decision identity from record and snapshot results', async () => {
     const decision = acceptedDecisionFixture({
       actor: { kind: 'human', actorId: 'host-only-operator' },
       decisionNonce: 'host-only-nonce',
@@ -30,8 +55,10 @@ describe('Delivery Typert browser result schemas', () => {
     const contract = contractRevisionFixture()
     const packet = readyWorkPacketFixture({ contractRevisionId: contract.id })
 
-    const recordWire = resultSchema('recordDecision').parse(decision)
-    const snapshotWire = resultSchema('snapshot').parse({
+    const record = await resultSchema('recordDecision')
+    const snapshot = await resultSchema('snapshot')
+    const recordWire = record.parse(decision)
+    const snapshotWire = snapshot.parse({
       contractsWithoutPacket: [],
       cards: [{
         contractRevision: contract,

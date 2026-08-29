@@ -9,6 +9,12 @@ import { DeliveryAcceptanceCandidateError } from '../src/acceptance.ts'
 import { remoteFailure, requireActive } from '../src/failures.ts'
 import { DeliveryProjectionError } from '../src/projection.ts'
 
+function legacyUnavailableIntakeError(message: string): DeliveryGitHubIntakeError {
+  const error = new DeliveryGitHubIntakeError('invalid-request', message)
+  Object.defineProperty(error, 'code', { value: 'unavailable' })
+  return error
+}
+
 describe('Delivery Remote browser failure mapping', () => {
   it('sanitizes typed failures and gives cancellation precedence', () => {
     const sentinel = 'secret=CREDENTIAL C:\\private idempotency-key=delivery:packet:secret'
@@ -53,7 +59,7 @@ describe('Delivery Remote browser failure mapping', () => {
       [new DeliveryTaskQueueError('unavailable', sentinel), 'unavailable', 'delivery-task-queue'],
       [new DeliveryTaskQueueError('packet-not-found', sentinel), 'not-found', 'delivery-task-queue'],
       [new DeliveryTaskQueueError('executor-not-allowed', sentinel), 'denied', 'delivery-task-queue'],
-      [new DeliveryGitHubIntakeError('unavailable', sentinel), 'unavailable', 'delivery-github-intake'],
+      [legacyUnavailableIntakeError(sentinel), 'unavailable', 'delivery-github-intake'],
       [new DeliveryGitHubIntakeError('invalid-request', sentinel), 'bad-request', 'delivery-github-intake'],
       [new DeliveryEvidenceError('not-found', 'x'), 'not-found', 'delivery-evidence'],
       [new DeliveryEvidenceError('unavailable', 'x'), 'unavailable', 'delivery-evidence'],

@@ -1,11 +1,23 @@
 import { Context } from '@deepseek-ai/cordis'
+import { DeliveryGitHubIntakeError } from '@deepseek-ai/dsh-delivery-github-intake'
+import { startCodeChange, startVerification } from '@deepseek-ai/dsh-delivery-task-queue'
 import { describe, expect, it } from 'vitest'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import * as RemoteInvariant from '../src/invariant.ts'
 import {
   Config,
   DeliveryRemoteService,
+  type DeliveryRemoteInternals,
 } from '../src/index.ts'
+
+function legacyUnavailableIntakeError(): DeliveryGitHubIntakeError {
+  const error = new DeliveryGitHubIntakeError(
+    'invalid-request',
+    'The C0 intake Consumer is unavailable',
+  )
+  Object.defineProperty(error, 'code', { value: 'unavailable' })
+  return error
+}
 
 function context(): Context {
   const ctx = new Context()
@@ -47,7 +59,13 @@ describe('Delivery Remote host boundary', () => {
   })
 
   it('maps the C0 unavailable intake provider to one stable browser failure', async () => {
-    const service = new DeliveryRemoteService(context())
+    const internals: DeliveryRemoteInternals = {
+      fetch: globalThis.fetch,
+      importIssue: async () => { throw legacyUnavailableIntakeError() },
+      startCodeChange,
+      startVerification,
+    }
+    const service = new DeliveryRemoteService(context(), {}, internals)
 
     await expect(service.importIssue({
       issueUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/13',

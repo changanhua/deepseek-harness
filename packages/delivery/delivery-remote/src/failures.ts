@@ -80,10 +80,11 @@ export function remoteFailure(
     })
   }
   if (error instanceof DeliveryGitHubIntakeError) {
+    const domainCode: string = error.code
     return new TypertRemoteFailure({
-      code: error.code === 'unavailable' ? 'unavailable' : 'bad-request',
-      message: `Delivery issue import failed: ${error.code}`,
-      details: { operation, domain: 'delivery-github-intake', domainCode: error.code },
+      code: domainCode === 'unavailable' ? 'unavailable' : 'bad-request',
+      message: `Delivery issue import failed: ${domainCode}`,
+      details: { operation, domain: 'delivery-github-intake', domainCode },
     })
   }
   if (error instanceof DeliveryEvidenceError) {
