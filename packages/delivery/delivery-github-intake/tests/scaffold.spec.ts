@@ -5,11 +5,18 @@ import type {
   DeliverySnapshot,
 } from '@deepseek-ai/dsh-delivery'
 import type { ContractRevision } from '@deepseek-ai/dsh-delivery-protocol'
-import { RepositoryId, sourceRefContentDigest } from '@deepseek-ai/dsh-delivery-protocol'
+import {
+  ContractRevisionId,
+  RepositoryId,
+  SourceRefId,
+  sourceRefContentDigest,
+} from '@deepseek-ai/dsh-delivery-protocol'
 import { describe, expect, it, vi } from 'vitest'
 import {
   importGitHubIssue,
+  parseGitHubIssueWorkBrief,
   type GitHubIssueIntakeDependencies,
+  workBriefContractRevisionDraft,
 } from '../src/index.ts'
 
 const repositoryId = RepositoryId('fixture-repository')
@@ -36,13 +43,63 @@ function issueSnapshot(overrides: Partial<{
   }
 }
 
-function dependencies(revisions: readonly ContractRevision[] = []) {
+function contractRevision(
+  issue = issueSnapshot(),
+  {
+    id = 'contract-revision-fixture',
+    previousRevisionId = null,
+    selectedRepositoryId = repositoryId,
+  }: {
+    readonly id?: string
+    readonly previousRevisionId?: ContractRevision['previousRevisionId']
+    readonly selectedRepositoryId?: typeof repositoryId
+  } = {},
+): ContractRevision {
+  const revisionId = ContractRevisionId(id)
+  return {
+    schemaVersion: 1,
+    id: revisionId,
+    ...workBriefContractRevisionDraft(
+      parseGitHubIssueWorkBrief(issue.body),
+      selectedRepositoryId,
+      previousRevisionId,
+    ),
+    sourceRef: {
+      schemaVersion: 1,
+      id: SourceRefId(`source-ref-${id}`),
+      provider: 'github',
+      repository: { owner: 'example', name: 'project' },
+      issueNumber: 42,
+      canonicalUrl: issueUrl,
+      updatedAt: issue.updated_at,
+      title: issue.title,
+      body: issue.body,
+      contentDigest: sourceRefContentDigest(issue),
+      createdAt: '2026-08-30T12:00:00.000Z',
+    },
+    createdAt: '2026-08-30T12:00:00.000Z',
+  }
+}
+
+function dependencies(
+  revisions: readonly ContractRevision[] = [],
+  onSnapshot?: () => void,
+) {
   const snapshot = vi.fn<() => DeliverySnapshot>(() => ({
     contractRevisions: revisions,
     workPackets: [],
     dispatchBindings: [],
     acceptanceDecisions: [],
   }))
+  snapshot.mockImplementation(() => {
+    onSnapshot?.()
+    return {
+      contractRevisions: revisions,
+      workPackets: [],
+      dispatchBindings: [],
+      acceptanceDecisions: [],
+    }
+  })
   const adopted = vi.fn<(request: AdoptContractRevisionRequest) => Promise<ContractRevision>>(
     async _request => ({ id: 'contract-revision-adopted' }) as ContractRevision,
   )
@@ -97,7 +154,7 @@ describe('GitHub Issue intake', () => {
     await importGitHubIssue(deps, { issueUrl, repositoryId })
 
     const [request] = adopted.mock.calls[0]!
-    expect(request.idempotencyKey).toBe(`github:example/project:issue:42:${sourceRefContentDigest(issue)}`)
+    expect(request.idempotencyKey).toBe(`github:example/project:issue:42:previous:root:${sourceRefContentDigest(issue)}`)
   })
 
   it('adopts one exact GitHub snapshot through the host fetch boundary', async () => {
@@ -245,19 +302,7 @@ describe('GitHub Issue intake', () => {
 
   it('returns the existing Contract revision for an exact source snapshot', async () => {
     const issue = issueSnapshot()
-    const existing = {
-      id: 'contract-revision-existing',
-      sourceRef: {
-        provider: 'github',
-        repository: { owner: 'example', name: 'project' },
-        issueNumber: 42,
-        canonicalUrl: issueUrl,
-        updatedAt: issue.updated_at,
-        title: issue.title,
-        body: issue.body,
-        contentDigest: sourceRefContentDigest(issue),
-      },
-    } as ContractRevision
+    const existing = contractRevision(issue, { id: 'contract-revision-existing' })
     const { deps, fetch, adopted } = dependencies([existing])
     fetch.mockResolvedValue(jsonResponse(issue))
 
@@ -281,19 +326,7 @@ describe('GitHub Issue intake', () => {
 
   it('returns an existing revision when GitHub only changed its timestamp', async () => {
     const issue = issueSnapshot()
-    const existing = {
-      id: 'contract-revision-existing-content',
-      sourceRef: {
-        provider: 'github',
-        repository: { owner: 'example', name: 'project' },
-        issueNumber: 42,
-        canonicalUrl: issueUrl,
-        updatedAt: '2026-08-30T12:00:00.000Z',
-        title: issue.title,
-        body: issue.body,
-        contentDigest: sourceRefContentDigest(issue),
-      },
-    } as ContractRevision
+    const existing = contractRevision(issue, { id: 'contract-revision-existing-content' })
     const { deps, fetch, adopted } = dependencies([existing])
     fetch.mockResolvedValue(jsonResponse(issueSnapshot({
       updated_at: '2026-08-30T12:01:00.000Z',
@@ -305,23 +338,15 @@ describe('GitHub Issue intake', () => {
   })
 
   it('adopts an edited Issue after its latest same-Issue predecessor', async () => {
-    const previous = {
-      id: 'contract-revision-prior',
-      sourceRef: {
-        provider: 'github',
-        repository: { owner: 'example', name: 'project' },
-        issueNumber: 42,
-      },
-    } as ContractRevision
-    const unrelated = {
-      id: 'contract-revision-unrelated',
-      sourceRef: {
-        provider: 'github',
-        repository: { owner: 'elsewhere', name: 'project' },
-        issueNumber: 42,
-      },
-    } as ContractRevision
-    const { deps, fetch, adopted } = dependencies([unrelated, previous])
+    const previous = contractRevision(issueSnapshot(), { id: 'contract-revision-prior' })
+    const unrelated = contractRevision(issueSnapshot(), { id: 'contract-revision-unrelated' })
+    const unrelatedSource = {
+      ...unrelated.sourceRef,
+      repository: { owner: 'elsewhere', name: 'project' },
+      canonicalUrl: 'https://github.com/elsewhere/project/issues/42',
+    }
+    const unrelatedRevision = { ...unrelated, sourceRef: unrelatedSource }
+    const { deps, fetch, adopted } = dependencies([unrelatedRevision, previous])
     const issue = issueSnapshot({
       body: validBody.replace(
         'Keep the interaction entirely mock-backed while the data APIs remain out of scope.',
@@ -334,7 +359,201 @@ describe('GitHub Issue intake', () => {
     await importGitHubIssue(deps, { issueUrl, repositoryId })
 
     const [request] = adopted.mock.calls[0]!
-    expect(request.idempotencyKey).toBe(`github:example/project:issue:42:${sourceRefContentDigest(issue)}`)
+    expect(request.idempotencyKey).toBe(`github:example/project:issue:42:previous:${previous.id}:${sourceRefContentDigest(issue)}`)
     expect(request.revision.previousRevisionId).toBe(previous.id)
+  })
+
+  it('adopts an A to B to A reversion after the unique current head regardless of snapshot order', async () => {
+    const first = issueSnapshot()
+    const second = issueSnapshot({
+      body: validBody.replace(
+        'Keep the interaction entirely mock-backed while the data APIs remain out of scope.',
+        'Use only a checked-in mock without adding a network dependency.',
+      ),
+    })
+    const revisionA = contractRevision(first, { id: 'contract-revision-a' })
+    const revisionB = contractRevision(second, {
+      id: 'contract-revision-b',
+      previousRevisionId: revisionA.id,
+    })
+
+    const requests = await Promise.all([[revisionA, revisionB], [revisionB, revisionA]].map(async (revisions) => {
+      const { deps, fetch, adopted } = dependencies(revisions)
+      fetch.mockResolvedValue(jsonResponse(first))
+      await importGitHubIssue(deps, { issueUrl, repositoryId })
+      return adopted.mock.calls[0]![0]
+    }))
+
+    expect(requests).toHaveLength(2)
+    expect(requests[0]).toMatchObject({
+      idempotencyKey: `github:example/project:issue:42:previous:${revisionB.id}:${sourceRefContentDigest(first)}`,
+      revision: { previousRevisionId: revisionB.id },
+    })
+    expect(requests[1]).toEqual(requests[0])
+  })
+
+  it.each([
+    ['branched heads', () => {
+      const root = contractRevision(issueSnapshot(), { id: 'contract-revision-root' })
+      return [root,
+        contractRevision(issueSnapshot({ title: 'left' }), { id: 'contract-revision-left', previousRevisionId: root.id }),
+        contractRevision(issueSnapshot({ title: 'right' }), { id: 'contract-revision-right', previousRevisionId: root.id }),
+      ]
+    }],
+    ['missing predecessor', () => [
+      contractRevision(issueSnapshot(), {
+        id: 'contract-revision-orphan',
+        previousRevisionId: ContractRevisionId('contract-revision-missing'),
+      }),
+    ]],
+    ['cyclic lineage', () => {
+      const a = contractRevision(issueSnapshot(), { id: 'contract-revision-cycle-a' })
+      const b = contractRevision(issueSnapshot({ title: 'cycle-b' }), {
+        id: 'contract-revision-cycle-b',
+        previousRevisionId: a.id,
+      })
+      return [{ ...a, previousRevisionId: b.id }, b]
+    }],
+    ['duplicate revision identity', () => {
+      const duplicate = contractRevision(issueSnapshot(), { id: 'contract-revision-duplicate' })
+      return [duplicate, duplicate]
+    }],
+  ])('fails closed for a %s same-Issue lineage', async (_label, revisions) => {
+    const { deps, fetch, adopted } = dependencies(revisions())
+    fetch.mockResolvedValue(jsonResponse(issueSnapshot({ title: 'new Issue state' })))
+
+    await expect(importGitHubIssue(deps, { issueUrl, repositoryId })).rejects.toMatchObject({
+      code: 'invalid-request',
+    })
+
+    expect(adopted).not.toHaveBeenCalled()
+  })
+
+  it('rejects a content-equivalent revision bound to another configured repository', async () => {
+    const issue = issueSnapshot()
+    const { deps, fetch, adopted } = dependencies([
+      contractRevision(issue, {
+        id: 'contract-revision-other-repository',
+        selectedRepositoryId: RepositoryId('other-repository'),
+      }),
+    ])
+    fetch.mockResolvedValue(jsonResponse(issue))
+
+    await expect(importGitHubIssue(deps, { issueUrl, repositoryId })).rejects.toMatchObject({
+      code: 'invalid-request',
+    })
+
+    expect(adopted).not.toHaveBeenCalled()
+  })
+
+  it('uses one root idempotency identity for concurrent timestamp-only retries', async () => {
+    const issue = issueSnapshot()
+    const { deps, fetch, adopted } = dependencies()
+    let responseOrdinal = 0
+    fetch.mockImplementation(async () => jsonResponse(issueSnapshot({
+      updated_at: `2026-08-30T12:00:0${String(++responseOrdinal)}.000Z`,
+    })))
+
+    await Promise.all([
+      importGitHubIssue(deps, { issueUrl, repositoryId }),
+      importGitHubIssue(deps, { issueUrl, repositoryId }),
+    ])
+
+    expect(adopted).toHaveBeenCalledTimes(2)
+    expect(adopted.mock.calls.map(([request]) => request.idempotencyKey)).toEqual([
+      `github:example/project:issue:42:previous:root:${sourceRefContentDigest(issue)}`,
+      `github:example/project:issue:42:previous:root:${sourceRefContentDigest(issue)}`,
+    ])
+  })
+
+  it('classifies cancellation after fetch resolves before response classification as aborted', async () => {
+    const controller = new AbortController()
+    const { deps, fetch, snapshot, adopted } = dependencies()
+    fetch.mockImplementation(async () => {
+      controller.abort()
+      return new Response('forbidden', { status: 403 })
+    })
+
+    await expect(importGitHubIssue(deps, {
+      issueUrl,
+      repositoryId,
+      signal: controller.signal,
+    })).rejects.toMatchObject({ code: 'aborted' })
+
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(adopted).not.toHaveBeenCalled()
+  })
+
+  it('classifies a JSON rejection concurrent with cancellation as aborted', async () => {
+    const controller = new AbortController()
+    const { deps, fetch, snapshot, adopted } = dependencies()
+    const response = new Response('{}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+    vi.spyOn(response, 'json').mockImplementation(async () => {
+      controller.abort()
+      throw new SyntaxError('partial JSON')
+    })
+    fetch.mockResolvedValue(response)
+
+    await expect(importGitHubIssue(deps, {
+      issueUrl,
+      repositoryId,
+      signal: controller.signal,
+    })).rejects.toMatchObject({ code: 'aborted' })
+
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(adopted).not.toHaveBeenCalled()
+  })
+
+  it('does not return an existing revision when cancellation occurs during snapshot', async () => {
+    const controller = new AbortController()
+    const existing = contractRevision(issueSnapshot(), { id: 'contract-revision-existing-snapshot-abort' })
+    const { deps, fetch, adopted } = dependencies([existing], () => {
+      controller.abort()
+    })
+    fetch.mockResolvedValue(jsonResponse())
+
+    await expect(importGitHubIssue(deps, {
+      issueUrl,
+      repositoryId,
+      signal: controller.signal,
+    })).rejects.toMatchObject({ code: 'aborted' })
+
+    expect(adopted).not.toHaveBeenCalled()
+  })
+
+  it('does not begin adoption when cancellation occurs during snapshot', async () => {
+    const controller = new AbortController()
+    const { deps, fetch, adopted } = dependencies([], () => {
+      controller.abort()
+    })
+    fetch.mockResolvedValue(jsonResponse())
+
+    await expect(importGitHubIssue(deps, {
+      issueUrl,
+      repositoryId,
+      signal: controller.signal,
+    })).rejects.toMatchObject({ code: 'aborted' })
+
+    expect(adopted).not.toHaveBeenCalled()
+  })
+
+  it('returns Delivery committed adoption when cancellation follows the adoption commit point', async () => {
+    const controller = new AbortController()
+    const committed = contractRevision(issueSnapshot(), { id: 'contract-revision-committed' })
+    const { deps, fetch, adopted } = dependencies()
+    adopted.mockImplementation(async () => {
+      controller.abort()
+      return committed
+    })
+    fetch.mockResolvedValue(jsonResponse())
+
+    await expect(importGitHubIssue(deps, {
+      issueUrl,
+      repositoryId,
+      signal: controller.signal,
+    })).resolves.toBe(committed)
   })
 })

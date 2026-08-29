@@ -12,6 +12,7 @@ import type {
 import {
   DELIVERY_SCHEMA_VERSION,
   SourceRefId,
+  canonicalJson,
   parseCanonicalGitHubIssueUrl,
   sourceRefContentDigest,
   sourceRefSchema,
@@ -77,7 +78,9 @@ export interface ImportGitHubIssueRequest {
  *
  * @param dependencies - Delivery adoption boundary and host-provided fetch.
  * @param request - Canonical Issue URL plus its required configured repository link.
- * @returns the adopted immutable Contract revision.
+ * @returns the adopted immutable Contract revision. Cancellation is observed
+ * before the `adoptContractRevision()` commit point; once that call starts, its
+ * committed result or failure is authoritative even if the signal aborts later.
  */
 export async function importGitHubIssue(
   dependencies: GitHubIssueIntakeDependencies,
@@ -90,9 +93,7 @@ export async function importGitHubIssue(
       'GitHub Issue intake requires a canonical public github.com Issue URL',
     )
   }
-  if (request.signal?.aborted) {
-    throw new DeliveryGitHubIntakeError('aborted', 'GitHub Issue intake was aborted')
-  }
+  throwIfAborted(request.signal)
   const apiUrl = `https://api.github.com/repos/${coordinates.repository.owner}/${coordinates.repository.name}/issues/${String(coordinates.issueNumber)}`
   let response: Response
   try {
@@ -108,6 +109,7 @@ export async function importGitHubIssue(
     }
     throw new DeliveryGitHubIntakeError('network-failure', 'GitHub Issue intake fetch failed', { cause })
   }
+  throwIfAborted(request.signal)
   if (response.status !== 200) {
     throw new DeliveryGitHubIntakeError(
       'http-failure',
@@ -126,26 +128,39 @@ export async function importGitHubIssue(
     }
     throw new DeliveryGitHubIntakeError('invalid-response', 'GitHub Issue intake response is not valid JSON', { cause })
   }
-  if (request.signal?.aborted) {
+  throwIfAborted(request.signal)
+  const source = parseIssueSnapshot(value, request.issueUrl, coordinates)
+  throwIfAborted(request.signal)
+  const brief = parseGitHubIssueWorkBrief(source.body)
+  throwIfAborted(request.signal)
+  const snapshot = dependencies.delivery.snapshot()
+  throwIfAborted(request.signal)
+  const previous = deriveSameIssueHead(snapshot.contractRevisions, source)
+  if (previous !== null && sameSourceContent(previous, source)) {
+    if (sameConfiguredRevision(previous, brief, request.repositoryId)) return previous
+    throw new DeliveryGitHubIntakeError(
+      'invalid-request',
+      'GitHub Issue intake snapshot already belongs to another configured Contract revision',
+    )
+  }
+  const revision = workBriefContractRevisionDraft(
+    brief,
+    request.repositoryId,
+    previous?.id ?? null,
+  )
+  throwIfAborted(request.signal)
+  // This call is the cancellation commit point. Do not inspect the signal after it starts.
+  return dependencies.delivery.adoptContractRevision({
+    idempotencyKey: `github:${source.repository.owner}/${source.repository.name}:issue:${String(source.issueNumber)}:previous:${previous?.id ?? 'root'}:${source.contentDigest}`,
+    source,
+    revision,
+  })
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
     throw new DeliveryGitHubIntakeError('aborted', 'GitHub Issue intake was aborted')
   }
-  const source = parseIssueSnapshot(value, request.issueUrl, coordinates)
-  const snapshot = dependencies.delivery.snapshot()
-  const existing = snapshot.contractRevisions.find((revision: ContractRevision) => sameSourceContent(revision, source))
-  if (existing !== undefined) return existing
-  const previous = snapshot.contractRevisions
-    .filter((revision: ContractRevision) => sameIssue(revision, source))
-    .at(-1)
-  const brief = parseGitHubIssueWorkBrief(source.body)
-  return dependencies.delivery.adoptContractRevision({
-    idempotencyKey: `github:${source.repository.owner}/${source.repository.name}:issue:${String(source.issueNumber)}:${source.contentDigest}`,
-    source,
-    revision: workBriefContractRevisionDraft(
-      brief,
-      request.repositoryId,
-      previous?.id ?? null,
-    ),
-  })
 }
 
 interface GitHubIssueSnapshot {
@@ -223,4 +238,60 @@ function sameSourceContent(
     && previous.title === source.title
     && previous.body === source.body
     && previous.contentDigest === source.contentDigest
+}
+
+function deriveSameIssueHead(
+  revisions: readonly ContractRevision[],
+  source: ReturnType<typeof parseIssueSnapshot>,
+): ContractRevision | null {
+  const sameIssueRevisions = revisions.filter(revision => sameIssue(revision, source))
+  if (sameIssueRevisions.length === 0) return null
+  const byId = new Map<string, ContractRevision>()
+  for (const revision of sameIssueRevisions) {
+    if (byId.has(revision.id)) {
+      throw invalidLineage('contains a duplicate Contract revision identity')
+    }
+    byId.set(revision.id, revision)
+  }
+  const predecessors = new Set<string>()
+  for (const revision of sameIssueRevisions) {
+    if (revision.previousRevisionId === null) continue
+    if (!byId.has(revision.previousRevisionId)) {
+      throw invalidLineage('references a missing same-Issue predecessor')
+    }
+    predecessors.add(revision.previousRevisionId)
+  }
+  const heads = sameIssueRevisions.filter(revision => !predecessors.has(revision.id))
+  if (heads.length !== 1) {
+    throw invalidLineage('does not have exactly one current head')
+  }
+  return heads[0] as ContractRevision
+}
+
+function invalidLineage(detail: string): DeliveryGitHubIntakeError {
+  return new DeliveryGitHubIntakeError(
+    'invalid-request',
+    `GitHub Issue intake cannot derive a unique revision lineage because it ${detail}`,
+  )
+}
+
+function sameConfiguredRevision(
+  revision: ContractRevision,
+  brief: ReturnType<typeof parseGitHubIssueWorkBrief>,
+  repositoryId: RepositoryId,
+): boolean {
+  const expected = workBriefContractRevisionDraft(brief, repositoryId, revision.previousRevisionId)
+  return canonicalJson({
+    previousRevisionId: revision.previousRevisionId,
+    repositoryId: revision.repositoryId,
+    outcome: revision.outcome,
+    context: revision.context,
+    allowedScope: revision.allowedScope,
+    forbiddenScope: revision.forbiddenScope,
+    acceptanceClauses: revision.acceptanceClauses,
+    openDecisions: revision.openDecisions,
+    baseSelectionRule: revision.baseSelectionRule,
+    verificationSource: revision.verificationSource,
+    referenceLinks: revision.referenceLinks,
+  }) === canonicalJson(expected)
 }
