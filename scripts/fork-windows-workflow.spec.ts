@@ -27,6 +27,8 @@ describe('fork Windows pull-request workflow', () => {
     expect(diffCommands).toContain('pnpm --dir head run check:ci:fork-c0-diff')
     expect(diffCommands).toContain('github.event.pull_request.base.sha')
     expect(diffCommands).toContain('scripts/test-invariants.spec.ts')
+    const c0PnpmSetup = workflowStep(c0Diff, step => step.uses === 'pnpm/action-setup@v4')
+    expect(c0PnpmSetup.with).toMatchObject({ version: '11.7.0' })
     const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }
     expect(manifest.scripts?.['check:ci:fork-c0-diff']).toBe('tsx scripts/run-fork-c0-diff.ts')
     expect(verdict.needs).toEqual(['windows-build', 'c0-diff'])
@@ -61,6 +63,16 @@ function commandText(job: Record<string, unknown>): string {
     .filter(isRecord)
     .map(step => typeof step.run === 'string' ? step.run : '')
     .join('\n')
+}
+
+function workflowStep(
+  job: Record<string, unknown>,
+  predicate: (step: Record<string, unknown>) => boolean,
+): Record<string, unknown> {
+  if (!Array.isArray(job.steps)) throw new TypeError('job must define steps')
+  const step = job.steps.filter(isRecord).find(predicate)
+  if (step === undefined) throw new TypeError('workflow step is missing')
+  return step
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

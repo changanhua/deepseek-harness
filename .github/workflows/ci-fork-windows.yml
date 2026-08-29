@@ -31,6 +31,7 @@ jobs:
           /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
       - uses: pnpm/action-setup@v4
         with:
+          version: 11.7.0
           dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
       - uses: actions/setup-node@v6
         with:
@@ -85,6 +86,7 @@ jobs:
       - if: steps.scope.outputs.has_c0 == 'true'
         uses: pnpm/action-setup@v4
         with:
+          version: 11.7.0
           dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
       - if: steps.scope.outputs.has_c0 == 'true'
         uses: actions/setup-node@v6
