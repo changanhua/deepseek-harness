@@ -1,0 +1,60 @@
+name: Delivery Gate B proof
+
+# Temporary, non-merge evidence lane for the Delivery Codex driver spike.
+# The fork cannot allocate the custom runners used by ci.yml, while Work Mode
+# cannot publish the pinned Codex app-server run. This keyless hosted lane keeps
+# the unchanged product baseline ahead of the two new parent-free scenarios so
+# a failure is attributable before Gate B is accepted.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  real-product:
+    name: pinned Codex real-product proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install (immutable)
+        run: pnpm install --frozen-lockfile
+
+      - name: Prove unchanged approve-for-me baseline
+        run: >-
+          pnpm exec vitest run
+          packages/subagent/subagent-codex/tests/real-product.spec.ts
+          -t 'starts approve-for-me through the real app-server and returns exact text'
+          --reporter=verbose
+
+      - name: Prove parent-free linked worktree
+        run: >-
+          pnpm exec vitest run
+          packages/subagent/subagent-codex/tests/real-product.spec.ts
+          -t 'runs the parent-free driver in an explicit git worktree'
+          --reporter=verbose
+
+      - name: Prove parent-free cancellation and tree quiescence
+        run: >-
+          pnpm exec vitest run
+          packages/subagent/subagent-codex/tests/real-product.spec.ts
+          -t 'cancels the parent-free driver and joins its real app-server process tree'
+          --reporter=verbose
