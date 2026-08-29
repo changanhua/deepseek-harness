@@ -90,6 +90,7 @@
     "@deepseek-ai/dsh-client-ui-trajectory": "workspace:^",
     "@deepseek-ai/dsh-client-ui-task-queue": "workspace:^",
     "@deepseek-ai/dsh-client-ui-capability": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-architecture": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
     "@deepseek-ai/dsh-cmdline": "workspace:^",
     "@deepseek-ai/dsh-code-runtime-worker-thread": "workspace:^",
