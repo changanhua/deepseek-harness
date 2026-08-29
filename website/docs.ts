@@ -324,6 +324,7 @@ const subsystemGroups = [
     ['skills.md', '技能', 'Skills'],
     ['workflow.md', '工作流', 'Workflows'],
     ['subagent.md', '子代理', 'Subagents'],
+    ['delivery.md', '个人交付', 'Personal Delivery'],
   ]],
   ['策略与交互', 'Policy and interaction', [
     ['approval.md', '审批', 'Approvals'],

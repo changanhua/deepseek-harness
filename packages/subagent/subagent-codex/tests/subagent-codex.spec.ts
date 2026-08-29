@@ -17,6 +17,10 @@ import type {
   SubprocessSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
+import {
+  CODEX_APP_SERVER_PERMISSION_MODES,
+  startCodexAppServerRun as startSupportedCodexAppServerRun,
+} from '../src/app-server-run.ts'
 import * as codex from '../src/index.ts'
 import * as invariant from '../src/invariant.ts'
 import {
@@ -1493,15 +1497,20 @@ describe('CodexAppServerWire', () => {
 })
 
 describe('run lifecycle and quiescence', () => {
-  it('accepts explicit cwd, prompt, and signal without a parent Agent', async () => {
+  it('publishes only result and disposal through the supported parent-free boundary', async () => {
     const child = fakeChild()
     const cwd = process.cwd()
     const signal = new AbortController().signal
     const spawn = vi.fn(() => child.handle)
-    const starting = startCodexAppServerRun({
+    const starting = startSupportedCodexAppServerRun({
       prompt: [{ type: 'text', text: 'parent-free task' }],
       signal,
-    }, runSpec(child, { cwd, spawn }))
+      cwd,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: DEFAULT_DISPOSE_GRACE_MS,
+      spawn,
+    })
     const initialize = await child.peer.nextMethod('initialize')
     child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
     await child.peer.nextMethod('initialized')
@@ -1509,6 +1518,8 @@ describe('run lifecycle and quiescence', () => {
     expect(threadStart.params).toMatchObject({ cwd })
     child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
     const run = await starting
+    expect(Object.keys(run).sort()).toEqual(['dispose', 'result'])
+    expect(CODEX_APP_SERVER_PERMISSION_MODES).toEqual(CODEX_PERMISSION_MODES)
     const turnStart = await child.peer.nextMethod('turn/start')
     expect(turnStart.params).toMatchObject({
       input: [{ type: 'text', text: 'parent-free task', text_elements: [] }],

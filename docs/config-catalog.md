@@ -586,6 +586,72 @@ export interface Config {
 
 Source: [`packages/credentials/credentials-local/src/index.ts:64`](../packages/credentials/credentials-local/src/index.ts)
 
+<a id="deepseek-aidsh-delivery-evidence-local"></a>
+
+## `@deepseek-ai/dsh-delivery-evidence-local`
+
+```ts config-catalog
+/** Local evidence-store location. */
+export interface Config {
+  /** Private directory containing content-addressed evidence objects. */
+  readonly root: string
+}
+```
+
+Source: [`packages/delivery/delivery-evidence-local/src/index.ts:18`](../packages/delivery/delivery-evidence-local/src/index.ts)
+
+<a id="deepseek-aidsh-delivery-remote"></a>
+
+## `@deepseek-ai/dsh-delivery-remote`
+
+Requires: `delivery` · `deliveryEvidence` · `repoWorkspace` · `taskQueue`
+
+```ts config-catalog
+/** Trusted single-operator identity configured on the Host, never supplied by browser input. */
+export interface Config {
+  /** Non-blank human operator identity minted by trusted Host configuration. */
+  readonly operatorId?: string
+}
+```
+
+Source: [`packages/delivery/delivery-remote/src/index.ts:41`](../packages/delivery/delivery-remote/src/index.ts)
+
+<a id="deepseek-aidsh-delivery-task-queue"></a>
+
+## `@deepseek-ai/dsh-delivery-task-queue`
+
+Requires: `delivery` · `deliveryEvidence` · `repoWorkspace` · `subprocess` · `taskQueue`
+
+```ts config-catalog
+/** Loader-owned composition policy for both Delivery Queue handlers. */
+export interface Config {
+  /** Stable executor recorded on code-change bindings. */
+  readonly executorId?: string
+  /** Optional Codex model override. */
+  readonly model?: string
+  /** Native unattended Codex approval and sandbox policy. */
+  readonly permissionMode?: CodexAppServerPermissionMode
+  /** Explicit child environment layered after credential scrubbing. */
+  readonly env?: Record<string, string>
+  /** Process-tree termination grace shared by runner and verifier. */
+  readonly disposeGraceMs?: number
+  /** Maximum retained UTF-8 bytes from Codex assistant output. */
+  readonly modelOutputBytes?: number
+  /** Maximum collected bytes from one verification check. */
+  readonly verificationOutputBytes?: number
+  /** Queue resource serialized across expensive Agent work. */
+  readonly resource?: string
+  /** Queue retry ceiling for both governed work kinds. */
+  readonly maxAttempts?: number
+  /** Stable verifier implementation identity persisted in verdicts. */
+  readonly verifierVersion?: string
+}
+```
+
+Depends on: [`CodexAppServerPermissionMode`](../packages/delivery/delivery-runner-codex/src/index.ts)
+
+Source: [`packages/delivery/delivery-task-queue/src/index.ts:71`](../packages/delivery/delivery-task-queue/src/index.ts)
+
 <a id="deepseek-aidsh-e2b"></a>
 
 ## `@deepseek-ai/dsh-e2b`
@@ -1805,6 +1871,24 @@ export interface Config {
 
 Source: [`packages/guard/repeat-tool-reminder/src/index.ts:28`](../packages/guard/repeat-tool-reminder/src/index.ts)
 
+<a id="deepseek-aidsh-repo-workspace-git-local"></a>
+
+## `@deepseek-ai/dsh-repo-workspace-git-local`
+
+Requires: `subprocess`
+
+```ts config-catalog
+/** Configured repository identities and the isolated worktree parent. */
+export interface Config {
+  /** Closed map from stable repository id to its local Git checkout root. */
+  readonly repositories: Readonly<Record<string, string>>
+  /** Directory below which attempt-owned worktrees are created. */
+  readonly worktreeRoot: string
+}
+```
+
+Source: [`packages/delivery/repo-workspace-git-local/src/index.ts:28`](../packages/delivery/repo-workspace-git-local/src/index.ts)
+
 <a id="deepseek-aidsh-runtime-facts"></a>
 
 ## `@deepseek-ai/dsh-runtime-facts`
@@ -2723,12 +2807,12 @@ export interface Config {
   maxConcurrent?: number
   /** Deployment capacity by handler-declared resource name. */
   resourceCapacity?: Record<string, number>
-  /** Maximum time teardown waits before unresolved executions become unknown. */
+  /** Maximum time teardown or post-start durability cleanup waits for execution quiescence. */
   shutdownTimeoutMs?: number
 }
 ```
 
-Source: [`packages/task-queue/task-queue-local/src/index.ts:38`](../packages/task-queue/task-queue-local/src/index.ts)
+Source: [`packages/task-queue/task-queue-local/src/index.ts:61`](../packages/task-queue/task-queue-local/src/index.ts)
 
 <a id="deepseek-aidsh-task-queue-remote"></a>
 
@@ -3635,6 +3719,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-modules` — requires `webServer` · `loader` ([`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-agent-preset` ([`packages/client/ui-agent-preset/src/index.ts`](../packages/client/ui-agent-preset/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-approval` ([`packages/client/ui-approval/src/index.ts`](../packages/client/ui-approval/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-attachment` ([`packages/client/ui-attachment/src/index.ts`](../packages/client/ui-attachment/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-brand-official` ([`packages/client/ui-brand-official/src/index.ts`](../packages/client/ui-brand-official/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
@@ -3643,6 +3728,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-conversation` ([`packages/client/ui-conversation/src/index.ts`](../packages/client/ui-conversation/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-cordis` ([`packages/extensions/ui-cordis/src/index.ts`](../packages/extensions/ui-cordis/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-deliverables` — requires `systemPrompt` ([`packages/client/ui-deliverables/src/index.ts`](../packages/client/ui-deliverables/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-directory-picker-browse` ([`packages/client/ui-directory-picker-browse/src/index.ts`](../packages/client/ui-directory-picker-browse/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-directory-picker-native` ([`packages/client/ui-directory-picker-native/src/index.ts`](../packages/client/ui-directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-goal` ([`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts))
@@ -3679,6 +3765,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-commands` ([`packages/interaction/commands/src/index.ts`](../packages/interaction/commands/src/index.ts))
 - `@deepseek-ai/dsh-cordis-client-runner` ([`packages/extensions/cordis-client-runner/src/index.ts`](../packages/extensions/cordis-client-runner/src/index.ts))
 - `@deepseek-ai/dsh-deepseek-llm-api-extensions` ([`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts))
+- `@deepseek-ai/dsh-delivery-local` — requires `storageDomain` ([`packages/delivery/delivery-local/src/index.ts`](../packages/delivery/delivery-local/src/index.ts))
 - `@deepseek-ai/dsh-experimental-client-ui-agent-team` ([`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts))
 - `@deepseek-ai/dsh-fs-e2b` — requires `e2b` ([`packages/e2b/fs-e2b/src/index.ts`](../packages/e2b/fs-e2b/src/index.ts))
 - `@deepseek-ai/dsh-fs-observation-policy` ([`packages/fs/fs-observation-policy/src/index.ts`](../packages/fs/fs-observation-policy/src/index.ts))
@@ -3719,10 +3806,13 @@ Abstract service classes — a deployment loads a concrete implementation packag
 - `@deepseek-ai/dsh-code-runtime` — abstract `CodeRuntime` ([`packages/code-runtime/code-runtime/src/index.ts`](../packages/code-runtime/code-runtime/src/index.ts))
 - `@deepseek-ai/dsh-compaction` — abstract `CompactionEngine` ([`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts))
 - `@deepseek-ai/dsh-credentials` — abstract `CredentialProvider` ([`packages/credentials/credentials/src/index.ts`](../packages/credentials/credentials/src/index.ts))
+- `@deepseek-ai/dsh-delivery` — abstract `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
+- `@deepseek-ai/dsh-delivery-evidence` — abstract `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
 - `@deepseek-ai/dsh-file-reference` — abstract `FileReferenceService` ([`packages/context/file-reference/src/index.ts`](../packages/context/file-reference/src/index.ts))
 - `@deepseek-ai/dsh-fs` — abstract `FileSystem` ([`packages/fs/fs/src/index.ts`](../packages/fs/fs/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker` — abstract `DirectoryPicker` ([`packages/host/directory-picker/src/index.ts`](../packages/host/directory-picker/src/index.ts))
 - `@deepseek-ai/dsh-jobs` — abstract `JobRegistry` ([`packages/jobs/jobs/src/index.ts`](../packages/jobs/jobs/src/index.ts))
+- `@deepseek-ai/dsh-repo-workspace` — abstract `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))
 - `@deepseek-ai/dsh-sandbox` — abstract `SandboxProvider` ([`packages/sandbox/sandbox/src/index.ts`](../packages/sandbox/sandbox/src/index.ts))
 - `@deepseek-ai/dsh-session-persistence` — abstract `SessionPersistence` ([`packages/session/session-persistence/src/index.ts`](../packages/session/session-persistence/src/index.ts))
 - `@deepseek-ai/dsh-session-query` — abstract `SessionQueryEngine` ([`packages/session-query/session-query/src/index.ts`](../packages/session-query/session-query/src/index.ts))
@@ -3750,6 +3840,11 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-client-web` ([`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts))
 - `@deepseek-ai/dsh-cmdline` ([`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts))
 - `@deepseek-ai/dsh-code-runtime-python` ([`packages/code-runtime/code-runtime-python/src/index.ts`](../packages/code-runtime/code-runtime-python/src/index.ts))
+- `@deepseek-ai/dsh-delivery-github-intake` ([`packages/delivery/delivery-github-intake/src/index.ts`](../packages/delivery/delivery-github-intake/src/index.ts))
+- `@deepseek-ai/dsh-delivery-protocol` ([`packages/delivery/delivery-protocol/src/index.ts`](../packages/delivery/delivery-protocol/src/index.ts))
+- `@deepseek-ai/dsh-delivery-runner-codex` ([`packages/delivery/delivery-runner-codex/src/index.ts`](../packages/delivery/delivery-runner-codex/src/index.ts))
+- `@deepseek-ai/dsh-delivery-testkit` ([`packages/delivery/delivery-testkit/src/index.ts`](../packages/delivery/delivery-testkit/src/index.ts))
+- `@deepseek-ai/dsh-delivery-verifier` ([`packages/delivery/delivery-verifier/src/index.ts`](../packages/delivery/delivery-verifier/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-profile` ([`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-web-profile` ([`packages/experimental/agent-team-web-profile/src/index.ts`](../packages/experimental/agent-team-web-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-webworker-packer` ([`packages/experimental/webworker-packer/src/index.ts`](../packages/experimental/webworker-packer/src/index.ts))
@@ -3761,6 +3856,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-loader-smoke` ([`packages/test-support/loader-smoke/src/index.ts`](../packages/test-support/loader-smoke/src/index.ts))
 - `@deepseek-ai/dsh-native-command` ([`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts))
 - `@deepseek-ai/dsh-output-retention` ([`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts))
+- `@deepseek-ai/dsh-personal-delivery` ([`packages/bundle/personal-delivery/src/index.ts`](../packages/bundle/personal-delivery/src/index.ts))
 - `@deepseek-ai/dsh-sandbox-windows-acl` ([`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts))
 - `@deepseek-ai/dsh-scope` ([`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts))
 - `@deepseek-ai/dsh-sdk-client` ([`packages/sdk/client/src/index.ts`](../packages/sdk/client/src/index.ts))

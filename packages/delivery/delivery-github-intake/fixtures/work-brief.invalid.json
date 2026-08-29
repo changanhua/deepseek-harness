@@ -1,0 +1,30 @@
+{
+  "fixtureVersion": 1,
+  "cases": [
+    {
+      "id": "work-brief.missing-marker",
+      "body": "```yaml\nformat: dsh-delivery-work-brief@1\n```",
+      "errorCode": "missing-block"
+    },
+    {
+      "id": "work-brief.wrong-fence",
+      "body": "<!-- dsh-delivery-work-brief@1 -->\n```json\n{}\n```",
+      "errorCode": "invalid-fence"
+    },
+    {
+      "id": "work-brief.invalid-yaml",
+      "body": "<!-- dsh-delivery-work-brief@1 -->\n```yaml\nformat: [\n```",
+      "errorCode": "invalid-yaml"
+    },
+    {
+      "id": "work-brief.missing-authority-fields",
+      "body": "<!-- dsh-delivery-work-brief@1 -->\n```yaml\nformat: dsh-delivery-work-brief@1\noutcome: Only a title\n```",
+      "errorCode": "invalid-brief"
+    },
+    {
+      "id": "work-brief.empty-scope",
+      "body": "<!-- dsh-delivery-work-brief@1 -->\n```yaml\nformat: dsh-delivery-work-brief@1\noutcome: Bounded work\ncontext: ''\nallowedScope: []\nforbiddenScope: []\nacceptanceClauses:\n  - id: works\n    text: It works.\nopenDecisions: []\nbaseSelectionRule:\n  kind: ref-head\n  ref: refs/heads/main\nverificationSource:\n  kind: git-blob\n  path: .dsh/verification.json\n  format: delivery-verification-plan@1\nreferenceLinks: []\n```",
+      "errorCode": "invalid-brief"
+    }
+  ]
+}

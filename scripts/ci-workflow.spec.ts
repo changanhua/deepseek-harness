@@ -55,7 +55,7 @@ describe('CI workflow', () => {
     }
   })
 
-  it('keeps required Wine and split native Windows jobs with failover, plus a master-only standby', () => {
+  it('keeps required Wine and split native Windows jobs with upstream failover and fork-hosted fallback', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml')
     const masterWorkflow = loadWorkflow('.github/workflows/ci-master.yml')
     if (!isRecord(workflow.jobs)
@@ -106,6 +106,8 @@ describe('CI workflow', () => {
       expect(job['runs-on']).toContain('self-hosted')
       expect(job['runs-on']).toContain('dsh-win-ci')
       expect(job['runs-on']).toContain('dsh-windows-2025-16core')
+      expect(job['runs-on']).toContain("github.repository == 'deepseek-ai/deepseek-harness'")
+      expect(job['runs-on']).toContain('windows-latest')
       expect(job.if).toBe("github.event_name == 'pull_request'")
     }
 
@@ -147,7 +149,7 @@ describe('CI workflow', () => {
     expect(wineAptCache['runs-on']).toBe('ubuntu-latest')
 
     // serial-windows: master-only standby, self-hosted, non-blocking, lives in ci-master.
-    expect(serialWindows.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+    expect(serialWindows.if).toBe("github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'push' && github.ref == 'refs/heads/master'")
     expect(serialWindows['runs-on']).toEqual(['self-hosted', 'dsh-win-ci', 'windows'])
     expect(serialWindows.name).toBe('serial / windows (self-hosted standby)')
 
@@ -169,10 +171,22 @@ describe('CI workflow', () => {
       expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on']).toContain('vm-backup')
+      expect(job['runs-on']).toContain("github.repository == 'deepseek-ai/deepseek-harness'")
+      expect(job['runs-on']).toContain('ubuntu-latest')
     }
     expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
     expect(aggregate['runs-on']).not.toContain('DSH_CI_FAILOVER_WINDOWS')
     expect(aggregate['runs-on']).toContain('vm-backup')
+    expect(aggregate['runs-on']).toContain("github.repository == 'deepseek-ai/deepseek-harness'")
+    expect(aggregate['runs-on']).toContain('ubuntu-latest')
+  })
+
+  it('skips the upstream Cloudflare preview in forks', () => {
+    const workflow = loadWorkflow('.github/workflows/build-preview-cloudflare.yml')
+    const preview = workflowJob(workflow, 'preview')
+
+    expect(preview.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
+    expect(preview['runs-on']).toBe('dsh-ubuntu-24-04-16core')
   })
 
   it('gives the Wine Host TypeScript compile the repository heap budget', () => {
@@ -226,15 +240,15 @@ describe('CI workflow', () => {
       if (!isRecord(job)) throw new TypeError(`${name} must be defined`)
       expect(job.concurrency).toBeUndefined()
       // Both stay master-push-only; that is what makes the push carve-out safe.
-      expect(job.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+      expect(job.if).toBe("github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'push' && github.ref == 'refs/heads/master'")
     }
 
     // What bounds the cost of exempting push: a master push may only carry the
     // cache seeder and the two drills. Any job reachable on push would start
     // accumulating uncancelled runs, so the set is pinned here.
     const NOT_PUSH_REACHABLE = new Set([
-      "github.event_name == 'workflow_dispatch' && inputs.suite == 'larger-runner-benchmark'",
-      "github.event_name == 'workflow_dispatch' && inputs.suite == 'consolidated-runner-benchmark'",
+      "github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'workflow_dispatch' && inputs.suite == 'larger-runner-benchmark'",
+      "github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'workflow_dispatch' && inputs.suite == 'consolidated-runner-benchmark'",
     ])
     const pushReachable = Object.entries(workflow.jobs)
       .filter(([, job]) => {

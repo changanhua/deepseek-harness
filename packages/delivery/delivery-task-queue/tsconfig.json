@@ -1,0 +1,48 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../delivery-protocol"
+    },
+    {
+      "path": "../delivery"
+    },
+    {
+      "path": "../repo-workspace"
+    },
+    {
+      "path": "../delivery-evidence"
+    },
+    {
+      "path": "../delivery-runner-codex"
+    },
+    {
+      "path": "../delivery-verifier"
+    },
+    {
+      "path": "../../task-queue/task-queue"
+    },
+    {
+      "path": "../../subprocess/subprocess"
+    },
+    {
+      "path": "../../util/timeout"
+    },
+    {
+      "path": "../../runtime-diagnostics/invariants"
+    }
+  ]
+}
