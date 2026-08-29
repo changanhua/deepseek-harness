@@ -780,6 +780,17 @@
         "@deepseek-ai/.+"
       ]
     },
+    "packages/client/ui-delivery": {
+      "ignoreDependencies": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-delivery-remote",
+        "@deepseek-ai/dsh-typert-protocol"
+      ]
+    },
     "packages/delivery/delivery-protocol": {
       "entry": [
         "tests/**/*.spec.ts",
