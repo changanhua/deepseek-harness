@@ -4,11 +4,13 @@ import type {
   AdoptContractRevisionRequest,
   DeliverySnapshot,
 } from '@deepseek-ai/dsh-delivery'
+import { DeliveryError } from '@deepseek-ai/dsh-delivery'
 import type { ContractRevision } from '@deepseek-ai/dsh-delivery-protocol'
 import {
   ContractRevisionId,
   RepositoryId,
   SourceRefId,
+  canonicalJson,
   sourceRefContentDigest,
 } from '@deepseek-ai/dsh-delivery-protocol'
 import { describe, expect, it, vi } from 'vitest'
@@ -109,6 +111,93 @@ function dependencies(
     fetch,
   }
   return { deps, snapshot, adopted, fetch }
+}
+
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
+function nextTurn(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve)
+  })
+}
+
+function contractDelivery(firstCommitGate?: Promise<void>) {
+  const revisions: ContractRevision[] = []
+  const idempotency = new Map<string, { readonly input: string; readonly revision: ContractRevision }>()
+  const tails = new Map<string, Promise<void>>()
+  const firstAdoption = deferred()
+  const secondAdoption = deferred()
+  let adoptionOrdinal = 0
+
+  const serialize = async <T>(key: string, operation: () => Promise<T>): Promise<T> => {
+    let release!: () => void
+    const turn = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const previous = tails.get(key)
+    tails.set(key, turn)
+    if (previous !== undefined) await previous
+    try {
+      return await operation()
+    } finally {
+      release()
+      if (tails.get(key) === turn) tails.delete(key)
+    }
+  }
+
+  const delivery: GitHubIssueIntakeDependencies['delivery'] = {
+    snapshot: () => ({
+      contractRevisions: structuredClone(revisions),
+      workPackets: [],
+      dispatchBindings: [],
+      acceptanceDecisions: [],
+    }),
+    adoptContractRevision: async request => serialize(request.idempotencyKey, async () => {
+      const prior = idempotency.get(request.idempotencyKey)
+      const input = canonicalJson(request)
+      if (prior !== undefined) {
+        if (prior.input !== input) {
+          throw new DeliveryError('idempotency-conflict', 'contract provider received one key with different input')
+        }
+        return structuredClone(prior.revision)
+      }
+      adoptionOrdinal += 1
+      if (adoptionOrdinal === 1) {
+        firstAdoption.resolve()
+        if (firstCommitGate !== undefined) await firstCommitGate
+      } else if (adoptionOrdinal === 2) {
+        secondAdoption.resolve()
+      }
+      const createdAt = '2026-08-30T12:00:00.000Z'
+      const revision: ContractRevision = {
+        schemaVersion: 1,
+        id: ContractRevisionId(`contract-revision-provider-${String(revisions.length + 1)}`),
+        ...request.revision,
+        sourceRef: {
+          schemaVersion: 1,
+          id: SourceRefId(`source-ref-provider-${String(revisions.length + 1)}`),
+          provider: 'github',
+          ...request.source,
+          createdAt,
+        },
+        createdAt,
+      }
+      revisions.push(revision)
+      idempotency.set(request.idempotencyKey, { input, revision })
+      return structuredClone(revision)
+    }),
+  }
+  return {
+    delivery,
+    firstAdoption: firstAdoption.promise,
+    secondAdoption: secondAdoption.promise,
+  }
 }
 
 function jsonResponse(issue = issueSnapshot()): Response {
@@ -406,6 +495,24 @@ describe('GitHub Issue intake', () => {
         previousRevisionId: ContractRevisionId('contract-revision-missing'),
       }),
     ]],
+    ['cross-Issue predecessor', () => {
+      const foreign = contractRevision(issueSnapshot(), { id: 'contract-revision-foreign' })
+      const foreignRevision = {
+        ...foreign,
+        sourceRef: {
+          ...foreign.sourceRef,
+          repository: { owner: 'elsewhere', name: 'project' },
+          canonicalUrl: 'https://github.com/elsewhere/project/issues/42',
+        },
+      }
+      return [
+        contractRevision(issueSnapshot(), {
+          id: 'contract-revision-cross-issue',
+          previousRevisionId: foreign.id,
+        }),
+        foreignRevision,
+      ]
+    }],
     ['cyclic lineage', () => {
       const a = contractRevision(issueSnapshot(), { id: 'contract-revision-cycle-a' })
       const b = contractRevision(issueSnapshot({ title: 'cycle-b' }), {
@@ -427,6 +534,131 @@ describe('GitHub Issue intake', () => {
     })
 
     expect(adopted).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when a valid chain has an independent same-Issue cycle in either snapshot order', async () => {
+    const root = contractRevision(issueSnapshot(), { id: 'contract-revision-main-root' })
+    const head = contractRevision(issueSnapshot({ title: 'main-head' }), {
+      id: 'contract-revision-main-head',
+      previousRevisionId: root.id,
+    })
+    const cycleLeftId = ContractRevisionId('contract-revision-cycle-left')
+    const cycleRightId = ContractRevisionId('contract-revision-cycle-right')
+    const cycleLeft = contractRevision(issueSnapshot({ title: 'cycle-left' }), {
+      id: cycleLeftId,
+      previousRevisionId: cycleRightId,
+    })
+    const cycleRight = contractRevision(issueSnapshot({ title: 'cycle-right' }), {
+      id: cycleRightId,
+      previousRevisionId: cycleLeftId,
+    })
+
+    await Promise.all([
+      [root, head, cycleLeft, cycleRight],
+      [cycleRight, cycleLeft, head, root],
+    ].map(async (revisions) => {
+      const { deps, fetch, adopted } = dependencies(revisions)
+      fetch.mockResolvedValue(jsonResponse(issueSnapshot({ title: 'new Issue state' })))
+
+      await expect(importGitHubIssue(deps, { issueUrl, repositoryId })).rejects.toMatchObject({
+        code: 'invalid-request',
+      })
+      expect(adopted).not.toHaveBeenCalled()
+    }))
+  })
+
+  it.each([
+    [[
+      contractRevision(issueSnapshot({ title: 'head' }), {
+        id: 'contract-revision-tail-head',
+        previousRevisionId: ContractRevisionId('contract-revision-tail-left'),
+      }),
+      contractRevision(issueSnapshot({ title: 'left' }), {
+        id: 'contract-revision-tail-left',
+        previousRevisionId: ContractRevisionId('contract-revision-tail-right'),
+      }),
+      contractRevision(issueSnapshot({ title: 'right' }), {
+        id: 'contract-revision-tail-right',
+        previousRevisionId: ContractRevisionId('contract-revision-tail-left'),
+      }),
+    ]],
+  ])('fails closed when the unique head tail enters a cycle', async (revisions) => {
+    const { deps, fetch, adopted } = dependencies(revisions)
+    fetch.mockResolvedValue(jsonResponse(issueSnapshot({ title: 'new Issue state' })))
+
+    await expect(importGitHubIssue(deps, { issueUrl, repositoryId })).rejects.toMatchObject({
+      code: 'invalid-request',
+    })
+    expect(adopted).not.toHaveBeenCalled()
+  })
+
+  it('linearizes concurrent timestamp-only imports before the contract provider sees a conflicting key', async () => {
+    const gate = deferred()
+    const provider = contractDelivery(gate.promise)
+    const firstIssue = issueSnapshot({ updated_at: '2026-08-30T12:00:01.000Z' })
+    const secondIssue = issueSnapshot({ updated_at: '2026-08-30T12:00:02.000Z' })
+    const first = importGitHubIssue({
+      delivery: provider.delivery,
+      fetch: async () => jsonResponse(firstIssue),
+    }, { issueUrl, repositoryId })
+    await provider.firstAdoption
+    const second = importGitHubIssue({
+      delivery: provider.delivery,
+      fetch: async () => jsonResponse(secondIssue),
+    }, { issueUrl, repositoryId })
+    await nextTurn()
+    gate.resolve()
+
+    const [firstRevision, secondRevision] = await Promise.all([first, second])
+    expect(secondRevision).toEqual(firstRevision)
+    expect(provider.delivery.snapshot().contractRevisions).toEqual([firstRevision])
+  })
+
+  it('linearizes concurrent changed content into one deterministic same-Issue chain', async () => {
+    const gate = deferred()
+    const provider = contractDelivery(gate.promise)
+    const firstIssue = issueSnapshot({ title: 'first current state' })
+    const secondIssue = issueSnapshot({ title: 'second current state' })
+    const first = importGitHubIssue({
+      delivery: provider.delivery,
+      fetch: async () => jsonResponse(firstIssue),
+    }, { issueUrl, repositoryId })
+    await provider.firstAdoption
+    const second = importGitHubIssue({
+      delivery: provider.delivery,
+      fetch: async () => jsonResponse(secondIssue),
+    }, { issueUrl, repositoryId })
+    await nextTurn()
+    gate.resolve()
+
+    const [firstRevision, secondRevision] = await Promise.all([first, second])
+    expect(firstRevision.previousRevisionId).toBeNull()
+    expect(secondRevision.previousRevisionId).toBe(firstRevision.id)
+    expect(provider.delivery.snapshot().contractRevisions).toEqual([firstRevision, secondRevision])
+  })
+
+  it('does not make a different Issue wait for a delayed same-Delivery import', async () => {
+    const gate = deferred()
+    const provider = contractDelivery(gate.promise)
+    const otherIssueUrl = 'https://github.com/example/project/issues/43'
+    const first = importGitHubIssue({
+      delivery: provider.delivery,
+      fetch: async () => jsonResponse(issueSnapshot()),
+    }, { issueUrl, repositoryId })
+    await provider.firstAdoption
+    const other = importGitHubIssue({
+      delivery: provider.delivery,
+      fetch: async () => jsonResponse(issueSnapshot({
+        number: 43,
+        html_url: otherIssueUrl,
+        title: 'different Issue',
+      })),
+    }, { issueUrl: otherIssueUrl, repositoryId })
+
+    await provider.secondAdoption
+    await expect(other).resolves.toMatchObject({ sourceRef: { issueNumber: 43 } })
+    gate.resolve()
+    await expect(first).resolves.toMatchObject({ sourceRef: { issueNumber: 42 } })
   })
 
   it('rejects a content-equivalent revision bound to another configured repository', async () => {

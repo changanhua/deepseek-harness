@@ -73,6 +73,8 @@ export interface ImportGitHubIssueRequest {
   readonly signal?: AbortSignal
 }
 
+const intakeTails = new WeakMap<object, Map<string, Promise<void>>>()
+
 /**
  * Fetch, parse, and idempotently adopt one exact GitHub Issue snapshot.
  *
@@ -133,33 +135,65 @@ export async function importGitHubIssue(
   throwIfAborted(request.signal)
   const brief = parseGitHubIssueWorkBrief(source.body)
   throwIfAborted(request.signal)
-  const snapshot = dependencies.delivery.snapshot()
-  throwIfAborted(request.signal)
-  const previous = deriveSameIssueHead(snapshot.contractRevisions, source)
-  if (previous !== null && sameSourceContent(previous, source)) {
-    if (sameConfiguredRevision(previous, brief, request.repositoryId)) return previous
-    throw new DeliveryGitHubIntakeError(
-      'invalid-request',
-      'GitHub Issue intake snapshot already belongs to another configured Contract revision',
+  return serializeIssueIntake(dependencies.delivery, source, async () => {
+    throwIfAborted(request.signal)
+    const snapshot = dependencies.delivery.snapshot()
+    throwIfAborted(request.signal)
+    const previous = deriveSameIssueHead(snapshot.contractRevisions, source)
+    if (previous !== null && sameSourceContent(previous, source)) {
+      if (sameConfiguredRevision(previous, brief, request.repositoryId)) return previous
+      throw new DeliveryGitHubIntakeError(
+        'invalid-request',
+        'GitHub Issue intake snapshot already belongs to another configured Contract revision',
+      )
+    }
+    const revision = workBriefContractRevisionDraft(
+      brief,
+      request.repositoryId,
+      previous?.id ?? null,
     )
-  }
-  const revision = workBriefContractRevisionDraft(
-    brief,
-    request.repositoryId,
-    previous?.id ?? null,
-  )
-  throwIfAborted(request.signal)
-  // This call is the cancellation commit point. Do not inspect the signal after it starts.
-  return dependencies.delivery.adoptContractRevision({
-    idempotencyKey: `github:${source.repository.owner}/${source.repository.name}:issue:${String(source.issueNumber)}:previous:${previous?.id ?? 'root'}:${source.contentDigest}`,
-    source,
-    revision,
+    throwIfAborted(request.signal)
+    // This call is the cancellation commit point. Do not inspect the signal after it starts.
+    return dependencies.delivery.adoptContractRevision({
+      idempotencyKey: `github:${source.repository.owner}/${source.repository.name}:issue:${String(source.issueNumber)}:previous:${previous?.id ?? 'root'}:${source.contentDigest}`,
+      source,
+      revision,
+    })
   })
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
     throw new DeliveryGitHubIntakeError('aborted', 'GitHub Issue intake was aborted')
+  }
+}
+
+async function serializeIssueIntake<T>(
+  delivery: object,
+  source: ReturnType<typeof parseIssueSnapshot>,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const key = `${source.repository.owner}/${source.repository.name}#${String(source.issueNumber)}`
+  let tails = intakeTails.get(delivery)
+  if (tails === undefined) {
+    tails = new Map<string, Promise<void>>()
+    intakeTails.set(delivery, tails)
+  }
+  let release!: () => void
+  const turn = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const previous = tails.get(key)
+  tails.set(key, turn)
+  if (previous !== undefined) await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (tails.get(key) === turn) {
+      tails.delete(key)
+      if (tails.size === 0) intakeTails.delete(delivery)
+    }
   }
 }
 
@@ -265,7 +299,21 @@ function deriveSameIssueHead(
   if (heads.length !== 1) {
     throw invalidLineage('does not have exactly one current head')
   }
-  return heads[0] as ContractRevision
+  const head = heads[0] as ContractRevision
+  const visited = new Set<string>()
+  let current = head
+  while (true) {
+    if (visited.has(current.id)) {
+      throw invalidLineage('contains a cycle')
+    }
+    visited.add(current.id)
+    if (current.previousRevisionId === null) break
+    current = byId.get(current.previousRevisionId) as ContractRevision
+  }
+  if (visited.size !== sameIssueRevisions.length) {
+    throw invalidLineage('contains a record outside the unique head chain')
+  }
+  return head
 }
 
 function invalidLineage(detail: string): DeliveryGitHubIntakeError {
