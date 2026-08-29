@@ -48,7 +48,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部 — 点击展开</summary>
 
-提供方会在异步工作前复制调用方字节与 provenance。它把每个 object 或 reference 写入私有 exclusive temporary file、同步文件，再以不覆盖 hard link 发布。Byte object 使用其 SHA-256 URI，reference id 则寻址完整 semantic envelope。读取会使用 `lstat`，在检查持久 reference、file size 与 SHA-256 之前拒绝 symlink 与 Windows junction；每个返回的 byte array 和 metadata object 都与存储状态分离。
+提供方会在异步工作前复制调用方字节与 provenance。它把每个 object 或 reference 写入私有 exclusive temporary file 并同步文件。POSIX 发布使用不覆盖 hard link 与 parent-directory sync；Windows 使用不替换的 write-through namespace move。并发 observer 在返回既有 object 或 reference 前会重复 file 与 namespace durability barrier。Byte object 使用其 SHA-256 URI，reference id 则寻址完整 semantic envelope。读取会重新证明物理 root 与每一级 ancestor、拒绝 link-shaped path、在分配前执行配置的 object 上限与 `64 KiB` metadata 上限，并通过有界 open handle 验证 file identity、精确 length 与 SHA-256。每个返回的 byte array 和 metadata object 都与存储状态分离。
 
 </details>
 

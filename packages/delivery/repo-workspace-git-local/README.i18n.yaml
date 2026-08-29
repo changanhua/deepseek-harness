@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/delivery/repo-workspace-git-local/README.md
-README.md: f61c5fdeffaa5c5c3f9dc64c349b43c3539a5f0d
-README.zh.md: e7c5a69c937f4c5b67c6266ea921bce4b6a817c3
+README.md: 7503c7a16bfe351706016a4e5f43a831879b6db8
+README.zh.md: 1f1d669296c7eb4f9fe7565354de269c4333df15

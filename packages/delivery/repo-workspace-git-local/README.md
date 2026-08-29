@@ -50,7 +50,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The provider checks every configured path against Git's physical toplevel before minting revision proofs. Blob reads resolve `commit:path`, verify object type and size, then collect raw piped bytes. Attempt ids become SHA-256 directory names; an atomically published ownership marker binds purpose, repository, base, and target across provider reconstruction. Cleanup uses `lstat` traversal so a symlink or Windows junction is unlinked rather than followed, and every Git process reaches whole-tree exit before its operation settles.
+The provider checks every configured path against Git's physical toplevel before minting revision proofs. Blob reads resolve `commit:path`, verify object type and size, then collect raw piped bytes. Attempt ids become SHA-256 directory names; a crash-durable ownership marker binds purpose, repository, base, and target across provider reconstruction. POSIX publication syncs the marker and affected directories, while Windows uses a write-through namespace move. Cleanup re-proves the root, owner directory, checkout identity, and exact regular marker before mutation; it removes only the exact Git registration and never prunes unrelated worktrees. `lstat` traversal does not follow link-shaped descendants, and every Git process reaches whole-tree exit before its operation settles.
 
 </details>
 

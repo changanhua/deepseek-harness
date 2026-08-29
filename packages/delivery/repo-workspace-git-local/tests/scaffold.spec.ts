@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
-import { access, mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import { existsSync, mkdirSync, renameSync } from 'node:fs'
+import { access, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, isAbsolute, join, relative } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import {
   GitCommitId,
@@ -16,9 +17,81 @@ import {
 } from '../src/index.ts'
 import { ScriptedSubprocessRuntime, TestSubprocessRuntime, fixtureGit } from './harness.ts'
 
+const fsControl = vi.hoisted(() => ({
+  directorySyncPaths: [] as string[],
+  fileSyncPaths: [] as string[],
+  simulateDirectorySync: false,
+  blockedSyncPath: undefined as string | undefined,
+  syncEntered: undefined as (() => void) | undefined,
+  releaseSync: undefined as Promise<void> | undefined,
+  failedSyncPath: undefined as string | undefined,
+  syncFailure: undefined as Error | undefined,
+}))
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    async open(...args: Parameters<typeof actual.open>): ReturnType<typeof actual.open> {
+      if (typeof args[0] !== 'string') throw new TypeError('repo-workspace tests open only string paths')
+      const path = args[0]
+      const handle = await actual.open(...args)
+      let directory = false
+      try {
+        directory = (await actual.lstat(path)).isDirectory()
+      } catch {
+        // The opened handle remains authoritative when its name changes after open.
+      }
+      const originalSync = handle.sync.bind(handle)
+      Object.defineProperty(handle, 'sync', {
+        value: async () => {
+          const calls = directory ? fsControl.directorySyncPaths : fsControl.fileSyncPaths
+          calls.push(path)
+          if (fsControl.failedSyncPath === path) throw fsControl.syncFailure
+          if (fsControl.blockedSyncPath === path) {
+            fsControl.syncEntered?.()
+            await fsControl.releaseSync
+          }
+          if (directory && fsControl.simulateDirectorySync) return
+          await originalSync()
+        },
+      })
+      return handle
+    },
+  }
+})
+
+vi.mock('koffi', () => {
+  let lastError = 0
+  return {
+    default: {
+      load: () => ({
+        func: (_convention: string, name: string) => name === 'MoveFileExW'
+          ? (from: string, to: string, flags: number) => {
+            expect(flags).toBe(0x00000008)
+            if (existsSync(to)) { lastError = 183; return 0 }
+            renameSync(from, to)
+            lastError = 0
+            return 1
+          }
+          : () => lastError,
+      }),
+    },
+  }
+})
+
 const roots: string[] = []
 
 afterEach(async () => {
+  vi.restoreAllMocks()
+  fsControl.directorySyncPaths.length = 0
+  fsControl.fileSyncPaths.length = 0
+  fsControl.simulateDirectorySync = false
+  fsControl.blockedSyncPath = undefined
+  fsControl.syncEntered = undefined
+  fsControl.releaseSync = undefined
+  fsControl.failedSyncPath = undefined
+  fsControl.syncFailure = undefined
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
@@ -212,7 +285,7 @@ describe('local Git repository workspace', () => {
 
   it('isolates one idempotent change worktree per Attempt owner', async () => {
     const { repository, firstCommit } = await fixtureRepository()
-    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-leases')
+    const worktreeRoot = join(await temporaryRoot('dsh-repo-workspace-leases'), 'nested-leases')
     const repositoryId = RepositoryId('repository-change-lease')
     const ctx = new Context()
     new TestSubprocessRuntime(ctx)
@@ -276,6 +349,89 @@ describe('local Git repository workspace', () => {
       .rejects.toMatchObject({ code: 'owner-conflict' })
     await recovered.close('preserve')
     await secondContext.fiber.dispose()
+  })
+
+  it('waits for durable marker publication and repeats the barrier when observing an existing lease', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    fsControl.simulateDirectorySync = true
+    const { repository, firstCommit } = await fixtureRepository()
+    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-marker-durability')
+    const repositoryId = RepositoryId('repository-marker-durability')
+    const ownerAttemptId = QueueAttemptIdRef('attempt-marker-durability')
+    const config = { repositories: { [repositoryId]: repository }, worktreeRoot }
+    const firstContext = new Context()
+    new TestSubprocessRuntime(firstContext)
+    const first = new GitLocalRepositoryWorkspace(firstContext, config)
+    const base = await first.inspectRevision({ repositoryId, commit: firstCommit })
+    let entered!: () => void
+    const syncEntered = new Promise<void>((resolve) => { entered = resolve })
+    let release!: () => void
+    const releaseSync = new Promise<void>((resolve) => { release = resolve })
+    fsControl.blockedSyncPath = worktreeRoot
+    fsControl.syncEntered = entered
+    fsControl.releaseSync = releaseSync
+    let settled = false
+    const opening = first.openChange({ ownerAttemptId, base }).finally(() => { settled = true })
+    expect(await Promise.race([
+      syncEntered.then(() => 'barrier' as const),
+      opening.then(() => 'settled' as const),
+    ])).toBe('barrier')
+    expect(settled).toBe(false)
+    release()
+    const lease = await opening
+    expect(fsControl.fileSyncPaths.some(path => path.endsWith(`${sep}lease.json`))).toBe(true)
+    expect(fsControl.directorySyncPaths).toContain(worktreeRoot)
+    await lease.close('preserve')
+    await firstContext.fiber.dispose()
+
+    fsControl.blockedSyncPath = undefined
+    fsControl.syncEntered = undefined
+    fsControl.releaseSync = undefined
+    fsControl.directorySyncPaths.length = 0
+    fsControl.fileSyncPaths.length = 0
+    const secondContext = new Context()
+    new TestSubprocessRuntime(secondContext)
+    const reconstructed = new GitLocalRepositoryWorkspace(secondContext, config)
+    const reconstructedBase = await reconstructed.inspectRevision({ repositoryId, commit: firstCommit })
+    const recovered = await reconstructed.openChange({ ownerAttemptId, base: reconstructedBase })
+    expect(fsControl.fileSyncPaths).toContain(join(dirname(recovered.cwd), 'lease.json'))
+    expect(fsControl.directorySyncPaths).toContain(worktreeRoot)
+    await recovered.close('preserve')
+    await secondContext.fiber.dispose()
+
+    const failureContext = new Context()
+    new TestSubprocessRuntime(failureContext)
+    const failureRoot = await temporaryRoot('dsh-repo-workspace-marker-sync-failure')
+    const failing = new GitLocalRepositoryWorkspace(failureContext, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot: failureRoot,
+    })
+    const failingBase = await failing.inspectRevision({ repositoryId, commit: firstCommit })
+    const failure = new Error('simulated lease marker sync failure')
+    fsControl.failedSyncPath = failureRoot
+    fsControl.syncFailure = failure
+    await expect(failing.openChange({
+      ownerAttemptId: QueueAttemptIdRef('attempt-marker-sync-failure'),
+      base: failingBase,
+    })).rejects.toMatchObject({ code: 'unavailable', cause: failure })
+    await failureContext.fiber.dispose()
+
+    fsControl.failedSyncPath = undefined
+    fsControl.syncFailure = undefined
+    const nestedContext = new Context()
+    new TestSubprocessRuntime(nestedContext)
+    const nestedRoot = join(await temporaryRoot('dsh-repo-workspace-durable-parent'), 'nested', 'leases')
+    const nested = new GitLocalRepositoryWorkspace(nestedContext, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot: nestedRoot,
+    })
+    const nestedBase = await nested.inspectRevision({ repositoryId, commit: firstCommit })
+    const nestedLease = await nested.openChange({
+      ownerAttemptId: QueueAttemptIdRef('attempt-durable-directory'),
+      base: nestedBase,
+    })
+    await nestedLease.close('preserve')
+    await nestedContext.fiber.dispose()
   })
 
   it('creates one clean governed checkpoint from the complete change checkout', async () => {
@@ -386,7 +542,7 @@ describe('local Git repository workspace', () => {
     await recoveredContext.fiber.dispose()
   })
 
-  it('removes owned worktrees without following a link-shaped checkout replacement', async () => {
+  it('fails closed without following a link-shaped checkout replacement', async () => {
     const { repository, firstCommit } = await fixtureRepository()
     const worktreeRoot = await temporaryRoot('dsh-repo-workspace-leases')
     const outside = await temporaryRoot('dsh-repo-workspace-outside')
@@ -416,10 +572,60 @@ describe('local Git repository workspace', () => {
     await rm(replaced.cwd, { recursive: true, force: true })
     await writeFile(join(outside, 'sentinel.txt'), 'must survive\n')
     await symlink(outside, replaced.cwd, 'junction')
-    await replaced.close('remove')
+    await expect(replaced.close('remove')).rejects.toMatchObject({ code: 'cleanup-failed' })
     expect(await readFile(join(outside, 'sentinel.txt'), 'utf8')).toBe('must survive\n')
-    await expect(access(replaced.cwd)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(access(replaced.cwd)).resolves.toBeUndefined()
     expect(subprocess.handles.every(handle => handle.waitForExitCalls === 1)).toBe(true)
+    await ctx.fiber.dispose()
+  })
+
+  it('leaves checkout bytes and registration untouched when its exact ownership marker is absent or replaced', async () => {
+    const { repository, firstCommit } = await fixtureRepository()
+    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-marker-cleanup')
+    const outside = await temporaryRoot('dsh-repo-workspace-marker-outside')
+    const outsideMarker = join(outside, 'lease.json')
+    await writeFile(outsideMarker, 'outside marker\n')
+    const repositoryId = RepositoryId('repository-marker-cleanup')
+    const ctx = new Context()
+    new TestSubprocessRuntime(ctx)
+    const workspace = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot,
+    })
+    const base = await workspace.inspectRevision({ repositoryId, commit: firstCommit })
+    const cases = [
+      {
+        owner: QueueAttemptIdRef('attempt-cleanup-marker-missing'),
+        replace: async (marker: string) => { await unlink(marker) },
+      },
+      {
+        owner: QueueAttemptIdRef('attempt-cleanup-marker-mismatch'),
+        replace: async (marker: string) => {
+          const original = await readFile(marker, 'utf8')
+          await writeFile(marker, original.replace('attempt-cleanup-marker-mismatch', 'attempt-cleanup-marker-Xismatch'))
+        },
+      },
+      {
+        owner: QueueAttemptIdRef('attempt-cleanup-marker-linked'),
+        replace: async (marker: string) => {
+          await unlink(marker)
+          await symlink(outsideMarker, marker, 'file')
+        },
+      },
+    ] as const
+
+    for (const testCase of cases) {
+      const lease = await workspace.openChange({ ownerAttemptId: testCase.owner, base })
+      const sentinel = join(lease.cwd, 'uncommitted.txt')
+      await writeFile(sentinel, `owned by ${testCase.owner}\n`)
+      const registrationBefore = await fixtureGit(repository, 'worktree', 'list', '--porcelain')
+      await testCase.replace(join(dirname(lease.cwd), 'lease.json'))
+
+      await expect(lease.close('remove')).rejects.toMatchObject({ code: 'cleanup-failed' })
+      await expect(readFile(sentinel, 'utf8')).resolves.toBe(`owned by ${testCase.owner}\n`)
+      expect(await fixtureGit(repository, 'worktree', 'list', '--porcelain')).toBe(registrationBefore)
+    }
+    expect(await readFile(outsideMarker, 'utf8')).toBe('outside marker\n')
     await ctx.fiber.dispose()
   })
 
@@ -566,6 +772,59 @@ describe('local Git repository workspace', () => {
       base: recoveredBase,
     })).rejects.toMatchObject({ code: 'owner-conflict' })
     await recoveredContext.fiber.dispose()
+  })
+
+  it('rejects an intermediate worktree-root junction before creation', async () => {
+    const { repository, firstCommit } = await fixtureRepository()
+    const parent = await temporaryRoot('dsh-repo-workspace-intermediate-parent')
+    const outside = await temporaryRoot('dsh-repo-workspace-intermediate-outside')
+    const linkedAncestor = join(parent, 'linked-ancestor')
+    await symlink(outside, linkedAncestor, 'junction')
+    const repositoryId = RepositoryId('repository-intermediate-root')
+    const ctx = new Context()
+    new TestSubprocessRuntime(ctx)
+    const workspace = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot: join(linkedAncestor, 'leases'),
+    })
+    const base = await workspace.inspectRevision({ repositoryId, commit: firstCommit })
+
+    await expect(workspace.openChange({
+      ownerAttemptId: QueueAttemptIdRef('attempt-intermediate-root'),
+      base,
+    })).rejects.toMatchObject({ code: 'unavailable' })
+    expect(await readdir(outside)).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
+  it('rejects a worktree-root identity swap before lease cleanup', async () => {
+    const { repository, firstCommit } = await fixtureRepository()
+    const parent = await temporaryRoot('dsh-repo-workspace-root-swap-parent')
+    const worktreeRoot = join(parent, 'leases')
+    const movedRoot = join(parent, 'moved-leases')
+    await mkdir(worktreeRoot)
+    const repositoryId = RepositoryId('repository-root-swap')
+    const ctx = new Context()
+    new TestSubprocessRuntime(ctx)
+    const workspace = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot,
+    })
+    const base = await workspace.inspectRevision({ repositoryId, commit: firstCommit })
+    const lease = await workspace.openChange({
+      ownerAttemptId: QueueAttemptIdRef('attempt-root-swap'),
+      base,
+    })
+    const movedSentinel = join(movedRoot, relative(worktreeRoot, lease.cwd), 'uncommitted.txt')
+    await writeFile(join(lease.cwd, 'uncommitted.txt'), 'must survive root swap\n')
+    await rename(worktreeRoot, movedRoot)
+    await symlink(movedRoot, worktreeRoot, 'junction')
+
+    await expect(lease.close('remove')).rejects.toMatchObject({ code: 'cleanup-failed' })
+    await expect(readFile(movedSentinel, 'utf8')).resolves.toBe('must survive root swap\n')
+    await unlink(worktreeRoot)
+    await rename(movedRoot, worktreeRoot)
+    await ctx.fiber.dispose()
   })
 
   it('classifies malformed Git blob identities, types, sizes, and short reads', async () => {
@@ -725,14 +984,16 @@ describe('local Git repository workspace', () => {
         { stdout: `${repository}\n` },
         { stdout: `${commit}\n` },
         { stdout: `${repository}\n` },
-        { exitCode: 0 },
+        {
+          exitCode: 0,
+          check: (spec) => { mkdirSync(String(spec.argv.at(-2))) },
+        },
       )
       const base = await workspace.inspectRevision({ repositoryId, commit })
       const lease = await workspace.openChange({
         ownerAttemptId: QueueAttemptIdRef(`attempt-checkpoint-scripted-${String(ordinal)}`),
         base,
       })
-      await mkdir(lease.cwd)
       subprocess.queue(
         { stdout: `${recoveredHead}\n` },
         { stdout: `${lease.cwd}\n` },
@@ -907,7 +1168,71 @@ describe('local Git repository workspace', () => {
     await ctx.fiber.dispose()
   })
 
-  it('prunes an exact stale registration and reports every cleanup failure', async () => {
+  it('does not settle a Git operation before whole-tree exit is observed', async () => {
+    const repository = await temporaryRoot('dsh-repo-workspace-wait-deferred')
+    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-leases')
+    const repositoryId = RepositoryId('repository-wait-deferred')
+    const commit = GitCommitId('1'.repeat(40))
+    const ctx = new Context()
+    const subprocess = new ScriptedSubprocessRuntime(ctx)
+    const workspace = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot,
+    })
+    let releaseWait!: (quiescent: boolean) => void
+    const waitForExit = new Promise<boolean>((resolve) => { releaseWait = resolve })
+    subprocess.queue(
+      { stdout: `${repository}\n` },
+      { stdout: `${commit}\n`, waitForExit },
+    )
+
+    let settled = false
+    const operation = workspace.inspectRevision({ repositoryId, commit })
+      .finally(() => { settled = true })
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    expect(settled).toBe(false)
+    expect(subprocess.handles.at(-1)?.waitForExitCalls).toBe(1)
+    releaseWait(true)
+    await expect(operation).resolves.toMatchObject({ repositoryId, commit })
+    await ctx.fiber.dispose()
+  })
+
+  it('classifies signaled Git and failed whole-tree quiescence as unavailable', async () => {
+    const repository = await temporaryRoot('dsh-repo-workspace-wait-failure')
+    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-leases')
+    const repositoryId = RepositoryId('repository-wait-failure')
+    const commit = GitCommitId('1'.repeat(40))
+    const ctx = new Context()
+    const subprocess = new ScriptedSubprocessRuntime(ctx)
+    const workspace = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot,
+    })
+
+    subprocess.queue({ stdout: `${repository}\n`, exitCode: null, signal: 'SIGTERM' })
+    await expect(workspace.inspectRevision({ repositoryId, commit })).rejects.toMatchObject({
+      code: 'unavailable',
+      name: 'RepositoryWorkspaceError',
+    })
+
+    subprocess.queue({ stdout: `${repository}\n`, waitForExit: Promise.resolve(false) })
+    await expect(workspace.inspectRevision({ repositoryId, commit })).rejects.toMatchObject({
+      code: 'unavailable',
+      name: 'RepositoryWorkspaceError',
+    })
+
+    const waitFailure = new Error('scripted whole-tree observation failed')
+    subprocess.queue({ stdout: `${repository}\n`, waitForExit: Promise.reject(waitFailure) })
+    await expect(workspace.inspectRevision({ repositoryId, commit })).rejects.toMatchObject({
+      code: 'unavailable',
+      name: 'RepositoryWorkspaceError',
+      cause: waitFailure,
+    })
+    expect(subprocess.handles.every(handle => handle.waitForExitCalls === 1)).toBe(true)
+    await ctx.fiber.dispose()
+  })
+
+  it('retries only exact registration removal and reports every cleanup failure', async () => {
     let ordinal = 0
     const commit = GitCommitId('1'.repeat(40))
     const openLease = async () => {
@@ -925,7 +1250,10 @@ describe('local Git repository workspace', () => {
         { stdout: `${repository}\n` },
         { stdout: `${commit}\n` },
         { stdout: `${repository}\n` },
-        { exitCode: 0 },
+        {
+          exitCode: 0,
+          check: (spec) => { mkdirSync(String(spec.argv.at(-2))) },
+        },
       )
       const base = await workspace.inspectRevision({ repositoryId, commit })
       const lease = await workspace.openChange({
@@ -936,7 +1264,6 @@ describe('local Git repository workspace', () => {
     }
 
     let current = await openLease()
-    await mkdir(current.lease.cwd)
     await writeFile(join(current.lease.cwd, 'owned.txt'), 'owned\n')
     current.subprocess.queue(
       { exitCode: 1 },
@@ -954,25 +1281,22 @@ describe('local Git repository workspace', () => {
     await current.ctx.fiber.dispose()
 
     current = await openLease()
-    await mkdir(current.lease.cwd)
     const outsideMarkerRoot = await temporaryRoot('dsh-repo-workspace-cleanup-marker-target')
     const outsideMarker = join(outsideMarkerRoot, 'marker')
     await writeFile(outsideMarker, 'outside marker\n')
     await unlink(join(dirname(current.lease.cwd), 'lease.json'))
     await symlink(outsideMarker, join(dirname(current.lease.cwd), 'lease.json'), 'file')
-    current.subprocess.queue({ exitCode: 0 })
-    await current.lease.close('remove')
+    await expect(current.lease.close('remove')).rejects.toMatchObject({ code: 'cleanup-failed' })
+    await expect(access(current.lease.cwd)).resolves.toBeUndefined()
     expect(await readFile(outsideMarker, 'utf8')).toBe('outside marker\n')
     await current.ctx.fiber.dispose()
 
     current = await openLease()
-    await mkdir(current.lease.cwd)
     current.subprocess.queue({ exitCode: 1 }, { exitCode: 1 })
     await expect(current.lease.close('remove')).rejects.toMatchObject({ code: 'cleanup-failed' })
     await current.ctx.fiber.dispose()
 
     current = await openLease()
-    await mkdir(current.lease.cwd)
     current.subprocess.queue(
       { exitCode: 1 },
       { stdout: `worktree ${current.lease.cwd}\0` },
@@ -982,9 +1306,7 @@ describe('local Git repository workspace', () => {
     await current.ctx.fiber.dispose()
 
     current = await openLease()
-    await mkdir(current.lease.cwd)
     await unlink(join(dirname(current.lease.cwd), 'lease.json'))
-    current.subprocess.queue({ exitCode: 0 })
     await expect(current.lease.close('remove')).rejects.toMatchObject({ code: 'cleanup-failed' })
     await current.ctx.fiber.dispose()
 
@@ -994,11 +1316,52 @@ describe('local Git repository workspace', () => {
     await current.ctx.fiber.dispose()
 
     current = await openLease()
-    await mkdir(current.lease.cwd)
     await writeFile(join(dirname(current.lease.cwd), 'unexpected.txt'), 'leftover\n')
     current.subprocess.queue({ exitCode: 0 })
     await expect(current.lease.close('remove')).rejects.toMatchObject({ code: 'cleanup-failed' })
     await current.ctx.fiber.dispose()
+  })
+
+  it('keeps unrelated stale worktree registrations when exact lease removal needs a retry', async () => {
+    const { repository, firstCommit } = await fixtureRepository()
+    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-exact-cleanup')
+    const unrelatedParent = await temporaryRoot('dsh-repo-workspace-unrelated-parent')
+    const unrelated = join(unrelatedParent, 'stale-worktree')
+    await fixtureGit(repository, 'worktree', 'add', '--detach', unrelated, firstCommit)
+    await rm(unrelated, { recursive: true, force: true })
+    const unrelatedRegistration = await fixtureGit(repository, 'worktree', 'list', '--porcelain')
+    const repositoryId = RepositoryId('repository-exact-cleanup')
+    let failedSingleForceRemove = false
+    const ctx = new Context()
+    new TestSubprocessRuntime(ctx, (spec) => {
+      const args = spec.argv.slice(3)
+      if (
+        !failedSingleForceRemove
+        && args[0] === 'worktree'
+        && args[1] === 'remove'
+        && args[2] === '--force'
+        && args[3] !== '--force'
+      ) {
+        failedSingleForceRemove = true
+        return true
+      }
+      return false
+    })
+    const workspace = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot,
+    })
+    const base = await workspace.inspectRevision({ repositoryId, commit: firstCommit })
+    const lease = await workspace.openChange({
+      ownerAttemptId: QueueAttemptIdRef('attempt-exact-cleanup'),
+      base,
+    })
+
+    await lease.close('remove')
+
+    expect(failedSingleForceRemove).toBe(true)
+    expect(await fixtureGit(repository, 'worktree', 'list', '--porcelain')).toBe(unrelatedRegistration)
+    await ctx.fiber.dispose()
   })
 
   it('fails closed when persisted lease ownership or recovered Git identity is replaced', async () => {

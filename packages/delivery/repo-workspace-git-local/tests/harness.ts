@@ -2,6 +2,7 @@ import { execFile as execFileCallback, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { Readable } from 'node:stream'
 import type { Writable } from 'node:stream'
+import type { Context } from '@deepseek-ai/cordis'
 import SubprocessRuntime from '@deepseek-ai/dsh-subprocess'
 import type {
   SubprocessCollectedOutputs,
@@ -72,6 +73,13 @@ export class TestSubprocessRuntime extends SubprocessRuntime {
   readonly specs: SubprocessSpawnSpec[] = []
   readonly handles: TestSubprocessHandle[] = []
 
+  constructor(
+    ctx: Context,
+    private readonly shouldFail?: (spec: SubprocessSpawnSpec) => boolean,
+  ) {
+    super(ctx)
+  }
+
   async resolveExecutable(command: string, _env?: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<string> {
     signal?.throwIfAborted()
     return command
@@ -82,7 +90,8 @@ export class TestSubprocessRuntime extends SubprocessRuntime {
       throw new Error('repo-workspace test subprocess accepts only piped Git output')
     }
     this.specs.push(spec)
-    const child = spawn(spec.argv[0] as string, spec.argv.slice(1), {
+    const fail = this.shouldFail?.(spec) === true
+    const child = spawn(fail ? process.execPath : spec.argv[0] as string, fail ? ['-e', 'process.exit(1)'] : spec.argv.slice(1), {
       cwd: spec.cwd,
       env: { ...process.env, ...spec.env },
       shell: false,
@@ -107,6 +116,8 @@ export interface ScriptedSubprocessStep {
   readonly omitStdout?: boolean
   readonly omitStderr?: boolean
   readonly doneError?: Error
+  /** Deferred whole-tree quiescence result for await-ownership tests. */
+  readonly waitForExit?: Promise<boolean>
   readonly check?: (spec: SubprocessSpawnSpec) => void
 }
 
@@ -119,13 +130,18 @@ class ScriptedSubprocessHandle implements SubprocessHandle {
   readonly done: Promise<SubprocessOutcome>
   terminateCalls = 0
   waitForExitCalls = 0
+  private readonly waitForExitResult: Promise<boolean>
 
   constructor(step: ScriptedSubprocessStep) {
     this.stdout = step.omitStdout === true ? undefined : scriptedStream(step.stdout)
     this.stderr = step.omitStderr === true ? undefined : scriptedStream(step.stderr)
     this.done = step.doneError === undefined
-      ? Promise.resolve({ exitCode: step.exitCode ?? 0, signal: step.signal ?? null })
+      ? Promise.resolve({
+        exitCode: step.exitCode === undefined ? 0 : step.exitCode,
+        signal: step.signal ?? null,
+      })
       : Promise.reject(step.doneError)
+    this.waitForExitResult = step.waitForExit ?? Promise.resolve(true)
   }
 
   terminate(): void {
@@ -134,7 +150,7 @@ class ScriptedSubprocessHandle implements SubprocessHandle {
 
   waitForExit(): Promise<boolean> {
     this.waitForExitCalls += 1
-    return Promise.resolve(true)
+    return this.waitForExitResult
   }
 }
 

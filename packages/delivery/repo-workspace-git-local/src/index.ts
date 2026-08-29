@@ -1,8 +1,8 @@
 /** Local Git repository facts and Attempt-owned worktree provider. @module @deepseek-ai/dsh-repo-workspace-git-local */
 
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, mkdir, readFile, readdir, realpath, rename, rmdir, unlink, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { lstat, mkdir, open, readFile, readdir, realpath, rename, rmdir, unlink } from 'node:fs/promises'
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
 import type { Readable } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -39,6 +39,7 @@ import type {
   VerifiedRepositoryRevision,
 } from '@deepseek-ai/dsh-repo-workspace'
 import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subprocess'
+import { ensureDurableDirectoryWin32, publishNewPathWin32 } from './win32.ts'
 
 const DEFAULT_GIT_GRACE_MS = 5_000
 const DEFAULT_GIT_OUTPUT_BYTES = 4 * 1024 * 1024
@@ -76,6 +77,13 @@ interface OwnedLease {
   readonly lease: Promise<ChangeWorkspaceLease | VerificationWorkspaceLease>
 }
 
+interface PhysicalDirectory {
+  readonly path: string
+  readonly realPath: string
+  readonly dev: bigint
+  readonly ino: bigint
+}
+
 interface ChangeLeaseMarker {
   readonly format: 'dsh-repository-workspace-lease@1'
   readonly ownerAttemptId: QueueAttemptIdRef
@@ -105,6 +113,7 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
   private readonly worktreeRoot: string
   private readonly graceMs: number
   private readonly maxGitOutputBytes: number
+  private worktreeRootDirectory: PhysicalDirectory | undefined
   private readonly verifiedBases = new WeakSet<object>()
   private readonly verifiedRevisions = new WeakSet<object>()
   private readonly leases = new Map<QueueAttemptIdRef, OwnedLease>()
@@ -319,7 +328,7 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
   }
 
   private async createChangeLease(request: OpenChangeWorkspaceRequest): Promise<ChangeWorkspaceLease> {
-    await this.ensureRealDirectory(this.worktreeRoot)
+    const rootDirectory = await this.ensureWorktreeRoot()
     const ownerDirectory = join(this.worktreeRoot, `attempt-${ownerHash(request.ownerAttemptId)}`)
     const marker: ChangeLeaseMarker = {
       format: 'dsh-repository-workspace-lease@1',
@@ -328,7 +337,13 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       repositoryId: request.base.repositoryId,
       baseCommit: request.base.commit,
     }
-    await this.ensureLeaseDirectory(ownerDirectory, marker)
+    let owner: PhysicalDirectory
+    try {
+      owner = await this.ensureLeaseDirectory(rootDirectory, ownerDirectory, marker)
+    } catch (error) {
+      if (error instanceof RepositoryWorkspaceError) throw error
+      throw new RepositoryWorkspaceError('unavailable', `cannot publish Attempt ownership '${ownerDirectory}'`, { cause: error })
+    }
     const cwd = join(ownerDirectory, 'checkout')
     const repository = await this.repository(request.base.repositoryId, request.signal)
     const checkout = await fileStatus(cwd)
@@ -349,20 +364,21 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       }
       await this.verifyRecoveredCheckout(repository, cwd, request.base.commit, request.signal)
     }
+    const checkoutDirectory = await captureContainedDirectory(rootDirectory, cwd, 'owner-conflict')
     return new GitChangeWorkspaceLease(
       request.ownerAttemptId,
       request.base.repositoryId,
       request.base.commit,
       cwd,
       checkpoint => this.createCheckpoint(request.base.repositoryId, repository, cwd, request.base.commit, checkpoint),
-      disposition => this.closeLease(repository, ownerDirectory, cwd, disposition),
+      disposition => this.closeLease(repository, rootDirectory, owner, checkoutDirectory, marker, disposition),
     )
   }
 
   private async createVerificationLease(
     request: OpenVerificationWorkspaceRequest,
   ): Promise<VerificationWorkspaceLease> {
-    await this.ensureRealDirectory(this.worktreeRoot)
+    const rootDirectory = await this.ensureWorktreeRoot()
     const ownerDirectory = join(this.worktreeRoot, `attempt-${ownerHash(request.ownerAttemptId)}`)
     const marker: VerificationLeaseMarker = {
       format: 'dsh-repository-workspace-lease@1',
@@ -372,7 +388,15 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       baseCommit: request.base.commit,
       targetCommit: request.target.commit,
     }
-    await this.ensureLeaseDirectory(ownerDirectory, marker)
+    let owner: PhysicalDirectory
+    try {
+      owner = await this.ensureLeaseDirectory(rootDirectory, ownerDirectory, marker)
+    } catch (error) {
+      /* v8 ignore start -- the change-lease peer covers durability failure mapping; this branch is symmetric. */
+      if (error instanceof RepositoryWorkspaceError) throw error
+      throw new RepositoryWorkspaceError('unavailable', `cannot publish Attempt ownership '${ownerDirectory}'`, { cause: error })
+      /* v8 ignore stop */
+    }
     const cwd = join(ownerDirectory, 'checkout')
     const repository = await this.repository(request.base.repositoryId, request.signal)
     const checkout = await fileStatus(cwd)
@@ -393,43 +417,48 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       }
       await this.verifyRecoveredCheckout(repository, cwd, request.target.commit, request.signal)
     }
+    const checkoutDirectory = await captureContainedDirectory(rootDirectory, cwd, 'owner-conflict')
     return new GitVerificationWorkspaceLease(
       request.ownerAttemptId,
       request.base.repositoryId,
       request.base.commit,
       request.target.commit,
       cwd,
-      disposition => this.closeLease(repository, ownerDirectory, cwd, disposition),
+      disposition => this.closeLease(repository, rootDirectory, owner, checkoutDirectory, marker, disposition),
     )
   }
 
   private async closeLease(
     repository: string,
-    ownerDirectory: string,
-    cwd: string,
+    rootDirectory: PhysicalDirectory,
+    ownerDirectory: PhysicalDirectory,
+    checkoutDirectory: PhysicalDirectory,
+    expectedMarker: LeaseMarker,
     disposition: RepositoryWorkspaceDisposition,
   ): Promise<void> {
     if (disposition === 'preserve') return
+    const cwd = checkoutDirectory.path
     try {
-      const owner = await fileStatus(ownerDirectory)
-      if (owner === undefined || !owner.isDirectory() || owner.isSymbolicLink()) {
-        throw new RepositoryWorkspaceError('cleanup-failed', `Attempt workspace '${ownerDirectory}' is not a real directory`)
-      }
-      await removeTreeSafe(cwd)
+      await assertSamePhysicalDirectory(rootDirectory, 'cleanup-failed')
+      await assertSamePhysicalDirectory(ownerDirectory, 'cleanup-failed')
+      await assertSamePhysicalDirectory(checkoutDirectory, 'cleanup-failed')
+      await this.verifyLeaseMarker(ownerDirectory.path, expectedMarker, 'cleanup-failed')
+      await removeTreeSafe(rootDirectory, cwd, checkoutDirectory)
+      await assertSamePhysicalDirectory(rootDirectory, 'cleanup-failed')
+      await assertSamePhysicalDirectory(ownerDirectory, 'cleanup-failed')
+      await this.verifyLeaseMarker(ownerDirectory.path, expectedMarker, 'cleanup-failed')
       const removed = await this.runGit(repository, ['worktree', 'remove', '--force', cwd])
       if (removed.outcome.exitCode !== 0 && await this.isRegisteredWorktree(repository, cwd)) {
-        const pruned = await this.runGit(repository, ['worktree', 'prune', '--expire=now'])
-        if (pruned.outcome.exitCode !== 0 || await this.isRegisteredWorktree(repository, cwd)) {
+        const forced = await this.runGit(repository, ['worktree', 'remove', '--force', '--force', cwd])
+        if (forced.outcome.exitCode !== 0 || await this.isRegisteredWorktree(repository, cwd)) {
           throw new RepositoryWorkspaceError('cleanup-failed', `Git retained Attempt worktree registration '${cwd}'`)
         }
       }
-      const marker = join(ownerDirectory, 'lease.json')
-      const markerStatus = await fileStatus(marker)
-      if (markerStatus === undefined || (!markerStatus.isFile() && !markerStatus.isSymbolicLink())) {
-        throw new RepositoryWorkspaceError('cleanup-failed', `Attempt workspace '${ownerDirectory}' has no removable marker`)
-      }
-      await unlink(marker)
-      await rmdir(ownerDirectory)
+      await assertSamePhysicalDirectory(rootDirectory, 'cleanup-failed')
+      await assertSamePhysicalDirectory(ownerDirectory, 'cleanup-failed')
+      await this.verifyLeaseMarker(ownerDirectory.path, expectedMarker, 'cleanup-failed')
+      await unlink(join(ownerDirectory.path, 'lease.json'))
+      await rmdir(ownerDirectory.path)
     } catch (error) {
       if (error instanceof RepositoryWorkspaceError && error.code === 'cleanup-failed') throw error
       throw new RepositoryWorkspaceError('cleanup-failed', `cannot remove Attempt workspace '${cwd}'`, { cause: error })
@@ -512,14 +541,34 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
     }
   }
 
-  private async ensureLeaseDirectory(ownerDirectory: string, marker: LeaseMarker): Promise<void> {
+  private async ensureLeaseDirectory(
+    rootDirectory: PhysicalDirectory,
+    ownerDirectory: string,
+    marker: LeaseMarker,
+  ): Promise<PhysicalDirectory> {
+    await assertSamePhysicalDirectory(rootDirectory, 'owner-conflict')
     const staging = join(this.worktreeRoot, `.lease-${randomUUID()}`)
     const markerName = 'lease.json'
     try {
-      await mkdir(staging, { mode: 0o700 })
-      await writeFile(join(staging, markerName), `${canonicalJson(marker)}\n`, { flag: 'wx', mode: 0o600 })
+      if (process.platform === 'win32') await ensureDurableDirectoryWin32(staging)
+      else {
+        await mkdir(staging, { mode: 0o700 })
+        await syncDirectoryPosix(this.worktreeRoot)
+      }
+      const markerHandle = await open(join(staging, markerName), 'wx', 0o600)
       try {
-        await rename(staging, ownerDirectory)
+        await markerHandle.writeFile(`${canonicalJson(marker)}\n`, 'utf8')
+        await markerHandle.sync()
+      } finally {
+        await markerHandle.close()
+      }
+      if (process.platform !== 'win32') await syncDirectoryPosix(staging)
+      try {
+        if (process.platform === 'win32') await publishNewPathWin32(staging, ownerDirectory)
+        else {
+          await rename(staging, ownerDirectory)
+          await syncDirectoryPosix(this.worktreeRoot)
+        }
       } catch (error) {
         /* v8 ignore next -- a rename failure without a competing owner directory requires a host filesystem fault. */
         if (await fileStatus(ownerDirectory) === undefined) throw error
@@ -539,19 +588,36 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
     if (ownerStatus === undefined || !ownerStatus.isDirectory() || ownerStatus.isSymbolicLink()) {
       throw new RepositoryWorkspaceError('owner-conflict', `Attempt workspace '${ownerDirectory}' must be a real directory`)
     }
-    const markerPath = join(ownerDirectory, markerName)
+    await this.verifyLeaseMarker(ownerDirectory, marker, 'owner-conflict')
+    await syncPublishedMarker(ownerDirectory)
+    return await captureContainedDirectory(rootDirectory, ownerDirectory, 'owner-conflict')
+  }
+
+  private async verifyLeaseMarker(
+    ownerDirectory: string,
+    expected: LeaseMarker,
+    code: 'owner-conflict' | 'cleanup-failed',
+  ): Promise<void> {
+    const markerPath = join(ownerDirectory, 'lease.json')
+    const expectedBytes = Buffer.from(`${canonicalJson(expected)}\n`, 'utf8')
     const markerStatus = await fileStatus(markerPath)
-    if (markerStatus === undefined || !markerStatus.isFile() || markerStatus.isSymbolicLink()) {
-      throw new RepositoryWorkspaceError('owner-conflict', `Attempt workspace '${ownerDirectory}' has no safe ownership marker`)
+    if (
+      markerStatus === undefined
+      || !markerStatus.isFile()
+      || markerStatus.isSymbolicLink()
+      || markerStatus.size !== expectedBytes.byteLength
+    ) {
+      throw new RepositoryWorkspaceError(code, `Attempt workspace '${ownerDirectory}' has no matching regular ownership marker`)
     }
-    let stored: unknown
+    let stored: Uint8Array
     try {
-      stored = JSON.parse(await readFile(markerPath, 'utf8'))
+      stored = await readFile(markerPath)
     } catch (error) {
-      throw new RepositoryWorkspaceError('owner-conflict', `Attempt workspace '${ownerDirectory}' has an invalid marker`, { cause: error })
+      /* v8 ignore next -- requires a host read/permission fault after the marker's exact lstat size check. */
+      throw new RepositoryWorkspaceError(code, `Attempt workspace '${ownerDirectory}' marker cannot be read`, { cause: error })
     }
-    if (canonicalJson(stored) !== canonicalJson(marker)) {
-      throw new RepositoryWorkspaceError('owner-conflict', 'one Attempt owner cannot identify different repository workspaces')
+    if (!Buffer.from(stored).equals(expectedBytes)) {
+      throw new RepositoryWorkspaceError(code, 'one Attempt owner cannot identify different repository workspaces')
     }
   }
 
@@ -586,16 +652,21 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
     return await realpath(isAbsolute(value) ? value : resolve(repository, value))
   }
 
-  private async ensureRealDirectory(path: string): Promise<void> {
+  private async ensureWorktreeRoot(): Promise<PhysicalDirectory> {
+    if (this.worktreeRootDirectory !== undefined) {
+      await assertSamePhysicalDirectory(this.worktreeRootDirectory, 'unavailable')
+      return this.worktreeRootDirectory
+    }
     try {
-      await mkdir(path, { recursive: true, mode: 0o700 })
-      const status = await lstat(path)
-      if (!status.isDirectory() || status.isSymbolicLink()) {
-        throw new RepositoryWorkspaceError('unavailable', `worktree path '${path}' must be a real directory`)
-      }
+      await ensureDirectoryTreeWithoutLinks(this.worktreeRoot)
+      const directory = await capturePhysicalDirectory(this.worktreeRoot, 'unavailable')
+      this.worktreeRootDirectory = directory
+      return directory
     } catch (error) {
+      /* v8 ignore start -- only a host filesystem fault reaches this wrapper; classified provider failures pass through. */
       if (error instanceof RepositoryWorkspaceError) throw error
-      throw new RepositoryWorkspaceError('unavailable', `cannot prepare worktree path '${path}'`, { cause: error })
+      throw new RepositoryWorkspaceError('unavailable', `cannot prepare worktree path '${this.worktreeRoot}'`, { cause: error })
+      /* v8 ignore stop */
     }
   }
 
@@ -651,6 +722,12 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
           handle.done,
         ])
         signal?.throwIfAborted()
+        if (outcome.signal !== null || outcome.exitCode === null) {
+          throw new RepositoryWorkspaceError(
+            'unavailable',
+            `Git subprocess terminated before a normal exit in '${repository}'`,
+          )
+        }
         return {
           outcome,
           stdout,
@@ -662,7 +739,22 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
         throw new RepositoryWorkspaceError('unavailable', `Git subprocess failed in '${repository}'`, { cause: error })
       }
     } finally {
-      await handle.waitForExit()
+      try {
+        if (!await handle.waitForExit()) {
+          throw new RepositoryWorkspaceError(
+            'unavailable',
+            `Git subprocess tree did not reach quiescence in '${repository}'`,
+          )
+        }
+      } catch (error) {
+        signal?.throwIfAborted()
+        if (error instanceof RepositoryWorkspaceError) throw error
+        throw new RepositoryWorkspaceError(
+          'unavailable',
+          `Git subprocess tree exit could not be observed in '${repository}'`,
+          { cause: error },
+        )
+      }
     }
   }
 }
@@ -798,15 +890,146 @@ async function fileStatus(path: string): Promise<Awaited<ReturnType<typeof lstat
   }
 }
 
-async function removeTreeSafe(path: string): Promise<void> {
-  const status = await fileStatus(path)
+async function ensureDirectoryTreeWithoutLinks(path: string): Promise<void> {
+  const target = resolve(path)
+  const root = parse(target).root
+  let current = root
+  for (const name of relative(root, target).split(sep).filter(Boolean)) {
+    current = join(current, name)
+    let status = await fileStatus(current)
+    if (status === undefined) {
+      if (process.platform === 'win32') await ensureDurableDirectoryWin32(current)
+      else try {
+        await mkdir(current, { mode: 0o700 })
+      } catch (error) {
+        /* v8 ignore next -- only a same-component POSIX creator race reaches EEXIST after the preceding lstat. */
+        if (!isCode(error, 'EEXIST')) throw error
+      }
+      status = await fileStatus(current)
+    }
+    if (status === undefined || !status.isDirectory() || status.isSymbolicLink()) {
+      throw new RepositoryWorkspaceError('unavailable', `worktree path '${current}' must be a real directory`)
+    }
+    if (process.platform !== 'win32') await syncDirectoryPosix(dirname(current))
+  }
+}
+
+async function syncPublishedMarker(ownerDirectory: string): Promise<void> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined
+  try {
+    handle = await open(join(ownerDirectory, 'lease.json'), 'r+')
+    await handle.sync()
+  } finally {
+    await handle?.close()
+  }
+  if (process.platform !== 'win32') {
+    await syncDirectoryPosix(ownerDirectory)
+    await syncDirectoryPosix(dirname(ownerDirectory))
+  }
+}
+
+async function syncDirectoryPosix(path: string): Promise<void> {
+  const handle = await open(path, 'r')
+  try {
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+}
+
+async function capturePhysicalDirectory(
+  path: string,
+  code: 'unavailable' | 'owner-conflict' | 'cleanup-failed',
+): Promise<PhysicalDirectory> {
+  const absolute = resolve(path)
+  let status
+  let realPath: string
+  try {
+    status = await lstat(absolute, { bigint: true })
+    realPath = await realpath(absolute)
+  } catch (error) {
+    throw new RepositoryWorkspaceError(code, `directory '${absolute}' cannot be physically verified`, { cause: error })
+  }
+  if (!status.isDirectory() || status.isSymbolicLink()) {
+    throw new RepositoryWorkspaceError(code, `directory '${absolute}' must be a real directory`)
+  }
+  return { path: absolute, realPath, dev: status.dev, ino: status.ino }
+}
+
+async function assertSamePhysicalDirectory(
+  expected: PhysicalDirectory,
+  code: 'unavailable' | 'owner-conflict' | 'cleanup-failed',
+): Promise<void> {
+  const observed = await capturePhysicalDirectory(expected.path, code)
+  /* v8 ignore next 7 -- replacement with another real directory is covered at the evidence-root peer; links fail earlier. */
+  if (
+    !samePath(observed.realPath, expected.realPath)
+    || observed.dev !== expected.dev
+    || observed.ino !== expected.ino
+  ) {
+    throw new RepositoryWorkspaceError(code, `directory '${expected.path}' changed physical identity`)
+  }
+}
+
+async function captureContainedDirectory(
+  root: PhysicalDirectory,
+  path: string,
+  code: 'owner-conflict' | 'cleanup-failed',
+): Promise<PhysicalDirectory> {
+  await assertSamePhysicalDirectory(root, code)
+  const absolute = resolve(path)
+  /* v8 ignore next 3 -- all callers join provider-owned literal descendants onto the captured root. */
+  if (!isContainedPath(root.path, absolute)) {
+    throw new RepositoryWorkspaceError(code, `directory '${absolute}' escapes worktree root '${root.path}'`)
+  }
+  let current = root.path
+  for (const name of relative(root.path, absolute).split(sep).filter(Boolean)) {
+    current = join(current, name)
+    const directory = await capturePhysicalDirectory(current, code)
+    /* v8 ignore next 3 -- non-link directories can escape only through a host mount-point change during this walk. */
+    if (!isContainedPath(root.realPath, directory.realPath)) {
+      throw new RepositoryWorkspaceError(code, `directory '${current}' escapes physical worktree root '${root.realPath}'`)
+    }
+  }
+  return await capturePhysicalDirectory(absolute, code)
+}
+
+async function removeTreeSafe(
+  root: PhysicalDirectory,
+  path: string,
+  expected?: PhysicalDirectory,
+): Promise<void> {
+  await assertSamePhysicalDirectory(root, 'cleanup-failed')
+  const absolute = resolve(path)
+  /* v8 ignore next 3 -- callers pass only the captured checkout and its enumerated descendants. */
+  if (!isContainedPath(root.path, absolute) || samePath(root.path, absolute)) {
+    throw new RepositoryWorkspaceError('cleanup-failed', `refusing to remove path '${absolute}' outside its worktree root`)
+  }
+  const parent = await captureContainedDirectory(root, dirname(absolute), 'cleanup-failed')
+  await assertSamePhysicalDirectory(parent, 'cleanup-failed')
+  const status = await fileStatus(absolute)
+  /* v8 ignore next -- requires concurrent removal after the parent and captured checkout were revalidated. */
   if (status === undefined) return
   if (status.isSymbolicLink() || !status.isDirectory()) {
-    await unlink(path)
+    await unlink(absolute)
     return
   }
-  for (const name of await readdir(path)) await removeTreeSafe(join(path, name))
-  await rmdir(path)
+  const directory = await captureContainedDirectory(root, absolute, 'cleanup-failed')
+  /* v8 ignore next 6 -- requires replacing a real directory with another real inode between capture and recursion. */
+  if (
+    expected !== undefined
+    && (directory.dev !== expected.dev || directory.ino !== expected.ino || !samePath(directory.realPath, expected.realPath))
+  ) {
+    throw new RepositoryWorkspaceError('cleanup-failed', `directory '${absolute}' changed physical identity`)
+  }
+  for (const name of await readdir(absolute)) await removeTreeSafe(root, join(absolute, name))
+  await assertSamePhysicalDirectory(directory, 'cleanup-failed')
+  await rmdir(absolute)
+}
+
+function isContainedPath(root: string, target: string): boolean {
+  const child = relative(root, target)
+  return child === '' || (!isAbsolute(child) && child !== '..' && !child.startsWith(`..${sep}`))
 }
 
 function samePath(left: string, right: string): boolean {

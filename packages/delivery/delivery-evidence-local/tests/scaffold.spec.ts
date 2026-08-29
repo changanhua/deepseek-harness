@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import { existsSync, renameSync } from 'node:fs'
+import { cp, mkdir, mkdtemp, open, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import {
   EvidenceId,
@@ -9,6 +10,7 @@ import {
   QueueWorkIdRef,
   VerificationCheckId,
   WorkPacketId,
+  canonicalDigest,
   evidenceBytesDigest,
 } from '@deepseek-ai/dsh-delivery-protocol'
 import {
@@ -16,9 +18,86 @@ import {
   LocalDeliveryEvidence,
 } from '../src/index.ts'
 
+const fsControl = vi.hoisted(() => ({
+  readFilePaths: [] as string[],
+  directorySyncPaths: [] as string[],
+  fileSyncPaths: [] as string[],
+  simulateDirectorySync: false,
+  blockedSyncPath: undefined as string | undefined,
+  syncEntered: undefined as (() => void) | undefined,
+  releaseSync: undefined as Promise<void> | undefined,
+  failedSyncPath: undefined as string | undefined,
+  syncFailure: undefined as Error | undefined,
+}))
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    readFile(...args: Parameters<typeof actual.readFile>): ReturnType<typeof actual.readFile> {
+      if (typeof args[0] === 'string') fsControl.readFilePaths.push(args[0])
+      return actual.readFile(...args)
+    },
+    async open(...args: Parameters<typeof actual.open>): ReturnType<typeof actual.open> {
+      if (typeof args[0] !== 'string') throw new TypeError('evidence tests open only string paths')
+      const path = args[0]
+      const handle = await actual.open(...args)
+      let directory = false
+      try {
+        directory = (await actual.lstat(path)).isDirectory()
+      } catch {
+        // The opened handle remains authoritative when its name changes after open.
+      }
+      const originalSync = handle.sync.bind(handle)
+      Object.defineProperty(handle, 'sync', {
+        value: async () => {
+          const calls = directory ? fsControl.directorySyncPaths : fsControl.fileSyncPaths
+          calls.push(path)
+          if (fsControl.failedSyncPath === path) throw fsControl.syncFailure
+          if (fsControl.blockedSyncPath === path) {
+            fsControl.syncEntered?.()
+            await fsControl.releaseSync
+          }
+          if (directory && fsControl.simulateDirectorySync) return
+          await originalSync()
+        },
+      })
+      return handle
+    },
+  }
+})
+
+vi.mock('koffi', () => {
+  let lastError = 0
+  return {
+    default: {
+      load: () => ({
+        func: (_convention: string, name: string) => name === 'MoveFileExW'
+          ? (from: string, to: string, flags: number) => {
+            expect(flags).toBe(0x00000008)
+            if (existsSync(to)) { lastError = 183; return 0 }
+            renameSync(from, to)
+            lastError = 0
+            return 1
+          }
+          : () => lastError,
+      }),
+    },
+  }
+})
+
 const roots: string[] = []
 
 afterEach(async () => {
+  vi.restoreAllMocks()
+  fsControl.directorySyncPaths.length = 0
+  fsControl.fileSyncPaths.length = 0
+  fsControl.simulateDirectorySync = false
+  fsControl.blockedSyncPath = undefined
+  fsControl.syncEntered = undefined
+  fsControl.releaseSync = undefined
+  fsControl.failedSyncPath = undefined
+  fsControl.syncFailure = undefined
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
@@ -161,6 +240,79 @@ describe('local Delivery evidence store', () => {
     })
   })
 
+  it('applies the configured limit to persisted objects before allocating their bytes', async () => {
+    const root = await evidenceRoot()
+    const data = new Uint8Array([1, 2, 3])
+    const digest = evidenceBytesDigest(data)
+    const objectDirectory = join(root, 'objects', 'sha256')
+    const objectPath = join(objectDirectory, digest.slice('sha256:'.length))
+    await mkdir(objectDirectory, { recursive: true })
+    const handle = await open(objectPath, 'wx')
+    await handle.truncate(4)
+    await handle.close()
+    const evidence = new LocalDeliveryEvidence(new Context(), { root, maxBytes: 3 })
+    fsControl.readFilePaths.length = 0
+
+    await expect(evidence.save({
+      kind: 'patch',
+      mediaType: 'application/octet-stream',
+      data,
+      provenance: {
+        kind: 'change-attempt',
+        packetId: WorkPacketId('packet-evidence-existing-limit'),
+        queueWorkId: QueueWorkIdRef('work-evidence-existing-limit'),
+        queueAttemptId: QueueAttemptIdRef('attempt-evidence-existing-limit'),
+      },
+    })).rejects.toMatchObject({ code: 'write-failed' })
+    expect(fsControl.readFilePaths).not.toContain(objectPath)
+  })
+
+  it('rejects oversized reference files and persisted byte lengths before object allocation', async () => {
+    const root = await evidenceRoot()
+    const evidence = new LocalDeliveryEvidence(new Context(), { root, maxBytes: 3 })
+    const seed = await evidence.save({
+      kind: 'log',
+      mediaType: 'text/plain',
+      data: new Uint8Array([1, 2, 3]),
+      provenance: {
+        kind: 'change-attempt',
+        packetId: WorkPacketId('packet-evidence-reference-limit-seed'),
+        queueWorkId: QueueWorkIdRef('work-evidence-reference-limit-seed'),
+        queueAttemptId: QueueAttemptIdRef('attempt-evidence-reference-limit-seed'),
+      },
+    })
+    const referencePath = join(root, 'references', `${seed.id}.json`)
+    await writeFile(referencePath, Buffer.alloc(64 * 1024 + 1, 0x20))
+    fsControl.readFilePaths.length = 0
+    await expect(evidence.resolve(seed.id)).rejects.toMatchObject({ code: 'read-failed' })
+    expect(fsControl.readFilePaths).not.toContain(referencePath)
+
+    const provenance = {
+      kind: 'change-attempt' as const,
+      packetId: WorkPacketId('packet-evidence-persisted-length'),
+      queueWorkId: QueueWorkIdRef('work-evidence-persisted-length'),
+      queueAttemptId: QueueAttemptIdRef('attempt-evidence-persisted-length'),
+    }
+    const digest = evidenceBytesDigest(new Uint8Array([1, 2, 3]))
+    const envelope = {
+      kind: 'log' as const,
+      mediaType: 'text/plain',
+      provenance,
+      byteLength: 64 * 1024 * 1024 + 1,
+      digest,
+    }
+    const envelopeDigest = canonicalDigest(envelope)
+    const id = EvidenceId(`evidence-sha256-${envelopeDigest.slice('sha256:'.length)}`)
+    await writeFile(join(root, 'references', `${id}.json`), JSON.stringify({
+      schemaVersion: 1,
+      id,
+      ...envelope,
+      uri: `dsh-evidence://sha256/${digest.slice('sha256:'.length)}`,
+      createdAt: '2026-08-29T00:00:00.000Z',
+    }))
+    await expect(evidence.resolve(id)).rejects.toMatchObject({ code: 'read-failed' })
+  })
+
   it('refuses a link-shaped reference directory without writing through it', async () => {
     const root = await evidenceRoot()
     const outside = await evidenceRoot()
@@ -182,6 +334,49 @@ describe('local Delivery evidence store', () => {
       name: 'DeliveryEvidenceError',
     })
     expect(await readdir(outside)).toEqual([])
+  })
+
+  it('rejects an intermediate storage-root junction before publication', async () => {
+    const parent = await evidenceRoot()
+    const outside = await evidenceRoot()
+    const linkedAncestor = join(parent, 'linked-ancestor')
+    await symlink(outside, linkedAncestor, 'junction')
+    const evidence = new LocalDeliveryEvidence(new Context(), { root: join(linkedAncestor, 'store') })
+
+    await expect(evidence.save({
+      kind: 'log',
+      mediaType: 'text/plain',
+      data: new TextEncoder().encode('must not cross an intermediate junction'),
+      provenance: {
+        kind: 'change-attempt',
+        packetId: WorkPacketId('packet-evidence-intermediate-root'),
+        queueWorkId: QueueWorkIdRef('work-evidence-intermediate-root'),
+        queueAttemptId: QueueAttemptIdRef('attempt-evidence-intermediate-root'),
+      },
+    })).rejects.toMatchObject({ code: 'write-failed' })
+    expect(await readdir(outside)).toEqual([])
+  })
+
+  it('rejects a configured storage-root identity swap after publication', async () => {
+    const parent = await evidenceRoot()
+    const root = join(parent, 'store')
+    const movedRoot = join(parent, 'moved-store')
+    const evidence = new LocalDeliveryEvidence(new Context(), { root })
+    const reference = await evidence.save({
+      kind: 'log',
+      mediaType: 'text/plain',
+      data: new TextEncoder().encode('root identity fixture'),
+      provenance: {
+        kind: 'change-attempt',
+        packetId: WorkPacketId('packet-evidence-root-swap'),
+        queueWorkId: QueueWorkIdRef('work-evidence-root-swap'),
+        queueAttemptId: QueueAttemptIdRef('attempt-evidence-root-swap'),
+      },
+    })
+    await rename(root, movedRoot)
+    await cp(movedRoot, root, { recursive: true })
+
+    await expect(evidence.read(reference)).rejects.toMatchObject({ code: 'read-failed' })
   })
 
   it('never overwrites bytes occupying a content-addressed object path', async () => {
@@ -303,6 +498,20 @@ describe('local Delivery evidence store', () => {
       new TextEncoder().encode('XXXXXXXXXXXXXXX'),
     )
     await expect(evidence.read(changed)).rejects.toMatchObject({ code: 'digest-mismatch' })
+
+    const limitedRoot = await evidenceRoot()
+    const limited = new LocalDeliveryEvidence(new Context(), { root: limitedRoot, maxBytes: 3 })
+    const limitedRef = await limited.save({
+      kind: 'log',
+      mediaType: 'application/octet-stream',
+      data: new Uint8Array([1, 2, 3]),
+      provenance,
+    })
+    await writeFile(
+      join(limitedRoot, 'objects', 'sha256', limitedRef.digest.slice('sha256:'.length)),
+      new Uint8Array([1, 2, 3, 4]),
+    )
+    await expect(limited.read(limitedRef)).rejects.toMatchObject({ code: 'length-mismatch' })
   })
 
   it('rejects caller reference drift and propagates cancellation without filesystem work', async () => {
@@ -404,5 +613,79 @@ describe('local Delivery evidence store', () => {
     const providers = Array.from({ length: 12 }, () => new LocalDeliveryEvidence(new Context(), { root }))
     const references = await Promise.all(providers.map(async provider => await provider.save(save)))
     expect(references.every(reference => JSON.stringify(reference) === JSON.stringify(references[0]))).toBe(true)
+  })
+
+  it('waits for file and parent-directory durability on new and observed publications', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    fsControl.simulateDirectorySync = true
+    const missingRoot = join(await evidenceRoot(), 'nested', 'store')
+    await new LocalDeliveryEvidence(new Context(), { root: missingRoot }).save({
+      kind: 'log',
+      mediaType: 'text/plain',
+      data: new Uint8Array(),
+      provenance: {
+        kind: 'change-attempt',
+        packetId: WorkPacketId('packet-evidence-durable-directory'),
+        queueWorkId: QueueWorkIdRef('work-evidence-durable-directory'),
+        queueAttemptId: QueueAttemptIdRef('attempt-evidence-durable-directory'),
+      },
+    })
+    const root = await evidenceRoot()
+    const evidence = new LocalDeliveryEvidence(new Context(), { root })
+    const save = (label: string) => evidence.save({
+      kind: 'log',
+      mediaType: 'text/plain',
+      data: new TextEncoder().encode(label),
+      provenance: {
+        kind: 'change-attempt',
+        packetId: WorkPacketId(`packet-evidence-durability-${label}`),
+        queueWorkId: QueueWorkIdRef(`work-evidence-durability-${label}`),
+        queueAttemptId: QueueAttemptIdRef(`attempt-evidence-durability-${label}`),
+      },
+    })
+    await save('layout')
+    expect(fsControl.directorySyncPaths).toEqual(expect.arrayContaining([
+      root,
+      join(root, 'objects'),
+      join(root, 'objects', 'sha256'),
+      join(root, 'references'),
+    ]))
+
+    fsControl.directorySyncPaths.length = 0
+    fsControl.fileSyncPaths.length = 0
+    let entered!: () => void
+    const syncEntered = new Promise<void>((resolve) => { entered = resolve })
+    let release!: () => void
+    const releaseSync = new Promise<void>((resolve) => { release = resolve })
+    fsControl.blockedSyncPath = join(root, 'references')
+    fsControl.syncEntered = entered
+    fsControl.releaseSync = releaseSync
+    let settled = false
+    const publication = save('published').finally(() => { settled = true })
+    expect(await Promise.race([
+      syncEntered.then(() => 'barrier' as const),
+      publication.then(() => 'settled' as const),
+    ])).toBe('barrier')
+    expect(settled).toBe(false)
+    release()
+    const reference = await publication
+    fsControl.blockedSyncPath = undefined
+    fsControl.syncEntered = undefined
+    fsControl.releaseSync = undefined
+    expect(fsControl.fileSyncPaths).toContain(join(root, 'references', `${reference.id}.json`))
+    expect(fsControl.directorySyncPaths).toContain(join(root, 'objects', 'sha256'))
+    expect(fsControl.directorySyncPaths).toContain(join(root, 'references'))
+
+    fsControl.directorySyncPaths.length = 0
+    fsControl.fileSyncPaths.length = 0
+    await save('published')
+    expect(fsControl.fileSyncPaths).toContain(join(root, 'references', `${reference.id}.json`))
+    expect(fsControl.directorySyncPaths).toContain(join(root, 'objects', 'sha256'))
+    expect(fsControl.directorySyncPaths).toContain(join(root, 'references'))
+
+    const failure = new Error('simulated evidence directory sync failure')
+    fsControl.failedSyncPath = join(root, 'references')
+    fsControl.syncFailure = failure
+    await expect(save('failure')).rejects.toMatchObject({ code: 'write-failed', cause: failure })
   })
 })

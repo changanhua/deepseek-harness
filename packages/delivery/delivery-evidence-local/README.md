@@ -48,7 +48,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The provider copies caller bytes and provenance before asynchronous work. It writes each object or reference to a private exclusive temporary file, syncs the file, and publishes it with a no-overwrite hard link. Byte objects use their SHA-256 URI, while reference ids address the complete semantic envelope. Reads use `lstat` to reject symlinks and Windows junctions before checking the persisted reference, file size, and SHA-256, and every returned byte array and metadata object is detached from stored state.
+The provider copies caller bytes and provenance before asynchronous work. It writes each object or reference to a private exclusive temporary file and syncs the file. POSIX publication uses a no-overwrite hard link plus parent-directory sync; Windows uses a no-replace write-through namespace move. Concurrent observers repeat the file and namespace durability barrier before returning an existing object or reference. Byte objects use their SHA-256 URI, while reference ids address the complete semantic envelope. Reads re-prove the physical root and every ancestor, reject link-shaped paths, enforce the configured object limit and a `64 KiB` metadata limit before allocation, and verify file identity, exact length, and SHA-256 through a bounded open handle. Every returned byte array and metadata object is detached from stored state.
 
 </details>
 
