@@ -10,10 +10,7 @@ export const name = 'ui-delivery-invariant'
 /** Invariant registry required before package ownership can be reserved. */
 export const inject = ['invariants']
 
-/**
- * No runtime invariant: the empty scaffold registers no client contribution or
- * product-visible state.
- */
+/** No runtime invariant: slot, locale, and Remote service contracts own these checks. */
 const install: InvariantInstaller = () => {}
 
 /** Register this package's invariant companion. */

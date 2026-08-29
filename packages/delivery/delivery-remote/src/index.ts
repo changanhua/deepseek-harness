@@ -1,41 +1,68 @@
-/** Personal Delivery Typert Remote scaffold. @module @deepseek-ai/dsh-delivery-remote */
+/** Browser-safe Personal Delivery Typert Remote. @module @deepseek-ai/dsh-delivery-remote */
 
+import { Buffer } from 'node:buffer'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type {} from '@deepseek-ai/dsh-delivery'
-import type {} from '@deepseek-ai/dsh-delivery-evidence'
-import type {} from '@deepseek-ai/dsh-repo-workspace'
-import type {} from '@deepseek-ai/dsh-task-queue'
+import { DeliveryError, type AcceptanceEvidenceResolver } from '@deepseek-ai/dsh-delivery'
+import { DeliveryEvidenceError } from '@deepseek-ai/dsh-delivery-evidence'
+import { importGitHubIssue } from '@deepseek-ai/dsh-delivery-github-intake'
+import {
+  ContractRevisionId,
+  DispatchBindingId,
+  EvidenceId,
+  ExecutorId,
+  RepositoryId,
+  WorkPacketId,
+  canonicalDigest,
+  type DispatchBinding,
+  type QueueWorkIdRef,
+} from '@deepseek-ai/dsh-delivery-protocol'
+import { startCodeChange, startVerification } from '@deepseek-ai/dsh-delivery-task-queue'
+import {
+  createVerifiedOperatorAuthority,
+  type OperatorWorkQueue,
+} from '@deepseek-ai/dsh-task-queue'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   DeliveryAcceptanceDecisionView,
   DeliveryContractRevisionView,
   DeliveryCreatePacketInput,
   DeliveryDispatchBindingView,
+  DeliveryEvidenceView,
   DeliveryImportIssueInput,
+  DeliveryReadEvidenceInput,
   DeliveryRecordDecisionInput,
   DeliverySnapshotView,
   DeliveryStartChangeInput,
   DeliveryStartVerificationInput,
   DeliveryWorkPacketView,
 } from './types.ts'
+import { projectDeliverySnapshot, projectDispatchBinding } from './projection.ts'
+import {
+  DeliveryAcceptanceCandidateError,
+  resolveAcceptanceCandidate,
+} from './acceptance.ts'
+import { remoteFailure, requireActive } from './failures.ts'
+
+export type { DeliveryRemoteErrorCode } from './failures.ts'
 
 export type {
   DeliveryAcceptanceDecisionView,
   DeliveryContractRevisionView,
   DeliveryCreatePacketInput,
   DeliveryDispatchBindingView,
+  DeliveryEvidenceView,
   DeliveryImportIssueInput,
   DeliveryLane,
   DeliveryRecordDecisionInput,
   DeliverySnapshotView,
+  DeliveryReadEvidenceInput,
   DeliveryStartChangeInput,
   DeliveryStartVerificationInput,
   DeliveryWorkPacketView,
   DeliveryWorkbenchCard,
+  DeliveryWorkbenchDispatch,
 } from './types.ts'
-
-const UNAVAILABLE = 'delivery Remote is unavailable because its host projection is not implemented'
 
 /** Trusted single-operator identity configured on the Host, never supplied by browser input. */
 export interface Config {
@@ -48,26 +75,38 @@ export const Config: z<Config> = z.object({
   operatorId: z.string().min(1).pattern(/\S/u).default('local-operator'),
 })
 
-/** Stable Remote failure classification. */
-export type DeliveryRemoteErrorCode = 'unavailable'
+/** Replaceable boundaries used by focused tests; production keeps the real C0 Consumers. */
+export interface DeliveryRemoteInternals {
+  readonly fetch: typeof globalThis.fetch
+  readonly importIssue: typeof importGitHubIssue
+  readonly startCodeChange: typeof startCodeChange
+  readonly startVerification: typeof startVerification
+}
 
-/** Typed failure emitted while the frozen Remote surface has no implementation. */
-export class DeliveryRemoteError extends Error {
-  constructor(readonly code: DeliveryRemoteErrorCode, message: string) {
-    super(message)
-    this.name = 'DeliveryRemoteError'
+const DEFAULT_INTERNALS: DeliveryRemoteInternals = {
+  fetch: globalThis.fetch.bind(globalThis),
+  importIssue: importGitHubIssue,
+  startCodeChange,
+  startVerification,
+}
+
+function requireBound(
+  binding: DispatchBinding | undefined,
+  bindingId: DispatchBindingId,
+  packetId: WorkPacketId,
+  kind: DispatchBinding['kind'],
+): Extract<DispatchBinding, { readonly phase: 'bound' }> {
+  if (
+    binding?.id !== bindingId
+    || binding.packetId !== packetId
+    || binding.kind !== kind
+    || binding.phase !== 'bound'
+  ) {
+    throw new DeliveryAcceptanceCandidateError(
+      `Selected ${kind} binding is not bound to the selected Packet`,
+    )
   }
-}
-
-function unavailable(): never {
-  throw new DeliveryRemoteError('unavailable', UNAVAILABLE)
-}
-
-function unavailableAsync<T>(operation: string): Promise<T> {
-  return Promise.reject(new DeliveryRemoteError(
-    'unavailable',
-    `${UNAVAILABLE}: ${operation}`,
-  ))
+  return binding
 }
 
 /** Host service contributing the reserved `delivery` Remote namespace. */
@@ -75,19 +114,39 @@ export class DeliveryRemoteService extends TypertRemoteService {
   /** Domain, repository proof, and trusted Queue admission are required by the final methods. */
   static inject = ['delivery', 'deliveryEvidence', 'repoWorkspace', 'taskQueue']
   static Config = Config
+  private readonly queue: OperatorWorkQueue
+  private readonly operatorId: string
+  private readonly internals: DeliveryRemoteInternals
 
-  constructor(ctx: Context, config: Config = {}) {
+  constructor(
+    ctx: Context,
+    config: Config = {},
+    internals: DeliveryRemoteInternals = DEFAULT_INTERNALS,
+  ) {
     super(ctx, 'deliveryRemote', { namespace: 'delivery' })
-    void config.operatorId
+    this.operatorId = config.operatorId ?? 'local-operator'
+    if (this.operatorId.trim() === '') throw new TypeError('delivery Remote operatorId must be non-blank')
+    this.internals = internals
+    this.queue = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
   }
 
   /**
    * Return the complete derived MVP workbench snapshot.
+   * @param signal - Caller lifetime checked before the point-in-time reads.
    * @returns the browser-safe projection of current Delivery facts.
    */
   @Remote('snapshot')
-  snapshot(): DeliverySnapshotView {
-    return unavailable()
+  snapshot(signal: AbortSignal): DeliverySnapshotView {
+    requireActive(signal, 'snapshot')
+    try {
+      return projectDeliverySnapshot(
+        this.ctx.delivery.snapshot(),
+        this.queue.list(),
+        this.queue.pendingAttentions(),
+      )
+    } catch (error) {
+      throw remoteFailure('snapshot', error)
+    }
   }
 
   /**
@@ -97,13 +156,23 @@ export class DeliveryRemoteService extends TypertRemoteService {
    * @returns the adopted immutable Contract revision.
    */
   @Remote('importIssue')
-  importIssue(
+  async importIssue(
     input: DeliveryImportIssueInput,
     signal: AbortSignal,
   ): Promise<DeliveryContractRevisionView> {
-    void input
-    void signal
-    return unavailableAsync('importIssue')
+    requireActive(signal, 'importIssue')
+    try {
+      return await this.internals.importIssue({
+        delivery: this.ctx.delivery,
+        fetch: this.internals.fetch,
+      }, {
+        issueUrl: input.issueUrl,
+        repositoryId: RepositoryId(input.repositoryId),
+        signal,
+      })
+    } catch (error) {
+      throw remoteFailure('importIssue', error, signal)
+    }
   }
 
   /**
@@ -113,13 +182,48 @@ export class DeliveryRemoteService extends TypertRemoteService {
    * @returns the immutable Packet after host-owned verification and key derivation.
    */
   @Remote('createPacket')
-  createPacket(
+  async createPacket(
     input: DeliveryCreatePacketInput,
     signal: AbortSignal,
   ): Promise<DeliveryWorkPacketView> {
-    void input
-    void signal
-    return unavailableAsync('createPacket')
+    requireActive(signal, 'createPacket')
+    try {
+      const contractRevisionId = ContractRevisionId(input.contractRevisionId)
+      const contract = this.ctx.delivery.getContractRevision(contractRevisionId)
+      if (contract === undefined || contract.repositoryId === null || contract.baseSelectionRule === null) {
+        throw new DeliveryError(
+          contract === undefined ? 'not-found' : 'invalid-reference',
+          contract === undefined
+            ? 'The selected Contract revision does not exist'
+            : 'The selected Contract revision has no repository base',
+        )
+      }
+      const repository = await this.ctx.repoWorkspace.resolveBase({
+        repositoryId: contract.repositoryId,
+        selectionRule: contract.baseSelectionRule,
+        signal,
+      })
+      requireActive(signal, 'createPacket')
+      const requestDigest = canonicalDigest({
+        contractRevisionId,
+        repositoryId: repository.repositoryId,
+        baseCommit: repository.commit,
+        packet: input.packet,
+      })
+      return await this.ctx.delivery.createWorkPacket({
+        idempotencyKey: `delivery:${contractRevisionId}:packet:${requestDigest}`,
+        contractRevisionId,
+        repository,
+        packet: input.packet,
+      }, request => this.ctx.repoWorkspace.readBlob({
+        base: request.repository,
+        path: request.path,
+        maxBytes: request.maxBytes,
+        signal,
+      }))
+    } catch (error) {
+      throw remoteFailure('createPacket', error, signal)
+    }
   }
 
   /**
@@ -129,13 +233,24 @@ export class DeliveryRemoteService extends TypertRemoteService {
    * @returns the Delivery-to-Queue dispatch binding.
    */
   @Remote('startChange')
-  startChange(
+  async startChange(
     input: DeliveryStartChangeInput,
     signal: AbortSignal,
   ): Promise<DeliveryDispatchBindingView> {
-    void input
-    void signal
-    return unavailableAsync('startChange')
+    requireActive(signal, 'startChange')
+    try {
+      const binding = await this.internals.startCodeChange({
+        delivery: this.ctx.delivery,
+        queue: this.queue,
+        repoWorkspace: this.ctx.repoWorkspace,
+      }, {
+        packetId: WorkPacketId(input.packetId),
+        executorId: ExecutorId(input.executorId),
+      })
+      return projectDispatchBinding(binding)
+    } catch (error) {
+      throw remoteFailure('startChange', error, signal)
+    }
   }
 
   /**
@@ -145,13 +260,61 @@ export class DeliveryRemoteService extends TypertRemoteService {
    * @returns the Delivery-to-Queue verification dispatch binding.
    */
   @Remote('startVerification')
-  startVerification(
+  async startVerification(
     input: DeliveryStartVerificationInput,
     signal: AbortSignal,
   ): Promise<DeliveryDispatchBindingView> {
-    void input
-    void signal
-    return unavailableAsync('startVerification')
+    requireActive(signal, 'startVerification')
+    try {
+      const binding = await this.internals.startVerification({
+        delivery: this.ctx.delivery,
+        queue: this.queue,
+        repoWorkspace: this.ctx.repoWorkspace,
+      }, {
+        packetId: WorkPacketId(input.packetId),
+        changeBindingId: DispatchBindingId(input.changeBindingId),
+      })
+      return projectDispatchBinding(binding)
+    } catch (error) {
+      throw remoteFailure('startVerification', error, signal)
+    }
+  }
+
+  /**
+   * Resolve and integrity-read one browser-selected evidence id.
+   * @param input - Existing evidence identity only; no URI or host path.
+   * @param signal - Operation-local Remote cancellation.
+   * @returns metadata without provider URI plus base64-encoded immutable bytes.
+   */
+  @Remote('readEvidence')
+  async readEvidence(
+    input: DeliveryReadEvidenceInput,
+    signal: AbortSignal,
+  ): Promise<DeliveryEvidenceView> {
+    requireActive(signal, 'readEvidence')
+    try {
+      const evidenceId = EvidenceId(String(input.evidenceId))
+      const reference = await this.ctx.deliveryEvidence.resolve(evidenceId, signal)
+      if (reference === undefined) {
+        throw new DeliveryEvidenceError('not-found', 'The selected Delivery evidence does not exist')
+      }
+      const stored = await this.ctx.deliveryEvidence.read(reference, signal)
+      if (stored.ref.id !== evidenceId) {
+        throw new DeliveryEvidenceError('reference-mismatch', 'Evidence read returned a different object')
+      }
+      return {
+        id: stored.ref.id,
+        kind: stored.ref.kind,
+        mediaType: stored.ref.mediaType,
+        byteLength: stored.ref.byteLength,
+        digest: stored.ref.digest,
+        createdAt: stored.ref.createdAt,
+        provenance: stored.ref.provenance,
+        contentBase64: Buffer.from(stored.data).toString('base64'),
+      }
+    } catch (error) {
+      throw remoteFailure('readEvidence', error, signal)
+    }
   }
 
   /**
@@ -161,13 +324,66 @@ export class DeliveryRemoteService extends TypertRemoteService {
    * @returns the acceptance decision attributed by trusted operator context.
    */
   @Remote('recordDecision')
-  recordDecision(
+  async recordDecision(
     input: DeliveryRecordDecisionInput,
     signal: AbortSignal,
   ): Promise<DeliveryAcceptanceDecisionView> {
-    void input
-    void signal
-    return unavailableAsync('recordDecision')
+    requireActive(signal, 'recordDecision')
+    try {
+      const packetId = WorkPacketId(input.packetId)
+      if (this.ctx.delivery.getWorkPacket(packetId)?.id !== packetId) {
+        throw new DeliveryError('not-found', 'The selected Work Packet does not exist')
+      }
+      const changeBindingId = DispatchBindingId(input.changeBindingId)
+      const verificationBindingId = DispatchBindingId(input.verificationBindingId)
+      const changeBinding = requireBound(
+        this.ctx.delivery.getDispatchBinding(changeBindingId),
+        changeBindingId,
+        packetId,
+        'code.change@1',
+      )
+      const verificationBinding = requireBound(
+        this.ctx.delivery.getDispatchBinding(verificationBindingId),
+        verificationBindingId,
+        packetId,
+        'code.verify@1',
+      )
+      const candidate = resolveAcceptanceCandidate(
+        this.queue,
+        changeBinding.queueWorkId,
+        verificationBinding.queueWorkId,
+      )
+      const resolveEvidence: AcceptanceEvidenceResolver = async (evidenceId) => {
+        requireActive(signal, 'recordDecision')
+        const reference = await this.ctx.deliveryEvidence.resolve(evidenceId, signal)
+        if (reference === undefined) return undefined
+        const stored = await this.ctx.deliveryEvidence.read(reference, signal)
+        if (stored.ref.id !== evidenceId) {
+          throw new DeliveryEvidenceError('reference-mismatch', 'Evidence read returned a different object')
+        }
+        return stored.ref
+      }
+      return await this.ctx.delivery.recordAcceptanceDecision({
+        idempotencyKey: `delivery:${packetId}:decision:${candidate.verificationVerdict.targetCommit}:${input.decisionNonce}`,
+        packetId,
+        changeBindingId,
+        verificationBindingId,
+        decision: input.decision,
+        reason: input.reason,
+        actorId: this.operatorId,
+        decisionNonce: input.decisionNonce,
+      }, (changeQueueWorkId: QueueWorkIdRef, verificationQueueWorkId: QueueWorkIdRef) => {
+        if (
+          changeQueueWorkId !== changeBinding.queueWorkId
+          || verificationQueueWorkId !== verificationBinding.queueWorkId
+        ) {
+          throw new DeliveryAcceptanceCandidateError('Delivery requested facts for unexpected Queue Work ids')
+        }
+        return Promise.resolve(candidate)
+      }, resolveEvidence)
+    } catch (error) {
+      throw remoteFailure('recordDecision', error, signal)
+    }
   }
 }
 
