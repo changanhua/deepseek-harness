@@ -54,6 +54,22 @@ describe('Git-blob verification-plan document', () => {
       bytes: document({ format: 'delivery-verification-plan@1', checks: [check, check] }),
       code: 'invalid-document',
     },
+    {
+      name: 'env split-string shell command',
+      bytes: document({
+        format: 'delivery-verification-plan@1',
+        checks: [{ ...check, argv: ['env', '-S', 'pnpm test'] }],
+      }),
+      code: 'invalid-document',
+    },
+    {
+      name: 'env-prefixed shell command',
+      bytes: document({
+        format: 'delivery-verification-plan@1',
+        checks: [{ ...check, argv: ['env', 'CI=1', 'bash', '-c', 'pnpm test'] }],
+      }),
+      code: 'invalid-document',
+    },
   ] as const)('rejects $name with stable code $code', ({ bytes, code }) => {
     expect(() => parseVerificationPlanDocument(bytes)).toThrow(
       expect.objectContaining<Partial<VerificationPlanDocumentError>>({ code }),

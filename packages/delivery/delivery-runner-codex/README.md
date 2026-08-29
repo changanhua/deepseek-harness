@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 
 The Queue bridge assembles a `CodeChangeRunRequest` from one durable Contract, Packet, resolved Queue specification, and the current Queue Work/Attempt pair. It binds workspace opening and evidence publication to that Attempt, then calls the returned `StartCodeChange` closure at the Queue side-effect boundary.
 
-```ts
+```text
 const startChange = createCodexChangeRunner({
   spawn: ctx.subprocess.spawn.bind(ctx.subprocess),
   permissionMode: 'never',

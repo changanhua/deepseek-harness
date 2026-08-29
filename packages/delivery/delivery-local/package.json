@@ -31,9 +31,6 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
-  "dependencies": {
-    "zod": "^4.4.3"
-  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-delivery": "workspace:^",
@@ -47,7 +44,6 @@
     "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-storage": "workspace:^",
-    "@deepseek-ai/dsh-storage-domain": "workspace:^",
-    "@deepseek-ai/dsh-storage-json": "workspace:^"
+    "@deepseek-ai/dsh-storage-domain": "workspace:^"
   }
 }

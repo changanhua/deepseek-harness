@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 
 Consumers inject `delivery` and call one operation at the authority boundary they own. GitHub intake adopts a revision, the workbench creates a Packet and records a human decision, and the Queue bridge begins and binds a dispatch. Every create request carries a deterministic idempotency key: the same key and canonical input returns the prior record, while changed input fails.
 
-```ts
+```text
 export const inject = ['delivery']
 
 const packet = await ctx.delivery.createWorkPacket(request)

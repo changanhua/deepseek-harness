@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
 import {
   AcceptanceClauseId,
   RepositoryRelativePath,
 } from '@deepseek-ai/dsh-delivery-protocol'
 import {
   Config,
+  DeliveryRemoteError,
   DeliveryRemoteService,
 } from '../src/index.ts'
 
@@ -18,6 +20,16 @@ describe('Delivery Remote unavailable boundary', () => {
   it('keeps the trusted operator id host-owned and non-blank', () => {
     expect(Config({})).toEqual({ operatorId: 'local-operator' })
     expect(() => Config({ operatorId: '  ' })).toThrow()
+  })
+
+  it('constructs the reserved namespace and typed unavailable error', () => {
+    const ctx = new Context()
+    expect(new DeliveryRemoteService(ctx)).toBeInstanceOf(DeliveryRemoteService)
+    expect(new DeliveryRemoteError('unavailable', 'x')).toMatchObject({
+      code: 'unavailable',
+      message: 'x',
+      name: 'DeliveryRemoteError',
+    })
   })
 
   it('returns Promise rejections for all asynchronous unavailable methods', async () => {

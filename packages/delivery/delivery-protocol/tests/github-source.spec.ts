@@ -63,6 +63,7 @@ describe('canonical GitHub Issue SourceRef', () => {
     ['leading-zero Issue', 'https://github.com/deepseek-ai/deepseek-harness/issues/013'],
     ['trailing slash', 'https://github.com/deepseek-ai/deepseek-harness/issues/13/'],
     ['encoded coordinate', 'https://github.com/deepseek-ai/deepseek%2Dharness/issues/13'],
+    ['unsafe Issue', 'https://github.com/deepseek-ai/deepseek-harness/issues/9007199254740992'],
   ])('rejects a non-canonical %s URL', (_name, url) => {
     expect(parseCanonicalGitHubIssueUrl(url)).toBeUndefined()
     expect(isCanonicalGitHubIssueUrl(url, repository, 13)).toBe(false)

@@ -24,7 +24,7 @@ A GitHub `SourceRef` uses the exact `https://github.com/{owner}/{repository}/iss
 
 `contractReadiness()` requires an outcome, configured repository, non-empty scope, acceptance clauses, a base-selection rule, a verification source, and no open decision. It is a derived projection, never a writable Contract status.
 
-```ts
+```text
 import {
   contractReadiness,
   contractRevisionSchema,

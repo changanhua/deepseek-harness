@@ -46,9 +46,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-delivery": "workspace:^",
-    "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
     "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
-    "@deepseek-ai/dsh-delivery-testkit": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-repo-workspace": "workspace:^"
   }

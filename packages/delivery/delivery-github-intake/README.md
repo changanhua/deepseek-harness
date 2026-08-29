@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 
 Pass the canonical Issue URL and the required configured local repository identity. Intake derives the preceding revision for that same Issue from the trusted Delivery snapshot; a browser cannot select or splice revision lineage. The function returns the existing or newly adopted immutable revision under a content-derived idempotency key.
 
-```ts
+```text
 const revision = await importGitHubIssue(
   { delivery: ctx.delivery, fetch },
   {

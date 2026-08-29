@@ -147,13 +147,7 @@ function authoritativeYaml(body: string): string {
       'Issue body must contain exactly one authoritative Work Brief marker',
     )
   }
-  const marker = markers[0]
-  if (marker === undefined) {
-    throw new GitHubIssueWorkBriefError(
-      'missing-block',
-      `Issue body must contain ${DELIVERY_WORK_BRIEF_MARKER}`,
-    )
-  }
+  const marker = markers[0] as number
   if (lines[marker + 1] !== '```yaml') {
     throw new GitHubIssueWorkBriefError(
       'invalid-fence',

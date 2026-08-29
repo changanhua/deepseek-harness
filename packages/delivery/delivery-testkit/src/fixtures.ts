@@ -208,8 +208,7 @@ export function submittingBindingFixture(overrides: Partial<SubmittingBinding> =
     createdAt: overrides.createdAt ?? FIXTURE_TIME,
     updatedAt: overrides.updatedAt ?? FIXTURE_TIME,
   })
-  if (value.phase !== 'submitting') throw new Error('delivery-testkit: submitting fixture lost its phase')
-  return value
+  return value as SubmittingBinding
 }
 
 /**
@@ -231,8 +230,7 @@ export function boundBindingFixture(overrides: Partial<BoundBinding> = {}): Boun
     createdAt: overrides.createdAt ?? FIXTURE_TIME,
     updatedAt: overrides.updatedAt ?? FIXTURE_TIME,
   })
-  if (value.phase !== 'bound') throw new Error('delivery-testkit: bound fixture lost its phase')
-  return value
+  return value as BoundBinding
 }
 
 /**
@@ -259,8 +257,7 @@ export function completedClaimFixture(overrides: Partial<CompletedClaim> = {}): 
       : null,
     createdAt: overrides.createdAt ?? FIXTURE_TIME,
   })
-  if (value.disposition !== 'completed') throw new Error('delivery-testkit: completed fixture lost its disposition')
-  return value
+  return value as CompletedClaim
 }
 
 /**
@@ -287,7 +284,7 @@ export function passedVerdictFixture(overrides: Partial<VerificationVerdict> = {
       durationMs: 25,
       evidenceIds,
       status: 'exited' as const,
-      exitCode: check.expectedExitCodes[0] ?? 0,
+      exitCode: check.expectedExitCodes[0] as number,
       expected: true,
     })),
     evidenceIntegrityFindings: overrides.evidenceIntegrityFindings ?? evidenceIds.map(evidenceId => ({

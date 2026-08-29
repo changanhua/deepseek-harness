@@ -33,6 +33,7 @@ import {
 import type { WorkView } from '@deepseek-ai/dsh-task-queue'
 import {
   Config,
+  apply,
   startCodeChange,
   startVerification,
 } from '../src/index.ts'
@@ -478,6 +479,34 @@ describe('Delivery-to-Queue admissions', () => {
     expectNoAdmissionWrites(state)
   })
 
+  it('rejects a missing Packet before reading the change binding', async () => {
+    const state = bridge({ packet: null })
+
+    await expect(startVerification(state.dependencies, {
+      packetId,
+      changeBindingId,
+    })).rejects.toMatchObject({
+      code: 'packet-not-found',
+    })
+    expect(state.getQueueWork).not.toHaveBeenCalled()
+    expectNoAdmissionWrites(state)
+  })
+
+  it('wraps a Queue lookup failure without admission writes', async () => {
+    const state = bridge()
+    state.getQueueWork.mockImplementationOnce(() => {
+      throw new Error('Queue unavailable')
+    })
+
+    await expect(startVerification(state.dependencies, {
+      packetId,
+      changeBindingId,
+    })).rejects.toMatchObject({
+      code: 'change-work-invalid',
+    })
+    expectNoAdmissionWrites(state)
+  })
+
   it('rejects a non-successful change WorkItem without admission writes', async () => {
     const successful = successfulChangeWork()
     const state = bridge({
@@ -505,6 +534,25 @@ describe('Delivery-to-Queue admissions', () => {
           ...successful.work,
           intent: { packetId: WorkPacketId('packet-other') },
         },
+      },
+    })
+
+    await expect(startVerification(state.dependencies, {
+      packetId,
+      changeBindingId,
+    })).rejects.toMatchObject({
+      code: 'change-work-invalid',
+    })
+    expect(state.inspectRevision).not.toHaveBeenCalled()
+    expectNoAdmissionWrites(state)
+  })
+
+  it('rejects a malformed Queue change intent before writes', async () => {
+    const successful = successfulChangeWork()
+    const state = bridge({
+      changeWork: {
+        ...successful,
+        work: { ...successful.work, intent: {} as never },
       },
     })
 
@@ -582,6 +630,25 @@ describe('Delivery-to-Queue admissions', () => {
     expectNoAdmissionWrites(state)
   })
 
+  it('rejects malformed resolved change facts before writes', async () => {
+    const successful = successfulChangeWork()
+    const state = bridge({
+      changeWork: {
+        ...successful,
+        work: { ...successful.work, resolved: {} as never },
+      },
+    })
+
+    await expect(startVerification(state.dependencies, {
+      packetId,
+      changeBindingId,
+    })).rejects.toMatchObject({
+      code: 'change-work-invalid',
+    })
+    expect(state.inspectRevision).not.toHaveBeenCalled()
+    expectNoAdmissionWrites(state)
+  })
+
   it('rejects malformed code-change output without admission writes', async () => {
     const state = bridge({
       changeWork: successfulChangeWork({ disposition: 'completed' }),
@@ -622,5 +689,43 @@ describe('Delivery-to-Queue admissions', () => {
       code: 'repository-range-invalid',
     })
     expectNoAdmissionWrites(state)
+  })
+
+  it('wraps repository inspection failures without admission writes', async () => {
+    const state = bridge()
+    state.inspectRevision.mockRejectedValueOnce(new Error('repository unavailable'))
+
+    await expect(startVerification(state.dependencies, {
+      packetId,
+      changeBindingId,
+    })).rejects.toMatchObject({
+      code: 'repository-range-invalid',
+    })
+    expectNoAdmissionWrites(state)
+  })
+
+  it('returns an existing bound verification without another Queue admission', async () => {
+    const intent = { packetId, targetCommit, verificationPlanDigest: planDigest }
+    const key = 'delivery:packet-1:code.verify@1:' + targetCommit + ':'
+      + planDigest
+    const existing = bound(submitting(
+      CODE_VERIFY_KIND,
+      key,
+      canonicalDigest(intent),
+    ))
+    const state = bridge({ beginBinding: existing })
+
+    await expect(startVerification(state.dependencies, {
+      packetId,
+      changeBindingId,
+    })).resolves.toBe(existing)
+    expect(state.enqueue).not.toHaveBeenCalled()
+    expect(state.bindDispatch).not.toHaveBeenCalled()
+  })
+
+  it('keeps handler registration unavailable in the scaffold', () => {
+    expect(() => apply({} as never, Config({}))).toThrow(
+      'Delivery Queue handler implementation is not installed',
+    )
   })
 })

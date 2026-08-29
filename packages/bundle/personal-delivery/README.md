@@ -13,16 +13,26 @@ English | [中文](README.zh.md)
 
 The published patch is deliberately empty. This is an explicit unavailable state rather than a runnable profile; no provider, bridge, Remote, or UI row is activated without complete composition and end-to-end proof.
 
+## Table of Contents
+
+- [Composition](#composition)
+- [Dev Note](#dev-note)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+<a id="composition"></a>
 ## Composition
 
 The bundle boundary is a patch layer over the existing base and Web application bundles. Its manifest carries the Personal Delivery runtime packages, while the empty `cordis.patch.yml` activates none of them.
 
 The bundle contains composition only. It does not implement a scheduler, duplicate Queue state, parse Issues, execute Git, verify evidence, or accept a delivery.
 
+<a id="dev-note"></a>
 ## Dev Note
 
 Keep this package a static patch carrier. Runtime behavior belongs in the independently owned Delivery plugins.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### No direct model context
@@ -39,6 +49,7 @@ Zero direct tokens; this package only reserves an empty composition boundary.
 
 None; this package never assembles model input.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - **The bundle is intentionally unavailable** — provider, bridge, Remote, and UI rows plus complete acceptance scenarios are required before any profile can name this bundle.

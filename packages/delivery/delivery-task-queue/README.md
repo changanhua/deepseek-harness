@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 
 Trusted host Consumers call the pure admission functions. Neither browser request accepts an idempotency key. Before either store is mutated, change admission resolves the Packet and enforces any required executor; verification admission resolves the selected bound change, its exact successful Queue result, and repository ancestry. Only then does the bridge derive the canonical intent digest and stable cross-store key, begin the Delivery binding, admit the Queue WorkItem, and compare-and-set bind the returned Queue identity.
 
-```ts
+```text
 const queue = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
 const dependencies = {
   delivery: ctx.delivery,

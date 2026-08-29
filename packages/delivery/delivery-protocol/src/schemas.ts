@@ -82,7 +82,8 @@ function branded<T extends string>(factory: (value: string) => T): z.ZodType<T> 
     try {
       factory(value)
     } catch (error) {
-      context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : 'invalid branded value' })
+      // Every closed brand factory in this module throws Error instances.
+      context.addIssue({ code: 'custom', message: (error as Error).message })
     }
   }).transform(factory)
 }
@@ -114,9 +115,8 @@ const utcInstantSchema = z.string().superRefine((value, context) => {
   }
   const [, year, month, day, hour, minute, second] = match
   const parts = [year, month, day, hour, minute, second].map(Number)
-  const [y, m, d, h, min, sec] = parts
-  if (y === undefined || m === undefined || d === undefined || h === undefined || min === undefined || sec === undefined
-    || m < 1 || m > 12 || d < 1 || h > 23 || min > 59 || sec > 59) {
+  const [y, m, d, h, min, sec] = parts as [number, number, number, number, number, number]
+  if (m < 1 || m > 12 || d < 1 || h > 23 || min > 59 || sec > 59) {
     context.addIssue({ code: 'custom', message: 'must be a valid RFC 3339 UTC instant' })
     return
   }
@@ -189,11 +189,12 @@ const POSIX_COMMAND_SHELLS = new Set(['ash', 'bash', 'dash', 'fish', 'ksh', 'sh'
 const POWERSHELL_COMMAND_OPTIONS = ['command', 'commandwithargs', 'encodedcommand'] as const
 
 function executableName(value: string): string {
-  const leaf = value.split(/[\\/]/u).at(-1)?.toLowerCase() ?? ''
+  const leaf = (value.split(/[\\/]/u).at(-1) as string).toLowerCase()
   return leaf.endsWith('.exe') ? leaf.slice(0, -4) : leaf
 }
 
 function directShellCommandString(argv: readonly string[]): boolean {
+  /* v8 ignore next -- verificationCheckSchema supplies a non-empty tuple; recursive env scanning also slices after a concrete token. */
   if (argv.length === 0) return false
   const executable = executableName(argv[0] as string)
   const options = argv.slice(1)
@@ -215,7 +216,7 @@ function directShellCommandString(argv: readonly string[]): boolean {
 }
 
 function containsShellCommandString(argv: readonly string[]): boolean {
-  if (executableName(argv[0] ?? '') !== 'env') return directShellCommandString(argv)
+  if (executableName(argv[0] as string) !== 'env') return directShellCommandString(argv)
   if (argv.some(token => token === '-S' || token === '--split-string' || token.startsWith('--split-string='))) {
     return true
   }

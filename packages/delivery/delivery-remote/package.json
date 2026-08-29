@@ -61,17 +61,13 @@
     "@deepseek-ai/dsh-typert-protocol": "workspace:^"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^",
-    "zod": "^4.4.3"
+    "@deepseek-ai/schemastery": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-delivery": "workspace:^",
     "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
-    "@deepseek-ai/dsh-delivery-github-intake": "workspace:^",
     "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
-    "@deepseek-ai/dsh-delivery-task-queue": "workspace:^",
-    "@deepseek-ai/dsh-delivery-testkit": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-repo-workspace": "workspace:^",
     "@deepseek-ai/dsh-task-queue": "workspace:^",

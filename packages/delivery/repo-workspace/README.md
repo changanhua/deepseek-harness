@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 
 Inspection is side-effect free and may run during admission or Packet creation. Checkout creation happens only after a Queue handler crosses its start boundary and has live ownership.
 
-```ts
+```text
 const base = await ctx.repoWorkspace.resolveBase({ repositoryId, selectionRule })
 const planBlob = await ctx.repoWorkspace.readBlob({
   base,

@@ -15,7 +15,7 @@ kind: "package-reference"
 
 将 writer 交给执行组件之前，先绑定 Work/Attempt 或 verification-check provenance。得到的 writer 不能省略或替换该 provenance。
 
-```ts
+```text
 const writer = ctx.deliveryEvidence.bind(provenance)
 const ref = await writer.save({ kind: 'log', mediaType: 'text/plain', data })
 ```

@@ -53,13 +53,11 @@
     "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
     "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-delivery-runner-codex": "workspace:^",
-    "@deepseek-ai/dsh-delivery-testkit": "workspace:^",
     "@deepseek-ai/dsh-delivery-verifier": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-repo-workspace": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
     "@deepseek-ai/dsh-task-queue": "workspace:^",
-    "@deepseek-ai/dsh-task-queue-local": "workspace:^",
     "@deepseek-ai/dsh-timeout": "workspace:^"
   }
 }

@@ -18,9 +18,7 @@ kind: "package-reference"
 - Node entry 保留空 plugin body。
 - Browser entry 导出空 dependency list 与 no-op `apply()`。
 - Manifest 保留 `./client` export 与 web platform declaration。
-- Peer 与 development dependency 预留未来的动态 Remote、locale、renderer 与
-  client-test boundary。静态 slot、primitives 与 React input 在源码真正导入前
-  仅保留为 development dependency；当前尚未注入或调用其中任何一项。
+- Peer 与 development dependency 预留未来的动态 Remote、locale、renderer 与 client-test boundary。静态 slot、primitives 与 React input 在源码真正导入前仅保留为 development dependency；当前尚未注入或调用其中任何一项。
 
 运行时不预留 shell 或 sidebar identity。缺少标准 registry lifecycle 与 disposal proof 时，不支持 slot registration。
 

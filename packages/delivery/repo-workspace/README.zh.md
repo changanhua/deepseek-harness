@@ -15,7 +15,7 @@ kind: "package-reference"
 
 Inspection 不产生副作用，可以在 admission 或 Packet 创建阶段执行。checkout 只能在 Queue handler 跨过 start 边界并取得 live ownership 后创建。
 
-```ts
+```text
 const base = await ctx.repoWorkspace.resolveBase({ repositoryId, selectionRule })
 const planBlob = await ctx.repoWorkspace.readBlob({
   base,

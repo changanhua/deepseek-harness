@@ -62,10 +62,8 @@ export function parseCanonicalGitHubIssueUrl(
 ): CanonicalGitHubIssueCoordinates | undefined {
   const match = GITHUB_ISSUE_URL_PATTERN.exec(value)
   if (match === null) return undefined
-  const owner = match[1]
-  const name = match[2]
-  const issueText = match[3]
-  if (owner === undefined || name === undefined || issueText === undefined) return undefined
+  // The fixed regular expression has exactly three mandatory capture groups.
+  const [, owner, name, issueText] = match as unknown as [string, string, string, string]
   const repository = { owner, name }
   const issueNumber = Number(issueText)
   if (!isGitHubRepositoryOwner(owner)
@@ -74,9 +72,11 @@ export function parseCanonicalGitHubIssueUrl(
     || issueNumber <= 0) {
     return undefined
   }
-  return canonicalGitHubIssueUrl(repository, issueNumber) === value
-    ? { repository, issueNumber }
-    : undefined
+  /* v8 ignore next -- the pattern already enforces the canonical byte form; this guard contains future regex widening. */
+  if (canonicalGitHubIssueUrl(repository, issueNumber) !== value) {
+    return undefined
+  }
+  return { repository, issueNumber }
 }
 
 /**

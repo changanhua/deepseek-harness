@@ -15,7 +15,7 @@ kind: "package-reference"
 
 可信 host Consumer 调用纯 admission function。两个 browser request 都不接受 idempotency key。在修改任一存储之前，change admission 会解析 Packet 并执行 required executor 约束；verification admission 会解析选中的 bound change、其精确的成功 Queue result 以及 repository ancestry。仅在这些检查通过后，bridge 才派生 canonical intent digest 与稳定 cross-store key、开始 Delivery binding、准入 Queue WorkItem，并以 compare-and-set 绑定返回的 Queue identity。
 
-```ts
+```text
 const queue = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
 const dependencies = {
   delivery: ctx.delivery,

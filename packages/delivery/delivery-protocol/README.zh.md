@@ -24,7 +24,7 @@ GitHub `SourceRef` 只接受精确的 `https://github.com/{owner}/{repository}/i
 
 `contractReadiness()` 要求 outcome、已配置 repository、非空 scope、acceptance clause、base-selection rule、verification source，并且没有 open decision。它只是派生 projection，绝不是可写 Contract status。
 
-```ts
+```text
 import {
   contractReadiness,
   contractRevisionSchema,

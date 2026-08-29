@@ -18,10 +18,7 @@ This keeps package discovery and Loader composition stable without claiming a us
 - The node entry remains an empty plugin body.
 - The browser entry exports an empty dependency list and no-op `apply()`.
 - The manifest preserves the `./client` export and web platform declaration.
-- Peer and development dependencies reserve the future dynamic Remote, locale,
-  renderer, and client-test boundary. Static slot, primitives, and React inputs
-  remain development-only until source code actually imports them; none is
-  injected or invoked yet.
+- Peer and development dependencies reserve the future dynamic Remote, locale, renderer, and client-test boundary. Static slot, primitives, and React inputs remain development-only until source code actually imports them; none is injected or invoked yet.
 
 No shell or sidebar identity is reserved at runtime. Slot registration is unsupported without the normal registry lifecycle and disposal proof.
 

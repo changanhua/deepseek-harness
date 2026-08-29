@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import {
   DELIVERY_WORK_BRIEF_MARKER,
   DELIVERY_WORK_BRIEF_MAX_BYTES,
+  gitHubIssueWorkBriefSchema,
   parseGitHubIssueWorkBrief,
   workBriefContractRevisionDraft,
 } from '../src/index.ts'
@@ -65,6 +66,48 @@ describe('GitHub Issue Work Brief contract', () => {
     expect(() => parseGitHubIssueWorkBrief(`${validBody}\n${validBody}`)).toThrow(
       expect.objectContaining({ code: 'duplicate-block' }),
     )
+  })
+
+  it('rejects an authoritative fence without an exact closing line', () => {
+    expect(() => parseGitHubIssueWorkBrief(
+      `${DELIVERY_WORK_BRIEF_MARKER}\n\`\`\`yaml\nformat: dsh-delivery-work-brief@1`,
+    )).toThrow(expect.objectContaining({ code: 'invalid-fence' }))
+  })
+
+  it.each([
+    ['acceptance clause', (brief: ReturnType<typeof parseGitHubIssueWorkBrief>) => ({
+      ...brief,
+      acceptanceClauses: [{ ...brief.acceptanceClauses[0]!, id: 'Bad_ID' }],
+    })],
+    ['open decision', (brief: ReturnType<typeof parseGitHubIssueWorkBrief>) => ({
+      ...brief,
+      openDecisions: [{ id: 'Bad_ID', question: 'Which UI state wins?' }],
+    })],
+    ['verification check', (brief: ReturnType<typeof parseGitHubIssueWorkBrief>) => ({
+      ...brief,
+      verificationSource: {
+        ...brief.verificationSource,
+        checks: [{
+          ...(
+            brief.verificationSource.kind === 'contract-field'
+              ? brief.verificationSource.checks[0]!
+              : {}
+          ),
+          id: 'Bad_ID',
+        }],
+      },
+    })],
+  ])('rejects a non-stable %s id', (_label, mutate) => {
+    const brief = parseGitHubIssueWorkBrief(validBody)
+    expect(gitHubIssueWorkBriefSchema.safeParse(mutate(brief)).success).toBe(false)
+  })
+
+  it('accepts a stable open-decision id', () => {
+    const brief = parseGitHubIssueWorkBrief(validBody)
+    expect(gitHubIssueWorkBriefSchema.safeParse({
+      ...brief,
+      openDecisions: [{ id: 'ui-state', question: 'Which UI state wins?' }],
+    }).success).toBe(true)
   })
 
   it('rejects YAML aliases and an oversized authoritative block', () => {

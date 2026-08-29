@@ -380,21 +380,21 @@ export class FakeRepositoryWorkspace extends RepositoryWorkspace {
   }
 
   private reuseChange(prior: OwnedLease, signature: string): ChangeWorkspaceLease {
-    if (prior.signature !== signature) {
-      throw new RepositoryWorkspaceError('owner-conflict', 'one Attempt owner cannot identify different repository workspaces')
-    }
     if (prior.kind !== 'change') {
       throw new RepositoryWorkspaceError('owner-conflict', 'one Attempt owner cannot change workspace purpose')
+    }
+    if (prior.signature !== signature) {
+      throw new RepositoryWorkspaceError('owner-conflict', 'one Attempt owner cannot identify different repository workspaces')
     }
     return prior.lease
   }
 
   private reuseVerification(prior: OwnedLease, signature: string): VerificationWorkspaceLease {
-    if (prior.signature !== signature) {
-      throw new RepositoryWorkspaceError('owner-conflict', 'one Attempt owner cannot identify different repository workspaces')
-    }
     if (prior.kind !== 'verification') {
       throw new RepositoryWorkspaceError('owner-conflict', 'one Attempt owner cannot change workspace purpose')
+    }
+    if (prior.signature !== signature) {
+      throw new RepositoryWorkspaceError('owner-conflict', 'one Attempt owner cannot identify different repository workspaces')
     }
     return prior.lease
   }

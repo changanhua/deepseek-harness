@@ -15,7 +15,7 @@ kind: "package-reference"
 
 传入 canonical Issue URL 与必需的已配置本地 repository identity。Intake 会从可信 Delivery snapshot 推导同一 Issue 的上一 revision；browser 不能选择或拼接 revision lineage。函数会在内容派生的幂等键下返回既有或新采纳的不可变 revision。
 
-```ts
+```text
 const revision = await importGitHubIssue(
   { delivery: ctx.delivery, fetch },
   {

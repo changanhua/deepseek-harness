@@ -15,7 +15,7 @@ kind: "package-reference"
 
 Consumer 注入 `delivery`，并在其拥有的权限入口调用对应操作。GitHub intake 采纳 revision，workbench 创建 Packet 并记录人工决策，Queue bridge 开始并绑定 dispatch。每个创建请求都携带确定性幂等键：相同键与相同规范输入返回既有记录，输入发生变化则失败。
 
-```ts
+```text
 export const inject = ['delivery']
 
 const packet = await ctx.delivery.createWorkPacket(request)

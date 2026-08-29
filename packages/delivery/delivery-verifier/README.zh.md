@@ -15,7 +15,7 @@ kind: "package-reference"
 
 Queue bridge 使用可信 subprocess 部署输入创建 verifier closure。dispatch 时传入 `DeliveryVerificationRunRequest`；返回的 `DeliveryVerificationRun` 同步发布 `done` 与 `cancel(reason)`。
 
-```ts
+```text
 const startVerification = createDeliveryVerifier({
   subprocess: ctx.subprocess,
   verifierVersion: 'delivery-verifier@1',

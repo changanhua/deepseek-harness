@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 
 Bind Work/Attempt or verification-check provenance before handing a writer to an execution component. The resulting writer cannot omit or replace that provenance.
 
-```ts
+```text
 const writer = ctx.deliveryEvidence.bind(provenance)
 const ref = await writer.save({ kind: 'log', mediaType: 'text/plain', data })
 ```

@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 
 The Queue bridge creates one verifier closure from trusted subprocess deployment inputs. At dispatch it supplies a `DeliveryVerificationRunRequest`; the returned `DeliveryVerificationRun` synchronously publishes `done` and `cancel(reason)`.
 
-```ts
+```text
 const startVerification = createDeliveryVerifier({
   subprocess: ctx.subprocess,
   verifierVersion: 'delivery-verifier@1',

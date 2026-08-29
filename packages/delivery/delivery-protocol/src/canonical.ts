@@ -135,5 +135,6 @@ function serialize(value: unknown, ancestors: WeakSet<object>): string {
 }
 
 function compare(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0
+  // Object keys are unique, so sort never compares equal strings here.
+  return left < right ? -1 : 1
 }

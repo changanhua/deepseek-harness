@@ -73,6 +73,7 @@ export class FakeDeliveryEvidence extends DeliveryEvidence {
     const priorId = this.envelopes.get(envelope)
     if (priorId !== undefined) {
       const prior = this.objects.get(priorId)
+      /* v8 ignore next -- only direct mutation of both private indexes can violate this fake's envelope invariant. */
       if (prior === undefined) throw new Error('delivery-testkit: evidence envelope references a missing object')
       return structuredClone(prior.ref)
     }

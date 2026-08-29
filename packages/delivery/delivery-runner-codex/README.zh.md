@@ -15,7 +15,7 @@ kind: "package-reference"
 
 Queue bridge 从一个持久 Contract、Packet、已解析 Queue specification 与当前 Queue Work/Attempt 对组装 `CodeChangeRunRequest`。它把 workspace 打开与 evidence 发布绑定到该 Attempt，然后在 Queue side-effect boundary 调用返回的 `StartCodeChange` closure。
 
-```ts
+```text
 const startChange = createCodexChangeRunner({
   spawn: ctx.subprocess.spawn.bind(ctx.subprocess),
   permissionMode: 'never',

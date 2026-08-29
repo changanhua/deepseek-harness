@@ -15,7 +15,7 @@ kind: "package-reference"
 
 Consumer 集成测试可以一次挂载三个 fake；当测试关注 service topology 时，也可以只挂载一个 class。
 
-```ts
+```text
 const harness = await mountDeliveryTestkit(ctx)
 const packet = readyWorkPacketFixture()
 ```

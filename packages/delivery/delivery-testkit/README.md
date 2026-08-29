@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 
 Mount all three fakes for a Consumer integration test, or mount one class directly when service topology is the subject.
 
-```ts
+```text
 const harness = await mountDeliveryTestkit(ctx)
 const packet = readyWorkPacketFixture()
 ```

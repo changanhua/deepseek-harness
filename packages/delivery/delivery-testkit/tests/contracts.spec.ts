@@ -8,6 +8,8 @@ import type {
   WorkPacketDraft,
 } from '@deepseek-ai/dsh-delivery'
 import {
+  AcceptanceClauseId,
+  ContractRevisionId,
   ExecutorId,
   DispatchBindingId,
   EvidenceId,
@@ -37,6 +39,7 @@ import {
   FakeDelivery,
   FakeDeliveryEvidence,
   FakeRepositoryWorkspace,
+  FakeVerificationWorkspaceLease,
   acceptedDecisionFixture,
   boundBindingFixture,
   completedClaimFixture,
@@ -263,6 +266,11 @@ describe('schema-validated Delivery fixtures', () => {
     expect(first.acceptanceClauses[0]).not.toBe(second.acceptanceClauses[0])
     expect(() => sourceRefFixture({ title: '' })).toThrow(/non-blank/)
     expect(() => readyWorkPacketFixture({ acceptanceClauseIds: [] })).toThrow()
+    expect(contractRevisionFixture({ repositoryId: null }).repositoryId).toBeNull()
+    expect(contractRevisionFixture({ baseSelectionRule: null }).baseSelectionRule).toBeNull()
+    expect(completedClaimFixture({ resumeCapsuleEvidenceId: EvidenceId('resume-evidence') }))
+      .toMatchObject({ resumeCapsuleEvidenceId: 'resume-evidence' })
+    expect(resumeCapsuleFixture({ checkpointCommit: null }).checkpointCommit).toBeNull()
   })
 })
 
@@ -283,9 +291,148 @@ describe('Delivery testkit topology', () => {
     expect(ctx.get('repoWorkspace')).toBeUndefined()
     expect(ctx.get('deliveryEvidence')).toBeUndefined()
   })
+
+  it.each([0, 1, 2])('cleans up partial mount when provider %i does not register', async (skipped) => {
+    const inner = new Context()
+    let call = 0
+    const disposers = [
+      vi.fn(async () => {
+        if (skipped === 0) throw new Error('scripted cleanup failure')
+      }),
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+    ]
+    const ctx = {
+      plugin: vi.fn(async (setup: (ctx: Context) => void) => {
+        const index = call++
+        if (index !== skipped) setup(inner)
+        return { dispose: disposers[index] }
+      }),
+    } as unknown as Context
+
+    await expect(mountDeliveryTestkit(ctx)).rejects.toThrow(TypeError)
+    expect(disposers.slice(0, call).every(dispose => dispose.mock.calls.length === 1))
+      .toBe(true)
+  })
 })
 
 describe('FakeDelivery contract', () => {
+  it('rejects malformed references before mutation and returns detached point reads', async () => {
+    const harness = await mountDeliveryTestkit(new Context(), {
+      delivery: {
+        now: () => '2026-08-29T12:00:00.000Z',
+        allocateId: (family, ordinal) => `${family}-custom-${String(ordinal)}`,
+      },
+    })
+    const valid = contractRevisionFixture()
+    const badDigest = adoptionRequest(valid, 'bad-source-digest')
+    await expect(harness.delivery.adoptContractRevision({
+      ...badDigest,
+      source: { ...badDigest.source, body: 'mutated after digest' },
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(harness.delivery.adoptContractRevision({
+      ...adoptionRequest(valid, 'missing-previous-revision'),
+      revision: {
+        ...adoptionRequest(valid).revision,
+        previousRevisionId: ContractRevisionId('missing-contract-revision'),
+      },
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(harness.delivery.adoptContractRevision(adoptionRequest(valid, '')))
+      .rejects.toMatchObject({ code: 'idempotency-conflict' })
+
+    const contract = await harness.delivery.adoptContractRevision(
+      adoptionRequest(valid, 'point-read-contract'),
+    )
+    expect(contract).toMatchObject({
+      id: 'contract-revision-custom-1',
+      createdAt: '2026-08-29T12:00:00.000Z',
+    })
+    expect(harness.delivery.getContractRevision(contract.id)).toEqual(contract)
+    expect(harness.delivery.getContractRevision(ContractRevisionId('missing-contract'))).toBeUndefined()
+    expect(harness.delivery.getWorkPacket(WorkPacketId('missing-packet'))).toBeUndefined()
+    expect(harness.delivery.getDispatchBinding(DispatchBindingId('missing-binding'))).toBeUndefined()
+
+    if (contract.repositoryId === null || contract.baseSelectionRule?.kind !== 'commit') {
+      throw new Error('ready fixture lost repository facts')
+    }
+    harness.repoWorkspace.allowRevision(contract.repositoryId, contract.baseSelectionRule.commit)
+    const repository = await harness.repoWorkspace.resolveBase({
+      repositoryId: contract.repositoryId,
+      selectionRule: contract.baseSelectionRule,
+    })
+    const fixture = readyWorkPacketFixture({
+      contractRevisionId: contract.id,
+      repositoryId: contract.repositoryId,
+      baseCommit: contract.baseSelectionRule.commit,
+      acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
+    })
+    const request = {
+      idempotencyKey: 'point-read-packet',
+      contractRevisionId: contract.id,
+      repository,
+      packet: packetDraft(fixture),
+    }
+    await expect(harness.delivery.createWorkPacket({
+      ...request,
+      idempotencyKey: 'missing-contract-packet',
+      contractRevisionId: ContractRevisionId('missing-contract'),
+    })).rejects.toMatchObject({ code: 'not-found' })
+
+    const otherRepositoryId = RepositoryId('other-repository')
+    harness.repoWorkspace.allowRevision(otherRepositoryId, BASE_COMMIT)
+    const otherRepository = await harness.repoWorkspace.resolveBase({
+      repositoryId: otherRepositoryId,
+      selectionRule: { kind: 'commit', commit: BASE_COMMIT },
+    })
+    await expect(harness.delivery.createWorkPacket({
+      ...request,
+      idempotencyKey: 'wrong-contract-repository',
+      repository: otherRepository,
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+
+    harness.repoWorkspace.allowRevision(contract.repositoryId, OTHER_COMMIT)
+    const otherBase = await harness.repoWorkspace.resolveBase({
+      repositoryId: contract.repositoryId,
+      selectionRule: { kind: 'commit', commit: OTHER_COMMIT },
+    })
+    await expect(harness.delivery.createWorkPacket({
+      ...request,
+      idempotencyKey: 'wrong-contract-base',
+      repository: otherBase,
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(harness.delivery.createWorkPacket({
+      ...request,
+      idempotencyKey: 'wrong-contract-clause',
+      packet: {
+        ...request.packet,
+        acceptanceClauseIds: [AcceptanceClauseId('outside-contract')],
+      },
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+
+    const packet = await harness.delivery.createWorkPacket(request)
+    expect(harness.delivery.getWorkPacket(packet.id)).toEqual(packet)
+    await expect(harness.delivery.beginDispatch({
+      idempotencyKey: 'missing-packet-dispatch',
+      packetId: WorkPacketId('missing-packet'),
+      inputDigest: canonicalDigest({ packetId: 'missing-packet' }),
+      kind: 'code.change@1',
+      executorId: ExecutorId('codex-fixture'),
+    })).rejects.toMatchObject({ code: 'not-found' })
+    await expect(harness.delivery.bindDispatch({
+      bindingId: DispatchBindingId('missing-binding'),
+      queueWorkId: QueueWorkIdRef('missing-work'),
+    })).rejects.toMatchObject({ code: 'not-found' })
+    const binding = await harness.delivery.beginDispatch({
+      idempotencyKey: 'point-read-dispatch',
+      packetId: packet.id,
+      inputDigest: canonicalDigest({ packetId: packet.id }),
+      kind: 'code.change@1',
+      executorId: ExecutorId('codex-fixture'),
+    })
+    expect(harness.delivery.getDispatchBinding(binding.id)).toEqual(binding)
+    await harness.dispose()
+  })
+
   it('enforces exact idempotency and Contract readiness before Packet creation', async () => {
     const harness = await mountDeliveryTestkit(new Context())
     const request = adoptionRequest(contractRevisionFixture())
@@ -498,6 +645,20 @@ describe('FakeDelivery contract', () => {
       packetRequest,
       async () => { throw new Error('an exact idempotent replay must not reread Git') },
     )).toEqual(packet)
+    await expect(harness.delivery.createWorkPacket({
+      ...packetRequest,
+      idempotencyKey: 'git-plan-no-resolver-v1',
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(harness.delivery.createWorkPacket({
+      ...packetRequest,
+      idempotencyKey: 'git-plan-too-large-v1',
+    }, async () => ({
+      repositoryId: repository.repositoryId,
+      commit: repository.commit,
+      path: PLAN_PATH,
+      blobId: BLOB_ID,
+      bytes: new Uint8Array(64 * 1024 + 1),
+    }) as never)).rejects.toMatchObject({ code: 'invalid-reference' })
     const conflictingSourceResolver = vi.fn(async () => { throw new Error('conflict must fail before Git') })
     await expect(harness.delivery.createWorkPacket({
       ...packetRequest,
@@ -814,6 +975,73 @@ describe('FakeDelivery contract', () => {
     await harness.dispose()
   })
 
+  it('checks the acceptance Packet and derived intent before optional rejection evidence', async () => {
+    const harness = await mountDeliveryTestkit(new Context())
+    const { packet } = await createStoredPacket(harness)
+    const chain = await createAcceptanceChain(harness, packet)
+    const candidate = {
+      completionClaim: chain.completionClaim,
+      changeQueueAttemptId: chain.changeQueueAttemptId,
+      verificationIntent: chain.verificationIntent,
+      verificationVerdict: chain.verificationVerdict,
+      verificationQueueAttemptId: chain.verificationQueueAttemptId,
+    }
+    const request = {
+      idempotencyKey: 'acceptance-boundary',
+      packetId: packet.id,
+      changeBindingId: chain.changeBinding.id,
+      verificationBindingId: chain.verificationBinding.id,
+      decision: 'accepted' as const,
+      reason: 'Exercise the exact acceptance boundary.',
+      actorId: 'developer-fixture',
+      decisionNonce: 'acceptance-boundary',
+    }
+    const candidateResolver = vi.fn(async () => candidate)
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'acceptance-missing-packet',
+      packetId: WorkPacketId('missing-packet'),
+      decisionNonce: 'acceptance-missing-packet',
+    }, candidateResolver, async () => undefined)).rejects.toMatchObject({ code: 'not-found' })
+    expect(candidateResolver).not.toHaveBeenCalled()
+
+    const otherIntent = {
+      ...chain.verificationIntent,
+      packetId: WorkPacketId('other-packet'),
+    }
+    const submitting = await harness.delivery.beginDispatch({
+      idempotencyKey: 'verification-other-intent',
+      packetId: packet.id,
+      inputDigest: canonicalDigest(otherIntent),
+      kind: 'code.verify@1',
+    })
+    const otherIntentBinding = await harness.delivery.bindDispatch({
+      bindingId: submitting.id,
+      queueWorkId: QueueWorkIdRef('verification-other-intent'),
+    })
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'acceptance-other-intent',
+      verificationBindingId: otherIntentBinding.id,
+      decisionNonce: 'acceptance-other-intent',
+    }, async () => ({ ...candidate, verificationIntent: otherIntent }), async () => undefined))
+      .rejects.toMatchObject({ code: 'invalid-reference' })
+
+    const unexpectedEvidence = vi.fn(async () => {
+      throw new Error('rejection must not resolve acceptance evidence')
+    })
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'acceptance-explicit-rejection',
+      decision: 'rejected',
+      decisionNonce: 'acceptance-explicit-rejection',
+    }, async () => candidate, unexpectedEvidence)).resolves.toMatchObject({
+      decision: 'rejected',
+    })
+    expect(unexpectedEvidence).not.toHaveBeenCalled()
+    await harness.dispose()
+  })
+
   it('rejects every broken link in the bound change-to-verification authority chain', async () => {
     const harness = await mountDeliveryTestkit(new Context())
     const { packet } = await createStoredPacket(harness)
@@ -876,6 +1104,14 @@ describe('FakeDelivery contract', () => {
         code: 'invalid-reference',
       },
       {
+        name: 'verification Packet',
+        candidate: { ...candidate, verificationIntent: {
+          ...chain.verificationIntent,
+          packetId: WorkPacketId('packet-unbound-verification'),
+        } },
+        code: 'invalid-reference',
+      },
+      {
         name: 'verification plan',
         candidate: { ...candidate, verificationIntent: {
           ...chain.verificationIntent,
@@ -913,11 +1149,159 @@ describe('FakeDelivery contract', () => {
       }, async () => testCase.candidate, resolveEvidence)).rejects.toMatchObject({ code: testCase.code })
     }
 
+    const wrongChangeSubmitting = await harness.delivery.beginDispatch({
+      idempotencyKey: 'candidate-wrong-change-digest-binding',
+      packetId: packet.id,
+      inputDigest: canonicalDigest({ packetId: 'packet-other' }),
+      kind: 'code.change@1',
+      executorId: ExecutorId('codex-fixture'),
+    })
+    const wrongChangeBinding = await harness.delivery.bindDispatch({
+      bindingId: wrongChangeSubmitting.id,
+      queueWorkId: QueueWorkIdRef('queue-work-wrong-change-digest'),
+    })
+    const resolverBeforeDigest = vi.fn(async () => candidate)
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'candidate-wrong-change-digest',
+      decisionNonce: 'candidate-wrong-change-digest',
+      changeBindingId: wrongChangeBinding.id,
+    }, resolverBeforeDigest, resolveEvidence)).rejects.toMatchObject({ code: 'invalid-reference' })
+    expect(resolverBeforeDigest).not.toHaveBeenCalled()
+
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'candidate-verdict-plan-mismatch',
+      decisionNonce: 'candidate-verdict-plan-mismatch',
+    }, async () => ({
+      ...candidate,
+      verificationVerdict: passedVerdictFixture({
+        ...chain.verificationVerdict,
+        checkResults: chain.verificationVerdict.checkResults.map(result => ({
+          ...result,
+          checkDigest: canonicalDigest('wrong-check-digest'),
+        })),
+      }),
+    }), resolveEvidence)).rejects.toMatchObject({ code: 'invalid-reference' })
+
     await expect(harness.delivery.recordAcceptanceDecision({
       ...request,
       idempotencyKey: 'candidate-missing-evidence',
       decisionNonce: 'candidate-missing-evidence',
     }, async () => candidate, async () => undefined)).rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'candidate-wrong-resolved-evidence-id',
+      decisionNonce: 'candidate-wrong-resolved-evidence-id',
+    }, async () => candidate, async () => evidenceRefFixture({
+      id: EvidenceId('wrong-resolved-evidence-id'),
+    }))).rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    const changeEvidenceRef = chain.evidenceRefs[0]!
+    const verificationEvidenceRef = chain.evidenceRefs[1]!
+    const badGitEvidence = evidenceRefFixture({
+      ...changeEvidenceRef,
+      kind: 'log',
+    })
+    const badGitRefs = new Map([
+      [badGitEvidence.id, badGitEvidence],
+      [verificationEvidenceRef.id, verificationEvidenceRef],
+    ])
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'candidate-no-matching-git-evidence',
+      decisionNonce: 'candidate-no-matching-git-evidence',
+    }, async () => candidate, async evidenceId => badGitRefs.get(evidenceId)))
+      .rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    const verdictWithoutClaimEvidence = passedVerdictFixture({
+      ...chain.verificationVerdict,
+      evidenceIds: [verificationEvidenceRef.id],
+      evidenceIntegrityFindings: chain.verificationVerdict.evidenceIntegrityFindings
+        .filter(finding => finding.evidenceId === verificationEvidenceRef.id),
+    })
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'candidate-verdict-omits-claim-evidence',
+      decisionNonce: 'candidate-verdict-omits-claim-evidence',
+    }, async () => ({
+      ...candidate,
+      verificationVerdict: verdictWithoutClaimEvidence,
+    }), resolveEvidence)).rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    const extraEvidenceId = EvidenceId('extra-evidence')
+    const unrelatedExtraEvidence = evidenceRefFixture({
+      id: extraEvidenceId,
+      provenance: {
+        kind: 'change-attempt',
+        packetId: packet.id,
+        queueWorkId: chain.changeQueueWorkId,
+        queueAttemptId: QueueAttemptIdRef('unrelated-attempt'),
+      },
+    })
+    const evidenceWithExtra = new Map([
+      ...chain.evidenceRefs.map(reference => [reference.id, reference] as const),
+      [extraEvidenceId, unrelatedExtraEvidence] as const,
+    ])
+    const claimWithUnrelatedExtra = completedClaimFixture({
+      ...chain.completionClaim,
+      evidenceIds: [changeEvidenceRef.id, extraEvidenceId],
+    })
+    const verdictCoveringExtra = passedVerdictFixture({
+      ...chain.verificationVerdict,
+      evidenceIds: [...chain.verificationVerdict.evidenceIds, extraEvidenceId],
+      evidenceIntegrityFindings: [
+        ...chain.verificationVerdict.evidenceIntegrityFindings,
+        { evidenceId: extraEvidenceId, required: false, status: 'verified' },
+      ],
+    })
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'candidate-unrelated-claim-evidence',
+      decisionNonce: 'candidate-unrelated-claim-evidence',
+    }, async () => ({
+      ...candidate,
+      completionClaim: claimWithUnrelatedExtra,
+      verificationVerdict: verdictCoveringExtra,
+    }), async evidenceId => evidenceWithExtra.get(evidenceId)))
+      .rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    const verificationExtraEvidence = evidenceRefFixture({
+      id: extraEvidenceId,
+      provenance: {
+        kind: 'verification-check',
+        packetId: packet.id,
+        queueWorkId: chain.verificationQueueWorkId,
+        queueAttemptId: chain.verificationQueueAttemptId,
+        checkId: verificationCheck.checkId,
+      },
+    })
+    evidenceWithExtra.set(extraEvidenceId, unrelatedExtraEvidence)
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'candidate-unrelated-verdict-evidence',
+      decisionNonce: 'candidate-unrelated-verdict-evidence',
+    }, async () => ({ ...candidate, verificationVerdict: verdictCoveringExtra }),
+    async evidenceId => evidenceWithExtra.get(evidenceId)))
+      .rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    evidenceWithExtra.set(extraEvidenceId, verificationExtraEvidence)
+    const verdictWithUnverifiedExtra = passedVerdictFixture({
+      ...verdictCoveringExtra,
+      evidenceIntegrityFindings: verdictCoveringExtra.evidenceIntegrityFindings.map(finding => (
+        finding.evidenceId === extraEvidenceId
+          ? { ...finding, status: 'missing' as const }
+          : finding
+      )),
+    })
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'candidate-unverified-optional-evidence',
+      decisionNonce: 'candidate-unverified-optional-evidence',
+    }, async () => ({ ...candidate, verificationVerdict: verdictWithUnverifiedExtra }),
+    async evidenceId => evidenceWithExtra.get(evidenceId)))
+      .rejects.toMatchObject({ code: 'acceptance-denied' })
 
     await expect(harness.delivery.recordAcceptanceDecision({
       ...request,
@@ -1171,5 +1555,203 @@ describe('FakeDeliveryEvidence contract', () => {
     evidence.remove(ref.id)
     await expect(evidence.resolve(ref.id)).resolves.toBeUndefined()
     await harness.dispose()
+  })
+
+  it('exposes deterministic hooks and every explicit evidence failure control', async () => {
+    const evidence = new FakeDeliveryEvidence(new Context(), {
+      now: () => '2026-08-29T12:00:00.000Z',
+      allocateId: ordinal => `custom-evidence-${String(ordinal)}`,
+    })
+    const provenance = {
+      kind: 'change-attempt' as const,
+      packetId: readyWorkPacketFixture().id,
+      queueWorkId: QueueWorkIdRef('queue-work-evidence-errors'),
+      queueAttemptId: QueueAttemptIdRef('queue-attempt-evidence-errors'),
+    }
+    const save = {
+      kind: 'log' as const,
+      mediaType: 'text/plain',
+      provenance,
+      data: new Uint8Array([1, 2, 3]),
+    }
+    const scripted = new Error('scripted evidence failure')
+    evidence.failNextSave(scripted)
+    await expect(evidence.save(save)).rejects.toBe(scripted)
+
+    const ref = await evidence.save(save)
+    expect(ref).toMatchObject({
+      id: 'custom-evidence-1',
+      createdAt: '2026-08-29T12:00:00.000Z',
+    })
+    await evidence.save({ ...save, kind: 'patch' })
+    await expect(evidence.read(evidenceRefFixture({ id: EvidenceId('missing-evidence') })))
+      .rejects.toMatchObject({ code: 'not-found' })
+    await expect(evidence.read({ ...ref, mediaType: 'application/json' }))
+      .rejects.toMatchObject({ code: 'reference-mismatch' })
+    evidence.corrupt(ref.id, new Uint8Array([1, 2]))
+    await expect(evidence.read(ref)).rejects.toMatchObject({ code: 'length-mismatch' })
+
+    const controller = new AbortController()
+    controller.abort()
+    await expect(evidence.save(save, controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
+    await expect(evidence.read(ref, controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
+    expect(() => {
+      evidence.corrupt(EvidenceId('missing-evidence'), new Uint8Array())
+    })
+      .toThrow(expect.objectContaining({ code: 'not-found' }))
+    evidence.remove(ref.id)
+  })
+})
+
+describe('FakeRepositoryWorkspace failure controls', () => {
+  it('covers scripted range inspection and exact-target verification leases', async () => {
+    const repo = new FakeRepositoryWorkspace(new Context())
+    repo.allowRange({
+      repositoryId: REPOSITORY_ID,
+      baseCommit: BASE_COMMIT,
+      targetCommit: TARGET_COMMIT,
+      descendsFromBase: true,
+      changedPaths: [RepositoryRelativePath('packages/delivery/example.ts')],
+    })
+    const base = await repo.inspectRevision({ repositoryId: REPOSITORY_ID, commit: BASE_COMMIT })
+    const target = await repo.inspectRevision({ repositoryId: REPOSITORY_ID, commit: TARGET_COMMIT })
+    await expect(repo.inspectRange({ base, target })).resolves.toMatchObject({
+      baseCommit: BASE_COMMIT,
+      targetCommit: TARGET_COMMIT,
+    })
+
+    const owner = QueueAttemptIdRef('verification-owner-fixture')
+    repo.queueVerificationWorkspace({ cwd: '/tmp/delivery-verification-fixture' })
+    const lease = await repo.openVerification({ ownerAttemptId: owner, base, target })
+    expect(lease).toBeInstanceOf(FakeVerificationWorkspaceLease)
+    expect(await repo.openVerification({ ownerAttemptId: owner, base, target })).toBe(lease)
+    await lease.close('preserve')
+    await expect(lease.close('remove')).rejects.toMatchObject({ code: 'owner-conflict' })
+  })
+
+  it('fails loud for invalid revisions, ranges, plans, leases, and checkpoints', async () => {
+    const repo = new FakeRepositoryWorkspace(new Context())
+    expect(() => {
+      repo.allowBaseRef(REPOSITORY_ID, '   ', BASE_COMMIT)
+    }).toThrow(TypeError)
+    await expect(repo.resolveBase({
+      repositoryId: REPOSITORY_ID,
+      selectionRule: { kind: 'commit', commit: BASE_COMMIT },
+    })).rejects.toMatchObject({ code: 'revision-not-found' })
+    await expect(repo.inspectRevision({ repositoryId: REPOSITORY_ID, commit: BASE_COMMIT }))
+      .rejects.toMatchObject({ code: 'revision-not-found' })
+
+    repo.allowRevision(REPOSITORY_ID, BASE_COMMIT)
+    repo.allowRevision(REPOSITORY_ID, TARGET_COMMIT)
+    repo.allowRevision(RepositoryId('other-repository'), TARGET_COMMIT)
+    const base = await repo.inspectRevision({ repositoryId: REPOSITORY_ID, commit: BASE_COMMIT })
+    const target = await repo.inspectRevision({ repositoryId: REPOSITORY_ID, commit: TARGET_COMMIT })
+    const otherTarget = await repo.inspectRevision({
+      repositoryId: RepositoryId('other-repository'),
+      commit: TARGET_COMMIT,
+    })
+    await expect(repo.inspectRange({ base, target: otherTarget }))
+      .rejects.toMatchObject({ code: 'repository-mismatch' })
+    await expect(repo.inspectRange({ base, target })).rejects.toThrow(/no range was scripted/u)
+    await expect(repo.openChange({
+      ownerAttemptId: QueueAttemptIdRef('unscripted-change'),
+      base,
+    })).rejects.toThrow(/no change workspace was scripted/u)
+    await expect(repo.openVerification({
+      ownerAttemptId: QueueAttemptIdRef('unscripted-verification'),
+      base,
+      target,
+    })).rejects.toThrow(/no verification workspace was scripted/u)
+    await expect(repo.openVerification({
+      ownerAttemptId: QueueAttemptIdRef('mismatched-verification'),
+      base,
+      target: otherTarget,
+    })).rejects.toMatchObject({ code: 'repository-mismatch' })
+
+    repo.queueChangeWorkspace({
+      cwd: '/tmp/delivery-invalid-checkpoint',
+      checkpoint: new Error('scripted checkpoint failure'),
+    })
+    const failing = await repo.openChange({
+      ownerAttemptId: QueueAttemptIdRef('failing-checkpoint'),
+      base,
+    })
+    await expect(failing.checkpoint({ message: '' })).rejects.toMatchObject({ code: 'checkpoint-failed' })
+    await expect(failing.checkpoint({ message: 'checkpoint' })).rejects.toThrow('scripted checkpoint failure')
+
+    repo.queueChangeWorkspace({
+      cwd: '/tmp/delivery-wrong-checkpoint',
+      checkpoint: {
+        repositoryId: RepositoryId('other-repository'),
+        baseCommit: BASE_COMMIT,
+        checkpointCommit: TARGET_COMMIT,
+        changedPaths: [],
+        clean: true,
+        descendsFromBase: true,
+      },
+    })
+    const wrong = await repo.openChange({
+      ownerAttemptId: QueueAttemptIdRef('wrong-checkpoint'),
+      base,
+    })
+    await expect(wrong.checkpoint({ message: 'checkpoint' }))
+      .rejects.toThrow(/scripted checkpoint does not match/u)
+    await wrong.close('preserve')
+    await expect(wrong.checkpoint({ message: 'closed checkpoint' }))
+      .rejects.toMatchObject({ code: 'checkpoint-failed' })
+  })
+
+  it('rejects owner reuse across workspace identities and purposes', async () => {
+    const repo = new FakeRepositoryWorkspace(new Context())
+    repo.allowRevision(REPOSITORY_ID, BASE_COMMIT)
+    repo.allowRevision(REPOSITORY_ID, TARGET_COMMIT)
+    repo.allowRevision(REPOSITORY_ID, OTHER_COMMIT)
+    const base = await repo.inspectRevision({ repositoryId: REPOSITORY_ID, commit: BASE_COMMIT })
+    const target = await repo.inspectRevision({ repositoryId: REPOSITORY_ID, commit: TARGET_COMMIT })
+    const otherTarget = await repo.inspectRevision({ repositoryId: REPOSITORY_ID, commit: OTHER_COMMIT })
+
+    const changeOwner = QueueAttemptIdRef('change-reuse-owner')
+    repo.queueChangeWorkspace({
+      cwd: '/tmp/change-reuse',
+      checkpoint: {
+        repositoryId: REPOSITORY_ID,
+        baseCommit: BASE_COMMIT,
+        checkpointCommit: TARGET_COMMIT,
+        changedPaths: [],
+        clean: true,
+        descendsFromBase: true,
+      },
+    })
+    await repo.openChange({ ownerAttemptId: changeOwner, base })
+    await expect(repo.openChange({ ownerAttemptId: changeOwner, base: target }))
+      .rejects.toMatchObject({ code: 'owner-conflict' })
+    await expect(repo.openVerification({ ownerAttemptId: changeOwner, base, target }))
+      .rejects.toMatchObject({ code: 'owner-conflict' })
+
+    const verifyOwner = QueueAttemptIdRef('verification-reuse-owner')
+    repo.queueVerificationWorkspace({ cwd: '/tmp/verification-reuse' })
+    await repo.openVerification({ ownerAttemptId: verifyOwner, base, target })
+    await expect(repo.openVerification({ ownerAttemptId: verifyOwner, base, target: otherTarget }))
+      .rejects.toMatchObject({ code: 'owner-conflict' })
+    await expect(repo.openChange({ ownerAttemptId: verifyOwner, base }))
+      .rejects.toMatchObject({ code: 'owner-conflict' })
+  })
+
+  it('rejects forged revision and base proofs', async () => {
+    const repo = new FakeRepositoryWorkspace(new Context())
+    repo.allowRevision(REPOSITORY_ID, BASE_COMMIT)
+    const base = await repo.resolveBase({
+      repositoryId: REPOSITORY_ID,
+      selectionRule: { kind: 'commit', commit: BASE_COMMIT },
+    })
+    await expect(repo.openChange({
+      ownerAttemptId: QueueAttemptIdRef('forged-revision-owner'),
+      base: { ...base, commit: TARGET_COMMIT },
+    })).rejects.toMatchObject({ code: 'revision-not-found' })
+    await expect(repo.readBlob({
+      base: { ...base, selectionRule: { kind: 'commit', commit: TARGET_COMMIT } },
+      path: PLAN_PATH,
+      maxBytes: 1,
+    })).rejects.toMatchObject({ code: 'revision-not-found' })
   })
 })

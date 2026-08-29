@@ -52,6 +52,13 @@ describe('delivery canonical identity', () => {
     expect(() => canonicalJson(hidden)).toThrow(/enumerable/iu)
     expect(() => canonicalJson(extra)).toThrow(/extra/iu)
   })
+
+  it('rejects symbol keys and sorts both ascending and descending comparisons', () => {
+    const symbolKey = { value: 1 }
+    Object.defineProperty(symbolKey, Symbol('secret'), { enumerable: true, value: 2 })
+    expect(() => canonicalJson(symbolKey)).toThrow(/symbol/iu)
+    expect(canonicalJson({ a: 1, c: 3, b: 2 })).toBe('{"a":1,"b":2,"c":3}')
+  })
 })
 
 describe('delivery value brands', () => {
