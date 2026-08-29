@@ -122,11 +122,12 @@ interface Options {
   headSha: string
 }
 
-function parseArgs(args: string[]): Options {
+export function parseArgs(args: string[]): Options {
+  const parameters = args[0] === '--' ? args.slice(1) : args
   const values = new Map<string, string>()
-  for (let index = 0; index < args.length; index += 2) {
-    const name = args[index]
-    const value = args[index + 1]
+  for (let index = 0; index < parameters.length; index += 2) {
+    const name = parameters[index]
+    const value = parameters[index + 1]
     if (name === undefined || value === undefined || !name.startsWith('--')) {
       throw new Error('run-fork-c0-diff: expected --base-dir, --head-dir, --base-sha, and --head-sha values.')
     }
