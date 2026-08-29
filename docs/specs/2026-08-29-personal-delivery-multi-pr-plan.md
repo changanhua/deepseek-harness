@@ -47,14 +47,14 @@ Current Queue data already supports `ownerSessionId: null` and operator receipts
 - matching key/input returns the original id and conflicting input fails;
 - browser Remote does not receive raw generic enqueue authority;
 - if `handler.start()` returns live ownership but persisting `attempt/running` fails, Queue first aborts its controller and requests `LiveAttempt.cancel()`, then observes `live.done` and cancellation settlement within the configured bound before recording `unknown` plus Attention;
-- cancellation rejection, a deadline, a conflicting late outcome, or another persistence failure remains post-start failure evidence; Queue never reclassifies it as `not-started`, keeps the execution tracked and root ownership until a durable terminal or unknown record represents it, and never auto-retries it;
+- cancellation rejection, a deadline, a conflicting late outcome, or another persistence failure remains post-start failure evidence; Queue never reclassifies it as `not-started` or automatically retries it, while a deadline records durable uncertainty and requires the operator to prove external quiescence before authorizing another Attempt;
 - focused folding, admission, restart, cancellation, and lock-ownership tests pass.
 
 Gate A owns only `packages/task-queue/task-queue/**`, `packages/task-queue/task-queue-local/**`, their paired package/subsystem documentation, the generated task-queue Cordis API catalog refresh required by the public operator change, and the Agent Note that explains the shipped Queue change. It does not import Delivery or add a Delivery-specific method. Generic Queue parity may include operator Batch admission; Personal Delivery P0 submits only single WorkItems.
 
 ### Gate B: explicit-worktree Codex execution
 
-The existing Codex provider obtains cwd from `request.parent.session.header.cwd`, and `startCodexRun` still accepts the parent-bearing `SubagentStartRequest`, while its lower-level `CodexRunSpec` already accepts an explicit cwd. Source inspection therefore selects a new parent-free, non-Subagent contract at the package's supported root entry as the implementation direction; Delivery may not deep-import `src/run.ts`. The gate must still run that real package-local Codex path against a disposable Git worktree and prove:
+The existing Codex provider obtains cwd from `request.parent.session.header.cwd`, and `startCodexRun` still accepts the parent-bearing `SubagentStartRequest`, while its lower-level `CodexRunSpec` already accepts an explicit cwd. Source inspection therefore selects a parent-free package-internal entry as the feasibility direction. The gate must still run that real package-local Codex path against a disposable Git worktree and prove:
 
 - the target file changes only inside the supplied worktree;
 - no fake Agent or Session is needed to choose cwd;
@@ -62,14 +62,14 @@ The existing Codex provider obtains cwd from `request.parent.session.header.cwd`
 - startup failure, product failure, cancellation, completion, and loss of provable ownership remain distinguishable;
 - cleanup failure is reported rather than hidden;
 - no DSH control-center checkout is modified.
-- a built/package-root consumer can invoke the parent-free entry without importing source-only paths.
+- the package root remains unchanged while PR-C0 records the production package-boundary decision.
 
 Gate B uses this decision order:
 
-1. Extract a parent-free request around the explicit-input Codex app-server driver, export it through the supported package root, and reuse it from the Delivery runner.
+1. Extract a parent-free request around the explicit-input Codex app-server driver and prove the lifecycle without fabricating a Parent.
 2. Fall back to a governed `codex exec --json` subprocess adapter only if the executable proof shows that extraction cannot preserve cancellation and quiescence.
 
-Gate B does not create or finalize `ctx.codeExecutors`. PR-C0 owns the public-seam decision and introduces an executor capability only if the completed evidence plus a second replaceable implementation or another independent consumer justify it. Otherwise the Codex runner owns the extracted entry privately for P0.
+Gate B does not create or finalize `ctx.codeExecutors`, and its feasibility entry is not exported from the package root. PR-C0 owns the production package-boundary decision and introduces an executor capability only if the completed evidence plus a second replaceable implementation or another independent consumer justify it. A Delivery package must not deep-import the source-only entry merely because the monorepo can resolve it.
 
 ## PR ownership
 
@@ -141,4 +141,4 @@ The integration branch is not ready for rollup until:
 
 Parallel implementation pauses when a PR needs a public protocol change, another PR's owned path, a new root dependency, a wider authority surface, or a new durable state. The contract owner resolves the shared change once and republishes a base SHA; affected branches rebase after that decision.
 
-P0 stops rather than expanding when Gate B cannot prove whole-tree quiescence, Gate A cannot prevent an unowned post-start process, verification cannot obtain trusted fixed commands, or the vertical E2E requires a second control-plane state machine.
+P0 stops rather than expanding when Gate B cannot prove whole-tree quiescence for the selected Codex runner, Gate A cannot preserve truthful unknown/no-retry semantics after the side-effect boundary, verification cannot obtain trusted fixed commands, or the vertical E2E requires a second control-plane state machine.

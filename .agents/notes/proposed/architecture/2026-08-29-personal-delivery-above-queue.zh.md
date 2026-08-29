@@ -41,9 +41,9 @@ Delivery 和 Queue 无法提交同一 transaction。因此，Delivery 在 enqueu
 
 ### 技术门
 
-Gate A 扩展可信 operator admission，但不向浏览器暴露 generic enqueue。Ownerless admission 使用 operator authority、operator-scoped idempotency、`ownerSessionId: null`，并且不创建 Session Notification。同一项 Queue 变更还会关闭 post-start ownership gap：如果 `LiveAttempt` 已存在后 running append 失败，provider 会 abort controller、请求 `LiveAttempt.cancel()`、在 configured bound 内观察 cancellation 和 `live.done`，然后才记录 `unknown` 加 Attention。Cancellation rejection、deadline、conflicting late outcome 或另一次 persistence failure 继续作为 post-start evidence；Queue 绝不把它重新分类为 `not-started`，保持 root ownership 直到 durable terminal 或 unknown record 代表该执行，并且绝不自动重试。
+Gate A 扩展可信 operator admission，但不向浏览器暴露 generic enqueue。Ownerless admission 使用 operator authority、operator-scoped idempotency、`ownerSessionId: null`，并且不创建 Session Notification。同一项 Queue 变更还会关闭直接的 post-start ownership gap：如果 `LiveAttempt` 已存在后 running append 失败，provider 会 abort controller、请求 `LiveAttempt.cancel()`、在 configured bound 内观察 cancellation 和 `live.done`，然后才记录 `unknown` 加 Attention。Cancellation rejection、deadline、conflicting late outcome 或另一次 persistence failure 继续作为 post-start evidence；Queue 绝不把它重新分类为 `not-started` 或自动重试。Deadline 保留的是 durable uncertainty，而不是 in-process handle 或 resource claim，因此 operator 授权重试前必须从外部证明之前的副作用已经 quiescent。
 
-Gate B 在可丢弃的显式 worktree 中验证真实 Codex 执行、取消传递、完整进程树 quiescence 和诚实 terminal 分类。当前 `startCodexRun` 仍接受 parent-bearing `SubagentStartRequest`，尽管底层 run specification 已接受 explicit cwd。因此 Gate 会通过 package 的 supported root entry 提取 parent-free、non-Subagent contract，同时保留 Session-backed provider adapter；Delivery 不得 deep-import source-only file。只有 executable proof 暴露取消或 quiescence 缺陷时，才退回受治理的 `codex exec --json` subprocess adapter。
+Gate B 在可丢弃的显式 worktree 中验证真实 Codex 执行、取消传递、完整进程树 quiescence 和诚实 terminal 分类。当前 `startCodexRun` 仍接受 parent-bearing `SubagentStartRequest`，尽管底层 run specification 已接受 explicit cwd。因此 Gate 会提取 parent-free 的 package-internal entry，同时保留 Session-backed provider adapter。它不会从 package root 导出该入口；PR-C0 必须在 Delivery 使用它之前选择 supported production boundary。只有 executable proof 暴露取消或 quiescence 缺陷时，才退回受治理的 `codex exec --json` subprocess adapter。
 
 Gate B 完成后，PR-C0 决定 P0 是否需要 public executor capability。本提议有意不定义 `ctx.codeExecutors` API。如果一个 Codex runner 是唯一 consumer 和 implementation，它就私有地拥有提取出的入口；public registry 需要另一个独立 consumer 或可替换 provider 的证据。
 
@@ -78,7 +78,7 @@ Gate B 完成后，PR-C0 决定 P0 是否需要 public executor capability。本
 
 ## 验收标准
 
-- Gate A 能幂等准入 ownerless work，并防止 post-start durability failure 后留下无人持有的 live process。
+- Gate A 能幂等准入 ownerless work，在 post-start durability failure 后执行有界双通道取消，并在无法证明 quiescence 时记录 uncertainty 且不自动重试。
 - Gate B 只修改指定 worktree、取消完整 Codex 进程树，并为选定集成路径记录证据。
 - 可执行 schema 和 golden fixture 可以 round-trip 每个 Protocol V1 对象，并拒绝非法 id、digest、commit、command plan 和 decision combination。
 - Delivery/Queue Bridge 注册两个 WorkKind，同时不让 Queue 依赖任何 Delivery package。
