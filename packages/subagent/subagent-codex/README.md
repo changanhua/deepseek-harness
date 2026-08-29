@@ -92,6 +92,14 @@ Trusted Host plugins that already own admission, workspace selection, and proces
 ```ts
 import { startCodexAppServerRun } from '@deepseek-ai/dsh-subagent-codex/app-server-run'
 
+declare const signal: AbortSignal
+declare const cwd: string
+declare const ctx: {
+  subprocess: {
+    spawn: Parameters<typeof startCodexAppServerRun>[0]['spawn']
+  }
+}
+
 const run = await startCodexAppServerRun({
   prompt: [{ type: 'text', text: 'Implement the admitted work packet.' }],
   signal,
