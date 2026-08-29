@@ -11,7 +11,8 @@ export const name = 'delivery-evidence-local-invariant'
 export const inject = ['invariants']
 
 /**
- * No runtime invariant: the unavailable provider publishes no evidence bytes.
+ * No runtime invariant: publication and reads verify immutable objects within
+ * each awaited operation, and this provider emits no event relation.
  */
 const install: InvariantInstaller = () => {}
 
