@@ -11,6 +11,17 @@ English | [中文](README.zh.md)
 
 `dsh-delivery-verifier` exports the pure `createDeliveryVerifier` factory for independently checking one immutable target commit. Its request contains the exact Contract, Packet, matching successful `CompletionClaim`, resolved trusted plan, an Attempt-bound verification workspace opener, an independent range inspector, integrity-checked evidence lookup/read closures, and per-check evidence writers. It owns no Queue state, Delivery records, repository identity, or evidence store.
 
+A completed run returns a Protocol-validated `VerificationVerdict`. Check, path, ancestry, and evidence-integrity failures remain verdict facts; invalid authority, process/evidence infrastructure loss, cleanup failure, and cancellation reject `done` instead of manufacturing a verdict.
+
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 The Queue bridge creates one verifier closure from trusted subprocess deployment inputs. At dispatch it supplies a `DeliveryVerificationRunRequest`; the returned `DeliveryVerificationRun` synchronously publishes `done` and `cancel(reason)`.
@@ -29,14 +40,22 @@ const verdict = await run.done
 
 Only fixed argv already present in the trusted Packet plan is eligible for execution. The verifier result is a durable `VerificationVerdict`; it is evidence for a human decision, never an automatic acceptance decision.
 
+Checks run sequentially with no shell interpolation or verifier-supplied environment override. The Subprocess provider supplies its scrubbed parent environment, enforces tree-scoped termination, and exposes independent exit facts. Each saved `verification-output` record includes the process outcome plus retained stdout/stderr and is clipped on a UTF-8 boundary to the configured complete-byte budget.
+
 `disposeGraceMs` must be a positive integer no greater than the platform timer ceiling. `verificationOutputBytes` must be a positive safe integer and cannot exceed `MAX_VERIFICATION_OUTPUT_BYTES` (64 MiB). The Queue bridge supplies 64 KiB as its default per-check output budget; this factory requires both deployment limits explicitly.
 
+<a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The Queue bridge first requires a `completed` claim, proves `claim.packetId === packet.id`, and proves `claim.checkpointCommit === resolved.targetCommit`, then supplies it as `CompletedChangeClaim`. The verifier treats every id in `claim.evidenceIds` as required input. `inspectRange(signal)` independently derives ancestry and the complete changed-path set for the exact base and target. `openWorkspace(signal)` opens a read/execute-only checkout pinned to that target. `resolveEvidence(id, signal)` and `readEvidence(ref, signal)` close the durable ID-to-bytes integrity path after restart. `evidenceFor(checkId)` prevents a check from omitting or replacing its Queue Attempt and check provenance. These are operation-local closures rather than new Cordis capabilities.
+The Queue bridge first requires a `completed` claim, proves `claim.packetId === packet.id`, and proves `claim.checkpointCommit === resolved.targetCommit`, then supplies it as `CompletedChangeClaim`. The verifier snapshots and runtime-validates the Contract, Packet, claim, resolved target, trusted plan, range facts, and lease identities before executing. It treats every id in `claim.evidenceIds` as required input; missing, size-mismatched, digest-mismatched, or wrongly provenanced objects produce Protocol findings and a failed verdict.
 
-Before spawning a check below a repository-relative `VerificationCheck.cwd`, the concrete verifier must resolve its physical path and prove it remains inside the lease root, or reject every symlink traversal. A lexical `join()` is insufficient because the target tree itself can redirect an intermediate directory outside the isolated checkout.
+`inspectRange(signal)` independently derives ancestry and the complete changed-path set for the exact base and target. `openWorkspace(signal)` opens a read/execute-only checkout pinned to that target. `resolveEvidence(id, signal)` and `readEvidence(ref, signal)` close the durable ID-to-bytes integrity path after restart. `evidenceFor(checkId)` prevents a check from omitting or replacing its verification-check provenance. These are operation-local closures rather than new Cordis capabilities.
 
+Before any process starts, the verifier applies `lstat` and `realpath` to every repository-relative `VerificationCheck.cwd`, requires a physical directory inside the lease root, and rejects symlink or junction traversal outside it. It repeats no plan discovery in the target checkout; only the resolved Packet checks execute.
+
+For each spawned check, the verifier records timeout independently from the eventual process exit and waits for `waitForExit()` whole-tree quiescence before settlement. A required timeout or unexpected exit fails the verdict; optional uncertainty yields `needs-human-review`. Cancellation terminates the active tree and rejects `done` with `canceled`. Cleanup removes a lease only after proven quiescence, preserves it when process ownership is uncertain, and reports cleanup failure explicitly.
+
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Deterministic verification boundary
@@ -55,6 +74,13 @@ There is no model request and therefore no KV-cache contribution; deterministic 
 
 ## Known Limitations and Deferred Work
 
-- **The concrete verifier is unavailable** — `createDeliveryVerifier` returns a live handle whose `done` rejects with `DeliveryVerifierError('unavailable')`; ancestry, scope, every `completionClaim.evidenceIds` lookup/read, command, timeout, and verdict logic are unsupported.
+<a id="known-limitations-and-deferred-work"></a>
+
+- **Verification is isolation, not a code sandbox** — fixed commands can execute repository code inside the Attempt-owned checkout; deployment still owns the selected Subprocess provider and its operating-system confinement.
 - **The plan is not discovered at runtime** — arbitrary shell text, repository-provided executable policy, and model-generated commands are outside this package.
 - **Acceptance remains human-owned** — a passed verdict does not call `recordAcceptanceDecision` and cannot merge or accept delivery.
+
+<a id="dev-note"></a>
+### Dev Note
+
+None.
