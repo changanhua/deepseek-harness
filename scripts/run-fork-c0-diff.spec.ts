@@ -4,6 +4,7 @@ import {
   c0PathChanged,
   newFailureDiagnostics,
   normalizeDiagnostics,
+  parseArgs,
   runGateAt,
   type GateSnapshot,
 } from './run-fork-c0-diff.ts'
@@ -63,6 +64,21 @@ describe('fork C0 differential gate', () => {
 
     expect(result.status).toBe('passed')
     expect(result.output.map(chunk => chunk.text).join('')).toBe(cwd)
+  })
+
+  it('accepts the argument separator forwarded by pnpm run', () => {
+    expect(parseArgs([
+      '--',
+      '--base-dir', 'base',
+      '--head-dir', 'head',
+      '--base-sha', 'base-sha',
+      '--head-sha', 'head-sha',
+    ])).toEqual({
+      baseDir: resolve('base'),
+      headDir: resolve('head'),
+      baseSha: 'base-sha',
+      headSha: 'head-sha',
+    })
   })
 })
 
