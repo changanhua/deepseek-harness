@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/delivery/delivery-runner-codex/README.md
 README.md: 282fa27b2011560f23c22e477d1e3fad1d01d77d
-README.zh.md: 420ab4605f9ef82fe61a9fcfd6fe387e721c1e08
+README.zh.md: 98d3aeb33f256834305a9d136326d88364c1ced3

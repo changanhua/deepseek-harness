@@ -74,7 +74,7 @@ const claim = await run.done
 
 #### Token 影响
 
-运行器每次 Attempt 增加一个任务提示词。Contract 与 Packet 文本会增加输入 token。Codex 仍可能生成完整最终响应并按其计入输出 token；宿主最多保留已配置的 UTF-8 字节数，并拒绝超出预算的 envelope，而不会解析它。
+运行器每次 Attempt 增加一个任务提示词。Contract 与 Packet 文本会增加输入 token。Codex 仍可能生成完整的最终响应，其中全部输出 token 都可能计入 token 用量；宿主最多保留已配置的 UTF-8 字节数，并拒绝超出预算的 envelope，而不会解析它。
 
 #### KV Cache 影响
 
