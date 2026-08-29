@@ -301,7 +301,7 @@ describe('CI workflow', () => {
         ci: true,
       },
       secrets: {
-        DEEPSEEK_API_KEY_EXTERNAL: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
+        OPENCODE_GO_API_KEY: '${{ secrets.OPENCODE_GO_API_KEY }}',
       },
     })
     expect(aggregate.needs).toContain('python-runtime')
@@ -480,7 +480,7 @@ describe('Python release workflows', () => {
       release: { type: 'boolean', default: false },
     })
     expect(call.secrets).toMatchObject({
-      DEEPSEEK_API_KEY_EXTERNAL: { required: false },
+      OPENCODE_GO_API_KEY: { required: false },
     })
     expect(workflow.concurrency).toMatchObject({
       group: 'build-single-exe-${{ github.workflow }}-${{ github.ref }}',
@@ -519,7 +519,7 @@ describe('Python release workflows', () => {
     expect(cleanVenvWindows).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
     expect(JSON.stringify(cleanVenvWindows)).toContain('Scripts\\\\python.exe')
     expect(realApiPreflightPosix).toMatchObject({
-      env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
+      env: { DEEPSEEK_API_KEY: '${{ secrets.OPENCODE_GO_API_KEY }}' },
     })
     expect(String(realApiPreflightPosix.if)).toContain('inputs.ci')
     expect(String(realApiPreflightPosix.if)).toContain('head.repo.fork')
@@ -527,8 +527,8 @@ describe('Python release workflows', () => {
     expect(realApiPreflightWindows).toMatchObject({ shell: 'pwsh' })
     expect(installedRealApiPosix).toMatchObject({
       env: {
-        DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
-        DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
+        DEEPSEEK_API_KEY: '${{ secrets.OPENCODE_GO_API_KEY }}',
+        DEEPSEEK_BASE_URL: 'https://opencode.ai/zen/go/v1',
       },
     })
     expect(JSON.stringify(installedRealApiPosix)).toContain('--scenario sdk-live')
