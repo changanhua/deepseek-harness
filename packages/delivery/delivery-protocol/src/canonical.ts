@@ -14,14 +14,13 @@ import type {
 /**
  * Serialize a JSON-safe value with recursively sorted object keys.
  *
- * This implementation intentionally mirrors task-queue/src/canonical.ts. The
- * packages remain runtime-independent; a parity test protects the duplicated
- * cross-store idempotency algorithm from drifting.
+ * Delivery owns this implementation so its protocol does not depend on Queue.
+ * A parity test pins the shared cross-store idempotency contract.
  * @param value - JSON-safe value to serialize.
  * @returns deterministic JSON with recursively sorted object keys.
  */
 export function canonicalJson(value: unknown): string {
-  return serialize(value, new WeakSet())
+  return new CanonicalJsonWriter().write(value)
 }
 
 /**
@@ -91,28 +90,47 @@ export function evidenceBytesMatch(reference: Pick<EvidenceRef, 'byteLength' | '
   return reference.byteLength === bytes.byteLength && reference.digest === evidenceBytesDigest(bytes)
 }
 
-function serialize(value: unknown, ancestors: WeakSet<object>): string {
-  if (value === null) return 'null'
-  if (typeof value === 'boolean') return value ? 'true' : 'false'
-  if (typeof value === 'number') {
+class CanonicalJsonWriter {
+  private readonly ancestors = new WeakSet<object>()
+
+  write(value: unknown): string {
+    if (value === null) return 'null'
+    switch (typeof value) {
+      case 'boolean': return value ? 'true' : 'false'
+      case 'number': return this.number(value)
+      case 'string': return JSON.stringify(value)
+      case 'object': return this.object(value)
+      default: throw new TypeError(`canonicalJson received unsupported non-JSON-safe ${typeof value}`)
+    }
+  }
+
+  private number(value: number): string {
     if (!Number.isFinite(value)) throw new TypeError('canonicalJson requires finite JSON-safe numbers')
     return Object.is(value, -0) ? '0' : String(value)
   }
-  if (typeof value === 'string') return JSON.stringify(value)
-  if (typeof value !== 'object') throw new TypeError(`canonicalJson received unsupported non-JSON-safe ${typeof value}`)
-  if (ancestors.has(value)) throw new TypeError('canonicalJson received a cyclic value')
-  ancestors.add(value)
-  try {
-    if (Array.isArray(value)) {
-      for (let index = 0; index < value.length; index += 1) {
-        if (!Object.hasOwn(value, index)) throw new TypeError('canonicalJson rejects sparse non-JSON-safe arrays')
-      }
-      const keys = Reflect.ownKeys(value)
-      if (keys.some(key => typeof key === 'symbol' || (key !== 'length' && !/^(0|[1-9]\d*)$/u.test(key)))) {
-        throw new TypeError('canonicalJson rejects arrays with non-JSON-safe extra or symbol keys')
-      }
-      return `[${value.map(item => serialize(item, ancestors)).join(',')}]`
+
+  private object(value: object): string {
+    if (this.ancestors.has(value)) throw new TypeError('canonicalJson received a cyclic value')
+    this.ancestors.add(value)
+    try {
+      return Array.isArray(value) ? this.array(value) : this.record(value)
+    } finally {
+      this.ancestors.delete(value)
     }
+  }
+
+  private array(value: unknown[]): string {
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.hasOwn(value, index)) throw new TypeError('canonicalJson rejects sparse non-JSON-safe arrays')
+    }
+    const keys = Reflect.ownKeys(value)
+    if (keys.some(key => typeof key === 'symbol' || (key !== 'length' && !/^(0|[1-9]\d*)$/u.test(key)))) {
+      throw new TypeError('canonicalJson rejects arrays with non-JSON-safe extra or symbol keys')
+    }
+    return `[${value.map(item => this.write(item)).join(',')}]`
+  }
+
+  private record(value: object): string {
     const prototype: unknown = Object.getPrototypeOf(value)
     if (prototype !== Object.prototype && prototype !== null) {
       throw new TypeError('canonicalJson requires plain JSON-safe objects')
@@ -128,9 +146,7 @@ function serialize(value: unknown, ancestors: WeakSet<object>): string {
     }
     stringKeys.sort(compare)
     const record = value as Record<string, unknown>
-    return `{${stringKeys.map(key => `${JSON.stringify(key)}:${serialize(record[key], ancestors)}`).join(',')}}`
-  } finally {
-    ancestors.delete(value)
+    return `{${stringKeys.map(key => `${JSON.stringify(key)}:${this.write(record[key])}`).join(',')}}`
   }
 }
 

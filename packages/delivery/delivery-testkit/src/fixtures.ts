@@ -63,6 +63,7 @@ const DEFAULT_EVIDENCE_BYTES = new TextEncoder().encode('delivery fixture eviden
 type CompletedClaim = Extract<CompletionClaim, { readonly disposition: 'completed' }>
 type SubmittingBinding = Extract<DispatchBinding, { readonly phase: 'submitting' }>
 type BoundBinding = Extract<DispatchBinding, { readonly phase: 'bound' }>
+type BindingOverrides = Partial<SubmittingBinding> | Partial<BoundBinding>
 
 const DEFAULT_CHECK: VerificationCheck = {
   id: CHECK_ID,
@@ -72,6 +73,21 @@ const DEFAULT_CHECK: VerificationCheck = {
   timeoutMs: 60_000,
   severity: 'required',
   expectedExitCodes: [0],
+}
+
+function bindingFixtureFields(overrides: BindingOverrides) {
+  const packetId = overrides.packetId ?? PACKET_ID
+  return {
+    schemaVersion: overrides.schemaVersion ?? DELIVERY_SCHEMA_VERSION,
+    id: overrides.id ?? DispatchBindingId('dispatch-binding-fixture'),
+    packetId,
+    inputDigest: overrides.inputDigest ?? canonicalDigest({ packetId }),
+    idempotencyKey: overrides.idempotencyKey ?? 'dispatch-fixture-v1',
+    kind: overrides.kind ?? 'code.change@1',
+    executorId: overrides.executorId ?? ExecutorId('codex-fixture'),
+    createdAt: overrides.createdAt ?? FIXTURE_TIME,
+    updatedAt: overrides.updatedAt ?? FIXTURE_TIME,
+  }
 }
 
 /**
@@ -196,17 +212,9 @@ export function readyWorkPacketFixture(overrides: Partial<WorkPacket> = {}): Wor
  */
 export function submittingBindingFixture(overrides: Partial<SubmittingBinding> = {}): SubmittingBinding {
   const value = dispatchBindingSchema.parse({
-    schemaVersion: overrides.schemaVersion ?? DELIVERY_SCHEMA_VERSION,
-    id: overrides.id ?? DispatchBindingId('dispatch-binding-fixture'),
-    packetId: overrides.packetId ?? PACKET_ID,
-    inputDigest: overrides.inputDigest ?? canonicalDigest({ packetId: overrides.packetId ?? PACKET_ID }),
-    idempotencyKey: overrides.idempotencyKey ?? 'dispatch-fixture-v1',
+    ...bindingFixtureFields(overrides),
     phase: 'submitting',
     queueWorkId: null,
-    kind: overrides.kind ?? 'code.change@1',
-    executorId: overrides.executorId ?? ExecutorId('codex-fixture'),
-    createdAt: overrides.createdAt ?? FIXTURE_TIME,
-    updatedAt: overrides.updatedAt ?? FIXTURE_TIME,
   })
   return value as SubmittingBinding
 }
@@ -218,17 +226,9 @@ export function submittingBindingFixture(overrides: Partial<SubmittingBinding> =
  */
 export function boundBindingFixture(overrides: Partial<BoundBinding> = {}): BoundBinding {
   const value = dispatchBindingSchema.parse({
-    schemaVersion: overrides.schemaVersion ?? DELIVERY_SCHEMA_VERSION,
-    id: overrides.id ?? DispatchBindingId('dispatch-binding-fixture'),
-    packetId: overrides.packetId ?? PACKET_ID,
-    inputDigest: overrides.inputDigest ?? canonicalDigest({ packetId: overrides.packetId ?? PACKET_ID }),
-    idempotencyKey: overrides.idempotencyKey ?? 'dispatch-fixture-v1',
+    ...bindingFixtureFields(overrides),
     phase: 'bound',
     queueWorkId: overrides.queueWorkId ?? QUEUE_WORK_ID,
-    kind: overrides.kind ?? 'code.change@1',
-    executorId: overrides.executorId ?? ExecutorId('codex-fixture'),
-    createdAt: overrides.createdAt ?? FIXTURE_TIME,
-    updatedAt: overrides.updatedAt ?? FIXTURE_TIME,
   })
   return value as BoundBinding
 }
