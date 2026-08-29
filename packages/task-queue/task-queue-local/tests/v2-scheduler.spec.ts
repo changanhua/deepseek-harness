@@ -359,7 +359,9 @@ describe('LocalTaskQueue v2 scheduler', () => {
       expect(internals.store.current().statesByWorkId.get(work.id)?.status).toBe('starting')
       expect(internals.store.current().attentionsById.size).toBe(0)
 
-      releaseQuiescence()
+      const release = releaseQuiescence
+      if (release === undefined) throw new Error('LiveAttempt cancellation did not expose its quiescence release')
+      release()
       await waitFor(() => internals.store.current().statesByWorkId.get(work.id)?.status === 'unknown')
       expect(order).toEqual(['start', 'cancel', 'quiescent', 'unknown-failed', 'unknown'])
       expect(cancelReason).toMatch(/could not persist the running attempt/)
