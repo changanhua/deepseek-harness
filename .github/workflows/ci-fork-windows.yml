@@ -1,0 +1,144 @@
+name: Fork CI (Windows)
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  DSH_BUILD_CLIENT_PROFILE: official
+  DSH_TELEMETRY_DISABLED: '1'
+
+concurrency:
+  group: fork-windows-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  windows-build:
+    name: Windows build and typecheck
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Enable Developer Mode
+        shell: pwsh
+        run: >-
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+      - name: Install immutable dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+      - name: Build repository
+        shell: pwsh
+        run: pnpm run build
+      - name: Confirm client typecheck
+        shell: pwsh
+        run: pnpm run typecheck:contracts-ready
+
+  c0-diff:
+    name: C0 differential quality
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out head
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          path: head
+          persist-credentials: false
+      - name: Detect Delivery C0 scope
+        id: scope
+        working-directory: head
+        shell: pwsh
+        run: |
+          $changed = @(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")
+          $c0 = @($changed | Where-Object {
+            $_ -match '^(packages/delivery/|packages/bundle/personal-delivery/|packages/client/ui-delivery/|docs/subsystems/delivery[./]|docs/specs/2026-08-29-personal-delivery)'
+          })
+          $hasC0 = $c0.Count -gt 0
+          "has_c0=$($hasC0.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          $c0 | ForEach-Object { Write-Host "C0 path: $_" }
+      - name: Check out trusted base
+        if: steps.scope.outputs.has_c0 == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          path: base
+          persist-credentials: false
+      - name: Enable Developer Mode
+        if: steps.scope.outputs.has_c0 == 'true'
+        shell: pwsh
+        run: >-
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+      - if: steps.scope.outputs.has_c0 == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - if: steps.scope.outputs.has_c0 == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+      - name: Install base and head dependencies
+        if: steps.scope.outputs.has_c0 == 'true'
+        shell: pwsh
+        run: |
+          pnpm --dir base install --frozen-lockfile
+          pnpm --dir head install --frozen-lockfile
+      - name: Build base and head contracts
+        if: steps.scope.outputs.has_c0 == 'true'
+        shell: pwsh
+        run: |
+          pnpm --dir base run build
+          pnpm --dir head run build
+      - name: Run C0 differential gates
+        if: steps.scope.outputs.has_c0 == 'true'
+        shell: pwsh
+        run: >-
+          pnpm --dir head run check:ci:fork-c0-diff --
+          --base-dir "${{ github.workspace }}/base"
+          --head-dir "${{ github.workspace }}/head"
+          --base-sha "${{ github.event.pull_request.base.sha }}"
+          --head-sha "${{ github.event.pull_request.head.sha }}"
+      - name: Run focused C0 tests and coverage
+        if: steps.scope.outputs.has_c0 == 'true'
+        working-directory: head
+        shell: pwsh
+        run: >-
+          pnpm exec vitest run
+          packages/delivery
+          packages/bundle/personal-delivery/tests
+          packages/client/ui-delivery/tests
+          scripts/test-invariants.spec.ts
+          --coverage
+          --coverage.include="packages/delivery/**/src/**/*.ts"
+          --coverage.include="packages/bundle/personal-delivery/src/**/*.ts"
+          --coverage.include="packages/client/ui-delivery/src/**/*.ts"
+
+  fork-checks:
+    name: fork checks passed
+    needs: [windows-build, c0-diff]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every fork check
+        shell: pwsh
+        run: |
+          $results = "${{ join(needs.*.result, ', ') }}"
+          if ($results -match 'failure|cancelled|skipped') {
+            Write-Error "Fork check results: $results"
+            exit 1
+          }
+          Write-Host "Fork checks succeeded: $results"
