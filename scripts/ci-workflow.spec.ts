@@ -55,6 +55,132 @@ describe('CI workflow', () => {
     }
   })
 
+  it('keeps required Wine and split native Windows jobs with upstream failover and fork-hosted fallback', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml')
+    const masterWorkflow = loadWorkflow('.github/workflows/ci-master.yml')
+    if (!isRecord(workflow.jobs)
+      || !isRecord(workflow.jobs.windows)
+      || !isRecord(workflow.jobs['windows-build'])
+      || !isRecord(workflow.jobs['windows-coverage'])
+      || !isRecord(workflow.jobs['windows-native-tests'])
+      || !isRecord(workflow.jobs['windows-observational'])
+      || !isRecord(workflow.jobs['node-24'])
+      || !isRecord(workflow.jobs['node-24-coverage'])
+      || !isRecord(workflow.jobs['node-24-consumers'])
+      || !isRecord(workflow.jobs['all-checks-passed'])
+      || !isRecord(masterWorkflow.jobs)
+      || !isRecord(masterWorkflow.jobs['wine-apt-cache'])
+      || !isRecord(masterWorkflow.jobs['serial-windows'])) {
+      throw new TypeError('CI workflow must define windows, windows-build, windows-coverage, windows-native-tests, windows-observational, node-24, node-24-coverage, node-24-consumers, and all-checks-passed; ci-master must define wine-apt-cache and serial-windows')
+    }
+
+    const windows = workflow.jobs.windows
+    const windowsBuild = workflow.jobs['windows-build']
+    const windowsCoverage = workflow.jobs['windows-coverage']
+    const windowsNativeTests = workflow.jobs['windows-native-tests']
+    const windowsObservational = workflow.jobs['windows-observational']
+    const wineAptCache = masterWorkflow.jobs['wine-apt-cache']
+    const serialWindows = masterWorkflow.jobs['serial-windows']
+    const node24 = workflow.jobs['node-24']
+    const node24Coverage = workflow.jobs['node-24-coverage']
+    const node24Consumers = workflow.jobs['node-24-consumers']
+    const aggregate = workflow.jobs['all-checks-passed']
+    if (!Array.isArray(windows.steps) || !Array.isArray(aggregate.needs)) {
+      throw new TypeError('Windows job must define steps and the aggregate must define needs')
+    }
+    const commandSteps = windows.steps.filter((step): step is Record<string, unknown> & { run: string } => (
+      isRecord(step) && typeof step.run === 'string'
+    ))
+
+    // Required PR job: Wine on ubuntu-latest, runs wine-windows-gates.sh.
+    expect(windows['runs-on']).toBe('ubuntu-latest')
+    expect(windows.name).toBe('windows node 24 / wine blocking')
+    expect(windows.if).toBe("github.event_name == 'pull_request'")
+    expect(commandSteps.some(step => step.run.includes('wine-windows-gates.sh'))).toBe(true)
+
+    // The split native jobs all resolve their pool through the Windows switch.
+    for (const [jobName, job] of [['windows-build', windowsBuild], ['windows-coverage', windowsCoverage], ['windows-native-tests', windowsNativeTests], ['windows-observational', windowsObservational]] as const) {
+      expect(typeof job['runs-on']).toBe('string')
+      expect(job['runs-on'], `${jobName} runs-on must use the Windows failover switch`).toContain('DSH_CI_FAILOVER_WINDOWS')
+      expect(job['runs-on'], `${jobName} runs-on must not use the Linux failover switch`).not.toContain('DSH_CI_FAILOVER_LINUX')
+      expect(job['runs-on']).toContain('self-hosted')
+      expect(job['runs-on']).toContain('dsh-win-ci')
+      expect(job['runs-on']).toContain('dsh-windows-2025-16core')
+      expect(job['runs-on']).toContain("github.repository == 'deepseek-ai/deepseek-harness'")
+      expect(job['runs-on']).toContain('windows-latest')
+      expect(job.if).toBe("github.event_name == 'pull_request'")
+    }
+
+    // windows-build runs the blocking build/site pair.
+    expect(windowsBuild.name).toBe('windows node 24 / build')
+    const buildSteps = windowsBuild.steps as unknown[]
+    const buildCommands = buildSteps.filter((step): step is Record<string, unknown> & { run: string } => (
+      isRecord(step) && typeof step.run === 'string'
+    ))
+    expect(buildCommands.map(step => step.run)).toContain('pnpm run check:ci:windows-blocking')
+
+    // windows-coverage uses the lower 4-partition profile.
+    expect(windowsCoverage.name).toBe('windows node 24 / coverage')
+    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: '4' })
+    const coverageSteps = windowsCoverage.steps as unknown[]
+    const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
+      isRecord(step) && typeof step.run === 'string'
+    ))
+    expect(coverageCommands.map(step => step.run)).toContain('pnpm run check:ci:coverage')
+
+    // windows-native-tests runs the Windows-specific specs.
+    expect(windowsNativeTests.name).toBe('windows node 24 / native tests')
+    const nativeTestSteps = windowsNativeTests.steps as unknown[]
+    const nativeTestCommands = nativeTestSteps.filter((step): step is Record<string, unknown> & { run: string } => (
+      isRecord(step) && typeof step.run === 'string'
+    ))
+    const nativeTestCommand = nativeTestCommands.map(step => step.run).join('\n')
+    expect(nativeTestCommand).toContain('--no-file-parallelism')
+    expect(nativeTestCommand).toContain('--testTimeout 90000')
+    expect(nativeTestCommand).toContain('tool-pwsh/tests/loader.spec.ts')
+    expect(nativeTestCommand).toContain('workflow-worker-thread.spec.ts')
+
+    // windows-observational is non-blocking.
+    expect(windowsObservational.name).toBe('windows node 24 / observational')
+    expect(windowsObservational['continue-on-error']).toBe(true)
+
+    // wine-apt-cache: master-only, seeds the Wine apt cache, lives in ci-master.
+    expect(wineAptCache.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+    expect(wineAptCache['runs-on']).toBe('ubuntu-latest')
+
+    // serial-windows: master-only standby, self-hosted, non-blocking, lives in ci-master.
+    expect(serialWindows.if).toBe("github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'push' && github.ref == 'refs/heads/master'")
+    expect(serialWindows['runs-on']).toEqual(['self-hosted', 'dsh-win-ci', 'windows'])
+    expect(serialWindows.name).toBe('serial / windows (self-hosted standby)')
+
+    // Aggregate: Wine and the required split native jobs are needed;
+    // windows-coverage is temporarily non-blocking while Windows ACP
+    // half-close tests are stabilized; observational stays out too.
+    expect(aggregate.needs).toContain('windows')
+    expect(aggregate.needs).toContain('windows-build')
+    expect(aggregate.needs).not.toContain('windows-coverage')
+    expect(aggregate.needs).toContain('windows-native-tests')
+    expect(aggregate.needs).not.toContain('windows-observational')
+    expect(aggregate.needs).not.toContain('serial-windows')
+
+    // Linux failover is a separate switch: the three required Linux workers
+    // and the verdict job resolve their pool through DSH_CI_FAILOVER_LINUX,
+    // never the Windows switch.
+    for (const [jobName, job] of [['node-24', node24], ['node-24-coverage', node24Coverage], ['node-24-consumers', node24Consumers]] as const) {
+      expect(typeof job['runs-on']).toBe('string')
+      expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
+      expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
+      expect(job['runs-on']).toContain('vm-backup')
+      expect(job['runs-on']).toContain("github.repository == 'deepseek-ai/deepseek-harness'")
+      expect(job['runs-on']).toContain('ubuntu-latest')
+    }
+    expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
+    expect(aggregate['runs-on']).not.toContain('DSH_CI_FAILOVER_WINDOWS')
+    expect(aggregate['runs-on']).toContain('vm-backup')
+    expect(aggregate['runs-on']).toContain("github.repository == 'deepseek-ai/deepseek-harness'")
+    expect(aggregate['runs-on']).toContain('ubuntu-latest')
+  })
+
   it('skips the upstream Cloudflare preview in forks', () => {
     const workflow = loadWorkflow('.github/workflows/build-preview-cloudflare.yml')
     const preview = workflowJob(workflow, 'preview')
@@ -156,6 +282,29 @@ describe('CI workflow', () => {
     expect(config).not.toContain('packages/lsp/lsp-stdio/src/connection.ts')
     expect(config).not.toContain('packages/lsp/lsp-stdio/src/index.ts')
     expect(config).not.toContain('packages/lsp/lsp-stdio/src/instance.ts')
+  })
+
+  it('requires release-shaped Python runtime validation on every published target', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml')
+    const pythonRuntime = workflowJob(workflow, 'python-runtime')
+    const aggregate = workflowJob(workflow, 'all-checks-passed')
+    if (!Array.isArray(aggregate.needs)) {
+      throw new TypeError('CI aggregate must define required job dependencies')
+    }
+
+    expect(pythonRuntime).toMatchObject({
+      if: "github.event_name == 'pull_request'",
+      name: 'python runtime / release-shaped matrix',
+      uses: './.github/workflows/build-exe-for-python-sdk.yml',
+      with: {
+        targets: 'node24-linux-x64,node24-linux-arm64,node24-macos-arm64,node24-win-x64',
+        ci: true,
+      },
+      secrets: {
+        DEEPSEEK_API_KEY_EXTERNAL: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
+      },
+    })
+    expect(aggregate.needs).toContain('python-runtime')
   })
 
   it('keeps every Vitest project process-isolated on native Windows', () => {
