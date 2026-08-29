@@ -126,7 +126,7 @@ async function storedPacket(local: Harness, suffix: string): Promise<WorkPacket>
     repository: {
       repositoryId: contract.repositoryId,
       selectionRule: contract.baseSelectionRule,
-      commit: contract.baseSelectionRule.commit,
+      commit: fixture.baseCommit,
     } as never,
     packet: packetDraft(fixture),
   })
@@ -232,14 +232,18 @@ describe('LocalDelivery persistence', () => {
   it('reopens an adopted Contract revision from durable storage', async () => {
     const pool = new MemoryMediaPool()
     const first = await harness(pool)
-    const stored = await first.ctx.delivery.adoptContractRevision(
-      adoptionRequest(contractRevisionFixture()),
-    )
+    const request = adoptionRequest(contractRevisionFixture())
+    const stored = await first.ctx.delivery.adoptContractRevision(request)
     await first.dispose()
     active.splice(active.indexOf(first), 1)
 
     const reopened = await harness(pool)
     expect(reopened.ctx.delivery.getContractRevision(stored.id)).toEqual(stored)
+    await expect(reopened.ctx.delivery.adoptContractRevision(request)).resolves.toEqual(stored)
+    await expect(reopened.ctx.delivery.adoptContractRevision({
+      ...request,
+      revision: { ...request.revision, context: 'conflicting context after restart' },
+    })).rejects.toMatchObject({ code: 'idempotency-conflict' })
   })
 
   it('enforces durable adoption idempotency', async () => {
@@ -328,7 +332,7 @@ describe('LocalDelivery persistence', () => {
         : undefined,
       acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
     })
-    const packet = await first.ctx.delivery.createWorkPacket({
+    const packetRequest = {
       idempotencyKey: 'create-packet-local-v1',
       contractRevisionId: contract.id,
       repository: {
@@ -337,12 +341,25 @@ describe('LocalDelivery persistence', () => {
         commit: fixture.baseCommit,
       } as never,
       packet: packetDraft(fixture),
-    })
+    }
+    const [packet, packetReplay] = await Promise.all([
+      first.ctx.delivery.createWorkPacket(packetRequest),
+      first.ctx.delivery.createWorkPacket(packetRequest),
+    ])
+    expect(packetReplay).toEqual(packet)
     await first.dispose()
     active.splice(active.indexOf(first), 1)
 
     const reopened = await harness(pool)
     expect(reopened.ctx.delivery.getWorkPacket(packet.id)).toEqual(packet)
+    await expect(reopened.ctx.delivery.createWorkPacket(
+      packetRequest,
+      async () => { throw new Error('durable replay must not resolve the plan blob') },
+    )).resolves.toEqual(packet)
+    await expect(reopened.ctx.delivery.createWorkPacket({
+      ...packetRequest,
+      packet: { ...packetRequest.packet, objective: 'conflicting objective after restart' },
+    })).rejects.toMatchObject({ code: 'idempotency-conflict' })
     expect(packet.verificationPlan.provenance).toEqual({
       kind: 'contract-field',
       contractRevisionId: contract.id,
@@ -507,6 +524,56 @@ describe('LocalDelivery persistence', () => {
       path,
       blobId: GitBlobId('4444444444444444444444444444444444444444'),
     })
+
+    const exactLimitBytes = new Uint8Array(DELIVERY_VERIFICATION_SOURCE_MAX_BYTES)
+    exactLimitBytes.fill(0x20)
+    exactLimitBytes.set(bytes)
+    await expect(local.ctx.delivery.createWorkPacket({
+      idempotencyKey: 'create-packet-git-blob-exact-limit',
+      contractRevisionId: contract.id,
+      repository: {
+        repositoryId: contract.repositoryId,
+        selectionRule: contract.baseSelectionRule,
+        commit: contract.baseSelectionRule.commit,
+      } as never,
+      packet: packetDraft(fixture),
+    }, async () => ({
+      repositoryId: contract.repositoryId,
+      commit: fixture.baseCommit,
+      path,
+      blobId: GitBlobId('5555555555555555555555555555555555555555'),
+      bytes: exactLimitBytes,
+    } as never))).resolves.toMatchObject({
+      verificationPlan: { checks: original.verificationSource.checks },
+    })
+
+    const multibyteDocument = JSON.stringify({
+      format: 'delivery-verification-plan@1',
+      checks: original.verificationSource.checks.map(check => ({
+        ...check,
+        name: '检查交付消费者',
+      })),
+    })
+    const multibyteBytes = new TextEncoder().encode(multibyteDocument)
+    expect(multibyteBytes.byteLength).toBeGreaterThan(multibyteDocument.length)
+    await expect(local.ctx.delivery.createWorkPacket({
+      idempotencyKey: 'create-packet-git-blob-multibyte',
+      contractRevisionId: contract.id,
+      repository: {
+        repositoryId: contract.repositoryId,
+        selectionRule: contract.baseSelectionRule,
+        commit: contract.baseSelectionRule.commit,
+      } as never,
+      packet: packetDraft(fixture),
+    }, async () => ({
+      repositoryId: contract.repositoryId,
+      commit: fixture.baseCommit,
+      path,
+      blobId: GitBlobId('6666666666666666666666666666666666666666'),
+      bytes: multibyteBytes,
+    } as never))).resolves.toMatchObject({
+      verificationPlan: { checks: [{ name: '检查交付消费者' }] },
+    })
   })
 
   it('rejects missing, mismatched, oversized, and malformed Contract Git blobs', async () => {
@@ -609,13 +676,18 @@ describe('LocalDelivery persistence', () => {
       } as never,
       packet: packetDraft(packetFixture),
     })
-    const submitting = await first.ctx.delivery.beginDispatch({
+    const dispatchRequest = {
       idempotencyKey: 'begin-change-dispatch-v1',
       packetId: packet.id,
-      kind: 'code.change@1',
+      kind: 'code.change@1' as const,
       executorId: ExecutorId('codex'),
       inputDigest: canonicalDigest({ packetId: packet.id }),
-    })
+    }
+    const [submitting, submittingReplay] = await Promise.all([
+      first.ctx.delivery.beginDispatch(dispatchRequest),
+      first.ctx.delivery.beginDispatch(dispatchRequest),
+    ])
+    expect(submittingReplay).toEqual(submitting)
     const bound = await first.ctx.delivery.bindDispatch({
       bindingId: submitting.id,
       queueWorkId: QueueWorkIdRef('queue-work-change-1'),
@@ -625,6 +697,11 @@ describe('LocalDelivery persistence', () => {
 
     const reopened = await harness(pool)
     expect(reopened.ctx.delivery.getDispatchBinding(bound.id)).toEqual(bound)
+    await expect(reopened.ctx.delivery.beginDispatch(dispatchRequest)).resolves.toEqual(bound)
+    await expect(reopened.ctx.delivery.beginDispatch({
+      ...dispatchRequest,
+      inputDigest: canonicalDigest({ packetId: packet.id, conflict: true }),
+    })).rejects.toMatchObject({ code: 'idempotency-conflict' })
   })
 
   it('keeps dispatch admission idempotent and Queue binding single-assignment', async () => {
@@ -662,6 +739,63 @@ describe('LocalDelivery persistence', () => {
       bindingId: submitting.id,
       queueWorkId: QueueWorkIdRef('queue-work-conflict'),
     })).rejects.toMatchObject({ code: 'invalid-transition' })
+  })
+
+  it('commits only one Queue Work identity when binding races', async () => {
+    const local = await harness(new MemoryMediaPool())
+    const packet = await storedPacket(local, 'dispatch-binding-race')
+    const submitting = await local.ctx.delivery.beginDispatch({
+      idempotencyKey: 'dispatch-binding-race',
+      packetId: packet.id,
+      kind: 'code.change@1',
+      executorId: ExecutorId('codex'),
+      inputDigest: canonicalDigest({ packetId: packet.id }),
+    })
+    const firstQueueWorkId = QueueWorkIdRef('queue-work-race-first')
+    const secondQueueWorkId = QueueWorkIdRef('queue-work-race-second')
+    const results = await Promise.allSettled([
+      local.ctx.delivery.bindDispatch({
+        bindingId: submitting.id,
+        queueWorkId: firstQueueWorkId,
+      }),
+      local.ctx.delivery.bindDispatch({
+        bindingId: submitting.id,
+        queueWorkId: secondQueueWorkId,
+      }),
+    ])
+
+    expect(results[0]).toMatchObject({
+      status: 'fulfilled',
+      value: { phase: 'bound', queueWorkId: firstQueueWorkId },
+    })
+    expect(results[1]).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'invalid-transition' },
+    })
+    expect(local.ctx.delivery.getDispatchBinding(submitting.id)).toMatchObject({
+      phase: 'bound',
+      queueWorkId: firstQueueWorkId,
+    })
+
+    const matching = await local.ctx.delivery.beginDispatch({
+      idempotencyKey: 'dispatch-binding-matching-race',
+      packetId: packet.id,
+      kind: 'code.verify@1',
+      inputDigest: canonicalDigest({ packetId: packet.id, kind: 'verification' }),
+    })
+    const matchingQueueWorkId = QueueWorkIdRef('queue-work-race-matching')
+    const matchingResults = await Promise.all([
+      local.ctx.delivery.bindDispatch({
+        bindingId: matching.id,
+        queueWorkId: matchingQueueWorkId,
+      }),
+      local.ctx.delivery.bindDispatch({
+        bindingId: matching.id,
+        queueWorkId: matchingQueueWorkId,
+      }),
+    ])
+    expect(matchingResults[1]).toEqual(matchingResults[0])
+    expect(local.ctx.delivery.getDispatchBinding(matching.id)).toEqual(matchingResults[0])
   })
 
   it('reopens a human acceptance committed from exact bound Queue and evidence facts', async () => {
@@ -769,27 +903,51 @@ describe('LocalDelivery persistence', () => {
       })],
     ])
 
-    const decision = await first.ctx.delivery.recordAcceptanceDecision({
+    const decisionRequest = {
       idempotencyKey: 'accept-packet-local-v1',
       packetId: packet.id,
       changeBindingId: changeBinding.id,
       verificationBindingId: verificationBinding.id,
-      decision: 'accepted',
+      decision: 'accepted' as const,
       reason: 'Independent verification passed and the result was reviewed.',
       actorId: 'local-operator',
       decisionNonce: 'accept-packet-local-v1',
-    }, async () => ({
+    }
+    const candidate = {
       completionClaim,
       changeQueueAttemptId: changeAttemptId,
       verificationIntent,
       verificationVerdict,
       verificationQueueAttemptId: verificationAttemptId,
-    }), async evidenceId => evidence.get(evidenceId))
+    }
+    const [decision, decisionReplay] = await Promise.all([
+      first.ctx.delivery.recordAcceptanceDecision(
+        decisionRequest,
+        async () => candidate,
+        async evidenceId => evidence.get(evidenceId),
+      ),
+      first.ctx.delivery.recordAcceptanceDecision(
+        decisionRequest,
+        async () => candidate,
+        async evidenceId => evidence.get(evidenceId),
+      ),
+    ])
+    expect(decisionReplay).toEqual(decision)
     await first.dispose()
     active.splice(active.indexOf(first), 1)
 
     const reopened = await harness(pool)
     expect(reopened.ctx.delivery.snapshot().acceptanceDecisions).toEqual([decision])
+    await expect(reopened.ctx.delivery.recordAcceptanceDecision(
+      decisionRequest,
+      async () => { throw new Error('durable replay must not resolve Queue results') },
+      async () => { throw new Error('durable replay must not read evidence') },
+    )).resolves.toEqual(decision)
+    await expect(reopened.ctx.delivery.recordAcceptanceDecision({
+      ...decisionRequest,
+      reason: 'conflicting reason after restart',
+    }, async () => candidate, async evidenceId => evidence.get(evidenceId)))
+      .rejects.toMatchObject({ code: 'idempotency-conflict' })
   })
 
   it('rejects broken Packet, binding, Attempt, intent, and verdict authority before commit', async () => {
@@ -1016,6 +1174,53 @@ describe('LocalDelivery persistence', () => {
     await expect(run('evidence-wrong-id', chain.candidate, async () => evidenceRefFixture({
       id: EvidenceId('wrong-evidence-id'),
     }))).rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    const resumeCapsuleId = EvidenceId('evidence-resume-capsule')
+    const candidateWithResumeCapsule = {
+      ...chain.candidate,
+      completionClaim: completedClaimFixture({
+        ...chain.candidate.completionClaim,
+        resumeCapsuleEvidenceId: resumeCapsuleId,
+      }),
+    }
+    await expect(run(
+      'evidence-resume-capsule-missing',
+      candidateWithResumeCapsule,
+      async id => chain.evidence.get(id),
+    )).rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    const resumeCapsuleEvidence = evidenceRefFixture({
+      id: resumeCapsuleId,
+      kind: 'resume-capsule',
+      provenance: {
+        kind: 'change-attempt',
+        packetId: chain.packet.id,
+        queueWorkId: chain.candidate.completionClaim.queueWorkId,
+        queueAttemptId: chain.candidate.completionClaim.queueAttemptId,
+      },
+    })
+    const evidenceWithResumeCapsule = new Map(chain.evidence).set(resumeCapsuleId, resumeCapsuleEvidence)
+    const resolveResumeCapsule = vi.fn(async (id: EvidenceId) => evidenceWithResumeCapsule.get(id))
+    await expect(run(
+      'evidence-resume-capsule-valid',
+      candidateWithResumeCapsule,
+      resolveResumeCapsule,
+    )).resolves.toMatchObject({ decision: 'accepted' })
+    expect(resolveResumeCapsule).toHaveBeenCalledWith(resumeCapsuleId)
+
+    const wrongResumeCapsule = new Map(evidenceWithResumeCapsule).set(resumeCapsuleId, {
+      ...resumeCapsuleEvidence,
+      kind: 'log',
+      provenance: {
+        ...resumeCapsuleEvidence.provenance,
+        queueAttemptId: QueueAttemptIdRef('wrong-resume-attempt'),
+      },
+    } as never)
+    await expect(run(
+      'evidence-resume-capsule-unrelated',
+      candidateWithResumeCapsule,
+      async id => wrongResumeCapsule.get(id),
+    )).rejects.toMatchObject({ code: 'acceptance-denied' })
 
     const changeId = chain.candidate.completionClaim.evidenceIds[0]!
     const verificationId = chain.candidate.verificationVerdict.checkResults[0]!.evidenceIds[0]!

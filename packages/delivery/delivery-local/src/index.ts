@@ -301,12 +301,20 @@ export class LocalDelivery extends Delivery {
       }
       return structuredClone(located.binding)
     }
-    const bound = await this.bindings.update(located.recordKey, current => dispatchBindingSchema.parse({
-      ...current,
-      phase: 'bound',
-      queueWorkId: request.queueWorkId,
-      updatedAt: new Date().toISOString(),
-    }))
+    const bound = await this.bindings.update(located.recordKey, (current) => {
+      if (current.phase === 'bound') {
+        if (current.queueWorkId !== request.queueWorkId) {
+          throw new DeliveryError('invalid-transition', 'a bound Dispatch binding cannot change Queue Work identity')
+        }
+        return current
+      }
+      return dispatchBindingSchema.parse({
+        ...current,
+        phase: 'bound',
+        queueWorkId: request.queueWorkId,
+        updatedAt: new Date().toISOString(),
+      })
+    })
     return structuredClone(bound) as DispatchBinding & { readonly phase: 'bound' }
   }
 
@@ -512,7 +520,10 @@ export class LocalDelivery extends Delivery {
     const claimFindings = completionClaimEvidenceFindings(claim, evidenceRefs)
     requireDelivery(claimFindings.length === 0, 'acceptance-denied', claimFindings.join('; '))
     const byId = new Map(evidenceRefs.map(reference => [reference.id, reference]))
-    const claimEvidenceIds = new Set(claim.evidenceIds)
+    const claimEvidenceIds = new Set([
+      ...claim.evidenceIds,
+      ...claim.resumeCapsuleEvidenceId === null ? [] : [claim.resumeCapsuleEvidenceId],
+    ])
     requireDelivery(
       claim.evidenceIds.every(id => verdict.evidenceIds.includes(id)),
       'acceptance-denied',
@@ -535,6 +546,18 @@ export class LocalDelivery extends Delivery {
       'acceptance-denied',
       `claim evidence '${String(unrelatedClaim)}' has unrelated provenance`,
     )
+    if (claim.resumeCapsuleEvidenceId !== null) {
+      const resumeCapsule = byId.get(claim.resumeCapsuleEvidenceId)
+      requireDelivery(
+        resumeCapsule?.kind === 'resume-capsule'
+          && resumeCapsule.provenance.kind === 'change-attempt'
+          && resumeCapsule.provenance.packetId === packet.id
+          && resumeCapsule.provenance.queueWorkId === changeQueueWorkId
+          && resumeCapsule.provenance.queueAttemptId === claim.queueAttemptId,
+        'acceptance-denied',
+        `resume capsule evidence '${claim.resumeCapsuleEvidenceId}' has unrelated provenance`,
+      )
+    }
     const verificationEvidence = verdict.checkResults.flatMap(result =>
       result.evidenceIds.map(evidenceId => ({ evidenceId, result })))
     const unrelatedCheck = verificationEvidence.find(({ evidenceId, result }) => {
@@ -629,6 +652,7 @@ function acceptanceEvidenceIds(
 ): readonly EvidenceId[] {
   const ids = new Set<EvidenceId>()
   for (const id of claim.evidenceIds) ids.add(id)
+  if (claim.resumeCapsuleEvidenceId !== null) ids.add(claim.resumeCapsuleEvidenceId)
   for (const id of verdict.evidenceIds) ids.add(id)
   for (const result of verdict.checkResults) {
     for (const id of result.evidenceIds) ids.add(id)
