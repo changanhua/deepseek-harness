@@ -49,6 +49,7 @@ export function apply(ctx: ClientContext): void {
     createPacket: input => runtime.createPacket(input),
     startChange: input => runtime.startChange(input),
     startVerification: input => runtime.startVerification(input),
+    selectPacket: (packetId) => { runtime.selectPacket(packetId) },
     readEvidence: input => runtime.readEvidence(input),
     recordDecision: input => runtime.recordDecision(input),
   })

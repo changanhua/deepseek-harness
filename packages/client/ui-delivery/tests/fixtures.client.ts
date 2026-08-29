@@ -4,6 +4,7 @@ import {
   DispatchBindingId,
   EvidenceId,
   ExecutorId,
+  GitCommitId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   VerificationVerdictId,
@@ -145,7 +146,7 @@ export function passedVerdictFixture(
     schemaVersion: 1,
     id: VerificationVerdictId('verification-verdict-fixture'),
     packetId: WorkPacketId('work-packet-fixture'),
-    targetCommit: TARGET,
+    targetCommit: GitCommitId(TARGET),
     baseCommit: BASE,
     verificationPlanDigest: DIGEST,
     status: 'passed',
@@ -180,13 +181,11 @@ export function acceptedDecisionFixture(
     schemaVersion: 1,
     id: AcceptanceDecisionId('acceptance-decision-fixture'),
     packetId: WorkPacketId('work-packet-fixture'),
-    targetCommit: TARGET,
+    targetCommit: GitCommitId(TARGET),
     verdictId: VerificationVerdictId('verification-verdict-fixture'),
     decision: 'accepted',
     reason: 'Independent verification passed and the outcome was reviewed.',
-    actor: { kind: 'human', actorId: 'developer-fixture' },
-    decisionNonce: 'acceptance-fixture-v1',
     decidedAt: TIME,
     ...overrides,
-  } as DeliveryAcceptanceDecisionView
+  }
 }

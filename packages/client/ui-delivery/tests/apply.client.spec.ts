@@ -148,9 +148,12 @@ describe('ui-delivery client composition', () => {
     for (const operation of [
       b.remote.createPacket,
       b.remote.startVerification,
-      b.remote.readEvidence,
       b.remote.recordDecision,
     ]) operation.mockResolvedValue({ ok: true, value: {} })
+    b.remote.readEvidence.mockResolvedValue({
+      ok: true,
+      value: { provenance: { packetId: 'packet-1' } },
+    })
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     const workspace = (b.slots.entries('shell.view')[0]!.inject as unknown as () => {
@@ -159,6 +162,7 @@ describe('ui-delivery client composition', () => {
       cancel(): void
       createPacket(input: unknown): Promise<boolean>
       startVerification(input: unknown): Promise<boolean>
+      selectPacket(packetId: string): void
       readEvidence(input: unknown): Promise<boolean>
       recordDecision(input: unknown): Promise<boolean>
     })()
@@ -173,7 +177,10 @@ describe('ui-delivery client composition', () => {
     await vi.waitFor(() => { expect(b.snapshotCall.mock.calls.length).toBeGreaterThan(1) })
     await expect(workspace.startVerification({ packetId: 'packet-1' })).resolves.toBe(true)
     await vi.waitFor(() => { expect(b.snapshotCall.mock.calls.length).toBeGreaterThan(2) })
-    await expect(workspace.readEvidence({ evidenceId: 'evidence-1' })).resolves.toBe(true)
+    workspace.selectPacket('packet-1')
+    await expect(workspace.readEvidence({
+      packetId: 'packet-1', evidenceId: 'evidence-1',
+    })).resolves.toBe(true)
     await expect(workspace.recordDecision({ packetId: 'packet-1' })).resolves.toBe(true)
 
     expect(b.remote.createPacket).toHaveBeenCalled()

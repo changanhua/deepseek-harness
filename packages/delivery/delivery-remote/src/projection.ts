@@ -4,8 +4,14 @@ import type { DeliverySnapshot } from '@deepseek-ai/dsh-delivery'
 import {
   QueueAttemptIdRef,
   QueueWorkIdRef,
+  canonicalDigest,
+  codeChangeIntentSchema,
   codeChangeOutputSchema,
+  codeVerifyIntentSchema,
   codeVerifyOutputSchema,
+  resolvedCodeChangeSchema,
+  resolvedCodeVerifySchema,
+  type AcceptanceDecision,
   type CompletionClaim,
   type DispatchBinding,
   type VerificationVerdict,
@@ -14,6 +20,7 @@ import {
 import type { Attention, WorkView } from '@deepseek-ai/dsh-task-queue'
 import type {
   DeliveryAcceptanceDecisionView,
+  DeliveryAttentionReason,
   DeliveryDispatchBindingView,
   DeliveryLane,
   DeliveryQueueWorkView,
@@ -57,6 +64,26 @@ export function projectDispatchBinding(binding: DispatchBinding): DeliveryDispat
   }
 }
 
+/**
+ * Remove the trusted Host actor and decision nonce before browser transport.
+ * @param decision - Durable Delivery acceptance decision.
+ * @returns the browser-safe decision facts required by the workbench.
+ */
+export function projectAcceptanceDecision(
+  decision: AcceptanceDecision,
+): DeliveryAcceptanceDecisionView {
+  return {
+    schemaVersion: decision.schemaVersion,
+    id: decision.id,
+    packetId: decision.packetId,
+    targetCommit: decision.targetCommit,
+    verdictId: decision.verdictId,
+    decision: decision.decision,
+    reason: decision.reason,
+    decidedAt: decision.decidedAt,
+  }
+}
+
 function queueView(view: WorkView): DeliveryQueueWorkView {
   return {
     id: QueueWorkIdRef(String(view.work.id)),
@@ -69,22 +96,49 @@ function queueView(view: WorkView): DeliveryQueueWorkView {
       category: view.state.failure.category,
       sideEffect: view.state.failure.sideEffect,
       retriable: view.state.failure.retriable,
-      message: view.state.failure.message,
     },
     cancelRequestedAt: view.state.cancelRequestedAt,
     updatedAt: view.state.updatedAt,
   }
 }
 
+function matchesBoundWork(binding: DispatchBinding, view: WorkView): boolean {
+  return binding.phase === 'bound'
+    && String(view.work.id) === binding.queueWorkId
+    && view.work.kind === binding.kind
+    && String(view.state.workId) === binding.queueWorkId
+}
+
+function exactSuccessfulResult(
+  binding: DispatchBinding,
+  view: WorkView,
+): NonNullable<WorkView['result']> | null {
+  const result = view.result
+  if (
+    view.state.status !== 'succeeded'
+    || result === null
+    || view.state.resultId !== result.id
+    || result.workId !== view.work.id
+    || result.kind !== binding.kind
+    || !view.attempts.some(attempt =>
+      attempt.id === result.attemptId
+        && attempt.workId === view.work.id
+        && attempt.status === 'succeeded',
+    )
+  ) return null
+  return result
+}
+
 function latestDecision(
-  decisions: readonly DeliveryAcceptanceDecisionView[],
+  decisions: readonly AcceptanceDecision[],
   packet: WorkPacket,
 ): DeliveryAcceptanceDecisionView | null {
-  return decisions
+  const decision = decisions
     .filter(decision => decision.packetId === packet.id)
     .toSorted((left, right) =>
       right.decidedAt.localeCompare(left.decidedAt) || right.id.localeCompare(left.id),
     )[0] ?? null
+  return decision === null ? null : projectAcceptanceDecision(decision)
 }
 
 function laneFor(input: {
@@ -150,29 +204,84 @@ export function projectDeliverySnapshot(
       )
     const completionClaims: CompletionClaim[] = []
     const verificationVerdicts: VerificationVerdict[] = []
-    const reasons = new Set<string>()
+    const reasons = new Set<DeliveryAttentionReason>()
     const dispatches = packetBindings.map((binding): DeliveryWorkbenchDispatch => {
       const work = binding.phase === 'bound' ? works.get(String(binding.queueWorkId)) : undefined
       if (binding.phase === 'bound' && work === undefined) {
-        reasons.add(`Bound ${binding.kind} work is unavailable`)
+        reasons.add('bound-work-unavailable')
+      }
+      if (work !== undefined && !matchesBoundWork(binding, work)) {
+        reasons.add('projection-inconsistent')
+        return { binding: projectDispatchBinding(binding), queue: null }
       }
       if (work?.state.failure !== null && work?.state.failure !== undefined) {
-        reasons.add(work.state.failure.message)
+        reasons.add('queue-work-failed')
       }
-      for (const attention of binding.phase === 'bound'
-        ? attentionWorkIds.get(String(binding.queueWorkId)) ?? []
-        : []) {
-        reasons.add(`Queue requires operator attention: ${attention.kind}`)
+      if (binding.phase === 'bound'
+        && (attentionWorkIds.get(String(binding.queueWorkId))?.length ?? 0) > 0) {
+        reasons.add('queue-attention')
       }
-      if (work?.state.status === 'succeeded' && work.result !== null) {
+      if (work?.state.status === 'succeeded') {
+        const result = exactSuccessfulResult(binding, work)
+        if (result === null) {
+          reasons.add('projection-inconsistent')
+          return { binding: projectDispatchBinding(binding), queue: queueView(work) }
+        }
         if (binding.kind === 'code.change@1') {
-          const parsed = codeChangeOutputSchema.safeParse(work.result.output)
-          if (parsed.success) completionClaims.push(parsed.data.completionClaim)
-          else reasons.add('Code change result is invalid')
+          const intent = codeChangeIntentSchema.safeParse(work.work.intent)
+          const resolved = resolvedCodeChangeSchema.safeParse(work.work.resolved)
+          const output = codeChangeOutputSchema.safeParse(result.output)
+          if (!intent.success || !resolved.success || !output.success) {
+            reasons.add('change-result-invalid')
+          } else {
+            const claim = output.data.completionClaim
+            if (
+              intent.data.packetId !== packet.id
+              || work.work.intentDigest !== canonicalDigest(intent.data)
+              || binding.inputDigest !== canonicalDigest(intent.data)
+              || resolved.data.packetId !== packet.id
+              || resolved.data.contractRevisionId !== packet.contractRevisionId
+              || resolved.data.repositoryId !== packet.repositoryId
+              || resolved.data.baseCommit !== packet.baseCommit
+              || resolved.data.executorId !== binding.executorId
+              || claim.packetId !== packet.id
+              || claim.queueWorkId !== binding.queueWorkId
+              || claim.queueAttemptId !== QueueAttemptIdRef(String(result.attemptId))
+            ) {
+              reasons.add('projection-inconsistent')
+            } else {
+              completionClaims.push(claim)
+            }
+          }
         } else {
-          const parsed = codeVerifyOutputSchema.safeParse(work.result.output)
-          if (parsed.success) verificationVerdicts.push(parsed.data.verificationVerdict)
-          else reasons.add('Verification result is invalid')
+          const intent = codeVerifyIntentSchema.safeParse(work.work.intent)
+          const resolved = resolvedCodeVerifySchema.safeParse(work.work.resolved)
+          const output = codeVerifyOutputSchema.safeParse(result.output)
+          if (!intent.success || !resolved.success || !output.success) {
+            reasons.add('verification-result-invalid')
+          } else {
+            const verdict = output.data.verificationVerdict
+            if (
+              intent.data.packetId !== packet.id
+              || intent.data.verificationPlanDigest !== packet.verificationPlan.digest
+              || work.work.intentDigest !== canonicalDigest(intent.data)
+              || binding.inputDigest !== canonicalDigest(intent.data)
+              || resolved.data.packetId !== packet.id
+              || resolved.data.contractRevisionId !== packet.contractRevisionId
+              || resolved.data.repositoryId !== packet.repositoryId
+              || resolved.data.baseCommit !== packet.baseCommit
+              || resolved.data.targetCommit !== intent.data.targetCommit
+              || resolved.data.trustedPlan.digest !== packet.verificationPlan.digest
+              || verdict.packetId !== packet.id
+              || verdict.baseCommit !== packet.baseCommit
+              || verdict.targetCommit !== intent.data.targetCommit
+              || verdict.verificationPlanDigest !== packet.verificationPlan.digest
+            ) {
+              reasons.add('projection-inconsistent')
+            } else {
+              verificationVerdicts.push(verdict)
+            }
+          }
         }
       }
       return {
@@ -183,19 +292,26 @@ export function projectDeliverySnapshot(
     const completionClaim = completionClaims.at(-1) ?? null
     const verificationVerdict = verificationVerdicts.at(-1) ?? null
     if (completionClaim !== null && completionClaim.disposition !== 'completed') {
-      reasons.add(`Change reported ${completionClaim.disposition}`)
+      reasons.add(completionClaim.disposition === 'blocked' ? 'change-blocked' : 'change-interrupted')
     }
     if (verificationVerdict !== null && verificationVerdict.status !== 'passed') {
-      reasons.add(`Verification reported ${verificationVerdict.status}`)
+      reasons.add(verificationVerdict.status === 'failed'
+        ? 'verification-failed'
+        : 'verification-needs-human-review')
     }
     const acceptanceDecision = latestDecision(delivery.acceptanceDecisions, packet)
-    if (acceptanceDecision?.decision === 'rejected') reasons.add('Human decision rejected the Packet')
-    const lane = laneFor({
-      decision: acceptanceDecision,
-      claim: completionClaim,
-      verdict: verificationVerdict,
-      dispatches,
-    })
+    if (acceptanceDecision?.decision === 'rejected') reasons.add('decision-rejected')
+    const projectionBlocked = reasons.has('projection-inconsistent')
+      || reasons.has('change-result-invalid')
+      || reasons.has('verification-result-invalid')
+    const lane = projectionBlocked
+      ? 'blocked'
+      : laneFor({
+        decision: acceptanceDecision,
+        claim: completionClaim,
+        verdict: verificationVerdict,
+        dispatches,
+      })
     return {
       contractRevision,
       packet,

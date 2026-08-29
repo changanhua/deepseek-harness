@@ -4,6 +4,8 @@ import {
   ContractRevisionId,
   DELIVERY_SCHEMA_VERSION,
   DispatchBindingId,
+  GitCommitId,
+  QueueAttemptIdRef,
   QueueWorkIdRef,
   VerificationVerdictId,
   WorkPacketId,
@@ -41,8 +43,19 @@ function queueView(input: {
   output?: unknown
   failure?: { category: string; message: string }
 }): WorkView {
+  const packet = readyWorkPacketFixture({
+    id: WorkPacketId(input.packetId),
+    contractRevisionId: ContractRevisionId(input.packetId.replace(/^packet-/u, 'contract-')),
+  })
   const id = WorkId(input.id)
   const attemptId = AttemptId(`${input.id}-attempt`)
+  const intent = input.kind === 'code.change@1'
+    ? { packetId: WorkPacketId(input.packetId) }
+    : {
+      packetId: WorkPacketId(input.packetId),
+      targetCommit: '2222222222222222222222222222222222222222',
+      verificationPlanDigest: packet.verificationPlan.digest,
+    }
   const terminal = input.status === 'succeeded' || input.status === 'failed'
   const failure = input.failure === undefined
     ? null
@@ -57,18 +70,12 @@ function queueView(input: {
       id,
       kind: input.kind,
       title: input.id,
-      intent: input.kind === 'code.change@1'
-        ? { packetId: WorkPacketId(input.packetId) }
-        : {
-          packetId: WorkPacketId(input.packetId),
-          targetCommit: '2222222222222222222222222222222222222222',
-          verificationPlanDigest: 'sha256:20cd74a4560bc768b95325e9c9777483b3658368746f74884db9602d3a024bce',
-        },
-      intentDigest: `sha256:${'1'.repeat(64)}`,
+      intent,
+      intentDigest: canonicalDigest(intent),
       resolved: input.kind === 'code.change@1'
         ? {
           packetId: WorkPacketId(input.packetId),
-          contractRevisionId: ContractRevisionId(`contract-${input.packetId}`),
+          contractRevisionId: packet.contractRevisionId,
           repositoryId: 'repository-fixture',
           baseCommit: '1111111111111111111111111111111111111111',
           executorId: 'codex-fixture',
@@ -76,11 +83,11 @@ function queueView(input: {
         }
         : {
           packetId: WorkPacketId(input.packetId),
-          contractRevisionId: ContractRevisionId(`contract-${input.packetId}`),
+          contractRevisionId: packet.contractRevisionId,
           repositoryId: 'repository-fixture',
           baseCommit: '1111111111111111111111111111111111111111',
           targetCommit: '2222222222222222222222222222222222222222',
-          trustedPlan: readyWorkPacketFixture().verificationPlan,
+          trustedPlan: packet.verificationPlan,
         },
       policy: { maxAttempts: 1 },
       resources: [],
@@ -122,6 +129,10 @@ function queueView(input: {
       }
       : null,
   } as unknown as WorkView
+}
+
+function corruptWork(value: unknown): WorkView {
+  return value as WorkView
 }
 
 function makeService(deliverySnapshot: ReturnType<typeof deliveryFacts>, works: readonly WorkView[]) {
@@ -200,6 +211,8 @@ function deliveryFacts() {
 
 describe('Delivery Remote workbench projection', () => {
   it('derives every lane from Delivery and Queue facts in deterministic packet order', () => {
+    const facts = deliveryFacts()
+    const acceptedPacket = facts.workPackets.find(packet => packet.id === 'packet-accepted')!
     const reviewClaim = completedClaimFixture({
       packetId: WorkPacketId('packet-review'),
       queueWorkId: QueueWorkIdRef('work-review'),
@@ -213,8 +226,10 @@ describe('Delivery Remote workbench projection', () => {
     const verdict = passedVerdictFixture({
       id: VerificationVerdictId('verdict-accepted'),
       packetId: WorkPacketId('packet-accepted'),
+      baseCommit: acceptedPacket.baseCommit,
+      verificationPlanDigest: acceptedPacket.verificationPlan.digest,
     })
-    const service = makeService(deliveryFacts(), [
+    const service = makeService(facts, [
       queueView({
         id: 'work-review',
         kind: 'code.change@1',
@@ -227,7 +242,10 @@ describe('Delivery Remote workbench projection', () => {
         kind: 'code.change@1',
         packetId: 'packet-blocked',
         status: 'failed',
-        failure: { category: 'executor', message: 'Codex failed' },
+        failure: {
+          category: 'executor',
+          message: 'secret=CREDENTIAL C:\\private idempotency-key=delivery:packet:secret',
+        },
       }),
       queueView({
         id: 'work-accepted-change',
@@ -255,7 +273,9 @@ describe('Delivery Remote workbench projection', () => {
       ['packet-ready', 'ready'],
     ])
     expect(snapshot.cards.find(card => card.packet.id === 'packet-blocked')?.attentionReasons)
-      .toContain('Codex failed')
+      .toContain('queue-work-failed')
+    expect(JSON.stringify(snapshot)).not.toContain('CREDENTIAL')
+    expect(JSON.stringify(snapshot)).not.toContain('idempotency-key')
   })
 
   it('projects only browser-safe binding and Queue fields', () => {
@@ -268,6 +288,8 @@ describe('Delivery Remote workbench projection', () => {
     expect(json).not.toContain('resolved')
     expect(json).not.toContain('intentDigest')
     expect(json).not.toContain('ownerSessionId')
+    expect(json).not.toContain('actorId')
+    expect(json).not.toContain('decisionNonce')
   })
 
   it('fails closed when a Packet references an absent Contract revision', () => {
@@ -275,7 +297,7 @@ describe('Delivery Remote workbench projection', () => {
     facts.contractRevisions = facts.contractRevisions.filter(contract => contract.id !== 'contract-ready')
     const service = makeService(facts, [])
 
-    expect(() => service.snapshot(signal)).toThrow('Packet references an unavailable Contract revision')
+    expect(() => service.snapshot(signal)).toThrow('Delivery snapshot projection was refused')
   })
 
   it('uses one Delivery read and one Queue read for a complete snapshot', () => {
@@ -347,18 +369,27 @@ describe('Delivery Remote workbench projection', () => {
     }])
     expect(blocked.cards[0]).toMatchObject({
       lane: 'blocked',
-      attentionReasons: [
-        'Change reported blocked',
-        'Queue requires operator attention: completion',
-        'Queue requires operator attention: failure',
-      ],
+      attentionReasons: ['change-blocked', 'queue-attention'],
     })
+
+    const needsDecision = {
+      ...completed,
+      disposition: 'needs-decision' as const,
+      checkpointCommit: null,
+      evidenceIds: [],
+      question: 'Which bounded outcome should continue?',
+    }
+    const interrupted = projectDeliverySnapshot(base, [queueView({
+      id: 'work-edge', kind: 'code.change@1', packetId: packet.id,
+      status: 'succeeded', output: { completionClaim: needsDecision },
+    })], [])
+    expect(interrupted.cards[0]?.attentionReasons).toContain('change-interrupted')
 
     const invalid = projectDeliverySnapshot(base, [queueView({
       id: 'work-edge', kind: 'code.change@1', packetId: packet.id,
       status: 'succeeded', output: {},
     })], [])
-    expect(invalid.cards[0]?.attentionReasons).toContain('Code change result is invalid')
+    expect(invalid.cards[0]?.attentionReasons).toContain('change-result-invalid')
 
     const rejected = projectDeliverySnapshot({
       ...base,
@@ -386,7 +417,7 @@ describe('Delivery Remote workbench projection', () => {
     }, [], [])
     expect(rejected.cards[0]).toMatchObject({
       lane: 'blocked',
-      attentionReasons: ['Bound code.change@1 work is unavailable', 'Human decision rejected the Packet'],
+      attentionReasons: ['bound-work-unavailable', 'decision-rejected'],
     })
   })
 
@@ -417,7 +448,12 @@ describe('Delivery Remote workbench projection', () => {
     const verify = dispatchBindingSchema.parse({
       schemaVersion: 1,
       id: DispatchBindingId('binding-verify-edge'), packetId: packet.id,
-      inputDigest: canonicalDigest({ packetId: packet.id }), idempotencyKey: 'verify-edge',
+      inputDigest: canonicalDigest({
+        packetId: packet.id,
+        targetCommit: '2222222222222222222222222222222222222222',
+        verificationPlanDigest: packet.verificationPlan.digest,
+      }),
+      idempotencyKey: 'verify-edge',
       kind: 'code.verify@1', phase: 'bound', queueWorkId: QueueWorkIdRef('work-verify-edge'),
       executorId: null, createdAt: TIME, updatedAt: TIME,
     })
@@ -426,10 +462,11 @@ describe('Delivery Remote workbench projection', () => {
     }, [queueView({
       id: 'work-verify-edge', kind: 'code.verify@1', packetId: packet.id, status: 'succeeded', output: {},
     })], [])
-    expect(invalidVerify.cards[0]?.attentionReasons).toContain('Verification result is invalid')
+    expect(invalidVerify.cards[0]?.attentionReasons).toContain('verification-result-invalid')
 
     const failedVerdict = passedVerdictFixture({
       packetId: packet.id,
+      baseCommit: packet.baseCommit,
       verificationPlanDigest: packet.verificationPlan.digest,
       status: 'failed',
       reviewReasons: ['Required check failed'],
@@ -441,7 +478,187 @@ describe('Delivery Remote workbench projection', () => {
       status: 'succeeded', output: { verificationVerdict: failedVerdict },
     })], [])
     expect(failed.cards[0]).toMatchObject({
-      lane: 'blocked', attentionReasons: ['Verification reported failed'],
+      lane: 'blocked', attentionReasons: ['verification-failed'],
     })
+
+    const reviewVerdict = passedVerdictFixture({
+      packetId: packet.id,
+      baseCommit: packet.baseCommit,
+      verificationPlanDigest: packet.verificationPlan.digest,
+      status: 'needs-human-review',
+      reviewReasons: ['Independent review required'],
+    })
+    const needsReview = projectDeliverySnapshot({
+      contractRevisions: [contract], workPackets: [packet], dispatchBindings: [verify], acceptanceDecisions: [],
+    }, [queueView({
+      id: 'work-verify-edge', kind: 'code.verify@1', packetId: packet.id,
+      status: 'succeeded', output: { verificationVerdict: reviewVerdict },
+    })], [])
+    expect(needsReview.cards[0]?.attentionReasons)
+      .toContain('verification-needs-human-review')
+  })
+
+  it('blocks every mismatched binding, Work, result, Attempt, claim, and verdict identity', () => {
+    const contract = contractRevisionFixture({ id: ContractRevisionId('contract-integrity') })
+    const packet = readyWorkPacketFixture({
+      id: WorkPacketId('packet-integrity'),
+      contractRevisionId: contract.id,
+    })
+    const change = boundBindingFixture({
+      id: DispatchBindingId('binding-integrity-change'),
+      packetId: packet.id,
+      queueWorkId: QueueWorkIdRef('work-integrity-change'),
+    })
+    const verifyIntent = {
+      packetId: packet.id,
+      targetCommit: GitCommitId('2222222222222222222222222222222222222222'),
+      verificationPlanDigest: packet.verificationPlan.digest,
+    }
+    const verify = dispatchBindingSchema.parse({
+      schemaVersion: 1,
+      id: DispatchBindingId('binding-integrity-verify'),
+      packetId: packet.id,
+      inputDigest: canonicalDigest(verifyIntent),
+      idempotencyKey: 'verify-integrity',
+      kind: 'code.verify@1',
+      phase: 'bound',
+      queueWorkId: QueueWorkIdRef('work-integrity-verify'),
+      executorId: null,
+      createdAt: TIME,
+      updatedAt: TIME,
+    })
+    const claim = completedClaimFixture({
+      packetId: packet.id,
+      queueWorkId: change.queueWorkId,
+      queueAttemptId: 'work-integrity-change-attempt' as never,
+    })
+    const verdict = passedVerdictFixture({
+      packetId: packet.id,
+      baseCommit: packet.baseCommit,
+      targetCommit: verifyIntent.targetCommit,
+      verificationPlanDigest: packet.verificationPlan.digest,
+    })
+    const validChange = queueView({
+      id: 'work-integrity-change', kind: 'code.change@1', packetId: packet.id,
+      status: 'succeeded', output: { completionClaim: claim },
+    })
+    const validVerify = queueView({
+      id: 'work-integrity-verify', kind: 'code.verify@1', packetId: packet.id,
+      status: 'succeeded', output: { verificationVerdict: verdict },
+    })
+    const wrongPacket = WorkPacketId('packet-other')
+    const scenarios: readonly [string, WorkView, WorkView][] = [
+      ['wrong kind', corruptWork({
+        ...validChange, work: { ...validChange.work, kind: 'code.verify@1' },
+      }), validVerify],
+      ['wrong state Work', corruptWork({
+        ...validChange, state: { ...validChange.state, workId: WorkId('work-other') },
+      }), validVerify],
+      ['state/result mismatch', corruptWork({
+        ...validChange, state: { ...validChange.state, resultId: ResultId('result-other') },
+      }), validVerify],
+      ['wrong result Work', corruptWork({
+        ...validChange,
+        result: { ...validChange.result, workId: WorkId('work-other') },
+      }), validVerify],
+      ['wrong result kind', corruptWork({
+        ...validChange,
+        result: { ...validChange.result, kind: 'code.verify@1' },
+      }), validVerify],
+      ['wrong successful Attempt', corruptWork({
+        ...validChange,
+        attempts: validChange.attempts.map(attempt => ({ ...attempt, workId: WorkId('work-other') })),
+      }), validVerify],
+      ['wrong claim Packet', corruptWork({
+        ...validChange,
+        result: {
+          ...validChange.result,
+          output: { completionClaim: { ...claim, packetId: wrongPacket } },
+        },
+      }), validVerify],
+      ['wrong claim Work', corruptWork({
+        ...validChange,
+        result: {
+          ...validChange.result,
+          output: { completionClaim: { ...claim, queueWorkId: QueueWorkIdRef('work-other') } },
+        },
+      }), validVerify],
+      ['wrong claim Attempt', corruptWork({
+        ...validChange,
+        result: {
+          ...validChange.result,
+          output: { completionClaim: { ...claim, queueAttemptId: QueueAttemptIdRef('attempt-other') } },
+        },
+      }), validVerify],
+      ['wrong resolved base', corruptWork({
+        ...validChange,
+        work: {
+          ...validChange.work,
+          resolved: {
+            ...validChange.work.resolved,
+            baseCommit: GitCommitId('3333333333333333333333333333333333333333'),
+          },
+        },
+      }), validVerify],
+      ['wrong verdict Packet', validChange, corruptWork({
+        ...validVerify,
+        result: {
+          ...validVerify.result,
+          output: { verificationVerdict: { ...verdict, packetId: wrongPacket } },
+        },
+      })],
+      ['wrong verdict target', validChange, corruptWork({
+        ...validVerify,
+        result: {
+          ...validVerify.result,
+          output: {
+            verificationVerdict: {
+              ...verdict,
+              targetCommit: GitCommitId('3333333333333333333333333333333333333333'),
+            },
+          },
+        },
+      })],
+      ['wrong verdict base', validChange, corruptWork({
+        ...validVerify,
+        result: {
+          ...validVerify.result,
+          output: {
+            verificationVerdict: {
+              ...verdict,
+              baseCommit: GitCommitId('3333333333333333333333333333333333333333'),
+            },
+          },
+        },
+      })],
+      ['wrong verdict plan', validChange, corruptWork({
+        ...validVerify,
+        result: {
+          ...validVerify.result,
+          output: {
+            verificationVerdict: {
+              ...verdict,
+              verificationPlanDigest: `sha256:${'3'.repeat(64)}`,
+            },
+          },
+        },
+      })],
+    ]
+
+    for (const [label, changeWork, verifyWork] of scenarios) {
+      const snapshot = projectDeliverySnapshot({
+        contractRevisions: [contract],
+        workPackets: [packet],
+        dispatchBindings: [change, verify],
+        acceptanceDecisions: [],
+      }, [changeWork, verifyWork], [])
+      expect(snapshot.cards[0]?.lane, label).toBe('blocked')
+      expect(snapshot.cards[0]?.attentionReasons, label).toContain('projection-inconsistent')
+      if (label.startsWith('wrong verdict')) {
+        expect(snapshot.cards[0]?.verificationVerdict, label).toBeNull()
+      } else {
+        expect(snapshot.cards[0]?.completionClaim, label).toBeNull()
+      }
+    }
   })
 })

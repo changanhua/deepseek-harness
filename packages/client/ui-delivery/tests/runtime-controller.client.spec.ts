@@ -102,7 +102,7 @@ describe('Delivery Runtime controller', () => {
     expect(controller.source.getSnapshot().status).toBe('loading')
   })
 
-  it('ignores superseded snapshot and operation failures and formats primitive snapshot failures', async () => {
+  it('ignores superseded snapshots and post-disposal operations and formats primitive failures', async () => {
     let rejectFirst!: (error: unknown) => void
     let snapshotCalls = 0
     const subject = remote({
@@ -144,7 +144,7 @@ describe('Delivery Runtime controller', () => {
     const supersededSuccess = fulfilledController.startVerification({
       packetId: 'packet-1', changeBindingId: 'binding-1',
     })
-    fulfilledController.load()
+    fulfilledController.dispose()
     settleOperation({ ok: true, value: {} })
     await expect(supersededSuccess).resolves.toBe(false)
 
@@ -159,7 +159,7 @@ describe('Delivery Runtime controller', () => {
         acceptanceClauseIds: ['clause-1' as never], stopConditions: [], executorPreference: { mode: 'any' },
       },
     })
-    rejectedController.load()
+    rejectedController.dispose()
     rejectOperation(new Error('stale operation failure'))
     await expect(supersededFailure).resolves.toBe(false)
   })
@@ -195,10 +195,110 @@ describe('Delivery Runtime controller', () => {
       await vi.waitFor(() => { expect(controller.source.getSnapshot().status).toBe('ready') })
     }
     const snapshotReads = snapshot.mock.calls.length
-    await expect(controller.readEvidence({ evidenceId: 'evidence-1' as never })).resolves.toBe(true)
+    controller.selectPacket('packet-1')
+    await expect(controller.readEvidence({
+      packetId: 'packet-1', evidenceId: 'evidence-1' as never,
+    })).resolves.toBe(true)
     expect(readEvidence).toHaveBeenCalledWith({ evidenceId: 'evidence-1' }, expect.any(AbortSignal))
-    expect(controller.source.getSnapshot().evidence?.contentBase64).toBe('eA==')
+    const selectedEvidence = controller.source.getSnapshot().evidence
+    expect(selectedEvidence?.packetId).toBe('packet-1')
+    expect(typeof selectedEvidence?.requestToken).toBe('number')
+    expect(selectedEvidence?.value.contentBase64).toBe('eA==')
     expect(snapshot.mock.calls).toHaveLength(snapshotReads)
+  })
+
+  it('binds evidence to the selected Packet and ignores a late response after selection changes', async () => {
+    let settle!: (value: RemoteResult<DeliveryEvidenceView>) => void
+    const controller = createDeliveryRuntimeController(remote({
+      readEvidence: vi.fn(() => new Promise<RemoteResult<DeliveryEvidenceView>>((resolve) => {
+        settle = resolve
+      })),
+    }))
+    controller.selectPacket('packet-1')
+
+    const pending = controller.readEvidence({
+      packetId: 'packet-1', evidenceId: 'evidence-1' as never,
+    })
+    controller.selectPacket('packet-2')
+    settle({ ok: true, value: EVIDENCE })
+
+    await expect(pending).resolves.toBe(false)
+    expect(controller.source.getSnapshot().evidence).toBeUndefined()
+  })
+
+  it('rejects an unselected Packet and evidence whose Host provenance belongs elsewhere', async () => {
+    const foreignEvidence = {
+      ...EVIDENCE,
+      provenance: { ...EVIDENCE.provenance, packetId: 'packet-elsewhere' as never },
+    }
+    const controller = createDeliveryRuntimeController(remote({
+      readEvidence: vi.fn(() => ok(foreignEvidence)),
+    }))
+    controller.selectPacket('packet-1')
+    controller.selectPacket('packet-1')
+
+    await expect(controller.readEvidence({
+      packetId: 'packet-2', evidenceId: 'evidence-1' as never,
+    })).resolves.toBe(false)
+    await expect(controller.readEvidence({
+      packetId: 'packet-1', evidenceId: 'evidence-1' as never,
+    })).resolves.toBe(false)
+    expect(controller.source.getSnapshot()).toMatchObject({
+      pending: null,
+      evidence: undefined,
+    })
+  })
+
+  it('keeps a mutation live across refresh and clears its own pending state when it settles', async () => {
+    let settle!: (value: RemoteResult<unknown>) => void
+    let mutationSignal: AbortSignal | undefined
+    const controller = createDeliveryRuntimeController(remote({
+      startVerification: vi.fn((_input: unknown, signal?: AbortSignal) => {
+        mutationSignal = signal
+        return new Promise<RemoteResult<unknown>>((resolve) => { settle = resolve })
+      }),
+    }))
+
+    const mutation = controller.startVerification({
+      packetId: 'packet-1', changeBindingId: 'binding-1',
+    })
+    controller.load()
+    await vi.waitFor(() => { expect(controller.source.getSnapshot().status).toBe('ready') })
+    expect(mutationSignal?.aborted).toBe(false)
+    settle({ ok: true, value: {} })
+
+    await expect(mutation).resolves.toBe(true)
+    expect(controller.source.getSnapshot().pending).toBeNull()
+    await expect(controller.startChange({ packetId: 'packet-1', executorId: 'codex' }))
+      .resolves.toBe(true)
+  })
+
+  it('does not let a late evidence finally clear a newer operation pending owner', async () => {
+    let settleEvidence!: (value: RemoteResult<DeliveryEvidenceView>) => void
+    let settleChange!: (value: RemoteResult<unknown>) => void
+    const controller = createDeliveryRuntimeController(remote({
+      readEvidence: vi.fn(() => new Promise<RemoteResult<DeliveryEvidenceView>>((resolve) => {
+        settleEvidence = resolve
+      })),
+      startChange: vi.fn(() => new Promise<RemoteResult<unknown>>((resolve) => {
+        settleChange = resolve
+      })),
+    }))
+    controller.selectPacket('packet-1')
+    const evidence = controller.readEvidence({
+      packetId: 'packet-1', evidenceId: 'evidence-1' as never,
+    })
+    controller.selectPacket('packet-2')
+    expect(controller.source.getSnapshot().pending).toBeNull()
+
+    const change = controller.startChange({ packetId: 'packet-2', executorId: 'codex' })
+    settleEvidence({ ok: true, value: EVIDENCE })
+    await expect(evidence).resolves.toBe(false)
+    expect(controller.source.getSnapshot().pending).toBe('start-change')
+
+    settleChange({ ok: true, value: {} })
+    await expect(change).resolves.toBe(true)
+    expect(controller.source.getSnapshot().pending).toBeNull()
   })
 
   it('refuses overlap, records thrown failures, and returns false after disposal', async () => {

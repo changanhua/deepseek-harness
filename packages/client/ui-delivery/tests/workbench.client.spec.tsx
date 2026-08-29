@@ -75,6 +75,17 @@ const copy: Record<string, string> = {
   'detail.contract': '合同',
   'detail.base': '基础提交',
   'detail.plan': '验证计划',
+  'attention.bound-work-unavailable': '绑定的工作不可用。',
+  'attention.queue-work-failed': '队列工作失败。',
+  'attention.queue-attention': '队列需要人工处理。',
+  'attention.change-result-invalid': '变更结果无效。',
+  'attention.verification-result-invalid': '验证结果无效。',
+  'attention.change-interrupted': '变更已中断。',
+  'attention.change-blocked': '变更已阻塞。',
+  'attention.verification-failed': '验证失败。',
+  'attention.verification-needs-human-review': '验证需要人工审阅。',
+  'attention.decision-rejected': '人工决定已拒绝。',
+  'attention.projection-inconsistent': '交付状态不一致。',
   'action.startChange': '启动变更',
   'action.startVerification': '开始独立验证',
   'action.executor': '变更执行器',
@@ -82,6 +93,8 @@ const copy: Record<string, string> = {
   'evidence.read': '读取证据 {id}',
   'evidence.content': '证据内容',
   'evidence.none': '当前证据链还没有可读取的对象。',
+  'evidence.binary': '{mediaType} · {byteLength} 字节',
+  'evidence.invalidText': '文本证据无法安全解码。',
   'decision.title': '记录人工决定',
   'decision.kind': '决定',
   'decision.reason': '决定原因',
@@ -98,6 +111,12 @@ const copy: Record<string, string> = {
   'spine.verification': '验证',
   'spine.decision': '决定',
   'spine.pending': '待定',
+  'verdict.passed': '通过',
+  'verdict.failed': '失败',
+  'verdict.needs-human-review': '需要人工审阅',
+  'decision.status.accepted': '已接受',
+  'decision.status.rejected': '已拒绝',
+  'decision.status.waived': '已豁免',
   'queue.succeeded': '已成功',
 }
 
@@ -229,6 +248,7 @@ function workspaceProps(state: DeliveryRuntimeState) {
     createPacket: vi.fn<DeliveryWorkspaceProps['createPacket']>(async () => true),
     startChange: vi.fn<DeliveryWorkspaceProps['startChange']>(async () => true),
     startVerification: vi.fn<DeliveryWorkspaceProps['startVerification']>(async () => true),
+    selectPacket: vi.fn<DeliveryWorkspaceProps['selectPacket']>(),
     readEvidence: vi.fn<DeliveryWorkspaceProps['readEvidence']>(async () => true),
     recordDecision: vi.fn<DeliveryWorkspaceProps['recordDecision']>(async () => true),
     t: t as DeliveryWorkspaceProps['t'],
@@ -472,7 +492,7 @@ describe('Personal Delivery workbench', () => {
       binding: { ...verifyDispatch.binding, packetId: WorkPacketId('packet-blocked') },
     }
     const blocked = card('blocked', 'blocked', {
-      dispatches: [blockedVerify], attentionReasons: ['Codex failed'],
+      dispatches: [blockedVerify], attentionReasons: ['queue-work-failed'],
     })
     const accepted = card('accepted', 'accepted', {
       acceptanceDecision: acceptedDecisionFixture({ packetId: WorkPacketId('packet-accepted') }),
@@ -482,10 +502,14 @@ describe('Personal Delivery workbench', () => {
       cards: [accepted, blocked, decision, review, ready],
     }, {
       evidence: {
-        id: EvidenceId('evidence-a'), kind: 'verification-output', mediaType: 'text/plain',
-        byteLength: 1, digest: `sha256:${'1'.repeat(64)}` as never, createdAt: '2026-08-29T00:00:00.000Z',
-        provenance: { kind: 'change-attempt', packetId: decisionPacket.id, queueWorkId: QueueWorkIdRef('work-decision-verify'), queueAttemptId: 'attempt-1' as never },
-        contentBase64: 'eA==',
+        packetId: decisionPacket.id,
+        requestToken: 7,
+        value: {
+          id: EvidenceId('evidence-a'), kind: 'verification-output', mediaType: 'text/plain',
+          byteLength: 1, digest: `sha256:${'1'.repeat(64)}` as never, createdAt: '2026-08-29T00:00:00.000Z',
+          provenance: { kind: 'change-attempt', packetId: decisionPacket.id, queueWorkId: QueueWorkIdRef('work-decision-verify'), queueAttemptId: 'attempt-1' as never },
+          contentBase64: 'eA==',
+        },
       },
     }))
     render(<Workspace {...props} />)
@@ -495,18 +519,18 @@ describe('Personal Delivery workbench', () => {
     expect(screen.getByRole('button', { name: '已接受 1' })).not.toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '已阻塞 1' }))
-    fireEvent.click(screen.getByRole('button', { name: /blocked objective/ }))
-    expect(screen.getByText('Codex failed')).not.toBeNull()
+    fireEvent.click(screen.getByRole('option', { name: /blocked objective/ }))
+    expect(screen.getByText('队列工作失败。')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '全部 5' }))
 
-    fireEvent.click(screen.getByRole('button', { name: /ready objective/ }))
+    fireEvent.click(screen.getByRole('option', { name: /ready objective/ }))
     fireEvent.change(screen.getByRole('textbox', { name: '变更执行器' }), { target: { value: 'codex-2' } })
     fireEvent.click(screen.getByRole('button', { name: '启动变更' }))
     expect(props.startChange).toHaveBeenCalledWith({
       packetId: 'packet-ready', executorId: 'codex-2',
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /review objective/ }))
+    fireEvent.click(screen.getByRole('option', { name: /review objective/ }))
     fireEvent.change(screen.getByRole('combobox', { name: '变更引用' }), {
       target: { value: 'binding-review-change' },
     })
@@ -515,14 +539,17 @@ describe('Personal Delivery workbench', () => {
       packetId: 'packet-review', changeBindingId: 'binding-review-change',
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /decision objective/ }))
+    fireEvent.click(screen.getByRole('option', { name: /decision objective/ }))
     const detail = screen.getByRole('complementary', { name: '工作包证据' })
     for (const label of ['范围', '变更', '检查点', '验证', '决定']) {
       expect(within(detail).getAllByText(label).length).toBeGreaterThan(0)
     }
-    expect(within(detail).getByText('eA==')).not.toBeNull()
+    expect(within(detail).getByText('通过')).not.toBeNull()
+    expect(within(detail).getByText('x')).not.toBeNull()
     fireEvent.click(within(detail).getByRole('button', { name: '读取证据 evidence-a' }))
-    expect(props.readEvidence).toHaveBeenCalledWith({ evidenceId: 'evidence-a' })
+    expect(props.readEvidence).toHaveBeenCalledWith({
+      packetId: 'packet-decision', evidenceId: 'evidence-a',
+    })
 
     const decisionForm = within(detail).getByRole('form', { name: '记录人工决定' })
     fireEvent.submit(decisionForm)
@@ -552,6 +579,109 @@ describe('Personal Delivery workbench', () => {
       reason: 'Independent evidence is sufficient.',
       decisionNonce: 'decision-1',
     })
+  })
+
+  it('keeps filtered selection and keyboard focus aligned and disables pending actions', async () => {
+    const { Workspace } = await components()
+    const ready = card('keyboard-ready', 'ready')
+    const reviewPacket = readyWorkPacketFixture({
+      id: WorkPacketId('packet-keyboard-review'),
+      contractRevisionId: 'contract-keyboard-review' as never,
+      objective: 'keyboard review objective',
+    })
+    const change = boundBindingFixture({
+      id: DispatchBindingId('binding-keyboard-change'),
+      packetId: reviewPacket.id,
+      queueWorkId: QueueWorkIdRef('work-keyboard-change'),
+    })
+    const review = card('keyboard-review', 'review', {
+      packet: reviewPacket,
+      dispatches: [dispatch(change)],
+      completionClaim: completedClaimFixture({
+        packetId: reviewPacket.id,
+        queueWorkId: change.queueWorkId,
+      }),
+    })
+    const pendingProps = workspaceProps(runtime({
+      contractsWithoutPacket: [], cards: [ready, review],
+    }, { pending: 'start-verification' }))
+    render(<Workspace {...pendingProps} />)
+
+    const reviewFilter = screen.getByRole('button', { name: '待审阅 1' })
+    fireEvent.click(reviewFilter)
+    expect(reviewFilter.getAttribute('aria-pressed')).toBe('true')
+    const onlyOption = screen.getByRole('option', { name: /keyboard review objective/ })
+    expect(onlyOption.getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('button', { name: '开始独立验证' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: /读取证据/ }).hasAttribute('disabled')).toBe(true)
+
+    const activeProps = workspaceProps(runtime({
+      contractsWithoutPacket: [], cards: [ready, review],
+    }))
+    cleanup()
+    render(<Workspace {...activeProps} />)
+    const options = screen.getAllByRole('option')
+    options[0]!.focus()
+    fireEvent.keyDown(options[0]!, { key: 'ArrowDown' })
+    expect(options[1]).toBe(document.activeElement)
+    expect(options[1]?.getAttribute('aria-selected')).toBe('true')
+    fireEvent.keyDown(options[1]!, { key: 'ArrowUp' })
+    expect(options[0]).toBe(document.activeElement)
+    options[1]!.focus()
+    fireEvent.keyDown(options[1]!, { key: 'Home' })
+    expect(options[0]).toBe(document.activeElement)
+    fireEvent.keyDown(options[0]!, { key: 'End' })
+    expect(options[1]).toBe(document.activeElement)
+    fireEvent.keyDown(options[1]!, { key: 'Enter' })
+    expect(options[1]).toBe(document.activeElement)
+  })
+
+  it('describes non-text evidence and rejects oversized, malformed, mismatched, or invalid UTF-8 text', async () => {
+    const { Workspace } = await components()
+    const evidenceCard = card('evidence', 'review', {
+      completionClaim: completedClaimFixture({
+        packetId: WorkPacketId('packet-evidence'),
+        queueWorkId: QueueWorkIdRef('work-evidence'),
+      }),
+    })
+    const baseEvidence = {
+      id: EvidenceId('evidence-fixture'),
+      kind: 'verification-output' as const,
+      mediaType: 'application/json',
+      byteLength: 2,
+      digest: `sha256:${'1'.repeat(64)}` as never,
+      createdAt: '2026-08-29T00:00:00.000Z',
+      provenance: {
+        kind: 'change-attempt' as const,
+        packetId: evidenceCard.packet.id,
+        queueWorkId: QueueWorkIdRef('work-evidence'),
+        queueAttemptId: 'attempt-evidence' as never,
+      },
+      contentBase64: 'e30=',
+    }
+    const stateWith = (value: typeof baseEvidence, packetId = String(evidenceCard.packet.id)) => runtime({
+      contractsWithoutPacket: [], cards: [evidenceCard],
+    }, {
+      evidence: { packetId, requestToken: 1, value },
+    })
+    const rendered = render(<Workspace {...workspaceProps(stateWith(baseEvidence))} />)
+
+    expect(screen.getByText('application/json · 2 字节')).not.toBeNull()
+    expect(screen.queryByText('e30=')).toBeNull()
+
+    rendered.rerender(<Workspace {...workspaceProps(stateWith(baseEvidence, 'packet-elsewhere'))} />)
+    expect(screen.queryByText('application/json · 2 字节')).toBeNull()
+
+    const invalidTextCases = [
+      { ...baseEvidence, mediaType: 'text/plain', byteLength: 256 * 1024 + 1, contentBase64: '' },
+      { ...baseEvidence, mediaType: 'text/plain', byteLength: 1, contentBase64: '*' },
+      { ...baseEvidence, mediaType: 'text/plain', byteLength: 2, contentBase64: 'eA==' },
+      { ...baseEvidence, mediaType: 'text/plain', byteLength: 1, contentBase64: '/w==' },
+    ]
+    for (const evidence of invalidTextCases) {
+      rendered.rerender(<Workspace {...workspaceProps(stateWith(evidence))} />)
+      expect(screen.getByText('文本证据无法安全解码。')).not.toBeNull()
+    }
   })
 
   it('selects bindings that arrive on refresh for the same Packet', async () => {

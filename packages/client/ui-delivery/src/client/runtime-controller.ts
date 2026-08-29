@@ -34,6 +34,18 @@ export type DeliveryPendingOperation =
   | 'read-evidence'
   | 'record-decision'
 
+/** Browser-local evidence selection; only the evidence id crosses Remote. */
+export interface DeliveryEvidenceSelectionInput extends DeliveryReadEvidenceInput {
+  readonly packetId: string
+}
+
+/** Evidence accepted only for one selected Packet and one controller request. */
+export interface DeliveryEvidenceState {
+  readonly packetId: string
+  readonly requestToken: number
+  readonly value: DeliveryEvidenceView
+}
+
 /** Last accepted host projection plus honest loading/error state. */
 export interface DeliveryRuntimeState {
   status: 'idle' | 'loading' | 'ready' | 'error'
@@ -42,7 +54,7 @@ export interface DeliveryRuntimeState {
   pending: DeliveryPendingOperation | null
   actionError: string | null
   lastSucceeded: DeliveryPendingOperation | null
-  evidence: DeliveryEvidenceView | undefined
+  evidence: DeliveryEvidenceState | undefined
 }
 
 /** Apply-private observable lifecycle. */
@@ -53,7 +65,8 @@ export interface DeliveryRuntimeController {
   createPacket(input: DeliveryCreatePacketInput): Promise<boolean>
   startChange(input: DeliveryStartChangeInput): Promise<boolean>
   startVerification(input: DeliveryStartVerificationInput): Promise<boolean>
-  readEvidence(input: DeliveryReadEvidenceInput): Promise<boolean>
+  selectPacket(packetId: string): void
+  readEvidence(input: DeliveryEvidenceSelectionInput): Promise<boolean>
   recordDecision(input: DeliveryRecordDecisionInput): Promise<boolean>
   cancel(): void
   dispose(): void
@@ -80,8 +93,16 @@ export function createDeliveryRuntimeController(
     lastSucceeded: null,
     evidence: undefined,
   })
-  let generation = 0
-  let active: AbortController | undefined
+  let snapshotGeneration = 0
+  let mutationGeneration = 0
+  let evidenceRequestToken = 0
+  let selectedPacketId = ''
+  let activeSnapshot: AbortController | undefined
+  let activeMutation: {
+    readonly controller: AbortController
+    readonly operation: DeliveryPendingOperation
+    readonly request: number
+  } | undefined
   let disposed = false
   const source: HostObservable<DeliveryRuntimeState> = {
     getSnapshot: () => store.getSnapshot(),
@@ -89,7 +110,7 @@ export function createDeliveryRuntimeController(
   }
 
   function fail(request: number, message: string): void {
-    if (disposed || request !== generation) return
+    if (disposed || request !== snapshotGeneration) return
     store.update((draft) => {
       draft.status = 'error'
       draft.error = message
@@ -98,17 +119,17 @@ export function createDeliveryRuntimeController(
 
   function load(): void {
     if (disposed) return
-    active?.abort('superseded')
+    activeSnapshot?.abort('superseded')
     const controller = new AbortController()
-    active = controller
-    const request = ++generation
+    activeSnapshot = controller
+    const request = ++snapshotGeneration
     store.update((draft) => {
       draft.status = 'loading'
       draft.error = null
     })
     void remote.snapshot(controller.signal).then((result) => {
-      if (disposed || request !== generation) return
-      active = undefined
+      if (disposed || request !== snapshotGeneration || activeSnapshot !== controller) return
+      activeSnapshot = undefined
       if (!result.ok) {
         fail(request, failureMessage(result))
         return
@@ -119,7 +140,7 @@ export function createDeliveryRuntimeController(
         draft.snapshot = result.value
       })
     }, (error: unknown) => {
-      active = undefined
+      if (activeSnapshot === controller) activeSnapshot = undefined
       fail(request, error instanceof Error ? error.message : String(error))
     })
   }
@@ -127,7 +148,7 @@ export function createDeliveryRuntimeController(
   async function operate<T>(
     operation: DeliveryPendingOperation,
     invoke: (signal: AbortSignal) => Promise<RemoteResult<T>>,
-    accepted?: (value: T) => void,
+    accepted?: (value: T) => boolean | void,
   ): Promise<boolean> {
     if (disposed) return false
     if (store.getSnapshot().pending !== null) {
@@ -136,41 +157,51 @@ export function createDeliveryRuntimeController(
       })
       return false
     }
-    active?.abort('operation-started')
-    generation += 1
     const controller = new AbortController()
-    active = controller
+    const request = ++mutationGeneration
+    activeMutation = { controller, operation, request }
     store.update((draft) => {
       draft.pending = operation
       draft.actionError = null
       draft.lastSucceeded = null
     })
+    const ownsPending = (): boolean => activeMutation?.request === request
+      && activeMutation.controller === controller
+      && activeMutation.operation === operation
+    const clearOwnedPending = (): void => {
+      activeMutation = undefined
+      store.update((draft) => { draft.pending = null })
+    }
     try {
       const result = await invoke(controller.signal)
-      if (active !== controller) return false
-      active = undefined
+      if (!ownsPending()) return false
       if (!result.ok) {
         store.update((draft) => {
           draft.pending = null
           draft.actionError = failureMessage(result)
         })
+        activeMutation = undefined
         return false
       }
-      accepted?.(result.value)
+      if (accepted?.(result.value) === false) {
+        clearOwnedPending()
+        return false
+      }
       store.update((draft) => {
         draft.pending = null
         draft.actionError = null
         draft.lastSucceeded = operation
       })
+      activeMutation = undefined
       if (operation !== 'read-evidence') load()
       return true
     } catch (error) {
-      if (active !== controller) return false
-      active = undefined
+      if (!ownsPending()) return false
       store.update((draft) => {
         draft.pending = null
         draft.actionError = error instanceof Error ? error.message : String(error)
       })
+      activeMutation = undefined
       return false
     }
   }
@@ -183,22 +214,57 @@ export function createDeliveryRuntimeController(
     operate('start-change', signal => remote.startChange(input, signal))
   const startVerification = (input: DeliveryStartVerificationInput): Promise<boolean> =>
     operate('start-verification', signal => remote.startVerification(input, signal))
-  const readEvidence = (input: DeliveryReadEvidenceInput): Promise<boolean> =>
-    operate('read-evidence', signal => remote.readEvidence(input, signal), (evidence) => {
-      store.update((draft) => { draft.evidence = evidence })
+  function selectPacket(packetId: string): void {
+    if (selectedPacketId === packetId) return
+    selectedPacketId = packetId
+    evidenceRequestToken += 1
+    if (activeMutation?.operation === 'read-evidence') {
+      const stale = activeMutation
+      activeMutation = undefined
+      mutationGeneration += 1
+      stale.controller.abort('packet-selection-changed')
+    }
+    store.update((draft) => {
+      draft.evidence = undefined
+      if (draft.pending === 'read-evidence') draft.pending = null
     })
+  }
+  const readEvidence = (input: DeliveryEvidenceSelectionInput): Promise<boolean> => {
+    if (selectedPacketId !== input.packetId) return Promise.resolve(false)
+    const requestToken = ++evidenceRequestToken
+    store.update((draft) => { draft.evidence = undefined })
+    return operate(
+      'read-evidence',
+      signal => remote.readEvidence({ evidenceId: input.evidenceId }, signal),
+      (evidence) => {
+        if (
+          String(evidence.provenance.packetId) !== input.packetId
+        ) return false
+        store.update((draft) => {
+          draft.evidence = { packetId: input.packetId, requestToken, value: evidence }
+        })
+      },
+    )
+  }
   const recordDecision = (input: DeliveryRecordDecisionInput): Promise<boolean> =>
     operate('record-decision', signal => remote.recordDecision(input, signal))
 
   function cancel(): void {
-    active?.abort('operator-cancelled')
+    if (activeMutation !== undefined) {
+      activeMutation.controller.abort('operator-cancelled')
+      return
+    }
+    activeSnapshot?.abort('operator-cancelled')
   }
 
   function dispose(): void {
     disposed = true
-    generation += 1
-    active?.abort('plugin-disposed')
-    active = undefined
+    snapshotGeneration += 1
+    mutationGeneration += 1
+    activeSnapshot?.abort('plugin-disposed')
+    activeMutation?.controller.abort('plugin-disposed')
+    activeSnapshot = undefined
+    activeMutation = undefined
   }
 
   return {
@@ -208,6 +274,7 @@ export function createDeliveryRuntimeController(
     createPacket,
     startChange,
     startVerification,
+    selectPacket,
     readEvidence,
     recordDecision,
     cancel,

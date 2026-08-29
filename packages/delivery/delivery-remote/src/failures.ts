@@ -31,11 +31,23 @@ export function remoteFailure(
   error: unknown,
   signal?: AbortSignal,
 ): TypertRemoteFailure {
-  if (error instanceof TypertRemoteFailure) return error
   if (signal?.aborted === true) {
     return new TypertRemoteFailure({
       code: 'cancelled',
       message: `Delivery ${operation} was cancelled`,
+      details: { operation },
+    })
+  }
+  if (error instanceof TypertRemoteFailure) {
+    const known = new Set<DeliveryRemoteErrorCode>([
+      'bad-request', 'not-found', 'conflict', 'denied', 'cancelled', 'unavailable', 'internal',
+    ])
+    const code = known.has(error.failure.code as DeliveryRemoteErrorCode)
+      ? error.failure.code as DeliveryRemoteErrorCode
+      : 'internal'
+    return new TypertRemoteFailure({
+      code,
+      message: `Delivery ${operation} failed: ${code}`,
       details: { operation },
     })
   }
@@ -51,7 +63,7 @@ export function remoteFailure(
             : 'bad-request'
     return new TypertRemoteFailure({
       code,
-      message: error.message,
+      message: `Delivery ${operation} was refused: ${error.code}`,
       details: { operation, domain: 'delivery', domainCode: error.code },
     })
   }
@@ -63,14 +75,14 @@ export function remoteFailure(
         : 'denied'
     return new TypertRemoteFailure({
       code,
-      message: error.message,
+      message: `Delivery ${operation} admission was refused: ${error.code}`,
       details: { operation, domain: 'delivery-task-queue', domainCode: error.code },
     })
   }
   if (error instanceof DeliveryGitHubIntakeError) {
     return new TypertRemoteFailure({
       code: error.code === 'unavailable' ? 'unavailable' : 'bad-request',
-      message: error.message,
+      message: `Delivery issue import failed: ${error.code}`,
       details: { operation, domain: 'delivery-github-intake', domainCode: error.code },
     })
   }
@@ -101,7 +113,7 @@ export function remoteFailure(
   if (error instanceof DeliveryProjectionError || error instanceof DeliveryAcceptanceCandidateError) {
     return new TypertRemoteFailure({
       code: 'denied',
-      message: error.message,
+      message: `Delivery ${operation} projection was refused`,
       details: { operation, domain: 'delivery-projection' },
     })
   }

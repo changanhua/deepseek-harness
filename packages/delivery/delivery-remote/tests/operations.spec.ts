@@ -3,10 +3,12 @@ import {
   DispatchBindingId,
   EvidenceId,
   ExecutorId,
+  GitCommitId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   RepositoryRelativePath,
   RepositoryId,
+  Sha256Digest,
   VerificationVerdictId,
   canonicalDigest,
   dispatchBindingSchema,
@@ -20,7 +22,12 @@ import {
   evidenceRefFixture,
   passedVerdictFixture,
   readyWorkPacketFixture,
+  submittingBindingFixture,
 } from '@deepseek-ai/dsh-delivery-testkit'
+import {
+  startCodeChange as bridgeStartCodeChange,
+  startVerification as bridgeStartVerification,
+} from '@deepseek-ai/dsh-delivery-task-queue'
 import {
   AttemptId,
   ResultId,
@@ -77,6 +84,7 @@ function succeededWork(input: {
   kind: 'code.change@1' | 'code.verify@1'
   intent: unknown
   output: unknown
+  resolved?: unknown
 }): WorkView {
   const id = WorkId(input.id)
   const attemptId = AttemptId(`${input.id}-attempt`)
@@ -88,7 +96,7 @@ function succeededWork(input: {
       title: input.id,
       intent: input.intent as never,
       intentDigest: canonicalDigest(input.intent),
-      resolved: {},
+      resolved: input.resolved ?? {},
       policy: { maxAttempts: 1 },
       resources: [],
       tags: [],
@@ -235,14 +243,23 @@ describe('Delivery Remote explicit operations', () => {
     )
     expect(harness.internals.startCodeChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        delivery: harness.delivery,
-        queue: harness.operator,
-        repoWorkspace: harness.repository,
+        delivery: expect.objectContaining({
+          getWorkPacket: expect.any(Function),
+          beginDispatch: expect.any(Function),
+          bindDispatch: expect.any(Function),
+        }),
+        queue: expect.objectContaining({ get: expect.any(Function), enqueue: expect.any(Function) }),
+        repoWorkspace: expect.objectContaining({
+          inspectRevision: expect.any(Function),
+          inspectRange: expect.any(Function),
+        }),
       }),
       { packetId: packet.id, executorId: ExecutorId('codex-fixture') },
     )
     expect(harness.internals.startVerification).toHaveBeenCalledWith(
-      expect.objectContaining({ queue: harness.operator }),
+      expect.objectContaining({
+        queue: expect.objectContaining({ get: expect.any(Function), enqueue: expect.any(Function) }),
+      }),
       { packetId: packet.id, changeBindingId: DispatchBindingId('binding-change') },
     )
   })
@@ -356,9 +373,219 @@ describe('Delivery Remote explicit operations', () => {
     }, signal)).rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
   })
 
+  it('stops code-change admission after cancellation before Queue enqueue', async () => {
+    const packet = readyWorkPacketFixture()
+    const submitting = submittingBindingFixture({ packetId: packet.id })
+    let settleBegin!: (binding: DispatchBinding) => void
+    const beginDispatch = vi.fn(() => new Promise<DispatchBinding>((resolve) => {
+      settleBegin = resolve
+    }))
+    const enqueue = vi.fn(async () => WorkId('work-must-not-admit'))
+    const bindDispatch = vi.fn(async () => boundBindingFixture({ packetId: packet.id }))
+    const harness = makeHarness({
+      delivery: { getWorkPacket: () => packet, beginDispatch, bindDispatch },
+      operator: { enqueue },
+      internals: {
+        startCodeChange: bridgeStartCodeChange as unknown as TestInternals['startCodeChange'],
+      },
+    })
+    const controller = new AbortController()
+
+    const operation = harness.service.startChange({
+      packetId: String(packet.id), executorId: 'codex-fixture',
+    }, controller.signal)
+    await vi.waitFor(() => { expect(beginDispatch).toHaveBeenCalledOnce() })
+    controller.abort('operator-cancelled')
+    settleBegin(submitting)
+
+    await expect(operation).rejects.toMatchObject({
+      failure: expect.objectContaining({ code: 'cancelled' }),
+    })
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(bindDispatch).not.toHaveBeenCalled()
+  })
+
+  it('stops verification admission after cancellation during repository proof', async () => {
+    const packet = readyWorkPacketFixture()
+    const changeBinding = boundBindingFixture({
+      id: DispatchBindingId('binding-cancel-change'),
+      packetId: packet.id,
+      queueWorkId: QueueWorkIdRef('work-cancel-change'),
+    })
+    const claim = completedClaimFixture({
+      packetId: packet.id,
+      queueWorkId: changeBinding.queueWorkId,
+      queueAttemptId: QueueAttemptIdRef('work-cancel-change-attempt'),
+    })
+    const work = succeededWork({
+      id: 'work-cancel-change',
+      kind: 'code.change@1',
+      intent: { packetId: packet.id },
+      resolved: {
+        packetId: packet.id,
+        contractRevisionId: packet.contractRevisionId,
+        repositoryId: packet.repositoryId,
+        baseCommit: packet.baseCommit,
+        executorId: changeBinding.executorId,
+        policyDigest: Sha256Digest(`sha256:${'9'.repeat(64)}`),
+      },
+      output: { completionClaim: claim },
+    })
+    let settleBase!: (revision: { repositoryId: typeof packet.repositoryId; commit: typeof packet.baseCommit }) => void
+    let revisionReads = 0
+    const inspectRevision = vi.fn((request: {
+      repositoryId: typeof packet.repositoryId
+      commit: typeof packet.baseCommit
+      signal?: AbortSignal
+    }) => {
+      revisionReads += 1
+      if (revisionReads === 1) {
+        return new Promise<typeof request>((resolve) => { settleBase = resolve })
+      }
+      return Promise.resolve(request)
+    })
+    const inspectRange = vi.fn(async () => ({
+      repositoryId: packet.repositoryId,
+      baseCommit: packet.baseCommit,
+      targetCommit: claim.checkpointCommit,
+      descendsFromBase: true,
+      changedPaths: [],
+    }))
+    const beginDispatch = vi.fn(async () => ({
+      ...verificationBinding(packet),
+      phase: 'submitting' as const,
+      queueWorkId: null,
+    }))
+    const enqueue = vi.fn(async () => WorkId('verification-must-not-admit'))
+    const harness = makeHarness({
+      delivery: {
+        getWorkPacket: () => packet,
+        getDispatchBinding: () => changeBinding,
+        beginDispatch,
+        bindDispatch: vi.fn(async () => verificationBinding(packet)),
+      },
+      operator: { get: vi.fn(() => work), enqueue },
+      repository: { inspectRevision, inspectRange },
+      internals: {
+        startVerification: bridgeStartVerification as unknown as TestInternals['startVerification'],
+      },
+    })
+    const controller = new AbortController()
+
+    const operation = harness.service.startVerification({
+      packetId: String(packet.id), changeBindingId: String(changeBinding.id),
+    }, controller.signal)
+    await vi.waitFor(() => { expect(inspectRevision).toHaveBeenCalledOnce() })
+    controller.abort('operator-cancelled')
+    settleBase({ repositoryId: packet.repositoryId, commit: GitCommitId(String(packet.baseCommit)) })
+
+    await expect(operation).rejects.toMatchObject({
+      failure: expect.objectContaining({ code: 'cancelled' }),
+    })
+    expect(beginDispatch).not.toHaveBeenCalled()
+    expect(enqueue).not.toHaveBeenCalled()
+  })
+
+  it('passes an active signal through successful change and verification admission commits', async () => {
+    const packet = readyWorkPacketFixture()
+    const changeSubmitting = submittingBindingFixture({
+      id: DispatchBindingId('binding-guarded-change'),
+      packetId: packet.id,
+    })
+    const changeBound = boundBindingFixture({
+      ...changeSubmitting,
+      phase: 'bound',
+      queueWorkId: QueueWorkIdRef('work-guarded-change'),
+    })
+    const changeHarness = makeHarness({
+      delivery: {
+        getWorkPacket: vi.fn(() => packet),
+        beginDispatch: vi.fn(async () => changeSubmitting),
+        bindDispatch: vi.fn(async () => changeBound),
+      },
+      operator: {
+        enqueue: vi.fn(async () => WorkId('work-guarded-change')),
+      },
+      internals: {
+        startCodeChange: bridgeStartCodeChange as unknown as TestInternals['startCodeChange'],
+      },
+    })
+
+    await expect(changeHarness.service.startChange({
+      packetId: String(packet.id), executorId: String(changeBound.executorId),
+    }, new AbortController().signal)).resolves.toMatchObject({
+      id: changeBound.id,
+      queueWorkId: changeBound.queueWorkId,
+    })
+
+    const claim = completedClaimFixture({
+      packetId: packet.id,
+      queueWorkId: changeBound.queueWorkId,
+      queueAttemptId: QueueAttemptIdRef('work-guarded-change-attempt'),
+    })
+    const work = succeededWork({
+      id: String(changeBound.queueWorkId),
+      kind: 'code.change@1',
+      intent: { packetId: packet.id },
+      resolved: {
+        packetId: packet.id,
+        contractRevisionId: packet.contractRevisionId,
+        repositoryId: packet.repositoryId,
+        baseCommit: packet.baseCommit,
+        executorId: changeBound.executorId,
+        policyDigest: Sha256Digest(`sha256:${'9'.repeat(64)}`),
+      },
+      output: { completionClaim: claim },
+    })
+    const verifySubmitting = {
+      ...verificationBinding(packet),
+      phase: 'submitting' as const,
+      queueWorkId: null,
+    }
+    const verifyBound = verificationBinding(packet)
+    const inspectRevision = vi.fn(async (request: {
+      repositoryId: typeof packet.repositoryId
+      commit: typeof packet.baseCommit
+      signal?: AbortSignal
+    }) => ({ repositoryId: request.repositoryId, commit: request.commit }))
+    const inspectRange = vi.fn(async () => ({
+      repositoryId: packet.repositoryId,
+      baseCommit: packet.baseCommit,
+      targetCommit: claim.checkpointCommit,
+      descendsFromBase: true,
+      changedPaths: claim.changedPaths,
+    }))
+    const verifyHarness = makeHarness({
+      delivery: {
+        getWorkPacket: vi.fn(() => packet),
+        getDispatchBinding: vi.fn(() => changeBound),
+        beginDispatch: vi.fn(async () => verifySubmitting),
+        bindDispatch: vi.fn(async () => verifyBound),
+      },
+      operator: {
+        get: vi.fn(() => work),
+        enqueue: vi.fn(async () => WorkId('work-verify')),
+      },
+      repository: { inspectRevision, inspectRange },
+      internals: {
+        startVerification: bridgeStartVerification as unknown as TestInternals['startVerification'],
+      },
+    })
+    const signal = new AbortController().signal
+
+    await expect(verifyHarness.service.startVerification({
+      packetId: String(packet.id), changeBindingId: String(changeBound.id),
+    }, signal)).resolves.toMatchObject({ id: verifyBound.id, queueWorkId: verifyBound.queueWorkId })
+    expect(inspectRevision).toHaveBeenCalledWith(expect.objectContaining({ signal }))
+    expect(inspectRange).toHaveBeenCalledWith(expect.objectContaining({ signal }))
+  })
+
   it('reads one selected evidence object without exposing its provider URI', async () => {
-    const reference = evidenceRefFixture({ uri: 'file:///private/delivery/evidence.json' })
     const data = new TextEncoder().encode('delivery evidence\n')
+    const reference = evidenceRefFixture({
+      uri: 'file:///private/delivery/evidence.json',
+      byteLength: data.byteLength,
+    })
     const resolve = vi.fn(async () => reference)
     const read = vi.fn(async () => ({ ref: reference, data }))
     const harness = makeHarness({ evidence: { resolve, read } })
@@ -398,6 +625,21 @@ describe('Delivery Remote explicit operations', () => {
         resolve: vi.fn(async () => { throw new Error('private provider detail') }),
       },
     })
+    const wrongLength = makeHarness({
+      evidence: {
+        resolve: vi.fn(async () => reference),
+        read: vi.fn(async () => ({ ref: reference, data: new Uint8Array() })),
+      },
+    })
+    const storedOversized = makeHarness({
+      evidence: {
+        resolve: vi.fn(async () => reference),
+        read: vi.fn(async () => ({
+          ref: { ...reference, byteLength: 256 * 1024 + 1 },
+          data: new Uint8Array(),
+        })),
+      },
+    })
 
     await expect(absent.service.readEvidence({ evidenceId: reference.id }, signal))
       .rejects.toMatchObject({ failure: expect.objectContaining({ code: 'not-found' }) })
@@ -405,6 +647,29 @@ describe('Delivery Remote explicit operations', () => {
       .rejects.toMatchObject({ failure: expect.objectContaining({ code: 'denied' }) })
     await expect(failed.service.readEvidence({ evidenceId: reference.id }, signal))
       .rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
+    await expect(wrongLength.service.readEvidence({ evidenceId: reference.id }, signal))
+      .rejects.toMatchObject({ failure: expect.objectContaining({ code: 'denied' }) })
+    await expect(storedOversized.service.readEvidence({ evidenceId: reference.id }, signal))
+      .rejects.toMatchObject({ failure: expect.objectContaining({ code: 'denied' }) })
+  })
+
+  it('rejects oversized evidence before reading provider bytes', async () => {
+    const reference = evidenceRefFixture({ byteLength: 256 * 1024 + 1 })
+    const read = vi.fn()
+    const harness = makeHarness({
+      evidence: {
+        resolve: vi.fn(async () => reference),
+        read,
+      },
+    })
+
+    await expect(harness.service.readEvidence(
+      { evidenceId: reference.id },
+      new AbortController().signal,
+    )).rejects.toMatchObject({
+      failure: expect.objectContaining({ code: 'denied' }),
+    })
+    expect(read).not.toHaveBeenCalled()
   })
 
   it('derives the acceptance target, candidate, evidence, idempotency, and actor from trusted Host facts', async () => {
@@ -480,7 +745,7 @@ describe('Delivery Remote explicit operations', () => {
     })
     const signal = new AbortController().signal
 
-    await harness.service.recordDecision({
+    const decisionView = await harness.service.recordDecision({
       packetId: String(packet.id),
       changeBindingId: String(changeBinding.id),
       verificationBindingId: String(verifyBinding.id),
@@ -488,6 +753,10 @@ describe('Delivery Remote explicit operations', () => {
       reason: 'Verified evidence is sufficient.',
       decisionNonce: 'operator-choice-1',
     }, signal)
+
+    expect(JSON.stringify(decisionView)).not.toContain('actorId')
+    expect(JSON.stringify(decisionView)).not.toContain('decisionNonce')
+    expect(decisionView).not.toHaveProperty('actor')
 
     expect(recordAcceptanceDecision).toHaveBeenCalledWith(
       expect.objectContaining({

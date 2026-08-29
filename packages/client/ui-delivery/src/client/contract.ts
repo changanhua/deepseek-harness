@@ -9,11 +9,10 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import type { DeliveryRuntimeState } from './runtime-controller.ts'
+import type { DeliveryEvidenceSelectionInput, DeliveryRuntimeState } from './runtime-controller.ts'
 import type {
   DeliveryCreatePacketInput,
   DeliveryImportIssueInput,
-  DeliveryReadEvidenceInput,
   DeliveryRecordDecisionInput,
   DeliveryStartChangeInput,
   DeliveryStartVerificationInput,
@@ -31,7 +30,8 @@ export interface DeliveryWorkspaceInjected {
   readonly createPacket: (input: DeliveryCreatePacketInput) => Promise<boolean>
   readonly startChange: (input: DeliveryStartChangeInput) => Promise<boolean>
   readonly startVerification: (input: DeliveryStartVerificationInput) => Promise<boolean>
-  readonly readEvidence: (input: DeliveryReadEvidenceInput) => Promise<boolean>
+  readonly selectPacket: (packetId: string) => void
+  readonly readEvidence: (input: DeliveryEvidenceSelectionInput) => Promise<boolean>
   readonly recordDecision: (input: DeliveryRecordDecisionInput) => Promise<boolean>
 }
 

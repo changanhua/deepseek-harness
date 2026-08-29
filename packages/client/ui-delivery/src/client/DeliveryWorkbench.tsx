@@ -1,7 +1,8 @@
 /** Personal Delivery ledger, evidence spine, and explicit human operations. */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
+  DeliveryAttentionReason,
   DeliveryCreatePacketInput,
   DeliveryLane,
   DeliveryWorkbenchCard,
@@ -27,6 +28,31 @@ const SUCCESS_KEYS: Readonly<Record<DeliveryPendingOperation, DeliveryKey>> = {
   'read-evidence': 'view.succeeded.read-evidence',
   'record-decision': 'view.succeeded.record-decision',
 }
+const ATTENTION_KEYS: Readonly<Record<DeliveryAttentionReason, DeliveryKey>> = {
+  'bound-work-unavailable': 'attention.bound-work-unavailable',
+  'queue-work-failed': 'attention.queue-work-failed',
+  'queue-attention': 'attention.queue-attention',
+  'change-result-invalid': 'attention.change-result-invalid',
+  'verification-result-invalid': 'attention.verification-result-invalid',
+  'change-interrupted': 'attention.change-interrupted',
+  'change-blocked': 'attention.change-blocked',
+  'verification-failed': 'attention.verification-failed',
+  'verification-needs-human-review': 'attention.verification-needs-human-review',
+  'decision-rejected': 'attention.decision-rejected',
+  'projection-inconsistent': 'attention.projection-inconsistent',
+}
+const VERDICT_KEYS = {
+  passed: 'verdict.passed',
+  failed: 'verdict.failed',
+  'needs-human-review': 'verdict.needs-human-review',
+} as const satisfies Record<NonNullable<DeliveryWorkbenchCard['verificationVerdict']>['status'], DeliveryKey>
+const DECISION_STATUS_KEYS = {
+  accepted: 'decision.status.accepted',
+  rejected: 'decision.status.rejected',
+  waived: 'decision.status.waived',
+} as const satisfies Record<NonNullable<DeliveryWorkbenchCard['acceptanceDecision']>['decision'], DeliveryKey>
+
+const MAX_BROWSER_EVIDENCE_BYTES = 256 * 1024
 
 function lines(value: string): string[] {
   return value.split(/\r?\n/u).map(line => line.trim()).filter(line => line !== '')
@@ -46,6 +72,20 @@ function evidenceIds(card: DeliveryWorkbenchCard): string[] {
     ...(card.verificationVerdict?.evidenceIds ?? []),
     ...(card.verificationVerdict?.checkResults.flatMap(result => result.evidenceIds) ?? []),
   ])].map(String).sort((left, right) => left.localeCompare(right))
+}
+
+function decodePlainText(contentBase64: string, byteLength: number): string | null {
+  if (byteLength > MAX_BROWSER_EVIDENCE_BYTES || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(contentBase64)) {
+    return null
+  }
+  try {
+    const binary = globalThis.atob(contentBase64)
+    if (binary.length !== byteLength) return null
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    return null
+  }
 }
 
 function queueStatus(card: DeliveryWorkbenchCard, kind: DeliveryWorkbenchCard['dispatches'][number]['binding']['kind']): string | null {
@@ -73,6 +113,7 @@ function ImportForm(props: Pick<DeliveryWorkspaceProps, 'importIssue' | 't'> & {
         <input
           type="url"
           aria-label={props.t('import.issueUrl')}
+          disabled={props.busy}
           value={issueUrl}
           onChange={(event) => { setIssueUrl(event.currentTarget.value) }}
         />
@@ -81,6 +122,7 @@ function ImportForm(props: Pick<DeliveryWorkspaceProps, 'importIssue' | 't'> & {
         <span>{props.t('import.repository')}</span>
         <input
           aria-label={props.t('import.repository')}
+          disabled={props.busy}
           value={repositoryId}
           onChange={(event) => { setRepositoryId(event.currentTarget.value) }}
         />
@@ -150,6 +192,7 @@ function PacketForm(props: Pick<DeliveryWorkspaceProps, 'createPacket' | 't'> & 
             <span>{props.t('packet.contract')}</span>
             <select
               aria-label={props.t('packet.contract')}
+              disabled={props.busy}
               value={contract.id}
               onChange={(event) => { setContractId(event.currentTarget.value) }}
             >
@@ -162,25 +205,25 @@ function PacketForm(props: Pick<DeliveryWorkspaceProps, 'createPacket' | 't'> & 
           </label>
           <label>
             <span>{props.t('packet.objective')}</span>
-            <textarea aria-label={props.t('packet.objective')} value={objective} onChange={(event) => { setObjective(event.currentTarget.value) }} />
+            <textarea disabled={props.busy} aria-label={props.t('packet.objective')} value={objective} onChange={(event) => { setObjective(event.currentTarget.value) }} />
           </label>
           <div className={css.twoFields}>
             <label>
               <span>{props.t('packet.allowed')}</span>
-              <textarea aria-label={props.t('packet.allowed')} value={allowed} onChange={(event) => { setAllowed(event.currentTarget.value) }} />
+              <textarea disabled={props.busy} aria-label={props.t('packet.allowed')} value={allowed} onChange={(event) => { setAllowed(event.currentTarget.value) }} />
             </label>
             <label>
               <span>{props.t('packet.forbidden')}</span>
-              <textarea aria-label={props.t('packet.forbidden')} value={forbidden} onChange={(event) => { setForbidden(event.currentTarget.value) }} />
+              <textarea disabled={props.busy} aria-label={props.t('packet.forbidden')} value={forbidden} onChange={(event) => { setForbidden(event.currentTarget.value) }} />
             </label>
           </div>
           <label>
             <span>{props.t('packet.stop')}</span>
-            <textarea aria-label={props.t('packet.stop')} value={stop} onChange={(event) => { setStop(event.currentTarget.value) }} />
+            <textarea disabled={props.busy} aria-label={props.t('packet.stop')} value={stop} onChange={(event) => { setStop(event.currentTarget.value) }} />
           </label>
           <label>
             <span>{props.t('packet.executor')}</span>
-            <input aria-label={props.t('packet.executor')} value={executor} onChange={(event) => { setExecutor(event.currentTarget.value) }} />
+            <input disabled={props.busy} aria-label={props.t('packet.executor')} value={executor} onChange={(event) => { setExecutor(event.currentTarget.value) }} />
           </label>
           <fieldset className={css.clauses}>
             <legend>{props.t('packet.clauses')}</legend>
@@ -188,6 +231,7 @@ function PacketForm(props: Pick<DeliveryWorkspaceProps, 'createPacket' | 't'> & 
               <label key={clause.id}>
                 <input
                   type="checkbox"
+                  disabled={props.busy}
                   checked={clauseIds.includes(String(clause.id))}
                   onChange={(event) => {
                     const checked = event.currentTarget.checked
@@ -213,8 +257,8 @@ function EvidenceSpine({ card, t }: { card: DeliveryWorkbenchCard; t: DeliveryWo
     { label: t('spine.scope'), value: `${String(card.packet.allowedPaths.length)}/${String(card.packet.forbiddenPaths.length)}` },
     { label: t('spine.change'), value: change === null ? t('spine.pending') : t(`queue.${change}` as DeliveryKey) },
     { label: t('spine.checkpoint'), value: abbreviated(card.completionClaim?.disposition === 'completed' ? card.completionClaim.checkpointCommit : null) },
-    { label: t('spine.verification'), value: card.verificationVerdict?.status ?? (verification === null ? t('spine.pending') : t(`queue.${verification}` as DeliveryKey)) },
-    { label: t('spine.decision'), value: card.acceptanceDecision?.decision ?? t('spine.pending') },
+    { label: t('spine.verification'), value: card.verificationVerdict === null ? (verification === null ? t('spine.pending') : t(`queue.${verification}` as DeliveryKey)) : t(VERDICT_KEYS[card.verificationVerdict.status]) },
+    { label: t('spine.decision'), value: card.acceptanceDecision === null ? t('spine.pending') : t(DECISION_STATUS_KEYS[card.acceptanceDecision.decision]) },
   ]
   return (
     <ol className={css.spine}>
@@ -263,6 +307,14 @@ function PacketDetail(props: DeliveryWorkspaceProps & {
   }, [card.packet.id])
 
   const ids = evidenceIds(card)
+  const evidence = runtime.evidence?.packetId === card.packet.id
+    && ids.includes(String(runtime.evidence.value.id))
+    ? runtime.evidence.value
+    : undefined
+  const evidenceText = evidence?.mediaType.split(';', 1)[0]?.trim().toLowerCase() === 'text/plain'
+    ? decodePlainText(evidence.contentBase64, evidence.byteLength)
+    : undefined
+  const busy = runtime.pending !== null || runtime.status === 'loading'
   const canStart = changes.length === 0 && card.lane === 'ready'
   const canVerify = card.completionClaim?.disposition === 'completed' && verifications.length === 0
   const canDecide = card.verificationVerdict !== null
@@ -288,18 +340,20 @@ function PacketDetail(props: DeliveryWorkspaceProps & {
       {card.attentionReasons.length > 0 && (
         <section className={css.attention} aria-label={t('detail.attention')}>
           <h3>{t('detail.attention')}</h3>
-          <ul>{card.attentionReasons.map(reasonText => <li key={reasonText}>{reasonText}</li>)}</ul>
+          <ul>{card.attentionReasons.map(reasonCode => (
+            <li key={reasonCode}>{t(ATTENTION_KEYS[reasonCode])}</li>
+          ))}</ul>
         </section>
       )}
       {canStart && (
         <section className={css.actionBlock}>
           <label>
             <span>{t('action.executor')}</span>
-            <input aria-label={t('action.executor')} value={executor} onChange={(event) => { setExecutor(event.currentTarget.value) }} />
+            <input disabled={busy} aria-label={t('action.executor')} value={executor} onChange={(event) => { setExecutor(event.currentTarget.value) }} />
           </label>
           <button
             type="button"
-            disabled={runtime.pending !== null || executor.trim() === ''}
+            disabled={busy || executor.trim() === ''}
             onClick={() => { void props.startChange({ packetId: String(card.packet.id), executorId: executor.trim() }) }}
           >
             {t('action.startChange')}
@@ -312,13 +366,14 @@ function PacketDetail(props: DeliveryWorkspaceProps & {
             <span>{t('verification.changeBinding')}</span>
             <select
               aria-label={t('verification.changeBinding')}
+              disabled={busy}
               value={selectedChangeBindingId}
               onChange={(event) => { setChangeBindingId(event.currentTarget.value) }}
             >
               {changes.map(dispatch => <option key={dispatch.binding.id} value={dispatch.binding.id}>{dispatch.binding.id}</option>)}
             </select>
           </label>
-          <button type="button" onClick={() => { void props.startVerification({
+          <button type="button" disabled={busy || selectedChangeBindingId === ''} onClick={() => { void props.startVerification({
             packetId: String(card.packet.id),
             changeBindingId: selectedChangeBindingId,
           }) }}>
@@ -331,12 +386,23 @@ function PacketDetail(props: DeliveryWorkspaceProps & {
         {ids.length === 0
           ? <p className={css.muted}>{t('evidence.none')}</p>
           : <div className={css.evidenceButtons}>{ids.map(id => (
-            <button key={id} type="button" onClick={() => { void props.readEvidence({ evidenceId: id as never }) }}>
+            <button key={id} type="button" disabled={busy} onClick={() => { void props.readEvidence({
+              packetId: String(card.packet.id), evidenceId: id as never,
+            }) }}>
               {t('evidence.read', { id })}
             </button>
           ))}</div>}
-        {runtime.evidence !== undefined && (
-          <pre className={css.evidenceContent}>{runtime.evidence.contentBase64}</pre>
+        {evidence !== undefined && evidenceText !== undefined && evidenceText !== null && (
+          <pre className={css.evidenceContent}>{evidenceText}</pre>
+        )}
+        {evidence !== undefined && evidenceText === null && (
+          <p className={css.muted}>{t('evidence.invalidText')}</p>
+        )}
+        {evidence !== undefined && evidenceText === undefined && (
+          <p className={css.muted}>{t('evidence.binary', {
+            mediaType: evidence.mediaType,
+            byteLength: evidence.byteLength,
+          })}</p>
         )}
       </section>
       {card.verificationVerdict !== null && changes.length > 0 && verifications.length > 0 && (
@@ -362,6 +428,7 @@ function PacketDetail(props: DeliveryWorkspaceProps & {
               <span>{t('decision.changeBinding')}</span>
               <select
                 aria-label={t('decision.changeBinding')}
+                disabled={busy}
                 value={selectedChangeBindingId}
                 onChange={(event) => { setChangeBindingId(event.currentTarget.value) }}
               >
@@ -372,6 +439,7 @@ function PacketDetail(props: DeliveryWorkspaceProps & {
               <span>{t('decision.verificationBinding')}</span>
               <select
                 aria-label={t('decision.verificationBinding')}
+                disabled={busy}
                 value={selectedVerificationBindingId}
                 onChange={(event) => { setVerificationBindingId(event.currentTarget.value) }}
               >
@@ -385,7 +453,7 @@ function PacketDetail(props: DeliveryWorkspaceProps & {
           </div>
           <label>
             <span>{t('decision.kind')}</span>
-            <select aria-label={t('decision.kind')} value={decision} onChange={(event) => { setDecision(event.currentTarget.value as typeof decision) }}>
+            <select disabled={busy} aria-label={t('decision.kind')} value={decision} onChange={(event) => { setDecision(event.currentTarget.value as typeof decision) }}>
               <option value="accepted">{t('decision.accepted')}</option>
               <option value="rejected">{t('decision.rejected')}</option>
               <option value="waived">{t('decision.waived')}</option>
@@ -393,13 +461,13 @@ function PacketDetail(props: DeliveryWorkspaceProps & {
           </label>
           <label>
             <span>{t('decision.reason')}</span>
-            <textarea aria-label={t('decision.reason')} value={reason} onChange={(event) => { setReason(event.currentTarget.value) }} />
+            <textarea disabled={busy} aria-label={t('decision.reason')} value={reason} onChange={(event) => { setReason(event.currentTarget.value) }} />
           </label>
           <label>
             <span>{t('decision.nonce')}</span>
-            <input aria-label={t('decision.nonce')} value={nonce} onChange={(event) => { setNonce(event.currentTarget.value) }} />
+            <input disabled={busy} aria-label={t('decision.nonce')} value={nonce} onChange={(event) => { setNonce(event.currentTarget.value) }} />
           </label>
-          <button type="submit" disabled={!canDecide}>{t('decision.submit')}</button>
+          <button type="submit" disabled={busy || !canDecide}>{t('decision.submit')}</button>
         </form>
       )}
     </aside>
@@ -412,19 +480,24 @@ export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
   const snapshot = state.snapshot
   const [lane, setLane] = useState<DeliveryLane | 'all'>('all')
   const [selectedId, setSelectedId] = useState(snapshot?.cards[0]?.packet.id ?? '')
-
-  useEffect(() => {
-    if (snapshot === undefined || snapshot.cards.some(card => card.packet.id === selectedId)) return
-    setSelectedId(snapshot.cards[0]?.packet.id ?? '')
-  }, [selectedId, snapshot])
+  const cardRefs = useRef(new Map<string, HTMLButtonElement>())
 
   const counts = useMemo(() => Object.fromEntries(LANES.map(candidate => [
     candidate,
     snapshot?.cards.filter(card => card.lane === candidate).length ?? 0,
   ])) as Record<DeliveryLane, number>, [snapshot])
   const cards = snapshot?.cards.filter(card => lane === 'all' || card.lane === lane) ?? []
-  const selected = snapshot?.cards.find(card => card.packet.id === selectedId) ?? null
+  const selected = cards.find(card => card.packet.id === selectedId) ?? cards[0] ?? null
   const busy = state.pending !== null || state.status === 'loading'
+
+  useEffect(() => {
+    if (selected === null || selected.packet.id === selectedId) return
+    setSelectedId(selected.packet.id)
+  }, [selected, selectedId])
+
+  useEffect(() => {
+    props.selectPacket(selected === null ? '' : String(selected.packet.id))
+  }, [props.selectPacket, selected?.packet.id])
 
   return (
     <main className={css.workspace} aria-label={props.t('nav.delivery')}>
@@ -445,7 +518,7 @@ export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
       {state.status === 'error' && (
         <div className={css.error} role="alert">
           <span>{props.t('view.error', { message: state.error ?? '' })}</span>
-          <button type="button" onClick={props.refresh}>{props.t('view.retry')}</button>
+          <button type="button" onClick={props.refresh} disabled={busy}>{props.t('view.retry')}</button>
         </div>
       )}
       {state.actionError !== null && <div className={css.error} role="alert">{props.t('view.actionError', { message: state.actionError })}</div>}
@@ -458,7 +531,7 @@ export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
             <PacketForm contracts={snapshot.contractsWithoutPacket} createPacket={props.createPacket} t={props.t} busy={busy} />
           </section>
           <nav className={css.trace} aria-label={props.t('ledger.title')}>
-            <button type="button" data-active={lane === 'all' || undefined} onClick={() => { setLane('all') }}>
+            <button type="button" aria-pressed={lane === 'all'} data-active={lane === 'all' || undefined} onClick={() => { setLane('all') }}>
               {props.t('lane.all')} {snapshot.cards.length}
             </button>
             {LANES.map(candidate => (
@@ -467,6 +540,7 @@ export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
                 key={candidate}
                 data-lane={candidate}
                 data-active={lane === candidate || undefined}
+                aria-pressed={lane === candidate}
                 onClick={() => { setLane(candidate) }}
               >
                 {props.t(LANE_KEYS[candidate])} {counts[candidate]}
@@ -482,14 +556,37 @@ export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
                 <h2>{props.t('ledger.title')}</h2>
                 <span>{props.t('ledger.count', { count: cards.length })}</span>
               </div>
-              <ul>
-                {cards.map(card => (
+              <ul role="listbox" aria-label={props.t('ledger.title')}>
+                {cards.map((card, index) => (
                   <li key={card.packet.id}>
                     <button
                       type="button"
-                      className={selectedId === card.packet.id ? css.selectedCard : undefined}
+                      role="option"
+                      aria-selected={selected?.packet.id === card.packet.id}
+                      className={selected?.packet.id === card.packet.id ? css.selectedCard : undefined}
                       aria-label={`${card.packet.objective} — ${props.t(LANE_KEYS[card.lane])}`}
                       onClick={() => { setSelectedId(card.packet.id) }}
+                      onKeyDown={(event) => {
+                        const offset = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
+                        const nextIndex = event.key === 'Home'
+                          ? 0
+                          : event.key === 'End'
+                            ? cards.length - 1
+                            : offset === 0
+                              ? index
+                              : (index + offset + cards.length) % cards.length
+                        if (nextIndex === index && !['Home', 'End'].includes(event.key)) return
+                        event.preventDefault()
+                        const next = cards[nextIndex]
+                        /* v8 ignore next -- nextIndex is clamped or wrapped against this non-empty list. */
+                        if (next === undefined) return
+                        setSelectedId(next.packet.id)
+                        cardRefs.current.get(String(next.packet.id))?.focus()
+                      }}
+                      ref={(element) => {
+                        if (element === null) cardRefs.current.delete(String(card.packet.id))
+                        else cardRefs.current.set(String(card.packet.id), element)
+                      }}
                     >
                       <span className={css.cardLane} data-lane={card.lane}>{props.t(LANE_KEYS[card.lane])}</span>
                       <strong>{card.packet.objective}</strong>

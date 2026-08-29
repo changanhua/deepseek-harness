@@ -39,7 +39,6 @@ export interface DeliveryQueueFailureView {
   readonly category: string
   readonly sideEffect: SideEffectState
   readonly retriable: boolean
-  readonly message: string
 }
 
 /** Narrow Queue projection; intent, resolved input, policy, resources, and output stay Host-only. */
@@ -59,11 +58,34 @@ export interface DeliveryWorkbenchDispatch {
   readonly queue: DeliveryQueueWorkView | null
 }
 
-/** Browser-safe view of one explicit human acceptance decision. */
-export type DeliveryAcceptanceDecisionView = AcceptanceDecision
+/** Browser-safe human decision with Host actor and idempotency nonce omitted. */
+export interface DeliveryAcceptanceDecisionView {
+  readonly schemaVersion: AcceptanceDecision['schemaVersion']
+  readonly id: AcceptanceDecision['id']
+  readonly packetId: AcceptanceDecision['packetId']
+  readonly targetCommit: AcceptanceDecision['targetCommit']
+  readonly verdictId: AcceptanceDecision['verdictId']
+  readonly decision: AcceptanceDecision['decision']
+  readonly reason: AcceptanceDecision['reason']
+  readonly decidedAt: AcceptanceDecision['decidedAt']
+}
 
 /** Derived workbench lane; never a writable Delivery-domain status. */
 export type DeliveryLane = 'ready' | 'running' | 'review' | 'blocked' | 'accepted'
+
+/** Stable, locale-owned reason codes for a blocked or attention-required Packet. */
+export type DeliveryAttentionReason =
+  | 'bound-work-unavailable'
+  | 'queue-work-failed'
+  | 'queue-attention'
+  | 'change-result-invalid'
+  | 'verification-result-invalid'
+  | 'change-interrupted'
+  | 'change-blocked'
+  | 'verification-failed'
+  | 'verification-needs-human-review'
+  | 'decision-rejected'
+  | 'projection-inconsistent'
 
 /** One Packet and the cross-authority facts required to derive its lane. */
 export interface DeliveryWorkbenchCard {
@@ -73,8 +95,8 @@ export interface DeliveryWorkbenchCard {
   readonly dispatches: readonly DeliveryWorkbenchDispatch[]
   readonly completionClaim: CompletionClaim | null
   readonly verificationVerdict: VerificationVerdict | null
-  readonly acceptanceDecision: AcceptanceDecision | null
-  readonly attentionReasons: readonly string[]
+  readonly acceptanceDecision: DeliveryAcceptanceDecisionView | null
+  readonly attentionReasons: readonly DeliveryAttentionReason[]
 }
 
 /** Complete MVP workbench projection returned from one host snapshot. */

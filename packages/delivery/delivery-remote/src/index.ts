@@ -17,7 +17,11 @@ import {
   type DispatchBinding,
   type QueueWorkIdRef,
 } from '@deepseek-ai/dsh-delivery-protocol'
-import { startCodeChange, startVerification } from '@deepseek-ai/dsh-delivery-task-queue'
+import {
+  startCodeChange,
+  startVerification,
+  type DeliveryQueueBridgeDependencies,
+} from '@deepseek-ai/dsh-delivery-task-queue'
 import {
   createVerifiedOperatorAuthority,
   type OperatorWorkQueue,
@@ -37,7 +41,11 @@ import type {
   DeliveryStartVerificationInput,
   DeliveryWorkPacketView,
 } from './types.ts'
-import { projectDeliverySnapshot, projectDispatchBinding } from './projection.ts'
+import {
+  projectAcceptanceDecision,
+  projectDeliverySnapshot,
+  projectDispatchBinding,
+} from './projection.ts'
 import {
   DeliveryAcceptanceCandidateError,
   resolveAcceptanceCandidate,
@@ -45,6 +53,7 @@ import {
 import { remoteFailure, requireActive } from './failures.ts'
 
 export type { DeliveryRemoteErrorCode } from './failures.ts'
+export type { DeliveryAttentionReason } from './types.ts'
 
 export type {
   DeliveryAcceptanceDecisionView,
@@ -88,6 +97,72 @@ const DEFAULT_INTERNALS: DeliveryRemoteInternals = {
   importIssue: importGitHubIssue,
   startCodeChange,
   startVerification,
+}
+
+const MAX_BROWSER_EVIDENCE_BYTES = 256 * 1024
+
+function guardedAdmission(
+  dependencies: DeliveryQueueBridgeDependencies,
+  signal: AbortSignal,
+  operation: 'startChange' | 'startVerification',
+): DeliveryQueueBridgeDependencies {
+  const active = (): void => { requireActive(signal, operation) }
+  return {
+    delivery: {
+      getWorkPacket(packetId) {
+        active()
+        return dependencies.delivery.getWorkPacket(packetId)
+      },
+      getDispatchBinding(bindingId) {
+        active()
+        return dependencies.delivery.getDispatchBinding(bindingId)
+      },
+      async beginDispatch(request) {
+        active()
+        const binding = await dependencies.delivery.beginDispatch(request)
+        active()
+        return binding
+      },
+      async bindDispatch(request) {
+        active()
+        const binding = await dependencies.delivery.bindDispatch(request)
+        active()
+        return binding
+      },
+    },
+    queue: {
+      get(workId) {
+        active()
+        return dependencies.queue.get(workId)
+      },
+      async enqueue(request) {
+        active()
+        const workId = await dependencies.queue.enqueue(request)
+        active()
+        return workId
+      },
+    },
+    repoWorkspace: {
+      async inspectRevision(request) {
+        active()
+        const revision = await dependencies.repoWorkspace.inspectRevision({
+          ...request,
+          signal,
+        })
+        active()
+        return revision
+      },
+      async inspectRange(request) {
+        active()
+        const range = await dependencies.repoWorkspace.inspectRange({
+          ...request,
+          signal,
+        })
+        active()
+        return range
+      },
+    },
+  }
 }
 
 function requireBound(
@@ -239,11 +314,11 @@ export class DeliveryRemoteService extends TypertRemoteService {
   ): Promise<DeliveryDispatchBindingView> {
     requireActive(signal, 'startChange')
     try {
-      const binding = await this.internals.startCodeChange({
+      const binding = await this.internals.startCodeChange(guardedAdmission({
         delivery: this.ctx.delivery,
         queue: this.queue,
         repoWorkspace: this.ctx.repoWorkspace,
-      }, {
+      }, signal, 'startChange'), {
         packetId: WorkPacketId(input.packetId),
         executorId: ExecutorId(input.executorId),
       })
@@ -266,11 +341,11 @@ export class DeliveryRemoteService extends TypertRemoteService {
   ): Promise<DeliveryDispatchBindingView> {
     requireActive(signal, 'startVerification')
     try {
-      const binding = await this.internals.startVerification({
+      const binding = await this.internals.startVerification(guardedAdmission({
         delivery: this.ctx.delivery,
         queue: this.queue,
         repoWorkspace: this.ctx.repoWorkspace,
-      }, {
+      }, signal, 'startVerification'), {
         packetId: WorkPacketId(input.packetId),
         changeBindingId: DispatchBindingId(input.changeBindingId),
       })
@@ -298,9 +373,18 @@ export class DeliveryRemoteService extends TypertRemoteService {
       if (reference === undefined) {
         throw new DeliveryEvidenceError('not-found', 'The selected Delivery evidence does not exist')
       }
+      if (reference.byteLength > MAX_BROWSER_EVIDENCE_BYTES) {
+        throw new DeliveryEvidenceError('length-mismatch', 'The selected evidence exceeds the browser read limit')
+      }
       const stored = await this.ctx.deliveryEvidence.read(reference, signal)
       if (stored.ref.id !== evidenceId) {
         throw new DeliveryEvidenceError('reference-mismatch', 'Evidence read returned a different object')
+      }
+      if (
+        stored.ref.byteLength > MAX_BROWSER_EVIDENCE_BYTES
+        || stored.data.byteLength !== stored.ref.byteLength
+      ) {
+        throw new DeliveryEvidenceError('length-mismatch', 'Evidence read returned an invalid byte length')
       }
       return {
         id: stored.ref.id,
@@ -363,7 +447,7 @@ export class DeliveryRemoteService extends TypertRemoteService {
         }
         return stored.ref
       }
-      return await this.ctx.delivery.recordAcceptanceDecision({
+      const decision = await this.ctx.delivery.recordAcceptanceDecision({
         idempotencyKey: `delivery:${packetId}:decision:${candidate.verificationVerdict.targetCommit}:${input.decisionNonce}`,
         packetId,
         changeBindingId,
@@ -381,6 +465,7 @@ export class DeliveryRemoteService extends TypertRemoteService {
         }
         return Promise.resolve(candidate)
       }, resolveEvidence)
+      return projectAcceptanceDecision(decision)
     } catch (error) {
       throw remoteFailure('recordDecision', error, signal)
     }
