@@ -40,7 +40,7 @@ const run = startChange(request, signal)
 const claim = await run.done
 ```
 
-`CodeChangeRun` publishes `done` and `cancel(reason)` synchronously before workspace work starts. Cancellation reaches the selected transport; `cancel()` waits for runner settlement and whole-process-tree cleanup, and it rejects when cleanup fails. DSH WorkKind registration, retries, workspace creation, durable Queue state, and acceptance remain outside this package.
+`CodeChangeRun` publishes `done` and `cancel(reason)` synchronously before workspace work starts. Cancellation reaches the selected transport; `cancel()` waits for runner settlement and whole-process-tree cleanup, and it rejects when cleanup fails. Cancellation during checkpoint, evidence, or lease-close awaits after transport quiescence remains `canceled`; a failed cleanup remains `cleanup`. DSH WorkKind registration, retries, workspace creation, durable Queue state, and acceptance remain outside this package.
 
 `disposeGraceMs` must be a positive integer no greater than the platform timer ceiling. `modelOutputBytes` must be a positive safe integer and cannot exceed `MAX_MODEL_OUTPUT_BYTES` (64 MiB). The prompt declares UTF-8 head retention before execution. A final response that exceeds the configured head cannot form a complete JSON envelope, so the run fails with `completion` and preserves the worktree instead of parsing truncated output.
 
@@ -49,7 +49,7 @@ const claim = await run.done
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The runner validates Contract, Packet, resolved specification, lease, and evidence identities before it publishes a claim. It opens the worktree through `openWorkspace(signal)`, supplies only `lease.cwd` to the parent-free app-server transport, and disposes the complete subprocess tree before it parses the model envelope or asks the lease to checkpoint. A `completed` envelope requires a clean descendant checkpoint and publishes bounded model-output plus checkpoint-metadata evidence before the lease is removed. `blocked`, `needs-decision`, and `needs-scope-change` claims carry no invented checkpoint facts and preserve the lease. `DeliveryCodexRunnerError` distinguishes `invalid-request`, `startup`, `product`, `canceled`, `completion`, `ownership-lost`, and `cleanup`; a cleanup failure retains the earlier failure as an `AggregateError` cause.
+The runner validates Contract, Packet, resolved specification, lease, and evidence identities before it publishes a claim. It opens the worktree through `openWorkspace(signal)`, supplies only `lease.cwd` to the parent-free app-server transport, and disposes the complete subprocess tree before it parses the model envelope or asks the lease to checkpoint. A `completed` envelope requires a clean descendant checkpoint and publishes bounded model-output plus checkpoint-metadata evidence before the lease is removed. `blocked`, `needs-decision`, and `needs-scope-change` claims carry no invented checkpoint facts and preserve the lease. `DeliveryCodexRunnerError` distinguishes `invalid-request`, `startup`, `product`, `canceled`, `completion`, `ownership-lost`, and `cleanup`; an unpublished startup rollback that cannot prove process-tree quiescence is `cleanup` and preserves the lease, and every cleanup failure retains the earlier failure in an `AggregateError` cause.
 
 -----
 
@@ -74,7 +74,7 @@ The model receives one authoritative JSON projection of the exact `ContractRevis
 
 #### Token effect
 
-The runner adds one task prompt per Attempt. Contract and Packet text contribute input tokens; the strict final JSON envelope and retained model output contribute output tokens only up to the configured byte budget.
+The runner adds one task prompt per Attempt. Contract and Packet text contribute input tokens. Codex can still generate the complete final response, and all of its output tokens can count toward token usage; the host retains at most the configured UTF-8 byte count and rejects an over-budget envelope instead of parsing it.
 
 #### KV Cache effect
 

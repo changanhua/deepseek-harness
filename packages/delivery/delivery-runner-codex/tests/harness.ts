@@ -30,6 +30,7 @@ import type { BoundDeliveryEvidenceWriter } from '@deepseek-ai/dsh-delivery-evid
 import type {
   ChangeWorkspaceLease,
   RepositoryCheckpoint,
+  RepositoryWorkspaceDisposition,
 } from '@deepseek-ai/dsh-repo-workspace'
 import type {
   SubprocessHandle,
@@ -242,6 +243,14 @@ interface RequestHarnessOptions {
   readonly openWorkspaceError?: Error
   readonly evidenceProvenance?: EvidenceRef['provenance']
   readonly saveError?: Error
+  readonly beforeCheckpoint?: (signal?: AbortSignal) => Promise<void>
+  readonly beforeClose?: (
+    disposition: RepositoryWorkspaceDisposition,
+  ) => Promise<void>
+  readonly beforeSave?: (
+    attempt: number,
+    signal?: AbortSignal,
+  ) => Promise<void>
 }
 
 export interface RequestHarness {
@@ -370,11 +379,13 @@ export function requestHarness(
     clean: true,
     descendsFromBase: true,
   }
-  const checkpoint = vi.fn(async () => {
+  const checkpoint = vi.fn(async (request: { readonly signal?: AbortSignal }) => {
+    await options.beforeCheckpoint?.(request.signal)
     if (checkpointOutcome instanceof Error) throw checkpointOutcome
     return structuredClone(checkpointOutcome)
   })
-  const close = vi.fn(async () => {
+  const close = vi.fn(async (disposition: RepositoryWorkspaceDisposition) => {
+    await options.beforeClose?.(disposition)
     if (options.closeError !== undefined) throw options.closeError
   })
   const lease: ChangeWorkspaceLease = {
@@ -392,6 +403,7 @@ export function requestHarness(
     return lease
   })
   let evidenceOrdinal = 0
+  let saveAttempt = 0
   const provenance = options.evidenceProvenance ?? {
     kind: 'change-attempt' as const,
     packetId: PACKET_ID,
@@ -403,6 +415,8 @@ export function requestHarness(
     signal?: AbortSignal,
   ): Promise<EvidenceRef> => {
     signal?.throwIfAborted()
+    saveAttempt += 1
+    await options.beforeSave?.(saveAttempt, signal)
     if (options.saveError !== undefined) throw options.saveError
     evidenceOrdinal += 1
     return evidenceRefSchema.parse({

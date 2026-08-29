@@ -199,19 +199,27 @@ function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value))
 }
 
-function asRunnerError(value: unknown): DeliveryCodexRunnerError {
-  return value instanceof DeliveryCodexRunnerError
-    ? value
+function cancellationFailure(signal: AbortSignal): DeliveryCodexRunnerError {
+  return runnerFailure(
+    'canceled',
+    'Delivery Codex run was canceled',
+    signal.reason,
+  )
+}
+
+function asRunnerError(
+  value: unknown,
+  signal: AbortSignal,
+): DeliveryCodexRunnerError {
+  if (value instanceof DeliveryCodexRunnerError) return value
+  return signal.aborted
+    ? cancellationFailure(signal)
     : runnerFailure('completion', 'Delivery Codex completion failed', value)
 }
 
 function ensureActive(signal: AbortSignal): void {
   if (signal.aborted) {
-    throw runnerFailure(
-      'canceled',
-      'Delivery Codex run was canceled',
-      signal.reason,
-    )
+    throw cancellationFailure(signal)
   }
 }
 
@@ -444,10 +452,10 @@ function cleanupFailure(
   )
 }
 
-class LeaseCleanupFailure extends Error {
+class LeaseSettlementFailure extends Error {
   constructor(readonly failure: DeliveryCodexRunnerError) {
     super(failure.message, { cause: failure })
-    this.name = 'LeaseCleanupFailure'
+    this.name = 'LeaseSettlementFailure'
   }
 }
 
@@ -525,6 +533,13 @@ async function executeChange(
         spawn: dependencies.spawn,
       })
     } catch (cause: unknown) {
+      if (cause instanceof AggregateError) {
+        throw runnerFailure(
+          'cleanup',
+          `Delivery Codex startup rollback did not prove ${SELECTED_TRANSPORT} process-tree quiescence`,
+          cause,
+        )
+      }
       ensureActive(signal)
       throw runnerFailure(
         'startup',
@@ -613,10 +628,15 @@ async function executeChange(
       try {
         await lease.close('preserve')
       } catch (cause: unknown) {
-        throw new LeaseCleanupFailure(cleanupFailure(
-          runnerFailure('completion', 'Delivery Codex claim was assembled'),
+        throw new LeaseSettlementFailure(cleanupFailure(
+          signal.aborted
+            ? cancellationFailure(signal)
+            : runnerFailure('completion', 'Delivery Codex claim was assembled'),
           cause,
         ))
+      }
+      if (signal.aborted) {
+        throw new LeaseSettlementFailure(cancellationFailure(signal))
       }
       return claim
     }
@@ -634,6 +654,7 @@ async function executeChange(
         cause,
       )
     }
+    ensureActive(signal)
     if (
       checkpoint.repositoryId !== request.packet.repositoryId
       || checkpoint.baseCommit !== request.packet.baseCommit
@@ -688,17 +709,26 @@ async function executeChange(
     try {
       await lease.close('remove')
     } catch (cause: unknown) {
-      throw new LeaseCleanupFailure(cleanupFailure(
-        runnerFailure('completion', 'Delivery Codex claim was assembled'),
+      throw new LeaseSettlementFailure(cleanupFailure(
+        signal.aborted
+          ? cancellationFailure(signal)
+          : runnerFailure('completion', 'Delivery Codex claim was assembled'),
         cause,
       ))
     }
+    if (signal.aborted) {
+      throw new LeaseSettlementFailure(cancellationFailure(signal))
+    }
     return claim
   } catch (cause: unknown) {
-    if (cause instanceof LeaseCleanupFailure) throw cause.failure
-    let failure = asRunnerError(cause)
+    if (cause instanceof LeaseSettlementFailure) throw cause.failure
+    let failure = asRunnerError(cause, signal)
     try {
-      await lease.close(transportPublished ? 'preserve' : 'remove')
+      await lease.close(
+        transportPublished || failure.code === 'cleanup'
+          ? 'preserve'
+          : 'remove',
+      )
     } catch (cleanup: unknown) {
       failure = cleanupFailure(failure, cleanup)
     }

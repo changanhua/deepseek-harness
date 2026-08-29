@@ -29,6 +29,21 @@ import {
   requestHarness,
 } from './harness.ts'
 
+function rejectOnAbort(signal?: AbortSignal): Promise<never> {
+  if (signal === undefined) {
+    throw new Error('expected an operation AbortSignal')
+  }
+  const abortReason = (): Error => signal.reason instanceof Error
+    ? signal.reason
+    : new Error('operation was aborted', { cause: signal.reason })
+  if (signal.aborted) return Promise.reject(abortReason())
+  return new Promise<never>((_resolve, reject) => {
+    signal.addEventListener('abort', () => { reject(abortReason()) }, {
+      once: true,
+    })
+  })
+}
+
 describe('delivery Codex runner', () => {
   it('requires both Queue identities in every operation-local request', () => {
     expectTypeOf<CodeChangeRunRequest['queueWorkId']>()
@@ -212,6 +227,61 @@ describe('delivery Codex runner', () => {
     expect(state.close).toHaveBeenCalledWith('preserve')
   })
 
+  it('preserves unpublished startup rollback cleanup failure and the lease', async () => {
+    const child = fakeChild({
+      waitForExitError: new Error('startup process tree ownership was lost'),
+    })
+    const state = requestHarness()
+    const start = createCodexChangeRunner({
+      spawn: () => child.handle,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    })
+    const run = start(state.request, new AbortController().signal)
+    const initialize = await child.peer.nextMethod('initialize')
+
+    child.peer.respond(initialize, null)
+
+    const failure = await run.done.catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(DeliveryCodexRunnerError)
+    if (!(failure instanceof DeliveryCodexRunnerError)) {
+      throw new Error('expected a DeliveryCodexRunnerError')
+    }
+    expect(failure.code).toBe('cleanup')
+    expect(failure.cause).toBeInstanceOf(AggregateError)
+    expect(state.close).toHaveBeenCalledWith('preserve')
+  })
+
+  it('preserves unpublished cancellation rollback cleanup failure for cancel()', async () => {
+    const child = fakeChild({
+      waitForExitError: new Error('canceled startup tree ownership was lost'),
+    })
+    const state = requestHarness()
+    const start = createCodexChangeRunner({
+      spawn: () => child.handle,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    })
+    const run = start(state.request, new AbortController().signal)
+    await child.peer.nextMethod('initialize')
+
+    const cancellation = run.cancel('operator canceled startup')
+
+    await expect(cancellation).rejects.toEqual(expect.objectContaining({
+      code: 'cleanup',
+      name: 'DeliveryCodexRunnerError',
+    }))
+    await expect(run.done).rejects.toEqual(expect.objectContaining({
+      code: 'cleanup',
+      name: 'DeliveryCodexRunnerError',
+    }))
+    expect(state.close).toHaveBeenCalledWith('preserve')
+  })
+
   it('distinguishes startup failure before a Codex run is published', async () => {
     const state = requestHarness()
     const start = createCodexChangeRunner({
@@ -289,6 +359,235 @@ describe('delivery Codex runner', () => {
       name: 'DeliveryCodexRunnerError',
     }))
     expect(state.close).toHaveBeenCalledWith('preserve')
+  })
+
+  it('classifies caller abort during log evidence publication as canceled after quiescence', async () => {
+    const child = fakeChild()
+    const state = requestHarness({
+      beforeSave: async (attempt, signal) => {
+        if (attempt === 1) await rejectOnAbort(signal)
+      },
+    })
+    const start = createCodexChangeRunner({
+      spawn: () => child.handle,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    })
+    const caller = new AbortController()
+    const run = start(state.request, caller.signal)
+    const turnStart = await reachCodexTurn(child)
+
+    completeCodexTurn(child, turnStart, completedEnvelope())
+    await vi.waitFor(() => {
+      expect(state.save).toHaveBeenCalledOnce()
+    })
+    expect(child.waitForExit).toHaveBeenCalledOnce()
+    caller.abort(new Error('caller canceled log publication'))
+
+    await expect(run.done).rejects.toEqual(expect.objectContaining({
+      code: 'canceled',
+      name: 'DeliveryCodexRunnerError',
+    }))
+    expect(state.close).toHaveBeenCalledWith('preserve')
+  })
+
+  it('classifies cancel during checkpoint evidence publication as canceled after quiescence', async () => {
+    const child = fakeChild()
+    const state = requestHarness({
+      beforeSave: async (attempt, signal) => {
+        if (attempt === 2) await rejectOnAbort(signal)
+      },
+    })
+    const start = createCodexChangeRunner({
+      spawn: () => child.handle,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    })
+    const run = start(state.request, new AbortController().signal)
+    const turnStart = await reachCodexTurn(child)
+
+    completeCodexTurn(child, turnStart, completedEnvelope())
+    await vi.waitFor(() => {
+      expect(state.save).toHaveBeenCalledTimes(2)
+    })
+    expect(child.waitForExit).toHaveBeenCalledOnce()
+    const cancellation = run.cancel('operator canceled checkpoint publication')
+
+    await expect(cancellation).resolves.toBeUndefined()
+    await expect(run.done).rejects.toEqual(expect.objectContaining({
+      code: 'canceled',
+      name: 'DeliveryCodexRunnerError',
+    }))
+    expect(state.close).toHaveBeenCalledWith('preserve')
+  })
+
+  it('does not publish evidence after cancellation arrives during checkpoint', async () => {
+    let releaseCheckpoint!: () => void
+    const checkpointGate = new Promise<void>((resolve) => {
+      releaseCheckpoint = resolve
+    })
+    const child = fakeChild()
+    const state = requestHarness({
+      beforeCheckpoint: async () => { await checkpointGate },
+    })
+    const start = createCodexChangeRunner({
+      spawn: () => child.handle,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    })
+    const run = start(state.request, new AbortController().signal)
+    const turnStart = await reachCodexTurn(child)
+
+    completeCodexTurn(child, turnStart, completedEnvelope())
+    await vi.waitFor(() => {
+      expect(state.checkpoint).toHaveBeenCalledOnce()
+    })
+    expect(child.waitForExit).toHaveBeenCalledOnce()
+    const cancellation = run.cancel('operator canceled checkpoint')
+    releaseCheckpoint()
+
+    await expect(cancellation).resolves.toBeUndefined()
+    await expect(run.done).rejects.toEqual(expect.objectContaining({
+      code: 'canceled',
+      name: 'DeliveryCodexRunnerError',
+    }))
+    expect(state.save).not.toHaveBeenCalled()
+    expect(state.close).toHaveBeenCalledWith('preserve')
+  })
+
+  it.each([
+    {
+      disposition: 'completed',
+      envelope: completedEnvelope(),
+      closeDisposition: 'remove',
+    },
+    {
+      disposition: 'blocked',
+      envelope: JSON.stringify({
+        disposition: 'blocked',
+        summary: 'Blocked.',
+        completedWork: [],
+        remainingWork: ['Resume later.'],
+        blocker: 'Missing input.',
+        nextSmallestAction: 'Provide input.',
+      }),
+      closeDisposition: 'preserve',
+    },
+  ])('settles $disposition cancellation during lease close after close completes', async ({
+    envelope,
+    closeDisposition,
+  }) => {
+    let releaseClose!: () => void
+    const closeGate = new Promise<void>((resolve) => {
+      releaseClose = resolve
+    })
+    const child = fakeChild()
+    const state = requestHarness({
+      beforeClose: async () => { await closeGate },
+    })
+    const start = createCodexChangeRunner({
+      spawn: () => child.handle,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    })
+    const run = start(state.request, new AbortController().signal)
+    const turnStart = await reachCodexTurn(child)
+
+    completeCodexTurn(child, turnStart, envelope)
+    await vi.waitFor(() => {
+      expect(state.close).toHaveBeenCalledOnce()
+    })
+    expect(child.waitForExit).toHaveBeenCalledOnce()
+    const cancellation = run.cancel('operator canceled workspace close')
+    releaseClose()
+
+    await expect(cancellation).resolves.toBeUndefined()
+    await expect(run.done).rejects.toEqual(expect.objectContaining({
+      code: 'canceled',
+      name: 'DeliveryCodexRunnerError',
+    }))
+    expect(state.close).toHaveBeenCalledOnce()
+    expect(state.close).toHaveBeenCalledWith(closeDisposition)
+  })
+
+  it.each([
+    {
+      disposition: 'completed',
+      envelope: completedEnvelope(),
+      closeDisposition: 'remove',
+    },
+    {
+      disposition: 'blocked',
+      envelope: JSON.stringify({
+        disposition: 'blocked',
+        summary: 'Blocked.',
+        completedWork: [],
+        remainingWork: ['Resume later.'],
+        blocker: 'Missing input.',
+        nextSmallestAction: 'Provide input.',
+      }),
+      closeDisposition: 'preserve',
+    },
+  ])('retains cancellation when $disposition lease close also fails', async ({
+    envelope,
+    closeDisposition,
+  }) => {
+    let releaseClose!: () => void
+    const closeGate = new Promise<void>((resolve) => {
+      releaseClose = resolve
+    })
+    const child = fakeChild()
+    const state = requestHarness({
+      beforeClose: async () => { await closeGate },
+      closeError: new Error('workspace close failed after cancellation'),
+    })
+    const start = createCodexChangeRunner({
+      spawn: () => child.handle,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    })
+    const run = start(state.request, new AbortController().signal)
+    const turnStart = await reachCodexTurn(child)
+
+    completeCodexTurn(child, turnStart, envelope)
+    await vi.waitFor(() => {
+      expect(state.close).toHaveBeenCalledOnce()
+    })
+    const cancellation = run.cancel('operator canceled failing workspace close')
+    releaseClose()
+
+    await expect(cancellation).rejects.toEqual(expect.objectContaining({
+      code: 'cleanup',
+      name: 'DeliveryCodexRunnerError',
+    }))
+    const failure = await run.done.catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(DeliveryCodexRunnerError)
+    if (!(failure instanceof DeliveryCodexRunnerError)) {
+      throw new Error('expected a DeliveryCodexRunnerError')
+    }
+    expect(failure.code).toBe('cleanup')
+    expect(failure.cause).toBeInstanceOf(AggregateError)
+    if (!(failure.cause instanceof AggregateError)) {
+      throw new Error('expected an AggregateError cause')
+    }
+    expect(failure.cause.errors[0]).toEqual(expect.objectContaining({
+      code: 'canceled',
+    }))
+    expect(failure.cause.errors[1]).toEqual(expect.objectContaining({
+      message: 'workspace close failed after cancellation',
+    }))
+    expect(state.close).toHaveBeenCalledOnce()
+    expect(state.close).toHaveBeenCalledWith(closeDisposition)
   })
 
   it('rejects a lease owned by another Attempt without touching it', async () => {
