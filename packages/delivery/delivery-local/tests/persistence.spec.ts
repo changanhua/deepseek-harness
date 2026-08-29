@@ -450,6 +450,24 @@ describe('LocalDelivery persistence', () => {
     })).rejects.toMatchObject({ code: 'invalid-reference' })
     const firstPacket = await local.ctx.delivery.createWorkPacket(valid)
     await expect(local.ctx.delivery.createWorkPacket(valid)).resolves.toEqual(firstPacket)
+    const crossOperationKey = 'packet-dispatch-concurrent-cross-operation'
+    const crossOperationResults = await Promise.allSettled([
+      local.ctx.delivery.createWorkPacket({
+        ...valid,
+        idempotencyKey: crossOperationKey,
+      }),
+      local.ctx.delivery.beginDispatch({
+        idempotencyKey: crossOperationKey,
+        packetId: firstPacket.id,
+        kind: 'code.verify@1',
+        inputDigest: canonicalDigest({ packetId: firstPacket.id, concurrent: true }),
+      }),
+    ])
+    expect(crossOperationResults[0]).toMatchObject({ status: 'fulfilled' })
+    expect(crossOperationResults[1]).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'idempotency-conflict' },
+    })
     await expect(local.ctx.delivery.beginDispatch({
       idempotencyKey: valid.idempotencyKey,
       packetId: firstPacket.id,
@@ -465,7 +483,8 @@ describe('LocalDelivery persistence', () => {
   })
 
   it('derives a Packet plan from the exact bounded Contract Git blob', async () => {
-    const local = await harness(new MemoryMediaPool())
+    const pool = new MemoryMediaPool()
+    const local = await harness(pool)
     const original = contractRevisionFixture()
     if (original.verificationSource?.kind !== 'contract-field') {
       throw new Error('Contract fixture unexpectedly lacks inline checks')
@@ -497,7 +516,7 @@ describe('LocalDelivery persistence', () => {
       bytes,
     } as never))
 
-    const packet = await local.ctx.delivery.createWorkPacket({
+    const packetRequest = {
       idempotencyKey: 'create-packet-git-blob-v1',
       contractRevisionId: contract.id,
       repository: {
@@ -506,7 +525,8 @@ describe('LocalDelivery persistence', () => {
         commit: contract.baseSelectionRule.commit,
       } as never,
       packet: packetDraft(fixture),
-    }, resolveBlob)
+    }
+    const packet = await local.ctx.delivery.createWorkPacket(packetRequest, resolveBlob)
 
     expect(resolveBlob).toHaveBeenCalledOnce()
     expect(resolveBlob.mock.calls[0]?.[0]).toEqual({
@@ -574,6 +594,15 @@ describe('LocalDelivery persistence', () => {
     } as never))).resolves.toMatchObject({
       verificationPlan: { checks: [{ name: '检查交付消费者' }] },
     })
+
+    await local.dispose()
+    active.splice(active.indexOf(local), 1)
+    const reopened = await harness(pool)
+    const replayResolver = vi.fn(async () => {
+      throw new Error('durable Git-blob Packet replay must not resolve the plan blob')
+    })
+    await expect(reopened.ctx.delivery.createWorkPacket(packetRequest, replayResolver)).resolves.toEqual(packet)
+    expect(replayResolver).not.toHaveBeenCalled()
   })
 
   it('rejects missing, mismatched, oversized, and malformed Contract Git blobs', async () => {
@@ -641,6 +670,23 @@ describe('LocalDelivery persistence', () => {
     }, async () => ({
       ...validBlob,
       bytes: new Uint8Array(DELIVERY_VERIFICATION_SOURCE_MAX_BYTES + 1),
+    } as never))).rejects.toMatchObject({ code: 'invalid-reference' })
+    const multibyteOverflowDocument = JSON.stringify({
+      format: 'delivery-verification-plan@1',
+      checks: original.verificationSource.checks.map(check => ({
+        ...check,
+        name: '界'.repeat(Math.floor(DELIVERY_VERIFICATION_SOURCE_MAX_BYTES / 2)),
+      })),
+    })
+    const multibyteOverflowBytes = new TextEncoder().encode(multibyteOverflowDocument)
+    expect(multibyteOverflowDocument.length).toBeLessThan(DELIVERY_VERIFICATION_SOURCE_MAX_BYTES)
+    expect(multibyteOverflowBytes.byteLength).toBeGreaterThan(DELIVERY_VERIFICATION_SOURCE_MAX_BYTES)
+    await expect(local.ctx.delivery.createWorkPacket({
+      ...baseRequest,
+      idempotencyKey: 'git-blob-multibyte-byte-overflow',
+    }, async () => ({
+      ...validBlob,
+      bytes: multibyteOverflowBytes,
     } as never))).rejects.toMatchObject({ code: 'invalid-reference' })
     await expect(local.ctx.delivery.createWorkPacket({
       ...baseRequest,
