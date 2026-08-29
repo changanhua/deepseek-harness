@@ -122,6 +122,8 @@
     "gen-cordis-inspect-catalog": "tsx scripts/gen-cordis-inspect-catalog.ts",
     "verify-cordis-inspect-catalog": "tsx scripts/gen-cordis-inspect-catalog.ts --check",
     "verify-client-catalog": "tsx scripts/gen-client-catalog.ts --check",
+    "gen-architecture-catalog": "tsx scripts/gen-architecture-catalog.ts",
+    "verify-architecture-catalog": "tsx scripts/gen-architecture-catalog.ts --check",
     "verify-export-jsdoc": "tsx scripts/verify-export-jsdoc.ts",
     "gen-tool-catalog": "tsx scripts/gen-tool-catalog.ts",
     "verify-tool-catalog": "tsx scripts/gen-tool-catalog.ts --check",
