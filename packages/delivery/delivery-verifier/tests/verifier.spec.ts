@@ -170,6 +170,102 @@ describe('delivery verifier execution', () => {
     }
   })
 
+  it('snapshots mutable range facts before the workspace provider can rewrite them', async () => {
+    const fixture = await createVerifierFixture()
+    const forbidden = RepositoryRelativePath('packages/unrelated/secret.ts')
+    const initial = await fixture.request.inspectRange(new AbortController().signal)
+    const changedPaths = [forbidden, forbidden]
+    const range = {
+      ...initial,
+      descendsFromBase: false,
+      changedPaths,
+    }
+    const openWorkspace = fixture.request.openWorkspace
+    const request: DeliveryVerificationRunRequest = {
+      ...fixture.request,
+      inspectRange: async () => range,
+      openWorkspace: async (signal) => {
+        range.descendsFromBase = true
+        changedPaths.splice(0)
+        return await openWorkspace(signal)
+      },
+    }
+    try {
+      const verdict = await startFixture(
+        request,
+        vi.fn(() => settledSubprocessHandle()),
+      ).done
+
+      expect(verdict.status).toBe('failed')
+      expect(verdict.ancestryResult).toBe('not-descendant')
+      expect(verdict.changedPathFindings).toEqual([{ path: forbidden, kind: 'forbidden' }])
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  it('rejects a non-normalized provider path before opening the workspace', async () => {
+    const fixture = await createVerifierFixture()
+    const initial = await fixture.request.inspectRange(new AbortController().signal)
+    const openWorkspace = vi.fn(fixture.request.openWorkspace)
+    const spawn = vi.fn(() => settledSubprocessHandle())
+    const request: DeliveryVerificationRunRequest = {
+      ...fixture.request,
+      inspectRange: async () => ({
+        ...initial,
+        changedPaths: ['packages/../unrelated'] as never,
+      }),
+      openWorkspace,
+    }
+    try {
+      await expect(startFixture(request, spawn).done).rejects.toEqual(
+        expect.objectContaining({ code: 'invalid-request' }),
+      )
+      expect(openWorkspace).not.toHaveBeenCalled()
+      expect(spawn).not.toHaveBeenCalled()
+      expect(fixture.close).not.toHaveBeenCalled()
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  it.each([
+    ['null range object', async () => null],
+    ['primitive range object', async () => 'range'],
+    ['non-boolean ancestry', async (initial: Awaited<ReturnType<DeliveryVerificationRunRequest['inspectRange']>>) => ({
+      ...initial,
+      descendsFromBase: 'yes',
+    })],
+    ['non-array changed paths', async (initial: Awaited<ReturnType<DeliveryVerificationRunRequest['inspectRange']>>) => ({
+      ...initial,
+      changedPaths: new Set([RepositoryRelativePath('packages/delivery/example.ts')]),
+    })],
+    ['non-string changed path', async (initial: Awaited<ReturnType<DeliveryVerificationRunRequest['inspectRange']>>) => ({
+      ...initial,
+      changedPaths: [42],
+    })],
+  ] as const)('rejects malformed provider facts: %s', async (_label, malformed) => {
+    const fixture = await createVerifierFixture()
+    const initial = await fixture.request.inspectRange(new AbortController().signal)
+    const openWorkspace = vi.fn(fixture.request.openWorkspace)
+    const spawn = vi.fn(() => settledSubprocessHandle())
+    const request: DeliveryVerificationRunRequest = {
+      ...fixture.request,
+      inspectRange: async () => await malformed(initial) as never,
+      openWorkspace,
+    }
+    try {
+      await expect(startFixture(request, spawn).done).rejects.toEqual(
+        expect.objectContaining({ code: 'invalid-request' }),
+      )
+      expect(openWorkspace).not.toHaveBeenCalled()
+      expect(spawn).not.toHaveBeenCalled()
+      expect(fixture.close).not.toHaveBeenCalled()
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
   it('fails a required check that exits outside its expected set', async () => {
     const fixture = await createVerifierFixture()
     try {
@@ -522,6 +618,58 @@ describe('delivery verifier execution', () => {
         request,
         vi.fn(() => settledSubprocessHandle()),
       ).done).rejects.toEqual(expect.objectContaining({ code: 'execution' }))
+      expect(fixture.close).toHaveBeenCalledWith('remove')
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  it.each([
+    ['Queue Work', { queueWorkId: QueueWorkIdRef('foreign-verification-work') }],
+    ['Queue Attempt', { queueAttemptId: QueueAttemptIdRef('foreign-verification-attempt') }],
+  ] as const)('rejects output evidence from another verification %s', async (_label, provenanceOverride) => {
+    const fixture = await createVerifierFixture()
+    try {
+      const originalEvidenceFor = fixture.request.evidenceFor
+      const request: DeliveryVerificationRunRequest = {
+        ...fixture.request,
+        evidenceFor: checkId => ({
+          async save(input, signal): Promise<EvidenceRef> {
+            const reference = await originalEvidenceFor(checkId).save(input, signal)
+            return {
+              ...reference,
+              provenance: { ...reference.provenance, ...provenanceOverride },
+            }
+          },
+        }),
+      }
+
+      await expect(startFixture(
+        request,
+        vi.fn(() => settledSubprocessHandle()),
+      ).done).rejects.toEqual(expect.objectContaining({ code: 'execution' }))
+      expect(fixture.close).toHaveBeenCalledWith('remove')
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  it('rejects a workspace owned by another verification Attempt before spawn', async () => {
+    const fixture = await createVerifierFixture()
+    const openWorkspace = fixture.request.openWorkspace
+    const spawn = vi.fn(() => settledSubprocessHandle())
+    const request: DeliveryVerificationRunRequest = {
+      ...fixture.request,
+      openWorkspace: async signal => ({
+        ...await openWorkspace(signal),
+        ownerAttemptId: QueueAttemptIdRef('foreign-verification-attempt'),
+      }),
+    }
+    try {
+      await expect(startFixture(request, spawn).done).rejects.toEqual(
+        expect.objectContaining({ code: 'invalid-request' }),
+      )
+      expect(spawn).not.toHaveBeenCalled()
       expect(fixture.close).toHaveBeenCalledWith('remove')
     } finally {
       await fixture.cleanup()

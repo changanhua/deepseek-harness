@@ -180,6 +180,48 @@ describe('delivery verifier request validation', () => {
       await fixture.cleanup()
     }
   })
+
+  it.each([
+    ['Queue Work', { verificationQueueWorkId: '' }],
+    ['Queue Attempt', { verificationQueueAttemptId: '' }],
+  ] as const)('rejects a blank verification %s identity before side effects', async (_label, override) => {
+    const fixture = await createVerifierFixture()
+    const spawn = vi.fn(() => settledSubprocessHandle())
+    try {
+      await expect(start({
+        ...fixture.request,
+        ...override,
+      } as DeliveryVerificationRunRequest, spawn).done).rejects.toEqual(
+        expect.objectContaining({ code: 'invalid-request' }),
+      )
+      expect(spawn).not.toHaveBeenCalled()
+      expect(fixture.close).not.toHaveBeenCalled()
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  it.each([
+    ['Queue Work', (request: DeliveryVerificationRunRequest) => ({
+      verificationQueueWorkId: request.completionClaim.queueWorkId,
+    })],
+    ['Queue Attempt', (request: DeliveryVerificationRunRequest) => ({
+      verificationQueueAttemptId: request.completionClaim.queueAttemptId,
+    })],
+  ] as const)('rejects a verification %s identity borrowed from the change Attempt', async (_label, override) => {
+    const fixture = await createVerifierFixture()
+    const spawn = vi.fn(() => settledSubprocessHandle())
+    try {
+      await expect(start({
+        ...fixture.request,
+        ...override(fixture.request),
+      }, spawn).done).rejects.toEqual(expect.objectContaining({ code: 'invalid-request' }))
+      expect(spawn).not.toHaveBeenCalled()
+      expect(fixture.close).not.toHaveBeenCalled()
+    } finally {
+      await fixture.cleanup()
+    }
+  })
 })
 
 describe('delivery verifier evidence failures', () => {
@@ -905,6 +947,95 @@ describe('delivery verifier filesystem and process failures', () => {
       controller.abort(new Error('cancel during cleanup'))
       finishClose()
       await expect(run.done).rejects.toEqual(expect.objectContaining({ code: 'canceled' }))
+      expect(close).toHaveBeenCalledWith('remove')
+    } finally {
+      finishClose()
+      await fixture.cleanup()
+    }
+  })
+
+  it('preserves cancellation and a simultaneous cleanup failure', async () => {
+    const fixture = await createVerifierFixture()
+    let markClosing: () => void = () => {}
+    let finishClose: () => void = () => {}
+    const closing = new Promise<void>((resolve) => { markClosing = resolve })
+    const closeDone = new Promise<void>((resolve) => { finishClose = resolve })
+    const cleanupFailure = new Error('cleanup failed after cancellation')
+    const openWorkspace = fixture.request.openWorkspace
+    const close = vi.fn(async () => {
+      markClosing()
+      await closeDone
+      throw cleanupFailure
+    })
+    const request: DeliveryVerificationRunRequest = {
+      ...fixture.request,
+      openWorkspace: async signal => ({
+        ...await openWorkspace(signal),
+        close,
+      }),
+    }
+    try {
+      const run = start(request, vi.fn(() => settledSubprocessHandle()))
+      await closing
+      const canceling = run.cancel('operator canceled during cleanup')
+      finishClose()
+      await canceling
+      const error = await run.done.catch((reason: unknown) => reason)
+
+      expect(error).toEqual(expect.objectContaining({ code: 'cleanup' }))
+      expect((error as DeliveryVerifierError).cause).toBeInstanceOf(AggregateError)
+      const causes = ((error as DeliveryVerifierError).cause as AggregateError).errors
+      expect(causes).toHaveLength(2)
+      expect(causes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'canceled', message: 'operator canceled during cleanup' }),
+        cleanupFailure,
+      ]))
+      expect(close).toHaveBeenCalledWith('remove')
+    } finally {
+      finishClose()
+      await fixture.cleanup()
+    }
+  })
+
+  it('preserves execution, cancellation, and cleanup failures independently', async () => {
+    const fixture = await createVerifierFixture()
+    let markClosing: () => void = () => {}
+    let finishClose: () => void = () => {}
+    const closing = new Promise<void>((resolve) => { markClosing = resolve })
+    const closeDone = new Promise<void>((resolve) => { finishClose = resolve })
+    const cleanupFailure = new Error('cleanup failed after execution')
+    const openWorkspace = fixture.request.openWorkspace
+    const close = vi.fn(async () => {
+      markClosing()
+      await closeDone
+      throw cleanupFailure
+    })
+    const request: DeliveryVerificationRunRequest = {
+      ...fixture.request,
+      openWorkspace: async signal => ({
+        ...await openWorkspace(signal),
+        close,
+      }),
+    }
+    try {
+      const run = start(request, vi.fn(() => {
+        throw new Error('spawn failed before cancellation')
+      }))
+      await closing
+      const canceling = run.cancel('operator canceled after execution failed')
+      finishClose()
+      await canceling
+      const error = await run.done.catch((reason: unknown) => reason)
+
+      expect(error).toEqual(expect.objectContaining({ code: 'cleanup' }))
+      expect((error as DeliveryVerifierError).cause).toBeInstanceOf(AggregateError)
+      const causes = ((error as DeliveryVerifierError).cause as AggregateError).errors
+      expect(causes).toHaveLength(3)
+      expect(causes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'execution' }),
+        expect.objectContaining({ code: 'canceled', message: 'operator canceled after execution failed' }),
+        cleanupFailure,
+      ]))
       expect(close).toHaveBeenCalledWith('remove')
     } finally {
       finishClose()

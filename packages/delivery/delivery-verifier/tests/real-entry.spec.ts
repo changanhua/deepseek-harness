@@ -1,111 +1,55 @@
-import { spawn as spawnProcess } from 'node:child_process'
-import { writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
-import {
-  scrubbedParentEnv,
-  type SubprocessHandle,
-  type SubprocessOutputReader,
-  type SubprocessSpawnSpec,
-} from '@deepseek-ai/dsh-subprocess'
-import { createDeliveryVerifier } from '@deepseek-ai/dsh-delivery-verifier'
-import { createVerifierFixture } from './harness.ts'
 
-function collectedReader(
-  chunks: readonly Buffer[],
-  maxBytes: number,
-): SubprocessOutputReader {
-  return {
-    readFrom(fromByte) {
-      const complete = Buffer.concat(chunks)
-      const retained = complete.subarray(Math.max(0, complete.byteLength - maxBytes))
-      const retainedStart = complete.byteLength - retained.byteLength
-      const lossy = fromByte < retainedStart
-      const start = lossy ? 0 : Math.max(0, fromByte - retainedStart)
-      return {
-        text: retained.subarray(start).toString('utf8'),
-        nextOffset: complete.byteLength,
-        lossy,
-      }
-    },
-  }
-}
+const execFileAsync = promisify(execFile)
+const packageRoot = fileURLToPath(new URL('..', import.meta.url))
+const repositoryRoot = resolve(packageRoot, '../../..')
+const fixture = fileURLToPath(new URL('./fixtures/built-real-entry.mjs', import.meta.url))
+const requiredArtifacts = [
+  join(packageRoot, 'lib/index.js'),
+  join(repositoryRoot, 'packages/delivery/delivery-protocol/lib/index.js'),
+  join(repositoryRoot, 'packages/delivery/delivery-testkit/lib/index.js'),
+  join(repositoryRoot, 'packages/subprocess/subprocess-local/lib/index.js'),
+  join(repositoryRoot, 'vendor/cordis/lib/index.js'),
+]
+const built = requiredArtifacts.every(existsSync)
 
-function realNodeSpawn(spec: SubprocessSpawnSpec): SubprocessHandle {
-  const stdout: Buffer[] = []
-  const stderr: Buffer[] = []
-  const child = spawnProcess(spec.argv[0] as string, spec.argv.slice(1), {
-    cwd: spec.cwd,
-    env: { ...scrubbedParentEnv(), ...spec.env },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  })
-  child.stdout.on('data', (chunk: Buffer) => { stdout.push(Buffer.from(chunk)) })
-  child.stderr.on('data', (chunk: Buffer) => { stderr.push(Buffer.from(chunk)) })
-  const done = new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
-    child.once('error', reject)
-    child.once('close', (exitCode, signal) => { resolve({ exitCode, signal }) })
-  })
-  const terminate = () => {
-    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
-  }
-  const onAbort = () => { terminate() }
-  spec.signal?.addEventListener('abort', onAbort, { once: true })
-  void done.finally(() => spec.signal?.removeEventListener('abort', onAbort))
-  const stdoutMode = spec.stdio.stdout
-  const stderrMode = spec.stdio.stderr
-  if (stdoutMode === 'pipe' || stdoutMode === 'inherit' || stderrMode === 'pipe' || stderrMode === 'inherit') {
-    throw new Error('real-entry fixture requires collect-mode stdout and stderr')
-  }
-  return {
-    pid: child.pid ?? -1,
-    stdin: undefined,
-    stdout: undefined,
-    stderr: undefined,
-    collected: {
-      stdout: collectedReader(stdout, stdoutMode.maxBytes),
-      stderr: collectedReader(stderr, stderrMode.maxBytes),
-    },
-    done,
-    terminate,
-    async waitForExit() {
-      await done
-      return true
-    },
-  }
-}
-
-describe('delivery verifier real public entry', () => {
-  it('executes a trusted script file through a real direct-argv process', async () => {
-    const fixture = await createVerifierFixture({
-      check: {
-        argv: [process.execPath, 'verify-target.mjs'],
-      },
+/**
+ * Vitest resolves workspace imports to source. This smoke therefore launches plain Node after
+ * a host build so the verifier and local Subprocess Service Provider both load from `lib/`.
+ */
+describe.skipIf(!built)('delivery verifier built public entry', () => {
+  it('uses the production local subprocess provider for success, bounds, timeout, and tree cancellation', async () => {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [fixture, repositoryRoot], {
+      cwd: dirname(fixture),
+      encoding: 'utf8',
+      timeout: 30_000,
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
     })
-    try {
-      await writeFile(
-        join(fixture.workspaceRoot, 'verify-target.mjs'),
-        "process.stdout.write('real-entry-ok\\n'); process.stderr.write('real-entry-diagnostic\\n')\n",
-      )
-      const start = createDeliveryVerifier({
-        subprocess: { spawn: realNodeSpawn },
-        verifierVersion: 'delivery-verifier-real-entry@1',
-        disposeGraceMs: 5_000,
-        verificationOutputBytes: 4 * 1024,
-      })
 
-      const verdict = await start(
-        fixture.request,
-        new AbortController().signal,
-      ).done
-
-      expect(verdict.status).toBe('passed')
-      const output = new TextDecoder().decode(fixture.saves[0]!.data)
-      expect(output).toContain('real-entry-ok')
-      expect(output).toContain('real-entry-diagnostic')
-      expect(fixture.close).toHaveBeenCalledWith('remove')
-    } finally {
-      await fixture.cleanup()
+    expect(stderr).toBe('')
+    const result = JSON.parse(stdout.trim()) as {
+      entry: string
+      provider: string
+      success: string
+      boundedBytes: number
+      timeout: string
+      cancellation: string
+      helperTreeGone: boolean
     }
-  })
+    expect(result).toEqual({
+      entry: 'lib/index.js',
+      provider: 'LocalSubprocessRuntime',
+      success: 'passed',
+      boundedBytes: 256,
+      timeout: 'timed-out',
+      cancellation: 'canceled',
+      helperTreeGone: true,
+    })
+  }, 35_000)
 })

@@ -13,6 +13,7 @@ import {
 } from '@deepseek-ai/dsh-delivery-evidence'
 import {
   DELIVERY_SCHEMA_VERSION,
+  RepositoryRelativePath,
   VerificationVerdictId,
   canonicalDigest,
   canonicalJson,
@@ -31,6 +32,8 @@ import {
   type ContractRevision,
   type EvidenceId,
   type EvidenceRef,
+  type QueueAttemptIdRef,
+  type QueueWorkIdRef,
   type ResolvedCodeVerify,
   type VerificationCheckResult,
   type VerificationCheckId,
@@ -106,6 +109,10 @@ export interface DeliveryVerificationRunRequest {
    * every required object named by completionClaim.evidenceIds.
    */
   readonly completionClaim: CompletedChangeClaim
+  /** Queue Work that owns this independent verification execution. */
+  readonly verificationQueueWorkId: QueueWorkIdRef
+  /** Queue Attempt that owns the verification workspace and output evidence. */
+  readonly verificationQueueAttemptId: QueueAttemptIdRef
   /** Independently derive ancestry and complete changed-path facts. */
   readonly inspectRange: (signal: AbortSignal) => Promise<RepositoryRangeFacts>
   /** Open the read/execute-only Attempt checkout only when verification starts. */
@@ -320,6 +327,24 @@ function validateRequest(
     throw invalidRequest('verification requires a completed change claim')
   }
   if (
+    typeof request.verificationQueueWorkId !== 'string'
+    || request.verificationQueueWorkId.trim() === ''
+  ) {
+    throw invalidRequest('verification Queue Work identity must not be blank')
+  }
+  if (
+    typeof request.verificationQueueAttemptId !== 'string'
+    || request.verificationQueueAttemptId.trim() === ''
+  ) {
+    throw invalidRequest('verification Queue Attempt identity must not be blank')
+  }
+  if (request.verificationQueueWorkId === completionClaim.queueWorkId) {
+    throw invalidRequest('verification Queue Work must differ from the producing change Work')
+  }
+  if (request.verificationQueueAttemptId === completionClaim.queueAttemptId) {
+    throw invalidRequest('verification Queue Attempt must differ from the producing change Attempt')
+  }
+  if (
     contract.id !== packet.contractRevisionId
     || contract.id !== resolved.contractRevisionId
   ) {
@@ -353,6 +378,46 @@ function validateRequest(
     resolved,
     completionClaim,
   }
+}
+
+function snapshotRangeFacts(
+  range: unknown,
+  request: DeliveryVerificationRunRequest,
+): RepositoryRangeFacts {
+  if (range === null || typeof range !== 'object') {
+    throw invalidRequest('range facts do not match the repository range contract')
+  }
+  const candidate = range as Partial<RepositoryRangeFacts>
+  if (
+    candidate.repositoryId !== request.packet.repositoryId
+    || candidate.baseCommit !== request.packet.baseCommit
+    || candidate.targetCommit !== request.resolved.targetCommit
+  ) {
+    throw invalidRequest('range facts do not match the Packet repository, base, and target')
+  }
+  if (typeof candidate.descendsFromBase !== 'boolean' || !Array.isArray(candidate.changedPaths)) {
+    throw invalidRequest('range facts do not match the repository range contract')
+  }
+  const changedPaths: RepositoryRelativePath[] = []
+  const seen = new Set<string>()
+  try {
+    for (const path of candidate.changedPaths) {
+      if (typeof path !== 'string') throw new TypeError('changed path must be a string')
+      const normalized = RepositoryRelativePath(path)
+      if (seen.has(normalized)) continue
+      seen.add(normalized)
+      changedPaths.push(normalized)
+    }
+  } catch (cause) {
+    throw invalidRequest('range facts contain a non-normalized changed path', cause)
+  }
+  return Object.freeze({
+    repositoryId: candidate.repositoryId,
+    baseCommit: candidate.baseCommit,
+    targetCommit: candidate.targetCommit,
+    descendsFromBase: candidate.descendsFromBase,
+    changedPaths: Object.freeze(changedPaths),
+  })
 }
 
 function physicallyContained(root: string, candidate: string): boolean {
@@ -585,6 +650,8 @@ async function runCheck(
       || outputReference.digest !== evidenceBytesDigest(output)
       || provenance.kind !== 'verification-check'
       || provenance.packetId !== request.packet.id
+      || provenance.queueWorkId !== request.verificationQueueWorkId
+      || provenance.queueAttemptId !== request.verificationQueueAttemptId
       || provenance.checkId !== check.id
     ) {
       throw verifierFailure(
@@ -630,19 +697,13 @@ async function executeVerification(
   throwIfCanceled(signal)
   request = validateRequest(request)
   const evidence = await verifyRequiredEvidence(request, signal)
-  const range = await callProvider(
+  const inspectedRange = await callProvider(
     signal,
     'verification range facts could not be inspected',
     () => request.inspectRange(signal),
   )
   throwIfCanceled(signal)
-  if (
-    range.repositoryId !== request.packet.repositoryId
-    || range.baseCommit !== request.packet.baseCommit
-    || range.targetCommit !== request.resolved.targetCommit
-  ) {
-    throw invalidRequest('range facts do not match the Packet repository, base, and target')
-  }
+  const range = snapshotRangeFacts(inspectedRange, request)
   const workspace = await callProvider(
     signal,
     'verification workspace could not be opened',
@@ -661,8 +722,9 @@ async function executeVerification(
       workspace.repositoryId !== request.packet.repositoryId
       || workspace.baseCommit !== request.packet.baseCommit
       || workspace.targetCommit !== request.resolved.targetCommit
+      || workspace.ownerAttemptId !== request.verificationQueueAttemptId
     ) {
-      throw invalidRequest('verification workspace lease does not match the Packet repository, base, and target')
+      throw invalidRequest('verification workspace lease does not match the Packet repository, base, target, and Attempt')
     }
     const runnableChecks: Array<{
       readonly check: DeliveryVerificationRunRequest['resolved']['trustedPlan']['checks'][number]
@@ -768,12 +830,21 @@ async function executeVerification(
   try {
     await workspace.close(live.quiescent ? 'remove' : 'preserve')
   } catch (cleanupError) {
+    const canceled = signal.aborted
+      && !(failure instanceof DeliveryVerifierError && failure.code === 'canceled')
+      ? cancellation(signal)
+      : undefined
+    const causes: unknown[] = [
+      ...failure === undefined ? [] : [failure],
+      ...canceled === undefined ? [] : [canceled],
+      cleanupError,
+    ]
     throw verifierFailure(
       'cleanup',
       `verification workspace cleanup failed after ${failure === undefined ? 'settlement' : 'an earlier failure'}`,
-      failure === undefined
+      causes.length === 1
         ? cleanupError
-        : new AggregateError([failure, cleanupError], 'verification and cleanup both failed'),
+        : new AggregateError(causes, 'verification settlement and cleanup both failed'),
     )
   }
   if (failure === undefined) throwIfCanceled(signal)

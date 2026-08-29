@@ -50,8 +50,10 @@ export const TARGET_COMMIT = GitCommitId('22222222222222222222222222222222222222
 export const PACKET_ID = WorkPacketId('delivery-verifier-packet')
 export const CONTRACT_ID = ContractRevisionId('delivery-verifier-contract')
 export const REPOSITORY_ID = RepositoryId('delivery-verifier-repository')
-export const QUEUE_WORK_ID = QueueWorkIdRef('delivery-verifier-work')
-export const QUEUE_ATTEMPT_ID = QueueAttemptIdRef('delivery-verifier-attempt')
+export const CHANGE_QUEUE_WORK_ID = QueueWorkIdRef('delivery-verifier-change-work')
+export const CHANGE_QUEUE_ATTEMPT_ID = QueueAttemptIdRef('delivery-verifier-change-attempt')
+export const VERIFICATION_QUEUE_WORK_ID = QueueWorkIdRef('delivery-verifier-verification-work')
+export const VERIFICATION_QUEUE_ATTEMPT_ID = QueueAttemptIdRef('delivery-verifier-verification-attempt')
 export const CHECK_ID = VerificationCheckId('delivery-verifier-check')
 export const CLAIM_EVIDENCE_ID = EvidenceId('delivery-verifier-claim-evidence')
 export const CLAIM_EVIDENCE_BYTES = new TextEncoder().encode('checkpoint evidence\n')
@@ -242,8 +244,8 @@ export async function createVerifierFixture(
     schemaVersion: DELIVERY_SCHEMA_VERSION,
     id: CompletionClaimId('delivery-verifier-claim'),
     packetId: PACKET_ID,
-    queueWorkId: QUEUE_WORK_ID,
-    queueAttemptId: QUEUE_ATTEMPT_ID,
+    queueWorkId: CHANGE_QUEUE_WORK_ID,
+    queueAttemptId: CHANGE_QUEUE_ATTEMPT_ID,
     summary: 'The target was checkpointed.',
     completedWork: ['Implemented the bounded change.'],
     remainingWork: [],
@@ -275,8 +277,8 @@ export async function createVerifierFixture(
     provenance: options.claimEvidenceProvenance ?? {
       kind: 'change-attempt',
       packetId: PACKET_ID,
-      queueWorkId: QUEUE_WORK_ID,
-      queueAttemptId: QUEUE_ATTEMPT_ID,
+      queueWorkId: CHANGE_QUEUE_WORK_ID,
+      queueAttemptId: CHANGE_QUEUE_ATTEMPT_ID,
     },
   })
   const close = options.closeError === undefined
@@ -305,8 +307,8 @@ export async function createVerifierFixture(
         provenance: {
           kind: 'verification-check',
           packetId: PACKET_ID,
-          queueWorkId: QUEUE_WORK_ID,
-          queueAttemptId: QUEUE_ATTEMPT_ID,
+          queueWorkId: VERIFICATION_QUEUE_WORK_ID,
+          queueAttemptId: VERIFICATION_QUEUE_ATTEMPT_ID,
           checkId,
         },
       })
@@ -320,6 +322,8 @@ export async function createVerifierFixture(
       packet,
       resolved,
       completionClaim,
+      verificationQueueWorkId: VERIFICATION_QUEUE_WORK_ID,
+      verificationQueueAttemptId: VERIFICATION_QUEUE_ATTEMPT_ID,
       inspectRange: async (signal) => {
         signal.throwIfAborted()
         return {
@@ -334,7 +338,7 @@ export async function createVerifierFixture(
       openWorkspace: async (signal) => {
         signal.throwIfAborted()
         return {
-          ownerAttemptId: QUEUE_ATTEMPT_ID,
+          ownerAttemptId: VERIFICATION_QUEUE_ATTEMPT_ID,
           repositoryId: REPOSITORY_ID,
           baseCommit: BASE_COMMIT,
           targetCommit: TARGET_COMMIT,
