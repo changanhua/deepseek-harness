@@ -4675,7 +4675,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'OperatorWorkQueue',
-    declaration: 'export interface OperatorWorkQueue {\n    list(): readonly WorkView[];\n    get(id: WorkId): WorkView;\n    cancel(id: WorkId): Promise<void>;\n    retry(id: WorkId): Promise<void>;\n    pause(): void;\n    resume(): void;\n    resolveUnknown(workId: WorkId, resolution: UnknownResolution): Promise<void>;\n    pendingAttentions(): readonly Attention[];\n}',
+    declaration: 'export interface OperatorWorkQueue {\n    enqueue<K extends WorkKind>(request: EnqueueRequest<K>): Promise<WorkId>;\n    enqueueBatch<K extends WorkKind>(request: BatchRequest<K>): Promise<BatchId>;\n    list(): readonly WorkView[];\n    get(id: WorkId): WorkView;\n    cancel(id: WorkId): Promise<void>;\n    retry(id: WorkId): Promise<void>;\n    pause(): void;\n    resume(): void;\n    resolveUnknown(workId: WorkId, resolution: UnknownResolution): Promise<void>;\n    pendingAttentions(): readonly Attention[];\n}',
   },
   {
     name: 'PermissionSelect',

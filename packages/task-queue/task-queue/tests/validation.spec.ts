@@ -38,6 +38,7 @@ describe('fail-closed domain validation', () => {
     expect(() => foldChanges([admitted(1, work('work-1', { policy: { maxAttempts: 0 } }))])).toThrow(/invalid WorkItem/i)
     expect(() => foldChanges([admitted(1, work('work-1', { intentDigest: 'sha256:wrong' }))])).toThrow(/digest mismatch/i)
     expect(() => foldChanges([admitted(1, work(), receipt([WorkId('work-1')], { owner: { type: 'agent', sessionId: 'other' } }))])).toThrow(/owner/i)
+    expect(() => foldChanges([admitted(1, work(), receipt([WorkId('work-1')], { owner: { type: 'operator' }, source: 'operator' }))])).toThrow(/operator Receipt requires ownerless/i)
     expect(() => foldChanges([{ seq: 1, changeId: 'receipt-only', at: AT, events: [{ type: 'receipt/recorded', receipt: receipt([WorkId('missing')]) }] }])).toThrow(/unknown WorkItem/i)
 
     expect(() => foldChanges([admitted(1, work('work-1', { resources: undefined }))])).toThrow(/invalid resource claims/i)
