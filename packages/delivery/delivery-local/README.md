@@ -11,7 +11,7 @@ English | [中文](README.zh.md)
 
 `dsh-delivery-local` is the reserved local provider for `ctx.delivery`. Its storage boundary covers immutable Contract revisions, Work Packets, Queue dispatch bindings, and human acceptance decisions through Storage Domain while keeping Queue lifecycle and evidence bytes outside this store.
 
-The provider name and `storageDomain` injection are stable composition contracts. Every operation currently fails with an explicit unavailable error; the package does not claim persistence until durable storage and restart behavior are implemented and tested.
+The provider opens the private `personal_delivery` format through `storageDomain`. Every write is idempotent and durable before it returns, and synchronous reads rebuild from schema-validated records when the host restarts.
 
 ## Configuration and composition
 
@@ -21,7 +21,7 @@ Mount Storage and Storage Domain first, then load this provider. The provider de
 
 The provider owns only Delivery records and a restart-stable projection. It does not own Queue Work or Attempts, Git commits, executor processes, evidence bytes, verification results, or mutable UI lanes.
 
-Even as an unavailable scaffold, every concrete public method preserves the Service Definition's operation-local authority. Packet creation accepts the optional trusted verification-source resolver, while decision recording requires the exact Queue-candidate resolver and integrity-reading evidence resolver. The provider neither narrows nor silently ignores these callbacks.
+Contract adoption validates source snapshots and revision lineage. Packet creation resolves the Contract-owned verification source through the optional trusted Git-blob resolver, while decision recording resolves the exact bound Queue candidate and integrity-reads every referenced evidence object before commit. A repeated idempotency key returns the original record only when its operation and complete request match.
 
 ## Dev Note
 
@@ -45,4 +45,5 @@ None; this package never assembles model input.
 
 ## Known Limitations and Deferred Work
 
-- **Persistence is unavailable** — all methods fail closed with the stable `unavailable` classification until idempotent Storage Domain persistence and restart recovery are implemented and tested.
+- **One host process owns the open domain** — Storage Domain change notifications are in-process; another process does not update this provider's synchronous projection.
+- **Immutable history has no automatic retention** — this provider never deletes Contract revisions, Packets, bindings, or decisions, so the selected backend must accommodate their growth.

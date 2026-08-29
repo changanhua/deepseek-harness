@@ -11,7 +11,7 @@ kind: "package-reference"
 
 `dsh-delivery-local` 是 `ctx.delivery` 的保留本地 provider。其 Storage Domain 存储边界覆盖不可变 Contract revision、Work Packet、Queue dispatch binding 与人工 acceptance decision，同时让 Queue lifecycle 和 evidence bytes 留在本存储之外。
 
-Provider 名称与 `storageDomain` 注入是稳定的 composition contract。当前所有操作都会返回明确 unavailable 错误；在 durable storage 与 restart behavior 完成实现和测试前，本包不宣称已经可用。
+此 provider 通过 `storageDomain` 打开私有 `personal_delivery` 格式。每次写入都会在返回前完成幂等持久化；宿主重启时，同步读取投影会从经过 Schema 校验的记录重建。
 
 ## 配置与组合
 
@@ -21,7 +21,7 @@ Provider 名称与 `storageDomain` 注入是稳定的 composition contract。当
 
 Provider 只拥有 Delivery 记录与 restart-stable projection。它不拥有 Queue Work 或 Attempt、Git commit、executor process、evidence bytes、verification result 或可写 UI lane。
 
-即使处于 unavailable scaffold，其 concrete public method 也完整保留 Service Definition 的 operation-local authority：Packet 创建接受可选的可信 verification-source resolver，decision 记录则要求精确 Queue candidate resolver 与 integrity-read evidence resolver。Provider 不会收窄或静默忽略这些 callback。
+Contract adoption 会校验 source snapshot 与 revision lineage。Packet 创建通过可选的可信 Git-blob resolver 解析 Contract 拥有的 verification source；decision 记录则会在提交前解析精确绑定的 Queue candidate，并完整性读取每个被引用的 evidence object。重复 idempotency key 只有在 operation 与完整 request 都一致时才返回原记录。
 
 ## 开发说明
 
@@ -45,4 +45,5 @@ Provider 只拥有 Delivery 记录与 restart-stable projection。它不拥有 Q
 
 ## 已知限制
 
-- **持久化不可用** — 在幂等 Storage Domain 持久化与 restart recovery 完成实现和测试前，所有方法都会以稳定 `unavailable` 分类 fail closed。
+- **一个宿主进程独占已打开的 domain** — Storage Domain 的 change notification 只在进程内传递；另一个进程不会更新此 provider 的同步 projection。
+- **不可变历史没有自动 retention** — 此 provider 不会删除 Contract revision、Packet、binding 或 decision，因此选定 backend 必须容纳这些记录的增长。
