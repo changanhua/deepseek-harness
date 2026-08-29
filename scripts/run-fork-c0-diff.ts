@@ -72,7 +72,9 @@ export function newFailureDiagnostics(base: GateSnapshot[], head: GateSnapshot[]
     const baseline = baseResult?.status === 'passed' || baseResult === undefined
       ? new Set<string>()
       : new Set(baseResult.diagnostics)
-    const diagnostics = headResult.diagnostics.filter(line => !baseline.has(line))
+    const diagnostics = headResult.diagnostics
+      .filter(line => !baseline.has(line))
+      .filter(isC0Diagnostic)
     if (diagnostics.length === 0 && (baseResult === undefined || baseResult.status !== headResult.status)) {
       diagnostics.push(`status changed from ${baseResult?.status ?? 'missing'} to ${headResult.status}`)
     }
@@ -80,6 +82,11 @@ export function newFailureDiagnostics(base: GateSnapshot[], head: GateSnapshot[]
   }
 
   return failures
+}
+
+function isC0Diagnostic(diagnostic: string): boolean {
+  const normalized = diagnostic.replaceAll('\\', '/')
+  return C0_PATH_PREFIXES.some(prefix => normalized.includes(prefix))
 }
 
 async function main(args: string[]): Promise<number> {

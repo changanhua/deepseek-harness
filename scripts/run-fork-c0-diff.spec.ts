@@ -39,14 +39,34 @@ describe('fork C0 differential gate', () => {
       snapshot('duplication', 'failed', ['shared clone']),
     ]
     const head: GateSnapshot[] = [
-      snapshot('static', 'failed', ['existing failure', 'new C0 failure']),
-      snapshot('knip', 'failed', ['new unused C0 file']),
+      snapshot('static', 'failed', ['existing failure', 'packages/delivery/delivery/src/index.ts: new C0 failure']),
+      snapshot('knip', 'failed', ['packages/client/ui-delivery/src/index.ts: new unused C0 file']),
       snapshot('duplication', 'failed', ['shared clone']),
     ]
 
     expect(newFailureDiagnostics(base, head)).toEqual([
-      { gateId: 'static', diagnostics: ['new C0 failure'] },
-      { gateId: 'knip', diagnostics: ['new unused C0 file'] },
+      { gateId: 'static', diagnostics: ['packages/delivery/delivery/src/index.ts: new C0 failure'] },
+      { gateId: 'knip', diagnostics: ['packages/client/ui-delivery/src/index.ts: new unused C0 file'] },
+    ])
+  })
+
+  it('ignores head-only diagnostic drift outside Delivery C0 paths', () => {
+    const base = [snapshot('docs', 'failed', ['existing foundation failure'])]
+    const head = [snapshot('docs', 'failed', [
+      'existing foundation failure',
+      'packages/client/ui-capability/README.md: missing Summary',
+      'docs/cordis-tutorial/java-developer-path.zh.md: broken link',
+    ])]
+
+    expect(newFailureDiagnostics(base, head)).toEqual([])
+  })
+
+  it('still blocks a whole gate that regresses from passing to failing', () => {
+    const base = [snapshot('static', 'passed', [])]
+    const head = [snapshot('static', 'failed', ['process terminated without a path diagnostic'])]
+
+    expect(newFailureDiagnostics(base, head)).toEqual([
+      { gateId: 'static', diagnostics: ['status changed from passed to failed'] },
     ])
   })
 
