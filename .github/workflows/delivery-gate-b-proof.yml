@@ -38,6 +38,9 @@ jobs:
       - name: Install (immutable)
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare bubblewrap
+        run: bash scripts/prepare-ci-bubblewrap.sh
+
       - name: Prove unchanged approve-for-me baseline
         run: >-
           pnpm exec vitest run
