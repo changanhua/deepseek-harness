@@ -32,6 +32,10 @@ env:
 
 jobs:
   preview:
+    # This deployment belongs to the upstream Cloudflare account. Forks do not
+    # have its runner pool or deployment secrets, so they skip it instead of
+    # waiting forever or failing after runner allocation.
+    if: github.repository == 'deepseek-ai/deepseek-harness'
     runs-on: dsh-ubuntu-24-04-16core
     name: cloudflare pages preview
     steps:
