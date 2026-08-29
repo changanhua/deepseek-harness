@@ -32,7 +32,7 @@ Issue body 包含且仅包含一个权威 block：一行 `<!-- dsh-delivery-work
 
 ## 理解实现
 
-Request boundary 用 Zod 校验严格的公开 github.com Issue grammar，在任何 I/O 前闭合 authenticated-fetch SSRF 与 credential leak 路径。`parseGitHubIssueWorkBrief()` 与 `workBriefContractRevisionDraft()` 已冻结可执行 body grammar 及其精确 Delivery mapping。Network fetch、response validation、canonical-coordinate check、snapshot digest、同一 Issue predecessor lookup、idempotency 与 adoption 仍位于不可用的 `importGitHubIssue` boundary 之后。HTTP cache 状态与可变 GitHub status 永远不是持久 Delivery authority。
+Request boundary 会在任何 I/O 前校验严格的公开 github.com Issue grammar，闭合 authenticated-fetch SSRF 与 credential leak 路径。它通过 host 提供的 `fetch` 读取一个派生的 GitHub API snapshot，要求 HTTP 200 与 `application/json`，并拒绝 malformed、coordinate 已漂移或不是有效 immutable snapshot 的响应。`parseGitHubIssueWorkBrief()` 与 `workBriefContractRevisionDraft()` 冻结可执行 body grammar 及其精确 Delivery mapping。Consumer 会为内容等价 source field 返回已有 Contract revision；否则派生最新的同 Issue predecessor、内容派生 idempotency key 与一条 adoption request。HTTP cache 状态与可变 GitHub status 永远不是持久 Delivery authority。
 
 ## 模型体验
 
@@ -52,7 +52,7 @@ Intake 不增加 prompt token、tool schema 或模型调用；保持一个紧凑
 
 ## 已知限制
 
-- **Issue adoption 不可用**——校验精确公开 github.com Issue grammar 后，`importGitHubIssue` 会以 `DeliveryGitHubIntakeError('unavailable')` 拒绝；authenticated fetch、response validation、snapshot lookup 与 adoption 均不受支持。Work Brief parser 与 golden grammar 已可用。
+- **只支持一次公开 Issue 读取**——intake 只读取由 canonical Issue URL 派生的公开 GitHub API endpoint，不接受 Enterprise host、credential、cache、webhook、polling 或 write-back authority。
 - **不支持 GitHub Enterprise**——由于没有独立 trusted-host policy，任意 host 都会被拒绝，不会通过可配置 URL 准入。
 - **每次调用只处理一个 Issue snapshot**——webhook、polling、bulk synchronization、comment、Projects、label 与 PR mutation 均不在范围内。
 - **不自动发明需求**——每个权威字段都必须存在；未解决的歧义必须成为带显式 id 的 `openDecisions` entry，intake 不能悄悄把 Contract 变为 ready。

@@ -32,7 +32,7 @@ The Issue body contains exactly one authoritative block: the line `<!-- dsh-deli
 
 ## Understand the implementation
 
-The request boundary validates the strict public github.com Issue grammar with Zod, closing the authenticated-fetch SSRF and credential-leak path before any I/O. `parseGitHubIssueWorkBrief()` and `workBriefContractRevisionDraft()` already freeze the executable body grammar and its exact Delivery mapping. Network fetch, response validation, canonical-coordinate checks, snapshot digest, same-Issue predecessor lookup, idempotency, and adoption remain behind the unavailable `importGitHubIssue` boundary. HTTP cache state and mutable GitHub status are never durable Delivery authority.
+The request boundary validates the strict public github.com Issue grammar before any I/O, closing the authenticated-fetch SSRF and credential-leak path. It fetches the one derived GitHub API snapshot through the supplied host `fetch`, requires HTTP 200 and `application/json`, and rejects malformed, stale-coordinate, or invalid immutable snapshots. `parseGitHubIssueWorkBrief()` and `workBriefContractRevisionDraft()` freeze the executable body grammar and its exact Delivery mapping. The Consumer returns an existing Contract revision for content-equivalent source fields; otherwise it derives the latest same-Issue predecessor, a content-derived idempotency key, and one adoption request. HTTP cache state and mutable GitHub status are never durable Delivery authority.
 
 ## Model Experience
 
@@ -52,7 +52,7 @@ There is no direct KV-cache contribution; stable Issue templates may make downst
 
 ## Known Limitations and Deferred Work
 
-- **Issue adoption is unavailable** — after validating the exact public github.com Issue grammar, `importGitHubIssue` rejects with `DeliveryGitHubIntakeError('unavailable')`; authenticated fetch, response validation, snapshot lookup, and adoption are unsupported. The Work Brief parser and golden grammar are available.
+- **Only one public Issue read is supported** — intake reads the derived public GitHub API endpoint for one canonical Issue URL and accepts no Enterprise host, credentials, cache, webhook, polling, or write-back authority.
 - **GitHub Enterprise is unsupported** — arbitrary hosts are rejected because no separate trusted-host policy exists.
 - **One Issue snapshot per call** — webhooks, polling, bulk synchronization, comments, Projects, labels, and PR mutation are out of scope.
 - **No automatic requirement invention** — every authoritative field must be present; unresolved ambiguity is an explicitly identified `openDecisions` entry, and intake cannot silently make a Contract ready.
