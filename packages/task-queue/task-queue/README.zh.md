@@ -14,11 +14,11 @@
 
 `ChangeSet { seq, changeId, at, events }` 是唯一持久化单位，其中的 `DomainEvent` 是一同提交的逻辑事实；caller 不能持久化 lifecycle snapshot。Fold 从 admission、Attempt、cancellation、retry 与 unknown-resolution event 推导 WorkState。它拒绝 seq 缺口、重复 change id、非原子或异质 Batch admission、错误的 Attempt 归属或 ordinal、错误的 Result 归属或 kind、冲突 Receipt、不安全自动重试，以及无效 Attention 或 Notification acknowledgement CAS，并确保失败时不部分更新投影。
 
-Caller 在外部解析前 canonicalize intent 并计算 digest。相同 idempotency key 与 digest 返回原 Work id；同 key 不同 digest 是冲突。
+Caller 在外部解析前 canonicalize intent 并计算 digest。相同 idempotency key 与 digest 返回原 Work id；同 key 不同 digest 是冲突。Agent receipt 按 owner Session 划分 scope。可信 operator 使用独立的单一 host namespace；其准入持久化 `ownerSessionId: null`、使用 operator receipt，且绝不创建 Session Notification。
 
 ## Authority
 
-Provider 验证 initiator identity，再把 opaque `VerifiedAgentAuthority` 或 `VerifiedOperatorAuthority` 传给 `forAgent()` 或 `forOperator()`。Service Definition 不接受 caller 自报的 session id，也不暴露公共 operator facade。确认 Attention 记录不会裁定 unknown Work。
+Provider 验证 initiator identity，再把 opaque `VerifiedAgentAuthority` 或 `VerifiedOperatorAuthority` 传给 `forAgent()` 或 `forOperator()`。Service Definition 不接受 caller 自报的 session id，也不暴露公共 operator facade。因此 `OperatorWorkQueue.enqueue()` 与 `enqueueBatch()` 是 host capability，而不是模型或浏览器权限。确认 Attention 记录不会裁定 unknown Work。
 
 ## Model Experience
 

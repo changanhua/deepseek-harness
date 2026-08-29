@@ -25,6 +25,7 @@ import {
   codexAppServerArgv,
   DEFAULT_DISPOSE_GRACE_MS,
   disposeCodexChild,
+  startCodexAppServerRun,
   startCodexRun,
   textTask,
   type CodexRunSpec,
@@ -1492,6 +1493,76 @@ describe('CodexAppServerWire', () => {
 })
 
 describe('run lifecycle and quiescence', () => {
+  it('accepts explicit cwd, prompt, and signal without a parent Agent', async () => {
+    const child = fakeChild()
+    const cwd = process.cwd()
+    const signal = new AbortController().signal
+    const spawn = vi.fn(() => child.handle)
+    const starting = startCodexAppServerRun({
+      prompt: [{ type: 'text', text: 'parent-free task' }],
+      signal,
+    }, runSpec(child, { cwd, spawn }))
+    const initialize = await child.peer.nextMethod('initialize')
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    await child.peer.nextMethod('initialized')
+    const threadStart = await child.peer.nextMethod('thread/start')
+    expect(threadStart.params).toMatchObject({ cwd })
+    child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
+    const run = await starting
+    const turnStart = await child.peer.nextMethod('turn/start')
+    expect(turnStart.params).toMatchObject({
+      input: [{ type: 'text', text: 'parent-free task', text_elements: [] }],
+    })
+    child.peer.send(
+      { id: turnStart.id, result: { turn: { id: 'turn-1' } } },
+      agentMessage('parent-free answer', 'final_answer'),
+      turnCompleted('completed'),
+    )
+    await expect(run.result).resolves.toEqual({
+      output: [{ type: 'text', text: 'parent-free answer' }],
+      stopReason: 'completed',
+    })
+    expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ cwd }))
+    await run.dispose()
+  })
+
+  it('cancels the parent-free driver and waits for process exit on disposal', async () => {
+    const controller = new AbortController()
+    const child = fakeChild({ exitOnTerminate: false })
+    const starting = startCodexAppServerRun({
+      prompt: [{ type: 'text', text: 'cancel parent-free task' }],
+      signal: controller.signal,
+    }, runSpec(child))
+    const initialize = await child.peer.nextMethod('initialize')
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    await child.peer.nextMethod('initialized')
+    const threadStart = await child.peer.nextMethod('thread/start')
+    child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
+    const run = await starting
+    const turnStart = await child.peer.nextMethod('turn/start')
+    child.peer.respond(turnStart, { turn: { id: 'turn-1' } })
+    await nextTask()
+
+    controller.abort(new Error('cancel parent-free task'))
+    await expect(run.result).resolves.toEqual({
+      output: [],
+      stopReason: 'aborted',
+    })
+    expect(await child.peer.nextMethod('turn/interrupt')).toMatchObject({
+      params: { threadId: 'thread-1', turnId: 'turn-1' },
+    })
+
+    let disposed = false
+    const disposal = run.dispose().then(() => { disposed = true })
+    await nextTask()
+    expect(child.terminate).toHaveBeenCalledOnce()
+    expect(disposed).toBe(false)
+    child.settle({ exitCode: null, signal: 'SIGTERM' })
+    await disposal
+    expect(child.waitForExit).toHaveBeenCalledOnce()
+    expect(disposed).toBe(true)
+  })
+
   it('spawns the fixed app-server, publishes after thread creation, and disposes once', async () => {
     const child = fakeChild()
     const spawn = vi.fn(() => child.handle)

@@ -14,11 +14,11 @@ The durable typed-work Queue Service Definition (`ctx.taskQueue`). Concrete work
 
 `ChangeSet { seq, changeId, at, events }` is the only persistence unit. Its `DomainEvent` entries are logical facts committed together; callers cannot persist a lifecycle snapshot. The fold derives WorkState from admission, Attempt, cancellation, retry, and unknown-resolution events. It rejects sequence gaps, duplicate change ids, partial or heterogeneous Batch admission, invalid Attempt ownership or ordinals, mismatched Result ownership or kind, conflicting Receipt records, unsafe automatic retry, and invalid Attention or Notification acknowledgement CAS operations without partially updating the projection.
 
-Callers canonicalize and digest intent before external resolution. A matching idempotency key and digest returns the original Work ids; the same key with another digest is a conflict.
+Callers canonicalize and digest intent before external resolution. A matching idempotency key and digest returns the original Work ids; the same key with another digest is a conflict. Agent receipts are scoped by owner Session. The trusted operator has one separate host namespace; its admissions persist `ownerSessionId: null`, use operator receipts, and never create Session Notifications.
 
 ## Authority
 
-The provider verifies initiator identity and passes an opaque `VerifiedAgentAuthority` or `VerifiedOperatorAuthority` to `forAgent()` or `forOperator()`. The Service Definition neither accepts a caller-supplied session id nor exposes a public operator facade. Acknowledging an Attention record does not resolve unknown work.
+The provider verifies initiator identity and passes an opaque `VerifiedAgentAuthority` or `VerifiedOperatorAuthority` to `forAgent()` or `forOperator()`. The Service Definition neither accepts a caller-supplied session id nor exposes a public operator facade. `OperatorWorkQueue.enqueue()` and `enqueueBatch()` are therefore host capabilities, not model or browser authority. Acknowledging an Attention record does not resolve unknown work.
 
 ## Model Experience
 

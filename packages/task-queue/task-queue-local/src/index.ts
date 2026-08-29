@@ -3,15 +3,23 @@ import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
-  assertVerifiedAgentAuthority, assertVerifiedOperatorAuthority, canAutoRetry, digestIntent,
+  assertVerifiedAgentAuthority, assertVerifiedOperatorAuthority, canAutoRetry, canonicalJson, digestIntent,
   AttentionId, NotificationId, lookupReceipt, TaskQueue, WorkId, AttemptId, BatchId, ResultId,
 } from '@deepseek-ai/dsh-task-queue'
 import type {
-  AgentWorkQueue, BatchRequest, ChangeSet, EnqueueRequest, LiveAttempt, OperatorWorkQueue,
-  ResourceClaim, UnknownResolution, VerifiedAgentAuthority, VerifiedOperatorAuthority, WorkFailure, WorkHandler,
-  ResolvedWork, WorkItem, WorkKind, WorkPolicy, WorkView,
+  AgentWorkQueue, AttemptOutcome, BatchRequest, ChangeSet, EnqueueRequest, LiveAttempt, OperatorWorkQueue,
+  PreparedWork, Receipt, ResourceClaim, UnknownResolution, VerifiedAgentAuthority, VerifiedOperatorAuthority,
+  WorkFailure, WorkHandler, ResolvedWork, WorkItem, WorkKind, WorkPolicy, WorkView,
 } from '@deepseek-ai/dsh-task-queue'
 import { WorkQueueStore } from './v2-store.ts'
+
+type AdmissionAuthority = VerifiedAgentAuthority | VerifiedOperatorAuthority
+
+interface AdmissionScope {
+  readonly owner: Receipt['owner']
+  readonly source: 'agent' | 'operator'
+  readonly ownerSessionId: string | null
+}
 
 interface Execution {
   readonly workId: WorkId
@@ -34,6 +42,21 @@ function firstWorkId(ids: readonly WorkId[]): WorkId {
 function isAborted(signal: AbortSignal): boolean { return signal.aborted }
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000
 
+function admissionScope(authority: AdmissionAuthority): AdmissionScope {
+  if (authority.kind === 'agent') {
+    return {
+      owner: { type: 'agent', sessionId: authority.sessionId },
+      source: 'agent',
+      ownerSessionId: authority.sessionId,
+    }
+  }
+  return {
+    owner: { type: 'operator' },
+    source: 'operator',
+    ownerSessionId: null,
+  }
+}
+
 /** Local Queue v2 configuration. */
 export interface Config {
   /** Schema-v3 Queue root; the composing row must keep older formats in a separate directory. */
@@ -42,7 +65,7 @@ export interface Config {
   maxConcurrent?: number
   /** Deployment capacity by handler-declared resource name. */
   resourceCapacity?: Record<string, number>
-  /** Maximum time teardown waits before unresolved executions become unknown. */
+  /** Maximum time teardown or post-start durability cleanup waits for execution quiescence. */
   shutdownTimeoutMs?: number
 }
 
@@ -101,6 +124,8 @@ export class LocalTaskQueue extends TaskQueue {
   forOperator(authority: VerifiedOperatorAuthority): OperatorWorkQueue {
     assertVerifiedOperatorAuthority(authority)
     return {
+      enqueue: request => this.enqueue(authority, request),
+      enqueueBatch: request => this.enqueueBatch(authority, request),
       list: () => this.listAll(),
       get: id => this.view(id),
       cancel: id => this.cancel(id),
@@ -125,42 +150,42 @@ export class LocalTaskQueue extends TaskQueue {
   /** Return stable registered kinds. */
   listKinds(): readonly WorkKind[] { return Object.freeze([...this.handlers.keys()].sort()) }
 
-  private async enqueue<K extends WorkKind>(authority: VerifiedAgentAuthority, request: EnqueueRequest<K>): Promise<WorkId> {
+  private async enqueue<K extends WorkKind>(authority: AdmissionAuthority, request: EnqueueRequest<K>): Promise<WorkId> {
     this.assertAccepting()
     const intentDigest = digestIntent(request.input)
     return this.admitOnce(authority, request.idempotencyKey, intentDigest, () => this.admitSingle(authority, request, intentDigest))
   }
 
   private async admitSingle<K extends WorkKind>(
-    authority: VerifiedAgentAuthority,
+    authority: AdmissionAuthority,
     request: EnqueueRequest<K>,
     intentDigest: string,
   ): Promise<WorkId> {
     await this.ready
     const handler = this.requireHandler(request.kind)
-    const owner = { type: 'agent' as const, sessionId: authority.sessionId }
-    const prior = lookupReceipt(this.store.current(), owner, 'agent', request.idempotencyKey, intentDigest)
+    const scope = admissionScope(authority)
+    const prior = lookupReceipt(this.store.current(), scope.owner, scope.source, request.idempotencyKey, intentDigest)
     if (prior !== null) return firstWorkId(prior)
     const resolved = await handler.resolveAdmission(request.input, { signal: new AbortController().signal })
     const resources = this.resolveClaims(handler, resolved)
     const policy = this.resolvePolicy(handler, resolved)
     return this.store.transaction(async () => {
       this.assertAccepting()
-      const committed = lookupReceipt(this.store.current(), owner, 'agent', request.idempotencyKey, intentDigest)
+      const committed = lookupReceipt(this.store.current(), scope.owner, scope.source, request.idempotencyKey, intentDigest)
       if (committed !== null) return firstWorkId(committed)
       const now = new Date().toISOString()
       const id = WorkId(randomUUID())
       const work: WorkItem = {
         id, kind: request.kind, title: request.title, intent: request.input, intentDigest, resolved,
         policy, resources, tags: request.tags ?? [], batchId: null,
-        ownerSessionId: authority.sessionId, createdAt: now,
+        ownerSessionId: scope.ownerSessionId, createdAt: now,
       }
       const change = this.change([
         { type: 'work/admitted', work },
         {
           type: 'receipt/recorded',
           receipt: {
-            owner, source: 'agent', key: request.idempotencyKey, intentDigest,
+            owner: scope.owner, source: scope.source, key: request.idempotencyKey, intentDigest,
             workIds: [id], batchId: null, createdAt: now,
           },
         },
@@ -172,7 +197,7 @@ export class LocalTaskQueue extends TaskQueue {
     })
   }
 
-  private async enqueueBatch<K extends WorkKind>(authority: VerifiedAgentAuthority, request: BatchRequest<K>): Promise<BatchId> {
+  private async enqueueBatch<K extends WorkKind>(authority: AdmissionAuthority, request: BatchRequest<K>): Promise<BatchId> {
     this.assertAccepting()
     const intentDigest = digestIntent({
       kind: request.kind,
@@ -184,7 +209,7 @@ export class LocalTaskQueue extends TaskQueue {
   }
 
   private async admitBatch<K extends WorkKind>(
-    authority: VerifiedAgentAuthority,
+    authority: AdmissionAuthority,
     request: BatchRequest<K>,
     intentDigest: string,
   ): Promise<BatchId> {
@@ -195,8 +220,8 @@ export class LocalTaskQueue extends TaskQueue {
       throw new Error('task queue Batch requires items and positive maxParallel')
     }
     const handler = this.requireHandler(request.kind)
-    const owner = { type: 'agent' as const, sessionId: authority.sessionId }
-    const prior = lookupReceipt(this.store.current(), owner, 'agent', request.idempotencyKey, intentDigest)
+    const scope = admissionScope(authority)
+    const prior = lookupReceipt(this.store.current(), scope.owner, scope.source, request.idempotencyKey, intentDigest)
     if (prior !== null) {
       const priorWork = this.store.current().worksById.get(firstWorkId(prior))
       if (priorWork?.batchId === null || priorWork?.batchId === undefined) {
@@ -210,7 +235,7 @@ export class LocalTaskQueue extends TaskQueue {
     }))
     return this.store.transaction(async () => {
       this.assertAccepting()
-      const committed = lookupReceipt(this.store.current(), owner, 'agent', request.idempotencyKey, intentDigest)
+      const committed = lookupReceipt(this.store.current(), scope.owner, scope.source, request.idempotencyKey, intentDigest)
       if (committed !== null) {
         const priorWork = this.store.current().worksById.get(firstWorkId(committed))
         if (priorWork?.batchId === null || priorWork?.batchId === undefined) throw new Error('task queue Batch receipt does not reference a Batch WorkItem')
@@ -221,12 +246,12 @@ export class LocalTaskQueue extends TaskQueue {
       const works = admitted.map(({ item, resolved, resources, policy }): WorkItem => ({
         id: WorkId(randomUUID()), kind: request.kind, title: item.title, intent: item.input,
         intentDigest: digestIntent(item.input), resolved, policy, resources, tags: item.tags ?? [],
-        batchId, ownerSessionId: authority.sessionId, createdAt: now,
+        batchId, ownerSessionId: scope.ownerSessionId, createdAt: now,
       }))
       const events: ChangeSet['events'] = [
         { type: 'batch/admitted', batch: { id: batchId, kind: request.kind, sharedPayload: request.sharedPayload, workIds: works.map(work => work.id), maxParallel: request.maxParallel, createdAt: now } },
         ...works.map(work => ({ type: 'work/admitted' as const, work })),
-        { type: 'receipt/recorded', receipt: { owner, source: 'agent', key: request.idempotencyKey, intentDigest, workIds: works.map(work => work.id), batchId, createdAt: now } },
+        { type: 'receipt/recorded', receipt: { owner: scope.owner, source: scope.source, key: request.idempotencyKey, intentDigest, workIds: works.map(work => work.id), batchId, createdAt: now } },
       ]
       const change = this.change(events)
       await this.store.append(change)
@@ -405,40 +430,77 @@ export class LocalTaskQueue extends TaskQueue {
     readonly execution: Execution
   }): Promise<void> {
     const { attemptId, handler, work, execution } = claimed
+    let prepared: PreparedWork<WorkKind>
     try {
-      const prepared = await handler.prepare(work.resolved, { attemptId, signal: execution.controller.signal })
-      if (isAborted(execution.controller.signal)) {
-        await this.settleCanceled(work.id)
-        return
-      }
-      let live: LiveAttempt<WorkKind>
-      try {
-        live = handler.start(prepared, { attemptId, signal: execution.controller.signal })
-      } catch (error) {
-        await this.settleFailure(attemptId, failure('start-threw', error, 'unknown', false))
-        return
-      }
-      execution.live = live
-      try {
-        await this.commit([{ type: 'attempt/running', attemptId, at: new Date().toISOString() }])
-      } catch (error) {
-        await this.settleUnknown(attemptId, failure('post-start-durability', error, 'unknown', false))
-        return
-      }
-      const outcome = await live.done
+      prepared = await handler.prepare(work.resolved, { attemptId, signal: execution.controller.signal })
+    } catch (error) {
+      if (isAborted(execution.controller.signal)) await this.settleCanceled(work.id)
+      else await this.settleFailure(attemptId, failure('prepare-threw', error, 'not-started', true))
+      return
+    }
+    if (isAborted(execution.controller.signal)) {
+      await this.settleCanceled(work.id)
+      return
+    }
+    let live: LiveAttempt<WorkKind>
+    try {
+      live = handler.start(prepared, { attemptId, signal: execution.controller.signal })
+    } catch (error) {
+      await this.settleFailure(attemptId, failure('start-threw', error, 'unknown', false))
+      return
+    }
+    execution.live = live
+    await this.executeStartedAttempt(attemptId, work, execution, live)
+  }
+
+  /** Never let a post-start error fall back into the safe pre-start retry path. */
+  private async executeStartedAttempt(
+    attemptId: AttemptId,
+    work: WorkItem,
+    execution: Execution,
+    live: LiveAttempt<WorkKind>,
+  ): Promise<void> {
+    try {
+      await this.commit([{ type: 'attempt/running', attemptId, at: new Date().toISOString() }])
+    } catch (error) {
+      const durabilityFailure = failure('post-start-durability', error, 'unknown', false)
+      const reason = 'task queue could not persist the running attempt'
+      execution.controller.abort(reason)
+      const cleanup = await this.quiesceAfterRunningCommitFailure(live, reason)
+      await this.settlePostStartUnknown(attemptId, cleanup === null
+        ? durabilityFailure
+        : { ...durabilityFailure, message: `${durabilityFailure.message}; ${cleanup}` })
+      return
+    }
+
+    let outcome: AttemptOutcome<WorkKind>
+    try {
+      outcome = await live.done
+    } catch (error) {
+      await this.settlePostStartUnknown(
+        attemptId,
+        failure('live-attempt-rejected', error, 'unknown', false),
+      )
+      return
+    }
+    if (outcome.status === 'unknown') {
+      await this.settlePostStartUnknown(attemptId, outcome.failure)
+      return
+    }
+    try {
       if (outcome.status === 'succeeded') {
         await this.settleSuccess(attemptId, outcome.output)
       } else if (outcome.status === 'failed') {
         if (isAborted(execution.controller.signal)) await this.settleCanceled(work.id)
         else await this.settleFailure(attemptId, outcome.failure)
-      } else if (outcome.status === 'unknown') {
-        await this.settleUnknown(attemptId, outcome.failure)
       } else {
         await this.settleCanceled(work.id)
       }
     } catch (error) {
-      if (isAborted(execution.controller.signal)) await this.settleCanceled(work.id)
-      else await this.settleFailure(attemptId, failure('prepare-threw', error, 'not-started', true))
+      await this.settlePostStartUnknown(
+        attemptId,
+        failure('post-start-settlement', error, 'unknown', false),
+      )
     }
   }
 
@@ -500,6 +562,56 @@ export class LocalTaskQueue extends TaskQueue {
       const events = this.unknownEvents(attemptId, value, new Date().toISOString())
       if (events.length > 0) await this.commitInTransaction(events)
     })
+  }
+
+  /** Retry unknown persistence once without changing a post-start failure into safe retry. */
+  private async settlePostStartUnknown(attemptId: AttemptId, value: WorkFailure): Promise<void> {
+    try {
+      await this.settleUnknown(attemptId, value)
+    } catch (error) {
+      const detail = failure('unknown-persistence', error, 'unknown', false).message
+      await this.settleUnknown(attemptId, {
+        ...value,
+        message: `${value.message}; initial unknown persistence failed: ${detail}`,
+      })
+    }
+  }
+
+  /**
+   * Stop a LiveAttempt whose side effect began before its running fact became durable.
+   * The Queue keeps execution ownership until both the cancellation request and the
+   * live settlement finish, or until the same bounded quiescence deadline used by
+   * provider teardown expires.
+   */
+  private async quiesceAfterRunningCommitFailure(
+    live: LiveAttempt<WorkKind>,
+    reason: string,
+  ): Promise<string | null> {
+    const diagnostics: string[] = []
+    const cancellation = Promise.resolve()
+      .then(() => live.cancel(reason))
+      .catch((error: unknown) => {
+        diagnostics.push(`LiveAttempt cancellation rejected: ${failure('post-start-cancel', error, 'unknown', false).message}`)
+      })
+    const settlement = Promise.resolve(live.done)
+      .catch((error: unknown) => {
+        diagnostics.push(`LiveAttempt settlement rejected: ${failure('post-start-settlement', error, 'unknown', false).message}`)
+      })
+    const completed = Promise.all([cancellation, settlement])
+    const timeout = Promise.withResolvers<{ readonly kind: 'timeout' }>()
+    const timer = setTimeout(() => { timeout.resolve({ kind: 'timeout' }) }, this.shutdownTimeoutMs)
+    try {
+      const result = await Promise.race([
+        completed.then(() => ({ kind: 'settled' as const })),
+        timeout.promise,
+      ])
+      if (result.kind === 'timeout') {
+        diagnostics.push(`LiveAttempt did not reach quiescence within ${this.shutdownTimeoutMs}ms`)
+      }
+      return diagnostics.length === 0 ? null : diagnostics.join('; ')
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   private async initialize(): Promise<void> {
@@ -679,12 +791,13 @@ export class LocalTaskQueue extends TaskQueue {
   }
 
   private admitOnce<T extends WorkId | BatchId>(
-    authority: VerifiedAgentAuthority,
+    authority: AdmissionAuthority,
     key: string,
     intentDigest: string,
     admit: () => Promise<T>,
   ): Promise<T> {
-    const pendingKey = `${authority.sessionId}:agent:${key}`
+    const scope = admissionScope(authority)
+    const pendingKey = canonicalJson({ owner: scope.owner, source: scope.source, key })
     const existing = this.pendingAdmissions.get(pendingKey)
     if (existing !== undefined) {
       if (existing.intentDigest !== intentDigest) return Promise.reject(new Error(`idempotency conflict for key ${key}`))

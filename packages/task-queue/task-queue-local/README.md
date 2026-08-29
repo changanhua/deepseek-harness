@@ -8,7 +8,9 @@ Durable local provider for the typed Queue v2 `ctx.taskQueue` service. `LocalTas
 
 The configured `queueRoot` contains `manifest.json` with `schemaVersion: 3`, append-only `active.jsonl`, an optional digest-checked `snapshot.json`, and the owner lock. The provider acquires exclusive ownership before recovery. A live owner rejects a second host; a stale owner lock is quarantined before takeover. Other schema versions are rejected rather than decoded or migrated.
 
-Every durable mutation is a `ChangeSet`. Admission persists caller intent, resolved facts, handler-derived retry policy, and validated resource claims before dispatch. The local transaction FIFO serializes the final receipt recheck and append, while `WorkHandler.resolveAdmission()` and `prepare()` stay outside it. Batch idempotency covers the WorkKind, ordered items, shared payload, and `maxParallel`, so reusing a key with any changed Batch-shaping input is a conflict. Startup turns persisted `starting` and `running` attempts into `unknown` with pending Attention records before dispatch; shutdown applies one `shutdownTimeoutMs` bound across cancellation requests and execution settlement, then marks unresolved attempts `unknown` before releasing the root lock.
+Every durable mutation is a `ChangeSet`. Admission persists caller intent, resolved facts, handler-derived retry policy, and validated resource claims before dispatch. The local transaction FIFO serializes the final receipt recheck and append, while `WorkHandler.resolveAdmission()` and `prepare()` stay outside it. Agent and operator admissions use disjoint idempotency namespaces; operator work is ownerless and cannot produce Session Notifications. Batch idempotency covers the WorkKind, ordered items, shared payload, and `maxParallel`, so reusing a key with any changed Batch-shaping input is a conflict. Startup turns persisted `starting` and `running` attempts into `unknown` with pending Attention records before dispatch.
+
+If `WorkHandler.start()` returns live ownership but the following `attempt/running` append fails, the provider immediately requests cancellation and waits for both cancellation and live settlement under `shutdownTimeoutMs` before recording `unknown` with Attention. If the first unknown append attempt fails before commit, the provider retries once and retains that failure in the durable diagnostic when the retry commits. No exception after `start()` may fall back into the pre-start `not-started` automatic-retry path; a rejected live settlement or failed terminal append is also resolved conservatively as unknown when the current durable state permits it. The same quiescence bound applies during shutdown. After the deadline, Queue preserves durable uncertainty but releases the in-process handle and scheduling claims; an operator must confirm external quiescence before authorizing another Attempt. Queue never guesses a terminal outcome after the side-effect boundary.
 
 ## Scheduling
 
@@ -20,7 +22,7 @@ Handlers declare `ResourceClaim`s, and admission rejects claims missing from dep
 |---|---|---|
 | `queueRoot` | required | Isolated schema-v3 Queue root |
 | `maxConcurrent` | `8` | Maximum prepared or live attempts |
-| `shutdownTimeoutMs` | `5000` | Time teardown waits before unresolved attempts become unknown |
+| `shutdownTimeoutMs` | `5000` | Time teardown or post-start durability cleanup waits for execution quiescence before recording unknown |
 | `resourceCapacity` | `{}` | Resource units available to handler claims |
 
 The shipped base composition uses `$DSH_HOME/task-queue-v3`, global concurrency `3`, image-generation capacity `3`, and agent-run capacity `1`.

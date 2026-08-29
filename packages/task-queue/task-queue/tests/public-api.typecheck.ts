@@ -35,7 +35,20 @@ const synchronousLiveAttempt: LiveAttempt<'typecheck@1'> = handler.start(
   { attemptId: AttemptId('attempt-1'), signal: new AbortController().signal },
 )
 queue.forAgent(agentAuthority)
-queue.forOperator(operatorAuthority)
+const operator = queue.forOperator(operatorAuthority)
+void operator.enqueue({
+  kind: 'typecheck@1',
+  title: 'ownerless work',
+  input: { input: 'ready' },
+  idempotencyKey: 'operator-single',
+})
+void operator.enqueueBatch({
+  kind: 'typecheck@1',
+  items: [{ title: 'ownerless batch member', input: { input: 'ready' } }],
+  sharedPayload: {},
+  idempotencyKey: 'operator-batch',
+  maxParallel: 1,
+})
 
 // @ts-expect-error a raw session id is not verified authority
 queue.forAgent('session-1')
