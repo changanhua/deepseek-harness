@@ -3,12 +3,17 @@ name: Linux Fast (advisory)
 on:
   pull_request:
     paths:
+      - '.agents/notes/**'
       - '.github/workflows/ci-fork-linux-fast.yml'
+      - '.github/workflows/ci-linux-lab.yml'
+      - '.github/workflows/ci-upstream-watch.yml'
       - 'apps/**'
+      - 'docs/**'
       - 'native/**'
       - 'packages/**'
       - 'scripts/**'
       - 'vendor/**'
+      - 'website/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'

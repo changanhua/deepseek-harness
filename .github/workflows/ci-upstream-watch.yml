@@ -37,8 +37,8 @@ jobs:
           fi
 
           git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
-          git fetch --no-tags upstream "$UPSTREAM_REF"
-          upstream="upstream/$UPSTREAM_REF"
+          upstream=refs/upstream-watch/target
+          git fetch --no-tags upstream "$UPSTREAM_REF:$upstream"
           merge_base=$(git merge-base HEAD "$upstream")
           ahead=$(git rev-list --count "$upstream..HEAD")
           behind=$(git rev-list --count "HEAD..$upstream")

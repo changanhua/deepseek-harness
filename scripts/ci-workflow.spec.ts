@@ -377,6 +377,10 @@ describe('fork Linux compute workflows', () => {
     expect(Object.keys(workflow.on as Record<string, unknown>).sort()).toEqual(['pull_request', 'workflow_dispatch'])
     expect(workflow.permissions).toEqual({ contents: 'read' })
     expect(pullRequest.paths).toContain('packages/**')
+    expect(pullRequest.paths).toContain('.agents/notes/**')
+    expect(pullRequest.paths).toContain('docs/**')
+    expect(pullRequest.paths).toContain('.github/workflows/ci-linux-lab.yml')
+    expect(pullRequest.paths).toContain('.github/workflows/ci-upstream-watch.yml')
     expect(quality).toMatchObject({
       if: "vars.CI_LINUX_FAST != '0'",
       'runs-on': 'ubuntu-latest',
@@ -418,6 +422,9 @@ describe('fork Linux compute workflows', () => {
     expect(workflow.permissions).toEqual({ contents: 'read' })
     expect(report).toMatchObject({ 'runs-on': 'ubuntu-latest', 'timeout-minutes': 10 })
     const steps = JSON.stringify(report.steps)
+    expect(steps).toContain('refs/upstream-watch/target')
+    expect(steps).toContain('$UPSTREAM_REF:$upstream')
+    expect(steps).not.toContain('upstream/$UPSTREAM_REF')
     expect(steps).toContain('git merge-tree --write-tree')
     expect(steps).toContain('GITHUB_STEP_SUMMARY')
     expect(steps).not.toContain('git push')
