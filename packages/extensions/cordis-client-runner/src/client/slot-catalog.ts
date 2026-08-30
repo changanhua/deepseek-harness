@@ -1945,6 +1945,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [
       'client-ui-architecture ArchitectureWorkspace id \'architecture\'',
       'client-ui-capability CapabilityWorkspace id \'capability\'',
+      'client-ui-delivery DeliveryWorkbench id \'delivery\'',
       'client-ui-task-queue QueueWorkspace id \'queue\'',
     ],
     replaceRisk: 'none',
@@ -2125,6 +2126,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [
       'client-ui-architecture ArchitectureNavEntry id \'architecture-module\'',
       'client-ui-capability CapabilityNavEntry id \'capability-module\'',
+      'client-ui-delivery DeliveryNavEntry id \'delivery-module\'',
       'client-ui-task-queue QueueNavEntry id \'queue-module\'',
     ],
     replaceRisk: 'none',

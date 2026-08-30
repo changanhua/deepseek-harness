@@ -30,11 +30,15 @@ kind: "package-reference"
 
 Slot registration 与 locale dictionary 均由 effect 拥有，并在 plugin dispose 时消失。
 
-## 工作台边界 {#workbench-boundary}
+<a id="workbench-boundary"></a>
+
+## 工作台边界
 
 Issue import、Packet creation、change start、verification start、evidence read 与 human decision 是工作台范围内的 action。Browser 只提交所选 reference 与有界 form field。直接写 lane、raw Queue access、path 或 provider URI、credential、把 Agent prose 当作 evidence、提供未经验证的 success 与自动 acceptance 均不在范围内。
 
-## 开发说明 {#dev-note}
+<a id="dev-note"></a>
+
+## 开发说明
 
 保持 lane 与 blocked reason 由 Host snapshot 派生。新增操作时必须同时提供 narrow Remote method、本包拥有的 locale copy、cancellation 与产品可见测试。
 
@@ -54,7 +58,9 @@ Issue import、Packet creation、change start、verification start、evidence re
 
 无；本包从不组装模型输入。
 
-## 已知限制 {#known-limitations-and-deferred-work}
+<a id="known-limitations-and-deferred-work"></a>
+
+## 已知限制
 
 - **需要 Profile composition**——只有受支持的 bundle/profile 安装其 Client plugin、匹配的 Delivery Remote 与 provider 时，工作台才会出现。
 - **单 operator MVP**——browser 永远不选择或声明 operator identity；multi-user authentication 与 authorization 不在本包范围内。

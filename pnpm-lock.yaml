@@ -2586,9 +2586,6 @@ importers:
       '@deepseek-ai/dsh-client-store':
         specifier: workspace:^
         version: link:../store
-      '@deepseek-ai/dsh-client-test-runtime':
-        specifier: workspace:^
-        version: link:../../test-support/client-runtime
       '@deepseek-ai/dsh-client-ui-layout':
         specifier: workspace:^
         version: link:../ui-layout
@@ -5078,6 +5075,9 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/delivery/delivery-runner-codex:
     dependencies:

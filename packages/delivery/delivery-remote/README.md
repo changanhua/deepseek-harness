@@ -21,6 +21,8 @@ The snapshot joins one Delivery read with the trusted operator's Queue view into
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 
+<a id="remote-methods"></a>
+
 ## Remote methods
 
 - `snapshot()` returns Contract revisions without Packets and Packet cards derived into Ready, Running, Review, Blocked, or Accepted lanes.
@@ -33,9 +35,13 @@ The snapshot joins one Delivery read with the trusted operator's Queue view into
 
 The `./types` export contains the JSON wire declarations. Generated `./typert` and `./remote` entries carry the host and browser faces.
 
+<a id="authority-boundary"></a>
+
 ## Authority boundary
 
 The Remote injects `delivery`, `deliveryEvidence`, `repoWorkspace`, and `taskQueue`, but does not make browser input authoritative. Git proves commits, Queue owns execution, and evidence storage resolves and integrity-reads every exact referenced object. In this single-user MVP, trusted Host configuration supplies a non-blank `operatorId` (default `local-operator`) as the decision actor; `actorId` is never a browser field. Only the human decision endpoint may request an acceptance record. Browser inputs contain selections rather than authority-bearing identities, raw Queue payloads, host paths, provider URIs, or caller-defined idempotency keys.
+
+<a id="dev-note"></a>
 
 ## Dev Note
 
@@ -56,6 +62,8 @@ Zero direct tokens; Typert transport payloads are browser control data rather th
 #### KV Cache effect
 
 None; this package never assembles model input.
+
+<a id="known-limitations-and-deferred-work"></a>
 
 ## Known Limitations and Deferred Work
 

@@ -30,9 +30,13 @@ The workbench presents a five-lane Packet ledger, a scope-to-decision evidence s
 
 Slot registration and locale dictionaries are effect-owned and disappear when the plugin is disposed.
 
+<a id="workbench-boundary"></a>
+
 ## Workbench boundary
 
 Issue import, Packet creation, change start, verification start, evidence read, and a human decision are the in-scope workbench actions. The browser submits selected references and bounded form fields only. Direct lane writes, raw Queue access, paths or provider URIs, credentials, Agent prose as evidence, unverified success, and automatic acceptance are out of scope.
+
+<a id="dev-note"></a>
 
 ## Dev Note
 
@@ -53,6 +57,8 @@ Zero direct tokens; workbench state is browser control data rather than model in
 #### KV Cache effect
 
 None; this package never assembles model input.
+
+<a id="known-limitations-and-deferred-work"></a>
 
 ## Known Limitations and Deferred Work
 
