@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, renameSync } from 'node:fs'
-import { access, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -200,8 +200,11 @@ describe('local Git repository workspace', () => {
       commit: GitCommitId('ffffffffffffffffffffffffffffffffffffffff'),
     })).rejects.toMatchObject({ code: 'revision-not-found' })
     expect(subprocess.specs.length).toBeGreaterThan(0)
-    expect(subprocess.specs.every(spec => spec.argv[0] === gitExecutable && spec.argv[1] === '-C' && spec.argv[2] === repository))
-      .toBe(true)
+    expect(subprocess.specs.every(spec => spec.argv[0] === gitExecutable && spec.argv[1] === '-C')).toBe(true)
+    const physicalRepository = await realpath(repository)
+    expect(await Promise.all(subprocess.specs.map(async (spec) => {
+      return await realpath(String(spec.argv[2]))
+    }))).toEqual(Array.from({ length: subprocess.specs.length }, () => physicalRepository))
     expect(subprocess.handles.every(handle => handle.waitForExitCalls === 1)).toBe(true)
     await ctx.fiber.dispose()
   })
