@@ -8,7 +8,7 @@ import {
 import type { DeliveryVerificationRunRequest } from '../src/index.ts'
 import type { CompletedChangeClaim } from '../src/index.ts'
 
-describe('delivery verifier unavailable boundary', () => {
+describe('delivery verifier public boundary', () => {
   it('accepts only completed claims at the public request boundary', () => {
     expectTypeOf<DeliveryVerificationRunRequest['completionClaim']>()
       .toEqualTypeOf<Extract<
@@ -17,32 +17,6 @@ describe('delivery verifier unavailable boundary', () => {
     >>()
     expectTypeOf<CompletedChangeClaim>()
       .toEqualTypeOf<DeliveryVerificationRunRequest['completionClaim']>()
-  })
-
-  it('publishes typed unavailable settlement without invoking subprocess', async () => {
-    const spawn = vi.fn(() => {
-      throw new Error('must not spawn')
-    })
-    const start = createDeliveryVerifier({
-      subprocess: { spawn },
-      verifierVersion: 'delivery-verifier@1',
-      disposeGraceMs: 5_000,
-      verificationOutputBytes: 64 * 1024,
-    })
-
-    const run = start(
-      {} as DeliveryVerificationRunRequest,
-      new AbortController().signal,
-    )
-
-    await expect(run.done).rejects.toEqual(expect.objectContaining({
-      code: 'unavailable',
-      name: 'DeliveryVerifierError',
-    }))
-    await expect(run.cancel('operator canceled')).resolves.toBeUndefined()
-    expect(spawn).not.toHaveBeenCalled()
-    expect(new DeliveryVerifierError('unavailable', 'x').code)
-      .toBe('unavailable')
   })
 
   it('rejects blank identities and unsafe process-output budgets', () => {
@@ -73,5 +47,7 @@ describe('delivery verifier unavailable boundary', () => {
         verificationOutputBytes,
       })).toThrow(expect.objectContaining({ code: 'configuration' }))
     }
+    expect(new DeliveryVerifierError('execution', 'x').code)
+      .toBe('execution')
   })
 })
