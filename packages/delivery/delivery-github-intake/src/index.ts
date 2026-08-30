@@ -147,6 +147,9 @@ export async function importGitHubIssue(
         'GitHub Issue intake snapshot already belongs to another configured Contract revision',
       )
     }
+    if (previous !== null && Date.parse(source.updatedAt) < Date.parse(previous.sourceRef.updatedAt)) {
+      return previous
+    }
     const revision = workBriefContractRevisionDraft(
       brief,
       request.repositoryId,

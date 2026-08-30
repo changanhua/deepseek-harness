@@ -637,6 +637,36 @@ describe('GitHub Issue intake', () => {
     expect(provider.delivery.snapshot().contractRevisions).toEqual([firstRevision, secondRevision])
   })
 
+  it('keeps the newer same-Issue head when an older HTTP response arrives late', async () => {
+    const provider = contractDelivery()
+    const olderIssue = issueSnapshot({
+      updated_at: '2026-08-30T12:00:01.000Z',
+      title: 'older Issue state',
+    })
+    const newerIssue = issueSnapshot({
+      updated_at: '2026-08-30T12:00:02.000Z',
+      title: 'newer Issue state',
+    })
+    let resolveOlderResponse!: (response: Response) => void
+    const olderResponse = new Promise<Response>((resolve) => {
+      resolveOlderResponse = resolve
+    })
+    let fetchOrdinal = 0
+    const fetch: typeof globalThis.fetch = async () => {
+      fetchOrdinal += 1
+      return fetchOrdinal === 1 ? olderResponse : jsonResponse(newerIssue)
+    }
+
+    const older = importGitHubIssue({ delivery: provider.delivery, fetch }, { issueUrl, repositoryId })
+    await nextTurn()
+    const newer = importGitHubIssue({ delivery: provider.delivery, fetch }, { issueUrl, repositoryId })
+    const newerRevision = await newer
+    resolveOlderResponse(jsonResponse(olderIssue))
+
+    await expect(older).resolves.toEqual(newerRevision)
+    expect(provider.delivery.snapshot().contractRevisions).toEqual([newerRevision])
+  })
+
   it('does not make a different Issue wait for a delayed same-Delivery import', async () => {
     const gate = deferred()
     const provider = contractDelivery(gate.promise)
