@@ -1,0 +1,81 @@
+name: Upstream Watch (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Branch or ref in deepseek-ai/deepseek-harness
+        required: true
+        type: string
+        default: master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-watch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Upstream drift report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch upstream and write a read-only drift report
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+        run: |
+          if [[ ! "$UPSTREAM_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ "$UPSTREAM_REF" == -* ]] || [[ "$UPSTREAM_REF" == *..* ]]; then
+            echo "Invalid upstream ref: $UPSTREAM_REF" >&2
+            exit 2
+          fi
+
+          git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+          upstream=refs/upstream-watch/target
+          git fetch --no-tags upstream "$UPSTREAM_REF:$upstream"
+          merge_base=$(git merge-base HEAD "$upstream")
+          ahead=$(git rev-list --count "$upstream..HEAD")
+          behind=$(git rev-list --count "HEAD..$upstream")
+
+          merge_status=clean
+          if ! git merge-tree --write-tree HEAD "$upstream" >/tmp/upstream-merge-tree.txt 2>&1; then
+            merge_status=conflicts
+          fi
+
+          {
+            echo "# Upstream drift report"
+            echo
+            echo "- Repository: \`${{ github.repository }}\`"
+            echo "- Current head: \`${{ github.sha }}\`"
+            echo "- Upstream ref: \`deepseek-ai/deepseek-harness@$UPSTREAM_REF\`"
+            echo "- Merge base: \`$merge_base\`"
+            echo "- Fork-only commits: **$ahead**"
+            echo "- Upstream commits not in this ref: **$behind**"
+            echo "- Synthetic merge: **$merge_status**"
+            echo
+            echo "## Changed top-level areas"
+            echo '```text'
+            git diff --dirstat=files,0 "$merge_base..$upstream"
+            echo '```'
+            echo
+            echo "## Upstream commits"
+            echo '```text'
+            git log --oneline --no-merges -n 100 "HEAD..$upstream"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$merge_status" == conflicts ]]; then
+            {
+              echo
+              echo "## Merge-tree diagnostics"
+              echo '```text'
+              sed -n '1,200p' /tmp/upstream-merge-tree.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
