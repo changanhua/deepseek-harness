@@ -263,12 +263,15 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       }
       return await prior.lease as ChangeWorkspaceLease
     }
-    const lease = this.createChangeLease(request)
-    this.leases.set(request.ownerAttemptId, { signature, lease })
+    const lease = this.createChangeLease(request, () => {
+      if (this.leases.get(request.ownerAttemptId)?.lease === lease) this.leases.delete(request.ownerAttemptId)
+    })
+    const owned: OwnedLease = { signature, lease }
+    this.leases.set(request.ownerAttemptId, owned)
     try {
       return await lease
     } catch (error) {
-      this.leases.delete(request.ownerAttemptId)
+      if (this.leases.get(request.ownerAttemptId) === owned) this.leases.delete(request.ownerAttemptId)
       throw error
     }
   }
@@ -294,12 +297,15 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       }
       return await prior.lease as VerificationWorkspaceLease
     }
-    const lease = this.createVerificationLease(request)
-    this.leases.set(request.ownerAttemptId, { signature, lease })
+    const lease = this.createVerificationLease(request, () => {
+      if (this.leases.get(request.ownerAttemptId)?.lease === lease) this.leases.delete(request.ownerAttemptId)
+    })
+    const owned: OwnedLease = { signature, lease }
+    this.leases.set(request.ownerAttemptId, owned)
     try {
       return await lease
     } catch (error) {
-      this.leases.delete(request.ownerAttemptId)
+      if (this.leases.get(request.ownerAttemptId) === owned) this.leases.delete(request.ownerAttemptId)
       throw error
     }
   }
@@ -327,7 +333,10 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
     return gitRoot
   }
 
-  private async createChangeLease(request: OpenChangeWorkspaceRequest): Promise<ChangeWorkspaceLease> {
+  private async createChangeLease(
+    request: OpenChangeWorkspaceRequest,
+    forgetOnRemove: () => void,
+  ): Promise<ChangeWorkspaceLease> {
     const rootDirectory = await this.ensureWorktreeRoot()
     const ownerDirectory = join(this.worktreeRoot, `attempt-${ownerHash(request.ownerAttemptId)}`)
     const marker: ChangeLeaseMarker = {
@@ -372,11 +381,13 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       cwd,
       checkpoint => this.createCheckpoint(request.base.repositoryId, repository, cwd, request.base.commit, checkpoint),
       disposition => this.closeLease(repository, rootDirectory, owner, checkoutDirectory, marker, disposition),
+      forgetOnRemove,
     )
   }
 
   private async createVerificationLease(
     request: OpenVerificationWorkspaceRequest,
+    forgetOnRemove: () => void,
   ): Promise<VerificationWorkspaceLease> {
     const rootDirectory = await this.ensureWorktreeRoot()
     const ownerDirectory = join(this.worktreeRoot, `attempt-${ownerHash(request.ownerAttemptId)}`)
@@ -425,6 +436,7 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       request.target.commit,
       cwd,
       disposition => this.closeLease(repository, rootDirectory, owner, checkoutDirectory, marker, disposition),
+      forgetOnRemove,
     )
   }
 
@@ -772,6 +784,7 @@ class GitChangeWorkspaceLease implements ChangeWorkspaceLease {
     readonly cwd: string,
     private readonly createCheckpoint: (request: CreateCheckpointRequest) => Promise<RepositoryCheckpoint>,
     private readonly closeWorkspace: (disposition: RepositoryWorkspaceDisposition) => Promise<void>,
+    private readonly forgetOnRemove: () => void,
   ) {}
 
   checkpoint(request: CreateCheckpointRequest): Promise<RepositoryCheckpoint> {
@@ -801,6 +814,7 @@ class GitChangeWorkspaceLease implements ChangeWorkspaceLease {
     const promise = this.active.then(async () => {
       await this.closeWorkspace(disposition)
       this.closed = disposition
+      if (disposition === 'remove') this.forgetOnRemove()
     })
     this.closing = { disposition, promise }
     return promise
@@ -818,6 +832,7 @@ class GitVerificationWorkspaceLease implements VerificationWorkspaceLease {
     readonly targetCommit: GitCommitIdType,
     readonly cwd: string,
     private readonly closeWorkspace: (disposition: RepositoryWorkspaceDisposition) => Promise<void>,
+    private readonly forgetOnRemove: () => void,
   ) {}
 
   close(disposition: RepositoryWorkspaceDisposition): Promise<void> {
@@ -831,7 +846,10 @@ class GitVerificationWorkspaceLease implements VerificationWorkspaceLease {
         ? this.closing.promise
         : Promise.reject(new RepositoryWorkspaceError('owner-conflict', 'workspace is closing with another disposition'))
     }
-    const promise = this.closeWorkspace(disposition).then(() => { this.closed = disposition })
+    const promise = this.closeWorkspace(disposition).then(() => {
+      this.closed = disposition
+      if (disposition === 'remove') this.forgetOnRemove()
+    })
     this.closing = { disposition, promise }
     return promise
   }

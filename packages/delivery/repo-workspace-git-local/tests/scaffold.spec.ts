@@ -323,6 +323,111 @@ describe('local Git repository workspace', () => {
     await ctx.fiber.dispose()
   })
 
+  it('forgets successful removals so one Attempt owner can reopen a workspace', async () => {
+    const { repository, firstCommit } = await fixtureRepository()
+    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-removed-lease')
+    const repositoryId = RepositoryId('repository-removed-lease')
+    const ownerAttemptId = QueueAttemptIdRef('attempt-removed-lease')
+    const ctx = new Context()
+    new TestSubprocessRuntime(ctx)
+    const workspace = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot,
+    })
+    const base = await workspace.inspectRevision({ repositoryId, commit: firstCommit })
+    const change = await workspace.openChange({ ownerAttemptId, base })
+
+    await change.close('remove')
+    const verification = await workspace.openVerification({ ownerAttemptId, base, target: base })
+    await verification.close('remove')
+    const reopenedVerification = await workspace.openVerification({ ownerAttemptId, base, target: base })
+
+    expect(verification).not.toBe(change)
+    expect(reopenedVerification).not.toBe(verification)
+    await reopenedVerification.close('remove')
+    await ctx.fiber.dispose()
+  })
+
+  it('does not let an earlier removed lease erase a replacement ownership entry', async () => {
+    const { repository, firstCommit } = await fixtureRepository()
+    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-remove-identity')
+    const repositoryId = RepositoryId('repository-remove-identity')
+    const ownerAttemptId = QueueAttemptIdRef('attempt-remove-identity')
+    const ctx = new Context()
+    new TestSubprocessRuntime(ctx)
+    const workspace = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot,
+    })
+    const base = await workspace.inspectRevision({ repositoryId, commit: firstCommit })
+    const lease = await workspace.openChange({ ownerAttemptId, base })
+    const entries = (workspace as unknown as { leases: Map<QueueAttemptIdRef, unknown> }).leases
+    const replacement = { lease: Promise.resolve() }
+    entries.set(ownerAttemptId, replacement)
+
+    await lease.close('remove')
+
+    expect(entries.get(ownerAttemptId)).toBe(replacement)
+    entries.delete(ownerAttemptId)
+    const verificationOwnerAttemptId = QueueAttemptIdRef('attempt-remove-verification-identity')
+    const verification = await workspace.openVerification({
+      ownerAttemptId: verificationOwnerAttemptId,
+      base,
+      target: base,
+    })
+    const verificationReplacement = { lease: Promise.resolve() }
+    entries.set(verificationOwnerAttemptId, verificationReplacement)
+    await verification.close('remove')
+    expect(entries.get(verificationOwnerAttemptId)).toBe(verificationReplacement)
+    entries.delete(verificationOwnerAttemptId)
+    await ctx.fiber.dispose()
+  })
+
+  it('does not let a failed creation erase a replacement ownership entry', async () => {
+    const { repository, firstCommit } = await fixtureRepository()
+    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-failed-identity')
+    const repositoryId = RepositoryId('repository-failed-identity')
+    const ctx = new Context()
+    new TestSubprocessRuntime(ctx)
+    const workspace = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot,
+    })
+    const base = await workspace.inspectRevision({ repositoryId, commit: firstCommit })
+    const internals = workspace as unknown as {
+      readonly leases: Map<QueueAttemptIdRef, unknown>
+      createChangeLease: (...args: unknown[]) => Promise<unknown>
+      createVerificationLease: (...args: unknown[]) => Promise<unknown>
+    }
+
+    let rejectChange!: (error: Error) => void
+    vi.spyOn(internals, 'createChangeLease').mockReturnValue(new Promise<unknown>((_resolve, reject) => {
+      rejectChange = reject
+    }))
+    const changeOwner = QueueAttemptIdRef('attempt-failed-change-identity')
+    const openingChange = workspace.openChange({ ownerAttemptId: changeOwner, base })
+    const replacementChange = { lease: Promise.resolve() }
+    internals.leases.set(changeOwner, replacementChange)
+    rejectChange(new Error('change creation failed'))
+    await expect(openingChange).rejects.toThrow('change creation failed')
+    expect(internals.leases.get(changeOwner)).toBe(replacementChange)
+
+    let rejectVerification!: (error: Error) => void
+    vi.spyOn(internals, 'createVerificationLease').mockReturnValue(new Promise<unknown>((_resolve, reject) => {
+      rejectVerification = reject
+    }))
+    const verificationOwner = QueueAttemptIdRef('attempt-failed-verification-identity')
+    const openingVerification = workspace.openVerification({ ownerAttemptId: verificationOwner, base, target: base })
+    const replacementVerification = { lease: Promise.resolve() }
+    internals.leases.set(verificationOwner, replacementVerification)
+    rejectVerification(new Error('verification creation failed'))
+    await expect(openingVerification).rejects.toThrow('verification creation failed')
+    expect(internals.leases.get(verificationOwner)).toBe(replacementVerification)
+    internals.leases.delete(changeOwner)
+    internals.leases.delete(verificationOwner)
+    await ctx.fiber.dispose()
+  })
+
   it('recovers the same Attempt lease after provider reconstruction and rejects another base', async () => {
     const { repository, firstCommit } = await fixtureRepository()
     const worktreeRoot = await temporaryRoot('dsh-repo-workspace-leases')
