@@ -365,6 +365,66 @@ describe('E2B e2e workflow', () => {
   })
 })
 
+describe('fork Linux compute workflows', () => {
+  it('keeps the fast Linux lane advisory, read-only, bounded, and cacheable', () => {
+    const workflow = loadWorkflow('.github/workflows/ci-fork-linux-fast.yml')
+    const pullRequest = workflowEvent(workflow, 'pull_request')
+    const quality = workflowJob(workflow, 'quality')
+    if (!Array.isArray(quality.steps) || !Array.isArray(pullRequest.paths)) {
+      throw new TypeError('Linux fast workflow must define paths and quality steps')
+    }
+
+    expect(Object.keys(workflow.on as Record<string, unknown>).sort()).toEqual(['pull_request', 'workflow_dispatch'])
+    expect(workflow.permissions).toEqual({ contents: 'read' })
+    expect(pullRequest.paths).toContain('packages/**')
+    expect(quality).toMatchObject({
+      if: "vars.CI_LINUX_FAST != '0'",
+      'runs-on': 'ubuntu-latest',
+      'timeout-minutes': 15,
+    })
+    const steps = JSON.stringify(quality.steps)
+    expect(steps).toContain('pnpm install --frozen-lockfile')
+    expect(steps).toContain('pnpm run build:lib:host')
+    expect(steps).toContain('pnpm run typecheck:contracts-ready')
+    expect(steps).not.toContain('secrets.')
+    expect(JSON.stringify(workflow.on)).not.toContain('pull_request_target')
+  })
+
+  it('keeps the heavy Linux lab manual-only and split by suite', () => {
+    const workflow = loadWorkflow('.github/workflows/ci-linux-lab.yml')
+    const dispatch = workflowEvent(workflow, 'workflow_dispatch')
+    const staticJob = workflowJob(workflow, 'static')
+    const coverage = workflowJob(workflow, 'coverage')
+    if (!isRecord(dispatch.inputs) || !isRecord(dispatch.inputs.suite)) {
+      throw new TypeError('Linux lab workflow must define its suite input')
+    }
+
+    expect(Object.keys(workflow.on as Record<string, unknown>)).toEqual(['workflow_dispatch'])
+    expect(workflow.permissions).toEqual({ contents: 'read' })
+    expect(dispatch.inputs.suite).toMatchObject({ type: 'choice', default: 'all' })
+    expect(staticJob).toMatchObject({ 'runs-on': 'ubuntu-latest', 'timeout-minutes': 45 })
+    expect(coverage).toMatchObject({ 'runs-on': 'ubuntu-latest', 'timeout-minutes': 60 })
+    expect(JSON.stringify(staticJob.steps)).toContain('pnpm run check:ci:static')
+    expect(JSON.stringify(coverage.steps)).toContain('pnpm run check:ci:coverage')
+    expect(JSON.stringify(workflow)).not.toContain('secrets.')
+  })
+
+  it('keeps upstream watch manual, read-only, and report-only', () => {
+    const workflow = loadWorkflow('.github/workflows/ci-upstream-watch.yml')
+    const report = workflowJob(workflow, 'report')
+    if (!Array.isArray(report.steps)) throw new TypeError('Upstream watch must define report steps')
+
+    expect(Object.keys(workflow.on as Record<string, unknown>)).toEqual(['workflow_dispatch'])
+    expect(workflow.permissions).toEqual({ contents: 'read' })
+    expect(report).toMatchObject({ 'runs-on': 'ubuntu-latest', 'timeout-minutes': 10 })
+    const steps = JSON.stringify(report.steps)
+    expect(steps).toContain('git merge-tree --write-tree')
+    expect(steps).toContain('GITHUB_STEP_SUMMARY')
+    expect(steps).not.toContain('git push')
+    expect(steps).not.toContain('secrets.')
+  })
+})
+
 describe('Python release workflows', () => {
   it('keeps complete wheel validation separate from protected public publication', () => {
     const workflow = loadWorkflow('.github/workflows/python-release.yml')
