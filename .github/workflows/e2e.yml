@@ -6,16 +6,12 @@ name: E2E (real DeepSeek API)
 # https://api.deepseek.com (DEEPSEEK_BASE_URL is pinned to it explicitly so a
 # stray repo-root .env can't redirect the run).
 #
-# pull_request IS a trigger, but GitHub withholds repo secrets from BOTH forked
-# PRs and Dependabot PRs (the latter are same-repo, fork==false, but still
-# keyless). The job-level `if:` below skips the whole job for those untrusted
-# PRs. The Dependabot test keys on the PR AUTHOR (pull_request.user.login), not
-# github.actor (the run trigger) — a maintainer reopening a Dependabot PR would
-# make github.actor human while the PR is still keyless. When the job runs, the
-# secret is expected, so the preflight hard-fails if it's missing (a missing
-# secret would otherwise make the self-skipping suite report a false green). A
-# job skipped by a job-level `if:` reports as a SUCCESSFUL check, so this
-# workflow is safe to use as a required status check if desired.
+# This personal fork treats changanhua as the sole trusted code submitter for
+# secret-bearing runs. Pull requests must be same-repository PRs authored and
+# triggered by changanhua; fork PRs and bot PRs are skipped before runner
+# allocation. Manual dispatch and push runs also require changanhua as actor.
+# Scheduled runs remain allowed because they execute the trusted default-branch
+# workflow rather than user-supplied event content.
 #
 # SECURITY — NEVER change this trigger to `pull_request_target`. `pull_request`
 # checks out and runs the PR's HEAD code WITHOUT secrets for forks, which is what
@@ -55,11 +51,15 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     name: e2e
-    # Run on every trusted event. Skip untrusted PRs (forks + Dependabot) where
-    # the secret is withheld — they would otherwise hard-fail the preflight.
+    # Owner-only trust boundary for every event that can be initiated by a user.
     if: >-
-      github.event_name != 'pull_request'
-      || !(github.event.pull_request.head.repo.fork || github.event.pull_request.user.login == 'dependabot[bot]')
+      github.event_name == 'schedule'
+      || (github.event_name == 'push' && github.actor == 'changanhua')
+      || (github.event_name == 'workflow_dispatch' && github.actor == 'changanhua')
+      || (github.event_name == 'pull_request'
+          && github.actor == 'changanhua'
+          && github.event.pull_request.user.login == 'changanhua'
+          && github.event.pull_request.head.repo.full_name == github.repository)
     # Profile e2e files can each own several complete dsh subprocess trees, so
     # four file workers preserve process/PTY headroom. Tests retain 120s/test
     # and retry 2; 45m still bounds retry storms against a slow API.
@@ -86,7 +86,7 @@ jobs:
       # Guard against a false green: the e2e suites self-skip when the key is
       # absent, so a missing/misconfigured secret would otherwise pass as
       # "all skipped". This job only runs on trusted events (the `if:` above
-      # excludes keyless PRs), so the secret MUST be present — fail loudly if not.
+      # excludes untrusted PRs), so the secret MUST be present — fail loudly if not.
       - name: Preflight (require DEEPSEEK_API_KEY)
         env:
           # Repo secret DEEPSEEK_API_KEY_EXTERNAL holds the external-API key;
