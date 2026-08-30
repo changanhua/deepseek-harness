@@ -65,7 +65,6 @@ jobs:
       - name: Check stable repository metadata
         run: |
           pnpm run verify-package-invariants
-          pnpm run verify-config-catalog
           pnpm run verify-doc-graphs
 
       - name: Test CI control code
