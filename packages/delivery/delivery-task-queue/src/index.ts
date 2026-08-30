@@ -10,12 +10,17 @@ import type Delivery from '@deepseek-ai/dsh-delivery'
 import {
   CODE_CHANGE_KIND,
   CODE_VERIFY_KIND,
+  ExecutorId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   canonicalDigest,
   codeChangeIntentSchema,
   codeChangeOutputSchema,
+  codeVerifyIntentSchema,
+  contractRevisionSchema,
   resolvedCodeChangeSchema,
+  resolvedCodeVerifySchema,
+  workPacketSchema,
 } from '@deepseek-ai/dsh-delivery-protocol'
 import type {
   CodeChangeIntent,
@@ -24,7 +29,6 @@ import type {
   CodeVerifyOutput,
   DispatchBinding,
   DispatchBindingId,
-  ExecutorId,
   ResolvedCodeChange,
   ResolvedCodeVerify,
   WorkPacketId,
@@ -32,24 +36,37 @@ import type {
 import {
   CODEX_APP_SERVER_PERMISSION_MODES,
   MAX_MODEL_OUTPUT_BYTES,
+  createCodexChangeRunner,
 } from '@deepseek-ai/dsh-delivery-runner-codex'
 import type {
   CodeChangeRunRequest,
   CodexAppServerPermissionMode,
+  StartCodeChange as StartCodeChangeRun,
 } from '@deepseek-ai/dsh-delivery-runner-codex'
 import {
   MAX_VERIFICATION_OUTPUT_BYTES,
+  createDeliveryVerifier,
 } from '@deepseek-ai/dsh-delivery-verifier'
-import type { DeliveryVerificationRunRequest } from '@deepseek-ai/dsh-delivery-verifier'
+import type {
+  DeliveryVerificationRunRequest,
+  StartDeliveryVerification,
+} from '@deepseek-ai/dsh-delivery-verifier'
+import type DeliveryEvidence from '@deepseek-ai/dsh-delivery-evidence'
 import type RepositoryWorkspace from '@deepseek-ai/dsh-repo-workspace'
 import {
+  AttemptId,
   WorkId,
+  createVerifiedOperatorAuthority,
 } from '@deepseek-ai/dsh-task-queue'
 import type {
   OperatorWorkQueue,
+  WorkHandler,
   WorkKindDefinition,
+  WorkView,
 } from '@deepseek-ai/dsh-task-queue'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+import { reconcileDeliveryQueueBindings } from './recovery.ts'
+import { settleChange, settleVerification } from './settlement.ts'
 
 export const name = 'delivery-task-queue'
 export const inject = [
@@ -161,8 +178,11 @@ export type DeliveryTaskQueueErrorCode =
   | 'change-work-invalid'
   | 'change-output-invalid'
   | 'repository-range-invalid'
+  | 'handler-input-invalid'
+  | 'handler-attempt-invalid'
+  | 'reconciliation-invalid'
 
-/** Typed failure emitted while the concrete handler implementation is unavailable. */
+/** Typed failure emitted by Delivery admission, handler, and recovery boundaries. */
 export class DeliveryTaskQueueError extends Error {
   /**
    * @param code - Stable bridge failure classification.
@@ -429,17 +449,468 @@ export async function startVerification(
   })
 }
 
+interface ResolvedBridgeConfig {
+  readonly executorId: ExecutorId
+  readonly model?: string
+  readonly permissionMode: CodexAppServerPermissionMode
+  readonly env: Readonly<Record<string, string>>
+  readonly disposeGraceMs: number
+  readonly modelOutputBytes: number
+  readonly verificationOutputBytes: number
+  readonly resource: string
+  readonly maxAttempts: number
+  readonly verifierVersion: string
+}
+
+/** Trusted dependencies shared by both package-owned Queue handlers. */
+export interface DeliveryWorkHandlerDependencies {
+  readonly delivery: Pick<
+    Delivery,
+    'getContractRevision' | 'getWorkPacket' | 'snapshot'
+  >
+  readonly operator: Pick<OperatorWorkQueue, 'list' | 'get'>
+  readonly repoWorkspace: Pick<
+    RepositoryWorkspace,
+    | 'inspectRange'
+    | 'inspectRevision'
+    | 'openChange'
+    | 'openVerification'
+  >
+  readonly evidence: Pick<DeliveryEvidence, 'bind' | 'read' | 'resolve'>
+  readonly startChange: StartCodeChangeRun
+  readonly startVerification: StartDeliveryVerification
+}
+
+function resolvedConfig(config: Config): ResolvedBridgeConfig {
+  const parsed = Config(config) as Required<Omit<Config, 'model'>>
+    & Pick<Config, 'model'>
+  return Object.freeze({
+    executorId: ExecutorId(parsed.executorId),
+    ...parsed.model === undefined ? {} : { model: parsed.model },
+    permissionMode: parsed.permissionMode,
+    env: Object.freeze({ ...parsed.env }),
+    disposeGraceMs: parsed.disposeGraceMs,
+    modelOutputBytes: parsed.modelOutputBytes,
+    verificationOutputBytes: parsed.verificationOutputBytes,
+    resource: parsed.resource,
+    maxAttempts: parsed.maxAttempts,
+    verifierVersion: parsed.verifierVersion,
+  })
+}
+
+function changePolicyDigest(config: ResolvedBridgeConfig) {
+  return canonicalDigest({
+    executorId: config.executorId,
+    ...config.model === undefined ? {} : { model: config.model },
+    permissionMode: config.permissionMode,
+    env: config.env,
+    disposeGraceMs: config.disposeGraceMs,
+    modelOutputBytes: config.modelOutputBytes,
+  })
+}
+
+function handlerError(
+  code: Extract<
+    DeliveryTaskQueueErrorCode,
+    'handler-input-invalid' | 'handler-attempt-invalid'
+  >,
+  message: string,
+): DeliveryTaskQueueError {
+  return new DeliveryTaskQueueError(code, message)
+}
+
+function exactRecords(
+  dependencies: DeliveryWorkHandlerDependencies,
+  packetId: WorkPacketId,
+) {
+  const packet = workPacketSchema.parse(
+    dependencies.delivery.getWorkPacket(packetId),
+  )
+  const contract = contractRevisionSchema.parse(
+    dependencies.delivery.getContractRevision(packet.contractRevisionId),
+  )
+  if (
+    packet.id !== packetId
+    || contract.id !== packet.contractRevisionId
+    || contract.repositoryId !== packet.repositoryId
+  ) {
+    throw handlerError(
+      'handler-input-invalid',
+      'Delivery Queue handler records do not describe one exact Packet',
+    )
+  }
+  return { contract, packet }
+}
+
+function attemptWork(
+  operator: Pick<OperatorWorkQueue, 'list' | 'get'>,
+  attemptId: AttemptId,
+  kind: typeof CODE_CHANGE_KIND | typeof CODE_VERIFY_KIND,
+): WorkView {
+  const matches = operator.list().filter(view =>
+    view.work.kind === kind
+    && view.attempts.some(attempt => attempt.id === attemptId),
+  )
+  if (matches.length !== 1) {
+    throw handlerError(
+      'handler-attempt-invalid',
+      `Delivery Queue handler could not resolve one exact ${kind} Work for Attempt ${attemptId}`,
+    )
+  }
+  const match = matches[0] as WorkView
+  const exact = operator.get(match.work.id)
+  if (
+    exact.work.id !== match.work.id
+    || exact.work.kind !== kind
+    || !exact.attempts.some(attempt =>
+      attempt.id === attemptId && attempt.workId === exact.work.id)
+  ) {
+    throw handlerError(
+      'handler-attempt-invalid',
+      `Delivery Queue handler resolved a mismatched ${kind} Work view`,
+    )
+  }
+  return exact
+}
+
+function completedChangeFor(
+  dependencies: DeliveryWorkHandlerDependencies,
+  packetId: WorkPacketId,
+  targetCommit: ResolvedCodeVerify['targetCommit'],
+) {
+  const bindings = dependencies.delivery.snapshot().dispatchBindings.filter(
+    binding => binding.packetId === packetId
+      && binding.kind === CODE_CHANGE_KIND
+      && binding.phase === 'bound',
+  )
+  const claims = bindings.flatMap((binding) => {
+    try {
+      const view = dependencies.operator.get(WorkId(String(binding.queueWorkId)))
+      const parsed = codeChangeOutputSchema.safeParse(view.result?.output)
+      if (
+        view.work.kind !== CODE_CHANGE_KIND
+        || view.state.status !== 'succeeded'
+        || view.result?.kind !== CODE_CHANGE_KIND
+        || view.result.workId !== view.work.id
+        || !parsed.success
+        || parsed.data.completionClaim.disposition !== 'completed'
+        || parsed.data.completionClaim.packetId !== packetId
+        || parsed.data.completionClaim.checkpointCommit !== targetCommit
+        || parsed.data.completionClaim.queueWorkId !== binding.queueWorkId
+        || parsed.data.completionClaim.queueAttemptId
+          !== QueueAttemptIdRef(String(view.result.attemptId))
+      ) return []
+      return [parsed.data.completionClaim]
+    } catch {
+      return []
+    }
+  })
+  if (claims.length !== 1) {
+    throw handlerError(
+      'handler-attempt-invalid',
+      'Delivery verification preparation requires one exact successful change claim',
+    )
+  }
+  return claims[0] as (typeof claims)[number]
+}
+
+/** Build the sole `code.change@1` WorkHandler. */
+export function createCodeChangeHandler(
+  dependencies: DeliveryWorkHandlerDependencies,
+  config: Config,
+): WorkHandler<typeof CODE_CHANGE_KIND> {
+  const settings = resolvedConfig(config)
+  const policyDigest = changePolicyDigest(settings)
+  return {
+    kind: CODE_CHANGE_KIND,
+    resolveAdmission(input) {
+      return Promise.resolve().then(() => {
+        const intent = codeChangeIntentSchema.parse(input)
+        const { packet } = exactRecords(dependencies, intent.packetId)
+        if (
+          packet.executorPreference.mode === 'required'
+          && packet.executorPreference.executorId !== settings.executorId
+        ) {
+          throw handlerError(
+            'handler-input-invalid',
+            'Delivery code-change handler does not satisfy the Packet executor requirement',
+          )
+        }
+        return resolvedCodeChangeSchema.parse({
+          packetId: packet.id,
+          contractRevisionId: packet.contractRevisionId,
+          repositoryId: packet.repositoryId,
+          baseCommit: packet.baseCommit,
+          executorId: settings.executorId,
+          policyDigest,
+        })
+      })
+    },
+    resources() {
+      return [{ resource: settings.resource, units: 1 }]
+    },
+    policy() { return { maxAttempts: settings.maxAttempts } },
+    async prepare(resolved, context) {
+      const exactResolved = resolvedCodeChangeSchema.parse(resolved)
+      if (exactResolved.policyDigest !== policyDigest) {
+        throw handlerError(
+          'handler-input-invalid',
+          'Delivery code-change policy differs from the admitted policy digest',
+        )
+      }
+      const view = attemptWork(
+        dependencies.operator, context.attemptId, CODE_CHANGE_KIND,
+      )
+      const workResolved = view.work.resolved as ResolvedCodeChange
+      if (
+        workResolved.packetId !== exactResolved.packetId
+        || workResolved.policyDigest !== exactResolved.policyDigest
+      ) {
+        throw handlerError(
+          'handler-attempt-invalid',
+          'Delivery code-change Attempt does not own the prepared resolved facts',
+        )
+      }
+      const { contract, packet } = exactRecords(
+        dependencies, exactResolved.packetId,
+      )
+      const base = await dependencies.repoWorkspace.inspectRevision({
+        repositoryId: packet.repositoryId,
+        commit: packet.baseCommit,
+        signal: context.signal,
+      })
+      const queueWorkId = QueueWorkIdRef(String(view.work.id))
+      const queueAttemptId = QueueAttemptIdRef(String(context.attemptId))
+      return Object.freeze({
+        contract,
+        packet,
+        resolved: exactResolved,
+        queueWorkId,
+        queueAttemptId,
+        openWorkspace: signal => dependencies.repoWorkspace.openChange({
+          ownerAttemptId: queueAttemptId,
+          base,
+          signal,
+        }),
+        evidence: dependencies.evidence.bind({
+          kind: 'change-attempt',
+          packetId: packet.id,
+          queueWorkId,
+          queueAttemptId,
+        }),
+      } satisfies CodeChangeRunRequest)
+    },
+    start(prepared, context) {
+      const run = dependencies.startChange(prepared, context.signal)
+      return Object.freeze({
+        done: settleChange(run.done, prepared),
+        cancel: (reason: string) => run.cancel(reason),
+      })
+    },
+  }
+}
+
+/** Build the sole `code.verify@1` WorkHandler. */
+export function createCodeVerifyHandler(
+  dependencies: DeliveryWorkHandlerDependencies,
+  config: Config,
+): WorkHandler<typeof CODE_VERIFY_KIND> {
+  const settings = resolvedConfig(config)
+  return {
+    kind: CODE_VERIFY_KIND,
+    async resolveAdmission(input, context) {
+      const intent = codeVerifyIntentSchema.parse(input)
+      const { packet } = exactRecords(dependencies, intent.packetId)
+      if (
+        intent.targetCommit === packet.baseCommit
+        || intent.verificationPlanDigest !== packet.verificationPlan.digest
+      ) {
+        throw handlerError(
+          'handler-input-invalid',
+          'Delivery verification intent does not match the Packet target and plan',
+        )
+      }
+      const base = await dependencies.repoWorkspace.inspectRevision({
+        repositoryId: packet.repositoryId,
+        commit: packet.baseCommit,
+        signal: context.signal,
+      })
+      const target = await dependencies.repoWorkspace.inspectRevision({
+        repositoryId: packet.repositoryId,
+        commit: intent.targetCommit,
+        signal: context.signal,
+      })
+      const range = await dependencies.repoWorkspace.inspectRange({
+        base,
+        target,
+        signal: context.signal,
+      })
+      if (
+        range.repositoryId !== packet.repositoryId
+        || range.baseCommit !== packet.baseCommit
+        || range.targetCommit !== intent.targetCommit
+        || !range.descendsFromBase
+      ) {
+        throw handlerError(
+          'handler-input-invalid',
+          'Delivery verification target is not an exact descendant of the Packet base',
+        )
+      }
+      return resolvedCodeVerifySchema.parse({
+        packetId: packet.id,
+        contractRevisionId: packet.contractRevisionId,
+        repositoryId: packet.repositoryId,
+        baseCommit: packet.baseCommit,
+        targetCommit: intent.targetCommit,
+        trustedPlan: packet.verificationPlan,
+      })
+    },
+    resources() {
+      return [{ resource: settings.resource, units: 1 }]
+    },
+    policy() { return { maxAttempts: settings.maxAttempts } },
+    async prepare(resolved, context) {
+      const exactResolved = resolvedCodeVerifySchema.parse(resolved)
+      const view = attemptWork(
+        dependencies.operator, context.attemptId, CODE_VERIFY_KIND,
+      )
+      const workResolved = view.work.resolved as ResolvedCodeVerify
+      if (
+        workResolved.packetId !== exactResolved.packetId
+        || workResolved.targetCommit !== exactResolved.targetCommit
+      ) {
+        throw handlerError(
+          'handler-attempt-invalid',
+          'Delivery verification Attempt does not own the prepared resolved facts',
+        )
+      }
+      const { contract, packet } = exactRecords(
+        dependencies, exactResolved.packetId,
+      )
+      const completionClaim = completedChangeFor(
+        dependencies,
+        packet.id,
+        exactResolved.targetCommit,
+      )
+      const base = await dependencies.repoWorkspace.inspectRevision({
+        repositoryId: packet.repositoryId,
+        commit: packet.baseCommit,
+        signal: context.signal,
+      })
+      const target = await dependencies.repoWorkspace.inspectRevision({
+        repositoryId: packet.repositoryId,
+        commit: exactResolved.targetCommit,
+        signal: context.signal,
+      })
+      const verificationQueueWorkId = QueueWorkIdRef(String(view.work.id))
+      const verificationQueueAttemptId = QueueAttemptIdRef(
+        String(context.attemptId),
+      )
+      return Object.freeze({
+        contract,
+        packet,
+        resolved: exactResolved,
+        completionClaim,
+        verificationQueueWorkId,
+        verificationQueueAttemptId,
+        inspectRange: signal => dependencies.repoWorkspace.inspectRange({
+          base,
+          target,
+          signal,
+        }),
+        openWorkspace: signal => dependencies.repoWorkspace.openVerification({
+          ownerAttemptId: verificationQueueAttemptId,
+          base,
+          target,
+          signal,
+        }),
+        evidenceFor: checkId => dependencies.evidence.bind({
+          kind: 'verification-check',
+          packetId: packet.id,
+          queueWorkId: verificationQueueWorkId,
+          queueAttemptId: verificationQueueAttemptId,
+          checkId,
+        }),
+        resolveEvidence: (evidenceId, signal) =>
+          dependencies.evidence.resolve(evidenceId, signal),
+        readEvidence: (reference, signal) =>
+          dependencies.evidence.read(reference, signal),
+      } satisfies DeliveryVerificationRunRequest)
+    },
+    start(prepared, context) {
+      const run = dependencies.startVerification(prepared, context.signal)
+      return Object.freeze({
+        done: settleVerification(run.done, prepared, settings.verifierVersion),
+        cancel: (reason: string) => run.cancel(reason),
+      })
+    },
+  }
+}
+
 /**
  * Register the two Delivery WorkHandlers for this plugin lifetime.
  *
- * This scaffold freezes declaration ownership and the admission API only.
- * Concrete handler registration is unavailable in this package state.
+ * Activation first validates every bound Queue view, then resumes only
+ * persisted `submitting` handshakes through their exact idempotency keys.
  *
- * @param _ctx - Cordis context carrying the declared dependencies.
+ * @param ctx - Cordis context carrying the declared dependencies.
+ * @param config - Loader-owned runner, verifier, resource, and retry policy.
  */
-export function apply(_ctx: Context, _config: Config): never {
-  throw new DeliveryTaskQueueError(
-    'unavailable',
-    'Delivery Queue handler implementation is not installed; registration remains unavailable',
-  )
+export async function apply(ctx: Context, config: Config): Promise<void> {
+  const settings = resolvedConfig(config)
+  const operator = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
+  const dependencies: DeliveryWorkHandlerDependencies = {
+    delivery: ctx.delivery,
+    operator,
+    repoWorkspace: ctx.repoWorkspace,
+    evidence: ctx.deliveryEvidence,
+    startChange: createCodexChangeRunner({
+      spawn: ctx.subprocess.spawn.bind(ctx.subprocess),
+      ...settings.model === undefined ? {} : { model: settings.model },
+      permissionMode: settings.permissionMode,
+      env: settings.env,
+      disposeGraceMs: settings.disposeGraceMs,
+      modelOutputBytes: settings.modelOutputBytes,
+    }),
+    startVerification: createDeliveryVerifier({
+      subprocess: ctx.subprocess,
+      verifierVersion: settings.verifierVersion,
+      disposeGraceMs: settings.disposeGraceMs,
+      verificationOutputBytes: settings.verificationOutputBytes,
+    }),
+  }
+  await ctx.effect(async () => {
+    const disposers: Array<() => void> = []
+    try {
+      disposers.push(ctx.taskQueue.registerHandler(
+        createCodeChangeHandler(dependencies, settings),
+      ))
+      disposers.push(ctx.taskQueue.registerHandler(
+        createCodeVerifyHandler(dependencies, settings),
+      ))
+      const snapshot = ctx.delivery.snapshot()
+      try {
+        await reconcileDeliveryQueueBindings(
+          snapshot.dispatchBindings,
+          operator,
+          ctx.delivery,
+        )
+      } catch (cause) {
+        const message = cause instanceof Error
+          ? cause.message
+          : 'reconciliation rejected with a non-Error value'
+        throw new DeliveryTaskQueueError(
+          'reconciliation-invalid',
+          `Delivery Queue activation reconciliation failed: ${message}`,
+          { cause },
+        )
+      }
+    } catch (cause) {
+      for (const dispose of [...disposers].reverse()) dispose()
+      throw cause
+    }
+    return () => {
+      for (const dispose of [...disposers].reverse()) dispose()
+    }
+  }, 'delivery-task-queue: handlers and activation reconciliation')
 }

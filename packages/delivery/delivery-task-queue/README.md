@@ -36,13 +36,17 @@ const verification = await startVerification(
 
 The code-change key is exactly `delivery:<packetId>:code.change@1`. A required Packet executor must match the host selection before `beginDispatch`. For verification, the caller selects only a Packet and its bound code-change dispatch. Before repository reads or either admission write, the bridge parses the Queue Work intent, recomputes its canonical digest, matches the binding input digest, and parses the resolved value against the Packet's Contract, repository, base, and bound executor. It then requires that exact Queue Work to be `succeeded`, parses its output as `codeChangeOutputSchema`, requires a completed claim with matching Packet, Work, and Attempt identities, and proves that its checkpoint descends from the Packet base. The immutable target comes from that claim and the trusted plan digest comes from the Packet; neither is caller-controlled. The verification key includes both derived values. Retrying after a crash reuses Queue admission idempotency and finishes the same Delivery binding.
 
+Plugin activation obtains a trusted operator facade inside the Host, registers both handlers as reversible effects, scans the complete Delivery snapshot and Queue operator views, rejects missing or malformed bound Work views, and resumes every `submitting` binding with its stored key and canonical input. It creates no recovery cache, acceptance decision, or browser-visible Queue authority.
+
 ## Understand the implementation
 
 The package owns declaration merging because it is the sole adapter that can resolve Delivery records, derive the current Queue Work/Attempt pair, bind verified repository operations and evidence provenance to that Attempt, and map the two runner settlements into typed Queue outputs. Its prepared `CodeChangeRunRequest` must carry both Queue identities; the bound workspace owner, evidence provenance, and resulting claim must agree. `dsh-delivery-protocol` remains Queue-independent; `dsh-delivery-runner-codex` and `dsh-delivery-verifier` remain pure factories with no Queue import.
 
+Both handlers persist strict Packet, Contract, repository, target, executor, and policy facts during admission. Preparation resolves the active Attempt back to its exact Work, materializes only provider proofs and operation-local closures, and performs no checkout or process side effect. `start()` synchronously returns Queue live ownership. Cancellation propagates to the runner or verifier; validation and startup failures settle `failed/not-started`, quiescent product or completion failures settle `failed/started`, and ownership or cleanup uncertainty settles `unknown/unknown`. Every failure is non-retriable under the configured one-Attempt default.
+
 The plugin is a function plugin, not a new service. It consumes `ctx.delivery`, `ctx.deliveryEvidence`, `ctx.repoWorkspace`, `ctx.subprocess`, and `ctx.taskQueue`; it does not publish `ctx.codeExecutors` or another bridge registry.
 
-The package exports the Loader `Config` schema that composes both handlers. Its stable defaults are `executorId: 'codex'`, no model override, `permissionMode: 'never'`, `env: {}`, `disposeGraceMs: 5_000`, 64 KiB each for `modelOutputBytes` and `verificationOutputBytes`, `resource: 'agent-run'`, `maxAttempts: 1`, and `verifierVersion: 'personal-delivery-v1'`. Both output budgets are positive safe integers capped at 64 MiB; the grace is a positive integer capped by the platform timer ceiling. These values describe the reserved Loader contract even while concrete handler registration is unavailable.
+The package exports the Loader `Config` schema that composes both handlers. Its stable defaults are `executorId: 'codex'`, no model override, `permissionMode: 'never'`, `env: {}`, `disposeGraceMs: 5_000`, 64 KiB each for `modelOutputBytes` and `verificationOutputBytes`, `resource: 'agent-run'`, `maxAttempts: 1`, and `verifierVersion: 'personal-delivery-v1'`. Both output budgets are positive safe integers capped at 64 MiB; the grace is a positive integer capped by the platform timer ceiling. The code-change policy digest covers every execution-affecting runner setting, so preparation fails before side effects if a restarted Host no longer matches the admitted policy.
 
 ## Model Experience
 
@@ -62,7 +66,7 @@ There is no direct KV-cache contribution; keeping admission metadata out of prom
 
 ## Known Limitations and Deferred Work
 
-- **The concrete handler implementation is unavailable** — `apply` throws `DeliveryTaskQueueError('unavailable')`; admission resolution, preparation, runner adaptation, policy, resources, and registration are unsupported.
-- **Admission functions are live** — `startCodeChange` and `startVerification` already implement the frozen idempotent Delivery-to-Queue handshake for Remote and workbench Consumers.
+- **Bundle and profile activation remain an integration concern** — this package owns handler behavior and Host activation reconciliation; the Personal Delivery bundle and vertical product scenarios are verified separately.
+- **No automatic acceptance** — Queue success records only a typed claim or verdict. No handler, activation path, or recovery operation creates a human decision.
 - **No generic executor capability** — one Codex provider and one caller do not justify a registry; alternative providers require a separate evidence-backed architecture decision.
 - **No client authority escalation** — browsers may select a Packet, executor, and existing change binding only through trusted Remote validation. They cannot supply verification target or plan identity, Queue ownership, idempotency keys, evidence provenance, or acceptance.

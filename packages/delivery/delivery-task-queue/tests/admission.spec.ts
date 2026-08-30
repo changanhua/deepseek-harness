@@ -33,7 +33,6 @@ import {
 import type { WorkView } from '@deepseek-ai/dsh-task-queue'
 import {
   Config,
-  apply,
   startCodeChange,
   startVerification,
 } from '../src/index.ts'
@@ -721,11 +720,5 @@ describe('Delivery-to-Queue admissions', () => {
     })).resolves.toBe(existing)
     expect(state.enqueue).not.toHaveBeenCalled()
     expect(state.bindDispatch).not.toHaveBeenCalled()
-  })
-
-  it('keeps handler registration unavailable in the scaffold', () => {
-    expect(() => apply({} as never, Config({}))).toThrow(
-      'Delivery Queue handler implementation is not installed',
-    )
   })
 })

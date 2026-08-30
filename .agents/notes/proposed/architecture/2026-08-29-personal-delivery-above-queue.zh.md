@@ -51,6 +51,8 @@ Personal Delivery 是一个 profile bundle，它在[持久 Queue](../../../../do
 
 Bridge 提出 provider-neutral 的 `code.change@1` 和 `code.verify@1` WorkKind。`delivery-task-queue` 是它们唯一的 declaration-merging 和运行时注册 owner；prepared value 保留在该包本地。Change work 的 Queue success 只记录 typed completion claim。验证作为独立 work 对精确 checkpoint commit 运行。只有匹配的 passed verdict 才允许普通验收；显式人工 waiver 记录例外。
 
+已实现的 [Delivery Queue Bridge 决策](../../implemented/architecture/2026-08-30-delivery-queue-bridge.zh.md)记录已交付的 handler、settlement 与 activation-recovery boundary，但不改变本项更广提议中仍待完成的产品 composition 状态。
+
 Delivery 和 Queue 无法提交同一 transaction。因此，Delivery 在 enqueue 前持久化带确定性 Queue idempotency key 的 `submitting` binding，随后记录返回的 Work id。重启时使用相同 key 和 input 重复未完成的 enqueue；无论之前的调用是否已经提交，Queue 都会返回原始 id。Queue 无法解析的 bound id 会成为 corruption Attention，绝不使用另一个 key 重新准入。
 
 ### 技术门
