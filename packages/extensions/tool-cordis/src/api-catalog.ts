@@ -2567,10 +2567,10 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Operator-only operations.',
       },
       {
-        signature: 'abstract registerHandler<K extends WorkKind>(handler: WorkHandler<K>): () => void',
-        description: 'Register one typed WorkHandler.',
-        parameters: [{ name: 'handler', description: 'Typed handler to register.' }],
-        returns: 'A disposer for exactly this registration.',
+        signature: 'abstract registerHandler<K extends WorkKind>( handler: WorkHandler<K>, options?: { readonly activation?: \'immediate\' | \'staged\' }, ): (() => void) & { activate(): void }',
+        description: 'Register one typed WorkHandler for admission and optional dispatch. A staged registration remains available to receipt lookup and admission, but cannot dispatch until its own `activate()` succeeds. Activation throws after disposal or repeated activation. The callable disposer removes only this registration.',
+        parameters: [{ name: 'handler', description: 'Typed handler to register.' }, { name: 'options', description: 'Optional staged dispatch while admission remains available.' }],
+        returns: 'The callable owner of exactly this registration.',
       },
       {
         signature: 'abstract listKinds(): readonly WorkKind[]',

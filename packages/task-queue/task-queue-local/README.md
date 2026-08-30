@@ -6,7 +6,7 @@ Durable local provider for the typed Queue v2 `ctx.taskQueue` service. `LocalTas
 
 ## Durable state
 
-The configured `queueRoot` contains `manifest.json` with `schemaVersion: 3`, append-only `active.jsonl`, an optional digest-checked `snapshot.json`, and the owner lock. The provider acquires exclusive ownership before recovery. A live owner rejects a second host; a stale owner lock is quarantined before takeover. Other schema versions are rejected rather than decoded or migrated.
+The configured `queueRoot` contains `manifest.json` with `schemaVersion: 3`, append-only `active.jsonl`, an optional digest-checked `snapshot.json`, and the owner lock. The provider acquires exclusive ownership and finishes orphan recovery before its Cordis service plugin becomes available. A synchronous `list()` or `get()` after `await ctx.plugin(LocalTaskQueue, config)` therefore reads the recovered projection. A live owner rejects a second host; a stale owner lock is quarantined before takeover. Other schema versions are rejected rather than decoded or migrated.
 
 Every durable mutation is a `ChangeSet`. Admission persists caller intent, resolved facts, handler-derived retry policy, and validated resource claims before dispatch. The local transaction FIFO serializes the final receipt recheck and append, while `WorkHandler.resolveAdmission()` and `prepare()` stay outside it. Agent and operator admissions use disjoint idempotency namespaces; operator work is ownerless and cannot produce Session Notifications. Batch idempotency covers the WorkKind, ordered items, shared payload, and `maxParallel`, so reusing a key with any changed Batch-shaping input is a conflict. Startup turns persisted `starting` and `running` attempts into `unknown` with pending Attention records before dispatch.
 
@@ -14,7 +14,9 @@ If `WorkHandler.start()` returns live ownership but the following `attempt/runni
 
 ## Scheduling
 
-Handlers declare `ResourceClaim`s, and admission rejects claims missing from deployment `resourceCapacity`. `maxConcurrent`, persisted resource claims, and a Batch's `maxParallel` jointly bound dispatch; unused host capacity remains available to other eligible Batches. `pause()` stops new dispatch only: read, admission, cancellation, acknowledgement, and restricted unknown resolution remain available.
+Handlers declare `ResourceClaim`s, and admission rejects claims missing from deployment `resourceCapacity`. `maxConcurrent`, persisted resource claims, and a Batch's `maxParallel` jointly bound dispatch; unused host capacity remains available to other eligible Batches. `pause()` stops all new dispatch globally: read, admission, cancellation, acknowledgement, and restricted unknown resolution remain available.
+
+A staged handler registration also permits admission and receipt lookup, but only its own `activate()` enables claims. Disposal before activation leaves queued Work without an Attempt. Disposal after claim aborts only that exact registration's execution while it is still before `start()`; once preparation returns, the aborted check records cancellation instead of calling `start()`. Disposal does not expand into cancellation of an already live Attempt.
 
 ## Config
 

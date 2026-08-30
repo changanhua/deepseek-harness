@@ -1,6 +1,6 @@
 /** Queue v2 local provider: isolated durable admission and handler registry. */
 import { randomUUID } from 'node:crypto'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   assertVerifiedAgentAuthority, assertVerifiedOperatorAuthority, canAutoRetry, canonicalJson, digestIntent,
@@ -14,6 +14,10 @@ import type {
 import { WorkQueueStore } from './v2-store.ts'
 
 type AdmissionAuthority = VerifiedAgentAuthority | VerifiedOperatorAuthority
+type HandlerRegistration = (() => void) & { activate(): void }
+type HandlerRegistrationOptions = {
+  readonly activation?: 'immediate' | 'staged'
+}
 
 interface AdmissionScope {
   readonly owner: Receipt['owner']
@@ -25,8 +29,16 @@ interface Execution {
   readonly workId: WorkId
   readonly claims: readonly ResourceClaim[]
   readonly controller: AbortController
+  readonly registration: HandlerEntry
+  startInvoked: boolean
   live: LiveAttempt<WorkKind> | null
   settled: Promise<void> | null
+}
+
+interface HandlerEntry {
+  readonly handler: WorkHandler<WorkKind>
+  active: boolean
+  disposed: boolean
 }
 
 function failure(category: string, error: unknown, sideEffect: WorkFailure['sideEffect'], retriable: boolean): WorkFailure {
@@ -78,7 +90,7 @@ export class LocalTaskQueue extends TaskQueue {
     shutdownTimeoutMs: z.number().min(1).step(1).default(DEFAULT_SHUTDOWN_TIMEOUT_MS),
   })
   private readonly store: WorkQueueStore
-  private readonly handlers = new Map<WorkKind, WorkHandler<WorkKind>>()
+  private readonly handlers = new Map<WorkKind, HandlerEntry>()
   private readonly ready: Promise<void>
   private readonly pendingAdmissions = new Map<string, {
     readonly intentDigest: string
@@ -103,6 +115,11 @@ export class LocalTaskQueue extends TaskQueue {
     this.ready = this.initialize()
     const shutdown = () => this.shutdown()
     this.ctx.effect(function* () { yield shutdown }, 'task-queue-v2 ownership')
+  }
+
+  /** Finish durable recovery before Cordis reports the service plugin ready. */
+  protected async [Service.init](): Promise<void> {
+    await this.ready
   }
 
   /** Bind queue methods to an issued agent authority. */
@@ -137,14 +154,47 @@ export class LocalTaskQueue extends TaskQueue {
     }
   }
 
-  /** Register one handler and return its exact disposer. */
-  registerHandler<K extends WorkKind>(handler: WorkHandler<K>): () => void {
+  /** Register one exact admission owner with immediate or staged dispatch. */
+  registerHandler<K extends WorkKind>(
+    handler: WorkHandler<K>,
+    options: HandlerRegistrationOptions = {},
+  ): HandlerRegistration {
     if (this.handlers.has(handler.kind)) {
       throw new Error(`task queue handler already registered for ${String(handler.kind)}`)
     }
-    this.handlers.set(handler.kind, handler)
-    void this.pump()
-    return () => { if (this.handlers.get(handler.kind) === handler) this.handlers.delete(handler.kind) }
+    const entry: HandlerEntry = {
+      handler,
+      active: options.activation !== 'staged',
+      disposed: false,
+    }
+    this.handlers.set(handler.kind, entry)
+    const registration = (() => {
+      if (entry.disposed) return
+      entry.disposed = true
+      if (this.handlers.get(handler.kind) === entry) {
+        this.handlers.delete(handler.kind)
+      }
+      for (const execution of this.executing.values()) {
+        if (
+          execution.registration === entry
+          && !execution.startInvoked
+        ) {
+          execution.controller.abort('task queue handler registration disposed before start')
+        }
+      }
+    }) as HandlerRegistration
+    registration.activate = () => {
+      if (entry.disposed || this.handlers.get(handler.kind) !== entry) {
+        throw new Error(`task queue handler registration is disposed for ${String(handler.kind)}`)
+      }
+      if (entry.active) {
+        throw new Error(`task queue handler registration is already active for ${String(handler.kind)}`)
+      }
+      entry.active = true
+      void this.pump()
+    }
+    if (entry.active) void this.pump()
+    return registration
   }
 
   /** Return stable registered kinds. */
@@ -401,25 +451,48 @@ export class LocalTaskQueue extends TaskQueue {
     return this.store.transaction(async () => {
       const candidate = [...this.store.current().worksById.values()].find((work) => {
         const state = this.store.current().statesByWorkId.get(work.id)
-        const handler = this.handlers.get(work.kind)
-        return state?.status === 'queued' && handler !== undefined && this.canClaim(work)
+        const registration = this.handlers.get(work.kind)
+        return state?.status === 'queued'
+          && registration?.active === true
+          && this.canClaim(work)
       })
       if (candidate === undefined) return null
-      const handler = this.requireHandler(candidate.kind)
+      const registration = this.requireActiveRegistration(candidate.kind)
       const claims = candidate.resources
       const attemptId = AttemptId(randomUUID())
       const now = new Date().toISOString()
       const state = this.store.current().statesByWorkId.get(candidate.id)
       if (state?.status !== 'queued') throw new Error('task queue claim candidate is no longer queued')
-      await this.commitInTransaction([{
-        type: 'attempt/started',
-        attempt: {
-          id: attemptId, workId: candidate.id, ordinal: state.attemptCount + 1, startedAt: now,
-        },
-      }])
-      const execution: Execution = { workId: candidate.id, claims, controller: new AbortController(), live: null, settled: null }
+      const execution: Execution = {
+        workId: candidate.id,
+        claims,
+        controller: new AbortController(),
+        registration,
+        startInvoked: false,
+        live: null,
+        settled: null,
+      }
       this.executing.set(attemptId, execution)
-      return { attemptId, handler, work: candidate, execution }
+      try {
+        await this.commitInTransaction([{
+          type: 'attempt/started',
+          attempt: {
+            id: attemptId,
+            workId: candidate.id,
+            ordinal: state.attemptCount + 1,
+            startedAt: now,
+          },
+        }])
+      } catch (error) {
+        this.executing.delete(attemptId)
+        throw error
+      }
+      return {
+        attemptId,
+        handler: registration.handler,
+        work: candidate,
+        execution,
+      }
     })
   }
 
@@ -444,6 +517,7 @@ export class LocalTaskQueue extends TaskQueue {
     }
     let live: LiveAttempt<WorkKind>
     try {
+      execution.startInvoked = true
       live = handler.start(prepared, { attemptId, signal: execution.controller.signal })
     } catch (error) {
       await this.settleFailure(attemptId, failure('start-threw', error, 'unknown', false))
@@ -734,10 +808,13 @@ export class LocalTaskQueue extends TaskQueue {
       if (state !== undefined
         && work !== undefined
         && state.activeAttemptId !== null
-        && state.cancelRequestedAt !== null
         && (state.status === 'starting' || state.status === 'running')) {
         const at = new Date().toISOString()
-        const events: Array<ChangeSet['events'][number]> = [{ type: 'work/canceled', workId, at }]
+        const events: Array<ChangeSet['events'][number]> = []
+        if (state.cancelRequestedAt === null) {
+          events.push({ type: 'cancel/requested', workId, at })
+        }
+        events.push({ type: 'work/canceled', workId, at })
         if (work.ownerSessionId !== null) events.push(this.notification(workId, state.activeAttemptId, null, work.ownerSessionId, at))
         await this.commitInTransaction(events)
       }
@@ -827,9 +904,17 @@ export class LocalTaskQueue extends TaskQueue {
   }
 
   private requireHandler(kind: WorkKind): WorkHandler<WorkKind> {
-    const handler = this.handlers.get(kind)
-    if (handler === undefined) throw new Error(`task queue handler is not registered for ${String(kind)}`)
-    return handler
+    const registration = this.handlers.get(kind)
+    if (registration === undefined) throw new Error(`task queue handler is not registered for ${String(kind)}`)
+    return registration.handler
+  }
+
+  private requireActiveRegistration(kind: WorkKind): HandlerEntry {
+    const registration = this.handlers.get(kind)
+    if (registration?.active !== true) {
+      throw new Error(`task queue handler is not active for ${String(kind)}`)
+    }
+    return registration
   }
 }
 

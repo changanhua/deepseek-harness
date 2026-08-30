@@ -863,4 +863,209 @@ describe('LocalTaskQueue v2 scheduler', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  it('keeps staged admission and receipt lookup queued across restart before activation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-staged-restart-'))
+    let firstContext: Context | undefined
+    let reopenedContext: Context | undefined
+    try {
+      firstContext = new Context()
+      const queue = new LocalTaskQueue(firstContext, { queueRoot: root })
+      const registration = queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start() {
+          return {
+            done: Promise.resolve({
+              status: 'succeeded' as const,
+              output: { ok: true } as never,
+            }),
+            async cancel() {},
+          }
+        },
+      }, { activation: 'staged' })
+      const operator = queue.forOperator(createVerifiedOperatorAuthority())
+      const request = {
+        kind: 'test@1' as never,
+        title: 'staged receipt',
+        input: { prompt: 'staged receipt' },
+        idempotencyKey: 'staged-receipt',
+      }
+      const workId = await operator.enqueue(request)
+      await expect(operator.enqueue(request)).resolves.toBe(workId)
+      expect(operator.get(workId)).toMatchObject({
+        state: { status: 'queued', attemptCount: 0 },
+        attempts: [],
+      })
+      registration()
+      await firstContext.fiber.dispose()
+      firstContext = undefined
+
+      reopenedContext = new Context()
+      const reopened = new LocalTaskQueue(reopenedContext, { queueRoot: root })
+      const internals = reopened as unknown as { ready: Promise<void> }
+      await internals.ready
+      const reopenedView = reopened
+        .forOperator(createVerifiedOperatorAuthority())
+        .get(workId)
+      expect(reopenedView).toMatchObject({
+        state: { status: 'queued', attemptCount: 0 },
+        attempts: [],
+      })
+      expect(reopened
+        .forOperator(createVerifiedOperatorAuthority())
+        .pendingAttentions()).toEqual([])
+    } finally {
+      await firstContext?.fiber.dispose()
+      await reopenedContext?.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('creates exactly one Attempt only after its staged registration activates', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-staged-activate-'))
+    const ctx = new Context()
+    try {
+      const queue = new LocalTaskQueue(ctx, { queueRoot: root })
+      const starts = vi.fn()
+      const registration = queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start() {
+          starts()
+          return {
+            done: Promise.resolve({
+              status: 'succeeded' as const,
+              output: { ok: true } as never,
+            }),
+            async cancel() {},
+          }
+        },
+      }, { activation: 'staged' })
+      const operator = queue.forOperator(createVerifiedOperatorAuthority())
+      const workId = await operator.enqueue({
+        kind: 'test@1' as never,
+        title: 'activate once',
+        input: { prompt: 'activate once' },
+        idempotencyKey: 'staged-activate-once',
+      })
+      expect(operator.get(workId).attempts).toEqual([])
+      expect(starts).not.toHaveBeenCalled()
+
+      registration.activate()
+      await waitFor(() => operator.get(workId).state.status === 'succeeded')
+      expect(operator.get(workId).attempts).toHaveLength(1)
+      expect(starts).toHaveBeenCalledOnce()
+      expect(() => { registration.activate() }).toThrow(/already active/i)
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects disposed and stale activation without affecting a successor registration', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-staged-stale-'))
+    const ctx = new Context()
+    try {
+      const queue = new LocalTaskQueue(ctx, { queueRoot: root })
+      const starts = vi.fn()
+      const handler: WorkHandler<never> = {
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start() {
+          starts()
+          return {
+            done: Promise.resolve({
+              status: 'succeeded' as const,
+              output: { ok: true } as never,
+            }),
+            async cancel() {},
+          }
+        },
+      }
+      const stale = queue.registerHandler(handler, { activation: 'staged' })
+      const operator = queue.forOperator(createVerifiedOperatorAuthority())
+      const workId = await operator.enqueue({
+        kind: 'test@1' as never,
+        title: 'stale registration',
+        input: { prompt: 'stale registration' },
+        idempotencyKey: 'staged-stale',
+      })
+      stale()
+      expect(() => { stale.activate() }).toThrow(/disposed/i)
+
+      const successor = queue.registerHandler(handler, { activation: 'staged' })
+      expect(() => { stale.activate() }).toThrow(/disposed/i)
+      expect(operator.get(workId)).toMatchObject({
+        state: { status: 'queued', attemptCount: 0 },
+        attempts: [],
+      })
+      successor.activate()
+      await waitFor(() => operator.get(workId).state.status === 'succeeded')
+      expect(starts).toHaveBeenCalledOnce()
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('aborts only its pre-start execution when an active registration is disposed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-registration-dispose-'))
+    const ctx = new Context()
+    const preparation = Promise.withResolvers<{ prompt: string }>()
+    try {
+      const queue = new LocalTaskQueue(ctx, { queueRoot: root })
+      const prepareStarted = Promise.withResolvers<undefined>()
+      const starts = vi.fn()
+      const registration = queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare() {
+          prepareStarted.resolve(undefined)
+          return preparation.promise
+        },
+        start() {
+          starts()
+          return {
+            done: Promise.resolve({
+              status: 'succeeded' as const,
+              output: { ok: true } as never,
+            }),
+            async cancel() {},
+          }
+        },
+      }, { activation: 'staged' })
+      const operator = queue.forOperator(createVerifiedOperatorAuthority())
+      const workId = await operator.enqueue({
+        kind: 'test@1' as never,
+        title: 'dispose before start',
+        input: { prompt: 'dispose before start' },
+        idempotencyKey: 'registration-dispose-before-start',
+      })
+      registration.activate()
+      await prepareStarted.promise
+      expect(operator.get(workId).state.status).toBe('starting')
+
+      registration()
+      preparation.resolve({ prompt: 'prepared after disposal' })
+      await waitFor(() => operator.get(workId).state.status === 'canceled')
+      expect(starts).not.toHaveBeenCalled()
+      expect(operator.get(workId).attempts).toHaveLength(1)
+    } finally {
+      preparation.resolve({ prompt: 'test cleanup' })
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })

@@ -6,7 +6,7 @@ typed Queue v2 `ctx.taskQueue` 服务的本地持久 Provider。`LocalTaskQueue`
 
 ## 持久状态
 
-配置的 `queueRoot` 包含带 `schemaVersion: 3` 的 `manifest.json`、append-only `active.jsonl`、可选的 digest-checked `snapshot.json` 与 owner lock。Provider 在恢复前获取独占所有权。live owner 会拒绝第二个 host；stale owner lock 在接管前移入 quarantine。其他 schema 版本会被拒绝，不会被解码或迁移。
+配置的 `queueRoot` 包含带 `schemaVersion: 3` 的 `manifest.json`、append-only `active.jsonl`、可选的 digest-checked `snapshot.json` 与 owner lock。Provider 会取得独占所有权并完成 orphan recovery，然后 Cordis service plugin 才可用。因此，`await ctx.plugin(LocalTaskQueue, config)` 之后同步调用 `list()` 或 `get()` 会读取已恢复 projection。live owner 会拒绝第二个 host；stale owner lock 在接管前移入 quarantine。其他 schema 版本会被拒绝，不会被解码或迁移。
 
 每个持久 mutation 都是一个 `ChangeSet`。准入会在派发前持久化 caller intent、resolved facts、Handler 推导的重试 policy 与已校验的 resource claims。local transaction FIFO 串行化最终 receipt 复查和 append，而 `WorkHandler.resolveAdmission()` 与 `prepare()` 在 FIFO 外执行。Agent 与 operator 准入使用互不重叠的幂等 namespace；operator work 没有 owner，不能产生 Session Notification。Batch 幂等 digest 覆盖 WorkKind、有序 items、shared payload 与 `maxParallel`；复用 key 时任一 Batch-shaping input 改变都会冲突。启动时会先把持久化的 `starting` 和 `running` Attempt 转为带 pending Attention 的 `unknown`，再派发。
 
@@ -14,7 +14,9 @@ typed Queue v2 `ctx.taskQueue` 服务的本地持久 Provider。`LocalTaskQueue`
 
 ## 调度
 
-Handler 声明 `ResourceClaim`，准入会拒绝未在部署 `resourceCapacity` 声明的 claim。`maxConcurrent`、持久化 resource claims 与 Batch 的 `maxParallel` 共同限制派发；未使用的 host capacity 仍可供其他符合条件的 Batch 使用。`pause()` 只暂停新派发：读取、准入、取消、acknowledgement 与受限 unknown resolution 仍可用。
+Handler 声明 `ResourceClaim`，准入会拒绝未在部署 `resourceCapacity` 声明的 claim。`maxConcurrent`、持久化 resource claims 与 Batch 的 `maxParallel` 共同限制派发；未使用的 host capacity 仍可供其他符合条件的 Batch 使用。`pause()` 会全局暂停所有新派发：读取、准入、取消、acknowledgement 与受限 unknown resolution 仍可用。
+
+Staged handler registration 也允许 admission 与 receipt lookup，但只有它自己的 `activate()` 才会开放 claim。在 activation 前 disposal 会让 queued Work 保持无 Attempt。claim 之后的 disposal 只会中止该精确 registration 仍处于 `start()` 之前的 execution；preparation 返回后，aborted check 会记录 cancellation，而不会调用 `start()`。Disposal 不会扩张为取消已经 live 的 Attempt。
 
 ## 配置
 

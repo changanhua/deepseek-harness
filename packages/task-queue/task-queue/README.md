@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 The durable typed-work Queue Service Definition (`ctx.taskQueue`). Concrete work kinds extend `WorkKindMap`; providers register a `WorkHandler` that resolves caller intent, derives retry policy, declares resource claims at admission, prepares dispatch, and synchronously starts a `LiveAttempt`.
 
+Handler registration is immediate by default. A trusted composition may request a staged registration when recovery must use the handler for receipt lookup or admission before dispatch is safe. The returned callable owns that exact registration: `activate()` enables dispatch once, while disposal prevents later activation and removes only that registration.
+
 ## Domain model
 
 `WorkItem` is immutable and keeps its title, admission-derived policy and resource claims, tags, optional Batch membership, canonical caller intent, SHA-256 digest, and resolved execution specification separate. `BatchItem` preserves each member's title and tags before the Batch is admitted. `WorkState`, `WorkAttempt`, `WorkResult`, `Batch`, `Attention`, `Notification`, and `Receipt` are independent durable records. `unknown` is non-terminal and blocks another attempt until an operator confirms failure or authorizes retry.

@@ -34,6 +34,13 @@ const synchronousLiveAttempt: LiveAttempt<'typecheck@1'> = handler.start(
   { prepared: 'ready' },
   { attemptId: AttemptId('attempt-1'), signal: new AbortController().signal },
 )
+const immediateRegistration = queue.registerHandler(handler)
+const stagedRegistration = queue.registerHandler(handler, {
+  activation: 'staged',
+})
+stagedRegistration.activate()
+stagedRegistration()
+immediateRegistration()
 queue.forAgent(agentAuthority)
 const operator = queue.forOperator(operatorAuthority)
 void operator.enqueue({
