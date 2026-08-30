@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsh-intelligence/schemas/implementer-handoff.schema.json",
+  "title": "Implementer Handoff",
+  "description": "accepted ADP → Implementer 的交接单：文件 ownership、verification matrix、偏离记录。V0 只提供该 schema，不建设庞大 Implementer 知识（docs/dsh-post-training-system-design.md §12）。",
+  "type": "object",
+  "required": ["schema_version", "adp_ref", "file_ownership", "verification_matrix"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "adp_ref": { "type": "string", "pattern": "^adp" },
+    "file_ownership": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "owner"],
+        "properties": {
+          "path": { "type": "string" },
+          "owner": { "type": "string" },
+          "purpose": { "type": "string" }
+        }
+      }
+    },
+    "verification_matrix": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "check", "type"],
+        "properties": {
+          "id": { "type": "string" },
+          "check": { "type": "string" },
+          "type": { "type": "string", "enum": ["unit", "integration", "snapshot", "real-entry-path", "negative-control", "runtime-acceptance"] },
+          "required": { "type": "boolean" }
+        }
+      }
+    },
+    "deviation_log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "what": { "type": "string" },
+          "why": { "type": "string" },
+          "adp_amendment_ref": { "type": "string" }
+        }
+      }
+    }
+  }
+}

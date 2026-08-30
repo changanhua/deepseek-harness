@@ -1,0 +1,36 @@
+# Contract Kernel 来源指针
+# origin/branch/revision 三正交；dirty worktree 的 observation 不能伪装成已提交 source。
+schema_version: 1
+sources:
+  - id: docs-architecture
+    path: docs/architecture.md
+    origin: local-worktree
+    artifact_kind: source
+  - id: runtime-facts-readme
+    path: packages/context/runtime-facts/README.md
+    origin: local-worktree
+    artifact_kind: source
+  - id: command-profile-readme
+    path: packages/context/command-profile/README.md
+    origin: local-worktree
+    artifact_kind: source
+  - id: task-queue-readme
+    path: packages/task-queue/task-queue/README.md
+    origin: local-worktree
+    artifact_kind: source
+  - id: runtime-awareness-e2e
+    path: examples/headless-agent/tests/runtime-awareness.behavior.e2e.ts
+    origin: local-worktree
+    artifact_kind: source
+  - id: tool-skill-readme
+    path: packages/skill/tool-skill/README.md
+    origin: local-worktree
+    artifact_kind: source
+  - id: fork-divergence
+    path: FORK-DIVERGENCE.md
+    origin: local-worktree
+    artifact_kind: source
+  - id: design
+    path: docs/dsh-post-training-system-design.md
+    origin: local-worktree
+    artifact_kind: contract

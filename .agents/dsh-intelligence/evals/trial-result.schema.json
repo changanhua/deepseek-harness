@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsh-intelligence/evals/trial-result.schema.json",
+  "title": "Paired Trial Result",
+  "description": "一次 baseline vs intelligence paired trial。identity 必须一致；任一致命条件（缺 task / id 不一致 / prompt hash 不一致 / 模型失败 / 缺 rubric / 缺必需 metrics / system 配对错误 / raw hash 不符 / evaluator provenance 不符）→ status=INVALID，绝不按 0 finding 计分。",
+  "type": "object",
+  "required": ["task_id", "status", "invalid_reasons"],
+  "properties": {
+    "task_id": { "type": "string", "pattern": "^holdout-\\d{3}$" },
+    "status": { "type": "string", "enum": ["VALID", "INVALID"] },
+    "invalid_reasons": { "type": "array", "items": { "type": "string" } },
+    "identity": { "$ref": "#/$defs/identity" },
+    "arms": {
+      "type": "object",
+      "required": ["baseline", "intelligence"],
+      "properties": {
+        "baseline": { "$ref": "#/$defs/arm" },
+        "intelligence": { "$ref": "#/$defs/arm" }
+      },
+      "additionalProperties": false
+    },
+    "comparison": { "$ref": "#/$defs/comparison" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "required": ["prompt_hash", "model", "temperature", "max_tokens"],
+      "properties": {
+        "prompt_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "model": { "type": "string" },
+        "temperature": { "type": "number" },
+        "max_tokens": { "type": "integer" },
+        "seed": { "type": ["integer", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "arm": {
+      "type": "object",
+      "required": ["system", "identity", "raw_output_ref", "raw_output_hash", "execution_status", "normalized_findings", "metrics", "evaluator"],
+      "properties": {
+        "system": { "type": "string", "enum": ["baseline-no-intelligence", "full-intelligence"] },
+        "identity": { "$ref": "#/$defs/identity" },
+        "raw_output_ref": { "type": "string", "minLength": 1 },
+        "raw_output_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "execution_status": { "type": "string", "enum": ["success", "failed", "missing"] },
+        "normalized_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule_id", "severity"],
+            "properties": {
+              "rule_id": { "type": "string" },
+              "severity": { "type": "string", "enum": ["P0", "P1", "P2"] },
+              "ref": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "metrics": { "type": "object" },
+        "evaluator": { "$ref": "#/$defs/evaluator" }
+      },
+      "additionalProperties": false
+    },
+    "evaluator": {
+      "type": "object",
+      "required": ["evaluator_type", "evaluator_prompt_hash", "rubric_hash", "source_output_hash", "evaluator_version", "normalized_findings_hash"],
+      "properties": {
+        "evaluator_type": { "type": "string", "enum": ["deterministic", "llm"] },
+        "evaluator_model": { "type": "string" },
+        "evaluator_prompt_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "rubric_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "source_output_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "evaluator_version": { "type": "string" },
+        "normalized_findings_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "primaryMetrics": {
+      "type": "object",
+      "required": ["architectureBlockingFindings", "unsupportedInventions", "hallucinatedSymbols", "groundedRequiredClaims", "requiredClaims", "evidenceGroundingRate"],
+      "properties": {
+        "architectureBlockingFindings": { "type": "integer", "minimum": 0 },
+        "unsupportedInventions": { "type": "integer", "minimum": 0 },
+        "hallucinatedSymbols": { "type": "integer", "minimum": 0 },
+        "groundedRequiredClaims": { "type": "integer", "minimum": 0 },
+        "requiredClaims": { "type": "integer", "minimum": 0 },
+        "evidenceGroundingRate": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "comparison": {
+      "type": "object",
+      "required": ["baseline", "intelligence", "blocking_findings_delta", "unsupported_invention_delta", "hallucinated_symbol_delta", "evidence_grounding_delta", "verdict"],
+      "properties": {
+        "baseline": { "$ref": "#/$defs/primaryMetrics" },
+        "intelligence": { "$ref": "#/$defs/primaryMetrics" },
+        "blocking_findings_delta": { "type": "integer" },
+        "unsupported_invention_delta": { "type": "integer" },
+        "hallucinated_symbol_delta": { "type": "integer" },
+        "evidence_grounding_delta": { "type": "number" },
+        "verdict": { "type": "string", "enum": ["baseline_better", "intelligence_better", "tie"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

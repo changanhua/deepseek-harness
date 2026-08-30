@@ -1,0 +1,35 @@
+# Retrieval Policy — 查询顺序、来源优先级与 lifecycle gate
+schema_version: 1
+query_order:
+  - evidence-capsule-current-revision
+  - generated-catalogs
+  - exact-source-types-jsdoc
+  - agent-note-readme
+  - pattern-anti-pattern
+  - version-compatible-case
+precedence:
+  1: [evidence-capsule-direct, current-source-config]
+  2: [fresh-generated-catalogs]
+  3: [contract-kernel, implemented-agent-note]
+  4: [official-tagged-source]
+  5: [validated-pattern, validated-anti-pattern]
+  6: [golden-case]
+  7: [verified-case]
+  8: [model-prior]
+research_only:
+  - proposed
+  - experimental
+  - candidate
+  - deprecated
+lifecycle_gate:
+  normal_pattern: [validated, current]
+  normal_anti_pattern: [validated, current]
+  normal_case: [verified, golden, current]
+  candidate_mode: explicit-only
+conflict_handling:
+  same_scope_revision: create-evidence-conflict
+  different_revision: isolate-by-version
+constraints:
+  precedent_max: 3
+  fragments_per_step_max: 6
+  default_payload_tokens_max: 6000
