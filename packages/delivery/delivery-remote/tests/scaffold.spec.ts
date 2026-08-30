@@ -10,13 +10,11 @@ import {
   type DeliveryRemoteInternals,
 } from '../src/index.ts'
 
-function legacyUnavailableIntakeError(): DeliveryGitHubIntakeError {
-  const error = new DeliveryGitHubIntakeError(
-    'invalid-request',
-    'The C0 intake Consumer is unavailable',
+function networkFailureIntakeError(): DeliveryGitHubIntakeError {
+  return new DeliveryGitHubIntakeError(
+    'network-failure',
+    'The C0 intake Consumer could not reach GitHub',
   )
-  Object.defineProperty(error, 'code', { value: 'unavailable' })
-  return error
 }
 
 function context(): Context {
@@ -58,10 +56,10 @@ describe('Delivery Remote host boundary', () => {
     })
   })
 
-  it('maps the C0 unavailable intake provider to one stable browser failure', async () => {
+  it('maps a C0 intake network failure to one stable browser failure', async () => {
     const internals: DeliveryRemoteInternals = {
       fetch: globalThis.fetch,
-      importIssue: async () => { throw legacyUnavailableIntakeError() },
+      importIssue: async () => { throw networkFailureIntakeError() },
       startCodeChange,
       startVerification,
     }
@@ -76,7 +74,7 @@ describe('Delivery Remote host boundary', () => {
         details: {
           operation: 'importIssue',
           domain: 'delivery-github-intake',
-          domainCode: 'unavailable',
+          domainCode: 'network-failure',
         },
       },
     })

@@ -82,7 +82,7 @@ export function remoteFailure(
   if (error instanceof DeliveryGitHubIntakeError) {
     const domainCode: string = error.code
     return new TypertRemoteFailure({
-      code: domainCode === 'unavailable' ? 'unavailable' : 'bad-request',
+      code: domainCode === 'network-failure' ? 'unavailable' : 'bad-request',
       message: `Delivery issue import failed: ${domainCode}`,
       details: { operation, domain: 'delivery-github-intake', domainCode },
     })
