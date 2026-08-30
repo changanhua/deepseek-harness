@@ -44,6 +44,13 @@ import { DeliveryRemoteService, type Config } from '../src/index.ts'
 
 const TIME = '2026-08-29T00:00:00.000Z'
 const TARGET = '2222222222222222222222222222222222222222'
+const CODEX_EXECUTOR = ExecutorId('codex')
+
+function bridgePacket() {
+  return readyWorkPacketFixture({
+    executorPreference: { mode: 'preferred', executorId: CODEX_EXECUTOR },
+  })
+}
 
 interface TestInternals {
   readonly fetch: typeof globalThis.fetch
@@ -376,8 +383,11 @@ describe('Delivery Remote explicit operations', () => {
   })
 
   it('stops code-change admission after cancellation before Queue enqueue', async () => {
-    const packet = readyWorkPacketFixture()
-    const submitting = submittingBindingFixture({ packetId: packet.id })
+    const packet = bridgePacket()
+    const submitting = submittingBindingFixture({
+      packetId: packet.id,
+      executorId: CODEX_EXECUTOR,
+    })
     let settleBegin!: (binding: DispatchBinding) => void
     const beginDispatch = vi.fn(() => new Promise<DispatchBinding>((resolve) => {
       settleBegin = resolve
@@ -394,7 +404,7 @@ describe('Delivery Remote explicit operations', () => {
     const controller = new AbortController()
 
     const operation = harness.service.startChange({
-      packetId: String(packet.id), executorId: 'codex-fixture',
+      packetId: String(packet.id), executorId: String(CODEX_EXECUTOR),
     }, controller.signal)
     await vi.waitFor(() => { expect(beginDispatch).toHaveBeenCalledOnce() })
     controller.abort('operator-cancelled')
@@ -489,10 +499,14 @@ describe('Delivery Remote explicit operations', () => {
   })
 
   it('binds a committed change Work when cancellation races with Queue enqueue', async () => {
-    const packet = readyWorkPacketFixture()
+    const packet = bridgePacket()
     const bindingId = DispatchBindingId('binding-change-commit-race')
     const workId = WorkId('work-change-commit-race')
-    const submitting = submittingBindingFixture({ id: bindingId, packetId: packet.id })
+    const submitting = submittingBindingFixture({
+      id: bindingId,
+      packetId: packet.id,
+      executorId: CODEX_EXECUTOR,
+    })
     const bound = boundBindingFixture({
       ...submitting,
       phase: 'bound',
@@ -605,10 +619,14 @@ describe('Delivery Remote explicit operations', () => {
   })
 
   it('reports a post-commit bind failure and reconciles the same Work on retry', async () => {
-    const packet = readyWorkPacketFixture()
+    const packet = bridgePacket()
     const bindingId = DispatchBindingId('binding-change-bind-retry')
     const workId = WorkId('work-change-bind-retry')
-    const submitting = submittingBindingFixture({ id: bindingId, packetId: packet.id })
+    const submitting = submittingBindingFixture({
+      id: bindingId,
+      packetId: packet.id,
+      executorId: CODEX_EXECUTOR,
+    })
     const bound = boundBindingFixture({
       ...submitting,
       phase: 'bound',
@@ -658,8 +676,11 @@ describe('Delivery Remote explicit operations', () => {
 
   it('does not invent a Queue commit when enqueue fails before or after cancellation', async () => {
     for (const [abort, expectedCode] of [[false, 'unavailable'], [true, 'cancelled']] as const) {
-      const packet = readyWorkPacketFixture()
-      const submitting = submittingBindingFixture({ packetId: packet.id })
+      const packet = bridgePacket()
+      const submitting = submittingBindingFixture({
+        packetId: packet.id,
+        executorId: CODEX_EXECUTOR,
+      })
       let rejectEnqueue!: (error: DeliveryTaskQueueError) => void
       const enqueue = vi.fn(() => new Promise<WorkId>((_resolve, reject) => {
         rejectEnqueue = reject
@@ -678,7 +699,7 @@ describe('Delivery Remote explicit operations', () => {
       })
       const controller = new AbortController()
       const operation = harness.service.startChange({
-        packetId: String(packet.id), executorId: 'codex-fixture',
+        packetId: String(packet.id), executorId: String(CODEX_EXECUTOR),
       }, controller.signal)
       await vi.waitFor(() => { expect(enqueue).toHaveBeenCalledOnce() })
       if (abort) controller.abort('operator-cancelled')
@@ -692,10 +713,11 @@ describe('Delivery Remote explicit operations', () => {
   })
 
   it('passes an active signal through successful change and verification admission commits', async () => {
-    const packet = readyWorkPacketFixture()
+    const packet = bridgePacket()
     const changeSubmitting = submittingBindingFixture({
       id: DispatchBindingId('binding-guarded-change'),
       packetId: packet.id,
+      executorId: CODEX_EXECUTOR,
     })
     const changeBound = boundBindingFixture({
       ...changeSubmitting,
