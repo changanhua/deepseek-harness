@@ -18,6 +18,10 @@ concurrency:
 jobs:
   windows-build:
     name: Windows build and typecheck
+    if: >-
+      github.actor == 'changanhua'
+      && github.event.pull_request.user.login == 'changanhua'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -48,6 +52,10 @@ jobs:
 
   c0-diff:
     name: C0 differential quality
+    if: >-
+      github.actor == 'changanhua'
+      && github.event.pull_request.user.login == 'changanhua'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
@@ -131,7 +139,12 @@ jobs:
   fork-checks:
     name: fork checks passed
     needs: [windows-build, c0-diff]
-    if: always() && github.event_name == 'pull_request'
+    if: >-
+      always()
+      && github.event_name == 'pull_request'
+      && github.actor == 'changanhua'
+      && github.event.pull_request.user.login == 'changanhua'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
