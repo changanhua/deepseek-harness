@@ -620,7 +620,12 @@ function requireConfiguredChangeBinding(
   }
 }
 
-/** Build the sole `code.change@1` WorkHandler. */
+/**
+ * Build the sole `code.change@1` WorkHandler.
+ * @param dependencies - Trusted Delivery, Queue, repository, evidence, and runner capabilities.
+ * @param config - Loader-owned execution and retry settings.
+ * @returns The typed code-change handler registered by this bridge.
+ */
 export function createCodeChangeHandler(
   dependencies: DeliveryWorkHandlerDependencies,
   config: Config,
@@ -723,7 +728,12 @@ export function createCodeChangeHandler(
   }
 }
 
-/** Build the sole `code.verify@1` WorkHandler. */
+/**
+ * Build the sole `code.verify@1` WorkHandler.
+ * @param dependencies - Trusted Delivery, Queue, repository, evidence, and verifier capabilities.
+ * @param config - Loader-owned verification and retry settings.
+ * @returns The typed verification handler registered by this bridge.
+ */
 export function createCodeVerifyHandler(
   dependencies: DeliveryWorkHandlerDependencies,
   config: Config,

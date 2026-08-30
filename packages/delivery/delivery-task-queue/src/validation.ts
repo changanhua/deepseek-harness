@@ -63,7 +63,11 @@ function validateCore(view: WorkView): void {
   }
 }
 
-/** Require one successful Result linked to its exact successful Attempt. */
+/**
+ * Require one successful Result linked to its exact successful Attempt.
+ * @param view - Complete Queue view of the candidate code-change Work.
+ * @returns The exact successful Result and its owning Attempt.
+ */
 export function exactSuccessfulChangeResult(
   view: WorkView,
 ): SuccessfulChangeResult {
@@ -123,7 +127,14 @@ function parseResolved(
     : resolvedCodeVerifySchema.parse(view.work.resolved)
 }
 
-/** Resolve one active Attempt through matching list/get views and exact facts. */
+/**
+ * Resolve one active Attempt through matching list/get views and exact facts.
+ * @param operator - Trusted Queue views used to resolve the Attempt.
+ * @param attemptId - Active Attempt selected by Queue preparation.
+ * @param kind - Delivery WorkKind expected for the Attempt.
+ * @param expectedResolved - Canonical resolved facts admitted for the Work.
+ * @returns The unique Queue view that owns the active Attempt.
+ */
 export function exactAttemptWork(
   operator: Pick<OperatorWorkQueue, 'list' | 'get'>,
   attemptId: AttemptId,
@@ -165,7 +176,12 @@ export function exactAttemptWork(
   return exact
 }
 
-/** Cross-check one bound binding against the same exact operator list/get view. */
+/**
+ * Cross-check one bound binding against the same exact operator list/get view.
+ * @param operator - Trusted Queue views used to resolve the bound Work.
+ * @param binding - Durable Delivery binding whose Work identity must match.
+ * @returns The matching canonical Queue view.
+ */
 export function exactBoundQueueView(
   operator: Pick<OperatorWorkQueue, 'list' | 'get'>,
   binding: Extract<DispatchBinding, { readonly phase: 'bound' }>,
@@ -189,7 +205,14 @@ export function exactBoundQueueView(
   return exact
 }
 
-/** Validate the exact successful change selected for verifier preparation. */
+/**
+ * Validate the exact successful change selected for verifier preparation.
+ * @param operator - Trusted Queue views used to resolve the successful change.
+ * @param binding - Bound code-change dispatch selected for verification.
+ * @param packet - Immutable Delivery Packet that authorized the change.
+ * @param targetCommit - Checkpoint commit derived for verification.
+ * @returns The completed claim linked to the exact successful Queue Attempt.
+ */
 export function exactBoundChange(
   operator: Pick<OperatorWorkQueue, 'list' | 'get'>,
   binding: BoundChange,

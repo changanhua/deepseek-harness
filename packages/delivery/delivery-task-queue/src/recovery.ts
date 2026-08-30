@@ -85,7 +85,13 @@ function verificationIntent(binding: Extract<DispatchBinding, {
   return parsed.data
 }
 
-/** Validate bound Queue views and resume every persisted submitting handshake. */
+/**
+ * Validate bound Queue views and resume every persisted submitting handshake.
+ * @param bindings - Complete durable Delivery binding snapshot.
+ * @param operator - Trusted Queue admission and view capabilities.
+ * @param delivery - Delivery capability that conditionally binds recovered Work ids.
+ * @returns A promise that resolves after every binding validates or converges.
+ */
 export async function reconcileDeliveryQueueBindings(
   bindings: readonly DispatchBinding[],
   operator: Pick<OperatorWorkQueue, 'enqueue' | 'list' | 'get'>,

@@ -33,6 +33,12 @@ function unknownFailure(kind: string, value: unknown): WorkFailure {
   )
 }
 
+/**
+ * Map a governed runner settlement into the Queue code-change outcome.
+ * @param done - Runner completion owned by the live Attempt.
+ * @param prepared - Attempt-bound request used to verify output provenance.
+ * @returns The Queue settlement promise for `code.change@1`.
+ */
 export function settleChange(
   done: Promise<CompletionClaim>,
   prepared: CodeChangeRunRequest,
@@ -93,6 +99,13 @@ export function settleChange(
   })
 }
 
+/**
+ * Map a verifier settlement into the Queue verification outcome.
+ * @param done - Verifier completion owned by the live Attempt.
+ * @param prepared - Attempt-bound request used to verify immutable identities.
+ * @param verifierVersion - Configured verifier version required in the verdict.
+ * @returns The Queue settlement promise for `code.verify@1`.
+ */
 export function settleVerification(
   done: Promise<VerificationVerdict>,
   prepared: DeliveryVerificationRunRequest,
