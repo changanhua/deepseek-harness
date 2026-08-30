@@ -1,5 +1,5 @@
 ---
-description: "Queue 无关的 Personal Delivery 约定、三个 host Service Definition、测试 fake 与故障关闭的集成包边界。"
+description: "Queue 无关的 Personal Delivery 约定、本地 provider、Queue 集成与浏览器 workbench 包。"
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 摘要
 
-Delivery 组提供 Queue 无关的持久 protocol、三个抽象 host Service Definition，以及符合约定的测试 fake，用于不可变需求、有界 Packet、repository authority、evidence 和人工决定。其余包保留狭窄的 provider 与集成边界，具体行为不可用时会故障关闭。这组包目前并未组装可运行的 Personal Delivery 产品。
+Delivery 组提供 Queue 无关的持久 protocol、三个 host Service Definition、本地 provider、受治理的 Codex execution、独立 verification、Queue 集成、GitHub Issue intake 与浏览器 Remote，用于不可变需求、有界 Packet、repository authority、evidence 和人工决定。Personal Delivery bundle 把这些包组合成本地 Windows 产品。
 
 ## 目录
 
@@ -23,7 +23,7 @@ Delivery 组提供 Queue 无关的持久 protocol、三个抽象 host Service De
 <a id="packages"></a>
 ## 包
 
-只有三个 Service Definition 包声明 Cordis context key。保留的 provider 可以在 composition 时满足该 key，但仍可以拒绝所有操作；因此下表区分包 identity 与可用行为。
+只有三个 Service Definition 包声明 Cordis context key。具体 provider 满足这些 key；Consumer 让 Queue、Git、evidence、浏览器与 executor authority 留在各自 owning package。
 
 | 包 | 当前 surface | ctx key |
 |---|---|---|
@@ -32,26 +32,26 @@ Delivery 组提供 Queue 无关的持久 protocol、三个抽象 host Service De
 | [`repo-workspace`](repo-workspace/README.zh.md) | 可用的抽象 repository base/blob proof、revision/range 检查与自有 checkout lease | `ctx.repoWorkspace` |
 | [`delivery-evidence`](delivery-evidence/README.zh.md) | 可用的抽象不可变发布、id 解析、完整性校验读取与 provenance 绑定 | `ctx.deliveryEvidence` |
 | [`delivery-testkit`](delivery-testkit/README.zh.md) | Consumer 测试可用的具体 fake 与每次返回新副本的 Protocol fixture | — |
-| [`delivery-local`](delivery-local/README.zh.md) | 保留的 Storage provider；每项读写都以 unavailable 拒绝 | 提供 `ctx.delivery` |
-| [`repo-workspace-git-local`](repo-workspace-git-local/README.zh.md) | 保留的 Git/Subprocess provider 与配置；每项 repository 操作都以 unavailable 拒绝 | 提供 `ctx.repoWorkspace` |
-| [`delivery-evidence-local`](delivery-evidence-local/README.zh.md) | 保留的本地 evidence provider 与配置；save、resolve 与 read 都以 unavailable 拒绝 | 提供 `ctx.deliveryEvidence` |
-| [`delivery-runner-codex`](delivery-runner-codex/README.zh.md) | 固定使用受支持 Codex app-server 子路径的类型化 factory；返回的 run 以 unavailable 拒绝 | — |
-| [`delivery-verifier`](delivery-verifier/README.zh.md) | 类型化 fixed-plan verifier factory；返回的 run 以 unavailable 拒绝 | — |
-| [`delivery-github-intake`](delivery-github-intake/README.zh.md) | 校验精确的公开 Issue URL 语法，然后以 unavailable 拒绝 snapshot 导入 | — |
-| [`delivery-remote`](delivery-remote/README.zh.md) | 保留六个类型化 `delivery` Remote method；每个 method 都以 unavailable 拒绝 | — |
-| [`delivery-task-queue`](delivery-task-queue/README.zh.md) | 拥有两个 WorkKind 声明与可用的纯 admission helper；plugin handler 注册以 unavailable 拒绝 | — |
+| [`delivery-local`](delivery-local/README.zh.md) | Storage Domain-backed 不可变 record、projection、binding 与 decision | 提供 `ctx.delivery` |
+| [`repo-workspace-git-local`](repo-workspace-git-local/README.zh.md) | Git/Subprocess repository proof 与 Attempt-owned change/verification worktree | 提供 `ctx.repoWorkspace` |
+| [`delivery-evidence-local`](delivery-evidence-local/README.zh.md) | 本地 content-addressed publication 与完整性校验 evidence read | 提供 `ctx.deliveryEvidence` |
+| [`delivery-runner-codex`](delivery-runner-codex/README.zh.md) | 生成 checkpoint 与 evidence 的受治理 Codex app-server change runner | — |
+| [`delivery-verifier`](delivery-verifier/README.zh.md) | 带 path 与 evidence finding 的独立 fixed-argv verifier | — |
+| [`delivery-github-intake`](delivery-github-intake/README.zh.md) | 严格 Work Brief 解析与显式 GitHub Issue snapshot adoption | — |
+| [`delivery-remote`](delivery-remote/README.zh.md) | 浏览器安全 projection 与显式 import、run、verify、evidence 和 decision operation | `remote.delivery` |
+| [`delivery-task-queue`](delivery-task-queue/README.zh.md) | 拥有两个 WorkKind、持久跨 store admission、recovery 与 handler registration | — |
 
 -----
 
 <a id="product-composition"></a>
 ## 产品组合
 
-本组之外的两个包保留浏览器与 composition identity，不添加另一个 Delivery authority。两者都不会使产品可运行。
+本组之外的两个包负责渲染与组合产品，但不添加另一个 Delivery authority。
 
 | 包 | 当前 surface |
 |---|---|
-| [`client/ui-delivery`](../client/ui-delivery/README.zh.md) | 空的 node 与浏览器插件；不注册 slot、Remote 调用、locale 或可见 workbench |
-| [`bundle/personal-delivery`](../bundle/personal-delivery/README.zh.md) | 空 patch 载体；不激活 provider、Queue bridge、Remote 或浏览器插件 |
+| [`client/ui-delivery`](../client/ui-delivery/README.zh.md) | 基于浏览器安全 Remote projection 的五 lane Delivery workbench |
+| [`bundle/personal-delivery`](../bundle/personal-delivery/README.zh.md) | 完整 Host、Queue、Remote 与 UI 链路的本地 Windows composition |
 
 -----
 

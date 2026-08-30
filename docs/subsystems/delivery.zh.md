@@ -2,7 +2,7 @@
 
 [English](delivery.md) | 中文
 
-可用的 Personal Delivery 基础定义不可变需求、有界 Packet、repository proof、evidence reference、Queue binding、verification verdict 和人工决定。Delivery 拥有需求与决定 record；Queue 拥有 Work 与 Attempt lifecycle；Git 拥有 commit 与 blob fact；evidence storage 拥有不可变字节。本地 provider 和产品集成仍为故障关闭或空实现，因此这个 surface 目前不提供端到端 workbench。[`packages/delivery` map](../../packages/delivery/README.zh.md)记录每个包的精确可用性，[架构提议](../../.agents/notes/proposed/architecture/2026-08-29-personal-delivery-above-queue.zh.md)则拥有边界理由。
+Personal Delivery 定义不可变需求、有界 Packet、repository proof、evidence reference、Queue binding、verification verdict 和人工决定。Delivery 拥有需求与决定 record；Queue 拥有 Work 与 Attempt lifecycle；Git 拥有 commit 与 blob fact；evidence storage 拥有不可变字节。本地 Windows bundle 组合具体 provider、Queue bridge、Remote 与浏览器 workbench。[`packages/delivery` map](../../packages/delivery/README.zh.md)记录每个包的职责，[架构提议](../../.agents/notes/proposed/architecture/2026-08-29-personal-delivery-above-queue.zh.md)则拥有边界理由。
 
 ## Public protocol
 
@@ -24,13 +24,13 @@ Protocol 还导出 `code.change@1` 和 `code.verify@1` 的常量与持久 DTO：
 
 ## Service Definition
 
-三个抽象 Cordis service 拥有 host capability。它们的 definition 不包含 local-storage、Git-process、evidence-medium、Queue、Codex、Remote 或 UI implementation。每个保留的本地 provider 都会挂载对应的具名 service，但以明确的 unavailable classification 拒绝操作。
+三个抽象 Cordis service 拥有 host capability。它们的 definition 不包含 local-storage、Git-process、evidence-medium、Queue、Codex、Remote 或 UI implementation。选定的本地 provider 实现具名 service，但不改变这些边界。
 
 | ctx key | Service Definition | Definition package | 本地包状态 |
 |---|---|---|---|
-| `ctx.delivery` | `Delivery` | [`dsh-delivery`](../../packages/delivery/delivery/README.zh.md) | [`dsh-delivery-local`](../../packages/delivery/delivery-local/README.zh.md)：unavailable |
-| `ctx.repoWorkspace` | `RepositoryWorkspace` | [`dsh-repo-workspace`](../../packages/delivery/repo-workspace/README.zh.md) | [`dsh-repo-workspace-git-local`](../../packages/delivery/repo-workspace-git-local/README.zh.md)：unavailable |
-| `ctx.deliveryEvidence` | `DeliveryEvidence` | [`dsh-delivery-evidence`](../../packages/delivery/delivery-evidence/README.zh.md) | [`dsh-delivery-evidence-local`](../../packages/delivery/delivery-evidence-local/README.zh.md)：unavailable |
+| `ctx.delivery` | `Delivery` | [`dsh-delivery`](../../packages/delivery/delivery/README.zh.md) | [`dsh-delivery-local`](../../packages/delivery/delivery-local/README.zh.md)：Storage Domain-backed |
+| `ctx.repoWorkspace` | `RepositoryWorkspace` | [`dsh-repo-workspace`](../../packages/delivery/repo-workspace/README.zh.md) | [`dsh-repo-workspace-git-local`](../../packages/delivery/repo-workspace-git-local/README.zh.md)：本地 Git/Subprocess |
+| `ctx.deliveryEvidence` | `DeliveryEvidence` | [`dsh-delivery-evidence`](../../packages/delivery/delivery-evidence/README.zh.md) | [`dsh-delivery-evidence-local`](../../packages/delivery/delivery-evidence-local/README.zh.md)：本地 content-addressed bytes |
 
 `Delivery` 采纳 Contract revision、派生 Packet、开始并绑定 dispatch、记录人工决定、读取单条 Contract/Packet/binding record，并返回 detached snapshot。`createWorkPacket()` 接受由 `RepositoryWorkspace.resolveBase()` 铸造的 `VerifiedRepositoryBase`，不接受 caller 提供的 verification plan。Delivery 在 provider 内部派生 `contract-field` plan。对 `git-blob` source，Delivery 为 operation-local resolver 选择已验证 base、Contract 拥有的 path 与固定完整字节上限；它验证 `RepositoryWorkspace.readBlob()` 返回的 `VerifiedRepositoryBlob`、解析可信文档，并自行派生 plan provenance 与 digest。Delivery 不存储 Queue Attempt、retry state、Git checkout、evidence 字节或可写 UI lane。
 
@@ -42,13 +42,13 @@ Protocol 还导出 `code.change@1` 和 `code.verify@1` 的常量与持久 DTO：
 
 ## Queue 与执行边界
 
-[`dsh-delivery-task-queue`](../../packages/delivery/delivery-task-queue/README.zh.md) 是唯一为 `code.change@1` 与 `code.verify@1` 扩展 `WorkKindMap` 的包。它的纯 `startCodeChange()` 与 `startVerification()` admission helper 已可用：它们派生规范 Queue intent 与 idempotency key，在 enqueue 前提交 Delivery `submitting` binding，再绑定返回的 Queue Work id。Verification admission 只接受 Packet 及其已绑定 change dispatch，它验证精确成功的 change Result 与 Attempt identity，独立证明声称 checkpoint 是 Packet base 的 descendant，并自行派生 target commit 与 plan digest，不从 caller 接收两者。Plugin `apply()` 仍不可用，不注册 WorkHandler。
+[`dsh-delivery-task-queue`](../../packages/delivery/delivery-task-queue/README.zh.md) 是唯一为 `code.change@1` 与 `code.verify@1` 扩展 `WorkKindMap` 的包。它的 `startCodeChange()` 与 `startVerification()` helper 派生规范 Queue intent 与 idempotency key，在 enqueue 前提交 Delivery `submitting` binding，再绑定返回的 Queue Work id。Verification admission 只接受 Packet 及其已绑定 change dispatch，它验证精确成功的 change Result 与 Attempt identity，独立证明 checkpoint 是 Packet base 的 descendant，并自行派生 target commit 与 plan digest，不从 caller 接收两者。Plugin activation 以 staged mode 注册两个 handler，协调持久 binding 后才允许 claim。
 
-[`dsh-delivery-runner-codex`](../../packages/delivery/delivery-runner-codex/README.zh.md) 把类型化 factory 固定到受支持的 `@deepseek-ai/dsh-subagent-codex/app-server-run` 子路径，但其返回的 run 会在开始代码工作前以本包 unavailable error 拒绝。Personal Delivery 不定义 `ctx.codeExecutors`、executor registry 或 public generic executor capability。
+[`dsh-delivery-runner-codex`](../../packages/delivery/delivery-runner-codex/README.zh.md) 把类型化 factory 固定到受支持的 `@deepseek-ai/dsh-subagent-codex/app-server-run` 子路径，在 Attempt-owned worktree 中运行，等待完整 process-tree quiescence，并记录受治理的 checkpoint 与 evidence。Personal Delivery 不定义 `ctx.codeExecutors`、executor registry 或 public generic executor capability。
 
-[`dsh-delivery-verifier`](../../packages/delivery/delivery-verifier/README.zh.md) 保留类型化 operation-local 输入，用于 fixed argv、精确 range inspection、独立 target checkout、evidence 解析/读取与绑定 check 的 evidence writer。它返回的 run 同样以 unavailable 拒绝；不会产生 check 或 Verdict。
+[`dsh-delivery-verifier`](../../packages/delivery/delivery-verifier/README.zh.md) 在独立 target checkout 中执行可信 fixed argv，检查精确 repository range 与 path rule，完整性读取必需 evidence，并生成有界 check evidence 与 Verdict。
 
-GitHub intake 会校验精确的公开 `github.com/{owner}/{repository}/issues/{number}` URL 语法。其可用 parser 要求一个带标记的 `dsh-delivery-work-brief@1` YAML fence，并且不使用默认值，把每个显式创作的 Contract 字段映射出来；已发布 golden fixture 就是模板。Network snapshot import 与 adoption 以 unavailable 拒绝。六个类型化 `delivery` Remote method 都以 unavailable 拒绝。浏览器包不注册 slot、locale、Remote 调用、subscription 或可见 component，Personal Delivery bundle patch 也不激活任何 row。
+GitHub intake 校验精确的公开 `github.com/{owner}/{repository}/issues/{number}` URL 语法，抓取一次显式 snapshot，要求一个带标记的 `dsh-delivery-work-brief@1` YAML fence，并幂等采纳不可变 revision。类型化 `delivery` Remote 提供 projection 以及 import、Packet creation、change start、verification start、evidence read 与人工 decision operation，但不授予浏览器 Queue authority。浏览器包渲染五个派生 lane，Personal Delivery bundle 则激活完整本地链路。
 
 ## Readiness 与验收
 
@@ -58,11 +58,11 @@ Dispatch 约定写入确定性 `submitting` binding、由 operator enqueue Queue
 
 验收从一个 Packet 加两个 Delivery 拥有的 bound binding id 开始：同一 Packet 的一个 change binding 和一个 verification binding。Delivery 把其存储的 Queue Work id 交给 host-only candidate resolver，交叉校验返回的成功 Attempt id、completed Claim、verification intent 和 Verdict，再自行派生普通 acceptance 必须通过第二个 host-only capability 解析并完整性读取的每个 evidence id。保留的浏览器 DTO 不能提供 Verdict、actor id 或 idempotency key；单用户 host 使用 `delivery-remote` 配置的 `operatorId`（默认 `local-operator`）作为 actor，并根据所选 target 与 decision nonce 派生 key。普通 acceptance 需要精确匹配、passed 且 evidence 完整的 Verdict。Rejection 与显式人工 waiver 仍是不同决定。
 
-保留的 `DeliveryLane` view 把 Ready、Running、Review、Blocked 和 Accepted 命名为不可变 Delivery record 与 Queue view 上的 projection，而不是可写持久 state。当前没有 UI 计算或渲染它们。
+`DeliveryLane` view 把 Ready、Running、Review、Blocked 和 Accepted 命名为不可变 Delivery record 与 Queue view 上的 projection，而不是可写持久 state。Delivery workbench 渲染这些 projection，并且只调用狭窄 Remote operation。
 
 ## Failure 与 recovery 约定
 
-具体 handler 必须把可能已产生 side effect 却失去 ownership 的情况映射为带 Attention 的 Queue `unknown`，且不能自动重试。Cancellation ownership 包括完整 process-tree quiescence 与等待 workspace disposition。Queue 与 workspace 类型表达这些约定，但不可用的 handler 和本地 workspace provider 还没有在产品 composition 中执行它们。
+Handler 会把可能已产生 side effect 却失去 ownership 的情况映射为带 Attention 的 Queue `unknown`，且绝不自动重试。Cancellation ownership 包括完整 process-tree quiescence 与等待 workspace disposition。Staged handler activation 与持久 binding reconciliation 会阻止恢复的 queued work 在 Delivery 与 Queue 达成一致前启动。
 
 Evidence publication 先于成功 Claim 或 Verdict。缺失、无法解析或 digest 不匹配的 evidence 会阻止普通 acceptance。`ResumeCapsuleContent` 派生自权威 Contract、Packet、Git、Queue、decision 和 evidence fact；raw transcript 可作为 summary 输入，但不是 authority。
 
@@ -70,7 +70,7 @@ Evidence publication 先于成功 Claim 或 Verdict。缺失、无法解析或 d
 
 这套约定仅覆盖显式 GitHub Issue URL 接入、已配置本地 repository identity、Codex change execution、fixed-command independent verification、不可变 evidence 和显式人工 acceptance。它排除 GitHub webhook synchronization 和 write-back、自动 PR 创建或 merge、quota-triggered launch、value scoring、精确 Codex thread resume、general artifact platform、Batch/DAG delivery、multi-host lease、team、RBAC 和 multi-tenancy。
 
-当前只有 Protocol、Service Definition、测试 fake、Queue 声明与纯 admission helper 可用。可运行产品仍缺少三个具体本地 provider、Queue handler、Codex 执行、verification、Issue snapshot adoption、Remote projection 与 action、可见 client workbench 以及非空 bundle composition。
+本地 Windows bundle 提供完整 P0 composition。部署仍需把真实 Git toplevel 作为启动目录、使用现有 Codex authentication，并叠加 base Web profile；remote host、Linux 部署、webhook intake、自动 PR/merge 与 multi-user authority 仍不在本范围内。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
