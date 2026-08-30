@@ -58,9 +58,9 @@ Zero direct tokens; workbench state is browser control data rather than model in
 
 None; this package never assembles model input.
 
-<a id="known-limitations-and-deferred-work"></a>
-
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - **Profile composition is required** — the workbench appears only when a supported bundle/profile installs its Client plugin and the matching Delivery Remote plus providers.
 - **Single-operator MVP** — the browser never selects or claims an operator identity; multi-user authentication and authorization remain outside this package.

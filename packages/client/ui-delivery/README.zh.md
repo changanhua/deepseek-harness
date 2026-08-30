@@ -58,9 +58,9 @@ Issue import、Packet creation、change start、verification start、evidence re
 
 无；本包从不组装模型输入。
 
-<a id="known-limitations-and-deferred-work"></a>
-
 ## 已知限制
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - **需要 Profile composition**——只有受支持的 bundle/profile 安装其 Client plugin、匹配的 Delivery Remote 与 provider 时，工作台才会出现。
 - **单 operator MVP**——browser 永远不选择或声明 operator identity；multi-user authentication 与 authorization 不在本包范围内。

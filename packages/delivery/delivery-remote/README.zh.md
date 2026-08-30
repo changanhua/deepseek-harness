@@ -63,9 +63,9 @@ Remote 注入 `delivery`、`deliveryEvidence`、`repoWorkspace` 与 `taskQueue`�
 
 无；本包从不组装模型输入。
 
-<a id="known-limitations-and-deferred-work"></a>
-
 ## 已知限制
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - **Composition 仍由外部拥有**——真实 browser flow 运行前，受支持的 profile 必须组合 Delivery domain、evidence、repository workspace、Queue bridge、Typert transport、本 Remote 与具体 GitHub intake provider。
 - **单一可信 operator**——`operatorId` 是 Host 配置，不是 browser input 或多用户 authentication claim。

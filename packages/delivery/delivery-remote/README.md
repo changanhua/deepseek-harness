@@ -63,9 +63,9 @@ Zero direct tokens; Typert transport payloads are browser control data rather th
 
 None; this package never assembles model input.
 
-<a id="known-limitations-and-deferred-work"></a>
-
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - **Composition remains external** — a supported profile must compose the Delivery domain, evidence, repository workspace, Queue bridge, Typert transport, this Remote, and a concrete GitHub intake provider before a real browser flow can run.
 - **Single trusted operator** — `operatorId` is Host configuration rather than browser input or a multi-user authentication claim.
