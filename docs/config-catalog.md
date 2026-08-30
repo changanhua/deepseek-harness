@@ -616,7 +616,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/delivery/delivery-remote/src/index.ts:41`](../packages/delivery/delivery-remote/src/index.ts)
+Source: [`packages/delivery/delivery-remote/src/index.ts:77`](../packages/delivery/delivery-remote/src/index.ts)
 
 <a id="deepseek-aidsh-delivery-task-queue"></a>
 

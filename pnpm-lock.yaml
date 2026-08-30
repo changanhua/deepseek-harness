@@ -2583,15 +2583,24 @@ importers:
       '@deepseek-ai/dsh-client-locale':
         specifier: workspace:^
         version: link:../locale
+      '@deepseek-ai/dsh-client-store':
+        specifier: workspace:^
+        version: link:../store
       '@deepseek-ai/dsh-client-ui-layout':
         specifier: workspace:^
         version: link:../ui-layout
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:^
+        version: link:../ui-primitives
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: workspace:^
         version: link:../ui-renderer
       '@deepseek-ai/dsh-client-ui-sidebar':
         specifier: workspace:^
         version: link:../ui-sidebar
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:^
+        version: link:../ui-slots
       '@deepseek-ai/dsh-delivery-remote':
         specifier: workspace:^
         version: link:../../delivery/delivery-remote
@@ -2601,6 +2610,18 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
 
   packages/client/ui-directory-picker-browse:
     dependencies:
@@ -5020,12 +5041,6 @@ importers:
 
   packages/delivery/delivery-remote:
     dependencies:
-      '@deepseek-ai/dsh-delivery-github-intake':
-        specifier: workspace:^
-        version: link:../delivery-github-intake
-      '@deepseek-ai/dsh-delivery-task-queue':
-        specifier: workspace:^
-        version: link:../delivery-task-queue
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -5039,9 +5054,18 @@ importers:
       '@deepseek-ai/dsh-delivery-evidence':
         specifier: workspace:^
         version: link:../delivery-evidence
+      '@deepseek-ai/dsh-delivery-github-intake':
+        specifier: workspace:^
+        version: link:../delivery-github-intake
       '@deepseek-ai/dsh-delivery-protocol':
         specifier: workspace:^
         version: link:../delivery-protocol
+      '@deepseek-ai/dsh-delivery-task-queue':
+        specifier: workspace:^
+        version: link:../delivery-task-queue
+      '@deepseek-ai/dsh-delivery-testkit':
+        specifier: workspace:^
+        version: link:../delivery-testkit
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -5054,6 +5078,9 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/delivery/delivery-runner-codex:
     dependencies:

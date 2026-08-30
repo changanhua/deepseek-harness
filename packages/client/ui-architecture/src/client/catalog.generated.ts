@@ -638,7 +638,7 @@ export const architectureCatalog: ArchitectureCatalog = {
       short: 'client-ui-delivery',
       group: 'client',
       path: 'packages/client/ui-delivery',
-      description: 'Empty client package boundary reserved for the Personal Delivery workbench',
+      description: 'Personal Delivery workbench over the browser-safe Delivery Remote projection',
       dependencies: [
         'api-remotes',
         'client-locale',

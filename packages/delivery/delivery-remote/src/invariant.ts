@@ -10,9 +10,7 @@ export const name = 'delivery-remote-invariant'
 /** Invariant registry required before package ownership can be reserved. */
 export const inject = ['invariants']
 
-/**
- * No runtime invariant: unavailable Remote methods publish no projection.
- */
+/** No runtime invariant: Typert validation and injected service contracts own these checks. */
 const install: InvariantInstaller = () => {}
 
 /** Register this package's invariant companion. */

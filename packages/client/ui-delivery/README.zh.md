@@ -1,5 +1,5 @@
 ---
-description: "为 Personal Delivery 工作台预留的空 client package boundary。"
+description: "基于 browser-safe Delivery Remote projection、由本包拥有 locale 的 Personal Delivery workbench。"
 kind: "package-reference"
 ---
 
@@ -9,26 +9,38 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-delivery` 为 Personal Delivery workbench 预留可发布的 browser entry。其 client plugin 刻意为空：加载后不注册 slot、locale、Remote call、subscription 或可见 component。
+`dsh-client-ui-delivery` 根据 browser-safe Delivery Remote projection 渲染 Personal Delivery workbench。它注册本包拥有的中英文 copy、一个现有 shell view 和一个现有 sidebar module entry。
 
-这样既能稳定 package discovery 与 Loader composition，又不会在 Remote-backed projection、action、disposal behavior 与产品可见测试存在前宣称已有用户体验。
+工作台展示五条 lane 的 Packet ledger、从 scope 到 decision 的 evidence spine 与六个明确操作。Controller 拥有 snapshot 和 mutation cancellation，在可恢复失败期间保留最后一次已接受 snapshot，并随 client plugin lifecycle 释放每个 active request。
 
-## 空 composition
+## 目录
 
-- Node entry 保留空 plugin body。
-- Browser entry 导出空 dependency list 与 no-op `apply()`。
-- Manifest 保留 `./client` export 与 web platform declaration。
-- Peer 与 development dependency 预留未来的动态 Remote、locale、renderer 与 client-test boundary。静态 slot、primitives 与 React input 在源码真正导入前仅保留为 development dependency；当前尚未注入或调用其中任何一项。
+- [Composition](#composition)
+- [工作台边界](#workbench-boundary)
+- [开发说明](#dev-note)
+- [Model Experience](#model-experience)
+- [已知限制](#known-limitations-and-deferred-work)
 
-运行时不预留 shell 或 sidebar identity。缺少标准 registry lifecycle 与 disposal proof 时，不支持 slot registration。
+## Composition
+
+- Node entry 保持 inert，只提供 package invariant companion。
+- Browser entry 消费 `slots`、`locale`、`remote` 与 `remote.delivery`。
+- `shell.view/delivery` 渲染 workbench；`sidebar.modules/delivery-module` 打开它并显示派生的 blocked count。
+- 一个共享 observable controller 同时供两个 entry 使用，因此 navigation 与 workbench 不会各自保存互相竞争的 Delivery facts browser copy。
+
+Slot registration 与 locale dictionary 均由 effect 拥有，并在 plugin dispose 时消失。
+
+<a id="workbench-boundary"></a>
 
 ## 工作台边界
 
-Issue import、Packet creation、change start、verification start 与 human decision 是工作台范围内的 action。直接写 lane、把 Agent prose 当作 evidence、提供未经验证的 success 与自动 acceptance 均不在范围内。
+Issue import、Packet creation、change start、verification start、evidence read 与 human decision 是工作台范围内的 action。Browser 只提交所选 reference 与有界 form field。直接写 lane、raw Queue access、path 或 provider URI、credential、把 Agent prose 当作 evidence、提供未经验证的 success 与自动 acceptance 均不在范围内。
+
+<a id="dev-note"></a>
 
 ## 开发说明
 
-除非 generated Remote、framework seat、locale、component 与 lifecycle disposal 一并加入并通过测试，否则保持此 scaffold 为空。
+保持 lane 与 blocked reason 由 Host snapshot 派生。新增操作时必须同时提供 narrow Remote method、本包拥有的 locale copy、cancellation 与产品可见测试。
 
 ## Model Experience
 
@@ -36,11 +48,11 @@ Issue import、Packet creation、change start、verification start 与 human dec
 
 #### 模型看到什么
 
-模型不会直接看到任何内容。空 `./client` entry 不注册 prompt、tool、resource、Remote call 或 UI。
+模型不会直接看到任何内容。`./client` workbench 注册 browser UI 与 Remote call，但不注册 prompt、tool 或 resource。
 
 #### Token effect
 
-直接 token 为零；当前不渲染任何 workbench state。
+直接 token 为零；workbench state 是 browser control data，而不是 model input。
 
 #### KV Cache effect
 
@@ -48,4 +60,7 @@ Issue import、Packet creation、change start、verification start 与 human dec
 
 ## 已知限制
 
-- **没有产品可见工作台** — Remote-backed card、human action、slot composition、accessibility behavior 与 disposal 均不受支持。
+<a id="known-limitations-and-deferred-work"></a>
+
+- **需要 Profile composition**——只有受支持的 bundle/profile 安装其 Client plugin、匹配的 Delivery Remote 与 provider 时，工作台才会出现。
+- **单 operator MVP**——browser 永远不选择或声明 operator identity；multi-user authentication 与 authorization 不在本包范围内。

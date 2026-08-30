@@ -1,5 +1,5 @@
 ---
-description: "Empty client package boundary reserved for the Personal Delivery workbench."
+description: "Locale-owned Personal Delivery workbench over the browser-safe Delivery Remote projection."
 kind: "package-reference"
 ---
 
@@ -9,26 +9,38 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-delivery` reserves a publishable browser entry for the Personal Delivery workbench. Its client plugin is intentionally empty: loading it registers no slot, locale, Remote call, subscription, or visible component.
+`dsh-client-ui-delivery` renders the Personal Delivery workbench from the browser-safe Delivery Remote projection. It registers package-owned Chinese and English copy, one existing shell view, and one existing sidebar module entry.
 
-This keeps package discovery and Loader composition stable without claiming a user experience before the Remote-backed projection, actions, disposal behavior, and product-visible tests exist.
+The workbench presents a five-lane Packet ledger, a scope-to-decision evidence spine, and six explicit operations. Its controller owns snapshot and mutation cancellation, keeps the last accepted snapshot during recoverable failures, and disposes every active request with the client plugin lifecycle.
 
-## Empty composition
+## Contents
 
-- The node entry remains an empty plugin body.
-- The browser entry exports an empty dependency list and no-op `apply()`.
-- The manifest preserves the `./client` export and web platform declaration.
-- Peer and development dependencies reserve the future dynamic Remote, locale, renderer, and client-test boundary. Static slot, primitives, and React inputs remain development-only until source code actually imports them; none is injected or invoked yet.
+- [Composition](#composition)
+- [Workbench boundary](#workbench-boundary)
+- [Dev Note](#dev-note)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 
-No shell or sidebar identity is reserved at runtime. Slot registration is unsupported without the normal registry lifecycle and disposal proof.
+## Composition
+
+- The node entry remains inert and contributes only its package invariant companion.
+- The browser entry consumes `slots`, `locale`, `remote`, and `remote.delivery`.
+- `shell.view/delivery` renders the workbench; `sidebar.modules/delivery-module` opens it and reports the derived blocked count.
+- One shared observable controller feeds both entries, so navigation and workbench never keep competing browser copies of Delivery facts.
+
+Slot registration and locale dictionaries are effect-owned and disappear when the plugin is disposed.
+
+<a id="workbench-boundary"></a>
 
 ## Workbench boundary
 
-Issue import, Packet creation, change start, verification start, and a human decision are the in-scope workbench actions. Direct lane writes, Agent prose as evidence, unverified success, and automatic acceptance are out of scope.
+Issue import, Packet creation, change start, verification start, evidence read, and a human decision are the in-scope workbench actions. The browser submits selected references and bounded form fields only. Direct lane writes, raw Queue access, paths or provider URIs, credentials, Agent prose as evidence, unverified success, and automatic acceptance are out of scope.
+
+<a id="dev-note"></a>
 
 ## Dev Note
 
-Keep this scaffold empty unless generated Remote access, framework seats, locale, components, and lifecycle disposal are added and tested together.
+Keep lanes and blocked reasons derived from the Host snapshot. New operations require a narrow Remote method, package-owned locale copy, cancellation, and product-visible tests together.
 
 ## Model Experience
 
@@ -36,11 +48,11 @@ Keep this scaffold empty unless generated Remote access, framework seats, locale
 
 #### What the model sees
 
-Nothing directly. The empty `./client` entry registers no prompts, tools, resources, Remote calls, or UI.
+Nothing directly. The `./client` workbench registers browser UI and Remote calls, but no prompts, tools, or resources.
 
 #### Token effect
 
-Zero direct tokens; no workbench state is currently rendered.
+Zero direct tokens; workbench state is browser control data rather than model input.
 
 #### KV Cache effect
 
@@ -48,4 +60,7 @@ None; this package never assembles model input.
 
 ## Known Limitations and Deferred Work
 
-- **No product-visible workbench** — Remote-backed cards, human actions, slot composition, accessibility behavior, and disposal are unsupported.
+<a id="known-limitations-and-deferred-work"></a>
+
+- **Profile composition is required** — the workbench appears only when a supported bundle/profile installs its Client plugin and the matching Delivery Remote plus providers.
+- **Single-operator MVP** — the browser never selects or claims an operator identity; multi-user authentication and authorization remain outside this package.
