@@ -7,17 +7,25 @@ import type {
   CompletionClaim,
   ContractRevision,
   ContractRevisionId,
+  DeliveryCase,
+  DeliveryCaseId,
   DispatchBinding,
   DispatchBindingId,
   EvidenceId,
   EvidenceRef,
   ExecutorId,
+  GitHubIssueRef,
+  GitHubRepositoryRef,
+  IssuePublication,
+  IssuePublicationId,
+  PublicationFailure,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   RepositoryId,
   RepositoryRelativePath,
+  RequirementDecision,
+  RequirementOrigin,
   Sha256Digest,
-  SourceRef,
   VerificationVerdict,
   WorkPacket,
   WorkPacketId,
@@ -27,21 +35,12 @@ import type {
   VerifiedRepositoryBlob,
 } from '@deepseek-ai/dsh-repo-workspace'
 
-/** GitHub Issue snapshot fields whose durable identity and timestamp are allocated by {@link Delivery.adoptContractRevision}. */
-export interface SourceRefDraft {
-  readonly repository: SourceRef['repository']
-  readonly issueNumber: number
-  readonly canonicalUrl: string
-  readonly updatedAt: string
-  readonly title: string
-  readonly body: string
-  readonly contentDigest: Sha256Digest
-}
-
-/** Immutable requirement fields adopted beside one exact {@link SourceRefDraft}. */
+/**
+ * Requirement content fields chosen by the caller for one new revision.
+ * The provider allocates the revision identity, lineage, provenance,
+ * repository binding, and timestamp; callers never supply them here.
+ */
 export interface ContractRevisionDraft {
-  readonly previousRevisionId: ContractRevisionId | null
-  readonly repositoryId: RepositoryId | null
   readonly outcome: string | null
   readonly context: string
   readonly allowedScope: readonly string[]
@@ -53,12 +52,108 @@ export interface ContractRevisionDraft {
   readonly referenceLinks: ContractRevision['referenceLinks']
 }
 
-/** Idempotent adoption of one exact source snapshot and its interpreted requirement revision. */
-export interface AdoptContractRevisionRequest {
+/**
+ * Atomic creation of one Delivery Case together with its root requirement
+ * revision. The root revision has a `null` `previousRevisionId` and carries
+ * the request's origin and title verbatim.
+ */
+export interface CreateDeliveryCaseRequest {
   readonly idempotencyKey: string
-  readonly source: SourceRefDraft
+  /** Repository the Case anchors; also written into the root revision. */
+  readonly repositoryId: RepositoryId
+  readonly origin: RequirementOrigin
+  readonly title: string
   readonly revision: ContractRevisionDraft
 }
+
+/**
+ * Expected-head compare-and-set revision of one existing Delivery Case.
+ * The child revision's `previousRevisionId` is the expected head, and the
+ * Case head moves to the child in the same critical section; a head that has
+ * already moved fails closed instead of branching the Case.
+ */
+export interface ReviseDeliveryCaseRequest {
+  readonly idempotencyKey: string
+  readonly caseId: DeliveryCaseId
+  /** Head revision the caller observed; the write fails unless it is still current. */
+  readonly expectedHeadRevisionId: ContractRevisionId
+  readonly origin: RequirementOrigin
+  readonly title: string
+  readonly revision: ContractRevisionDraft
+}
+
+/**
+ * Human requirement decision over one exact Case revision. A revision has at
+ * most one decision: repeating identical content returns the existing record,
+ * while different content under the same revision fails closed.
+ */
+export interface RecordRequirementDecisionRequest {
+  readonly idempotencyKey: string
+  readonly caseId: DeliveryCaseId
+  readonly revisionId: ContractRevisionId
+  readonly decision: RequirementDecision['decision']
+  readonly reason: string
+  readonly actorId: string
+  readonly decisionNonce: string
+}
+
+/**
+ * First durable publication intent for one approved ready Case revision.
+ * A revision has at most one publication: repeated preparation returns the
+ * existing record, and re-preparing a failed publication resets that same
+ * record to `prepared` for a new attempt.
+ */
+export interface PrepareIssuePublicationRequest {
+  readonly idempotencyKey: string
+  readonly caseId: DeliveryCaseId
+  readonly revisionId: ContractRevisionId
+  readonly repository: GitHubRepositoryRef
+  readonly renderedDigest: Sha256Digest
+  readonly marker: string
+}
+
+/** Commit of one verified published GitHub Issue onto a `publishing` record. */
+export interface CompleteIssuePublicationRequest {
+  readonly publicationId: IssuePublicationId
+  /** Concurrency boundary: the transition fails closed unless the record is still `publishing`. */
+  readonly expectedPhase: 'publishing'
+  /** Exact GitHub Issue coordinates validated by the publisher before this call. */
+  readonly issue: GitHubIssueRef
+}
+
+/**
+ * Truthful failure classification for one started publication attempt.
+ * `sideEffect: 'not-started'` lands the record in `failed`; `sideEffect:
+ * 'unknown'` lands it in `unknown` for human resolution.
+ */
+export interface FailIssuePublicationRequest {
+  readonly publicationId: IssuePublicationId
+  /** Concurrency boundary: the transition fails closed unless the record is still `publishing`. */
+  readonly expectedPhase: 'publishing'
+  readonly failure: PublicationFailure
+}
+
+/**
+ * Human-authorized resolution of an unresolved publication.
+ * `confirm-published` moves an `unknown` or stalled `publishing` record to
+ * `published` with the exact verified Issue coordinates; `confirm-not-created`
+ * returns one to `prepared` after an authoritative verification basis proves
+ * no Issue was created.
+ */
+export type ResolveIssuePublicationRequest =
+  | {
+    readonly resolution: 'confirm-published'
+    readonly publicationId: IssuePublicationId
+    readonly issue: GitHubIssueRef
+    /** Human-recorded verification basis; blank text is rejected. */
+    readonly verificationBasis: string
+  }
+  | {
+    readonly resolution: 'confirm-not-created'
+    readonly publicationId: IssuePublicationId
+    /** Explicit verification basis proving the Issue was never created; operator impression alone is rejected. */
+    readonly verificationBasis: string
+  }
 
 /** Packet fields chosen by the operator after repository and base verification. */
 export interface WorkPacketDraft {
@@ -70,7 +165,7 @@ export interface WorkPacketDraft {
   readonly executorPreference: WorkPacket['executorPreference']
 }
 
-/** Idempotent creation of one immutable packet from a ready Contract revision. */
+/** Idempotent creation of one immutable packet from an approved ready revision. */
 export interface CreateWorkPacketRequest {
   readonly idempotencyKey: string
   readonly contractRevisionId: ContractRevisionId
@@ -158,6 +253,9 @@ export interface DeliverySnapshot {
   readonly workPackets: readonly WorkPacket[]
   readonly dispatchBindings: readonly DispatchBinding[]
   readonly acceptanceDecisions: readonly AcceptanceDecision[]
+  readonly deliveryCases: readonly DeliveryCase[]
+  readonly requirementDecisions: readonly RequirementDecision[]
+  readonly issuePublications: readonly IssuePublication[]
 }
 
 /** Provider-independent Delivery domain failures. */
@@ -167,4 +265,6 @@ export type DeliveryErrorCode =
   | 'idempotency-conflict'
   | 'invalid-reference'
   | 'invalid-transition'
+  | 'conflict'
+  | 'approval-required'
   | 'acceptance-denied'

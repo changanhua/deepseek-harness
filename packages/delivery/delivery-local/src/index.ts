@@ -7,8 +7,10 @@ import {
   DELIVERY_SCHEMA_VERSION,
   AcceptanceDecisionId,
   ContractRevisionId,
+  DeliveryCaseId,
   DispatchBindingId,
-  SourceRefId,
+  IssuePublicationId,
+  RequirementDecisionId,
   WorkPacketId,
   acceptanceDecisionFindings,
   acceptanceDecisionSchema,
@@ -19,12 +21,17 @@ import {
   completionClaimSchema,
   contractReadiness,
   contractRevisionSchema,
+  deliveryCaseSchema,
   dispatchBindingSchema,
   evidenceRefSchema,
+  gitHubIssueRefSchema,
+  issuePublicationSchema,
+  nonStartedPublicationFailureSchema,
   parseVerificationPlanDocument,
+  requirementDecisionSchema,
+  requirementOriginSchema,
   resolveVerificationPlan,
-  sourceRefContentDigest,
-  sourceRefSchema,
+  unknownPublicationFailureSchema,
   verificationVerdictPlanFindings,
   verificationVerdictSchema,
   workPacketDigest,
@@ -34,11 +41,15 @@ import type {
   AcceptanceDecision,
   CompletionClaim,
   ContractRevision,
+  DeliveryCase,
   DispatchBinding,
   EvidenceId,
   EvidenceRef,
+  IssuePublication,
   QueueAttemptIdRef,
   QueueWorkIdRef,
+  RequirementDecision,
+  RequirementOrigin,
   VerificationVerdict,
   WorkPacket,
 } from '@deepseek-ai/dsh-delivery-protocol'
@@ -48,15 +59,21 @@ import {
   DeliveryError,
 } from '@deepseek-ai/dsh-delivery'
 import type {
-  AdoptContractRevisionRequest,
   AcceptanceCandidateResolver,
   AcceptanceEvidenceResolver,
   BeginDispatchRequest,
   BindDispatchRequest,
+  CompleteIssuePublicationRequest,
+  CreateDeliveryCaseRequest,
   CreateWorkPacketRequest,
   DeliveryErrorCode,
   DeliverySnapshot,
+  FailIssuePublicationRequest,
+  PrepareIssuePublicationRequest,
   RecordAcceptanceDecisionRequest,
+  RecordRequirementDecisionRequest,
+  ResolveIssuePublicationRequest,
+  ReviseDeliveryCaseRequest,
   VerificationSourceResolver,
 } from '@deepseek-ai/dsh-delivery'
 import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
@@ -71,6 +88,9 @@ export class LocalDelivery extends Delivery {
   private packets!: KvTable<string, WorkPacket>
   private bindings!: KvTable<string, DispatchBinding>
   private decisions!: KvTable<string, AcceptanceDecision>
+  private cases!: KvTable<string, DeliveryCase>
+  private requirementDecisions!: KvTable<string, RequirementDecision>
+  private publications!: KvTable<string, IssuePublication>
   private readonly idempotencyTails = new Map<string, Promise<void>>()
 
   /** Open the private durable domain before the Service becomes available. */
@@ -81,57 +101,203 @@ export class LocalDelivery extends Delivery {
     this.packets = domain.table('work_packets')
     this.bindings = domain.table('dispatch_bindings')
     this.decisions = domain.table('acceptance_decisions')
+    this.cases = domain.table('delivery_cases')
+    this.requirementDecisions = domain.table('requirement_decisions')
+    this.publications = domain.table('issue_publications')
   }
 
-  override adoptContractRevision(request: AdoptContractRevisionRequest): Promise<ContractRevision> {
+  override createCase(
+    request: CreateDeliveryCaseRequest,
+  ): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
     return this.serializeIdempotentWrite(
       request.idempotencyKey,
-      () => this.adoptContractRevisionNow(request),
+      () => this.createCaseNow(request),
     )
   }
 
-  private async adoptContractRevisionNow(request: AdoptContractRevisionRequest): Promise<ContractRevision> {
-    const revisions = this.revisions
-    const recordKey = this.idempotentRecordKey('adopt-contract-revision', request.idempotencyKey, request)
-    const existing = revisions.get(recordKey)
-    if (existing !== undefined) return structuredClone(existing)
-    if (request.source.contentDigest !== sourceRefContentDigest(request.source)) {
-      throw new DeliveryError('invalid-reference', 'source content digest does not match the adopted title and body')
+  private async createCaseNow(
+    request: CreateDeliveryCaseRequest,
+  ): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
+    const recordKey = this.idempotentRecordKey('create-delivery-case', request.idempotencyKey, request)
+    const storedCase = this.cases.get(recordKey)
+    if (storedCase !== undefined) {
+      const storedRevision = this.revisions.get(recordKey)
+      if (storedRevision === undefined) {
+        throw new DeliveryError('unavailable', `durable Case '${storedCase.id}' lost its root revision`)
+      }
+      return { case: structuredClone(storedCase), revision: structuredClone(storedRevision) }
     }
-    const createdAt = new Date().toISOString()
-    const sourceCandidate = sourceRefSchema.parse({
+    // A previous attempt may have durable the root revision and crashed before
+    // the Case write; reuse that exact revision so the replay stays atomic.
+    const recovered = this.revisions.get(recordKey)
+    let revision: ContractRevision
+    if (recovered !== undefined) {
+      revision = recovered
+    } else {
+      revision = contractRevisionSchema.parse({
+        schemaVersion: DELIVERY_SCHEMA_VERSION,
+        id: ContractRevisionId(`contract-revision-${randomUUID()}`),
+        previousRevisionId: null,
+        origin: requirementOriginSchema.parse(structuredClone(request.origin)),
+        title: request.title,
+        repositoryId: request.repositoryId,
+        ...structuredClone(request.revision),
+        createdAt: new Date().toISOString(),
+      })
+      await this.revisions.put(recordKey, revision)
+    }
+    const at = new Date().toISOString()
+    const kase = deliveryCaseSchema.parse({
       schemaVersion: DELIVERY_SCHEMA_VERSION,
-      id: SourceRefId('source-ref-validation-candidate'),
-      provider: 'github',
-      ...structuredClone(request.source),
-      createdAt,
+      id: DeliveryCaseId(`delivery-case-${randomUUID()}`),
+      repositoryId: request.repositoryId,
+      headRevisionId: revision.id,
+      createdAt: at,
+      updatedAt: at,
     })
-    const previousRevisionId = request.revision.previousRevisionId
-    if (previousRevisionId !== null) {
-      const previous = this.getContractRevision(previousRevisionId)
-      if (previous === undefined) {
-        throw new DeliveryError('invalid-reference', `previous Contract revision '${previousRevisionId}' is absent`)
-      }
-      if (!sameSourceIssue(previous, sourceCandidate)) {
-        throw new DeliveryError(
-          'invalid-reference',
-          `previous Contract revision '${previousRevisionId}' belongs to a different source Issue`,
-        )
-      }
+    await this.cases.put(recordKey, kase)
+    return { case: structuredClone(kase), revision: structuredClone(revision) }
+  }
+
+  override reviseCase(
+    request: ReviseDeliveryCaseRequest,
+  ): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
+    return this.serializeIdempotentWrite(
+      request.idempotencyKey,
+      () => this.reviseCaseNow(request),
+    )
+  }
+
+  private async reviseCaseNow(
+    request: ReviseDeliveryCaseRequest,
+  ): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
+    const recordKey = this.idempotentRecordKey('revise-delivery-case', request.idempotencyKey, request)
+    const pending = this.revisions.get(recordKey)
+    if (pending !== undefined) {
+      return await this.settleReviseCase(request, pending)
     }
-    const source = {
-      ...sourceCandidate,
-      id: SourceRefId(`source-ref-${randomUUID()}`),
-    }
+    const located = this.requireCase(request.caseId)
+    // The slot-local head equality is the compare-and-set: an expected head
+    // that is absent, stale, or already superseded is the same CAS failure.
+    requireDelivery(
+      located.headRevisionId === request.expectedHeadRevisionId,
+      'conflict',
+      `Delivery Case '${request.caseId}' head is not the expected '${request.expectedHeadRevisionId}'`,
+    )
+    const parent = this.getContractRevision(request.expectedHeadRevisionId)
+    requireDelivery(
+      parent !== undefined,
+      'not-found',
+      `head Contract revision '${request.expectedHeadRevisionId}' is absent`,
+    )
+    requireOriginLineage(parent.origin, request.origin)
     const revision = contractRevisionSchema.parse({
       schemaVersion: DELIVERY_SCHEMA_VERSION,
       id: ContractRevisionId(`contract-revision-${randomUUID()}`),
+      previousRevisionId: request.expectedHeadRevisionId,
+      origin: requirementOriginSchema.parse(structuredClone(request.origin)),
+      title: request.title,
+      repositoryId: located.repositoryId,
       ...structuredClone(request.revision),
-      sourceRef: source,
-      createdAt,
+      createdAt: new Date().toISOString(),
     })
-    await revisions.put(recordKey, revision)
-    return structuredClone(revision)
+    await this.revisions.put(recordKey, revision)
+    const updatedCase = await this.moveCaseHead(located, request.expectedHeadRevisionId, revision)
+    return { case: updatedCase, revision: structuredClone(revision) }
+  }
+
+  /**
+   * Finish a replayed revision whose child revision is already durable: no-op
+   * when the head already points at it, re-run the head move when a crash
+   * interrupted it, and fail closed when the head moved elsewhere meanwhile.
+   */
+  private async settleReviseCase(
+    request: ReviseDeliveryCaseRequest,
+    pending: ContractRevision,
+  ): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
+    const located = this.requireCase(request.caseId)
+    if (located.headRevisionId === pending.id) {
+      return { case: structuredClone(located), revision: structuredClone(pending) }
+    }
+    requireDelivery(
+      located.headRevisionId === request.expectedHeadRevisionId,
+      'conflict',
+      `Delivery Case '${request.caseId}' head moved past '${request.expectedHeadRevisionId}' before the replayed child revision could attach`,
+    )
+    const updatedCase = await this.moveCaseHead(located, request.expectedHeadRevisionId, pending)
+    return { case: updatedCase, revision: structuredClone(pending) }
+  }
+
+  /**
+   * Compare-and-set the Case head inside the domain write chain: the slot-local
+   * head check is the authoritative concurrency boundary, so a head that moved
+   * after the caller observed it fails closed with `conflict` and no branch.
+   */
+  private async moveCaseHead(
+    current: DeliveryCase,
+    expectedHeadRevisionId: ContractRevisionId,
+    child: ContractRevision,
+  ): Promise<DeliveryCase> {
+    return await this.cases.update(this.requireCaseRecordKey(current.id), (stored) => {
+      if (stored.headRevisionId !== expectedHeadRevisionId) {
+        throw new DeliveryError(
+          'conflict',
+          `Delivery Case '${current.id}' head moved past '${expectedHeadRevisionId}' before the child revision could attach`,
+        )
+      }
+      return deliveryCaseSchema.parse({
+        ...stored,
+        headRevisionId: child.id,
+        updatedAt: new Date().toISOString(),
+      })
+    })
+  }
+
+  override recordRequirementDecision(request: RecordRequirementDecisionRequest): Promise<RequirementDecision> {
+    return this.serializeIdempotentWrite(
+      request.idempotencyKey,
+      () => this.recordRequirementDecisionNow(request),
+    )
+  }
+
+  private async recordRequirementDecisionNow(request: RecordRequirementDecisionRequest): Promise<RequirementDecision> {
+    const recordKey = this.idempotentRecordKey('record-requirement-decision', request.idempotencyKey, request)
+    const existing = this.requirementDecisions.get(recordKey)
+    if (existing !== undefined) return structuredClone(existing)
+    const revision = this.getContractRevision(request.revisionId)
+    requireDelivery(revision !== undefined, 'not-found', `Contract revision '${request.revisionId}' is absent`)
+    const kase = this.requireCase(request.caseId)
+    requireDelivery(
+      this.revisionInCase(kase, request.revisionId),
+      'invalid-reference',
+      `Contract revision '${request.revisionId}' does not belong to Delivery Case '${request.caseId}'`,
+    )
+    const prior = this.findDecisionForRevision(request.revisionId)
+    if (prior !== undefined) {
+      const sameContent = prior.decision === request.decision
+        && prior.reason === request.reason
+        && prior.actor.actorId === request.actorId
+        && prior.decisionNonce === request.decisionNonce
+      requireDelivery(
+        sameContent,
+        'idempotency-conflict',
+        `Contract revision '${request.revisionId}' already carries a different requirement decision`,
+      )
+      return structuredClone(prior)
+    }
+    const decision = requirementDecisionSchema.parse({
+      schemaVersion: DELIVERY_SCHEMA_VERSION,
+      id: RequirementDecisionId(`requirement-decision-${randomUUID()}`),
+      caseId: request.caseId,
+      revisionId: request.revisionId,
+      decision: request.decision,
+      reason: request.reason,
+      actor: { kind: 'human', actorId: request.actorId },
+      decisionNonce: request.decisionNonce,
+      decidedAt: new Date().toISOString(),
+    })
+    await this.requirementDecisions.put(recordKey, decision)
+    return structuredClone(decision)
   }
 
   override createWorkPacket(
@@ -152,18 +318,7 @@ export class LocalDelivery extends Delivery {
     const recordKey = this.idempotentRecordKey('create-work-packet', request.idempotencyKey, request)
     const existing = packets.get(recordKey)
     if (existing !== undefined) return structuredClone(existing)
-    const revision = this.getContractRevision(request.contractRevisionId)
-    requireDelivery(
-      revision !== undefined,
-      'not-found',
-      `Contract revision '${request.contractRevisionId}' is absent`,
-    )
-    const readiness = contractReadiness(revision)
-    requireDelivery(
-      readiness.ready,
-      'invalid-reference',
-      `Contract revision is not ready: ${readiness.reasons.join(', ')}`,
-    )
+    const revision = this.requireApprovedReadyRevision(request.contractRevisionId)
     requireDelivery(
       revision.repositoryId === request.repository.repositoryId,
       'invalid-reference',
@@ -255,6 +410,187 @@ export class LocalDelivery extends Delivery {
       path: source.path,
       blobId: blob.blobId,
     })
+  }
+
+  override prepareIssuePublication(request: PrepareIssuePublicationRequest): Promise<IssuePublication> {
+    return this.serializeIdempotentWrite(
+      request.idempotencyKey,
+      () => this.prepareIssuePublicationNow(request),
+    )
+  }
+
+  private async prepareIssuePublicationNow(request: PrepareIssuePublicationRequest): Promise<IssuePublication> {
+    const recordKey = this.idempotentRecordKey('prepare-issue-publication', request.idempotencyKey, request)
+    const existing = this.publications.get(recordKey)
+    if (existing !== undefined) return structuredClone(existing)
+    const revision = this.requireApprovedReadyRevision(request.revisionId)
+    const kase = this.requireCase(request.caseId)
+    requireDelivery(
+      this.revisionInCase(kase, request.revisionId),
+      'invalid-reference',
+      `Contract revision '${request.revisionId}' does not belong to Delivery Case '${request.caseId}'`,
+    )
+    const prior = this.findPublicationForRevision(request.revisionId)
+    if (prior !== undefined) {
+      if (prior.publication.phase === 'failed') {
+        return await this.resetFailedPublication(prior.recordKey, request)
+      }
+      requireDelivery(
+        prior.publication.phase !== 'unknown',
+        'invalid-transition',
+        `Issue publication '${prior.publication.id}' requires human resolution before another attempt`,
+      )
+      return structuredClone(prior.publication)
+    }
+    const at = new Date().toISOString()
+    const publication = issuePublicationSchema.parse({
+      schemaVersion: DELIVERY_SCHEMA_VERSION,
+      id: IssuePublicationId(`issue-publication-${randomUUID()}`),
+      caseId: kase.id,
+      revisionId: revision.id,
+      repository: structuredClone(request.repository),
+      renderedDigest: request.renderedDigest,
+      marker: request.marker,
+      phase: 'prepared',
+      issue: null,
+      failure: null,
+      createdAt: at,
+      updatedAt: at,
+    })
+    await this.publications.put(recordKey, publication)
+    return structuredClone(publication)
+  }
+
+  /**
+   * Return a failed publication to `prepared` under its existing id for a new
+   * attempt. A concurrent prepare that already reset the record returns the
+   * current record unchanged, so one revision never yields a second attempt
+   * record.
+   */
+  private async resetFailedPublication(
+    recordKey: string,
+    request: PrepareIssuePublicationRequest,
+  ): Promise<IssuePublication> {
+    const reset = await this.publications.update(recordKey, (current) => {
+      if (current.phase !== 'failed') return current
+      return issuePublicationSchema.parse({
+        ...current,
+        repository: structuredClone(request.repository),
+        renderedDigest: request.renderedDigest,
+        marker: request.marker,
+        phase: 'prepared',
+        issue: null,
+        failure: null,
+        updatedAt: new Date().toISOString(),
+      })
+    })
+    requireDelivery(
+      reset.phase !== 'unknown',
+      'invalid-transition',
+      `Issue publication '${reset.id}' requires human resolution before another attempt`,
+    )
+    return structuredClone(reset)
+  }
+
+  override markIssuePublicationStarted(publicationId: IssuePublicationId): Promise<IssuePublication & { phase: 'publishing' }> {
+    return this.transitionPublication(publicationId, (current) => {
+      requireDelivery(
+        current.phase === 'prepared',
+        'invalid-transition',
+        `Issue publication '${publicationId}' cannot start from phase '${current.phase}'`,
+      )
+      return issuePublicationSchema.parse({
+        ...current,
+        phase: 'publishing',
+        issue: null,
+        failure: null,
+        updatedAt: new Date().toISOString(),
+      }) as IssuePublication & { phase: 'publishing' }
+    })
+  }
+
+  override completeIssuePublication(
+    request: CompleteIssuePublicationRequest,
+  ): Promise<IssuePublication & { phase: 'published' }> {
+    return this.transitionPublication(request.publicationId, (current) => {
+      requirePublicationPhase(current, request.expectedPhase)
+      const issue = gitHubIssueRefSchema.parse(structuredClone(request.issue))
+      return issuePublicationSchema.parse({
+        ...current,
+        phase: 'published',
+        issue,
+        failure: null,
+        updatedAt: new Date().toISOString(),
+      }) as IssuePublication & { phase: 'published' }
+    })
+  }
+
+  override failIssuePublication(
+    request: FailIssuePublicationRequest,
+  ): Promise<IssuePublication & { phase: 'failed' | 'unknown' }> {
+    return this.transitionPublication(request.publicationId, (current) => {
+      requirePublicationPhase(current, request.expectedPhase)
+      const failure = request.failure.sideEffect === 'not-started'
+        ? nonStartedPublicationFailureSchema.parse(structuredClone(request.failure))
+        : unknownPublicationFailureSchema.parse(structuredClone(request.failure))
+      return issuePublicationSchema.parse({
+        ...current,
+        phase: failure.sideEffect === 'not-started' ? 'failed' : 'unknown',
+        issue: null,
+        failure,
+        updatedAt: new Date().toISOString(),
+      }) as IssuePublication & { phase: 'failed' | 'unknown' }
+    })
+  }
+
+  override async resolveIssuePublication(request: ResolveIssuePublicationRequest): Promise<IssuePublication> {
+    requireDelivery(
+      request.verificationBasis.trim().length > 0,
+      'invalid-reference',
+      'a publication resolution requires an explicit verification basis',
+    )
+    if (request.resolution === 'confirm-published') {
+      return this.transitionPublication(request.publicationId, (current) => {
+        requireResolvablePublication(current, request.publicationId)
+        const issue = gitHubIssueRefSchema.parse(structuredClone(request.issue))
+        return issuePublicationSchema.parse({
+          ...current,
+          phase: 'published',
+          issue,
+          failure: null,
+          updatedAt: new Date().toISOString(),
+        })
+      })
+    }
+    return this.transitionPublication(request.publicationId, (current) => {
+      requireResolvablePublication(current, request.publicationId)
+      return issuePublicationSchema.parse({
+        ...current,
+        phase: 'prepared',
+        issue: null,
+        failure: null,
+        updatedAt: new Date().toISOString(),
+      })
+    })
+  }
+
+  /**
+   * Run one publication transition inside the domain write chain: the slot-local
+   * phase check is the authoritative concurrency boundary, so a transition
+   * racing another settled transition fails closed instead of skipping states.
+   */
+  private async transitionPublication<P extends IssuePublication>(
+    publicationId: IssuePublicationId,
+    transition: (current: IssuePublication) => P,
+  ): Promise<P> {
+    const located = this.findPublication(publicationId)
+    requireDelivery(
+      located !== undefined,
+      'not-found',
+      `Issue publication '${publicationId}' is absent`,
+    )
+    const next = await this.publications.update(located.recordKey, current => transition(current))
+    return structuredClone(next) as P
   }
 
   override beginDispatch(request: BeginDispatchRequest): Promise<DispatchBinding> {
@@ -437,6 +773,23 @@ export class LocalDelivery extends Delivery {
     return structuredClone(decision)
   }
 
+  override getCase(id: DeliveryCaseId): DeliveryCase | undefined {
+    const located = this.findCase(id)
+    return located === undefined ? undefined : structuredClone(located.case)
+  }
+
+  override getRequirementDecision(id: RequirementDecisionId): RequirementDecision | undefined {
+    for (const value of this.requirementDecisions.entries()) {
+      if (value[1].id === id) return structuredClone(value[1])
+    }
+    return undefined
+  }
+
+  override getIssuePublication(id: IssuePublicationId): IssuePublication | undefined {
+    const located = this.findPublication(id)
+    return located === undefined ? undefined : structuredClone(located.publication)
+  }
+
   override getContractRevision(_id: ContractRevisionId): ContractRevision | undefined {
     for (const revision of this.revisions.entries()) {
       if (revision[1].id === _id) return structuredClone(revision[1])
@@ -462,12 +815,103 @@ export class LocalDelivery extends Delivery {
       workPackets: [...this.packets.entries()].map(([, value]) => value),
       dispatchBindings: [...this.bindings.entries()].map(([, value]) => value),
       acceptanceDecisions: [...this.decisions.entries()].map(([, value]) => value),
+      deliveryCases: [...this.cases.entries()].map(([, value]) => value),
+      requirementDecisions: [...this.requirementDecisions.entries()].map(([, value]) => value),
+      issuePublications: [...this.publications.entries()].map(([, value]) => value),
     })
+  }
+
+  private findCase(id: DeliveryCaseId): { recordKey: string; case: DeliveryCase } | undefined {
+    for (const [recordKey, value] of this.cases.entries()) {
+      if (value.id === id) return { recordKey, case: value }
+    }
+    return undefined
+  }
+
+  private requireCase(id: DeliveryCaseId): DeliveryCase {
+    const located = this.findCase(id)
+    requireDelivery(located !== undefined, 'not-found', `Delivery Case '${id}' is absent`)
+    return located.case
+  }
+
+  private requireCaseRecordKey(id: DeliveryCaseId): string {
+    const located = this.findCase(id)
+    requireDelivery(located !== undefined, 'not-found', `Delivery Case '${id}' is absent`)
+    return located.recordKey
+  }
+
+  private findPublication(id: IssuePublicationId): { recordKey: string; publication: IssuePublication } | undefined {
+    for (const [recordKey, value] of this.publications.entries()) {
+      if (value.id === id) return { recordKey, publication: value }
+    }
+    return undefined
+  }
+
+  private findPublicationForRevision(revisionId: ContractRevisionId): { recordKey: string; publication: IssuePublication } | undefined {
+    for (const [recordKey, value] of this.publications.entries()) {
+      if (value.revisionId === revisionId) return { recordKey, publication: value }
+    }
+    return undefined
+  }
+
+  private findDecisionForRevision(revisionId: ContractRevisionId): RequirementDecision | undefined {
+    for (const value of this.requirementDecisions.entries()) {
+      if (value[1].revisionId === revisionId) return value[1]
+    }
+    return undefined
   }
 
   private findBinding(id: DispatchBindingId): { recordKey: string; binding: DispatchBinding } | undefined {
     for (const [recordKey, binding] of this.bindings.entries()) {
       if (binding.id === id) return { recordKey, binding }
+    }
+    return undefined
+  }
+
+  /**
+   * Validate the full approval boundary shared by Packet creation and
+   * publication preparation: the revision must exist, belong to a Case, be
+   * ready, and carry the one `approved` requirement decision.
+   */
+  private requireApprovedReadyRevision(revisionId: ContractRevisionId): ContractRevision {
+    const revision = this.getContractRevision(revisionId)
+    requireDelivery(revision !== undefined, 'not-found', `Contract revision '${revisionId}' is absent`)
+    requireDelivery(
+      this.findCaseForRevision(revisionId) !== undefined,
+      'invalid-reference',
+      `Contract revision '${revisionId}' does not belong to any Delivery Case`,
+    )
+    const readiness = contractReadiness(revision)
+    requireDelivery(
+      readiness.ready,
+      'invalid-reference',
+      `Contract revision is not ready: ${readiness.reasons.join(', ')}`,
+    )
+    const decision = this.findDecisionForRevision(revisionId)
+    requireDelivery(
+      decision !== undefined && decision.decision === 'approved',
+      'approval-required',
+      `Contract revision '${revisionId}' requires an approved requirement decision`,
+    )
+    return revision
+  }
+
+  /** Walk the Case head lineage to its root; a broken link fails closed. */
+  private revisionInCase(kase: DeliveryCase, revisionId: ContractRevisionId): boolean {
+    let cursor: ContractRevisionId | null = kase.headRevisionId
+    const limit = this.revisions.size + 1
+    for (let step = 0; cursor !== null && step < limit; step += 1) {
+      if (cursor === revisionId) return true
+      const revision = this.getContractRevision(cursor)
+      if (revision === undefined) return false
+      cursor = revision.previousRevisionId
+    }
+    return false
+  }
+
+  private findCaseForRevision(revisionId: ContractRevisionId): DeliveryCase | undefined {
+    for (const value of this.cases.entries()) {
+      if (this.revisionInCase(value[1], revisionId)) return value[1]
     }
     return undefined
   }
@@ -619,6 +1063,9 @@ export class LocalDelivery extends Delivery {
       ...this.packets.keys(),
       ...this.bindings.keys(),
       ...this.decisions.keys(),
+      ...this.cases.keys(),
+      ...this.requirementDecisions.keys(),
+      ...this.publications.keys(),
     ]) {
       if (!stored.startsWith(prefix)) continue
       if (stored !== expected) {
@@ -632,10 +1079,41 @@ export class LocalDelivery extends Delivery {
 
 export default LocalDelivery
 
-function sameSourceIssue(left: ContractRevision, right: ContractRevision['sourceRef']): boolean {
-  return left.sourceRef.repository.owner === right.repository.owner
-    && left.sourceRef.repository.name === right.repository.name
-    && left.sourceRef.issueNumber === right.issueNumber
+/**
+ * A `github-import` child revision may only continue its parent's exact
+ * repository and Issue number; `human` origins carry no lineage constraint.
+ */
+function requireOriginLineage(parent: RequirementOrigin, child: RequirementOrigin): void {
+  if (parent.kind !== 'github-import' || child.kind !== 'github-import') return
+  if (parent.repository.owner !== child.repository.owner
+    || parent.repository.name !== child.repository.name
+    || parent.issueNumber !== child.issueNumber) {
+    throw new DeliveryError(
+      'invalid-reference',
+      'a github-import revision may only be revised from the same repository and Issue number',
+    )
+  }
+}
+
+/** Publication transitions run only from the caller-declared expected phase. */
+function requirePublicationPhase(
+  current: IssuePublication,
+  expectedPhase: 'publishing',
+): asserts current is IssuePublication & { phase: 'publishing' } {
+  requireDelivery(
+    current.phase === expectedPhase,
+    'invalid-transition',
+    `Issue publication '${current.id}' cannot transition from phase '${current.phase}'`,
+  )
+}
+
+/** Human resolution applies only to `unknown` or crash-stalled `publishing` records. */
+function requireResolvablePublication(current: IssuePublication, publicationId: IssuePublicationId): void {
+  requireDelivery(
+    current.phase === 'unknown' || current.phase === 'publishing',
+    'invalid-transition',
+    `Issue publication '${publicationId}' cannot be resolved from phase '${current.phase}'`,
+  )
 }
 
 function requireDelivery(

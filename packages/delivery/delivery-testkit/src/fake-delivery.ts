@@ -8,20 +8,28 @@ import Delivery, {
   DELIVERY_VERIFICATION_SOURCE_MAX_BYTES,
   type AcceptanceCandidateResolver,
   type AcceptanceEvidenceResolver,
-  type AdoptContractRevisionRequest,
   type BeginDispatchRequest,
   type BindDispatchRequest,
+  type CompleteIssuePublicationRequest,
+  type CreateDeliveryCaseRequest,
   type CreateWorkPacketRequest,
   type DeliverySnapshot,
+  type FailIssuePublicationRequest,
+  type PrepareIssuePublicationRequest,
   type RecordAcceptanceDecisionRequest,
+  type RecordRequirementDecisionRequest,
+  type ResolveIssuePublicationRequest,
+  type ReviseDeliveryCaseRequest,
   type VerificationSourceResolver,
 } from '@deepseek-ai/dsh-delivery'
 import {
   AcceptanceDecisionId,
   ContractRevisionId,
   DELIVERY_SCHEMA_VERSION,
+  DeliveryCaseId,
   DispatchBindingId,
-  SourceRefId,
+  IssuePublicationId,
+  RequirementDecisionId,
   WorkPacketId,
   acceptanceDecisionFindings,
   acceptanceDecisionSchema,
@@ -32,24 +40,32 @@ import {
   completionClaimSchema,
   contractReadiness,
   contractRevisionSchema,
+  deliveryCaseSchema,
   dispatchBindingSchema,
   evidenceRefSchema,
+  gitHubIssueRefSchema,
+  issuePublicationSchema,
+  nonStartedPublicationFailureSchema,
   parseVerificationPlanDocument,
+  requirementDecisionSchema,
+  requirementOriginSchema,
   resolveVerificationPlan,
-  sourceRefContentDigest,
-  sourceRefSchema,
-  workPacketDigest,
-  workPacketSchema,
+  unknownPublicationFailureSchema,
   verificationVerdictPlanFindings,
   verificationVerdictSchema,
+  workPacketDigest,
+  workPacketSchema,
   type AcceptanceDecision,
-  type ContractRevision,
   type CompletionClaim,
+  type ContractRevision,
+  type DeliveryCase,
   type DispatchBinding,
   type EvidenceRef,
+  type IssuePublication,
   type QueueAttemptIdRef,
   type QueueWorkIdRef,
-  type SourceRef,
+  type RequirementDecision,
+  type RequirementOrigin,
   type VerificationPlan,
   type VerificationVerdict,
   type WorkPacket,
@@ -67,6 +83,8 @@ interface IdempotentRecord {
   readonly operation: string
   readonly digest: string
   readonly resultId: string
+  /** Secondary record id for composite results such as a Case and its root revision. */
+  readonly relatedId?: string
 }
 
 function clone<T>(value: T): T {
@@ -75,13 +93,17 @@ function clone<T>(value: T): T {
 
 /**
  * In-memory Delivery Service Provider with the same idempotency, reference,
- * readiness, binding-CAS, and acceptance checks required of durable providers.
+ * readiness, approval, Case-head CAS, publication-state-machine, binding-CAS,
+ * and acceptance checks required of durable providers.
  */
 export class FakeDelivery extends Delivery {
   private readonly revisions = new Map<string, ContractRevision>()
   private readonly packets = new Map<string, WorkPacket>()
   private readonly bindings = new Map<string, DispatchBinding>()
   private readonly decisions = new Map<string, AcceptanceDecision>()
+  private readonly cases = new Map<string, DeliveryCase>()
+  private readonly requirementDecisions = new Map<string, RequirementDecision>()
+  private readonly publications = new Map<string, IssuePublication>()
   private readonly idempotency = new Map<string, IdempotentRecord>()
   private readonly idempotencyTails = new Map<string, Promise<void>>()
   private readonly counters = new Map<string, number>()
@@ -96,47 +118,180 @@ export class FakeDelivery extends Delivery {
     this.allocate = options.allocateId ?? ((family, ordinal) => `${family}-${String(ordinal)}`)
   }
 
-  async adoptContractRevision(request: AdoptContractRevisionRequest): Promise<ContractRevision> {
-    const prior = this.idempotent('adopt-contract-revision', request.idempotencyKey, request)
-    if (prior !== undefined) return this.requireRevision(prior.resultId)
-    if (request.source.contentDigest !== sourceRefContentDigest(request.source)) {
-      throw new DeliveryError('invalid-reference', 'source content digest does not match the adopted title and body')
-    }
-    const createdAt = this.now()
-    const sourceCandidate = sourceRefSchema.parse({
-      schemaVersion: DELIVERY_SCHEMA_VERSION,
-      id: SourceRefId('source-ref-validation-candidate'),
-      provider: 'github',
-      ...clone(request.source),
-      createdAt,
-    })
-    const previousRevisionId = request.revision.previousRevisionId
-    if (previousRevisionId !== null) {
-      const previous = this.revisions.get(previousRevisionId)
-      if (previous === undefined) {
-        throw new DeliveryError('invalid-reference', `previous Contract revision '${previousRevisionId}' is absent`)
+  async createCase(request: CreateDeliveryCaseRequest): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
+    return this.serializeIdempotentWrite(
+      request.idempotencyKey,
+      () => this.createCaseUnderLock(request),
+    )
+  }
+
+  private async createCaseUnderLock(
+    request: CreateDeliveryCaseRequest,
+  ): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
+    const prior = this.idempotent('create-delivery-case', request.idempotencyKey, request)
+    if (prior !== undefined) {
+      return {
+        case: this.requireCaseRecord(prior.resultId),
+        revision: this.requireRevision(prior.relatedId),
       }
-      if (!sameSourceIssue(previous.sourceRef, sourceCandidate)) {
-        throw new DeliveryError(
-          'invalid-reference',
-          `previous Contract revision '${previousRevisionId}' belongs to a different source Issue`,
-        )
-      }
-    }
-    const source: SourceRef = {
-      ...sourceCandidate,
-      id: SourceRefId(this.nextId('source-ref')),
     }
     const revision: ContractRevision = contractRevisionSchema.parse({
       schemaVersion: DELIVERY_SCHEMA_VERSION,
       id: ContractRevisionId(this.nextId('contract-revision')),
+      previousRevisionId: null,
+      origin: requirementOriginSchema.parse(clone(request.origin)),
+      title: request.title,
+      repositoryId: request.repositoryId,
       ...clone(request.revision),
-      sourceRef: source,
-      createdAt,
+      createdAt: this.now(),
     })
     this.revisions.set(revision.id, revision)
-    this.remember('adopt-contract-revision', request.idempotencyKey, request, revision.id)
-    return clone(revision)
+    const at = this.now()
+    const kase: DeliveryCase = deliveryCaseSchema.parse({
+      schemaVersion: DELIVERY_SCHEMA_VERSION,
+      id: DeliveryCaseId(this.nextId('delivery-case')),
+      repositoryId: request.repositoryId,
+      headRevisionId: revision.id,
+      createdAt: at,
+      updatedAt: at,
+    })
+    this.cases.set(kase.id, kase)
+    this.remember('create-delivery-case', request.idempotencyKey, request, kase.id, revision.id)
+    return { case: clone(kase), revision: clone(revision) }
+  }
+
+  async reviseCase(request: ReviseDeliveryCaseRequest): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
+    return this.serializeIdempotentWrite(
+      request.idempotencyKey,
+      () => this.reviseCaseUnderLock(request),
+    )
+  }
+
+  private async reviseCaseUnderLock(
+    request: ReviseDeliveryCaseRequest,
+  ): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
+    const prior = this.idempotent('revise-delivery-case', request.idempotencyKey, request)
+    if (prior !== undefined) return this.settleReviseCase(request, prior.resultId)
+    const located = this.requireCase(request.caseId)
+    // The slot-local head equality is the compare-and-set: an expected head
+    // that is absent, stale, or already superseded is the same CAS failure.
+    if (located.headRevisionId !== request.expectedHeadRevisionId) {
+      throw new DeliveryError(
+        'conflict',
+        `Delivery Case '${request.caseId}' head is not the expected '${request.expectedHeadRevisionId}'`,
+      )
+    }
+    const parent = this.revisions.get(request.expectedHeadRevisionId)
+    if (parent === undefined) {
+      throw new DeliveryError('not-found', `head Contract revision '${request.expectedHeadRevisionId}' is absent`)
+    }
+    requireOriginLineage(parent.origin, request.origin)
+    const revision: ContractRevision = contractRevisionSchema.parse({
+      schemaVersion: DELIVERY_SCHEMA_VERSION,
+      id: ContractRevisionId(this.nextId('contract-revision')),
+      previousRevisionId: request.expectedHeadRevisionId,
+      origin: requirementOriginSchema.parse(clone(request.origin)),
+      title: request.title,
+      repositoryId: located.repositoryId,
+      ...clone(request.revision),
+      createdAt: this.now(),
+    })
+    this.revisions.set(revision.id, revision)
+    this.remember('revise-delivery-case', request.idempotencyKey, request, revision.id)
+    const kase = this.moveCaseHead(request.caseId, request.expectedHeadRevisionId, revision.id)
+    return { case: clone(kase), revision: clone(revision) }
+  }
+
+  /** Finish a replayed revision whose child revision is already committed. */
+  private settleReviseCase(
+    request: ReviseDeliveryCaseRequest,
+    childRevisionId: string,
+  ): { case: DeliveryCase; revision: ContractRevision } {
+    const located = this.requireCase(request.caseId)
+    const child = this.requireRevision(childRevisionId)
+    if (located.headRevisionId === childRevisionId) {
+      return { case: clone(located), revision: child }
+    }
+    if (located.headRevisionId !== request.expectedHeadRevisionId) {
+      throw new DeliveryError(
+        'conflict',
+        `Delivery Case '${request.caseId}' head moved past '${request.expectedHeadRevisionId}' before the replayed child revision could attach`,
+      )
+    }
+    const kase = this.moveCaseHead(request.caseId, request.expectedHeadRevisionId, childRevisionId)
+    return { case: clone(kase), revision: child }
+  }
+
+  /**
+   * Compare-and-set the Case head: a head that moved after the caller observed
+   * it fails closed with `conflict` and no branch.
+   */
+  private moveCaseHead(caseId: string, expectedHeadRevisionId: string, childRevisionId: string): DeliveryCase {
+    const located = this.requireCase(caseId)
+    if (located.headRevisionId !== expectedHeadRevisionId) {
+      throw new DeliveryError(
+        'conflict',
+        `Delivery Case '${caseId}' head moved past '${expectedHeadRevisionId}' before the child revision could attach`,
+      )
+    }
+    const updated: DeliveryCase = deliveryCaseSchema.parse({
+      ...located,
+      headRevisionId: childRevisionId,
+      updatedAt: this.now(),
+    })
+    this.cases.set(updated.id, updated)
+    return updated
+  }
+
+  async recordRequirementDecision(request: RecordRequirementDecisionRequest): Promise<RequirementDecision> {
+    return this.serializeIdempotentWrite(
+      request.idempotencyKey,
+      () => this.recordRequirementDecisionUnderLock(request),
+    )
+  }
+
+  private async recordRequirementDecisionUnderLock(request: RecordRequirementDecisionRequest): Promise<RequirementDecision> {
+    const prior = this.idempotent('record-requirement-decision', request.idempotencyKey, request)
+    if (prior !== undefined) return this.requireRequirementDecision(prior.resultId)
+    const revision = this.revisions.get(request.revisionId)
+    if (revision === undefined) {
+      throw new DeliveryError('not-found', `Contract revision '${request.revisionId}' is absent`)
+    }
+    const kase = this.requireCase(request.caseId)
+    if (!this.revisionInCase(kase, request.revisionId)) {
+      throw new DeliveryError(
+        'invalid-reference',
+        `Contract revision '${request.revisionId}' does not belong to Delivery Case '${request.caseId}'`,
+      )
+    }
+    const existing = this.findDecisionForRevision(request.revisionId)
+    if (existing !== undefined) {
+      const sameContent = existing.decision === request.decision
+        && existing.reason === request.reason
+        && existing.actor.actorId === request.actorId
+        && existing.decisionNonce === request.decisionNonce
+      if (!sameContent) {
+        throw new DeliveryError(
+          'idempotency-conflict',
+          `Contract revision '${request.revisionId}' already carries a different requirement decision`,
+        )
+      }
+      return clone(existing)
+    }
+    const decision: RequirementDecision = requirementDecisionSchema.parse({
+      schemaVersion: DELIVERY_SCHEMA_VERSION,
+      id: RequirementDecisionId(this.nextId('requirement-decision')),
+      caseId: request.caseId,
+      revisionId: request.revisionId,
+      decision: request.decision,
+      reason: request.reason,
+      actor: { kind: 'human', actorId: request.actorId },
+      decisionNonce: request.decisionNonce,
+      decidedAt: this.now(),
+    })
+    this.requirementDecisions.set(decision.id, decision)
+    this.remember('record-requirement-decision', request.idempotencyKey, request, decision.id)
+    return clone(decision)
   }
 
   async createWorkPacket(
@@ -155,14 +310,7 @@ export class FakeDelivery extends Delivery {
   ): Promise<WorkPacket> {
     const prior = this.idempotent('create-work-packet', request.idempotencyKey, request)
     if (prior !== undefined) return this.requirePacket(prior.resultId)
-    const revision = this.revisions.get(request.contractRevisionId)
-    if (revision === undefined) {
-      throw new DeliveryError('not-found', `Contract revision '${request.contractRevisionId}' is absent`)
-    }
-    const readiness = contractReadiness(revision)
-    if (!readiness.ready) {
-      throw new DeliveryError('invalid-reference', `Contract revision is not ready: ${readiness.reasons.join(', ')}`)
-    }
+    const revision = this.requireApprovedReadyRevision(request.contractRevisionId)
     if (revision.repositoryId !== request.repository.repositoryId) {
       throw new DeliveryError('invalid-reference', 'verified repository does not match the Contract revision')
     }
@@ -232,6 +380,175 @@ export class FakeDelivery extends Delivery {
     this.packets.set(packet.id, packet)
     this.remember('create-work-packet', request.idempotencyKey, request, packet.id)
     return clone(packet)
+  }
+
+  async prepareIssuePublication(request: PrepareIssuePublicationRequest): Promise<IssuePublication> {
+    return this.serializeIdempotentWrite(
+      request.idempotencyKey,
+      () => this.prepareIssuePublicationUnderLock(request),
+    )
+  }
+
+  private async prepareIssuePublicationUnderLock(request: PrepareIssuePublicationRequest): Promise<IssuePublication> {
+    const prior = this.idempotent('prepare-issue-publication', request.idempotencyKey, request)
+    if (prior !== undefined) return this.requirePublication(prior.resultId)
+    const revision = this.requireApprovedReadyRevision(request.revisionId)
+    const kase = this.requireCase(request.caseId)
+    if (!this.revisionInCase(kase, request.revisionId)) {
+      throw new DeliveryError(
+        'invalid-reference',
+        `Contract revision '${request.revisionId}' does not belong to Delivery Case '${request.caseId}'`,
+      )
+    }
+    const existing = this.findPublicationForRevision(request.revisionId)
+    if (existing !== undefined) {
+      if (existing.phase === 'failed') {
+        return this.resetFailedPublication(existing.id, request)
+      }
+      if (existing.phase === 'unknown') {
+        throw new DeliveryError(
+          'invalid-transition',
+          `Issue publication '${existing.id}' requires human resolution before another attempt`,
+        )
+      }
+      return clone(existing)
+    }
+    const at = this.now()
+    const publication: IssuePublication = issuePublicationSchema.parse({
+      schemaVersion: DELIVERY_SCHEMA_VERSION,
+      id: IssuePublicationId(this.nextId('issue-publication')),
+      caseId: kase.id,
+      revisionId: revision.id,
+      repository: clone(request.repository),
+      renderedDigest: request.renderedDigest,
+      marker: request.marker,
+      phase: 'prepared',
+      issue: null,
+      failure: null,
+      createdAt: at,
+      updatedAt: at,
+    })
+    this.publications.set(publication.id, publication)
+    this.remember('prepare-issue-publication', request.idempotencyKey, request, publication.id)
+    return clone(publication)
+  }
+
+  /**
+   * Return a failed publication to `prepared` under its existing id for a new
+   * attempt, so one revision never yields a second attempt record.
+   */
+  private resetFailedPublication(publicationId: string, request: PrepareIssuePublicationRequest): IssuePublication {
+    const current = this.requirePublication(publicationId)
+    if (current.phase === 'unknown') {
+      throw new DeliveryError(
+        'invalid-transition',
+        `Issue publication '${current.id}' requires human resolution before another attempt`,
+      )
+    }
+    if (current.phase !== 'failed') return clone(current)
+    const reset: IssuePublication = issuePublicationSchema.parse({
+      ...current,
+      repository: clone(request.repository),
+      renderedDigest: request.renderedDigest,
+      marker: request.marker,
+      phase: 'prepared',
+      issue: null,
+      failure: null,
+      updatedAt: this.now(),
+    })
+    this.publications.set(reset.id, reset)
+    return clone(reset)
+  }
+
+  markIssuePublicationStarted(publicationId: IssuePublicationId): Promise<IssuePublication & { phase: 'publishing' }> {
+    return this.transitionPublication(publicationId, (current) => {
+      if (current.phase !== 'prepared') {
+        throw new DeliveryError(
+          'invalid-transition',
+          `Issue publication '${publicationId}' cannot start from phase '${current.phase}'`,
+        )
+      }
+      return issuePublicationSchema.parse({
+        ...current,
+        phase: 'publishing',
+        issue: null,
+        failure: null,
+        updatedAt: this.now(),
+      }) as IssuePublication & { phase: 'publishing' }
+    })
+  }
+
+  completeIssuePublication(request: CompleteIssuePublicationRequest): Promise<IssuePublication & { phase: 'published' }> {
+    return this.transitionPublication(request.publicationId, (current) => {
+      requirePublicationPhase(current, request.expectedPhase)
+      const issue = gitHubIssueRefSchema.parse(clone(request.issue))
+      return issuePublicationSchema.parse({
+        ...current,
+        phase: 'published',
+        issue,
+        failure: null,
+        updatedAt: this.now(),
+      }) as IssuePublication & { phase: 'published' }
+    })
+  }
+
+  failIssuePublication(request: FailIssuePublicationRequest): Promise<IssuePublication & { phase: 'failed' | 'unknown' }> {
+    return this.transitionPublication(request.publicationId, (current) => {
+      requirePublicationPhase(current, request.expectedPhase)
+      const failure = request.failure.sideEffect === 'not-started'
+        ? nonStartedPublicationFailureSchema.parse(clone(request.failure))
+        : unknownPublicationFailureSchema.parse(clone(request.failure))
+      return issuePublicationSchema.parse({
+        ...current,
+        phase: failure.sideEffect === 'not-started' ? 'failed' : 'unknown',
+        issue: null,
+        failure,
+        updatedAt: this.now(),
+      }) as IssuePublication & { phase: 'failed' | 'unknown' }
+    })
+  }
+
+  async resolveIssuePublication(request: ResolveIssuePublicationRequest): Promise<IssuePublication> {
+    if (request.verificationBasis.trim().length === 0) {
+      throw new DeliveryError('invalid-reference', 'a publication resolution requires an explicit verification basis')
+    }
+    if (request.resolution === 'confirm-published') {
+      return this.transitionPublication(request.publicationId, (current) => {
+        requireResolvablePublication(current, request.publicationId)
+        const issue = gitHubIssueRefSchema.parse(clone(request.issue))
+        return issuePublicationSchema.parse({
+          ...current,
+          phase: 'published',
+          issue,
+          failure: null,
+          updatedAt: this.now(),
+        })
+      })
+    }
+    return this.transitionPublication(request.publicationId, (current) => {
+      requireResolvablePublication(current, request.publicationId)
+      return issuePublicationSchema.parse({
+        ...current,
+        phase: 'prepared',
+        issue: null,
+        failure: null,
+        updatedAt: this.now(),
+      })
+    })
+  }
+
+  /** Run one publication transition: a settled or racing phase fails closed. */
+  private async transitionPublication<P extends IssuePublication>(
+    publicationId: IssuePublicationId,
+    transition: (current: IssuePublication) => P,
+  ): Promise<P> {
+    const current = this.publications.get(publicationId)
+    if (current === undefined) {
+      throw new DeliveryError('not-found', `Issue publication '${publicationId}' is absent`)
+    }
+    const next = transition(current)
+    this.publications.set(next.id, next)
+    return clone(next)
   }
 
   async beginDispatch(request: BeginDispatchRequest): Promise<DispatchBinding> {
@@ -387,17 +704,32 @@ export class FakeDelivery extends Delivery {
     return clone(decision)
   }
 
-  getContractRevision(id: ContractRevision['id']): ContractRevision | undefined {
+  getCase(id: DeliveryCaseId): DeliveryCase | undefined {
+    const value = this.cases.get(id)
+    return value === undefined ? undefined : clone(value)
+  }
+
+  getRequirementDecision(id: RequirementDecisionId): RequirementDecision | undefined {
+    const value = this.requirementDecisions.get(id)
+    return value === undefined ? undefined : clone(value)
+  }
+
+  getIssuePublication(id: IssuePublicationId): IssuePublication | undefined {
+    const value = this.publications.get(id)
+    return value === undefined ? undefined : clone(value)
+  }
+
+  getContractRevision(id: ContractRevisionId): ContractRevision | undefined {
     const value = this.revisions.get(id)
     return value === undefined ? undefined : clone(value)
   }
 
-  getWorkPacket(id: WorkPacket['id']): WorkPacket | undefined {
+  getWorkPacket(id: WorkPacketId): WorkPacket | undefined {
     const value = this.packets.get(id)
     return value === undefined ? undefined : clone(value)
   }
 
-  getDispatchBinding(id: DispatchBinding['id']): DispatchBinding | undefined {
+  getDispatchBinding(id: DispatchBindingId): DispatchBinding | undefined {
     const value = this.bindings.get(id)
     return value === undefined ? undefined : clone(value)
   }
@@ -408,6 +740,9 @@ export class FakeDelivery extends Delivery {
       workPackets: [...this.packets.values()],
       dispatchBindings: [...this.bindings.values()],
       acceptanceDecisions: [...this.decisions.values()],
+      deliveryCases: [...this.cases.values()],
+      requirementDecisions: [...this.requirementDecisions.values()],
+      issuePublications: [...this.publications.values()],
     })
   }
 
@@ -444,12 +779,87 @@ export class FakeDelivery extends Delivery {
     return prior
   }
 
-  private remember(operation: string, key: string, input: unknown, resultId: string): void {
-    this.idempotency.set(key, { operation, digest: canonicalDigest({ input, operation }), resultId })
+  private remember(operation: string, key: string, input: unknown, resultId: string, relatedId?: string): void {
+    const record: IdempotentRecord = { operation, digest: canonicalDigest({ input, operation }), resultId }
+    if (relatedId !== undefined) {
+      return void this.idempotency.set(key, { ...record, relatedId })
+    }
+    this.idempotency.set(key, record)
   }
 
-  private requireRevision(id: string): ContractRevision {
-    const value = this.revisions.get(id)
+  /**
+   * Validate the full approval boundary shared by Packet creation and
+   * publication preparation: the revision must exist, belong to a Case, be
+   * ready, and carry the one `approved` requirement decision.
+   */
+  private requireApprovedReadyRevision(revisionId: string): ContractRevision {
+    const revision = this.revisions.get(revisionId)
+    if (revision === undefined) {
+      throw new DeliveryError('not-found', `Contract revision '${revisionId}' is absent`)
+    }
+    if (this.findCaseForRevision(revisionId) === undefined) {
+      throw new DeliveryError('invalid-reference', `Contract revision '${revisionId}' does not belong to any Delivery Case`)
+    }
+    const readiness = contractReadiness(revision)
+    if (!readiness.ready) {
+      throw new DeliveryError('invalid-reference', `Contract revision is not ready: ${readiness.reasons.join(', ')}`)
+    }
+    const decision = this.findDecisionForRevision(revisionId)
+    if (decision === undefined || decision.decision !== 'approved') {
+      throw new DeliveryError('approval-required', `Contract revision '${revisionId}' requires an approved requirement decision`)
+    }
+    return revision
+  }
+
+  /** Walk the Case head lineage to its root; a broken link ends the walk. */
+  private revisionInCase(kase: DeliveryCase, revisionId: string): boolean {
+    let cursor: string | null = kase.headRevisionId
+    const limit = this.revisions.size + 1
+    for (let step = 0; cursor !== null && step < limit; step += 1) {
+      if (cursor === revisionId) return true
+      const revision = this.revisions.get(cursor)
+      if (revision === undefined) return false
+      cursor = revision.previousRevisionId
+    }
+    return false
+  }
+
+  private findCaseForRevision(revisionId: string): DeliveryCase | undefined {
+    for (const kase of this.cases.values()) {
+      if (this.revisionInCase(kase, revisionId)) return kase
+    }
+    return undefined
+  }
+
+  private findDecisionForRevision(revisionId: string): RequirementDecision | undefined {
+    for (const decision of this.requirementDecisions.values()) {
+      if (decision.revisionId === revisionId) return decision
+    }
+    return undefined
+  }
+
+  private findPublicationForRevision(revisionId: string): IssuePublication | undefined {
+    for (const publication of this.publications.values()) {
+      if (publication.revisionId === revisionId) return publication
+    }
+    return undefined
+  }
+
+  private requireCase(id: string): DeliveryCase {
+    const value = this.cases.get(id)
+    if (value === undefined) throw new DeliveryError('not-found', `Delivery Case '${id}' is absent`)
+    return value
+  }
+
+  private requireCaseRecord(id: string): DeliveryCase {
+    const value = this.cases.get(id)
+    /* v8 ignore next -- both maps are committed together; only direct private-state mutation can break this invariant. */
+    if (value === undefined) throw new Error('delivery-testkit: idempotency record references a missing Delivery Case')
+    return clone(value)
+  }
+
+  private requireRevision(id: string | undefined): ContractRevision {
+    const value = id === undefined ? undefined : this.revisions.get(id)
     /* v8 ignore next -- both maps are committed together; only direct private-state mutation can break this invariant. */
     if (value === undefined) throw new Error('delivery-testkit: idempotency record references a missing Contract revision')
     return clone(value)
@@ -466,6 +876,27 @@ export class FakeDelivery extends Delivery {
     const value = this.bindings.get(id)
     /* v8 ignore next -- both maps are committed together; only direct private-state mutation can break this invariant. */
     if (value === undefined) throw new Error('delivery-testkit: idempotency record references a missing Dispatch binding')
+    return clone(value)
+  }
+
+  private requireRequirementDecision(id: string): RequirementDecision {
+    const value = this.requirementDecisions.get(id)
+    /* v8 ignore next -- both maps are committed together; only direct private-state mutation can break this invariant. */
+    if (value === undefined) throw new Error('delivery-testkit: idempotency record references a missing requirement decision')
+    return clone(value)
+  }
+
+  private requirePublication(id: string): IssuePublication {
+    const value = this.publications.get(id)
+    /* v8 ignore next -- both maps are committed together; only direct private-state mutation can break this invariant. */
+    if (value === undefined) throw new Error('delivery-testkit: idempotency record references a missing Issue publication')
+    return clone(value)
+  }
+
+  private requireDecision(id: string): AcceptanceDecision {
+    const value = this.decisions.get(id)
+    /* v8 ignore next -- both maps are committed together; only direct private-state mutation can break this invariant. */
+    if (value === undefined) throw new Error('delivery-testkit: idempotency record references a missing Acceptance decision')
     return clone(value)
   }
 
@@ -583,17 +1014,43 @@ export class FakeDelivery extends Delivery {
     }
     return references
   }
+}
 
-  private requireDecision(id: string): AcceptanceDecision {
-    const value = this.decisions.get(id)
-    /* v8 ignore next -- both maps are committed together; only direct private-state mutation can break this invariant. */
-    if (value === undefined) throw new Error('delivery-testkit: idempotency record references a missing Acceptance decision')
-    return clone(value)
+/**
+ * A `github-import` child revision may only continue its parent's exact
+ * repository and Issue number; `human` origins carry no lineage constraint.
+ */
+function requireOriginLineage(parent: RequirementOrigin, child: RequirementOrigin): void {
+  if (parent.kind !== 'github-import' || child.kind !== 'github-import') return
+  if (parent.repository.owner !== child.repository.owner
+    || parent.repository.name !== child.repository.name
+    || parent.issueNumber !== child.issueNumber) {
+    throw new DeliveryError(
+      'invalid-reference',
+      'a github-import revision may only be revised from the same repository and Issue number',
+    )
   }
 }
 
-function sameSourceIssue(left: SourceRef, right: SourceRef): boolean {
-  return left.repository.owner === right.repository.owner
-    && left.repository.name === right.repository.name
-    && left.issueNumber === right.issueNumber
+/** Publication transitions run only from the caller-declared expected phase. */
+function requirePublicationPhase(
+  current: IssuePublication,
+  expectedPhase: 'publishing',
+): asserts current is IssuePublication & { phase: 'publishing' } {
+  if (current.phase !== expectedPhase) {
+    throw new DeliveryError(
+      'invalid-transition',
+      `Issue publication '${current.id}' cannot transition from phase '${current.phase}'`,
+    )
+  }
+}
+
+/** Human resolution applies only to `unknown` or crash-stalled `publishing` records. */
+function requireResolvablePublication(current: IssuePublication, publicationId: IssuePublicationId): void {
+  if (current.phase !== 'unknown' && current.phase !== 'publishing') {
+    throw new DeliveryError(
+      'invalid-transition',
+      `Issue publication '${publicationId}' cannot be resolved from phase '${current.phase}'`,
+    )
+  }
 }

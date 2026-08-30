@@ -50,6 +50,9 @@ function project(ctx: Context, table: string, id: string): unknown {
     case 'work_packets': return ctx.delivery.getWorkPacket(id as never)
     case 'dispatch_bindings': return ctx.delivery.getDispatchBinding(id as never)
     case 'acceptance_decisions': return ctx.delivery.snapshot().acceptanceDecisions.find(value => value.id === id)
+    case 'delivery_cases': return ctx.delivery.getCase(id as never)
+    case 'requirement_decisions': return ctx.delivery.getRequirementDecision(id as never)
+    case 'issue_publications': return ctx.delivery.getIssuePublication(id as never)
     default: return undefined
   }
 }

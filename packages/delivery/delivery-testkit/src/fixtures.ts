@@ -1,4 +1,4 @@
-/** Schema-validated deterministic fixtures for Delivery Protocol V1. */
+/** Schema-validated deterministic fixtures for Delivery Protocol V2. */
 
 import {
   AcceptanceClauseId,
@@ -6,29 +6,34 @@ import {
   CompletionClaimId,
   ContractRevisionId,
   DELIVERY_SCHEMA_VERSION,
+  DeliveryCaseId,
   DispatchBindingId,
   EvidenceId,
   ExecutorId,
   GitCommitId,
+  IssuePublicationId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   RepositoryId,
   RepositoryRelativePath,
-  SourceRefId,
+  RequirementDecisionId,
   VerificationCheckId,
   VerificationVerdictId,
   WorkPacketId,
   acceptanceDecisionSchema,
-  canonicalGitHubIssueUrl,
   canonicalDigest,
+  canonicalGitHubIssueUrl,
   completionClaimSchema,
   contractRevisionSchema,
+  deliveryCaseSchema,
   dispatchBindingSchema,
   evidenceBytesDigest,
   evidenceRefSchema,
+  githubIssueContentDigest,
+  issuePublicationSchema,
+  requirementDecisionSchema,
+  requirementOriginSchema,
   resumeCapsuleContentSchema,
-  sourceRefContentDigest,
-  sourceRefSchema,
   verificationCheckDigest,
   verificationPlanDigest,
   verificationPlanSchema,
@@ -38,10 +43,15 @@ import {
   type AcceptanceDecision,
   type CompletionClaim,
   type ContractRevision,
+  type DeliveryCase,
   type DispatchBinding,
   type EvidenceRef,
+  type GitHubRepositoryRef,
+  type IssuePublication,
+  type RequirementDecision,
+  type RequirementOrigin,
   type ResumeCapsuleContent,
-  type SourceRef,
+  type Sha256Digest,
   type VerificationCheck,
   type VerificationPlan,
   type VerificationVerdict,
@@ -53,17 +63,36 @@ const FIXTURE_TIME = '2026-08-29T00:00:00.000Z'
 const BASE_COMMIT = GitCommitId('1111111111111111111111111111111111111111')
 const TARGET_COMMIT = GitCommitId('2222222222222222222222222222222222222222')
 const CONTRACT_ID = ContractRevisionId('contract-revision-fixture')
+const CASE_ID = DeliveryCaseId('delivery-case-fixture')
+const DECISION_ID = RequirementDecisionId('requirement-decision-fixture')
+const PUBLICATION_ID = IssuePublicationId('issue-publication-fixture')
 const PACKET_ID = WorkPacketId('work-packet-fixture')
 const QUEUE_WORK_ID = QueueWorkIdRef('queue-work-fixture')
 const QUEUE_ATTEMPT_ID = QueueAttemptIdRef('queue-attempt-fixture')
 const EVIDENCE_ID = EvidenceId('evidence-fixture')
 const CHECK_ID = VerificationCheckId('verification-check-fixture')
 const DEFAULT_EVIDENCE_BYTES = new TextEncoder().encode('delivery fixture evidence\n')
+const IMPORT_REPOSITORY: GitHubRepositoryRef = { owner: 'deepseek-ai', name: 'deepseek-harness' }
+const DEFAULT_TITLE = 'Deliver one bounded change'
+const DEFAULT_BODY = 'Implement the accepted outcome and collect independent evidence.'
+const DEFAULT_PUBLICATION_MARKER = '<!-- dsh-delivery:issue-publication-fixture -->'
 
 type CompletedClaim = Extract<CompletionClaim, { readonly disposition: 'completed' }>
 type SubmittingBinding = Extract<DispatchBinding, { readonly phase: 'submitting' }>
 type BoundBinding = Extract<DispatchBinding, { readonly phase: 'bound' }>
 type BindingOverrides = Partial<SubmittingBinding> | Partial<BoundBinding>
+
+/** Overrides for the `github-import` origin builder; omitted digest fields derive from title and body. */
+export interface GithubImportOriginOverrides {
+  readonly repository?: GitHubRepositoryRef
+  readonly issueNumber?: number
+  readonly title?: string
+  readonly body?: string
+  readonly contentDigest?: Sha256Digest
+}
+
+/** Overrides that add a default published-Issue number beside the exact publication fields. */
+export type IssuePublicationOverrides = Partial<IssuePublication> & { readonly issueNumber?: number }
 
 const DEFAULT_CHECK: VerificationCheck = {
   id: CHECK_ID,
@@ -82,7 +111,7 @@ function bindingFixtureFields(overrides: BindingOverrides) {
     id: overrides.id ?? DispatchBindingId('dispatch-binding-fixture'),
     packetId,
     inputDigest: overrides.inputDigest ?? canonicalDigest({ packetId }),
-    idempotencyKey: overrides.idempotencyKey ?? 'dispatch-fixture-v1',
+    idempotencyKey: overrides.idempotencyKey ?? 'dispatch-fixture-v2',
     kind: overrides.kind ?? 'code.change@1',
     executorId: overrides.executorId ?? ExecutorId('codex-fixture'),
     createdAt: overrides.createdAt ?? FIXTURE_TIME,
@@ -91,32 +120,25 @@ function bindingFixtureFields(overrides: BindingOverrides) {
 }
 
 /**
- * Build a fresh immutable GitHub Issue snapshot with derived canonical URL and content digest.
- * @param overrides - Exact fixture fields to replace.
- * @returns a schema-validated detached SourceRef.
+ * Build a fresh `github-import` requirement origin with a derived content digest.
+ * @param overrides - Exact origin fields to replace, plus the title and body feeding the digest.
+ * @returns a schema-validated detached requirement origin.
  */
-export function sourceRefFixture(overrides: Partial<SourceRef> = {}): SourceRef {
-  const title = overrides.title ?? 'Deliver one bounded change'
-  const body = overrides.body ?? 'Implement the accepted outcome and collect independent evidence.'
-  const repository = overrides.repository ?? { owner: 'deepseek-ai', name: 'deepseek-harness' }
+export function githubImportOriginFixture(overrides: GithubImportOriginOverrides = {}): RequirementOrigin {
+  const repository = overrides.repository ?? IMPORT_REPOSITORY
   const issueNumber = overrides.issueNumber ?? 101
-  return sourceRefSchema.parse({
-    schemaVersion: overrides.schemaVersion ?? DELIVERY_SCHEMA_VERSION,
-    id: overrides.id ?? SourceRefId('source-ref-fixture'),
-    provider: overrides.provider ?? 'github',
+  const title = overrides.title ?? DEFAULT_TITLE
+  const body = overrides.body ?? DEFAULT_BODY
+  return requirementOriginSchema.parse({
+    kind: 'github-import',
     repository,
     issueNumber,
-    canonicalUrl: overrides.canonicalUrl ?? canonicalGitHubIssueUrl(repository, issueNumber),
-    updatedAt: overrides.updatedAt ?? FIXTURE_TIME,
-    title,
-    body,
-    contentDigest: overrides.contentDigest ?? sourceRefContentDigest({ title, body }),
-    createdAt: overrides.createdAt ?? FIXTURE_TIME,
+    contentDigest: overrides.contentDigest ?? githubIssueContentDigest({ title, body }),
   })
 }
 
 /**
- * Build a fresh ready Contract revision whose references are internally valid.
+ * Build a fresh immutable requirement revision carrying origin and title provenance.
  * @param overrides - Exact fixture fields to replace.
  * @returns a schema-validated detached Contract revision.
  */
@@ -125,7 +147,8 @@ export function contractRevisionFixture(overrides: Partial<ContractRevision> = {
     schemaVersion: overrides.schemaVersion ?? DELIVERY_SCHEMA_VERSION,
     id: overrides.id ?? CONTRACT_ID,
     previousRevisionId: overrides.previousRevisionId !== undefined ? overrides.previousRevisionId : null,
-    sourceRef: overrides.sourceRef ?? sourceRefFixture(),
+    origin: overrides.origin ?? { kind: 'human', actorId: 'developer-fixture' },
+    title: overrides.title ?? DEFAULT_TITLE,
     repositoryId: overrides.repositoryId !== undefined ? overrides.repositoryId : RepositoryId('repository-fixture'),
     outcome: overrides.outcome !== undefined
       ? overrides.outcome
@@ -150,6 +173,88 @@ export function contractRevisionFixture(overrides: Partial<ContractRevision> = {
       url: 'https://github.com/deepseek-ai/deepseek-harness',
     }],
     createdAt: overrides.createdAt ?? FIXTURE_TIME,
+  })
+}
+
+/**
+ * Build a fresh Delivery Case anchored on the default Contract revision.
+ * @param overrides - Exact fixture fields to replace.
+ * @returns a schema-validated detached Delivery Case.
+ */
+export function deliveryCaseFixture(overrides: Partial<DeliveryCase> = {}): DeliveryCase {
+  return deliveryCaseSchema.parse({
+    schemaVersion: overrides.schemaVersion ?? DELIVERY_SCHEMA_VERSION,
+    id: overrides.id ?? CASE_ID,
+    repositoryId: overrides.repositoryId ?? RepositoryId('repository-fixture'),
+    headRevisionId: overrides.headRevisionId ?? CONTRACT_ID,
+    createdAt: overrides.createdAt ?? FIXTURE_TIME,
+    updatedAt: overrides.updatedAt ?? FIXTURE_TIME,
+  })
+}
+
+/**
+ * Build a fresh human requirement decision over the default Contract revision.
+ * @param overrides - Exact fixture fields to replace.
+ * @returns a schema-validated detached requirement decision.
+ */
+export function requirementDecisionFixture(overrides: Partial<RequirementDecision> = {}): RequirementDecision {
+  return requirementDecisionSchema.parse({
+    schemaVersion: overrides.schemaVersion ?? DELIVERY_SCHEMA_VERSION,
+    id: overrides.id ?? DECISION_ID,
+    caseId: overrides.caseId ?? CASE_ID,
+    revisionId: overrides.revisionId ?? CONTRACT_ID,
+    decision: overrides.decision ?? 'approved',
+    reason: overrides.reason ?? 'Requirement reviewed and approved.',
+    actor: overrides.actor ?? { kind: 'human', actorId: 'developer-fixture' },
+    decisionNonce: overrides.decisionNonce ?? 'requirement-decision-fixture-v2',
+    decidedAt: overrides.decidedAt ?? FIXTURE_TIME,
+  })
+}
+
+/**
+ * Build a fresh Issue publication in any phase with phase-consistent defaults.
+ * @param overrides - Exact fixture fields to replace, plus the default published-Issue number.
+ * @returns a schema-validated detached Issue publication.
+ */
+export function issuePublicationFixture(overrides: IssuePublicationOverrides = {}): IssuePublication {
+  const phase = overrides.phase ?? 'prepared'
+  const repository = overrides.repository ?? IMPORT_REPOSITORY
+  const issueNumber = overrides.issueNumber ?? 101
+  const issue = overrides.issue !== undefined
+    ? overrides.issue
+    : phase === 'published'
+      ? { repository, issueNumber, url: canonicalGitHubIssueUrl(repository, issueNumber) }
+      : null
+  const failure = overrides.failure !== undefined
+    ? overrides.failure
+    : phase === 'failed'
+      ? {
+        sideEffect: 'not-started' as const,
+        category: 'transport' as const,
+        detail: 'The publication request never reached GitHub.',
+        occurredAt: FIXTURE_TIME,
+      }
+      : phase === 'unknown'
+        ? {
+          sideEffect: 'unknown' as const,
+          category: 'transport' as const,
+          detail: 'The publication request timed out after it may have reached GitHub.',
+          occurredAt: FIXTURE_TIME,
+        }
+        : null
+  return issuePublicationSchema.parse({
+    schemaVersion: overrides.schemaVersion ?? DELIVERY_SCHEMA_VERSION,
+    id: overrides.id ?? PUBLICATION_ID,
+    caseId: overrides.caseId ?? CASE_ID,
+    revisionId: overrides.revisionId ?? CONTRACT_ID,
+    repository,
+    renderedDigest: overrides.renderedDigest ?? canonicalDigest({ marker: DEFAULT_PUBLICATION_MARKER }),
+    marker: overrides.marker ?? DEFAULT_PUBLICATION_MARKER,
+    createdAt: overrides.createdAt ?? FIXTURE_TIME,
+    updatedAt: overrides.updatedAt ?? FIXTURE_TIME,
+    phase,
+    issue,
+    failure,
   })
 }
 
@@ -315,7 +420,7 @@ export function acceptedDecisionFixture(overrides: Partial<AcceptanceDecision> =
     decision: overrides.decision ?? 'accepted',
     reason: overrides.reason ?? 'Independent verification passed and the outcome was reviewed.',
     actor: overrides.actor ?? { kind: 'human', actorId: 'developer-fixture' },
-    decisionNonce: overrides.decisionNonce ?? 'acceptance-fixture-v1',
+    decisionNonce: overrides.decisionNonce ?? 'acceptance-fixture-v2',
     decidedAt: overrides.decidedAt ?? FIXTURE_TIME,
   })
 }

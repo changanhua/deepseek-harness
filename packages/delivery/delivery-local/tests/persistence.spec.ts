@@ -1,39 +1,61 @@
 import { Context } from '@deepseek-ai/cordis'
-import Storage from '@deepseek-ai/dsh-storage'
+import Storage, { StorageError } from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
-  AdoptContractRevisionRequest,
+  CompleteIssuePublicationRequest,
   ContractRevisionDraft,
+  CreateDeliveryCaseRequest,
   CreateWorkPacketRequest,
-  SourceRefDraft,
+  FailIssuePublicationRequest,
+  PrepareIssuePublicationRequest,
+  RecordRequirementDecisionRequest,
   WorkPacketDraft,
 } from '@deepseek-ai/dsh-delivery'
 import { DELIVERY_VERIFICATION_SOURCE_MAX_BYTES } from '@deepseek-ai/dsh-delivery'
 import {
-  GitBlobId,
-  ExecutorId,
-  EvidenceId,
-  GitCommitId,
+  DELIVERY_SCHEMA_VERSION,
   AcceptanceClauseId,
+  CompletionClaimId,
   ContractRevisionId,
+  DeliveryCaseId,
   DispatchBindingId,
+  EvidenceId,
+  ExecutorId,
+  GitBlobId,
+  GitCommitId,
+  IssuePublicationId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   RepositoryId,
   RepositoryRelativePath,
+  VerificationCheckId,
+  VerificationVerdictId,
+  WorkPacketId,
   canonicalDigest,
+  canonicalGitHubIssueUrl,
+  completionClaimSchema,
+  evidenceBytesDigest,
+  evidenceRefSchema,
+  githubIssueContentDigest,
+  gitHubIssueRefSchema,
+  verificationCheckDigest,
+  verificationPlanDigest,
+  verificationPlanSchema,
+  verificationVerdictSchema,
+  workPacketDigest,
+  workPacketSchema,
+  type CompletionClaim,
   type ContractRevision,
+  type DeliveryCase,
+  type EvidenceRef,
+  type GitHubIssueRef,
+  type VerificationCheck,
+  type VerificationPlan,
+  type VerificationVerdict,
   type WorkPacket,
+  type WorkPacketDigestInput,
 } from '@deepseek-ai/dsh-delivery-protocol'
-import {
-  contractRevisionFixture,
-  completedClaimFixture,
-  evidenceRefFixture,
-  passedVerdictFixture,
-  readyWorkPacketFixture,
-  sourceRefFixture,
-} from '../../delivery-testkit/src/fixtures.ts'
 import {
   MemoryMediaPool,
   MemoryStorageBackend,
@@ -67,33 +89,94 @@ async function harness(pool: MemoryMediaPool): Promise<Harness> {
   return result
 }
 
-function adoptionRequest(
-  contract: ContractRevision,
-  idempotencyKey = 'adopt-contract-local-v1',
-): AdoptContractRevisionRequest {
-  const source: SourceRefDraft = {
-    repository: contract.sourceRef.repository,
-    issueNumber: contract.sourceRef.issueNumber,
-    canonicalUrl: contract.sourceRef.canonicalUrl,
-    updatedAt: contract.sourceRef.updatedAt,
-    title: contract.sourceRef.title,
-    body: contract.sourceRef.body,
-    contentDigest: contract.sourceRef.contentDigest,
+/** Manual assembly for harnesses whose provider startup is expected to fail. */
+async function failingHarness(pool: MemoryMediaPool): Promise<Context> {
+  const ctx = new Context()
+  await ctx.plugin(Storage)
+  ctx.storage.backend.register('memory', new MemoryStorageBackend(pool))
+  const facility = new DomainFacility(ctx, { backend: 'memory', routes: {} })
+  ctx.storage.mount('domain', facility)
+  ctx.provide('storageDomain', facility)
+  return ctx
+}
+
+const BASE_COMMIT = GitCommitId('1111111111111111111111111111111111111111')
+const TARGET_COMMIT = GitCommitId('2222222222222222222222222222222222222222')
+const REPOSITORY_ID = RepositoryId('repository-fixture')
+const CASE_TITLE = 'Deliver one bounded change'
+const HUMAN_ACTOR = 'local-operator'
+const IMPORT_REPOSITORY = { owner: 'deepseek-ai', name: 'deepseek-harness' } as const
+
+const FIXTURE_CHECK: VerificationCheck = {
+  id: VerificationCheckId('verification-check-fixture'),
+  name: 'Typecheck Delivery consumer',
+  argv: ['pnpm', 'exec', 'tsc', '--noEmit'],
+  cwd: '.',
+  timeoutMs: 60_000,
+  severity: 'required',
+  expectedExitCodes: [0],
+}
+
+const FIXTURE_CLAUSE = {
+  id: AcceptanceClauseId('acceptance-clause-fixture'),
+  text: 'Focused verification passes for the bounded change.',
+} as const
+
+function revisionDraft(overrides: Partial<ContractRevisionDraft> = {}): ContractRevisionDraft {
+  return {
+    outcome: 'A bounded change is implemented and independently verified.',
+    context: 'The Consumer needs a deterministic Delivery contract.',
+    allowedScope: ['Delivery package sources and focused tests'],
+    forbiddenScope: ['Unrelated product behavior'],
+    acceptanceClauses: [FIXTURE_CLAUSE],
+    openDecisions: [],
+    baseSelectionRule: { kind: 'commit', commit: BASE_COMMIT },
+    verificationSource: { kind: 'contract-field', checks: [FIXTURE_CHECK] },
+    referenceLinks: [],
+    ...overrides,
   }
-  const revision: ContractRevisionDraft = {
-    previousRevisionId: contract.previousRevisionId,
-    repositoryId: contract.repositoryId,
-    outcome: contract.outcome,
-    context: contract.context,
-    allowedScope: contract.allowedScope,
-    forbiddenScope: contract.forbiddenScope,
-    acceptanceClauses: contract.acceptanceClauses,
-    openDecisions: contract.openDecisions,
-    baseSelectionRule: contract.baseSelectionRule,
-    verificationSource: contract.verificationSource,
-    referenceLinks: contract.referenceLinks,
+}
+
+function createCaseRequest(
+  overrides: Partial<Omit<CreateDeliveryCaseRequest, 'idempotencyKey'>> = {},
+  idempotencyKey = 'create-case-local-v2',
+): CreateDeliveryCaseRequest {
+  return {
+    idempotencyKey,
+    repositoryId: REPOSITORY_ID,
+    origin: { kind: 'human', actorId: HUMAN_ACTOR },
+    title: CASE_TITLE,
+    revision: revisionDraft(),
+    ...overrides,
   }
-  return { idempotencyKey, source, revision }
+}
+
+function decisionRequest(
+  created: { case: DeliveryCase; revision: ContractRevision },
+  overrides: Partial<Omit<RecordRequirementDecisionRequest, 'idempotencyKey'>> = {},
+  idempotencyKey = 'decision-local-v2',
+): RecordRequirementDecisionRequest {
+  return {
+    idempotencyKey,
+    caseId: created.case.id,
+    revisionId: created.revision.id,
+    decision: 'approved',
+    reason: 'Requirement reviewed and approved.',
+    actorId: HUMAN_ACTOR,
+    decisionNonce: `nonce-${idempotencyKey}`,
+    ...overrides,
+  }
+}
+
+/** Create one Case and approve its root revision, the gate for Packets and publications. */
+async function createApprovedCase(
+  local: Harness,
+  key: string,
+  overrides: Partial<Omit<CreateDeliveryCaseRequest, 'idempotencyKey'>> = {},
+): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
+  const created = await local.ctx.delivery.createCase(createCaseRequest(overrides, `case-${key}`))
+  await local.ctx.delivery.recordRequirementDecision(decisionRequest(created, {}, `decision-${key}`))
+  return created
 }
 
 function packetDraft(packet: WorkPacket): WorkPacketDraft {
@@ -107,28 +190,154 @@ function packetDraft(packet: WorkPacket): WorkPacketDraft {
   }
 }
 
-async function storedPacket(local: Harness, suffix: string): Promise<WorkPacket> {
-  const contract = await local.ctx.delivery.adoptContractRevision(
-    adoptionRequest(contractRevisionFixture(), `adopt-${suffix}`),
-  )
-  if (contract.repositoryId === null || contract.baseSelectionRule?.kind !== 'commit') {
-    throw new Error('ready Contract fixture unexpectedly lacks repository authority')
+function verificationPlanFixture(overrides: Partial<VerificationPlan> = {}): VerificationPlan {
+  const checks = overrides.checks ?? [FIXTURE_CHECK]
+  const provenance = overrides.provenance ?? {
+    kind: 'contract-field' as const,
+    contractRevisionId: ContractRevisionId('contract-revision-fixture'),
+    field: 'verificationSource' as const,
   }
-  const fixture = readyWorkPacketFixture({
-    contractRevisionId: contract.id,
-    repositoryId: contract.repositoryId,
-    baseCommit: contract.baseSelectionRule.commit,
-    acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
+  return verificationPlanSchema.parse({
+    checks,
+    provenance,
+    digest: overrides.digest ?? verificationPlanDigest({ checks, provenance }),
+  })
+}
+
+function readyPacketFixture(overrides: Partial<WorkPacket> = {}): WorkPacket {
+  const digestInput: WorkPacketDigestInput = {
+    schemaVersion: overrides.schemaVersion ?? DELIVERY_SCHEMA_VERSION,
+    contractRevisionId: overrides.contractRevisionId ?? ContractRevisionId('contract-revision-fixture'),
+    repositoryId: overrides.repositoryId ?? REPOSITORY_ID,
+    baseCommit: overrides.baseCommit ?? BASE_COMMIT,
+    objective: overrides.objective ?? 'Implement the bounded Delivery fixture change.',
+    allowedPaths: overrides.allowedPaths ?? [{ kind: 'subtree', path: RepositoryRelativePath('packages/delivery') }],
+    forbiddenPaths: overrides.forbiddenPaths ?? [{ kind: 'subtree', path: RepositoryRelativePath('packages/unrelated') }],
+    acceptanceClauseIds: overrides.acceptanceClauseIds ?? [FIXTURE_CLAUSE.id],
+    verificationPlan: overrides.verificationPlan ?? verificationPlanFixture({
+      provenance: {
+        kind: 'contract-field',
+        contractRevisionId: overrides.contractRevisionId ?? ContractRevisionId('contract-revision-fixture'),
+        field: 'verificationSource',
+      },
+    }),
+    stopConditions: overrides.stopConditions ?? ['Stop when repository facts do not match the Contract.'],
+    executorPreference: overrides.executorPreference ?? { mode: 'preferred', executorId: ExecutorId('codex-fixture') },
+  }
+  return workPacketSchema.parse({
+    ...digestInput,
+    id: overrides.id ?? WorkPacketId('work-packet-fixture'),
+    packetDigest: overrides.packetDigest ?? workPacketDigest(digestInput),
+    createdAt: overrides.createdAt ?? '2026-08-29T00:00:00.000Z',
+  })
+}
+
+async function storedPacket(local: Harness, suffix: string): Promise<WorkPacket> {
+  const created = await createApprovedCase(local, suffix)
+  const revision = created.revision
+  if (revision.baseSelectionRule?.kind !== 'commit') {
+    throw new Error('ready revision fixture unexpectedly lacks repository authority')
+  }
+  const fixture = readyPacketFixture({
+    contractRevisionId: revision.id,
+    repositoryId: created.case.repositoryId,
+    baseCommit: revision.baseSelectionRule.commit,
+    acceptanceClauseIds: revision.acceptanceClauses.map(clause => clause.id),
   })
   return await local.ctx.delivery.createWorkPacket({
     idempotencyKey: `packet-${suffix}`,
-    contractRevisionId: contract.id,
+    contractRevisionId: revision.id,
     repository: {
-      repositoryId: contract.repositoryId,
-      selectionRule: contract.baseSelectionRule,
-      commit: fixture.baseCommit,
+      repositoryId: created.case.repositoryId,
+      selectionRule: revision.baseSelectionRule,
+      commit: revision.baseSelectionRule.commit,
     } as never,
     packet: packetDraft(fixture),
+  })
+}
+
+type CompletedClaim = Extract<CompletionClaim, { readonly disposition: 'completed' }>
+
+function completedClaimFixture(overrides: Partial<CompletedClaim> = {}): CompletedClaim {
+  const value = completionClaimSchema.parse({
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
+    id: overrides.id ?? CompletionClaimId('completion-claim-fixture'),
+    packetId: overrides.packetId ?? WorkPacketId('work-packet-fixture'),
+    queueWorkId: overrides.queueWorkId ?? QueueWorkIdRef('queue-work-fixture'),
+    queueAttemptId: overrides.queueAttemptId ?? QueueAttemptIdRef('queue-attempt-fixture'),
+    summary: overrides.summary ?? 'The bounded change was implemented and checkpointed.',
+    completedWork: overrides.completedWork ?? ['Implemented the requested behavior.'],
+    remainingWork: overrides.remainingWork ?? [],
+    disposition: 'completed',
+    checkpointCommit: overrides.checkpointCommit ?? TARGET_COMMIT,
+    changedPaths: overrides.changedPaths ?? [RepositoryRelativePath('packages/delivery/example.ts')],
+    evidenceIds: overrides.evidenceIds ?? [EvidenceId('evidence-fixture')],
+    resumeCapsuleEvidenceId: overrides.resumeCapsuleEvidenceId ?? null,
+    createdAt: overrides.createdAt ?? '2026-08-29T00:00:00.000Z',
+  })
+  return value as CompletedClaim
+}
+
+function passedVerdictFixture(overrides: Partial<VerificationVerdict> = {}): VerificationVerdict {
+  const plan = verificationPlanFixture({
+    provenance: {
+      kind: 'contract-field',
+      contractRevisionId: overrides.packetId ?? WorkPacketId('work-packet-fixture'),
+      field: 'verificationSource',
+    },
+  })
+  const evidenceIds = overrides.evidenceIds ?? [EvidenceId('evidence-fixture')]
+  const value = verificationVerdictSchema.parse({
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
+    id: overrides.id ?? VerificationVerdictId('verification-verdict-fixture'),
+    packetId: overrides.packetId ?? WorkPacketId('work-packet-fixture'),
+    targetCommit: overrides.targetCommit ?? TARGET_COMMIT,
+    baseCommit: overrides.baseCommit ?? BASE_COMMIT,
+    verificationPlanDigest: overrides.verificationPlanDigest ?? plan.digest,
+    status: overrides.status ?? 'passed',
+    ancestryResult: overrides.ancestryResult ?? 'descendant',
+    checkResults: overrides.checkResults ?? plan.checks.map(check => ({
+      checkId: check.id,
+      checkDigest: verificationCheckDigest(check),
+      severity: check.severity,
+      durationMs: 25,
+      evidenceIds,
+      status: 'exited' as const,
+      exitCode: check.expectedExitCodes[0] as number,
+      expected: true,
+    })),
+    evidenceIntegrityFindings: overrides.evidenceIntegrityFindings ?? evidenceIds.map(evidenceId => ({
+      evidenceId,
+      required: true,
+      status: 'verified' as const,
+    })),
+    changedPathFindings: overrides.changedPathFindings ?? [],
+    evidenceIds,
+    verifierVersion: overrides.verifierVersion ?? 'delivery-local-tests/1',
+    reviewReasons: overrides.reviewReasons ?? [],
+    completedAt: overrides.completedAt ?? '2026-08-29T00:00:00.000Z',
+  })
+  return value
+}
+
+function evidenceRefFixture(overrides: Partial<EvidenceRef> = {}): EvidenceRef {
+  const id = overrides.id ?? EvidenceId('evidence-fixture')
+  const bytes = new TextEncoder().encode('delivery fixture evidence\n')
+  return evidenceRefSchema.parse({
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
+    id,
+    kind: overrides.kind ?? 'git-diff-metadata',
+    mediaType: overrides.mediaType ?? 'application/json',
+    uri: overrides.uri ?? `memory://delivery-evidence/${encodeURIComponent(id)}`,
+    byteLength: overrides.byteLength ?? bytes.byteLength,
+    digest: overrides.digest ?? evidenceBytesDigest(bytes),
+    createdAt: overrides.createdAt ?? '2026-08-29T00:00:00.000Z',
+    provenance: overrides.provenance ?? {
+      kind: 'change-attempt',
+      packetId: WorkPacketId('work-packet-fixture'),
+      queueWorkId: QueueWorkIdRef('queue-work-fixture'),
+      queueAttemptId: QueueAttemptIdRef('queue-attempt-fixture'),
+    },
   })
 }
 
@@ -228,31 +437,78 @@ async function acceptanceChain(local: Harness, suffix: string) {
   }
 }
 
+function issueRef(overrides?: { readonly issueNumber?: number; readonly owner?: string }): GitHubIssueRef {
+  const repository = { owner: overrides?.owner ?? IMPORT_REPOSITORY.owner, name: IMPORT_REPOSITORY.name }
+  const issueNumber = overrides?.issueNumber ?? 101
+  return gitHubIssueRefSchema.parse({
+    repository,
+    issueNumber,
+    url: canonicalGitHubIssueUrl(repository, issueNumber),
+  })
+}
+
+const PUBLICATION_MARKER = 'delivery-issue-publication-marker'
+
+function prepareRequest(
+  created: { case: DeliveryCase; revision: ContractRevision },
+  idempotencyKey = 'prepare-publication-local-v2',
+  overrides: Partial<Omit<PrepareIssuePublicationRequest, 'idempotencyKey'>> = {},
+): PrepareIssuePublicationRequest {
+  return {
+    idempotencyKey,
+    caseId: created.case.id,
+    revisionId: created.revision.id,
+    repository: { ...IMPORT_REPOSITORY },
+    renderedDigest: canonicalDigest({ rendered: CASE_TITLE }),
+    marker: PUBLICATION_MARKER,
+    ...overrides,
+  }
+}
+
+const notStartedFailure = (detail: string): FailIssuePublicationRequest['failure'] => ({
+  sideEffect: 'not-started',
+  category: 'transport',
+  detail,
+  occurredAt: new Date().toISOString(),
+})
+
+const unknownFailure = (detail: string): FailIssuePublicationRequest['failure'] => ({
+  sideEffect: 'unknown',
+  category: 'transport',
+  detail,
+  occurredAt: new Date().toISOString(),
+})
+
 describe('LocalDelivery persistence', () => {
-  it('reopens an adopted Contract revision from durable storage', async () => {
+  it('reopens a created Case with its root revision from durable storage', async () => {
     const pool = new MemoryMediaPool()
     const first = await harness(pool)
-    const request = adoptionRequest(contractRevisionFixture())
-    const stored = await first.ctx.delivery.adoptContractRevision(request)
+    const request = createCaseRequest()
+    const stored = await first.ctx.delivery.createCase(request)
+    expect(stored.revision.previousRevisionId).toBeNull()
+    expect(stored.revision.origin).toEqual(request.origin)
+    expect(stored.revision.title).toBe(request.title)
+    expect(stored.case.headRevisionId).toBe(stored.revision.id)
     await first.dispose()
     active.splice(active.indexOf(first), 1)
 
     const reopened = await harness(pool)
-    expect(reopened.ctx.delivery.getContractRevision(stored.id)).toEqual(stored)
-    await expect(reopened.ctx.delivery.adoptContractRevision(request)).resolves.toEqual(stored)
-    await expect(reopened.ctx.delivery.adoptContractRevision({
+    expect(reopened.ctx.delivery.getCase(stored.case.id)).toEqual(stored.case)
+    expect(reopened.ctx.delivery.getContractRevision(stored.revision.id)).toEqual(stored.revision)
+    await expect(reopened.ctx.delivery.createCase(request)).resolves.toEqual(stored)
+    await expect(reopened.ctx.delivery.createCase({
       ...request,
       revision: { ...request.revision, context: 'conflicting context after restart' },
     })).rejects.toMatchObject({ code: 'idempotency-conflict' })
   })
 
-  it('enforces durable adoption idempotency', async () => {
+  it('enforces durable createCase idempotency within one session', async () => {
     const local = await harness(new MemoryMediaPool())
-    const request = adoptionRequest(contractRevisionFixture())
-    const first = await local.ctx.delivery.adoptContractRevision(request)
+    const request = createCaseRequest()
+    const first = await local.ctx.delivery.createCase(request)
 
-    await expect(local.ctx.delivery.adoptContractRevision(request)).resolves.toEqual(first)
-    await expect(local.ctx.delivery.adoptContractRevision({
+    await expect(local.ctx.delivery.createCase(request)).resolves.toEqual(first)
+    await expect(local.ctx.delivery.createCase({
       ...request,
       revision: { ...request.revision, context: 'different contract context' },
     })).rejects.toMatchObject({
@@ -261,169 +517,229 @@ describe('LocalDelivery persistence', () => {
     })
   })
 
-  it('serializes concurrent adoption replays on one idempotency key', async () => {
+  it('serializes concurrent createCase replays on one idempotency key', async () => {
     const local = await harness(new MemoryMediaPool())
-    const request = adoptionRequest(contractRevisionFixture(), 'adopt-concurrent-local-v1')
+    const request = createCaseRequest({}, 'create-case-concurrent-local-v2')
 
     const [first, replay] = await Promise.all([
-      local.ctx.delivery.adoptContractRevision(request),
-      local.ctx.delivery.adoptContractRevision(request),
+      local.ctx.delivery.createCase(request),
+      local.ctx.delivery.createCase(request),
     ])
 
     expect(replay).toEqual(first)
-    expect(local.ctx.delivery.snapshot().contractRevisions).toEqual([first])
+    expect(local.ctx.delivery.snapshot().deliveryCases).toEqual([first.case])
+    expect(local.ctx.delivery.snapshot().contractRevisions).toEqual([first.revision])
   })
 
-  it('rejects invalid source digests and cross-Issue revision lineage', async () => {
+  it('moves the Case head only through the expected-head compare-and-set', async () => {
     const local = await harness(new MemoryMediaPool())
-    const firstFixture = contractRevisionFixture()
-    const first = await local.ctx.delivery.adoptContractRevision(adoptionRequest(firstFixture, 'lineage-first'))
-    const badDigest = adoptionRequest(firstFixture, 'lineage-bad-digest')
-    await expect(local.ctx.delivery.adoptContractRevision({
-      ...badDigest,
-      source: { ...badDigest.source, contentDigest: canonicalDigest('wrong source') },
-    })).rejects.toMatchObject({ code: 'invalid-reference' })
-    const missingPrevious = adoptionRequest(contractRevisionFixture({
-      previousRevisionId: ContractRevisionId('missing-contract-revision'),
-    }), 'lineage-missing')
-    await expect(local.ctx.delivery.adoptContractRevision(missingPrevious))
-      .rejects.toMatchObject({ code: 'invalid-reference' })
+    const created = await createApprovedCase(local, 'cas')
+    const revise = (overrides: Partial<Omit<CreateDeliveryCaseRequest, 'idempotencyKey'>> & { idempotencyKey: string }) =>
+      local.ctx.delivery.reviseCase({
+        caseId: created.case.id,
+        expectedHeadRevisionId: created.revision.id,
+        origin: { kind: 'human', actorId: HUMAN_ACTOR },
+        title: 'Revised delivery title',
+        revision: revisionDraft({ outcome: 'A revised bounded change is implemented.' }),
+        ...overrides,
+      })
 
-    const sourceCases = [
-      sourceRefFixture({ repository: { owner: 'other-owner', name: first.sourceRef.repository.name } }),
-      sourceRefFixture({ repository: { owner: first.sourceRef.repository.owner, name: 'other-repository' } }),
-      sourceRefFixture({ issueNumber: first.sourceRef.issueNumber + 1 }),
-    ]
-    for (const [index, sourceRef] of sourceCases.entries()) {
-      const request = adoptionRequest(contractRevisionFixture({
-        previousRevisionId: first.id,
-        sourceRef,
-      }), `lineage-other-${String(index)}`)
-      await expect(local.ctx.delivery.adoptContractRevision(request))
-        .rejects.toMatchObject({ code: 'invalid-reference' })
-    }
-    const sameIssue = sourceRefFixture({
-      id: first.sourceRef.id,
-      repository: first.sourceRef.repository,
-      issueNumber: first.sourceRef.issueNumber,
-      title: 'Updated delivery title',
-      body: 'Updated delivery body',
-    })
-    await expect(local.ctx.delivery.adoptContractRevision(adoptionRequest(contractRevisionFixture({
-      previousRevisionId: first.id,
-      sourceRef: sameIssue,
-    }), 'lineage-same-issue'))).resolves.toMatchObject({ previousRevisionId: first.id })
-  })
+    await expect(local.ctx.delivery.reviseCase({
+      idempotencyKey: 'revise-missing-case',
+      caseId: DeliveryCaseId('missing-delivery-case'),
+      expectedHeadRevisionId: created.revision.id,
+      origin: { kind: 'human', actorId: HUMAN_ACTOR },
+      title: 'Revised delivery title',
+      revision: revisionDraft(),
+    })).rejects.toMatchObject({ code: 'not-found' })
+    await expect(revise({ idempotencyKey: 'revise-stale-head', expectedHeadRevisionId: ContractRevisionId('stale-head') }))
+      .rejects.toMatchObject({ code: 'conflict' })
 
-  it('reopens a Packet with its Contract-derived verification plan', async () => {
-    const pool = new MemoryMediaPool()
-    const first = await harness(pool)
-    const contract = await first.ctx.delivery.adoptContractRevision(
-      adoptionRequest(contractRevisionFixture()),
-    )
-    if (contract.repositoryId === null || contract.baseSelectionRule === null) {
-      throw new Error('ready Contract fixture unexpectedly lacks repository authority')
-    }
-    const fixture = readyWorkPacketFixture({
-      contractRevisionId: contract.id,
-      repositoryId: contract.repositoryId,
-      ...(contract.baseSelectionRule.kind === 'commit'
-        ? { baseCommit: contract.baseSelectionRule.commit }
-        : {}),
-      acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
-    })
-    const packetRequest = {
-      idempotencyKey: 'create-packet-local-v1',
-      contractRevisionId: contract.id,
-      repository: {
-        repositoryId: contract.repositoryId,
-        selectionRule: contract.baseSelectionRule,
-        commit: fixture.baseCommit,
-      } as never,
-      packet: packetDraft(fixture),
-    }
-    const [packet, packetReplay] = await Promise.all([
-      first.ctx.delivery.createWorkPacket(packetRequest),
-      first.ctx.delivery.createWorkPacket(packetRequest),
+    const first = await revise({ idempotencyKey: 'revise-first' })
+    expect(first.revision.previousRevisionId).toBe(created.revision.id)
+    expect(first.case.headRevisionId).toBe(first.revision.id)
+    expect(first.case.repositoryId).toBe(created.case.repositoryId)
+    expect(Date.parse(first.case.updatedAt)).toBeGreaterThanOrEqual(Date.parse(first.case.createdAt))
+
+    await expect(revise({ idempotencyKey: 'revise-from-old-head' })).rejects.toMatchObject({ code: 'conflict' })
+    await expect(revise({ idempotencyKey: 'revise-first' })).resolves.toEqual(first)
+
+    const [left, right] = await Promise.allSettled([
+      revise({ idempotencyKey: 'revise-race-left', expectedHeadRevisionId: first.revision.id }),
+      revise({ idempotencyKey: 'revise-race-right', expectedHeadRevisionId: first.revision.id }),
     ])
-    expect(packetReplay).toEqual(packet)
-    await first.dispose()
-    active.splice(active.indexOf(first), 1)
-
-    const reopened = await harness(pool)
-    expect(reopened.ctx.delivery.getWorkPacket(packet.id)).toEqual(packet)
-    await expect(reopened.ctx.delivery.createWorkPacket(
-      packetRequest,
-      async () => { throw new Error('durable replay must not resolve the plan blob') },
-    )).resolves.toEqual(packet)
-    await expect(reopened.ctx.delivery.createWorkPacket({
-      ...packetRequest,
-      packet: { ...packetRequest.packet, objective: 'conflicting objective after restart' },
-    })).rejects.toMatchObject({ code: 'idempotency-conflict' })
-    expect(packet.verificationPlan.provenance).toEqual({
-      kind: 'contract-field',
-      contractRevisionId: contract.id,
-      field: 'verificationSource',
-    })
+    const settled = [left, right].map(outcome => outcome.status)
+    expect(settled).toContain('fulfilled')
+    expect(settled).toContain('rejected')
+    const winner = left.status === 'fulfilled' ? left.value : right.status === 'fulfilled' ? right.value : undefined
+    expect(winner?.case.headRevisionId).toBe(local.ctx.delivery.getCase(created.case.id)?.headRevisionId)
+    const rejectedOutcomes = [left, right].filter((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected')
+    expect(rejectedOutcomes).toHaveLength(1)
+    expect(rejectedOutcomes[0]!.reason as DeliveryError).toMatchObject({ code: 'conflict' })
   })
 
-  it('rejects Packet creation outside the ready Contract authority', async () => {
+  it('keeps github-import revisions within one repository and Issue', async () => {
     const local = await harness(new MemoryMediaPool())
-    const baseCommit = GitCommitId('1111111111111111111111111111111111111111')
+    const importedOrigin = {
+      kind: 'github-import' as const,
+      repository: { ...IMPORT_REPOSITORY },
+      issueNumber: 101,
+      contentDigest: githubIssueContentDigest({ title: CASE_TITLE, body: 'Imported requirement body.' }),
+    }
+    const created = await local.ctx.delivery.createCase(
+      createCaseRequest({ origin: importedOrigin }, 'case-imported'),
+    )
+    const revise = (origin: typeof importedOrigin | { kind: 'human'; actorId: string }, key: string, expectedHead = created.case.headRevisionId) =>
+      local.ctx.delivery.reviseCase({
+        idempotencyKey: key,
+        caseId: created.case.id,
+        expectedHeadRevisionId: expectedHead,
+        origin,
+        title: CASE_TITLE,
+        revision: revisionDraft(),
+      })
+
+    const sameIssue = await revise({ ...importedOrigin, contentDigest: canonicalDigest({ revised: true }) }, 'revise-same-issue')
+    expect(sameIssue.revision.previousRevisionId).toBe(created.revision.id)
+
+    await expect(revise({ ...importedOrigin, issueNumber: 102 }, 'revise-drifted-issue', sameIssue.revision.id))
+      .rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(revise({ ...importedOrigin, repository: { owner: 'other-owner', name: IMPORT_REPOSITORY.name } }, 'revise-drifted-owner', sameIssue.revision.id))
+      .rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(revise({ ...importedOrigin, repository: { owner: IMPORT_REPOSITORY.owner, name: 'other-repository' } }, 'revise-drifted-name', sameIssue.revision.id))
+      .rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(revise({ kind: 'human', actorId: HUMAN_ACTOR }, 'revise-human-origin', sameIssue.revision.id))
+      .resolves.toMatchObject({ revision: { previousRevisionId: sameIssue.revision.id } })
+  })
+
+  it('records one requirement decision per revision and fails closed on conflicts', async () => {
+    const local = await harness(new MemoryMediaPool())
+    const created = await local.ctx.delivery.createCase(createCaseRequest({}, 'case-decision'))
+    const request = decisionRequest(created)
+
+    const decision = await local.ctx.delivery.recordRequirementDecision(request)
+    expect(decision).toMatchObject({
+      caseId: created.case.id,
+      revisionId: created.revision.id,
+      decision: 'approved',
+      actor: { kind: 'human', actorId: HUMAN_ACTOR },
+    })
+    expect(local.ctx.delivery.getRequirementDecision(decision.id)).toEqual(decision)
+
+    await expect(local.ctx.delivery.recordRequirementDecision({
+      ...request,
+      idempotencyKey: 'decision-replay-other-key',
+    })).resolves.toEqual(decision)
+    await expect(local.ctx.delivery.recordRequirementDecision({
+      ...request,
+      idempotencyKey: 'decision-conflict',
+      reason: 'A different review conclusion.',
+    })).rejects.toMatchObject({ code: 'idempotency-conflict' })
+    await expect(local.ctx.delivery.recordRequirementDecision({
+      ...request,
+      idempotencyKey: 'decision-conflict-decision',
+      decision: 'rejected',
+    })).rejects.toMatchObject({ code: 'idempotency-conflict' })
+    await expect(local.ctx.delivery.recordRequirementDecision({
+      ...request,
+      idempotencyKey: 'decision-missing-revision',
+      revisionId: ContractRevisionId('missing-contract-revision'),
+    })).rejects.toMatchObject({ code: 'not-found' })
+    await expect(local.ctx.delivery.recordRequirementDecision({
+      ...request,
+      idempotencyKey: 'decision-missing-case',
+      caseId: DeliveryCaseId('missing-delivery-case'),
+    })).rejects.toMatchObject({ code: 'not-found' })
+
+    const other = await local.ctx.delivery.createCase(createCaseRequest({}, 'case-decision-other'))
+    await expect(local.ctx.delivery.recordRequirementDecision({
+      ...request,
+      idempotencyKey: 'decision-cross-case',
+      caseId: other.case.id,
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+  })
+
+  it('rejects Packet creation outside the approved ready Case revision authority', async () => {
+    const local = await harness(new MemoryMediaPool())
     const otherCommit = GitCommitId('3333333333333333333333333333333333333333')
-    const repositoryId = RepositoryId('repository-fixture')
-    const packetFixture = readyWorkPacketFixture()
+    const packetFixture = readyPacketFixture()
     await expect(local.ctx.delivery.createWorkPacket({
       idempotencyKey: 'packet-missing-contract',
       contractRevisionId: ContractRevisionId('missing-contract'),
       repository: {
-        repositoryId,
-        selectionRule: { kind: 'commit', commit: baseCommit },
-        commit: baseCommit,
+        repositoryId: REPOSITORY_ID,
+        selectionRule: { kind: 'commit', commit: BASE_COMMIT },
+        commit: BASE_COMMIT,
       } as never,
       packet: packetDraft(packetFixture),
     })).rejects.toMatchObject({ code: 'not-found' })
 
-    const notReady = await local.ctx.delivery.adoptContractRevision(adoptionRequest(
-      contractRevisionFixture({ outcome: null }),
-      'packet-not-ready-contract',
-    ))
-    if (notReady.repositoryId === null || notReady.baseSelectionRule?.kind !== 'commit') {
+    const unapproved = await local.ctx.delivery.createCase(createCaseRequest({}, 'case-unapproved-packet'))
+    if (unapproved.revision.baseSelectionRule?.kind !== 'commit') {
+      throw new Error('fixture unexpectedly lacks repository fields')
+    }
+    await expect(local.ctx.delivery.createWorkPacket({
+      idempotencyKey: 'packet-unapproved',
+      contractRevisionId: unapproved.revision.id,
+      repository: {
+        repositoryId: unapproved.case.repositoryId,
+        selectionRule: unapproved.revision.baseSelectionRule,
+        commit: unapproved.revision.baseSelectionRule.commit,
+      } as never,
+      packet: packetDraft(packetFixture),
+    })).rejects.toMatchObject({ code: 'approval-required' })
+
+    await local.ctx.delivery.recordRequirementDecision(decisionRequest(unapproved, {
+      decision: 'rejected',
+      reason: 'Requirement needs another round.',
+    }, 'decision-rejected-packet'))
+    await expect(local.ctx.delivery.createWorkPacket({
+      idempotencyKey: 'packet-rejected',
+      contractRevisionId: unapproved.revision.id,
+      repository: {
+        repositoryId: unapproved.case.repositoryId,
+        selectionRule: unapproved.revision.baseSelectionRule,
+        commit: unapproved.revision.baseSelectionRule.commit,
+      } as never,
+      packet: packetDraft(packetFixture),
+    })).rejects.toMatchObject({ code: 'approval-required' })
+
+    const notReady = await local.ctx.delivery.createCase(
+      createCaseRequest({ revision: revisionDraft({ outcome: null }) }, 'case-not-ready-packet'),
+    )
+    await local.ctx.delivery.recordRequirementDecision(decisionRequest(notReady, {}, 'decision-not-ready-packet'))
+    if (notReady.revision.baseSelectionRule?.kind !== 'commit') {
       throw new Error('not-ready fixture unexpectedly lacks repository fields')
     }
     await expect(local.ctx.delivery.createWorkPacket({
       idempotencyKey: 'packet-not-ready',
-      contractRevisionId: notReady.id,
+      contractRevisionId: notReady.revision.id,
       repository: {
-        repositoryId: notReady.repositoryId,
-        selectionRule: notReady.baseSelectionRule,
-        commit: notReady.baseSelectionRule.commit,
+        repositoryId: notReady.case.repositoryId,
+        selectionRule: notReady.revision.baseSelectionRule,
+        commit: notReady.revision.baseSelectionRule.commit,
       } as never,
       packet: packetDraft(packetFixture),
     })).rejects.toMatchObject({ code: 'invalid-reference' })
 
-    const ready = await local.ctx.delivery.adoptContractRevision(adoptionRequest(
-      contractRevisionFixture(),
-      'packet-ready-contract',
-    ))
-    if (ready.repositoryId === null || ready.baseSelectionRule?.kind !== 'commit') {
+    const ready = await createApprovedCase(local, 'packet-authority')
+    if (ready.revision.baseSelectionRule?.kind !== 'commit') {
       throw new Error('ready fixture unexpectedly lacks repository fields')
     }
-    const readyFixture = readyWorkPacketFixture({
-      contractRevisionId: ready.id,
-      repositoryId: ready.repositoryId,
-      baseCommit: ready.baseSelectionRule.commit,
-      acceptanceClauseIds: ready.acceptanceClauses.map(clause => clause.id),
+    const readyFixture = readyPacketFixture({
+      contractRevisionId: ready.revision.id,
+      repositoryId: ready.case.repositoryId,
+      baseCommit: ready.revision.baseSelectionRule.commit,
+      acceptanceClauseIds: ready.revision.acceptanceClauses.map(clause => clause.id),
     })
-    const validRepository: CreateWorkPacketRequest['repository'] = {
-      repositoryId: ready.repositoryId,
-      selectionRule: ready.baseSelectionRule,
-      commit: ready.baseSelectionRule.commit,
-    } as never
     const valid: CreateWorkPacketRequest = {
       idempotencyKey: 'packet-authority-valid',
-      contractRevisionId: ready.id,
-      repository: validRepository,
+      contractRevisionId: ready.revision.id,
+      repository: {
+        repositoryId: ready.case.repositoryId,
+        selectionRule: ready.revision.baseSelectionRule,
+        commit: ready.revision.baseSelectionRule.commit,
+      } as never,
       packet: packetDraft(readyFixture),
     }
     await expect(local.ctx.delivery.createWorkPacket({
@@ -482,47 +798,103 @@ describe('LocalDelivery persistence', () => {
     })).rejects.toMatchObject({ code: 'idempotency-conflict' })
   })
 
-  it('derives a Packet plan from the exact bounded Contract Git blob', async () => {
+  it('reopens a Packet with its revision-derived verification plan', async () => {
+    const pool = new MemoryMediaPool()
+    const first = await harness(pool)
+    const created = await createApprovedCase(first, 'packet-reopen')
+    const revision = created.revision
+    if (revision.baseSelectionRule === null || revision.baseSelectionRule.kind !== 'commit') {
+      throw new Error('ready revision fixture unexpectedly lacks repository authority')
+    }
+    const fixture = readyPacketFixture({
+      contractRevisionId: revision.id,
+      repositoryId: created.case.repositoryId,
+      baseCommit: revision.baseSelectionRule.commit,
+      acceptanceClauseIds: revision.acceptanceClauses.map(clause => clause.id),
+    })
+    const packetRequest = {
+      idempotencyKey: 'create-packet-local-v2',
+      contractRevisionId: revision.id,
+      repository: {
+        repositoryId: created.case.repositoryId,
+        selectionRule: revision.baseSelectionRule,
+        commit: revision.baseSelectionRule.commit,
+      } as never,
+      packet: packetDraft(fixture),
+    }
+    const [packet, packetReplay] = await Promise.all([
+      first.ctx.delivery.createWorkPacket(packetRequest),
+      first.ctx.delivery.createWorkPacket(packetRequest),
+    ])
+    expect(packetReplay).toEqual(packet)
+    await first.dispose()
+    active.splice(active.indexOf(first), 1)
+
+    const reopened = await harness(pool)
+    expect(reopened.ctx.delivery.getWorkPacket(packet.id)).toEqual(packet)
+    await expect(reopened.ctx.delivery.createWorkPacket(
+      packetRequest,
+      async () => { throw new Error('durable replay must not resolve the plan blob') },
+    )).resolves.toEqual(packet)
+    await expect(reopened.ctx.delivery.createWorkPacket({
+      ...packetRequest,
+      packet: { ...packetRequest.packet, objective: 'conflicting objective after restart' },
+    })).rejects.toMatchObject({ code: 'idempotency-conflict' })
+    expect(packet.verificationPlan.provenance).toEqual({
+      kind: 'contract-field',
+      contractRevisionId: revision.id,
+      field: 'verificationSource',
+    })
+  })
+
+  it('derives a Packet plan from the exact bounded revision Git blob', async () => {
     const pool = new MemoryMediaPool()
     const local = await harness(pool)
-    const original = contractRevisionFixture()
-    if (original.verificationSource?.kind !== 'contract-field') {
-      throw new Error('Contract fixture unexpectedly lacks inline checks')
-    }
+    const inlineChecks = [FIXTURE_CHECK]
     const path = RepositoryRelativePath('.dsh/delivery-verification.json')
-    const contract = await local.ctx.delivery.adoptContractRevision(adoptionRequest(
-      contractRevisionFixture({
+    const created = await createApprovedCase(local, 'git-blob', {
+      revision: revisionDraft({
         verificationSource: { kind: 'git-blob', path, format: 'delivery-verification-plan@1' },
       }),
-    ))
-    if (contract.repositoryId === null || contract.baseSelectionRule?.kind !== 'commit') {
-      throw new Error('ready Contract fixture unexpectedly lacks repository authority')
+    })
+    const revision = created.revision
+    if (revision.baseSelectionRule?.kind !== 'commit') {
+      throw new Error('ready revision fixture unexpectedly lacks repository authority')
     }
-    const fixture = readyWorkPacketFixture({
-      contractRevisionId: contract.id,
-      repositoryId: contract.repositoryId,
-      baseCommit: contract.baseSelectionRule.commit,
-      acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
+    const fixture = readyPacketFixture({
+      contractRevisionId: revision.id,
+      repositoryId: created.case.repositoryId,
+      baseCommit: revision.baseSelectionRule.commit,
+      acceptanceClauseIds: revision.acceptanceClauses.map(clause => clause.id),
+      verificationPlan: verificationPlanFixture({
+        checks: inlineChecks,
+        provenance: {
+          kind: 'git-blob',
+          baseCommit: revision.baseSelectionRule.commit,
+          path,
+          blobId: GitBlobId('4444444444444444444444444444444444444444'),
+        },
+      }),
     })
     const bytes = new TextEncoder().encode(JSON.stringify({
       format: 'delivery-verification-plan@1',
-      checks: original.verificationSource.checks,
+      checks: inlineChecks,
     }))
     const resolveBlob = vi.fn(async (_request: unknown) => ({
-      repositoryId: contract.repositoryId as NonNullable<ContractRevision['repositoryId']>,
-      commit: contract.baseSelectionRule?.kind === 'commit' ? contract.baseSelectionRule.commit : fixture.baseCommit,
+      repositoryId: created.case.repositoryId,
+      commit: revision.baseSelectionRule?.kind === 'commit' ? revision.baseSelectionRule.commit : fixture.baseCommit,
       path,
       blobId: GitBlobId('4444444444444444444444444444444444444444'),
       bytes,
     } as never))
 
     const packetRequest = {
-      idempotencyKey: 'create-packet-git-blob-v1',
-      contractRevisionId: contract.id,
+      idempotencyKey: 'create-packet-git-blob-v2',
+      contractRevisionId: revision.id,
       repository: {
-        repositoryId: contract.repositoryId,
-        selectionRule: contract.baseSelectionRule,
-        commit: contract.baseSelectionRule.commit,
+        repositoryId: created.case.repositoryId,
+        selectionRule: revision.baseSelectionRule,
+        commit: revision.baseSelectionRule.commit,
       } as never,
       packet: packetDraft(fixture),
     }
@@ -531,16 +903,16 @@ describe('LocalDelivery persistence', () => {
     expect(resolveBlob).toHaveBeenCalledOnce()
     expect(resolveBlob.mock.calls[0]?.[0]).toEqual({
       repository: {
-        repositoryId: contract.repositoryId,
-        selectionRule: contract.baseSelectionRule,
-        commit: contract.baseSelectionRule.commit,
+        repositoryId: created.case.repositoryId,
+        selectionRule: revision.baseSelectionRule,
+        commit: revision.baseSelectionRule.commit,
       },
       path,
       maxBytes: DELIVERY_VERIFICATION_SOURCE_MAX_BYTES,
     })
     expect(packet.verificationPlan.provenance).toEqual({
       kind: 'git-blob',
-      baseCommit: contract.baseSelectionRule.commit,
+      baseCommit: revision.baseSelectionRule.commit,
       path,
       blobId: GitBlobId('4444444444444444444444444444444444444444'),
     })
@@ -550,26 +922,26 @@ describe('LocalDelivery persistence', () => {
     exactLimitBytes.set(bytes)
     await expect(local.ctx.delivery.createWorkPacket({
       idempotencyKey: 'create-packet-git-blob-exact-limit',
-      contractRevisionId: contract.id,
+      contractRevisionId: revision.id,
       repository: {
-        repositoryId: contract.repositoryId,
-        selectionRule: contract.baseSelectionRule,
-        commit: contract.baseSelectionRule.commit,
+        repositoryId: created.case.repositoryId,
+        selectionRule: revision.baseSelectionRule,
+        commit: revision.baseSelectionRule.commit,
       } as never,
       packet: packetDraft(fixture),
     }, async () => ({
-      repositoryId: contract.repositoryId,
-      commit: fixture.baseCommit,
+      repositoryId: created.case.repositoryId,
+      commit: revision.baseSelectionRule?.kind === 'commit' ? revision.baseSelectionRule.commit : fixture.baseCommit,
       path,
       blobId: GitBlobId('5555555555555555555555555555555555555555'),
       bytes: exactLimitBytes,
     } as never))).resolves.toMatchObject({
-      verificationPlan: { checks: original.verificationSource.checks },
+      verificationPlan: { checks: inlineChecks },
     })
 
     const multibyteDocument = JSON.stringify({
       format: 'delivery-verification-plan@1',
-      checks: original.verificationSource.checks.map(check => ({
+      checks: inlineChecks.map(check => ({
         ...check,
         name: '检查交付消费者',
       })),
@@ -578,16 +950,16 @@ describe('LocalDelivery persistence', () => {
     expect(multibyteBytes.byteLength).toBeGreaterThan(multibyteDocument.length)
     await expect(local.ctx.delivery.createWorkPacket({
       idempotencyKey: 'create-packet-git-blob-multibyte',
-      contractRevisionId: contract.id,
+      contractRevisionId: revision.id,
       repository: {
-        repositoryId: contract.repositoryId,
-        selectionRule: contract.baseSelectionRule,
-        commit: contract.baseSelectionRule.commit,
+        repositoryId: created.case.repositoryId,
+        selectionRule: revision.baseSelectionRule,
+        commit: revision.baseSelectionRule.commit,
       } as never,
       packet: packetDraft(fixture),
     }, async () => ({
-      repositoryId: contract.repositoryId,
-      commit: fixture.baseCommit,
+      repositoryId: created.case.repositoryId,
+      commit: revision.baseSelectionRule?.kind === 'commit' ? revision.baseSelectionRule.commit : fixture.baseCommit,
       path,
       blobId: GitBlobId('6666666666666666666666666666666666666666'),
       bytes: multibyteBytes,
@@ -605,35 +977,41 @@ describe('LocalDelivery persistence', () => {
     expect(replayResolver).not.toHaveBeenCalled()
   })
 
-  it('rejects missing, mismatched, oversized, and malformed Contract Git blobs', async () => {
+  it('rejects missing, mismatched, oversized, and malformed revision Git blobs', async () => {
     const local = await harness(new MemoryMediaPool())
-    const original = contractRevisionFixture()
-    if (original.verificationSource?.kind !== 'contract-field') {
-      throw new Error('Contract fixture unexpectedly lacks inline checks')
-    }
+    const inlineChecks = [FIXTURE_CHECK]
     const path = RepositoryRelativePath('.dsh/delivery-verification.json')
     const otherPath = RepositoryRelativePath('.dsh/other-verification.json')
-    const contract = await local.ctx.delivery.adoptContractRevision(adoptionRequest(
-      contractRevisionFixture({
+    const created = await createApprovedCase(local, 'git-blob-errors', {
+      revision: revisionDraft({
         verificationSource: { kind: 'git-blob', path, format: 'delivery-verification-plan@1' },
       }),
-      'git-blob-errors-contract',
-    ))
-    if (contract.repositoryId === null || contract.baseSelectionRule?.kind !== 'commit') {
-      throw new Error('ready Contract fixture unexpectedly lacks repository authority')
+    })
+    const revision = created.revision
+    if (revision.baseSelectionRule?.kind !== 'commit') {
+      throw new Error('ready revision fixture unexpectedly lacks repository authority')
     }
-    const fixture = readyWorkPacketFixture({
-      contractRevisionId: contract.id,
-      repositoryId: contract.repositoryId,
-      baseCommit: contract.baseSelectionRule.commit,
-      acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
+    const fixture = readyPacketFixture({
+      contractRevisionId: revision.id,
+      repositoryId: created.case.repositoryId,
+      baseCommit: revision.baseSelectionRule.commit,
+      acceptanceClauseIds: revision.acceptanceClauses.map(clause => clause.id),
+      verificationPlan: verificationPlanFixture({
+        checks: inlineChecks,
+        provenance: {
+          kind: 'git-blob',
+          baseCommit: revision.baseSelectionRule.commit,
+          path,
+          blobId: GitBlobId('4444444444444444444444444444444444444444'),
+        },
+      }),
     })
     const baseRequest = {
-      contractRevisionId: contract.id,
+      contractRevisionId: revision.id,
       repository: {
-        repositoryId: contract.repositoryId,
-        selectionRule: contract.baseSelectionRule,
-        commit: contract.baseSelectionRule.commit,
+        repositoryId: created.case.repositoryId,
+        selectionRule: revision.baseSelectionRule,
+        commit: revision.baseSelectionRule.commit,
       } as never,
       packet: packetDraft(fixture),
     }
@@ -644,11 +1022,11 @@ describe('LocalDelivery persistence', () => {
 
     const validBytes = new TextEncoder().encode(JSON.stringify({
       format: 'delivery-verification-plan@1',
-      checks: original.verificationSource.checks,
+      checks: inlineChecks,
     }))
     const validBlob = {
-      repositoryId: contract.repositoryId,
-      commit: contract.baseSelectionRule.commit,
+      repositoryId: created.case.repositoryId,
+      commit: revision.baseSelectionRule.commit,
       path,
       blobId: GitBlobId('4444444444444444444444444444444444444444'),
       bytes: validBytes,
@@ -673,7 +1051,7 @@ describe('LocalDelivery persistence', () => {
     } as never))).rejects.toMatchObject({ code: 'invalid-reference' })
     const multibyteOverflowDocument = JSON.stringify({
       format: 'delivery-verification-plan@1',
-      checks: original.verificationSource.checks.map(check => ({
+      checks: inlineChecks.map(check => ({
         ...check,
         name: '界'.repeat(Math.floor(DELIVERY_VERIFICATION_SOURCE_MAX_BYTES / 2)),
       })),
@@ -700,30 +1078,9 @@ describe('LocalDelivery persistence', () => {
   it('reopens the bound Delivery-to-Queue handshake', async () => {
     const pool = new MemoryMediaPool()
     const first = await harness(pool)
-    const contract = await first.ctx.delivery.adoptContractRevision(
-      adoptionRequest(contractRevisionFixture()),
-    )
-    if (contract.repositoryId === null || contract.baseSelectionRule?.kind !== 'commit') {
-      throw new Error('ready Contract fixture unexpectedly lacks repository authority')
-    }
-    const packetFixture = readyWorkPacketFixture({
-      contractRevisionId: contract.id,
-      repositoryId: contract.repositoryId,
-      baseCommit: contract.baseSelectionRule.commit,
-      acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
-    })
-    const packet = await first.ctx.delivery.createWorkPacket({
-      idempotencyKey: 'create-packet-for-binding-v1',
-      contractRevisionId: contract.id,
-      repository: {
-        repositoryId: contract.repositoryId,
-        selectionRule: contract.baseSelectionRule,
-        commit: contract.baseSelectionRule.commit,
-      } as never,
-      packet: packetDraft(packetFixture),
-    })
+    const packet = await storedPacket(first, 'binding-reopen')
     const dispatchRequest = {
-      idempotencyKey: 'begin-change-dispatch-v1',
+      idempotencyKey: 'begin-change-dispatch-v2',
       packetId: packet.id,
       kind: 'code.change@1' as const,
       executorId: ExecutorId('codex'),
@@ -754,9 +1111,9 @@ describe('LocalDelivery persistence', () => {
     const local = await harness(new MemoryMediaPool())
     await expect(local.ctx.delivery.beginDispatch({
       idempotencyKey: 'dispatch-missing-packet',
-      packetId: readyWorkPacketFixture().id,
+      packetId: readyPacketFixture().id,
       kind: 'code.verify@1',
-      inputDigest: canonicalDigest({ packetId: readyWorkPacketFixture().id }),
+      inputDigest: canonicalDigest({ packetId: readyPacketFixture().id }),
     })).rejects.toMatchObject({ code: 'not-found' })
     await expect(local.ctx.delivery.bindDispatch({
       bindingId: DispatchBindingId('missing-binding'),
@@ -847,32 +1204,11 @@ describe('LocalDelivery persistence', () => {
   it('reopens a human acceptance committed from exact bound Queue and evidence facts', async () => {
     const pool = new MemoryMediaPool()
     const first = await harness(pool)
-    const contract = await first.ctx.delivery.adoptContractRevision(
-      adoptionRequest(contractRevisionFixture()),
-    )
-    if (contract.repositoryId === null || contract.baseSelectionRule?.kind !== 'commit') {
-      throw new Error('ready Contract fixture unexpectedly lacks repository authority')
-    }
-    const packetFixture = readyWorkPacketFixture({
-      contractRevisionId: contract.id,
-      repositoryId: contract.repositoryId,
-      baseCommit: contract.baseSelectionRule.commit,
-      acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
-    })
-    const packet = await first.ctx.delivery.createWorkPacket({
-      idempotencyKey: 'create-packet-for-acceptance-v1',
-      contractRevisionId: contract.id,
-      repository: {
-        repositoryId: contract.repositoryId,
-        selectionRule: contract.baseSelectionRule,
-        commit: contract.baseSelectionRule.commit,
-      } as never,
-      packet: packetDraft(packetFixture),
-    })
+    const packet = await storedPacket(first, 'acceptance-reopen')
     const changeQueueWorkId = QueueWorkIdRef('queue-work-change-acceptance')
     const changeBinding = await first.ctx.delivery.bindDispatch({
       bindingId: (await first.ctx.delivery.beginDispatch({
-        idempotencyKey: 'begin-change-for-acceptance-v1',
+        idempotencyKey: 'begin-change-for-acceptance-v2',
         packetId: packet.id,
         kind: 'code.change@1',
         executorId: ExecutorId('codex'),
@@ -889,7 +1225,7 @@ describe('LocalDelivery persistence', () => {
     const verificationQueueWorkId = QueueWorkIdRef('queue-work-verify-acceptance')
     const verificationBinding = await first.ctx.delivery.bindDispatch({
       bindingId: (await first.ctx.delivery.beginDispatch({
-        idempotencyKey: 'begin-verify-for-acceptance-v1',
+        idempotencyKey: 'begin-verify-for-acceptance-v2',
         packetId: packet.id,
         kind: 'code.verify@1',
         inputDigest: canonicalDigest(verificationIntent),
@@ -950,14 +1286,14 @@ describe('LocalDelivery persistence', () => {
     ])
 
     const decisionRequest = {
-      idempotencyKey: 'accept-packet-local-v1',
+      idempotencyKey: 'accept-packet-local-v2',
       packetId: packet.id,
       changeBindingId: changeBinding.id,
       verificationBindingId: verificationBinding.id,
       decision: 'accepted' as const,
       reason: 'Independent verification passed and the result was reviewed.',
-      actorId: 'local-operator',
-      decisionNonce: 'accept-packet-local-v1',
+      actorId: HUMAN_ACTOR,
+      decisionNonce: 'accept-packet-local-v2',
     }
     const candidate = {
       completionClaim,
@@ -1006,7 +1342,7 @@ describe('LocalDelivery persistence', () => {
       verificationBindingId: chain.verificationBinding.id,
       decision: 'accepted' as const,
       reason: 'Authority chain must match.',
-      actorId: 'local-operator',
+      actorId: HUMAN_ACTOR,
       decisionNonce: 'acceptance-authority-base',
     }
     const evidenceResolver = async (id: EvidenceId) => chain.evidence.get(id)
@@ -1015,7 +1351,7 @@ describe('LocalDelivery persistence', () => {
     await expect(local.ctx.delivery.recordAcceptanceDecision({
       ...baseRequest,
       idempotencyKey: 'acceptance-missing-packet',
-      packetId: readyWorkPacketFixture().id,
+      packetId: readyPacketFixture().id,
       decisionNonce: 'acceptance-missing-packet',
     }, candidateResolver, evidenceResolver)).rejects.toMatchObject({ code: 'not-found' })
     expect(candidateResolver).not.toHaveBeenCalled()
@@ -1194,229 +1530,340 @@ describe('LocalDelivery persistence', () => {
     )).resolves.toEqual(accepted)
   })
 
-  it('rejects incomplete, unrelated, or unverified acceptance evidence', async () => {
-    const local = await harness(new MemoryMediaPool())
-    const chain = await acceptanceChain(local, 'evidence-cases')
-    const request = {
-      packetId: chain.packet.id,
-      changeBindingId: chain.changeBinding.id,
-      verificationBindingId: chain.verificationBinding.id,
-      decision: 'accepted' as const,
-      reason: 'Evidence must match every authority.',
-      actorId: 'local-operator',
+  it('rejects a version-1 domain medium before any write', async () => {
+    const pool = new MemoryMediaPool()
+    pool.versions.set('personal_delivery', 1)
+    const legacyRecords = new Map<string, unknown>([['legacy-key', { legacy: true }]])
+    pool.media.set('personal_delivery', {
+      tables: new Map([['contract_revisions', legacyRecords]]),
+      global: null,
+    })
+    const ctx = await failingHarness(pool)
+    try {
+      const outcome = await ctx.plugin(LocalDelivery).then(() => 'started' as const, (error: unknown) => error)
+      expect(outcome).toBeInstanceOf(StorageError)
+      expect(outcome instanceof Error ? outcome.message : String(outcome)).toMatch(/stamped v1/)
+      expect(pool.versions.get('personal_delivery')).toBe(1)
+      expect([...legacyRecords.keys()]).toEqual(['legacy-key'])
+    } finally {
+      await ctx.fiber.dispose()
     }
-    const run = (
-      id: string,
-      candidate: typeof chain.candidate,
-      resolveEvidence: (evidenceId: EvidenceId) => Promise<ReturnType<typeof evidenceRefFixture> | undefined>,
-    ) => local.ctx.delivery.recordAcceptanceDecision({
-      ...request,
-      idempotencyKey: id,
-      decisionNonce: id,
-    }, async () => candidate, resolveEvidence)
+  })
 
-    await expect(run('evidence-missing', chain.candidate, async () => undefined))
-      .rejects.toMatchObject({ code: 'acceptance-denied' })
-    await expect(run('evidence-wrong-id', chain.candidate, async () => evidenceRefFixture({
-      id: EvidenceId('wrong-evidence-id'),
-    }))).rejects.toMatchObject({ code: 'acceptance-denied' })
-
-    const resumeCapsuleId = EvidenceId('evidence-resume-capsule')
-    const candidateWithResumeCapsule = {
-      ...chain.candidate,
-      completionClaim: completedClaimFixture({
-        ...chain.candidate.completionClaim,
-        resumeCapsuleEvidenceId: resumeCapsuleId,
-      }),
-    }
-    await expect(run(
-      'evidence-resume-capsule-missing',
-      candidateWithResumeCapsule,
-      async id => chain.evidence.get(id),
-    )).rejects.toMatchObject({ code: 'acceptance-denied' })
-
-    const resumeCapsuleEvidence = evidenceRefFixture({
-      id: resumeCapsuleId,
-      kind: 'resume-capsule',
-      provenance: {
-        kind: 'change-attempt',
-        packetId: chain.packet.id,
-        queueWorkId: chain.candidate.completionClaim.queueWorkId,
-        queueAttemptId: chain.candidate.completionClaim.queueAttemptId,
-      },
+  it('reconstructs Cases, decisions, and publications byte-equal after restart', async () => {
+    const pool = new MemoryMediaPool()
+    const first = await harness(pool)
+    const created = await createApprovedCase(first, 'restart')
+    const revised = await first.ctx.delivery.reviseCase({
+      idempotencyKey: 'revise-restart',
+      caseId: created.case.id,
+      expectedHeadRevisionId: created.revision.id,
+      origin: { kind: 'human', actorId: HUMAN_ACTOR },
+      title: 'Revised delivery title',
+      revision: revisionDraft({ outcome: 'A revised bounded change is implemented.' }),
     })
-    const evidenceWithResumeCapsule = new Map(chain.evidence).set(resumeCapsuleId, resumeCapsuleEvidence)
-    const resolveResumeCapsule = vi.fn(async (id: EvidenceId) => evidenceWithResumeCapsule.get(id))
-    await expect(run(
-      'evidence-resume-capsule-valid',
-      candidateWithResumeCapsule,
-      resolveResumeCapsule,
-    )).resolves.toMatchObject({ decision: 'accepted' })
-    expect(resolveResumeCapsule).toHaveBeenCalledWith(resumeCapsuleId)
+    const headDecision = await first.ctx.delivery.recordRequirementDecision(
+      decisionRequest(revised, {}, 'decision-restart-head'),
+    )
+    const publication = await first.ctx.delivery.prepareIssuePublication(prepareRequest(revised, 'prepare-restart'))
+    await first.ctx.delivery.markIssuePublicationStarted(publication.id)
+    const published = await first.ctx.delivery.completeIssuePublication({
+      publicationId: publication.id,
+      expectedPhase: 'publishing',
+      issue: issueRef(),
+    } satisfies CompleteIssuePublicationRequest)
+    const before = first.ctx.delivery.snapshot()
+    await first.dispose()
+    active.splice(active.indexOf(first), 1)
 
-    const wrongResumeCapsule = new Map(evidenceWithResumeCapsule).set(resumeCapsuleId, {
-      ...resumeCapsuleEvidence,
-      kind: 'log',
-      provenance: {
-        ...resumeCapsuleEvidence.provenance,
-        queueAttemptId: QueueAttemptIdRef('wrong-resume-attempt'),
-      },
-    } as never)
-    await expect(run(
-      'evidence-resume-capsule-unrelated',
-      candidateWithResumeCapsule,
-      async id => wrongResumeCapsule.get(id),
-    )).rejects.toMatchObject({ code: 'acceptance-denied' })
+    const reopened = await harness(pool)
+    const after = reopened.ctx.delivery.snapshot()
+    expect(after.deliveryCases).toEqual(before.deliveryCases)
+    expect(after.contractRevisions).toEqual(before.contractRevisions)
+    expect(after.requirementDecisions).toEqual(before.requirementDecisions)
+    expect(after.issuePublications).toEqual(before.issuePublications)
+    expect(after.deliveryCases).toHaveLength(1)
+    expect(after.issuePublications[0]).toMatchObject({ id: published.id, phase: 'published' })
+    expect(reopened.ctx.delivery.getCase(created.case.id)).toEqual(revised.case)
+    expect(reopened.ctx.delivery.getRequirementDecision(headDecision.id)).toEqual(headDecision)
+    await expect(reopened.ctx.delivery.prepareIssuePublication(prepareRequest(revised, 'prepare-restart-replay')))
+      .resolves.toEqual(after.issuePublications[0])
+    await expect(reopened.ctx.delivery.recordRequirementDecision(
+      decisionRequest(revised, {}, 'decision-restart-head'),
+    )).resolves.toEqual(headDecision)
+  })
 
-    const changeId = chain.candidate.completionClaim.evidenceIds[0]!
-    const verificationId = chain.candidate.verificationVerdict.checkResults[0]!.evidenceIds[0]!
-    const changedKind = new Map(chain.evidence)
-    changedKind.set(changeId, evidenceRefFixture({
-      ...chain.evidence.get(changeId),
-      id: changeId,
-      kind: 'log',
-    }))
-    await expect(run(
-      'evidence-no-git-fact',
-      chain.candidate,
-      async id => changedKind.get(id),
-    )).rejects.toMatchObject({ code: 'acceptance-denied' })
+  describe('Issue publication lifecycle', () => {
+    it('walks prepared → publishing → published and rejects every illegal transition', async () => {
+      const local = await harness(new MemoryMediaPool())
+      const created = await createApprovedCase(local, 'published-path')
+      const request = prepareRequest(created)
+      const prepared = await local.ctx.delivery.prepareIssuePublication(request)
+      expect(prepared).toMatchObject({
+        phase: 'prepared',
+        issue: null,
+        failure: null,
+        caseId: created.case.id,
+        revisionId: created.revision.id,
+        marker: PUBLICATION_MARKER,
+      })
 
-    const verdictWithoutClaim = passedVerdictFixture({
-      ...chain.candidate.verificationVerdict,
-      evidenceIds: [verificationId],
-      evidenceIntegrityFindings: chain.candidate.verificationVerdict.evidenceIntegrityFindings
-        .filter(finding => finding.evidenceId === verificationId),
-    })
-    await expect(run('evidence-verdict-omits-claim', {
-      ...chain.candidate,
-      verificationVerdict: verdictWithoutClaim,
-    }, async id => chain.evidence.get(id))).rejects.toMatchObject({ code: 'acceptance-denied' })
+      await expect(local.ctx.delivery.completeIssuePublication({
+        publicationId: prepared.id,
+        expectedPhase: 'publishing',
+        issue: issueRef(),
+      })).rejects.toMatchObject({ code: 'invalid-transition' })
+      await expect(local.ctx.delivery.failIssuePublication({
+        publicationId: prepared.id,
+        expectedPhase: 'publishing',
+        failure: notStartedFailure('never started'),
+      })).rejects.toMatchObject({ code: 'invalid-transition' })
+      await expect(local.ctx.delivery.resolveIssuePublication({
+        resolution: 'confirm-published',
+        publicationId: prepared.id,
+        issue: issueRef(),
+        verificationBasis: 'Host GET returned the exact marker and digest.',
+      })).rejects.toMatchObject({ code: 'invalid-transition' })
+      await expect(local.ctx.delivery.resolveIssuePublication({
+        resolution: 'confirm-not-created',
+        publicationId: prepared.id,
+        verificationBasis: '   ',
+      })).rejects.toMatchObject({ code: 'invalid-reference' })
+      await expect(local.ctx.delivery.markIssuePublicationStarted(IssuePublicationId('missing-publication')))
+        .rejects.toMatchObject({ code: 'not-found' })
+      await expect(local.ctx.delivery.completeIssuePublication({
+        publicationId: IssuePublicationId('missing-publication'),
+        expectedPhase: 'publishing',
+        issue: issueRef(),
+      })).rejects.toMatchObject({ code: 'not-found' })
 
-    const wrongClaimProvenance = new Map(chain.evidence)
-    wrongClaimProvenance.set(changeId, evidenceRefFixture({
-      ...chain.evidence.get(changeId),
-      id: changeId,
-      provenance: {
-        kind: 'change-attempt',
-        packetId: chain.packet.id,
-        queueWorkId: chain.candidate.completionClaim.queueWorkId,
-        queueAttemptId: QueueAttemptIdRef('wrong-change-attempt'),
-      },
-    }))
-    await expect(run(
-      'evidence-wrong-claim-provenance',
-      chain.candidate,
-      async id => wrongClaimProvenance.get(id),
-    )).rejects.toMatchObject({ code: 'acceptance-denied' })
+      const publishing = await local.ctx.delivery.markIssuePublicationStarted(prepared.id)
+      expect(publishing).toMatchObject({ phase: 'publishing', issue: null, failure: null })
+      await expect(local.ctx.delivery.markIssuePublicationStarted(prepared.id))
+        .rejects.toMatchObject({ code: 'invalid-transition' })
 
-    const extraClaimId = EvidenceId('evidence-extra-claim')
-    const extraClaimEvidence = evidenceRefFixture({
-      id: extraClaimId,
-      kind: 'log',
-      provenance: {
-        kind: 'change-attempt',
-        packetId: chain.packet.id,
-        queueWorkId: chain.candidate.completionClaim.queueWorkId,
-        queueAttemptId: QueueAttemptIdRef('wrong-extra-claim-attempt'),
-      },
-    })
-    const claimWithExtra = completedClaimFixture({
-      ...chain.candidate.completionClaim,
-      evidenceIds: [...chain.candidate.completionClaim.evidenceIds, extraClaimId],
-    })
-    const verdictCoveringExtraClaim = passedVerdictFixture({
-      ...chain.candidate.verificationVerdict,
-      evidenceIds: [...chain.candidate.verificationVerdict.evidenceIds, extraClaimId],
-      evidenceIntegrityFindings: [
-        ...chain.candidate.verificationVerdict.evidenceIntegrityFindings,
-        { evidenceId: extraClaimId, required: false, status: 'verified' },
-      ],
-    })
-    const withExtraClaim = new Map(chain.evidence).set(extraClaimId, extraClaimEvidence)
-    await expect(run('evidence-unrelated-extra-claim', {
-      ...chain.candidate,
-      completionClaim: claimWithExtra,
-      verificationVerdict: verdictCoveringExtraClaim,
-    }, async id => withExtraClaim.get(id))).rejects.toMatchObject({ code: 'acceptance-denied' })
+      const published = await local.ctx.delivery.completeIssuePublication({
+        publicationId: prepared.id,
+        expectedPhase: 'publishing',
+        issue: issueRef(),
+      })
+      expect(published).toMatchObject({ phase: 'published', issue: issueRef() })
+      await expect(local.ctx.delivery.markIssuePublicationStarted(prepared.id))
+        .rejects.toMatchObject({ code: 'invalid-transition' })
+      await expect(local.ctx.delivery.completeIssuePublication({
+        publicationId: prepared.id,
+        expectedPhase: 'publishing',
+        issue: issueRef(),
+      })).rejects.toMatchObject({ code: 'invalid-transition' })
+      await expect(local.ctx.delivery.failIssuePublication({
+        publicationId: prepared.id,
+        expectedPhase: 'publishing',
+        failure: notStartedFailure('already published'),
+      })).rejects.toMatchObject({ code: 'invalid-transition' })
+      await expect(local.ctx.delivery.resolveIssuePublication({
+        resolution: 'confirm-published',
+        publicationId: prepared.id,
+        issue: issueRef(),
+        verificationBasis: 'Already published.',
+      })).rejects.toMatchObject({ code: 'invalid-transition' })
 
-    const wrongVerificationProvenance = new Map(chain.evidence)
-    wrongVerificationProvenance.set(verificationId, evidenceRefFixture({
-      ...chain.evidence.get(verificationId),
-      id: verificationId,
-      kind: 'verification-output',
-      provenance: {
-        kind: 'verification-check',
-        packetId: chain.packet.id,
-        queueWorkId: chain.verificationBinding.queueWorkId,
-        queueAttemptId: chain.candidate.verificationQueueAttemptId,
-        checkId: chain.packet.verificationPlan.checks[0]!.id,
-      },
-    }))
-    wrongVerificationProvenance.set(verificationId, {
-      ...wrongVerificationProvenance.get(verificationId)!,
-      provenance: {
-        ...wrongVerificationProvenance.get(verificationId)!.provenance,
-        checkId: chain.packet.verificationPlan.checks[0]!.id,
-        queueAttemptId: QueueAttemptIdRef('wrong-verification-attempt'),
-      },
-    } as never)
-    await expect(run(
-      'evidence-wrong-verification-provenance',
-      chain.candidate,
-      async id => wrongVerificationProvenance.get(id),
-    )).rejects.toMatchObject({ code: 'acceptance-denied' })
+      await expect(local.ctx.delivery.prepareIssuePublication({
+        ...request,
+        idempotencyKey: 'prepare-again-after-published',
+      })).resolves.toEqual(published)
+      expect(local.ctx.delivery.snapshot().issuePublications).toHaveLength(1)
+    })
 
-    const extraId = EvidenceId('evidence-extra-verdict')
-    const extraEvidence = evidenceRefFixture({
-      id: extraId,
-      kind: 'verification-output',
-      provenance: {
-        kind: 'verification-check',
-        packetId: chain.packet.id,
-        queueWorkId: chain.verificationBinding.queueWorkId,
-        queueAttemptId: QueueAttemptIdRef('wrong-extra-attempt'),
-        checkId: chain.packet.verificationPlan.checks[0]!.id,
-      },
+    it('validates the committed Issue reference against its coordinates', async () => {
+      const local = await harness(new MemoryMediaPool())
+      const created = await createApprovedCase(local, 'issue-validation')
+      const prepared = await local.ctx.delivery.prepareIssuePublication(prepareRequest(created, 'prepare-issue-validation'))
+      const publishing = await local.ctx.delivery.markIssuePublicationStarted(prepared.id)
+      const driftedReader = gitHubIssueRefSchema.safeParse({
+        repository: IMPORT_REPOSITORY,
+        issueNumber: 102,
+        url: canonicalGitHubIssueUrl(IMPORT_REPOSITORY, 101),
+      })
+      expect(driftedReader.success).toBe(false)
+      await expect(local.ctx.delivery.completeIssuePublication({
+        publicationId: publishing.id,
+        expectedPhase: 'publishing',
+        issue: { repository: IMPORT_REPOSITORY, issueNumber: 102, url: canonicalGitHubIssueUrl(IMPORT_REPOSITORY, 101) },
+      })).rejects.toThrow()
+      const published = await local.ctx.delivery.completeIssuePublication({
+        publicationId: publishing.id,
+        expectedPhase: 'publishing',
+        issue: issueRef({ issueNumber: 102 }),
+      })
+      expect(published.issue).toEqual(issueRef({ issueNumber: 102 }))
     })
-    const withExtra = new Map(chain.evidence).set(extraId, extraEvidence)
-    const verdictWithExtra = passedVerdictFixture({
-      ...chain.candidate.verificationVerdict,
-      evidenceIds: [...chain.candidate.verificationVerdict.evidenceIds, extraId],
-      evidenceIntegrityFindings: [
-        ...chain.candidate.verificationVerdict.evidenceIntegrityFindings,
-        { evidenceId: extraId, required: false, status: 'verified' },
-      ],
-    })
-    await expect(run('evidence-unrelated-verdict-extra', {
-      ...chain.candidate,
-      verificationVerdict: verdictWithExtra,
-    }, async id => withExtra.get(id))).rejects.toMatchObject({ code: 'acceptance-denied' })
 
-    const optionalId = EvidenceId('evidence-optional-unverified')
-    const optionalEvidence = evidenceRefFixture({
-      id: optionalId,
-      kind: 'verification-output',
-      provenance: {
-        kind: 'verification-check',
-        packetId: chain.packet.id,
-        queueWorkId: chain.verificationBinding.queueWorkId,
-        queueAttemptId: chain.candidate.verificationQueueAttemptId,
-        checkId: chain.packet.verificationPlan.checks[0]!.id,
-      },
+    it('records a not-started failure and resets the same record for a new attempt', async () => {
+      const local = await harness(new MemoryMediaPool())
+      const created = await createApprovedCase(local, 'failed-reset')
+      const request = prepareRequest(created, 'prepare-failed-reset')
+      const prepared = await local.ctx.delivery.prepareIssuePublication(request)
+      await local.ctx.delivery.markIssuePublicationStarted(prepared.id)
+      const failed = await local.ctx.delivery.failIssuePublication({
+        publicationId: prepared.id,
+        expectedPhase: 'publishing',
+        failure: notStartedFailure('credential rejected before the request'),
+      })
+      expect(failed).toMatchObject({
+        phase: 'failed',
+        id: prepared.id,
+        issue: null,
+        failure: { sideEffect: 'not-started', category: 'transport' },
+      })
+
+      const reset = await local.ctx.delivery.prepareIssuePublication({
+        ...request,
+        idempotencyKey: 'prepare-failed-retry',
+      })
+      expect(reset.id).toBe(prepared.id)
+      expect(reset).toMatchObject({ phase: 'prepared', issue: null, failure: null })
+      expect(local.ctx.delivery.snapshot().issuePublications).toHaveLength(1)
+      await expect(local.ctx.delivery.prepareIssuePublication({
+        ...request,
+        idempotencyKey: 'prepare-failed-retry',
+      })).resolves.toEqual(reset)
+      await expect(local.ctx.delivery.failIssuePublication({
+        publicationId: reset.id,
+        expectedPhase: 'publishing',
+        failure: notStartedFailure('cannot fail from prepared'),
+      })).rejects.toMatchObject({ code: 'invalid-transition' })
+
+      await local.ctx.delivery.markIssuePublicationStarted(reset.id)
+      const unknown = await local.ctx.delivery.failIssuePublication({
+        publicationId: reset.id,
+        expectedPhase: 'publishing',
+        failure: unknownFailure('connection lost after the request was sent'),
+      })
+      expect(unknown).toMatchObject({
+        phase: 'unknown',
+        id: prepared.id,
+        failure: { sideEffect: 'unknown', category: 'transport' },
+      })
+      await expect(local.ctx.delivery.prepareIssuePublication({
+        ...request,
+        idempotencyKey: 'prepare-while-unknown',
+      })).rejects.toMatchObject({ code: 'invalid-transition' })
+
+      const resolved = await local.ctx.delivery.resolveIssuePublication({
+        resolution: 'confirm-not-created',
+        publicationId: unknown.id,
+        verificationBasis: 'The GitHub POST returned 422 and a Host GET returned 404 for the expected Issue location.',
+      })
+      expect(resolved.id).toBe(prepared.id)
+      expect(resolved).toMatchObject({ phase: 'prepared', issue: null, failure: null })
+      await expect(local.ctx.delivery.resolveIssuePublication({
+        resolution: 'confirm-not-created',
+        publicationId: resolved.id,
+        verificationBasis: 'Operator impression only.',
+      })).rejects.toMatchObject({ code: 'invalid-transition' })
+      expect(local.ctx.delivery.snapshot().issuePublications).toHaveLength(1)
     })
-    const withOptional = new Map(chain.evidence).set(optionalId, optionalEvidence)
-    const unverified = passedVerdictFixture({
-      ...chain.candidate.verificationVerdict,
-      evidenceIds: [...chain.candidate.verificationVerdict.evidenceIds, optionalId],
-      evidenceIntegrityFindings: [
-        ...chain.candidate.verificationVerdict.evidenceIntegrityFindings,
-        { evidenceId: optionalId, required: false, status: 'missing' },
-      ],
+
+    it('confirms an uncertain publication as published only through human resolution', async () => {
+      const local = await harness(new MemoryMediaPool())
+      const created = await createApprovedCase(local, 'confirm-published')
+      const prepared = await local.ctx.delivery.prepareIssuePublication(prepareRequest(created, 'prepare-confirm'))
+      await local.ctx.delivery.markIssuePublicationStarted(prepared.id)
+      const unknown = await local.ctx.delivery.failIssuePublication({
+        publicationId: prepared.id,
+        expectedPhase: 'publishing',
+        failure: unknownFailure('response never arrived'),
+      })
+      const confirmed = await local.ctx.delivery.resolveIssuePublication({
+        resolution: 'confirm-published',
+        publicationId: unknown.id,
+        issue: issueRef(),
+        verificationBasis: 'A fresh Host GET validated the exact marker and rendered digest.',
+      })
+      expect(confirmed).toMatchObject({ phase: 'published', issue: issueRef(), failure: null })
+      await expect(local.ctx.delivery.resolveIssuePublication({
+        resolution: 'confirm-not-created',
+        publicationId: confirmed.id,
+        verificationBasis: 'Already confirmed.',
+      })).rejects.toMatchObject({ code: 'invalid-transition' })
+      expect(local.ctx.delivery.getIssuePublication(prepared.id)).toEqual(confirmed)
     })
-    await expect(run('evidence-unverified', {
-      ...chain.candidate,
-      verificationVerdict: unverified,
-    }, async id => withOptional.get(id))).rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    it('resolves a crash-stalled publishing record back to prepared', async () => {
+      const local = await harness(new MemoryMediaPool())
+      const created = await createApprovedCase(local, 'stalled-publishing')
+      const prepared = await local.ctx.delivery.prepareIssuePublication(prepareRequest(created, 'prepare-stalled'))
+      await local.ctx.delivery.markIssuePublicationStarted(prepared.id)
+      const resolved = await local.ctx.delivery.resolveIssuePublication({
+        resolution: 'confirm-not-created',
+        publicationId: prepared.id,
+        verificationBasis: 'The process crashed before the POST; the backend log shows no request left the host.',
+      })
+      expect(resolved).toMatchObject({ phase: 'prepared', issue: null, failure: null })
+      const publishingAgain = await local.ctx.delivery.markIssuePublicationStarted(prepared.id)
+      const confirmed = await local.ctx.delivery.resolveIssuePublication({
+        resolution: 'confirm-published',
+        publicationId: publishingAgain.id,
+        issue: issueRef({ issueNumber: 103 }),
+        verificationBasis: 'The Issue exists and carries the exact marker after restart.',
+      })
+      expect(confirmed).toMatchObject({ phase: 'published', issue: issueRef({ issueNumber: 103 }) })
+    })
+
+    it('refuses preparation without an approved ready revision or a matching Case', async () => {
+      const local = await harness(new MemoryMediaPool())
+      const unapproved = await local.ctx.delivery.createCase(createCaseRequest({}, 'case-unapproved-publication'))
+      await expect(local.ctx.delivery.prepareIssuePublication(prepareRequest(unapproved, 'prepare-unapproved')))
+        .rejects.toMatchObject({ code: 'approval-required' })
+
+      await local.ctx.delivery.recordRequirementDecision(decisionRequest(unapproved, {
+        decision: 'deferred',
+        reason: 'Waiting on product input.',
+      }, 'decision-deferred-publication'))
+      await expect(local.ctx.delivery.prepareIssuePublication(prepareRequest(unapproved, 'prepare-deferred')))
+        .rejects.toMatchObject({ code: 'approval-required' })
+
+      const notReady = await local.ctx.delivery.createCase(
+        createCaseRequest({ revision: revisionDraft({ outcome: null }) }, 'case-not-ready-publication'),
+      )
+      await local.ctx.delivery.recordRequirementDecision(decisionRequest(notReady, {}, 'decision-not-ready-publication'))
+      await expect(local.ctx.delivery.prepareIssuePublication(prepareRequest(notReady, 'prepare-not-ready')))
+        .rejects.toMatchObject({ code: 'invalid-reference' })
+
+      const approved = await createApprovedCase(local, 'publication-cross-case')
+      const other = await local.ctx.delivery.createCase(createCaseRequest({}, 'case-other-publication'))
+      await expect(local.ctx.delivery.prepareIssuePublication(prepareRequest(
+        { case: other.case, revision: approved.revision },
+        'prepare-cross-case',
+      ))).rejects.toMatchObject({ code: 'invalid-reference' })
+      await expect(local.ctx.delivery.prepareIssuePublication(prepareRequest(
+        { case: approved.case, revision: approved.revision },
+        'prepare-missing-case',
+        { caseId: DeliveryCaseId('missing-delivery-case') },
+      ))).rejects.toMatchObject({ code: 'not-found' })
+      await expect(local.ctx.delivery.prepareIssuePublication(prepareRequest(
+        approved,
+        'prepare-missing-revision',
+        { revisionId: ContractRevisionId('missing-contract-revision') },
+      ))).rejects.toMatchObject({ code: 'not-found' })
+    })
+
+    it('replays preparation idempotently for one revision across keys', async () => {
+      const local = await harness(new MemoryMediaPool())
+      const created = await createApprovedCase(local, 'prepare-idempotent')
+      const request = prepareRequest(created, 'prepare-idempotent-first')
+      const first = await local.ctx.delivery.prepareIssuePublication(request)
+      await expect(local.ctx.delivery.prepareIssuePublication(request)).resolves.toEqual(first)
+      await expect(local.ctx.delivery.prepareIssuePublication({
+        ...request,
+        idempotencyKey: 'prepare-idempotent-second',
+      })).resolves.toEqual(first)
+      await expect(local.ctx.delivery.prepareIssuePublication({
+        ...request,
+        idempotencyKey: 'prepare-idempotent-first',
+        marker: 'different-marker',
+      })).rejects.toMatchObject({ code: 'idempotency-conflict' })
+      expect(local.ctx.delivery.snapshot().issuePublications).toEqual([first])
+    })
   })
 })
