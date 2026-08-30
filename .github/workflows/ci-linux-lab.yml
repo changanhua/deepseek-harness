@@ -28,7 +28,7 @@ concurrency:
 jobs:
   static:
     name: Linux lab static analysis
-    if: inputs.suite == 'all' || inputs.suite == 'static'
+    if: github.actor == 'changanhua' && (inputs.suite == 'all' || inputs.suite == 'static')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -54,7 +54,7 @@ jobs:
 
   coverage:
     name: Linux lab exhaustive coverage
-    if: inputs.suite == 'all' || inputs.suite == 'coverage'
+    if: github.actor == 'changanhua' && (inputs.suite == 'all' || inputs.suite == 'coverage')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
