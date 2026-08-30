@@ -11,7 +11,8 @@ export const name = 'repo-workspace-git-local-invariant'
 export const inject = ['invariants']
 
 /**
- * No runtime invariant: the unavailable provider creates no checkout or lease.
+ * No runtime invariant: each awaited operation verifies repository proofs and
+ * lease ownership, and this provider emits no event relation.
  */
 const install: InvariantInstaller = () => {}
 
