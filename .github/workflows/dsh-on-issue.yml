@@ -3,7 +3,8 @@
 #
 # 设计要点
 # - 触发方式：`issues` 事件 + `labeled`，且标签名必须是 `dsh-run`。不是所有 opened
-#   issue 都触发，避免 API 额度被任意 issue 消耗；需要谁跑就给谁打标签。
+#   issue 都触发，避免 API 额度被任意 issue 消耗；此外 issue 作者、打标签的 actor
+#   都必须是仓库所有者 changanhua，外部用户提交的 issue 永远不能进入模型执行路径。
 # - 处理深度：只分析 + 回帖。dsh 以 `DSH_PERMISSION_MODE=read-only` 运行，沙箱
 #   只读，模型无法修改任何文件；headless 无交互 UI，审批 `ask` 会 fail closed，
 #   不会卡死也不会偷偷放行写操作。
@@ -35,8 +36,13 @@ concurrency:
 jobs:
   dsh-analyze:
     name: dsh analyze issue
-    # 只有打上 dsh-run 标签才触发；其他任何标签不触发。
-    if: github.event.label.name == 'dsh-run'
+    # 三重 owner gate：标签、事件执行者、issue 作者都必须满足要求。
+    # 这样即使公开仓库允许任何人创建 issue，外部输入也不会获得模型/API key 执行机会。
+    if: >-
+      github.event.label.name == 'dsh-run'
+      && github.actor == 'changanhua'
+      && github.event.sender.login == 'changanhua'
+      && github.event.issue.user.login == 'changanhua'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
