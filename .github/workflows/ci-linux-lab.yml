@@ -1,0 +1,88 @@
+name: Linux Lab (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Heavy suite to run on disposable Ubuntu capacity
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - static
+          - coverage
+
+permissions:
+  contents: read
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  DSH_BUILD_CLIENT_PROFILE: official
+  DSH_TELEMETRY_DISABLED: '1'
+
+concurrency:
+  group: linux-lab-${{ github.ref }}-${{ inputs.suite }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Linux lab static analysis
+    if: inputs.suite == 'all' || inputs.suite == 'static'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DSH_GATE_CONCURRENCY: '4'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Run full static, Knip, lint, and duplication inventory
+        run: pnpm run check:ci:static
+      - name: Run full lint and duplication analysis
+        run: pnpm run check:ci:lint:contracts-ready
+
+  coverage:
+    name: Linux lab exhaustive coverage
+    if: inputs.suite == 'all' || inputs.suite == 'coverage'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DSH_COVERAGE_MAX_WORKERS: '4'
+      DSH_COVERAGE_PARTITIONS: '4'
+      DSH_GATE_CONCURRENCY: '3'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: pnpm
+      - name: Install dependencies and prepare bubblewrap
+        run: |
+          pnpm install --frozen-lockfile &
+          install_pid=$!
+          bash scripts/prepare-ci-bubblewrap.sh &
+          sandbox_pid=$!
+          install_status=0
+          wait "$install_pid" || install_status=$?
+          sandbox_status=0
+          wait "$sandbox_pid" || sandbox_status=$?
+          if (( install_status != 0 )); then exit "$install_status"; fi
+          exit "$sandbox_status"
+      - run: pnpm run check:ci:coverage
