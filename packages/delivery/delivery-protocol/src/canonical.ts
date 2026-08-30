@@ -5,7 +5,6 @@ import { Sha256Digest } from './brand.ts'
 import type { Sha256Digest as Sha256DigestType } from './brand.ts'
 import type {
   EvidenceRef,
-  SourceRef,
   VerificationCheck,
   VerificationPlan,
   WorkPacket,
@@ -33,11 +32,11 @@ export function canonicalDigest(value: unknown): Sha256DigestType {
 }
 
 /**
- * Compute the digest of the exact imported Issue title/body snapshot.
+ * Compute the digest of an imported GitHub Issue title/body snapshot.
  * @param source - Imported title and body.
- * @returns the snapshot digest.
+ * @returns the snapshot digest retained by a `github-import` requirement origin.
  */
-export function sourceRefContentDigest(source: Pick<SourceRef, 'title' | 'body'>): Sha256DigestType {
+export function githubIssueContentDigest(source: { readonly title: string; readonly body: string }): Sha256DigestType {
   return canonicalDigest({ body: source.body, title: source.title })
 }
 

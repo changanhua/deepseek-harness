@@ -1,8 +1,9 @@
 {
   "fixtureVersion": 1,
   "fixtureIds": {
-    "source-ref.github": "/sourceRefs/0",
+    "case.primary": "/deliveryCases/0",
     "contract.ready": "/contractRevisions/0",
+    "decision.requirement-approved": "/requirementDecisions/0",
     "plan-document.git-blob": "/verificationPlanDocuments/0",
     "plan.contract-field": "/verificationPlans/0",
     "packet.contract-plan": "/workPackets/0",
@@ -22,6 +23,11 @@
     "decision.waived": "/acceptanceDecisions/2",
     "evidence.change-checkpoint": "/evidenceRefs/0",
     "evidence.verification-output": "/evidenceRefs/1",
+    "publication.prepared": "/issuePublications/0",
+    "publication.publishing": "/issuePublications/1",
+    "publication.published": "/issuePublications/2",
+    "publication.failed": "/issuePublications/3",
+    "publication.unknown": "/issuePublications/4",
     "resume.with-checkpoint": "/resumeCapsules/0",
     "work-kind.change-intent": "/codeChangeIntents/0",
     "work-kind.change-resolved": "/resolvedCodeChanges/0",
@@ -30,41 +36,43 @@
     "work-kind.verify-resolved": "/resolvedCodeVerifies/0",
     "work-kind.verify-output": "/codeVerifyOutputs/0"
   },
-  "sourceRefs": [
+  "deliveryCases": [
     {
-      "schemaVersion": 1,
-      "id": "source-1",
-      "provider": "github",
-      "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
-      "issueNumber": 13,
-      "canonicalUrl": "https://github.com/deepseek-ai/deepseek-harness/issues/13",
-      "updatedAt": "2026-08-29T12:00:00.000Z",
-      "title": "Personal Delivery MVP",
-      "body": "Implement delivery protocol fixtures.",
-      "contentDigest": "sha256:ee0f2bd15755cb84da488599454e11c97454c5534c62e465b7aad794a8184d86",
-      "createdAt": "2026-08-29T12:01:00.000Z"
+      "schemaVersion": 2,
+      "id": "case-1",
+      "repositoryId": "repo-dsh",
+      "headRevisionId": "contract-1",
+      "createdAt": "2026-08-29T12:01:30.000Z",
+      "updatedAt": "2026-08-29T12:02:00.000Z"
+    }
+  ],
+  "requirementDecisions": [
+    {
+      "schemaVersion": 2,
+      "id": "decision-requirement-approved",
+      "caseId": "case-1",
+      "revisionId": "contract-1",
+      "decision": "approved",
+      "reason": "The requirement boundary is complete and ready for execution.",
+      "actor": { "kind": "human", "actorId": "user-local" },
+      "decisionNonce": "requirement-nonce-1",
+      "decidedAt": "2026-08-29T12:01:45.000Z"
     }
   ],
   "contractRevisions": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "contract-1",
       "previousRevisionId": null,
-      "sourceRef": {
-        "schemaVersion": 1,
-        "id": "source-1",
-        "provider": "github",
+      "origin": {
+        "kind": "github-import",
         "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
         "issueNumber": 13,
-        "canonicalUrl": "https://github.com/deepseek-ai/deepseek-harness/issues/13",
-        "updatedAt": "2026-08-29T12:00:00.000Z",
-        "title": "Personal Delivery MVP",
-        "body": "Implement delivery protocol fixtures.",
-        "contentDigest": "sha256:ee0f2bd15755cb84da488599454e11c97454c5534c62e465b7aad794a8184d86",
-        "createdAt": "2026-08-29T12:01:00.000Z"
+        "contentDigest": "sha256:ee0f2bd15755cb84da488599454e11c97454c5534c62e465b7aad794a8184d86"
       },
+      "title": "Personal Delivery MVP",
       "repositoryId": "repo-dsh",
-      "outcome": "Publish an executable, frozen Delivery Protocol V1.",
+      "outcome": "Publish an executable, frozen Delivery Protocol V2.",
       "context": "Independent consumers share this contract without redefining it.",
       "allowedScope": ["Add the Delivery protocol package."],
       "forbiddenScope": ["Do not modify Queue core."],
@@ -91,6 +99,92 @@
         { "label": "Issue", "url": "https://github.com/deepseek-ai/deepseek-harness/issues/13" }
       ],
       "createdAt": "2026-08-29T12:02:00.000Z"
+    }
+  ],
+  "issuePublications": [
+    {
+      "schemaVersion": 2,
+      "id": "publication-prepared",
+      "caseId": "case-1",
+      "revisionId": "contract-1",
+      "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
+      "renderedDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "marker": "<!-- dsh-delivery-publication:publication-prepared:sha256:1111111111111111111111111111111111111111111111111111111111111111 -->",
+      "createdAt": "2026-08-29T12:02:10.000Z",
+      "updatedAt": "2026-08-29T12:02:10.000Z",
+      "phase": "prepared",
+      "issue": null,
+      "failure": null
+    },
+    {
+      "schemaVersion": 2,
+      "id": "publication-publishing",
+      "caseId": "case-1",
+      "revisionId": "contract-1",
+      "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
+      "renderedDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "marker": "<!-- dsh-delivery-publication:publication-publishing:sha256:2222222222222222222222222222222222222222222222222222222222222222 -->",
+      "createdAt": "2026-08-29T12:02:20.000Z",
+      "updatedAt": "2026-08-29T12:02:25.000Z",
+      "phase": "publishing",
+      "issue": null,
+      "failure": null
+    },
+    {
+      "schemaVersion": 2,
+      "id": "publication-published",
+      "caseId": "case-1",
+      "revisionId": "contract-1",
+      "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
+      "renderedDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "marker": "<!-- dsh-delivery-publication:publication-published:sha256:3333333333333333333333333333333333333333333333333333333333333333 -->",
+      "createdAt": "2026-08-29T12:02:30.000Z",
+      "updatedAt": "2026-08-29T12:02:35.000Z",
+      "phase": "published",
+      "issue": {
+        "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
+        "issueNumber": 13,
+        "url": "https://github.com/deepseek-ai/deepseek-harness/issues/13"
+      },
+      "failure": null
+    },
+    {
+      "schemaVersion": 2,
+      "id": "publication-failed",
+      "caseId": "case-1",
+      "revisionId": "contract-1",
+      "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
+      "renderedDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "marker": "<!-- dsh-delivery-publication:publication-failed:sha256:4444444444444444444444444444444444444444444444444444444444444444 -->",
+      "createdAt": "2026-08-29T12:02:40.000Z",
+      "updatedAt": "2026-08-29T12:02:45.000Z",
+      "phase": "failed",
+      "issue": null,
+      "failure": {
+        "sideEffect": "not-started",
+        "category": "missing-credential",
+        "detail": "The configured credential reference resolved to no credential.",
+        "occurredAt": "2026-08-29T12:02:45.000Z"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "id": "publication-unknown",
+      "caseId": "case-1",
+      "revisionId": "contract-1",
+      "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
+      "renderedDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "marker": "<!-- dsh-delivery-publication:publication-unknown:sha256:5555555555555555555555555555555555555555555555555555555555555555 -->",
+      "createdAt": "2026-08-29T12:02:50.000Z",
+      "updatedAt": "2026-08-29T12:02:55.000Z",
+      "phase": "unknown",
+      "issue": null,
+      "failure": {
+        "sideEffect": "unknown",
+        "category": "transport",
+        "detail": "The Issue creation request failed after start with an uncertain transport outcome.",
+        "occurredAt": "2026-08-29T12:02:55.000Z"
+      }
     }
   ],
   "verificationPlanDocuments": [
@@ -132,7 +226,7 @@
   ],
   "workPackets": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "packet-1",
       "contractRevisionId": "contract-1",
       "repositoryId": "repo-dsh",
@@ -162,13 +256,13 @@
       },
       "stopConditions": ["Stop before changing Queue core."],
       "executorPreference": { "mode": "required", "executorId": "codex" },
-      "packetDigest": "sha256:7e51e503c73a79dcfcd6bdae0c8f1758c49ce5f370fe2adb4280897218c90adc",
+      "packetDigest": "sha256:19bc87fb244d5bf03d7b7eff309dd522e8f44998ac681dab6ccaee48a434d8bb",
       "createdAt": "2026-08-29T12:03:00.000Z"
     }
   ],
   "dispatchBindings": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "binding-change-submitting",
       "packetId": "packet-1",
       "kind": "code.change@1",
@@ -181,7 +275,7 @@
       "updatedAt": "2026-08-29T12:04:00.000Z"
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "binding-change-bound",
       "packetId": "packet-1",
       "kind": "code.change@1",
@@ -194,7 +288,7 @@
       "updatedAt": "2026-08-29T12:04:01.000Z"
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "binding-verify-submitting",
       "packetId": "packet-1",
       "kind": "code.verify@1",
@@ -207,7 +301,7 @@
       "updatedAt": "2026-08-29T12:06:00.000Z"
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "binding-verify-bound",
       "packetId": "packet-1",
       "kind": "code.verify@1",
@@ -222,7 +316,7 @@
   ],
   "completionClaims": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "claim-completed",
       "packetId": "packet-1",
       "queueWorkId": "work-change-1",
@@ -238,7 +332,7 @@
       "createdAt": "2026-08-29T12:05:00.000Z"
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "claim-blocked",
       "packetId": "packet-1",
       "queueWorkId": "work-change-2",
@@ -256,7 +350,7 @@
       "createdAt": "2026-08-29T12:05:00.000Z"
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "claim-decision",
       "packetId": "packet-1",
       "queueWorkId": "work-change-3",
@@ -273,7 +367,7 @@
       "createdAt": "2026-08-29T12:05:00.000Z"
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "claim-scope",
       "packetId": "packet-1",
       "queueWorkId": "work-change-4",
@@ -293,7 +387,7 @@
   ],
   "verificationVerdicts": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "verdict-passed",
       "packetId": "packet-1",
       "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -324,7 +418,7 @@
       "completedAt": "2026-08-29T12:07:00.000Z"
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "verdict-failed",
       "packetId": "packet-1",
       "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -354,7 +448,7 @@
       "completedAt": "2026-08-29T12:07:00.000Z"
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "verdict-review",
       "packetId": "packet-1",
       "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -375,7 +469,7 @@
   ],
   "acceptanceDecisions": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "decision-accepted",
       "packetId": "packet-1",
       "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -387,7 +481,7 @@
       "decidedAt": "2026-08-29T12:08:00.000Z"
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "decision-rejected",
       "packetId": "packet-1",
       "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -399,7 +493,7 @@
       "decidedAt": "2026-08-29T12:08:00.000Z"
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "decision-waived",
       "packetId": "packet-1",
       "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -413,7 +507,7 @@
   ],
   "evidenceRefs": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "evidence-git",
       "kind": "checkpoint-metadata",
       "mediaType": "application/json",
@@ -429,7 +523,7 @@
       }
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "id": "evidence-verify",
       "kind": "verification-output",
       "mediaType": "text/plain; charset=utf-8",
@@ -448,10 +542,10 @@
   ],
   "resumeCapsules": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "contractRevisionId": "contract-1",
       "packetId": "packet-1",
-      "objective": "Publish the frozen Delivery Protocol V1 contract.",
+      "objective": "Publish the frozen Delivery Protocol V2 contract.",
       "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "checkpointCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "completedChanges": ["Added runtime schemas."],
@@ -490,7 +584,7 @@
   "codeChangeOutputs": [
     {
       "completionClaim": {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "id": "claim-completed",
         "packetId": "packet-1",
         "queueWorkId": "work-change-1",
@@ -545,7 +639,7 @@
   "codeVerifyOutputs": [
     {
       "verificationVerdict": {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "id": "verdict-passed",
         "packetId": "packet-1",
         "targetCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
