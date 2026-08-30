@@ -156,6 +156,8 @@ describe('local Git repository workspace', () => {
     await fixtureGit(repository, 'branch', 'delivery-base', firstCommit)
     const ctx = new Context()
     const subprocess = new TestSubprocessRuntime(ctx)
+    const gitExecutable = process.platform === 'win32' ? 'git.exe' : 'git'
+    vi.spyOn(subprocess, 'resolveExecutable').mockResolvedValue(gitExecutable)
     const workspace = new GitLocalRepositoryWorkspace(ctx, {
       repositories: { [repositoryId]: repository },
       worktreeRoot,
@@ -198,7 +200,7 @@ describe('local Git repository workspace', () => {
       commit: GitCommitId('ffffffffffffffffffffffffffffffffffffffff'),
     })).rejects.toMatchObject({ code: 'revision-not-found' })
     expect(subprocess.specs.length).toBeGreaterThan(0)
-    expect(subprocess.specs.every(spec => spec.argv[0] === 'git' && spec.argv[1] === '-C' && spec.argv[2] === repository))
+    expect(subprocess.specs.every(spec => spec.argv[0] === gitExecutable && spec.argv[1] === '-C' && spec.argv[2] === repository))
       .toBe(true)
     expect(subprocess.handles.every(handle => handle.waitForExitCalls === 1)).toBe(true)
     await ctx.fiber.dispose()
@@ -1267,11 +1269,14 @@ describe('local Git repository workspace', () => {
     await writeFile(join(current.lease.cwd, 'owned.txt'), 'owned\n')
     current.subprocess.queue(
       { exitCode: 1 },
-      { stdout: `worktree ${current.lease.cwd}\0` },
       { exitCode: 0 },
       { stdout: new Uint8Array() },
     )
     await current.lease.close('remove')
+    expect(current.subprocess.specs.filter((spec) => {
+      const args = spec.argv.slice(3)
+      return args[0] === 'worktree' && args[1] === 'remove'
+    })).toHaveLength(2)
     await expect(access(dirname(current.lease.cwd))).rejects.toMatchObject({ code: 'ENOENT' })
     await current.ctx.fiber.dispose()
 
@@ -1292,7 +1297,7 @@ describe('local Git repository workspace', () => {
     await current.ctx.fiber.dispose()
 
     current = await openLease()
-    current.subprocess.queue({ exitCode: 1 }, { exitCode: 1 })
+    current.subprocess.queue({ exitCode: 1 }, { exitCode: 1 }, { stdout: `worktree ${current.lease.cwd}\0` })
     await expect(current.lease.close('remove')).rejects.toMatchObject({ code: 'cleanup-failed' })
     await current.ctx.fiber.dispose()
 

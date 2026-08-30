@@ -448,7 +448,7 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       await assertSamePhysicalDirectory(ownerDirectory, 'cleanup-failed')
       await this.verifyLeaseMarker(ownerDirectory.path, expectedMarker, 'cleanup-failed')
       const removed = await this.runGit(repository, ['worktree', 'remove', '--force', cwd])
-      if (removed.outcome.exitCode !== 0 && await this.isRegisteredWorktree(repository, cwd)) {
+      if (removed.outcome.exitCode !== 0) {
         const forced = await this.runGit(repository, ['worktree', 'remove', '--force', '--force', cwd])
         if (forced.outcome.exitCode !== 0 || await this.isRegisteredWorktree(repository, cwd)) {
           throw new RepositoryWorkspaceError('cleanup-failed', `Git retained Attempt worktree registration '${cwd}'`)
