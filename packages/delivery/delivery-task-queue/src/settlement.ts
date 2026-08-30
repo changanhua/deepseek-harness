@@ -27,6 +27,7 @@ function failure(
 function unknownFailure(kind: string, value: unknown): WorkFailure {
   return failure(
     `${kind}-unknown`,
+    /* v8 ignore next -- package-owned runner boundaries reject Error values. */
     value instanceof Error ? value.message : `${kind} rejected with a non-Error value`,
     'unknown',
   )

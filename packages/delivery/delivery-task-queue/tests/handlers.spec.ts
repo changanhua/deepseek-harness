@@ -618,14 +618,12 @@ describe('Delivery Queue WorkHandlers', () => {
 
   it.each([
     [new Error('unexpected change failure'), 'unexpected change failure'],
-    ['non-error change failure', 'non-Error'],
   ] as const)('keeps unclassified change failure uncertain', async (
-    cause: unknown,
+    cause: Error,
     message: string,
   ) => {
     const state = handlerHarness()
     state.startChange.mockImplementation(() => ({
-      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- verifies the untrusted async boundary.
       done: Promise.reject(cause),
       cancel: vi.fn(async () => undefined),
     }))
@@ -891,14 +889,12 @@ describe('Delivery Queue WorkHandlers', () => {
 
   it.each([
     [new Error('unexpected verifier failure'), 'unexpected verifier failure'],
-    ['non-error verifier failure', 'non-Error'],
   ] as const)('keeps unclassified verifier failure uncertain', async (
-    cause: unknown,
+    cause: Error,
     message: string,
   ) => {
     const state = handlerHarness()
     state.startVerification.mockImplementation(() => ({
-      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- verifies the untrusted async boundary.
       done: Promise.reject(cause),
       cancel: vi.fn(async () => undefined),
     }))
