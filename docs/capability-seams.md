@@ -199,6 +199,20 @@ flowchart LR
   pkg_tool_task_queue["tool-task-queue"]
   pkg_tool_agent_run_task_queue["tool-agent-run-task-queue"]
   pkg_tool_image_generation_task_queue["tool-image-generation-task-queue"]
+  pkg_delivery["delivery"]
+  svc_delivery["ctx.delivery<br/>Personal Delivery domain seam"]
+  pkg_delivery_local["delivery-local"]
+  pkg_delivery_github_intake["delivery-github-intake"]
+  pkg_delivery_remote["delivery-remote"]
+  pkg_delivery_task_queue["delivery-task-queue"]
+  pkg_repo_workspace["repo-workspace"]
+  svc_repoWorkspace["ctx.repoWorkspace<br/>Delivery Git workspace seam"]
+  pkg_repo_workspace_git_local["repo-workspace-git-local"]
+  pkg_delivery_runner_codex["delivery-runner-codex"]
+  pkg_delivery_verifier["delivery-verifier"]
+  pkg_delivery_evidence["delivery-evidence"]
+  svc_deliveryEvidence["ctx.deliveryEvidence<br/>Delivery evidence storage seam"]
+  pkg_delivery_evidence_local["delivery-evidence-local"]
   pkg_image_generation["image-generation"]
   svc_imageGeneration["ctx.imageGeneration<br/>Image generation provider registry"]
   pkg_image_generation_arkcli["image-generation-arkcli"]
@@ -261,6 +275,10 @@ flowchart LR
   pkg_credentials --> svc_credentials
   pkg_credentials_local --> svc_credentials
   pkg_deepseek_llm_api_extensions --> svc_deepseekLlmApiExtensions
+  pkg_delivery --> svc_delivery
+  pkg_delivery_evidence --> svc_deliveryEvidence
+  pkg_delivery_evidence_local --> svc_deliveryEvidence
+  pkg_delivery_local --> svc_delivery
   pkg_e2b --> svc_e2b
   pkg_experimental_agent_team --> svc_agentTeams
   pkg_file_reference --> svc_fileReferences
@@ -291,6 +309,8 @@ flowchart LR
   pkg_plan_mode --> svc_planMode
   pkg_plugin_package_inventory_deepseek --> svc_deepseekLlmApiExtensions
   pkg_pwsh_local --> svc_shell
+  pkg_repo_workspace --> svc_repoWorkspace
+  pkg_repo_workspace_git_local --> svc_repoWorkspace
   pkg_runtime_facts --> svc_runtimeFacts
   pkg_sandbox --> svc_sandbox
   pkg_sandbox_local --> svc_sandbox
@@ -377,6 +397,11 @@ flowchart LR
   svc_credentials --> pkg_llm_deepseek
   svc_credentials --> pkg_llm_pi_ai
   svc_deepseekLlmApiExtensions --> pkg_llm_deepseek
+  svc_delivery --> pkg_delivery_github_intake
+  svc_delivery --> pkg_delivery_remote
+  svc_delivery --> pkg_delivery_task_queue
+  svc_deliveryEvidence --> pkg_delivery_runner_codex
+  svc_deliveryEvidence --> pkg_delivery_verifier
   svc_directoryPicker --> pkg_api_workspace_controller
   svc_dynamicCordisRunner --> pkg_tool_cordis
   svc_e2b --> pkg_fs_e2b
@@ -395,6 +420,8 @@ flowchart LR
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
+  svc_repoWorkspace --> pkg_delivery_runner_codex
+  svc_repoWorkspace --> pkg_delivery_verifier
   svc_runtimeFacts --> pkg_runtime_facts_host
   svc_runtimeFacts --> pkg_tool_runtime_inspect
   svc_runtimeFacts --> pkg_web
@@ -555,6 +582,9 @@ flowchart LR
 | `ctx.inspector` | `core` | `inspector` | - | - | - | Owns the Worker-hosted CDP target and the transport-independent Host and Client observation and Cordis-tree query API. |
 | `ctx.jobs` | `seam` | [`jobs`](../packages/jobs/jobs) | [`jobs-local`](../packages/jobs/jobs-local) | [`tool-bash`](../packages/shell/tool-bash), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-jobs`](../packages/jobs/tool-jobs) | - | Producers (background bash, PTY sends, and subagent delegations) register running work; tool-jobs is the model-facing controller that reads, lists, and kills it; jobs-local is the process-local registry. |
 | `ctx.taskQueue` | `seam` | [`task-queue`](../packages/task-queue/task-queue) | [`task-queue-local`](../packages/task-queue/task-queue-local) | [`task-queue-executor-dsh`](../packages/task-queue/task-queue-executor-dsh), [`image-generation-task-queue`](../packages/image/image-generation-task-queue), [`tool-task-queue`](../packages/task-queue/tool-task-queue), [`tool-agent-run-task-queue`](../packages/task-queue/tool-agent-run-task-queue), [`tool-image-generation-task-queue`](../packages/image/tool-image-generation-task-queue) | - | The host-plane service persists typed WorkItems and atomic ChangeSets, enforces resource and Batch limits, and recovers uncertain attempts; WorkKind handlers own execution, WorkKind-specific tools own admission, and tool-task-queue owns generic control, explicit result reads, and stable owner delivery. |
+| `ctx.delivery` | `seam` | [`delivery`](../packages/delivery/delivery) | [`delivery-local`](../packages/delivery/delivery-local) | [`delivery-github-intake`](../packages/delivery/delivery-github-intake), [`delivery-remote`](../packages/delivery/delivery-remote), [`delivery-task-queue`](../packages/delivery/delivery-task-queue) | - | Owns immutable Contract revisions, bounded Packets, Queue admission bindings, and human acceptance decisions without duplicating Queue lifecycle state. |
+| `ctx.repoWorkspace` | `seam` | [`repo-workspace`](../packages/delivery/repo-workspace) | [`repo-workspace-git-local`](../packages/delivery/repo-workspace-git-local) | [`delivery-runner-codex`](../packages/delivery/delivery-runner-codex), [`delivery-verifier`](../packages/delivery/delivery-verifier) | - | Verifies configured repository revisions and owns isolated change and verification workspace leases; durable records retain Git identity rather than host paths. |
+| `ctx.deliveryEvidence` | `seam` | [`delivery-evidence`](../packages/delivery/delivery-evidence) | [`delivery-evidence-local`](../packages/delivery/delivery-evidence-local) | [`delivery-runner-codex`](../packages/delivery/delivery-runner-codex), [`delivery-verifier`](../packages/delivery/delivery-verifier) | - | Publishes immutable content-addressed evidence only after bytes are durable and verifies identity, length, and digest on reads. |
 | `ctx.imageGeneration` | `seam` | [`image-generation`](../packages/image/image-generation) | [`image-generation-arkcli`](../packages/image/image-generation-arkcli) | [`image-generation-task-queue`](../packages/image/image-generation-task-queue) | - | Providers resolve the selected image model before generation and return decoded image bytes; the Queue image handler saves those bytes through ctx.attachments and returns Attachment references. |
 | `ctx.web` | `seam` | [`web`](../packages/web/web) | [`web-search-exa`](../packages/web/web-search-exa), [`web-search-perplexity`](../packages/web/web-search-perplexity), [`web-search-deepseek`](../packages/web/web-search-deepseek), [`web-fetch-http`](../packages/web/web-fetch-http) | [`tool-web`](../packages/web/tool-web) | - | Search and fetch providers register into one ctx.web seam; tool-web owns the stable model-facing names. |
 | `ctx.spillStore` | `seam` | [`spill`](../packages/spill/spill) | [`spill-local`](../packages/spill/spill-local) | [`spill-policy`](../packages/spill/spill-policy) | - | The backend saves oversized tool text and returns a model-facing locator plus retrieval hint; spill-policy is the tools/post-execute consumer that decides when to spill. |

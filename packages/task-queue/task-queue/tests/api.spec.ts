@@ -27,7 +27,11 @@ describe('public runtime API', () => {
     class ConcreteQueue extends TaskQueue {
       forAgent() { return {} as AgentWorkQueue }
       forOperator() { return {} as OperatorWorkQueue }
-      registerHandler<K extends WorkKind>(_handler: WorkHandler<K>) { return () => undefined }
+      registerHandler<K extends WorkKind>(_handler: WorkHandler<K>) {
+        const registration = (() => undefined) as ReturnType<TaskQueue['registerHandler']>
+        registration.activate = () => undefined
+        return registration
+      }
       listKinds() { return [] }
     }
     const queue = new ConcreteQueue(ctx)

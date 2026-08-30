@@ -313,6 +313,7 @@ function recordReceipt(queue: MutableQueue, receipt: Receipt): void {
     const work = queue.worksById.get(id)
     if (work === undefined) throw new Error(`fold: Receipt references unknown WorkItem ${id}`)
     if (receipt.owner.type === 'agent' && receipt.owner.sessionId !== work.ownerSessionId) throw new Error(`fold: Receipt owner does not match WorkItem ${id}`)
+    if (receipt.owner.type === 'operator' && work.ownerSessionId !== null) throw new Error(`fold: operator Receipt requires ownerless WorkItem ${id}`)
     if (receipt.batchId === null && receipt.intentDigest !== work.intentDigest) throw new Error(`fold: Receipt intent digest does not match WorkItem ${id}`)
   }
   queue.receiptsByKey.set(storageKey, cloneAndFreeze(receipt))

@@ -153,6 +153,18 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // package root reaches dsh-subprocess through the executor-adapter
   // signature, so the brand subpath must stay a standalone emitted entry).
   '@deepseek-ai/dsh-task-queue': ['lib/brand.js'],
+  // Personal Delivery publishes stable golden JSON fixtures so independently
+  // developed packages validate the exact Protocol V1 examples.
+  '@deepseek-ai/dsh-delivery-protocol': ['fixtures/*.json'],
+  // GitHub intake publishes the exact Work Brief grammar fixtures consumed by
+  // independently developed Remote, testkit, and UI packages.
+  '@deepseek-ai/dsh-delivery-github-intake': [
+    'fixtures/*.json',
+    'fixtures/*.md',
+  ],
+  // The supported parent-free Codex app-server boundary is intentionally a
+  // narrow subpath rather than a root export or a new Cordis capability.
+  '@deepseek-ai/dsh-subagent-codex': ['lib/app-server-run.js'],
   // The CPython side ships as source .py files, published as-is rather than built.
   '@deepseek-ai/dsh-code-runtime-python': ['py/**/*.py'],
   // The shipped preset compositions travel inside the roster package.

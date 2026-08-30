@@ -6,7 +6,7 @@ The host-plane typed work queue (`ctx.taskQueue`). The contract package is [`dsh
 
 ## Service
 
-`ctx.taskQueue` is the abstract `TaskQueue` seam implemented by `LocalTaskQueue` (`@deepseek-ai/dsh-task-queue-local`). Agent and operator facades require verified authority. A `WorkHandler` resolves immutable admission facts, derives retry policy, declares resources, prepares dispatch, and synchronously returns a `LiveAttempt`; the provider persists the admitted policy and claims, then owns durable scheduling and attempt settlement.
+`ctx.taskQueue` is the abstract `TaskQueue` seam implemented by `LocalTaskQueue` (`@deepseek-ai/dsh-task-queue-local`). Agent and operator facades require verified authority. Both may admit work, but operator admission is a trusted host capability: it creates ownerless WorkItems under a separate idempotency namespace and no Session Notification. A `WorkHandler` resolves immutable admission facts, derives retry policy, declares resources, prepares dispatch, and synchronously returns a `LiveAttempt`; the provider persists the admitted policy and claims, then owns durable scheduling and attempt settlement.
 
 ## Work model and state machine
 
@@ -14,7 +14,7 @@ The host-plane typed work queue (`ctx.taskQueue`). The contract package is [`dsh
 
 ## Durable store
 
-The schema-v3 root contains `manifest.json`, append-only `active.jsonl`, a digest-checked `snapshot.json`, and an exclusive owner lock. The provider rejects other schema versions. Startup records every stranded `starting` or `running` Attempt as `unknown` with pending Attention before dispatch; shutdown holds the root lock until active executions settle or are recorded unknown. `ChangeSet` folding is fail-closed. Queue persists typed JSON results; byte storage belongs to services such as `ctx.attachments`, not to a Queue-local path writer.
+The schema-v3 root contains `manifest.json`, append-only `active.jsonl`, a digest-checked `snapshot.json`, and an exclusive owner lock. The provider rejects other schema versions. Startup records every stranded `starting` or `running` Attempt as `unknown` with pending Attention before dispatch. If a handler starts but the running append fails, the provider requests cancellation, awaits cancellation plus live settlement under the configured bound, and then records unknown with Attention; it never drops live ownership immediately after the durability fault. Unknown persistence gets one best-effort retry, and no post-start error can enter the pre-start automatic-retry path. At the deadline, Queue releases the in-process handle and scheduling claims while retaining durable uncertainty, so an operator must confirm external quiescence before authorizing another Attempt. Shutdown applies the same bounded quiescence rule before releasing the root lock. `ChangeSet` folding is fail-closed. Queue persists typed JSON results; byte storage belongs to services such as `ctx.attachments`, not to a Queue-local path writer.
 
 ## Scheduling
 
@@ -113,11 +113,16 @@ abstract forAgent(authority: VerifiedAgentAuthority): AgentWorkQueue
 abstract forOperator(authority: VerifiedOperatorAuthority): OperatorWorkQueue
 
 /**
- * Register one typed WorkHandler.
+ * Register one typed WorkHandler for admission and optional dispatch.
+ * A staged registration remains available to receipt lookup and admission,
+ * but cannot dispatch until its own `activate()` succeeds. Activation throws
+ * after disposal or repeated activation. The callable disposer removes only
+ * this registration.
  * @param handler - Typed handler to register.
- * @returns A disposer for exactly this registration.
+ * @param options - Optional staged dispatch while admission remains available.
+ * @returns The callable owner of exactly this registration.
  */
-abstract registerHandler<K extends WorkKind>(handler: WorkHandler<K>): () => void
+abstract registerHandler<K extends WorkKind>( handler: WorkHandler<K>, options?: { readonly activation?: 'immediate' | 'staged' }, ): (() => void) & { activate(): void }
 
 /**
  * List registered WorkKinds.

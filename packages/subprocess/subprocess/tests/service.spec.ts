@@ -100,4 +100,23 @@ describe('SubprocessRuntime seam', () => {
       delete process.env.SCRUB_PROBE_PLAIN
     }
   })
+
+  it('scrubs ambient inline Git configuration as one atomic secret-bearing family', () => {
+    const keys = ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0', 'GIT_CONFIG_PARAMETERS'] as const
+    const previous = new Map(keys.map(key => [key, process.env[key]]))
+    process.env.GIT_CONFIG_COUNT = '1'
+    process.env.GIT_CONFIG_KEY_0 = 'http.extraHeader'
+    process.env.GIT_CONFIG_VALUE_0 = 'Authorization: secret'
+    process.env.GIT_CONFIG_PARAMETERS = "'safe.directory=C:/workspace'"
+    try {
+      const env = scrubbedParentEnv()
+      for (const key of keys) expect(env[key]).toBeUndefined()
+    } finally {
+      for (const key of keys) {
+        const value = previous.get(key)
+        if (value === undefined) Reflect.deleteProperty(process.env, key)
+        else process.env[key] = value
+      }
+    }
+  })
 })

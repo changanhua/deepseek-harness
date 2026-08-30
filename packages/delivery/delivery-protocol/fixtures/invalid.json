@@ -1,0 +1,322 @@
+{
+  "fixtureVersion": 1,
+  "cases": [
+    {
+      "id": "schema-version-unknown",
+      "schema": "sourceRef",
+      "from": "/sourceRefs/0",
+      "operations": [{ "op": "replace", "path": "/schemaVersion", "value": 2 }]
+    },
+    {
+      "id": "unknown-property",
+      "schema": "sourceRef",
+      "from": "/sourceRefs/0",
+      "operations": [{ "op": "add", "path": "/secret", "value": "must-not-survive" }]
+    },
+    {
+      "id": "empty-opaque-id",
+      "schema": "sourceRef",
+      "from": "/sourceRefs/0",
+      "operations": [{ "op": "replace", "path": "/id", "value": "   " }]
+    },
+    {
+      "id": "timestamp-not-utc",
+      "schema": "sourceRef",
+      "from": "/sourceRefs/0",
+      "operations": [{ "op": "replace", "path": "/updatedAt", "value": "2026-08-29T20:00:00+08:00" }]
+    },
+    {
+      "id": "source-content-digest-mismatch",
+      "schema": "sourceRef",
+      "from": "/sourceRefs/0",
+      "operations": [{ "op": "replace", "path": "/title", "value": "Changed title" }]
+    },
+    {
+      "id": "digest-uppercase",
+      "schema": "sourceRef",
+      "from": "/sourceRefs/0",
+      "operations": [{ "op": "replace", "path": "/contentDigest", "value": "sha256:EE0F2BD15755CB84DA488599454E11C97454C5534C62E465B7AAD794A8184D86" }]
+    },
+    {
+      "id": "source-url-query-not-canonical",
+      "schema": "sourceRef",
+      "from": "/sourceRefs/0",
+      "operations": [{ "op": "replace", "path": "/canonicalUrl", "value": "https://github.com/deepseek-ai/deepseek-harness/issues/13?view=1" }]
+    },
+    {
+      "id": "source-url-coordinate-mismatch",
+      "schema": "sourceRef",
+      "from": "/sourceRefs/0",
+      "operations": [{ "op": "replace", "path": "/issueNumber", "value": 14 }]
+    },
+    {
+      "id": "source-owner-invalid",
+      "schema": "sourceRef",
+      "from": "/sourceRefs/0",
+      "operations": [{ "op": "replace", "path": "/repository/owner", "value": "deepseek--ai" }]
+    },
+    {
+      "id": "commit-abbreviated",
+      "schema": "workPacket",
+      "from": "/workPackets/0",
+      "operations": [{ "op": "replace", "path": "/baseCommit", "value": "abcdef0" }]
+    },
+    {
+      "id": "contract-duplicate-acceptance-id",
+      "schema": "contractRevision",
+      "from": "/contractRevisions/0",
+      "operations": [{ "op": "add", "path": "/acceptanceClauses/1", "value": { "id": "acceptance-1", "text": "Duplicate id." } }]
+    },
+    {
+      "id": "packet-parent-traversal",
+      "schema": "workPacket",
+      "from": "/workPackets/0",
+      "operations": [{ "op": "replace", "path": "/allowedPaths/0/path", "value": "packages/../secret" }]
+    },
+    {
+      "id": "packet-without-path-boundary",
+      "schema": "workPacket",
+      "from": "/workPackets/0",
+      "operations": [
+        { "op": "replace", "path": "/allowedPaths", "value": [] },
+        { "op": "replace", "path": "/forbiddenPaths", "value": [] }
+      ]
+    },
+    {
+      "id": "check-shell-string",
+      "schema": "verificationPlan",
+      "from": "/verificationPlans/0",
+      "operations": [
+        { "op": "remove", "path": "/checks/0/argv" },
+        { "op": "add", "path": "/checks/0/command", "value": "pnpm exec tsc -b tsconfig.host.json" }
+      ]
+    },
+    {
+      "id": "check-posix-shell-command-string",
+      "schema": "verificationPlan",
+      "from": "/verificationPlans/0",
+      "operations": [{ "op": "replace", "path": "/checks/0/argv", "value": ["/bin/bash", "-lc", "pnpm test"] }]
+    },
+    {
+      "id": "check-env-shell-command-string",
+      "schema": "verificationPlan",
+      "from": "/verificationPlans/0",
+      "operations": [{ "op": "replace", "path": "/checks/0/argv", "value": ["/usr/bin/env", "CI=1", "sh", "-c", "pnpm test"] }]
+    },
+    {
+      "id": "check-powershell-command-string",
+      "schema": "verificationPlan",
+      "from": "/verificationPlans/0",
+      "operations": [{ "op": "replace", "path": "/checks/0/argv", "value": ["pwsh.exe", "-Command", "pnpm test"] }]
+    },
+    {
+      "id": "check-cmd-command-string",
+      "schema": "verificationPlan",
+      "from": "/verificationPlans/0",
+      "operations": [{ "op": "replace", "path": "/checks/0/argv", "value": ["cmd.exe", "/C", "pnpm test"] }]
+    },
+    {
+      "id": "check-empty-argv",
+      "schema": "verificationPlan",
+      "from": "/verificationPlans/0",
+      "operations": [{ "op": "replace", "path": "/checks/0/argv", "value": [] }]
+    },
+    {
+      "id": "contract-empty-verification-checks",
+      "schema": "contractRevision",
+      "from": "/contractRevisions/0",
+      "operations": [{ "op": "replace", "path": "/verificationSource/checks", "value": [] }]
+    },
+    {
+      "id": "plan-empty-verification-checks",
+      "schema": "verificationPlan",
+      "from": "/verificationPlans/0",
+      "operations": [{ "op": "replace", "path": "/checks", "value": [] }]
+    },
+    {
+      "id": "plan-document-empty-verification-checks",
+      "schema": "verificationPlanDocument",
+      "from": "/verificationPlanDocuments/0",
+      "operations": [{ "op": "replace", "path": "/checks", "value": [] }]
+    },
+    {
+      "id": "check-zero-timeout",
+      "schema": "verificationPlan",
+      "from": "/verificationPlans/0",
+      "operations": [{ "op": "replace", "path": "/checks/0/timeoutMs", "value": 0 }]
+    },
+    {
+      "id": "plan-digest-mismatch",
+      "schema": "verificationPlan",
+      "from": "/verificationPlans/0",
+      "operations": [{ "op": "replace", "path": "/digest", "value": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }]
+    },
+    {
+      "id": "packet-digest-mismatch",
+      "schema": "workPacket",
+      "from": "/workPackets/0",
+      "operations": [{ "op": "replace", "path": "/objective", "value": "Changed objective." }]
+    },
+    {
+      "id": "packet-contract-plan-wrong-revision",
+      "schema": "workPacket",
+      "from": "/workPackets/0",
+      "operations": [
+        { "op": "replace", "path": "/verificationPlan/provenance/contractRevisionId", "value": "contract-other" },
+        { "op": "replace", "path": "/verificationPlan/digest", "value": "sha256:c426457716a14c06dcd1e90a76e1170ef276be3e3092a140e66761c6d36c4b98" },
+        { "op": "replace", "path": "/packetDigest", "value": "sha256:d2c2f5c2b976c4ce743defad8ae45e8081600d69cb059440afed6bbf352eda64" }
+      ]
+    },
+    {
+      "id": "packet-git-plan-wrong-base",
+      "schema": "workPacket",
+      "from": "/workPackets/0",
+      "operations": [
+        {
+          "op": "replace",
+          "path": "/verificationPlan/provenance",
+          "value": {
+            "kind": "git-blob",
+            "baseCommit": "cccccccccccccccccccccccccccccccccccccccc",
+            "path": ".dsh/delivery-verification.json",
+            "blobId": "dddddddddddddddddddddddddddddddddddddddd"
+          }
+        },
+        { "op": "replace", "path": "/verificationPlan/digest", "value": "sha256:e006a3f1da9d326a2c3c27c7b0088632a68feb43121f8e62471b384829ff71d9" },
+        { "op": "replace", "path": "/packetDigest", "value": "sha256:662102abc23b44c8bd990bd1c043b4dfecbd395486685f6495235454170eb661" }
+      ]
+    },
+    {
+      "id": "binding-submitting-with-work-id",
+      "schema": "dispatchBinding",
+      "from": "/dispatchBindings/0",
+      "operations": [{ "op": "replace", "path": "/queueWorkId", "value": "work-unexpected" }]
+    },
+    {
+      "id": "binding-verify-with-executor",
+      "schema": "dispatchBinding",
+      "from": "/dispatchBindings/2",
+      "operations": [{ "op": "replace", "path": "/executorId", "value": "codex" }]
+    },
+    {
+      "id": "claim-completed-without-checkpoint",
+      "schema": "completionClaim",
+      "from": "/completionClaims/0",
+      "operations": [{ "op": "replace", "path": "/checkpointCommit", "value": null }]
+    },
+    {
+      "id": "claim-completed-without-evidence",
+      "schema": "completionClaim",
+      "from": "/completionClaims/0",
+      "operations": [{ "op": "replace", "path": "/evidenceIds", "value": [] }]
+    },
+    {
+      "id": "claim-blocked-without-next-action",
+      "schema": "completionClaim",
+      "from": "/completionClaims/1",
+      "operations": [{ "op": "remove", "path": "/nextSmallestAction" }]
+    },
+    {
+      "id": "verdict-passed-non-descendant",
+      "schema": "verificationVerdict",
+      "from": "/verificationVerdicts/0",
+      "operations": [{ "op": "replace", "path": "/ancestryResult", "value": "not-descendant" }]
+    },
+    {
+      "id": "verdict-passed-required-check-failed",
+      "schema": "verificationVerdict",
+      "from": "/verificationVerdicts/0",
+      "operations": [
+        { "op": "replace", "path": "/checkResults/0/exitCode", "value": 1 },
+        { "op": "replace", "path": "/checkResults/0/expected", "value": false }
+      ]
+    },
+    {
+      "id": "verdict-missing-integrity-findings",
+      "schema": "verificationVerdict",
+      "from": "/verificationVerdicts/0",
+      "operations": [{ "op": "replace", "path": "/evidenceIntegrityFindings", "value": [] }]
+    },
+    {
+      "id": "verdict-required-evidence-marked-optional",
+      "schema": "verificationVerdict",
+      "from": "/verificationVerdicts/0",
+      "operations": [{ "op": "replace", "path": "/evidenceIntegrityFindings/1/required", "value": false }]
+    },
+    {
+      "id": "verdict-check-evidence-outside-manifest",
+      "schema": "verificationVerdict",
+      "from": "/verificationVerdicts/0",
+      "operations": [{ "op": "remove", "path": "/evidenceIds/1" }]
+    },
+    {
+      "id": "verdict-check-without-evidence",
+      "schema": "verificationVerdict",
+      "from": "/verificationVerdicts/0",
+      "operations": [{ "op": "replace", "path": "/checkResults/0/evidenceIds", "value": [] }]
+    },
+    {
+      "id": "decision-agent-actor",
+      "schema": "acceptanceDecision",
+      "from": "/acceptanceDecisions/0",
+      "operations": [{ "op": "replace", "path": "/actor/kind", "value": "agent" }]
+    },
+    {
+      "id": "decision-waiver-empty-reason",
+      "schema": "acceptanceDecision",
+      "from": "/acceptanceDecisions/2",
+      "operations": [{ "op": "replace", "path": "/reason", "value": "" }]
+    },
+    {
+      "id": "evidence-negative-byte-length",
+      "schema": "evidenceRef",
+      "from": "/evidenceRefs/0",
+      "operations": [{ "op": "replace", "path": "/byteLength", "value": -1 }]
+    },
+    {
+      "id": "resume-absolute-relevant-file",
+      "schema": "resumeCapsule",
+      "from": "/resumeCapsules/0",
+      "operations": [{ "op": "replace", "path": "/relevantFiles/0", "value": "/tmp/secret" }]
+    },
+    {
+      "id": "work-kind-extra-intent-field",
+      "schema": "codeChangeIntent",
+      "from": "/codeChangeIntents/0",
+      "operations": [{ "op": "add", "path": "/sessionId", "value": "session-forbidden" }]
+    },
+    {
+      "id": "work-kind-verify-short-target",
+      "schema": "codeVerifyIntent",
+      "from": "/codeVerifyIntents/0",
+      "operations": [{ "op": "replace", "path": "/targetCommit", "value": "bbbbbbb" }]
+    },
+    {
+      "id": "work-kind-verify-contract-plan-wrong-revision",
+      "schema": "resolvedCodeVerify",
+      "from": "/resolvedCodeVerifies/0",
+      "operations": [
+        { "op": "replace", "path": "/trustedPlan/provenance/contractRevisionId", "value": "contract-other" },
+        { "op": "replace", "path": "/trustedPlan/digest", "value": "sha256:c426457716a14c06dcd1e90a76e1170ef276be3e3092a140e66761c6d36c4b98" }
+      ]
+    },
+    {
+      "id": "work-kind-verify-git-plan-wrong-base",
+      "schema": "resolvedCodeVerify",
+      "from": "/resolvedCodeVerifies/0",
+      "operations": [
+        {
+          "op": "replace",
+          "path": "/trustedPlan/provenance",
+          "value": {
+            "kind": "git-blob",
+            "baseCommit": "cccccccccccccccccccccccccccccccccccccccc",
+            "path": ".dsh/delivery-verification.json",
+            "blobId": "dddddddddddddddddddddddddddddddddddddddd"
+          }
+        },
+        { "op": "replace", "path": "/trustedPlan/digest", "value": "sha256:e006a3f1da9d326a2c3c27c7b0088632a68feb43121f8e62471b384829ff71d9" }
+      ]
+    }
+  ]
+}

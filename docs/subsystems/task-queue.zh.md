@@ -6,7 +6,7 @@ host 平面的 typed work queue（`ctx.taskQueue`）。契约包是 [`dsh-task-q
 
 ## Service
 
-`ctx.taskQueue` 是由 `LocalTaskQueue`（`@deepseek-ai/dsh-task-queue-local`）实现的抽象 `TaskQueue` seam。Agent 与 operator facade 需要 verified authority。`WorkHandler` 解析不可变 admission facts、推导重试 policy、声明资源、准备 dispatch，并同步返回 `LiveAttempt`；Provider 持久化准入时的 policy 和 claims，再持有持久 scheduling 与 attempt settlement。
+`ctx.taskQueue` 是由 `LocalTaskQueue`（`@deepseek-ai/dsh-task-queue-local`）实现的抽象 `TaskQueue` seam。Agent 与 operator facade 需要 verified authority。两者都可准入 work，但 operator admission 是可信 host capability：它在独立幂等 namespace 中创建 ownerless WorkItem，且不产生 Session Notification。`WorkHandler` 解析不可变 admission facts、推导重试 policy、声明资源、准备 dispatch，并同步返回 `LiveAttempt`；Provider 持久化准入时的 policy 和 claims，再持有持久 scheduling 与 attempt settlement。
 
 ## Work 模型与状态机
 
@@ -14,7 +14,7 @@ host 平面的 typed work queue（`ctx.taskQueue`）。契约包是 [`dsh-task-q
 
 ## 持久 store
 
-schema-v3 root 包含 `manifest.json`、append-only `active.jsonl`、digest-checked `snapshot.json` 与独占 owner lock。Provider 会拒绝其他 schema 版本。启动时会在派发前把每个 stranded `starting` 或 `running` Attempt 记录为带 pending Attention 的 `unknown`；关闭时会持有 root lock，直到 active execution 已结算或记录为 unknown。`ChangeSet` folding 是 fail-closed。Queue 持久化 typed JSON result；字节存储属于 `ctx.attachments` 等服务，而不是 Queue 本地路径写入器。
+schema-v3 root 包含 `manifest.json`、append-only `active.jsonl`、digest-checked `snapshot.json` 与独占 owner lock。Provider 会拒绝其他 schema 版本。启动时会在派发前把每个 stranded `starting` 或 `running` Attempt 记录为带 pending Attention 的 `unknown`。如果 handler 已启动而 running append 失败，Provider 会请求取消，在配置 bound 内同时等待 cancellation 与 live settlement，随后记录带 Attention 的 unknown；durability fault 后不会立即丢弃 live ownership。unknown persistence 会进行一次 best-effort retry，任何 post-start error 都不能进入 pre-start 自动重试路径。到达 deadline 时，Queue 会释放进程内 handle 和 scheduling claim，但保留持久不确定性；operator 在授权另一次 Attempt 前必须确认外部已 quiescent。关闭流程会在释放 root lock 前应用相同的有界 quiescence 规则。`ChangeSet` folding 是 fail-closed。Queue 持久化 typed JSON result；字节存储属于 `ctx.attachments` 等服务，而不是 Queue 本地路径写入器。
 
 ## 调度
 
@@ -113,11 +113,16 @@ abstract forAgent(authority: VerifiedAgentAuthority): AgentWorkQueue
 abstract forOperator(authority: VerifiedOperatorAuthority): OperatorWorkQueue
 
 /**
- * Register one typed WorkHandler.
+ * Register one typed WorkHandler for admission and optional dispatch.
+ * A staged registration remains available to receipt lookup and admission,
+ * but cannot dispatch until its own `activate()` succeeds. Activation throws
+ * after disposal or repeated activation. The callable disposer removes only
+ * this registration.
  * @param handler - Typed handler to register.
- * @returns A disposer for exactly this registration.
+ * @param options - Optional staged dispatch while admission remains available.
+ * @returns The callable owner of exactly this registration.
  */
-abstract registerHandler<K extends WorkKind>(handler: WorkHandler<K>): () => void
+abstract registerHandler<K extends WorkKind>( handler: WorkHandler<K>, options?: { readonly activation?: 'immediate' | 'staged' }, ): (() => void) & { activate(): void }
 
 /**
  * List registered WorkKinds.

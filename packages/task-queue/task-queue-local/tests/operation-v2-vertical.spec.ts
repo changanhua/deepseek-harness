@@ -14,7 +14,7 @@ import * as OperationRunTaskQueue from '@deepseek-ai/dsh-operation-run-task-queu
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import { createVerifiedAgentAuthority } from '@deepseek-ai/dsh-task-queue'
+import { createVerifiedAgentAuthority, createVerifiedOperatorAuthority } from '@deepseek-ai/dsh-task-queue'
 import * as ToolOperationRunTaskQueue from '@deepseek-ai/dsh-tool-operation-run-task-queue'
 import * as ToolTaskQueue from '@deepseek-ai/dsh-tool-task-queue'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -145,6 +145,57 @@ async function boot(queueRoot: string, resourceCapacity?: number, operationUnits
 }
 
 describe('operation.run@1 real Loader vertical', () => {
+  it('admits ownerless operator single and Batch work idempotently without Session Notifications', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-operation-v2-operator-'))
+    roots.push(root)
+    const queueRoot = join(root, 'queue')
+    const ctx = await boot(queueRoot, 1)
+    const operator = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
+    const single = {
+      kind: 'operation.run@1' as const,
+      title: 'Operator fixture echo',
+      input: { operationId: 'fixture.echo' },
+      idempotencyKey: 'operator-fixture-echo-v1',
+    }
+    const [firstId, repeatedId] = await Promise.all([operator.enqueue(single), operator.enqueue(single)])
+    expect(repeatedId).toBe(firstId)
+
+    const batch = {
+      kind: 'operation.run@1' as const,
+      items: [
+        { title: 'Operator batch echo one', input: { operationId: 'fixture.echo' } },
+        { title: 'Operator batch echo two', input: { operationId: 'fixture.echo' } },
+      ],
+      sharedPayload: { source: 'operator-loader-vertical' },
+      idempotencyKey: 'operator-fixture-batch-v1',
+      maxParallel: 1,
+    }
+    const [firstBatchId, repeatedBatchId] = await Promise.all([operator.enqueueBatch(batch), operator.enqueueBatch(batch)])
+    expect(repeatedBatchId).toBe(firstBatchId)
+    await waitFor(
+      () => operator.list().length === 3 && operator.list().every(view => view.state.status === 'succeeded'),
+      'operator-owned operations',
+    )
+    expect(operator.get(firstId).work).toMatchObject({ ownerSessionId: null, batchId: null })
+    expect(operator.list().filter(view => view.work.batchId === firstBatchId)).toHaveLength(2)
+    expect(operator.list().every(view => view.work.ownerSessionId === null)).toBe(true)
+
+    await ctx.fiber.dispose()
+    contexts = contexts.filter(context => context !== ctx)
+    const reopened = new WorkQueueStore(queueRoot)
+    const projection = await reopened.open()
+    try {
+      expect(projection.worksById.size).toBe(3)
+      expect(projection.notificationsById.size).toBe(0)
+      expect([...projection.receiptsByKey.values()]).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: { type: 'operator' }, source: 'operator', key: 'operator-fixture-echo-v1', workIds: [firstId], batchId: null }),
+        expect.objectContaining({ owner: { type: 'operator' }, source: 'operator', key: 'operator-fixture-batch-v1', batchId: firstBatchId }),
+      ]))
+    } finally {
+      await reopened.close()
+    }
+  }, 30_000)
+
   it('rejects missing resource capacity without persisting a WorkItem', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-operation-v2-no-capacity-'))
     roots.push(root)

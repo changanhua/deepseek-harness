@@ -774,6 +774,46 @@
       "ignoreDependencies": [
         "@deepseek-ai/.+"
       ]
+    },
+    "packages/bundle/personal-delivery": {
+      "ignoreDependencies": [
+        "@deepseek-ai/.+"
+      ]
+    },
+    "packages/delivery/delivery-protocol": {
+      "entry": [
+        "tests/**/*.spec.ts",
+        "tests/public-api.typecheck.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "tests/**/*.ts"
+      ]
+    },
+    "packages/delivery/delivery-runner-codex": {
+      "entry": [
+        "tests/**/*.spec.ts",
+        "tests/public-api.typecheck.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "tests/**/*.ts"
+      ]
+    },
+    "packages/delivery/delivery": {
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "packages/delivery/delivery-evidence": {
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "packages/delivery/repo-workspace": {
+      "project": [
+        "src/**/*.ts"
+      ]
     }
   }
 }

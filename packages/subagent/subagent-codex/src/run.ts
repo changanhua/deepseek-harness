@@ -137,7 +137,7 @@ export function codexAppServerArgv(): string[] {
 
 /** Fully resolved inputs for one Codex app-server run. */
 export interface CodexRunSpec {
-  /** Parent Session workspace, also supplied to `thread/start`. */
+  /** Caller-selected workspace, also supplied to `thread/start`. */
   readonly cwd: string
   /** Profile-selected native model; omitted to preserve Codex settings. */
   readonly model?: string
@@ -151,6 +151,19 @@ export interface CodexRunSpec {
   readonly spawn: (spec: SubprocessSpawnSpec) => SubprocessHandle
   /** Diagnostic sink for a post-publication error flattened into a result. */
   readonly onError?: (error: Error, stopReason: SubagentStopReason) => void
+}
+
+/**
+ * Implementation-only input for one Codex app-server run. The low-level
+ * lifecycle owns prompt delivery and cancellation but deliberately has no
+ * Agent or Session dependency; a provider adapter resolves those concerns
+ * before calling it.
+ */
+export interface CodexAppServerRunRequest {
+  /** Exact text-only task delivered to the ephemeral Codex turn. */
+  readonly prompt: readonly ContentBlock[]
+  /** Cancellation authority for startup and the published run. */
+  readonly signal: AbortSignal
 }
 
 function thrown(value: unknown): Error {
@@ -221,13 +234,15 @@ export async function disposeCodexChild(
 }
 
 /**
- * Start the real `codex app-server --stdio` child and publish its one-shot run.
- * @param request - resolved shared subagent request.
+ * Start the real `codex app-server --stdio` child without requiring a parent
+ * Agent or Session, then publish its one-shot run. This implementation-only
+ * entry point is not a Harness capability seam.
+ * @param request - explicit prompt and cancellation authority.
  * @param spec - Workspace, environment, process service, and diagnostic policy.
  * @returns the published run after initialization and ephemeral thread creation.
  */
-export async function startCodexRun(
-  request: SubagentStartRequest,
+export async function startCodexAppServerRun(
+  request: CodexAppServerRunRequest,
   spec: CodexRunSpec,
 ): Promise<SubagentRun> {
   const texts = textTask(request.prompt)
@@ -440,4 +455,21 @@ export async function startCodexRun(
     requestCancel,
     teardown: disposeProcess,
   })
+}
+
+/**
+ * Adapt the shared subagent request to the parent-free app-server lifecycle.
+ * Provider-visible behavior remains owned by the normal subagent seam.
+ * @param request - resolved shared subagent request.
+ * @param spec - Provider-resolved workspace and process policy.
+ * @returns the published one-shot run.
+ */
+export function startCodexRun(
+  request: SubagentStartRequest,
+  spec: CodexRunSpec,
+): Promise<SubagentRun> {
+  return startCodexAppServerRun({
+    prompt: request.prompt,
+    signal: request.signal,
+  }, spec)
 }

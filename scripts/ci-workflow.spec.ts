@@ -382,10 +382,13 @@ describe('fork Linux compute workflows', () => {
     expect(pullRequest.paths).toContain('.github/workflows/ci-linux-lab.yml')
     expect(pullRequest.paths).toContain('.github/workflows/ci-upstream-watch.yml')
     expect(quality).toMatchObject({
-      if: "vars.CI_LINUX_FAST != '0'",
       'runs-on': 'ubuntu-latest',
       'timeout-minutes': 15,
     })
+    expect(quality.if).toContain("vars.CI_LINUX_FAST != '0'")
+    expect(quality.if).toContain("github.actor == 'changanhua'")
+    expect(quality.if).toContain("github.event.pull_request.user.login == 'changanhua'")
+    expect(quality.if).toContain('github.event.pull_request.head.repo.full_name == github.repository')
     const steps = JSON.stringify(quality.steps)
     expect(steps).toContain('pnpm install --frozen-lockfile')
     expect(steps).toContain('pnpm run build:lib:host')
@@ -644,19 +647,18 @@ describe('Python release workflows', () => {
 })
 
 describe('Issue lifecycle workflow', () => {
-  it('runs the lifecycle job on every PR/review event but gates token and board steps', () => {
+  it('disables upstream project automation in the fork and retains upstream step gates', () => {
     const lifecycle = loadWorkflow('.github/workflows/issue-lifecycle.yml')
     const policy = loadWorkflow('.github/workflows/issue-policy.yml')
     const lifecycleJob = workflowJob(lifecycle, 'lifecycle')
     if (!Array.isArray(lifecycleJob.steps)) throw new TypeError('Issue lifecycle job must define steps')
 
-    // The job has no job-level `if`, so it is listed on every pull_request /
-    // pull_request_review event and reports success instead of a gray skip. The
-    // write-capable steps are gated at step level so approved/commented reviews
-    // never mint a Project/Issue App token nor touch the board.
+    // The job belongs to the upstream organization's project board, so the
+    // fork rejects it before runner allocation or token creation. The step
+    // gates remain for the upstream repository's review-event behavior.
     expect(lifecycle.on).toHaveProperty('pull_request')
     expect(lifecycle.on).toHaveProperty('pull_request_review')
-    expect(lifecycleJob.if).toBeUndefined()
+    expect(lifecycleJob.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
     // Keep the subscription-type gates: issue-lifecycle does not re-subscribe
     // ready_for_review (issue-policy owns that) and only reacts to submitted
     // review events.

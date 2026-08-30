@@ -23,8 +23,12 @@ import type {
   SubprocessSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
+import { createProcessInspector } from '@deepseek-ai/dsh-subprocess-local/src/process-inspector.ts'
 import * as codex from '../src/index.ts'
-import type { CodexPermissionMode } from '../src/run.ts'
+import {
+  startCodexAppServerRun,
+  type CodexPermissionMode,
+} from '../src/run.ts'
 import {
   startResponsesFixture,
   type ResponsesBehavior,
@@ -177,6 +181,34 @@ async function expectQuiescent(handles: readonly SubprocessHandle[]): Promise<vo
     expect(outcome).toHaveProperty('exitCode')
     expect(outcome).toHaveProperty('signal')
   }
+}
+
+async function createGitWorktree(): Promise<{
+  readonly repository: string
+  readonly worktree: string
+}> {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-codex-worktree-'))
+  roots.push(root)
+  const repository = join(root, 'repository')
+  const worktree = join(root, 'worktree')
+  mkdirSync(repository)
+  await execFileAsync('git', ['init', '--initial-branch=main', repository])
+  await execFileAsync('git', ['-C', repository, 'config', 'user.name', 'DSH Codex Spike'])
+  await execFileAsync('git', ['-C', repository, 'config', 'user.email', 'codex-spike@example.invalid'])
+  writeFileSync(join(repository, 'README.md'), 'base\n')
+  await execFileAsync('git', ['-C', repository, 'add', 'README.md'])
+  await execFileAsync('git', ['-C', repository, 'commit', '-m', 'base'])
+  await execFileAsync('git', [
+    '-C',
+    repository,
+    'worktree',
+    'add',
+    '-b',
+    'codex-spike',
+    worktree,
+    'HEAD',
+  ])
+  return { repository, worktree }
 }
 
 function expectedProcessExitDiagnostic(outcome: SubprocessOutcome): string {
@@ -530,5 +562,111 @@ describe('real @openai/codex 0.149.1 product', () => {
     await expect(run.result).resolves.toMatchObject({ stopReason: 'aborted' })
     await run.dispose()
     await expectQuiescent(harness.handles)
+  }, 60_000)
+
+  it('runs the parent-free driver in an explicit git worktree', async () => {
+    const { repository, worktree } = await createGitWorktree()
+    const target = join(worktree, 'codex-driver-proof.txt')
+    const command = process.platform === 'win32'
+      ? 'powershell.exe -NoLogo -NoProfile -NonInteractive -Command "Set-Content -LiteralPath \'codex-driver-proof.txt\' -Value \'parent-free\' -NoNewline"'
+      : 'printf parent-free > codex-driver-proof.txt'
+    const instance = await realInstanceFixture([
+      {
+        kind: 'advertisedFunctionCall',
+        choices: [
+          { name: 'exec_command', arguments: { cmd: command } },
+          { name: 'shell_command', arguments: { command } },
+        ],
+      },
+      { kind: 'complete', text: 'worktree complete' },
+    ])
+    const { ctx, handles, spawnSpecs } = await realRuntime()
+    const task = 'Create the parent-free driver proof in this worktree.'
+    const run = await startCodexAppServerRun({
+      prompt: [{ type: 'text', text: task }],
+      signal: new AbortController().signal,
+    }, {
+      cwd: worktree,
+      permissionMode: 'approve-for-me',
+      env: instance.env,
+      disposeGraceMs: 2_000,
+      spawn: spec => ctx.subprocess.spawn(spec),
+    })
+
+    await expect(run.result).resolves.toEqual({
+      output: [{ type: 'text', text: 'worktree complete' }],
+      stopReason: 'completed',
+    })
+    expect(spawnSpecs).toHaveLength(1)
+    expect(spawnSpecs[0]?.cwd).toBe(worktree)
+    expect(responseInputTexts(instance.fixture.requests[0]!.body)).toContain(task)
+    expect(readFileSync(target, 'utf8')).toBe('parent-free')
+    expect(existsSync(join(repository, 'codex-driver-proof.txt'))).toBe(false)
+    const topLevel = await execFileAsync('git', [
+      '-C',
+      worktree,
+      'rev-parse',
+      '--show-toplevel',
+    ])
+    expect(resolve(topLevel.stdout.trim())).toBe(resolve(worktree))
+    const commonDir = await execFileAsync('git', [
+      '-C',
+      worktree,
+      'rev-parse',
+      '--git-common-dir',
+    ])
+    expect(resolve(worktree, commonDir.stdout.trim()))
+      .toBe(resolve(repository, '.git'))
+
+    await run.dispose()
+    await expectQuiescent(handles)
+  }, 60_000)
+
+  it('cancels the parent-free driver and joins its real app-server process tree', async () => {
+    const { worktree } = await createGitWorktree()
+    const instance = await realInstanceFixture([{ kind: 'hold' }])
+    const { ctx, handles, spawnSpecs } = await realRuntime()
+    const controller = new AbortController()
+    const run = await startCodexAppServerRun({
+      prompt: [{ type: 'text', text: 'Hold until the explicit signal aborts.' }],
+      signal: controller.signal,
+    }, {
+      cwd: worktree,
+      permissionMode: 'never',
+      env: instance.env,
+      disposeGraceMs: 2_000,
+      spawn: spec => ctx.subprocess.spawn(spec),
+    })
+    await instance.fixture.requestStarted
+    expect(handles).toHaveLength(1)
+    expect(spawnSpecs[0]?.cwd).toBe(worktree)
+    const waitForExit = vi.spyOn(handles[0]!, 'waitForExit')
+    const inspector = createProcessInspector()
+    const liveTree = await vi.waitFor(() => {
+      const identities = inspector.snapshot().tree(handles[0]!.pid)
+      const requiredIdentities = process.platform === 'linux' ? 2 : 1
+      if (identities.length < requiredIdentities) {
+        throw new Error('real Codex app-server process tree is not observable')
+      }
+      return identities
+    }, { interval: 10, timeout: 5_000 })
+
+    controller.abort(new Error('parent-free cancellation'))
+    await expect(run.result).resolves.toEqual({
+      output: [],
+      stopReason: 'aborted',
+    })
+    await run.dispose()
+
+    expect(waitForExit).toHaveBeenCalled()
+    const outcome = await handles[0]!.done
+    expect(outcome).toHaveProperty('exitCode')
+    expect(outcome).toHaveProperty('signal')
+    await Promise.all(liveTree.map(identity => vi.waitFor(() => {
+      if (inspector.isAlive(identity)) {
+        throw new Error(`Codex process ${identity.pid} is still alive after disposal`)
+      }
+    }, { interval: 10, timeout: 5_000 })))
+    await expectQuiescent(handles)
   }, 60_000)
 })
