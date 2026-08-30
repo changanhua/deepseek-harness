@@ -48,7 +48,12 @@ function win32Error(code: number, path: string, dest: string): Win32ErrnoExcepti
   return error
 }
 
-/** Publish one file or directory without replacement and wait for its namespace move to reach storage. */
+/**
+ * Publish one file or directory without replacement and wait for its namespace move to reach storage.
+ *
+ * @param existing Source path in the same namespace as `replacement`.
+ * @param replacement Unoccupied destination path to publish.
+ */
 export async function publishNewPathWin32(existing: string, replacement: string): Promise<void> {
   const native = await bindings()
   if (native.move(toNamespacedPath(existing), toNamespacedPath(replacement), MOVEFILE_WRITE_THROUGH) === 0) {
@@ -56,7 +61,11 @@ export async function publishNewPathWin32(existing: string, replacement: string)
   }
 }
 
-/** Create every missing directory through a same-parent write-through rename. */
+/**
+ * Create every missing directory through a same-parent write-through rename.
+ *
+ * @param path Directory path whose missing ancestors are published durably.
+ */
 export async function ensureDurableDirectoryWin32(path: string): Promise<void> {
   const absolute = resolve(path)
   const root = parse(absolute).root
