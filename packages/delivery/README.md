@@ -1,5 +1,5 @@
 ---
-description: "Queue-independent Personal Delivery contracts, three host Service Definitions, test fakes, and fail-closed integration package boundaries."
+description: "Queue-independent Personal Delivery contracts, local providers, Queue integration, and browser workbench packages."
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The Delivery group provides a Queue-independent durable protocol, three abstract host Service Definitions, and contract-conformant test fakes for immutable requirements, bounded Packets, repository authority, evidence, and human decisions. The remaining packages reserve narrow provider and integration boundaries and fail closed where their concrete behavior is unavailable. This package set does not currently assemble a runnable Personal Delivery product.
+The Delivery group provides a Queue-independent durable protocol, three host Service Definitions, local providers, governed Codex execution, independent verification, Queue integration, GitHub Issue intake, and a browser Remote for immutable requirements, bounded Packets, repository authority, evidence, and human decisions. The Personal Delivery bundle composes these packages into the local Windows product.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ The Delivery group provides a Queue-independent durable protocol, three abstract
 <a id="packages"></a>
 ## Packages
 
-Only the three Service Definition packages declare Cordis context keys. A reserved provider can satisfy that key at composition time while still rejecting every operation; the status below therefore distinguishes package identity from working behavior.
+Only the three Service Definition packages declare Cordis context keys. Concrete providers satisfy those keys; Consumers keep Queue, Git, evidence, browser, and executor authority in their owning packages.
 
 | Package | Current surface | ctx key |
 |---|---|---|
@@ -32,26 +32,26 @@ Only the three Service Definition packages declare Cordis context keys. A reserv
 | [`repo-workspace`](repo-workspace/README.md) | Available abstract repository-base/blob proofs, revision/range inspection, and owned checkout leases | `ctx.repoWorkspace` |
 | [`delivery-evidence`](delivery-evidence/README.md) | Available abstract immutable publication, id resolution, integrity-checked reads, and provenance binding | `ctx.deliveryEvidence` |
 | [`delivery-testkit`](delivery-testkit/README.md) | Available concrete fakes and fresh Protocol fixtures for Consumer tests | — |
-| [`delivery-local`](delivery-local/README.md) | Reserved Storage-backed provider; every read and write rejects as unavailable | provides `ctx.delivery` |
-| [`repo-workspace-git-local`](repo-workspace-git-local/README.md) | Reserved Git/Subprocess provider and configuration; every repository operation rejects as unavailable | provides `ctx.repoWorkspace` |
-| [`delivery-evidence-local`](delivery-evidence-local/README.md) | Reserved local evidence provider and configuration; save, resolve, and read reject as unavailable | provides `ctx.deliveryEvidence` |
-| [`delivery-runner-codex`](delivery-runner-codex/README.md) | Typed factory fixed to the supported Codex app-server subpath; returned runs reject as unavailable | — |
-| [`delivery-verifier`](delivery-verifier/README.md) | Typed fixed-plan verifier factory; returned runs reject as unavailable | — |
-| [`delivery-github-intake`](delivery-github-intake/README.md) | Validates the exact public Issue URL grammar, then rejects snapshot import as unavailable | — |
-| [`delivery-remote`](delivery-remote/README.md) | Reserves six typed `delivery` Remote methods; every method rejects as unavailable | — |
-| [`delivery-task-queue`](delivery-task-queue/README.md) | Owns both WorkKind declarations and live pure admission helpers; plugin handler registration rejects as unavailable | — |
+| [`delivery-local`](delivery-local/README.md) | Storage Domain-backed immutable records, projections, bindings, and decisions | provides `ctx.delivery` |
+| [`repo-workspace-git-local`](repo-workspace-git-local/README.md) | Git/Subprocess repository proofs and Attempt-owned change/verification worktrees | provides `ctx.repoWorkspace` |
+| [`delivery-evidence-local`](delivery-evidence-local/README.md) | Local content-addressed publication and integrity-checked evidence reads | provides `ctx.deliveryEvidence` |
+| [`delivery-runner-codex`](delivery-runner-codex/README.md) | Governed Codex app-server change runner with checkpoint and evidence production | — |
+| [`delivery-verifier`](delivery-verifier/README.md) | Independent fixed-argv verifier with path and evidence findings | — |
+| [`delivery-github-intake`](delivery-github-intake/README.md) | Strict Work Brief parsing plus explicit GitHub Issue snapshot adoption | — |
+| [`delivery-remote`](delivery-remote/README.md) | Browser-safe projection and explicit import, run, verify, evidence, and decision operations | `remote.delivery` |
+| [`delivery-task-queue`](delivery-task-queue/README.md) | Owns both WorkKinds, durable cross-store admission, recovery, and handler registration | — |
 
 -----
 
 <a id="product-composition"></a>
 ## Product composition
 
-Two packages outside this group reserve the browser and composition identities without adding another Delivery authority. Neither makes the product runnable.
+Two packages outside this group render and compose the product without adding another Delivery authority.
 
 | Package | Current surface |
 |---|---|
-| [`client/ui-delivery`](../client/ui-delivery/README.md) | Empty node and browser plugins; registers no slot, Remote call, locale, or visible workbench |
-| [`bundle/personal-delivery`](../bundle/personal-delivery/README.md) | Empty patch carrier; activates no provider, Queue bridge, Remote, or browser plugin |
+| [`client/ui-delivery`](../client/ui-delivery/README.md) | Five-lane Delivery workbench over the browser-safe Remote projection |
+| [`bundle/personal-delivery`](../bundle/personal-delivery/README.md) | Local Windows composition for the complete host, Queue, Remote, and UI chain |
 
 -----
 

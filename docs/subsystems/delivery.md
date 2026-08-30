@@ -2,7 +2,7 @@
 
 English | [中文](delivery.zh.md)
 
-The available Personal Delivery foundation defines immutable requirements, bounded Packets, repository proofs, evidence references, Queue bindings, verification verdicts, and human decisions. Delivery owns requirement and decision records; Queue owns Work and Attempt lifecycle; Git owns commit and blob facts; evidence storage owns immutable bytes. The local providers and product integrations remain fail-closed or empty, so this surface does not currently provide an end-to-end workbench. The [`packages/delivery` map](../../packages/delivery/README.md) records each package's exact availability, while the [architecture proposal](../../.agents/notes/proposed/architecture/2026-08-29-personal-delivery-above-queue.md) owns the boundary rationale.
+Personal Delivery defines immutable requirements, bounded Packets, repository proofs, evidence references, Queue bindings, verification verdicts, and human decisions. Delivery owns requirement and decision records; Queue owns Work and Attempt lifecycle; Git owns commit and blob facts; evidence storage owns immutable bytes. The local Windows bundle composes the concrete providers, Queue bridge, Remote, and browser workbench. The [`packages/delivery` map](../../packages/delivery/README.md) records each package's responsibility, while the [architecture proposal](../../.agents/notes/proposed/architecture/2026-08-29-personal-delivery-above-queue.md) owns the boundary rationale.
 
 ## Public protocol
 
@@ -24,13 +24,13 @@ The protocol also exports the constants and durable DTOs for `code.change@1` and
 
 ## Service Definitions
 
-Three abstract Cordis services own the host capabilities. Their definitions contain no local-storage, Git-process, evidence-medium, Queue, Codex, Remote, or UI implementation. Each reserved local provider mounts the named service but rejects operations with an explicit unavailable classification.
+Three abstract Cordis services own the host capabilities. Their definitions contain no local-storage, Git-process, evidence-medium, Queue, Codex, Remote, or UI implementation. The selected local providers implement the named services without changing those boundaries.
 
 | ctx key | Service Definition | Definition package | Local package status |
 |---|---|---|---|
-| `ctx.delivery` | `Delivery` | [`dsh-delivery`](../../packages/delivery/delivery/README.md) | [`dsh-delivery-local`](../../packages/delivery/delivery-local/README.md): unavailable |
-| `ctx.repoWorkspace` | `RepositoryWorkspace` | [`dsh-repo-workspace`](../../packages/delivery/repo-workspace/README.md) | [`dsh-repo-workspace-git-local`](../../packages/delivery/repo-workspace-git-local/README.md): unavailable |
-| `ctx.deliveryEvidence` | `DeliveryEvidence` | [`dsh-delivery-evidence`](../../packages/delivery/delivery-evidence/README.md) | [`dsh-delivery-evidence-local`](../../packages/delivery/delivery-evidence-local/README.md): unavailable |
+| `ctx.delivery` | `Delivery` | [`dsh-delivery`](../../packages/delivery/delivery/README.md) | [`dsh-delivery-local`](../../packages/delivery/delivery-local/README.md): Storage Domain-backed |
+| `ctx.repoWorkspace` | `RepositoryWorkspace` | [`dsh-repo-workspace`](../../packages/delivery/repo-workspace/README.md) | [`dsh-repo-workspace-git-local`](../../packages/delivery/repo-workspace-git-local/README.md): local Git/Subprocess |
+| `ctx.deliveryEvidence` | `DeliveryEvidence` | [`dsh-delivery-evidence`](../../packages/delivery/delivery-evidence/README.md) | [`dsh-delivery-evidence-local`](../../packages/delivery/delivery-evidence-local/README.md): local content-addressed bytes |
 
 `Delivery` adopts Contract revisions, derives Packets, begins and binds dispatches, records human decisions, reads individual Contract/Packet/binding records, and returns a detached snapshot. `createWorkPacket()` accepts a `VerifiedRepositoryBase` minted by `RepositoryWorkspace.resolveBase()` and no caller-supplied verification plan. Delivery derives a `contract-field` plan inside the provider. For a `git-blob` source, Delivery selects the verified base, Contract-owned path, and fixed complete-byte limit for an operation-local resolver; it validates the returned `VerifiedRepositoryBlob` from `RepositoryWorkspace.readBlob()`, parses the trusted document, and derives the plan provenance and digest. Delivery stores no Queue Attempt, retry state, Git checkout, evidence bytes, or writable UI lane.
 
@@ -42,13 +42,13 @@ Three abstract Cordis services own the host capabilities. Their definitions cont
 
 ## Queue and execution boundaries
 
-[`dsh-delivery-task-queue`](../../packages/delivery/delivery-task-queue/README.md) is the only package that augments `WorkKindMap` for `code.change@1` and `code.verify@1`. Its pure `startCodeChange()` and `startVerification()` admission helpers are available: they derive canonical Queue intent and idempotency keys, commit the Delivery `submitting` binding before enqueue, and bind the returned Queue Work id. Verification admission accepts a Packet and its bound change dispatch, validates the exact successful change Result and Attempt identities, independently proves the claimed checkpoint descends from the Packet base, and derives the target commit and plan digest instead of accepting either from the caller. The plugin `apply()` remains unavailable and registers no WorkHandler.
+[`dsh-delivery-task-queue`](../../packages/delivery/delivery-task-queue/README.md) is the only package that augments `WorkKindMap` for `code.change@1` and `code.verify@1`. Its `startCodeChange()` and `startVerification()` helpers derive canonical Queue intent and idempotency keys, commit the Delivery `submitting` binding before enqueue, and bind the returned Queue Work id. Verification admission accepts a Packet and its bound change dispatch, validates the exact successful change Result and Attempt identities, independently proves the checkpoint descends from the Packet base, and derives the target commit and plan digest instead of accepting either from the caller. Plugin activation registers both handlers in staged mode, reconciles durable bindings, then enables claims.
 
-[`dsh-delivery-runner-codex`](../../packages/delivery/delivery-runner-codex/README.md) fixes its typed factory to the supported `@deepseek-ai/dsh-subagent-codex/app-server-run` subpath, but its returned run rejects with the package's unavailable error before starting code work. Personal Delivery defines no `ctx.codeExecutors`, executor registry, or public generic executor capability.
+[`dsh-delivery-runner-codex`](../../packages/delivery/delivery-runner-codex/README.md) fixes its typed factory to the supported `@deepseek-ai/dsh-subagent-codex/app-server-run` subpath, runs in an Attempt-owned worktree, reaches process-tree quiescence, and records a governed checkpoint plus evidence. Personal Delivery defines no `ctx.codeExecutors`, executor registry, or public generic executor capability.
 
-[`dsh-delivery-verifier`](../../packages/delivery/delivery-verifier/README.md) reserves the typed operation-local inputs for fixed argv, exact range inspection, an independent target checkout, evidence resolution/reads, and check-bound evidence writers. Its returned run also rejects as unavailable; no check or Verdict is produced.
+[`dsh-delivery-verifier`](../../packages/delivery/delivery-verifier/README.md) executes trusted fixed argv in an independent target checkout, checks the exact repository range and path rules, integrity-reads required evidence, and produces the bounded check evidence and Verdict.
 
-GitHub intake validates the exact public `github.com/{owner}/{repository}/issues/{number}` URL grammar. Its available parser requires one marked `dsh-delivery-work-brief@1` YAML fence and maps every explicitly authored Contract field without defaults; the published golden fixture is the template. Network snapshot import and adoption reject as unavailable. The six typed `delivery` Remote methods all reject as unavailable. The browser package registers no slot, locale, Remote call, subscription, or visible component, and the Personal Delivery bundle patch activates no row.
+GitHub intake validates the exact public `github.com/{owner}/{repository}/issues/{number}` URL grammar, fetches one explicit snapshot, requires one marked `dsh-delivery-work-brief@1` YAML fence, and idempotently adopts the immutable revision. The typed `delivery` Remote exposes projection plus import, Packet creation, change start, verification start, evidence read, and human decision operations without browser Queue authority. The browser package renders the five derived lanes, and the Personal Delivery bundle activates the complete local chain.
 
 ## Readiness and acceptance
 
@@ -58,11 +58,11 @@ The dispatch contract writes a deterministic `submitting` binding, operator-enqu
 
 Acceptance starts from one Packet plus two Delivery-owned bound binding ids: one change and one verification binding for that same Packet. Delivery passes their stored Queue Work ids to a host-only candidate resolver, cross-checks the returned successful Attempt ids, completed Claim, verification intent, and Verdict, then derives every evidence id that an ordinary acceptance must resolve and integrity-read through a second host-only capability. The reserved browser DTO cannot supply a Verdict, actor id, or idempotency key; the single-user host uses `delivery-remote`'s configured `operatorId` (default `local-operator`) as actor and derives the key from the selected target plus decision nonce. Ordinary acceptance requires the exact passed, evidence-complete Verdict. Rejection and explicit human waiver remain distinct decisions.
 
-The reserved `DeliveryLane` view names Ready, Running, Review, Blocked, and Accepted as projections over immutable Delivery records and Queue views, not writable durable states. No current UI computes or renders them.
+The `DeliveryLane` view names Ready, Running, Review, Blocked, and Accepted as projections over immutable Delivery records and Queue views, not writable durable states. The Delivery workbench renders those projections and invokes only the narrow Remote operations.
 
 ## Failure and recovery contracts
 
-A concrete handler must map a possible side effect followed by lost ownership to Queue `unknown` with Attention and must not auto-retry it. Cancellation ownership includes complete process-tree quiescence and awaited workspace disposition. These contracts are represented by the Queue and workspace types, but the unavailable handlers and local workspace provider do not yet exercise them in a product composition.
+A handler maps a possible side effect followed by lost ownership to Queue `unknown` with Attention and never auto-retries it. Cancellation ownership includes complete process-tree quiescence and awaited workspace disposition. Staged handler activation and durable binding reconciliation prevent recovered queued work from starting before Delivery and Queue agree.
 
 Evidence publication precedes a successful Claim or Verdict. Missing, unresolved, or digest-mismatched evidence blocks ordinary acceptance. `ResumeCapsuleContent` derives from authoritative Contract, Packet, Git, Queue, decision, and evidence facts; raw transcript can be input to a summary but is not authority.
 
@@ -70,7 +70,7 @@ Evidence publication precedes a successful Claim or Verdict. Missing, unresolved
 
 The contract is limited to explicit GitHub Issue URL intake, configured local repository identity, Codex change execution, fixed-command independent verification, immutable evidence, and explicit human acceptance. It excludes GitHub webhook synchronization and write-back, automatic PR creation or merge, quota-triggered launch, value scoring, exact Codex thread resumption, a general artifact platform, Batch/DAG delivery, multi-host leases, teams, RBAC, and multi-tenancy.
 
-Only the Protocol, Service Definitions, test fakes, Queue declarations, and pure admission helpers are usable here. A runnable product still lacks all three concrete local providers, Queue handlers, Codex execution, verification, Issue snapshot adoption, Remote projection and actions, visible client workbench, and non-empty bundle composition.
+The local Windows bundle supplies the complete P0 composition. Deployments still provide a real Git toplevel as the launch directory, existing Codex authentication, and the base Web profile; remote hosts, Linux deployment, webhook intake, automatic PR/merge, and multi-user authority remain outside this scope.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

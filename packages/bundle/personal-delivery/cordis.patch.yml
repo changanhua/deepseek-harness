@@ -1,3 +1,28 @@
-# Empty by design: this package reserves a bundle carrier without claiming a
-# runnable Personal Delivery composition.
-[]
+# Personal Delivery add-on layer. Apply after dsh-base and dsh-web-app. The
+# launch directory is the single configured repository; every change still
+# executes in an Attempt-owned worktree under DSH_HOME.
+
+- insert:
+    - id: delivery-local
+      name: '@deepseek-ai/dsh-delivery-local'
+
+    - id: delivery-evidence-local
+      name: '@deepseek-ai/dsh-delivery-evidence-local'
+      config:
+        root: !!js dshHomePath('personal-delivery/evidence')
+
+    - id: repo-workspace-git-local
+      name: '@deepseek-ai/dsh-repo-workspace-git-local'
+      config:
+        repositories:
+          workspace: !!js process.cwd()
+        worktreeRoot: !!js dshHomePath('personal-delivery/worktrees')
+
+    - id: delivery-task-queue
+      name: '@deepseek-ai/dsh-delivery-task-queue'
+
+    - id: delivery-remote
+      name: '@deepseek-ai/dsh-delivery-remote'
+
+    - id: ui-delivery
+      name: '@deepseek-ai/dsh-client-ui-delivery'
