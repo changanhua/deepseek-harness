@@ -11,6 +11,8 @@
 # - 模型与密钥：走 OpenCode Go 订阅（opencode.ai）提供的 DeepSeek 模型。
 #   pi-ai 内置 opencode-go 目录，凭据引用名必须是 `OPENCODE_API_KEY`（在仓库
 #   Settings -> Secrets and variables 配置该 secret）。模型用 deepseek-v4-flash。
+# - dsh 安装固定为与当前仓库版本一致的 0.1.2-alpha.1，避免每次 CI 从 npm
+#   静默漂移到一个未经此仓库审阅的新版本后再把 API key 交给它。
 # - provider 配置：在 runner 上现写 $DSH_HOME/settings.yaml，把默认模型切到
 #   opencode-go provider，等价于本地 ~/.dsh/settings.yaml 的配置。
 # - 任务传递：issue 标题+正文先由 gh 写入 task.txt，再让 dsh 读取该文件分析。
@@ -64,8 +66,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dsh
-        run: npm install -g @deepseek-ai/dsh
+      - name: Install pinned dsh
+        run: npm install -g @deepseek-ai/dsh@0.1.2-alpha.1
 
       - name: Write issue to task file
         env:
