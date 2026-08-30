@@ -19,6 +19,7 @@ concurrency:
 jobs:
   report:
     name: Upstream drift report
+    if: github.actor == 'changanhua'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
