@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-30-delivery-queue-bridge.md
-2026-08-30-delivery-queue-bridge.md: a029baca53df64d106144918a14efb8fef8d5b38
-2026-08-30-delivery-queue-bridge.zh.md: 17fa4f642256e269d3564bfa016f3c914c18da17
+2026-08-30-delivery-queue-bridge.md: f05c1587237c61958de132441342b1e5c0fb8970
+2026-08-30-delivery-queue-bridge.zh.md: 0d0b0d723da9cb9e4aea9f9828cc040e0a053b2a

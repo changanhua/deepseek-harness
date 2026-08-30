@@ -323,10 +323,12 @@ function handlerHarness() {
   )
   const successfulChange = successfulChangeView(changeResolved)
   const queueViews = [changeView, verifyView]
-  const list = vi.fn(() => queueViews)
+  const list = vi.fn(() => list.mock.calls.length > 1
+    ? [successfulChange, verifyView]
+    : queueViews)
   const get = vi.fn((id: WorkId) => {
     const found = id === changeWorkId
-      ? successfulChange
+      ? list.mock.calls.length > 1 ? successfulChange : changeView
       : queueViews.find(candidate => candidate.work.id === id)
     if (found === undefined) throw new Error('missing Queue Work')
     return found
@@ -348,28 +350,30 @@ function handlerHarness() {
   const read = vi.fn()
   const startChange = vi.fn<StartCodeChange>()
   const startVerification = vi.fn<StartDeliveryVerification>()
+  const changeBinding = {
+    schemaVersion: 1 as const,
+    id: 'change-binding-1',
+    packetId,
+    kind: 'code.change@1' as const,
+    inputDigest: canonicalDigest({ packetId }),
+    idempotencyKey: `delivery:${packetId}:code.change@1`,
+    phase: 'bound' as const,
+    queueWorkId: QueueWorkIdRef(String(changeWorkId)),
+    executorId,
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
+  }
+  const snapshot = vi.fn(() => ({
+    contractRevisions: [contract],
+    workPackets: [packet],
+    dispatchBindings: [changeBinding],
+    acceptanceDecisions: [],
+  }))
   const dependencies = {
     delivery: {
       getContractRevision: vi.fn(() => contract),
       getWorkPacket: vi.fn(() => packet),
-      snapshot: vi.fn(() => ({
-        contractRevisions: [contract],
-        workPackets: [packet],
-        dispatchBindings: [{
-          schemaVersion: 1,
-          id: 'change-binding-1',
-          packetId,
-          kind: 'code.change@1',
-          inputDigest: canonicalDigest({ packetId }),
-          idempotencyKey: `delivery:${packetId}:code.change@1`,
-          phase: 'bound',
-          queueWorkId: QueueWorkIdRef(String(changeWorkId)),
-          executorId,
-          createdAt: CREATED_AT,
-          updatedAt: CREATED_AT,
-        }],
-        acceptanceDecisions: [],
-      })),
+      snapshot,
     },
     operator: { list, get },
     repoWorkspace: {
@@ -387,7 +391,10 @@ function handlerHarness() {
     packet,
     changeResolved,
     verifyResolved,
+    changeBinding,
+    successfulChange,
     dependencies,
+    snapshot,
     list,
     get,
     inspectRevision,
@@ -535,6 +542,110 @@ describe('Delivery Queue WorkHandlers', () => {
       ...state.changeResolved,
       packetId: WorkPacketId('another-packet'),
     }, changeWorkId, changeAttemptId))
+    await expect(handler.prepare(state.changeResolved, {
+      attemptId: changeAttemptId,
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
+  })
+
+  it('rejects a stale change Attempt that is not the Work active Attempt', async () => {
+    const state = handlerHarness()
+    const handler = factories().change(state.dependencies, Config({}))
+    const stale = view(
+      'code.change@1', state.changeResolved, changeWorkId, changeAttemptId,
+    )
+    const corrupted = {
+      ...stale,
+      state: { ...stale.state, activeAttemptId: AttemptId('newer-attempt') },
+    }
+    state.list.mockReturnValueOnce([corrupted])
+    state.get.mockReturnValueOnce(corrupted)
+
+    await expect(handler.prepare(state.changeResolved, {
+      attemptId: changeAttemptId,
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
+  })
+
+  it.each([
+    ['contractRevisionId', ContractRevisionId('other-contract')],
+    ['repositoryId', RepositoryId('other-repository')],
+    ['baseCommit', GitCommitId('4'.repeat(40))],
+    ['executorId', ExecutorId('other-executor')],
+  ] as const)('rejects a change Work whose resolved %s changed', async (
+    field,
+    value,
+  ) => {
+    const state = handlerHarness()
+    const handler = factories().change(state.dependencies, Config({}))
+    const corrupted = view('code.change@1', {
+      ...state.changeResolved,
+      [field]: value,
+    }, changeWorkId, changeAttemptId)
+    state.list.mockReturnValueOnce([corrupted])
+    state.get.mockReturnValueOnce(corrupted)
+
+    await expect(handler.prepare(state.changeResolved, {
+      attemptId: changeAttemptId,
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
+  })
+
+  it('rejects a non-starting or internally inconsistent active Attempt', async () => {
+    const queuedState = handlerHarness()
+    const queuedHandler = factories().change(queuedState.dependencies, Config({}))
+    const queued = view(
+      'code.change@1', queuedState.changeResolved, changeWorkId, changeAttemptId,
+    )
+    const notStarting = {
+      ...queued,
+      state: { ...queued.state, status: 'queued' as const },
+    }
+    queuedState.list.mockReturnValueOnce([notStarting])
+    queuedState.get.mockReturnValueOnce(notStarting)
+    await expect(queuedHandler.prepare(queuedState.changeResolved, {
+      attemptId: changeAttemptId,
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
+
+    const runningState = handlerHarness()
+    const runningHandler = factories().change(runningState.dependencies, Config({}))
+    const running = view(
+      'code.change@1', runningState.changeResolved, changeWorkId, changeAttemptId,
+    )
+    const inconsistent = {
+      ...running,
+      attempts: running.attempts.map(attempt => ({
+        ...attempt,
+        status: 'running' as const,
+      })),
+    }
+    runningState.list.mockReturnValueOnce([inconsistent])
+    runningState.get.mockReturnValueOnce(inconsistent)
+    await expect(runningHandler.prepare(runningState.changeResolved, {
+      attemptId: changeAttemptId,
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
+  })
+
+  it('rejects canonical intent facts that disagree with resolved admission', async () => {
+    const state = handlerHarness()
+    const handler = factories().change(state.dependencies, Config({}))
+    const intent = { packetId: WorkPacketId('other-packet') }
+    const exact = view(
+      'code.change@1', state.changeResolved, changeWorkId, changeAttemptId,
+    )
+    const corrupted = {
+      ...exact,
+      work: {
+        ...exact.work,
+        intent,
+        intentDigest: canonicalDigest(intent),
+      },
+    }
+    state.list.mockReturnValueOnce([corrupted])
+    state.get.mockReturnValueOnce(corrupted)
+
     await expect(handler.prepare(state.changeResolved, {
       attemptId: changeAttemptId,
       signal: new AbortController().signal,
@@ -747,10 +858,80 @@ describe('Delivery Queue WorkHandlers', () => {
   it('rejects a verification Attempt whose resolved target changes', async () => {
     const state = handlerHarness()
     const handler = factories().verify(state.dependencies, Config({}))
-    state.get.mockReturnValueOnce(view('code.verify@1', {
+    const corrupted = view('code.verify@1', {
       ...state.verifyResolved,
       targetCommit: GitCommitId('3'.repeat(40)),
-    }, verificationWorkId, verificationAttemptId))
+    }, verificationWorkId, verificationAttemptId)
+    state.list.mockReturnValueOnce([corrupted])
+    state.get.mockReturnValueOnce(corrupted)
+
+    await expect(handler.prepare(state.verifyResolved, {
+      attemptId: verificationAttemptId,
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
+  })
+
+  it('rejects a stale verification Attempt that is not the Work active Attempt', async () => {
+    const state = handlerHarness()
+    const handler = factories().verify(state.dependencies, Config({}))
+    const stale = view(
+      'code.verify@1', state.verifyResolved,
+      verificationWorkId, verificationAttemptId,
+    )
+    const corrupted = {
+      ...stale,
+      state: { ...stale.state, activeAttemptId: AttemptId('newer-attempt') },
+    }
+    state.list.mockReturnValueOnce([corrupted])
+    state.get.mockReturnValueOnce(corrupted)
+
+    await expect(handler.prepare(state.verifyResolved, {
+      attemptId: verificationAttemptId,
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
+  })
+
+  it.each([
+    ['contractRevisionId', ContractRevisionId('other-contract')],
+    ['repositoryId', RepositoryId('other-repository')],
+    ['baseCommit', GitCommitId('5'.repeat(40))],
+  ] as const)('rejects a verification Work whose resolved %s changed', async (
+    field,
+    value,
+  ) => {
+    const state = handlerHarness()
+    const handler = factories().verify(state.dependencies, Config({}))
+    const corrupted = view('code.verify@1', {
+      ...state.verifyResolved,
+      [field]: value,
+    }, verificationWorkId, verificationAttemptId)
+    state.list.mockReturnValueOnce([corrupted])
+    state.get.mockReturnValueOnce(corrupted)
+
+    await expect(handler.prepare(state.verifyResolved, {
+      attemptId: verificationAttemptId,
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
+  })
+
+  it('rejects a verification Work whose complete trusted plan changed', async () => {
+    const state = handlerHarness()
+    const handler = factories().verify(state.dependencies, Config({}))
+    const checks = [{
+      ...state.packet.verificationPlan.checks[0]!,
+      id: VerificationCheckId('other-check'),
+    }]
+    const provenance = state.packet.verificationPlan.provenance
+    const corrupted = view('code.verify@1', {
+      ...state.verifyResolved,
+      trustedPlan: {
+        checks,
+        provenance,
+        digest: verificationPlanDigest({ checks, provenance }),
+      },
+    }, verificationWorkId, verificationAttemptId)
+    state.list.mockReturnValueOnce([corrupted])
+    state.get.mockReturnValueOnce(corrupted)
 
     await expect(handler.prepare(state.verifyResolved, {
       attemptId: verificationAttemptId,
@@ -810,6 +991,122 @@ describe('Delivery Queue WorkHandlers', () => {
       Config({}),
     )
     await expect(malformedHandler.prepare(malformed.verifyResolved, {
+      attemptId: verificationAttemptId,
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
+  })
+
+  it.each([
+    ['state Work id', (candidate: WorkView): WorkView => ({
+      ...candidate,
+      state: { ...candidate.state, workId: WorkId('other-work') },
+    })],
+    ['state Result linkage', (candidate: WorkView): WorkView => ({
+      ...candidate,
+      state: { ...candidate.state, resultId: ResultId('other-result') },
+    })],
+    ['canonical intent', (candidate: WorkView): WorkView => ({
+      ...candidate,
+      work: { ...candidate.work, intent: { packetId: WorkPacketId('other') } },
+    })],
+    ['intent digest', (candidate: WorkView): WorkView => ({
+      ...candidate,
+      work: {
+        ...candidate.work,
+        intentDigest: String(canonicalDigest({ packetId: 'other' })),
+      },
+    })],
+    ['resolved Contract', (candidate: WorkView): WorkView => ({
+      ...candidate,
+      work: {
+        ...candidate.work,
+        resolved: {
+          ...candidate.work.resolved,
+          contractRevisionId: ContractRevisionId('other-contract'),
+        },
+      },
+    })],
+    ['resolved executor', (candidate: WorkView): WorkView => ({
+      ...candidate,
+      work: {
+        ...candidate.work,
+        resolved: {
+          ...candidate.work.resolved,
+          executorId: ExecutorId('other-executor'),
+        },
+      },
+    })],
+    ['successful Work state', (candidate: WorkView): WorkView => ({
+      ...candidate,
+      state: { ...candidate.state, status: 'failed' },
+    })],
+    ['successful Attempt linkage', (candidate: WorkView): WorkView => ({
+      ...candidate,
+      attempts: [],
+    })],
+    ['Attempt Work ownership', (candidate: WorkView): WorkView => ({
+      ...candidate,
+      attempts: candidate.attempts.map(attempt => ({
+        ...attempt,
+        workId: WorkId('other-work'),
+      })),
+    })],
+    ['completion claim target', (candidate: WorkView): WorkView => ({
+      ...candidate,
+      result: candidate.result === null ? null : {
+        ...candidate.result,
+        output: {
+          completionClaim: {
+            ...completedClaim(),
+            checkpointCommit: GitCommitId('6'.repeat(40)),
+          },
+        },
+      },
+    })],
+  ] as const)('rejects bound change corruption in %s', async (_, corrupt) => {
+    const state = handlerHarness()
+    const handler = factories().verify(state.dependencies, Config({}))
+    const corrupted = corrupt(state.successfulChange)
+    const verification = view(
+      'code.verify@1', state.verifyResolved,
+      verificationWorkId, verificationAttemptId,
+    )
+    state.list.mockImplementation(() => state.list.mock.calls.length > 1
+      ? [corrupted]
+      : [verification])
+    state.get
+      .mockReturnValueOnce(verification)
+      .mockReturnValueOnce(corrupted)
+
+    await expect(handler.prepare(state.verifyResolved, {
+      attemptId: verificationAttemptId,
+      signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
+  })
+
+  it('fails explicitly on one corrupt selected binding instead of skipping to a valid one', async () => {
+    const state = handlerHarness()
+    const handler = factories().verify(state.dependencies, Config({}))
+    state.snapshot.mockReturnValueOnce({
+      contractRevisions: [state.contract],
+      workPackets: [state.packet],
+      dispatchBindings: [
+        { ...state.changeBinding, id: 'corrupt-binding' },
+        state.changeBinding,
+      ],
+      acceptanceDecisions: [],
+    })
+    state.get
+      .mockReturnValueOnce(view(
+        'code.verify@1', state.verifyResolved,
+        verificationWorkId, verificationAttemptId,
+      ))
+      .mockImplementationOnce(() => {
+        throw new Error('corrupt bound Work')
+      })
+      .mockReturnValueOnce(state.successfulChange)
+
+    await expect(handler.prepare(state.verifyResolved, {
       attemptId: verificationAttemptId,
       signal: new AbortController().signal,
     })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })

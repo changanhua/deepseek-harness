@@ -54,7 +54,6 @@ import type {
 import type DeliveryEvidence from '@deepseek-ai/dsh-delivery-evidence'
 import type RepositoryWorkspace from '@deepseek-ai/dsh-repo-workspace'
 import {
-  AttemptId,
   WorkId,
   createVerifiedOperatorAuthority,
 } from '@deepseek-ai/dsh-task-queue'
@@ -62,11 +61,11 @@ import type {
   OperatorWorkQueue,
   WorkHandler,
   WorkKindDefinition,
-  WorkView,
 } from '@deepseek-ai/dsh-task-queue'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { reconcileDeliveryQueueBindings } from './recovery.ts'
 import { settleChange, settleVerification } from './settlement.ts'
+import { exactAttemptWork, exactBoundChange } from './validation.ts'
 
 export const name = 'delivery-task-queue'
 export const inject = [
@@ -542,76 +541,40 @@ function exactRecords(
   return { contract, packet }
 }
 
-function attemptWork(
-  operator: Pick<OperatorWorkQueue, 'list' | 'get'>,
-  attemptId: AttemptId,
-  kind: typeof CODE_CHANGE_KIND | typeof CODE_VERIFY_KIND,
-): WorkView {
-  const matches = operator.list().filter(view =>
-    view.work.kind === kind
-    && view.attempts.some(attempt => attempt.id === attemptId),
-  )
-  if (matches.length !== 1) {
-    throw handlerError(
-      'handler-attempt-invalid',
-      `Delivery Queue handler could not resolve one exact ${kind} Work for Attempt ${attemptId}`,
-    )
-  }
-  const match = matches[0] as WorkView
-  const exact = operator.get(match.work.id)
-  if (
-    exact.work.id !== match.work.id
-    || exact.work.kind !== kind
-    || !exact.attempts.some(attempt =>
-      attempt.id === attemptId && attempt.workId === exact.work.id)
-  ) {
-    throw handlerError(
-      'handler-attempt-invalid',
-      `Delivery Queue handler resolved a mismatched ${kind} Work view`,
-    )
-  }
-  return exact
-}
-
 function completedChangeFor(
   dependencies: DeliveryWorkHandlerDependencies,
   packetId: WorkPacketId,
   targetCommit: ResolvedCodeVerify['targetCommit'],
 ) {
   const bindings = dependencies.delivery.snapshot().dispatchBindings.filter(
-    binding => binding.packetId === packetId
+    (binding): binding is Extract<DispatchBinding, {
+      readonly kind: typeof CODE_CHANGE_KIND
+      readonly phase: 'bound'
+    }> => binding.packetId === packetId
       && binding.kind === CODE_CHANGE_KIND
       && binding.phase === 'bound',
   )
-  const claims = bindings.flatMap((binding) => {
-    try {
-      const view = dependencies.operator.get(WorkId(String(binding.queueWorkId)))
-      const parsed = codeChangeOutputSchema.safeParse(view.result?.output)
-      if (
-        view.work.kind !== CODE_CHANGE_KIND
-        || view.state.status !== 'succeeded'
-        || view.result?.kind !== CODE_CHANGE_KIND
-        || view.result.workId !== view.work.id
-        || !parsed.success
-        || parsed.data.completionClaim.disposition !== 'completed'
-        || parsed.data.completionClaim.packetId !== packetId
-        || parsed.data.completionClaim.checkpointCommit !== targetCommit
-        || parsed.data.completionClaim.queueWorkId !== binding.queueWorkId
-        || parsed.data.completionClaim.queueAttemptId
-          !== QueueAttemptIdRef(String(view.result.attemptId))
-      ) return []
-      return [parsed.data.completionClaim]
-    } catch {
-      return []
-    }
-  })
-  if (claims.length !== 1) {
+  const binding = bindings[0]
+  if (binding === undefined || bindings.length !== 1) {
     throw handlerError(
       'handler-attempt-invalid',
       'Delivery verification preparation requires one exact successful change claim',
     )
   }
-  return claims[0] as (typeof claims)[number]
+  try {
+    return exactBoundChange(
+      dependencies.operator,
+      binding,
+      exactRecords(dependencies, packetId).packet,
+      targetCommit,
+    )
+  } catch (cause) {
+    throw new DeliveryTaskQueueError(
+      'handler-attempt-invalid',
+      'Delivery verification preparation found a corrupt bound change',
+      { cause },
+    )
+  }
 }
 
 /** Build the sole `code.change@1` WorkHandler. */
@@ -658,17 +621,19 @@ export function createCodeChangeHandler(
           'Delivery code-change policy differs from the admitted policy digest',
         )
       }
-      const view = attemptWork(
-        dependencies.operator, context.attemptId, CODE_CHANGE_KIND,
-      )
-      const workResolved = view.work.resolved as ResolvedCodeChange
-      if (
-        workResolved.packetId !== exactResolved.packetId
-        || workResolved.policyDigest !== exactResolved.policyDigest
-      ) {
-        throw handlerError(
+      let view
+      try {
+        view = exactAttemptWork(
+          dependencies.operator,
+          context.attemptId,
+          CODE_CHANGE_KIND,
+          exactResolved,
+        )
+      } catch (cause) {
+        throw new DeliveryTaskQueueError(
           'handler-attempt-invalid',
           'Delivery code-change Attempt does not own the prepared resolved facts',
+          { cause },
         )
       }
       const { contract, packet } = exactRecords(
@@ -771,17 +736,19 @@ export function createCodeVerifyHandler(
     policy() { return { maxAttempts: settings.maxAttempts } },
     async prepare(resolved, context) {
       const exactResolved = resolvedCodeVerifySchema.parse(resolved)
-      const view = attemptWork(
-        dependencies.operator, context.attemptId, CODE_VERIFY_KIND,
-      )
-      const workResolved = view.work.resolved as ResolvedCodeVerify
-      if (
-        workResolved.packetId !== exactResolved.packetId
-        || workResolved.targetCommit !== exactResolved.targetCommit
-      ) {
-        throw handlerError(
+      let view
+      try {
+        view = exactAttemptWork(
+          dependencies.operator,
+          context.attemptId,
+          CODE_VERIFY_KIND,
+          exactResolved,
+        )
+      } catch (cause) {
+        throw new DeliveryTaskQueueError(
           'handler-attempt-invalid',
           'Delivery verification Attempt does not own the prepared resolved facts',
+          { cause },
         )
       }
       const { contract, packet } = exactRecords(
@@ -847,6 +814,48 @@ export function createCodeVerifyHandler(
   }
 }
 
+function disposeRegistrations(
+  disposers: readonly (() => void)[],
+  primary: unknown,
+): never
+function disposeRegistrations(disposers: readonly (() => void)[]): void
+function disposeRegistrations(
+  disposers: readonly (() => void)[],
+  primary?: unknown,
+): void {
+  const hasPrimary = arguments.length === 2
+  const cleanupFailures: Error[] = []
+  for (const dispose of [...disposers].reverse()) {
+    try {
+      dispose()
+    } catch (cause) {
+      cleanupFailures.push(new Error(
+        `Delivery Queue handler disposal failed: ${String(cause)}`,
+        { cause },
+      ))
+    }
+  }
+  if (hasPrimary) {
+    const primaryError = primary instanceof Error
+      ? primary
+      : new Error(
+        `Delivery Queue activation failed: ${String(primary)}`,
+        { cause: primary },
+      )
+    if (cleanupFailures.length === 0) throw primaryError
+    throw new AggregateError(
+      [primaryError, ...cleanupFailures],
+      'Delivery Queue activation and registration rollback failed',
+    )
+  }
+  if (cleanupFailures.length > 0) {
+    throw new AggregateError(
+      cleanupFailures,
+      'Delivery Queue handler disposal failed',
+    )
+  }
+}
+
 /**
  * Register the two Delivery WorkHandlers for this plugin lifetime.
  *
@@ -882,12 +891,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   await ctx.effect(async () => {
     const disposers: Array<() => void> = []
     try {
-      disposers.push(ctx.taskQueue.registerHandler(
-        createCodeChangeHandler(dependencies, settings),
-      ))
-      disposers.push(ctx.taskQueue.registerHandler(
-        createCodeVerifyHandler(dependencies, settings),
-      ))
       const snapshot = ctx.delivery.snapshot()
       try {
         await reconcileDeliveryQueueBindings(
@@ -905,12 +908,17 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
           { cause },
         )
       }
+      disposers.push(ctx.taskQueue.registerHandler(
+        createCodeChangeHandler(dependencies, settings),
+      ))
+      disposers.push(ctx.taskQueue.registerHandler(
+        createCodeVerifyHandler(dependencies, settings),
+      ))
     } catch (cause) {
-      for (const dispose of [...disposers].reverse()) dispose()
-      throw cause
+      disposeRegistrations(disposers, cause)
     }
     return () => {
-      for (const dispose of [...disposers].reverse()) dispose()
+      disposeRegistrations(disposers)
     }
   }, 'delivery-task-queue: handlers and activation reconciliation')
 }

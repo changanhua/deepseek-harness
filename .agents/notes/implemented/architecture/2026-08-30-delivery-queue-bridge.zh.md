@@ -16,11 +16,11 @@ Personal Delivery 持久化不可变 Packet 与 cross-store dispatch binding，Q
 
 Admission 解析严格的 Protocol record，并且只持久化不可变 execution fact。Code-change policy digest 覆盖 executor identity、可选 model、native permission mode、显式 environment、disposal grace 与 model-output limit。Queue 单独持久化 resource claim 与 retry ceiling。Verification 从 Packet 派生 target 和 plan，并独立证明精确的 base-to-target ancestry。
 
-Preparation 把当前 Attempt 解析为一个精确 operator Work view，重新验证其持久化 resolved fact，并物化 provider proof 与 operation-local closure。它可以检查 revision 并绑定 evidence provenance，但不会打开 checkout、spawn process 或发布 evidence。`start()` 调用 runner 或 verifier，并同步返回其 live cancellation 与 settlement owner。
+Preparation 要求所请求的 Attempt 正是 Work 当前 active 且处于 starting 的 Attempt，交叉验证相互一致的 operator `list()` 与 `get()` view，解析 kind-specific resolved schema，并把每个持久化 resolved fact 与 prepared admission 比较。Verification 对所选 bound change 的 binding、Work state、Result、成功 Attempt、resolved fact 与 completion claim 使用同一个 exact validator。此后 preparation 才物化 provider proof 与 operation-local closure。它可以检查 revision 并绑定 evidence provenance，但不会打开 checkout、spawn process 或发布 evidence。`start()` 调用 runner 或 verifier，并同步返回其 live cancellation 与 settlement owner。
 
 Runner 和 verifier success 会在 Bridge 再次解析，并验证精确 Packet、Work、Attempt、target、plan 和 verifier identity。Cancellation 结算为 `canceled`。已证明的 validation 和 startup failure 结算为不可重试的 `failed/not-started`；已完全停稳的 product、completion、workspace-boundary 或 execution failure 结算为不可重试的 `failed/started`；ownership、cleanup、unexpected rejection 或 malformed successful output 结算为 `unknown/unknown`。
 
-Activation 仅在可信 Host composition 内取得 operator authority。它把两个 handler 注册为一个可逆 effect，扫描 Delivery snapshot 与 Queue operator view，拒绝缺失或 malformed 的 bound Work view，并用已存 canonical input 和 idempotency key 恢复每个 `submitting` binding。Recovery 不存储 projection，也绝不创建 acceptance decision。
+Activation 仅在可信 Host composition 内取得 operator authority。它先验证 Delivery snapshot、交叉校验精确的 Queue `list()` 与 `get()` view，并协调每个 `submitting` binding，然后才注册任何能够触发 pump 的 handler。Recovery 只接受精确重建的 canonical input 与 deterministic key。失败的 activation 无法启动 runner 或 verifier；无论是 rollback 还是正常 disposal，都会先尝试每个已注册 disposer，再报告收集到的 failure。Recovery 不存储 projection，也绝不创建 acceptance decision。
 
 ## 考虑过的替代方案
 

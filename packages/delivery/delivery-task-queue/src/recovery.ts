@@ -8,8 +8,8 @@ import {
   codeVerifyIntentSchema,
 } from '@deepseek-ai/dsh-delivery-protocol'
 import type { DispatchBinding } from '@deepseek-ai/dsh-delivery-protocol'
-import { WorkId } from '@deepseek-ai/dsh-task-queue'
-import type { OperatorWorkQueue, WorkView } from '@deepseek-ai/dsh-task-queue'
+import type { OperatorWorkQueue } from '@deepseek-ai/dsh-task-queue'
+import { exactBoundQueueView } from './validation.ts'
 
 function invalid(message: string, cause?: unknown): Error {
   return new Error(
@@ -22,25 +22,36 @@ function validateBoundViews(
   bindings: readonly DispatchBinding[],
   operator: Pick<OperatorWorkQueue, 'list' | 'get'>,
 ): void {
-  operator.list()
   for (const binding of bindings) {
     if (binding.phase !== 'bound') continue
-    let view: WorkView
     try {
-      view = operator.get(WorkId(String(binding.queueWorkId)))
+      exactBoundQueueView(operator, binding)
     } catch (cause) {
-      throw invalid('Delivery bound dispatch has no exact Queue Work view', cause)
-    }
-    if (
-      view.work.id !== WorkId(String(binding.queueWorkId))
-      || view.work.kind !== binding.kind
-      || view.work.intentDigest !== binding.inputDigest
-    ) {
+      const suffix = cause instanceof Error
+        ? ''
+        : '; exact validation rejected with a non-Error value'
       throw invalid(
-        'Delivery bound dispatch points to a malformed Queue Work view',
+        `Delivery bound dispatch has no exact Queue Work view${suffix}`,
+        cause,
       )
     }
   }
+}
+
+function changeIntent(binding: Extract<DispatchBinding, {
+  readonly kind: typeof CODE_CHANGE_KIND
+}>) {
+  const intent = codeChangeIntentSchema.parse({ packetId: binding.packetId })
+  const expectedKey = `delivery:${binding.packetId}:${CODE_CHANGE_KIND}`
+  if (
+    binding.idempotencyKey !== expectedKey
+    || canonicalDigest(intent) !== binding.inputDigest
+  ) {
+    throw invalid(
+      'Delivery change binding cannot reconstruct its exact canonical Queue intent and identity',
+    )
+  }
+  return intent
 }
 
 function verificationIntent(binding: Extract<DispatchBinding, {
@@ -65,6 +76,7 @@ function verificationIntent(binding: Extract<DispatchBinding, {
     separator !== ':'
     || !parsed.success
     || canonicalDigest(parsed.data) !== binding.inputDigest
+    || binding.idempotencyKey !== `${prefix}${parsed.data.targetCommit}:${parsed.data.verificationPlanDigest}`
   ) {
     throw invalid(
       'Delivery verification binding cannot reconstruct its exact Queue intent',
@@ -83,16 +95,11 @@ export async function reconcileDeliveryQueueBindings(
   for (const binding of bindings) {
     if (binding.phase !== 'submitting') continue
     const input = binding.kind === CODE_CHANGE_KIND
-      ? codeChangeIntentSchema.parse({ packetId: binding.packetId })
+      ? changeIntent(binding)
       : verificationIntent(binding)
     const verificationTarget = binding.kind === CODE_VERIFY_KIND
       ? verificationIntent(binding).targetCommit
       : undefined
-    if (canonicalDigest(input) !== binding.inputDigest) {
-      throw invalid(
-        'Delivery submitting binding does not match its canonical Queue intent',
-      )
-    }
     const workId = await operator.enqueue({
       kind: binding.kind,
       title: binding.kind === CODE_CHANGE_KIND

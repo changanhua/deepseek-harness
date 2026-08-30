@@ -36,13 +36,13 @@ const verification = await startVerification(
 
 代码变更 key 精确为 `delivery:<packetId>:code.change@1`；若 Packet 指定 required executor，则它必须在 `beginDispatch` 前与 host 选择匹配。验证调用方只选择 Packet 及其 bound code-change dispatch。在读取 repository 或写入任一 admission store 之前，bridge 会解析 Queue Work intent、重新计算其 canonical digest、匹配 binding input digest，并解析 resolved value，确认其中的 Contract、repository、base 和 executor 与 Packet 及 binding 完全一致。然后它才要求该精确 Queue Work 为 `succeeded`，用 `codeChangeOutputSchema` 解析其 output，要求 completed claim 中的 Packet、Work 与 Attempt identity 全部匹配，并证明 checkpoint 是 Packet base 的后代。不可变 target 来自该 claim，trusted plan digest 来自 Packet；两者都不由 caller 提供。验证 key 会包含这两个派生值。crash 后重试会复用 Queue admission 幂等性，并完成同一个 Delivery binding。
 
-插件激活时会在 Host 内部取得可信 operator facade，把两个 handler 注册为可逆 effect，扫描完整 Delivery snapshot 与 Queue operator view，拒绝缺失或 malformed 的 bound Work view，并用已存 key 和 canonical input 恢复每个 `submitting` binding。它不会创建 recovery cache、acceptance decision 或 browser 可见的 Queue authority。
+插件激活时会在 Host 内部取得可信 operator facade。在注册任何能够触发 pump 的 handler 之前，它会扫描完整 Delivery snapshot，通过相互一致的 Queue `list()` 与 `get()` view 交叉验证每个 bound Work，校验 canonical intent 和 state linkage，并根据精确重建的 key 与 input 恢复每个 `submitting` binding。因此，reconciliation failure 不可能启动 runner 或 verifier。两个 registration 都可逆，即使一个 disposer 失败，disposal 仍会继续尝试其余 registration。Activation 不会创建 recovery cache、acceptance decision 或 browser 可见的 Queue authority。
 
 ## 理解实现
 
 此包拥有 declaration merging，因为它是唯一能够解析 Delivery 记录、推导当前 Queue Work/Attempt 对、把已验证 repository operation 与 evidence provenance 绑定到该 Attempt，并将两个 runner settlement 映射成 typed Queue output 的适配器。其 prepared `CodeChangeRunRequest` 必须携带两个 Queue identity；绑定 workspace 的 owner、evidence provenance 与最终 claim 必须一致。`dsh-delivery-protocol` 保持 Queue-independent；`dsh-delivery-runner-codex` 与 `dsh-delivery-verifier` 保持无 Queue import 的纯 factory。
 
-两个 handler 都会在 admission 期间持久化严格的 Packet、Contract、repository、target、executor 与 policy 事实。Preparation 把 active Attempt 解析回其精确 Work，只物化 provider proof 与 operation-local closure，不产生 checkout 或 process side effect。`start()` 同步返回 Queue live ownership。取消会传递给 runner 或 verifier；validation 和 startup failure 结算为 `failed/not-started`，已完全停稳的 product 或 completion failure 结算为 `failed/started`，ownership 或 cleanup uncertainty 结算为 `unknown/unknown`。在默认单 Attempt 配置下，所有这些失败都不可重试。
+两个 handler 都会在 admission 期间持久化严格的 Packet、Contract、repository、target、executor 与 policy 事实。Preparation 要求所请求的 Attempt 正是 Work 当前 active 且处于 starting 的 Attempt，并把解析后的每个 resolved fact 与 prepared admission 比较。Verification 还会验证所选 bound change 的精确 binding、Work state、Result、成功 Attempt、resolved fact 与 completion claim。此后 preparation 只物化 provider proof 与 operation-local closure，不产生 checkout 或 process side effect。`start()` 同步返回 Queue live ownership。取消会传递给 runner 或 verifier；validation 和 startup failure 结算为 `failed/not-started`，已完全停稳的 product 或 completion failure 结算为 `failed/started`，ownership 或 cleanup uncertainty 结算为 `unknown/unknown`。在默认单 Attempt 配置下，所有这些失败都不可重试。
 
 插件是 function plugin，而非新 service。它消费 `ctx.delivery`、`ctx.deliveryEvidence`、`ctx.repoWorkspace`、`ctx.subprocess` 与 `ctx.taskQueue`；不发布 `ctx.codeExecutors` 或另一个 bridge registry。
 
