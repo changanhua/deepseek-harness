@@ -4,6 +4,8 @@
 
 持久化类型化工作 Queue 的 Service Definition（`ctx.taskQueue`）。具体工作类型通过声明合并扩展 `WorkKindMap`；Provider 注册 `WorkHandler`，依次解析 caller intent、推导重试 policy、在准入时声明资源需求、准备 dispatch，并同步启动 `LiveAttempt`。
 
+Handler registration 默认立即生效。当 recovery 必须先使用 handler 执行 receipt lookup 或 admission，而 dispatch 尚不安全时，可信 composition 可以请求 staged registration。返回的 callable 持有该精确 registration：`activate()` 只开放一次 dispatch，disposal 会阻止后续 activation，且只移除该 registration。
+
 ## 领域模型
 
 `WorkItem` 不可变，分别保存 title、准入时推导的 policy 和 resource claims、tags、可选 Batch 归属、canonical caller intent、SHA-256 digest 与 resolved execution spec。`BatchItem` 在准入 Batch 前保留每个成员的 title 和 tags。`WorkState`、`WorkAttempt`、`WorkResult`、`Batch`、`Attention`、`Notification`、`Receipt` 是独立持久记录。`unknown` 不是终态，并阻塞后续 Attempt，直到 operator 确认失败或授权重试。

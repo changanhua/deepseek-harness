@@ -11,7 +11,11 @@ class TestTaskQueue extends TaskQueue {
   constructor(ctx: Context, private readonly agentQueue: unknown) { super(ctx) }
   forAgent = vi.fn(() => this.agentQueue) as never
   forOperator(): never { throw new Error('not used by this test') }
-  registerHandler(): () => void { return () => {} }
+  registerHandler(): ReturnType<TaskQueue['registerHandler']> {
+    const registration = (() => {}) as ReturnType<TaskQueue['registerHandler']>
+    registration.activate = () => undefined
+    return registration
+  }
   listKinds(): [] { return [] }
 }
 

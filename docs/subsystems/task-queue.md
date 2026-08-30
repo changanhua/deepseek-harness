@@ -113,11 +113,16 @@ abstract forAgent(authority: VerifiedAgentAuthority): AgentWorkQueue
 abstract forOperator(authority: VerifiedOperatorAuthority): OperatorWorkQueue
 
 /**
- * Register one typed WorkHandler.
+ * Register one typed WorkHandler for admission and optional dispatch.
+ * A staged registration remains available to receipt lookup and admission,
+ * but cannot dispatch until its own `activate()` succeeds. Activation throws
+ * after disposal or repeated activation. The callable disposer removes only
+ * this registration.
  * @param handler - Typed handler to register.
- * @returns A disposer for exactly this registration.
+ * @param options - Optional staged dispatch while admission remains available.
+ * @returns The callable owner of exactly this registration.
  */
-abstract registerHandler<K extends WorkKind>(handler: WorkHandler<K>): () => void
+abstract registerHandler<K extends WorkKind>( handler: WorkHandler<K>, options?: { readonly activation?: 'immediate' | 'staged' }, ): (() => void) & { activate(): void }
 
 /**
  * List registered WorkKinds.

@@ -22,9 +22,13 @@ class TestQueue extends TaskQueue {
   private readonly handlers = new Map<WorkKind, WorkHandler<WorkKind>>()
   forAgent(): never { throw new Error('not used') }
   forOperator(): never { throw new Error('not used') }
-  registerHandler<K extends WorkKind>(handler: WorkHandler<K>): () => void {
+  registerHandler<K extends WorkKind>(handler: WorkHandler<K>): ReturnType<TaskQueue['registerHandler']> {
     this.handlers.set(handler.kind, handler)
-    return () => { this.handlers.delete(handler.kind) }
+    const registration = (() => {
+      this.handlers.delete(handler.kind)
+    }) as ReturnType<TaskQueue['registerHandler']>
+    registration.activate = () => undefined
+    return registration
   }
   listKinds(): readonly WorkKind[] { return [...this.handlers.keys()] }
 }
