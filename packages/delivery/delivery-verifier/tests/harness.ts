@@ -45,16 +45,16 @@ import type {
 import type { DeliveryVerificationRunRequest } from '../src/index.ts'
 
 const FIXTURE_TIME = '2026-08-29T00:00:00.000Z'
-export const BASE_COMMIT = GitCommitId('1111111111111111111111111111111111111111')
-export const TARGET_COMMIT = GitCommitId('2222222222222222222222222222222222222222')
+const BASE_COMMIT = GitCommitId('1111111111111111111111111111111111111111')
+const TARGET_COMMIT = GitCommitId('2222222222222222222222222222222222222222')
 export const PACKET_ID = WorkPacketId('delivery-verifier-packet')
-export const CONTRACT_ID = ContractRevisionId('delivery-verifier-contract')
-export const REPOSITORY_ID = RepositoryId('delivery-verifier-repository')
-export const CHANGE_QUEUE_WORK_ID = QueueWorkIdRef('delivery-verifier-change-work')
-export const CHANGE_QUEUE_ATTEMPT_ID = QueueAttemptIdRef('delivery-verifier-change-attempt')
-export const VERIFICATION_QUEUE_WORK_ID = QueueWorkIdRef('delivery-verifier-verification-work')
-export const VERIFICATION_QUEUE_ATTEMPT_ID = QueueAttemptIdRef('delivery-verifier-verification-attempt')
-export const CHECK_ID = VerificationCheckId('delivery-verifier-check')
+const CONTRACT_ID = ContractRevisionId('delivery-verifier-contract')
+const REPOSITORY_ID = RepositoryId('delivery-verifier-repository')
+const CHANGE_QUEUE_WORK_ID = QueueWorkIdRef('delivery-verifier-change-work')
+const CHANGE_QUEUE_ATTEMPT_ID = QueueAttemptIdRef('delivery-verifier-change-attempt')
+const VERIFICATION_QUEUE_WORK_ID = QueueWorkIdRef('delivery-verifier-verification-work')
+const VERIFICATION_QUEUE_ATTEMPT_ID = QueueAttemptIdRef('delivery-verifier-verification-attempt')
+const CHECK_ID = VerificationCheckId('delivery-verifier-check')
 export const CLAIM_EVIDENCE_ID = EvidenceId('delivery-verifier-claim-evidence')
 export const CLAIM_EVIDENCE_BYTES = new TextEncoder().encode('checkpoint evidence\n')
 
