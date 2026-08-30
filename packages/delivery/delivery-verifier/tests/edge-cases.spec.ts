@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, realpath, writeFile } from 'node:fs/promises'
+import { join, relative } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { DeliveryEvidenceError } from '@deepseek-ai/dsh-delivery-evidence'
 import {
@@ -561,13 +561,18 @@ describe('delivery verifier filesystem and process failures', () => {
     const fixture = await createVerifierFixture({ check: { cwd } })
     try {
       await mkdir(join(fixture.workspaceRoot, cwd), { recursive: true })
-      const spawn = vi.fn(() => settledSubprocessHandle())
+      let spawnedCwd = ''
+      const spawn = vi.fn((spec: SubprocessSpawnSpec) => {
+        spawnedCwd = spec.cwd
+        return settledSubprocessHandle()
+      })
       await expect(start(fixture.request, spawn).done).resolves.toMatchObject({
         status: 'passed',
       })
-      expect(spawn).toHaveBeenCalledWith(expect.objectContaining({
-        cwd: join(fixture.workspaceRoot, cwd),
-      }))
+      const physicalWorkspaceRoot = await realpath(fixture.workspaceRoot)
+      const physicalCwd = await realpath(spawnedCwd)
+      expect(physicalCwd).toBe(await realpath(join(fixture.workspaceRoot, cwd)))
+      expect(relative(physicalWorkspaceRoot, physicalCwd)).toBe(join('checks', 'focused'))
     } finally {
       await fixture.cleanup()
     }

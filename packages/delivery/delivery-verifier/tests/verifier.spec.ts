@@ -1,4 +1,4 @@
-import { mkdtemp, symlink, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, symlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -39,7 +39,11 @@ describe('delivery verifier execution', () => {
   it('executes the trusted fixed argv and produces a passed verdict', async () => {
     const fixture = await createVerifierFixture()
     try {
-      const spawn = vi.fn(() => settledSubprocessHandle())
+      let spawnedCwd = ''
+      const spawn = vi.fn((spec: SubprocessSpawnSpec) => {
+        spawnedCwd = spec.cwd
+        return settledSubprocessHandle()
+      })
       const start = createDeliveryVerifier({
         subprocess: { spawn },
         verifierVersion: 'delivery-verifier@1',
@@ -74,9 +78,9 @@ describe('delivery verifier execution', () => {
       expect(spawn).toHaveBeenCalledOnce()
       expect(spawn).toHaveBeenCalledWith(expect.objectContaining({
         argv: fixture.check.argv,
-        cwd: fixture.workspaceRoot,
         graceMs: 5_000,
       }))
+      expect(await realpath(spawnedCwd)).toBe(await realpath(fixture.workspaceRoot))
       expect(fixture.saves).toEqual([
         expect.objectContaining({ kind: 'verification-output' }),
       ])
