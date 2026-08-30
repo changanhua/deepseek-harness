@@ -26,6 +26,9 @@ env:
 
 jobs:
   e2e:
+    # Defense in depth for this personal fork: only the repository owner may
+    # start a secret-bearing, token-spending provider test.
+    if: github.actor == 'changanhua'
     runs-on: ubuntu-latest
     name: Azure OpenAI Responses + Anthropic Messages
     timeout-minutes: 20
