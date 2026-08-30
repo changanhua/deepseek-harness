@@ -35,7 +35,14 @@ concurrency:
 jobs:
   quality:
     name: Linux fast advisory
-    if: vars.CI_LINUX_FAST != '0'
+    # This is a personal fork: only owner-controlled same-repository PRs and
+    # owner-dispatched runs may consume hosted runner capacity.
+    if: >-
+      vars.CI_LINUX_FAST != '0'
+      && github.actor == 'changanhua'
+      && (github.event_name != 'pull_request'
+          || (github.event.pull_request.user.login == 'changanhua'
+              && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
