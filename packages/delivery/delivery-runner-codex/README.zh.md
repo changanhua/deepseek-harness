@@ -1,5 +1,5 @@
 ---
-description: "基于受支持、无 parent app-server 包边界的 Delivery 专用 Codex 变更 runner。"
+description: "通过不依赖 Parent 的 Codex app-server 传输层运行一次有界 Personal Delivery 代码变更 Attempt，并如实报告取消、检查点、证据和清理结果。"
 kind: "package-reference"
 ---
 
@@ -9,11 +9,23 @@ kind: "package-reference"
 
 ## 摘要
 
-`dsh-delivery-runner-codex` 是一次有界代码变更 Attempt 的 Delivery 专用适配器。它导出纯 `createCodexChangeRunner` factory 以及 operation-local request/run 类型。每个 request 都携带精确 `queueWorkId` 与 `queueAttemptId`，它们必须同时标识 workspace lease、evidence 与 completion claim。此包只选择 `@deepseek-ai/dsh-subagent-codex/app-server-run` 作为生产 transport 边界；既不 deep-import provider 源码，也不创建通用 executor registry 或 Cordis service。
+`dsh-delivery-runner-codex` 在调用方提供的 worktree 中运行一次有界代码变更 Attempt，并返回符合 Protocol 的 `CompletionClaim`。每个请求都携带精确的 `queueWorkId` 与 `queueAttemptId`，用来标识工作区租约、证据与声明。此包只选择 `@deepseek-ai/dsh-subagent-codex/app-server-run` 作为生产传输层；它既不深层导入提供方源码，也不创建通用执行器注册表或 Cordis 服务。
 
+## 目录
+
+- [使用此包](#use-this-package)
+- [理解实现](#understand-the-implementation)
+- [延伸阅读](#further-exploration)
+- [模型体验](#model-experience)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
 ## 使用此包
 
-Queue bridge 从一个持久 Contract、Packet、已解析 Queue specification 与当前 Queue Work/Attempt 对组装 `CodeChangeRunRequest`。它把 workspace 打开与 evidence 发布绑定到该 Attempt，然后在 Queue side-effect boundary 调用返回的 `StartCodeChange` closure。
+Queue 桥接层从一个持久 Contract、Packet、已解析 Queue 规范与当前 Queue Work/Attempt 组合组装 `CodeChangeRunRequest`。它把工作区打开与证据发布绑定到该 Attempt，然后在 Queue 副作用边界调用返回的 `StartCodeChange` 闭包。
 
 ```text
 const startChange = createCodexChangeRunner({
@@ -28,32 +40,60 @@ const run = startChange(request, signal)
 const claim = await run.done
 ```
 
-`CodeChangeRun` 同步发布 `done` 与 `cancel(reason)`。DSH WorkKind 注册、重试、workspace 所有权、持久 Queue 状态和验收均不属于此包。
+`CodeChangeRun` 在工作区操作开始前同步发布 `done` 与 `cancel(reason)`。取消会传递到所选传输层；`cancel()` 等待运行器结算与完整进程树清理，并在清理失败时拒绝。传输层完全停稳后，如果在检查点、证据或租约关闭的等待期间发生取消，结果仍为 `canceled`；清理失败仍为 `cleanup`。DSH WorkKind 注册、重试、工作区创建、持久 Queue 状态和验收均不属于此包。
 
-`disposeGraceMs` 必须是正整数，且不能超过平台 timer 上限。`modelOutputBytes` 必须是正 safe integer，且不能超过 `MAX_MODEL_OUTPUT_BYTES`（64 MiB）。Queue bridge 默认提供 64 KiB 的 Codex 输出保留预算；此 factory 本身要求部署方显式传入该值。
+`disposeGraceMs` 必须是正整数，且不能超过平台计时器上限。`modelOutputBytes` 必须是正安全整数，且不能超过 `MAX_MODEL_OUTPUT_BYTES`（64 MiB）。提示词会在执行前声明 UTF-8 头部保留规则。超过已配置头部上限的最终响应无法形成完整 JSON envelope，因此运行会以 `completion` 失败并保留 worktree，而不会解析截断输出。
 
+-----
+
+<a id="understand-the-implementation"></a>
 ## 理解实现
 
-公共 request 携带持久 Protocol 值、`queueWorkId`、`queueAttemptId`，以及两个已绑定 Attempt 的能力：`openWorkspace(signal)` 与 `BoundDeliveryEvidenceWriter`。具体 runner 必须在启动 executor 前要求 `lease.ownerAttemptId === request.queueAttemptId`。Bound writer 返回的每个 EvidenceRef 与最终 `CompletionClaim` 都必须保留 request 中精确的 Work/Attempt 对；任何不匹配都是 infrastructure failure，而不是 claim。因此绝对 host path 始终是 operation-local。生产依赖是窄 app-server facade；`dsh-subagent-codex` 的 package root 保持不变，Delivery 也绝不导入 `subagent-codex/src/run.ts`。
+运行器会在发布声明前校验 Contract、Packet、已解析规范、租约与证据身份。它通过 `openWorkspace(signal)` 打开 worktree，只把 `lease.cwd` 交给不依赖 Parent 的 app-server 传输层，并在解析模型 envelope 或要求租约创建检查点前 dispose（资源释放）完整子进程树。`completed` envelope 必须产生干净且从基准派生的检查点，并在移除租约前发布有界模型输出证据与检查点元数据证据。`blocked`、`needs-decision` 和 `needs-scope-change` 声明不会虚构检查点事实，并会保留租约。`DeliveryCodexRunnerError` 区分 `invalid-request`、`startup`、`product`、`canceled`、`completion`、`ownership-lost` 与 `cleanup`；未发布的启动回滚如果无法证明进程树完全停稳，就会以 `cleanup` 失败并保留租约，而每次清理失败都会在 `AggregateError` 的 `cause` 中保留较早的失败。
 
+-----
+
+<a id="further-exploration"></a>
+## 延伸阅读
+
+- [Delivery Protocol](../delivery-protocol/README.zh.md) — 持久声明与证据语义。
+- [Repository Workspace](../repo-workspace/README.zh.md) — Attempt 所有的 worktree 与检查点约定。
+- [Delivery Evidence](../delivery-evidence/README.zh.md) — 绑定来源的不可变证据发布。
+- [Codex subagent](../../subagent/subagent-codex/README.zh.md) — 受支持且不依赖 Parent 的 app-server 传输层。
+
+-----
+
+<a id="model-experience"></a>
 ## 模型体验
 
 ### Codex 执行提示
 
 #### 模型看到什么
 
-Runner contract 把模型输入限制为有界 `ContractRevision`、`WorkPacket`、允许与禁止路径、停止条件，以及 completion claim 要求；unavailable implementation 不调用模型。
+模型会收到精确 `ContractRevision`、`WorkPacket` 与已解析代码变更规范的一份权威 JSON 投影，随后是四种允许的完成处置与已配置的 UTF-8 头部保留规则。模型不会收到 Queue 历史、Agent 或 Session 对象、证据写入器，也不会收到 control-center 的绝对路径。
 
 #### Token 影响
 
-Runner contract 允许每次 Attempt 使用一个紧凑 task prompt；原始 ChatGPT transcript、Queue 历史与无关仓库文档不在范围内。
+运行器每次 Attempt 增加一个任务提示词。Contract 与 Packet 文本会增加输入 token。Codex 仍可能生成完整的最终响应，其中全部输出 token 都可能计入 token 用量；宿主最多保留已配置的 UTF-8 字节数，并拒绝超出预算的 envelope，而不会解析它。
 
 #### KV Cache 影响
 
-稳定 framing 与 policy 指令可以共享可复用前缀，而 Packet objective、scope 与 resume evidence 会按 Attempt 变化，从而降低 suffix 复用。
+稳定的框架、处置指令与保留规则措辞可以共享可复用前缀，而 Contract、Packet、已解析策略与字节预算会随 Attempt 变化，从而降低后缀复用率。
 
-## 已知限制
+## 已知限制与延期工作
 
-- **具体 runner 不可用**——`createCodexChangeRunner` 返回 live handle，其 `done` 以 `DeliveryCodexRunnerError('unavailable')` 拒绝；Queue identity 检查、prompt 编译、transport settlement、checkpoint、evidence 与真实 completion claim 均不受支持。
-- **Codex 是唯一已选择 provider**——没有单独、有证据的架构决策时，alternative provider 与共享 executor registry 均不在范围内。
-- **不拥有 Queue**——此包不能注册 `code.change@1`、选择重试或写入 Queue 生命周期；该 bridge 由 `dsh-delivery-task-queue` 拥有。
+<a id="known-limitations-and-deferred-work"></a>
+
+- **最终响应采用严格协议**——Codex 必须以一个文本结果返回恰好一个 JSON 对象；额外文字、额外字段、缺失字段或超预算 envelope 都会导致完成失败并保留 worktree。
+- **Codex 是唯一选定的提供方**——没有单独且有证据支持的架构决策时，其他提供方与共享执行器注册表均不在范围内。
+- **不拥有 Queue**——此包不能注册 `code.change@1`、选择重试或写入 Queue 生命周期状态；该桥接层由 `dsh-delivery-task-queue` 拥有。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者工作上下文 — 点击展开</summary>
+
+无。
+
+</details>

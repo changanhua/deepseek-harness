@@ -595,10 +595,12 @@ Source: [`packages/credentials/credentials-local/src/index.ts:64`](../packages/c
 export interface Config {
   /** Private directory containing content-addressed evidence objects. */
   readonly root: string
+  /** Complete-byte publication limit, capped by the P0 64 MiB ceiling. */
+  readonly maxBytes?: number
 }
 ```
 
-Source: [`packages/delivery/delivery-evidence-local/src/index.ts:18`](../packages/delivery/delivery-evidence-local/src/index.ts)
+Source: [`packages/delivery/delivery-evidence-local/src/index.ts:42`](../packages/delivery/delivery-evidence-local/src/index.ts)
 
 <a id="deepseek-aidsh-delivery-remote"></a>
 
@@ -1884,10 +1886,14 @@ export interface Config {
   readonly repositories: Readonly<Record<string, string>>
   /** Directory below which attempt-owned worktrees are created. */
   readonly worktreeRoot: string
+  /** Git process TERM-to-KILL grace. */
+  readonly graceMs?: number
+  /** Complete-byte cap for one Git command stream. */
+  readonly maxGitOutputBytes?: number
 }
 ```
 
-Source: [`packages/delivery/repo-workspace-git-local/src/index.ts:28`](../packages/delivery/repo-workspace-git-local/src/index.ts)
+Source: [`packages/delivery/repo-workspace-git-local/src/index.ts:50`](../packages/delivery/repo-workspace-git-local/src/index.ts)
 
 <a id="deepseek-aidsh-runtime-facts"></a>
 

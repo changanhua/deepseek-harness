@@ -4954,6 +4954,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      koffi:
+        specifier: ^3.1.0
+        version: 3.1.1
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -5209,6 +5212,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      koffi:
+        specifier: ^3.1.0
+        version: 3.1.1
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
