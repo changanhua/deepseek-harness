@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-08-29-personal-delivery-above-queue.md
-2026-08-29-personal-delivery-above-queue.md: 5924a0658e2f0bee1adb76468ce1ad24c2f9e088
-2026-08-29-personal-delivery-above-queue.zh.md: 15d25b757a6a440d6dbd631e3c9dea6e3177903a
+2026-08-29-personal-delivery-above-queue.md: 9ebb1240dbbdc92ac921c5962c027cb6e0513ec1
+2026-08-29-personal-delivery-above-queue.zh.md: b70840b17f7f9851358759dda693d0d29717eb1c

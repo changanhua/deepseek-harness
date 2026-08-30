@@ -51,6 +51,8 @@ Only three public host services exist: `Delivery` at `ctx.delivery`, `Repository
 
 The Bridge proposes provider-neutral `code.change@1` and `code.verify@1` WorkKinds. `delivery-task-queue` is their sole declaration-merging and runtime-registration owner; prepared values stay local to that package. Queue success for change work records a typed completion claim. Verification runs as separate work against the exact checkpoint commit. Only a matching passed verdict permits an ordinary acceptance; an explicit human waiver records the override.
 
+The implemented [Delivery Queue Bridge decision](../../implemented/architecture/2026-08-30-delivery-queue-bridge.md) records the shipped handler, settlement, and activation-recovery boundary without changing this broader proposal's remaining product-composition status.
+
 Delivery and Queue cannot commit one transaction. Delivery therefore persists a `submitting` binding with a deterministic Queue idempotency key before enqueue, then records the returned Work id. Restart repeats unfinished enqueue with the same key and input; Queue returns the original id whether the earlier call committed or not. A bound id that Queue cannot resolve becomes corruption Attention and never causes admission under another key.
 
 ### Technical gates
