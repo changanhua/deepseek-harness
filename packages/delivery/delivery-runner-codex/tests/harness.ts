@@ -40,16 +40,16 @@ import type { CodeChangeRunRequest } from '../src/index.ts'
 
 type JsonObject = Record<string, unknown>
 
-export const CREATED_AT = '2026-08-29T00:00:00.000Z'
-export const BASE_COMMIT = GitCommitId('1'.repeat(40))
+const CREATED_AT = '2026-08-29T00:00:00.000Z'
+const BASE_COMMIT = GitCommitId('1'.repeat(40))
 export const CHECKPOINT_COMMIT = GitCommitId('2'.repeat(40))
-export const CONTRACT_ID = ContractRevisionId('contract-1')
+const CONTRACT_ID = ContractRevisionId('contract-1')
 export const PACKET_ID = WorkPacketId('packet-1')
-export const REPOSITORY_ID = RepositoryId('repository-1')
+const REPOSITORY_ID = RepositoryId('repository-1')
 export const QUEUE_WORK_ID = QueueWorkIdRef('work-1')
 export const QUEUE_ATTEMPT_ID = QueueAttemptIdRef('attempt-1')
 
-export class ProtocolPeer {
+class ProtocolPeer {
   private buffer = ''
   private readonly frames: JsonObject[] = []
   private readonly wakeups = new Set<() => void>()
