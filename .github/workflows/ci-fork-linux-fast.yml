@@ -1,0 +1,72 @@
+name: Linux Fast (advisory)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ci-fork-linux-fast.yml'
+      - 'apps/**'
+      - 'native/**'
+      - 'packages/**'
+      - 'scripts/**'
+      - 'vendor/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig*.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  DSH_BUILD_CLIENT_PROFILE: official
+  DSH_TELEMETRY_DISABLED: '1'
+
+concurrency:
+  group: linux-fast-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Linux fast advisory
+    if: vars.CI_LINUX_FAST != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install immutable dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Host contracts
+        run: pnpm run build:lib:host
+
+      - name: Check Client types
+        run: pnpm run typecheck:contracts-ready
+
+      - name: Check stable repository metadata
+        run: |
+          pnpm run verify-package-invariants
+          pnpm run verify-config-catalog
+          pnpm run verify-doc-graphs
+
+      - name: Test CI control code
+        run: >-
+          pnpm exec vitest run
+          scripts/run-gates.spec.ts
+          scripts/run-fork-c0-diff.spec.ts
+          scripts/ci-workflow.spec.ts
+          --reporter=dot
