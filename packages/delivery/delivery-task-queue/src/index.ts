@@ -63,10 +63,6 @@ import type {
   WorkKindDefinition,
 } from '@deepseek-ai/dsh-task-queue'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
-import {
-  activationGatedHandler,
-  createActivationBarrier,
-} from './activation.ts'
 import { reconcileDeliveryQueueBindings } from './recovery.ts'
 import { settleChange, settleVerification } from './settlement.ts'
 import {
@@ -480,6 +476,8 @@ interface ResolvedBridgeConfig {
   readonly maxAttempts: number
   readonly verifierVersion: string
 }
+
+type HandlerRegistration = (() => void) & { activate(): void }
 
 /** Trusted dependencies shared by both package-owned Queue handlers. */
 export interface DeliveryWorkHandlerDependencies {
@@ -948,17 +946,16 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     }),
   }
   await ctx.effect(async () => {
-    const barrier = createActivationBarrier()
-    const disposers: Array<() => void> = []
+    const registrations: HandlerRegistration[] = []
     try {
-      disposers.push(ctx.taskQueue.registerHandler(activationGatedHandler(
+      registrations.push(ctx.taskQueue.registerHandler(
         createCodeChangeHandler(dependencies, config),
-        barrier,
-      )))
-      disposers.push(ctx.taskQueue.registerHandler(activationGatedHandler(
+        { activation: 'staged' },
+      ))
+      registrations.push(ctx.taskQueue.registerHandler(
         createCodeVerifyHandler(dependencies, config),
-        barrier,
-      )))
+        { activation: 'staged' },
+      ))
       const snapshot = ctx.delivery.snapshot()
       try {
         await reconcileDeliveryQueueBindings(
@@ -976,14 +973,12 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
           { cause },
         )
       }
-      barrier.open()
+      for (const registration of registrations) registration.activate()
     } catch (cause) {
-      barrier.fail(cause)
-      disposeRegistrations(disposers, cause)
+      disposeRegistrations(registrations, cause)
     }
     return () => {
-      barrier.fail(new Error('Delivery Queue plugin disposed during activation'))
-      disposeRegistrations(disposers)
+      disposeRegistrations(registrations)
     }
   }, 'delivery-task-queue: handlers and activation reconciliation')
 }

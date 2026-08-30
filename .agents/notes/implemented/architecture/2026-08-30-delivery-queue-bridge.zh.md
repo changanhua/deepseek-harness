@@ -20,7 +20,7 @@ Preparation 要求所请求的 Attempt 正是 Work 当前 active 且处于 start
 
 Runner 和 verifier success 会在 Bridge 再次解析，并验证精确 Packet、Work、Attempt、target、plan 和 verifier identity。Cancellation 结算为 `canceled`。已证明的 validation 和 startup failure 结算为不可重试的 `failed/not-started`；已完全停稳的 product、completion、workspace-boundary 或 execution failure 结算为不可重试的 `failed/started`；ownership、cleanup、unexpected rejection 或 malformed successful output 结算为 `unknown/unknown`。
 
-Activation 仅在可信 Host composition 内取得 operator authority。它在关闭的 execution barrier 后注册两个 handler，让 Queue 能在 receipt lookup 或新 recovery admission 前找到 handler。然后它验证 Delivery snapshot、交叉校验精确的 Queue `list()` 与 `get()` view，并协调每个 `submitting` binding，最后才开放 barrier。Recovery 只接受精确重建的 canonical input 与 deterministic key，其中 Git target 可以是 40 或 64 个十六进制字符。失败的 activation 会在 runner 或 verifier 启动前拒绝被阻塞的 preparation；无论是 rollback 还是正常 disposal，都会先尝试每个已注册 disposer，再报告收集到的 failure。Recovery 不存储 projection，也绝不创建 acceptance decision。
+Activation 仅在可信 Host composition 内取得 operator authority。它为两个 handler 使用 Queue staged registration，让 Queue 能执行 receipt lookup 或新 recovery admission，但不能 claim Work。它会验证 Delivery snapshot、交叉校验精确的 Queue `list()` 与 `get()` view、协调每个 `submitting` binding，然后激活两个 exact registration。Recovery 只接受精确重建的 canonical input 与 deterministic key，其中 Git target 可以是 40 或 64 个十六进制字符。失败的 activation 会让已准入的 recovery Work 保持 queued 且不产生 Attempt；无论是 rollback 还是正常 disposal，都会先尝试每个已注册 disposer，再报告收集到的 failure。Recovery 不存储 projection，也绝不创建 acceptance decision。
 
 ## 考虑过的替代方案
 

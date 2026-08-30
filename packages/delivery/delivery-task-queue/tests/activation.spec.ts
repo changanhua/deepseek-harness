@@ -97,20 +97,29 @@ function context(options: {
   const views = [...(options.views ?? [])]
   const handlers = new Map<string, WorkHandler<never>>()
   const registrationDisposers: ReturnType<typeof vi.fn>[] = []
-  const registerHandler = vi.fn((handler: WorkHandler<never>) => {
+  const registrationActivators: ReturnType<typeof vi.fn>[] = []
+  const registerHandler = vi.fn((
+    handler: WorkHandler<never>,
+    registrationOptions?: { readonly activation?: 'immediate' | 'staged' },
+  ) => {
     const registrationIndex = registrationDisposers.length
     const registrationError = options.registrationErrors?.[registrationIndex]
     if (registrationError !== undefined) throw registrationError
     handlers.set(handler.kind, handler)
-    options.pumpOnRegister?.()
+    if (registrationOptions?.activation !== 'staged') {
+      options.pumpOnRegister?.()
+    }
     const disposerIndex = registrationIndex
     const dispose = vi.fn(() => {
       handlers.delete(handler.kind)
       const error = options.disposeErrors?.[disposerIndex]
       if (error !== undefined) throw error
     })
+    const activate = vi.fn(() => options.pumpOnRegister?.())
+    Object.assign(dispose, { activate })
     registrationDisposers.push(dispose)
-    return dispose
+    registrationActivators.push(activate)
+    return dispose as typeof dispose & { activate(): void }
   })
   const enqueue = vi.fn(async (request: { readonly kind: string }) =>
     request.kind === CODE_CHANGE_KIND ? changeWorkId : verificationWorkId)
@@ -179,7 +188,9 @@ function context(options: {
   return {
     ctx,
     handlers,
+    registerHandler,
     registrationDisposers,
+    registrationActivators,
     enqueue,
     get,
     list,
@@ -202,6 +213,13 @@ describe('Delivery Queue bridge activation', () => {
       CODE_CHANGE_KIND,
       CODE_VERIFY_KIND,
     ])
+    expect(state.registerHandler.mock.calls.map(([, options]) => options))
+      .toEqual([
+        { activation: 'staged' },
+        { activation: 'staged' },
+      ])
+    expect(state.registrationActivators[0]).toHaveBeenCalledOnce()
+    expect(state.registrationActivators[1]).toHaveBeenCalledOnce()
     await state.dispose()
     expect(state.registrationDisposers).toHaveLength(2)
     expect(state.registrationDisposers[0]).toHaveBeenCalledOnce()
@@ -318,7 +336,7 @@ describe('Delivery Queue bridge activation', () => {
     expect(state.enqueue).not.toHaveBeenCalled()
   })
 
-  it('registers recovery handlers but blocks runner side effects until reconciliation succeeds', async () => {
+  it('leaves staged recovery handlers inactive when reconciliation fails', async () => {
     const pump = vi.fn()
     const state = context({
       bindings: [binding(CODE_CHANGE_KIND, 'bound')],
@@ -329,7 +347,9 @@ describe('Delivery Queue bridge activation', () => {
     await expect(apply(state.ctx as never, Config({}))).rejects.toMatchObject({
       code: 'reconciliation-invalid',
     })
-    expect(pump).toHaveBeenCalledTimes(2)
+    expect(pump).not.toHaveBeenCalled()
+    expect(state.registrationActivators[0]).not.toHaveBeenCalled()
+    expect(state.registrationActivators[1]).not.toHaveBeenCalled()
     expect(state.spawn).not.toHaveBeenCalled()
     expect(state.handlers.size).toBe(0)
   })

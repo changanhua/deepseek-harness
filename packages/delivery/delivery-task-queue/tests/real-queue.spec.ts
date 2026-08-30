@@ -10,7 +10,6 @@ import {
   ExecutorId,
   GitCommitId,
   QueueWorkIdRef,
-  Sha256Digest,
   canonicalDigest,
 } from '@deepseek-ai/dsh-delivery-protocol'
 import type {
@@ -108,7 +107,13 @@ function resolvedChange(packet: WorkPacket): ResolvedCodeChange {
     repositoryId: packet.repositoryId,
     baseCommit: packet.baseCommit,
     executorId,
-    policyDigest: Sha256Digest(`sha256:${'d'.repeat(64)}`),
+    policyDigest: canonicalDigest({
+      executorId,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    }),
   }
 }
 
@@ -140,6 +145,10 @@ function bridgeContext(
   queue: LocalTaskQueue,
   durable: ReturnType<typeof records>,
   bindings: DispatchBinding[],
+  options: {
+    readonly beforeBind?: Promise<undefined>
+    readonly beforeRevision?: Promise<undefined>
+  } = {},
 ) {
   const spawn = vi.fn()
   let disposeBridge: (() => void) | undefined
@@ -153,6 +162,7 @@ function bridgeContext(
     readonly bindingId: DispatchBinding['id']
     readonly queueWorkId: QueueWorkIdRef
   }) => {
+    await options.beforeBind
     const index = bindings.findIndex(binding => binding.id === request.bindingId)
     const current = bindings[index]
     if (current === undefined) throw new Error('fixture binding disappeared')
@@ -167,10 +177,13 @@ function bridgeContext(
   const inspectRevision = vi.fn(async (request: {
     readonly repositoryId: WorkPacket['repositoryId']
     readonly commit: WorkPacket['baseCommit']
-  }) => ({
-    repositoryId: request.repositoryId,
-    commit: request.commit,
-  }) as unknown as VerifiedRepositoryRevision)
+  }) => {
+    await options.beforeRevision
+    return ({
+      repositoryId: request.repositoryId,
+      commit: request.commit,
+    }) as unknown as VerifiedRepositoryRevision
+  })
   const ctx = {
     delivery: {
       snapshot,
@@ -208,7 +221,7 @@ function bridgeContext(
     ctx,
     spawn,
     bindDispatch,
-    async dispose() { disposeBridge?.() },
+    dispose() { disposeBridge?.() },
   }
 }
 
@@ -218,14 +231,23 @@ async function createQueue(root: string): Promise<{
   readonly operator: OperatorWorkQueue
 }> {
   const context = new Context()
-  const queue = new LocalTaskQueue(context, {
+  await context.plugin(LocalTaskQueue, {
     queueRoot: root,
     resourceCapacity: { 'agent-run': 1 },
   })
+  const queue = context.taskQueue as LocalTaskQueue
   return {
     context,
     queue,
     operator: queue.forOperator(createVerifiedOperatorAuthority()),
+  }
+}
+
+async function waitFor(check: () => boolean, timeoutMs = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!check()) {
+    if (Date.now() >= deadline) throw new Error('timed out waiting for Queue state')
+    await new Promise(resolve => setTimeout(resolve, 5))
   }
 }
 
@@ -235,25 +257,48 @@ describe('Delivery Queue bridge with the real LocalTaskQueue', () => {
     const durable = records()
     const bindings: DispatchBinding[] = [submittingChange(durable.packet)]
     const state = await createQueue(root)
-    const bridge = bridgeContext(state.queue, durable, bindings)
+    const bind = Promise.withResolvers<undefined>()
+    const preparation = Promise.withResolvers<undefined>()
+    const bridge = bridgeContext(state.queue, durable, bindings, {
+      beforeBind: bind.promise,
+      beforeRevision: preparation.promise,
+    })
     const secretSentinel = 'real-queue-secret-sentinel'
-    state.operator.pause()
     try {
-      await apply(bridge.ctx as never, Config({
+      const activation = apply(bridge.ctx as never, Config({
         env: { DELIVERY_NON_SECRET_OVERRIDE: secretSentinel },
       }))
+      await waitFor(() => bridge.bindDispatch.mock.calls.length === 1)
+
+      expect(state.operator.list()).toHaveLength(1)
+      expect(state.operator.list()[0]).toMatchObject({
+        state: { status: 'queued', attemptCount: 0 },
+        attempts: [],
+      })
+
+      bind.resolve(undefined)
+      await activation
+      await waitFor(() => state.operator.list()[0]?.attempts.length === 1)
 
       expect(bindings[0]).toMatchObject({
         phase: 'bound',
         queueWorkId: QueueWorkIdRef(String(state.operator.list()[0]?.work.id)),
       })
-      expect(state.operator.list()).toHaveLength(1)
+      expect(state.operator.list()[0]?.state.status).toBe('starting')
+      expect(bridge.spawn).not.toHaveBeenCalled()
       expect(JSON.stringify({
         work: state.operator.list()[0],
         binding: bindings[0],
       })).not.toContain(secretSentinel)
+
+      bridge.dispose()
+      preparation.resolve(undefined)
+      await waitFor(() => state.operator.list()[0]?.state.status === 'canceled')
+      expect(bridge.spawn).not.toHaveBeenCalled()
     } finally {
-      await bridge.dispose()
+      bind.resolve(undefined)
+      preparation.resolve(undefined)
+      bridge.dispose()
       await state.context.fiber.dispose()
       await rm(root, { recursive: true, force: true })
     }
@@ -263,9 +308,9 @@ describe('Delivery Queue bridge with the real LocalTaskQueue', () => {
     const root = await mkdtemp(join(tmpdir(), 'delivery-queue-with-receipt-'))
     const durable = records()
     const first = await createQueue(root)
-    first.operator.pause()
     const disposeFixture = first.queue.registerHandler(
       acceptingChangeHandler(durable.packet),
+      { activation: 'staged' },
     )
     const binding = submittingChange(durable.packet)
     const workId = await first.operator.enqueue({
@@ -279,18 +324,37 @@ describe('Delivery Queue bridge with the real LocalTaskQueue', () => {
 
     const bindings: DispatchBinding[] = [binding]
     const restarted = await createQueue(root)
-    const bridge = bridgeContext(restarted.queue, durable, bindings)
-    restarted.operator.pause()
+    const bind = Promise.withResolvers<undefined>()
+    const preparation = Promise.withResolvers<undefined>()
+    const bridge = bridgeContext(restarted.queue, durable, bindings, {
+      beforeBind: bind.promise,
+      beforeRevision: preparation.promise,
+    })
     try {
-      await apply(bridge.ctx as never, Config({}))
+      const activation = apply(bridge.ctx as never, Config({}))
+      await waitFor(() => bridge.bindDispatch.mock.calls.length === 1)
 
+      expect(bindings[0]).toMatchObject({
+        phase: 'submitting',
+      })
+      expect(restarted.operator.list()).toHaveLength(1)
+      expect(restarted.operator.get(workId)).toMatchObject({
+        state: { status: 'queued', attemptCount: 0 },
+        attempts: [],
+      })
+
+      bind.resolve(undefined)
+      await activation
+      await waitFor(() => restarted.operator.get(workId).attempts.length === 1)
       expect(bindings[0]).toMatchObject({
         phase: 'bound',
         queueWorkId: QueueWorkIdRef(String(workId)),
       })
       expect(restarted.operator.list()).toHaveLength(1)
     } finally {
-      await bridge.dispose()
+      bind.resolve(undefined)
+      bridge.dispose()
+      preparation.resolve(undefined)
       await restarted.context.fiber.dispose()
       await rm(root, { recursive: true, force: true })
     }
@@ -316,11 +380,62 @@ describe('Delivery Queue bridge with the real LocalTaskQueue', () => {
       await new Promise(resolve => setTimeout(resolve, 20))
 
       expect(state.operator.list()).toHaveLength(1)
+      expect(state.operator.list()[0]).toMatchObject({
+        state: { status: 'queued', attemptCount: 0 },
+        attempts: [],
+        result: null,
+      })
       expect(bridge.spawn).not.toHaveBeenCalled()
       expect(state.queue.listKinds()).toEqual([])
     } finally {
-      await bridge.dispose()
+      bridge.dispose()
       await state.context.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('activates a cold bound binding after Cordis restores its exact Queue view', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'delivery-queue-bound-restart-'))
+    const durable = records()
+    const first = await createQueue(root)
+    const fixture = first.queue.registerHandler(
+      acceptingChangeHandler(durable.packet),
+      { activation: 'staged' },
+    )
+    const candidate = submittingChange(durable.packet)
+    const workId = await first.operator.enqueue({
+      kind: CODE_CHANGE_KIND,
+      title: `Change code for Delivery Packet ${durable.packet.id}`,
+      input: { packetId: durable.packet.id },
+      idempotencyKey: candidate.idempotencyKey,
+    })
+    fixture()
+    await first.context.fiber.dispose()
+
+    const bindings: DispatchBinding[] = [{
+      ...candidate,
+      phase: 'bound',
+      queueWorkId: QueueWorkIdRef(String(workId)),
+    }]
+    const restarted = await createQueue(root)
+    const preparation = Promise.withResolvers<undefined>()
+    const bridge = bridgeContext(restarted.queue, durable, bindings, {
+      beforeRevision: preparation.promise,
+    })
+    try {
+      expect(restarted.operator.list().map(view => view.work.id)).toEqual([
+        workId,
+      ])
+      expect(restarted.operator.get(workId).attempts).toEqual([])
+
+      await apply(bridge.ctx as never, Config({}))
+      await waitFor(() => restarted.operator.get(workId).attempts.length === 1)
+      expect(restarted.operator.get(workId).state.status).toBe('starting')
+      expect(bridge.spawn).not.toHaveBeenCalled()
+    } finally {
+      bridge.dispose()
+      preparation.resolve(undefined)
+      await restarted.context.fiber.dispose()
       await rm(root, { recursive: true, force: true })
     }
   })
@@ -329,7 +444,6 @@ describe('Delivery Queue bridge with the real LocalTaskQueue', () => {
     const root = await mkdtemp(join(tmpdir(), 'delivery-verify-admission-'))
     const durable = records()
     const state = await createQueue(root)
-    state.operator.pause()
     const dependencies = {
       delivery: {
         getContractRevision: vi.fn(() => durable.contract),
@@ -363,6 +477,7 @@ describe('Delivery Queue bridge with the real LocalTaskQueue', () => {
     }
     const dispose = state.queue.registerHandler(
       createCodeVerifyHandler(dependencies as never, Config({})),
+      { activation: 'staged' },
     )
     try {
       await expect(state.operator.enqueue({
