@@ -4,6 +4,7 @@ import {
   CODE_VERIFY_KIND,
   DispatchBindingId,
   ExecutorId,
+  GitCommitId,
   QueueWorkIdRef,
   Sha256Digest,
   WorkPacketId,
@@ -237,6 +238,31 @@ describe('Delivery Queue bridge activation', () => {
     expect(state.recordAcceptanceDecision).not.toHaveBeenCalled()
   })
 
+  it('recovers a verification binding with a 64-hex Git target identity', async () => {
+    const longTarget = GitCommitId('d'.repeat(64))
+    const intent = {
+      packetId,
+      targetCommit: longTarget,
+      verificationPlanDigest: planDigest,
+    }
+    const candidate = {
+      ...binding(CODE_VERIFY_KIND, 'submitting'),
+      inputDigest: canonicalDigest(intent),
+      idempotencyKey:
+        `delivery:${packetId}:${CODE_VERIFY_KIND}:${longTarget}:${planDigest}`,
+    }
+    const state = context({ bindings: [candidate] })
+
+    await apply(state.ctx as never, Config({}))
+
+    expect(state.enqueue).toHaveBeenCalledWith({
+      kind: CODE_VERIFY_KIND,
+      title: `Verify Delivery Packet ${packetId} at ${longTarget}`,
+      input: intent,
+      idempotencyKey: candidate.idempotencyKey,
+    })
+  })
+
   it('does not resubmit bound bindings after an idempotent restart', async () => {
     const state = context({
       bindings: [
@@ -292,18 +318,19 @@ describe('Delivery Queue bridge activation', () => {
     expect(state.enqueue).not.toHaveBeenCalled()
   })
 
-  it('does not register a pump-capable handler before reconciliation succeeds', async () => {
-    const spawn = vi.fn()
+  it('registers recovery handlers but blocks runner side effects until reconciliation succeeds', async () => {
+    const pump = vi.fn()
     const state = context({
       bindings: [binding(CODE_CHANGE_KIND, 'bound')],
       views: [boundView(CODE_VERIFY_KIND, changeWorkId)],
-      pumpOnRegister: spawn,
+      pumpOnRegister: pump,
     })
 
     await expect(apply(state.ctx as never, Config({}))).rejects.toMatchObject({
       code: 'reconciliation-invalid',
     })
-    expect(spawn).not.toHaveBeenCalled()
+    expect(pump).toHaveBeenCalledTimes(2)
+    expect(state.spawn).not.toHaveBeenCalled()
     expect(state.handlers.size).toBe(0)
   })
 

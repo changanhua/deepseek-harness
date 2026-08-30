@@ -64,17 +64,17 @@ function verificationIntent(binding: Extract<DispatchBinding, {
     )
   }
   const encoded = binding.idempotencyKey.slice(prefix.length)
-  const targetCommit = encoded.slice(0, 40)
-  const separator = encoded.slice(40, 41)
-  const verificationPlanDigest = encoded.slice(41)
+  const identity = /^([0-9a-f]{40}|[0-9a-f]{64}):(sha256:[0-9a-f]{64})$/u
+    .exec(encoded)
+  const targetCommit = identity?.[1]
+  const verificationPlanDigest = identity?.[2]
   const parsed = codeVerifyIntentSchema.safeParse({
     packetId: binding.packetId,
     targetCommit,
     verificationPlanDigest,
   })
   if (
-    separator !== ':'
-    || !parsed.success
+    !parsed.success
     || canonicalDigest(parsed.data) !== binding.inputDigest
     || binding.idempotencyKey !== `${prefix}${parsed.data.targetCommit}:${parsed.data.verificationPlanDigest}`
   ) {

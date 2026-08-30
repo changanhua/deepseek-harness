@@ -31,6 +31,10 @@ type BoundChange = Extract<DispatchBinding, {
 type CompletedClaim = Extract<CompletionClaim, {
   readonly disposition: 'completed'
 }>
+type SuccessfulChangeResult = {
+  readonly result: NonNullable<WorkView['result']>
+  readonly attempt: WorkView['attempts'][number]
+}
 
 function invalid(message: string): Error {
   return new Error(`Delivery Queue exact validation failed: ${message}`)
@@ -57,6 +61,33 @@ function validateCore(view: WorkView): void {
   if (view.attempts.some(attempt => attempt.workId !== work.id)) {
     throw invalid('Work view contains an Attempt owned by another Work')
   }
+}
+
+/** Require one successful Result linked to its exact successful Attempt. */
+export function exactSuccessfulChangeResult(
+  view: WorkView,
+): SuccessfulChangeResult {
+  validateCore(view)
+  if (
+    view.work.kind !== CODE_CHANGE_KIND
+    || view.state.status !== 'succeeded'
+    || view.state.activeAttemptId !== null
+    || view.result === null
+    || view.result.kind !== CODE_CHANGE_KIND
+  ) {
+    throw invalid('code-change Work has no exact successful Result')
+  }
+  const result = view.result
+  const attempt = view.attempts.find(candidate =>
+    candidate.id === result.attemptId)
+  if (
+    attempt === undefined
+    || attempt.workId !== view.work.id
+    || attempt.status !== 'succeeded'
+  ) {
+    throw invalid('code-change Result does not belong to a successful Attempt')
+  }
+  return { result, attempt }
 }
 
 function validateListGet(
@@ -166,6 +197,7 @@ export function exactBoundChange(
   targetCommit: ResolvedCodeVerify['targetCommit'],
 ): CompletedClaim {
   const view = exactBoundQueueView(operator, binding)
+  const { result } = exactSuccessfulChangeResult(view)
   const resolved = resolvedCodeChangeSchema.parse(view.work.resolved)
   if (
     resolved.packetId !== packet.id
@@ -176,31 +208,14 @@ export function exactBoundChange(
   ) {
     throw invalid('bound change resolved facts do not match the Packet and binding')
   }
-  if (
-    view.state.status !== 'succeeded'
-    || view.state.activeAttemptId !== null
-    || view.result === null
-    || view.result.kind !== CODE_CHANGE_KIND
-  ) {
-    throw invalid('bound change Work has no exact successful Result')
-  }
-  const attempt = view.attempts.find(candidate =>
-    candidate.id === view.result?.attemptId)
-  if (
-    attempt === undefined
-    || attempt.workId !== view.work.id
-    || attempt.status !== 'succeeded'
-  ) {
-    throw invalid('bound change Result does not belong to a successful Attempt')
-  }
-  const output = codeChangeOutputSchema.parse(view.result.output)
+  const output = codeChangeOutputSchema.parse(result.output)
   const claim = output.completionClaim
   if (
     claim.disposition !== 'completed'
     || claim.packetId !== packet.id
     || claim.checkpointCommit !== targetCommit
     || claim.queueWorkId !== binding.queueWorkId
-    || claim.queueAttemptId !== QueueAttemptIdRef(String(view.result.attemptId))
+    || claim.queueAttemptId !== QueueAttemptIdRef(String(result.attemptId))
   ) {
     throw invalid('bound change claim does not match the selected Queue Result')
   }

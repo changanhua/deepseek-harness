@@ -63,9 +63,17 @@ import type {
   WorkKindDefinition,
 } from '@deepseek-ai/dsh-task-queue'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+import {
+  activationGatedHandler,
+  createActivationBarrier,
+} from './activation.ts'
 import { reconcileDeliveryQueueBindings } from './recovery.ts'
 import { settleChange, settleVerification } from './settlement.ts'
-import { exactAttemptWork, exactBoundChange } from './validation.ts'
+import {
+  exactAttemptWork,
+  exactBoundChange,
+  exactSuccessfulChangeResult,
+} from './validation.ts'
 
 export const name = 'delivery-task-queue'
 export const inject = [
@@ -86,7 +94,7 @@ const DEFAULT_VERIFIER_VERSION = 'personal-delivery-v1'
 /** Loader-owned composition policy for both Delivery Queue handlers. */
 export interface Config {
   /** Stable executor recorded on code-change bindings. */
-  readonly executorId?: string
+  readonly executorId?: typeof DEFAULT_EXECUTOR_ID
   /** Optional Codex model override. */
   readonly model?: string
   /** Native unattended Codex approval and sandbox policy. */
@@ -109,7 +117,7 @@ export interface Config {
 
 /** Schemastery loader contract owned by the sole runner/verifier composer. */
 export const Config: z<Config> = z.object({
-  executorId: z.string().min(1).default(DEFAULT_EXECUTOR_ID),
+  executorId: z.const(DEFAULT_EXECUTOR_ID).default(DEFAULT_EXECUTOR_ID),
   model: z.string().min(1),
   permissionMode: z.union([...CODEX_APP_SERVER_PERMISSION_MODES])
     .default('never'),
@@ -223,8 +231,11 @@ export async function startCodeChange(
     )
   }
   if (
-    packet.executorPreference.mode === 'required'
-    && packet.executorPreference.executorId !== request.executorId
+    request.executorId !== ExecutorId(DEFAULT_EXECUTOR_ID)
+    || (
+      packet.executorPreference.mode === 'required'
+      && packet.executorPreference.executorId !== request.executorId
+    )
   ) {
     throw new DeliveryTaskQueueError(
       'executor-not-allowed',
@@ -323,6 +334,15 @@ export async function startVerification(
     throw new DeliveryTaskQueueError(
       'change-work-invalid',
       'Cannot admit verification because the bound code-change WorkItem has no exact successful result',
+    )
+  }
+  try {
+    exactSuccessfulChangeResult(changeWork)
+  } catch (cause) {
+    throw new DeliveryTaskQueueError(
+      'change-work-invalid',
+      'Cannot admit verification because the successful Result has no exact successful Attempt',
+      { cause },
     )
   }
 
@@ -577,6 +597,31 @@ function completedChangeFor(
   }
 }
 
+function requireConfiguredChangeBinding(
+  dependencies: DeliveryWorkHandlerDependencies,
+  packetId: WorkPacketId,
+  executorId: ExecutorId,
+): void {
+  const intent = { packetId }
+  const bindings = dependencies.delivery.snapshot().dispatchBindings.filter(
+    binding => binding.packetId === packetId
+      && binding.kind === CODE_CHANGE_KIND,
+  )
+  const binding = bindings[0]
+  if (
+    binding === undefined
+    || bindings.length !== 1
+    || binding.executorId !== executorId
+    || binding.inputDigest !== canonicalDigest(intent)
+    || binding.idempotencyKey !== `delivery:${packetId}:${CODE_CHANGE_KIND}`
+  ) {
+    throw handlerError(
+      'handler-input-invalid',
+      'Delivery code-change admission requires one exact binding for the configured Codex runner',
+    )
+  }
+}
+
 /** Build the sole `code.change@1` WorkHandler. */
 export function createCodeChangeHandler(
   dependencies: DeliveryWorkHandlerDependencies,
@@ -599,6 +644,11 @@ export function createCodeChangeHandler(
             'Delivery code-change handler does not satisfy the Packet executor requirement',
           )
         }
+        requireConfiguredChangeBinding(
+          dependencies,
+          packet.id,
+          settings.executorId,
+        )
         return resolvedCodeChangeSchema.parse({
           packetId: packet.id,
           contractRevisionId: packet.contractRevisionId,
@@ -693,6 +743,15 @@ export function createCodeVerifyHandler(
         throw handlerError(
           'handler-input-invalid',
           'Delivery verification intent does not match the Packet target and plan',
+        )
+      }
+      try {
+        completedChangeFor(dependencies, packet.id, intent.targetCommit)
+      } catch (cause) {
+        throw new DeliveryTaskQueueError(
+          'handler-input-invalid',
+          'Delivery verification admission requires one exact successful bound change',
+          { cause },
         )
       }
       const base = await dependencies.repoWorkspace.inspectRevision({
@@ -889,8 +948,17 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     }),
   }
   await ctx.effect(async () => {
+    const barrier = createActivationBarrier()
     const disposers: Array<() => void> = []
     try {
+      disposers.push(ctx.taskQueue.registerHandler(activationGatedHandler(
+        createCodeChangeHandler(dependencies, config),
+        barrier,
+      )))
+      disposers.push(ctx.taskQueue.registerHandler(activationGatedHandler(
+        createCodeVerifyHandler(dependencies, config),
+        barrier,
+      )))
       const snapshot = ctx.delivery.snapshot()
       try {
         await reconcileDeliveryQueueBindings(
@@ -908,16 +976,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
           { cause },
         )
       }
-      disposers.push(ctx.taskQueue.registerHandler(
-        createCodeChangeHandler(dependencies, settings),
-      ))
-      disposers.push(ctx.taskQueue.registerHandler(
-        createCodeVerifyHandler(dependencies, settings),
-      ))
+      barrier.open()
     } catch (cause) {
+      barrier.fail(cause)
       disposeRegistrations(disposers, cause)
     }
     return () => {
+      barrier.fail(new Error('Delivery Queue plugin disposed during activation'))
       disposeRegistrations(disposers)
     }
   }, 'delivery-task-queue: handlers and activation reconciliation')

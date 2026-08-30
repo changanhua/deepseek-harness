@@ -216,7 +216,16 @@ function successfulChangeWork(
       cancelRequestedAt: null,
       updatedAt: CREATED_AT,
     },
-    attempts: [],
+    attempts: [{
+      id: attemptId,
+      workId,
+      ordinal: 1,
+      status: 'succeeded',
+      startedAt: CREATED_AT,
+      runningAt: CREATED_AT,
+      finishedAt: CREATED_AT,
+      failure: null,
+    }],
     result: {
       id: resultId,
       workId,
@@ -417,6 +426,38 @@ describe('Delivery-to-Queue admissions', () => {
     expectNoAdmissionWrites(state)
   })
 
+  it('accepts only the configured Codex provider across Packet preference modes', async () => {
+    expect(() => Config({ executorId: 'other' as never })).toThrow()
+
+    for (const executorPreference of [
+      { mode: 'any' as const },
+      { mode: 'preferred' as const, executorId },
+      { mode: 'preferred' as const, executorId: otherExecutorId },
+      { mode: 'required' as const, executorId },
+    ]) {
+      const intent = { packetId }
+      const state = bridge({
+        packet: packet({ executorPreference }),
+        beginBinding: submitting(
+          CODE_CHANGE_KIND,
+          'delivery:packet-1:code.change@1',
+          canonicalDigest(intent),
+        ),
+      })
+      await expect(startCodeChange(state.dependencies, {
+        packetId,
+        executorId,
+      })).resolves.toMatchObject({ phase: 'bound', executorId })
+    }
+
+    const unsupported = bridge()
+    await expect(startCodeChange(unsupported.dependencies, {
+      packetId,
+      executorId: otherExecutorId,
+    })).rejects.toMatchObject({ code: 'executor-not-allowed' })
+    expectNoAdmissionWrites(unsupported)
+  })
+
   it('derives verification target and plan only from successful trusted facts', async () => {
     const intent = { packetId, targetCommit, verificationPlanDigest: planDigest }
     const key = 'delivery:packet-1:code.verify@1:' + targetCommit + ':'
@@ -521,6 +562,32 @@ describe('Delivery-to-Queue admissions', () => {
     })).rejects.toMatchObject({
       code: 'change-work-invalid',
     })
+    expectNoAdmissionWrites(state)
+  })
+
+  it.each([
+    ['missing', () => []],
+    ['failed', (successful: WorkView) => successful.attempts.map(attempt => ({
+      ...attempt,
+      status: 'failed' as const,
+    }))],
+    ['cross-work', (successful: WorkView) => successful.attempts.map(attempt => ({
+      ...attempt,
+      workId: WorkId('other-work'),
+    }))],
+  ] as const)('rejects a %s successful-result Attempt before writes', async (
+    _,
+    attempts,
+  ) => {
+    const successful = successfulChangeWork()
+    const state = bridge({
+      changeWork: { ...successful, attempts: attempts(successful) },
+    })
+
+    await expect(startVerification(state.dependencies, {
+      packetId,
+      changeBindingId,
+    })).rejects.toMatchObject({ code: 'change-work-invalid' })
     expectNoAdmissionWrites(state)
   })
 

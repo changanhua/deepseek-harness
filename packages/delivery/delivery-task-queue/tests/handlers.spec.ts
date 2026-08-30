@@ -291,7 +291,9 @@ function successfulChangeView(resolved: ResolvedCodeChange): WorkView {
   }
 }
 
-function handlerHarness() {
+function handlerHarness(
+  changeState: 'active' | 'successful' = 'active',
+) {
   const { contract, packet } = records()
   const changeResolved: ResolvedCodeChange = {
     packetId,
@@ -322,14 +324,13 @@ function handlerHarness() {
     'code.verify@1', verifyResolved, verificationWorkId, verificationAttemptId,
   )
   const successfulChange = successfulChangeView(changeResolved)
-  const queueViews = [changeView, verifyView]
-  const list = vi.fn(() => list.mock.calls.length > 1
-    ? [successfulChange, verifyView]
-    : queueViews)
+  const queueViews = [
+    changeState === 'successful' ? successfulChange : changeView,
+    verifyView,
+  ]
+  const list = vi.fn(() => queueViews)
   const get = vi.fn((id: WorkId) => {
-    const found = id === changeWorkId
-      ? list.mock.calls.length > 1 ? successfulChange : changeView
-      : queueViews.find(candidate => candidate.work.id === id)
+    const found = queueViews.find(candidate => candidate.work.id === id)
     if (found === undefined) throw new Error('missing Queue Work')
     return found
   })
@@ -369,10 +370,12 @@ function handlerHarness() {
     dispatchBindings: [changeBinding],
     acceptanceDecisions: [],
   }))
+  const getContractRevision = vi.fn(() => contract)
+  const getWorkPacket = vi.fn(() => packet)
   const dependencies = {
     delivery: {
-      getContractRevision: vi.fn(() => contract),
-      getWorkPacket: vi.fn(() => packet),
+      getContractRevision,
+      getWorkPacket,
       snapshot,
     },
     operator: { list, get },
@@ -394,6 +397,8 @@ function handlerHarness() {
     changeBinding,
     successfulChange,
     dependencies,
+    getContractRevision,
+    getWorkPacket,
     snapshot,
     list,
     get,
@@ -458,7 +463,7 @@ describe('Delivery Queue WorkHandlers', () => {
     expect(handler.policy(resolved)).toEqual({ maxAttempts: 2 })
   })
 
-  it('rejects mismatched Packet identity and required executor at admission', async () => {
+  it('rejects mismatched Packet identity at admission', async () => {
     const state = handlerHarness()
     const handler = factories().change(state.dependencies, Config({}))
     await expect(handler.resolveAdmission(
@@ -466,11 +471,46 @@ describe('Delivery Queue WorkHandlers', () => {
       { signal: new AbortController().signal },
     )).rejects.toMatchObject({ code: 'handler-input-invalid' })
 
-    const other = factories().change(
-      state.dependencies,
-      Config({ executorId: 'another-executor' }),
-    )
-    await expect(other.resolveAdmission(
+  })
+
+  it('rejects a persisted change binding whose executor drifts from the Codex runner', async () => {
+    const state = handlerHarness()
+    state.snapshot.mockReturnValueOnce({
+      contractRevisions: [state.contract],
+      workPackets: [state.packet],
+      dispatchBindings: [{
+        ...state.changeBinding,
+        executorId: ExecutorId('other-executor'),
+      }],
+      acceptanceDecisions: [],
+    })
+    const handler = factories().change(state.dependencies, Config({}))
+
+    await expect(handler.resolveAdmission(
+      { packetId },
+      { signal: new AbortController().signal },
+    )).rejects.toMatchObject({ code: 'handler-input-invalid' })
+  })
+
+  it('rejects a Packet that requires a provider other than Codex', async () => {
+    const state = handlerHarness()
+    const { id, createdAt, packetDigest: _, ...priorInput } = state.packet
+    const input = {
+      ...priorInput,
+      executorPreference: {
+        mode: 'required' as const,
+        executorId: ExecutorId('other-executor'),
+      },
+    }
+    state.getWorkPacket.mockReturnValueOnce(workPacketSchema.parse({
+      ...input,
+      id,
+      packetDigest: workPacketDigest(input),
+      createdAt,
+    }))
+    const handler = factories().change(state.dependencies, Config({}))
+
+    await expect(handler.resolveAdmission(
       { packetId },
       { signal: new AbortController().signal },
     )).rejects.toMatchObject({ code: 'handler-input-invalid' })
@@ -778,7 +818,7 @@ describe('Delivery Queue WorkHandlers', () => {
   })
 
   it('resolves exact verification facts and prepares attempt-bound verifier capabilities', async () => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     const handler = factories().verify(state.dependencies, Config({}))
     const intent = {
       packetId,
@@ -828,8 +868,95 @@ describe('Delivery Queue WorkHandlers', () => {
     expect(state.read).toHaveBeenCalled()
   })
 
-  it('rejects a verification intent with Packet or ancestry mismatch', async () => {
+  it('rejects verification admission before persistence without an exact bound change', async () => {
+    const state = handlerHarness('successful')
+    state.snapshot.mockReturnValueOnce({
+      contractRevisions: [state.contract],
+      workPackets: [state.packet],
+      dispatchBindings: [],
+      acceptanceDecisions: [],
+    })
+    const handler = factories().verify(state.dependencies, Config({}))
+
+    await expect(handler.resolveAdmission({
+      packetId,
+      targetCommit,
+      verificationPlanDigest: state.packet.verificationPlan.digest,
+    }, { signal: new AbortController().signal })).rejects.toMatchObject({
+      code: 'handler-input-invalid',
+    })
+  })
+
+  it('rejects verification admission when the bound completion claim names another target', async () => {
+    const state = handlerHarness('successful')
+    const corrupted = successfulChangeView(state.changeResolved)
+    const exact = {
+      ...corrupted,
+      result: corrupted.result === null ? null : {
+        ...corrupted.result,
+        output: {
+          completionClaim: completedClaim({
+            checkpointCommit: GitCommitId('7'.repeat(40)),
+          }),
+        },
+      },
+    }
+    state.list.mockReturnValueOnce([exact])
+    state.get.mockReturnValueOnce(exact)
+    const handler = factories().verify(state.dependencies, Config({}))
+
+    await expect(handler.resolveAdmission({
+      packetId,
+      targetCommit,
+      verificationPlanDigest: state.packet.verificationPlan.digest,
+    }, { signal: new AbortController().signal })).rejects.toMatchObject({
+      code: 'handler-input-invalid',
+    })
+  })
+
+  it('keeps an explicit environment sentinel out of durable and diagnostic surfaces', async () => {
+    const sentinel = 'delivery-secret-sentinel-value'
     const state = handlerHarness()
+    const handler = factories().change(state.dependencies, Config({
+      env: { DELIVERY_NON_SECRET_OVERRIDE: sentinel },
+    }))
+    const resolved = await handler.resolveAdmission(
+      { packetId },
+      { signal: new AbortController().signal },
+    )
+    const exact = view(
+      'code.change@1', resolved, changeWorkId, changeAttemptId,
+    )
+    state.list.mockReturnValueOnce([exact])
+    state.get.mockReturnValueOnce(exact)
+    await handler.prepare(resolved, {
+      attemptId: changeAttemptId,
+      signal: new AbortController().signal,
+    })
+
+    let diagnostic: unknown
+    try {
+      await handler.prepare(state.changeResolved, {
+        attemptId: changeAttemptId,
+        signal: new AbortController().signal,
+      })
+    } catch (cause) {
+      diagnostic = cause
+    }
+    const serialized = JSON.stringify({
+      work: {
+        resolved,
+        policy: handler.policy(resolved),
+        resources: handler.resources(resolved),
+      },
+      evidence: state.bind.mock.calls,
+      diagnostic: diagnostic instanceof Error ? diagnostic.message : diagnostic,
+    })
+    expect(serialized).not.toContain(sentinel)
+  })
+
+  it('rejects a verification intent with Packet or ancestry mismatch', async () => {
+    const state = handlerHarness('successful')
     const handler = factories().verify(state.dependencies, Config({}))
     await expect(handler.resolveAdmission({
       packetId,
@@ -856,7 +983,7 @@ describe('Delivery Queue WorkHandlers', () => {
   })
 
   it('rejects a verification Attempt whose resolved target changes', async () => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     const handler = factories().verify(state.dependencies, Config({}))
     const corrupted = view('code.verify@1', {
       ...state.verifyResolved,
@@ -872,7 +999,7 @@ describe('Delivery Queue WorkHandlers', () => {
   })
 
   it('rejects a stale verification Attempt that is not the Work active Attempt', async () => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     const handler = factories().verify(state.dependencies, Config({}))
     const stale = view(
       'code.verify@1', state.verifyResolved,
@@ -899,7 +1026,7 @@ describe('Delivery Queue WorkHandlers', () => {
     field,
     value,
   ) => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     const handler = factories().verify(state.dependencies, Config({}))
     const corrupted = view('code.verify@1', {
       ...state.verifyResolved,
@@ -915,7 +1042,7 @@ describe('Delivery Queue WorkHandlers', () => {
   })
 
   it('rejects a verification Work whose complete trusted plan changed', async () => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     const handler = factories().verify(state.dependencies, Config({}))
     const checks = [{
       ...state.packet.verificationPlan.checks[0]!,
@@ -940,7 +1067,7 @@ describe('Delivery Queue WorkHandlers', () => {
   })
 
   it('rejects verification preparation without one bound successful change', async () => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     ;(state.dependencies.delivery as {
       snapshot: () => unknown
     }).snapshot = vi.fn(() => ({
@@ -958,7 +1085,7 @@ describe('Delivery Queue WorkHandlers', () => {
   })
 
   it('rejects missing and malformed bound change results during verification preparation', async () => {
-    const missing = handlerHarness()
+    const missing = handlerHarness('successful')
     missing.get
       .mockReturnValueOnce(view(
         'code.verify@1', missing.verifyResolved,
@@ -973,7 +1100,7 @@ describe('Delivery Queue WorkHandlers', () => {
       signal: new AbortController().signal,
     })).rejects.toMatchObject({ code: 'handler-attempt-invalid' })
 
-    const malformed = handlerHarness()
+    const malformed = handlerHarness('successful')
     malformed.get
       .mockReturnValueOnce(view(
         'code.verify@1', malformed.verifyResolved,
@@ -1064,7 +1191,7 @@ describe('Delivery Queue WorkHandlers', () => {
       },
     })],
   ] as const)('rejects bound change corruption in %s', async (_, corrupt) => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     const handler = factories().verify(state.dependencies, Config({}))
     const corrupted = corrupt(state.successfulChange)
     const verification = view(
@@ -1085,7 +1212,7 @@ describe('Delivery Queue WorkHandlers', () => {
   })
 
   it('fails explicitly on one corrupt selected binding instead of skipping to a valid one', async () => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     const handler = factories().verify(state.dependencies, Config({}))
     state.snapshot.mockReturnValueOnce({
       contractRevisions: [state.contract],
@@ -1113,7 +1240,7 @@ describe('Delivery Queue WorkHandlers', () => {
   })
 
   it('forwards a typed verifier verdict and cancellation through live ownership', async () => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     const expected = verdict(state.packet.verificationPlan.digest)
     const cancel = vi.fn(async () => undefined)
     state.startVerification.mockImplementation(() => ({
@@ -1146,7 +1273,7 @@ describe('Delivery Queue WorkHandlers', () => {
     ['execution', 'failed', 'started'],
     ['cleanup', 'unknown', 'unknown'],
   ] as const)('maps verifier %s failures truthfully', async (code, status, sideEffect) => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     state.startVerification.mockImplementation(() => ({
       done: Promise.reject(new DeliveryVerifierError(code, `verifier ${code}`)),
       cancel: vi.fn(async () => undefined),
@@ -1167,7 +1294,7 @@ describe('Delivery Queue WorkHandlers', () => {
   })
 
   it('maps verifier cancellation to Queue cancellation', async () => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     state.startVerification.mockImplementation(() => ({
       done: Promise.reject(new DeliveryVerifierError('canceled', 'canceled')),
       cancel: vi.fn(async () => undefined),
@@ -1190,7 +1317,7 @@ describe('Delivery Queue WorkHandlers', () => {
     cause: Error,
     message: string,
   ) => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     state.startVerification.mockImplementation(() => ({
       done: Promise.reject(cause),
       cancel: vi.fn(async () => undefined),
@@ -1212,7 +1339,7 @@ describe('Delivery Queue WorkHandlers', () => {
   })
 
   it('keeps a verifier verdict with mismatched immutable identity uncertain', async () => {
-    const state = handlerHarness()
+    const state = handlerHarness('successful')
     state.startVerification.mockImplementation(() => ({
       done: Promise.resolve(verdict(
         Sha256Digest(`sha256:${'e'.repeat(64)}`),
