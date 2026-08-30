@@ -287,8 +287,18 @@ export interface AgentWorkQueue {
   acknowledgeNotification(id: NotificationId, messageId: string): Promise<void>
 }
 
-/** Operator-authorized queue operations. */
+/** Trusted host-operator queue operations. */
 export interface OperatorWorkQueue {
+  /**
+   * Admit one ownerless WorkItem in the operator idempotency namespace.
+   * Operator-owned work never creates a Session Notification.
+   */
+  enqueue<K extends WorkKind>(request: EnqueueRequest<K>): Promise<WorkId>
+  /**
+   * Atomically admit one ownerless homogeneous Batch in the operator idempotency namespace.
+   * Operator-owned work never creates Session Notifications.
+   */
+  enqueueBatch<K extends WorkKind>(request: BatchRequest<K>): Promise<BatchId>
   /** List every WorkItem visible to the trusted host operator. */
   list(): readonly WorkView[]
   get(id: WorkId): WorkView

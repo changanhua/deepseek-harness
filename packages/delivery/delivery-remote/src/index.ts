@@ -1,0 +1,493 @@
+/** Browser-safe Personal Delivery Typert Remote. @module @deepseek-ai/dsh-delivery-remote */
+
+import { Buffer } from 'node:buffer'
+import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
+import { DeliveryError, type AcceptanceEvidenceResolver } from '@deepseek-ai/dsh-delivery'
+import { DeliveryEvidenceError } from '@deepseek-ai/dsh-delivery-evidence'
+import { importGitHubIssue } from '@deepseek-ai/dsh-delivery-github-intake'
+import {
+  ContractRevisionId,
+  DispatchBindingId,
+  EvidenceId,
+  ExecutorId,
+  RepositoryId,
+  WorkPacketId,
+  canonicalDigest,
+  type DispatchBinding,
+  type QueueWorkIdRef,
+} from '@deepseek-ai/dsh-delivery-protocol'
+import {
+  startCodeChange,
+  startVerification,
+  type DeliveryQueueBridgeDependencies,
+} from '@deepseek-ai/dsh-delivery-task-queue'
+import {
+  createVerifiedOperatorAuthority,
+  type OperatorWorkQueue,
+} from '@deepseek-ai/dsh-task-queue'
+import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import type {
+  DeliveryAcceptanceDecisionView,
+  DeliveryContractRevisionView,
+  DeliveryCreatePacketInput,
+  DeliveryDispatchBindingView,
+  DeliveryEvidenceView,
+  DeliveryImportIssueInput,
+  DeliveryReadEvidenceInput,
+  DeliveryRecordDecisionInput,
+  DeliverySnapshotView,
+  DeliveryStartChangeInput,
+  DeliveryStartVerificationInput,
+  DeliveryWorkPacketView,
+} from './types.ts'
+import {
+  projectAcceptanceDecision,
+  projectDeliverySnapshot,
+  projectDispatchBinding,
+} from './projection.ts'
+import {
+  DeliveryAcceptanceCandidateError,
+  resolveAcceptanceCandidate,
+} from './acceptance.ts'
+import { remoteFailure, requireActive } from './failures.ts'
+
+export type { DeliveryRemoteErrorCode } from './failures.ts'
+export type { DeliveryAttentionReason } from './types.ts'
+
+export type {
+  DeliveryAcceptanceDecisionView,
+  DeliveryContractRevisionView,
+  DeliveryCreatePacketInput,
+  DeliveryDispatchBindingView,
+  DeliveryEvidenceView,
+  DeliveryImportIssueInput,
+  DeliveryLane,
+  DeliveryRecordDecisionInput,
+  DeliverySnapshotView,
+  DeliveryReadEvidenceInput,
+  DeliveryStartChangeInput,
+  DeliveryStartVerificationInput,
+  DeliveryWorkPacketView,
+  DeliveryWorkbenchCard,
+  DeliveryWorkbenchDispatch,
+} from './types.ts'
+
+/** Trusted single-operator identity configured on the Host, never supplied by browser input. */
+export interface Config {
+  /** Non-blank human operator identity minted by trusted Host configuration. */
+  readonly operatorId?: string
+}
+
+/** Loader schema for the trusted Personal Delivery operator identity. */
+export const Config: z<Config> = z.object({
+  operatorId: z.string().min(1).pattern(/\S/u).default('local-operator'),
+})
+
+/** Replaceable boundaries used by focused tests; production keeps the real C0 Consumers. */
+export interface DeliveryRemoteInternals {
+  readonly fetch: typeof globalThis.fetch
+  readonly importIssue: typeof importGitHubIssue
+  readonly startCodeChange: typeof startCodeChange
+  readonly startVerification: typeof startVerification
+}
+
+const DEFAULT_INTERNALS: DeliveryRemoteInternals = {
+  fetch: globalThis.fetch.bind(globalThis),
+  importIssue: importGitHubIssue,
+  startCodeChange,
+  startVerification,
+}
+
+const MAX_BROWSER_EVIDENCE_BYTES = 256 * 1024
+
+interface GuardedAdmission {
+  readonly dependencies: DeliveryQueueBridgeDependencies
+  readonly failureSignal: () => AbortSignal | undefined
+}
+
+function guardedAdmission(
+  dependencies: DeliveryQueueBridgeDependencies,
+  signal: AbortSignal,
+  operation: 'startChange' | 'startVerification',
+): GuardedAdmission {
+  let queueCommitted = false
+  const active = (): void => {
+    if (!queueCommitted) requireActive(signal, operation)
+  }
+  const guarded: DeliveryQueueBridgeDependencies = {
+    delivery: {
+      getWorkPacket(packetId) {
+        active()
+        return dependencies.delivery.getWorkPacket(packetId)
+      },
+      getDispatchBinding(bindingId) {
+        active()
+        return dependencies.delivery.getDispatchBinding(bindingId)
+      },
+      async beginDispatch(request) {
+        active()
+        const binding = await dependencies.delivery.beginDispatch(request)
+        active()
+        return binding
+      },
+      async bindDispatch(request) {
+        active()
+        const binding = await dependencies.delivery.bindDispatch(request)
+        active()
+        return binding
+      },
+    },
+    queue: {
+      get(workId) {
+        active()
+        return dependencies.queue.get(workId)
+      },
+      async enqueue(request) {
+        active()
+        const workId = await dependencies.queue.enqueue(request)
+        queueCommitted = true
+        return workId
+      },
+    },
+    repoWorkspace: {
+      async inspectRevision(request) {
+        active()
+        const revision = await dependencies.repoWorkspace.inspectRevision({
+          ...request,
+          signal,
+        })
+        active()
+        return revision
+      },
+      async inspectRange(request) {
+        active()
+        const range = await dependencies.repoWorkspace.inspectRange({
+          ...request,
+          signal,
+        })
+        active()
+        return range
+      },
+    },
+  }
+  return {
+    dependencies: guarded,
+    failureSignal: () => queueCommitted ? undefined : signal,
+  }
+}
+
+function requireBound(
+  binding: DispatchBinding | undefined,
+  bindingId: DispatchBindingId,
+  packetId: WorkPacketId,
+  kind: DispatchBinding['kind'],
+): Extract<DispatchBinding, { readonly phase: 'bound' }> {
+  if (
+    binding?.id !== bindingId
+    || binding.packetId !== packetId
+    || binding.kind !== kind
+    || binding.phase !== 'bound'
+  ) {
+    throw new DeliveryAcceptanceCandidateError(
+      `Selected ${kind} binding is not bound to the selected Packet`,
+    )
+  }
+  return binding
+}
+
+/** Host service contributing the reserved `delivery` Remote namespace. */
+export class DeliveryRemoteService extends TypertRemoteService {
+  /** Domain, repository proof, and trusted Queue admission are required by the final methods. */
+  static inject = ['delivery', 'deliveryEvidence', 'repoWorkspace', 'taskQueue']
+  static Config = Config
+  private readonly queue: OperatorWorkQueue
+  private readonly operatorId: string
+  private readonly internals: DeliveryRemoteInternals
+
+  constructor(
+    ctx: Context,
+    config: Config = {},
+    internals: DeliveryRemoteInternals = DEFAULT_INTERNALS,
+  ) {
+    super(ctx, 'deliveryRemote', { namespace: 'delivery' })
+    this.operatorId = config.operatorId ?? 'local-operator'
+    if (this.operatorId.trim() === '') throw new TypeError('delivery Remote operatorId must be non-blank')
+    this.internals = internals
+    this.queue = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
+  }
+
+  /**
+   * Return the complete derived MVP workbench snapshot.
+   * @param signal - Caller lifetime checked before the point-in-time reads.
+   * @returns the browser-safe projection of current Delivery facts.
+   */
+  @Remote('snapshot')
+  snapshot(signal: AbortSignal): DeliverySnapshotView {
+    requireActive(signal, 'snapshot')
+    try {
+      return projectDeliverySnapshot(
+        this.ctx.delivery.snapshot(),
+        this.queue.list(),
+        this.queue.pendingAttentions(),
+      )
+    } catch (error) {
+      throw remoteFailure('snapshot', error)
+    }
+  }
+
+  /**
+   * Explicitly adopt the current revision of one GitHub Issue URL.
+   * @param input - Operator-selected Issue URL and configured repository.
+   * @param signal - Operation-local Remote cancellation.
+   * @returns the adopted immutable Contract revision.
+   */
+  @Remote('importIssue')
+  async importIssue(
+    input: DeliveryImportIssueInput,
+    signal: AbortSignal,
+  ): Promise<DeliveryContractRevisionView> {
+    requireActive(signal, 'importIssue')
+    try {
+      return await this.internals.importIssue({
+        delivery: this.ctx.delivery,
+        fetch: this.internals.fetch,
+      }, {
+        issueUrl: input.issueUrl,
+        repositoryId: RepositoryId(input.repositoryId),
+        signal,
+      })
+    } catch (error) {
+      throw remoteFailure('importIssue', error, signal)
+    }
+  }
+
+  /**
+   * Resolve the Contract-owned repository base and create one immutable Packet.
+   * @param input - Operator-selected Contract and bounded Packet draft fields.
+   * @param signal - Operation-local Remote cancellation.
+   * @returns the immutable Packet after host-owned verification and key derivation.
+   */
+  @Remote('createPacket')
+  async createPacket(
+    input: DeliveryCreatePacketInput,
+    signal: AbortSignal,
+  ): Promise<DeliveryWorkPacketView> {
+    requireActive(signal, 'createPacket')
+    try {
+      const contractRevisionId = ContractRevisionId(input.contractRevisionId)
+      const contract = this.ctx.delivery.getContractRevision(contractRevisionId)
+      if (contract === undefined || contract.repositoryId === null || contract.baseSelectionRule === null) {
+        throw new DeliveryError(
+          contract === undefined ? 'not-found' : 'invalid-reference',
+          contract === undefined
+            ? 'The selected Contract revision does not exist'
+            : 'The selected Contract revision has no repository base',
+        )
+      }
+      const repository = await this.ctx.repoWorkspace.resolveBase({
+        repositoryId: contract.repositoryId,
+        selectionRule: contract.baseSelectionRule,
+        signal,
+      })
+      requireActive(signal, 'createPacket')
+      const requestDigest = canonicalDigest({
+        contractRevisionId,
+        repositoryId: repository.repositoryId,
+        baseCommit: repository.commit,
+        packet: input.packet,
+      })
+      return await this.ctx.delivery.createWorkPacket({
+        idempotencyKey: `delivery:${contractRevisionId}:packet:${requestDigest}`,
+        contractRevisionId,
+        repository,
+        packet: input.packet,
+      }, request => this.ctx.repoWorkspace.readBlob({
+        base: request.repository,
+        path: request.path,
+        maxBytes: request.maxBytes,
+        signal,
+      }))
+    } catch (error) {
+      throw remoteFailure('createPacket', error, signal)
+    }
+  }
+
+  /**
+   * Start one idempotently bound ownerless change dispatch.
+   * @param input - Operator-selected Packet and executor.
+   * @param signal - Operation-local Remote cancellation.
+   * @returns the Delivery-to-Queue dispatch binding.
+   */
+  @Remote('startChange')
+  async startChange(
+    input: DeliveryStartChangeInput,
+    signal: AbortSignal,
+  ): Promise<DeliveryDispatchBindingView> {
+    requireActive(signal, 'startChange')
+    const admission = guardedAdmission({
+      delivery: this.ctx.delivery,
+      queue: this.queue,
+      repoWorkspace: this.ctx.repoWorkspace,
+    }, signal, 'startChange')
+    try {
+      const binding = await this.internals.startCodeChange(admission.dependencies, {
+        packetId: WorkPacketId(input.packetId),
+        executorId: ExecutorId(input.executorId),
+      })
+      return projectDispatchBinding(binding)
+    } catch (error) {
+      throw remoteFailure('startChange', error, admission.failureSignal())
+    }
+  }
+
+  /**
+   * Start independent verification from one bound change dispatch.
+   * @param input - Operator-selected Packet and bound change dispatch.
+   * @param signal - Operation-local Remote cancellation.
+   * @returns the Delivery-to-Queue verification dispatch binding.
+   */
+  @Remote('startVerification')
+  async startVerification(
+    input: DeliveryStartVerificationInput,
+    signal: AbortSignal,
+  ): Promise<DeliveryDispatchBindingView> {
+    requireActive(signal, 'startVerification')
+    const admission = guardedAdmission({
+      delivery: this.ctx.delivery,
+      queue: this.queue,
+      repoWorkspace: this.ctx.repoWorkspace,
+    }, signal, 'startVerification')
+    try {
+      const binding = await this.internals.startVerification(admission.dependencies, {
+        packetId: WorkPacketId(input.packetId),
+        changeBindingId: DispatchBindingId(input.changeBindingId),
+      })
+      return projectDispatchBinding(binding)
+    } catch (error) {
+      throw remoteFailure(
+        'startVerification',
+        error,
+        admission.failureSignal(),
+      )
+    }
+  }
+
+  /**
+   * Resolve and integrity-read one browser-selected evidence id.
+   * @param input - Existing evidence identity only; no URI or host path.
+   * @param signal - Operation-local Remote cancellation.
+   * @returns metadata without provider URI plus base64-encoded immutable bytes.
+   */
+  @Remote('readEvidence')
+  async readEvidence(
+    input: DeliveryReadEvidenceInput,
+    signal: AbortSignal,
+  ): Promise<DeliveryEvidenceView> {
+    requireActive(signal, 'readEvidence')
+    try {
+      const evidenceId = EvidenceId(String(input.evidenceId))
+      const reference = await this.ctx.deliveryEvidence.resolve(evidenceId, signal)
+      if (reference === undefined) {
+        throw new DeliveryEvidenceError('not-found', 'The selected Delivery evidence does not exist')
+      }
+      if (reference.byteLength > MAX_BROWSER_EVIDENCE_BYTES) {
+        throw new DeliveryEvidenceError('length-mismatch', 'The selected evidence exceeds the browser read limit')
+      }
+      const stored = await this.ctx.deliveryEvidence.read(reference, signal)
+      if (stored.ref.id !== evidenceId) {
+        throw new DeliveryEvidenceError('reference-mismatch', 'Evidence read returned a different object')
+      }
+      if (
+        stored.ref.byteLength > MAX_BROWSER_EVIDENCE_BYTES
+        || stored.data.byteLength !== stored.ref.byteLength
+      ) {
+        throw new DeliveryEvidenceError('length-mismatch', 'Evidence read returned an invalid byte length')
+      }
+      return {
+        id: stored.ref.id,
+        kind: stored.ref.kind,
+        mediaType: stored.ref.mediaType,
+        byteLength: stored.ref.byteLength,
+        digest: stored.ref.digest,
+        createdAt: stored.ref.createdAt,
+        provenance: stored.ref.provenance,
+        contentBase64: Buffer.from(stored.data).toString('base64'),
+      }
+    } catch (error) {
+      throw remoteFailure('readEvidence', error, signal)
+    }
+  }
+
+  /**
+   * Persist one explicit human acceptance, rejection, or waiver.
+   * @param input - Human decision and the two bound dispatch selections.
+   * @param signal - Operation-local Remote cancellation.
+   * @returns the acceptance decision attributed by trusted operator context.
+   */
+  @Remote('recordDecision')
+  async recordDecision(
+    input: DeliveryRecordDecisionInput,
+    signal: AbortSignal,
+  ): Promise<DeliveryAcceptanceDecisionView> {
+    requireActive(signal, 'recordDecision')
+    try {
+      const packetId = WorkPacketId(input.packetId)
+      if (this.ctx.delivery.getWorkPacket(packetId)?.id !== packetId) {
+        throw new DeliveryError('not-found', 'The selected Work Packet does not exist')
+      }
+      const changeBindingId = DispatchBindingId(input.changeBindingId)
+      const verificationBindingId = DispatchBindingId(input.verificationBindingId)
+      const changeBinding = requireBound(
+        this.ctx.delivery.getDispatchBinding(changeBindingId),
+        changeBindingId,
+        packetId,
+        'code.change@1',
+      )
+      const verificationBinding = requireBound(
+        this.ctx.delivery.getDispatchBinding(verificationBindingId),
+        verificationBindingId,
+        packetId,
+        'code.verify@1',
+      )
+      const candidate = resolveAcceptanceCandidate(
+        this.queue,
+        changeBinding.queueWorkId,
+        verificationBinding.queueWorkId,
+      )
+      const resolveEvidence: AcceptanceEvidenceResolver = async (evidenceId) => {
+        requireActive(signal, 'recordDecision')
+        const reference = await this.ctx.deliveryEvidence.resolve(evidenceId, signal)
+        if (reference === undefined) return undefined
+        const stored = await this.ctx.deliveryEvidence.read(reference, signal)
+        if (stored.ref.id !== evidenceId) {
+          throw new DeliveryEvidenceError('reference-mismatch', 'Evidence read returned a different object')
+        }
+        return stored.ref
+      }
+      const decision = await this.ctx.delivery.recordAcceptanceDecision({
+        idempotencyKey: `delivery:${packetId}:decision:${candidate.verificationVerdict.targetCommit}:${input.decisionNonce}`,
+        packetId,
+        changeBindingId,
+        verificationBindingId,
+        decision: input.decision,
+        reason: input.reason,
+        actorId: this.operatorId,
+        decisionNonce: input.decisionNonce,
+      }, (changeQueueWorkId: QueueWorkIdRef, verificationQueueWorkId: QueueWorkIdRef) => {
+        if (
+          changeQueueWorkId !== changeBinding.queueWorkId
+          || verificationQueueWorkId !== verificationBinding.queueWorkId
+        ) {
+          throw new DeliveryAcceptanceCandidateError('Delivery requested facts for unexpected Queue Work ids')
+        }
+        return Promise.resolve(candidate)
+      }, resolveEvidence)
+      return projectAcceptanceDecision(decision)
+    } catch (error) {
+      throw remoteFailure('recordDecision', error, signal)
+    }
+  }
+}
+
+export default DeliveryRemoteService

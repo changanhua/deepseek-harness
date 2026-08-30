@@ -17,6 +17,10 @@ import type {
   SubprocessSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
+import {
+  CODEX_APP_SERVER_PERMISSION_MODES,
+  startCodexAppServerRun as startSupportedCodexAppServerRun,
+} from '../src/app-server-run.ts'
 import * as codex from '../src/index.ts'
 import * as invariant from '../src/invariant.ts'
 import {
@@ -25,6 +29,7 @@ import {
   codexAppServerArgv,
   DEFAULT_DISPOSE_GRACE_MS,
   disposeCodexChild,
+  startCodexAppServerRun,
   startCodexRun,
   textTask,
   type CodexRunSpec,
@@ -1492,6 +1497,83 @@ describe('CodexAppServerWire', () => {
 })
 
 describe('run lifecycle and quiescence', () => {
+  it('publishes only result and disposal through the supported parent-free boundary', async () => {
+    const child = fakeChild()
+    const cwd = process.cwd()
+    const signal = new AbortController().signal
+    const spawn = vi.fn(() => child.handle)
+    const starting = startSupportedCodexAppServerRun({
+      prompt: [{ type: 'text', text: 'parent-free task' }],
+      signal,
+      cwd,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: DEFAULT_DISPOSE_GRACE_MS,
+      spawn,
+    })
+    const initialize = await child.peer.nextMethod('initialize')
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    await child.peer.nextMethod('initialized')
+    const threadStart = await child.peer.nextMethod('thread/start')
+    expect(threadStart.params).toMatchObject({ cwd })
+    child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
+    const run = await starting
+    expect(Object.keys(run).sort()).toEqual(['dispose', 'result'])
+    expect(CODEX_APP_SERVER_PERMISSION_MODES).toEqual(CODEX_PERMISSION_MODES)
+    const turnStart = await child.peer.nextMethod('turn/start')
+    expect(turnStart.params).toMatchObject({
+      input: [{ type: 'text', text: 'parent-free task', text_elements: [] }],
+    })
+    child.peer.send(
+      { id: turnStart.id, result: { turn: { id: 'turn-1' } } },
+      agentMessage('parent-free answer', 'final_answer'),
+      turnCompleted('completed'),
+    )
+    await expect(run.result).resolves.toEqual({
+      output: [{ type: 'text', text: 'parent-free answer' }],
+      stopReason: 'completed',
+    })
+    expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ cwd }))
+    await run.dispose()
+  })
+
+  it('cancels the parent-free driver and waits for process exit on disposal', async () => {
+    const controller = new AbortController()
+    const child = fakeChild({ exitOnTerminate: false })
+    const starting = startCodexAppServerRun({
+      prompt: [{ type: 'text', text: 'cancel parent-free task' }],
+      signal: controller.signal,
+    }, runSpec(child))
+    const initialize = await child.peer.nextMethod('initialize')
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    await child.peer.nextMethod('initialized')
+    const threadStart = await child.peer.nextMethod('thread/start')
+    child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
+    const run = await starting
+    const turnStart = await child.peer.nextMethod('turn/start')
+    child.peer.respond(turnStart, { turn: { id: 'turn-1' } })
+    await nextTask()
+
+    controller.abort(new Error('cancel parent-free task'))
+    await expect(run.result).resolves.toEqual({
+      output: [],
+      stopReason: 'aborted',
+    })
+    expect(await child.peer.nextMethod('turn/interrupt')).toMatchObject({
+      params: { threadId: 'thread-1', turnId: 'turn-1' },
+    })
+
+    let disposed = false
+    const disposal = run.dispose().then(() => { disposed = true })
+    await nextTask()
+    expect(child.terminate).toHaveBeenCalledOnce()
+    expect(disposed).toBe(false)
+    child.settle({ exitCode: null, signal: 'SIGTERM' })
+    await disposal
+    expect(child.waitForExit).toHaveBeenCalledOnce()
+    expect(disposed).toBe(true)
+  })
+
   it('spawns the fixed app-server, publishes after thread creation, and disposes once', async () => {
     const child = fakeChild()
     const spawn = vi.fn(() => child.handle)

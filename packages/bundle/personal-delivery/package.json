@@ -1,0 +1,72 @@
+{
+  "name": "@deepseek-ai/dsh-personal-delivery",
+  "description": "Personal Delivery add-on bundle for GitHub Issue intake, isolated Codex changes, independent verification, and human acceptance",
+  "version": "0.1.2-alpha.1",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/bundle/personal-delivery"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-client-ui-delivery": "workspace:^",
+    "@deepseek-ai/dsh-delivery": "workspace:^",
+    "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
+    "@deepseek-ai/dsh-delivery-evidence-local": "workspace:^",
+    "@deepseek-ai/dsh-delivery-github-intake": "workspace:^",
+    "@deepseek-ai/dsh-delivery-local": "workspace:^",
+    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
+    "@deepseek-ai/dsh-delivery-remote": "workspace:^",
+    "@deepseek-ai/dsh-delivery-runner-codex": "workspace:^",
+    "@deepseek-ai/dsh-delivery-task-queue": "workspace:^",
+    "@deepseek-ai/dsh-delivery-verifier": "workspace:^",
+    "@deepseek-ai/dsh-repo-workspace": "workspace:^",
+    "@deepseek-ai/dsh-repo-workspace-git-local": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/cordis-plugin-include": "workspace:^",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:^",
+    "@deepseek-ai/dsh-storage": "workspace:^",
+    "@deepseek-ai/dsh-storage-domain": "workspace:^",
+    "@deepseek-ai/dsh-storage-json": "workspace:^",
+    "@deepseek-ai/dsh-subprocess-local": "workspace:^",
+    "@deepseek-ai/dsh-task-queue-local": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^",
+    "js-yaml": "^4.2.0"
+  }
+}

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { AttemptId, createVerifiedAgentAuthority, createVerifiedOperatorAuthority, digestIntent, WorkId } from '@deepseek-ai/dsh-task-queue'
 import type { BatchRequest, WorkHandler } from '@deepseek-ai/dsh-task-queue'
@@ -38,6 +38,66 @@ async function appendAdmission(store: WorkQueueStore, seq: number, work: ReturnT
 }
 
 describe('LocalTaskQueue v2 scheduler', () => {
+  it('admits idempotent ownerless single and Batch work through the trusted operator facade', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-operator-admission-'))
+    const queueContext = new Context()
+    try {
+      const queue = new LocalTaskQueue(queueContext, { queueRoot: root, maxConcurrent: 3 })
+      let admissionCalls = 0
+      queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { admissionCalls += 1; return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start() { return { done: Promise.resolve({ status: 'succeeded' as const, output: { ok: true } as never }), async cancel() {} } },
+      })
+      const operator = queue.forOperator(createVerifiedOperatorAuthority())
+      const single = {
+        kind: 'test@1' as never,
+        title: 'operator single',
+        input: { prompt: 'single' },
+        idempotencyKey: 'operator-single',
+      }
+      const [firstId, repeatedId] = await Promise.all([operator.enqueue(single as never), operator.enqueue(single as never)])
+      expect(repeatedId).toBe(firstId)
+      expect(await operator.enqueue(single as never)).toBe(firstId)
+      await expect(operator.enqueue({ ...single, input: { prompt: 'changed' } })).rejects.toThrow(/idempotency conflict/)
+
+      const batch = {
+        kind: 'test@1' as never,
+        items: [
+          { title: 'operator batch one', input: { prompt: 'batch-one' } },
+          { title: 'operator batch two', input: { prompt: 'batch-two' } },
+        ],
+        sharedPayload: { source: 'host' },
+        idempotencyKey: 'operator-batch',
+        maxParallel: 2,
+      }
+      const [firstBatchId, repeatedBatchId] = await Promise.all([
+        operator.enqueueBatch(batch as never),
+        operator.enqueueBatch(batch as never),
+      ])
+      expect(repeatedBatchId).toBe(firstBatchId)
+      expect(await operator.enqueueBatch(batch as never)).toBe(firstBatchId)
+      await waitFor(() => operator.list().length === 3 && operator.list().every(view => view.state.status === 'succeeded'))
+
+      const internals = queue as unknown as { store: WorkQueueStore }
+      expect(operator.get(firstId).work).toMatchObject({ ownerSessionId: null, batchId: null })
+      expect(operator.list().filter(view => view.work.batchId === firstBatchId)).toHaveLength(2)
+      expect(operator.list().every(view => view.work.ownerSessionId === null)).toBe(true)
+      expect([...internals.store.current().receiptsByKey.values()]).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: { type: 'operator' }, source: 'operator', key: 'operator-single', workIds: [firstId], batchId: null }),
+        expect.objectContaining({ owner: { type: 'operator' }, source: 'operator', key: 'operator-batch', batchId: firstBatchId }),
+      ]))
+      expect(internals.store.current().notificationsById.size).toBe(0)
+      expect(admissionCalls).toBe(3)
+    } finally {
+      await queueContext.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('refuses an Agent facade access to a different session owner\'s WorkItem', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-scheduler-'))
     try {
@@ -137,12 +197,275 @@ describe('LocalTaskQueue v2 scheduler', () => {
     }
   })
 
+  it('never treats a rejected LiveAttempt as a safe pre-start retry', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-live-rejection-'))
+    const queueContext = new Context()
+    try {
+      const queue = new LocalTaskQueue(queueContext, { queueRoot: root })
+      const internals = queue as unknown as { ready: Promise<void>; store: WorkQueueStore; pump(): Promise<void> }
+      await internals.ready
+      const work = { ...admittedWork('live-rejection-work', 'live rejection'), policy: { maxAttempts: 2 } }
+      await appendAdmission(internals.store, 1, work)
+      const attemptedEventTypes: string[] = []
+      const originalAppend = internals.store.append.bind(internals.store)
+      vi.spyOn(internals.store, 'append').mockImplementation(async (change) => {
+        attemptedEventTypes.push(...change.events.map(event => event.type))
+        return originalAppend(change)
+      })
+      const live = Promise.withResolvers<never>()
+      void live.promise.catch(() => undefined)
+      let starts = 0
+      queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start() {
+          starts += 1
+          return {
+            done: live.promise,
+            async cancel() {},
+          }
+        },
+      })
+      await internals.pump()
+      await waitFor(() => internals.store.current().statesByWorkId.get(work.id)?.status === 'running')
+      live.reject(new Error('live settlement rejected'))
+      await waitFor(() => internals.store.current().statesByWorkId.get(work.id)?.status === 'unknown')
+      expect(internals.store.current().statesByWorkId.get(work.id)).toMatchObject({
+        status: 'unknown',
+        attemptCount: 1,
+        failure: { category: 'live-attempt-rejected', sideEffect: 'unknown', retriable: false },
+      })
+      expect(internals.store.current().attentionsById.size).toBe(1)
+      expect(starts).toBe(1)
+      expect(attemptedEventTypes).not.toContain('attempt/failed')
+      expect(attemptedEventTypes).not.toContain('work/auto-retry-authorized')
+    } finally {
+      vi.restoreAllMocks()
+      await queueContext.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('resolves a failed post-start terminal append as unknown without retrying', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-terminal-append-'))
+    const queueContext = new Context()
+    try {
+      const queue = new LocalTaskQueue(queueContext, { queueRoot: root })
+      const internals = queue as unknown as { ready: Promise<void>; store: WorkQueueStore; pump(): Promise<void> }
+      await internals.ready
+      const work = { ...admittedWork('terminal-append-work', 'terminal append'), policy: { maxAttempts: 2 } }
+      await appendAdmission(internals.store, 1, work)
+      const attemptedEventTypes: string[] = []
+      const originalAppend = internals.store.append.bind(internals.store)
+      let injected = false
+      vi.spyOn(internals.store, 'append').mockImplementation(async (change) => {
+        attemptedEventTypes.push(...change.events.map(event => event.type))
+        if (!injected && change.events.some(event => event.type === 'attempt/succeeded')) {
+          injected = true
+          throw new Error('injected terminal append failure')
+        }
+        return originalAppend(change)
+      })
+      let starts = 0
+      queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start() {
+          starts += 1
+          return {
+            done: Promise.resolve({ status: 'succeeded' as const, output: { ok: true } as never }),
+            async cancel() {},
+          }
+        },
+      })
+      await internals.pump()
+      await waitFor(() => internals.store.current().statesByWorkId.get(work.id)?.status === 'unknown')
+      expect(internals.store.current().statesByWorkId.get(work.id)).toMatchObject({
+        status: 'unknown',
+        attemptCount: 1,
+        failure: { category: 'post-start-settlement', sideEffect: 'unknown', retriable: false },
+      })
+      expect(internals.store.current().attentionsById.size).toBe(1)
+      expect(starts).toBe(1)
+      expect(attemptedEventTypes).not.toContain('attempt/failed')
+      expect(attemptedEventTypes).not.toContain('work/auto-retry-authorized')
+    } finally {
+      vi.restoreAllMocks()
+      await queueContext.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not retry after running and first unknown persistence both fail post-start', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-running-durability-'))
+    const queueContext = new Context()
+    let releaseQuiescence: (() => void) | undefined
+    try {
+      const queue = new LocalTaskQueue(queueContext, { queueRoot: root, shutdownTimeoutMs: 1_000 })
+      const internals = queue as unknown as { ready: Promise<void>; store: WorkQueueStore; pump(): Promise<void> }
+      await internals.ready
+      const work = { ...admittedWork('running-durability-work', 'durability fault'), policy: { maxAttempts: 2 } }
+      await appendAdmission(internals.store, 1, work)
+      const order: string[] = []
+      const attemptedEventTypes: string[] = []
+      let cancelReason: string | undefined
+      let handlerSignal: AbortSignal | undefined
+      const quiescence = new Promise<void>((resolve) => { releaseQuiescence = resolve })
+      const originalAppend = internals.store.append.bind(internals.store)
+      let runningFailureInjected = false
+      let unknownFailureInjected = false
+      const append = vi.spyOn(internals.store, 'append').mockImplementation(async (change) => {
+        attemptedEventTypes.push(...change.events.map(event => event.type))
+        if (!runningFailureInjected && change.events.some(event => event.type === 'attempt/running')) {
+          runningFailureInjected = true
+          throw new Error('injected running append failure')
+        }
+        if (!unknownFailureInjected && change.events.some(event => event.type === 'attempt/unknown')) {
+          unknownFailureInjected = true
+          order.push('unknown-failed')
+          throw new Error('injected first unknown append failure')
+        }
+        if (change.events.some(event => event.type === 'attempt/unknown')) order.push('unknown')
+        return originalAppend(change)
+      })
+      queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start(_prepared, context) {
+          handlerSignal = context.signal
+          order.push('start')
+          return {
+            done: quiescence.then(() => ({ status: 'canceled' as const })),
+            async cancel(reason) {
+              cancelReason = reason
+              order.push('cancel')
+              await quiescence
+              order.push('quiescent')
+            },
+          }
+        },
+      })
+      await internals.pump()
+      await waitFor(() => order.includes('cancel'))
+      expect(internals.store.current().statesByWorkId.get(work.id)?.status).toBe('starting')
+      expect(internals.store.current().attentionsById.size).toBe(0)
+
+      const release = releaseQuiescence
+      if (release === undefined) throw new Error('LiveAttempt cancellation did not expose its quiescence release')
+      release()
+      await waitFor(() => internals.store.current().statesByWorkId.get(work.id)?.status === 'unknown')
+      expect(order).toEqual(['start', 'cancel', 'quiescent', 'unknown-failed', 'unknown'])
+      expect(cancelReason).toMatch(/could not persist the running attempt/)
+      expect(handlerSignal?.aborted).toBe(true)
+      expect(handlerSignal?.reason).toMatch(/could not persist the running attempt/)
+      const state = internals.store.current().statesByWorkId.get(work.id)
+      expect(state).toMatchObject({
+        status: 'unknown',
+        attemptCount: 1,
+        failure: {
+          category: 'post-start-durability',
+          sideEffect: 'unknown',
+          retriable: false,
+        },
+      })
+      expect(state?.failure?.message).toMatch(/initial unknown persistence failed: injected first unknown append failure/)
+      expect(internals.store.current().attentionsById.size).toBe(1)
+      expect(internals.store.current().attemptsById.size).toBe(1)
+      expect(attemptedEventTypes).not.toContain('attempt/failed')
+      expect(attemptedEventTypes).not.toContain('work/auto-retry-authorized')
+      append.mockRestore()
+    } finally {
+      releaseQuiescence?.()
+      vi.restoreAllMocks()
+      await queueContext.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    { mode: 'cancel-rejected' as const, expected: /cancellation rejected: cancel rejected/ },
+    { mode: 'settlement-rejected' as const, expected: /settlement rejected: settlement rejected/ },
+    { mode: 'timeout' as const, expected: /did not reach quiescence within 20ms/ },
+    {
+      mode: 'cancel-rejected-timeout' as const,
+      expected: /cancellation rejected: cancel rejected; LiveAttempt did not reach quiescence within 20ms/,
+    },
+  ])('records unknown after post-start cleanup is $mode', async ({ mode, expected }) => {
+    const root = await mkdtemp(join(tmpdir(), `dsh-work-queue-running-${mode}-`))
+    const queueContext = new Context()
+    try {
+      const queue = new LocalTaskQueue(queueContext, { queueRoot: root, shutdownTimeoutMs: 20 })
+      const internals = queue as unknown as { ready: Promise<void>; store: WorkQueueStore; pump(): Promise<void> }
+      await internals.ready
+      const work = admittedWork(`running-${mode}-work`, `${mode} cleanup`)
+      await appendAdmission(internals.store, 1, work)
+      const originalAppend = internals.store.append.bind(internals.store)
+      let injected = false
+      vi.spyOn(internals.store, 'append').mockImplementation(async (change) => {
+        if (!injected && change.events.some(event => event.type === 'attempt/running')) {
+          injected = true
+          throw new Error('injected running append failure')
+        }
+        return originalAppend(change)
+      })
+      queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start() {
+          if (mode === 'cancel-rejected') {
+            return {
+              done: Promise.resolve({ status: 'canceled' as const }),
+              cancel: () => Promise.reject(new Error('cancel rejected')),
+            }
+          }
+          if (mode === 'settlement-rejected') {
+            return {
+              done: Promise.reject(new Error('settlement rejected')),
+              cancel: () => Promise.resolve(),
+            }
+          }
+          if (mode === 'cancel-rejected-timeout') {
+            return {
+              done: new Promise<never>(() => undefined),
+              cancel: () => Promise.reject(new Error('cancel rejected')),
+            }
+          }
+          return {
+            done: new Promise<never>(() => undefined),
+            cancel: () => new Promise<void>(() => undefined),
+          }
+        },
+      })
+      await internals.pump()
+      await waitFor(() => internals.store.current().statesByWorkId.get(work.id)?.status === 'unknown')
+      expect(internals.store.current().statesByWorkId.get(work.id)?.failure?.message).toMatch(expected)
+      expect(internals.store.current().attentionsById.size).toBe(1)
+    } finally {
+      vi.restoreAllMocks()
+      await queueContext.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('writes owner Notifications atomically for queued and live cancellation only', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-cancel-outbox-'))
     let settleLive: (() => void) | undefined
     try {
       const queue = new LocalTaskQueue(new Context(), { queueRoot: root })
-      const internals = queue as unknown as { store: WorkQueueStore; pump(): Promise<void> }
+      const internals = queue as unknown as { ready: Promise<void>; store: WorkQueueStore; pump(): Promise<void> }
+      await internals.ready
       const queued = admittedWork('queued-cancel-work', 'queued cancel')
       const live = admittedWork('live-cancel-work', 'live cancel')
       const ownerless = { ...admittedWork('ownerless-cancel-work', 'ownerless cancel'), ownerSessionId: null }
@@ -537,6 +860,211 @@ describe('LocalTaskQueue v2 scheduler', () => {
       releaseCancel?.()
       await disposing
       await queueContext?.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps staged admission and receipt lookup queued across restart before activation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-staged-restart-'))
+    let firstContext: Context | undefined
+    let reopenedContext: Context | undefined
+    try {
+      firstContext = new Context()
+      const queue = new LocalTaskQueue(firstContext, { queueRoot: root })
+      const registration = queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start() {
+          return {
+            done: Promise.resolve({
+              status: 'succeeded' as const,
+              output: { ok: true } as never,
+            }),
+            async cancel() {},
+          }
+        },
+      }, { activation: 'staged' })
+      const operator = queue.forOperator(createVerifiedOperatorAuthority())
+      const request = {
+        kind: 'test@1' as never,
+        title: 'staged receipt',
+        input: { prompt: 'staged receipt' },
+        idempotencyKey: 'staged-receipt',
+      }
+      const workId = await operator.enqueue(request)
+      await expect(operator.enqueue(request)).resolves.toBe(workId)
+      expect(operator.get(workId)).toMatchObject({
+        state: { status: 'queued', attemptCount: 0 },
+        attempts: [],
+      })
+      registration()
+      await firstContext.fiber.dispose()
+      firstContext = undefined
+
+      reopenedContext = new Context()
+      const reopened = new LocalTaskQueue(reopenedContext, { queueRoot: root })
+      const internals = reopened as unknown as { ready: Promise<void> }
+      await internals.ready
+      const reopenedView = reopened
+        .forOperator(createVerifiedOperatorAuthority())
+        .get(workId)
+      expect(reopenedView).toMatchObject({
+        state: { status: 'queued', attemptCount: 0 },
+        attempts: [],
+      })
+      expect(reopened
+        .forOperator(createVerifiedOperatorAuthority())
+        .pendingAttentions()).toEqual([])
+    } finally {
+      await firstContext?.fiber.dispose()
+      await reopenedContext?.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('creates exactly one Attempt only after its staged registration activates', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-staged-activate-'))
+    const ctx = new Context()
+    try {
+      const queue = new LocalTaskQueue(ctx, { queueRoot: root })
+      const starts = vi.fn()
+      const registration = queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start() {
+          starts()
+          return {
+            done: Promise.resolve({
+              status: 'succeeded' as const,
+              output: { ok: true } as never,
+            }),
+            async cancel() {},
+          }
+        },
+      }, { activation: 'staged' })
+      const operator = queue.forOperator(createVerifiedOperatorAuthority())
+      const workId = await operator.enqueue({
+        kind: 'test@1' as never,
+        title: 'activate once',
+        input: { prompt: 'activate once' },
+        idempotencyKey: 'staged-activate-once',
+      })
+      expect(operator.get(workId).attempts).toEqual([])
+      expect(starts).not.toHaveBeenCalled()
+
+      registration.activate()
+      await waitFor(() => operator.get(workId).state.status === 'succeeded')
+      expect(operator.get(workId).attempts).toHaveLength(1)
+      expect(starts).toHaveBeenCalledOnce()
+      expect(() => { registration.activate() }).toThrow(/already active/i)
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects disposed and stale activation without affecting a successor registration', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-staged-stale-'))
+    const ctx = new Context()
+    try {
+      const queue = new LocalTaskQueue(ctx, { queueRoot: root })
+      const starts = vi.fn()
+      const handler: WorkHandler<never> = {
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare(resolved) { return resolved },
+        start() {
+          starts()
+          return {
+            done: Promise.resolve({
+              status: 'succeeded' as const,
+              output: { ok: true } as never,
+            }),
+            async cancel() {},
+          }
+        },
+      }
+      const stale = queue.registerHandler(handler, { activation: 'staged' })
+      const operator = queue.forOperator(createVerifiedOperatorAuthority())
+      const workId = await operator.enqueue({
+        kind: 'test@1' as never,
+        title: 'stale registration',
+        input: { prompt: 'stale registration' },
+        idempotencyKey: 'staged-stale',
+      })
+      stale()
+      expect(() => { stale.activate() }).toThrow(/disposed/i)
+
+      const successor = queue.registerHandler(handler, { activation: 'staged' })
+      expect(() => { stale.activate() }).toThrow(/disposed/i)
+      expect(operator.get(workId)).toMatchObject({
+        state: { status: 'queued', attemptCount: 0 },
+        attempts: [],
+      })
+      successor.activate()
+      await waitFor(() => operator.get(workId).state.status === 'succeeded')
+      expect(starts).toHaveBeenCalledOnce()
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('aborts only its pre-start execution when an active registration is disposed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-registration-dispose-'))
+    const ctx = new Context()
+    const preparation = Promise.withResolvers<{ prompt: string }>()
+    try {
+      const queue = new LocalTaskQueue(ctx, { queueRoot: root })
+      const prepareStarted = Promise.withResolvers<undefined>()
+      const starts = vi.fn()
+      const registration = queue.registerHandler({
+        kind: 'test@1' as never,
+        async resolveAdmission(input) { return input as never },
+        resources() { return [] },
+        policy() { return { maxAttempts: 1 } },
+        async prepare() {
+          prepareStarted.resolve(undefined)
+          return preparation.promise
+        },
+        start() {
+          starts()
+          return {
+            done: Promise.resolve({
+              status: 'succeeded' as const,
+              output: { ok: true } as never,
+            }),
+            async cancel() {},
+          }
+        },
+      }, { activation: 'staged' })
+      const operator = queue.forOperator(createVerifiedOperatorAuthority())
+      const workId = await operator.enqueue({
+        kind: 'test@1' as never,
+        title: 'dispose before start',
+        input: { prompt: 'dispose before start' },
+        idempotencyKey: 'registration-dispose-before-start',
+      })
+      registration.activate()
+      await prepareStarted.promise
+      expect(operator.get(workId).state.status).toBe('starting')
+
+      registration()
+      preparation.resolve({ prompt: 'prepared after disposal' })
+      await waitFor(() => operator.get(workId).state.status === 'canceled')
+      expect(starts).not.toHaveBeenCalled()
+      expect(operator.get(workId).attempts).toHaveLength(1)
+    } finally {
+      preparation.resolve({ prompt: 'test cleanup' })
+      await ctx.fiber.dispose()
       await rm(root, { recursive: true, force: true })
     }
   })
