@@ -68,6 +68,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/image/tool-image-generation-task-queue': { kind: 'indirect', reason: 'The package contributes the image_generate_enqueue model tool.' },
   'packages/task-queue/command-task-queue': { kind: 'none', reason: 'The human-facing /queue command renders records directly; registers no model surface.' },
   'packages/task-queue/task-queue-remote': { kind: 'none', reason: 'Browser wire face rendering durable records; dsh-tool-task-queue owns the model-facing tools.' },
+  'packages/eval/eval': { kind: 'none', reason: 'Pure deterministic-evaluation contracts and report formatting; runner consumers own every model-facing effect.' },
   'packages/typert/registry': { kind: 'none', reason: 'Runtime type registry; consumers (cordis_inspect, wire faces, gates) own any model-visible projection of registry contents.' },
   'packages/typert/loader': { kind: 'none', reason: 'Loader integration only registers generated artifacts; consumers own any model-visible projection.' },
   'packages/e2b/e2b': { kind: 'none', reason: 'The shared remote-runtime owner registers no model context; provider adapters and consumers own rendered effects.' },

@@ -1,0 +1,311 @@
+{
+  "schemaVersion": 1,
+  "id": "dsh-minimal-replay",
+  "version": "1.0.0",
+  "sourceRevision": "05f5c7e0a4c0803c3f34b039c7ef43acb549db52",
+  "title": "DSH minimal replay evaluation",
+  "defaultRouteIds": [
+    "flash",
+    "pro"
+  ],
+  "routes": [
+    {
+      "id": "flash",
+      "provider": "deepseek-official",
+      "model": "deepseek-v4-flash",
+      "preset": "base"
+    },
+    {
+      "id": "pro",
+      "provider": "deepseek-official",
+      "model": "deepseek-v4-pro",
+      "preset": "base"
+    }
+  ],
+  "cases": [
+    {
+      "id": "case-01",
+      "title": "Minimal replay case 01",
+      "prompt": "Reply with exactly CASE-01.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "session-snapshot"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "routes/flash/case-01.session.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "routes/pro/case-01.session.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-02",
+      "title": "Minimal replay case 02",
+      "prompt": "Reply with exactly CASE-02.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "session-snapshot"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "routes/flash/case-02.session.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "routes/pro/case-02.session.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-03",
+      "title": "Minimal replay case 03",
+      "prompt": "Reply with exactly CASE-03.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "session-snapshot"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "routes/flash/case-03.session.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "routes/pro/case-03.session.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-04",
+      "title": "Minimal replay case 04",
+      "prompt": "Reply with exactly CASE-04.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "session-snapshot"
+        }
+      ],
+      "evaluator": {
+        "kind": "model-grader",
+        "provider": "independent-grader",
+        "model": "grader-v1",
+        "promptVersion": "v1"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "routes/flash/case-04.session.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "routes/pro/case-04.session.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-05",
+      "title": "Minimal replay case 05",
+      "prompt": "Reply with exactly CASE-05.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "session-snapshot"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "routes/flash/case-05.session.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "routes/pro/case-05.session.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-06",
+      "title": "Minimal replay case 06",
+      "prompt": "Reply with exactly CASE-06.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "session-snapshot"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "routes/flash/case-06.session.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "routes/pro/case-06.session.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-07",
+      "title": "Minimal replay case 07",
+      "prompt": "Reply with exactly CASE-07.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "session-snapshot"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "routes/flash/case-07.session.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "routes/pro/case-07.session.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-08",
+      "title": "Minimal replay case 08",
+      "prompt": "Reply with exactly CASE-08.",
+      "workspace": {
+        "kind": "fixture",
+        "path": "workspace-case-08"
+      },
+      "successCriteria": [
+        {
+          "kind": "session-snapshot"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "routes/flash/case-08.session.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "routes/pro/case-08.session.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-09",
+      "title": "Minimal replay case 09",
+      "prompt": "Reply with exactly CASE-09.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "session-snapshot"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "routes/flash/case-09.session.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "routes/pro/case-09.session.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-10",
+      "title": "Minimal replay case 10",
+      "prompt": "Reply with exactly CASE-10.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "session-snapshot"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "routes/flash/case-10.session.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "routes/pro/case-10.session.jsonl"
+        }
+      ]
+    }
+  ]
+}
