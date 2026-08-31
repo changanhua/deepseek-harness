@@ -322,6 +322,8 @@
     { "path": "./packages/delivery/delivery-github-intake" },
     { "path": "./packages/delivery/delivery-remote" },
     { "path": "./packages/delivery/delivery-task-queue" },
+    { "path": "./packages/eval/eval" },
+    { "path": "./packages/eval/eval-session-snapshot" },
     { "path": "./packages/experimental/agent-team" },
     { "path": "./packages/experimental/agent-team-profile" },
     { "path": "./packages/experimental/tool-agent-team" },

@@ -5336,6 +5336,35 @@ importers:
         specifier: workspace:^
         version: link:../../util/timeout
 
+  packages/eval/eval:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+
+  packages/eval/eval-session-snapshot:
+    dependencies:
+      '@deepseek-ai/dsh-eval':
+        specifier: workspace:^
+        version: link:../eval
+      '@deepseek-ai/dsh-session-snapshot':
+        specifier: workspace:^
+        version: link:../../test-support/session-snapshot
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+
   packages/examples/agent-spine-demo:
     dependencies:
       '@deepseek-ai/schemastery':
