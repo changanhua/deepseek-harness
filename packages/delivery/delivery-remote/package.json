@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-delivery-remote",
-  "description": "Typert Remote boundary for Personal Delivery intake, dispatch, projection, verification, and human decisions",
+  "description": "Typert Remote boundary for Personal Delivery Case shaping, approval, GitHub publication, execution, evidence, and acceptance",
   "version": "0.1.2-alpha.1",
   "publishConfig": {
     "access": "public"
@@ -50,9 +50,11 @@
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-delivery": "workspace:^",
     "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
     "@deepseek-ai/dsh-delivery-github-intake": "workspace:^",
+    "@deepseek-ai/dsh-delivery-github-publisher": "workspace:^",
     "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-delivery-task-queue": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
@@ -65,9 +67,11 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-delivery": "workspace:^",
     "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
     "@deepseek-ai/dsh-delivery-github-intake": "workspace:^",
+    "@deepseek-ai/dsh-delivery-github-publisher": "workspace:^",
     "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-delivery-task-queue": "workspace:^",
     "@deepseek-ai/dsh-delivery-testkit": "workspace:^",

@@ -1,12 +1,15 @@
 import {
   AcceptanceDecisionId,
   ContractRevisionId,
+  DeliveryCaseId,
   EvidenceId,
   ExecutorId,
   GitCommitId,
+  IssuePublicationId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   RepositoryId,
+  RequirementDecisionId,
   Sha256Digest,
   WorkPacketId,
   acceptanceDecisionSchema,
@@ -17,12 +20,19 @@ import {
   codeVerifyOutputSchema,
   completionClaimSchema,
   contractRevisionSchema,
+  deliveryCaseSchema,
   dispatchBindingSchema,
   evidenceRefSchema,
+  gitHubIssueRefSchema,
+  issuePublicationSchema,
+  nonStartedPublicationFailureSchema,
+  publicationFailureSchema,
+  requirementDecisionSchema,
+  requirementOriginSchema,
   resolvedCodeChangeSchema,
   resolvedCodeVerifySchema,
   resumeCapsuleContentSchema,
-  sourceRefSchema,
+  unknownPublicationFailureSchema,
   verificationPlanDocumentSchema,
   verificationPlanSchema,
   verificationVerdictSchema,
@@ -36,12 +46,17 @@ import type {
   CodeVerifyOutput,
   CompletionClaim,
   ContractRevision,
+  DeliveryCase,
   DispatchBinding,
   EvidenceRef,
+  GitHubIssueRef,
+  IssuePublication,
+  PublicationFailure,
+  RequirementDecision,
+  RequirementOrigin,
   ResolvedCodeChange,
   ResolvedCodeVerify,
   ResumeCapsuleContent,
-  SourceRef,
   VerificationPlan,
   VerificationPlanDocument,
   VerificationVerdict,
@@ -51,25 +66,35 @@ import type {
 import type { PreparedCodeChange } from '@deepseek-ai/dsh-delivery-protocol'
 // @ts-expect-error Protocol V1 internals are not a supported deep-import surface.
 import type { ContractRevision as DeepImportedContract } from '@deepseek-ai/dsh-delivery-protocol/src/types'
-type NegativeApiAssertions = [PreparedCodeChange, DeepImportedContract]
+// @ts-expect-error Protocol V2 removed the GitHub-only SourceRef requirement snapshot.
+import type { SourceRef } from '@deepseek-ai/dsh-delivery-protocol'
+type NegativeApiAssertions = [PreparedCodeChange, DeepImportedContract, SourceRef]
 
 const ids = {
   acceptanceDecision: AcceptanceDecisionId('decision-1'),
   contractRevision: ContractRevisionId('contract-1'),
+  deliveryCase: DeliveryCaseId('case-1'),
   evidence: EvidenceId('evidence-1'),
   executor: ExecutorId('codex'),
   commit: GitCommitId('a'.repeat(40)),
+  issuePublication: IssuePublicationId('publication-1'),
   queueAttempt: QueueAttemptIdRef('attempt-1'),
   queueWork: QueueWorkIdRef('work-1'),
   repository: RepositoryId('repo-1'),
+  requirementDecision: RequirementDecisionId('decision-requirement-1'),
   digest: Sha256Digest(`sha256:${'a'.repeat(64)}`),
   packet: WorkPacketId('packet-1'),
 }
 
 const schemaOutputs = {
-  sourceRef: null as unknown as SourceRef,
-  verificationPlanDocument: null as unknown as VerificationPlanDocument,
+  deliveryCase: null as unknown as DeliveryCase,
+  requirementDecision: null as unknown as RequirementDecision,
+  requirementOrigin: null as unknown as RequirementOrigin,
   contractRevision: null as unknown as ContractRevision,
+  issuePublication: null as unknown as IssuePublication,
+  publicationFailure: null as unknown as PublicationFailure,
+  gitHubIssueRef: null as unknown as GitHubIssueRef,
+  verificationPlanDocument: null as unknown as VerificationPlanDocument,
   verificationPlan: null as unknown as VerificationPlan,
   workPacket: null as unknown as WorkPacket,
   dispatchBinding: null as unknown as DispatchBinding,
@@ -86,9 +111,16 @@ const schemaOutputs = {
   verifyOutput: null as unknown as CodeVerifyOutput,
 }
 
-sourceRefSchema satisfies { parse(value: unknown): SourceRef }
-verificationPlanDocumentSchema satisfies { parse(value: unknown): VerificationPlanDocument }
+deliveryCaseSchema satisfies { parse(value: unknown): DeliveryCase }
+requirementDecisionSchema satisfies { parse(value: unknown): RequirementDecision }
+requirementOriginSchema satisfies { parse(value: unknown): RequirementOrigin }
 contractRevisionSchema satisfies { parse(value: unknown): ContractRevision }
+issuePublicationSchema satisfies { parse(value: unknown): IssuePublication }
+publicationFailureSchema satisfies { parse(value: unknown): PublicationFailure }
+nonStartedPublicationFailureSchema satisfies { parse(value: unknown): PublicationFailure }
+unknownPublicationFailureSchema satisfies { parse(value: unknown): PublicationFailure }
+gitHubIssueRefSchema satisfies { parse(value: unknown): GitHubIssueRef }
+verificationPlanDocumentSchema satisfies { parse(value: unknown): VerificationPlanDocument }
 verificationPlanSchema satisfies { parse(value: unknown): VerificationPlan }
 workPacketSchema satisfies { parse(value: unknown): WorkPacket }
 dispatchBindingSchema satisfies { parse(value: unknown): DispatchBinding }

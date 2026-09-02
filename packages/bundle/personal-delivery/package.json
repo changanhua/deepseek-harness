@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-personal-delivery",
-  "description": "Personal Delivery add-on bundle for GitHub Issue intake, isolated Codex changes, independent verification, and human acceptance",
+  "description": "Personal Delivery add-on bundle for Case shaping, optional GitHub Issue publication, isolated Codex changes, independent verification, and human acceptance",
   "version": "0.1.2-alpha.1",
   "publishConfig": {
     "access": "public"
@@ -44,6 +44,7 @@
     "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
     "@deepseek-ai/dsh-delivery-evidence-local": "workspace:^",
     "@deepseek-ai/dsh-delivery-github-intake": "workspace:^",
+    "@deepseek-ai/dsh-delivery-github-publisher": "workspace:^",
     "@deepseek-ai/dsh-delivery-local": "workspace:^",
     "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-delivery-remote": "workspace:^",

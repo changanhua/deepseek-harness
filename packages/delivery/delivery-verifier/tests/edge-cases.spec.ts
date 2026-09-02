@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { DeliveryEvidenceError } from '@deepseek-ai/dsh-delivery-evidence'
 import {
   ContractRevisionId,
+  DELIVERY_SCHEMA_VERSION,
   EvidenceId,
   GitCommitId,
   QueueAttemptIdRef,
@@ -349,7 +350,7 @@ describe('delivery verifier evidence failures', () => {
     const wrongId = EvidenceId('wrong-provenance-evidence')
     const wrongData = new TextEncoder().encode('wrong provenance evidence\n')
     const wrongRef = evidenceRefSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: DELIVERY_SCHEMA_VERSION,
       id: wrongId,
       kind: 'log',
       mediaType: 'text/plain',

@@ -8,12 +8,14 @@ import {
   codeVerifyOutputSchema,
   completionClaimSchema,
   contractRevisionSchema,
+  deliveryCaseSchema,
   dispatchBindingSchema,
   evidenceRefSchema,
+  issuePublicationSchema,
+  requirementDecisionSchema,
   resolvedCodeChangeSchema,
   resolvedCodeVerifySchema,
   resumeCapsuleContentSchema,
-  sourceRefSchema,
   verificationCheckSchema,
   verificationPlanDocumentSchema,
   verificationPlanSchema,
@@ -36,8 +38,10 @@ const invalid = JSON.parse(await readFile(join(fixtureRoot, 'invalid.json'), 'ut
 }
 
 const collections: Readonly<Record<string, SchemaLike>> = {
-  sourceRefs: sourceRefSchema,
+  deliveryCases: deliveryCaseSchema,
+  requirementDecisions: requirementDecisionSchema,
   contractRevisions: contractRevisionSchema,
+  issuePublications: issuePublicationSchema,
   verificationPlanDocuments: verificationPlanDocumentSchema,
   verificationPlans: verificationPlanSchema,
   workPackets: workPacketSchema,
@@ -56,8 +60,10 @@ const collections: Readonly<Record<string, SchemaLike>> = {
 }
 
 const namedSchemas: Readonly<Record<string, SchemaLike>> = {
-  sourceRef: sourceRefSchema,
+  deliveryCase: deliveryCaseSchema,
+  requirementDecision: requirementDecisionSchema,
   contractRevision: contractRevisionSchema,
+  issuePublication: issuePublicationSchema,
   verificationPlanDocument: verificationPlanDocumentSchema,
   verificationPlan: verificationPlanSchema,
   workPacket: workPacketSchema,

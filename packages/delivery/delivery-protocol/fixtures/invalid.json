@@ -3,57 +3,151 @@
   "cases": [
     {
       "id": "schema-version-unknown",
-      "schema": "sourceRef",
-      "from": "/sourceRefs/0",
-      "operations": [{ "op": "replace", "path": "/schemaVersion", "value": 2 }]
+      "schema": "issuePublication",
+      "from": "/issuePublications/0",
+      "operations": [{ "op": "replace", "path": "/schemaVersion", "value": 3 }]
     },
     {
       "id": "unknown-property",
-      "schema": "sourceRef",
-      "from": "/sourceRefs/0",
+      "schema": "issuePublication",
+      "from": "/issuePublications/0",
       "operations": [{ "op": "add", "path": "/secret", "value": "must-not-survive" }]
     },
     {
       "id": "empty-opaque-id",
-      "schema": "sourceRef",
-      "from": "/sourceRefs/0",
+      "schema": "issuePublication",
+      "from": "/issuePublications/0",
       "operations": [{ "op": "replace", "path": "/id", "value": "   " }]
     },
     {
       "id": "timestamp-not-utc",
-      "schema": "sourceRef",
-      "from": "/sourceRefs/0",
+      "schema": "issuePublication",
+      "from": "/issuePublications/0",
       "operations": [{ "op": "replace", "path": "/updatedAt", "value": "2026-08-29T20:00:00+08:00" }]
     },
     {
-      "id": "source-content-digest-mismatch",
-      "schema": "sourceRef",
-      "from": "/sourceRefs/0",
-      "operations": [{ "op": "replace", "path": "/title", "value": "Changed title" }]
+      "id": "case-blank-head-revision",
+      "schema": "deliveryCase",
+      "from": "/deliveryCases/0",
+      "operations": [{ "op": "replace", "path": "/headRevisionId", "value": "  " }]
     },
     {
-      "id": "digest-uppercase",
-      "schema": "sourceRef",
-      "from": "/sourceRefs/0",
-      "operations": [{ "op": "replace", "path": "/contentDigest", "value": "sha256:EE0F2BD15755CB84DA488599454E11C97454C5534C62E465B7AAD794A8184D86" }]
+      "id": "case-updated-before-created",
+      "schema": "deliveryCase",
+      "from": "/deliveryCases/0",
+      "operations": [{ "op": "replace", "path": "/createdAt", "value": "2026-08-29T12:02:01.000Z" }]
     },
     {
-      "id": "source-url-query-not-canonical",
-      "schema": "sourceRef",
-      "from": "/sourceRefs/0",
-      "operations": [{ "op": "replace", "path": "/canonicalUrl", "value": "https://github.com/deepseek-ai/deepseek-harness/issues/13?view=1" }]
+      "id": "requirement-decision-agent-actor",
+      "schema": "requirementDecision",
+      "from": "/requirementDecisions/0",
+      "operations": [{ "op": "replace", "path": "/actor/kind", "value": "agent" }]
     },
     {
-      "id": "source-url-coordinate-mismatch",
-      "schema": "sourceRef",
-      "from": "/sourceRefs/0",
-      "operations": [{ "op": "replace", "path": "/issueNumber", "value": 14 }]
+      "id": "requirement-decision-unknown-choice",
+      "schema": "requirementDecision",
+      "from": "/requirementDecisions/0",
+      "operations": [{ "op": "replace", "path": "/decision", "value": "maybe" }]
     },
     {
-      "id": "source-owner-invalid",
-      "schema": "sourceRef",
-      "from": "/sourceRefs/0",
-      "operations": [{ "op": "replace", "path": "/repository/owner", "value": "deepseek--ai" }]
+      "id": "requirement-decision-blank-reason",
+      "schema": "requirementDecision",
+      "from": "/requirementDecisions/0",
+      "operations": [{ "op": "replace", "path": "/reason", "value": "" }]
+    },
+    {
+      "id": "contract-origin-unknown-kind",
+      "schema": "contractRevision",
+      "from": "/contractRevisions/0",
+      "operations": [{ "op": "replace", "path": "/origin/kind", "value": "session" }]
+    },
+    {
+      "id": "contract-title-blank",
+      "schema": "contractRevision",
+      "from": "/contractRevisions/0",
+      "operations": [{ "op": "replace", "path": "/title", "value": "" }]
+    },
+    {
+      "id": "contract-github-import-invalid-owner",
+      "schema": "contractRevision",
+      "from": "/contractRevisions/0",
+      "operations": [{ "op": "replace", "path": "/origin/repository/owner", "value": "deepseek--ai" }]
+    },
+    {
+      "id": "contract-human-origin-blank-actor",
+      "schema": "contractRevision",
+      "from": "/contractRevisions/0",
+      "operations": [{ "op": "replace", "path": "/origin", "value": { "kind": "human", "actorId": " " } }]
+    },
+    {
+      "id": "publication-prepared-with-issue",
+      "schema": "issuePublication",
+      "from": "/issuePublications/0",
+      "operations": [
+        {
+          "op": "replace",
+          "path": "/issue",
+          "value": {
+            "repository": { "owner": "deepseek-ai", "name": "deepseek-harness" },
+            "issueNumber": 13,
+            "url": "https://github.com/deepseek-ai/deepseek-harness/issues/13"
+          }
+        }
+      ]
+    },
+    {
+      "id": "publication-published-without-issue",
+      "schema": "issuePublication",
+      "from": "/issuePublications/2",
+      "operations": [{ "op": "replace", "path": "/issue", "value": null }]
+    },
+    {
+      "id": "publication-published-issue-url-not-canonical",
+      "schema": "issuePublication",
+      "from": "/issuePublications/2",
+      "operations": [{ "op": "replace", "path": "/issue/url", "value": "https://github.com/deepseek-ai/deepseek-harness/issues/13?view=1" }]
+    },
+    {
+      "id": "publication-published-issue-coordinate-mismatch",
+      "schema": "issuePublication",
+      "from": "/issuePublications/2",
+      "operations": [{ "op": "replace", "path": "/issue/issueNumber", "value": 14 }]
+    },
+    {
+      "id": "publication-failed-claims-unknown-side-effect",
+      "schema": "issuePublication",
+      "from": "/issuePublications/3",
+      "operations": [{ "op": "replace", "path": "/failure/sideEffect", "value": "unknown" }]
+    },
+    {
+      "id": "publication-unknown-claims-not-started-side-effect",
+      "schema": "issuePublication",
+      "from": "/issuePublications/4",
+      "operations": [{ "op": "replace", "path": "/failure/sideEffect", "value": "not-started" }]
+    },
+    {
+      "id": "publication-marker-blank",
+      "schema": "issuePublication",
+      "from": "/issuePublications/0",
+      "operations": [{ "op": "replace", "path": "/marker", "value": "   " }]
+    },
+    {
+      "id": "publication-failure-unknown-category",
+      "schema": "issuePublication",
+      "from": "/issuePublications/3",
+      "operations": [{ "op": "replace", "path": "/failure/category", "value": "provider-error" }]
+    },
+    {
+      "id": "publication-failure-blank-detail",
+      "schema": "issuePublication",
+      "from": "/issuePublications/3",
+      "operations": [{ "op": "replace", "path": "/failure/detail", "value": "" }]
+    },
+    {
+      "id": "publication-updated-before-created",
+      "schema": "issuePublication",
+      "from": "/issuePublications/0",
+      "operations": [{ "op": "replace", "path": "/updatedAt", "value": "2026-08-29T12:02:05.000Z" }]
     },
     {
       "id": "commit-abbreviated",

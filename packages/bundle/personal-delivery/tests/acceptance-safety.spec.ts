@@ -56,6 +56,11 @@ vi.mock('@deepseek-ai/dsh-subagent-codex/app-server-run', async () => ({
 const run = promisify(execFile)
 const bundleRoot = join(import.meta.dirname, '..')
 const uiDeliveryHost = { apply(): void {} }
+const testCredentialsHost = {
+  apply(ctx: Context): void {
+    ctx.provide('credentials', { resolve: async () => undefined } as never)
+  },
+}
 
 async function waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -92,10 +97,12 @@ async function bootDelivery(temp: string, repository: string): Promise<Context> 
     "- { id: storage, name: '@deepseek-ai/dsh-storage' }",
     "- id: storage-json\n  name: '@deepseek-ai/dsh-storage-json'\n  config:\n    root: " + JSON.stringify(join(temp, 'storage')),
     "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  config:\n    backend: json",
+    "- { id: credentials, name: '@test/dsh-credentials' }",
     "- { id: subprocess, name: '@deepseek-ai/dsh-subprocess-local' }",
     "- id: task-queue\n  name: '@deepseek-ai/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(join(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1', patch,
   ].join('\n'))
   const modules = new Map<string, unknown>([
+    ['@test/dsh-credentials', testCredentialsHost],
     ['@deepseek-ai/dsh-storage', Storage], ['@deepseek-ai/dsh-storage-json', StorageJson], ['@deepseek-ai/dsh-storage-domain', StorageDomain], ['@deepseek-ai/dsh-subprocess-local', LocalSubprocess], ['@deepseek-ai/dsh-task-queue-local', LocalTaskQueue], ['@deepseek-ai/dsh-delivery-local', LocalDelivery], ['@deepseek-ai/dsh-delivery-evidence-local', LocalDeliveryEvidence], ['@deepseek-ai/dsh-repo-workspace-git-local', GitLocalRepositoryWorkspace], ['@deepseek-ai/dsh-delivery-task-queue', DeliveryTaskQueue], ['@deepseek-ai/dsh-delivery-remote', DeliveryRemote], ['@deepseek-ai/dsh-client-ui-delivery', uiDeliveryHost],
   ])
   const ctx = new Context(); ctx.baseUrl = pathToFileURL(temp).href + '/'
@@ -127,7 +134,18 @@ async function completeChain(temp: string, command = 'process.exit(0)', stopAfte
   const ctx = await bootDelivery(temp, repository)
   const remote = ctx.get('deliveryRemote') as unknown as { internals: { fetch: typeof fetch }; importIssue(a: unknown, s: AbortSignal): Promise<{ id: string }>; createPacket(a: unknown, s: AbortSignal): Promise<{ id: string }>; startChange(a: unknown, s: AbortSignal): Promise<{ id: string; queueWorkId: string }>; startVerification(a: unknown, s: AbortSignal): Promise<{ id: string; queueWorkId: string }>; recordDecision(a: unknown, s: AbortSignal): Promise<unknown> }
   remote.internals.fetch = vi.fn(async () => new Response(JSON.stringify({ number: 7, html_url: 'https://github.com/example/project/issues/7', repository_url: 'https://api.github.com/repos/example/project', updated_at: '2026-08-30T12:00:00.000Z', title: 'safety', body: brief(command) }), { headers: { 'content-type': 'application/json' } }))
-  const signal = new AbortController().signal; const revision = await remote.importIssue({ issueUrl: 'https://github.com/example/project/issues/7', repositoryId: 'workspace' }, signal)
+  const signal = new AbortController().signal; const revision = await remote.importIssue({ issueUrl: 'https://github.com/example/project/issues/7' }, signal)
+  const deliveryCase = ctx.delivery.snapshot().deliveryCases.find(candidate => candidate.headRevisionId === revision.id)
+  if (deliveryCase === undefined) throw new Error('Imported revision has no owning Delivery Case')
+  await ctx.delivery.recordRequirementDecision({
+    idempotencyKey: `approve:${deliveryCase.id}:${revision.id}`,
+    caseId: deliveryCase.id,
+    revisionId: deliveryCase.headRevisionId,
+    decision: 'approved',
+    reason: 'Controlled safety acceptance approved the imported requirement.',
+    actorId: 'acceptance-operator',
+    decisionNonce: `approve:${revision.id}`,
+  })
   const packet = await remote.createPacket({ contractRevisionId: revision.id, packet: { objective, allowedPaths: [{ kind: 'subtree', path: 'src' }], forbiddenPaths: [], acceptanceClauseIds: ['accepted'], stopConditions: ['stop'], executorPreference: { mode: 'required', executorId: 'codex' } } }, signal)
   const change = await remote.startChange({ packetId: packet.id, executorId: 'codex' }, signal); const operator = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
   if (stopAfterChange) return { ctx, remote, packet, change, verification: undefined as never, signal, evidence: join(temp, 'evidence', 'objects', 'sha256'), operator, repository }

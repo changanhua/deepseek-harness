@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 摘要
 
-`dsh-delivery-testkit` 支持 Delivery Consumer 在不导入本地 provider 的情况下进行隔离测试。它提供具体的 `FakeDelivery`、`FakeRepositoryWorkspace` 与 `FakeDeliveryEvidence` Service Provider，以及每次返回新对象的 Protocol V1 fixture builder。这些 fake 保留生产义务：精确幂等、provider 派生 verification plan、host-only acceptance candidate 与 evidence read、跨 binding 校验、binding compare-and-set、repository owner 冲突、等待 cleanup、真实 SHA-256 证据校验，以及未配置调用直接失败。
+`dsh-delivery-testkit` 支持 Delivery Consumer 在不导入本地 provider 的情况下进行隔离测试。它提供具体的 `FakeDelivery`、`FakeRepositoryWorkspace` 与 `FakeDeliveryEvidence` Service Provider，以及每次返回新对象的 Protocol V2 fixture builder。这些 fake 保留生产义务：精确幂等、Case-head compare-and-set、人工 approval 门控、带 failed 记录重置与人工 resolution 的 publication 状态机、provider 派生 verification plan、host-only acceptance candidate 与 evidence read、跨 binding 校验、binding compare-and-set、repository owner 冲突、等待 cleanup、真实 SHA-256 证据校验，以及未配置调用直接失败。
 
 ## 使用此包
 
@@ -20,7 +20,9 @@ const harness = await mountDeliveryTestkit(ctx)
 const packet = readyWorkPacketFixture()
 ```
 
-Repository 行为必须显式配置：先允许测试所需的 revision、ref head、精确 blob 与 range，再排入 change 或 verification lease。Base resolution 会捕获调用时的 commit，blob read 会强制 exact commit/path/object-id provenance、完整字节上限、abort 传播与全新独立字节副本。`FakeDelivery` 将每个 previous Contract revision 限制在同一个 canonical GitHub Issue lineage 内，自行派生 contract-field plan，并且只通过带 Delivery 选定字节上限的 operation-local branded-blob resolver 接受严格 git-blob plan。它先验证两条已存 binding，才调用 acceptance candidate；随后根据精确 Queue claim 与 verdict 自行枚举每个 evidence id，并让第二个 host capability 逐个 resolve 与 integrity-read。Evidence corruption 控制可以删除或替换存储字节，而不改写持久 reference。每个 fixture builder 都通过生产 schema 解析 golden value 并返回新副本，因此一个测试无法修改另一个测试的输入。
+Fixture builder 覆盖每个持久记录族：`contractRevisionFixture` 携带其 `origin` 与 `title` provenance，`githubImportOriginFixture` 提供 `github-import` origin，`deliveryCaseFixture`、`requirementDecisionFixture` 与 `issuePublicationFixture`——其 phase 一致的默认值覆盖全部五个 publication phase——与 verification plan、Packet、binding、claim、verdict、acceptance decision、evidence 和 resume capsule 一起补齐 version-2 记录。每个 fixture builder 都通过生产 schema 解析 golden value 并返回新副本，因此一个测试无法修改另一个测试的输入。
+
+Repository 行为必须显式配置：先允许测试所需的 revision、ref head、精确 blob 与 range，再排入 change 或 verification lease。Base resolution 会捕获调用时的 commit，blob read 会强制 exact commit/path/object-id provenance、完整字节上限、abort 传播与全新独立字节副本。`FakeDelivery` 原子地提交 Case 及其 root revision，只在 expected-head compare-and-set 下移动 Case head，把 `github-import` 子 revision 限制在其 repository 与 Issue lineage 内，并把 Packet 创建与 publication 准备门控在 ready 且已 approved 的 revision 之后。它让每个 revision 至多拥有一个 publication：重复 prepare 返回既有记录，failed 记录在既有 id 下回到 `prepared` 以开始新一轮尝试，unknown 记录要求人工 resolution，且每个状态转换在错误 phase 下关闭失败。它先验证两条已存 binding，才调用 acceptance candidate；随后根据精确 Queue claim 与 verdict 自行枚举每个 evidence id，并让第二个 host capability 逐个 resolve 与 integrity-read。Evidence corruption 控制可以删除或替换存储字节，而不改写持久 reference。
 
 需要等待 resolver 的 Delivery 写入按 idempotency key 串行化。并发的精确重试只返回同一个持久对象；并发但发生变化的 DTO 会在获胜写入提交后冲突；resolver 失败会释放该 key，重试仍可进行。
 

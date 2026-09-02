@@ -37,8 +37,9 @@ Only the three Service Definition packages declare Cordis context keys. Concrete
 | [`delivery-evidence-local`](delivery-evidence-local/README.md) | Local content-addressed publication and integrity-checked evidence reads | provides `ctx.deliveryEvidence` |
 | [`delivery-runner-codex`](delivery-runner-codex/README.md) | Governed Codex app-server change runner with checkpoint and evidence production | — |
 | [`delivery-verifier`](delivery-verifier/README.md) | Independent fixed-argv verifier with path and evidence findings | — |
-| [`delivery-github-intake`](delivery-github-intake/README.md) | Strict Work Brief parsing plus explicit GitHub Issue snapshot adoption | — |
-| [`delivery-remote`](delivery-remote/README.md) | Browser-safe projection and explicit import, run, verify, evidence, and decision operations | `remote.delivery` |
+| [`delivery-github-intake`](delivery-github-intake/README.md) | Strict Work Brief parsing plus explicit GitHub Issue-to-Case imports | — |
+| [`delivery-github-publisher`](delivery-github-publisher/README.md) | Host-only Issue rendering, publication, uncertainty, and GET reconciliation | — |
+| [`delivery-remote`](delivery-remote/README.md) | Browser-safe projection and explicit import, publish, run, verify, evidence, and decision operations | `remote.delivery` |
 | [`delivery-task-queue`](delivery-task-queue/README.md) | Owns both WorkKinds, durable cross-store admission, recovery, and handler registration | — |
 
 -----

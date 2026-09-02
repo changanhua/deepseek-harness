@@ -200,12 +200,41 @@ describe('local Git repository workspace', () => {
       commit: GitCommitId('ffffffffffffffffffffffffffffffffffffffff'),
     })).rejects.toMatchObject({ code: 'revision-not-found' })
     expect(subprocess.specs.length).toBeGreaterThan(0)
-    expect(subprocess.specs.every(spec => spec.argv[0] === gitExecutable && spec.argv[1] === '-C')).toBe(true)
+    const repositoryIndex = process.platform === 'win32' ? 4 : 2
+    expect(subprocess.specs.every(spec => (
+      spec.argv[0] === gitExecutable
+      && spec.argv[repositoryIndex - 1] === '-C'
+    ))).toBe(true)
     const physicalRepository = await realpath(repository)
     expect(await Promise.all(subprocess.specs.map(async (spec) => {
-      return await realpath(String(spec.argv[2]))
+      return await realpath(String(spec.argv[repositoryIndex]))
     }))).toEqual(Array.from({ length: subprocess.specs.length }, () => physicalRepository))
     expect(subprocess.handles.every(handle => handle.waitForExitCalls === 1)).toBe(true)
+    await ctx.fiber.dispose()
+  })
+
+  it.runIf(process.platform === 'win32')('enables Git long-path handling on every governed invocation', async () => {
+    const repository = await temporaryRoot('dsh-repo-workspace-win32-argv')
+    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-win32-leases')
+    const repositoryId = RepositoryId('repository-win32-argv')
+    const commit = GitCommitId('1'.repeat(40))
+    const ctx = new Context()
+    const subprocess = new ScriptedSubprocessRuntime(ctx)
+    const workspace = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot,
+    })
+    subprocess.queue({ stdout: `${repository}\n` }, { stdout: `${commit}\n` })
+
+    await workspace.inspectRevision({ repositoryId, commit })
+
+    expect(subprocess.specs).toHaveLength(2)
+    expect(subprocess.specs.every(spec => (
+      spec.argv[1] === '-c'
+      && spec.argv[2] === 'core.longpaths=true'
+      && spec.argv[3] === '-C'
+      && spec.argv[4] === repository
+    ))).toBe(true)
     await ctx.fiber.dispose()
   })
 
@@ -1185,11 +1214,32 @@ describe('local Git repository workspace', () => {
     })
     subprocess.queue({ stdout: `${repository}\n` }, { stdout: `${commit}\n` })
     let base = await workspace.inspectRevision({ repositoryId, commit })
-    subprocess.queue({ stdout: `${repository}\n` }, { exitCode: 1 })
-    await expect(workspace.openChange({
+    subprocess.queue(
+      { stdout: `${repository}\n` },
+      { exitCode: 1, stderr: 'fatal: cannot create directory: Filename too long\n' },
+    )
+    const addFailure = await workspace.openChange({
       ownerAttemptId: QueueAttemptIdRef('attempt-scripted-add-failure'),
       base,
-    })).rejects.toMatchObject({ code: 'unavailable' })
+    }).catch((error: unknown) => error)
+    expect(addFailure).toBeInstanceOf(Error)
+    if (!(addFailure instanceof Error)) throw new Error('expected an Error')
+    expect(addFailure).toMatchObject({ code: 'unavailable' })
+    expect(addFailure.message).toContain('Filename too long')
+
+    subprocess.queue(
+      { stdout: `${repository}\n` },
+      { exitCode: 1, stderr: 'x'.repeat(600) },
+    )
+    const boundedFailure = await workspace.openChange({
+      ownerAttemptId: QueueAttemptIdRef('attempt-scripted-bounded-diagnostic'),
+      base,
+    }).catch((error: unknown) => error)
+    expect(boundedFailure).toBeInstanceOf(Error)
+    if (!(boundedFailure instanceof Error)) throw new Error('expected an Error')
+    expect(boundedFailure).toMatchObject({ code: 'unavailable' })
+    expect(boundedFailure.message).toContain(`${'x'.repeat(511)}…`)
+    expect(boundedFailure.message).not.toContain('x'.repeat(512))
     await ctx.fiber.dispose()
 
     ctx = new Context()
@@ -1382,7 +1432,7 @@ describe('local Git repository workspace', () => {
     )
     await current.lease.close('remove')
     expect(current.subprocess.specs.filter((spec) => {
-      const args = spec.argv.slice(3)
+      const args = spec.argv.slice(spec.argv.indexOf('-C') + 2)
       return args[0] === 'worktree' && args[1] === 'remove'
     })).toHaveLength(2)
     await expect(access(dirname(current.lease.cwd))).rejects.toMatchObject({ code: 'ENOENT' })
@@ -1447,7 +1497,7 @@ describe('local Git repository workspace', () => {
     let failedSingleForceRemove = false
     const ctx = new Context()
     new TestSubprocessRuntime(ctx, (spec) => {
-      const args = spec.argv.slice(3)
+      const args = spec.argv.slice(spec.argv.indexOf('-C') + 2)
       if (
         !failedSingleForceRemove
         && args[0] === 'worktree'

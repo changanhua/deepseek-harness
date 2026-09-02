@@ -2,13 +2,14 @@
 
 English | [中文](README.zh.md)
 
-Queue-independent durable records, strict runtime schemas, and canonical identities for [Personal Delivery](../../../docs/subsystems/delivery.md). This package freezes the data shared by Delivery persistence, Git workspace ownership, evidence storage, Queue bridges, verification, GitHub intake, and UI projection. It does not register a Queue `WorkKind`, publish an executor service, persist workflow status, or perform I/O.
+Queue-independent durable records, strict runtime schemas, and canonical identities for [Personal Delivery](../../../docs/subsystems/delivery.md). This package freezes the data shared by Delivery persistence, Git workspace ownership, evidence storage, Queue bridges, verification, GitHub publication, and UI projection. It does not register a Queue `WorkKind`, publish an executor service, persist workflow status, or perform I/O.
 
 ## Public contract
 
 The package root exports TypeScript declarations and strict Zod schemas for:
 
-- `SourceRef`, canonical GitHub Issue URL helpers, `ContractRevision`, and derived `contractReadiness()`;
+- `DeliveryCase`, `RequirementDecision`, `RequirementOrigin`, `IssuePublication`, canonical GitHub Issue URL helpers, `ContractRevision`, and derived `contractReadiness()`;
+- `GitHubIssueRef`, `PublicationFailure`, and the `IssuePublication` phase discriminants;
 - `VerificationCheck`, `VerificationPlan`, and `WorkPacket`;
 - `VerificationPlanDocument`, `parseVerificationPlanDocument()`, and `resolveVerificationPlan()`;
 - `DispatchBinding`, `CompletionClaim`, and `ResumeCapsuleContent`;
@@ -18,9 +19,11 @@ The package root exports TypeScript declarations and strict Zod schemas for:
 
 The two Queue kind names are frozen as `CODE_CHANGE_KIND` (`code.change@1`) and `CODE_VERIFY_KIND` (`code.verify@1`). This package deliberately exports no Queue declaration-merging augmentation and no Prepared or live executor type. The Delivery/Queue bridge owns those runtime concerns.
 
-Every durable object has `schemaVersion: 1`; schemas reject unknown properties and do not apply defaults. Opaque ids must be non-blank. Timestamps must be RFC 3339 UTC instants ending in `Z`. Git commit and blob ids must be complete lowercase 40-hex SHA-1 or 64-hex SHA-256 object ids. Content digests use lowercase `sha256:<64 hex>` form.
+Every durable object has `schemaVersion: 2`; schemas reject unknown properties and do not apply defaults. Opaque ids must be non-blank. Timestamps must be RFC 3339 UTC instants ending in `Z`. Git commit and blob ids must be complete lowercase 40-hex SHA-1 or 64-hex SHA-256 object ids. Content digests use lowercase `sha256:<64 hex>` form.
 
-A GitHub `SourceRef` uses the exact `https://github.com/{owner}/{repository}/issues/{issueNumber}` form and binds that URL to its repository owner/name and positive safe-integer Issue number. The schema rejects credentials, ports, alternate hosts or protocols, queries, fragments, trailing slashes, encoded coordinates, and coordinate mismatches. `canonicalGitHubIssueUrl()`, `parseCanonicalGitHubIssueUrl()`, and the owner/name predicates expose the same grammar to intake adapters instead of requiring another URL parser.
+A `github-import` requirement origin binds its repository owner/name and positive safe-integer Issue number to a canonical `https://github.com/{owner}/{repository}/issues/{issueNumber}` URL. The schema rejects credentials, ports, alternate hosts or protocols, queries, fragments, trailing slashes, encoded coordinates, and coordinate mismatches. `canonicalGitHubIssueUrl()`, `parseCanonicalGitHubIssueUrl()`, and the owner/name predicates expose the same grammar to importer and publisher adapters instead of requiring another URL parser. A published `GitHubIssueRef` must name the canonical URL for its exact coordinates.
+
+An `IssuePublication` has exactly one of five phases: `prepared`, `publishing`, `published`, `failed`, and `unknown`. A `failed` publication must prove its side effect never started (`not-started`); an `unknown` publication must retain an uncertain side effect (`unknown`). The schema enforces the phase-consistent `issue` and `failure` shapes, so no later consumer can confuse a proved non-creation with an uncertain outcome.
 
 `contractReadiness()` requires an outcome, configured repository, non-empty scope, acceptance clauses, a base-selection rule, a verification source, and no open decision. It is a derived projection, never a writable Contract status.
 
@@ -44,13 +47,13 @@ const packet = workPacketSchema.parse(decodedPacket)
 The package also exports:
 
 - `canonicalDigest()` for canonical JSON;
-- `sourceRefContentDigest()` over the exact Issue title/body snapshot;
+- `githubIssueContentDigest()` over an imported Issue title/body snapshot;
 - `verificationCheckDigest()` for command identity;
 - `verificationPlanDigest()` over resolved checks and provenance;
 - `workPacketDigest()` over semantic Packet content, excluding generated id, digest, and creation time;
 - `evidenceBytesDigest()` and `evidenceBytesMatch()` for immutable evidence bytes.
 
-`sourceRefSchema`, `verificationPlanSchema`, and `workPacketSchema` verify their self-contained digests during parsing. Consumers must compute these values with the exported functions instead of maintaining another canonicalizer.
+`verificationPlanSchema` and `workPacketSchema` verify their self-contained digests during parsing. Consumers must compute these values with the exported functions instead of maintaining another canonicalizer.
 
 ## Paths and fixed commands
 
@@ -79,7 +82,7 @@ These functions return findings. The owning service decides whether to reject a 
 
 ## Golden fixtures
 
-[`fixtures/valid.json`](fixtures/valid.json) is the stable V1 catalog for every durable record, the strict verification-plan document, and both WorkKind DTO families. Its `fixtureIds` map gives each reusable value a stable dotted id, such as `contract.ready`, `plan-document.git-blob`, `claim.completed`, and `work-kind.verify-output`. [`fixtures/invalid.json`](fixtures/invalid.json) contains stable case ids plus JSON-Patch-like mutations against that catalog. Tests prove that every valid value survives a JSON round trip and every invalid mutation is rejected. Consumers should cite fixture case ids when they depend on a protocol shape.
+[`fixtures/valid.json`](fixtures/valid.json) is the stable V2 catalog for every durable record, the strict verification-plan document, and both WorkKind DTO families. Its `fixtureIds` map gives each reusable value a stable dotted id, such as `case.primary`, `contract.ready`, `decision.requirement-approved`, `publication.published`, `claim.completed`, and `work-kind.verify-output`. [`fixtures/invalid.json`](fixtures/invalid.json) contains stable case ids plus JSON-Patch-like mutations against that catalog. Tests prove that every valid value survives a JSON round trip and every invalid mutation is rejected. Consumers should cite fixture case ids when they depend on a protocol shape.
 
 The fixture catalog contains fake repository, Queue, evidence, and human ids only. It carries no Session, process handle, host object, secret, or mutable host path.
 
@@ -101,8 +104,8 @@ None. This package does not modify any model-visible prefix.
 
 ## Known Limitations and Deferred Work
 
-- **MVP GitHub source only** — `SourceRef` freezes the `github` provider; webhook synchronization and write-back are outside the MVP.
+- **MVP GitHub publication only** — the protocol models requirement origins for human authors and `github-import`; webhook synchronization and write-back are outside the MVP.
 - **MVP work kinds only** — the protocol names `code.change@1` and `code.verify@1`, but their Queue registration and execution lifecycles belong to the bridge packages.
 - **No byte access in schemas** — `EvidenceRef` validates metadata; the evidence provider must retrieve immutable bytes and call `evidenceBytesMatch()` before evidence can satisfy verification.
 - **No cross-store lookup in schemas** — ancestry, repository identity, Queue existence, and human authority require their owning services. The exported cross-object findings cover only relationships whose complete inputs the caller supplies.
-- **No migration compatibility** — V1 schemas reject every other `schemaVersion`; a future version needs an explicit migration and new golden fixtures rather than permissive parsing.
+- **No migration compatibility** — V2 schemas reject every other `schemaVersion`; a future version needs an explicit migration and new golden fixtures rather than permissive parsing.

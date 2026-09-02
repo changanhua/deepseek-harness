@@ -2,13 +2,14 @@
 
 [English](README.md) | 中文
 
-为[个人交付](../../../docs/subsystems/delivery.zh.md)提供不依赖 Queue 的持久记录、严格运行时 Schema 与 canonical identity。本包冻结 Delivery 持久化、Git 工作区所有权、证据存储、Queue bridge、验证、GitHub intake 和 UI 投影共享的数据。它不注册 Queue `WorkKind`，不发布 executor service，不持久化工作流状态，也不执行 I/O。
+为[个人交付](../../../docs/subsystems/delivery.zh.md)提供不依赖 Queue 的持久记录、严格运行时 Schema 与 canonical identity。本包冻结 Delivery 持久化、Git 工作区所有权、证据存储、Queue bridge、验证、GitHub 发布和 UI 投影共享的数据。它不注册 Queue `WorkKind`，不发布 executor service，不持久化工作流状态，也不执行 I/O。
 
 ## 公共契约
 
 包根导出下列 TypeScript 声明及严格 Zod Schema：
 
-- `SourceRef`、canonical GitHub Issue URL helper、`ContractRevision` 及派生函数 `contractReadiness()`；
+- `DeliveryCase`、`RequirementDecision`、`RequirementOrigin`、`IssuePublication`、canonical GitHub Issue URL helper、`ContractRevision` 及派生函数 `contractReadiness()`；
+- `GitHubIssueRef`、`PublicationFailure` 与 `IssuePublication` 的 phase discriminant；
 - `VerificationCheck`、`VerificationPlan` 与 `WorkPacket`；
 - `VerificationPlanDocument`、`parseVerificationPlanDocument()` 与 `resolveVerificationPlan()`；
 - `DispatchBinding`、`CompletionClaim` 与 `ResumeCapsuleContent`；
@@ -18,9 +19,11 @@
 
 两个 Queue kind 名称冻结为 `CODE_CHANGE_KIND`（`code.change@1`）和 `CODE_VERIFY_KIND`（`code.verify@1`）。本包刻意不导出 Queue declaration-merging augmentation，也不导出 Prepared 或 live executor 类型；这些运行时职责归 Delivery/Queue bridge 所有。
 
-每个持久对象都有 `schemaVersion: 1`；Schema 拒绝未知属性，且不应用默认值。不透明 id 必须非空白。时间戳必须是以 `Z` 结尾的 RFC 3339 UTC instant。Git commit 与 blob id 必须是完整的小写 40 位十六进制 SHA-1 或 64 位十六进制 SHA-256 object id。内容摘要使用小写 `sha256:<64 hex>` 形式。
+每个持久对象都有 `schemaVersion: 2`；Schema 拒绝未知属性，且不应用默认值。不透明 id 必须非空白。时间戳必须是以 `Z` 结尾的 RFC 3339 UTC instant。Git commit 与 blob id 必须是完整的小写 40 位十六进制 SHA-1 或 64 位十六进制 SHA-256 object id。内容摘要使用小写 `sha256:<64 hex>` 形式。
 
-GitHub `SourceRef` 只接受精确的 `https://github.com/{owner}/{repository}/issues/{issueNumber}` 形式，并将该 URL 绑定到自身 repository owner/name 与正 safe-integer Issue number。Schema 拒绝 credential、端口、其他 host 或 protocol、query、fragment、尾随斜杠、编码后的坐标及坐标不一致。`canonicalGitHubIssueUrl()`、`parseCanonicalGitHubIssueUrl()` 与 owner/name predicate 向 intake adapter 导出同一 grammar，无需再实现一套 URL parser。
+`github-import` requirement origin 将自身 repository owner/name 与正 safe-integer Issue number 绑定到精确的 `https://github.com/{owner}/{repository}/issues/{issueNumber}` URL。Schema 拒绝 credential、端口、其他 host 或 protocol、query、fragment、尾随斜杠、编码后的坐标及坐标不一致。`canonicalGitHubIssueUrl()`、`parseCanonicalGitHubIssueUrl()` 与 owner/name predicate 向 importer 与 publisher adapter 导出同一 grammar，无需再实现一套 URL parser。已发布的 `GitHubIssueRef` 必须为其精确坐标命名 canonical URL。
+
+`IssuePublication` 恰好处于五种 phase 之一：`prepared`、`publishing`、`published`、`failed` 与 `unknown`。`failed` 发布必须证明其副作用从未开始（`not-started`）；`unknown` 发布必须保留不确定的副作用（`unknown`）。Schema 强制执行与 phase 一致的 `issue`、`failure` 形状，任何后续消费方都无法把"已证明未创建"与"结果不确定"混为一谈。
 
 `contractReadiness()` 要求 outcome、已配置 repository、非空 scope、acceptance clause、base-selection rule、verification source，并且没有 open decision。它只是派生 projection，绝不是可写 Contract status。
 
@@ -44,13 +47,13 @@ const packet = workPacketSchema.parse(decodedPacket)
 本包还导出：
 
 - 用于 canonical JSON 的 `canonicalDigest()`；
-- 对精确 Issue title/body 快照求摘要的 `sourceRefContentDigest()`；
+- 对导入 Issue title/body 快照求摘要的 `githubIssueContentDigest()`；
 - 用于命令 identity 的 `verificationCheckDigest()`；
 - 对 resolved checks 及 provenance 求摘要的 `verificationPlanDigest()`；
 - 对 Packet 语义内容求摘要的 `workPacketDigest()`，不含生成的 id、digest 与创建时间；
 - 用于不可变证据字节的 `evidenceBytesDigest()` 与 `evidenceBytesMatch()`。
 
-`sourceRefSchema`、`verificationPlanSchema` 与 `workPacketSchema` 会在解析时校验其自含摘要。消费方必须使用上述导出函数计算这些值，不得维护另一套 canonicalizer。
+`verificationPlanSchema` 与 `workPacketSchema` 会在解析时校验其自含摘要。消费方必须使用上述导出函数计算这些值，不得维护另一套 canonicalizer。
 
 ## 路径与固定命令
 
@@ -79,7 +82,7 @@ resolved Git-blob plan provenance 固定 base commit、仓库相对路径及完�
 
 ## Golden fixture
 
-[`fixtures/valid.json`](fixtures/valid.json) 是覆盖全部持久记录、严格 verification-plan document 及两组 WorkKind DTO 的稳定 V1 catalog。其 `fixtureIds` map 为每个可复用值提供稳定的点分隔 id，例如 `contract.ready`、`plan-document.git-blob`、`claim.completed` 和 `work-kind.verify-output`。[`fixtures/invalid.json`](fixtures/invalid.json) 保存稳定 case id，以及相对于该 catalog 的 JSON-Patch-like mutation。测试证明每个有效值都能通过 JSON round trip，且每个无效 mutation 都会被拒绝。消费方依赖协议 shape 时，应引用相应 fixture case id。
+[`fixtures/valid.json`](fixtures/valid.json) 是覆盖全部持久记录、严格 verification-plan document 及两组 WorkKind DTO 的稳定 V2 catalog。其 `fixtureIds` map 为每个可复用值提供稳定的点分隔 id，例如 `case.primary`、`contract.ready`、`decision.requirement-approved`、`publication.published`、`claim.completed` 和 `work-kind.verify-output`。[`fixtures/invalid.json`](fixtures/invalid.json) 保存稳定 case id，以及相对于该 catalog 的 JSON-Patch-like mutation。测试证明每个有效值都能通过 JSON round trip，且每个无效 mutation 都会被拒绝。消费方依赖协议 shape 时，应引用相应 fixture case id。
 
 fixture catalog 只包含虚假的 repository、Queue、evidence 和 human id，不包含 Session、process handle、host object、secret 或可变 host path。
 
@@ -101,8 +104,8 @@ fixture catalog 只包含虚假的 repository、Queue、evidence 和 human id，
 
 ## 已知限制与暂缓事项
 
-- **MVP 仅支持 GitHub source**：`SourceRef` 冻结 `github` provider；webhook 同步与 write-back 不在 MVP 范围内。
+- **MVP 仅支持 GitHub 发布**：协议为 human author 与 `github-import` 建模 requirement origin；webhook 同步与 write-back 不在 MVP 范围内。
 - **仅限 MVP work kind**：协议命名 `code.change@1` 与 `code.verify@1`，但 Queue 注册及执行生命周期属于 bridge 包。
 - **Schema 无法访问证据字节**：`EvidenceRef` 校验 metadata；evidence provider 必须取回不可变字节，并在证据可满足验证前调用 `evidenceBytesMatch()`。
 - **Schema 不执行跨 store lookup**：ancestry、repository identity、Queue existence 与 human authority 需要各自所有服务。导出的跨对象 finding 只覆盖 caller 提供完整输入的关系。
-- **没有 migration compatibility**：V1 Schema 拒绝所有其他 `schemaVersion`；未来版本需要显式 migration 与新 golden fixture，而不是宽松解析。
+- **没有 migration compatibility**：V2 Schema 拒绝所有其他 `schemaVersion`；未来版本需要显式 migration 与新 golden fixture，而不是宽松解析。

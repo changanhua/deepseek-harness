@@ -8,6 +8,8 @@ import {
 import type {
   QueueWorkIdRef,
 } from '@deepseek-ai/dsh-delivery-protocol'
+import { RepositoryWorkspaceError } from '@deepseek-ai/dsh-repo-workspace'
+import type { SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import {
   DeliveryCodexRunnerError,
   MAX_MODEL_OUTPUT_BYTES,
@@ -55,7 +57,7 @@ describe('delivery Codex runner', () => {
   it('returns a bound completion claim only after the explicit workspace child is quiescent', async () => {
     const child = fakeChild({ exitOnTerminate: false })
     const state = requestHarness()
-    const spawn = vi.fn(() => child.handle)
+    const spawn = vi.fn((_spec: SubprocessSpawnSpec) => child.handle)
     const start = createCodexChangeRunner({
       spawn,
       model: 'codex-test-model',
@@ -119,6 +121,60 @@ describe('delivery Codex runner', () => {
       evidenceIds: ['evidence-1', 'evidence-2'],
     }))
     await expect(run.cancel('already complete')).resolves.toBeUndefined()
+  })
+
+  it.runIf(process.platform === 'win32')('supplies Git long-path configuration to the Codex execution world', async () => {
+    const child = fakeChild()
+    const state = requestHarness()
+    const spawn = vi.fn((_spec: SubprocessSpawnSpec) => child.handle)
+    const start = createCodexChangeRunner({
+      spawn,
+      permissionMode: 'never',
+      env: { DELIVERY_RUNNER_TEST: 'preserved' },
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    })
+    const run = start(state.request, new AbortController().signal)
+    const turnStart = await reachCodexTurn(child)
+
+    expect(spawn).toHaveBeenCalledOnce()
+    expect(spawn.mock.calls[0]?.[0].env).toMatchObject({
+      DELIVERY_RUNNER_TEST: 'preserved',
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'core.longpaths',
+      GIT_CONFIG_VALUE_0: 'true',
+    })
+
+    completeCodexTurn(child, turnStart, completedEnvelope())
+    await run.done
+  })
+
+  it('preserves the explicit Codex environment without Windows Git configuration on other platforms', async () => {
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    try {
+      const child = fakeChild()
+      const state = requestHarness()
+      const spawn = vi.fn((_spec: SubprocessSpawnSpec) => child.handle)
+      const start = createCodexChangeRunner({
+        spawn,
+        permissionMode: 'never',
+        env: { DELIVERY_RUNNER_TEST: 'preserved' },
+        disposeGraceMs: 5_000,
+        modelOutputBytes: 64 * 1024,
+      })
+      const run = start(state.request, new AbortController().signal)
+      const turnStart = await reachCodexTurn(child)
+
+      expect(spawn).toHaveBeenCalledOnce()
+      expect(spawn.mock.calls[0]?.[0].env).toEqual({
+        DELIVERY_RUNNER_TEST: 'preserved',
+      })
+
+      completeCodexTurn(child, turnStart, completedEnvelope())
+      await run.done
+    } finally {
+      platform.mockRestore()
+    }
   })
 
   it.each([
@@ -702,6 +758,33 @@ describe('delivery Codex runner', () => {
     expect(state.close).not.toHaveBeenCalled()
   })
 
+  it('retains a repository workspace diagnostic at the Queue-visible startup boundary', async () => {
+    const state = requestHarness({
+      openWorkspaceError: new RepositoryWorkspaceError(
+        'unavailable',
+        'Git could not create Attempt worktree: Filename too long',
+      ),
+    })
+    const start = createCodexChangeRunner({
+      spawn: vi.fn(),
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    })
+
+    const run = start(state.request, new AbortController().signal)
+
+    const failure = await run.done.catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(DeliveryCodexRunnerError)
+    if (!(failure instanceof DeliveryCodexRunnerError)) {
+      throw new Error('expected a DeliveryCodexRunnerError')
+    }
+    expect(failure.code).toBe('startup')
+    expect(failure.message).toContain('Filename too long')
+    expect(state.close).not.toHaveBeenCalled()
+  })
+
   it('rejects a lease for another repository without starting Codex', async () => {
     const state = requestHarness({
       leaseRepositoryId: RepositoryId('another-repository'),
@@ -801,6 +884,38 @@ describe('delivery Codex runner', () => {
     await expect(run.done).rejects.toEqual(expect.objectContaining({
       code: 'completion',
     }))
+    expect(state.close).toHaveBeenCalledWith('preserve')
+  })
+
+  it('persists malformed model output and identifies its evidence before failing completion', async () => {
+    const child = fakeChild()
+    const state = requestHarness()
+    const start = createCodexChangeRunner({
+      spawn: () => child.handle,
+      permissionMode: 'never',
+      env: {},
+      disposeGraceMs: 5_000,
+      modelOutputBytes: 64 * 1024,
+    })
+    const run = start(state.request, new AbortController().signal)
+    const turnStart = await reachCodexTurn(child)
+
+    completeCodexTurn(child, turnStart, 'not-json')
+
+    const failure = await run.done.catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(DeliveryCodexRunnerError)
+    if (!(failure instanceof DeliveryCodexRunnerError)) {
+      throw new Error('expected a DeliveryCodexRunnerError')
+    }
+    expect(failure.code).toBe('completion')
+    expect(failure.message).toContain('evidence-1')
+    expect(state.save).toHaveBeenCalledOnce()
+    expect(state.save).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'log',
+      mediaType: 'text/plain; charset=utf-8',
+      data: new TextEncoder().encode('not-json'),
+    }), expect.any(AbortSignal))
+    expect(state.checkpoint).not.toHaveBeenCalled()
     expect(state.close).toHaveBeenCalledWith('preserve')
   })
 

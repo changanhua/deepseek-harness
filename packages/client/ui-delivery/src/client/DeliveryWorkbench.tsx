@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   DeliveryAttentionReason,
+  DeliveryCaseCard,
+  DeliveryCaseLane,
   DeliveryCreatePacketInput,
   DeliveryLane,
   DeliveryWorkbenchCard,
@@ -21,12 +23,35 @@ const LANE_KEYS: Readonly<Record<DeliveryLane, DeliveryKey>> = {
   accepted: 'lane.accepted',
 }
 const SUCCESS_KEYS: Readonly<Record<DeliveryPendingOperation, DeliveryKey>> = {
+  'create-case': 'view.succeeded.create-case',
+  'revise-case': 'view.succeeded.revise-case',
+  'record-requirement-decision': 'view.succeeded.record-requirement-decision',
+  'publish-issue': 'view.succeeded.publish-issue',
+  'resolve-publication': 'view.succeeded.resolve-publication',
   'import-issue': 'view.succeeded.import-issue',
   'create-packet': 'view.succeeded.create-packet',
   'start-change': 'view.succeeded.start-change',
   'start-verification': 'view.succeeded.start-verification',
   'read-evidence': 'view.succeeded.read-evidence',
   'record-decision': 'view.succeeded.record-decision',
+}
+
+const CASE_LANE_KEYS: Readonly<Record<DeliveryCaseLane, DeliveryKey>> = {
+  shaping: 'case.shaping',
+  ready: 'case.ready',
+  running: 'case.running',
+  review: 'case.review',
+  blocked: 'case.blocked',
+  accepted: 'case.accepted',
+}
+const READINESS_KEYS: Readonly<Record<DeliveryCaseCard['readiness']['reasons'][number], DeliveryKey>> = {
+  'missing-outcome': 'case.readiness.missing-outcome',
+  'missing-repository': 'case.readiness.missing-repository',
+  'missing-scope': 'case.readiness.missing-scope',
+  'missing-acceptance': 'case.readiness.missing-acceptance',
+  'missing-base-selection': 'case.readiness.missing-base-selection',
+  'missing-verification-source': 'case.readiness.missing-verification-source',
+  'open-decisions': 'case.readiness.open-decisions',
 }
 const ATTENTION_KEYS: Readonly<Record<DeliveryAttentionReason, DeliveryKey>> = {
   'bound-work-unavailable': 'attention.bound-work-unavailable',
@@ -95,8 +120,7 @@ function queueStatus(card: DeliveryWorkbenchCard, kind: DeliveryWorkbenchCard['d
 
 function ImportForm(props: Pick<DeliveryWorkspaceProps, 'importIssue' | 't'> & { busy: boolean }) {
   const [issueUrl, setIssueUrl] = useState('')
-  const [repositoryId, setRepositoryId] = useState('')
-  const ready = issueUrl.trim() !== '' && repositoryId.trim() !== '' && !props.busy
+  const ready = issueUrl.trim() !== '' && !props.busy
   return (
     <form
       className={css.commandCard}
@@ -104,7 +128,7 @@ function ImportForm(props: Pick<DeliveryWorkspaceProps, 'importIssue' | 't'> & {
       onSubmit={(event) => {
         event.preventDefault()
         if (!ready) return
-        void props.importIssue({ issueUrl: issueUrl.trim(), repositoryId: repositoryId.trim() })
+        void props.importIssue({ issueUrl: issueUrl.trim() })
       }}
     >
       <h2>{props.t('import.title')}</h2>
@@ -118,17 +142,171 @@ function ImportForm(props: Pick<DeliveryWorkspaceProps, 'importIssue' | 't'> & {
           onChange={(event) => { setIssueUrl(event.currentTarget.value) }}
         />
       </label>
-      <label>
-        <span>{props.t('import.repository')}</span>
-        <input
-          aria-label={props.t('import.repository')}
-          disabled={props.busy}
-          value={repositoryId}
-          onChange={(event) => { setRepositoryId(event.currentTarget.value) }}
-        />
-      </label>
       <button type="submit" disabled={!ready}>{props.t('import.submit')}</button>
     </form>
+  )
+}
+
+function CaseCaptureForm(props: Pick<DeliveryWorkspaceProps, 'createCase' | 't'> & { busy: boolean }) {
+  const [idea, setIdea] = useState('')
+  const normalizedIdea = idea.trim()
+  const title = normalizedIdea.split(/\r?\n/u).find(line => line.trim() !== '')?.trim() ?? ''
+  const ready = title !== '' && !props.busy
+  return (
+    <form className={css.commandCard} aria-label={props.t('case.createTitle')} onSubmit={(event) => {
+      event.preventDefault()
+      if (!ready) return
+      const disclosure = event.currentTarget.closest('details')
+      void props.createCase({
+        title,
+        revision: {
+          outcome: null,
+          context: normalizedIdea,
+          allowedScope: [],
+          forbiddenScope: [],
+          acceptanceClauses: [],
+          openDecisions: [],
+          baseSelectionRule: null,
+          verificationSource: null,
+          referenceLinks: [],
+        },
+      }).then((saved) => {
+        if (!saved) return
+        setIdea('')
+        if (disclosure !== null) disclosure.open = false
+      })
+    }}>
+      <h2>{props.t('case.createTitle')}</h2>
+      <label>
+        <span>{props.t('case.idea')}</span>
+        <textarea value={idea} disabled={props.busy} onChange={(event) => { setIdea(event.currentTarget.value) }} />
+      </label>
+      <button type="submit" disabled={!ready}>{props.t('case.create')}</button>
+    </form>
+  )
+}
+
+function CaseForm(props: Pick<DeliveryWorkspaceProps, 'createCase' | 'reviseCase' | 't'> & {
+  card?: DeliveryCaseCard
+  busy: boolean
+}) {
+  const revision = props.card?.headRevision
+  const [title, setTitle] = useState(revision?.title ?? '')
+  const [outcome, setOutcome] = useState(revision?.outcome ?? '')
+  const [context, setContext] = useState(revision?.context ?? '')
+  const [scope, setScope] = useState(revision?.allowedScope.join('\n') ?? '')
+  const [acceptance, setAcceptance] = useState(revision?.acceptanceClauses.map(clause => clause.text).join('\n') ?? '')
+  useEffect(() => {
+    setTitle(revision?.title ?? '')
+    setOutcome(revision?.outcome ?? '')
+    setContext(revision?.context ?? '')
+    setScope(revision?.allowedScope.join('\n') ?? '')
+    setAcceptance(revision?.acceptanceClauses.map(clause => clause.text).join('\n') ?? '')
+  }, [revision?.id])
+  const allowedScope = lines(scope)
+  const acceptanceClauses = lines(acceptance).map((text, index) => ({
+    id: `acceptance-${String(index + 1)}` as never,
+    text,
+  }))
+  const ready = title.trim() !== '' && outcome.trim() !== ''
+    && allowedScope.length > 0 && acceptanceClauses.length > 0 && !props.busy
+  return (
+    <form className={css.commandCard} aria-label={props.t(props.card === undefined ? 'case.createTitle' : 'case.reviseTitle')} onSubmit={(event) => {
+      event.preventDefault()
+      if (!ready) return
+      const input = {
+        title: title.trim(),
+        revision: {
+          outcome: outcome.trim(),
+          context: context.trim(),
+          allowedScope,
+          forbiddenScope: [],
+          acceptanceClauses,
+          openDecisions: [],
+          baseSelectionRule: { kind: 'ref-head' as const, ref: 'refs/heads/main' },
+          verificationSource: null,
+          referenceLinks: [],
+        },
+      }
+      if (props.card === undefined) void props.createCase(input)
+      else void props.reviseCase({
+        ...input,
+        caseId: String(props.card.case.id),
+        expectedHeadRevisionId: String(props.card.headRevision.id),
+      })
+    }}>
+      <h2>{props.t(props.card === undefined ? 'case.createTitle' : 'case.reviseTitle')}</h2>
+      <label><span>{props.t('case.title')}</span><input value={title} disabled={props.busy} onChange={(event) => { setTitle(event.currentTarget.value) }} /></label>
+      <label><span>{props.t('case.outcome')}</span><textarea value={outcome} disabled={props.busy} onChange={(event) => { setOutcome(event.currentTarget.value) }} /></label>
+      <label><span>{props.t('case.context')}</span><textarea value={context} disabled={props.busy} onChange={(event) => { setContext(event.currentTarget.value) }} /></label>
+      <div className={css.twoFields}>
+        <label><span>{props.t('case.scope')}</span><textarea value={scope} disabled={props.busy} onChange={(event) => { setScope(event.currentTarget.value) }} /></label>
+        <label><span>{props.t('case.acceptance')}</span><textarea value={acceptance} disabled={props.busy} onChange={(event) => { setAcceptance(event.currentTarget.value) }} /></label>
+      </div>
+      <button type="submit" disabled={!ready}>{props.t(props.card === undefined ? 'case.create' : 'case.revise')}</button>
+    </form>
+  )
+}
+
+function CaseAuthority(
+  props: Pick<DeliveryWorkspaceProps,
+    'recordRequirementDecision' | 'publishIssue' | 'resolvePublication' | 't'> & {
+      card: DeliveryCaseCard
+      busy: boolean
+    },
+) {
+  const [reason, setReason] = useState('')
+  const [issueNumber, setIssueNumber] = useState('')
+  const publication = props.card.publication
+  const target = props.card.publicationTarget
+  const decide = (decision: 'approved' | 'rejected' | 'deferred') => {
+    if (reason.trim() === '') return
+    void props.recordRequirementDecision({
+      caseId: String(props.card.case.id),
+      revisionId: String(props.card.headRevision.id),
+      decision,
+      reason: reason.trim(),
+    })
+  }
+  return (
+    <section className={css.commandCard} aria-label={props.t('case.list')}>
+      <h2>{props.card.headRevision.title}</h2>
+      <span className={css.cardLane} data-lane={props.card.lane}>{props.t(CASE_LANE_KEYS[props.card.lane])}</span>
+      <p className={css.muted}>{props.card.headRevision.outcome ?? props.card.headRevision.context}</p>
+      {!props.card.readiness.ready && <div className={css.attention} role="status">
+        <strong>{props.t('case.readiness')}</strong>
+        <ul>{props.card.readiness.reasons.map(reason => <li key={reason}>{props.t(READINESS_KEYS[reason])}</li>)}</ul>
+      </div>}
+      {props.card.requirementDecision === null
+        ? <>
+          <label><span>{props.t('case.reason')}</span><textarea value={reason} disabled={props.busy} onChange={(event) => { setReason(event.currentTarget.value) }} /></label>
+          <div className={css.headerActions}>
+            <button type="button" disabled={props.busy || reason.trim() === '' || !props.card.readiness.ready} onClick={() => { decide('approved') }}>{props.t('case.approve')}</button>
+            <button type="button" disabled={props.busy || reason.trim() === ''} onClick={() => { decide('deferred') }}>{props.t('case.defer')}</button>
+            <button type="button" disabled={props.busy || reason.trim() === ''} onClick={() => { decide('rejected') }}>{props.t('case.reject')}</button>
+          </div>
+        </>
+        : <p className={css.muted}>{props.card.requirementDecision.reason}</p>}
+      {target === null
+        ? <p className={css.muted}>{props.t('case.noTarget')}</p>
+        : <p className={css.muted}>{props.t('case.target', { target: `${target.owner}/${target.name}` })}</p>}
+      {publication === null && props.card.requirementDecision?.decision === 'approved' && target !== null && (
+        <button type="button" disabled={props.busy} onClick={() => { void props.publishIssue({ caseId: String(props.card.case.id), revisionId: String(props.card.headRevision.id) }) }}>{props.t('case.publish')}</button>
+      )}
+      {publication?.phase === 'prepared' && <button type="button" disabled={props.busy} onClick={() => { void props.publishIssue({ caseId: String(props.card.case.id), revisionId: String(props.card.headRevision.id) }) }}>{props.t('case.publish')}</button>}
+      {publication?.phase === 'prepared' && <p className={css.muted}>{props.t('case.publication.prepared')}</p>}
+      {publication?.phase === 'publishing' && <p className={css.muted}>{props.t('case.publication.publishing')}</p>}
+      {publication?.phase === 'failed' && <>
+        <p className={css.muted}>{props.t('case.publication.failed', { category: publication.failureCategory ?? '' })}</p>
+        <button type="button" disabled={props.busy} onClick={() => { void props.publishIssue({ caseId: String(props.card.case.id), revisionId: String(props.card.headRevision.id) }) }}>{props.t('case.publish')}</button>
+      </>}
+      {publication?.phase === 'published' && publication.issue !== null && <a href={publication.issue.url} target="_blank" rel="noreferrer">{props.t('case.publication.published', { number: publication.issue.issueNumber })}</a>}
+      {publication?.phase === 'unknown' && <>
+        <p className={css.muted}>{props.t('case.publication.unknown')}</p>
+        <label><span>{props.t('case.issueNumber')}</span><input inputMode="numeric" value={issueNumber} disabled={props.busy} onChange={(event) => { setIssueNumber(event.currentTarget.value) }} /></label>
+        <button type="button" disabled={props.busy || !/^\d+$/u.test(issueNumber)} onClick={() => { void props.resolvePublication({ publicationId: String(publication.id), resolution: 'confirm-published', issueNumber: Number(issueNumber) }) }}>{props.t('case.confirmPublished')}</button>
+      </>}
+    </section>
   )
 }
 
@@ -198,7 +376,7 @@ function PacketForm(props: Pick<DeliveryWorkspaceProps, 'createPacket' | 't'> & 
             >
               {props.contracts.map(candidate => (
                 <option key={candidate.id} value={candidate.id}>
-                  {candidate.sourceRef.repository.owner}/{candidate.sourceRef.repository.name}#{candidate.sourceRef.issueNumber}
+                  {candidate.title}
                 </option>
               ))}
             </select>
@@ -478,17 +656,31 @@ function PacketDetail(props: DeliveryWorkspaceProps & {
 export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
   const state = props.useDelivery(value => value)
   const snapshot = state.snapshot
+  const caseCards = snapshot?.cases ?? []
   const [lane, setLane] = useState<DeliveryLane | 'all'>('all')
+  const [selectedCaseId, setSelectedCaseId] = useState(caseCards[0]?.case.id ?? '')
   const [selectedId, setSelectedId] = useState(snapshot?.cards[0]?.packet.id ?? '')
   const cardRefs = useRef(new Map<string, HTMLButtonElement>())
 
+  const selectedCase = caseCards.find(card => card.case.id === selectedCaseId) ?? caseCards[0] ?? null
+  const packetCards = selectedCase?.packets ?? snapshot?.cards ?? []
   const counts = useMemo(() => Object.fromEntries(LANES.map(candidate => [
     candidate,
-    snapshot?.cards.filter(card => card.lane === candidate).length ?? 0,
-  ])) as Record<DeliveryLane, number>, [snapshot])
-  const cards = snapshot?.cards.filter(card => lane === 'all' || card.lane === lane) ?? []
+    packetCards.filter(card => card.lane === candidate).length,
+  ])) as Record<DeliveryLane, number>, [packetCards])
+  const cards = packetCards.filter(card => lane === 'all' || card.lane === lane)
   const selected = cards.find(card => card.packet.id === selectedId) ?? cards[0] ?? null
+  const packetContracts = caseCards.length === 0
+    ? snapshot?.contractsWithoutPacket ?? []
+    : selectedCase?.requirementDecision?.decision === 'approved' && selectedCase.packets.length === 0
+      ? [selectedCase.headRevision]
+      : []
   const busy = state.pending !== null || state.status === 'loading'
+
+  useEffect(() => {
+    if (selectedCase === null || selectedCase.case.id === selectedCaseId) return
+    setSelectedCaseId(selectedCase.case.id)
+  }, [selectedCase, selectedCaseId])
 
   useEffect(() => {
     if (selected === null || selected.packet.id === selectedId) return
@@ -526,13 +718,55 @@ export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
 
       {snapshot !== undefined && (
         <>
+          {caseCards.length === 0
+            ? <CaseCaptureForm createCase={props.createCase} t={props.t} busy={busy} />
+            : <section className={css.caseShell}>
+              <section className={css.caseList} aria-label={props.t('case.list')}>
+                <div className={css.ledgerHead}>
+                  <h2>{props.t('case.list')}</h2>
+                  <span>{props.t('case.count', { count: caseCards.length })}</span>
+                </div>
+                {caseCards.map(card => <button
+                  type="button"
+                  key={card.case.id}
+                  aria-pressed={selectedCase?.case.id === card.case.id}
+                  data-active={selectedCase?.case.id === card.case.id || undefined}
+                  onClick={() => { setSelectedCaseId(card.case.id) }}
+                >
+                  <span className={css.cardLane} data-lane={card.lane}>{props.t(CASE_LANE_KEYS[card.lane])}</span>
+                  <strong>{card.headRevision.title}</strong>
+                </button>)}
+                <details>
+                  <summary>{props.t('case.createTitle')}</summary>
+                  <CaseCaptureForm createCase={props.createCase} t={props.t} busy={busy} />
+                </details>
+              </section>
+              {selectedCase !== null && <div className={css.caseActions}>
+                <CaseAuthority {...props} card={selectedCase} busy={busy} />
+                <details>
+                  <summary>{props.t('case.reviseTitle')}</summary>
+                  <CaseForm card={selectedCase} createCase={props.createCase} reviseCase={props.reviseCase} t={props.t} busy={busy} />
+                </details>
+              </div>}
+            </section>}
           <section className={css.commandShelf}>
-            <ImportForm importIssue={props.importIssue} t={props.t} busy={busy} />
-            <PacketForm contracts={snapshot.contractsWithoutPacket} createPacket={props.createPacket} t={props.t} busy={busy} />
+            {packetContracts.length > 0 && <PacketForm
+              contracts={packetContracts}
+              createPacket={props.createPacket}
+              t={props.t}
+              busy={busy}
+            />}
+            <details className={css.secondaryAction}>
+              <summary>{props.t('import.title')}</summary>
+              <ImportForm importIssue={props.importIssue} t={props.t} busy={busy} />
+            </details>
           </section>
-          <nav className={css.trace} aria-label={props.t('ledger.title')}>
+          {caseCards.length === 0 && (
+            <p className={css.empty}>{props.t('view.empty')}</p>
+          )}
+          {packetCards.length > 0 && <><nav className={css.trace} aria-label={props.t('ledger.title')}>
             <button type="button" aria-pressed={lane === 'all'} data-active={lane === 'all' || undefined} onClick={() => { setLane('all') }}>
-              {props.t('lane.all')} {snapshot.cards.length}
+              {props.t('lane.all')} {packetCards.length}
             </button>
             {LANES.map(candidate => (
               <button
@@ -547,9 +781,6 @@ export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
               </button>
             ))}
           </nav>
-          {snapshot.cards.length === 0 && snapshot.contractsWithoutPacket.length === 0 && (
-            <p className={css.empty}>{props.t('view.empty')}</p>
-          )}
           <section className={css.ledgerShell}>
             <section className={css.ledger} aria-label={props.t('ledger.title')}>
               <div className={css.ledgerHead}>
@@ -591,11 +822,7 @@ export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
                       <span className={css.cardLane} data-lane={card.lane}>{props.t(LANE_KEYS[card.lane])}</span>
                       <strong>{card.packet.objective}</strong>
                       <code>{card.packet.id}</code>
-                      <span>
-                        {card.contractRevision.sourceRef.repository.owner}/
-                        {card.contractRevision.sourceRef.repository.name}
-                        #{card.contractRevision.sourceRef.issueNumber}
-                      </span>
+                      <span>{card.contractRevision.title}</span>
                     </button>
                   </li>
                 ))}
@@ -604,7 +831,7 @@ export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
             {selected === null
               ? <aside className={css.detailPane} aria-label={props.t('detail.title')}><p className={css.empty}>{props.t('detail.select')}</p></aside>
               : <PacketDetail {...props} card={selected} runtime={state} />}
-          </section>
+          </section></>}
         </>
       )}
     </main>

@@ -37,8 +37,9 @@ Delivery 组提供 Queue 无关的持久 protocol、三个 host Service Definiti
 | [`delivery-evidence-local`](delivery-evidence-local/README.zh.md) | 本地 content-addressed publication 与完整性校验 evidence read | 提供 `ctx.deliveryEvidence` |
 | [`delivery-runner-codex`](delivery-runner-codex/README.zh.md) | 生成 checkpoint 与 evidence 的受治理 Codex app-server change runner | — |
 | [`delivery-verifier`](delivery-verifier/README.zh.md) | 带 path 与 evidence finding 的独立 fixed-argv verifier | — |
-| [`delivery-github-intake`](delivery-github-intake/README.zh.md) | 严格 Work Brief 解析与显式 GitHub Issue snapshot adoption | — |
-| [`delivery-remote`](delivery-remote/README.zh.md) | 浏览器安全 projection 与显式 import、run、verify、evidence 和 decision operation | `remote.delivery` |
+| [`delivery-github-intake`](delivery-github-intake/README.zh.md) | 严格 Work Brief 解析与显式 GitHub Issue-to-Case import | — |
+| [`delivery-github-publisher`](delivery-github-publisher/README.zh.md) | Host-only Issue rendering、publication、uncertainty 与 GET reconciliation | — |
+| [`delivery-remote`](delivery-remote/README.zh.md) | 浏览器安全 projection 与显式 import、publish、run、verify、evidence 和 decision operation | `remote.delivery` |
 | [`delivery-task-queue`](delivery-task-queue/README.zh.md) | 拥有两个 WorkKind、持久跨 store admission、recovery 与 handler registration | — |
 
 -----

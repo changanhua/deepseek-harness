@@ -3,6 +3,7 @@ import {
   AcceptanceClauseId,
   CompletionClaimId,
   ContractRevisionId,
+  DELIVERY_SCHEMA_VERSION,
   EvidenceId,
   ExecutorId,
   GitCommitId,
@@ -11,13 +12,12 @@ import {
   RepositoryRelativePath,
   RepositoryId,
   Sha256Digest,
-  SourceRefId,
   VerificationCheckId,
   VerificationVerdictId,
   WorkPacketId,
   canonicalDigest,
   contractRevisionSchema,
-  sourceRefContentDigest,
+  githubIssueContentDigest,
   verificationPlanDigest,
   workPacketDigest,
   workPacketSchema,
@@ -88,22 +88,16 @@ function records(): { readonly contract: ContractRevision; readonly packet: Work
   const sourceTitle = 'Implement the Queue bridge'
   const sourceBody = 'Keep the change inside the Delivery Queue package.'
   const contract = contractRevisionSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
     id: contractRevisionId,
     previousRevisionId: null,
-    sourceRef: {
-      schemaVersion: 1,
-      id: SourceRefId('source-handler-1'),
-      provider: 'github',
+    origin: {
+      kind: 'github-import',
       repository: { owner: 'deepseek-ai', name: 'deepseek-harness' },
       issueNumber: 101,
-      canonicalUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/101',
-      updatedAt: CREATED_AT,
-      title: sourceTitle,
-      body: sourceBody,
-      contentDigest: sourceRefContentDigest({ title: sourceTitle, body: sourceBody }),
-      createdAt: CREATED_AT,
+      contentDigest: githubIssueContentDigest({ title: sourceTitle, body: sourceBody }),
     },
+    title: sourceTitle,
     repositoryId,
     outcome: 'Register both governed Delivery handlers.',
     context: 'Queue owns Attempts while Delivery owns Packet identity.',
@@ -139,7 +133,7 @@ function records(): { readonly contract: ContractRevision; readonly packet: Work
     ? contract.verificationSource.checks
     : []
   const input: WorkPacketDigestInput = {
-    schemaVersion: 1,
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
     contractRevisionId,
     repositoryId,
     baseCommit,
@@ -173,7 +167,7 @@ function completedClaim(
   overrides: Partial<Extract<CompletionClaim, { readonly disposition: 'completed' }>> = {},
 ): Extract<CompletionClaim, { readonly disposition: 'completed' }> {
   return {
-    schemaVersion: 1,
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
     id: CompletionClaimId('claim-handler-1'),
     packetId,
     queueWorkId: QueueWorkIdRef(String(changeWorkId)),
@@ -193,7 +187,7 @@ function completedClaim(
 
 function verdict(planDigest: Sha256Digest): VerificationVerdict {
   return {
-    schemaVersion: 1,
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
     id: VerificationVerdictId('verdict-handler-1'),
     packetId,
     targetCommit,
@@ -352,7 +346,7 @@ function handlerHarness(
   const startChange = vi.fn<StartCodeChange>()
   const startVerification = vi.fn<StartDeliveryVerification>()
   const changeBinding = {
-    schemaVersion: 1 as const,
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
     id: 'change-binding-1',
     packetId,
     kind: 'code.change@1' as const,

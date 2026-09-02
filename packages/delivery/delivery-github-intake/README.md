@@ -1,5 +1,5 @@
 ---
-description: "GitHub Issue snapshot intake Consumer for immutable Personal Delivery contract revisions."
+description: "GitHub Issue snapshot intake Consumer that creates or revises Personal Delivery Cases."
 kind: "package-reference"
 ---
 
@@ -9,11 +9,11 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-delivery-github-intake` is a pure Consumer that turns one exact GitHub Issue snapshot into an immutable Delivery Contract revision. It exports `importGitHubIssue`, accepts an explicit host-provided `fetch`, and can only inspect `Delivery.snapshot()` plus call `Delivery.adoptContractRevision`. It does not persist GitHub credentials, synchronize every Issue, register a service, or own Delivery storage.
+`dsh-delivery-github-intake` is a pure Consumer that turns one exact GitHub Issue snapshot into a Delivery Case creation or revision. It exports `importGitHubIssue`, accepts an explicit host-provided `fetch`, and can only inspect `Delivery.snapshot()` plus call `Delivery.createCase` and `Delivery.reviseCase`. The narrow dependency pick keeps requirement approval outside its reach, so an import never records a requirement decision or approves a revision. It does not persist GitHub credentials, synchronize every Issue, register a service, or own Delivery storage.
 
 ## Use this package
 
-Pass the canonical Issue URL and the required configured local repository identity. Intake derives the unique current revision head for that same Issue from the trusted Delivery snapshot's `previousRevisionId` links; provider array order cannot select or splice a lineage. The head chain must cover every same-Issue record, so a missing or cross-Issue predecessor, duplicate identity, cycle, detached record, or multiple heads fails closed. The function reuses only a content-equivalent current head with the same mapped Contract fields and repository identity; a historical content match never suppresses a later reversion. New adoptions use a key derived from the Issue coordinates, predecessor identity, and content digest.
+Pass the canonical Issue URL and the required configured local repository identity. Intake locates the one Delivery Case whose root revision carries a matching `github-import` origin, so later human revisions inside the Case cannot detach it; a duplicate revision identity, a broken Case chain, or more than one matching Case fails closed. The first import of an Issue creates one Case with the deterministic root key `github:{owner}/{repository}:issue:{n}:root`, a `github-import` origin digesting the exact title and body, and the Issue title. Changed Issue content revises that Case under an expected-head compare-and-set with the key `github:{owner}/{repository}:issue:{n}:previous:{headRevisionId}`. An import whose snapshot content already equals the current head returns that revision without a Delivery write; a Case bound to another configured repository, or whose head carries a human revision, is refused. The revision head of the imported Case is returned.
 
 ```text
 const revision = await importGitHubIssue(
@@ -32,7 +32,7 @@ The Issue body contains exactly one authoritative block: the line `<!-- dsh-deli
 
 ## Understand the implementation
 
-The request boundary validates the strict public github.com Issue grammar before any I/O, closing the authenticated-fetch SSRF and credential-leak path. It fetches the one derived GitHub API snapshot through the supplied host `fetch`, requires HTTP 200 and `application/json`, and rejects malformed, stale-coordinate, or invalid immutable snapshots. `parseGitHubIssueWorkBrief()` and `workBriefContractRevisionDraft()` freeze the executable body grammar and its exact Delivery mapping. In one process, calls for the same Delivery instance and Issue coordinates serialize snapshot-to-adoption, then reread the authoritative snapshot inside that turn; unrelated Issues do not share that temporary tail. A late HTTP response whose `updatedAt` is older than that current same-Issue head reuses the head instead of creating a regression revision. Cancellation is checked after fetch and body reads and on both sides of the Delivery snapshot; it remains effective until the immediate `adoptContractRevision()` commit point. Once adoption starts, Delivery's result or failure is authoritative rather than being relabeled as an uncommitted abort. HTTP cache state and mutable GitHub status are never durable Delivery authority.
+The request boundary validates the strict public github.com Issue grammar before any I/O, closing the authenticated-fetch SSRF and credential-leak path. It fetches the one derived GitHub API snapshot through the supplied host `fetch`, requires HTTP 200 and `application/json`, and rejects malformed, stale-coordinate, or invalid immutable snapshots. `parseGitHubIssueWorkBrief()` and `workBriefContractRevisionDraft()` freeze the executable body grammar and its exact Delivery mapping. In one process, calls for the same Delivery instance and Issue coordinates serialize snapshot-to-commit, then reread the authoritative snapshot inside that turn; unrelated Issues do not share that temporary tail. Cancellation is checked after fetch and body reads and on both sides of the Delivery snapshot; it remains effective until the immediate `createCase()`/`reviseCase()` commit point. Once a Case write starts, Delivery's result or failure is authoritative rather than being relabeled as an uncommitted abort. An import never records a requirement decision: the resulting revision stays unapproved and cannot create a Work Packet until a human decides. HTTP cache state and mutable GitHub status are never durable Delivery authority.
 
 ## Model Experience
 
@@ -40,7 +40,7 @@ The request boundary validates the strict public github.com Issue grammar before
 
 #### What the model sees
 
-This package sends nothing to a model; downstream shaping or execution code can render fields from the adopted `ContractRevision`, while this Consumer only preserves the exact Issue snapshot and parsed contract structure.
+This package sends nothing to a model; downstream shaping or execution code can render fields from the imported `ContractRevision`, while this Consumer only preserves the exact Issue snapshot and parsed contract structure.
 
 #### Token effect
 
@@ -56,3 +56,4 @@ There is no direct KV-cache contribution; stable Issue templates may make downst
 - **GitHub Enterprise is unsupported** — arbitrary hosts are rejected because no separate trusted-host policy exists.
 - **One Issue snapshot per call** — webhooks, polling, bulk synchronization, comments, Projects, labels, and PR mutation are out of scope.
 - **No automatic requirement invention** — every authoritative field must be present; unresolved ambiguity is an explicitly identified `openDecisions` entry, and intake cannot silently make a Contract ready.
+- **A late older HTTP response appends a revision** — the version-2 contract does not retain the GitHub `updatedAt` of an import, so a delayed stale response becomes an expected-head child of the current head instead of being detected as older; repeating identical content stays idempotent.

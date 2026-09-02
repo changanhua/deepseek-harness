@@ -4,23 +4,46 @@ import type {
   AcceptanceDecision,
   CompletionClaim,
   ContractRevision,
+  ContractReadiness,
+  DeliveryCase,
   DispatchBindingId,
   EvidenceId,
   EvidenceRef,
   ExecutorId,
+  GitHubIssueRef,
+  IssuePublication,
+  PublicationFailureCategory,
+  RequirementDecision,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   VerificationVerdict,
   WorkPacket,
 } from '@deepseek-ai/dsh-delivery-protocol'
-import type { WorkPacketDraft } from '@deepseek-ai/dsh-delivery'
+import type { ContractRevisionDraft, WorkPacketDraft } from '@deepseek-ai/dsh-delivery'
 import type { SideEffectState, WorkStatus } from '@deepseek-ai/dsh-task-queue'
 
+/** Browser-safe revision origin; trusted human actor identity remains Host-only. */
+export type DeliveryRequirementOriginView =
+  | { readonly kind: 'human' }
+  | Extract<ContractRevision['origin'], { readonly kind: 'github-import' }>
+
 /** Browser-safe view of one immutable adopted Contract revision. */
-export type DeliveryContractRevisionView = ContractRevision
+export type DeliveryContractRevisionView = Omit<ContractRevision, 'origin'> & {
+  readonly origin: DeliveryRequirementOriginView
+}
 
 /** Browser-safe view of one immutable executable Packet. */
 export type DeliveryWorkPacketView = WorkPacket
+
+/** Browser-safe human requirement decision without its trusted Host actor. */
+export interface DeliveryRequirementDecisionView {
+  readonly id: RequirementDecision['id']
+  readonly caseId: RequirementDecision['caseId']
+  readonly revisionId: RequirementDecision['revisionId']
+  readonly decision: RequirementDecision['decision']
+  readonly reason: RequirementDecision['reason']
+  readonly decidedAt: RequirementDecision['decidedAt']
+}
 
 /** Browser-safe binding identity with host-only digests and idempotency omitted. */
 export interface DeliveryDispatchBindingView {
@@ -73,6 +96,9 @@ export interface DeliveryAcceptanceDecisionView {
 /** Derived workbench lane; never a writable Delivery-domain status. */
 export type DeliveryLane = 'ready' | 'running' | 'review' | 'blocked' | 'accepted'
 
+/** Case lifecycle shown by the primary workbench; publication remains a separate axis. */
+export type DeliveryCaseLane = 'shaping' | DeliveryLane
+
 /** Stable, locale-owned reason codes for a blocked or attention-required Packet. */
 export type DeliveryAttentionReason =
   | 'bound-work-unavailable'
@@ -99,16 +125,79 @@ export interface DeliveryWorkbenchCard {
   readonly attentionReasons: readonly DeliveryAttentionReason[]
 }
 
+/** One Case-centered workbench row with its exact head authority and downstream work. */
+export interface DeliveryCaseCard {
+  readonly case: DeliveryCase
+  readonly headRevision: DeliveryContractRevisionView
+  readonly readiness: ContractReadiness
+  readonly requirementDecision: DeliveryRequirementDecisionView | null
+  readonly publication: DeliveryIssuePublicationView | null
+  readonly publicationTarget: GitHubIssueRef['repository'] | null
+  readonly lane: DeliveryCaseLane
+  readonly packets: readonly DeliveryWorkbenchCard[]
+}
+
+/** Result of creating or revising one Case without exposing the Host actor. */
+export interface DeliveryCaseMutationView {
+  readonly case: DeliveryCase
+  readonly revision: DeliveryContractRevisionView
+}
+
 /** Complete MVP workbench projection returned from one host snapshot. */
 export interface DeliverySnapshotView {
+  readonly cases: readonly DeliveryCaseCard[]
   readonly contractsWithoutPacket: readonly DeliveryContractRevisionView[]
   readonly cards: readonly DeliveryWorkbenchCard[]
+  readonly publications: readonly DeliveryIssuePublicationView[]
+}
+
+/** Create one human-origin Case in the Host-configured local repository. */
+export interface DeliveryCreateCaseInput {
+  readonly title: string
+  readonly revision: ContractRevisionDraft
+}
+
+/** Revise the exact Case head observed by the browser. */
+export interface DeliveryReviseCaseInput extends DeliveryCreateCaseInput {
+  readonly caseId: string
+  readonly expectedHeadRevisionId: string
+}
+
+/** Record one explicit human requirement decision for the current revision. */
+export interface DeliveryRecordRequirementDecisionInput {
+  readonly caseId: string
+  readonly revisionId: string
+  readonly decision: RequirementDecision['decision']
+  readonly reason: string
+}
+
+/** Browser-safe Issue publication state without marker, digest, or Host failure detail. */
+export interface DeliveryIssuePublicationView {
+  readonly id: IssuePublication['id']
+  readonly caseId: IssuePublication['caseId']
+  readonly revisionId: IssuePublication['revisionId']
+  readonly phase: IssuePublication['phase']
+  readonly failureCategory: PublicationFailureCategory | null
+  readonly issue: GitHubIssueRef | null
+  readonly updatedAt: string
+}
+
+/** Publish one exact Case revision through its Host-configured GitHub target. */
+export interface DeliveryPublishIssueInput {
+  readonly caseId: string
+  readonly revisionId: string
+}
+
+/** Resolve one uncertain publication through a fresh Host-side GitHub GET. */
+export interface DeliveryResolvePublicationInput {
+  readonly publicationId: string
+  readonly resolution: 'confirm-published'
+  readonly issueNumber: number
 }
 
 /** Explicit import of the current revision at one public GitHub Issue URL. */
 export interface DeliveryImportIssueInput {
   readonly issueUrl: string
-  readonly repositoryId: string
 }
 
 /**

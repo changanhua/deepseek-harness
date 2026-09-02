@@ -606,17 +606,30 @@ Source: [`packages/delivery/delivery-evidence-local/src/index.ts:42`](../package
 
 ## `@deepseek-ai/dsh-delivery-remote`
 
-Requires: `delivery` · `deliveryEvidence` · `repoWorkspace` · `taskQueue`
+Requires: `credentials` · `delivery` · `deliveryEvidence` · `repoWorkspace` · `taskQueue`
 
 ```ts config-catalog
 /** Trusted single-operator identity configured on the Host, never supplied by browser input. */
 export interface Config {
   /** Non-blank human operator identity minted by trusted Host configuration. */
   readonly operatorId?: string
+  /** Single local repository bound to newly shaped human-origin Cases. */
+  readonly repositoryId?: string
+  /** Host-only map from Delivery repository ids to GitHub targets and credential references. */
+  readonly githubTargets?: Readonly<Record<string, {
+    /** GitHub repository owner used by the Host publisher. */
+    readonly owner: string
+    /** GitHub repository name paired with the configured owner. */
+    readonly name: string
+    /** Credential reference resolved by the Host for each publication operation. */
+    readonly credentialRef: string
+    /** Optional labels applied by the Host during Issue creation. */
+    readonly labels?: string[]
+  }>>
 }
 ```
 
-Source: [`packages/delivery/delivery-remote/src/index.ts:77`](../packages/delivery/delivery-remote/src/index.ts)
+Source: [`packages/delivery/delivery-remote/src/index.ts:103`](../packages/delivery/delivery-remote/src/index.ts)
 
 <a id="deepseek-aidsh-delivery-task-queue"></a>
 
@@ -628,7 +641,7 @@ Requires: `delivery` · `deliveryEvidence` · `repoWorkspace` · `subprocess` ·
 /** Loader-owned composition policy for both Delivery Queue handlers. */
 export interface Config {
   /** Stable executor recorded on code-change bindings. */
-  readonly executorId?: string
+  readonly executorId?: typeof DEFAULT_EXECUTOR_ID
   /** Optional Codex model override. */
   readonly model?: string
   /** Native unattended Codex approval and sandbox policy. */
@@ -652,7 +665,7 @@ export interface Config {
 
 Depends on: [`CodexAppServerPermissionMode`](../packages/delivery/delivery-runner-codex/src/index.ts)
 
-Source: [`packages/delivery/delivery-task-queue/src/index.ts:71`](../packages/delivery/delivery-task-queue/src/index.ts)
+Source: [`packages/delivery/delivery-task-queue/src/index.ts:91`](../packages/delivery/delivery-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-e2b"></a>
 
@@ -2818,7 +2831,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/task-queue/task-queue-local/src/index.ts:61`](../packages/task-queue/task-queue-local/src/index.ts)
+Source: [`packages/task-queue/task-queue-local/src/index.ts:73`](../packages/task-queue/task-queue-local/src/index.ts)
 
 <a id="deepseek-aidsh-task-queue-remote"></a>
 
@@ -3847,6 +3860,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-cmdline` ([`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts))
 - `@deepseek-ai/dsh-code-runtime-python` ([`packages/code-runtime/code-runtime-python/src/index.ts`](../packages/code-runtime/code-runtime-python/src/index.ts))
 - `@deepseek-ai/dsh-delivery-github-intake` ([`packages/delivery/delivery-github-intake/src/index.ts`](../packages/delivery/delivery-github-intake/src/index.ts))
+- `@deepseek-ai/dsh-delivery-github-publisher` ([`packages/delivery/delivery-github-publisher/src/index.ts`](../packages/delivery/delivery-github-publisher/src/index.ts))
 - `@deepseek-ai/dsh-delivery-protocol` ([`packages/delivery/delivery-protocol/src/index.ts`](../packages/delivery/delivery-protocol/src/index.ts))
 - `@deepseek-ai/dsh-delivery-runner-codex` ([`packages/delivery/delivery-runner-codex/src/index.ts`](../packages/delivery/delivery-runner-codex/src/index.ts))
 - `@deepseek-ai/dsh-delivery-testkit` ([`packages/delivery/delivery-testkit/src/index.ts`](../packages/delivery/delivery-testkit/src/index.ts))

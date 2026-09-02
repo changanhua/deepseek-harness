@@ -17,8 +17,11 @@ import {
   boundBindingFixture,
   completedClaimFixture,
   contractRevisionFixture,
+  deliveryCaseFixture,
+  issuePublicationFixture,
   passedVerdictFixture,
   readyWorkPacketFixture,
+  requirementDecisionFixture,
   submittingBindingFixture,
 } from '@deepseek-ai/dsh-delivery-testkit'
 import {
@@ -206,6 +209,9 @@ function deliveryFacts() {
     workPackets: packets,
     dispatchBindings: [acceptedVerify, running, blocked, review, acceptedChange],
     acceptanceDecisions: [decision],
+    deliveryCases: [],
+    requirementDecisions: [],
+    issuePublications: [],
   }
 }
 
@@ -288,7 +294,6 @@ describe('Delivery Remote workbench projection', () => {
     expect(json).not.toContain('resolved')
     expect(json).not.toContain('intentDigest')
     expect(json).not.toContain('ownerSessionId')
-    expect(json).not.toContain('actorId')
     expect(json).not.toContain('decisionNonce')
   })
 
@@ -317,6 +322,90 @@ describe('Delivery Remote workbench projection', () => {
 
     expect(deliverySnapshot).toHaveBeenCalledOnce()
     expect(list).toHaveBeenCalledOnce()
+  })
+
+  it('projects publication phases without marker, digest, or failure detail', () => {
+    const publication = issuePublicationFixture({
+      phase: 'unknown',
+      issue: null,
+      failure: {
+        sideEffect: 'unknown',
+        category: 'transport',
+        detail: 'host-only provider detail',
+        occurredAt: TIME,
+      },
+    })
+
+    const snapshot = projectDeliverySnapshot({
+      contractRevisions: [], workPackets: [], dispatchBindings: [], acceptanceDecisions: [],
+      deliveryCases: [], requirementDecisions: [], issuePublications: [publication],
+    }, [], [])
+
+    expect(snapshot.publications).toEqual([{
+      id: publication.id,
+      caseId: publication.caseId,
+      revisionId: publication.revisionId,
+      phase: 'unknown',
+      failureCategory: 'transport',
+      issue: null,
+      updatedAt: publication.updatedAt,
+    }])
+    expect(JSON.stringify(snapshot)).not.toContain(publication.marker)
+    expect(JSON.stringify(snapshot)).not.toContain(publication.renderedDigest)
+    expect(JSON.stringify(snapshot)).not.toContain('host-only provider detail')
+  })
+
+  it('projects ordered Case heads with requirement authority, publication target, and blocked uncertainty', () => {
+    const shapingRevision = contractRevisionFixture({ id: ContractRevisionId('revision-shaping') })
+    const readyRevision = contractRevisionFixture({ id: ContractRevisionId('revision-ready-case') })
+    const blockedRevision = contractRevisionFixture({ id: ContractRevisionId('revision-blocked-case') })
+    const shapingCase = deliveryCaseFixture({
+      id: 'case-shaping' as never,
+      headRevisionId: shapingRevision.id,
+      repositoryId: shapingRevision.repositoryId!,
+      updatedAt: '2026-08-29T00:00:01.000Z',
+    })
+    const readyCase = deliveryCaseFixture({
+      id: 'case-ready' as never,
+      headRevisionId: readyRevision.id,
+      repositoryId: readyRevision.repositoryId!,
+      updatedAt: '2026-08-29T00:00:02.000Z',
+    })
+    const blockedCase = deliveryCaseFixture({
+      id: 'case-blocked' as never,
+      headRevisionId: blockedRevision.id,
+      repositoryId: blockedRevision.repositoryId!,
+      updatedAt: '2026-08-29T00:00:03.000Z',
+    })
+    const approved = requirementDecisionFixture({
+      caseId: readyCase.id,
+      revisionId: readyRevision.id,
+      decision: 'approved',
+    })
+    const unknown = issuePublicationFixture({
+      caseId: blockedCase.id,
+      revisionId: blockedRevision.id,
+      repository: { owner: 'example', name: 'delivery-canary' },
+      phase: 'unknown',
+    })
+
+    const snapshot = projectDeliverySnapshot({
+      contractRevisions: [shapingRevision, readyRevision, blockedRevision],
+      workPackets: [], dispatchBindings: [], acceptanceDecisions: [],
+      deliveryCases: [shapingCase, readyCase, blockedCase],
+      requirementDecisions: [approved], issuePublications: [unknown],
+    }, [], [], new Map([[String(readyCase.repositoryId), { owner: 'example', name: 'delivery-canary' }]]))
+
+    expect(snapshot.cases.map(card => [card.case.id, card.lane])).toEqual([
+      ['case-blocked', 'blocked'],
+      ['case-ready', 'ready'],
+      ['case-shaping', 'shaping'],
+    ])
+    expect(snapshot.cases[1]).toMatchObject({
+      requirementDecision: { decision: 'approved' },
+      publicationTarget: { owner: 'example', name: 'delivery-canary' },
+    })
+    expect(JSON.stringify(snapshot.cases)).not.toContain('actorId')
   })
 
   it('fails closed for invalid results and derives blocked reasons from claims, verdicts, decisions, and Attention', () => {
@@ -348,6 +437,9 @@ describe('Delivery Remote workbench projection', () => {
       workPackets: [packet],
       dispatchBindings: [binding],
       acceptanceDecisions: [],
+      deliveryCases: [],
+      requirementDecisions: [],
+      issuePublications: [],
     }
     const blocked = projectDeliverySnapshot(base, [queueView({
       id: 'work-edge', kind: 'code.change@1', packetId: packet.id,
@@ -433,7 +525,7 @@ describe('Delivery Remote workbench projection', () => {
       contractRevisions: [spareA, contract, spareB],
       workPackets: [packet],
       dispatchBindings: [change],
-      acceptanceDecisions: [],
+      acceptanceDecisions: [], deliveryCases: [], requirementDecisions: [], issuePublications: [],
     }, [queueView({
       id: 'work-active', kind: 'code.change@1', packetId: packet.id, status: 'running',
     })], [])
@@ -446,7 +538,7 @@ describe('Delivery Remote workbench projection', () => {
     ])
 
     const verify = dispatchBindingSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: DispatchBindingId('binding-verify-edge'), packetId: packet.id,
       inputDigest: canonicalDigest({
         packetId: packet.id,
@@ -458,7 +550,8 @@ describe('Delivery Remote workbench projection', () => {
       executorId: null, createdAt: TIME, updatedAt: TIME,
     })
     const invalidVerify = projectDeliverySnapshot({
-      contractRevisions: [contract], workPackets: [packet], dispatchBindings: [verify], acceptanceDecisions: [],
+      contractRevisions: [contract], workPackets: [packet], dispatchBindings: [verify],
+      acceptanceDecisions: [], deliveryCases: [], requirementDecisions: [], issuePublications: [],
     }, [queueView({
       id: 'work-verify-edge', kind: 'code.verify@1', packetId: packet.id, status: 'succeeded', output: {},
     })], [])
@@ -472,7 +565,8 @@ describe('Delivery Remote workbench projection', () => {
       reviewReasons: ['Required check failed'],
     })
     const failed = projectDeliverySnapshot({
-      contractRevisions: [contract], workPackets: [packet], dispatchBindings: [verify], acceptanceDecisions: [],
+      contractRevisions: [contract], workPackets: [packet], dispatchBindings: [verify],
+      acceptanceDecisions: [], deliveryCases: [], requirementDecisions: [], issuePublications: [],
     }, [queueView({
       id: 'work-verify-edge', kind: 'code.verify@1', packetId: packet.id,
       status: 'succeeded', output: { verificationVerdict: failedVerdict },
@@ -489,7 +583,8 @@ describe('Delivery Remote workbench projection', () => {
       reviewReasons: ['Independent review required'],
     })
     const needsReview = projectDeliverySnapshot({
-      contractRevisions: [contract], workPackets: [packet], dispatchBindings: [verify], acceptanceDecisions: [],
+      contractRevisions: [contract], workPackets: [packet], dispatchBindings: [verify],
+      acceptanceDecisions: [], deliveryCases: [], requirementDecisions: [], issuePublications: [],
     }, [queueView({
       id: 'work-verify-edge', kind: 'code.verify@1', packetId: packet.id,
       status: 'succeeded', output: { verificationVerdict: reviewVerdict },
@@ -515,7 +610,7 @@ describe('Delivery Remote workbench projection', () => {
       verificationPlanDigest: packet.verificationPlan.digest,
     }
     const verify = dispatchBindingSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: DispatchBindingId('binding-integrity-verify'),
       packetId: packet.id,
       inputDigest: canonicalDigest(verifyIntent),
@@ -650,7 +745,7 @@ describe('Delivery Remote workbench projection', () => {
         contractRevisions: [contract],
         workPackets: [packet],
         dispatchBindings: [change, verify],
-        acceptanceDecisions: [],
+        acceptanceDecisions: [], deliveryCases: [], requirementDecisions: [], issuePublications: [],
       }, [changeWork, verifyWork], [])
       expect(snapshot.cards[0]?.lane, label).toBe('blocked')
       expect(snapshot.cards[0]?.attentionReasons, label).toContain('projection-inconsistent')

@@ -9,7 +9,13 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import LocalDelivery from '@deepseek-ai/dsh-delivery-local'
 import LocalDeliveryEvidence from '@deepseek-ai/dsh-delivery-evidence-local'
-import { sourceRefContentDigest } from '@deepseek-ai/dsh-delivery-protocol'
+import {
+  AcceptanceClauseId,
+  GitCommitId,
+  RepositoryId,
+  VerificationCheckId,
+  githubIssueContentDigest,
+} from '@deepseek-ai/dsh-delivery-protocol'
 import DeliveryRemote from '@deepseek-ai/dsh-delivery-remote'
 import * as DeliveryTaskQueue from '@deepseek-ai/dsh-delivery-task-queue'
 import GitLocalRepositoryWorkspace from '@deepseek-ai/dsh-repo-workspace-git-local'
@@ -121,31 +127,31 @@ describe('Personal Delivery bundle composition', () => {
 
       const title = 'Compose Personal Delivery'
       const body = 'Keep one restart-stable Contract revision.'
-      const revision = await first.delivery.adoptContractRevision({
+      const { case: createdCase, revision } = await first.delivery.createCase({
         idempotencyKey: 'personal-delivery-loader-restart',
-        source: {
+        repositoryId: RepositoryId('workspace'),
+        origin: {
+          kind: 'github-import',
           repository: { owner: 'changanhua', name: 'deepseek-harness' },
           issueNumber: 1,
-          canonicalUrl: 'https://github.com/changanhua/deepseek-harness/issues/1',
-          updatedAt: '2026-08-30T00:00:00.000Z',
-          title,
-          body,
-          contentDigest: sourceRefContentDigest({ title, body }),
+          contentDigest: githubIssueContentDigest({ title, body }),
         },
+        title,
         revision: {
-          previousRevisionId: null,
-          repositoryId: 'workspace',
           outcome: 'Prove the final bundle composition.',
           context: 'The Loader owns the complete Personal Delivery chain.',
           allowedScope: ['The Personal Delivery bundle.'],
           forbiddenScope: ['Unrelated packages.'],
-          acceptanceClauses: [{ id: 'bundle-composes', text: 'The complete chain boots.' }],
+          acceptanceClauses: [{ id: AcceptanceClauseId('bundle-composes'), text: 'The complete chain boots.' }],
           openDecisions: [],
-          baseSelectionRule: { kind: 'commit', commit: '8d25c4ccd4ce5578a699b97b654cd6b46f733f63' },
+          baseSelectionRule: {
+            kind: 'commit',
+            commit: GitCommitId('8d25c4ccd4ce5578a699b97b654cd6b46f733f63'),
+          },
           verificationSource: {
             kind: 'contract-field',
             checks: [{
-              id: 'bundle-smoke',
+              id: VerificationCheckId('bundle-smoke'),
               name: 'Bundle smoke',
               argv: [process.execPath, '--version'],
               cwd: '.',
@@ -156,12 +162,14 @@ describe('Personal Delivery bundle composition', () => {
           },
           referenceLinks: [],
         },
-      } as never)
+      })
+      expect(createdCase.headRevisionId).toBe(revision.id)
       await first.fiber.dispose()
       first = undefined
 
       reopened = await boot()
       expect(reopened.delivery.getContractRevision(revision.id)).toEqual(revision)
+      expect(reopened.delivery.getCase(createdCase.id)).toEqual(createdCase)
     } finally {
       await first?.fiber.dispose()
       await reopened?.fiber.dispose()
