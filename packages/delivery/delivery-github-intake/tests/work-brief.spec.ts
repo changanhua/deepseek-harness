@@ -7,10 +7,6 @@ import {
   parseGitHubIssueWorkBrief,
   workBriefContractRevisionDraft,
 } from '../src/index.ts'
-import {
-  ContractRevisionId,
-  RepositoryId,
-} from '@deepseek-ai/dsh-delivery-protocol'
 import { describe, expect, it } from 'vitest'
 
 const fixtureRoot = join(import.meta.dirname, '..', 'fixtures')
@@ -36,14 +32,8 @@ describe('GitHub Issue Work Brief contract', () => {
       baseSelectionRule: { kind: 'ref-head', ref: 'refs/heads/main' },
       verificationSource: { kind: 'contract-field' },
     })
-    const draft = workBriefContractRevisionDraft(
-      brief,
-      RepositoryId('easy-reader'),
-      ContractRevisionId('contract-revision-prior'),
-    )
+    const draft = workBriefContractRevisionDraft(brief)
     expect(draft).toEqual({
-      previousRevisionId: 'contract-revision-prior',
-      repositoryId: 'easy-reader',
       outcome: brief.outcome,
       context: brief.context,
       allowedScope: brief.allowedScope,

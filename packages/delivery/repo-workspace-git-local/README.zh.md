@@ -50,7 +50,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部 — 点击展开</summary>
 
-提供方会先对照 Git 的物理 toplevel 检查每个配置路径，再铸造 revision proof。Blob 读取会解析 `commit:path`、验证 object type 与 size，然后收集原始 piped bytes。Attempt id 会变为 SHA-256 目录名；crash-durable ownership marker 在提供方重建后仍绑定 purpose、repository、base 与 target。POSIX 发布会同步 marker 与受影响目录，Windows 则使用 write-through namespace move。清理会在变更前重新证明 root、owner directory、checkout identity 与精确的普通 marker；它只删除精确的 Git registration，绝不会 prune 无关 worktree。`lstat` 遍历不会跟随 link-shaped descendant；每个 Git 进程都会在操作完成前达到整棵进程树退出。
+提供方会先对照 Git 的物理 toplevel 检查每个配置路径，再铸造 revision proof。Blob 读取会解析 `commit:path`、验证 object type 与 size，然后收集原始 piped bytes。Attempt id 会变为 SHA-256 目录名；crash-durable ownership marker 在提供方重建后仍绑定 purpose、repository、base 与 target。POSIX 发布会同步 marker 与受影响目录，Windows 则使用 write-through namespace move，并向每次 Git 调用提供 `core.longpaths=true`。worktree 创建失败会报告经过空白归一化且最多 512 个字符的 Git 诊断。清理会在变更前重新证明 root、owner directory、checkout identity 与精确的普通 marker；它只删除精确的 Git registration，绝不会 prune 无关 worktree。`lstat` 遍历不会跟随 link-shaped descendant；每个 Git 进程都会在操作完成前达到整棵进程树退出。
 
 </details>
 

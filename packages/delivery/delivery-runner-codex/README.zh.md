@@ -49,7 +49,7 @@ const claim = await run.done
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-运行器会在发布声明前校验 Contract、Packet、已解析规范、租约与证据身份。它通过 `openWorkspace(signal)` 打开 worktree，只把 `lease.cwd` 交给不依赖 Parent 的 app-server 传输层，并在解析模型 envelope 或要求租约创建检查点前 dispose（资源释放）完整子进程树。`completed` envelope 必须产生干净且从基准派生的检查点，并在移除租约前发布有界模型输出证据与检查点元数据证据。`blocked`、`needs-decision` 和 `needs-scope-change` 声明不会虚构检查点事实，并会保留租约。`DeliveryCodexRunnerError` 区分 `invalid-request`、`startup`、`product`、`canceled`、`completion`、`ownership-lost` 与 `cleanup`；未发布的启动回滚如果无法证明进程树完全停稳，就会以 `cleanup` 失败并保留租约，而每次清理失败都会在 `AggregateError` 的 `cause` 中保留较早的失败。
+运行器会在发布声明前校验 Contract、Packet、已解析规范、租约与证据身份。它通过 `openWorkspace(signal)` 打开 worktree，只把 `lease.cwd` 交给不依赖 Parent 的 app-server 传输层，并在解析模型 envelope 或要求租约创建检查点前 dispose（资源释放）完整子进程树。在 Windows 上，显式 Codex 子进程环境会为 Attempt worktree 开启 Git 长路径处理。`completed` envelope 必须产生干净且从基准派生的检查点，并在移除租约前发布有界模型输出证据与检查点元数据证据。如果 envelope 解析失败，运行器会先发布已保留的模型输出，再报告完成失败，并在诊断中包含其 Evidence id。`blocked`、`needs-decision` 和 `needs-scope-change` 声明不会虚构检查点事实，并会保留租约。`DeliveryCodexRunnerError` 区分 `invalid-request`、`startup`、`product`、`canceled`、`completion`、`ownership-lost` 与 `cleanup`；未发布的启动回滚如果无法证明进程树完全停稳，就会以 `cleanup` 失败并保留租约，而每次清理失败都会在 `AggregateError` 的 `cause` 中保留较早的失败。
 
 -----
 

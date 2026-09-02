@@ -338,6 +338,8 @@
       "@deepseek-ai/dsh-delivery-evidence-local/invariant": ["./packages/delivery/delivery-evidence-local/src/invariant.ts"],
       "@deepseek-ai/dsh-delivery-github-intake": ["./packages/delivery/delivery-github-intake/src"],
       "@deepseek-ai/dsh-delivery-github-intake/invariant": ["./packages/delivery/delivery-github-intake/src/invariant.ts"],
+      "@deepseek-ai/dsh-delivery-github-publisher": ["./packages/delivery/delivery-github-publisher/src"],
+      "@deepseek-ai/dsh-delivery-github-publisher/invariant": ["./packages/delivery/delivery-github-publisher/src/invariant.ts"],
       "@deepseek-ai/dsh-delivery-local": ["./packages/delivery/delivery-local/src"],
       "@deepseek-ai/dsh-delivery-local/invariant": ["./packages/delivery/delivery-local/src/invariant.ts"],
       "@deepseek-ai/dsh-delivery-protocol": ["./packages/delivery/delivery-protocol/src"],

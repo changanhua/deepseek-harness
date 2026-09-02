@@ -45,6 +45,7 @@ import {
   evidenceRefSchema,
   gitHubIssueRefSchema,
   issuePublicationSchema,
+  issuePublicationIdForRevision,
   nonStartedPublicationFailureSchema,
   parseVerificationPlanDocument,
   requirementDecisionSchema,
@@ -416,7 +417,7 @@ export class FakeDelivery extends Delivery {
     const at = this.now()
     const publication: IssuePublication = issuePublicationSchema.parse({
       schemaVersion: DELIVERY_SCHEMA_VERSION,
-      id: IssuePublicationId(this.nextId('issue-publication')),
+      id: issuePublicationIdForRevision(kase.id, revision.id),
       caseId: kase.id,
       revisionId: revision.id,
       repository: clone(request.repository),

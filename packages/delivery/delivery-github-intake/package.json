@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-delivery-github-intake",
-  "description": "GitHub Issue snapshot intake Consumer for Personal Delivery contracts",
+  "description": "GitHub Issue snapshot intake Consumer for Personal Delivery Cases",
   "version": "0.1.2-alpha.1",
   "publishConfig": {
     "access": "public"

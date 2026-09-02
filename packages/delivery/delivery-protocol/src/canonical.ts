@@ -1,8 +1,13 @@
 /** Canonical JSON and SHA-256 identities for immutable Delivery records. */
 
 import { createHash } from 'node:crypto'
-import { Sha256Digest } from './brand.ts'
-import type { Sha256Digest as Sha256DigestType } from './brand.ts'
+import { IssuePublicationId, Sha256Digest } from './brand.ts'
+import type {
+  ContractRevisionId,
+  DeliveryCaseId,
+  IssuePublicationId as IssuePublicationIdType,
+  Sha256Digest as Sha256DigestType,
+} from './brand.ts'
 import type {
   EvidenceRef,
   VerificationCheck,
@@ -38,6 +43,22 @@ export function canonicalDigest(value: unknown): Sha256DigestType {
  */
 export function githubIssueContentDigest(source: { readonly title: string; readonly body: string }): Sha256DigestType {
   return canonicalDigest({ body: source.body, title: source.title })
+}
+
+/**
+ * Derive the one durable Issue-publication identity owned by a Case revision.
+ * Both Delivery Providers and the Host publisher use this identity so the
+ * publisher can render the exact persisted id before the prepare transition.
+ * @param caseId - Owning Delivery Case identity.
+ * @param revisionId - Exact immutable revision being published.
+ * @returns stable publication identity for that Case revision.
+ */
+export function issuePublicationIdForRevision(
+  caseId: DeliveryCaseId,
+  revisionId: ContractRevisionId,
+): IssuePublicationIdType {
+  const digest = canonicalDigest({ caseId, revisionId })
+  return IssuePublicationId(`issue-publication-${digest.slice('sha256:'.length)}`)
 }
 
 /**

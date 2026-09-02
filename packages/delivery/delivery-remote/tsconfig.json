@@ -15,6 +15,9 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../credentials/credentials"
+    },
+    {
       "path": "../delivery-protocol"
     },
     {
@@ -28,6 +31,9 @@
     },
     {
       "path": "../delivery-github-intake"
+    },
+    {
+      "path": "../delivery-github-publisher"
     },
     {
       "path": "../delivery-task-queue"

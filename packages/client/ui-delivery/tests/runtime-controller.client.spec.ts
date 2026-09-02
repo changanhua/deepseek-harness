@@ -8,7 +8,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { DeliveryRuntimeRemoteFace } from '../src/client/runtime-controller.ts'
 import { createDeliveryRuntimeController } from '../src/client/runtime-controller.ts'
 
-const EMPTY: DeliverySnapshotView = { contractsWithoutPacket: [], cards: [] }
+const EMPTY: DeliverySnapshotView = { cases: [], contractsWithoutPacket: [], cards: [], publications: [] }
 const EVIDENCE: DeliveryEvidenceView = {
   id: 'evidence-1' as never,
   kind: 'verification-output',
@@ -29,6 +29,11 @@ const ok = <T>(value: T) => Promise.resolve({ ok: true as const, value })
 function remote(overrides: Partial<DeliveryRuntimeRemoteFace> = {}): DeliveryRuntimeRemoteFace {
   return {
     snapshot: vi.fn(() => ok(EMPTY)),
+    createCase: vi.fn(() => ok({})),
+    reviseCase: vi.fn(() => ok({})),
+    recordRequirementDecision: vi.fn(() => ok({})),
+    publishIssue: vi.fn(() => ok({})),
+    resolvePublication: vi.fn(() => ok({})),
     importIssue: vi.fn(() => ok({})),
     createPacket: vi.fn(() => ok({})),
     startChange: vi.fn(() => ok({})),
@@ -90,7 +95,7 @@ describe('Delivery Runtime controller', () => {
     controller.load()
     controller.load()
     await vi.waitFor(() => { expect(controller.source.getSnapshot().status).toBe('ready') })
-    first({ ok: true, value: { contractsWithoutPacket: [], cards: [] } })
+    first({ ok: true, value: EMPTY })
     await Promise.resolve()
     expect(controller.source.getSnapshot().status).toBe('ready')
 
@@ -166,6 +171,11 @@ describe('Delivery Runtime controller', () => {
 
   it('forwards every explicit operation and stores only the selected evidence response', async () => {
     const snapshot = vi.fn(() => ok(EMPTY))
+    const createCase = vi.fn(() => ok({}))
+    const reviseCase = vi.fn(() => ok({}))
+    const recordRequirementDecision = vi.fn(() => ok({}))
+    const publishIssue = vi.fn(() => ok({}))
+    const resolvePublication = vi.fn(() => ok({}))
     const importIssue = vi.fn(() => ok({}))
     const createPacket = vi.fn(() => ok({}))
     const startChange = vi.fn(() => ok({}))
@@ -173,11 +183,23 @@ describe('Delivery Runtime controller', () => {
     const readEvidence = vi.fn(() => ok(EVIDENCE))
     const recordDecision = vi.fn(() => ok({}))
     const subject = remote({
-      snapshot, importIssue, createPacket, startChange, startVerification, readEvidence, recordDecision,
+      snapshot, createCase, reviseCase, recordRequirementDecision, publishIssue, resolvePublication,
+      importIssue, createPacket, startChange, startVerification, readEvidence, recordDecision,
     })
     const controller = createDeliveryRuntimeController(subject)
+    const revision = {
+      outcome: 'bounded', context: '', allowedScope: ['src'], forbiddenScope: [],
+      acceptanceClauses: [{ id: 'clause-1' as never, text: 'passes' }], openDecisions: [],
+      baseSelectionRule: { kind: 'ref-head' as const, ref: 'refs/heads/main' },
+      verificationSource: { kind: 'contract-field' as const, checks: [] }, referenceLinks: [],
+    }
     const cases = [
-      [() => controller.importIssue({ issueUrl: 'https://github.com/o/r/issues/1', repositoryId: 'repo-1' }), importIssue],
+      [() => controller.createCase({ title: 'Case', revision }), createCase],
+      [() => controller.reviseCase({ caseId: 'case-1', expectedHeadRevisionId: 'revision-1', title: 'Case', revision }), reviseCase],
+      [() => controller.recordRequirementDecision({ caseId: 'case-1', revisionId: 'revision-1', decision: 'approved', reason: 'ready' }), recordRequirementDecision],
+      [() => controller.publishIssue({ caseId: 'case-1', revisionId: 'revision-1' }), publishIssue],
+      [() => controller.resolvePublication({ publicationId: 'publication-1', resolution: 'confirm-published', issueNumber: 1 }), resolvePublication],
+      [() => controller.importIssue({ issueUrl: 'https://github.com/o/r/issues/1' }), importIssue],
       [() => controller.createPacket({ contractRevisionId: 'contract-1', packet: {
         objective: 'bounded', allowedPaths: [], forbiddenPaths: [{ kind: 'subtree', path: 'src' as never }],
         acceptanceClauseIds: ['clause-1' as never], stopConditions: [], executorPreference: { mode: 'any' },
@@ -312,7 +334,7 @@ describe('Delivery Runtime controller', () => {
       }),
     })
     const controller = createDeliveryRuntimeController(subject)
-    const first = controller.importIssue({ issueUrl: 'https://github.com/o/r/issues/1', repositoryId: 'repo-1' })
+    const first = controller.importIssue({ issueUrl: 'https://github.com/o/r/issues/1' })
     await expect(controller.startChange({ packetId: 'packet-1', executorId: 'codex' })).resolves.toBe(false)
     expect(controller.source.getSnapshot().actionError).toBe('Another Delivery operation is still running')
     settle({ ok: true, value: {} })

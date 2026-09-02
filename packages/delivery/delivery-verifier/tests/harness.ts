@@ -18,15 +18,14 @@ import {
   QueueWorkIdRef,
   RepositoryId,
   RepositoryRelativePath,
-  SourceRefId,
   VerificationCheckId,
   WorkPacketId,
   completionClaimSchema,
   contractRevisionSchema,
   evidenceBytesDigest,
   evidenceRefSchema,
+  githubIssueContentDigest,
   resolvedCodeVerifySchema,
-  sourceRefContentDigest,
   verificationPlanDigest,
   verificationPlanSchema,
   workPacketDigest,
@@ -162,19 +161,6 @@ export async function createVerifierFixture(
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'dsh-delivery-verifier-'))
   const sourceTitle = 'Verify one immutable target'
   const sourceBody = 'Run the trusted fixed verification plan.'
-  const sourceRef = {
-    schemaVersion: DELIVERY_SCHEMA_VERSION,
-    id: SourceRefId('delivery-verifier-source'),
-    provider: 'github' as const,
-    repository: { owner: 'deepseek-ai', name: 'deepseek-harness' },
-    issueNumber: 101,
-    canonicalUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/101',
-    updatedAt: FIXTURE_TIME,
-    title: sourceTitle,
-    body: sourceBody,
-    contentDigest: sourceRefContentDigest({ title: sourceTitle, body: sourceBody }),
-    createdAt: FIXTURE_TIME,
-  }
   const check: VerificationCheck = {
     id: CHECK_ID,
     name: 'Focused verifier check',
@@ -189,7 +175,13 @@ export async function createVerifierFixture(
     schemaVersion: DELIVERY_SCHEMA_VERSION,
     id: CONTRACT_ID,
     previousRevisionId: null,
-    sourceRef,
+    origin: {
+      kind: 'github-import',
+      repository: { owner: 'deepseek-ai', name: 'deepseek-harness' },
+      issueNumber: 101,
+      contentDigest: githubIssueContentDigest({ title: sourceTitle, body: sourceBody }),
+    },
+    title: sourceTitle,
     repositoryId: options.contractRepositoryId ?? REPOSITORY_ID,
     outcome: 'The immutable target passes independent verification.',
     context: 'Delivery verifier behavior fixture.',

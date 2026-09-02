@@ -28,6 +28,9 @@ import type {
   ResolvedCodeChange,
   WorkPacket,
 } from '@deepseek-ai/dsh-delivery-protocol'
+import {
+  RepositoryWorkspaceError,
+} from '@deepseek-ai/dsh-repo-workspace'
 import type { ChangeWorkspaceLease } from '@deepseek-ai/dsh-repo-workspace'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 
@@ -197,6 +200,26 @@ function runnerFailure(
 function asError(value: unknown): Error {
   /* v8 ignore next -- owned async boundaries reject with Error values. */
   return value instanceof Error ? value : new Error(String(value))
+}
+
+function workspaceStartupMessage(cause: unknown): string {
+  const prefix = 'Delivery Codex workspace could not be opened'
+  return cause instanceof RepositoryWorkspaceError && cause.message.trim().length > 0
+    ? `${prefix}: ${cause.message}`
+    : prefix
+}
+
+function codexExecutionEnv(env: Readonly<Record<string, string>>): Record<string, string> {
+  return {
+    ...env,
+    ...process.platform === 'win32'
+      ? {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'core.longpaths',
+        GIT_CONFIG_VALUE_0: 'true',
+      }
+      : {},
+  }
 }
 
 function cancellationFailure(signal: AbortSignal): DeliveryCodexRunnerError {
@@ -494,7 +517,7 @@ async function executeChange(
     ensureActive(signal)
     throw runnerFailure(
       'startup',
-      'Delivery Codex workspace could not be opened',
+      workspaceStartupMessage(cause),
       cause,
     )
   }
@@ -528,7 +551,7 @@ async function executeChange(
         cwd: lease.cwd,
         ...dependencies.model === undefined ? {} : { model: dependencies.model },
         permissionMode: dependencies.permissionMode,
-        env: { ...dependencies.env },
+        env: codexExecutionEnv(dependencies.env),
         disposeGraceMs: dependencies.disposeGraceMs,
         spawn: dependencies.spawn,
       })
@@ -585,7 +608,19 @@ async function executeChange(
       modelOutputText(result.output),
       dependencies.modelOutputBytes,
     )
-    const envelope = parseModelEnvelope(retained)
+    let envelope: ModelCompletionEnvelope
+    try {
+      envelope = parseModelEnvelope(retained)
+    } catch (cause: unknown) {
+      const failure = asRunnerError(cause, signal)
+      const logRef = await saveModelOutput(request, retained, signal)
+      throw runnerFailure(
+        failure.code,
+        `${failure.message}; model output evidence: ${logRef.id}`,
+        failure,
+        failure.stopReason,
+      )
+    }
     if (envelope.disposition !== 'completed') {
       const logRef = await saveModelOutput(request, retained, signal)
       ensureActive(signal)

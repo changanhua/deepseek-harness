@@ -3,6 +3,7 @@ import { vi } from 'vitest'
 import {
   AcceptanceClauseId,
   ContractRevisionId,
+  DELIVERY_SCHEMA_VERSION,
   EvidenceId,
   ExecutorId,
   GitCommitId,
@@ -10,13 +11,12 @@ import {
   QueueWorkIdRef,
   RepositoryId,
   RepositoryRelativePath,
-  SourceRefId,
   VerificationCheckId,
   WorkPacketId,
   contractRevisionSchema,
   evidenceBytesDigest,
   evidenceRefSchema,
-  sourceRefContentDigest,
+  githubIssueContentDigest,
   verificationPlanDigest,
   workPacketDigest,
   workPacketSchema,
@@ -271,25 +271,19 @@ export function requestHarness(
   const sourceTitle = 'Deliver a bounded Codex change'
   const sourceBody = 'Implement only the approved Delivery packet.'
   const contract = contractRevisionSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
     id: CONTRACT_ID,
     previousRevisionId: null,
-    sourceRef: {
-      schemaVersion: 1,
-      id: SourceRefId('source-1'),
-      provider: 'github',
+    origin: {
+      kind: 'github-import',
       repository: { owner: 'deepseek-ai', name: 'deepseek-harness' },
       issueNumber: 101,
-      canonicalUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/101',
-      updatedAt: CREATED_AT,
-      title: sourceTitle,
-      body: sourceBody,
-      contentDigest: sourceRefContentDigest({
+      contentDigest: githubIssueContentDigest({
         title: sourceTitle,
         body: sourceBody,
       }),
-      createdAt: CREATED_AT,
     },
+    title: sourceTitle,
     repositoryId: REPOSITORY_ID,
     outcome: 'Ship the bounded Codex runner change.',
     context: 'The runner must preserve Delivery authority boundaries.',
@@ -325,7 +319,7 @@ export function requestHarness(
     ? contract.verificationSource.checks
     : []
   const digestInput: WorkPacketDigestInput = {
-    schemaVersion: 1,
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
     contractRevisionId: CONTRACT_ID,
     repositoryId: REPOSITORY_ID,
     baseCommit: BASE_COMMIT,
@@ -420,7 +414,7 @@ export function requestHarness(
     if (options.saveError !== undefined) throw options.saveError
     evidenceOrdinal += 1
     return evidenceRefSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: DELIVERY_SCHEMA_VERSION,
       id: EvidenceId(`evidence-${String(evidenceOrdinal)}`),
       kind: input.kind,
       mediaType: input.mediaType,

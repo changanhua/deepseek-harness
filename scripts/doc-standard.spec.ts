@@ -57,6 +57,7 @@ const PACKAGE_LIBRARIES: Readonly<Record<string, string>> = {
   'packages/client/web': 'Browser application boot library; exports the app entry and static module table.',
   'packages/code-runtime/code-runtime-python': 'Host-side protocol library for the CPython subprocess runtime.',
   'packages/core/scope': 'Scoped-context primitives; exports functions and types without a plugin entry.',
+  'packages/delivery/delivery-github-publisher': 'Host-only Issue publication library consumed by Delivery Remote.',
   'packages/experimental/webworker-packer': 'Build-time VFS image packer and command library.',
   'packages/experimental/webworker-runtime': 'Browser worker runtime library with explicit host entry points.',
   'packages/hooks/hook-protocol': 'Shared wire-protocol library between the hook bridges.',

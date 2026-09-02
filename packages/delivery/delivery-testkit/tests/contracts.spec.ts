@@ -35,6 +35,7 @@ import {
   dispatchBindingSchema,
   evidenceRefSchema,
   issuePublicationSchema,
+  issuePublicationIdForRevision,
   requirementDecisionSchema,
   resumeCapsuleContentSchema,
   verificationPlanSchema,
@@ -763,6 +764,7 @@ describe('FakeDelivery contract', () => {
     const prepared = await harness.delivery.prepareIssuePublication(
       preparePublicationRequest(created, {}, 'prepare-publication-v2'),
     )
+    expect(prepared.id).toBe(issuePublicationIdForRevision(created.case.id, created.revision.id))
     expect(prepared).toMatchObject({
       phase: 'prepared',
       caseId: created.case.id,
@@ -922,6 +924,9 @@ describe('FakeDelivery contract', () => {
     const contract = created.revision
     if (contract.baseSelectionRule === null) {
       throw new Error('git-plan fixture unexpectedly produced a not-ready Contract')
+    }
+    if (contract.repositoryId === null) {
+      throw new Error('git-plan fixture unexpectedly produced a Contract without a repository')
     }
     if (contract.baseSelectionRule.kind !== 'commit') throw new Error('git-plan fixture requires a commit base')
     harness.repoWorkspace.allowRevision(contract.repositoryId, contract.baseSelectionRule.commit)

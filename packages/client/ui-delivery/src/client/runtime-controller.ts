@@ -4,10 +4,15 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   DeliveryCreatePacketInput,
+  DeliveryCreateCaseInput,
   DeliveryEvidenceView,
   DeliveryImportIssueInput,
+  DeliveryPublishIssueInput,
   DeliveryReadEvidenceInput,
   DeliveryRecordDecisionInput,
+  DeliveryRecordRequirementDecisionInput,
+  DeliveryResolvePublicationInput,
+  DeliveryReviseCaseInput,
   DeliverySnapshotView,
   DeliveryStartChangeInput,
   DeliveryStartVerificationInput,
@@ -17,6 +22,11 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 /** Narrow cancellable Remote read used by the workbench controller. */
 export interface DeliveryRuntimeRemoteFace {
   snapshot(signal?: AbortSignal): Promise<RemoteResult<DeliverySnapshotView>>
+  createCase(input: DeliveryCreateCaseInput, signal?: AbortSignal): Promise<RemoteResult<unknown>>
+  reviseCase(input: DeliveryReviseCaseInput, signal?: AbortSignal): Promise<RemoteResult<unknown>>
+  recordRequirementDecision(input: DeliveryRecordRequirementDecisionInput, signal?: AbortSignal): Promise<RemoteResult<unknown>>
+  publishIssue(input: DeliveryPublishIssueInput, signal?: AbortSignal): Promise<RemoteResult<unknown>>
+  resolvePublication(input: DeliveryResolvePublicationInput, signal?: AbortSignal): Promise<RemoteResult<unknown>>
   importIssue(input: DeliveryImportIssueInput, signal?: AbortSignal): Promise<RemoteResult<unknown>>
   createPacket(input: DeliveryCreatePacketInput, signal?: AbortSignal): Promise<RemoteResult<unknown>>
   startChange(input: DeliveryStartChangeInput, signal?: AbortSignal): Promise<RemoteResult<unknown>>
@@ -27,6 +37,11 @@ export interface DeliveryRuntimeRemoteFace {
 
 /** One explicit operation whose cancellation belongs to the workbench. */
 export type DeliveryPendingOperation =
+  | 'create-case'
+  | 'revise-case'
+  | 'record-requirement-decision'
+  | 'publish-issue'
+  | 'resolve-publication'
   | 'import-issue'
   | 'create-packet'
   | 'start-change'
@@ -61,6 +76,11 @@ export interface DeliveryRuntimeState {
 export interface DeliveryRuntimeController {
   readonly source: HostObservable<DeliveryRuntimeState>
   load(): void
+  createCase(input: DeliveryCreateCaseInput): Promise<boolean>
+  reviseCase(input: DeliveryReviseCaseInput): Promise<boolean>
+  recordRequirementDecision(input: DeliveryRecordRequirementDecisionInput): Promise<boolean>
+  publishIssue(input: DeliveryPublishIssueInput): Promise<boolean>
+  resolvePublication(input: DeliveryResolvePublicationInput): Promise<boolean>
   importIssue(input: DeliveryImportIssueInput): Promise<boolean>
   createPacket(input: DeliveryCreatePacketInput): Promise<boolean>
   startChange(input: DeliveryStartChangeInput): Promise<boolean>
@@ -206,6 +226,16 @@ export function createDeliveryRuntimeController(
     }
   }
 
+  const createCase = (input: DeliveryCreateCaseInput): Promise<boolean> =>
+    operate('create-case', signal => remote.createCase(input, signal))
+  const reviseCase = (input: DeliveryReviseCaseInput): Promise<boolean> =>
+    operate('revise-case', signal => remote.reviseCase(input, signal))
+  const recordRequirementDecision = (input: DeliveryRecordRequirementDecisionInput): Promise<boolean> =>
+    operate('record-requirement-decision', signal => remote.recordRequirementDecision(input, signal))
+  const publishIssue = (input: DeliveryPublishIssueInput): Promise<boolean> =>
+    operate('publish-issue', signal => remote.publishIssue(input, signal))
+  const resolvePublication = (input: DeliveryResolvePublicationInput): Promise<boolean> =>
+    operate('resolve-publication', signal => remote.resolvePublication(input, signal))
   const importIssue = (input: DeliveryImportIssueInput): Promise<boolean> =>
     operate('import-issue', signal => remote.importIssue(input, signal))
   const createPacket = (input: DeliveryCreatePacketInput): Promise<boolean> =>
@@ -270,6 +300,11 @@ export function createDeliveryRuntimeController(
   return {
     source,
     load,
+    createCase,
+    reviseCase,
+    recordRequirementDecision,
+    publishIssue,
+    resolvePublication,
     importIssue,
     createPacket,
     startChange,

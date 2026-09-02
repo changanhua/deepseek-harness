@@ -59,7 +59,7 @@ function submittingChange(packet: WorkPacket): Extract<DispatchBinding, {
 }> {
   const input = { packetId: packet.id }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: DispatchBindingId('real-submitting-change'),
     packetId: packet.id,
     inputDigest: canonicalDigest(input),
@@ -86,7 +86,7 @@ function submittingVerification(
     verificationPlanDigest: packet.verificationPlan.digest,
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: DispatchBindingId('real-submitting-verification'),
     packetId: packet.id,
     inputDigest: canonicalDigest(input),

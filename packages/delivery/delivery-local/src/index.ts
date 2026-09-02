@@ -26,6 +26,7 @@ import {
   evidenceRefSchema,
   gitHubIssueRefSchema,
   issuePublicationSchema,
+  issuePublicationIdForRevision,
   nonStartedPublicationFailureSchema,
   parseVerificationPlanDocument,
   requirementDecisionSchema,
@@ -445,7 +446,7 @@ export class LocalDelivery extends Delivery {
     const at = new Date().toISOString()
     const publication = issuePublicationSchema.parse({
       schemaVersion: DELIVERY_SCHEMA_VERSION,
-      id: IssuePublicationId(`issue-publication-${randomUUID()}`),
+      id: issuePublicationIdForRevision(kase.id, revision.id),
       caseId: kase.id,
       revisionId: revision.id,
       repository: structuredClone(request.repository),

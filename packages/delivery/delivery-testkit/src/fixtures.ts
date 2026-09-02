@@ -46,8 +46,10 @@ import {
   type DeliveryCase,
   type DispatchBinding,
   type EvidenceRef,
+  type GitHubIssueRef,
   type GitHubRepositoryRef,
   type IssuePublication,
+  type PublicationFailure,
   type RequirementDecision,
   type RequirementOrigin,
   type ResumeCapsuleContent,
@@ -91,8 +93,22 @@ export interface GithubImportOriginOverrides {
   readonly contentDigest?: Sha256Digest
 }
 
-/** Overrides that add a default published-Issue number beside the exact publication fields. */
-export type IssuePublicationOverrides = Partial<IssuePublication> & { readonly issueNumber?: number }
+/** Overrides that permit intentionally invalid phase combinations for schema-negative tests. */
+export interface IssuePublicationOverrides {
+  readonly schemaVersion?: IssuePublication['schemaVersion']
+  readonly id?: IssuePublication['id']
+  readonly caseId?: IssuePublication['caseId']
+  readonly revisionId?: IssuePublication['revisionId']
+  readonly repository?: GitHubRepositoryRef
+  readonly renderedDigest?: IssuePublication['renderedDigest']
+  readonly marker?: string
+  readonly createdAt?: string
+  readonly updatedAt?: string
+  readonly phase?: IssuePublication['phase']
+  readonly issue?: GitHubIssueRef | null
+  readonly failure?: PublicationFailure | null
+  readonly issueNumber?: number
+}
 
 const DEFAULT_CHECK: VerificationCheck = {
   id: CHECK_ID,

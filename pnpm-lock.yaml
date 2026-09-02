@@ -1405,6 +1405,9 @@ importers:
       '@deepseek-ai/dsh-delivery-github-intake':
         specifier: workspace:^
         version: link:../../delivery/delivery-github-intake
+      '@deepseek-ai/dsh-delivery-github-publisher':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-github-publisher
       '@deepseek-ai/dsh-delivery-local':
         specifier: workspace:^
         version: link:../../delivery/delivery-local
@@ -5011,6 +5014,27 @@ importers:
         specifier: workspace:^
         version: link:../repo-workspace
 
+  packages/delivery/delivery-github-publisher:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:^
+        version: link:../../credentials/credentials
+      '@deepseek-ai/dsh-delivery':
+        specifier: workspace:^
+        version: link:../delivery
+      '@deepseek-ai/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
+      '@deepseek-ai/dsh-delivery-testkit':
+        specifier: workspace:^
+        version: link:../delivery-testkit
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+
   packages/delivery/delivery-local:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -5063,6 +5087,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:^
+        version: link:../../credentials/credentials
       '@deepseek-ai/dsh-delivery':
         specifier: workspace:^
         version: link:../delivery
@@ -5072,6 +5099,9 @@ importers:
       '@deepseek-ai/dsh-delivery-github-intake':
         specifier: workspace:^
         version: link:../delivery-github-intake
+      '@deepseek-ai/dsh-delivery-github-publisher':
+        specifier: workspace:^
+        version: link:../delivery-github-publisher
       '@deepseek-ai/dsh-delivery-protocol':
         specifier: workspace:^
         version: link:../delivery-protocol

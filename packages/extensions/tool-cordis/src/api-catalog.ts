@@ -772,18 +772,30 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'delivery',
     summary: 'Durable Personal Delivery records and their idempotent write operations.',
-    description: 'Durable Personal Delivery records and their idempotent write operations. Providers allocate ids and timestamps, validate protocol objects at the storage boundary, and serialize writes. The service does not persist Queue lifecycle, executor handles, verification bytes, or UI lanes.',
+    description: 'Durable Personal Delivery records and their idempotent write operations. Providers allocate ids and timestamps, validate protocol objects at the storage boundary, and serialize writes. The service does not persist Queue lifecycle, executor handles, verification bytes, or UI lanes.\n\nAuthority boundaries fixed by the version-2 contract: model-facing callers may create and revise Cases and propose Packets, but only human actors record requirement decisions, resolve uncertain publications, and accept delivery outcomes. Every revision must be ready and explicitly approved before Packet creation or Issue publication.',
     methods: [
       {
-        signature: 'abstract adoptContractRevision(request: AdoptContractRevisionRequest): Promise<ContractRevision>',
-        description: 'Adopt one exact source snapshot as an immutable Contract revision.',
-        parameters: [{ name: 'request', description: 'Source, interpreted revision, and deterministic idempotency key.' }],
-        returns: 'the existing or newly committed revision.',
+        signature: 'abstract createCase(request: CreateDeliveryCaseRequest): Promise<{ case: DeliveryCase; revision: ContractRevision }>',
+        description: 'Atomically create one Delivery Case and its root requirement revision. The root revision carries a `null` `previousRevisionId`, the request\'s origin and title, and the Case\'s repository binding.',
+        parameters: [{ name: 'request', description: 'Repository, origin, title, requirement content, and deterministic idempotency key.' }],
+        returns: 'the existing pair for a repeated identical request, or the newly committed pair.',
+      },
+      {
+        signature: 'abstract reviseCase(request: ReviseDeliveryCaseRequest): Promise<{ case: DeliveryCase; revision: ContractRevision }>',
+        description: 'Create one child revision and move the Case head atomically under an expected-head compare-and-set. The write fails with `conflict` when the Case head no longer equals `expectedHeadRevisionId`, so concurrent revisions cannot silently branch one Case. A `github-import` child origin must name the same repository and Issue number as its `github-import` parent; `human` origins carry no lineage constraint.',
+        parameters: [{ name: 'request', description: 'Case, observed head, origin, title, requirement content, and idempotency key.' }],
+        returns: 'the Case with its advanced head plus the newly committed child revision.',
+      },
+      {
+        signature: 'abstract recordRequirementDecision(request: RecordRequirementDecisionRequest): Promise<RequirementDecision>',
+        description: 'Record the one human requirement decision for an exact Case revision. Repeating identical decision content returns the existing record; different content under the same revision fails closed with `idempotency-conflict`.',
+        parameters: [{ name: 'request', description: 'Case and revision references, human decision fields, and idempotency key.' }],
+        returns: 'the existing or newly committed decision.',
       },
       {
         signature: 'abstract createWorkPacket( request: CreateWorkPacketRequest, resolveVerificationSource?: VerificationSourceResolver, ): Promise<WorkPacket>',
-        description: 'Create one immutable Packet after the repository provider resolved the Contract base.',
-        parameters: [{ name: 'request', description: 'Ready Contract id, verified base, caller-selected Packet fields, and idempotency key.' }, { name: 'resolveVerificationSource', description: 'Host-only Git blob resolver used when the Contract names a blob source.' }],
+        description: 'Create one immutable Packet after the repository provider resolved the Contract base. The revision must belong to a Case, be ready, and carry an `approved` requirement decision; missing approval fails with `approval-required`.',
+        parameters: [{ name: 'request', description: 'Approved ready revision id, verified base, caller-selected Packet fields, and idempotency key.' }, { name: 'resolveVerificationSource', description: 'Host-only Git blob resolver used when the Contract names a blob source.' }],
         returns: 'the existing or newly committed Packet.',
       },
       {
@@ -803,6 +815,54 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Record a human decision after resolving Queue facts for two bound dispatches.',
         parameters: [{ name: 'request', description: 'Human fields and Delivery-owned change/verification binding ids.' }, { name: 'resolveCandidate', description: 'Host-only resolver invoked with the two validated Queue Work ids.' }, { name: 'resolveEvidence', description: 'Host-only resolve-and-integrity-read capability invoked for exact evidence ids.' }],
         returns: 'the existing or newly committed decision.',
+      },
+      {
+        signature: 'abstract prepareIssuePublication(request: PrepareIssuePublicationRequest): Promise<IssuePublication>',
+        description: 'Commit the first durable publication intent for an approved ready Case revision. A revision owns at most one publication: repeated preparation returns the existing record, a `failed` record is reset to `prepared` under its existing id for a new attempt, and an `unknown` record refuses preparation until human resolution.',
+        parameters: [{ name: 'request', description: 'Case and revision references, target repository, rendered digest, marker, and idempotency key.' }],
+        returns: 'the existing, reset, or newly committed publication in phase `prepared`.',
+      },
+      {
+        signature: 'abstract markIssuePublicationStarted(publicationId: IssuePublicationId): Promise<IssuePublication & { phase: \'publishing\' }>',
+        description: 'Move a `prepared` publication to `publishing` before any external request crosses the side-effect boundary. Any other current phase fails closed with `invalid-transition`, so a repeated start can never mask a concurrent attempt.',
+        parameters: [{ name: 'publicationId', description: 'Durable publication identity.' }],
+        returns: 'the publication in phase `publishing`.',
+      },
+      {
+        signature: 'abstract completeIssuePublication(request: CompleteIssuePublicationRequest): Promise<IssuePublication & { phase: \'published\' }>',
+        description: 'Commit the verified GitHub Issue onto a `publishing` record. The transition fails closed unless the record is still `publishing`.',
+        parameters: [{ name: 'request', description: 'Publication id, expected `publishing` phase, and the validated exact Issue reference.' }],
+        returns: 'the publication in phase `published` with its Issue binding.',
+      },
+      {
+        signature: 'abstract failIssuePublication(request: FailIssuePublicationRequest): Promise<IssuePublication & { phase: \'failed\' | \'unknown\' }>',
+        description: 'Record a truthful failure for a `publishing` record. A `not-started` side effect lands in phase `failed`; an `unknown` side effect lands in phase `unknown` for human resolution and is never retried automatically.',
+        parameters: [{ name: 'request', description: 'Publication id, expected `publishing` phase, and the classified failure.' }],
+        returns: 'the publication in phase `failed` or `unknown`.',
+      },
+      {
+        signature: 'abstract resolveIssuePublication(request: ResolveIssuePublicationRequest): Promise<IssuePublication>',
+        description: 'Apply a human-authorized resolution to an unresolved publication. `confirm-published` requires the verified exact Issue reference and moves `unknown` or stalled `publishing` records to `published`; `confirm-not-created` requires an explicit verification basis and returns such records to `prepared`. Any other current phase fails closed.',
+        parameters: [{ name: 'request', description: 'Resolution kind, publication id, and resolution evidence.' }],
+        returns: 'the resolved publication.',
+      },
+      {
+        signature: 'abstract getCase(id: DeliveryCaseId): DeliveryCase | undefined',
+        description: 'Read one durable Delivery Case.',
+        parameters: [{ name: 'id', description: 'Durable Case identity.' }],
+        returns: 'the Case or `undefined` when absent.',
+      },
+      {
+        signature: 'abstract getRequirementDecision(id: RequirementDecisionId): RequirementDecision | undefined',
+        description: 'Read one human requirement decision.',
+        parameters: [{ name: 'id', description: 'Durable decision identity.' }],
+        returns: 'the decision or `undefined` when absent.',
+      },
+      {
+        signature: 'abstract getIssuePublication(id: IssuePublicationId): IssuePublication | undefined',
+        description: 'Read one Issue publication.',
+        parameters: [{ name: 'id', description: 'Durable publication identity.' }],
+        returns: 'the current publication projection or `undefined` when absent.',
       },
       {
         signature: 'abstract getContractRevision(id: ContractRevisionId): ContractRevision | undefined',
@@ -3661,10 +3721,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AdmissionContext {\n    readonly signal: AbortSignal;\n}',
   },
   {
-    name: 'AdoptContractRevisionRequest',
-    declaration: 'export interface AdoptContractRevisionRequest {\n    readonly idempotencyKey: string;\n    readonly source: SourceRefDraft;\n    readonly revision: ContractRevisionDraft;\n}',
-  },
-  {
     name: 'Agent',
     declaration: 'export interface Agent {\n    readonly id: SessionId;\n}',
   },
@@ -4017,6 +4073,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CompactionTrigger = \'pressure\' | \'context-overflow\';',
   },
   {
+    name: 'CompleteIssuePublicationRequest',
+    declaration: 'export interface CompleteIssuePublicationRequest {\n    readonly publicationId: IssuePublicationId;\n    readonly expectedPhase: \'publishing\';\n    readonly issue: GitHubIssueRef;\n}',
+  },
+  {
     name: 'CompletionClaim',
     declaration: 'export type CompletionClaim = CompletionClaimCommon & ({\n    readonly disposition: \'completed\';\n    readonly checkpointCommit: GitCommitId;\n} | {\n    readonly disposition: \'blocked\';\n    readonly blocker: string;\n    readonly nextSmallestAction: string;\n} | {\n    readonly disposition: \'needs-decision\';\n    readonly question: string;\n} | {\n    readonly disposition: \'needs-scope-change\';\n    readonly proposedScopeDelta: string;\n    readonly reason: string;\n});',
   },
@@ -4078,11 +4138,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContractRevision',
-    declaration: 'export interface ContractRevision {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: ContractRevisionId;\n    readonly previousRevisionId: ContractRevisionId | null;\n    readonly sourceRef: SourceRef;\n    readonly repositoryId: RepositoryId | null;\n    readonly outcome: string | null;\n    readonly context: string;\n    readonly allowedScope: readonly string[];\n    readonly forbiddenScope: readonly string[];\n    readonly acceptanceClauses: readonly AcceptanceClause[];\n    readonly openDecisions: readonly OpenDecision[];\n    readonly baseSelectionRule: BaseSelectionRule | null;\n    readonly verificationSource: ContractVerificationSource | null;\n    readonly referenceLinks: readonly ReferenceLink[];\n    readonly createdAt: string;\n}',
+    declaration: 'export interface ContractRevision {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: ContractRevisionId;\n    readonly previousRevisionId: ContractRevisionId | null;\n    readonly origin: RequirementOrigin;\n    readonly title: string;\n    readonly repositoryId: RepositoryId | null;\n    readonly outcome: string | null;\n    readonly context: string;\n    readonly allowedScope: readonly string[];\n    readonly forbiddenScope: readonly string[];\n    readonly acceptanceClauses: readonly AcceptanceClause[];\n    readonly openDecisions: readonly OpenDecision[];\n    readonly baseSelectionRule: BaseSelectionRule | null;\n    readonly verificationSource: ContractVerificationSource | null;\n    readonly referenceLinks: readonly ReferenceLink[];\n    readonly createdAt: string;\n}',
   },
   {
     name: 'ContractRevisionDraft',
-    declaration: 'export interface ContractRevisionDraft {\n    readonly previousRevisionId: ContractRevisionId | null;\n    readonly repositoryId: RepositoryId | null;\n    readonly outcome: string | null;\n    readonly context: string;\n    readonly allowedScope: readonly string[];\n    readonly forbiddenScope: readonly string[];\n    readonly acceptanceClauses: readonly {\n        readonly id: AcceptanceClauseId;\n        readonly text: string;\n    }[];\n    readonly openDecisions: ContractRevision[\'openDecisions\'];\n    readonly baseSelectionRule: ContractRevision[\'baseSelectionRule\'];\n    readonly verificationSource: ContractRevision[\'verificationSource\'];\n    readonly referenceLinks: ContractRevision[\'referenceLinks\'];\n}',
+    declaration: 'export interface ContractRevisionDraft {\n    readonly outcome: string | null;\n    readonly context: string;\n    readonly allowedScope: readonly string[];\n    readonly forbiddenScope: readonly string[];\n    readonly acceptanceClauses: readonly {\n        readonly id: AcceptanceClauseId;\n        readonly text: string;\n    }[];\n    readonly openDecisions: ContractRevision[\'openDecisions\'];\n    readonly baseSelectionRule: ContractRevision[\'baseSelectionRule\'];\n    readonly verificationSource: ContractRevision[\'verificationSource\'];\n    readonly referenceLinks: ContractRevision[\'referenceLinks\'];\n}',
   },
   {
     name: 'ContractRevisionId',
@@ -4169,6 +4229,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CreateCheckpointRequest {\n    readonly message: string;\n    readonly signal?: AbortSignal;\n}',
   },
   {
+    name: 'CreateDeliveryCaseRequest',
+    declaration: 'export interface CreateDeliveryCaseRequest {\n    readonly idempotencyKey: string;\n    readonly repositoryId: RepositoryId;\n    readonly origin: RequirementOrigin;\n    readonly title: string;\n    readonly revision: ContractRevisionDraft;\n}',
+  },
+  {
     name: 'CreateGoalRequest',
     declaration: 'export interface CreateGoalRequest {\n    readonly objective: string;\n    readonly maxGoalRounds?: number;\n}',
   },
@@ -4229,12 +4293,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type DeepSeekLlmApiJson = null | boolean | number | string | DeepSeekLlmApiJson[] | {\n    [key: string]: DeepSeekLlmApiJson;\n};',
   },
   {
+    name: 'DeliveryCase',
+    declaration: 'export interface DeliveryCase {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: DeliveryCaseId;\n    readonly repositoryId: RepositoryId;\n    readonly headRevisionId: ContractRevisionId;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+  },
+  {
+    name: 'DeliveryCaseId',
+    declaration: 'export type DeliveryCaseId = Branded<\'DeliveryCaseId\'>;',
+  },
+  {
     name: 'DeliverySchemaVersion',
-    declaration: 'export type DeliverySchemaVersion = 1;',
+    declaration: 'export type DeliverySchemaVersion = 2;',
   },
   {
     name: 'DeliverySnapshot',
-    declaration: 'export interface DeliverySnapshot {\n    readonly contractRevisions: readonly ContractRevision[];\n    readonly workPackets: readonly WorkPacket[];\n    readonly dispatchBindings: readonly DispatchBinding[];\n    readonly acceptanceDecisions: readonly AcceptanceDecision[];\n}',
+    declaration: 'export interface DeliverySnapshot {\n    readonly contractRevisions: readonly ContractRevision[];\n    readonly workPackets: readonly WorkPacket[];\n    readonly dispatchBindings: readonly DispatchBinding[];\n    readonly acceptanceDecisions: readonly AcceptanceDecision[];\n    readonly deliveryCases: readonly DeliveryCase[];\n    readonly requirementDecisions: readonly RequirementDecision[];\n    readonly issuePublications: readonly IssuePublication[];\n}',
   },
   {
     name: 'DiffCallView',
@@ -4397,6 +4469,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ExecutorPreference = {\n    readonly mode: \'any\';\n} | {\n    readonly mode: \'preferred\' | \'required\';\n    readonly executorId: ExecutorId;\n};',
   },
   {
+    name: 'FailIssuePublicationRequest',
+    declaration: 'export interface FailIssuePublicationRequest {\n    readonly publicationId: IssuePublicationId;\n    readonly expectedPhase: \'publishing\';\n    readonly failure: PublicationFailure;\n}',
+  },
+  {
     name: 'FileDiff',
     declaration: 'export interface FileDiff {\n    path: string;\n    oldText: string | null;\n    newText: string;\n}',
   },
@@ -4483,6 +4559,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GitCommitId',
     declaration: 'export type GitCommitId = Branded<\'DeliveryGitCommitId\'>;',
+  },
+  {
+    name: 'GitHubIssueRef',
+    declaration: 'export interface GitHubIssueRef {\n    readonly repository: GitHubRepositoryRef;\n    readonly issueNumber: number;\n    readonly url: string;\n}',
   },
   {
     name: 'GitHubRepositoryRef',
@@ -4635,6 +4715,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'InvokeRemoteRequest',
     declaration: 'export interface InvokeRemoteRequest {\n    readonly namespace: string;\n    readonly method: string;\n    readonly args: Readonly<Record<string, unknown>>;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'IssuePublication',
+    declaration: 'export type IssuePublication = {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: IssuePublicationId;\n    readonly caseId: DeliveryCaseId;\n    readonly revisionId: ContractRevisionId;\n    readonly repository: GitHubRepositoryRef;\n    readonly renderedDigest: Sha256Digest;\n    readonly marker: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n} & ({\n    readonly phase: \'prepared\';\n    readonly issue: null;\n    readonly failure: null;\n} | {\n    readonly phase: \'publishing\';\n    readonly issue: null;\n    readonly failure: null;\n} | {\n    readonly phase: \'published\';\n    readonly issue: GitHubIssueRef;\n    readonly failure: null;\n} | {\n    readonly phase: \'failed\';\n    readonly issue: null;\n    readonly failure: PublicationFailure & {\n        readonly sideEffect: \'not-started\';\n    };\n} | {\n    readonly phase: \'unknown\';\n    readonly issue: null;\n    readonly failure: PublicationFailure & {\n        readonly sideEffect: \'unknown\';\n    };\n});',
+  },
+  {
+    name: 'IssuePublicationId',
+    declaration: 'export type IssuePublicationId = Branded<\'DeliveryIssuePublicationId\'>;',
   },
   {
     name: 'JobDoneListener',
@@ -5025,6 +5113,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type PreparedWork<K extends WorkKind> = WorkKindMap[K] extends WorkKindDefinition<unknown, unknown, infer T, unknown> ? T : never;',
   },
   {
+    name: 'PrepareIssuePublicationRequest',
+    declaration: 'export interface PrepareIssuePublicationRequest {\n    readonly idempotencyKey: string;\n    readonly caseId: DeliveryCaseId;\n    readonly revisionId: ContractRevisionId;\n    readonly repository: GitHubRepositoryRef;\n    readonly renderedDigest: Sha256Digest;\n    readonly marker: string;\n}',
+  },
+  {
     name: 'PrepareSessionOptions',
     declaration: 'export type PrepareSessionOptions = (CreateSessionOptions & {\n    readonly seedSource?: undefined;\n}) | RestoredSessionOptions;',
   },
@@ -5105,6 +5197,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PtcDispatchLog {\n    readonly exec: ToolExecution;\n    readonly agent?: Agent;\n    readonly subCallId: ToolCallId;\n    readonly name: string;\n    readonly isError: boolean;\n    readonly content: ContentBlock[];\n}',
   },
   {
+    name: 'PublicationFailure',
+    declaration: 'export interface PublicationFailure {\n    readonly sideEffect: \'not-started\' | \'unknown\';\n    readonly category: PublicationFailureCategory;\n    readonly detail: string;\n    readonly occurredAt: string;\n}',
+  },
+  {
+    name: 'PublicationFailureCategory',
+    declaration: 'export type PublicationFailureCategory = \'unmapped-repository\' | \'missing-credential\' | \'unapproved-revision\' | \'not-ready\' | \'rejected\' | \'invalid-response\' | \'transport\' | \'canceled\';',
+  },
+  {
     name: 'QueueAttemptIdRef',
     declaration: 'export type QueueAttemptIdRef = Branded<\'DeliveryQueueAttemptIdRef\'>;',
   },
@@ -5135,6 +5235,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RecordAcceptanceDecisionRequest',
     declaration: 'export interface RecordAcceptanceDecisionRequest {\n    readonly idempotencyKey: string;\n    readonly packetId: WorkPacketId;\n    readonly changeBindingId: DispatchBindingId;\n    readonly verificationBindingId: DispatchBindingId;\n    readonly decision: AcceptanceDecision[\'decision\'];\n    readonly reason: string;\n    readonly actorId: string;\n    readonly decisionNonce: string;\n}',
+  },
+  {
+    name: 'RecordRequirementDecisionRequest',
+    declaration: 'export interface RecordRequirementDecisionRequest {\n    readonly idempotencyKey: string;\n    readonly caseId: DeliveryCaseId;\n    readonly revisionId: ContractRevisionId;\n    readonly decision: RequirementDecision[\'decision\'];\n    readonly reason: string;\n    readonly actorId: string;\n    readonly decisionNonce: string;\n}',
   },
   {
     name: 'RedactedSecret',
@@ -5197,6 +5301,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type RequestRunOutcome = \'approved\' | \'completed\' | \'rejected\' | \'cancelled\' | \'failed\';',
   },
   {
+    name: 'RequirementDecision',
+    declaration: 'export interface RequirementDecision {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: RequirementDecisionId;\n    readonly caseId: DeliveryCaseId;\n    readonly revisionId: ContractRevisionId;\n    readonly decision: \'approved\' | \'rejected\' | \'deferred\';\n    readonly reason: string;\n    readonly actor: {\n        readonly kind: \'human\';\n        readonly actorId: string;\n    };\n    readonly decisionNonce: string;\n    readonly decidedAt: string;\n}',
+  },
+  {
+    name: 'RequirementDecisionId',
+    declaration: 'export type RequirementDecisionId = Branded<\'DeliveryRequirementDecisionId\'>;',
+  },
+  {
+    name: 'RequirementOrigin',
+    declaration: 'export type RequirementOrigin = {\n    readonly kind: \'human\';\n    readonly actorId: string;\n} | {\n    readonly kind: \'github-import\';\n    readonly repository: GitHubRepositoryRef;\n    readonly issueNumber: number;\n    readonly contentDigest: Sha256Digest;\n};',
+  },
+  {
     name: 'ResolvedAlwaysRetryPolicy',
     declaration: 'export interface ResolvedAlwaysRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'always\';\n}',
   },
@@ -5229,6 +5345,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ResolvedWork<K extends WorkKind> = WorkKindMap[K] extends WorkKindDefinition<unknown, infer T, unknown, unknown> ? T : never;',
   },
   {
+    name: 'ResolveIssuePublicationRequest',
+    declaration: 'export type ResolveIssuePublicationRequest = {\n    readonly resolution: \'confirm-published\';\n    readonly publicationId: IssuePublicationId;\n    readonly issue: GitHubIssueRef;\n    readonly verificationBasis: string;\n} | {\n    readonly resolution: \'confirm-not-created\';\n    readonly publicationId: IssuePublicationId;\n    readonly verificationBasis: string;\n};',
+  },
+  {
     name: 'ResolveRepositoryBaseRequest',
     declaration: 'export interface ResolveRepositoryBaseRequest {\n    readonly repositoryId: RepositoryId;\n    readonly selectionRule: BaseSelectionRule;\n    readonly signal?: AbortSignal;\n}',
   },
@@ -5251,6 +5371,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResumeAgentOptions',
     declaration: 'export interface ResumeAgentOptions {\n    readonly resumeSessionId: SessionId;\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
+  },
+  {
+    name: 'ReviseDeliveryCaseRequest',
+    declaration: 'export interface ReviseDeliveryCaseRequest {\n    readonly idempotencyKey: string;\n    readonly caseId: DeliveryCaseId;\n    readonly expectedHeadRevisionId: ContractRevisionId;\n    readonly origin: RequirementOrigin;\n    readonly title: string;\n    readonly revision: ContractRevisionDraft;\n}',
   },
   {
     name: 'RunnerFailureRule',
@@ -5959,18 +6083,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SkillViewOptions',
     declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
-  },
-  {
-    name: 'SourceRef',
-    declaration: 'export interface SourceRef {\n    readonly schemaVersion: DeliverySchemaVersion;\n    readonly id: SourceRefId;\n    readonly provider: \'github\';\n    readonly repository: GitHubRepositoryRef;\n    readonly issueNumber: number;\n    readonly canonicalUrl: string;\n    readonly updatedAt: string;\n    readonly title: string;\n    readonly body: string;\n    readonly contentDigest: Sha256Digest;\n    readonly createdAt: string;\n}',
-  },
-  {
-    name: 'SourceRefDraft',
-    declaration: 'export interface SourceRefDraft {\n    readonly repository: SourceRef[\'repository\'];\n    readonly issueNumber: number;\n    readonly canonicalUrl: string;\n    readonly updatedAt: string;\n    readonly title: string;\n    readonly body: string;\n    readonly contentDigest: Sha256Digest;\n}',
-  },
-  {
-    name: 'SourceRefId',
-    declaration: 'export type SourceRefId = Branded<\'DeliverySourceRefId\'>;',
   },
   {
     name: 'SpawnTeammateRequest',

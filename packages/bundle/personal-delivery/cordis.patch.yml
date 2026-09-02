@@ -23,6 +23,8 @@
 
     - id: delivery-remote
       name: '@deepseek-ai/dsh-delivery-remote'
+      config:
+        repositoryId: workspace
 
     - id: ui-delivery
       name: '@deepseek-ai/dsh-client-ui-delivery'

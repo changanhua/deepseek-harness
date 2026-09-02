@@ -320,6 +320,7 @@
     { "path": "./packages/delivery/delivery-runner-codex" },
     { "path": "./packages/delivery/delivery-verifier" },
     { "path": "./packages/delivery/delivery-github-intake" },
+    { "path": "./packages/delivery/delivery-github-publisher" },
     { "path": "./packages/delivery/delivery-remote" },
     { "path": "./packages/delivery/delivery-task-queue" },
     { "path": "./packages/experimental/agent-team" },

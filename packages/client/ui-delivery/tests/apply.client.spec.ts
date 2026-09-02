@@ -22,16 +22,17 @@ async function bench(snapshot = { contractsWithoutPacket: [], cards: [] }) {
   const locale = new LocaleRuntime(ctx)
   const registerLocale = vi.spyOn(locale, 'register')
   ctx.provide('locale', locale)
-  class RemoteService extends Service {
-    constructor(serviceCtx: Context) { super(serviceCtx, 'remote') }
-  }
-  new RemoteService(ctx)
   const snapshotCall = vi.fn(async (_signal?: AbortSignal) => ({
     ok: true as const,
     value: snapshot,
   }))
   const remote = {
     snapshot: snapshotCall,
+    createCase: vi.fn(),
+    reviseCase: vi.fn(),
+    recordRequirementDecision: vi.fn(),
+    publishIssue: vi.fn(),
+    resolvePublication: vi.fn(),
     importIssue: vi.fn(),
     createPacket: vi.fn(),
     startChange: vi.fn(),
@@ -39,7 +40,15 @@ async function bench(snapshot = { contractsWithoutPacket: [], cards: [] }) {
     readEvidence: vi.fn(),
     recordDecision: vi.fn(),
   }
-  ctx.provide('remote.delivery', remote)
+  class RemoteService extends Service {
+    constructor(serviceCtx: Context) { super(serviceCtx, 'remote') }
+
+    $mount(): Promise<() => Promise<void>> {
+      const dispose = ctx.reflect.provide('remote.delivery', remote)
+      return Promise.resolve(async () => { await dispose() })
+    }
+  }
+  new RemoteService(ctx)
   const slots = ctx.get('slots') as SlotRegistry
   slots.register({
     name: 'root',
@@ -60,7 +69,20 @@ describe('ui-delivery client composition', () => {
     await expect(ctx.plugin(DeliveryInvariant).await()).resolves.toBeDefined()
   })
   it('declares only the Remote, locale, and two existing slot services it consumes', () => {
-    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.delivery'])
+    expect(inject).toEqual(['slots', 'locale', 'remote'])
+  })
+
+  it('mounts its optional Remote contribution before registering the workspace', async () => {
+    const b = await bench()
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+
+    await vi.waitFor(() => {
+      expect(b.slots.entries('shell.view')).toHaveLength(1)
+    }, { timeout: 500 })
+    await fiber.await()
+
+    await fiber.dispose()
+    expect(b.ctx.get('remote.delivery')).toBeUndefined()
   })
 
   it('registers one Delivery module and one shared host-backed workspace projection', async () => {
@@ -98,7 +120,7 @@ describe('ui-delivery client composition', () => {
     let observedSignal: AbortSignal | undefined
     let settle!: (value: { ok: true; value: { contractsWithoutPacket: never[]; cards: never[] } }) => void
     const b = await bench()
-    const remote = b.ctx.get('remote.delivery') as unknown as {
+    const remote = b.remote as unknown as {
       snapshot(signal?: AbortSignal): Promise<unknown>
     }
     vi.spyOn(remote, 'snapshot').mockImplementation((signal?: AbortSignal) => {
@@ -124,19 +146,17 @@ describe('ui-delivery client composition', () => {
     await fiber.await()
     const face = (b.slots.entries('shell.view')[0]!.inject as unknown as () => {
       hooks: { delivery: { getSnapshot(): { pending: string | null; status: string } } }
-      importIssue(input: { issueUrl: string; repositoryId: string }): Promise<boolean>
+      importIssue(input: { issueUrl: string }): Promise<boolean>
     })()
     await vi.waitFor(() => { expect(face.hooks.delivery.getSnapshot().status).toBe('ready') })
 
     await expect(face.importIssue({
       issueUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/1',
-      repositoryId: 'repository-1',
     })).resolves.toBe(true)
 
     expect(b.remote.importIssue).toHaveBeenCalledWith(
       {
         issueUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/1',
-        repositoryId: 'repository-1',
       },
       expect.any(AbortSignal),
     )

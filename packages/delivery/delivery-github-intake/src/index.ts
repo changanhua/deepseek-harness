@@ -5,17 +5,19 @@
  */
 
 import type Delivery from '@deepseek-ai/dsh-delivery'
+import type { DeliverySnapshot } from '@deepseek-ai/dsh-delivery'
 import type {
   ContractRevision,
+  DeliveryCase,
+  GitHubRepositoryRef,
   RepositoryId,
+  Sha256Digest,
 } from '@deepseek-ai/dsh-delivery-protocol'
 import {
-  DELIVERY_SCHEMA_VERSION,
-  SourceRefId,
   canonicalJson,
+  githubIssueContentDigest,
   parseCanonicalGitHubIssueUrl,
-  sourceRefContentDigest,
-  sourceRefSchema,
+  requirementOriginSchema,
 } from '@deepseek-ai/dsh-delivery-protocol'
 import {
   parseGitHubIssueWorkBrief,
@@ -60,29 +62,51 @@ export class DeliveryGitHubIntakeError extends Error {
   }
 }
 
-/** Explicit dependencies for importing and adopting one Issue snapshot. */
+/**
+ * Explicit dependencies for importing one Issue snapshot into a Delivery Case.
+ * The narrow `Pick` keeps requirement approval, publication, and acceptance
+ * authority out of the importer's reach: an import can only create or revise.
+ */
 export interface GitHubIssueIntakeDependencies {
-  readonly delivery: Pick<Delivery, 'adoptContractRevision' | 'snapshot'>
+  readonly delivery: Pick<Delivery, 'createCase' | 'reviseCase' | 'snapshot'>
   readonly fetch: typeof globalThis.fetch
 }
 
-/** Operator-selected coordinates for one exact GitHub Issue adoption. */
+/** Operator-selected coordinates for one exact GitHub Issue import. */
 export interface ImportGitHubIssueRequest {
   readonly issueUrl: string
   readonly repositoryId: RepositoryId
   readonly signal?: AbortSignal
 }
 
+/** Validated immutable content of one imported Issue snapshot. */
+export interface ImportedIssueSnapshot {
+  readonly repository: GitHubRepositoryRef
+  readonly issueNumber: number
+  readonly canonicalUrl: string
+  readonly title: string
+  readonly body: string
+  readonly contentDigest: Sha256Digest
+}
+
 const intakeTails = new WeakMap<object, Map<string, Promise<void>>>()
 
 /**
- * Fetch, parse, and idempotently adopt one exact GitHub Issue snapshot.
+ * Fetch, parse, and idempotently import one exact GitHub Issue snapshot as a
+ * Delivery Case creation or revision.
  *
- * @param dependencies - Delivery adoption boundary and host-provided fetch.
+ * The first import of an Issue creates one Case whose root revision carries a
+ * `github-import` origin and the Issue title; a later import of changed Issue
+ * content revises that Case under an expected-head compare-and-set. An import
+ * never records a requirement decision, so an imported revision stays
+ * unapproved and cannot create a Work Packet until a human decides.
+ *
+ * @param dependencies - Delivery Case boundary and host-provided fetch.
  * @param request - Canonical Issue URL plus its required configured repository link.
- * @returns the adopted immutable Contract revision. Cancellation is observed
- * before the `adoptContractRevision()` commit point; once that call starts, its
- * committed result or failure is authoritative even if the signal aborts later.
+ * @returns the head Contract revision of the imported Case. Cancellation is
+ * observed before the `createCase()`/`reviseCase()` commit point; once that
+ * call starts, its committed result or failure is authoritative even if the
+ * signal aborts later.
  */
 export async function importGitHubIssue(
   dependencies: GitHubIssueIntakeDependencies,
@@ -139,29 +163,54 @@ export async function importGitHubIssue(
     throwIfAborted(request.signal)
     const snapshot = dependencies.delivery.snapshot()
     throwIfAborted(request.signal)
-    const previous = deriveSameIssueHead(snapshot.contractRevisions, source)
-    if (previous !== null && sameSourceContent(previous, source)) {
-      if (sameConfiguredRevision(previous, brief, request.repositoryId)) return previous
+    const revisionsById = revisionIndex(snapshot)
+    const existing = locateIssueCase(snapshot, revisionsById, source)
+    const origin = requirementOriginSchema.parse({
+      kind: 'github-import',
+      repository: source.repository,
+      issueNumber: source.issueNumber,
+      contentDigest: source.contentDigest,
+    })
+    if (existing === null) {
+      throwIfAborted(request.signal)
+      // This call is the cancellation commit point. Do not inspect the signal after it starts.
+      const { revision } = await dependencies.delivery.createCase({
+        idempotencyKey: `github:${source.repository.owner}/${source.repository.name}:issue:${String(source.issueNumber)}:root`,
+        repositoryId: request.repositoryId,
+        origin,
+        title: source.title,
+        revision: workBriefContractRevisionDraft(brief),
+      })
+      return revision
+    }
+    if (existing.repositoryId !== request.repositoryId) {
       throw new DeliveryGitHubIntakeError(
         'invalid-request',
-        'GitHub Issue intake snapshot already belongs to another configured Contract revision',
+        'GitHub Issue intake snapshot already belongs to another configured repository',
       )
     }
-    if (previous !== null && Date.parse(source.updatedAt) < Date.parse(previous.sourceRef.updatedAt)) {
-      return previous
+    const head = revisionsById.get(existing.headRevisionId)
+    if (head === undefined) {
+      throw invalidLineage(`Delivery Case '${existing.id}' head revision is absent from the snapshot`)
     }
-    const revision = workBriefContractRevisionDraft(
-      brief,
-      request.repositoryId,
-      previous?.id ?? null,
-    )
+    if (head.origin.kind !== 'github-import') {
+      throw new DeliveryGitHubIntakeError(
+        'invalid-request',
+        `The head of Delivery Case '${existing.id}' for this Issue carries a human revision; import cannot override it`,
+      )
+    }
+    if (sameImportContent(head, source, brief)) return head
     throwIfAborted(request.signal)
     // This call is the cancellation commit point. Do not inspect the signal after it starts.
-    return dependencies.delivery.adoptContractRevision({
-      idempotencyKey: `github:${source.repository.owner}/${source.repository.name}:issue:${String(source.issueNumber)}:previous:${previous?.id ?? 'root'}:${source.contentDigest}`,
-      source,
-      revision,
+    const { revision } = await dependencies.delivery.reviseCase({
+      idempotencyKey: `github:${source.repository.owner}/${source.repository.name}:issue:${String(source.issueNumber)}:previous:${head.id}`,
+      caseId: existing.id,
+      expectedHeadRevisionId: head.id,
+      origin,
+      title: source.title,
+      revision: workBriefContractRevisionDraft(brief),
     })
+    return revision
   })
 }
 
@@ -173,7 +222,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 
 async function serializeIssueIntake<T>(
   delivery: object,
-  source: ReturnType<typeof parseIssueSnapshot>,
+  source: ImportedIssueSnapshot,
   operation: () => Promise<T>,
 ): Promise<T> {
   const key = `${source.repository.owner}/${source.repository.name}#${String(source.issueNumber)}`
@@ -213,7 +262,7 @@ function parseIssueSnapshot(
   value: unknown,
   requestedUrl: string,
   coordinates: NonNullable<ReturnType<typeof parseCanonicalGitHubIssueUrl>>,
-) {
+): ImportedIssueSnapshot {
   if (!isGitHubIssueSnapshot(value)) {
     throw new DeliveryGitHubIntakeError('invalid-response', 'GitHub Issue intake response has an invalid Issue snapshot shape')
   }
@@ -223,25 +272,20 @@ function parseIssueSnapshot(
     || value.repository_url !== expectedRepositoryUrl) {
     throw new DeliveryGitHubIntakeError('invalid-response', 'GitHub Issue intake response coordinates do not match the requested Issue')
   }
-  const contentDigest = sourceRefContentDigest({ title: value.title, body: value.body })
-  const candidate = sourceRefSchema.safeParse({
-    schemaVersion: DELIVERY_SCHEMA_VERSION,
-    id: SourceRefId('source-ref-intake-validation'),
-    provider: 'github',
+  if (value.title.trim().length === 0 || value.body.trim().length === 0) {
+    throw new DeliveryGitHubIntakeError('invalid-response', 'GitHub Issue intake response must carry a non-blank title and body')
+  }
+  if (!isUtcInstant(value.updated_at)) {
+    throw new DeliveryGitHubIntakeError('invalid-response', 'GitHub Issue intake response contains an invalid immutable timestamp')
+  }
+  return {
     repository: coordinates.repository,
     issueNumber: coordinates.issueNumber,
     canonicalUrl: requestedUrl,
-    updatedAt: value.updated_at,
     title: value.title,
     body: value.body,
-    contentDigest,
-    createdAt: value.updated_at,
-  })
-  if (!candidate.success) {
-    throw new DeliveryGitHubIntakeError('invalid-response', 'GitHub Issue intake response contains an invalid immutable snapshot')
+    contentDigest: githubIssueContentDigest({ title: value.title, body: value.body }),
   }
-  const { id: _id, schemaVersion: _schemaVersion, provider: _provider, createdAt: _createdAt, ...source } = candidate.data
-  return source
 }
 
 function isGitHubIssueSnapshot(value: unknown): value is GitHubIssueSnapshot {
@@ -255,86 +299,97 @@ function isGitHubIssueSnapshot(value: unknown): value is GitHubIssueSnapshot {
     && typeof snapshot.body === 'string'
 }
 
-function sameIssue(
-  revision: ContractRevision,
-  source: ReturnType<typeof parseIssueSnapshot>,
-): boolean {
-  const previous = revision.sourceRef
-  return previous.repository.owner === source.repository.owner
-    && previous.repository.name === source.repository.name
-    && previous.issueNumber === source.issueNumber
+function isUtcInstant(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?Z$/u.exec(value)
+  if (match === null) return false
+  const parts = [1, 2, 3, 4, 5, 6].map(index => Number(match[index])) as [
+    number, number, number, number, number, number,
+  ]
+  const [y, m, d, h, min, sec] = parts
+  if (m < 1 || m > 12 || d < 1 || h > 23 || min > 59 || sec > 59) return false
+  return d <= new Date(Date.UTC(y, m, 0)).getUTCDate()
 }
 
-function sameSourceContent(
-  revision: ContractRevision,
-  source: ReturnType<typeof parseIssueSnapshot>,
-): boolean {
-  const previous = revision.sourceRef
-  return sameIssue(revision, source)
-    && previous.canonicalUrl === source.canonicalUrl
-    && previous.title === source.title
-    && previous.body === source.body
-    && previous.contentDigest === source.contentDigest
-}
-
-function deriveSameIssueHead(
-  revisions: readonly ContractRevision[],
-  source: ReturnType<typeof parseIssueSnapshot>,
-): ContractRevision | null {
-  const sameIssueRevisions = revisions.filter(revision => sameIssue(revision, source))
-  if (sameIssueRevisions.length === 0) return null
+/** Index every snapshot revision by identity; duplicate identities fail closed. */
+function revisionIndex(snapshot: DeliverySnapshot): Map<string, ContractRevision> {
   const byId = new Map<string, ContractRevision>()
-  for (const revision of sameIssueRevisions) {
+  for (const revision of snapshot.contractRevisions) {
     if (byId.has(revision.id)) {
       throw invalidLineage('contains a duplicate Contract revision identity')
     }
     byId.set(revision.id, revision)
   }
-  const predecessors = new Set<string>()
-  for (const revision of sameIssueRevisions) {
-    if (revision.previousRevisionId === null) continue
-    if (!byId.has(revision.previousRevisionId)) {
-      throw invalidLineage('references a missing same-Issue predecessor')
-    }
-    predecessors.add(revision.previousRevisionId)
-  }
-  const heads = sameIssueRevisions.filter(revision => !predecessors.has(revision.id))
-  if (heads.length !== 1) {
-    throw invalidLineage('does not have exactly one current head')
-  }
-  const head = heads[0] as ContractRevision
-  const visited = new Set<string>()
-  let current = head
-  while (true) {
-    if (visited.has(current.id)) {
-      throw invalidLineage('contains a cycle')
-    }
-    visited.add(current.id)
-    if (current.previousRevisionId === null) break
-    current = byId.get(current.previousRevisionId) as ContractRevision
-  }
-  if (visited.size !== sameIssueRevisions.length) {
-    throw invalidLineage('contains a record outside the unique head chain')
-  }
-  return head
+  return byId
 }
 
-function invalidLineage(detail: string): DeliveryGitHubIntakeError {
-  return new DeliveryGitHubIntakeError(
-    'invalid-request',
-    `GitHub Issue intake cannot derive a unique revision lineage because it ${detail}`,
-  )
+/**
+ * Locate the one Delivery Case whose root revision imported this Issue.
+ * Candidates are matched on the root's `github-import` origin coordinates, so
+ * later human revisions inside the Case cannot detach it from the import.
+ */
+function locateIssueCase(
+  snapshot: DeliverySnapshot,
+  revisionsById: Map<string, ContractRevision>,
+  source: ImportedIssueSnapshot,
+): DeliveryCase | null {
+  const candidates: DeliveryCase[] = []
+  for (const kase of snapshot.deliveryCases) {
+    const root = caseRoot(kase, revisionsById)
+    if (root === undefined) {
+      throw invalidLineage(`Delivery Case '${kase.id}' has a broken revision chain`)
+    }
+    if (root.origin.kind !== 'github-import') continue
+    if (root.origin.repository.owner === source.repository.owner
+      && root.origin.repository.name === source.repository.name
+      && root.origin.issueNumber === source.issueNumber) {
+      candidates.push(kase)
+    }
+  }
+  if (candidates.length > 1) {
+    throw invalidLineage('matches more than one Delivery Case for the same Issue')
+  }
+  return candidates[0] ?? null
 }
 
-function sameConfiguredRevision(
-  revision: ContractRevision,
+/**
+ * Walk from the Case head to its root revision. A missing predecessor or a
+ * cycle means the snapshot cannot be trusted for import decisions.
+ */
+function caseRoot(
+  kase: DeliveryCase,
+  revisionsById: Map<string, ContractRevision>,
+): ContractRevision | undefined {
+  let current = revisionsById.get(kase.headRevisionId)
+  if (current === undefined) return undefined
+  const visited = new Set<string>([current.id])
+  while (current.previousRevisionId !== null) {
+    if (visited.has(current.previousRevisionId)) return undefined
+    const parent = revisionsById.get(current.previousRevisionId)
+    if (parent === undefined) return undefined
+    visited.add(parent.id)
+    current = parent
+  }
+  return current
+}
+
+/**
+ * Decide whether the current head already carries this exact import. The
+ * origin digest pins the immutable title/body snapshot; the canonical draft
+ * comparison defends against a same-coordinate revision written by another path.
+ */
+function sameImportContent(
+  head: ContractRevision,
+  source: ImportedIssueSnapshot,
   brief: ReturnType<typeof parseGitHubIssueWorkBrief>,
-  repositoryId: RepositoryId,
 ): boolean {
-  const expected = workBriefContractRevisionDraft(brief, repositoryId, revision.previousRevisionId)
-  return canonicalJson({
-    previousRevisionId: revision.previousRevisionId,
-    repositoryId: revision.repositoryId,
+  if (head.origin.kind !== 'github-import') return false
+  if (head.origin.contentDigest !== source.contentDigest) return false
+  return canonicalJson(requirementContent(head)) === canonicalJson(workBriefContractRevisionDraft(brief))
+}
+
+/** Requirement content fields an import maps onto a revision draft. */
+function requirementContent(revision: ContractRevision) {
+  return {
     outcome: revision.outcome,
     context: revision.context,
     allowedScope: revision.allowedScope,
@@ -344,5 +399,12 @@ function sameConfiguredRevision(
     baseSelectionRule: revision.baseSelectionRule,
     verificationSource: revision.verificationSource,
     referenceLinks: revision.referenceLinks,
-  }) === canonicalJson(expected)
+  }
+}
+
+function invalidLineage(detail: string): DeliveryGitHubIntakeError {
+  return new DeliveryGitHubIntakeError(
+    'invalid-request',
+    `GitHub Issue intake cannot locate a unique Delivery Case for this Issue because the snapshot ${detail}`,
+  )
 }

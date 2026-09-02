@@ -79,7 +79,7 @@ function packet(
   overrides: Partial<WorkPacket> = {},
 ): WorkPacket {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: packetId,
     contractRevisionId,
     repositoryId,
@@ -105,7 +105,7 @@ function completedClaim(
   overrides: Partial<Extract<CompletionClaim, { readonly disposition: 'completed' }>> = {},
 ): Extract<CompletionClaim, { readonly disposition: 'completed' }> {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: CompletionClaimId('claim-1'),
     packetId,
     queueWorkId,
@@ -129,7 +129,7 @@ function submitting(
   inputDigest: Sha256Digest,
 ): SubmittingBinding {
   const common = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     id: verificationBindingId,
     packetId,
     inputDigest,
@@ -164,7 +164,7 @@ function changeBinding(
   readonly phase: 'bound'
 }> {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: changeBindingId,
     packetId,
     inputDigest: canonicalDigest({ packetId }),

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   CODE_CHANGE_KIND,
   CODE_VERIFY_KIND,
+  DELIVERY_SCHEMA_VERSION,
   DispatchBindingId,
   ExecutorId,
   GitCommitId,
@@ -66,7 +67,7 @@ function binding(
     ? { packetId }
     : { packetId, targetCommit, verificationPlanDigest: planDigest }
   return {
-    schemaVersion: 1,
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
     id: DispatchBindingId(`${kind}-${phase}`),
     packetId,
     kind,

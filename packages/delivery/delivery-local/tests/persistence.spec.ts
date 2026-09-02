@@ -10,9 +10,10 @@ import type {
   FailIssuePublicationRequest,
   PrepareIssuePublicationRequest,
   RecordRequirementDecisionRequest,
+  ReviseDeliveryCaseRequest,
   WorkPacketDraft,
 } from '@deepseek-ai/dsh-delivery'
-import { DELIVERY_VERIFICATION_SOURCE_MAX_BYTES } from '@deepseek-ai/dsh-delivery'
+import { DELIVERY_VERIFICATION_SOURCE_MAX_BYTES, DeliveryError } from '@deepseek-ai/dsh-delivery'
 import {
   DELIVERY_SCHEMA_VERSION,
   AcceptanceClauseId,
@@ -39,6 +40,7 @@ import {
   evidenceRefSchema,
   githubIssueContentDigest,
   gitHubIssueRefSchema,
+  issuePublicationIdForRevision,
   verificationCheckDigest,
   verificationPlanDigest,
   verificationPlanSchema,
@@ -50,6 +52,7 @@ import {
   type DeliveryCase,
   type EvidenceRef,
   type GitHubIssueRef,
+  type RequirementOrigin,
   type VerificationCheck,
   type VerificationPlan,
   type VerificationVerdict,
@@ -282,7 +285,7 @@ function passedVerdictFixture(overrides: Partial<VerificationVerdict> = {}): Ver
   const plan = verificationPlanFixture({
     provenance: {
       kind: 'contract-field',
-      contractRevisionId: overrides.packetId ?? WorkPacketId('work-packet-fixture'),
+      contractRevisionId: ContractRevisionId('contract-revision-fixture'),
       field: 'verificationSource',
     },
   })
@@ -534,7 +537,7 @@ describe('LocalDelivery persistence', () => {
   it('moves the Case head only through the expected-head compare-and-set', async () => {
     const local = await harness(new MemoryMediaPool())
     const created = await createApprovedCase(local, 'cas')
-    const revise = (overrides: Partial<Omit<CreateDeliveryCaseRequest, 'idempotencyKey'>> & { idempotencyKey: string }) =>
+    const revise = (overrides: Partial<Omit<ReviseDeliveryCaseRequest, 'idempotencyKey'>> & { idempotencyKey: string }) =>
       local.ctx.delivery.reviseCase({
         caseId: created.case.id,
         expectedHeadRevisionId: created.revision.id,
@@ -589,7 +592,7 @@ describe('LocalDelivery persistence', () => {
     const created = await local.ctx.delivery.createCase(
       createCaseRequest({ origin: importedOrigin }, 'case-imported'),
     )
-    const revise = (origin: typeof importedOrigin | { kind: 'human'; actorId: string }, key: string, expectedHead = created.case.headRevisionId) =>
+    const revise = (origin: RequirementOrigin, key: string, expectedHead = created.case.headRevisionId) =>
       local.ctx.delivery.reviseCase({
         idempotencyKey: key,
         caseId: created.case.id,
@@ -1599,6 +1602,7 @@ describe('LocalDelivery persistence', () => {
       const created = await createApprovedCase(local, 'published-path')
       const request = prepareRequest(created)
       const prepared = await local.ctx.delivery.prepareIssuePublication(request)
+      expect(prepared.id).toBe(issuePublicationIdForRevision(created.case.id, created.revision.id))
       expect(prepared).toMatchObject({
         phase: 'prepared',
         issue: null,

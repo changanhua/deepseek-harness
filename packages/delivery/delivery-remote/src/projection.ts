@@ -5,6 +5,7 @@ import {
   QueueAttemptIdRef,
   QueueWorkIdRef,
   canonicalDigest,
+  contractReadiness,
   codeChangeIntentSchema,
   codeChangeOutputSchema,
   codeVerifyIntentSchema,
@@ -14,6 +15,9 @@ import {
   type AcceptanceDecision,
   type CompletionClaim,
   type DispatchBinding,
+  type GitHubIssueRef,
+  type IssuePublication,
+  type RequirementDecision,
   type VerificationVerdict,
   type WorkPacket,
 } from '@deepseek-ai/dsh-delivery-protocol'
@@ -21,10 +25,13 @@ import type { Attention, WorkView } from '@deepseek-ai/dsh-task-queue'
 import type {
   DeliveryAcceptanceDecisionView,
   DeliveryAttentionReason,
+  DeliveryCaseCard,
   DeliveryDispatchBindingView,
   DeliveryLane,
+  DeliveryIssuePublicationView,
   DeliveryQueueWorkView,
   DeliverySnapshotView,
+  DeliveryWorkbenchCard,
   DeliveryWorkbenchDispatch,
 } from './types.ts'
 
@@ -44,6 +51,16 @@ function byCreatedDesc<Subject extends { readonly createdAt: string; readonly id
   right: Subject,
 ): number {
   return right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)
+}
+
+/** Remove the trusted actor id from human-origin revisions. */
+export function projectContractRevision(
+  revision: import('@deepseek-ai/dsh-delivery-protocol').ContractRevision,
+): import('./types.ts').DeliveryContractRevisionView {
+  return {
+    ...revision,
+    origin: revision.origin.kind === 'human' ? { kind: 'human' } : revision.origin,
+  }
 }
 
 /**
@@ -81,6 +98,35 @@ export function projectAcceptanceDecision(
     decision: decision.decision,
     reason: decision.reason,
     decidedAt: decision.decidedAt,
+  }
+}
+
+/** Remove the trusted Host actor from one requirement authority decision. */
+export function projectRequirementDecision(
+  decision: RequirementDecision,
+): import('./types.ts').DeliveryRequirementDecisionView {
+  return {
+    id: decision.id,
+    caseId: decision.caseId,
+    revisionId: decision.revisionId,
+    decision: decision.decision,
+    reason: decision.reason,
+    decidedAt: decision.decidedAt,
+  }
+}
+
+/** Remove Host marker, digest, and failure detail from one publication record. */
+export function projectIssuePublication(
+  publication: IssuePublication,
+): DeliveryIssuePublicationView {
+  return {
+    id: publication.id,
+    caseId: publication.caseId,
+    revisionId: publication.revisionId,
+    phase: publication.phase,
+    failureCategory: publication.failure?.category ?? null,
+    issue: publication.issue,
+    updatedAt: publication.updatedAt,
   }
 }
 
@@ -179,6 +225,7 @@ export function projectDeliverySnapshot(
   delivery: DeliverySnapshot,
   queue: readonly WorkView[],
   attentions: readonly Attention[],
+  publicationTargets: ReadonlyMap<string, GitHubIssueRef['repository']> = new Map(),
 ): DeliverySnapshotView {
   const contracts = new Map(delivery.contractRevisions.map(contract => [contract.id, contract]))
   const packetsWithContract = new Set(delivery.workPackets.map(packet => packet.contractRevisionId))
@@ -313,7 +360,7 @@ export function projectDeliverySnapshot(
         dispatches,
       })
     return {
-      contractRevision,
+      contractRevision: projectContractRevision(contractRevision),
       packet,
       lane,
       dispatches,
@@ -324,10 +371,52 @@ export function projectDeliverySnapshot(
     }
   }).sort((left, right) => byCreatedDesc(left.packet, right.packet))
 
+  const packetCardsByRevision = new Map<string, DeliveryWorkbenchCard[]>()
+  for (const card of cards) {
+    const entries = packetCardsByRevision.get(card.contractRevision.id) ?? []
+    entries.push(card)
+    packetCardsByRevision.set(card.contractRevision.id, entries)
+  }
+  const decisionsByRevision = new Map(delivery.requirementDecisions.map(decision => [decision.revisionId, decision]))
+  const publicationsByRevision = new Map(delivery.issuePublications.map(publication => [publication.revisionId, publication]))
+  const cases = delivery.deliveryCases.map((deliveryCase): DeliveryCaseCard => {
+    const headRevision = contracts.get(deliveryCase.headRevisionId)
+    if (headRevision === undefined) {
+      throw new DeliveryProjectionError(`Case references an unavailable head revision: ${deliveryCase.id}`)
+    }
+    const decision = decisionsByRevision.get(headRevision.id)
+    const publication = publicationsByRevision.get(headRevision.id)
+    const packets = packetCardsByRevision.get(headRevision.id) ?? []
+    const downstreamLane = packets.find(card => card.lane === 'blocked')?.lane
+      ?? packets.find(card => card.lane === 'running')?.lane
+      ?? packets.find(card => card.lane === 'review')?.lane
+      ?? packets.find(card => card.lane === 'accepted')?.lane
+    const lane = publication?.phase === 'unknown' || publication?.phase === 'publishing'
+      ? 'blocked'
+      : downstreamLane ?? (decision?.decision === 'approved' ? 'ready' : 'shaping')
+    return {
+      case: deliveryCase,
+      headRevision: projectContractRevision(headRevision),
+      readiness: contractReadiness(headRevision),
+      requirementDecision: decision === undefined ? null : projectRequirementDecision(decision),
+      publication: publication === undefined ? null : projectIssuePublication(publication),
+      publicationTarget: publicationTargets.get(String(deliveryCase.repositoryId)) ?? null,
+      lane,
+      packets,
+    }
+  }).sort((left, right) =>
+    right.case.updatedAt.localeCompare(left.case.updatedAt) || right.case.id.localeCompare(left.case.id),
+  )
+
   return {
+    cases,
     contractsWithoutPacket: delivery.contractRevisions
       .filter(contract => !packetsWithContract.has(contract.id))
-      .toSorted(byCreatedDesc),
+      .toSorted(byCreatedDesc)
+      .map(projectContractRevision),
     cards,
+    publications: delivery.issuePublications
+      .toSorted(byCreatedDesc)
+      .map(projectIssuePublication),
   }
 }
