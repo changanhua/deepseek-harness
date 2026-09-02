@@ -94,6 +94,14 @@
     - id: capability-registry
       name: '@deepseek-ai/dsh-host-capability-registry'
 
+    # Host-authoritative human activity and Session-step wall-clock evidence.
+    - id: work-observatory
+      name: '@deepseek-ai/dsh-host-work-observatory'
+      config:
+        retentionDays: 90
+        maxClients: 128
+        maxQueryRecords: 10000
+
     # Session commands, cold reads, and live control over Typert Remote.
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
@@ -319,6 +327,10 @@
     # Build catalog and current Loader Runtime architecture explorer.
     - id: ui-architecture
       name: '@deepseek-ai/dsh-client-ui-architecture'
+
+    # Dedicated day/project view plus the app-scoped browser activity producer.
+    - id: ui-work-observatory
+      name: '@deepseek-ai/dsh-client-ui-work-observatory'
 
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #

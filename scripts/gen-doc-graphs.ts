@@ -476,6 +476,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns fact declarations, centralized tool-relevance evaluation, and the order-120 baseline projection; providers register inspect-only or baseline facts and the inspection tool reads them on demand.',
   },
   {
+    key: 'workObservatory',
+    pkg: 'host-work-observatory',
+    title: 'Local human-Agent wall-clock evidence',
+    mode: 'core',
+    consumers: ['client-ui-work-observatory'],
+    note: 'Host-stamps browser state, projects Session step boundaries through storage-domain, and serves bounded normalized ranges to the dedicated Web workspace.',
+  },
+  {
     key: 'shellEnv',
     pkg: 'shell-env',
     title: 'Managed bash environment registry',

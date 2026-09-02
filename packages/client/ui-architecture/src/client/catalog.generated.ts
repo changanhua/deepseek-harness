@@ -62,6 +62,7 @@ export const architectureCatalog: ArchitectureCatalog = {
         'goal',
         'host-capability-registry',
         'host-plugin-inventory',
+        'host-work-observatory',
         'invariants',
         'llm',
         'message-feedback',
@@ -1216,6 +1217,28 @@ export const architectureCatalog: ArchitectureCatalog = {
       ],
     },
     {
+      name: '@deepseek-ai/dsh-client-ui-work-observatory',
+      short: 'client-ui-work-observatory',
+      group: 'client',
+      path: 'packages/client/ui-work-observatory',
+      description: 'Dedicated Work Observatory workspace and browser activity producer',
+      dependencies: [
+        'api-remotes',
+        'api-session-controller',
+        'client-locale',
+        'client-ui-layout',
+        'client-ui-renderer',
+        'client-ui-sidebar',
+        'host-work-observatory',
+        'invariants',
+        'session',
+        'typert-protocol',
+      ],
+      faces: [
+        'client',
+      ],
+    },
+    {
       name: '@deepseek-ai/dsh-client-ui-workflow-run',
       short: 'client-ui-workflow-run',
       group: 'client',
@@ -1985,6 +2008,32 @@ export const architectureCatalog: ArchitectureCatalog = {
       ],
     },
     {
+      name: '@deepseek-ai/dsh-eval-session-snapshot',
+      short: 'eval-session-snapshot',
+      group: 'eval',
+      path: 'packages/eval/eval-session-snapshot',
+      description: 'Keyless ACP session-snapshot executor for deterministic DSH Eval suites',
+      dependencies: [
+        'invariants',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@deepseek-ai/dsh-eval',
+      short: 'eval',
+      group: 'eval',
+      path: 'packages/eval/eval',
+      description: 'Strict deterministic evaluation contracts, outcome folding, and stable reports',
+      dependencies: [
+        'invariants',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
       name: '@deepseek-ai/dsh-agent-spine-demo',
       short: 'agent-spine-demo',
       group: 'examples',
@@ -2678,6 +2727,22 @@ export const architectureCatalog: ArchitectureCatalog = {
       ],
       faces: [
         'package',
+      ],
+    },
+    {
+      name: '@deepseek-ai/dsh-host-work-observatory',
+      short: 'host-work-observatory',
+      group: 'host',
+      path: 'packages/host/work-observatory',
+      description: 'Host-authoritative human activity and Session-step wall-clock accounting',
+      dependencies: [
+        'invariants',
+        'session',
+        'storage-domain',
+        'typert-protocol',
+      ],
+      faces: [
+        'remote',
       ],
     },
     {

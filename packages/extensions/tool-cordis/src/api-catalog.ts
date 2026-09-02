@@ -3051,6 +3051,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'workObservatory',
+    summary: 'Host service owning durable browser samples, Session-step projection, and range reads.',
+    description: 'Host service owning durable browser samples, Session-step projection, and range reads.',
+    methods: [
+      {
+        signature: '@Remote(\'observeClient\') observeClient(observation: ClientObservation): Promise<{ readonly accepted: boolean }>',
+        description: 'Accept one Host-stamped browser state transition or heartbeat.',
+        parameters: [{ name: 'observation', description: 'monotonic browser state without a client timestamp.' }],
+        returns: 'whether the sequence was newer than the last accepted observation.',
+      },
+      {
+        signature: '@Remote(\'readRange\') async readRange(request: WorkObservatoryRangeRequest): Promise<WorkObservatoryRange>',
+        description: 'Read a bounded range; totals and Session rows derive from the same interval algebra.',
+        parameters: [{ name: 'request', description: 'finite epoch range and optional canonical project path.' }],
+        returns: 'normalized timelines, headline totals, and contributing Session rows.',
+      },
+    ],
+  },
+  {
     key: 'workspaceController',
     summary: 'Host service backing the generated `ctx.remote.workspace` namespace.',
     description: 'Host service backing the generated `ctx.remote.workspace` namespace.',
@@ -3991,6 +4010,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ClientArtifactBaseline',
     declaration: 'export interface ClientArtifactBaseline {\n    readonly path: string;\n    readonly mtimeMs: number;\n    readonly size: number;\n}',
+  },
+  {
+    name: 'ClientObservation',
+    declaration: 'export interface ClientObservation {\n    readonly clientId: string;\n    readonly seq: number;\n    readonly visible: boolean;\n    readonly active: boolean;\n    readonly sessionId?: SessionId;\n}',
   },
   {
     name: 'CodeBindingErrorClass',
@@ -6927,6 +6950,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkKindMap',
     declaration: 'export interface WorkKindMap {\n}',
+  },
+  {
+    name: 'WorkObservatoryInterval',
+    declaration: 'export interface WorkObservatoryInterval {\n    readonly start: number;\n    readonly end: number;\n}',
+  },
+  {
+    name: 'WorkObservatoryRange',
+    declaration: 'export interface WorkObservatoryRange {\n    readonly from: number;\n    readonly to: number;\n    readonly projectPath?: string;\n    readonly summary: WorkObservatorySummary;\n    readonly timeline: {\n        readonly humanActive: readonly WorkObservatoryInterval[];\n        readonly pageVisible: readonly WorkObservatoryInterval[];\n        readonly agentRunning: readonly WorkObservatoryInterval[];\n    };\n    readonly sessions: readonly WorkObservatorySessionSummary[];\n}',
+  },
+  {
+    name: 'WorkObservatoryRangeRequest',
+    declaration: 'export interface WorkObservatoryRangeRequest {\n    readonly from: number;\n    readonly to: number;\n    readonly projectPath?: string;\n}',
+  },
+  {
+    name: 'WorkObservatorySessionSummary',
+    declaration: 'export interface WorkObservatorySessionSummary {\n    readonly sessionId: SessionId;\n    readonly projectPath?: string;\n    readonly humanActiveMs: number;\n    readonly agentRunningMs: number;\n    readonly togetherMs: number;\n}',
+  },
+  {
+    name: 'WorkObservatorySummary',
+    declaration: 'export interface WorkObservatorySummary {\n    readonly humanActiveMs: number;\n    readonly pageVisibleMs: number;\n    readonly agentRunningMs: number;\n    readonly togetherMs: number;\n    readonly agentSoloMs: number;\n}',
   },
   {
     name: 'WorkOutput',

@@ -1003,6 +1003,26 @@ export interface Config {
 
 Source: [`packages/host/webserver/src/index.ts:59`](../packages/host/webserver/src/index.ts)
 
+<a id="deepseek-aidsh-host-work-observatory"></a>
+
+## `@deepseek-ai/dsh-host-work-observatory`
+
+Requires: `storageDomain` · `sessions`
+
+```ts config-catalog
+/** Deployment bounds for durable activity evidence. */
+export interface Config {
+  /** Whole days to retain browser transitions and completed Session steps. */
+  readonly retentionDays?: number
+  /** Maximum browser document identities retained concurrently. */
+  readonly maxClients?: number
+  /** Maximum retained transition and step rows one range read may consume. */
+  readonly maxQueryRecords?: number
+}
+```
+
+Source: [`packages/host/work-observatory/src/index.ts:33`](../packages/host/work-observatory/src/index.ts)
+
 <a id="deepseek-aidsh-image-generation-arkcli"></a>
 
 ## `@deepseek-ai/dsh-image-generation-arkcli`
@@ -1906,7 +1926,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/delivery/repo-workspace-git-local/src/index.ts:50`](../packages/delivery/repo-workspace-git-local/src/index.ts)
+Source: [`packages/delivery/repo-workspace-git-local/src/index.ts:51`](../packages/delivery/repo-workspace-git-local/src/index.ts)
 
 <a id="deepseek-aidsh-runtime-facts"></a>
 
@@ -3775,6 +3795,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-tool` ([`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-trajectory` ([`packages/client/ui-trajectory/src/index.ts`](../packages/client/ui-trajectory/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-user-questions` ([`packages/client/ui-user-questions/src/index.ts`](../packages/client/ui-user-questions/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-work-observatory` ([`packages/client/ui-work-observatory/src/index.ts`](../packages/client/ui-work-observatory/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-workflow-run` ([`packages/client/ui-workflow-run/src/index.ts`](../packages/client/ui-workflow-run/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-workspace` ([`packages/client/ui-workspace/src/index.ts`](../packages/client/ui-workspace/src/index.ts))
 - `@deepseek-ai/dsh-command-compact` — requires `commands` · `compaction` ([`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts))
@@ -3865,6 +3886,8 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-delivery-runner-codex` ([`packages/delivery/delivery-runner-codex/src/index.ts`](../packages/delivery/delivery-runner-codex/src/index.ts))
 - `@deepseek-ai/dsh-delivery-testkit` ([`packages/delivery/delivery-testkit/src/index.ts`](../packages/delivery/delivery-testkit/src/index.ts))
 - `@deepseek-ai/dsh-delivery-verifier` ([`packages/delivery/delivery-verifier/src/index.ts`](../packages/delivery/delivery-verifier/src/index.ts))
+- `@deepseek-ai/dsh-eval` ([`packages/eval/eval/src/index.ts`](../packages/eval/eval/src/index.ts))
+- `@deepseek-ai/dsh-eval-session-snapshot` ([`packages/eval/eval-session-snapshot/src/index.ts`](../packages/eval/eval-session-snapshot/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-profile` ([`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-web-profile` ([`packages/experimental/agent-team-web-profile/src/index.ts`](../packages/experimental/agent-team-web-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-webworker-packer` ([`packages/experimental/webworker-packer/src/index.ts`](../packages/experimental/webworker-packer/src/index.ts))

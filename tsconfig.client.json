@@ -83,6 +83,7 @@
     { "path": "./packages/client/ui-task-queue" },
     { "path": "./packages/client/ui-capability" },
     { "path": "./packages/client/ui-architecture" },
+    { "path": "./packages/client/ui-work-observatory" },
     { "path": "./packages/client/ui-directory-picker-browse" },
     { "path": "./packages/client/ui-directory-picker-native" },
     { "path": "./packages/client/ui-goal" },
