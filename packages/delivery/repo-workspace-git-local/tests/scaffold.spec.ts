@@ -233,8 +233,11 @@ describe('local Git repository workspace', () => {
       spec.argv[1] === '-c'
       && spec.argv[2] === 'core.longpaths=true'
       && spec.argv[3] === '-C'
-      && spec.argv[4] === repository
     ))).toBe(true)
+    const physicalRepository = await realpath(repository)
+    expect(await Promise.all(subprocess.specs.map(async (spec) => {
+      return await realpath(String(spec.argv[4]))
+    }))).toEqual([physicalRepository, physicalRepository])
     await ctx.fiber.dispose()
   })
 

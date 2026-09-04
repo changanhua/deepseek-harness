@@ -62,7 +62,9 @@ const testCredentialsHost = {
   },
 }
 
-async function waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
+const queueStateTimeoutMs = process.platform === 'win32' ? 5_000 : 2_000
+
+async function waitFor(check: () => boolean, timeoutMs = queueStateTimeoutMs): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (!check()) {
     if (Date.now() >= deadline) throw new Error('timed out waiting for Queue state')
@@ -217,7 +219,7 @@ describe('Personal Delivery MVP safety acceptance', () => {
     } finally { runnerMode = 'complete'; await chain?.ctx.fiber.dispose(); await rm(temp, { recursive: true, force: true }) }
   })
 
-  it('7: failed command, forbidden change, missing evidence and digest corruption all refuse human acceptance', { timeout: 30_000 }, async () => {
+  it('7: failed command, forbidden change, missing evidence and digest corruption all refuse human acceptance', { timeout: process.platform === 'win32' ? 60_000 : 30_000 }, async () => {
     const variants = [
       { name: 'failed command', command: 'process.exit(1)', path: 'src/accepted.txt', corrupt: undefined },
       { name: 'forbidden path', command: 'process.exit(0)', path: 'outside.txt', corrupt: undefined },
