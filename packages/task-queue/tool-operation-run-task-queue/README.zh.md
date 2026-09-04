@@ -45,7 +45,7 @@ schemas 有意只暴露 title、operation id、idempotency key、Batch items 和
 
 #### 模型看到的内容
 
-模型收到 [`operation_run_enqueue` 和 `operation_run_enqueue_batch`](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-operation-run-task-queue) schemas 及渲染后的 durable ids；catalog 持有其完整 JSON Schema。
+模型收到 [`operation_run_enqueue` 和 `operation_run_enqueue_batch`](../../../docs/tool-catalog.zh.md#changanhuadsh-tool-operation-run-task-queue) schemas 及渲染后的 durable ids；catalog 持有其完整 JSON Schema。
 
 #### Token 影响
 

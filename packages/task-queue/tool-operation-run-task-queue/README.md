@@ -45,7 +45,7 @@ The schemas deliberately expose only title, operation id, idempotency key, Batch
 
 #### What the model sees
 
-The model receives [`operation_run_enqueue` and `operation_run_enqueue_batch`](../../../docs/tool-catalog.md#deepseek-aidsh-tool-operation-run-task-queue) schemas plus rendered durable ids; the catalog owns their complete JSON Schema.
+The model receives [`operation_run_enqueue` and `operation_run_enqueue_batch`](../../../docs/tool-catalog.md#changanhuadsh-tool-operation-run-task-queue) schemas plus rendered durable ids; the catalog owns their complete JSON Schema.
 
 #### Token effect
 

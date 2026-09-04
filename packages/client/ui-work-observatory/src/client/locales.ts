@@ -1,5 +1,7 @@
+/** Locale namespace registered by the Work Observatory client plugin. */
 export const NS = 'workObservatory'
 
+/** Simplified Chinese copy for every Work Observatory locale key. */
 export const zh = {
   'nav.workObservatory': '工作观测',
   'view.title': '工作观测',
@@ -26,6 +28,7 @@ export const zh = {
   'unit.separator': '',
 } as const
 
+/** English copy for every Work Observatory locale key. */
 export const en: Record<keyof typeof zh, string> = {
   'nav.workObservatory': 'Work Observatory',
   'view.title': 'Work Observatory',
@@ -52,4 +55,5 @@ export const en: Record<keyof typeof zh, string> = {
   'unit.separator': ' ',
 }
 
+/** Stable locale keys shared by both Work Observatory dictionaries. */
 export type WorkObservatoryKey = keyof typeof zh

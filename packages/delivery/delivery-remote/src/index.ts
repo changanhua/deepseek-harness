@@ -281,7 +281,12 @@ export class DeliveryRemoteService extends TypertRemoteService {
     this.queue = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
   }
 
-  /** Shape one new human-origin Case in the Host-selected local repository. */
+  /**
+   * Shape one new human-origin Case in the Host-selected local repository.
+   * @param input - Browser-supplied title and initial contract revision.
+   * @param signal - Caller lifetime checked before the durable mutation.
+   * @returns the created Case and browser-safe head revision.
+   */
   @Remote('createCase')
   async createCase(input: DeliveryCreateCaseInput, signal: AbortSignal): Promise<DeliveryCaseMutationView> {
     requireActive(signal, 'createCase')
@@ -300,7 +305,12 @@ export class DeliveryRemoteService extends TypertRemoteService {
     }
   }
 
-  /** Revise the exact Case head observed by the browser. */
+  /**
+   * Revise the exact Case head observed by the browser.
+   * @param input - Replacement title/revision bound to the observed head id.
+   * @param signal - Caller lifetime checked before the durable mutation.
+   * @returns the revised Case and browser-safe head revision.
+   */
   @Remote('reviseCase')
   async reviseCase(input: DeliveryReviseCaseInput, signal: AbortSignal): Promise<DeliveryCaseMutationView> {
     requireActive(signal, 'reviseCase')
@@ -320,7 +330,12 @@ export class DeliveryRemoteService extends TypertRemoteService {
     }
   }
 
-  /** Record human requirement authority without accepting a browser actor id. */
+  /**
+   * Record human requirement authority without accepting a browser actor id.
+   * @param input - Case, revision, decision, and reason selected by the human.
+   * @param signal - Caller lifetime checked before the durable mutation.
+   * @returns the browser-safe durable requirement decision.
+   */
   @Remote('recordRequirementDecision')
   async recordRequirementDecision(
     input: DeliveryRecordRequirementDecisionInput,
@@ -344,7 +359,12 @@ export class DeliveryRemoteService extends TypertRemoteService {
     }
   }
 
-  /** Publish one approved ready Case revision through Host-only GitHub configuration. */
+  /**
+   * Publish one approved ready Case revision through Host-only GitHub configuration.
+   * @param input - Case and revision selected for publication.
+   * @param signal - Caller lifetime propagated through GitHub publication.
+   * @returns the browser-safe publication record.
+   */
   @Remote('publishIssue')
   async publishIssue(
     input: DeliveryPublishIssueInput,
@@ -369,7 +389,12 @@ export class DeliveryRemoteService extends TypertRemoteService {
     }
   }
 
-  /** Resolve one uncertain publication through a fresh Host-side GitHub GET. */
+  /**
+   * Resolve one uncertain publication through a fresh Host-side GitHub GET.
+   * @param input - Publication identity and the operator-selected resolution action.
+   * @param signal - Caller lifetime propagated through GitHub reconciliation.
+   * @returns the reconciled browser-safe publication record.
+   */
   @Remote('resolvePublication')
   async resolvePublication(
     input: DeliveryResolvePublicationInput,

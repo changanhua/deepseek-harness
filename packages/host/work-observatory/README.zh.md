@@ -47,7 +47,7 @@ kind: "package-reference"
 | `maxClients` | `128` | 同时保留的浏览器 document 身份上限。 |
 | `maxQueryRecords` | `10000` | 一次范围读取可消费的已存转换与步骤记录上限。 |
 
-`observeClient` 接收一个单调递增的浏览器状态且只记录 Host 时间；`readRange` 要求有限的 `from < to`，拒绝超过 31 天的范围，并可按规范项目路径过滤。[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-host-work-observatory)是全部可接受字段的生成来源。
+`observeClient` 接收一个单调递增的浏览器状态且只记录 Host 时间；`readRange` 要求有限的 `from < to`，拒绝超过 31 天的范围，并可按规范项目路径过滤。[配置目录](../../../docs/config-catalog.zh.md#changanhuadsh-host-work-observatory)是全部可接受字段的生成来源。
 
 -----
 

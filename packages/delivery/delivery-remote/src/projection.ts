@@ -53,7 +53,11 @@ function byCreatedDesc<Subject extends { readonly createdAt: string; readonly id
   return right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)
 }
 
-/** Remove the trusted actor id from human-origin revisions. */
+/**
+ * Remove the trusted actor id from human-origin revisions.
+ * @param revision - Durable Host-owned contract revision.
+ * @returns the browser-safe revision origin and contract facts.
+ */
 export function projectContractRevision(
   revision: import('@changanhua/dsh-delivery-protocol').ContractRevision,
 ): import('./types.ts').DeliveryContractRevisionView {
@@ -101,7 +105,11 @@ export function projectAcceptanceDecision(
   }
 }
 
-/** Remove the trusted Host actor from one requirement authority decision. */
+/**
+ * Remove the trusted Host actor from one requirement authority decision.
+ * @param decision - Durable Host-owned requirement decision.
+ * @returns the browser-safe authority decision.
+ */
 export function projectRequirementDecision(
   decision: RequirementDecision,
 ): import('./types.ts').DeliveryRequirementDecisionView {
@@ -115,7 +123,11 @@ export function projectRequirementDecision(
   }
 }
 
-/** Remove Host marker, digest, and failure detail from one publication record. */
+/**
+ * Remove Host marker, digest, and failure detail from one publication record.
+ * @param publication - Durable Host-owned Issue publication record.
+ * @returns the browser-safe publication lifecycle view.
+ */
 export function projectIssuePublication(
   publication: IssuePublication,
 ): DeliveryIssuePublicationView {
@@ -219,6 +231,7 @@ function laneFor(input: {
  * @param delivery - One point-in-time Delivery domain snapshot.
  * @param queue - One point-in-time trusted operator Queue list.
  * @param attentions - Pending operator attentions from the same Queue facade.
+ * @param publicationTargets - Host-approved GitHub repositories keyed by repository id.
  * @returns the deterministic five-lane browser projection.
  */
 export function projectDeliverySnapshot(

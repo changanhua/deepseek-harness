@@ -36,8 +36,11 @@ export const workObservatoryAgentStep = z.object({
   projectPath: z.string().optional(),
 })
 
+/** Validated Host-stamped browser observation. */
 export type WorkObservatoryClientSample = z.infer<typeof workObservatoryClientSample>
+/** Latest accepted state for one browser document identity. */
 export type WorkObservatoryClientState = z.infer<typeof workObservatoryClientState>
+/** Validated durable Session step interval. */
 export type WorkObservatoryAgentStep = z.infer<typeof workObservatoryAgentStep>
 
 /** Host-durable Work Observatory domain over the repository storage seam. */

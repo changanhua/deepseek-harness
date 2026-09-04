@@ -38,7 +38,7 @@ kind: "package-reference"
 | `root` | 必填 | 包含 content-addressed byte object 与不可变 reference 的私有目录。 |
 | `maxBytes` | `64 MiB` | 正数完整 payload 发布上限；配置不得超过 P0 的 `64 MiB` ceiling。 |
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-delivery-evidence-local)是完整字段参考。
+生成的[配置目录](../../../docs/config-catalog.zh.md#changanhuadsh-delivery-evidence-local)是完整字段参考。
 
 -----
 

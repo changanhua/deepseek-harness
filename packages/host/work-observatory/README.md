@@ -47,7 +47,7 @@ Choose this package when a local Web deployment needs inspectable human/Agent wa
 | `maxClients` | `128` | Maximum browser document identities retained concurrently. |
 | `maxQueryRecords` | `10000` | Maximum stored transition and step records one range read may consume. |
 
-`observeClient` accepts one monotonic browser state and records only Host time; `readRange` accepts finite `from < to`, rejects spans above 31 days, and optionally filters by canonical project path. The [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-host-work-observatory) is the generated source for accepted fields.
+`observeClient` accepts one monotonic browser state and records only Host time; `readRange` accepts finite `from < to`, rejects spans above 31 days, and optionally filters by canonical project path. The [configuration catalog](../../../docs/config-catalog.md#changanhuadsh-host-work-observatory) is the generated source for accepted fields.
 
 -----
 

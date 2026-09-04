@@ -12,7 +12,11 @@ interface ActivityTrackerOptions {
   readonly onError?: (error: Error) => void
 }
 
-/** Install the one document-scoped, Host-stamped activity producer. */
+/**
+ * Install the one document-scoped, Host-stamped activity producer.
+ * @param options - Remote writer, active Session selector, and optional test/error hooks.
+ * @returns a disposer that removes listeners, timers, and future observations.
+ */
 export function installActivityTracker(options: ActivityTrackerOptions): () => void {
   const clientId = (options.idSource ?? randomUUID)()
   let seq = 0

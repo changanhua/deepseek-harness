@@ -40,7 +40,7 @@ kind: "package-reference"
 | `graceMs` | `5000` | 每个受治理 Git 子进程使用的 TERM-to-KILL 宽限期。 |
 | `maxGitOutputBytes` | `4 MiB` | 每条 Git 诊断流的完整上限；配置不得超过 `64 MiB`。 |
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-repo-workspace-git-local)是完整字段参考。
+生成的[配置目录](../../../docs/config-catalog.zh.md#changanhuadsh-repo-workspace-git-local)是完整字段参考。
 
 -----
 

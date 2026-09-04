@@ -38,7 +38,7 @@ Choose this provider for bounded logs, Git metadata, patches, checkpoint metadat
 | `root` | required | Private directory containing content-addressed byte objects and immutable references. |
 | `maxBytes` | `64 MiB` | Positive complete-payload publication limit; configuration cannot exceed the P0 `64 MiB` ceiling. |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-delivery-evidence-local) is the exhaustive field reference.
+The generated [configuration catalog](../../../docs/config-catalog.md#changanhuadsh-delivery-evidence-local) is the exhaustive field reference.
 
 -----
 

@@ -50,7 +50,7 @@ export interface SkillsSnapshotController {
 
 /**
  * Build the snapshot controller for one feature assembly.
- * @param api - the wire face restricted to the management domain.
+ * @param remote - the wire face restricted to the management domain.
  * @returns the controller.
  */
 export function createSkillsSnapshotController(remote: SkillManagementRemoteFace): SkillsSnapshotController {

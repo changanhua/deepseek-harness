@@ -6,10 +6,12 @@ import type {
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 
+/** Read-only Host Remote consumed by the Work Observatory controller. */
 export interface WorkObservatoryRemoteFace {
   readRange(request: WorkObservatoryRangeRequest): Promise<RemoteResult<WorkObservatoryRange>>
 }
 
+/** Point-in-time state exposed to Work Observatory renderers. */
 export interface ObservatoryViewState {
   status: 'idle' | 'loading' | 'ready' | 'error'
   error: string | null
@@ -18,6 +20,7 @@ export interface ObservatoryViewState {
   range?: WorkObservatoryRange
 }
 
+/** App-scoped controller that loads and disposes Work Observatory ranges. */
 export interface ObservatoryController {
   readonly source: HostObservable<ObservatoryViewState>
   selectDate(date: string): void
@@ -41,7 +44,11 @@ function epochRange(date: string): { from: number; to: number } {
   return { from: start.getTime(), to: end.getTime() }
 }
 
-/** Create the app-scoped range loader used by the workspace view. */
+/**
+ * Create the app-scoped range loader used by the workspace view.
+ * @param remote - Read-only Host Remote used for bounded range queries.
+ * @returns the observable controller and its lifecycle actions.
+ */
 export function createObservatoryController(remote: WorkObservatoryRemoteFace): ObservatoryController {
   const store = createSnapshotStore<ObservatoryViewState>({
     status: 'idle', error: null, date: localDate(),

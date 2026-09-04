@@ -40,7 +40,7 @@ Choose this provider for one-host repositories whose configured path is the exac
 | `graceMs` | `5000` | TERM-to-KILL grace used by each governed Git subprocess. |
 | `maxGitOutputBytes` | `4 MiB` | Complete per-stream Git diagnostic limit; configuration cannot exceed `64 MiB`. |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-repo-workspace-git-local) is the exhaustive field reference.
+The generated [configuration catalog](../../../docs/config-catalog.md#changanhuadsh-repo-workspace-git-local) is the exhaustive field reference.
 
 -----
 
