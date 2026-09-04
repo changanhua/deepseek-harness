@@ -106,4 +106,29 @@ describe('GitHub Issue rendering', () => {
 
     expect(() => renderGitHubIssue(caseId, oversized)).toThrow(/body exceeds/iu)
   })
+
+  it('renders explicit empty sections and unresolved decisions without inventing content', () => {
+    const rendered = renderGitHubIssue(caseId, {
+      ...revision,
+      outcome: null,
+      allowedScope: [],
+      forbiddenScope: [],
+      acceptanceClauses: [],
+      openDecisions: [{ id: 'publisher-target', question: 'Which repository receives the Issue?' }],
+      referenceLinks: [],
+    })
+
+    expect(rendered.content).toContain([
+      '## Outcome',
+      '',
+      '',
+      '',
+      '## Context',
+    ].join('\n'))
+    expect(rendered.content).toContain('### Allowed\n\n- None.')
+    expect(rendered.content).toContain('### Forbidden\n\n- None.')
+    expect(rendered.content).toContain('## Acceptance\n\n- None.')
+    expect(rendered.content).toContain('## Open Decisions\n\n- **publisher-target**: Which repository receives the Issue?')
+    expect(rendered.content).toContain('## References\n\n- None.')
+  })
 })

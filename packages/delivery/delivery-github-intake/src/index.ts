@@ -164,14 +164,14 @@ export async function importGitHubIssue(
     const snapshot = dependencies.delivery.snapshot()
     throwIfAborted(request.signal)
     const revisionsById = revisionIndex(snapshot)
-    const existing = locateIssueCase(snapshot, revisionsById, source)
+    const located = locateIssueCase(snapshot, revisionsById, source)
     const origin = requirementOriginSchema.parse({
       kind: 'github-import',
       repository: source.repository,
       issueNumber: source.issueNumber,
       contentDigest: source.contentDigest,
     })
-    if (existing === null) {
+    if (located === null) {
       throwIfAborted(request.signal)
       // This call is the cancellation commit point. Do not inspect the signal after it starts.
       const { revision } = await dependencies.delivery.createCase({
@@ -183,15 +183,12 @@ export async function importGitHubIssue(
       })
       return revision
     }
+    const { case: existing, head } = located
     if (existing.repositoryId !== request.repositoryId) {
       throw new DeliveryGitHubIntakeError(
         'invalid-request',
         'GitHub Issue intake snapshot already belongs to another configured repository',
       )
-    }
-    const head = revisionsById.get(existing.headRevisionId)
-    if (head === undefined) {
-      throw invalidLineage(`Delivery Case '${existing.id}' head revision is absent from the snapshot`)
     }
     if (head.origin.kind !== 'github-import') {
       throw new DeliveryGitHubIntakeError(
@@ -199,7 +196,8 @@ export async function importGitHubIssue(
         `The head of Delivery Case '${existing.id}' for this Issue carries a human revision; import cannot override it`,
       )
     }
-    if (sameImportContent(head, source, brief)) return head
+    if (head.origin.contentDigest === source.contentDigest
+      && canonicalJson(requirementContent(head)) === canonicalJson(workBriefContractRevisionDraft(brief))) return head
     throwIfAborted(request.signal)
     // This call is the cancellation commit point. Do not inspect the signal after it starts.
     const { revision } = await dependencies.delivery.reviseCase({
@@ -331,18 +329,20 @@ function locateIssueCase(
   snapshot: DeliverySnapshot,
   revisionsById: Map<string, ContractRevision>,
   source: ImportedIssueSnapshot,
-): DeliveryCase | null {
-  const candidates: DeliveryCase[] = []
+): { readonly case: DeliveryCase; readonly head: ContractRevision } | null {
+  const candidates: { readonly case: DeliveryCase; readonly head: ContractRevision }[] = []
   for (const kase of snapshot.deliveryCases) {
-    const root = caseRoot(kase, revisionsById)
-    if (root === undefined) {
+    const head = revisionsById.get(kase.headRevisionId)
+    if (head === undefined) {
       throw invalidLineage(`Delivery Case '${kase.id}' has a broken revision chain`)
     }
+    const root = revisionRoot(head, revisionsById)
+    if (root === undefined) throw invalidLineage(`Delivery Case '${kase.id}' has a broken revision chain`)
     if (root.origin.kind !== 'github-import') continue
     if (root.origin.repository.owner === source.repository.owner
       && root.origin.repository.name === source.repository.name
       && root.origin.issueNumber === source.issueNumber) {
-      candidates.push(kase)
+      candidates.push({ case: kase, head })
     }
   }
   if (candidates.length > 1) {
@@ -355,12 +355,11 @@ function locateIssueCase(
  * Walk from the Case head to its root revision. A missing predecessor or a
  * cycle means the snapshot cannot be trusted for import decisions.
  */
-function caseRoot(
-  kase: DeliveryCase,
+function revisionRoot(
+  head: ContractRevision,
   revisionsById: Map<string, ContractRevision>,
 ): ContractRevision | undefined {
-  let current = revisionsById.get(kase.headRevisionId)
-  if (current === undefined) return undefined
+  let current = head
   const visited = new Set<string>([current.id])
   while (current.previousRevisionId !== null) {
     if (visited.has(current.previousRevisionId)) return undefined
@@ -370,21 +369,6 @@ function caseRoot(
     current = parent
   }
   return current
-}
-
-/**
- * Decide whether the current head already carries this exact import. The
- * origin digest pins the immutable title/body snapshot; the canonical draft
- * comparison defends against a same-coordinate revision written by another path.
- */
-function sameImportContent(
-  head: ContractRevision,
-  source: ImportedIssueSnapshot,
-  brief: ReturnType<typeof parseGitHubIssueWorkBrief>,
-): boolean {
-  if (head.origin.kind !== 'github-import') return false
-  if (head.origin.contentDigest !== source.contentDigest) return false
-  return canonicalJson(requirementContent(head)) === canonicalJson(workBriefContractRevisionDraft(brief))
 }
 
 /** Requirement content fields an import maps onto a revision draft. */

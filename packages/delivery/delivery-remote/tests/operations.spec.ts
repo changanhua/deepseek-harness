@@ -1,5 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { DeliveryError } from '@changanhua/dsh-delivery'
+import type { GitHubPublisherDependencies } from '@changanhua/dsh-delivery-github-publisher'
 import {
   DispatchBindingId,
   EvidenceId,
@@ -257,13 +258,14 @@ describe('Delivery Remote explicit operations', () => {
 
   it('publishes through Host-only target and credential dependencies with a safe wire result', async () => {
     const contract = contractRevisionFixture()
+    if (contract.repositoryId === null) throw new Error('publication fixture requires a repository')
     const publication = issuePublicationFixture({
       caseId: 'delivery-case-remote' as never,
       revisionId: contract.id,
       phase: 'published',
       issueNumber: 42,
     })
-    const publishGitHubIssue = vi.fn(async () => publication)
+    const publishGitHubIssue = vi.fn<TestInternals['publishGitHubIssue']>(async () => publication)
     const resolve = vi.fn(async () => ({ value: 'host-only-token', source: 'test' }))
     const harness = makeHarness({
       config: {
@@ -297,6 +299,15 @@ describe('Delivery Remote explicit operations', () => {
       revisionId: publication.revisionId,
       signal,
     })
+    const publishCall = publishGitHubIssue.mock.calls[0]
+    if (publishCall === undefined) throw new Error('publisher was not called')
+    const hostDependencies = publishCall[0] as GitHubPublisherDependencies
+    expect(hostDependencies.targetForRepository(contract.repositoryId)).toEqual({
+      repository: { owner: 'example', name: 'project' },
+      credentialRef: 'GITHUB_CANARY_TOKEN',
+      labels: ['dsh-delivery-canary'],
+    })
+    expect(hostDependencies.now()).toMatch(/^\d{4}-\d{2}-\d{2}T/u)
     expect(result).toEqual({
       id: publication.id,
       caseId: publication.caseId,
@@ -309,6 +320,56 @@ describe('Delivery Remote explicit operations', () => {
     expect(JSON.stringify(result)).not.toContain(publication.marker)
     expect(JSON.stringify(result)).not.toContain(publication.renderedDigest)
     expect(JSON.stringify(result)).not.toContain('host-only-token')
+  })
+
+  it('resolves uncertain publication through the Host target without exposing its configuration', async () => {
+    const contract = contractRevisionFixture()
+    if (contract.repositoryId === null) throw new Error('publication fixture requires a repository')
+    const publication = issuePublicationFixture({
+      caseId: 'delivery-case-resolution' as never,
+      revisionId: contract.id,
+      phase: 'published',
+      issueNumber: 42,
+    })
+    const resolveGitHubIssuePublication = vi.fn<TestInternals['resolveGitHubIssuePublication']>(async () => publication)
+    const harness = makeHarness({
+      config: {
+        githubTargets: {
+          [String(contract.repositoryId)]: {
+            owner: 'example',
+            name: 'project',
+            credentialRef: 'GITHUB_CANARY_TOKEN',
+          },
+        },
+      },
+      internals: { resolveGitHubIssuePublication },
+    })
+    const signal = new AbortController().signal
+
+    const result = await harness.service.resolvePublication({
+      resolution: 'confirm-published',
+      publicationId: String(publication.id),
+      issueNumber: 42,
+    }, signal)
+
+    const resolveCall = resolveGitHubIssuePublication.mock.calls[0]
+    if (resolveCall === undefined) throw new Error('publication resolver was not called')
+    const hostDependencies = resolveCall[0] as GitHubPublisherDependencies
+    const request = resolveCall[1]
+    expect(hostDependencies.targetForRepository(contract.repositoryId)).toEqual({
+      repository: { owner: 'example', name: 'project' },
+      credentialRef: 'GITHUB_CANARY_TOKEN',
+      labels: [],
+    })
+    expect(hostDependencies.now()).toMatch(/^\d{4}-\d{2}-\d{2}T/u)
+    expect(request).toEqual({
+      resolution: 'confirm-published',
+      publicationId: publication.id,
+      issueNumber: 42,
+      signal,
+    })
+    expect(result).toMatchObject({ id: publication.id, phase: 'published' })
+    expect(JSON.stringify(result)).not.toContain('GITHUB_CANARY_TOKEN')
   })
 
   it('forwards Issue import, Packet creation, change start, and verification start through narrow host capabilities', async () => {
@@ -478,13 +539,54 @@ describe('Delivery Remote explicit operations', () => {
       delivery: {
         getContractRevision: () => contract,
         getWorkPacket: () => packet,
+        createCase: vi.fn(async () => { throw new Error(secret) }),
+        reviseCase: vi.fn(async () => { throw new Error(secret) }),
+        recordRequirementDecision: vi.fn(async () => { throw new Error(secret) }),
       },
       repository: { resolveBase: vi.fn(async () => { throw new Error(secret) }) },
       internals: {
         startCodeChange: vi.fn(async () => { throw new Error(secret) }),
         startVerification: vi.fn(async () => { throw new Error(secret) }),
+        publishGitHubIssue: vi.fn(async () => { throw new Error(secret) }),
+        resolveGitHubIssuePublication: vi.fn(async () => { throw new Error(secret) }),
       },
     })
+
+    const draft = {
+      outcome: contract.outcome,
+      context: contract.context,
+      allowedScope: contract.allowedScope,
+      forbiddenScope: contract.forbiddenScope,
+      acceptanceClauses: contract.acceptanceClauses,
+      openDecisions: contract.openDecisions,
+      baseSelectionRule: contract.baseSelectionRule,
+      verificationSource: contract.verificationSource,
+      referenceLinks: contract.referenceLinks,
+    }
+
+    await expect(harness.service.createCase({ title: contract.title, revision: draft }, signal))
+      .rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
+    await expect(harness.service.reviseCase({
+      caseId: 'case-secret',
+      expectedHeadRevisionId: String(contract.id),
+      title: contract.title,
+      revision: draft,
+    }, signal)).rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
+    await expect(harness.service.recordRequirementDecision({
+      caseId: 'case-secret',
+      revisionId: String(contract.id),
+      decision: 'approved',
+      reason: 'Approve the bounded contract.',
+    }, signal)).rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
+    await expect(harness.service.publishIssue({
+      caseId: 'case-secret',
+      revisionId: String(contract.id),
+    }, signal)).rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
+    await expect(harness.service.resolvePublication({
+      resolution: 'confirm-published',
+      publicationId: 'publication-secret',
+      issueNumber: 42,
+    }, signal)).rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
 
     await expect(harness.service.createPacket({
       contractRevisionId: String(contract.id),

@@ -85,6 +85,15 @@ describe('ui-delivery client composition', () => {
     expect(b.ctx.get('remote.delivery')).toBeUndefined()
   })
 
+  it('disposes partial UI and Remote registration when slot composition fails', async () => {
+    const b = await bench()
+    vi.spyOn(b.slots, 'register').mockImplementation(() => {
+      throw new Error('controlled slot registration failure')
+    })
+    await expect(apply(b.ctx)).rejects.toThrow('controlled slot registration failure')
+    expect(b.ctx.get('remote.delivery')).toBeUndefined()
+  })
+
   it('registers one Delivery module and one shared host-backed workspace projection', async () => {
     const b = await bench()
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
@@ -166,6 +175,11 @@ describe('ui-delivery client composition', () => {
   it('wires every workspace action and the navigation projection to the shared controller', async () => {
     const b = await bench()
     for (const operation of [
+      b.remote.createCase,
+      b.remote.reviseCase,
+      b.remote.recordRequirementDecision,
+      b.remote.publishIssue,
+      b.remote.resolvePublication,
       b.remote.createPacket,
       b.remote.startVerification,
       b.remote.recordDecision,
@@ -180,6 +194,11 @@ describe('ui-delivery client composition', () => {
       hooks: { delivery: unknown }
       refresh(): void
       cancel(): void
+      createCase(input: unknown): Promise<boolean>
+      reviseCase(input: unknown): Promise<boolean>
+      recordRequirementDecision(input: unknown): Promise<boolean>
+      publishIssue(input: unknown): Promise<boolean>
+      resolvePublication(input: unknown): Promise<boolean>
       createPacket(input: unknown): Promise<boolean>
       startVerification(input: unknown): Promise<boolean>
       selectPacket(packetId: string): void
@@ -193,6 +212,11 @@ describe('ui-delivery client composition', () => {
     expect(navigation.hooks.delivery).toBe(workspace.hooks.delivery)
     workspace.refresh()
     workspace.cancel()
+    await expect(workspace.createCase({ title: 'Case' })).resolves.toBe(true)
+    await expect(workspace.reviseCase({ caseId: 'case-1' })).resolves.toBe(true)
+    await expect(workspace.recordRequirementDecision({ caseId: 'case-1' })).resolves.toBe(true)
+    await expect(workspace.publishIssue({ caseId: 'case-1' })).resolves.toBe(true)
+    await expect(workspace.resolvePublication({ publicationId: 'publication-1' })).resolves.toBe(true)
     await expect(workspace.createPacket({ contractRevisionId: 'contract-1' })).resolves.toBe(true)
     await vi.waitFor(() => { expect(b.snapshotCall.mock.calls.length).toBeGreaterThan(1) })
     await expect(workspace.startVerification({ packetId: 'packet-1' })).resolves.toBe(true)
@@ -203,6 +227,11 @@ describe('ui-delivery client composition', () => {
     })).resolves.toBe(true)
     await expect(workspace.recordDecision({ packetId: 'packet-1' })).resolves.toBe(true)
 
+    expect(b.remote.createCase).toHaveBeenCalled()
+    expect(b.remote.reviseCase).toHaveBeenCalled()
+    expect(b.remote.recordRequirementDecision).toHaveBeenCalled()
+    expect(b.remote.publishIssue).toHaveBeenCalled()
+    expect(b.remote.resolvePublication).toHaveBeenCalled()
     expect(b.remote.createPacket).toHaveBeenCalled()
     expect(b.remote.startVerification).toHaveBeenCalled()
     expect(b.remote.readEvidence).toHaveBeenCalled()

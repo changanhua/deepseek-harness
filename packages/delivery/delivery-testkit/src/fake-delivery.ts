@@ -133,7 +133,8 @@ export class FakeDelivery extends Delivery {
     if (prior !== undefined) {
       return {
         case: this.requireCaseRecord(prior.resultId),
-        revision: this.requireRevision(prior.relatedId),
+        // create-delivery-case is the only composite idempotency record and always stores relatedId.
+        revision: this.requireRevision(prior.relatedId as string),
       }
     }
     const revision: ContractRevision = contractRevisionSchema.parse({
@@ -183,6 +184,7 @@ export class FakeDelivery extends Delivery {
       )
     }
     const parent = this.revisions.get(request.expectedHeadRevisionId)
+    /* v8 ignore next 3 -- public fake operations commit each Case and its referenced revisions synchronously. */
     if (parent === undefined) {
       throw new DeliveryError('not-found', `head Contract revision '${request.expectedHeadRevisionId}' is absent`)
     }
@@ -213,13 +215,16 @@ export class FakeDelivery extends Delivery {
     if (located.headRevisionId === childRevisionId) {
       return { case: clone(located), revision: child }
     }
+    /* v8 ignore next -- equality here requires a torn child/head commit that the synchronous fake cannot expose. */
     if (located.headRevisionId !== request.expectedHeadRevisionId) {
       throw new DeliveryError(
         'conflict',
         `Delivery Case '${request.caseId}' head moved past '${request.expectedHeadRevisionId}' before the replayed child revision could attach`,
       )
     }
+    /* v8 ignore next -- the in-memory fake commits child and head synchronously; no public call observes this crash seam. */
     const kase = this.moveCaseHead(request.caseId, request.expectedHeadRevisionId, childRevisionId)
+    /* v8 ignore next -- same synchronous fake crash seam as the move above. */
     return { case: clone(kase), revision: child }
   }
 
@@ -229,6 +234,7 @@ export class FakeDelivery extends Delivery {
    */
   private moveCaseHead(caseId: string, expectedHeadRevisionId: string, childRevisionId: string): DeliveryCase {
     const located = this.requireCase(caseId)
+    /* v8 ignore next 4 -- reviseCaseUnderLock rechecks this synchronous in-memory head immediately before calling. */
     if (located.headRevisionId !== expectedHeadRevisionId) {
       throw new DeliveryError(
         'conflict',
@@ -404,7 +410,7 @@ export class FakeDelivery extends Delivery {
     const existing = this.findPublicationForRevision(request.revisionId)
     if (existing !== undefined) {
       if (existing.phase === 'failed') {
-        return this.resetFailedPublication(existing.id, request)
+        return this.resetFailedPublication(existing, request)
       }
       if (existing.phase === 'unknown') {
         throw new DeliveryError(
@@ -438,15 +444,10 @@ export class FakeDelivery extends Delivery {
    * Return a failed publication to `prepared` under its existing id for a new
    * attempt, so one revision never yields a second attempt record.
    */
-  private resetFailedPublication(publicationId: string, request: PrepareIssuePublicationRequest): IssuePublication {
-    const current = this.requirePublication(publicationId)
-    if (current.phase === 'unknown') {
-      throw new DeliveryError(
-        'invalid-transition',
-        `Issue publication '${current.id}' requires human resolution before another attempt`,
-      )
-    }
-    if (current.phase !== 'failed') return clone(current)
+  private resetFailedPublication(
+    current: IssuePublication & { readonly phase: 'failed' },
+    request: PrepareIssuePublicationRequest,
+  ): IssuePublication {
     const reset: IssuePublication = issuePublicationSchema.parse({
       ...current,
       repository: clone(request.repository),
@@ -798,6 +799,7 @@ export class FakeDelivery extends Delivery {
     if (revision === undefined) {
       throw new DeliveryError('not-found', `Contract revision '${revisionId}' is absent`)
     }
+    /* v8 ignore next 3 -- public fake operations atomically add every revision to one Case lineage. */
     if (this.findCaseForRevision(revisionId) === undefined) {
       throw new DeliveryError('invalid-reference', `Contract revision '${revisionId}' does not belong to any Delivery Case`)
     }
@@ -819,6 +821,7 @@ export class FakeDelivery extends Delivery {
     for (let step = 0; cursor !== null && step < limit; step += 1) {
       if (cursor === revisionId) return true
       const revision = this.revisions.get(cursor)
+      /* v8 ignore next 2 -- public fake operations atomically preserve every Case lineage link. */
       if (revision === undefined) return false
       cursor = revision.previousRevisionId
     }
@@ -829,6 +832,7 @@ export class FakeDelivery extends Delivery {
     for (const kase of this.cases.values()) {
       if (this.revisionInCase(kase, revisionId)) return kase
     }
+    /* v8 ignore next -- every revision created through the public fake belongs to one Case lineage. */
     return undefined
   }
 
@@ -859,8 +863,8 @@ export class FakeDelivery extends Delivery {
     return clone(value)
   }
 
-  private requireRevision(id: string | undefined): ContractRevision {
-    const value = id === undefined ? undefined : this.revisions.get(id)
+  private requireRevision(id: string): ContractRevision {
+    const value = this.revisions.get(id)
     /* v8 ignore next -- both maps are committed together; only direct private-state mutation can break this invariant. */
     if (value === undefined) throw new Error('delivery-testkit: idempotency record references a missing Contract revision')
     return clone(value)
@@ -933,7 +937,10 @@ export class FakeDelivery extends Delivery {
       throw new DeliveryError('acceptance-denied', claimFindings.join('; '))
     }
     const byId = new Map(evidenceRefs.map(reference => [reference.id, reference]))
-    const claimEvidenceIds = new Set(claim.evidenceIds)
+    const claimEvidenceIds = new Set([
+      ...claim.evidenceIds,
+      ...claim.resumeCapsuleEvidenceId === null ? [] : [claim.resumeCapsuleEvidenceId],
+    ])
     if (claim.evidenceIds.some(id => !verdict.evidenceIds.includes(id))) {
       throw new DeliveryError('acceptance-denied', 'passed verdict does not cover every completed-claim evidence id')
     }
@@ -954,6 +961,19 @@ export class FakeDelivery extends Delivery {
         || reference.provenance.queueWorkId !== changeQueueWorkId
         || reference.provenance.queueAttemptId !== claim.queueAttemptId) {
         throw new DeliveryError('acceptance-denied', `claim evidence '${evidenceId}' has unrelated provenance`)
+      }
+    }
+    if (claim.resumeCapsuleEvidenceId !== null) {
+      const resumeCapsule = byId.get(claim.resumeCapsuleEvidenceId)
+      if (resumeCapsule?.kind !== 'resume-capsule'
+        || resumeCapsule.provenance.kind !== 'change-attempt'
+        || resumeCapsule.provenance.packetId !== packet.id
+        || resumeCapsule.provenance.queueWorkId !== changeQueueWorkId
+        || resumeCapsule.provenance.queueAttemptId !== claim.queueAttemptId) {
+        throw new DeliveryError(
+          'acceptance-denied',
+          `resume capsule evidence '${claim.resumeCapsuleEvidenceId}' has unrelated provenance`,
+        )
       }
     }
     for (const result of verdict.checkResults) {
@@ -999,6 +1019,7 @@ export class FakeDelivery extends Delivery {
   ): Promise<readonly EvidenceRef[]> {
     const evidenceIds = new Set([
       ...claim.evidenceIds,
+      ...claim.resumeCapsuleEvidenceId === null ? [] : [claim.resumeCapsuleEvidenceId],
       ...verdict.evidenceIds,
       ...verdict.checkResults.flatMap(result => result.evidenceIds),
     ])

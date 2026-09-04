@@ -58,10 +58,24 @@ describe('Delivery Remote host boundary', () => {
     expect(() => new DeliveryRemoteService(context(), { operatorId: '  ' })).toThrow(
       'operatorId must be non-blank',
     )
+    expect(() => new DeliveryRemoteService(context(), {
+      githubTargets: {
+        workspace: { owner: 'bad owner', name: 'project', credentialRef: 'GITHUB_TOKEN' },
+      },
+    })).toThrow('invalid repository coordinates')
+    expect(() => new DeliveryRemoteService(context(), {
+      githubTargets: {
+        workspace: { owner: 'example', name: 'bad name', credentialRef: 'GITHUB_TOKEN' },
+      },
+    })).toThrow('invalid repository coordinates')
   })
 
   it('constructs the delivery namespace and returns an empty browser snapshot', () => {
-    const service = new DeliveryRemoteService(context())
+    const service = new DeliveryRemoteService(context(), {
+      githubTargets: {
+        workspace: { owner: 'example', name: 'project', credentialRef: 'GITHUB_TOKEN' },
+      },
+    })
 
     expect(service).toBeInstanceOf(DeliveryRemoteService)
     expect(service.snapshot(new AbortController().signal)).toEqual({

@@ -368,7 +368,15 @@ describe('GitHub Issue intake', () => {
       headers: { 'content-type': 'application/json' },
     }), 'invalid-response'],
     ['mismatched coordinates', jsonResponse(issueSnapshot({ number: 43 })), 'invalid-response'],
+    ['blank title', jsonResponse(issueSnapshot({ title: '   ' })), 'invalid-response'],
+    ['blank body', jsonResponse(issueSnapshot({ body: '\n\t' })), 'invalid-response'],
     ['invalid immutable timestamp', jsonResponse(issueSnapshot({ updated_at: 'not-a-timestamp' })), 'invalid-response'],
+    ['out-of-range month', jsonResponse(issueSnapshot({ updated_at: '2026-13-01T00:00:00Z' })), 'invalid-response'],
+    ['out-of-range day', jsonResponse(issueSnapshot({ updated_at: '2026-01-00T00:00:00Z' })), 'invalid-response'],
+    ['out-of-range hour', jsonResponse(issueSnapshot({ updated_at: '2026-01-01T24:00:00Z' })), 'invalid-response'],
+    ['out-of-range minute', jsonResponse(issueSnapshot({ updated_at: '2026-01-01T00:60:00Z' })), 'invalid-response'],
+    ['out-of-range second', jsonResponse(issueSnapshot({ updated_at: '2026-01-01T00:00:60Z' })), 'invalid-response'],
+    ['impossible calendar day', jsonResponse(issueSnapshot({ updated_at: '2026-02-30T00:00:00Z' })), 'invalid-response'],
     ['malformed snapshot', jsonResponse(issueSnapshot({ body: null as never })), 'invalid-response'],
     ['non-object snapshot', new Response('42', {
       status: 200,
@@ -558,6 +566,23 @@ describe('GitHub Issue intake', () => {
     expect(request.origin).toEqual(importOrigin(editedIssue.title, editedIssue.body))
     expect(request.title).toBe(editedIssue.title)
     expect(request.revision).toEqual(workBriefContractRevisionDraft(parseGitHubIssueWorkBrief(editedIssue.body)))
+  })
+
+  it('ignores unrelated human-root Cases when locating the imported Issue', async () => {
+    const issue = issueSnapshot()
+    const humanRoot = {
+      ...importedRevision(issue, { id: 'contract-revision-human-root' }),
+      origin: { kind: 'human', actorId: 'human-root-fixture' } as const,
+    }
+    const { deps, fetch, createCase } = dependencies(
+      [humanRoot],
+      [deliveryCase('contract-revision-human-root', { id: 'delivery-case-human-root' })],
+    )
+    fetch.mockResolvedValue(jsonResponse(issue))
+
+    await importGitHubIssue(deps, { issueUrl, repositoryId })
+
+    expect(createCase).toHaveBeenCalledTimes(1)
   })
 
   it('adopts an A to B to A reversion after the Case head regardless of snapshot order', async () => {

@@ -18,6 +18,7 @@ import {
   completedClaimFixture,
   contractRevisionFixture,
   deliveryCaseFixture,
+  githubImportOriginFixture,
   issuePublicationFixture,
   passedVerdictFixture,
   readyWorkPacketFixture,
@@ -33,7 +34,11 @@ import {
 } from '@changanhua/dsh-task-queue'
 import { describe, expect, it, vi } from 'vitest'
 import { DeliveryRemoteService } from '../src/index.ts'
-import { projectDeliverySnapshot } from '../src/projection.ts'
+import {
+  projectContractRevision,
+  projectDeliverySnapshot,
+  projectIssuePublication,
+} from '../src/projection.ts'
 
 const TIME = '2026-08-29T00:00:00.000Z'
 const signal = new AbortController().signal
@@ -305,6 +310,22 @@ describe('Delivery Remote workbench projection', () => {
     expect(() => service.snapshot(signal)).toThrow('Delivery snapshot projection was refused')
   })
 
+  it('fails closed when a Case references an absent head revision', () => {
+    expect(() => projectDeliverySnapshot({
+      contractRevisions: [], workPackets: [], dispatchBindings: [], acceptanceDecisions: [],
+      deliveryCases: [deliveryCaseFixture({ headRevisionId: ContractRevisionId('missing-head') })],
+      requirementDecisions: [], issuePublications: [],
+    }, [], [])).toThrow(/Case references an unavailable head revision/u)
+  })
+
+  it('projects imported origins and no-failure publications without trusted-only fields', () => {
+    const imported = contractRevisionFixture({ origin: githubImportOriginFixture() })
+    const publication = issuePublicationFixture({ phase: 'prepared' })
+
+    expect(projectContractRevision(imported).origin).toEqual(imported.origin)
+    expect(projectIssuePublication(publication).failureCategory).toBeNull()
+  })
+
   it('uses one Delivery read and one Queue read for a complete snapshot', () => {
     const facts = deliveryFacts()
     const deliverySnapshot = vi.fn(() => facts)
@@ -406,6 +427,44 @@ describe('Delivery Remote workbench projection', () => {
       publicationTarget: { owner: 'example', name: 'delivery-canary' },
     })
     expect(JSON.stringify(snapshot.cases)).not.toContain('actorId')
+  })
+
+  it('propagates an accepted Packet lane to its Case and breaks equal-time Case ties by identity', () => {
+    const acceptedRevision = contractRevisionFixture({ id: ContractRevisionId('revision-accepted-case') })
+    const shapingRevision = contractRevisionFixture({ id: ContractRevisionId('revision-tie-case') })
+    const acceptedCase = deliveryCaseFixture({
+      id: 'case-z-accepted' as never,
+      headRevisionId: acceptedRevision.id,
+      repositoryId: acceptedRevision.repositoryId!,
+      updatedAt: TIME,
+    })
+    const shapingCase = deliveryCaseFixture({
+      id: 'case-a-shaping' as never,
+      headRevisionId: shapingRevision.id,
+      repositoryId: shapingRevision.repositoryId!,
+      updatedAt: TIME,
+    })
+    const packet = readyWorkPacketFixture({
+      id: WorkPacketId('packet-accepted-case'),
+      contractRevisionId: acceptedRevision.id,
+    })
+    const decision = acceptedDecisionFixture({ packetId: packet.id })
+
+    const snapshot = projectDeliverySnapshot({
+      contractRevisions: [acceptedRevision, shapingRevision],
+      workPackets: [packet],
+      dispatchBindings: [],
+      acceptanceDecisions: [decision],
+      deliveryCases: [shapingCase, acceptedCase],
+      requirementDecisions: [],
+      issuePublications: [],
+    }, [], [])
+
+    expect(snapshot.cases.map(card => [card.case.id, card.lane])).toEqual([
+      ['case-z-accepted', 'accepted'],
+      ['case-a-shaping', 'shaping'],
+    ])
+    expect(snapshot.cases[0]?.publicationTarget).toBeNull()
   })
 
   it('fails closed for invalid results and derives blocked reasons from claims, verdicts, decisions, and Attention', () => {

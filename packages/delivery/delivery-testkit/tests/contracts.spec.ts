@@ -362,6 +362,11 @@ describe('schema-validated Delivery fixtures', () => {
     expect(() => readyWorkPacketFixture({ acceptanceClauseIds: [] })).toThrow()
     expect(contractRevisionFixture({ repositoryId: null }).repositoryId).toBeNull()
     expect(contractRevisionFixture({ baseSelectionRule: null }).baseSelectionRule).toBeNull()
+    expect(contractRevisionFixture({ verificationSource: null }).verificationSource).toBeNull()
+    expect(contractRevisionFixture({ previousRevisionId: ContractRevisionId('parent-revision') }).previousRevisionId)
+      .toBe('parent-revision')
+    expect(contractRevisionFixture({ outcome: null }).outcome).toBeNull()
+    expect(issuePublicationFixture().phase).toBe('prepared')
     expect(issuePublicationFixture({ phase: 'published', issueNumber: 202 }).issue)
       .toMatchObject({ issueNumber: 202, url: 'https://github.com/deepseek-ai/deepseek-harness/issues/202' })
     expect(issuePublicationFixture({ phase: 'failed' }).failure)
@@ -452,6 +457,7 @@ describe('FakeDelivery contract', () => {
     expect(harness.delivery.getRequirementDecision(RequirementDecisionId('missing-decision'))).toBeUndefined()
     expect(harness.delivery.getIssuePublication(IssuePublicationId('missing-publication'))).toBeUndefined()
     expect(harness.delivery.getContractRevision(ContractRevisionId('missing-contract'))).toBeUndefined()
+    expect(harness.delivery.getContractRevision(created.revision.id)).toEqual(created.revision)
     expect(harness.delivery.getWorkPacket(WorkPacketId('missing-packet'))).toBeUndefined()
     expect(harness.delivery.getDispatchBinding(DispatchBindingId('missing-binding'))).toBeUndefined()
 
@@ -574,7 +580,15 @@ describe('FakeDelivery contract', () => {
     const replayed = await harness.delivery.reviseCase(reviseCaseRequest(created, {}, 'revise-cas-v2'))
     expect(replayed.case).toEqual(revised.case)
     expect(replayed.revision).toEqual(revised.revision)
-    expect(harness.delivery.snapshot().contractRevisions).toHaveLength(2)
+    const later = await harness.delivery.reviseCase(reviseCaseRequest(revised, {}, 'revise-after-replay-v2'))
+    expect(later.revision.previousRevisionId).toBe(revised.revision.id)
+    await expect(harness.delivery.reviseCase(reviseCaseRequest(created, {}, 'revise-cas-v2')))
+      .rejects.toMatchObject({ code: 'conflict' })
+    await expect(harness.delivery.reviseCase({
+      ...reviseCaseRequest(created, {}, 'revise-missing-case-v2'),
+      caseId: DeliveryCaseId('missing-case'),
+    })).rejects.toMatchObject({ code: 'not-found' })
+    expect(harness.delivery.snapshot().contractRevisions).toHaveLength(3)
     await harness.dispose()
   })
 
@@ -726,6 +740,15 @@ describe('FakeDelivery contract', () => {
     expect(packet.contractRevisionId).toBe(revision.id)
     const publication = await harness.delivery.prepareIssuePublication(publicationRequest)
     expect(publication).toMatchObject({ phase: 'prepared', revisionId: revision.id })
+
+    const other = await createApprovedCase(harness, 'publication-cross-case-v2')
+    await expect(harness.delivery.prepareIssuePublication({
+      ...preparePublicationRequest(other, {}, 'publication-cross-case-v2'),
+      revisionId: revision.id,
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(harness.delivery.prepareIssuePublication(
+      preparePublicationRequest(other, {}, 'publication-other-revision-v2'),
+    )).resolves.toMatchObject({ revisionId: other.revision.id })
 
     // Readiness stays independent of approval: an approved not-ready revision still fails.
     const blocked = await harness.delivery.createCase(createCaseRequest({
@@ -1711,6 +1734,68 @@ describe('FakeDelivery contract', () => {
       decisionNonce: 'candidate-corrupt-evidence',
     }, async () => candidate, resolveEvidence)).rejects.toMatchObject({ code: 'digest-mismatch' })
     expect(harness.delivery.snapshot().acceptanceDecisions).toEqual([])
+    await harness.dispose()
+  })
+})
+
+describe('FakeDelivery resume capsule evidence', () => {
+  it('accepts a provenance-bound resume capsule as part of a completed claim', async () => {
+    const harness = await mountDeliveryTestkit(new Context())
+    const { packet } = await createStoredPacket(harness, 'resume-capsule')
+    const chain = await createAcceptanceChain(harness, packet)
+    const resumeCapsuleEvidenceId = EvidenceId('resume-capsule-evidence')
+    const completionClaim = completedClaimFixture({
+      ...chain.completionClaim,
+      resumeCapsuleEvidenceId,
+    })
+    const evidence = new Map(chain.evidenceRefs.map(reference => [reference.id, reference]))
+    const resumeProvenance = {
+      kind: 'change-attempt' as const,
+      packetId: packet.id,
+      queueWorkId: chain.changeQueueWorkId,
+      queueAttemptId: chain.changeQueueAttemptId,
+    }
+    evidence.set(resumeCapsuleEvidenceId, evidenceRefFixture({
+      id: resumeCapsuleEvidenceId,
+      kind: 'log',
+      provenance: resumeProvenance,
+    }))
+
+    const resolveEvidence = vi.fn(async (evidenceId: EvidenceId) => evidence.get(evidenceId))
+    const candidate = {
+      completionClaim,
+      changeQueueAttemptId: chain.changeQueueAttemptId,
+      verificationIntent: chain.verificationIntent,
+      verificationVerdict: chain.verificationVerdict,
+      verificationQueueAttemptId: chain.verificationQueueAttemptId,
+    }
+    const request = {
+      packetId: packet.id,
+      changeBindingId: chain.changeBinding.id,
+      verificationBindingId: chain.verificationBinding.id,
+      decision: 'accepted' as const,
+      reason: 'The resume capsule is bound to the completed change Attempt.',
+      actorId: HUMAN_ACTOR,
+    }
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'reject-wrong-kind-resume-capsule',
+      decisionNonce: 'reject-wrong-kind-resume-capsule',
+    }, async () => candidate, resolveEvidence)).rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    evidence.set(resumeCapsuleEvidenceId, evidenceRefFixture({
+      id: resumeCapsuleEvidenceId,
+      kind: 'resume-capsule',
+      provenance: resumeProvenance,
+    }))
+    const decision = await harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'accept-resume-capsule',
+      decisionNonce: 'accept-resume-capsule',
+    }, async () => candidate, resolveEvidence)
+
+    expect(decision.decision).toBe('accepted')
+    expect(resolveEvidence).toHaveBeenCalledWith(resumeCapsuleEvidenceId)
     await harness.dispose()
   })
 })

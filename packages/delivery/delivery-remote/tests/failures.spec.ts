@@ -1,6 +1,7 @@
 import { DeliveryError } from '@changanhua/dsh-delivery'
 import { DeliveryEvidenceError } from '@changanhua/dsh-delivery-evidence'
 import { DeliveryGitHubIntakeError } from '@changanhua/dsh-delivery-github-intake'
+import { DeliveryGitHubPublisherError } from '@changanhua/dsh-delivery-github-publisher'
 import { DeliveryTaskQueueError } from '@changanhua/dsh-delivery-task-queue'
 import { RepositoryWorkspaceError } from '@changanhua/dsh-repo-workspace'
 import { TypertRemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
@@ -55,6 +56,12 @@ describe('Delivery Remote browser failure mapping', () => {
       [new DeliveryTaskQueueError('executor-not-allowed', sentinel), 'denied', 'delivery-task-queue'],
       [new DeliveryGitHubIntakeError('network-failure', sentinel), 'unavailable', 'delivery-github-intake'],
       [new DeliveryGitHubIntakeError('invalid-request', sentinel), 'bad-request', 'delivery-github-intake'],
+      [new DeliveryGitHubPublisherError('not-found', sentinel), 'not-found', 'delivery-github-publisher'],
+      [new DeliveryGitHubPublisherError('transport', sentinel), 'unavailable', 'delivery-github-publisher'],
+      [new DeliveryGitHubPublisherError('missing-credential', sentinel), 'unavailable', 'delivery-github-publisher'],
+      [new DeliveryGitHubPublisherError('aborted', sentinel), 'cancelled', 'delivery-github-publisher'],
+      [new DeliveryGitHubPublisherError('invalid-state', sentinel), 'conflict', 'delivery-github-publisher'],
+      [new DeliveryGitHubPublisherError('invalid-response', sentinel), 'bad-request', 'delivery-github-publisher'],
       [new DeliveryEvidenceError('not-found', 'x'), 'not-found', 'delivery-evidence'],
       [new DeliveryEvidenceError('unavailable', 'x'), 'unavailable', 'delivery-evidence'],
       [new DeliveryEvidenceError('digest-mismatch', 'x'), 'denied', 'delivery-evidence'],

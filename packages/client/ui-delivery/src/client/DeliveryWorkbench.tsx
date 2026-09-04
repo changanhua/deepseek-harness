@@ -186,23 +186,23 @@ function CaseCaptureForm(props: Pick<DeliveryWorkspaceProps, 'createCase' | 't'>
   )
 }
 
-function CaseForm(props: Pick<DeliveryWorkspaceProps, 'createCase' | 'reviseCase' | 't'> & {
-  card?: DeliveryCaseCard
+function CaseForm(props: Pick<DeliveryWorkspaceProps, 'reviseCase' | 't'> & {
+  card: DeliveryCaseCard
   busy: boolean
 }) {
-  const revision = props.card?.headRevision
-  const [title, setTitle] = useState(revision?.title ?? '')
-  const [outcome, setOutcome] = useState(revision?.outcome ?? '')
-  const [context, setContext] = useState(revision?.context ?? '')
-  const [scope, setScope] = useState(revision?.allowedScope.join('\n') ?? '')
-  const [acceptance, setAcceptance] = useState(revision?.acceptanceClauses.map(clause => clause.text).join('\n') ?? '')
+  const revision = props.card.headRevision
+  const [title, setTitle] = useState(revision.title)
+  const [outcome, setOutcome] = useState(revision.outcome ?? '')
+  const [context, setContext] = useState(revision.context)
+  const [scope, setScope] = useState(revision.allowedScope.join('\n'))
+  const [acceptance, setAcceptance] = useState(revision.acceptanceClauses.map(clause => clause.text).join('\n'))
   useEffect(() => {
-    setTitle(revision?.title ?? '')
-    setOutcome(revision?.outcome ?? '')
-    setContext(revision?.context ?? '')
-    setScope(revision?.allowedScope.join('\n') ?? '')
-    setAcceptance(revision?.acceptanceClauses.map(clause => clause.text).join('\n') ?? '')
-  }, [revision?.id])
+    setTitle(revision.title)
+    setOutcome(revision.outcome ?? '')
+    setContext(revision.context)
+    setScope(revision.allowedScope.join('\n'))
+    setAcceptance(revision.acceptanceClauses.map(clause => clause.text).join('\n'))
+  }, [revision.id])
   const allowedScope = lines(scope)
   const acceptanceClauses = lines(acceptance).map((text, index) => ({
     id: `acceptance-${String(index + 1)}` as never,
@@ -211,7 +211,7 @@ function CaseForm(props: Pick<DeliveryWorkspaceProps, 'createCase' | 'reviseCase
   const ready = title.trim() !== '' && outcome.trim() !== ''
     && allowedScope.length > 0 && acceptanceClauses.length > 0 && !props.busy
   return (
-    <form className={css.commandCard} aria-label={props.t(props.card === undefined ? 'case.createTitle' : 'case.reviseTitle')} onSubmit={(event) => {
+    <form className={css.commandCard} aria-label={props.t('case.reviseTitle')} onSubmit={(event) => {
       event.preventDefault()
       if (!ready) return
       const input = {
@@ -228,14 +228,13 @@ function CaseForm(props: Pick<DeliveryWorkspaceProps, 'createCase' | 'reviseCase
           referenceLinks: [],
         },
       }
-      if (props.card === undefined) void props.createCase(input)
-      else void props.reviseCase({
+      void props.reviseCase({
         ...input,
         caseId: String(props.card.case.id),
         expectedHeadRevisionId: String(props.card.headRevision.id),
       })
     }}>
-      <h2>{props.t(props.card === undefined ? 'case.createTitle' : 'case.reviseTitle')}</h2>
+      <h2>{props.t('case.reviseTitle')}</h2>
       <label><span>{props.t('case.title')}</span><input value={title} disabled={props.busy} onChange={(event) => { setTitle(event.currentTarget.value) }} /></label>
       <label><span>{props.t('case.outcome')}</span><textarea value={outcome} disabled={props.busy} onChange={(event) => { setOutcome(event.currentTarget.value) }} /></label>
       <label><span>{props.t('case.context')}</span><textarea value={context} disabled={props.busy} onChange={(event) => { setContext(event.currentTarget.value) }} /></label>
@@ -243,7 +242,7 @@ function CaseForm(props: Pick<DeliveryWorkspaceProps, 'createCase' | 'reviseCase
         <label><span>{props.t('case.scope')}</span><textarea value={scope} disabled={props.busy} onChange={(event) => { setScope(event.currentTarget.value) }} /></label>
         <label><span>{props.t('case.acceptance')}</span><textarea value={acceptance} disabled={props.busy} onChange={(event) => { setAcceptance(event.currentTarget.value) }} /></label>
       </div>
-      <button type="submit" disabled={!ready}>{props.t(props.card === undefined ? 'case.create' : 'case.revise')}</button>
+      <button type="submit" disabled={!ready}>{props.t('case.revise')}</button>
     </form>
   )
 }
@@ -260,7 +259,6 @@ function CaseAuthority(
   const publication = props.card.publication
   const target = props.card.publicationTarget
   const decide = (decision: 'approved' | 'rejected' | 'deferred') => {
-    if (reason.trim() === '') return
     void props.recordRequirementDecision({
       caseId: String(props.card.case.id),
       revisionId: String(props.card.headRevision.id),
@@ -314,20 +312,21 @@ function PacketForm(props: Pick<DeliveryWorkspaceProps, 'createPacket' | 't'> & 
   contracts: readonly DeliveryWorkbenchCard['contractRevision'][]
   busy: boolean
 }) {
-  const [contractId, setContractId] = useState(props.contracts[0]?.id ?? '')
-  const contract = props.contracts.find(candidate => candidate.id === contractId) ?? props.contracts[0]
-  const [objective, setObjective] = useState(contract?.outcome ?? '')
+  // PacketForm is mounted only when the caller has at least one eligible Contract.
+  const [firstContract] = props.contracts as readonly [DeliveryWorkbenchCard['contractRevision'], ...DeliveryWorkbenchCard['contractRevision'][]]
+  const [contractId, setContractId] = useState<string>(firstContract.id)
+  const contract = props.contracts.find(candidate => candidate.id === contractId) ?? firstContract
+  const [objective, setObjective] = useState(contract.outcome ?? '')
   const [allowed, setAllowed] = useState('')
   const [forbidden, setForbidden] = useState('')
   const [stop, setStop] = useState('')
   const [executor, setExecutor] = useState('codex')
   const [clauseIds, setClauseIds] = useState<string[]>(
-    () => contract?.acceptanceClauses.map(clause => String(clause.id)) ?? [],
+    () => contract.acceptanceClauses.map(clause => String(clause.id)),
   )
 
   useEffect(() => {
-    const next = props.contracts.find(candidate => candidate.id === contractId) ?? props.contracts[0]
-    if (next === undefined) return
+    const next = props.contracts.find(candidate => candidate.id === contractId) ?? firstContract
     if (next.id !== contractId) setContractId(next.id)
     setObjective(next.outcome ?? '')
     setClauseIds(next.acceptanceClauses.map(clause => String(clause.id)))
@@ -335,8 +334,7 @@ function PacketForm(props: Pick<DeliveryWorkspaceProps, 'createPacket' | 't'> & 
 
   const allowedPaths = pathRules(allowed)
   const forbiddenPaths = pathRules(forbidden)
-  const ready = contract !== undefined
-    && objective.trim() !== ''
+  const ready = objective.trim() !== ''
     && clauseIds.length > 0
     && (allowedPaths.length > 0 || forbiddenPaths.length > 0)
     && !props.busy
@@ -363,67 +361,65 @@ function PacketForm(props: Pick<DeliveryWorkspaceProps, 'createPacket' | 't'> & 
       }}
     >
       <h2>{props.t('packet.title')}</h2>
-      {contract === undefined
-        ? <p className={css.muted}>{props.t('packet.noContract')}</p>
-        : <>
-          <label>
-            <span>{props.t('packet.contract')}</span>
-            <select
-              aria-label={props.t('packet.contract')}
-              disabled={props.busy}
-              value={contract.id}
-              onChange={(event) => { setContractId(event.currentTarget.value) }}
-            >
-              {props.contracts.map(candidate => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{props.t('packet.objective')}</span>
-            <textarea disabled={props.busy} aria-label={props.t('packet.objective')} value={objective} onChange={(event) => { setObjective(event.currentTarget.value) }} />
-          </label>
-          <div className={css.twoFields}>
-            <label>
-              <span>{props.t('packet.allowed')}</span>
-              <textarea disabled={props.busy} aria-label={props.t('packet.allowed')} value={allowed} onChange={(event) => { setAllowed(event.currentTarget.value) }} />
-            </label>
-            <label>
-              <span>{props.t('packet.forbidden')}</span>
-              <textarea disabled={props.busy} aria-label={props.t('packet.forbidden')} value={forbidden} onChange={(event) => { setForbidden(event.currentTarget.value) }} />
-            </label>
-          </div>
-          <label>
-            <span>{props.t('packet.stop')}</span>
-            <textarea disabled={props.busy} aria-label={props.t('packet.stop')} value={stop} onChange={(event) => { setStop(event.currentTarget.value) }} />
-          </label>
-          <label>
-            <span>{props.t('packet.executor')}</span>
-            <input disabled={props.busy} aria-label={props.t('packet.executor')} value={executor} onChange={(event) => { setExecutor(event.currentTarget.value) }} />
-          </label>
-          <fieldset className={css.clauses}>
-            <legend>{props.t('packet.clauses')}</legend>
-            {contract.acceptanceClauses.map(clause => (
-              <label key={clause.id}>
-                <input
-                  type="checkbox"
-                  disabled={props.busy}
-                  checked={clauseIds.includes(String(clause.id))}
-                  onChange={(event) => {
-                    const checked = event.currentTarget.checked
-                    setClauseIds(current => checked
-                      ? [...new Set([...current, String(clause.id)])]
-                      : current.filter(id => id !== clause.id))
-                  }}
-                />
-                <span>{clause.text}</span>
-              </label>
+      <>
+        <label>
+          <span>{props.t('packet.contract')}</span>
+          <select
+            aria-label={props.t('packet.contract')}
+            disabled={props.busy}
+            value={contract.id}
+            onChange={(event) => { setContractId(event.currentTarget.value) }}
+          >
+            {props.contracts.map(candidate => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.title}
+              </option>
             ))}
-          </fieldset>
-          <button type="submit" disabled={!ready}>{props.t('packet.submit')}</button>
-        </>}
+          </select>
+        </label>
+        <label>
+          <span>{props.t('packet.objective')}</span>
+          <textarea disabled={props.busy} aria-label={props.t('packet.objective')} value={objective} onChange={(event) => { setObjective(event.currentTarget.value) }} />
+        </label>
+        <div className={css.twoFields}>
+          <label>
+            <span>{props.t('packet.allowed')}</span>
+            <textarea disabled={props.busy} aria-label={props.t('packet.allowed')} value={allowed} onChange={(event) => { setAllowed(event.currentTarget.value) }} />
+          </label>
+          <label>
+            <span>{props.t('packet.forbidden')}</span>
+            <textarea disabled={props.busy} aria-label={props.t('packet.forbidden')} value={forbidden} onChange={(event) => { setForbidden(event.currentTarget.value) }} />
+          </label>
+        </div>
+        <label>
+          <span>{props.t('packet.stop')}</span>
+          <textarea disabled={props.busy} aria-label={props.t('packet.stop')} value={stop} onChange={(event) => { setStop(event.currentTarget.value) }} />
+        </label>
+        <label>
+          <span>{props.t('packet.executor')}</span>
+          <input disabled={props.busy} aria-label={props.t('packet.executor')} value={executor} onChange={(event) => { setExecutor(event.currentTarget.value) }} />
+        </label>
+        <fieldset className={css.clauses}>
+          <legend>{props.t('packet.clauses')}</legend>
+          {contract.acceptanceClauses.map(clause => (
+            <label key={clause.id}>
+              <input
+                type="checkbox"
+                disabled={props.busy}
+                checked={clauseIds.includes(String(clause.id))}
+                onChange={(event) => {
+                  const checked = event.currentTarget.checked
+                  setClauseIds(current => checked
+                    ? [...new Set([...current, String(clause.id)])]
+                    : current.filter(id => id !== clause.id))
+                }}
+              />
+              <span>{clause.text}</span>
+            </label>
+          ))}
+        </fieldset>
+        <button type="submit" disabled={!ready}>{props.t('packet.submit')}</button>
+      </>
     </form>
   )
 }
@@ -745,7 +741,7 @@ export function DeliveryWorkbench(props: DeliveryWorkspaceProps) {
                 <CaseAuthority {...props} card={selectedCase} busy={busy} />
                 <details>
                   <summary>{props.t('case.reviseTitle')}</summary>
-                  <CaseForm card={selectedCase} createCase={props.createCase} reviseCase={props.reviseCase} t={props.t} busy={busy} />
+                  <CaseForm card={selectedCase} reviseCase={props.reviseCase} t={props.t} busy={busy} />
                 </details>
               </div>}
             </section>}

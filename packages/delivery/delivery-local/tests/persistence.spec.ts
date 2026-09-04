@@ -28,6 +28,7 @@ import {
   IssuePublicationId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
+  RequirementDecisionId,
   RepositoryId,
   RepositoryRelativePath,
   VerificationCheckId,
@@ -101,6 +102,12 @@ async function failingHarness(pool: MemoryMediaPool): Promise<Context> {
   ctx.storage.mount('domain', facility)
   ctx.provide('storageDomain', facility)
   return ctx
+}
+
+function deliveryTable(pool: MemoryMediaPool, name: string): Map<string, unknown> {
+  const table = pool.media.get('personal_delivery')?.tables.get(name)
+  if (table === undefined) throw new Error(`missing Personal Delivery table '${name}'`)
+  return table
 }
 
 const BASE_COMMIT = GitCommitId('1111111111111111111111111111111111111111')
@@ -532,6 +539,108 @@ describe('LocalDelivery persistence', () => {
     expect(replay).toEqual(first)
     expect(local.ctx.delivery.snapshot().deliveryCases).toEqual([first.case])
     expect(local.ctx.delivery.snapshot().contractRevisions).toEqual([first.revision])
+  })
+
+  it('recovers torn Case writes and replayed child revisions from durable records', async () => {
+    const missingRevisionPool = new MemoryMediaPool()
+    const missingRevisionFirst = await harness(missingRevisionPool)
+    const missingRevisionRequest = createCaseRequest({}, 'create-case-missing-root-revision')
+    const missingRevisionStored = await missingRevisionFirst.ctx.delivery.createCase(missingRevisionRequest)
+    await missingRevisionFirst.dispose()
+    active.splice(active.indexOf(missingRevisionFirst), 1)
+    const missingRevisionCases = deliveryTable(missingRevisionPool, 'delivery_cases')
+    const missingRevisionKey = [...missingRevisionCases]
+      .find(([, value]) => (value as DeliveryCase).id === missingRevisionStored.case.id)?.[0]
+    if (missingRevisionKey === undefined) throw new Error('stored Case record is absent')
+    deliveryTable(missingRevisionPool, 'contract_revisions').delete(missingRevisionKey)
+    const missingRevisionReopened = await harness(missingRevisionPool)
+    await expect(missingRevisionReopened.ctx.delivery.createCase(missingRevisionRequest))
+      .rejects.toMatchObject({ code: 'unavailable' })
+
+    const missingCasePool = new MemoryMediaPool()
+    const missingCaseFirst = await harness(missingCasePool)
+    const missingCaseRequest = createCaseRequest({}, 'create-case-missing-case-record')
+    const missingCaseStored = await missingCaseFirst.ctx.delivery.createCase(missingCaseRequest)
+    await missingCaseFirst.dispose()
+    active.splice(active.indexOf(missingCaseFirst), 1)
+    const missingCaseRecords = deliveryTable(missingCasePool, 'delivery_cases')
+    const missingCaseKey = [...missingCaseRecords]
+      .find(([, value]) => (value as DeliveryCase).id === missingCaseStored.case.id)?.[0]
+    if (missingCaseKey === undefined) throw new Error('stored Case record is absent')
+    missingCaseRecords.delete(missingCaseKey)
+    const missingCaseReopened = await harness(missingCasePool)
+    const recovered = await missingCaseReopened.ctx.delivery.createCase(missingCaseRequest)
+    expect(recovered.revision).toEqual(missingCaseStored.revision)
+    expect(recovered.case.headRevisionId).toBe(missingCaseStored.revision.id)
+
+    const replayPool = new MemoryMediaPool()
+    const replayFirst = await harness(replayPool)
+    const created = await replayFirst.ctx.delivery.createCase(createCaseRequest({}, 'create-case-replayed-child'))
+    const reviseRequest: ReviseDeliveryCaseRequest = {
+      idempotencyKey: 'revise-replayed-child',
+      caseId: created.case.id,
+      expectedHeadRevisionId: created.revision.id,
+      origin: { kind: 'human', actorId: HUMAN_ACTOR },
+      title: 'Attach the replayed child revision',
+      revision: revisionDraft({ outcome: 'The replayed child is attached exactly once.' }),
+    }
+    const revised = await replayFirst.ctx.delivery.reviseCase(reviseRequest)
+    await replayFirst.dispose()
+    active.splice(active.indexOf(replayFirst), 1)
+    const replayCases = deliveryTable(replayPool, 'delivery_cases')
+    const replayCaseEntry = [...replayCases]
+      .find(([, value]) => (value as DeliveryCase).id === created.case.id)
+    if (replayCaseEntry === undefined) throw new Error('replayed Case record is absent')
+    replayCases.set(replayCaseEntry[0], { ...revised.case, headRevisionId: created.revision.id })
+    const replayReopened = await harness(replayPool)
+    const replayed = await replayReopened.ctx.delivery.reviseCase(reviseRequest)
+    expect(replayed.revision).toEqual(revised.revision)
+    expect(replayed.case).toMatchObject({
+      id: revised.case.id,
+      headRevisionId: revised.revision.id,
+    })
+  })
+
+  it('fails closed for broken Case lineage and an otherwise valid orphan revision', async () => {
+    const pool = new MemoryMediaPool()
+    const first = await harness(pool)
+    const created = await first.ctx.delivery.createCase(createCaseRequest({}, 'create-case-broken-lineage'))
+    const revised = await first.ctx.delivery.reviseCase({
+      idempotencyKey: 'revise-broken-lineage',
+      caseId: created.case.id,
+      expectedHeadRevisionId: created.revision.id,
+      origin: { kind: 'human', actorId: HUMAN_ACTOR },
+      title: 'Broken lineage fixture',
+      revision: revisionDraft(),
+    })
+    await first.dispose()
+    active.splice(active.indexOf(first), 1)
+    const revisions = deliveryTable(pool, 'contract_revisions')
+    const revisedEntry = [...revisions]
+      .find(([, value]) => (value as ContractRevision).id === revised.revision.id)
+    if (revisedEntry === undefined) throw new Error('revised Contract record is absent')
+    revisions.set(revisedEntry[0], {
+      ...revised.revision,
+      previousRevisionId: ContractRevisionId('missing-parent-revision'),
+    })
+    const orphan = {
+      ...created.revision,
+      id: ContractRevisionId('orphan-contract-revision'),
+    }
+    revisions.set('orphan-contract-record', orphan)
+    const reopened = await harness(pool)
+
+    await expect(reopened.ctx.delivery.recordRequirementDecision({
+      ...decisionRequest(created, {}, 'decision-broken-lineage'),
+      revisionId: created.revision.id,
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(reopened.ctx.delivery.prepareIssuePublication({
+      ...prepareRequest(created, 'prepare-orphan-revision'),
+      revisionId: orphan.id,
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    expect(reopened.ctx.delivery.getCase(DeliveryCaseId('missing-case'))).toBeUndefined()
+    expect(reopened.ctx.delivery.getRequirementDecision(RequirementDecisionId('missing-decision'))).toBeUndefined()
+    expect(reopened.ctx.delivery.getIssuePublication(IssuePublicationId('missing-publication'))).toBeUndefined()
   })
 
   it('moves the Case head only through the expected-head compare-and-set', async () => {
@@ -1335,6 +1444,39 @@ describe('LocalDelivery persistence', () => {
       .rejects.toMatchObject({ code: 'idempotency-conflict' })
   })
 
+  it('accepts a provenance-bound resume capsule as part of the completed claim evidence', async () => {
+    const local = await harness(new MemoryMediaPool())
+    const chain = await acceptanceChain(local, 'resume-capsule')
+    const resumeCapsuleEvidenceId = EvidenceId('evidence-resume-capsule')
+    const completionClaim = completedClaimFixture({
+      ...chain.candidate.completionClaim,
+      resumeCapsuleEvidenceId,
+    })
+    chain.evidence.set(resumeCapsuleEvidenceId, evidenceRefFixture({
+      id: resumeCapsuleEvidenceId,
+      kind: 'resume-capsule',
+      provenance: {
+        kind: 'change-attempt',
+        packetId: chain.packet.id,
+        queueWorkId: chain.changeBinding.queueWorkId,
+        queueAttemptId: chain.candidate.changeQueueAttemptId,
+      },
+    }))
+
+    const decision = await local.ctx.delivery.recordAcceptanceDecision({
+      idempotencyKey: 'accept-resume-capsule',
+      packetId: chain.packet.id,
+      changeBindingId: chain.changeBinding.id,
+      verificationBindingId: chain.verificationBinding.id,
+      decision: 'accepted',
+      reason: 'The resume capsule is bound to the completed change Attempt.',
+      actorId: HUMAN_ACTOR,
+      decisionNonce: 'accept-resume-capsule',
+    }, async () => ({ ...chain.candidate, completionClaim }), async evidenceId => chain.evidence.get(evidenceId))
+
+    expect(decision.decision).toBe('accepted')
+  })
+
   it('rejects broken Packet, binding, Attempt, intent, and verdict authority before commit', async () => {
     const local = await harness(new MemoryMediaPool())
     const chain = await acceptanceChain(local, 'authority-cases')
@@ -1597,6 +1739,22 @@ describe('LocalDelivery persistence', () => {
   })
 
   describe('Issue publication lifecycle', () => {
+    it('creates independent publication records for distinct approved revisions', async () => {
+      const local = await harness(new MemoryMediaPool())
+      const first = await createApprovedCase(local, 'publication-first')
+      const second = await createApprovedCase(local, 'publication-second')
+
+      const firstPublication = await local.ctx.delivery.prepareIssuePublication(
+        prepareRequest(first, 'prepare-publication-first'),
+      )
+      const secondPublication = await local.ctx.delivery.prepareIssuePublication(
+        prepareRequest(second, 'prepare-publication-second'),
+      )
+
+      expect(secondPublication.id).not.toBe(firstPublication.id)
+      expect(local.ctx.delivery.snapshot().issuePublications).toHaveLength(2)
+    })
+
     it('walks prepared → publishing → published and rejects every illegal transition', async () => {
       const local = await harness(new MemoryMediaPool())
       const created = await createApprovedCase(local, 'published-path')
@@ -1720,12 +1878,19 @@ describe('LocalDelivery persistence', () => {
         failure: { sideEffect: 'not-started', category: 'transport' },
       })
 
-      const reset = await local.ctx.delivery.prepareIssuePublication({
-        ...request,
-        idempotencyKey: 'prepare-failed-retry',
-      })
+      const [reset, concurrentReset] = await Promise.all([
+        local.ctx.delivery.prepareIssuePublication({
+          ...request,
+          idempotencyKey: 'prepare-failed-retry',
+        }),
+        local.ctx.delivery.prepareIssuePublication({
+          ...request,
+          idempotencyKey: 'prepare-failed-concurrent-retry',
+        }),
+      ])
       expect(reset.id).toBe(prepared.id)
       expect(reset).toMatchObject({ phase: 'prepared', issue: null, failure: null })
+      expect(concurrentReset).toEqual(reset)
       expect(local.ctx.delivery.snapshot().issuePublications).toHaveLength(1)
       await expect(local.ctx.delivery.prepareIssuePublication({
         ...request,
