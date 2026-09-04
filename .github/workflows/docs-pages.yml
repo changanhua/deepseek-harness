@@ -61,7 +61,7 @@ jobs:
       # carries.
       - name: Verify release version
         env:
-          RELEASE_PUBLISH: 'true'
+          RELEASE_VERIFY_TAG: 'true'
         run: pnpm run release:verify --family dsh
 
       - name: Configure Pages

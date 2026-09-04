@@ -44,6 +44,9 @@ jobs:
       - name: Install immutable dependencies
         shell: pwsh
         run: pnpm install --frozen-lockfile
+      - name: Check package identities
+        shell: pwsh
+        run: pnpm run check:package-identities
       - name: Build repository
         shell: pwsh
         run: pnpm run build

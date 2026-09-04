@@ -28,6 +28,7 @@ defaults:
 jobs:
   matrix:
     name: Matrix
+    if: github.repository == 'deepseek-ai/deepseek-harness'
     runs-on: ubuntu-24.04
     outputs:
       prebuilds: ${{ steps.matrix.outputs.prebuilds }}
@@ -39,6 +40,7 @@ jobs:
 
   build-prebuilds:
     name: ${{ matrix.package }}
+    if: github.repository == 'deepseek-ai/deepseek-harness'
     needs: matrix
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -81,6 +83,7 @@ jobs:
 
   pack:
     name: Pack npm tarballs
+    if: github.repository == 'deepseek-ai/deepseek-harness'
     needs: build-prebuilds
     runs-on: ubuntu-24.04
     steps:
@@ -139,7 +142,7 @@ jobs:
 
   publish:
     name: Publish to npm
-    if: inputs.publish
+    if: github.repository == 'deepseek-ai/deepseek-harness' && inputs.publish
     needs: pack
     runs-on: ubuntu-24.04
     environment: npm-publish

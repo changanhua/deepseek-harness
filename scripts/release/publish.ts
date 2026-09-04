@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
+import { assertPublicationIdentity } from '../package-identities.ts'
 import { releaseFamily } from './families.ts'
 import { attempt, attemptEchoed, isEntry } from './process.ts'
 import { packedIdentity, readPublishOrder } from './tarball.ts'
@@ -140,13 +141,21 @@ async function main(): Promise<void> {
   // one counter answers "how far along is this run" for whoever is watching a
   // release that takes minutes per family.
   const order = readPublishOrder(directory)
+  const entries = order.map((filename) => {
+    const tarball = join(directory, filename)
+    return { filename, tarball, ...packedIdentity(tarball) }
+  })
+  assertPublicationIdentity({
+    githubActions: process.env.GITHUB_ACTIONS,
+    packageNames: entries.map(entry => entry.name),
+    repository: process.env.GITHUB_REPOSITORY,
+  })
   const total = String(order.length)
   let published = 0
   let skipped = 0
-  for (const [index, filename] of order.entries()) {
+  for (const [index, entry] of entries.entries()) {
     const progress = `[${String(index + 1)}/${total}]`
-    const tarball = join(directory, filename)
-    const { name, version } = packedIdentity(tarball)
+    const { name, tarball, version } = entry
     const state = registryState(name, version)
     if (state.kind === 'present') {
       const local = integrityOf(tarball)

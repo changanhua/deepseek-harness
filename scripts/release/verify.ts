@@ -8,6 +8,7 @@
  */
 
 import { parseArgs } from 'node:util'
+import { assertPublicationIdentity } from '../package-identities.ts'
 import { isEntry } from './process.ts'
 import { releaseFamily, type PublishPlan, type ReleaseFamily, type ReleaseMember } from './families.ts'
 
@@ -78,8 +79,17 @@ function main(): void {
   })
   if (values.family === undefined) throw new Error('usage: verify.ts --family <dsh|vendor>')
 
+  const publishing = process.env.RELEASE_PUBLISH === 'true'
+  const verifyingTag = publishing || process.env.RELEASE_VERIFY_TAG === 'true'
   const family = releaseFamily(values.family)
   const members = family.members(process.cwd())
+  if (publishing) {
+    assertPublicationIdentity({
+      githubActions: process.env.GITHUB_ACTIONS,
+      packageNames: members.map(member => member.name),
+      repository: process.env.GITHUB_REPOSITORY,
+    })
+  }
   family.verifyVersions(members)
   // Resolve the publish order here, before the build: an install-edge cycle
   // makes the order unrepresentable, and that has to surface at the first gate
@@ -92,9 +102,10 @@ function main(): void {
   }
   reportPublishOrder(family, plan)
 
-  const publishing = process.env.RELEASE_PUBLISH === 'true'
   if (publishing) {
     verifyPublishable(members)
+  }
+  if (verifyingTag) {
     verifyTag(family, members, process.env.GITHUB_REF ?? '')
   }
 

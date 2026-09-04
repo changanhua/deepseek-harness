@@ -26,7 +26,7 @@ Two hard blockers sat in the way. All 217 workspace manifests set `private: true
 | vendored framework | the nine `vendor/*` packages | each package on its own version line | `vendor-<package>-v<version>` (one per package) | `release-vendor.yml` (pack) / `release-vendor-publish.yml` (publish) |
 | native | `native/landlock-run/packages/*` | its own `0.0.x` | `landlock-run-v<version>` | `landlock-run-release.yml` |
 
-All three publish to the `@deepseek-ai` scope on npmjs.com, and access is per sequence rather than per scope: the vendored framework and the native packages are `public`, the dsh family is `restricted` ([rationale](2026-08-13-public-vendor-and-native-sequences.md)). No publish path passes `--access`, because one flag cannot serve sequences that disagree and would override the manifest that owns the level.
+All three retain the `@deepseek-ai` scope on npmjs.com, and repository release tooling permits them only from `deepseek-ai/deepseek-harness`; the [repository-owned npm identity](2026-09-04-repository-owned-npm-scope.md) blocks these sequences in the personal fork. Access is per sequence rather than per scope: the vendored framework and the native packages are `public`, while the dsh family is `restricted` ([rationale](2026-08-13-public-vendor-and-native-sequences.md)). No publish path passes `--access`, because one flag cannot serve sequences that disagree and would override the manifest that owns the level.
 
 ### Versions land in the repository from a local command; CI only checks and uploads
 
@@ -60,7 +60,7 @@ A tag is a commit pointer, not proof of publication. Bump asks the registry whet
 
 ### Publication runs only on GitHub, and the registry decides what goes out
 
-Publication runs only from GitHub Actions; there is no local publication path. Publish reads no tag and no manifest of "what this release includes". For each packed tarball it compares the version against the registry, in three states:
+Official-scope publication runs only from GitHub Actions in `deepseek-ai/deepseek-harness`; there is no local official publication path, and the personal fork fails before registry access. Publish reads no tag and no manifest of "what this release includes". For each packed tarball it compares the version against the registry, in three states:
 
 | State | Action |
 |---|---|

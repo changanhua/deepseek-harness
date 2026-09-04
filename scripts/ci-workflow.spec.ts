@@ -379,6 +379,7 @@ describe('fork Linux compute workflows', () => {
     expect(pullRequest.paths).toContain('packages/**')
     expect(pullRequest.paths).toContain('.agents/notes/**')
     expect(pullRequest.paths).toContain('docs/**')
+    expect(pullRequest.paths).toContain('downstream/**')
     expect(pullRequest.paths).toContain('.github/workflows/ci-linux-lab.yml')
     expect(pullRequest.paths).toContain('.github/workflows/ci-upstream-watch.yml')
     expect(quality).toMatchObject({
@@ -391,6 +392,7 @@ describe('fork Linux compute workflows', () => {
     expect(quality.if).toContain('github.event.pull_request.head.repo.full_name == github.repository')
     const steps = JSON.stringify(quality.steps)
     expect(steps).toContain('pnpm install --frozen-lockfile')
+    expect(steps).toContain('pnpm run check:package-identities')
     expect(steps).toContain('pnpm run build:lib:host')
     expect(steps).toContain('pnpm run typecheck:contracts-ready')
     expect(steps).not.toContain('secrets.')
@@ -483,13 +485,13 @@ describe('Python release workflows', () => {
     expect(authorize.run).toContain('[ "$REPOSITORY" = "$PYPI_PUBLISHER_REPOSITORY" ]')
     expect(validateSteps).toContain('100000000')
     expect(publishRuntime).toMatchObject({
-      if: "github.event_name == 'workflow_dispatch' && inputs.publish",
+      if: "github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'workflow_dispatch' && inputs.publish",
       needs: 'validate',
       environment: 'pypi-runtime',
       permissions: { contents: 'read', 'id-token': 'write' },
     })
     expect(publishSdk).toMatchObject({
-      if: "github.event_name == 'workflow_dispatch' && inputs.publish",
+      if: "github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'workflow_dispatch' && inputs.publish",
       needs: ['validate', 'publish-runtime'],
       environment: 'pypi',
       permissions: { contents: 'read', 'id-token': 'write' },
@@ -695,10 +697,24 @@ describe('npm release workflows', () => {
       const workflow = loadWorkflow(`.github/workflows/${file}`)
       if (!isRecord(workflow.on) || !isRecord(workflow.jobs)) throw new TypeError(`${file} must define on and jobs`)
       expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
+      for (const [jobName, job] of Object.entries(workflow.jobs)) {
+        if (!isRecord(job)) throw new TypeError(`${file} job ${jobName} must be an object`)
+        expect(job.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
+      }
       const publish = workflow.jobs.publish
       if (!isRecord(publish)) throw new TypeError(`${file} must define a publish job`)
       expect(publish.environment).toBe('npm-publish')
       expect(publish.concurrency).toMatchObject({ group: 'Release-publish' })
+    }
+
+    const landlock = loadWorkflow('.github/workflows/landlock-run-release.yml')
+    if (!isRecord(landlock.jobs)) throw new TypeError('landlock-run-release.yml must define jobs')
+    for (const [jobName, job] of Object.entries(landlock.jobs)) {
+      if (!isRecord(job)) throw new TypeError(`landlock-run-release.yml job ${jobName} must be an object`)
+      const expected = jobName === 'publish'
+        ? "github.repository == 'deepseek-ai/deepseek-harness' && inputs.publish"
+        : "github.repository == 'deepseek-ai/deepseek-harness'"
+      expect(job.if).toBe(expected)
     }
   })
 })
@@ -716,7 +732,7 @@ describe('Documentation site publication', () => {
     // publication must never appear as a PR check.
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
 
-    // RELEASE_PUBLISH makes release:verify reject every ref that is not a dsh-v*
+    // RELEASE_VERIFY_TAG makes release:verify reject every ref that is not a dsh-v*
     // tag naming this tree's version, so the site and the npm sequence share one
     // definition of a released version.
     const steps = build.steps.filter(isRecord)
@@ -725,7 +741,7 @@ describe('Documentation site publication', () => {
       step => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
     )
     expect(verify).toMatchObject({
-      env: { RELEASE_PUBLISH: 'true' },
+      env: { RELEASE_VERIFY_TAG: 'true' },
       run: 'pnpm run release:verify --family dsh',
     })
     // Complete history: the release scripts read tags.
