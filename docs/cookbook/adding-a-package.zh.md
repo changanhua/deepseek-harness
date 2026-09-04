@@ -34,7 +34,18 @@ package.json 不变式（由 `pnpm run constraints` / `scripts/check-workspace-c
 | `tsconfig.host.json`（Host 包）或 `tsconfig.client.json`（Client 包） | 在 `references` 中添加 `{ "path": "./packages/<group>/<pkg>" }`——普通包恰好属于一个 aggregate，绝不两个都加。`api/remotes` 因 Host 生成约定与 Client 消费约定之间存在顺序依赖而使用仓库专属拆分，新增包不得仿照（[布局](../development.zh.md#typescript-project-layout)） |
 | `knip.json` | 仅当包有仓库发现机制尚未覆盖的入口时需要 |
 
-`packages/client/*` 包改为 extends `tsconfig.base.client.json`（而非 `tsconfig.base.json`）；client 插件包还需在 package.json 声明 `dsh.client`、导出 `./client`、调用共享 tsdown preset（`packages/client/tsdown.client.ts`）——client 侧见 [packages/client/AGENTS.md](../../packages/client/AGENTS.md)。
+`packages/client/*` 包改为 extends `tsconfig.base.client.json`（而非 `tsconfig.base.json`）。
+
+### Client 插件包
+
+对于 `packages/client/<name>` 下的浏览器插件，除常规包设置外还要完成以下步骤：
+
+1. 创建 `package.json`、`tsconfig.json`、`tsdown.config.ts`、`src/index.ts`、`src/invariant.ts`、`src/client/index.ts` 和 `README.md`。包名为 `@deepseek-ai/dsh-client-<name>`；仅在使用 CSS Modules 时加入 `src/css-modules.d.ts`。
+2. 导出 `.`、`./invariant`、`./client`、`./src/*` 和 `./package.json`，并将相应的运行时产物保留在 `files` 中。若 Node 半端只用于保持 Cordis 包约定，其 `apply` 为空。
+3. 添加 `platform: 'web'` 的 `dsh.client` 清单；它要求 `./client` export。仅为阶段一预加载基础设施行设置 `immediately: true`；其中的 `inject` 包名只供信息展示，不决定激活顺序。
+4. 使用 `packages/client/tsdown.client.ts` 的 `clientBundle()`。把每个 workspace 依赖及 `runtime-diagnostics/invariants` 加入 `tsconfig.json` references，再把此包加入 `tsconfig.client.json`。
+5. 在 `packages/bundle/web-app/cordis.patch.yml` 加入其 `dsh.client` 行，并在 `packages/bundle/web-app/package.json` 加入依赖。profile 通过 bundle 依赖解析已声明的行。
+6. 按[客户端模块](../subsystems/client-modules.zh.md)和 [modules README](../../packages/client/modules/README.zh.md)选择依赖区段及非基线 `dsh.client.external` 请求。向另一个包的 slot 贡献时，使用 `ctx.slots.inject()` 使贡献跟随其声明；在探测运行中的服务器前执行 `pnpm --filter <pkg> bundle` 重建。
 
 以下内容由 glob 或包 manifest（元数据清单）发现机制自动覆盖，无需手动编辑：根 `package.json` workspaces、`scripts/publint-all.ts`、`tsdown.config.ts`、`.oxlintrc.json`、`scripts/check-workspace-constraints.ts`。
 

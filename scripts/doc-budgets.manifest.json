@@ -6,5 +6,6 @@
   "docs/defensive-patterns.md": 550,
   "docs/testing.md": 1250,
   "packages/AGENTS.md": 675,
+  "packages/client/AGENTS.md": 600,
   "packages/README.md": 994
 }
