@@ -129,6 +129,9 @@ importers:
       '@changanhua/dsh-operation-run-task-queue':
         specifier: workspace:^
         version: link:../../packages/task-queue/operation-run-task-queue
+      '@changanhua/dsh-personal-delivery':
+        specifier: workspace:^
+        version: link:../../packages/bundle/personal-delivery
       '@changanhua/dsh-task-queue-executor-dsh':
         specifier: workspace:^
         version: link:../../packages/task-queue/task-queue-executor-dsh

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-04-repository-owned-npm-scope.md
-2026-09-04-repository-owned-npm-scope.md: 7cd4a05b3bee7962fa7466b73e6df541ff91061a
-2026-09-04-repository-owned-npm-scope.zh.md: 0061d8d9713f3e976f8df8a5f0894997fbb7c0c4
+2026-09-04-repository-owned-npm-scope.md: 2ec58bc421f2d0ca74c245f42da1e925c01d8557
+2026-09-04-repository-owned-npm-scope.zh.md: 9d0d3793e50f96cf13d6c223abccc27cac493ab7

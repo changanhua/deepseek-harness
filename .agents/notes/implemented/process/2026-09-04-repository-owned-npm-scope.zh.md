@@ -14,7 +14,7 @@ Status: implemented
 
 [`downstream/package-identities.json`](../../../../downstream/package-identities.json) 统一拥有两个 npm scope、各自唯一的发布仓库、受支持与已观察的上游 commit，以及显式个人包集合。未列出的包默认归上游所有，`vendor/*` 保持 vendor 来源；只有经过审查的 registry 修改才能把包认定为个人包。
 
-个人 scope 是 `@changanhua`。每个已确认的个人包都记录旧名称、源码名称、源码身份、发布策略、尚不存在的发布族，以及明确的发布阻断项。全部 41 个条目都使用 `blocked-until-release-verified`；manifest、import、bundle 行、TypeScript path、目录和 lockfile 采用个人源码名称，现有版本保持不变。
+个人 scope 是 `@changanhua`。每个已确认的个人包都记录旧名称、源码名称、源码身份、发布策略、尚不存在的发布族，以及明确的发布阻断项。全部 41 个条目都使用 `blocked-until-release-verified`；manifest、import、bundle 行、TypeScript path、目录和 lockfile 采用个人源码名称，现有版本保持不变。源码版 CLI 把个人 Delivery bundle 声明为 workspace dependency，因此构建后的入口会从安装本身解析该 bundle，不依赖测试运行器或全局模块搜索路径。
 
 ## Publication firewall
 
@@ -22,7 +22,7 @@ Status: implemented
 
 dsh、vendor、baseline 和 Landlock 发布路径都会在第一次访问 registry 前执行检查。官方 DSH 发布族在排除已登记的个人目录前，会验证该目录的 manifest 仍使用已登记的个人源码名称、仓库和 source-only 发布设置；随后拒绝官方成员通过任何运行时依赖或 peer dependency 指向个人 scope。publish 步骤还会独立地把同一闭包规则应用到每个 packed manifest，并在第一次读取 registry 前要求打包集合、顺序、身份、版本和运行时依赖名称与当前源码 family 完全对应。
 
-官方 DSH 发布演练和文档部署 job 只在 `deepseek-ai/deepseek-harness` 运行：这棵混合源码树应当让官方闭包失败，不能为通过检查而削弱闭包。个人 fork 的普通 CI 仍会构建和测试源码及文档。官方 npm 发布 workflow 按仓库身份保护每个 job；在个人发行版拥有独立 PyPI 名称前，公开 Python 发布 job 也使用相同的官方仓库限制。个人 fork 的 dispatch 无法进入持有 token 的 job。这些检查防止误用仓库发布工具；npm 或 PyPI 凭据和 trusted-publisher 配置仍是外部授权边界，恶意本机进程可以绕过仓库脚本直接调用 registry 客户端。
+官方 DSH 发布演练和文档部署 job 只在 `deepseek-ai/deepseek-harness` 运行：这棵混合源码树应当让官方闭包失败，不能为通过检查而削弱闭包。个人仓库 CI 会执行 immutable install 和完整构建，然后用隔离 home 启动构建后的 CLI；验收 Profile 由官方 base 与个人 Delivery bundle 组成，运行检查要求个人 Delivery、evidence、repository-workspace 和 Remote 服务全部挂载。官方 npm 发布 workflow 按仓库身份保护每个 job；在个人发行版拥有独立 PyPI 名称前，公开 Python 发布 job 也使用相同的官方仓库限制。个人 fork 的 dispatch 无法进入持有 token 的 job。这些检查防止误用仓库发布工具；npm 或 PyPI 凭据和 trusted-publisher 配置仍是外部授权边界，恶意本机进程可以绕过仓库脚本直接调用 registry 客户端。
 
 ## Package ownership
 

@@ -723,6 +723,47 @@ describe('npm release workflows', () => {
   })
 })
 
+describe('personal source distribution CI', () => {
+  it('builds and boots the personal bundle only in the personal repository', () => {
+    const workflow = loadWorkflow('.github/workflows/ci-fork-windows.yml')
+    const build = workflowJob(workflow, 'windows-build')
+    const differential = workflowJob(workflow, 'c0-diff')
+    const aggregate = workflowJob(workflow, 'fork-checks')
+    if (!Array.isArray(build.steps)) throw new TypeError('fork Windows build must define steps')
+
+    const trustedPersonalPullRequest = (
+      "github.repository == 'changanhua/deepseek-harness'"
+      + " && github.actor == 'changanhua'"
+      + " && github.event.pull_request.user.login == 'changanhua'"
+      + ' && github.event.pull_request.head.repo.full_name == github.repository'
+    )
+    expect(build.if).toBe(trustedPersonalPullRequest)
+    expect(differential.if).toBe(trustedPersonalPullRequest)
+    expect(aggregate.if).toBe(
+      "always() && github.repository == 'changanhua/deepseek-harness'"
+      + " && github.event_name == 'pull_request'"
+      + " && github.actor == 'changanhua'"
+      + " && github.event.pull_request.user.login == 'changanhua'"
+      + ' && github.event.pull_request.head.repo.full_name == github.repository',
+    )
+
+    const steps = build.steps.filter(isRecord)
+    const names = steps.map(step => step.name).filter((name): name is string => typeof name === 'string')
+    const install = names.indexOf('Install immutable dependencies')
+    const identities = names.indexOf('Check package identities')
+    const repositoryBuild = names.indexOf('Build repository')
+    const sourceDistribution = names.indexOf('Verify personal source distribution')
+
+    expect(install).toBeGreaterThanOrEqual(0)
+    expect(identities).toBeGreaterThan(install)
+    expect(repositoryBuild).toBeGreaterThan(identities)
+    expect(sourceDistribution).toBeGreaterThan(repositoryBuild)
+    expect(steps.find(step => step.name === 'Verify personal source distribution')).toMatchObject({
+      run: 'pnpm run verify:personal-source',
+    })
+  })
+})
+
 describe('Documentation site publication', () => {
   it('keeps Pages deployment dispatch-only from a dsh-v* tag', () => {
     const workflow = loadWorkflow('.github/workflows/docs-pages.yml')
