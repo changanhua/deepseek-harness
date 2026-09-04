@@ -691,6 +691,10 @@ describe('npm release workflows', () => {
       expect(Object.keys(workflow.jobs).sort()).toEqual(['pack'])
     }
 
+    const dshRehearsal = loadWorkflow('.github/workflows/release.yml')
+    const dshPack = workflowJob(dshRehearsal, 'pack')
+    expect(dshPack.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
+
     // publication is workflow_dispatch-only (never a PR check) and keeps the
     // npm-publish environment plus the shared dist-tag group.
     for (const file of ['release-publish.yml', 'release-vendor-publish.yml']) {
@@ -731,6 +735,8 @@ describe('Documentation site publication', () => {
     // The site presents a released snapshot: a merge must never publish it, and
     // publication must never appear as a PR check.
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
+    expect(build.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
+    expect(deploy.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
 
     // RELEASE_VERIFY_TAG makes release:verify reject every ref that is not a dsh-v*
     // tag naming this tree's version, so the site and the npm sequence share one

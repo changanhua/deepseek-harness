@@ -8,7 +8,7 @@ import type {
   DeliveryCreatePacketInput,
   DeliveryLane,
   DeliveryWorkbenchCard,
-} from '@deepseek-ai/dsh-delivery-remote/types'
+} from '@changanhua/dsh-delivery-remote/types'
 import type { DeliveryWorkspaceProps } from './contract.ts'
 import type { DeliveryKey } from './locales.ts'
 import type { DeliveryPendingOperation, DeliveryRuntimeState } from './runtime-controller.ts'

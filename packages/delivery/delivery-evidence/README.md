@@ -3,7 +3,7 @@ description: "Immutable content-addressed evidence publication and verified read
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-evidence
+# @changanhua/dsh-delivery-evidence
 
 English | [中文](README.zh.md)
 

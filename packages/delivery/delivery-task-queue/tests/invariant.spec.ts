@@ -16,7 +16,7 @@ describe('delivery-task-queue invariant companion', () => {
     expect(name).toBe('delivery-task-queue-invariant')
     expect(inject).toEqual(['invariants'])
     expect(register).toHaveBeenCalledWith(
-      '@deepseek-ai/dsh-delivery-task-queue',
+      '@changanhua/dsh-delivery-task-queue',
       expect.any(Function),
     )
     const installer = register.mock.calls[0]?.[1]

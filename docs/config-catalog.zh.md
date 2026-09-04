@@ -588,9 +588,9 @@ export interface Config {
 
 来源：[`packages/credentials/credentials-local/src/index.ts:64`](../packages/credentials/credentials-local/src/index.ts)
 
-<a id="deepseek-aidsh-delivery-evidence-local"></a>
+<a id="changanhuadsh-delivery-evidence-local"></a>
 
-## `@deepseek-ai/dsh-delivery-evidence-local`
+## `@changanhua/dsh-delivery-evidence-local`
 
 ```ts config-catalog
 /** Local evidence-store location. */
@@ -602,9 +602,9 @@ export interface Config {
 
 来源：[`packages/delivery/delivery-evidence-local/src/index.ts:18`](../packages/delivery/delivery-evidence-local/src/index.ts)
 
-<a id="deepseek-aidsh-delivery-remote"></a>
+<a id="changanhuadsh-delivery-remote"></a>
 
-## `@deepseek-ai/dsh-delivery-remote`
+## `@changanhua/dsh-delivery-remote`
 
 需要：`delivery` · `deliveryEvidence` · `repoWorkspace` · `taskQueue`
 
@@ -618,9 +618,9 @@ export interface Config {
 
 来源：[`packages/delivery/delivery-remote/src/index.ts:41`](../packages/delivery/delivery-remote/src/index.ts)
 
-<a id="deepseek-aidsh-delivery-task-queue"></a>
+<a id="changanhuadsh-delivery-task-queue"></a>
 
-## `@deepseek-ai/dsh-delivery-task-queue`
+## `@changanhua/dsh-delivery-task-queue`
 
 需要：`delivery` · `deliveryEvidence` · `repoWorkspace` · `subprocess` · `taskQueue`
 
@@ -990,9 +990,9 @@ export interface Config {
 
 来源：[`packages/host/webserver/src/index.ts:59`](../packages/host/webserver/src/index.ts)
 
-<a id="deepseek-aidsh-host-work-observatory"></a>
+<a id="changanhuadsh-host-work-observatory"></a>
 
-## `@deepseek-ai/dsh-host-work-observatory`
+## `@changanhua/dsh-host-work-observatory`
 
 需要：`storageDomain` · `sessions`
 
@@ -1010,9 +1010,9 @@ export interface Config {
 
 来源：[`packages/host/work-observatory/src/index.ts:33`](../packages/host/work-observatory/src/index.ts)
 
-<a id="deepseek-aidsh-image-generation-arkcli"></a>
+<a id="changanhuadsh-image-generation-arkcli"></a>
 
-## `@deepseek-ai/dsh-image-generation-arkcli`
+## `@changanhua/dsh-image-generation-arkcli`
 
 需要：`imageGeneration` · `subprocess`
 
@@ -1046,9 +1046,9 @@ export interface Config {
 
 来源：[`packages/image/image-generation-arkcli/src/index.ts:72`](../packages/image/image-generation-arkcli/src/index.ts)
 
-<a id="deepseek-aidsh-image-generation-task-queue"></a>
+<a id="changanhuadsh-image-generation-task-queue"></a>
 
-## `@deepseek-ai/dsh-image-generation-task-queue`
+## `@changanhua/dsh-image-generation-task-queue`
 
 需要：`taskQueue` · `imageGeneration` · `attachments`
 
@@ -1665,9 +1665,9 @@ export interface Config {
 
 来源：[`packages/feedback/message-feedback/src/index.ts:49`](../packages/feedback/message-feedback/src/index.ts)
 
-<a id="deepseek-aidsh-operation-run-task-queue"></a>
+<a id="changanhuadsh-operation-run-task-queue"></a>
 
-## `@deepseek-ai/dsh-operation-run-task-queue`
+## `@changanhua/dsh-operation-run-task-queue`
 
 需要：`taskQueue` · `subprocess`
 
@@ -1893,9 +1893,9 @@ export interface Config {
 
 来源：[`packages/guard/repeat-tool-reminder/src/index.ts:28`](../packages/guard/repeat-tool-reminder/src/index.ts)
 
-<a id="deepseek-aidsh-repo-workspace-git-local"></a>
+<a id="changanhuadsh-repo-workspace-git-local"></a>
 
-## `@deepseek-ai/dsh-repo-workspace-git-local`
+## `@changanhua/dsh-repo-workspace-git-local`
 
 需要：`subprocess`
 
@@ -1911,9 +1911,9 @@ export interface Config {
 
 来源：[`packages/delivery/repo-workspace-git-local/src/index.ts:28`](../packages/delivery/repo-workspace-git-local/src/index.ts)
 
-<a id="deepseek-aidsh-runtime-facts"></a>
+<a id="changanhuadsh-runtime-facts"></a>
 
-## `@deepseek-ai/dsh-runtime-facts`
+## `@changanhua/dsh-runtime-facts`
 
 需要：`systemPrompt`
 
@@ -2784,9 +2784,9 @@ export interface Config {
 
 来源：[`packages/core/system-prompt/src/index.ts:237`](../packages/core/system-prompt/src/index.ts)
 
-<a id="deepseek-aidsh-task-queue-executor-dsh"></a>
+<a id="changanhuadsh-task-queue-executor-dsh"></a>
 
-## `@deepseek-ai/dsh-task-queue-executor-dsh`
+## `@changanhua/dsh-task-queue-executor-dsh`
 
 需要：`taskQueue` · `subprocess`
 
@@ -2816,9 +2816,9 @@ export interface Config {
 
 来源：[`packages/task-queue/task-queue-executor-dsh/src/index.ts:36`](../packages/task-queue/task-queue-executor-dsh/src/index.ts)
 
-<a id="deepseek-aidsh-task-queue-local"></a>
+<a id="changanhuadsh-task-queue-local"></a>
 
-## `@deepseek-ai/dsh-task-queue-local`
+## `@changanhua/dsh-task-queue-local`
 
 ```ts config-catalog
 /** Local Queue v2 configuration. */
@@ -2836,9 +2836,9 @@ export interface Config {
 
 来源：[`packages/task-queue/task-queue-local/src/index.ts:61`](../packages/task-queue/task-queue-local/src/index.ts)
 
-<a id="deepseek-aidsh-task-queue-remote"></a>
+<a id="changanhuadsh-task-queue-remote"></a>
 
-## `@deepseek-ai/dsh-task-queue-remote`
+## `@changanhua/dsh-task-queue-remote`
 
 需要：`taskQueue`
 
@@ -2944,9 +2944,9 @@ export type TokenMeterConfig = Record<string, never>
 
 来源：[`packages/llm/token-meter/src/types.ts:12`](../packages/llm/token-meter/src/types.ts)
 
-<a id="deepseek-aidsh-tool-agent-run-task-queue"></a>
+<a id="changanhuadsh-tool-agent-run-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-agent-run-task-queue`
+## `@changanhua/dsh-tool-agent-run-task-queue`
 
 需要：`tools` · `taskQueue`
 
@@ -3122,9 +3122,9 @@ export interface Config {
 
 来源：[`packages/lsp/tool-lsp/src/index.ts:58`](../packages/lsp/tool-lsp/src/index.ts)
 
-<a id="deepseek-aidsh-tool-operation-run-task-queue"></a>
+<a id="changanhuadsh-tool-operation-run-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-operation-run-task-queue`
+## `@changanhua/dsh-tool-operation-run-task-queue`
 
 需要：`tools` · `taskQueue`
 
@@ -3339,9 +3339,9 @@ export interface Config {
 
 来源：[`packages/subagent/tool-subagent-report/src/index.ts:27`](../packages/subagent/tool-subagent-report/src/index.ts)
 
-<a id="deepseek-aidsh-tool-task-queue"></a>
+<a id="changanhuadsh-tool-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-task-queue`
+## `@changanhua/dsh-tool-task-queue`
 
 需要：`tools` · `taskQueue` · `sessions`
 
@@ -3741,16 +3741,16 @@ export interface Config {
 - `@deepseek-ai/dsh-client-modules` — 需要 `webServer` · `loader` ([`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-agent-preset` ([`packages/client/ui-agent-preset/src/index.ts`](../packages/client/ui-agent-preset/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-approval` ([`packages/client/ui-approval/src/index.ts`](../packages/client/ui-approval/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
+- `@changanhua/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-attachment` ([`packages/client/ui-attachment/src/index.ts`](../packages/client/ui-attachment/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-brand-official` ([`packages/client/ui-brand-official/src/index.ts`](../packages/client/ui-brand-official/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
+- `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-chat` ([`packages/client/ui-chat/src/index.ts`](../packages/client/ui-chat/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-commands` ([`packages/client/ui-commands/src/index.ts`](../packages/client/ui-commands/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-conversation` ([`packages/client/ui-conversation/src/index.ts`](../packages/client/ui-conversation/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-cordis` ([`packages/extensions/ui-cordis/src/index.ts`](../packages/extensions/ui-cordis/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-deliverables` — 需要 `systemPrompt` ([`packages/client/ui-deliverables/src/index.ts`](../packages/client/ui-deliverables/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
+- `@changanhua/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-directory-picker-browse` ([`packages/client/ui-directory-picker-browse/src/index.ts`](../packages/client/ui-directory-picker-browse/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-directory-picker-native` ([`packages/client/ui-directory-picker-native/src/index.ts`](../packages/client/ui-directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-goal` ([`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts))
@@ -3769,38 +3769,38 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-settings-models` ([`packages/client/ui-settings-models/src/index.ts`](../packages/client/ui-settings-models/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-plugin-inventory` ([`packages/client/ui-settings-plugin-inventory/src/index.ts`](../packages/client/ui-settings-plugin-inventory/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-plugins` ([`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
+- `@changanhua/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-sidebar` ([`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-skill` ([`packages/client/ui-skill/src/index.ts`](../packages/client/ui-skill/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-subagent` ([`packages/client/ui-subagent/src/index.ts`](../packages/client/ui-subagent/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
+- `@changanhua/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-theme` ([`packages/client/ui-theme/src/index.ts`](../packages/client/ui-theme/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-tool` ([`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-trajectory` ([`packages/client/ui-trajectory/src/index.ts`](../packages/client/ui-trajectory/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-user-questions` ([`packages/client/ui-user-questions/src/index.ts`](../packages/client/ui-user-questions/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-work-observatory` ([`packages/client/ui-work-observatory/src/index.ts`](../packages/client/ui-work-observatory/src/index.ts))
+- `@changanhua/dsh-client-ui-work-observatory` ([`packages/client/ui-work-observatory/src/index.ts`](../packages/client/ui-work-observatory/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-workflow-run` ([`packages/client/ui-workflow-run/src/index.ts`](../packages/client/ui-workflow-run/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-workspace` ([`packages/client/ui-workspace/src/index.ts`](../packages/client/ui-workspace/src/index.ts))
 - `@deepseek-ai/dsh-command-compact` — 需要 `commands` · `compaction` ([`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts))
 - `@deepseek-ai/dsh-command-feedback` — 需要 `commands` ([`packages/feedback/command-feedback/src/index.ts`](../packages/feedback/command-feedback/src/index.ts))
 - `@deepseek-ai/dsh-command-goal` — 需要 `commands` · `goals` ([`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts))
-- `@deepseek-ai/dsh-command-task-queue` — 需要 `commands` ([`packages/task-queue/command-task-queue/src/index.ts`](../packages/task-queue/command-task-queue/src/index.ts))
+- `@changanhua/dsh-command-task-queue` — 需要 `commands` ([`packages/task-queue/command-task-queue/src/index.ts`](../packages/task-queue/command-task-queue/src/index.ts))
 - `@deepseek-ai/dsh-commands` ([`packages/interaction/commands/src/index.ts`](../packages/interaction/commands/src/index.ts))
 - `@deepseek-ai/dsh-cordis-client-runner` ([`packages/extensions/cordis-client-runner/src/index.ts`](../packages/extensions/cordis-client-runner/src/index.ts))
 - `@deepseek-ai/dsh-deepseek-llm-api-extensions` ([`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts))
-- `@deepseek-ai/dsh-delivery-local` — 需要 `storageDomain` ([`packages/delivery/delivery-local/src/index.ts`](../packages/delivery/delivery-local/src/index.ts))
+- `@changanhua/dsh-delivery-local` — 需要 `storageDomain` ([`packages/delivery/delivery-local/src/index.ts`](../packages/delivery/delivery-local/src/index.ts))
 - `@deepseek-ai/dsh-experimental-client-ui-agent-team` ([`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts))
 - `@deepseek-ai/dsh-fs-e2b` — 需要 `e2b` ([`packages/e2b/fs-e2b/src/index.ts`](../packages/e2b/fs-e2b/src/index.ts))
 - `@deepseek-ai/dsh-fs-observation-policy` ([`packages/fs/fs-observation-policy/src/index.ts`](../packages/fs/fs-observation-policy/src/index.ts))
 - `@deepseek-ai/dsh-goal-round-driver` — 需要 `agents` · `goals` · `sessions` ([`packages/goal/goal-round-driver/src/index.ts`](../packages/goal/goal-round-driver/src/index.ts))
-- `@deepseek-ai/dsh-host-capability-registry` — 需要 `loader` · `skills` · `tools` · `agents` ([`packages/host/capability-registry/src/index.ts`](../packages/host/capability-registry/src/index.ts))
+- `@changanhua/dsh-host-capability-registry` — 需要 `loader` · `skills` · `tools` · `agents` ([`packages/host/capability-registry/src/index.ts`](../packages/host/capability-registry/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker-auto` — 需要 `webServer` · `loader` ([`packages/host/directory-picker-auto/src/index.ts`](../packages/host/directory-picker-auto/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker-native` ([`packages/host/directory-picker-native/src/index.ts`](../packages/host/directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-host-plugin-inventory` — 需要 `loader` ([`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts))
-- `@deepseek-ai/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))
+- `@changanhua/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))
 - `@deepseek-ai/dsh-llm` ([`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts))
 - `@deepseek-ai/dsh-lsp` ([`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts))
-- `@deepseek-ai/dsh-runtime-facts-host` — 需要 `runtimeFacts` ([`packages/context/runtime-facts-host/src/index.ts`](../packages/context/runtime-facts-host/src/index.ts))
+- `@changanhua/dsh-runtime-facts-host` — 需要 `runtimeFacts` ([`packages/context/runtime-facts-host/src/index.ts`](../packages/context/runtime-facts-host/src/index.ts))
 - `@deepseek-ai/dsh-schedule` — 需要 `agents` · `sessions` · `tools` · `sessionPersistence` ([`packages/schedule/schedule/src/index.ts`](../packages/schedule/schedule/src/index.ts))
 - `@deepseek-ai/dsh-session` ([`packages/core/session/src/index.ts`](../packages/core/session/src/index.ts))
 - `@deepseek-ai/dsh-session-checkpoint-policy` — 需要 `llm` · `sessionPersistence` · `sessions` · `tools` ([`packages/session/session-checkpoint-policy/src/index.ts`](../packages/session/session-checkpoint-policy/src/index.ts))
@@ -3814,8 +3814,8 @@ export interface Config {
 - `@deepseek-ai/dsh-tool-ask-user` — 需要 `tools` · `userQuestions` ([`packages/interaction/tool-ask-user/src/index.ts`](../packages/interaction/tool-ask-user/src/index.ts))
 - `@deepseek-ai/dsh-tool-call-timeout-policy` — 需要 `tools` ([`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts))
 - `@deepseek-ai/dsh-tool-cordis` — 需要 `tools` · `systemPrompt` · `dynamicCordisRunner` · `cordisInspect` ([`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts))
-- `@deepseek-ai/dsh-tool-image-generation-task-queue` — 需要 `tools` · `taskQueue` ([`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts))
-- `@deepseek-ai/dsh-tool-runtime-inspect` — 需要 `tools` · `runtimeFacts` · `subprocess` ([`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts))
+- `@changanhua/dsh-tool-image-generation-task-queue` — 需要 `tools` · `taskQueue` ([`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts))
+- `@changanhua/dsh-tool-runtime-inspect` — 需要 `tools` · `runtimeFacts` · `subprocess` ([`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts))
 - `@deepseek-ai/dsh-tool-subagent-control` — 需要 `tools` · `subagents` ([`packages/subagent/tool-subagent-control/src/index.ts`](../packages/subagent/tool-subagent-control/src/index.ts))
 - `@deepseek-ai/dsh-user-questions` ([`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts))
 - `@deepseek-ai/dsh-webhook` — 需要 `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` ([`packages/webhook/webhook/src/index.ts`](../packages/webhook/webhook/src/index.ts))
@@ -3829,13 +3829,13 @@ export interface Config {
 - `@deepseek-ai/dsh-code-runtime` — 抽象 `CodeRuntime` ([`packages/code-runtime/code-runtime/src/index.ts`](../packages/code-runtime/code-runtime/src/index.ts))
 - `@deepseek-ai/dsh-compaction` — 抽象 `CompactionEngine` ([`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts))
 - `@deepseek-ai/dsh-credentials` — 抽象 `CredentialProvider` ([`packages/credentials/credentials/src/index.ts`](../packages/credentials/credentials/src/index.ts))
-- `@deepseek-ai/dsh-delivery` — 抽象 `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
-- `@deepseek-ai/dsh-delivery-evidence` — 抽象 `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
+- `@changanhua/dsh-delivery` — 抽象 `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
+- `@changanhua/dsh-delivery-evidence` — 抽象 `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
 - `@deepseek-ai/dsh-file-reference` — 抽象 `FileReferenceService` ([`packages/context/file-reference/src/index.ts`](../packages/context/file-reference/src/index.ts))
 - `@deepseek-ai/dsh-fs` — 抽象 `FileSystem` ([`packages/fs/fs/src/index.ts`](../packages/fs/fs/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker` — 抽象 `DirectoryPicker` ([`packages/host/directory-picker/src/index.ts`](../packages/host/directory-picker/src/index.ts))
 - `@deepseek-ai/dsh-jobs` — 抽象 `JobRegistry` ([`packages/jobs/jobs/src/index.ts`](../packages/jobs/jobs/src/index.ts))
-- `@deepseek-ai/dsh-repo-workspace` — 抽象 `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))
+- `@changanhua/dsh-repo-workspace` — 抽象 `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))
 - `@deepseek-ai/dsh-sandbox` — 抽象 `SandboxProvider` ([`packages/sandbox/sandbox/src/index.ts`](../packages/sandbox/sandbox/src/index.ts))
 - `@deepseek-ai/dsh-session-persistence` — 抽象 `SessionPersistence` ([`packages/session/session-persistence/src/index.ts`](../packages/session/session-persistence/src/index.ts))
 - `@deepseek-ai/dsh-session-query` — 抽象 `SessionQueryEngine` ([`packages/session-query/session-query/src/index.ts`](../packages/session-query/session-query/src/index.ts))
@@ -3843,7 +3843,7 @@ export interface Config {
 - `@deepseek-ai/dsh-shell` — 抽象 `ShellExecutor` ([`packages/shell/shell/src/index.ts`](../packages/shell/shell/src/index.ts))
 - `@deepseek-ai/dsh-spill` — 抽象 `SpillStore` ([`packages/spill/spill/src/index.ts`](../packages/spill/spill/src/index.ts))
 - `@deepseek-ai/dsh-subprocess` — 抽象 `SubprocessRuntime` ([`packages/subprocess/subprocess/src/index.ts`](../packages/subprocess/subprocess/src/index.ts))
-- `@deepseek-ai/dsh-task-queue` — 抽象 `TaskQueue` ([`packages/task-queue/task-queue/src/index.ts`](../packages/task-queue/task-queue/src/index.ts))
+- `@changanhua/dsh-task-queue` — 抽象 `TaskQueue` ([`packages/task-queue/task-queue/src/index.ts`](../packages/task-queue/task-queue/src/index.ts))
 - `@deepseek-ai/dsh-workflow` — 抽象 `WorkflowEngine` ([`packages/workflow/workflow/src/index.ts`](../packages/workflow/workflow/src/index.ts))
 
 ## 库包（无插件入口）
@@ -3863,13 +3863,13 @@ export interface Config {
 - `@deepseek-ai/dsh-client-web` ([`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts))
 - `@deepseek-ai/dsh-cmdline` ([`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts))
 - `@deepseek-ai/dsh-code-runtime-python` ([`packages/code-runtime/code-runtime-python/src/index.ts`](../packages/code-runtime/code-runtime-python/src/index.ts))
-- `@deepseek-ai/dsh-delivery-github-intake` ([`packages/delivery/delivery-github-intake/src/index.ts`](../packages/delivery/delivery-github-intake/src/index.ts))
-- `@deepseek-ai/dsh-delivery-protocol` ([`packages/delivery/delivery-protocol/src/index.ts`](../packages/delivery/delivery-protocol/src/index.ts))
-- `@deepseek-ai/dsh-delivery-runner-codex` ([`packages/delivery/delivery-runner-codex/src/index.ts`](../packages/delivery/delivery-runner-codex/src/index.ts))
-- `@deepseek-ai/dsh-delivery-testkit` ([`packages/delivery/delivery-testkit/src/index.ts`](../packages/delivery/delivery-testkit/src/index.ts))
-- `@deepseek-ai/dsh-delivery-verifier` ([`packages/delivery/delivery-verifier/src/index.ts`](../packages/delivery/delivery-verifier/src/index.ts))
-- `@deepseek-ai/dsh-eval` ([`packages/eval/eval/src/index.ts`](../packages/eval/eval/src/index.ts))
-- `@deepseek-ai/dsh-eval-session-snapshot` ([`packages/eval/eval-session-snapshot/src/index.ts`](../packages/eval/eval-session-snapshot/src/index.ts))
+- `@changanhua/dsh-delivery-github-intake` ([`packages/delivery/delivery-github-intake/src/index.ts`](../packages/delivery/delivery-github-intake/src/index.ts))
+- `@changanhua/dsh-delivery-protocol` ([`packages/delivery/delivery-protocol/src/index.ts`](../packages/delivery/delivery-protocol/src/index.ts))
+- `@changanhua/dsh-delivery-runner-codex` ([`packages/delivery/delivery-runner-codex/src/index.ts`](../packages/delivery/delivery-runner-codex/src/index.ts))
+- `@changanhua/dsh-delivery-testkit` ([`packages/delivery/delivery-testkit/src/index.ts`](../packages/delivery/delivery-testkit/src/index.ts))
+- `@changanhua/dsh-delivery-verifier` ([`packages/delivery/delivery-verifier/src/index.ts`](../packages/delivery/delivery-verifier/src/index.ts))
+- `@changanhua/dsh-eval` ([`packages/eval/eval/src/index.ts`](../packages/eval/eval/src/index.ts))
+- `@changanhua/dsh-eval-session-snapshot` ([`packages/eval/eval-session-snapshot/src/index.ts`](../packages/eval/eval-session-snapshot/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-profile` ([`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-web-profile` ([`packages/experimental/agent-team-web-profile/src/index.ts`](../packages/experimental/agent-team-web-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-webworker-packer` ([`packages/experimental/webworker-packer/src/index.ts`](../packages/experimental/webworker-packer/src/index.ts))
@@ -3881,7 +3881,7 @@ export interface Config {
 - `@deepseek-ai/dsh-loader-smoke` ([`packages/test-support/loader-smoke/src/index.ts`](../packages/test-support/loader-smoke/src/index.ts))
 - `@deepseek-ai/dsh-native-command` ([`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts))
 - `@deepseek-ai/dsh-output-retention` ([`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts))
-- `@deepseek-ai/dsh-personal-delivery` ([`packages/bundle/personal-delivery/src/index.ts`](../packages/bundle/personal-delivery/src/index.ts))
+- `@changanhua/dsh-personal-delivery` ([`packages/bundle/personal-delivery/src/index.ts`](../packages/bundle/personal-delivery/src/index.ts))
 - `@deepseek-ai/dsh-sandbox-windows-acl` ([`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts))
 - `@deepseek-ai/dsh-scope` ([`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts))
 - `@deepseek-ai/dsh-sdk-client` ([`packages/sdk/client/src/index.ts`](../packages/sdk/client/src/index.ts))

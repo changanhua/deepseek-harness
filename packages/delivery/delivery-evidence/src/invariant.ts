@@ -1,10 +1,10 @@
-/** Package-owned invariant companion for `@deepseek-ai/dsh-delivery-evidence`. @module @deepseek-ai/dsh-delivery-evidence/invariant */
+/** Package-owned invariant companion for `@changanhua/dsh-delivery-evidence`. @module @changanhua/dsh-delivery-evidence/invariant */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-delivery-evidence'
+const PACKAGE_NAME = '@changanhua/dsh-delivery-evidence'
 /** Cordis companion plugin name. */
 export const name = 'delivery-evidence-invariant'
 /** Service required before the companion can reserve package ownership. */

@@ -6,7 +6,7 @@ import {
   parseEvalSuite,
   runEvalSuite,
   type EvalExecutionRequest,
-} from '@deepseek-ai/dsh-eval'
+} from '@changanhua/dsh-eval'
 import type { RunOptions, RunResult } from '@deepseek-ai/dsh-session-snapshot'
 import { describe, expect, test } from 'vitest'
 import { createSessionSnapshotEvalExecutor } from '../src/index.ts'

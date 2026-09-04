@@ -3,7 +3,7 @@ description: "Host-only library that renders approved Personal Delivery Case rev
 kind: "package-library"
 ---
 
-# @deepseek-ai/dsh-delivery-github-publisher
+# @changanhua/dsh-delivery-github-publisher
 
 English | [中文](README.zh.md)
 

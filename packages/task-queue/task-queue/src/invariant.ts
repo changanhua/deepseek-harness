@@ -1,13 +1,13 @@
 /**
  * Package-owned invariant companion for the typed work-queue definition.
- * @module @deepseek-ai/dsh-task-queue/invariant
+ * @module @changanhua/dsh-task-queue/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-task-queue'
+const PACKAGE_NAME = '@changanhua/dsh-task-queue'
 
 /** Cordis companion plugin name. */
 export const name = 'task-queue-invariant'

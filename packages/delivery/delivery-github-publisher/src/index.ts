@@ -1,6 +1,6 @@
 /** Host-only GitHub Issue publication for Personal Delivery. */
 
-import type Delivery from '@deepseek-ai/dsh-delivery'
+import type Delivery from '@changanhua/dsh-delivery'
 import type { CredentialProvider, CredentialRef } from '@deepseek-ai/dsh-credentials'
 import {
   canonicalGitHubIssueUrl,
@@ -12,7 +12,7 @@ import {
   type IssuePublicationId,
   type PublicationFailure,
   type RepositoryId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { DeliveryGitHubPublisherError } from './failures.ts'
 import { renderGitHubIssue } from './render.ts'
 

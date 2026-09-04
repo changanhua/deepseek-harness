@@ -20,7 +20,7 @@ describe('session-snapshot Eval invariant companion', () => {
     expect(SnapshotEvalInvariant.name).toBe('eval-session-snapshot-invariant')
     expect(SnapshotEvalInvariant.inject).toEqual(['invariants'])
     await expect(SnapshotEvalInvariant.apply(ctx as never)).resolves.toBe(dispose)
-    expect(packageName).toBe('@deepseek-ai/dsh-eval-session-snapshot')
+    expect(packageName).toBe('@changanhua/dsh-eval-session-snapshot')
     expect(installerCalled).toBe(true)
   })
 })

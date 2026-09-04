@@ -6,7 +6,7 @@ import type {
   BoundDeliveryEvidenceWriter,
   SaveBoundDeliveryEvidence,
   StoredDeliveryEvidence,
-} from '@deepseek-ai/dsh-delivery-evidence'
+} from '@changanhua/dsh-delivery-evidence'
 import {
   AcceptanceClauseId,
   CompletionClaimId,
@@ -33,9 +33,9 @@ import {
   type EvidenceRef,
   type VerificationCheck,
   type WorkPacketDigestInput,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import type { VerificationWorkspaceLease } from '@deepseek-ai/dsh-repo-workspace'
-import type { RepositoryRangeFacts } from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-delivery-protocol'
+import type { VerificationWorkspaceLease } from '@changanhua/dsh-repo-workspace'
+import type { RepositoryRangeFacts } from '@changanhua/dsh-repo-workspace'
 import type {
   SubprocessHandle,
   SubprocessOutcome,

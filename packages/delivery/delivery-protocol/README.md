@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-delivery-protocol
+# @changanhua/dsh-delivery-protocol
 
 English | [中文](README.zh.md)
 
@@ -32,7 +32,7 @@ import {
   contractReadiness,
   contractRevisionSchema,
   workPacketSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 
 const contract = contractRevisionSchema.parse(decodedContract)
 if (!contractReadiness(contract).ready) throw new Error('Contract is not ready')
@@ -92,7 +92,7 @@ The fixture catalog contains fake repository, Queue, evidence, and human ids onl
 
 #### What the model sees
 
-Nothing. `@deepseek-ai/dsh-delivery-protocol` contributes no prompt, tool, command, or model-visible diagnostic. A later authorized consumer may present a projection of these records.
+Nothing. `@changanhua/dsh-delivery-protocol` contributes no prompt, tool, command, or model-visible diagnostic. A later authorized consumer may present a projection of these records.
 
 #### Token effect
 

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { officialClientBuildEnvironment, writeClientBuildRecord } from '../client-build-environment.ts'
+import { loadPackageIdentities } from '../package-identities.ts'
 import { releaseFamily, type ReleaseMember } from './families.ts'
 import { compareVersions, nextVendorVersion, planShared, reachesPayload } from './bump.ts'
 
@@ -36,6 +37,33 @@ function buildFixture(environment: Record<string, string>): string {
   return root
 }
 
+/** A valid registry with one source-only personal package. */
+function personalRegistry(directory: string, sourceName: string): Record<string, unknown> {
+  return {
+    schemaVersion: 2,
+    versionPolicy: 'preserve-existing-during-rescope',
+    personalScope: '@changanhua',
+    personalRepository: 'changanhua/deepseek-harness',
+    personalRepositoryUrl: 'git+https://github.com/changanhua/deepseek-harness.git',
+    upstreamScope: '@deepseek-ai',
+    upstreamRepository: 'deepseek-ai/deepseek-harness',
+    upstreamRepositoryUrl: 'git+https://github.com/deepseek-ai/deepseek-harness.git',
+    supportedUpstreamCommit: '1111111111111111111111111111111111111111',
+    observedUpstreamCommit: '1111111111111111111111111111111111111111',
+    unlistedPackageOrigin: 'upstream',
+    vendorPathPrefix: 'vendor/',
+    personalPackages: [{
+      directory,
+      legacyName: '@deepseek-ai/dsh-personal',
+      sourceName,
+      sourceIdentity: 'personal',
+      publicationPolicy: 'blocked-until-release-verified',
+      releaseFamily: null,
+      blockers: ['release family is intentionally absent'],
+    }],
+  }
+}
+
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
   vi.unstubAllEnvs()
@@ -43,10 +71,57 @@ afterEach(() => {
 
 describe('release families', () => {
   it('excludes private experimental packages from the dsh release', () => {
-    const members = releaseFamily('dsh').members(resolve(import.meta.dirname, '../..'))
+    const root = resolve(import.meta.dirname, '../..')
+    const members = releaseFamily('dsh').members(root)
+    const personalDirectories = new Set(loadPackageIdentities(root).personalPackages.map(entry => entry.directory))
 
     expect(members.some(member => member.directory.startsWith('packages/experimental/'))).toBe(false)
+    expect(members.some(member => personalDirectories.has(member.directory))).toBe(false)
     expect(members.map(member => member.name)).not.toContain('@deepseek-ai/dsh-experimental-agent-team')
+  })
+
+  it('validates a registered personal manifest before excluding its directory', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-release-identity-'))
+    roots.push(root)
+    const directory = 'packages/example/personal'
+    const registry = personalRegistry(directory, '@changanhua/dsh-personal')
+    write(join(root, 'downstream/package-identities.json'), `${JSON.stringify(registry)}\n`)
+    write(join(root, directory, 'package.json'), `${JSON.stringify({
+      name: '@deepseek-ai/dsh-personal',
+      version: '0.0.1',
+      private: true,
+      repository: {
+        type: 'git',
+        url: 'git+https://github.com/changanhua/deepseek-harness.git',
+        directory,
+      },
+    })}\n`)
+
+    expect(() => releaseFamily('dsh').members(root)).toThrow(/personal package must use @changanhua\/dsh-personal/)
+
+    write(join(root, directory, 'package.json'), `${JSON.stringify({
+      name: '@changanhua/dsh-personal',
+      version: '0.0.1',
+      repository: {
+        type: 'git',
+        url: 'git+https://github.com/changanhua/deepseek-harness.git',
+        directory,
+      },
+    })}\n`)
+    expect(() => releaseFamily('dsh').members(root)).toThrow(/blocked personal package must set "private": true/)
+  })
+
+  it('refuses an official release closure that reaches source-only personal packages', () => {
+    const dsh = releaseFamily('dsh')
+    const official = member('packages/bundle/base', '@deepseek-ai/dsh-base', {
+      dependencies: { '@changanhua/dsh-task-queue': 'workspace:^' },
+    })
+
+    expect(() => dsh.publishOrder([official]))
+      .toThrow(/@deepseek-ai\/dsh-base.*@changanhua\/dsh-task-queue.*source-only/)
+
+    const root = resolve(import.meta.dirname, '../..')
+    expect(() => dsh.publishOrder(dsh.members(root))).toThrow(/personal package .*source-only/)
   })
 
   it('bumps private dsh packages without adding release tags', () => {
@@ -249,6 +324,7 @@ describe('release families', () => {
 
   it('rejects an unknown family identifier', () => {
     expect(() => { releaseFamily('native') }).toThrow(/unknown release family/)
+    expect(() => { releaseFamily('personal') }).toThrow(/unknown release family/)
   })
 })
 

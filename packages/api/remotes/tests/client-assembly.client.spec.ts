@@ -17,7 +17,7 @@ describe('Client Remote assembly', () => {
 
     const dispose = await apply(ctx)
 
-    expect(mounted).toContain('@deepseek-ai/dsh-host-work-observatory')
+    expect(mounted).toContain('@changanhua/dsh-host-work-observatory')
     await dispose()
   })
 })

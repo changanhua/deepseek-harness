@@ -3,7 +3,7 @@ description: "Locale-owned Personal Delivery workbench over the browser-safe Del
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-client-ui-delivery
+# @changanhua/dsh-client-ui-delivery
 
 English | [中文](README.zh.md)
 

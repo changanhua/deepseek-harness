@@ -3,7 +3,7 @@ description: "将已批准的 Personal Delivery Case revision 渲染为 GitHub I
 kind: "package-library"
 ---
 
-# @deepseek-ai/dsh-delivery-github-publisher
+# @changanhua/dsh-delivery-github-publisher
 
 [English](README.md) | 中文
 

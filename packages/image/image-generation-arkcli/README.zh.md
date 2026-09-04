@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-image-generation-arkcli
+# @changanhua/dsh-image-generation-arkcli
 
 [English](README.md) | 中文
 

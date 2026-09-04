@@ -3,7 +3,7 @@ description: "Personal Delivery domain records and idempotent writes for Cases, 
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery
+# @changanhua/dsh-delivery
 
 English | [中文](README.zh.md)
 

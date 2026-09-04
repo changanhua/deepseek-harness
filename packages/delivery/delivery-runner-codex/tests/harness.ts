@@ -25,13 +25,13 @@ import {
   type ResolvedCodeChange,
   type WorkPacket,
   type WorkPacketDigestInput,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import type { BoundDeliveryEvidenceWriter } from '@deepseek-ai/dsh-delivery-evidence'
+} from '@changanhua/dsh-delivery-protocol'
+import type { BoundDeliveryEvidenceWriter } from '@changanhua/dsh-delivery-evidence'
 import type {
   ChangeWorkspaceLease,
   RepositoryCheckpoint,
   RepositoryWorkspaceDisposition,
-} from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-repo-workspace'
 import type {
   SubprocessHandle,
   SubprocessOutcome,

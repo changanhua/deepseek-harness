@@ -1,6 +1,6 @@
 /** Browser-safe Personal Delivery projection over one Delivery and Queue read. */
 
-import type { DeliverySnapshot } from '@deepseek-ai/dsh-delivery'
+import type { DeliverySnapshot } from '@changanhua/dsh-delivery'
 import {
   QueueAttemptIdRef,
   QueueWorkIdRef,
@@ -20,8 +20,8 @@ import {
   type RequirementDecision,
   type VerificationVerdict,
   type WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import type { Attention, WorkView } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-delivery-protocol'
+import type { Attention, WorkView } from '@changanhua/dsh-task-queue'
 import type {
   DeliveryAcceptanceDecisionView,
   DeliveryAttentionReason,
@@ -55,7 +55,7 @@ function byCreatedDesc<Subject extends { readonly createdAt: string; readonly id
 
 /** Remove the trusted actor id from human-origin revisions. */
 export function projectContractRevision(
-  revision: import('@deepseek-ai/dsh-delivery-protocol').ContractRevision,
+  revision: import('@changanhua/dsh-delivery-protocol').ContractRevision,
 ): import('./types.ts').DeliveryContractRevisionView {
   return {
     ...revision,

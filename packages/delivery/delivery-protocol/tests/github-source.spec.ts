@@ -7,7 +7,7 @@ import {
   parseCanonicalGitHubIssueUrl,
   requirementOriginSchema,
   type GitHubRepositoryRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { describe, expect, it } from 'vitest'
 
 const repository: GitHubRepositoryRef = {

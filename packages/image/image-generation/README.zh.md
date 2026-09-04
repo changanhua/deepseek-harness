@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-image-generation
+# @changanhua/dsh-image-generation
 
 [English](README.md) | 中文
 

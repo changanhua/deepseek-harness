@@ -3,8 +3,8 @@
 import { readFile } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import type { EvalUsage } from '@deepseek-ai/dsh-eval'
-import type { EvalCaseExecutor } from '@deepseek-ai/dsh-eval'
+import type { EvalUsage } from '@changanhua/dsh-eval'
+import type { EvalCaseExecutor } from '@changanhua/dsh-eval'
 import {
   fixtureContext,
   normalizeSessionSnapshots,

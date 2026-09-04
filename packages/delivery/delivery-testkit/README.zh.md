@@ -3,7 +3,7 @@ description: "用于隔离 Consumer 测试的确定性 Delivery fake provider �
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-testkit
+# @changanhua/dsh-delivery-testkit
 
 [English](README.md) | 中文
 

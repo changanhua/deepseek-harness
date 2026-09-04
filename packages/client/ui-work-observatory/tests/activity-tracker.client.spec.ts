@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ClientObservation } from '@deepseek-ai/dsh-host-work-observatory/types'
+import type { ClientObservation } from '@changanhua/dsh-host-work-observatory/types'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { installActivityTracker } from '../src/client/activity-tracker.ts'
 

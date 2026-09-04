@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { QueueWorkSummaryView } from '@deepseek-ai/dsh-task-queue-remote/views'
+import type { QueueWorkSummaryView } from '@changanhua/dsh-task-queue-remote/views'
 import {
   countQueueRows, dotFor, projectQueueRows, queueAge,
 } from '../src/client/view-model.ts'

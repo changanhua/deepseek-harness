@@ -3,7 +3,7 @@ description: "Strict deterministic Eval suites, ordered execution, four-class ou
 kind: "package-library"
 ---
 
-# @deepseek-ai/dsh-eval
+# @changanhua/dsh-eval
 
 English | [中文](README.zh.md)
 

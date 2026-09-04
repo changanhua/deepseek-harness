@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
-import type { TaskQueue } from '@deepseek-ai/dsh-task-queue'
+import type { TaskQueue } from '@changanhua/dsh-task-queue'
 import { describe, expect, it, vi } from 'vitest'
 import { createImageGenerationTaskQueue } from '../src/index.ts'
 

@@ -3,7 +3,7 @@ description: "Independent fixed-plan verification for immutable Personal Deliver
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-verifier
+# @changanhua/dsh-delivery-verifier
 
 English | [中文](README.zh.md)
 

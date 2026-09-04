@@ -11,21 +11,21 @@ import {
   GitCommitId,
   QueueWorkIdRef,
   canonicalDigest,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   ContractRevision,
   DispatchBinding,
   ResolvedCodeChange,
   WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import type { VerifiedRepositoryRevision } from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-delivery-protocol'
+import type { VerifiedRepositoryRevision } from '@changanhua/dsh-repo-workspace'
 import {
   createVerifiedOperatorAuthority,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import type {
   OperatorWorkQueue,
   WorkHandler,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import {
   contractRevisionFixture,
   readyWorkPacketFixture,

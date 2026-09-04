@@ -1,4 +1,4 @@
-/** Public request and read-model types for the Personal Delivery domain. @module @deepseek-ai/dsh-delivery/types */
+/** Public request and read-model types for the Personal Delivery domain. @module @changanhua/dsh-delivery/types */
 
 import type {
   AcceptanceClauseId,
@@ -29,11 +29,11 @@ import type {
   VerificationVerdict,
   WorkPacket,
   WorkPacketId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   VerifiedRepositoryBase,
   VerifiedRepositoryBlob,
-} from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-repo-workspace'
 
 /**
  * Requirement content fields chosen by the caller for one new revision.

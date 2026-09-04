@@ -1,4 +1,4 @@
-/** Local Git repository facts and Attempt-owned worktree provider. @module @deepseek-ai/dsh-repo-workspace-git-local */
+/** Local Git repository facts and Attempt-owned worktree provider. @module @changanhua/dsh-repo-workspace-git-local */
 
 import { createHash, randomUUID } from 'node:crypto'
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, rmdir, unlink } from 'node:fs/promises'
@@ -11,16 +11,16 @@ import {
   GitCommitId,
   RepositoryRelativePath,
   canonicalJson,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   GitCommitId as GitCommitIdType,
   QueueAttemptIdRef,
   RepositoryId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   RepositoryWorkspace,
   RepositoryWorkspaceError,
-} from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-repo-workspace'
 import type {
   ChangeWorkspaceLease,
   CreateCheckpointRequest,
@@ -37,7 +37,7 @@ import type {
   VerifiedRepositoryBase,
   VerifiedRepositoryBlob,
   VerifiedRepositoryRevision,
-} from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-repo-workspace'
 import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subprocess'
 import { ensureDurableDirectoryWin32, publishNewPathWin32 } from './win32.ts'
 

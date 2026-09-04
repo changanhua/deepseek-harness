@@ -21,6 +21,11 @@ export interface PackedIdentity {
   readonly version: string
 }
 
+/** A packed manifest together with its required publication identity. */
+export interface PackedPackage extends PackedIdentity {
+  readonly manifest: Readonly<Record<string, unknown>>
+}
+
 /**
  * List a tarball's members.
  * @param tarball - absolute tarball path.
@@ -35,11 +40,21 @@ export function tarballFiles(tarball: string): string[] {
  * @param tarball - absolute tarball path.
  * @returns The name and version the tarball declares.
  */
-export function packedIdentity(tarball: string): PackedIdentity {
+export function packedPackage(tarball: string): PackedPackage {
   const manifest: unknown = JSON.parse(capture('tar', ['-xOzf', tarball, 'package/package.json']))
   if (manifest === null || typeof manifest !== 'object') throw new Error(`${tarball} has no manifest`)
   const { name, version } = manifest as Record<string, unknown>
   if (typeof name !== 'string' || typeof version !== 'string') throw new Error(`${tarball} manifest lacks name/version`)
+  return { manifest: manifest as Record<string, unknown>, name, version }
+}
+
+/**
+ * Read a packed tarball's publication identity.
+ * @param tarball - absolute tarball path.
+ * @returns The name and version the packed manifest declares.
+ */
+export function packedIdentity(tarball: string): PackedIdentity {
+  const { name, version } = packedPackage(tarball)
   return { name, version }
 }
 

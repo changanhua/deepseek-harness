@@ -3,7 +3,7 @@ description: "Local Git identity checks, bounded blob reads, and Attempt-owned w
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-repo-workspace-git-local
+# @changanhua/dsh-repo-workspace-git-local
 
 English | [中文](README.zh.md)
 

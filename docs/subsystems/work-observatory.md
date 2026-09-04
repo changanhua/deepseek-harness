@@ -30,7 +30,7 @@ The Host projects Session `step/start` and `step/end` events into the same stora
 
 ## Persistence and bounds
 
-`@deepseek-ai/dsh-host-work-observatory` stores the `work_observatory` version-1 domain through `ctx.storageDomain`; it does not open SQLite or files directly. Separate `samples`, `clients`, and `steps` tables keep transition history, the latest client state, and Session-step rows. Per-record keys are path-safe hashes so the JSON and SQLite storage providers accept the same records.
+`@changanhua/dsh-host-work-observatory` stores the `work_observatory` version-1 domain through `ctx.storageDomain`; it does not open SQLite or files directly. Separate `samples`, `clients`, and `steps` tables keep transition history, the latest client state, and Session-step rows. Per-record keys are path-safe hashes so the JSON and SQLite storage providers accept the same records.
 
 The default retention period is 90 days. One deployment accepts at most 128 concurrent browser identities, one query spans at most 31 days, and a range read consumes at most 10,000 retained transition and step records. These values are deployment safety bounds, not analytics sampling targets.
 

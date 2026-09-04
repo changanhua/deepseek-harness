@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type {
   DeliveryEvidenceView,
   DeliverySnapshotView,
-} from '@deepseek-ai/dsh-delivery-remote/types'
+} from '@changanhua/dsh-delivery-remote/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { DeliveryRuntimeRemoteFace } from '../src/client/runtime-controller.ts'
 import { createDeliveryRuntimeController } from '../src/client/runtime-controller.ts'

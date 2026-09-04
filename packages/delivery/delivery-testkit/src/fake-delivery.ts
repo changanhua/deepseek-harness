@@ -21,7 +21,7 @@ import Delivery, {
   type ResolveIssuePublicationRequest,
   type ReviseDeliveryCaseRequest,
   type VerificationSourceResolver,
-} from '@deepseek-ai/dsh-delivery'
+} from '@changanhua/dsh-delivery'
 import {
   AcceptanceDecisionId,
   ContractRevisionId,
@@ -70,7 +70,7 @@ import {
   type VerificationPlan,
   type VerificationVerdict,
   type WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 
 /** Deterministic clock and id hooks for one fake provider. */
 export interface FakeDeliveryOptions {

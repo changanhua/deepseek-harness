@@ -15,7 +15,7 @@ This table connects model-visible tool names to the plugin package and service s
 
 | Tool package | Model-visible names | Requires | Writes / affects | Shipped aliases | Deployment note |
 | --- | --- | --- | --- | --- | --- |
-| `@deepseek-ai/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`, `task_queue_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 agent.run@1 admission` | - | The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields. |
+| `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`, `task_queue_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 agent.run@1 admission` | - | The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields. |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`, `ctx.userQuestions` | `tool/call`, `tool/result after a UI/provider answers the question` | - | ask_user_question pauses the tool call until the active UI provider returns a human answer. |
 | `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`, `ctx.codeRuntime (execution time)`, `ctx.systemPrompt` | `tool/call`, `one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call`, `tool/result` | - | Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: ptc` / `mode: both` (see the PTC mode Agent Note). Under `ptc` it is the registry's only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime's language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result. |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`, `ctx.systemPrompt`, `ctx.userQuestions (execution time, opportunistic)` | `tool/call`, `plan/mode inactive on an approved review`, `tool/result` | - | exit_plan_mode stays in the model-facing schema while planning is inactive so transitions add no tool-catalog churn on top of the plan-policy change. Its execute path rejects calls outside plan mode; in plan mode it presents the plan over the user-questions seam (approve / keep planning with feedback), and approval logs plan mode inactive at the step boundary. |
@@ -32,24 +32,24 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-schedule` | `schedule_create`, `schedule_delete`, `schedule_list` | `ctx.tools`, `ctx.sessions`, `Session persistence`, `a future live root Agent` | `tool/call`, `schedule/change create or delete`, `tool/result` | - | Registered only inside live root Agent scopes created after the opt-in Schedule plugin loads. Version 1 accepts after_seconds, explicit absolute at, and bounded fixed-rate every_seconds, and discloses session-local delivery; management reads and mutations require the shared Session persistence barrier. |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`, `ctx.lsp`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The lsp tool keeps provider selection and language-server subprocesses behind ctx.lsp, so its model-visible schema stays stable across providers. Requires a registered provider (e.g. `@deepseek-ai/dsh-lsp-stdio`) at runtime; without one, a query returns the structured `LSP_UNAVAILABLE` error rather than changing the schema. |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
-| `@deepseek-ai/dsh-tool-runtime-inspect` | `runtime_inspect` | `ctx.tools`, `ctx.systemPrompt`, `ctx.runtimeFacts`, `ctx.subprocess` | `tool/call`, `tool/result` | - | Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider; command inspection reports that provider's execution world without probing through a separate host path. |
+| `@changanhua/dsh-tool-runtime-inspect` | `runtime_inspect` | `ctx.tools`, `ctx.systemPrompt`, `ctx.runtimeFacts`, `ctx.subprocess` | `tool/call`, `tool/result` | - | Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider; command inspection reports that provider's execution world without probing through a separate host path. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
 | `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered tool name is the load-time `toolName` config (default `subagent`); the schema above is that default. The shipped compositions load this package once per subagent backend, so the model additionally sees `subagent_fork` bound to the fork backend. Each instance's description, `run_in_background` parameter, and system-prompt policy follow its own `backgroundMode` and `enableRunInBackground`, so the two shipped schemas are not identical: `subagent` is `continuable` and defaults omitted calls to background with automatic settlement delivery, while `subagent_fork` stays `one-shot` and defaults them to foreground — see `packages/bundle/base/cordis.patch.yml` and `examples/acp-agent/cordis.yml`. |
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message` | `ctx.tools`, `ctx.subagents`, `ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries). |
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`, `ctx.systemPrompt`, `a live continuable in-process child Agent` | `tool/call`, `tool/result`, `a user-role message in the direct parent session` | - | Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently. |
-| `@deepseek-ai/dsh-tool-image-generation-task-queue` | `image_generate_enqueue`, `image_generate_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 image.generate@1 admission` | - | The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority; provider discovery and execution belong to the registered WorkHandler. |
-| `@deepseek-ai/dsh-tool-operation-run-task-queue` | `operation_run_enqueue`, `operation_run_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 operation.run@1 admission` | - | The typed allowlisted-operation admission consumer. It admits only a host-configured `operationId`; executable, argv, cwd, environment, credentials, resources, and execution policy remain outside the tool schema. |
+| `@changanhua/dsh-tool-image-generation-task-queue` | `image_generate_enqueue`, `image_generate_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 image.generate@1 admission` | - | The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority; provider discovery and execution belong to the registered WorkHandler. |
+| `@changanhua/dsh-tool-operation-run-task-queue` | `operation_run_enqueue`, `operation_run_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 operation.run@1 admission` | - | The typed allowlisted-operation admission consumer. It admits only a host-configured `operationId`; executable, argv, cwd, environment, credentials, resources, and execution policy remain outside the tool schema. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
-| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_kinds`, `task_queue_list`, `task_queue_result`, `task_queue_retry`, `task_queue_stats`, `task_queue_status` | `ctx.tools`, `ctx.taskQueue`, `ctx.sessions`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 owner-scoped controls`, `user/message from durable terminal Notifications` | - | The WorkKind-independent durable controller: `task_queue_*` inspection, result, cancellation, retry, and kind tools over the host `ctx.taskQueue` service, plus replay-safe owner Notification delivery through `ctx.sessions`. Work handlers, admission Consumers, and host resource capacity are composed separately. |
+| `@changanhua/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_kinds`, `task_queue_list`, `task_queue_result`, `task_queue_retry`, `task_queue_stats`, `task_queue_status` | `ctx.tools`, `ctx.taskQueue`, `ctx.sessions`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 owner-scoped controls`, `user/message from durable terminal Notifications` | - | The WorkKind-independent durable controller: `task_queue_*` inspection, result, cancellation, retry, and kind tools over the host `ctx.taskQueue` service, plus replay-safe owner Notification delivery through `ctx.sessions`. Work handlers, admission Consumers, and host resource capacity are composed separately. |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`, `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
 
-<a id="deepseek-aidsh-tool-agent-run-task-queue"></a>
+<a id="changanhuadsh-tool-agent-run-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-agent-run-task-queue`
+## `@changanhua/dsh-tool-agent-run-task-queue`
 
 ### `task_queue_enqueue`
 
@@ -1356,9 +1356,9 @@ Source: [`packages/workflow/tool-ralph/src/index.ts`](../packages/workflow/tool-
 
 A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap.
 
-<a id="deepseek-aidsh-tool-runtime-inspect"></a>
+<a id="changanhuadsh-tool-runtime-inspect"></a>
 
-## `@deepseek-ai/dsh-tool-runtime-inspect`
+## `@changanhua/dsh-tool-runtime-inspect`
 
 ### `runtime_inspect`
 
@@ -1797,9 +1797,9 @@ Source: [`packages/subagent/tool-subagent-report/src/index.ts`](../packages/suba
 
 Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently.
 
-<a id="deepseek-aidsh-tool-image-generation-task-queue"></a>
+<a id="changanhuadsh-tool-image-generation-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-image-generation-task-queue`
+## `@changanhua/dsh-tool-image-generation-task-queue`
 
 ### `image_generate_enqueue`
 
@@ -1931,9 +1931,9 @@ Source: [`packages/image/tool-image-generation-task-queue/src/index.ts`](../pack
 
 The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority; provider discovery and execution belong to the registered WorkHandler.
 
-<a id="deepseek-aidsh-tool-operation-run-task-queue"></a>
+<a id="changanhuadsh-tool-operation-run-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-operation-run-task-queue`
+## `@changanhua/dsh-tool-operation-run-task-queue`
 
 ### `operation_run_enqueue`
 
@@ -2091,9 +2091,9 @@ Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/
 
 The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`.
 
-<a id="deepseek-aidsh-tool-task-queue"></a>
+<a id="changanhuadsh-tool-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-task-queue`
+## `@changanhua/dsh-tool-task-queue`
 
 ### `task_queue_cancel`
 

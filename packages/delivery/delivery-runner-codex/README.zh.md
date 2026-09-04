@@ -3,7 +3,7 @@ description: "通过不依赖 Parent 的 Codex app-server 传输层运行一次�
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-runner-codex
+# @changanhua/dsh-delivery-runner-codex
 
 [English](README.md) | 中文
 

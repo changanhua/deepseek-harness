@@ -13,14 +13,18 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/u
 
 export interface PersonalPackageIdentity {
   readonly directory: string
-  readonly origin: 'personal'
-  readonly currentName: string
-  readonly targetName: string
-  readonly publishPolicy: 'blocked-until-rescoped' | 'personal'
+  /** Package name used before the downstream rescope. */
+  readonly legacyName: string
+  readonly sourceName: string
+  readonly sourceIdentity: 'personal'
+  readonly publicationPolicy: 'blocked-until-release-verified' | 'personal'
+  readonly releaseFamily: null | 'personal'
+  readonly blockers: readonly string[]
 }
 
 export interface PackageIdentityRegistry {
-  readonly schemaVersion: 1
+  readonly schemaVersion: 2
+  readonly versionPolicy: 'preserve-existing-during-rescope'
   readonly personalScope: string
   readonly personalRepository: string
   readonly personalRepositoryUrl: string
@@ -49,7 +53,10 @@ function requiredString(record: Record<string, unknown>, field: string, label: s
 export function validatePackageIdentityRegistry(input: unknown): string[] {
   if (!isRecord(input)) return ['package identity registry must be a JSON object']
   const errors: string[] = []
-  if (input.schemaVersion !== 1) errors.push('schemaVersion must be 1')
+  if (input.schemaVersion !== 2) errors.push('schemaVersion must be 2')
+  if (input.versionPolicy !== 'preserve-existing-during-rescope') {
+    errors.push('versionPolicy must be preserve-existing-during-rescope')
+  }
   const personalScope = requiredString(input, 'personalScope', 'registry', errors)
   const personalRepository = requiredString(input, 'personalRepository', 'registry', errors)
   const personalRepositoryUrl = requiredString(input, 'personalRepositoryUrl', 'registry', errors)
@@ -89,8 +96,8 @@ export function validatePackageIdentityRegistry(input: unknown): string[] {
   }
 
   const directories = new Set<string>()
-  const currentNames = new Set<string>()
-  const targetNames = new Set<string>()
+  const legacyNames = new Set<string>()
+  const sourceNames = new Set<string>()
   let previousDirectory = ''
   for (const [index, candidate] of input.personalPackages.entries()) {
     const label = `personalPackages[${String(index)}]`
@@ -99,11 +106,28 @@ export function validatePackageIdentityRegistry(input: unknown): string[] {
       continue
     }
     const directory = requiredString(candidate, 'directory', label, errors)
-    const currentName = requiredString(candidate, 'currentName', label, errors)
-    const targetName = requiredString(candidate, 'targetName', label, errors)
-    if (candidate.origin !== 'personal') errors.push(`${label}.origin must be personal`)
-    if (candidate.publishPolicy !== 'blocked-until-rescoped' && candidate.publishPolicy !== 'personal') {
-      errors.push(`${label}.publishPolicy is invalid`)
+    const legacyName = requiredString(candidate, 'legacyName', label, errors)
+    const sourceName = requiredString(candidate, 'sourceName', label, errors)
+    if (candidate.sourceIdentity !== 'personal') errors.push(`${label}.sourceIdentity must be personal`)
+    if (candidate.publicationPolicy !== 'blocked-until-release-verified' && candidate.publicationPolicy !== 'personal') {
+      errors.push(`${label}.publicationPolicy is invalid`)
+    }
+    if (candidate.releaseFamily !== null && candidate.releaseFamily !== 'personal') {
+      errors.push(`${label}.releaseFamily must be null or personal`)
+    }
+    if (candidate.publicationPolicy === 'blocked-until-release-verified' && candidate.releaseFamily !== null) {
+      errors.push(`${label}.releaseFamily must remain null while publication is blocked`)
+    }
+    if (candidate.publicationPolicy === 'personal' && candidate.releaseFamily !== 'personal') {
+      errors.push(`${label}.releaseFamily must be personal before publication is enabled`)
+    }
+    if (!Array.isArray(candidate.blockers)
+      || candidate.blockers.some(blocker => typeof blocker !== 'string' || blocker === '')) {
+      errors.push(`${label}.blockers must be an array of non-empty strings`)
+    } else if (candidate.publicationPolicy === 'blocked-until-release-verified' && candidate.blockers.length === 0) {
+      errors.push(`${label}.blockers must explain why publication is blocked`)
+    } else if (candidate.publicationPolicy === 'personal' && candidate.blockers.length > 0) {
+      errors.push(`${label}: publishable package must have no blockers`)
     }
     if (directory !== undefined) {
       if (!/^packages\/[a-z0-9-]+\/[a-z0-9-]+$/u.test(directory)) {
@@ -116,19 +140,19 @@ export function validatePackageIdentityRegistry(input: unknown): string[] {
       }
       previousDirectory = directory
     }
-    if (currentName !== undefined) {
-      if (upstreamScope !== undefined && !currentName.startsWith(`${upstreamScope}/`)) {
-        errors.push(`${label}.currentName must start with ${upstreamScope}/ during migration`)
+    if (legacyName !== undefined) {
+      if (upstreamScope !== undefined && !legacyName.startsWith(`${upstreamScope}/`)) {
+        errors.push(`${label}.legacyName must start with ${upstreamScope}/`)
       }
-      if (currentNames.has(currentName)) errors.push(`duplicate current package name: ${currentName}`)
-      currentNames.add(currentName)
+      if (legacyNames.has(legacyName)) errors.push(`duplicate legacy package name: ${legacyName}`)
+      legacyNames.add(legacyName)
     }
-    if (targetName !== undefined) {
-      if (personalScope !== undefined && !targetName.startsWith(`${personalScope}/`)) {
-        errors.push(`${label}.targetName must start with ${personalScope}/`)
+    if (sourceName !== undefined) {
+      if (personalScope !== undefined && !sourceName.startsWith(`${personalScope}/`)) {
+        errors.push(`${label}.sourceName must start with ${personalScope}/`)
       }
-      if (targetNames.has(targetName)) errors.push(`duplicate target package name: ${targetName}`)
-      targetNames.add(targetName)
+      if (sourceNames.has(sourceName)) errors.push(`duplicate source package name: ${sourceName}`)
+      sourceNames.add(sourceName)
     }
   }
   return errors
@@ -159,19 +183,29 @@ export function checkPackageIdentities(root: string = resolve(import.meta.dirnam
       continue
     }
     const name = manifest.name
-    if (identity.publishPolicy === 'blocked-until-rescoped') {
-      if (name !== identity.currentName) {
-        errors.push(`${identity.directory}: blocked package must retain ${identity.currentName} until its rescope PR`)
-      }
-      continue
-    }
-    if (name !== identity.targetName) {
-      errors.push(`${identity.directory}: personal package must use ${identity.targetName}`)
+    if (name !== identity.sourceName) {
+      errors.push(`${identity.directory}: personal package must use ${identity.sourceName}`)
     }
     const repository = manifest.repository
     if (!isRecord(repository) || repository.url !== registry.personalRepositoryUrl
       || repository.directory !== identity.directory) {
       errors.push(`${identity.directory}: personal package repository must use ${registry.personalRepositoryUrl}`)
+    }
+    if (identity.publicationPolicy === 'blocked-until-release-verified') {
+      if (manifest.private !== true) {
+        errors.push(`${identity.directory}: blocked personal package must set \"private\": true`)
+      }
+      if (manifest.publishConfig !== undefined) {
+        errors.push(`${identity.directory}: blocked personal package must omit publishConfig`)
+      }
+    } else {
+      if (manifest.private === true) {
+        errors.push(`${identity.directory}: publishable personal package must not set \"private\": true`)
+      }
+      const publishConfig = manifest.publishConfig
+      if (!isRecord(publishConfig) || publishConfig.access !== 'public') {
+        errors.push(`${identity.directory}: publishable personal package must set publishConfig.access to public`)
+      }
     }
   }
   return errors
@@ -195,7 +229,7 @@ function main(): void {
     if (errors.length > 0) throw new Error(errors.join('\n'))
     console.log(
       `package identities: ${String(registry.personalPackages.length)} personal package(s),`
-      + ` target scope ${registry.personalScope}, publication blocked until explicit rescope`,
+      + ` source scope ${registry.personalScope}, publication remains policy-gated`,
     )
   } catch (error) {
     console.error(`package identities: ${error instanceof Error ? error.message : String(error)}`)

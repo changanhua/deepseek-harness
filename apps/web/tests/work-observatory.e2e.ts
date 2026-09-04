@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-host-work-observatory'
+import type {} from '@changanhua/dsh-host-work-observatory'
 import { launchWebScaffold, type WebScaffold } from './scaffold.ts'
 
 let scaffold: WebScaffold | undefined
@@ -41,5 +41,5 @@ it('composes Host accounting and its browser client into the shipped Web product
   })
 
   const boot = [...ctx.loader.entries()].map(entry => entry.options.name)
-  expect(boot).toContain('@deepseek-ai/dsh-client-ui-work-observatory')
+  expect(boot).toContain('@changanhua/dsh-client-ui-work-observatory')
 })

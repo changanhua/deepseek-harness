@@ -1,5 +1,5 @@
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ClientObservation } from '@deepseek-ai/dsh-host-work-observatory/types'
+import type { ClientObservation } from '@changanhua/dsh-host-work-observatory/types'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 
 const IDLE_MS = 60_000

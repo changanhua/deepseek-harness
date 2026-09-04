@@ -6,7 +6,7 @@
  * subscription machinery lives in a component.
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { CapabilitySnapshot } from '@deepseek-ai/dsh-host-capability-registry/types'
+import type { CapabilitySnapshot } from '@changanhua/dsh-host-capability-registry/types'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
 
 /** The narrow Remote face the store drives; test fakes satisfy exactly this. */

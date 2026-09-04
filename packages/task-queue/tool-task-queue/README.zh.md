@@ -1,8 +1,8 @@
-# @deepseek-ai/dsh-tool-task-queue
+# @changanhua/dsh-tool-task-queue
 
 [English](README.md) | 中文
 
-`@deepseek-ai/dsh-tool-task-queue` 向实时 Agent 会话提供通用 Queue v2 控制。插件需要 `tools`、`taskQueue`、`sessions` 和必填的 `maxNotificationsPerStep` 上限。每项 WorkItem 操作都从当前 Session 派生受 owner 限制的 `AgentWorkQueue`。
+`@changanhua/dsh-tool-task-queue` 向实时 Agent 会话提供通用 Queue v2 控制。插件需要 `tools`、`taskQueue`、`sessions` 和必填的 `maxNotificationsPerStep` 上限。每项 WorkItem 操作都从当前 Session 派生受 owner 限制的 `AgentWorkQueue`。
 
 ## 工具
 

@@ -3,7 +3,7 @@ description: "面向 DSH 回归消费方的严格确定性 Eval 套件、顺序�
 kind: "package-library"
 ---
 
-# @deepseek-ai/dsh-eval
+# @changanhua/dsh-eval
 
 [English](README.md) | 中文
 

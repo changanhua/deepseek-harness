@@ -3,7 +3,7 @@ description: "供部署者和维护者配置持久浏览器活动与 Session 步
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-host-work-observatory
+# @changanhua/dsh-host-work-observatory
 
 [English](README.md) | 中文
 
@@ -34,7 +34,7 @@ kind: "package-reference"
 ### 最小配置
 
 ```yaml
-- name: '@deepseek-ai/dsh-host-work-observatory'
+- name: '@changanhua/dsh-host-work-observatory'
   config:
     retentionDays: 90
     maxClients: 128

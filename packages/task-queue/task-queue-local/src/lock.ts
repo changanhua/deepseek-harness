@@ -10,7 +10,7 @@
  * previous host crashed) is archived into `quarantine/` and taken over; a
  * lock held by a live pid, or by a different host machine, refuses startup —
  * the queue then fails loud instead of silently corrupting shared state.
- * @module @deepseek-ai/dsh-task-queue-local/lock
+ * @module @changanhua/dsh-task-queue-local/lock
  */
 
 import { randomUUID } from 'node:crypto'

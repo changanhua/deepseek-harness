@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-runtime-facts
+# @changanhua/dsh-runtime-facts
 
 [English](README.md) | 中文
 
@@ -8,7 +8,7 @@
 
 ```yaml
 - id: runtime-facts
-  name: '@deepseek-ai/dsh-runtime-facts'
+  name: '@changanhua/dsh-runtime-facts'
   config:
     includeInRuntimeContext: true
 ```

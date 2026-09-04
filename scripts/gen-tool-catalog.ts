@@ -7,6 +7,7 @@
  */
 
 import { globSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -14,7 +15,7 @@ import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createScope } from '@deepseek-ai/dsh-scope'
-import RuntimeFacts from '@deepseek-ai/dsh-runtime-facts'
+import RuntimeFacts from '@changanhua/dsh-runtime-facts'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SqliteSessionQueryEngine from '@deepseek-ai/dsh-session-query-sqlite'
@@ -50,7 +51,7 @@ import CordisHostRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
-import * as ToolRuntimeInspect from '@deepseek-ai/dsh-tool-runtime-inspect'
+import * as ToolRuntimeInspect from '@changanhua/dsh-tool-runtime-inspect'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
@@ -61,11 +62,11 @@ import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
-import LocalTaskQueue from '@deepseek-ai/dsh-task-queue-local'
-import * as ToolAgentRunTaskQueue from '@deepseek-ai/dsh-tool-agent-run-task-queue'
-import * as ToolOperationRunTaskQueue from '@deepseek-ai/dsh-tool-operation-run-task-queue'
-import * as ToolTaskQueue from '@deepseek-ai/dsh-tool-task-queue'
-import * as ToolImageGenerationTaskQueue from '@deepseek-ai/dsh-tool-image-generation-task-queue'
+import LocalTaskQueue from '@changanhua/dsh-task-queue-local'
+import * as ToolAgentRunTaskQueue from '@changanhua/dsh-tool-agent-run-task-queue'
+import * as ToolOperationRunTaskQueue from '@changanhua/dsh-tool-operation-run-task-queue'
+import * as ToolTaskQueue from '@changanhua/dsh-tool-task-queue'
+import * as ToolImageGenerationTaskQueue from '@changanhua/dsh-tool-image-generation-task-queue'
 import type TeamService from '@deepseek-ai/dsh-experimental-agent-team'
 import * as ToolTeam from '@deepseek-ai/dsh-experimental-tool-agent-team'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
@@ -168,7 +169,7 @@ export interface ToolPackage {
   shippedNames?: string[]
   /** Plug the injected seams + the tool plugin onto a context that already
    * carries `systemPrompt` + `tools`. */
-  mount: (ctx: Context) => Promise<void>
+  mount: (ctx: Context, scratchRoot: string) => Promise<void>
   /** Agent-like scope key whose tool view is catalogued instead of the global view. */
   scope?: (ctx: Context) => Agent
   /**
@@ -195,14 +196,14 @@ export interface ToolPackage {
  */
 const TOOL_PACKAGES: ToolPackage[] = [
   {
-    pkg: '@deepseek-ai/dsh-tool-agent-run-task-queue',
+    pkg: '@changanhua/dsh-tool-agent-run-task-queue',
     dir: 'tool-agent-run-task-queue',
     source: 'packages/task-queue/tool-agent-run-task-queue/src/index.ts',
     requires: ['ctx.tools', 'ctx.taskQueue', 'a live Agent session at execution time'],
     writes: ['tool/call', 'tool/result', 'Queue v2 agent.run@1 admission'],
-    async mount(ctx) {
+    async mount(ctx, scratchRoot) {
       await ctx.plugin(LocalTaskQueue, {
-        queueRoot: join(tmpdir(), 'dsh-tool-catalog', 'tool-agent-run-task-queue'),
+        queueRoot: join(scratchRoot, 'tool-agent-run-task-queue'),
       })
       await ctx.plugin(ToolAgentRunTaskQueue)
     },
@@ -446,7 +447,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
       'A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap.',
   },
   {
-    pkg: '@deepseek-ai/dsh-tool-runtime-inspect',
+    pkg: '@changanhua/dsh-tool-runtime-inspect',
     dir: 'tool-runtime-inspect',
     source: 'packages/extensions/tool-runtime-inspect/src/index.ts',
     requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.runtimeFacts', 'ctx.subprocess'],
@@ -548,14 +549,14 @@ const TOOL_PACKAGES: ToolPackage[] = [
       + '`send_message` tool is installed independently.',
   },
   {
-    pkg: '@deepseek-ai/dsh-tool-image-generation-task-queue',
+    pkg: '@changanhua/dsh-tool-image-generation-task-queue',
     dir: 'tool-image-generation-task-queue',
     source: 'packages/image/tool-image-generation-task-queue/src/index.ts',
     requires: ['ctx.tools', 'ctx.taskQueue', 'a live Agent session at execution time'],
     writes: ['tool/call', 'tool/result', 'Queue v2 image.generate@1 admission'],
-    async mount(ctx) {
+    async mount(ctx, scratchRoot) {
       await ctx.plugin(LocalTaskQueue, {
-        queueRoot: join(tmpdir(), 'dsh-tool-catalog', 'tool-image-generation-task-queue'),
+        queueRoot: join(scratchRoot, 'tool-image-generation-task-queue'),
       })
       await ctx.plugin(ToolImageGenerationTaskQueue)
     },
@@ -563,14 +564,14 @@ const TOOL_PACKAGES: ToolPackage[] = [
       'The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority; provider discovery and execution belong to the registered WorkHandler.',
   },
   {
-    pkg: '@deepseek-ai/dsh-tool-operation-run-task-queue',
+    pkg: '@changanhua/dsh-tool-operation-run-task-queue',
     dir: 'tool-operation-run-task-queue',
     source: 'packages/task-queue/tool-operation-run-task-queue/src/index.ts',
     requires: ['ctx.tools', 'ctx.taskQueue', 'a live Agent session at execution time'],
     writes: ['tool/call', 'tool/result', 'Queue v2 operation.run@1 admission'],
-    async mount(ctx) {
+    async mount(ctx, scratchRoot) {
       await ctx.plugin(LocalTaskQueue, {
-        queueRoot: join(tmpdir(), 'dsh-tool-catalog', 'tool-operation-run-task-queue'),
+        queueRoot: join(scratchRoot, 'tool-operation-run-task-queue'),
       })
       await ctx.plugin(ToolOperationRunTaskQueue)
     },
@@ -591,16 +592,16 @@ const TOOL_PACKAGES: ToolPackage[] = [
       'The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers\' `ctx.jobs.start()`.',
   },
   {
-    pkg: '@deepseek-ai/dsh-tool-task-queue',
+    pkg: '@changanhua/dsh-tool-task-queue',
     dir: 'tool-task-queue',
     source: 'packages/task-queue/tool-task-queue/src/index.ts',
     requires: ['ctx.tools', 'ctx.taskQueue', 'ctx.sessions', 'a live Agent session at execution time'],
     writes: ['tool/call', 'tool/result', 'Queue v2 owner-scoped controls', 'user/message from durable terminal Notifications'],
-    async mount(ctx) {
+    async mount(ctx, scratchRoot) {
       // `queueRoot` has no runtime default; the generator boot must pass an
       // explicit disposable root instead of depending on the user's DSH_HOME.
       await ctx.plugin(LocalTaskQueue, {
-        queueRoot: join(tmpdir(), 'dsh-tool-catalog', 'task-queue'),
+        queueRoot: join(scratchRoot, 'task-queue'),
       })
       await ctx.plugin(SessionStore)
       await ctx.plugin(ToolTaskQueue, { maxNotificationsPerStep: 1 })
@@ -762,32 +763,37 @@ export function assertToolsHarvested(entry: ToolPackage, harvested: number): voi
 export async function collectToolCatalog(packages: ToolPackage[] = TOOL_PACKAGES): Promise<ToolCatalog> {
   assertManifestComplete(packages)
   const catalog: ToolCatalog = []
-  for (const entry of packages) {
-    const ctx = new Context()
-    // Dispose in `finally` so a throw from `mount`/`schemas()` after earlier
-    // plugins mounted still tears the context down (no leaked executor/provider
-    // fiber) — the repo's "dispose must reach quiescence" rule.
-    try {
-      await ctx.plugin(SystemPrompt)
-      await ctx.plugin(ToolRuntime, entry.toolsConfig ?? {})
-      await entry.mount(ctx)
-      const schemas = ctx.tools.schemas(entry.scope?.(ctx)).sort((a, b) => a.name.localeCompare(b.name))
-      assertToolsHarvested(entry, schemas.length)
-      catalog.push({
-        pkg: entry.pkg,
-        sources: Object.fromEntries(schemas.map(schema => [
-          schema.name,
-          toolSource(entry, schema.name),
-        ])),
-        requires: entry.requires,
-        writes: entry.writes,
-        schemas,
-        ...entry.shippedNames !== undefined ? { shippedNames: entry.shippedNames } : {},
-        ...entry.note !== undefined ? { note: entry.note } : {},
-      })
-    } finally {
-      await ctx.fiber.dispose()
+  const scratchRoot = await mkdtemp(join(tmpdir(), 'dsh-tool-catalog-'))
+  try {
+    for (const entry of packages) {
+      const ctx = new Context()
+      // Dispose in `finally` so a throw from `mount`/`schemas()` after earlier
+      // plugins mounted still tears the context down (no leaked executor/provider
+      // fiber) — the repo's "dispose must reach quiescence" rule.
+      try {
+        await ctx.plugin(SystemPrompt)
+        await ctx.plugin(ToolRuntime, entry.toolsConfig ?? {})
+        await entry.mount(ctx, scratchRoot)
+        const schemas = ctx.tools.schemas(entry.scope?.(ctx)).sort((a, b) => a.name.localeCompare(b.name))
+        assertToolsHarvested(entry, schemas.length)
+        catalog.push({
+          pkg: entry.pkg,
+          sources: Object.fromEntries(schemas.map(schema => [
+            schema.name,
+            toolSource(entry, schema.name),
+          ])),
+          requires: entry.requires,
+          writes: entry.writes,
+          schemas,
+          ...entry.shippedNames !== undefined ? { shippedNames: entry.shippedNames } : {},
+          ...entry.note !== undefined ? { note: entry.note } : {},
+        })
+      } finally {
+        await ctx.fiber.dispose()
+      }
     }
+  } finally {
+    await rm(scratchRoot, { recursive: true, force: true })
   }
   return catalog
 }

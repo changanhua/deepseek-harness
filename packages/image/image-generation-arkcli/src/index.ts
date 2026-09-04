@@ -1,6 +1,6 @@
 /**
  * Host ArkCLI implementation of the image generation provider seam.
- * @module @deepseek-ai/dsh-image-generation-arkcli
+ * @module @changanhua/dsh-image-generation-arkcli
  */
 
 import { chmod, lstat, mkdtemp, readFile, readdir, rmdir, stat, unlink } from 'node:fs/promises'
@@ -16,7 +16,7 @@ import type {
   ImageGenerationRequest,
   ImageGenerationResult,
   ImageOutputFormat,
-} from '@deepseek-ai/dsh-image-generation'
+} from '@changanhua/dsh-image-generation'
 import type { SubprocessHandle, SubprocessOutputRead, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import z from '@deepseek-ai/schemastery'
 import sharp from 'sharp'

@@ -6,7 +6,7 @@ Personal Delivery 定义不可变需求、有界 Packet、repository proof、evi
 
 ## Public protocol
 
-[`@deepseek-ai/dsh-delivery-protocol`](../../packages/delivery/delivery-protocol/README.zh.md) 是普通且 Queue 无关的 library。每个持久对象都携带 `schemaVersion: 2`；opaque id 保持字符串，Git commit 使用完整 object id，UTC timestamp 使用 RFC 3339，content digest 使用小写 `sha256:<64 hex>`。它的严格运行时 schema 会拒绝未知字段和非法 discriminated combination，而不是静默规范化另一种格式。
+[`@changanhua/dsh-delivery-protocol`](../../packages/delivery/delivery-protocol/README.zh.md) 是普通且 Queue 无关的 library。每个持久对象都携带 `schemaVersion: 2`；opaque id 保持字符串，Git commit 使用完整 object id，UTC timestamp 使用 RFC 3339，content digest 使用小写 `sha256:<64 hex>`。它的严格运行时 schema 会拒绝未知字段和非法 discriminated combination，而不是静默规范化另一种格式。
 
 | Public type | 职责 |
 |---|---|

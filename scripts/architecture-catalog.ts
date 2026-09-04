@@ -3,7 +3,12 @@
 import { globSync, readFileSync } from 'node:fs'
 import { dirname, resolve, sep } from 'node:path'
 
-const SCOPE = '@deepseek-ai/dsh-'
+const PACKAGE_PREFIXES = ['@deepseek-ai/dsh-', '@changanhua/dsh-'] as const
+
+function packageShort(name: string): string | undefined {
+  const prefix = PACKAGE_PREFIXES.find(candidate => name.startsWith(candidate))
+  return prefix === undefined ? undefined : name.slice(prefix.length)
+}
 
 export type ArchitectureFace = 'bundle' | 'client' | 'package' | 'remote' | 'tool'
 
@@ -13,12 +18,13 @@ export interface ArchitecturePackage {
   readonly group: string
   readonly path: string
   readonly description: string
+  /** Full npm identities of in-repo peer dependencies. */
   readonly dependencies: readonly string[]
   readonly faces: readonly ArchitectureFace[]
 }
 
 export interface ArchitectureCatalog {
-  readonly schemaVersion: 1
+  readonly schemaVersion: 2
   readonly packages: readonly ArchitecturePackage[]
 }
 
@@ -35,7 +41,9 @@ export function collectArchitectureCatalog(root: string): ArchitectureCatalog {
         exports?: Record<string, unknown>
         dsh?: { bundle?: unknown; client?: unknown }
       }
-      if (manifest.name?.startsWith(SCOPE) !== true) return []
+      if (manifest.name === undefined) return []
+      const short = packageShort(manifest.name)
+      if (short === undefined) return []
       const [, group, leaf] = manifestPath.split('/')
       if (group === undefined || leaf === undefined) {
         throw new Error(`architecture-catalog: unexpected package path ${manifestPath}`)
@@ -43,7 +51,6 @@ export function collectArchitectureCatalog(root: string): ArchitectureCatalog {
       if (manifest.description === undefined || manifest.description.trim() === '') {
         throw new Error(`architecture-catalog: ${manifest.name} declares no description`)
       }
-      const short = manifest.name.slice(SCOPE.length)
       const faces: ArchitectureFace[] = []
       if (manifest.dsh?.client !== undefined) faces.push('client')
       if (manifest.dsh?.bundle !== undefined) faces.push('bundle')
@@ -57,13 +64,20 @@ export function collectArchitectureCatalog(root: string): ArchitectureCatalog {
         path: dirname(manifestPath).split(sep).join('/'),
         description: manifest.description,
         dependencies: Object.keys(manifest.peerDependencies ?? {})
-          .filter(name => name.startsWith(SCOPE))
-          .map(name => name.slice(SCOPE.length))
+          .filter(name => packageShort(name) !== undefined)
           .sort(),
         faces,
       }]
     })
-  return { schemaVersion: 1, packages }
+  const packageNames = new Set(packages.map(pkg => pkg.name))
+  for (const pkg of packages) {
+    for (const dependency of pkg.dependencies) {
+      if (!packageNames.has(dependency)) {
+        throw new Error(`architecture-catalog: ${pkg.name} references missing in-repo peer ${dependency}`)
+      }
+    }
+  }
+  return { schemaVersion: 2, packages }
 }
 
 /** Render the deterministic browser module committed beside the feature. */
@@ -79,7 +93,7 @@ export function renderArchitectureCatalogModule(catalog: ArchitectureCatalog): s
     '',
     '/** Package declarations from the checkout that built this Client artifact. */',
     'export const architectureCatalog: ArchitectureCatalog = {',
-    '  schemaVersion: 1,',
+    '  schemaVersion: 2,',
     '  packages: [',
   ]
   for (const pkg of catalog.packages) {

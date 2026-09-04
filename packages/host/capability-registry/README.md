@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-host-capability-registry
+# @changanhua/dsh-host-capability-registry
 
 Read-only Host projection of the current capability surface: Skills, Tools, and MCP server entries. `CapabilityRegistryGateway` registers the `capabilityRegistry` service and publishes two generated direct Remotes: `capabilityRegistry/list` for the combined capability view and `capabilityRegistry/management` for the session-addressed Skills management view. Every call reads the live Loader entries, the skill registry's management snapshot, and the tool registry's schemas directly — no cache, history, or mutation path.
 

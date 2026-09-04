@@ -15,6 +15,7 @@ import {
   officialClientBuildEnvironment,
   readClientBuildRecord,
 } from '../client-build-environment.ts'
+import { checkPackageIdentities, loadPackageIdentities } from '../package-identities.ts'
 import { validateTarballPayload } from '../publication-payload.ts'
 
 /**
@@ -107,6 +108,14 @@ export abstract class ReleaseFamily {
   /** Git tag prefix this family publishes from. */
   abstract readonly tagPrefix: string
 
+  /** Matched directories deliberately owned by another release boundary. */
+  protected excludedDirectories(_root: string): ReadonlySet<string> {
+    return new Set()
+  }
+
+  /** Reject runtime edges that escape this family's publishable closure. */
+  protected validateDependencyClosure(_members: readonly ReleaseMember[]): void {}
+
   /**
    * Assert that built artifacts match this release family's required profile.
    * Families without environment-selected artifacts accept every build tree.
@@ -125,8 +134,11 @@ export abstract class ReleaseFamily {
 
     const members: ReleaseMember[] = []
     const seen = new Set<string>()
+    const excludedDirectories = this.excludedDirectories(root)
     for (const manifestPath of manifestPaths) {
       const normalized = manifestPath.replaceAll('\\', '/')
+      const directory = normalized.slice(0, normalized.length - '/package.json'.length)
+      if (excludedDirectories.has(directory)) continue
       const manifest = readManifest(resolve(root, manifestPath))
       const name = requireString(manifest, 'name', normalized)
       const version = requireString(manifest, 'version', normalized)
@@ -135,7 +147,7 @@ export abstract class ReleaseFamily {
       if (seen.has(name)) throw new Error(`${name} appears twice in release family ${this.id}`)
       seen.add(name)
       members.push({
-        directory: normalized.slice(0, normalized.length - '/package.json'.length),
+        directory,
         name,
         version,
         manifest,
@@ -161,6 +173,7 @@ export abstract class ReleaseFamily {
    * @returns The order, ties broken by name for determinism, and the peer edges it left unordered.
    */
   publishOrder(members: readonly ReleaseMember[]): PublishPlan {
+    this.validateDependencyClosure(members)
     const byName = new Map(members.map(member => [member.name, member]))
     const byNameSorted = [...members].sort((left, right) => left.name.localeCompare(right.name))
     const edges = (member: ReleaseMember, sections: readonly string[]): ReleaseMember[] =>
@@ -313,6 +326,32 @@ class DshFamily extends ReleaseFamily {
   readonly id = 'dsh'
   readonly patterns = ['packages/!(experimental)/*/package.json', 'apps/*/package.json'] as const
   readonly tagPrefix = 'dsh-v'
+  private readonly personalScope = loadPackageIdentities().personalScope
+
+  /** Personal downstream packages are never members of the official release. */
+  protected override excludedDirectories(root: string): ReadonlySet<string> {
+    const errors = checkPackageIdentities(root)
+    if (errors.length > 0) {
+      throw new Error(`release family ${this.id}: invalid personal package identities:\n${errors.join('\n')}`)
+    }
+    return new Set(loadPackageIdentities(root).personalPackages.map(entry => entry.directory))
+  }
+
+  /** The official family cannot publish an unresolved dependency on source-only downstream packages. */
+  protected override validateDependencyClosure(members: readonly ReleaseMember[]): void {
+    for (const member of members) {
+      for (const section of [...INSTALL_SECTIONS, ...PEER_SECTIONS]) {
+        const dependencies = member.manifest[section]
+        if (dependencies === null || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue
+        for (const dependency of Object.keys(dependencies)) {
+          if (!dependency.startsWith(`${this.personalScope}/`)) continue
+          throw new Error(
+            `official release member ${member.name} ${section} reaches personal package ${dependency}, which is source-only`,
+          )
+        }
+      }
+    }
+  }
 
   /** Require current artifacts from a complete official client build. */
   override verifyBuildArtifacts(root: string): void {

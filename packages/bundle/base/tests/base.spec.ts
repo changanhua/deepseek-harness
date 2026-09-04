@@ -16,15 +16,15 @@ import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader, { evaluate } from '@deepseek-ai/cordis-plugin-loader'
 import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
-import { ImageGeneration } from '@deepseek-ai/dsh-image-generation'
-import * as ImageGenerationTaskQueue from '@deepseek-ai/dsh-image-generation-task-queue'
+import { ImageGeneration } from '@changanhua/dsh-image-generation'
+import * as ImageGenerationTaskQueue from '@changanhua/dsh-image-generation-task-queue'
 import { SessionStore } from '@deepseek-ai/dsh-session'
 import { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
-import LocalTaskQueue from '@deepseek-ai/dsh-task-queue-local'
-import * as DshTaskQueueExecutor from '@deepseek-ai/dsh-task-queue-executor-dsh'
-import * as ToolAgentRunTaskQueue from '@deepseek-ai/dsh-tool-agent-run-task-queue'
-import * as ToolImageGenerationTaskQueue from '@deepseek-ai/dsh-tool-image-generation-task-queue'
-import * as ToolTaskQueue from '@deepseek-ai/dsh-tool-task-queue'
+import LocalTaskQueue from '@changanhua/dsh-task-queue-local'
+import * as DshTaskQueueExecutor from '@changanhua/dsh-task-queue-executor-dsh'
+import * as ToolAgentRunTaskQueue from '@changanhua/dsh-tool-agent-run-task-queue'
+import * as ToolImageGenerationTaskQueue from '@changanhua/dsh-tool-image-generation-task-queue'
+import * as ToolTaskQueue from '@changanhua/dsh-tool-task-queue'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime } from '@deepseek-ai/dsh-tools'
 
@@ -77,7 +77,7 @@ async function loadQueueComposition(): Promise<Context> {
     '- id: queue-test-support',
     '  name: "@deepseek-ai/dsh-base-test-queue-support"',
     '- id: task-queue',
-    '  name: "@deepseek-ai/dsh-task-queue-local"',
+    '  name: "@changanhua/dsh-task-queue-local"',
     '  config:',
     `    queueRoot: ${JSON.stringify(join(root, 'queue'))}`,
     '    maxConcurrent: 1',
@@ -85,24 +85,24 @@ async function loadQueueComposition(): Promise<Context> {
     '      image-generation: 1',
     '      agent-run: 1',
     '- id: image-generation-task-queue',
-    '  name: "@deepseek-ai/dsh-image-generation-task-queue"',
+    '  name: "@changanhua/dsh-image-generation-task-queue"',
     '  inject: [taskQueue, imageGeneration, attachments]',
     '  config: { maxAttempts: 1 }',
     '- id: tool-image-generation-task-queue',
-    '  name: "@deepseek-ai/dsh-tool-image-generation-task-queue"',
+    '  name: "@changanhua/dsh-tool-image-generation-task-queue"',
     '- id: task-queue-executor-dsh',
-    '  name: "@deepseek-ai/dsh-task-queue-executor-dsh"',
+    '  name: "@changanhua/dsh-task-queue-executor-dsh"',
     '  inject: [taskQueue, subprocess]',
     '  config:',
     `    launcher: [${JSON.stringify(process.execPath)}]`,
     `    dshHome: ${JSON.stringify(root)}`,
     `    workspaceDir: ${JSON.stringify(root)}`,
     '- id: tool-task-queue',
-    '  name: "@deepseek-ai/dsh-tool-task-queue"',
+    '  name: "@changanhua/dsh-tool-task-queue"',
     '  inject: [tools, taskQueue, sessions]',
     '  config: { maxNotificationsPerStep: 1 }',
     '- id: tool-agent-run-task-queue',
-    '  name: "@deepseek-ai/dsh-tool-agent-run-task-queue"',
+    '  name: "@changanhua/dsh-tool-agent-run-task-queue"',
     '',
   ].join('\n'))
 
@@ -112,12 +112,12 @@ async function loadQueueComposition(): Promise<Context> {
   context.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-base-test-queue-support', applyQueueTestSupport],
-    ['@deepseek-ai/dsh-task-queue-local', LocalTaskQueue],
-    ['@deepseek-ai/dsh-image-generation-task-queue', ImageGenerationTaskQueue],
-    ['@deepseek-ai/dsh-tool-image-generation-task-queue', ToolImageGenerationTaskQueue],
-    ['@deepseek-ai/dsh-task-queue-executor-dsh', DshTaskQueueExecutor],
-    ['@deepseek-ai/dsh-tool-task-queue', ToolTaskQueue],
-    ['@deepseek-ai/dsh-tool-agent-run-task-queue', ToolAgentRunTaskQueue],
+    ['@changanhua/dsh-task-queue-local', LocalTaskQueue],
+    ['@changanhua/dsh-image-generation-task-queue', ImageGenerationTaskQueue],
+    ['@changanhua/dsh-tool-image-generation-task-queue', ToolImageGenerationTaskQueue],
+    ['@changanhua/dsh-task-queue-executor-dsh', DshTaskQueueExecutor],
+    ['@changanhua/dsh-tool-task-queue', ToolTaskQueue],
+    ['@changanhua/dsh-tool-agent-run-task-queue', ToolAgentRunTaskQueue],
   ])
   context.loader.internal = {
     version: 'v2',
@@ -191,8 +191,8 @@ describe('dsh-base bundle', () => {
     expect(manifest.dependencies).toMatchObject({
       '@deepseek-ai/dsh-subagent-codex': 'workspace:^',
       '@deepseek-ai/dsh-subagent-claude-code': 'workspace:^',
-      '@deepseek-ai/dsh-task-queue-executor-dsh': 'workspace:^',
-      '@deepseek-ai/dsh-tool-agent-run-task-queue': 'workspace:^',
+      '@changanhua/dsh-task-queue-executor-dsh': 'workspace:^',
+      '@changanhua/dsh-tool-agent-run-task-queue': 'workspace:^',
     })
   })
 

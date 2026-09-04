@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-delivery-github-intake",
+  "name": "@changanhua/dsh-delivery-github-intake",
   "description": "GitHub Issue snapshot intake Consumer for Personal Delivery Cases",
   "version": "0.1.2-alpha.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/delivery/delivery-github-intake"
   },
   "type": "module",
@@ -39,15 +36,16 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-delivery": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-delivery": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-repo-workspace": "workspace:^"
-  }
+    "@changanhua/dsh-repo-workspace": "workspace:^"
+  },
+  "private": true
 }

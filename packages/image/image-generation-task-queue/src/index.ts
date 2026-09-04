@@ -2,8 +2,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { AttachmentStore, ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
-import type { ImageGeneration, ImageGenerationRequest, ResolvedImageGenerationSpec } from '@deepseek-ai/dsh-image-generation'
-import type { LiveAttempt, WorkFailure, WorkHandler, WorkKindDefinition } from '@deepseek-ai/dsh-task-queue'
+import type { ImageGeneration, ImageGenerationRequest, ResolvedImageGenerationSpec } from '@changanhua/dsh-image-generation'
+import type { LiveAttempt, WorkFailure, WorkHandler, WorkKindDefinition } from '@changanhua/dsh-task-queue'
 
 const DEFAULT_MAX_ATTEMPTS = 1
 
@@ -26,7 +26,7 @@ export interface ImageGenerateOutput {
   readonly attachments: readonly ImageAttachmentRef[]
 }
 
-declare module '@deepseek-ai/dsh-task-queue' {
+declare module '@changanhua/dsh-task-queue' {
   interface WorkKindMap {
     'image.generate@1': WorkKindDefinition<ImageGenerateIntent, ResolvedImageGenerate, ResolvedImageGenerate, ImageGenerateOutput>
   }

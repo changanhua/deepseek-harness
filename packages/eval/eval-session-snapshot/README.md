@@ -3,7 +3,7 @@ description: "Keyless ACP session-snapshot execution for DSH Eval suites, includ
 kind: "package-library"
 ---
 
-# @deepseek-ai/dsh-eval-session-snapshot
+# @changanhua/dsh-eval-session-snapshot
 
 English | [中文](README.zh.md)
 

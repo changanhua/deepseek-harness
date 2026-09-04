@@ -30,7 +30,7 @@ Host 把 Session `step/start` 与 `step/end` 事件投影到同一存储域。�
 
 ## 持久化与边界
 
-`@deepseek-ai/dsh-host-work-observatory` 通过 `ctx.storageDomain` 存储版本为 1 的 `work_observatory` 域，不会直接打开 SQLite 或文件。独立的 `samples`、`clients` 与 `steps` 表分别保留状态转换历史、最新客户端状态和 Session step 行。每条记录使用路径安全的哈希键，因此 JSON 与 SQLite 存储 Provider 能接受同一格式。
+`@changanhua/dsh-host-work-observatory` 通过 `ctx.storageDomain` 存储版本为 1 的 `work_observatory` 域，不会直接打开 SQLite 或文件。独立的 `samples`、`clients` 与 `steps` 表分别保留状态转换历史、最新客户端状态和 Session step 行。每条记录使用路径安全的哈希键，因此 JSON 与 SQLite 存储 Provider 能接受同一格式。
 
 默认保留期是 90 天。单个部署最多接受 128 个并发浏览器身份；单次查询跨度最多 31 天；一次范围读取最多消费 10,000 条已保留的状态转换与 step 记录。这些是部署安全边界，不是分析采样目标。
 

@@ -1,14 +1,14 @@
 /** Queue-result resolution used only by the human-decision Remote operation. */
 
-import type { AcceptanceCandidateFacts } from '@deepseek-ai/dsh-delivery'
+import type { AcceptanceCandidateFacts } from '@changanhua/dsh-delivery'
 import {
   QueueAttemptIdRef,
   QueueWorkIdRef,
   codeChangeOutputSchema,
   codeVerifyIntentSchema,
   codeVerifyOutputSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import { WorkId, type OperatorWorkQueue, type WorkView } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-delivery-protocol'
+import { WorkId, type OperatorWorkQueue, type WorkView } from '@changanhua/dsh-task-queue'
 
 /** Stable internal refusal for an invalid Delivery-bound Queue result. */
 export class DeliveryAcceptanceCandidateError extends Error {

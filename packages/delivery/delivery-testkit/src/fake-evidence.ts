@@ -7,7 +7,7 @@ import DeliveryEvidence, {
   DeliveryEvidenceError,
   type SaveDeliveryEvidence,
   type StoredDeliveryEvidence,
-} from '@deepseek-ai/dsh-delivery-evidence'
+} from '@changanhua/dsh-delivery-evidence'
 import {
   DELIVERY_SCHEMA_VERSION,
   EvidenceId,
@@ -17,7 +17,7 @@ import {
   evidenceRefSchema,
   type EvidenceId as EvidenceIdType,
   type EvidenceRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 
 /** Deterministic clock and id hooks for one fake evidence provider. */
 export interface FakeDeliveryEvidenceOptions {

@@ -37,7 +37,7 @@ import {
   verificationPlanSchema,
   verificationVerdictSchema,
   workPacketSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   AcceptanceDecision,
   CodeChangeIntent,
@@ -61,13 +61,13 @@ import type {
   VerificationPlanDocument,
   VerificationVerdict,
   WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 // @ts-expect-error Protocol exposes no executor-prepared shape.
-import type { PreparedCodeChange } from '@deepseek-ai/dsh-delivery-protocol'
+import type { PreparedCodeChange } from '@changanhua/dsh-delivery-protocol'
 // @ts-expect-error Protocol V1 internals are not a supported deep-import surface.
-import type { ContractRevision as DeepImportedContract } from '@deepseek-ai/dsh-delivery-protocol/src/types'
+import type { ContractRevision as DeepImportedContract } from '@changanhua/dsh-delivery-protocol/src/types'
 // @ts-expect-error Protocol V2 removed the GitHub-only SourceRef requirement snapshot.
-import type { SourceRef } from '@deepseek-ai/dsh-delivery-protocol'
+import type { SourceRef } from '@changanhua/dsh-delivery-protocol'
 type NegativeApiAssertions = [PreparedCodeChange, DeepImportedContract, SourceRef]
 
 const ids = {

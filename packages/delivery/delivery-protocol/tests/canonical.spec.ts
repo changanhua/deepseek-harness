@@ -1,4 +1,4 @@
-import { canonicalJson as queueCanonicalJson } from '@deepseek-ai/dsh-task-queue'
+import { canonicalJson as queueCanonicalJson } from '@changanhua/dsh-task-queue'
 import {
   canonicalDigest,
   canonicalJson,
@@ -8,7 +8,7 @@ import {
   issuePublicationIdForRevision,
   RepositoryRelativePath,
   Sha256Digest,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { describe, expect, it } from 'vitest'
 
 describe('delivery canonical identity', () => {

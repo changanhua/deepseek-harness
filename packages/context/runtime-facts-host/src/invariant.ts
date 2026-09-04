@@ -1,11 +1,11 @@
-/** Package-owned host-fact inventory invariant. @module @deepseek-ai/dsh-runtime-facts-host/invariant */
+/** Package-owned host-fact inventory invariant. @module @changanhua/dsh-runtime-facts-host/invariant */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
-import type {} from '@deepseek-ai/dsh-runtime-facts'
+import type {} from '@changanhua/dsh-runtime-facts'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-runtime-facts-host'
+const PACKAGE_NAME = '@changanhua/dsh-runtime-facts-host'
 const OWNER = 'runtime-facts-host'
 const EXPECTED_KEYS = [
   'host.arch',

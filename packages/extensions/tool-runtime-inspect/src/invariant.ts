@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-tool-runtime-inspect`.
- * @module @deepseek-ai/dsh-tool-runtime-inspect/invariant
+ * Package-owned invariant companion for `@changanhua/dsh-tool-runtime-inspect`.
+ * @module @changanhua/dsh-tool-runtime-inspect/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-tool-runtime-inspect'
+const PACKAGE_NAME = '@changanhua/dsh-tool-runtime-inspect'
 
 /** Cordis companion plugin name. */
 export const name = 'tool-runtime-inspect-invariant'

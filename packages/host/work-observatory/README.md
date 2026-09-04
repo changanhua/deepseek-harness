@@ -3,7 +3,7 @@ description: "Host Work Observatory accounting for deployments and maintainers c
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-host-work-observatory
+# @changanhua/dsh-host-work-observatory
 
 English | [中文](README.zh.md)
 
@@ -34,7 +34,7 @@ Choose this package when a local Web deployment needs inspectable human/Agent wa
 ### Minimal configuration
 
 ```yaml
-- name: '@deepseek-ai/dsh-host-work-observatory'
+- name: '@changanhua/dsh-host-work-observatory'
   config:
     retentionDays: 90
     maxClients: 128

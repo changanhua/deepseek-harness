@@ -7,7 +7,7 @@
  * This is a repository guardrail, not registry authentication. npm credentials
  * and trusted-publisher policy remain the external authority.
  * @param {{githubActions?: string, packageNames: readonly string[], repository?: string}} context Publication context.
- * @param {{personalPackages: readonly {publishPolicy: string, targetName: string}[], personalRepository: string, personalScope: string, upstreamRepository: string, upstreamScope: string}} registry Package identity registry.
+ * @param {{personalPackages: readonly {publicationPolicy: string, sourceName: string}[], personalRepository: string, personalScope: string, upstreamRepository: string, upstreamScope: string}} registry Package identity registry.
  */
 export function assertPublicationIdentity(context, registry) {
   if (context.githubActions !== 'true') {
@@ -28,12 +28,12 @@ export function assertPublicationIdentity(context, registry) {
       if (normalizedRepository !== registry.personalRepository.toLowerCase()) {
         throw new Error(`${name} may only be published from ${registry.personalRepository}`);
       }
-      const identity = registry.personalPackages.find((entry) => entry.targetName === name);
+      const identity = registry.personalPackages.find((entry) => entry.sourceName === name);
       if (identity === undefined) {
         throw new Error(`${name} has no publication owner in downstream/package-identities.json`);
       }
-      if (identity.publishPolicy !== 'personal') {
-        throw new Error(`${name} is blocked until its rescope is complete`);
+      if (identity.publicationPolicy !== 'personal') {
+        throw new Error(`${name} is blocked until its release verification is complete`);
       }
       continue;
     }

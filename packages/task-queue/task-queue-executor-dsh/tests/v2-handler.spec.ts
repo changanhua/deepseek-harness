@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import * as yaml from 'js-yaml'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import { evaluate } from '@deepseek-ai/cordis-plugin-loader'
-import { AttemptId } from '@deepseek-ai/dsh-task-queue'
+import { AttemptId } from '@changanhua/dsh-task-queue'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { createDshWorkHandler, resolveConfig } from '../src/index.ts'
 

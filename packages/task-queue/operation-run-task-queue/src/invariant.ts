@@ -1,7 +1,7 @@
 /** Invariant companion for the operation-run Queue bridge. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
-const PACKAGE_NAME = '@deepseek-ai/dsh-operation-run-task-queue'
+const PACKAGE_NAME = '@changanhua/dsh-operation-run-task-queue'
 export const name = 'operation-run-task-queue-invariant'
 export const inject = ['invariants']
 // No runtime invariant: the queue registry owns duplicate-handler rejection and

@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-repo-workspace-git-local",
+  "name": "@changanhua/dsh-repo-workspace-git-local",
   "description": "Local Git worktree provider for isolated Personal Delivery change and verification attempts",
   "version": "0.1.2-alpha.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/delivery/repo-workspace-git-local"
   },
   "type": "module",
@@ -33,9 +30,9 @@
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-repo-workspace": "workspace:^",
+    "@changanhua/dsh-repo-workspace": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^"
   },
   "dependencies": {
@@ -44,9 +41,10 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-repo-workspace": "workspace:^",
+    "@changanhua/dsh-repo-workspace": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^"
-  }
+  },
+  "private": true
 }

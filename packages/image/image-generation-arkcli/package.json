@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-image-generation-arkcli",
+  "name": "@changanhua/dsh-image-generation-arkcli",
   "description": "Host ArkCLI provider for the DeepSeek Harness image generation seam",
   "version": "0.1.0-rc.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/image/image-generation-arkcli"
   },
   "type": "module",
@@ -36,7 +33,7 @@
     "sharp": "^0.35.3"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-image-generation": "workspace:^",
+    "@changanhua/dsh-image-generation": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
@@ -44,9 +41,10 @@
   "devDependencies": {
     "@deepseek-ai/cordis-plugin-include": "workspace:^",
     "@deepseek-ai/cordis-plugin-loader": "workspace:^",
-    "@deepseek-ai/dsh-image-generation": "workspace:^",
+    "@changanhua/dsh-image-generation": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
-  }
+  },
+  "private": true
 }

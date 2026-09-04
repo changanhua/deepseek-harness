@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-task-queue-executor-dsh",
+  "name": "@changanhua/dsh-task-queue-executor-dsh",
   "description": "Restricted DeepSeek Harness worker executor for the durable task queue",
   "version": "0.1.0-rc.5",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/task-queue/task-queue-executor-dsh"
   },
   "type": "module",
@@ -29,8 +26,8 @@
   "files": [
     "lib/index.js",
     "lib/invariant.js",
-    "lib/types/**/*.d.ts",
-    "worker.cordis.patch.yml"
+    "worker.cordis.patch.yml",
+    "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
   "dependencies": {
@@ -41,7 +38,7 @@
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
-    "@deepseek-ai/dsh-task-queue": "workspace:^"
+    "@changanhua/dsh-task-queue": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
@@ -49,7 +46,8 @@
     "@deepseek-ai/dsh-llm-mock-server": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
     "@deepseek-ai/dsh-subprocess-local": "workspace:^",
-    "@deepseek-ai/dsh-task-queue": "workspace:^",
-    "@deepseek-ai/dsh-task-queue-local": "workspace:^"
-  }
+    "@changanhua/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-task-queue-local": "workspace:^"
+  },
+  "private": true
 }

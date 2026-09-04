@@ -1,7 +1,7 @@
 /** Browser Remote over the trusted Queue v2 operator facade. */
 import { Context } from '@deepseek-ai/cordis'
-import { canonicalJson, createVerifiedOperatorAuthority } from '@deepseek-ai/dsh-task-queue'
-import type { OperatorWorkQueue, UnknownResolution, WorkView } from '@deepseek-ai/dsh-task-queue'
+import { canonicalJson, createVerifiedOperatorAuthority } from '@changanhua/dsh-task-queue'
+import type { OperatorWorkQueue, UnknownResolution, WorkView } from '@changanhua/dsh-task-queue'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   QueueJsonValue, QueueSnapshotInput, QueueSnapshotView, QueueStatsView, QueueUnknownResolutionInput,

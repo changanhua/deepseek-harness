@@ -1,9 +1,9 @@
 /** Agent-facing admission tools for the explicit Queue v2 image WorkKind. */
 import type { Context } from '@deepseek-ai/cordis'
-import { createVerifiedAgentAuthority } from '@deepseek-ai/dsh-task-queue'
-import type { AgentWorkQueue, TaskQueue } from '@deepseek-ai/dsh-task-queue'
+import { createVerifiedAgentAuthority } from '@changanhua/dsh-task-queue'
+import type { AgentWorkQueue, TaskQueue } from '@changanhua/dsh-task-queue'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type {} from '@deepseek-ai/dsh-image-generation-task-queue'
+import type {} from '@changanhua/dsh-image-generation-task-queue'
 
 /** Cordis loader name. */
 export const name = 'tool-image-generation-task-queue'

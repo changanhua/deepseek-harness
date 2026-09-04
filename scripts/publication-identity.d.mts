@@ -6,8 +6,8 @@ export interface PublicationIdentityContext {
 
 export interface PublicationIdentityRegistry {
   readonly personalPackages: readonly {
-    readonly publishPolicy: string
-    readonly targetName: string
+    readonly publicationPolicy: string
+    readonly sourceName: string
   }[]
   readonly personalRepository: string
   readonly personalScope: string

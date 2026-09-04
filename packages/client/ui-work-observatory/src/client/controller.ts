@@ -2,7 +2,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   WorkObservatoryRange,
   WorkObservatoryRangeRequest,
-} from '@deepseek-ai/dsh-host-work-observatory/types'
+} from '@changanhua/dsh-host-work-observatory/types'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 

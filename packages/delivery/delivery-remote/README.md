@@ -3,7 +3,7 @@ description: "Personal Delivery browser Remote for users importing, publishing, 
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-remote
+# @changanhua/dsh-delivery-remote
 
 English | [中文](README.zh.md)
 

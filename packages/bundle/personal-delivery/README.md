@@ -3,7 +3,7 @@ description: "Personal Delivery add-on composition for users running the complet
 kind: "package-bundle"
 ---
 
-# @deepseek-ai/dsh-personal-delivery
+# @changanhua/dsh-personal-delivery
 
 English | [中文](README.zh.md)
 

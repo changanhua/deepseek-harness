@@ -21,7 +21,7 @@ import {
   verificationPlanDigest,
   workPacketDigest,
   workPacketSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   CompletionClaim,
   ContractRevision,
@@ -30,22 +30,22 @@ import type {
   VerificationVerdict,
   WorkPacket,
   WorkPacketDigestInput,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   DeliveryCodexRunnerError,
-} from '@deepseek-ai/dsh-delivery-runner-codex'
+} from '@changanhua/dsh-delivery-runner-codex'
 import type {
   StartCodeChange,
-} from '@deepseek-ai/dsh-delivery-runner-codex'
+} from '@changanhua/dsh-delivery-runner-codex'
 import {
   DeliveryVerifierError,
-} from '@deepseek-ai/dsh-delivery-verifier'
+} from '@changanhua/dsh-delivery-verifier'
 import type {
   StartDeliveryVerification,
-} from '@deepseek-ai/dsh-delivery-verifier'
-import type { VerifiedRepositoryRevision } from '@deepseek-ai/dsh-repo-workspace'
-import { AttemptId, ResultId, WorkId } from '@deepseek-ai/dsh-task-queue'
-import type { WorkHandler, WorkView } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-delivery-verifier'
+import type { VerifiedRepositoryRevision } from '@changanhua/dsh-repo-workspace'
+import { AttemptId, ResultId, WorkId } from '@changanhua/dsh-task-queue'
+import type { WorkHandler, WorkView } from '@changanhua/dsh-task-queue'
 import * as bridgeModule from '../src/index.ts'
 import { Config } from '../src/index.ts'
 

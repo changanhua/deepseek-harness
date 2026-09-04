@@ -1,20 +1,20 @@
 /** Exact GitHub Issue Work Brief grammar for Delivery Case imports. */
 
-import type { ContractRevisionDraft } from '@deepseek-ai/dsh-delivery'
+import type { ContractRevisionDraft } from '@changanhua/dsh-delivery'
 import {
   acceptanceClauseSchema,
   baseSelectionRuleSchema,
   contractVerificationSourceSchema,
   openDecisionSchema,
   referenceLinkSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   AcceptanceClause,
   BaseSelectionRule,
   ContractVerificationSource,
   OpenDecision,
   ReferenceLink,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { parseDocument } from 'yaml'
 import { z } from 'zod'
 

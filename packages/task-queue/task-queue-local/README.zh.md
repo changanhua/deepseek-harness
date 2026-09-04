@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-task-queue-local
+# @changanhua/dsh-task-queue-local
 
 [English](README.md) | 中文
 

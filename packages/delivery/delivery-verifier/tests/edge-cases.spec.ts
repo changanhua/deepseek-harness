@@ -1,7 +1,7 @@
 import { mkdir, realpath, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { DeliveryEvidenceError } from '@deepseek-ai/dsh-delivery-evidence'
+import { DeliveryEvidenceError } from '@changanhua/dsh-delivery-evidence'
 import {
   ContractRevisionId,
   DELIVERY_SCHEMA_VERSION,
@@ -18,7 +18,7 @@ import {
   verificationPlanDigest,
   verificationPlanSchema,
   type EvidenceRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   SubprocessHandle,
   SubprocessSpawnSpec,

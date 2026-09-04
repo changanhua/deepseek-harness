@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-client-ui-architecture",
+  "name": "@changanhua/dsh-client-ui-architecture",
   "description": "Full-page DSH package architecture explorer over a generated checkout catalog and current Loader runtime evidence",
   "version": "0.1.2-alpha.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/client/ui-architecture"
   },
   "type": "module",
@@ -83,5 +80,6 @@
     "lib/invariant.js",
     "lib/client.js",
     "lib/types/**/*.d.ts"
-  ]
+  ],
+  "private": true
 }

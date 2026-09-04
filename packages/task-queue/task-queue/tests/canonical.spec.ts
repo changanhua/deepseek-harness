@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canonicalJson, canonicalQueueState, digestIntent, foldChanges } from '@deepseek-ai/dsh-task-queue'
+import { canonicalJson, canonicalQueueState, digestIntent, foldChanges } from '@changanhua/dsh-task-queue'
 import { admitted, receipt, work } from './fixtures.ts'
 
 describe('canonical caller intent', () => {

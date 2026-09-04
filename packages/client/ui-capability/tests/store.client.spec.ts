@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { CapabilityStore, type CapabilityRemoteFace } from '../src/client/store.ts'
-import type { CapabilitySnapshot } from '@deepseek-ai/dsh-host-capability-registry/types'
+import type { CapabilitySnapshot } from '@changanhua/dsh-host-capability-registry/types'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
 
 const S1 = 's1' as SessionId

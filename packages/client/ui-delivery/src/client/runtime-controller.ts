@@ -16,7 +16,7 @@ import type {
   DeliverySnapshotView,
   DeliveryStartChangeInput,
   DeliveryStartVerificationInput,
-} from '@deepseek-ai/dsh-delivery-remote/types'
+} from '@changanhua/dsh-delivery-remote/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 
 /** Narrow cancellable Remote read used by the workbench controller. */

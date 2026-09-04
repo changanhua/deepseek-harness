@@ -3,8 +3,8 @@ import { Context } from '@deepseek-ai/cordis'
 import TaskQueue, {
   AttentionId, AttemptId, BatchId, NotificationId, ResultId, WorkId,
   canAutoRetry, isTerminalState,
-} from '@deepseek-ai/dsh-task-queue'
-import type { AgentWorkQueue, OperatorWorkQueue, WorkHandler, WorkKind, WorkStatus } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
+import type { AgentWorkQueue, OperatorWorkQueue, WorkHandler, WorkKind, WorkStatus } from '@changanhua/dsh-task-queue'
 import { apply, inject, name } from '../src/invariant.ts'
 
 describe('public runtime API', () => {
@@ -46,7 +46,7 @@ describe('public runtime API', () => {
     const ctx = {
       invariants: {
         register(packageName: string, installer: () => void) {
-          expect(packageName).toBe('@deepseek-ai/dsh-task-queue')
+          expect(packageName).toBe('@changanhua/dsh-task-queue')
           installer()
           installed = true
           return disposer

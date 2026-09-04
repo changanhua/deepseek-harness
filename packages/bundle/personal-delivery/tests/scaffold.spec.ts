@@ -7,23 +7,23 @@ import { Context } from '@deepseek-ai/cordis'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import LocalDelivery from '@deepseek-ai/dsh-delivery-local'
-import LocalDeliveryEvidence from '@deepseek-ai/dsh-delivery-evidence-local'
+import LocalDelivery from '@changanhua/dsh-delivery-local'
+import LocalDeliveryEvidence from '@changanhua/dsh-delivery-evidence-local'
 import {
   AcceptanceClauseId,
   GitCommitId,
   RepositoryId,
   VerificationCheckId,
   githubIssueContentDigest,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import DeliveryRemote from '@deepseek-ai/dsh-delivery-remote'
-import * as DeliveryTaskQueue from '@deepseek-ai/dsh-delivery-task-queue'
-import GitLocalRepositoryWorkspace from '@deepseek-ai/dsh-repo-workspace-git-local'
+} from '@changanhua/dsh-delivery-protocol'
+import DeliveryRemote from '@changanhua/dsh-delivery-remote'
+import * as DeliveryTaskQueue from '@changanhua/dsh-delivery-task-queue'
+import GitLocalRepositoryWorkspace from '@changanhua/dsh-repo-workspace-git-local'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import LocalSubprocess from '@deepseek-ai/dsh-subprocess-local'
-import LocalTaskQueue from '@deepseek-ai/dsh-task-queue-local'
+import LocalTaskQueue from '@changanhua/dsh-task-queue-local'
 import { load } from 'js-yaml'
 import { describe, expect, it } from 'vitest'
 
@@ -45,12 +45,12 @@ describe('Personal Delivery bundle composition', () => {
     const rows = patch.flatMap(entry => entry.insert ?? [])
 
     expect(rows.map(row => [row.id, row.name])).toEqual([
-      ['delivery-local', '@deepseek-ai/dsh-delivery-local'],
-      ['delivery-evidence-local', '@deepseek-ai/dsh-delivery-evidence-local'],
-      ['repo-workspace-git-local', '@deepseek-ai/dsh-repo-workspace-git-local'],
-      ['delivery-task-queue', '@deepseek-ai/dsh-delivery-task-queue'],
-      ['delivery-remote', '@deepseek-ai/dsh-delivery-remote'],
-      ['ui-delivery', '@deepseek-ai/dsh-client-ui-delivery'],
+      ['delivery-local', '@changanhua/dsh-delivery-local'],
+      ['delivery-evidence-local', '@changanhua/dsh-delivery-evidence-local'],
+      ['repo-workspace-git-local', '@changanhua/dsh-repo-workspace-git-local'],
+      ['delivery-task-queue', '@changanhua/dsh-delivery-task-queue'],
+      ['delivery-remote', '@changanhua/dsh-delivery-remote'],
+      ['ui-delivery', '@changanhua/dsh-client-ui-delivery'],
     ])
     expect(rows.find(row => row.id === 'delivery-evidence-local')?.config).toEqual({
       root: { __jsExpr: "dshHomePath('personal-delivery/evidence')" },
@@ -75,7 +75,7 @@ describe('Personal Delivery bundle composition', () => {
       "- id: storage-json\n  name: '@deepseek-ai/dsh-storage-json'\n  config:\n    root: " + JSON.stringify(resolve(temp, 'storage')),
       "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  config:\n    backend: json",
       "- { id: subprocess, name: '@deepseek-ai/dsh-subprocess-local' }",
-      "- id: task-queue\n  name: '@deepseek-ai/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(resolve(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1',
+      "- id: task-queue\n  name: '@changanhua/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(resolve(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1',
       patch,
     ].join('\n'))
 
@@ -84,13 +84,13 @@ describe('Personal Delivery bundle composition', () => {
       ['@deepseek-ai/dsh-storage-json', StorageJson],
       ['@deepseek-ai/dsh-storage-domain', StorageDomain],
       ['@deepseek-ai/dsh-subprocess-local', LocalSubprocess],
-      ['@deepseek-ai/dsh-task-queue-local', LocalTaskQueue],
-      ['@deepseek-ai/dsh-delivery-local', LocalDelivery],
-      ['@deepseek-ai/dsh-delivery-evidence-local', LocalDeliveryEvidence],
-      ['@deepseek-ai/dsh-repo-workspace-git-local', GitLocalRepositoryWorkspace],
-      ['@deepseek-ai/dsh-delivery-task-queue', DeliveryTaskQueue],
-      ['@deepseek-ai/dsh-delivery-remote', DeliveryRemote],
-      ['@deepseek-ai/dsh-client-ui-delivery', uiDeliveryHost],
+      ['@changanhua/dsh-task-queue-local', LocalTaskQueue],
+      ['@changanhua/dsh-delivery-local', LocalDelivery],
+      ['@changanhua/dsh-delivery-evidence-local', LocalDeliveryEvidence],
+      ['@changanhua/dsh-repo-workspace-git-local', GitLocalRepositoryWorkspace],
+      ['@changanhua/dsh-delivery-task-queue', DeliveryTaskQueue],
+      ['@changanhua/dsh-delivery-remote', DeliveryRemote],
+      ['@changanhua/dsh-client-ui-delivery', uiDeliveryHost],
     ])
     const boot = async (): Promise<Context> => {
       const ctx = new Context()

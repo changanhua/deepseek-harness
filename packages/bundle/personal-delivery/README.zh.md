@@ -3,7 +3,7 @@ description: "面向在 DSH 中运行完整 Case-to-acceptance 工作流的用�
 kind: "package-bundle"
 ---
 
-# @deepseek-ai/dsh-personal-delivery
+# @changanhua/dsh-personal-delivery
 
 [English](README.md) | 中文
 

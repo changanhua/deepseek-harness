@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-eval-session-snapshot",
+  "name": "@changanhua/dsh-eval-session-snapshot",
   "description": "Keyless ACP session-snapshot executor for deterministic DSH Eval suites",
   "version": "0.1.2-alpha.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/eval/eval-session-snapshot"
   },
   "type": "module",
@@ -31,7 +28,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@deepseek-ai/dsh-eval": "workspace:^",
+    "@changanhua/dsh-eval": "workspace:^",
     "@deepseek-ai/dsh-session-snapshot": "workspace:^"
   },
   "peerDependencies": {
@@ -41,5 +38,6 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
-  }
+  },
+  "private": true
 }

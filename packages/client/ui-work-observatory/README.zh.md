@@ -3,7 +3,7 @@ description: "供用户查看本地日期或项目、对比人类活动和 Sessi
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-client-ui-work-observatory
+# @changanhua/dsh-client-ui-work-observatory
 
 [English](README.md) | 中文
 
@@ -34,7 +34,7 @@ kind: "package-reference"
 ### 最小配置
 
 ```yaml
-- name: '@deepseek-ai/dsh-client-ui-work-observatory'
+- name: '@changanhua/dsh-client-ui-work-observatory'
 ```
 
 本包没有浏览器配置。它的 `dsh.client.inject` 声明需要 Remotes、Session Controller、locale、layout、renderer、sidebar 和 Host 工作观测包。

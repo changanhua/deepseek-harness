@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { WorkObservatoryInterval } from '@deepseek-ai/dsh-host-work-observatory/types'
+import type { WorkObservatoryInterval } from '@changanhua/dsh-host-work-observatory/types'
 import { IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WorkObservatoryWorkspaceProps } from './contract.ts'
 import css from './WorkObservatoryWorkspace.module.css'

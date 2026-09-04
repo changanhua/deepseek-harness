@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, test } from 'vitest'
-import type { EvalCaseExecutor, EvalExecutionRequest } from '@deepseek-ai/dsh-eval'
+import type { EvalCaseExecutor, EvalExecutionRequest } from '@changanhua/dsh-eval'
 import * as adapterApi from '../src/index.ts'
 
 const roots: string[] = []

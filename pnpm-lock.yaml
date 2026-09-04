@@ -126,6 +126,21 @@ importers:
 
   apps/cli:
     dependencies:
+      '@changanhua/dsh-operation-run-task-queue':
+        specifier: workspace:^
+        version: link:../../packages/task-queue/operation-run-task-queue
+      '@changanhua/dsh-task-queue-executor-dsh':
+        specifier: workspace:^
+        version: link:../../packages/task-queue/task-queue-executor-dsh
+      '@changanhua/dsh-tool-operation-run-task-queue':
+        specifier: workspace:^
+        version: link:../../packages/task-queue/tool-operation-run-task-queue
+      '@changanhua/dsh-tool-runtime-inspect':
+        specifier: workspace:^
+        version: link:../../packages/extensions/tool-runtime-inspect
+      '@changanhua/dsh-tool-task-queue':
+        specifier: workspace:^
+        version: link:../../packages/task-queue/tool-task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../vendor/cordis
@@ -210,9 +225,6 @@ importers:
       '@deepseek-ai/dsh-mcp-client':
         specifier: workspace:^
         version: link:../../packages/mcp/mcp-client
-      '@deepseek-ai/dsh-operation-run-task-queue':
-        specifier: workspace:^
-        version: link:../../packages/task-queue/operation-run-task-queue
       '@deepseek-ai/dsh-persona':
         specifier: workspace:^
         version: link:../../packages/preset/persona
@@ -246,9 +258,6 @@ importers:
       '@deepseek-ai/dsh-skill-filesystem':
         specifier: workspace:^
         version: link:../../packages/skill/skill-filesystem
-      '@deepseek-ai/dsh-task-queue-executor-dsh':
-        specifier: workspace:^
-        version: link:../../packages/task-queue/task-queue-executor-dsh
       '@deepseek-ai/dsh-terminal':
         specifier: workspace:^
         version: link:../../packages/terminal/terminal
@@ -288,9 +297,6 @@ importers:
       '@deepseek-ai/dsh-tool-jobs':
         specifier: workspace:^
         version: link:../../packages/jobs/tool-jobs
-      '@deepseek-ai/dsh-tool-operation-run-task-queue':
-        specifier: workspace:^
-        version: link:../../packages/task-queue/tool-operation-run-task-queue
       '@deepseek-ai/dsh-tool-pwsh':
         specifier: workspace:^
         version: link:../../packages/shell/tool-pwsh
@@ -300,9 +306,6 @@ importers:
       '@deepseek-ai/dsh-tool-ralph':
         specifier: workspace:^
         version: link:../../packages/workflow/tool-ralph
-      '@deepseek-ai/dsh-tool-runtime-inspect':
-        specifier: workspace:^
-        version: link:../../packages/extensions/tool-runtime-inspect
       '@deepseek-ai/dsh-tool-skill':
         specifier: workspace:^
         version: link:../../packages/skill/tool-skill
@@ -315,9 +318,6 @@ importers:
       '@deepseek-ai/dsh-tool-subagent-control':
         specifier: workspace:^
         version: link:../../packages/subagent/tool-subagent-control
-      '@deepseek-ai/dsh-tool-task-queue':
-        specifier: workspace:^
-        version: link:../../packages/task-queue/tool-task-queue
       '@deepseek-ai/dsh-tool-todo':
         specifier: workspace:^
         version: link:../../packages/todo/tool-todo
@@ -689,6 +689,15 @@ importers:
         specifier: workspace:^
         version: link:../../typert/protocol
     devDependencies:
+      '@changanhua/dsh-host-capability-registry':
+        specifier: workspace:^
+        version: link:../../host/capability-registry
+      '@changanhua/dsh-host-work-observatory':
+        specifier: workspace:^
+        version: link:../../host/work-observatory
+      '@changanhua/dsh-task-queue-remote':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue-remote
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -722,15 +731,9 @@ importers:
       '@deepseek-ai/dsh-goal':
         specifier: workspace:^
         version: link:../../goal/goal
-      '@deepseek-ai/dsh-host-capability-registry':
-        specifier: workspace:^
-        version: link:../../host/capability-registry
       '@deepseek-ai/dsh-host-plugin-inventory':
         specifier: workspace:^
         version: link:../../host/plugin-inventory
-      '@deepseek-ai/dsh-host-work-observatory':
-        specifier: workspace:^
-        version: link:../../host/work-observatory
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -752,9 +755,6 @@ importers:
       '@deepseek-ai/dsh-subagent':
         specifier: workspace:^
         version: link:../../subagent/subagent
-      '@deepseek-ai/dsh-task-queue-remote':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue-remote
       '@deepseek-ai/dsh-user-approval':
         specifier: workspace:^
         version: link:../../interaction/user-approval
@@ -1052,6 +1052,39 @@ importers:
 
   packages/bundle/base:
     dependencies:
+      '@changanhua/dsh-command-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/command-task-queue
+      '@changanhua/dsh-image-generation':
+        specifier: workspace:^
+        version: link:../../image/image-generation
+      '@changanhua/dsh-image-generation-arkcli':
+        specifier: workspace:^
+        version: link:../../image/image-generation-arkcli
+      '@changanhua/dsh-image-generation-task-queue':
+        specifier: workspace:^
+        version: link:../../image/image-generation-task-queue
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue
+      '@changanhua/dsh-task-queue-executor-dsh':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue-executor-dsh
+      '@changanhua/dsh-task-queue-local':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue-local
+      '@changanhua/dsh-task-queue-remote':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue-remote
+      '@changanhua/dsh-tool-agent-run-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/tool-agent-run-task-queue
+      '@changanhua/dsh-tool-image-generation-task-queue':
+        specifier: workspace:^
+        version: link:../../image/tool-image-generation-task-queue
+      '@changanhua/dsh-tool-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/tool-task-queue
       '@deepseek-ai/cordis-plugin-hmr':
         specifier: workspace:^
         version: link:../../../vendor/hmr
@@ -1088,9 +1121,6 @@ importers:
       '@deepseek-ai/dsh-command-goal':
         specifier: workspace:^
         version: link:../../goal/command-goal
-      '@deepseek-ai/dsh-command-task-queue':
-        specifier: workspace:^
-        version: link:../../task-queue/command-task-queue
       '@deepseek-ai/dsh-commands':
         specifier: workspace:^
         version: link:../../interaction/commands
@@ -1121,15 +1151,6 @@ importers:
       '@deepseek-ai/dsh-goal-round-driver':
         specifier: workspace:^
         version: link:../../goal/goal-round-driver
-      '@deepseek-ai/dsh-image-generation':
-        specifier: workspace:^
-        version: link:../../image/image-generation
-      '@deepseek-ai/dsh-image-generation-arkcli':
-        specifier: workspace:^
-        version: link:../../image/image-generation-arkcli
-      '@deepseek-ai/dsh-image-generation-task-queue':
-        specifier: workspace:^
-        version: link:../../image/image-generation-task-queue
       '@deepseek-ai/dsh-jobs-local':
         specifier: workspace:^
         version: link:../../jobs/jobs-local
@@ -1247,24 +1268,9 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:^
         version: link:../../core/system-prompt
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue
-      '@deepseek-ai/dsh-task-queue-executor-dsh':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue-executor-dsh
-      '@deepseek-ai/dsh-task-queue-local':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue-local
-      '@deepseek-ai/dsh-task-queue-remote':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue-remote
       '@deepseek-ai/dsh-token-meter':
         specifier: workspace:^
         version: link:../../llm/token-meter
-      '@deepseek-ai/dsh-tool-agent-run-task-queue':
-        specifier: workspace:^
-        version: link:../../task-queue/tool-agent-run-task-queue
       '@deepseek-ai/dsh-tool-bash':
         specifier: workspace:^
         version: link:../../shell/tool-bash
@@ -1280,9 +1286,6 @@ importers:
       '@deepseek-ai/dsh-tool-goal':
         specifier: workspace:^
         version: link:../../goal/tool-goal
-      '@deepseek-ai/dsh-tool-image-generation-task-queue':
-        specifier: workspace:^
-        version: link:../../image/tool-image-generation-task-queue
       '@deepseek-ai/dsh-tool-jobs':
         specifier: workspace:^
         version: link:../../jobs/tool-jobs
@@ -1307,9 +1310,6 @@ importers:
       '@deepseek-ai/dsh-tool-subagent-report':
         specifier: workspace:^
         version: link:../../subagent/tool-subagent-report
-      '@deepseek-ai/dsh-tool-task-queue':
-        specifier: workspace:^
-        version: link:../../task-queue/tool-task-queue
       '@deepseek-ai/dsh-tool-todo':
         specifier: workspace:^
         version: link:../../todo/tool-todo
@@ -1393,49 +1393,52 @@ importers:
 
   packages/bundle/personal-delivery:
     dependencies:
-      '@deepseek-ai/dsh-client-ui-delivery':
+      '@changanhua/dsh-client-ui-delivery':
         specifier: workspace:^
         version: link:../../client/ui-delivery
-      '@deepseek-ai/dsh-delivery':
+      '@changanhua/dsh-delivery':
         specifier: workspace:^
         version: link:../../delivery/delivery
-      '@deepseek-ai/dsh-delivery-evidence':
+      '@changanhua/dsh-delivery-evidence':
         specifier: workspace:^
         version: link:../../delivery/delivery-evidence
-      '@deepseek-ai/dsh-delivery-evidence-local':
+      '@changanhua/dsh-delivery-evidence-local':
         specifier: workspace:^
         version: link:../../delivery/delivery-evidence-local
-      '@deepseek-ai/dsh-delivery-github-intake':
+      '@changanhua/dsh-delivery-github-intake':
         specifier: workspace:^
         version: link:../../delivery/delivery-github-intake
-      '@deepseek-ai/dsh-delivery-github-publisher':
+      '@changanhua/dsh-delivery-github-publisher':
         specifier: workspace:^
         version: link:../../delivery/delivery-github-publisher
-      '@deepseek-ai/dsh-delivery-local':
+      '@changanhua/dsh-delivery-local':
         specifier: workspace:^
         version: link:../../delivery/delivery-local
-      '@deepseek-ai/dsh-delivery-protocol':
+      '@changanhua/dsh-delivery-protocol':
         specifier: workspace:^
         version: link:../../delivery/delivery-protocol
-      '@deepseek-ai/dsh-delivery-remote':
+      '@changanhua/dsh-delivery-remote':
         specifier: workspace:^
         version: link:../../delivery/delivery-remote
-      '@deepseek-ai/dsh-delivery-runner-codex':
+      '@changanhua/dsh-delivery-runner-codex':
         specifier: workspace:^
         version: link:../../delivery/delivery-runner-codex
-      '@deepseek-ai/dsh-delivery-task-queue':
+      '@changanhua/dsh-delivery-task-queue':
         specifier: workspace:^
         version: link:../../delivery/delivery-task-queue
-      '@deepseek-ai/dsh-delivery-verifier':
+      '@changanhua/dsh-delivery-verifier':
         specifier: workspace:^
         version: link:../../delivery/delivery-verifier
-      '@deepseek-ai/dsh-repo-workspace':
+      '@changanhua/dsh-repo-workspace':
         specifier: workspace:^
         version: link:../../delivery/repo-workspace
-      '@deepseek-ai/dsh-repo-workspace-git-local':
+      '@changanhua/dsh-repo-workspace-git-local':
         specifier: workspace:^
         version: link:../../delivery/repo-workspace-git-local
     devDependencies:
+      '@changanhua/dsh-task-queue-local':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue-local
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -1460,9 +1463,6 @@ importers:
       '@deepseek-ai/dsh-subprocess-local':
         specifier: workspace:^
         version: link:../../subprocess/subprocess-local
-      '@deepseek-ai/dsh-task-queue-local':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue-local
       js-yaml:
         specifier: ^4.2.0
         version: 4.3.1
@@ -1555,6 +1555,33 @@ importers:
 
   packages/bundle/web-app:
     dependencies:
+      '@changanhua/dsh-client-ui-architecture':
+        specifier: workspace:^
+        version: link:../../client/ui-architecture
+      '@changanhua/dsh-client-ui-capability':
+        specifier: workspace:^
+        version: link:../../client/ui-capability
+      '@changanhua/dsh-client-ui-settings-skills':
+        specifier: workspace:^
+        version: link:../../client/ui-settings-skills
+      '@changanhua/dsh-client-ui-task-queue':
+        specifier: workspace:^
+        version: link:../../client/ui-task-queue
+      '@changanhua/dsh-client-ui-work-observatory':
+        specifier: workspace:^
+        version: link:../../client/ui-work-observatory
+      '@changanhua/dsh-host-capability-registry':
+        specifier: workspace:^
+        version: link:../../host/capability-registry
+      '@changanhua/dsh-host-work-observatory':
+        specifier: workspace:^
+        version: link:../../host/work-observatory
+      '@changanhua/dsh-runtime-facts':
+        specifier: workspace:^
+        version: link:../../context/runtime-facts
+      '@changanhua/dsh-runtime-facts-host':
+        specifier: workspace:^
+        version: link:../../context/runtime-facts-host
       '@deepseek-ai/dsh-agent-presets':
         specifier: workspace:^
         version: link:../../preset/agent-presets
@@ -1591,18 +1618,12 @@ importers:
       '@deepseek-ai/dsh-client-ui-approval':
         specifier: workspace:^
         version: link:../../client/ui-approval
-      '@deepseek-ai/dsh-client-ui-architecture':
-        specifier: workspace:^
-        version: link:../../client/ui-architecture
       '@deepseek-ai/dsh-client-ui-attachment':
         specifier: workspace:^
         version: link:../../client/ui-attachment
       '@deepseek-ai/dsh-client-ui-brand-official':
         specifier: workspace:^
         version: link:../../client/ui-brand-official
-      '@deepseek-ai/dsh-client-ui-capability':
-        specifier: workspace:^
-        version: link:../../client/ui-capability
       '@deepseek-ai/dsh-client-ui-chat':
         specifier: workspace:^
         version: link:../../client/ui-chat
@@ -1672,9 +1693,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-settings-plugins':
         specifier: workspace:^
         version: link:../../client/ui-settings-plugins
-      '@deepseek-ai/dsh-client-ui-settings-skills':
-        specifier: workspace:^
-        version: link:../../client/ui-settings-skills
       '@deepseek-ai/dsh-client-ui-sidebar':
         specifier: workspace:^
         version: link:../../client/ui-sidebar
@@ -1684,9 +1702,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-subagent':
         specifier: workspace:^
         version: link:../../client/ui-subagent
-      '@deepseek-ai/dsh-client-ui-task-queue':
-        specifier: workspace:^
-        version: link:../../client/ui-task-queue
       '@deepseek-ai/dsh-client-ui-theme':
         specifier: workspace:^
         version: link:../../client/ui-theme
@@ -1699,9 +1714,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-user-questions':
         specifier: workspace:^
         version: link:../../client/ui-user-questions
-      '@deepseek-ai/dsh-client-ui-work-observatory':
-        specifier: workspace:^
-        version: link:../../client/ui-work-observatory
       '@deepseek-ai/dsh-client-ui-workflow-run':
         specifier: workspace:^
         version: link:../../client/ui-workflow-run
@@ -1726,9 +1738,6 @@ importers:
       '@deepseek-ai/dsh-file-reference-local':
         specifier: workspace:^
         version: link:../../context/file-reference-local
-      '@deepseek-ai/dsh-host-capability-registry':
-        specifier: workspace:^
-        version: link:../../host/capability-registry
       '@deepseek-ai/dsh-host-directory-picker-auto':
         specifier: workspace:^
         version: link:../../host/directory-picker-auto
@@ -1747,21 +1756,12 @@ importers:
       '@deepseek-ai/dsh-host-webserver':
         specifier: workspace:^
         version: link:../../host/webserver
-      '@deepseek-ai/dsh-host-work-observatory':
-        specifier: workspace:^
-        version: link:../../host/work-observatory
       '@deepseek-ai/dsh-launch-environment':
         specifier: workspace:^
         version: link:../../util/launch-environment
       '@deepseek-ai/dsh-message-feedback':
         specifier: workspace:^
         version: link:../../feedback/message-feedback
-      '@deepseek-ai/dsh-runtime-facts':
-        specifier: workspace:^
-        version: link:../../context/runtime-facts
-      '@deepseek-ai/dsh-runtime-facts-host':
-        specifier: workspace:^
-        version: link:../../context/runtime-facts-host
       '@deepseek-ai/dsh-session-log-export':
         specifier: workspace:^
         version: link:../../session-query/session-log-export
@@ -2202,6 +2202,9 @@ importers:
         specifier: ^2.0.0
         version: 2.1.1
     devDependencies:
+      '@changanhua/dsh-host-capability-registry':
+        specifier: workspace:^
+        version: link:../../host/capability-registry
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -2232,9 +2235,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:^
         version: link:../ui-slots
-      '@deepseek-ai/dsh-host-capability-registry':
-        specifier: workspace:^
-        version: link:../../host/capability-registry
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -2601,6 +2601,9 @@ importers:
 
   packages/client/ui-delivery:
     devDependencies:
+      '@changanhua/dsh-delivery-remote':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-remote
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -2628,9 +2631,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:^
         version: link:../ui-slots
-      '@deepseek-ai/dsh-delivery-remote':
-        specifier: workspace:^
-        version: link:../../delivery/delivery-remote
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -3543,6 +3543,9 @@ importers:
         specifier: workspace:^
         version: link:../ui-conversation
     devDependencies:
+      '@changanhua/dsh-host-capability-registry':
+        specifier: workspace:^
+        version: link:../../host/capability-registry
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -3573,9 +3576,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:^
         version: link:../ui-slots
-      '@deepseek-ai/dsh-host-capability-registry':
-        specifier: workspace:^
-        version: link:../../host/capability-registry
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -3776,6 +3776,9 @@ importers:
         specifier: ^2.0.0
         version: 2.1.1
     devDependencies:
+      '@changanhua/dsh-task-queue-remote':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue-remote
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -3806,9 +3809,6 @@ importers:
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-task-queue-remote':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue-remote
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
@@ -4090,6 +4090,9 @@ importers:
         specifier: ^2.0.0
         version: 2.1.1
     devDependencies:
+      '@changanhua/dsh-host-work-observatory':
+        specifier: workspace:^
+        version: link:../../host/work-observatory
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -4123,9 +4126,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:^
         version: link:../ui-slots
-      '@deepseek-ai/dsh-host-work-observatory':
-        specifier: workspace:^
-        version: link:../../host/work-observatory
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -4601,6 +4601,9 @@ importers:
 
   packages/context/runtime-facts-host:
     devDependencies:
+      '@changanhua/dsh-runtime-facts':
+        specifier: workspace:^
+        version: link:../runtime-facts
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -4613,9 +4616,6 @@ importers:
       '@deepseek-ai/dsh-launch-environment':
         specifier: workspace:^
         version: link:../../util/launch-environment
-      '@deepseek-ai/dsh-runtime-facts':
-        specifier: workspace:^
-        version: link:../runtime-facts
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:^
         version: link:../../subprocess/subprocess
@@ -5018,27 +5018,27 @@ importers:
 
   packages/delivery/delivery:
     devDependencies:
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
+      '@changanhua/dsh-repo-workspace':
+        specifier: workspace:^
+        version: link:../repo-workspace
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-repo-workspace':
-        specifier: workspace:^
-        version: link:../repo-workspace
 
   packages/delivery/delivery-evidence:
     devDependencies:
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -5052,15 +5052,15 @@ importers:
         specifier: ^3.1.0
         version: 3.1.1
     devDependencies:
+      '@changanhua/dsh-delivery-evidence':
+        specifier: workspace:^
+        version: link:../delivery-evidence
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery-evidence':
-        specifier: workspace:^
-        version: link:../delivery-evidence
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -5074,54 +5074,54 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@changanhua/dsh-delivery':
+        specifier: workspace:^
+        version: link:../delivery
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
+      '@changanhua/dsh-repo-workspace':
+        specifier: workspace:^
+        version: link:../repo-workspace
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery':
-        specifier: workspace:^
-        version: link:../delivery
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-repo-workspace':
-        specifier: workspace:^
-        version: link:../repo-workspace
 
   packages/delivery/delivery-github-publisher:
     devDependencies:
+      '@changanhua/dsh-delivery':
+        specifier: workspace:^
+        version: link:../delivery
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
+      '@changanhua/dsh-delivery-testkit':
+        specifier: workspace:^
+        version: link:../delivery-testkit
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
       '@deepseek-ai/dsh-credentials':
         specifier: workspace:^
         version: link:../../credentials/credentials
-      '@deepseek-ai/dsh-delivery':
-        specifier: workspace:^
-        version: link:../delivery
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
-      '@deepseek-ai/dsh-delivery-testkit':
-        specifier: workspace:^
-        version: link:../delivery-testkit
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
 
   packages/delivery/delivery-local:
     devDependencies:
+      '@changanhua/dsh-delivery':
+        specifier: workspace:^
+        version: link:../delivery
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery':
-        specifier: workspace:^
-        version: link:../delivery
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -5138,6 +5138,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -5147,9 +5150,6 @@ importers:
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue
       '@deepseek-ai/dsh-timeout':
         specifier: workspace:^
         version: link:../../util/timeout
@@ -5160,42 +5160,42 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-delivery':
+        specifier: workspace:^
+        version: link:../delivery
+      '@changanhua/dsh-delivery-evidence':
+        specifier: workspace:^
+        version: link:../delivery-evidence
+      '@changanhua/dsh-delivery-github-intake':
+        specifier: workspace:^
+        version: link:../delivery-github-intake
+      '@changanhua/dsh-delivery-github-publisher':
+        specifier: workspace:^
+        version: link:../delivery-github-publisher
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
+      '@changanhua/dsh-delivery-task-queue':
+        specifier: workspace:^
+        version: link:../delivery-task-queue
+      '@changanhua/dsh-delivery-testkit':
+        specifier: workspace:^
+        version: link:../delivery-testkit
+      '@changanhua/dsh-repo-workspace':
+        specifier: workspace:^
+        version: link:../repo-workspace
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
       '@deepseek-ai/dsh-credentials':
         specifier: workspace:^
         version: link:../../credentials/credentials
-      '@deepseek-ai/dsh-delivery':
-        specifier: workspace:^
-        version: link:../delivery
-      '@deepseek-ai/dsh-delivery-evidence':
-        specifier: workspace:^
-        version: link:../delivery-evidence
-      '@deepseek-ai/dsh-delivery-github-intake':
-        specifier: workspace:^
-        version: link:../delivery-github-intake
-      '@deepseek-ai/dsh-delivery-github-publisher':
-        specifier: workspace:^
-        version: link:../delivery-github-publisher
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
-      '@deepseek-ai/dsh-delivery-task-queue':
-        specifier: workspace:^
-        version: link:../delivery-task-queue
-      '@deepseek-ai/dsh-delivery-testkit':
-        specifier: workspace:^
-        version: link:../delivery-testkit
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-repo-workspace':
-        specifier: workspace:^
-        version: link:../repo-workspace
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
@@ -5209,21 +5209,21 @@ importers:
         specifier: workspace:^
         version: link:../../subagent/subagent-codex
     devDependencies:
+      '@changanhua/dsh-delivery-evidence':
+        specifier: workspace:^
+        version: link:../delivery-evidence
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
+      '@changanhua/dsh-repo-workspace':
+        specifier: workspace:^
+        version: link:../repo-workspace
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery-evidence':
-        specifier: workspace:^
-        version: link:../delivery-evidence
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-repo-workspace':
-        specifier: workspace:^
-        version: link:../repo-workspace
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:^
         version: link:../../subprocess/subprocess
@@ -5237,78 +5237,78 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-delivery':
+        specifier: workspace:^
+        version: link:../delivery
+      '@changanhua/dsh-delivery-evidence':
+        specifier: workspace:^
+        version: link:../delivery-evidence
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
+      '@changanhua/dsh-delivery-runner-codex':
+        specifier: workspace:^
+        version: link:../delivery-runner-codex
+      '@changanhua/dsh-delivery-verifier':
+        specifier: workspace:^
+        version: link:../delivery-verifier
+      '@changanhua/dsh-repo-workspace':
+        specifier: workspace:^
+        version: link:../repo-workspace
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery':
-        specifier: workspace:^
-        version: link:../delivery
-      '@deepseek-ai/dsh-delivery-evidence':
-        specifier: workspace:^
-        version: link:../delivery-evidence
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
-      '@deepseek-ai/dsh-delivery-runner-codex':
-        specifier: workspace:^
-        version: link:../delivery-runner-codex
-      '@deepseek-ai/dsh-delivery-verifier':
-        specifier: workspace:^
-        version: link:../delivery-verifier
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-repo-workspace':
-        specifier: workspace:^
-        version: link:../repo-workspace
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:^
         version: link:../../subprocess/subprocess
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue
       '@deepseek-ai/dsh-timeout':
         specifier: workspace:^
         version: link:../../util/timeout
 
   packages/delivery/delivery-testkit:
     devDependencies:
+      '@changanhua/dsh-delivery':
+        specifier: workspace:^
+        version: link:../delivery
+      '@changanhua/dsh-delivery-evidence':
+        specifier: workspace:^
+        version: link:../delivery-evidence
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
+      '@changanhua/dsh-repo-workspace':
+        specifier: workspace:^
+        version: link:../repo-workspace
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery':
-        specifier: workspace:^
-        version: link:../delivery
-      '@deepseek-ai/dsh-delivery-evidence':
-        specifier: workspace:^
-        version: link:../delivery-evidence
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-repo-workspace':
-        specifier: workspace:^
-        version: link:../repo-workspace
 
   packages/delivery/delivery-verifier:
     devDependencies:
+      '@changanhua/dsh-delivery-evidence':
+        specifier: workspace:^
+        version: link:../delivery-evidence
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
+      '@changanhua/dsh-repo-workspace':
+        specifier: workspace:^
+        version: link:../repo-workspace
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery-evidence':
-        specifier: workspace:^
-        version: link:../delivery-evidence
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-repo-workspace':
-        specifier: workspace:^
-        version: link:../repo-workspace
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:^
         version: link:../../subprocess/subprocess
@@ -5318,12 +5318,12 @@ importers:
 
   packages/delivery/repo-workspace:
     devDependencies:
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -5337,18 +5337,18 @@ importers:
         specifier: ^3.1.0
         version: 3.1.1
     devDependencies:
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../delivery-protocol
+      '@changanhua/dsh-repo-workspace':
+        specifier: workspace:^
+        version: link:../repo-workspace
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-delivery-protocol':
-        specifier: workspace:^
-        version: link:../delivery-protocol
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-repo-workspace':
-        specifier: workspace:^
-        version: link:../repo-workspace
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:^
         version: link:../../subprocess/subprocess
@@ -5457,7 +5457,7 @@ importers:
 
   packages/eval/eval-session-snapshot:
     dependencies:
-      '@deepseek-ai/dsh-eval':
+      '@changanhua/dsh-eval':
         specifier: workspace:^
         version: link:../eval
       '@deepseek-ai/dsh-session-snapshot':
@@ -6056,15 +6056,15 @@ importers:
 
   packages/extensions/tool-runtime-inspect:
     devDependencies:
+      '@changanhua/dsh-runtime-facts':
+        specifier: workspace:^
+        version: link:../../context/runtime-facts
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-runtime-facts':
-        specifier: workspace:^
-        version: link:../../context/runtime-facts
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:^
         version: link:../../subprocess/subprocess
@@ -7001,6 +7001,9 @@ importers:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@22.20.0)
     devDependencies:
+      '@changanhua/dsh-image-generation':
+        specifier: workspace:^
+        version: link:../image-generation
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -7010,9 +7013,6 @@ importers:
       '@deepseek-ai/cordis-plugin-loader':
         specifier: workspace:^
         version: link:../../../vendor/loader
-      '@deepseek-ai/dsh-image-generation':
-        specifier: workspace:^
-        version: link:../image-generation
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -7022,39 +7022,39 @@ importers:
 
   packages/image/image-generation-task-queue:
     devDependencies:
+      '@changanhua/dsh-image-generation':
+        specifier: workspace:^
+        version: link:../image-generation
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
       '@deepseek-ai/dsh-attachment':
         specifier: workspace:^
         version: link:../../attachment/attachment
-      '@deepseek-ai/dsh-image-generation':
-        specifier: workspace:^
-        version: link:../image-generation
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue
 
   packages/image/tool-image-generation-task-queue:
     devDependencies:
+      '@changanhua/dsh-image-generation-task-queue':
+        specifier: workspace:^
+        version: link:../image-generation-task-queue
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-image-generation-task-queue':
-        specifier: workspace:^
-        version: link:../image-generation-task-queue
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../core/session
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../../task-queue/task-queue
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
@@ -10030,6 +10030,9 @@ importers:
 
   packages/task-queue/command-task-queue:
     devDependencies:
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -10045,9 +10048,6 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../core/session
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../task-queue
 
   packages/task-queue/operation-run-task-queue:
     dependencies:
@@ -10058,6 +10058,9 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -10070,9 +10073,6 @@ importers:
       '@deepseek-ai/dsh-subprocess-local':
         specifier: workspace:^
         version: link:../../subprocess/subprocess-local
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../task-queue
       '@deepseek-ai/dsh-timeout':
         specifier: workspace:^
         version: link:../../util/timeout
@@ -10104,6 +10104,12 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../task-queue
+      '@changanhua/dsh-task-queue-local':
+        specifier: workspace:^
+        version: link:../task-queue-local
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -10119,12 +10125,6 @@ importers:
       '@deepseek-ai/dsh-subprocess-local':
         specifier: workspace:^
         version: link:../../subprocess/subprocess-local
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../task-queue
-      '@deepseek-ai/dsh-task-queue-local':
-        specifier: workspace:^
-        version: link:../task-queue-local
 
   packages/task-queue/task-queue-local:
     dependencies:
@@ -10132,6 +10132,9 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -10147,9 +10150,6 @@ importers:
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:^
         version: link:../../subprocess/subprocess
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../task-queue
 
   packages/task-queue/task-queue-remote:
     dependencies:
@@ -10157,15 +10157,15 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../task-queue
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
@@ -10176,6 +10176,12 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../task-queue
+      '@changanhua/dsh-task-queue-executor-dsh':
+        specifier: workspace:^
+        version: link:../task-queue-executor-dsh
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -10185,12 +10191,6 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../core/session
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../task-queue
-      '@deepseek-ai/dsh-task-queue-executor-dsh':
-        specifier: workspace:^
-        version: link:../task-queue-executor-dsh
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
@@ -10201,6 +10201,12 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-operation-run-task-queue':
+        specifier: workspace:^
+        version: link:../operation-run-task-queue
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -10210,18 +10216,12 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
-      '@deepseek-ai/dsh-operation-run-task-queue':
-        specifier: workspace:^
-        version: link:../operation-run-task-queue
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../core/session
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:^
         version: link:../../core/system-prompt
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../task-queue
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
@@ -10232,6 +10232,9 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../task-queue
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -10250,9 +10253,6 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:^
         version: link:../../core/system-prompt
-      '@deepseek-ai/dsh-task-queue':
-        specifier: workspace:^
-        version: link:../task-queue
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
@@ -10852,6 +10852,9 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-runtime-facts':
+        specifier: workspace:^
+        version: link:../../context/runtime-facts
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -10861,9 +10864,6 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
-      '@deepseek-ai/dsh-runtime-facts':
-        specifier: workspace:^
-        version: link:../../context/runtime-facts
       '@deepseek-ai/dsh-settings':
         specifier: workspace:^
         version: link:../../settings/settings
@@ -10933,6 +10933,9 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-runtime-facts':
+        specifier: workspace:^
+        version: link:../../context/runtime-facts
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -10948,9 +10951,6 @@ importers:
       '@deepseek-ai/dsh-launch-environment':
         specifier: workspace:^
         version: link:../../util/launch-environment
-      '@deepseek-ai/dsh-runtime-facts':
-        specifier: workspace:^
-        version: link:../../context/runtime-facts
       '@deepseek-ai/dsh-settings':
         specifier: workspace:^
         version: link:../../settings/settings
@@ -10964,6 +10964,9 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
     devDependencies:
+      '@changanhua/dsh-runtime-facts':
+        specifier: workspace:^
+        version: link:../../context/runtime-facts
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -10979,9 +10982,6 @@ importers:
       '@deepseek-ai/dsh-launch-environment':
         specifier: workspace:^
         version: link:../../util/launch-environment
-      '@deepseek-ai/dsh-runtime-facts':
-        specifier: workspace:^
-        version: link:../../context/runtime-facts
       '@deepseek-ai/dsh-settings':
         specifier: workspace:^
         version: link:../../settings/settings

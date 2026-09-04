@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-runtime-facts",
+  "name": "@changanhua/dsh-runtime-facts",
   "description": "Owned runtime fact registry with scoped baseline projection and asynchronous inspection",
   "version": "0.1.1-rc.2",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/context/runtime-facts"
   },
   "type": "module",
@@ -49,5 +46,6 @@
     "@deepseek-ai/dsh-scope": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^"
-  }
+  },
+  "private": true
 }

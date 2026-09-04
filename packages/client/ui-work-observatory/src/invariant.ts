@@ -2,7 +2,7 @@
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
-const PACKAGE_NAME = '@deepseek-ai/dsh-client-ui-work-observatory'
+const PACKAGE_NAME = '@changanhua/dsh-client-ui-work-observatory'
 export const name = 'ui-work-observatory-invariant'
 export const inject = ['invariants']
 /** No runtime invariant: lifecycle teardown and slot identity have focused browser tests. */

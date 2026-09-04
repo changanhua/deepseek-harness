@@ -2,9 +2,9 @@
 import { createHash } from 'node:crypto'
 import { mkdir, open, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { applyChange, canonicalJson, foldChanges, hydrateFoldedQueue, snapshotFoldedQueue } from '@deepseek-ai/dsh-task-queue'
-import type { ChangeSet, QueueFoldSnapshot } from '@deepseek-ai/dsh-task-queue'
-import type { FoldedQueue } from '@deepseek-ai/dsh-task-queue'
+import { applyChange, canonicalJson, foldChanges, hydrateFoldedQueue, snapshotFoldedQueue } from '@changanhua/dsh-task-queue'
+import type { ChangeSet, QueueFoldSnapshot } from '@changanhua/dsh-task-queue'
+import type { FoldedQueue } from '@changanhua/dsh-task-queue'
 import { acquireQueueOwnership } from './lock.ts'
 import type { QueueOwnership } from './lock.ts'
 

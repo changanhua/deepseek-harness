@@ -18,9 +18,14 @@ import { join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 import { assertPublicationIdentity } from '../package-identities.ts'
-import { releaseFamily } from './families.ts'
+import {
+  releaseFamily,
+  tarballName,
+  type ReleaseFamily,
+  type ReleaseMember,
+} from './families.ts'
 import { attempt, attemptEchoed, isEntry } from './process.ts'
-import { packedIdentity, readPublishOrder } from './tarball.ts'
+import { packedPackage, readPublishOrder } from './tarball.ts'
 
 /**
  * Registry codes that answer a write which did not settle, rather than a
@@ -41,6 +46,142 @@ const PUBLISH_ATTEMPTS = 4
  * to back publishes are what produce `E409`.
  */
 const PUBLISH_SPACING_MS = 2_000
+
+/** One tarball expected or found in a packed release directory. */
+export interface PackedReleaseEntry {
+  readonly filename: string
+  readonly manifest: Readonly<Record<string, unknown>>
+  readonly name: string
+  readonly version: string
+}
+
+/** Manifest sections that affect the installed runtime closure. */
+const PACKED_RUNTIME_SECTIONS = ['dependencies', 'optionalDependencies', 'peerDependencies'] as const
+
+/**
+ * Resolve the only packed sequence the current source tree is allowed to publish.
+ *
+ * This deliberately reruns the family gates at publish time. A packed directory
+ * is an artifact, not authority: an old or hand-assembled directory must not
+ * bypass a dependency-closure or version rule added after it was produced.
+ * @param family - release family selected by the workflow.
+ * @param members - current source members of that family.
+ * @returns Expected tarball identities in publish order.
+ */
+export function expectedPackedReleaseEntries(
+  family: ReleaseFamily,
+  members: readonly ReleaseMember[],
+): PackedReleaseEntry[] {
+  family.verifyVersions(members)
+  const plan = family.publishOrder(members)
+  if (plan.order.length !== members.length) {
+    throw new Error(
+      `release family ${family.id}: publish order covers ${String(plan.order.length)}`
+      + ` of ${String(members.length)} members`,
+    )
+  }
+  return plan.order.map(member => ({
+    filename: tarballName(member),
+    manifest: member.manifest,
+    name: member.name,
+    version: member.version,
+  }))
+}
+
+/** Assert the order file names exactly the current family's tarballs. */
+function assertPackedReleaseFilenames(
+  expected: readonly PackedReleaseEntry[],
+  filenames: readonly string[],
+): void {
+  if (filenames.length !== expected.length) {
+    throw new Error(
+      `packed release expected ${String(expected.length)} tarball(s), got ${String(filenames.length)}`,
+    )
+  }
+  for (const [index, entry] of expected.entries()) {
+    const filename = filenames[index]
+    if (filename !== entry.filename) {
+      throw new Error(
+        `packed release position ${String(index + 1)} has filename ${JSON.stringify(filename)},`
+        + ` expected ${JSON.stringify(entry.filename)}`,
+      )
+    }
+  }
+}
+
+/**
+ * Assert packed tarballs exactly match the current source set and publish order.
+ * @param expected - entries resolved from the current source family.
+ * @param actual - identities read from the packed directory and tarballs.
+ */
+export function assertPackedReleaseEntries(
+  family: ReleaseFamily,
+  expected: readonly PackedReleaseEntry[],
+  actual: readonly PackedReleaseEntry[],
+): void {
+  assertPackedReleaseFilenames(expected, actual.map(entry => entry.filename))
+  for (const [index, entry] of expected.entries()) {
+    const packed = actual[index]
+    if (packed === undefined) throw new Error(`packed release position ${String(index + 1)} is missing`)
+    if (packed.name !== entry.name) {
+      throw new Error(
+        `packed release position ${String(index + 1)} has package name ${packed.name}, expected ${entry.name}`,
+      )
+    }
+    if (packed.version !== entry.version) {
+      throw new Error(
+        `packed release position ${String(index + 1)} has version ${packed.version}, expected ${entry.version}`,
+      )
+    }
+  }
+
+  // The tarball is the payload that reaches npm, so apply the family closure
+  // to its manifest too. Checking only the checkout would let a same-name,
+  // same-version stale artifact carry a newly forbidden runtime edge.
+  const packedMembers = actual.map((entry, index): ReleaseMember => ({
+    directory: `packed:${String(index + 1)}:${entry.filename}`,
+    manifest: entry.manifest,
+    name: entry.name,
+    version: entry.version,
+  }))
+  const packedOrder = family.publishOrder(packedMembers).order.map(member => member.name)
+  const actualOrder = actual.map(entry => entry.name)
+  if (packedOrder.join('\n') !== actualOrder.join('\n')) {
+    throw new Error(
+      `packed release runtime dependencies require order ${packedOrder.join(', ')},`
+      + ` but publish-order.txt declares ${actualOrder.join(', ')}`,
+    )
+  }
+
+  // pnpm rewrites workspace ranges while packing, so compare dependency names
+  // rather than raw range text. Any added or removed runtime edge means these
+  // tarballs were not packed from the current source manifests.
+  for (const [index, entry] of expected.entries()) {
+    const packed = actual[index]
+    if (packed === undefined) throw new Error(`packed release position ${String(index + 1)} is missing`)
+    for (const section of PACKED_RUNTIME_SECTIONS) {
+      const sourceNames = dependencyNames(entry.manifest, section)
+      const packedNames = dependencyNames(packed.manifest, section)
+      if (sourceNames.join('\n') !== packedNames.join('\n')) {
+        throw new Error(
+          `packed release position ${String(index + 1)} ${entry.name} has stale ${section}`
+          + `\n  source: ${sourceNames.join(', ') || '(none)'}`
+          + `\n  packed: ${packedNames.join(', ') || '(none)'}`,
+        )
+      }
+    }
+  }
+}
+
+/** Sorted dependency names from one manifest section. */
+function dependencyNames(manifest: Readonly<Record<string, unknown>>, section: string): string[] {
+  const value = manifest[section]
+  if (value === undefined) return []
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`packed release manifest ${section} must be an object`)
+  }
+  return Object.keys(value).sort()
+}
 
 /** What the registry knows about one version. */
 type RegistryState =
@@ -135,16 +276,23 @@ async function main(): Promise<void> {
   }
 
   const family = releaseFamily(values.family)
-  const directory = resolve(process.cwd(), values.from)
+  const root = process.cwd()
+  const expected = expectedPackedReleaseEntries(family, family.members(root))
+  const directory = resolve(root, values.from)
 
   // Every entry in the order settles as either published or already present, so
   // one counter answers "how far along is this run" for whoever is watching a
   // release that takes minutes per family.
   const order = readPublishOrder(directory)
+  // Reject unexpected filenames before opening an archive. Besides making the
+  // set exact, this keeps an order file from directing tar at a path outside
+  // the pack directory.
+  assertPackedReleaseFilenames(expected, order)
   const entries = order.map((filename) => {
     const tarball = join(directory, filename)
-    return { filename, tarball, ...packedIdentity(tarball) }
+    return { filename, tarball, ...packedPackage(tarball) }
   })
+  assertPackedReleaseEntries(family, expected, entries)
   assertPublicationIdentity({
     githubActions: process.env.GITHUB_ACTIONS,
     packageNames: entries.map(entry => entry.name),

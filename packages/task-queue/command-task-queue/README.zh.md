@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-command-task-queue
+# @changanhua/dsh-command-task-queue
 
 [English](README.md) | 中文
 
@@ -19,7 +19,7 @@
 
 - 命令名 `queue`，全局注册（与 `command-feedback`/`command-goal` 相同的主机平面方式）。
 - `recordInput` 保持默认 `true`：命令输入记入 `command/run` 生命周期事件，留审计痕迹。
-- 本包不注册任何模型面；模型侧请用 `@deepseek-ai/dsh-tool-task-queue`。
+- 本包不注册任何模型面；模型侧请用 `@changanhua/dsh-tool-task-queue`。
 
 ## 模型体验
 

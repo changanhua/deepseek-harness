@@ -20,7 +20,7 @@ import type {
   CapabilityMcpServer,
   CapabilitySkill,
   CapabilityTool,
-} from '@deepseek-ai/dsh-host-capability-registry/types'
+} from '@changanhua/dsh-host-capability-registry/types'
 import { skillZh, toolZh } from './zhNames.ts'
 import css from './CapabilityWorkspace.module.css'
 
@@ -165,7 +165,7 @@ export function CapabilityWorkspace({ capability, t }: CapabilityWorkspaceProps)
               </div>
             ) : tab === 'skills' ? (
               <ul className={css.rows}>
-                {groups.map(group => {
+                {groups.map((group) => {
                   // A search query forces every group open; otherwise a named
                   // group renders only when the user expanded it, and the flat
                   // "other" bucket always renders its rows.
@@ -178,7 +178,7 @@ export function CapabilityWorkspace({ capability, t }: CapabilityWorkspaceProps)
                           className={css.groupHead}
                           aria-expanded={isOpen}
                           onClick={() => {
-                            setExpanded(prev => {
+                            setExpanded((prev) => {
                               const next = new Set(prev)
                               if (next.has(group.key)) next.delete(group.key)
                               else next.add(group.key)

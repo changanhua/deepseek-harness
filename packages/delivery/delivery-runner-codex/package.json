@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-delivery-runner-codex",
+  "name": "@changanhua/dsh-delivery-runner-codex",
   "description": "Delivery-specific Codex change runner over the supported app-server boundary",
   "version": "0.1.2-alpha.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/delivery/delivery-runner-codex"
   },
   "type": "module",
@@ -36,20 +33,21 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery-evidence": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-repo-workspace": "workspace:^",
+    "@changanhua/dsh-repo-workspace": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
     "@deepseek-ai/dsh-timeout": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery-evidence": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-repo-workspace": "workspace:^",
+    "@changanhua/dsh-repo-workspace": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
     "@deepseek-ai/dsh-timeout": "workspace:^"
-  }
+  },
+  "private": true
 }

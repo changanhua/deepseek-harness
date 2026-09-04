@@ -10,13 +10,13 @@ import {
   EvidenceId,
   QueueWorkIdRef,
   WorkPacketId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   DeliveryCaseCard,
   DeliverySnapshotView,
   DeliveryWorkbenchCard,
   DeliveryWorkbenchDispatch,
-} from '@deepseek-ai/dsh-delivery-remote/types'
+} from '@changanhua/dsh-delivery-remote/types'
 import { apply, inject } from '../src/client/index.ts'
 import type {
   DeliveryNavEntryProps,

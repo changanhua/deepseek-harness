@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-delivery-local",
+  "name": "@changanhua/dsh-delivery-local",
   "description": "Storage-domain-backed local provider for immutable Personal Delivery records",
   "version": "0.1.2-alpha.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/delivery/delivery-local"
   },
   "type": "module",
@@ -33,17 +30,18 @@
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-delivery": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-storage-domain": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-delivery": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-storage": "workspace:^",
     "@deepseek-ai/dsh-storage-domain": "workspace:^"
-  }
+  },
+  "private": true
 }

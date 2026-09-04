@@ -3,7 +3,7 @@ description: "Work Observatory browser package for users viewing a local day or 
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-client-ui-work-observatory
+# @changanhua/dsh-client-ui-work-observatory
 
 English | [中文](README.zh.md)
 
@@ -34,7 +34,7 @@ Choose it for the standard Web product when users need a local, inspectable view
 ### Minimal configuration
 
 ```yaml
-- name: '@deepseek-ai/dsh-client-ui-work-observatory'
+- name: '@changanhua/dsh-client-ui-work-observatory'
 ```
 
 The package has no browser configuration. Its `dsh.client.inject` declaration requires Remotes, Session Controller, locale, layout, renderer, sidebar, and the Host Work Observatory package.

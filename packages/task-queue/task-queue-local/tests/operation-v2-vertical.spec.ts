@@ -10,13 +10,13 @@ import { assertEntriesLoaded } from '@deepseek-ai/dsh-app-boot'
 import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
-import * as OperationRunTaskQueue from '@deepseek-ai/dsh-operation-run-task-queue'
+import * as OperationRunTaskQueue from '@changanhua/dsh-operation-run-task-queue'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import { createVerifiedAgentAuthority, createVerifiedOperatorAuthority } from '@deepseek-ai/dsh-task-queue'
-import * as ToolOperationRunTaskQueue from '@deepseek-ai/dsh-tool-operation-run-task-queue'
-import * as ToolTaskQueue from '@deepseek-ai/dsh-tool-task-queue'
+import { createVerifiedAgentAuthority, createVerifiedOperatorAuthority } from '@changanhua/dsh-task-queue'
+import * as ToolOperationRunTaskQueue from '@changanhua/dsh-tool-operation-run-task-queue'
+import * as ToolTaskQueue from '@changanhua/dsh-tool-task-queue'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import LocalTaskQueue, { WorkQueueStore } from '../src/index.ts'
 
@@ -84,7 +84,7 @@ async function boot(queueRoot: string, resourceCapacity?: number, operationUnits
     "- name: '@deepseek-ai/dsh-system-prompt'",
     "- name: '@deepseek-ai/dsh-tools'",
     "- name: '@deepseek-ai/dsh-subprocess-local'",
-    "- name: '@deepseek-ai/dsh-task-queue-local'",
+    "- name: '@changanhua/dsh-task-queue-local'",
     '  config:',
     `    queueRoot: ${JSON.stringify(queueRoot)}`,
     '    maxConcurrent: 1',
@@ -92,7 +92,7 @@ async function boot(queueRoot: string, resourceCapacity?: number, operationUnits
     ...(resourceCapacity === undefined
       ? ['    resourceCapacity: {}']
       : ['    resourceCapacity:', `      operation-run: ${resourceCapacity}`]),
-    "- name: '@deepseek-ai/dsh-operation-run-task-queue'",
+    "- name: '@changanhua/dsh-operation-run-task-queue'",
     '  config:',
     '    operations:',
     '      fixture.echo:',
@@ -108,8 +108,8 @@ async function boot(queueRoot: string, resourceCapacity?: number, operationUnits
     '        failureTailBytes: 512',
     '        graceMs: 1000',
     '        timeoutMs: 10000',
-    "- name: '@deepseek-ai/dsh-tool-operation-run-task-queue'",
-    "- name: '@deepseek-ai/dsh-tool-task-queue'",
+    "- name: '@changanhua/dsh-tool-operation-run-task-queue'",
+    "- name: '@changanhua/dsh-tool-task-queue'",
     '  config:',
     '    maxNotificationsPerStep: 4',
     '',
@@ -126,10 +126,10 @@ async function boot(queueRoot: string, resourceCapacity?: number, operationUnits
     ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
     ['@deepseek-ai/dsh-tools', ToolRuntime],
     ['@deepseek-ai/dsh-subprocess-local', LocalSubprocessRuntime],
-    ['@deepseek-ai/dsh-task-queue-local', LocalTaskQueue],
-    ['@deepseek-ai/dsh-operation-run-task-queue', OperationRunTaskQueue],
-    ['@deepseek-ai/dsh-tool-operation-run-task-queue', ToolOperationRunTaskQueue],
-    ['@deepseek-ai/dsh-tool-task-queue', ToolTaskQueue],
+    ['@changanhua/dsh-task-queue-local', LocalTaskQueue],
+    ['@changanhua/dsh-operation-run-task-queue', OperationRunTaskQueue],
+    ['@changanhua/dsh-tool-operation-run-task-queue', ToolOperationRunTaskQueue],
+    ['@changanhua/dsh-tool-task-queue', ToolTaskQueue],
   ])
   ctx.loader.internal = {
     version: 'v2',

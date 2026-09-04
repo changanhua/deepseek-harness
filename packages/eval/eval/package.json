@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-eval",
+  "name": "@changanhua/dsh-eval",
   "description": "Strict deterministic evaluation contracts, outcome folding, and stable reports",
   "version": "0.1.2-alpha.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/eval/eval"
   },
   "type": "module",
@@ -40,5 +37,6 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
-  }
+  },
+  "private": true
 }

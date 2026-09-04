@@ -20,7 +20,7 @@ import {
 import type { JsonTreeLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   QueueJsonValue, QueueTaskState, QueueWorkSummaryView, QueueWorkView,
-} from '@deepseek-ai/dsh-task-queue-remote/views'
+} from '@changanhua/dsh-task-queue-remote/views'
 import type { QueueWorkspaceProps } from './contract/slots.ts'
 import type { QueueActionResult } from './store.ts'
 import type { TaskQueueKey } from './locales.ts'

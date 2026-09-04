@@ -20,7 +20,7 @@ describe('Eval invariant companion', () => {
     expect(EvalInvariant.name).toBe('eval-invariant')
     expect(EvalInvariant.inject).toEqual(['invariants'])
     await expect(EvalInvariant.apply(ctx as never)).resolves.toBe(dispose)
-    expect(packageName).toBe('@deepseek-ai/dsh-eval')
+    expect(packageName).toBe('@changanhua/dsh-eval')
     expect(installerCalled).toBe(true)
   })
 })

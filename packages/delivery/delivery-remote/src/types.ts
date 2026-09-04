@@ -18,9 +18,9 @@ import type {
   QueueWorkIdRef,
   VerificationVerdict,
   WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import type { ContractRevisionDraft, WorkPacketDraft } from '@deepseek-ai/dsh-delivery'
-import type { SideEffectState, WorkStatus } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-delivery-protocol'
+import type { ContractRevisionDraft, WorkPacketDraft } from '@changanhua/dsh-delivery'
+import type { SideEffectState, WorkStatus } from '@changanhua/dsh-task-queue'
 
 /** Browser-safe revision origin; trusted human actor identity remains Host-only. */
 export type DeliveryRequirementOriginView =

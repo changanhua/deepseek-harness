@@ -1,34 +1,34 @@
-# @deepseek-ai/dsh-tool-operation-run-task-queue
+# @changanhua/dsh-tool-operation-run-task-queue
 
 English | [中文](README.zh.md)
 
-`@deepseek-ai/dsh-tool-operation-run-task-queue` registers model-facing Queue admission for host-configured `operation.run@1` work. It derives owner authority from the live Agent Session and submits only operation ids; the operation WorkHandler owns resolution and execution.
+`@changanhua/dsh-tool-operation-run-task-queue` registers model-facing Queue admission for host-configured `operation.run@1` work. It derives owner authority from the live Agent Session and submits only operation ids; the operation WorkHandler owns resolution and execution.
 
 ## Tools
 
 - `operation_run_enqueue(title, operationId, idempotencyKey)` durably enqueues one host-configured operation and returns its WorkItem id.
 - `operation_run_enqueue_batch(items, idempotencyKey, maxParallel)` atomically enqueues individually titled operation ids and returns its Batch id; `maxParallel` must be a positive safe integer.
 
-Both tools close their parameter objects before ToolRuntime dispatch. They require a live Agent Session, preserve the calling session as Queue owner, and return only the durable id. Generic `task_queue_kinds`, status, result, cancellation, retry, statistics, and Notification delivery remain in `@deepseek-ai/dsh-tool-task-queue`.
+Both tools close their parameter objects before ToolRuntime dispatch. They require a live Agent Session, preserve the calling session as Queue owner, and return only the durable id. Generic `task_queue_kinds`, status, result, cancellation, retry, statistics, and Notification delivery remain in `@changanhua/dsh-tool-task-queue`.
 
 ## Configuration and Opt-in Composition
 
-The plugin has no configuration fields and is not mounted by the base bundle. It is useful only when the Queue provider has capacity for the resolved operation resource and `@deepseek-ai/dsh-operation-run-task-queue` is mounted with its host allowlist.
+The plugin has no configuration fields and is not mounted by the base bundle. It is useful only when the Queue provider has capacity for the resolved operation resource and `@changanhua/dsh-operation-run-task-queue` is mounted with its host allowlist.
 
 ```yaml
 - id: task-queue
-  name: '@deepseek-ai/dsh-task-queue-local'
+  name: '@changanhua/dsh-task-queue-local'
   config:
     resourceCapacity:
       operation-run: 1
 
 - id: operation-run-task-queue
-  name: '@deepseek-ai/dsh-operation-run-task-queue'
+  name: '@changanhua/dsh-operation-run-task-queue'
   config:
     operations: host-reviewed allowlist
 
 - id: tool-operation-run-task-queue
-  name: '@deepseek-ai/dsh-tool-operation-run-task-queue'
+  name: '@changanhua/dsh-tool-operation-run-task-queue'
 ```
 
 ## Admission, Results, and Failures

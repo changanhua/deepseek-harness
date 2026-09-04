@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-delivery-github-publisher",
+  "name": "@changanhua/dsh-delivery-github-publisher",
   "description": "Host-only GitHub Issue publisher for Personal Delivery Cases",
   "version": "0.1.2-alpha.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/delivery/delivery-github-publisher"
   },
   "type": "module",
@@ -34,16 +31,17 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-delivery": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-delivery": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
-    "@deepseek-ai/dsh-delivery-testkit": "workspace:^",
+    "@changanhua/dsh-delivery": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery-testkit": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
-  }
+  },
+  "private": true
 }

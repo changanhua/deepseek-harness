@@ -105,9 +105,9 @@ describe('ArkCLI image provider real Loader composition', () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-image-arkcli-loader-'))
     const configPath = join(root, 'cordis.yml')
     await writeFile(configPath, [
-      "- name: '@deepseek-ai/dsh-image-generation'",
+      "- name: '@changanhua/dsh-image-generation'",
       "- name: '@test/subprocess'",
-      "- name: '@deepseek-ai/dsh-image-generation-arkcli'",
+      "- name: '@changanhua/dsh-image-generation-arkcli'",
       '  config:',
       '    minImagePixels: 3686400',
       '    maxImagePixels: 16777216',
@@ -121,9 +121,9 @@ describe('ArkCLI image provider real Loader composition', () => {
     await context.plugin(Loader)
     context.loader.builtins.include = Include
     const modules = new Map<string, unknown>([
-      ['@deepseek-ai/dsh-image-generation', ImageGeneration],
+      ['@changanhua/dsh-image-generation', ImageGeneration],
       ['@test/subprocess', LoaderSubprocess],
-      ['@deepseek-ai/dsh-image-generation-arkcli', arkcliProvider],
+      ['@changanhua/dsh-image-generation-arkcli', arkcliProvider],
     ])
     context.loader.internal = {
       version: 'v2',

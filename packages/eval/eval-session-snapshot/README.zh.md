@@ -3,7 +3,7 @@ description: "DSH Eval 套件的无密钥 ACP session-snapshot 执行，包括�
 kind: "package-library"
 ---
 
-# @deepseek-ai/dsh-eval-session-snapshot
+# @changanhua/dsh-eval-session-snapshot
 
 [English](README.md) | 中文
 

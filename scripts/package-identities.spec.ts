@@ -14,19 +14,39 @@ import {
 const root = resolve(import.meta.dirname, '..')
 
 describe('package identity registry', () => {
-  it('classifies the current tree and gives every confirmed personal package a unique @changanhua target', () => {
+  it('classifies the rescoped tree and keeps every personal package source-only', () => {
     const registry = loadPackageIdentities(root)
 
     expect(checkPackageIdentities(root)).toEqual([])
+    expect(registry.schemaVersion).toBe(2)
     expect(registry.personalScope).toBe('@changanhua')
     expect(registry.personalPackages).toHaveLength(41)
-    expect(new Set(registry.personalPackages.map(entry => entry.targetName)).size).toBe(41)
-    expect(registry.personalPackages.every(entry => entry.origin === 'personal')).toBe(true)
-    expect(registry.personalPackages.every(entry => entry.targetName.startsWith('@changanhua/'))).toBe(true)
-    expect(registry.personalPackages.every(entry => entry.publishPolicy === 'blocked-until-rescoped')).toBe(true)
+    expect(registry.versionPolicy).toBe('preserve-existing-during-rescope')
+    expect(new Set(registry.personalPackages.map(entry => entry.sourceName)).size).toBe(41)
+    expect(registry.personalPackages.every(entry => entry.sourceIdentity === 'personal')).toBe(true)
+    expect(registry.personalPackages.every(entry => entry.sourceName.startsWith('@changanhua/'))).toBe(true)
+    expect(registry.personalPackages.every(entry => entry.legacyName.startsWith('@deepseek-ai/'))).toBe(true)
+    expect(registry.personalPackages.every(entry => entry.publicationPolicy === 'blocked-until-release-verified')).toBe(true)
+    expect(registry.personalPackages.every(entry => entry.releaseFamily === null)).toBe(true)
+
+    for (const identity of registry.personalPackages) {
+      const manifest = JSON.parse(readFileSync(resolve(root, identity.directory, 'package.json'), 'utf8')) as {
+        name?: string
+        private?: boolean
+        publishConfig?: unknown
+        repository?: { url?: string; directory?: string }
+      }
+      expect(manifest.name).toBe(identity.sourceName)
+      expect(manifest.private).toBe(true)
+      expect(manifest.publishConfig).toBeUndefined()
+      expect(manifest.repository).toMatchObject({
+        url: registry.personalRepositoryUrl,
+        directory: identity.directory,
+      })
+    }
   })
 
-  it('rejects a personal target outside the configured scope and duplicate targets', () => {
+  it('rejects a personal source name outside the configured scope and duplicate identities', () => {
     const registry = loadPackageIdentities(root)
     const [first, second] = registry.personalPackages
     expect(first).toBeDefined()
@@ -36,12 +56,47 @@ describe('package identity registry', () => {
     expect(validatePackageIdentityRegistry({
       ...registry,
       personalPackages: [
-        { ...first, targetName: '@someone-else/dsh-personal-delivery' },
-        { ...second, targetName: '@someone-else/dsh-personal-delivery' },
+        { ...first, sourceName: '@someone-else/dsh-personal-delivery' },
+        { ...second, sourceName: '@someone-else/dsh-personal-delivery' },
       ],
     })).toEqual(expect.arrayContaining([
       expect.stringMatching(/must start with @changanhua\//),
-      expect.stringMatching(/duplicate target package name/),
+      expect.stringMatching(/duplicate source package name/),
+    ]))
+  })
+
+  it('keeps direct personal identities out of the Python distribution entry inputs', () => {
+    const registry = loadPackageIdentities(root)
+    const closure = [
+      'python/sdk-runtime/package.json',
+      'scripts/build-exe-for-python-sdk.ts',
+    ].map(file => readFileSync(resolve(root, file), 'utf8')).join('\n')
+
+    for (const identity of registry.personalPackages) {
+      expect(closure).not.toContain(identity.sourceName)
+    }
+  })
+
+  it('does not assign a release family while publication remains blocked', () => {
+    const registry = loadPackageIdentities(root)
+    const [first] = registry.personalPackages
+    expect(first).toBeDefined()
+    if (first === undefined) return
+
+    expect(validatePackageIdentityRegistry({
+      ...registry,
+      personalPackages: [{ ...first, releaseFamily: 'personal', blockers: [] }],
+    })).toEqual(expect.arrayContaining([
+      expect.stringMatching(/releaseFamily must remain null/),
+      expect.stringMatching(/blockers must explain/),
+    ]))
+
+    expect(validatePackageIdentityRegistry({
+      ...registry,
+      personalPackages: [{ ...first, publicationPolicy: 'personal' }],
+    })).toEqual(expect.arrayContaining([
+      expect.stringMatching(/releaseFamily must be personal/),
+      expect.stringMatching(/publishable package must have no blockers/),
     ]))
   })
 })
@@ -73,27 +128,32 @@ describe('publication identity firewall', () => {
     expect(() => {
       assertPublicationIdentity({
         githubActions: 'true',
-        packageNames: [first.targetName],
+        packageNames: [first.sourceName],
         repository: 'changanhua/deepseek-harness',
       })
-    }).toThrow(/blocked until its rescope/)
+    }).toThrow(/blocked until its release verification/)
     expect(() => {
       assertPublicationIdentity({
         githubActions: 'true',
-        packageNames: [first.targetName],
+        packageNames: [first.sourceName],
         repository: 'changanhua/deepseek-harness',
       }, {
         ...registry,
-        personalPackages: [{ ...first, publishPolicy: 'personal' }],
+        personalPackages: [{
+          ...first,
+          publicationPolicy: 'personal',
+          releaseFamily: 'personal',
+          blockers: [],
+        }],
       })
     }).not.toThrow()
     expect(() => {
       assertPublicationIdentity({
         githubActions: 'true',
-        packageNames: [first.targetName],
+        packageNames: [first.sourceName],
         repository: 'deepseek-ai/deepseek-harness',
       })
-    }).toThrow(new RegExp(`${first.targetName}.*changanhua/deepseek-harness`))
+    }).toThrow(new RegExp(`${first.sourceName}.*changanhua/deepseek-harness`))
     expect(() => {
       assertPublicationIdentity({ githubActions: 'true', packageNames: ['@deepseek-ai/dsh'] })
     }).toThrow(/repository identity is required/)
@@ -127,11 +187,16 @@ describe('publication identity firewall', () => {
     expect(() => {
       assertPublicationIdentity({
         githubActions: 'true',
-        packageNames: [first.targetName, '@deepseek-ai/dsh'],
+        packageNames: [first.sourceName, '@deepseek-ai/dsh'],
         repository: 'changanhua/deepseek-harness',
       }, {
         ...registry,
-        personalPackages: [{ ...first, publishPolicy: 'personal' }],
+        personalPackages: [{
+          ...first,
+          publicationPolicy: 'personal',
+          releaseFamily: 'personal',
+          blockers: [],
+        }],
       })
     }).toThrow(/@deepseek-ai\/dsh.*deepseek-ai\/deepseek-harness/)
   })

@@ -1,8 +1,8 @@
-# @deepseek-ai/dsh-operation-run-task-queue
+# @changanhua/dsh-operation-run-task-queue
 
 [English](README.md) | 中文
 
-`@deepseek-ai/dsh-operation-run-task-queue` 注册 `operation.run@1` WorkHandler。它先把调用方选择的 operation id 解析为不可变的 host allowlist 条目并由 Queue 持久化，再通过 `ctx.subprocess` 启动该已解析 operation。
+`@changanhua/dsh-operation-run-task-queue` 注册 `operation.run@1` WorkHandler。它先把调用方选择的 operation id 解析为不可变的 host allowlist 条目并由 Queue 持久化，再通过 `ctx.subprocess` 启动该已解析 operation。
 
 ## 配置
 
@@ -29,7 +29,7 @@ Operation definition 是受信任的部署配置，且必须保持无秘密。�
 
 ```yaml
 - id: task-queue
-  name: '@deepseek-ai/dsh-task-queue-local'
+  name: '@changanhua/dsh-task-queue-local'
   config:
     resourceCapacity:
       operation-run: 1
@@ -38,7 +38,7 @@ Operation definition 是受信任的部署配置，且必须保持无秘密。�
   name: '@deepseek-ai/dsh-subprocess-local'
 
 - id: operation-run-task-queue
-  name: '@deepseek-ai/dsh-operation-run-task-queue'
+  name: '@changanhua/dsh-operation-run-task-queue'
   config:
     operations:
       health.check:
@@ -70,7 +70,7 @@ Operation definition 是受信任的部署配置，且必须保持无秘密。�
 
 #### 模型看到的内容
 
-模型从 `@deepseek-ai/dsh-tool-operation-run-task-queue` 收到 `operation.run@1` admission schemas；通用且按 owner 限定的 Queue result 读取返回此 handler 持久化的结果。
+模型从 `@changanhua/dsh-tool-operation-run-task-queue` 收到 `operation.run@1` admission schemas；通用且按 owner 限定的 Queue result 读取返回此 handler 持久化的结果。
 
 #### Token 影响
 

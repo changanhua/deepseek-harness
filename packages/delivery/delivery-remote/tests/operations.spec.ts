@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import { DeliveryError } from '@deepseek-ai/dsh-delivery'
+import { DeliveryError } from '@changanhua/dsh-delivery'
 import {
   DispatchBindingId,
   EvidenceId,
@@ -13,7 +13,7 @@ import {
   canonicalDigest,
   dispatchBindingSchema,
   type DispatchBinding,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   acceptedDecisionFixture,
   boundBindingFixture,
@@ -26,19 +26,19 @@ import {
   passedVerdictFixture,
   readyWorkPacketFixture,
   submittingBindingFixture,
-} from '@deepseek-ai/dsh-delivery-testkit'
+} from '@changanhua/dsh-delivery-testkit'
 import {
   DeliveryTaskQueueError,
   startCodeChange as bridgeStartCodeChange,
   startVerification as bridgeStartVerification,
-} from '@deepseek-ai/dsh-delivery-task-queue'
+} from '@changanhua/dsh-delivery-task-queue'
 import {
   AttemptId,
   ResultId,
   WorkId,
   type OperatorWorkQueue,
   type WorkView,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import { describe, expect, it, vi } from 'vitest'
 import { DeliveryRemoteService, type Config } from '../src/index.ts'
 

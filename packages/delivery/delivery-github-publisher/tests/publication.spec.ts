@@ -5,8 +5,8 @@ import {
   RepositoryId,
   VerificationCheckId,
   type GitHubRepositoryRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import { mountDeliveryTestkit } from '@deepseek-ai/dsh-delivery-testkit'
+} from '@changanhua/dsh-delivery-protocol'
+import { mountDeliveryTestkit } from '@changanhua/dsh-delivery-testkit'
 import { describe, expect, it, vi } from 'vitest'
 import { publishGitHubIssue, resolveGitHubIssuePublication } from '../src/index.ts'
 import { renderGitHubIssue } from '../src/render.ts'

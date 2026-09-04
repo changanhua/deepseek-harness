@@ -15,7 +15,7 @@ import {
   type IssuePublication,
   type RequirementDecision,
   type WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 
 /**
