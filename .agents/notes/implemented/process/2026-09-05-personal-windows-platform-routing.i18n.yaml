@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-05-personal-windows-platform-routing.md
+2026-09-05-personal-windows-platform-routing.md: 9ec3fa5833f7101871149ab12083402f65bfe86b
+2026-09-05-personal-windows-platform-routing.zh.md: d86747f30d82c8d64fded0e5ec28a22bec9419ed
