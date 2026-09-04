@@ -10,7 +10,7 @@ import type {
   ResolveVerificationSourceRequest,
   ReviseDeliveryCaseRequest,
   WorkPacketDraft,
-} from '@deepseek-ai/dsh-delivery'
+} from '@changanhua/dsh-delivery'
 import {
   AcceptanceClauseId,
   ContractRevisionId,
@@ -45,7 +45,7 @@ import {
   type DeliveryCase,
   type GitHubIssueRef,
   type WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   FakeChangeWorkspaceLease,
   FakeDelivery,

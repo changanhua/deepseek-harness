@@ -1,4 +1,4 @@
-/** Personal Delivery domain Service Definition (`ctx.delivery`). @module @deepseek-ai/dsh-delivery */
+/** Personal Delivery domain Service Definition (`ctx.delivery`). @module @changanhua/dsh-delivery */
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import type {
@@ -15,7 +15,7 @@ import type {
   RequirementDecisionId,
   WorkPacket,
   WorkPacketId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   AcceptanceCandidateResolver,
   AcceptanceEvidenceResolver,

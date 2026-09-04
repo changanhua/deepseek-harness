@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-command-task-queue
+# @changanhua/dsh-command-task-queue
 
 English | [中文](README.zh.md)
 
@@ -19,7 +19,7 @@ A bare or unknown subcommand returns the usage text; a missing or invalid id ret
 
 - Command name `queue`, registered globally (the same host-plane pattern as `command-feedback`/`command-goal`).
 - `recordInput` stays at its default `true`: command input is recorded in the `command/run` lifecycle event for audit.
-- This package registers no model surface; for the agent-facing toolkit use `@deepseek-ai/dsh-tool-task-queue`.
+- This package registers no model surface; for the agent-facing toolkit use `@changanhua/dsh-tool-task-queue`.
 
 ## Model Experience
 

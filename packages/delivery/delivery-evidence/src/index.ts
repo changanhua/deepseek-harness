@@ -1,7 +1,7 @@
-/** Immutable content-addressed Delivery evidence Service Definition (`ctx.deliveryEvidence`). @module @deepseek-ai/dsh-delivery-evidence */
+/** Immutable content-addressed Delivery evidence Service Definition (`ctx.deliveryEvidence`). @module @changanhua/dsh-delivery-evidence */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { EvidenceId, EvidenceRef } from '@deepseek-ai/dsh-delivery-protocol'
+import type { EvidenceId, EvidenceRef } from '@changanhua/dsh-delivery-protocol'
 import type {
   BoundDeliveryEvidenceWriter,
   DeliveryEvidenceErrorCode,

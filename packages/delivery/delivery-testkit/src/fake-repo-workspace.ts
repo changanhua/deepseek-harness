@@ -11,7 +11,7 @@ import {
   type QueueAttemptIdRef,
   type RepositoryId,
   type RepositoryRelativePath,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import RepositoryWorkspace, {
   RepositoryWorkspaceError,
   type ChangeWorkspaceLease,
@@ -29,7 +29,7 @@ import RepositoryWorkspace, {
   type VerifiedRepositoryBase,
   type VerifiedRepositoryBlob,
   type VerifiedRepositoryRevision,
-} from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-repo-workspace'
 
 /** One scripted writable checkout returned by the next distinct change owner. */
 export interface FakeChangeWorkspacePlan {

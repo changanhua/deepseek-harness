@@ -3,7 +3,7 @@ description: "GitHub Issue snapshot intake Consumer that creates or revises Pers
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-github-intake
+# @changanhua/dsh-delivery-github-intake
 
 English | [中文](README.zh.md)
 

@@ -1,4 +1,4 @@
-/** Public lifecycle types for isolated Delivery Git workspaces. @module @deepseek-ai/dsh-repo-workspace/types */
+/** Public lifecycle types for isolated Delivery Git workspaces. @module @changanhua/dsh-repo-workspace/types */
 
 import type {
   BaseSelectionRule,
@@ -7,7 +7,7 @@ import type {
   QueueAttemptIdRef,
   RepositoryId,
   RepositoryRelativePath,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 
 declare const verifiedRepositoryRevisionBrand: unique symbol
 declare const verifiedRepositoryBaseBrand: unique symbol

@@ -3,7 +3,7 @@ description: "Local immutable, content-addressed evidence publication and integr
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-evidence-local
+# @changanhua/dsh-delivery-evidence-local
 
 English | [中文](README.zh.md)
 

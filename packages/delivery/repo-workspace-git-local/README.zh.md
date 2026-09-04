@@ -3,7 +3,7 @@ description: "为 Personal Delivery 的修改与验证提供本地 Git identity 
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-repo-workspace-git-local
+# @changanhua/dsh-repo-workspace-git-local
 
 [English](README.md) | 中文
 

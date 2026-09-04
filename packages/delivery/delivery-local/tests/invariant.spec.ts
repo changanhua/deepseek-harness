@@ -36,7 +36,7 @@ import {
   type IssuePublication,
   type RequirementDecision,
   type WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import * as DeliveryLocalInvariant from '../src/invariant.ts'
 
 const FIXTURE_TIME = '2026-08-29T00:00:00.000Z'

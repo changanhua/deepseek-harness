@@ -9,14 +9,14 @@ import {
   QueueWorkIdRef,
   VerificationVerdictId,
   WorkPacketId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   DeliveryAcceptanceDecisionView,
   DeliveryContractRevisionView,
   DeliveryDispatchBindingView,
   DeliveryWorkbenchCard,
   DeliveryWorkPacketView,
-} from '@deepseek-ai/dsh-delivery-remote/types'
+} from '@changanhua/dsh-delivery-remote/types'
 
 const TIME = '2026-08-29T00:00:00.000Z'
 const BASE = '1111111111111111111111111111111111111111'

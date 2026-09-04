@@ -5,12 +5,12 @@ import z from '@deepseek-ai/schemastery'
 import {
   assertVerifiedAgentAuthority, assertVerifiedOperatorAuthority, canAutoRetry, canonicalJson, digestIntent,
   AttentionId, NotificationId, lookupReceipt, TaskQueue, WorkId, AttemptId, BatchId, ResultId,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import type {
   AgentWorkQueue, AttemptOutcome, BatchRequest, ChangeSet, EnqueueRequest, LiveAttempt, OperatorWorkQueue,
   PreparedWork, Receipt, ResourceClaim, UnknownResolution, VerifiedAgentAuthority, VerifiedOperatorAuthority,
   WorkFailure, WorkHandler, ResolvedWork, WorkItem, WorkKind, WorkPolicy, WorkView,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import { WorkQueueStore } from './v2-store.ts'
 
 type AdmissionAuthority = VerifiedAgentAuthority | VerifiedOperatorAuthority
@@ -346,7 +346,7 @@ export class LocalTaskQueue extends TaskQueue {
     return Object.freeze([...this.store.current().worksById.values()].map(work => this.view(work.id)))
   }
 
-  private pendingNotifications(authority: VerifiedAgentAuthority): readonly import('@deepseek-ai/dsh-task-queue').Notification[] {
+  private pendingNotifications(authority: VerifiedAgentAuthority): readonly import('@changanhua/dsh-task-queue').Notification[] {
     return Object.freeze([...this.store.current().notificationsById.values()]
       .filter(value => value.ownerSessionId === authority.sessionId && value.status === 'pending')
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)))
@@ -358,7 +358,7 @@ export class LocalTaskQueue extends TaskQueue {
     await this.commit([{ type: 'notification/acknowledged', notificationId: id, expectedMessageId: messageId, at: new Date().toISOString() }])
   }
 
-  private pendingAttentions(): readonly import('@deepseek-ai/dsh-task-queue').Attention[] {
+  private pendingAttentions(): readonly import('@changanhua/dsh-task-queue').Attention[] {
     return Object.freeze([...this.store.current().attentionsById.values()]
       .filter(value => value.status === 'pending')
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)))

@@ -3,7 +3,7 @@ description: "Deterministic fake Delivery providers and golden fixture builders 
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-testkit
+# @changanhua/dsh-delivery-testkit
 
 English | [中文](README.zh.md)
 

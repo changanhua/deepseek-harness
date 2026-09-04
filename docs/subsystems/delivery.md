@@ -6,7 +6,7 @@ Personal Delivery defines immutable requirements, bounded Packets, repository pr
 
 ## Public protocol
 
-[`@deepseek-ai/dsh-delivery-protocol`](../../packages/delivery/delivery-protocol/README.md) is a plain Queue-independent library. Every durable object carries `schemaVersion: 2`; opaque ids remain strings, Git commits use full object ids, UTC timestamps use RFC 3339, and content digests use lowercase `sha256:<64 hex>`. Its strict runtime schemas reject unknown fields and invalid discriminated combinations instead of silently normalizing another format.
+[`@changanhua/dsh-delivery-protocol`](../../packages/delivery/delivery-protocol/README.md) is a plain Queue-independent library. Every durable object carries `schemaVersion: 2`; opaque ids remain strings, Git commits use full object ids, UTC timestamps use RFC 3339, and content digests use lowercase `sha256:<64 hex>`. Its strict runtime schemas reject unknown fields and invalid discriminated combinations instead of silently normalizing another format.
 
 | Public type | Responsibility |
 |---|---|

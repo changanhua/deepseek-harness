@@ -1,7 +1,7 @@
 /**
  * Delivery-specific Codex change runner over the supported app-server subpath.
  *
- * @module @deepseek-ai/dsh-delivery-runner-codex
+ * @module @changanhua/dsh-delivery-runner-codex
  */
 
 import {
@@ -12,13 +12,13 @@ import type {
   CodexAppServerPermissionMode,
   CodexAppServerStartRequest,
 } from '@deepseek-ai/dsh-subagent-codex/app-server-run'
-import type { BoundDeliveryEvidenceWriter } from '@deepseek-ai/dsh-delivery-evidence'
+import type { BoundDeliveryEvidenceWriter } from '@changanhua/dsh-delivery-evidence'
 import {
   CompletionClaimId,
   DELIVERY_SCHEMA_VERSION,
   canonicalJson,
   completionClaimSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   CompletionClaim,
   ContractRevision,
@@ -27,11 +27,11 @@ import type {
   QueueWorkIdRef,
   ResolvedCodeChange,
   WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   RepositoryWorkspaceError,
-} from '@deepseek-ai/dsh-repo-workspace'
-import type { ChangeWorkspaceLease } from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-repo-workspace'
+import type { ChangeWorkspaceLease } from '@changanhua/dsh-repo-workspace'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 
 export { CODEX_APP_SERVER_PERMISSION_MODES }

@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-image-generation-task-queue
+# @changanhua/dsh-image-generation-task-queue
 
 [English](README.md) | 中文
 
@@ -10,7 +10,7 @@ Queue v2 `image.generate@1` WorkHandler。准入阶段在持久化前解析图�
 
 ## 模型体验
 
-间接通过拥有图片准入 schema 与结果渲染的 `@deepseek-ai/dsh-tool-image-generation-task-queue` 产生影响。
+间接通过拥有图片准入 schema 与结果渲染的 `@changanhua/dsh-tool-image-generation-task-queue` 产生影响。
 
 #### KV Cache 影响
 

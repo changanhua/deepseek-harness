@@ -1,6 +1,6 @@
-/** Public request and stored-object types for Delivery evidence. @module @deepseek-ai/dsh-delivery-evidence/types */
+/** Public request and stored-object types for Delivery evidence. @module @changanhua/dsh-delivery-evidence/types */
 
-import type { EvidenceRef } from '@deepseek-ai/dsh-delivery-protocol'
+import type { EvidenceRef } from '@changanhua/dsh-delivery-protocol'
 
 /** Bytes and immutable metadata to publish under one execution provenance. */
 export interface SaveDeliveryEvidence {

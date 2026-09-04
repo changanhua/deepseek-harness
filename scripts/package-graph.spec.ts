@@ -35,6 +35,38 @@ describe('collectPackageGraph', () => {
       .toEqual(['foundation', 'feature', 'application'])
   })
 
+  it('keeps official and personal source packages in one runtime dependency graph', () => {
+    const root = fixture({ foundation: [] })
+    const personal = join(root, 'packages', 'delivery', 'delivery')
+    mkdirSync(personal, { recursive: true })
+    writeFileSync(join(personal, 'package.json'), `${JSON.stringify({
+      name: '@changanhua/dsh-delivery',
+      peerDependencies: { '@deepseek-ai/dsh-foundation': 'workspace:^' },
+    }, null, 2)}\n`)
+
+    expect(collectPackageGraph(root, ['client', 'delivery'], 'fixture').map(pkg => pkg.short))
+      .toEqual(['foundation', 'delivery'])
+  })
+
+  it('does not collapse equal short names across official and personal scopes', () => {
+    const root = fixture({ delivery: [] })
+    const officialDelivery = ['@deepseek-ai', 'dsh-delivery'].join('/')
+    const personal = join(root, 'packages', 'delivery', 'delivery')
+    mkdirSync(personal, { recursive: true })
+    writeFileSync(join(personal, 'package.json'), `${JSON.stringify({
+      name: '@changanhua/dsh-delivery',
+      peerDependencies: { [officialDelivery]: 'workspace:^' },
+    }, null, 2)}\n`)
+
+    expect(collectPackageGraph(root, ['client', 'delivery'], 'fixture').map(pkg => ({
+      name: pkg.name,
+      dependencies: pkg.deps,
+    }))).toEqual([
+      { name: officialDelivery, dependencies: [] },
+      { name: '@changanhua/dsh-delivery', dependencies: [officialDelivery] },
+    ])
+  })
+
   it('keeps a dependency cycle together and before its consumers', () => {
     const root = fixture({ consumer: ['left'], left: ['right'], right: ['left'], foundation: [] })
 

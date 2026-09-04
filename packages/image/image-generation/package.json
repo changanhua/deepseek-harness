@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-image-generation",
+  "name": "@changanhua/dsh-image-generation",
   "description": "Shared image generation capability seam for the DeepSeek Harness",
   "version": "0.1.0-rc.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/image/image-generation"
   },
   "type": "module",
@@ -38,5 +35,6 @@
   "devDependencies": {
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
-  }
+  },
+  "private": true
 }

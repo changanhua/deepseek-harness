@@ -51,6 +51,8 @@ const KIND_TEMPLATES: Readonly<Record<string, string>> = {
 const PACKAGE_LIBRARIES: Readonly<Record<string, string>> = {
   'packages/boot/app-boot': 'Boot library the app bins import; plain helper exports.',
   'packages/boot/cmdline': 'Command-line library the app bins import; plain module exports.',
+  'packages/eval/eval': 'Deterministic evaluation contract and runner library; mounts nothing into a composition.',
+  'packages/eval/eval-session-snapshot': 'Test-support adapter library; drives the existing snapshot harness without plugin registration.',
   'packages/client/store': 'Browser-side state primitives; plain function/type exports.',
   'packages/client/ui-primitives': 'Browser-side UI component library; plain component exports.',
   'packages/client/ui-slots': 'Browser-side slot-map declarations; plain type exports.',

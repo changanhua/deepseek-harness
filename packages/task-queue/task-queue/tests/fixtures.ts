@@ -1,9 +1,9 @@
 import {
   AttemptId, BatchId, ResultId, WorkId, digestIntent,
   type ChangeSet, type WorkFailure, type WorkKindDefinition,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 
-declare module '@deepseek-ai/dsh-task-queue' {
+declare module '@changanhua/dsh-task-queue' {
   interface WorkKindMap {
     'test@1': WorkKindDefinition<
       { readonly prompt: string },

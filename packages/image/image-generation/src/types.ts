@@ -1,6 +1,6 @@
 /**
  * Shared vocabulary for the image generation capability seam.
- * @module @deepseek-ai/dsh-image-generation/types
+ * @module @changanhua/dsh-image-generation/types
  */
 
 /** Media container requested from an image generation provider. */

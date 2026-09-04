@@ -3,7 +3,7 @@ description: "为 Personal Delivery 提供本地不可变、content-addressed ev
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-evidence-local
+# @changanhua/dsh-delivery-evidence-local
 
 [English](README.md) | 中文
 

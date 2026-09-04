@@ -3,7 +3,7 @@ description: "基于 browser-safe Delivery Remote projection、由本包拥有 l
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-client-ui-delivery
+# @changanhua/dsh-client-ui-delivery
 
 [English](README.md) | 中文
 

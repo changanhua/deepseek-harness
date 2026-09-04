@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-delivery-protocol
+# @changanhua/dsh-delivery-protocol
 
 [English](README.md) | 中文
 
@@ -32,7 +32,7 @@ import {
   contractReadiness,
   contractRevisionSchema,
   workPacketSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 
 const contract = contractRevisionSchema.parse(decodedContract)
 if (!contractReadiness(contract).ready) throw new Error('Contract is not ready')
@@ -92,7 +92,7 @@ fixture catalog 只包含虚假的 repository、Queue、evidence 和 human id，
 
 #### 模型看到的内容
 
-无。`@deepseek-ai/dsh-delivery-protocol` 不贡献 prompt、tool、command 或模型可见 diagnostic。后续获得授权的消费方可以展示这些记录的投影。
+无。`@changanhua/dsh-delivery-protocol` 不贡献 prompt、tool、command 或模型可见 diagnostic。后续获得授权的消费方可以展示这些记录的投影。
 
 #### Token 影响
 

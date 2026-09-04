@@ -3,16 +3,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
-import * as queueCore from '@deepseek-ai/dsh-task-queue'
+import * as queueCore from '@changanhua/dsh-task-queue'
 import {
   WorkId,
   createVerifiedOperatorAuthority,
   digestIntent,
-} from '@deepseek-ai/dsh-task-queue'
-import type { WorkKindDefinition } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
+import type { WorkKindDefinition } from '@changanhua/dsh-task-queue'
 import LocalTaskQueue, { WorkQueueStore } from '../src/index.ts'
 
-declare module '@deepseek-ai/dsh-task-queue' {
+declare module '@changanhua/dsh-task-queue' {
   interface WorkKindMap {
     'test@1': WorkKindDefinition<
       { readonly prompt: string },

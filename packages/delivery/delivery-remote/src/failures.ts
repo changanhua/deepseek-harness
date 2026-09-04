@@ -1,11 +1,11 @@
 /** Stable browser failure classification for Personal Delivery Remote operations. */
 
-import { DeliveryError } from '@deepseek-ai/dsh-delivery'
-import { DeliveryEvidenceError } from '@deepseek-ai/dsh-delivery-evidence'
-import { DeliveryGitHubIntakeError } from '@deepseek-ai/dsh-delivery-github-intake'
-import { DeliveryGitHubPublisherError } from '@deepseek-ai/dsh-delivery-github-publisher'
-import { DeliveryTaskQueueError } from '@deepseek-ai/dsh-delivery-task-queue'
-import { RepositoryWorkspaceError } from '@deepseek-ai/dsh-repo-workspace'
+import { DeliveryError } from '@changanhua/dsh-delivery'
+import { DeliveryEvidenceError } from '@changanhua/dsh-delivery-evidence'
+import { DeliveryGitHubIntakeError } from '@changanhua/dsh-delivery-github-intake'
+import { DeliveryGitHubPublisherError } from '@changanhua/dsh-delivery-github-publisher'
+import { DeliveryTaskQueueError } from '@changanhua/dsh-delivery-task-queue'
+import { RepositoryWorkspaceError } from '@changanhua/dsh-repo-workspace'
 import { TypertRemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
 import { DeliveryAcceptanceCandidateError } from './acceptance.ts'
 import { DeliveryProjectionError } from './projection.ts'

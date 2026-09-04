@@ -10,7 +10,7 @@ import {
   QueueAttemptIdRef,
   RepositoryRelativePath,
   RepositoryId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   Config,
   GitLocalRepositoryWorkspace,

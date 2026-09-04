@@ -2,7 +2,7 @@
  * Queue-independent durable records, strict schemas, and canonical identities
  * for Personal Delivery Protocol V2.
  *
- * @module @deepseek-ai/dsh-delivery-protocol
+ * @module @changanhua/dsh-delivery-protocol
  */
 
 export * from './brand.ts'

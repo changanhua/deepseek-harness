@@ -1,4 +1,4 @@
-/** Local durable Personal Delivery provider. @module @deepseek-ai/dsh-delivery-local */
+/** Local durable Personal Delivery provider. @module @changanhua/dsh-delivery-local */
 
 import { randomUUID } from 'node:crypto'
 import { Service } from '@deepseek-ai/cordis'
@@ -37,7 +37,7 @@ import {
   verificationVerdictSchema,
   workPacketDigest,
   workPacketSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   AcceptanceDecision,
   CompletionClaim,
@@ -53,12 +53,12 @@ import type {
   RequirementOrigin,
   VerificationVerdict,
   WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   DELIVERY_VERIFICATION_SOURCE_MAX_BYTES,
   Delivery,
   DeliveryError,
-} from '@deepseek-ai/dsh-delivery'
+} from '@changanhua/dsh-delivery'
 import type {
   AcceptanceCandidateResolver,
   AcceptanceEvidenceResolver,
@@ -76,7 +76,7 @@ import type {
   ResolveIssuePublicationRequest,
   ReviseDeliveryCaseRequest,
   VerificationSourceResolver,
-} from '@deepseek-ai/dsh-delivery'
+} from '@changanhua/dsh-delivery'
 import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
 import { deliveryLocalDomainSpec } from './spec.ts'
 

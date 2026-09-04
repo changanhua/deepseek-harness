@@ -6,7 +6,7 @@
  * filesystem. Directory trees hold user-private prompt/result content and are
  * created `0o700`; files are created `0o600` (§9.4). Windows does not enforce
  * POSIX modes; the constants remain the contract on POSIX platforms.
- * @module @deepseek-ai/dsh-task-queue-local/paths
+ * @module @changanhua/dsh-task-queue-local/paths
  */
 
 import { join } from 'node:path'

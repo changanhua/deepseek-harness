@@ -5,7 +5,7 @@ import z from '@deepseek-ai/schemastery'
 import { TextRetainer } from '@deepseek-ai/dsh-output-retention'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { SubprocessHandle, SubprocessSpawnSpec, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
-import type { LiveAttempt, WorkFailure, WorkHandler } from '@deepseek-ai/dsh-task-queue'
+import type { LiveAttempt, WorkFailure, WorkHandler } from '@changanhua/dsh-task-queue'
 import type { OperationDefinition, OperationRunOutput, PreparedOperationRun, ResolvedOperationRun } from './types.ts'
 
 export type {

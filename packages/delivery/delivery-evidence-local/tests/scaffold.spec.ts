@@ -12,7 +12,7 @@ import {
   WorkPacketId,
   canonicalDigest,
   evidenceBytesDigest,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   Config,
   LocalDeliveryEvidence,

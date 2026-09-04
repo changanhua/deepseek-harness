@@ -3,7 +3,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-tool-image-generation-task-queue'
+const PACKAGE_NAME = '@changanhua/dsh-tool-image-generation-task-queue'
 /** Cordis companion plugin name. */
 export const name = 'tool-image-generation-task-queue-invariant'
 /** Registry required for package ownership. */

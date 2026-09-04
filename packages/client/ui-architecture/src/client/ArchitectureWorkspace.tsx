@@ -30,6 +30,10 @@ export function ArchitectureWorkspace({ catalog, useRuntime, refresh, t }: Archi
     return [...counts].sort(([a], [b]) => a.localeCompare(b))
   }, [catalog])
   const normalizedQuery = query.trim().toLocaleLowerCase()
+  const packagesByName = useMemo(
+    () => new Map(catalog.packages.map(pkg => [pkg.name, pkg])),
+    [catalog],
+  )
   const visible = useMemo(
     () => catalog.packages.filter(pkg => (group === null || pkg.group === group) && packageMatches(pkg, normalizedQuery)),
     [catalog, group, normalizedQuery],
@@ -37,7 +41,7 @@ export function ArchitectureWorkspace({ catalog, useRuntime, refresh, t }: Archi
   const selected = catalog.packages.find(pkg => pkg.name === selectedName) ?? catalog.packages[0]
   const consumers = useMemo(() => {
     if (selected === undefined) return []
-    return catalog.packages.filter(pkg => pkg.dependencies.includes(selected.short))
+    return catalog.packages.filter(pkg => pkg.dependencies.includes(selected.name))
   }, [catalog, selected])
   const runtimeEntries = runtime.snapshot?.entries ?? []
   const runtimePackages = new Set(runtimeEntries.map(entry => entry.moduleName))
@@ -140,7 +144,7 @@ export function ArchitectureWorkspace({ catalog, useRuntime, refresh, t }: Archi
               <dl>
                 <div><dt>{t('detail.path')}</dt><dd><code>{selected.path}</code></dd></div>
                 <div><dt>{t('detail.faces')}</dt><dd className={css.tags}>{selected.faces.map(face => <span key={face}>{face}</span>)}</dd></div>
-                <div><dt>{t('detail.dependencies')}</dt><dd className={css.links}>{selected.dependencies.length === 0 ? t('detail.none') : selected.dependencies.map(dep => <button type="button" key={dep} onClick={() => { setSelectedName(`@deepseek-ai/dsh-${dep}`) }}>{dep}</button>)}</dd></div>
+                <div><dt>{t('detail.dependencies')}</dt><dd className={css.links}>{selected.dependencies.length === 0 ? t('detail.none') : selected.dependencies.map(dep => <button type="button" key={dep} onClick={() => { setSelectedName(dep) }}>{packagesByName.get(dep)?.short ?? dep}</button>)}</dd></div>
                 <div><dt>{t('detail.consumers')}</dt><dd className={css.links}>{consumers.length === 0 ? t('detail.none') : consumers.map(pkg => <button type="button" key={pkg.name} onClick={() => { setSelectedName(pkg.name) }}>{pkg.short}</button>)}</dd></div>
               </dl>
             </>

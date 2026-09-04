@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-client-ui-task-queue`.
- * @module @deepseek-ai/dsh-client-ui-task-queue/invariant
+ * Package-owned invariant companion for `@changanhua/dsh-client-ui-task-queue`.
+ * @module @changanhua/dsh-client-ui-task-queue/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-client-ui-task-queue'
+const PACKAGE_NAME = '@changanhua/dsh-client-ui-task-queue'
 
 /** Cordis companion plugin name. */
 export const name = 'ui-task-queue-invariant'

@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-tool-task-queue",
+  "name": "@changanhua/dsh-tool-task-queue",
   "description": "Agent-facing task-queue toolkit: 7 task_queue_* tools, a system-prompt section, a pre-step notification candidate hook, and the session/event append→flush→ack finalizer over ctx.taskQueue",
   "version": "0.1.0-rc.5",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/task-queue/tool-task-queue"
   },
   "type": "module",
@@ -40,7 +37,7 @@
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
-    "@deepseek-ai/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   },
@@ -50,8 +47,9 @@
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
-    "@deepseek-ai/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
-  }
+  },
+  "private": true
 }

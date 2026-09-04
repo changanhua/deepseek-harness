@@ -7,7 +7,7 @@ import {
   type DeliveryCaseId,
   type IssuePublicationId,
   type Sha256Digest,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 
 /** Maximum UTF-8 bytes emitted as one complete GitHub Issue body. */
 export const GITHUB_ISSUE_BODY_MAX_BYTES = 64 * 1024

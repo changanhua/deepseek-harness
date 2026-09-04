@@ -1,9 +1,9 @@
-/** Package-owned invariant companion for `@deepseek-ai/dsh-delivery-evidence-local`. */
+/** Package-owned invariant companion for `@changanhua/dsh-delivery-evidence-local`. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-delivery-evidence-local'
+const PACKAGE_NAME = '@changanhua/dsh-delivery-evidence-local'
 
 /** Cordis companion plugin name. */
 export const name = 'delivery-evidence-local-invariant'

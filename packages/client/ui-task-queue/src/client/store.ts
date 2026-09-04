@@ -2,7 +2,7 @@
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   QueueSnapshotView, QueueStatsView, QueueUnknownResolutionInput, QueueWorkSummaryView, QueueWorkView,
-} from '@deepseek-ai/dsh-task-queue-remote/views'
+} from '@changanhua/dsh-task-queue-remote/views'
 
 /** The narrow Queue v2 Remote face driven by this store. */
 export interface QueueRemoteFace {

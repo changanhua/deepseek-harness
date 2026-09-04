@@ -1,7 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
-import * as RuntimeFactsInvariant from '@deepseek-ai/dsh-runtime-facts/invariant'
+import * as RuntimeFactsInvariant from '@changanhua/dsh-runtime-facts/invariant'
 import { factKey } from '../src/index.ts'
 import { describe, expect, it } from 'vitest'
 

@@ -1,17 +1,17 @@
-/** Browser-safe Personal Delivery Typert Remote. @module @deepseek-ai/dsh-delivery-remote */
+/** Browser-safe Personal Delivery Typert Remote. @module @changanhua/dsh-delivery-remote */
 
 import { Buffer } from 'node:buffer'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { DeliveryError, type AcceptanceEvidenceResolver } from '@deepseek-ai/dsh-delivery'
+import { DeliveryError, type AcceptanceEvidenceResolver } from '@changanhua/dsh-delivery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { DeliveryEvidenceError } from '@deepseek-ai/dsh-delivery-evidence'
-import { importGitHubIssue } from '@deepseek-ai/dsh-delivery-github-intake'
+import { DeliveryEvidenceError } from '@changanhua/dsh-delivery-evidence'
+import { importGitHubIssue } from '@changanhua/dsh-delivery-github-intake'
 import {
   publishGitHubIssue,
   resolveGitHubIssuePublication,
   type GitHubPublicationTarget,
-} from '@deepseek-ai/dsh-delivery-github-publisher'
+} from '@changanhua/dsh-delivery-github-publisher'
 import {
   ContractRevisionId,
   DeliveryCaseId,
@@ -26,16 +26,16 @@ import {
   isGitHubRepositoryOwner,
   type DispatchBinding,
   type QueueWorkIdRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   startCodeChange,
   startVerification,
   type DeliveryQueueBridgeDependencies,
-} from '@deepseek-ai/dsh-delivery-task-queue'
+} from '@changanhua/dsh-delivery-task-queue'
 import {
   createVerifiedOperatorAuthority,
   type OperatorWorkQueue,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   DeliveryAcceptanceDecisionView,

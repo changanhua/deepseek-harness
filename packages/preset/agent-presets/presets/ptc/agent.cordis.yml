@@ -61,7 +61,7 @@
 # Runtime facts stay on the host; this preset exposes explicit inspection
 # through the Code Mode SDK instead of the global tool layer.
 - id: tool-runtime-inspect
-  name: '@deepseek-ai/dsh-tool-runtime-inspect'
+  name: '@changanhua/dsh-tool-runtime-inspect'
 
 # ── filesystem ──────────────────────────────────────────────────────────────
 

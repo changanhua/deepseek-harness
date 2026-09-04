@@ -19,7 +19,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the capabilityRegistry Remote type merge.
-import type {} from '@deepseek-ai/dsh-host-capability-registry/remote'
+import type {} from '@changanhua/dsh-host-capability-registry/remote'
 import type { CapabilityNavEntryInjected, CapabilityWorkspaceInjected } from './contract/slots.ts'
 import { CapabilityNavEntry } from './CapabilityNavEntry.tsx'
 import { CapabilityWorkspace } from './CapabilityWorkspace.tsx'

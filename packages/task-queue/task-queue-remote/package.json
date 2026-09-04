@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-task-queue-remote",
+  "name": "@changanhua/dsh-task-queue-remote",
   "description": "Browser panel Remote face over ctx.taskQueue: list/stats/get/cancel/retry as JSON wire views",
   "version": "0.1.0-rc.5",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/task-queue/task-queue-remote"
   },
   "type": "module",
@@ -50,7 +47,7 @@
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   },
@@ -59,8 +56,9 @@
   },
   "devDependencies": {
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
-  }
+  },
+  "private": true
 }

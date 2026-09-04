@@ -8,19 +8,19 @@ import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import LocalDelivery from '@deepseek-ai/dsh-delivery-local'
-import LocalDeliveryEvidence from '@deepseek-ai/dsh-delivery-evidence-local'
-import DeliveryRemote from '@deepseek-ai/dsh-delivery-remote'
-import * as DeliveryTaskQueue from '@deepseek-ai/dsh-delivery-task-queue'
-import GitLocalRepositoryWorkspace from '@deepseek-ai/dsh-repo-workspace-git-local'
+import LocalDelivery from '@changanhua/dsh-delivery-local'
+import LocalDeliveryEvidence from '@changanhua/dsh-delivery-evidence-local'
+import DeliveryRemote from '@changanhua/dsh-delivery-remote'
+import * as DeliveryTaskQueue from '@changanhua/dsh-delivery-task-queue'
+import GitLocalRepositoryWorkspace from '@changanhua/dsh-repo-workspace-git-local'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import {
   createVerifiedOperatorAuthority,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import LocalSubprocess from '@deepseek-ai/dsh-subprocess-local'
-import LocalTaskQueue from '@deepseek-ai/dsh-task-queue-local'
+import LocalTaskQueue from '@changanhua/dsh-task-queue-local'
 import { describe, expect, it, vi } from 'vitest'
 
 // The controlled app-server boundary is deliberately the only fake.  Queue,
@@ -99,11 +99,11 @@ async function bootDelivery(temp: string, repository: string): Promise<Context> 
     "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  config:\n    backend: json",
     "- { id: credentials, name: '@test/dsh-credentials' }",
     "- { id: subprocess, name: '@deepseek-ai/dsh-subprocess-local' }",
-    "- id: task-queue\n  name: '@deepseek-ai/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(join(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1', patch,
+    "- id: task-queue\n  name: '@changanhua/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(join(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1', patch,
   ].join('\n'))
   const modules = new Map<string, unknown>([
     ['@test/dsh-credentials', testCredentialsHost],
-    ['@deepseek-ai/dsh-storage', Storage], ['@deepseek-ai/dsh-storage-json', StorageJson], ['@deepseek-ai/dsh-storage-domain', StorageDomain], ['@deepseek-ai/dsh-subprocess-local', LocalSubprocess], ['@deepseek-ai/dsh-task-queue-local', LocalTaskQueue], ['@deepseek-ai/dsh-delivery-local', LocalDelivery], ['@deepseek-ai/dsh-delivery-evidence-local', LocalDeliveryEvidence], ['@deepseek-ai/dsh-repo-workspace-git-local', GitLocalRepositoryWorkspace], ['@deepseek-ai/dsh-delivery-task-queue', DeliveryTaskQueue], ['@deepseek-ai/dsh-delivery-remote', DeliveryRemote], ['@deepseek-ai/dsh-client-ui-delivery', uiDeliveryHost],
+    ['@deepseek-ai/dsh-storage', Storage], ['@deepseek-ai/dsh-storage-json', StorageJson], ['@deepseek-ai/dsh-storage-domain', StorageDomain], ['@deepseek-ai/dsh-subprocess-local', LocalSubprocess], ['@changanhua/dsh-task-queue-local', LocalTaskQueue], ['@changanhua/dsh-delivery-local', LocalDelivery], ['@changanhua/dsh-delivery-evidence-local', LocalDeliveryEvidence], ['@changanhua/dsh-repo-workspace-git-local', GitLocalRepositoryWorkspace], ['@changanhua/dsh-delivery-task-queue', DeliveryTaskQueue], ['@changanhua/dsh-delivery-remote', DeliveryRemote], ['@changanhua/dsh-client-ui-delivery', uiDeliveryHost],
   ])
   const ctx = new Context(); ctx.baseUrl = pathToFileURL(temp).href + '/'
   await ctx.plugin(Loader); ctx.loader.builtins.include = Include

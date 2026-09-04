@@ -88,21 +88,21 @@ flowchart LR
   cfg --> plugin_dsh_base_tool_pwsh
   plugin_dsh_base_tool_jobs["tool-jobs<br/>@deepseek-ai/dsh-tool-jobs"]
   cfg --> plugin_dsh_base_tool_jobs
-  plugin_dsh_base_task_queue["task-queue<br/>@deepseek-ai/dsh-task-queue-local"]
+  plugin_dsh_base_task_queue["task-queue<br/>@changanhua/dsh-task-queue-local"]
   cfg --> plugin_dsh_base_task_queue
-  plugin_dsh_base_image_generation["image-generation<br/>@deepseek-ai/dsh-image-generation"]
+  plugin_dsh_base_image_generation["image-generation<br/>@changanhua/dsh-image-generation"]
   cfg --> plugin_dsh_base_image_generation
-  plugin_dsh_base_image_generation_arkcli["image-generation-arkcli<br/>@deepseek-ai/dsh-image-generation-arkcli"]
+  plugin_dsh_base_image_generation_arkcli["image-generation-arkcli<br/>@changanhua/dsh-image-generation-arkcli"]
   cfg --> plugin_dsh_base_image_generation_arkcli
-  plugin_dsh_base_image_generation_task_queue["image-generation-task-queue<br/>@deepseek-ai/dsh-image-generation-task-queue"]
+  plugin_dsh_base_image_generation_task_queue["image-generation-task-queue<br/>@changanhua/dsh-image-generation-task-queue"]
   cfg --> plugin_dsh_base_image_generation_task_queue
-  plugin_dsh_base_tool_image_generation_task_queue["tool-image-generation-task-queue<br/>@deepseek-ai/dsh-tool-image-generation-task-queue"]
+  plugin_dsh_base_tool_image_generation_task_queue["tool-image-generation-task-queue<br/>@changanhua/dsh-tool-image-generation-task-queue"]
   cfg --> plugin_dsh_base_tool_image_generation_task_queue
-  plugin_dsh_base_task_queue_executor_dsh["task-queue-executor-dsh<br/>@deepseek-ai/dsh-task-queue-executor-dsh"]
+  plugin_dsh_base_task_queue_executor_dsh["task-queue-executor-dsh<br/>@changanhua/dsh-task-queue-executor-dsh"]
   cfg --> plugin_dsh_base_task_queue_executor_dsh
-  plugin_dsh_base_tool_task_queue["tool-task-queue<br/>@deepseek-ai/dsh-tool-task-queue"]
+  plugin_dsh_base_tool_task_queue["tool-task-queue<br/>@changanhua/dsh-tool-task-queue"]
   cfg --> plugin_dsh_base_tool_task_queue
-  plugin_dsh_base_tool_agent_run_task_queue["tool-agent-run-task-queue<br/>@deepseek-ai/dsh-tool-agent-run-task-queue"]
+  plugin_dsh_base_tool_agent_run_task_queue["tool-agent-run-task-queue<br/>@changanhua/dsh-tool-agent-run-task-queue"]
   cfg --> plugin_dsh_base_tool_agent_run_task_queue
   plugin_dsh_base_fs_observation_policy["fs-observation-policy<br/>@deepseek-ai/dsh-fs-observation-policy"]
   cfg --> plugin_dsh_base_fs_observation_policy
@@ -124,9 +124,9 @@ flowchart LR
   cfg --> plugin_dsh_base_commands
   plugin_dsh_base_command_feedback["command-feedback<br/>@deepseek-ai/dsh-command-feedback"]
   cfg --> plugin_dsh_base_command_feedback
-  plugin_dsh_base_command_task_queue["command-task-queue<br/>@deepseek-ai/dsh-command-task-queue"]
+  plugin_dsh_base_command_task_queue["command-task-queue<br/>@changanhua/dsh-command-task-queue"]
   cfg --> plugin_dsh_base_command_task_queue
-  plugin_dsh_base_task_queue_remote["task-queue-remote<br/>@deepseek-ai/dsh-task-queue-remote"]
+  plugin_dsh_base_task_queue_remote["task-queue-remote<br/>@changanhua/dsh-task-queue-remote"]
   cfg --> plugin_dsh_base_task_queue_remote
   plugin_dsh_base_goal["goal<br/>@deepseek-ai/dsh-goal"]
   cfg --> plugin_dsh_base_goal
@@ -248,14 +248,14 @@ flowchart LR
 | `tool-bash` | `@deepseek-ai/dsh-tool-bash` |
 | `tool-pwsh` | `@deepseek-ai/dsh-tool-pwsh` |
 | `tool-jobs` | `@deepseek-ai/dsh-tool-jobs` |
-| `task-queue` | `@deepseek-ai/dsh-task-queue-local` |
-| `image-generation` | `@deepseek-ai/dsh-image-generation` |
-| `image-generation-arkcli` | `@deepseek-ai/dsh-image-generation-arkcli` |
-| `image-generation-task-queue` | `@deepseek-ai/dsh-image-generation-task-queue` |
-| `tool-image-generation-task-queue` | `@deepseek-ai/dsh-tool-image-generation-task-queue` |
-| `task-queue-executor-dsh` | `@deepseek-ai/dsh-task-queue-executor-dsh` |
-| `tool-task-queue` | `@deepseek-ai/dsh-tool-task-queue` |
-| `tool-agent-run-task-queue` | `@deepseek-ai/dsh-tool-agent-run-task-queue` |
+| `task-queue` | `@changanhua/dsh-task-queue-local` |
+| `image-generation` | `@changanhua/dsh-image-generation` |
+| `image-generation-arkcli` | `@changanhua/dsh-image-generation-arkcli` |
+| `image-generation-task-queue` | `@changanhua/dsh-image-generation-task-queue` |
+| `tool-image-generation-task-queue` | `@changanhua/dsh-tool-image-generation-task-queue` |
+| `task-queue-executor-dsh` | `@changanhua/dsh-task-queue-executor-dsh` |
+| `tool-task-queue` | `@changanhua/dsh-tool-task-queue` |
+| `tool-agent-run-task-queue` | `@changanhua/dsh-tool-agent-run-task-queue` |
 | `fs-observation-policy` | `@deepseek-ai/dsh-fs-observation-policy` |
 | `tool-fs` | `@deepseek-ai/dsh-tool-fs` |
 | `tool-fs-search` | `@deepseek-ai/dsh-tool-fs-search` |
@@ -266,8 +266,8 @@ flowchart LR
 | `tool-skill` | `@deepseek-ai/dsh-tool-skill` |
 | `commands` | `@deepseek-ai/dsh-commands` |
 | `command-feedback` | `@deepseek-ai/dsh-command-feedback` |
-| `command-task-queue` | `@deepseek-ai/dsh-command-task-queue` |
-| `task-queue-remote` | `@deepseek-ai/dsh-task-queue-remote` |
+| `command-task-queue` | `@changanhua/dsh-command-task-queue` |
+| `task-queue-remote` | `@changanhua/dsh-task-queue-remote` |
 | `goal` | `@deepseek-ai/dsh-goal` |
 | `goal-round-driver` | `@deepseek-ai/dsh-goal-round-driver` |
 | `command-goal` | `@deepseek-ai/dsh-command-goal` |

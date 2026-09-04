@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-task-queue-remote`.
- * @module @deepseek-ai/dsh-task-queue-remote/invariant
+ * Package-owned invariant companion for `@changanhua/dsh-task-queue-remote`.
+ * @module @changanhua/dsh-task-queue-remote/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-task-queue-remote'
+const PACKAGE_NAME = '@changanhua/dsh-task-queue-remote'
 
 /** Cordis companion plugin name. */
 export const name = 'task-queue-remote-invariant'

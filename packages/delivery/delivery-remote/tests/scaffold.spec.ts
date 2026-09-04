@@ -1,10 +1,10 @@
 import { Context } from '@deepseek-ai/cordis'
-import { DeliveryGitHubIntakeError } from '@deepseek-ai/dsh-delivery-github-intake'
+import { DeliveryGitHubIntakeError } from '@changanhua/dsh-delivery-github-intake'
 import {
   publishGitHubIssue,
   resolveGitHubIssuePublication,
-} from '@deepseek-ai/dsh-delivery-github-publisher'
-import { startCodeChange, startVerification } from '@deepseek-ai/dsh-delivery-task-queue'
+} from '@changanhua/dsh-delivery-github-publisher'
+import { startCodeChange, startVerification } from '@changanhua/dsh-delivery-task-queue'
 import { describe, expect, it } from 'vitest'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import * as RemoteInvariant from '../src/invariant.ts'

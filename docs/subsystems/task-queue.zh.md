@@ -6,7 +6,7 @@ host 平面的 typed work queue（`ctx.taskQueue`）。契约包是 [`dsh-task-q
 
 ## Service
 
-`ctx.taskQueue` 是由 `LocalTaskQueue`（`@deepseek-ai/dsh-task-queue-local`）实现的抽象 `TaskQueue` seam。Agent 与 operator facade 需要 verified authority。两者都可准入 work，但 operator admission 是可信 host capability：它在独立幂等 namespace 中创建 ownerless WorkItem，且不产生 Session Notification。`WorkHandler` 解析不可变 admission facts、推导重试 policy、声明资源、准备 dispatch，并同步返回 `LiveAttempt`；Provider 持久化准入时的 policy 和 claims，再持有持久 scheduling 与 attempt settlement。
+`ctx.taskQueue` 是由 `LocalTaskQueue`（`@changanhua/dsh-task-queue-local`）实现的抽象 `TaskQueue` seam。Agent 与 operator facade 需要 verified authority。两者都可准入 work，但 operator admission 是可信 host capability：它在独立幂等 namespace 中创建 ownerless WorkItem，且不产生 Session Notification。`WorkHandler` 解析不可变 admission facts、推导重试 policy、声明资源、准备 dispatch，并同步返回 `LiveAttempt`；Provider 持久化准入时的 policy 和 claims，再持有持久 scheduling 与 attempt settlement。
 
 ## Work 模型与状态机
 

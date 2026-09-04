@@ -4,9 +4,9 @@ import type {
   CreateDeliveryCaseRequest,
   DeliverySnapshot,
   ReviseDeliveryCaseRequest,
-} from '@deepseek-ai/dsh-delivery'
-import { DeliveryError } from '@deepseek-ai/dsh-delivery'
-import type { ContractRevision, DeliveryCase } from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery'
+import { DeliveryError } from '@changanhua/dsh-delivery'
+import type { ContractRevision, DeliveryCase } from '@changanhua/dsh-delivery-protocol'
 import {
   ContractRevisionId,
   DELIVERY_SCHEMA_VERSION,
@@ -14,7 +14,7 @@ import {
   RepositoryId,
   canonicalJson,
   githubIssueContentDigest,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { describe, expect, it, vi } from 'vitest'
 import {
   importGitHubIssue,

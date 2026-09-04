@@ -20,6 +20,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { assertPublicationIdentity } from '../../../scripts/publication-identity.mjs';
 import { root } from './repo.mjs';
 
 /**
@@ -134,12 +135,23 @@ const order = fs
   .readFileSync(path.join(destination, 'publish-order.txt'), 'utf8')
   .split('\n')
   .filter((line) => line !== '');
+const entries = order.map((filename) => {
+  const tarball = path.join(destination, filename);
+  return { tarball, ...packedIdentity(tarball) };
+});
+const identityRegistry = JSON.parse(fs.readFileSync(
+  path.resolve(root, '..', '..', 'downstream', 'package-identities.json'),
+  'utf8',
+));
+assertPublicationIdentity({
+  githubActions: process.env.GITHUB_ACTIONS,
+  packageNames: entries.map((entry) => entry.name),
+  repository: process.env.GITHUB_REPOSITORY,
+}, identityRegistry);
 
 let published = 0;
 let skipped = 0;
-for (const filename of order) {
-  const tarball = path.join(destination, filename);
-  const { name, version } = packedIdentity(tarball);
+for (const { name, tarball, version } of entries) {
   const state = registryState(name, version);
   if (state.kind === 'present') {
     const local = integrityOf(tarball);

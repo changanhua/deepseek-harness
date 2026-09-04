@@ -10,7 +10,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
-import { WorkQueueStore } from '@deepseek-ai/dsh-task-queue-local'
+import { WorkQueueStore } from '@changanhua/dsh-task-queue-local'
 import { launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold } from './scaffold.ts'
 import { newEnglishPage, saveFailureShot } from './support.ts'
 
@@ -72,7 +72,7 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
     await writeFile(overlayPath, [
       '- insert:',
       '  - id: operation-run-task-queue',
-      "    name: '@deepseek-ai/dsh-operation-run-task-queue'",
+      "    name: '@changanhua/dsh-operation-run-task-queue'",
       '    inject: [taskQueue, subprocess]',
       '    config:',
       '      operations:',
@@ -90,10 +90,10 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
       '          graceMs: 1000',
       '          timeoutMs: 60000',
       '  - id: tool-operation-run-task-queue',
-      "    name: '@deepseek-ai/dsh-tool-operation-run-task-queue'",
+      "    name: '@changanhua/dsh-tool-operation-run-task-queue'",
       '    inject: [tools, taskQueue]',
       '  - id: tool-task-queue-operation-e2e',
-      "    name: '@deepseek-ai/dsh-tool-task-queue'",
+      "    name: '@changanhua/dsh-tool-task-queue'",
       '    inject: [tools, taskQueue, sessions]',
       '    config:',
       '      maxNotificationsPerStep: 1',
@@ -276,7 +276,7 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
       const loaderRuntime = scaffold.ctx.loader.internal
       if (loaderRuntime === undefined) throw new Error('Loader runtime is unavailable')
       if (scaffold.ctx.baseUrl === undefined) throw new Error('Loader base URL is unavailable')
-      const taskQueueModule = await loaderRuntime.import('@deepseek-ai/dsh-task-queue', scaffold.ctx.baseUrl, {}) as {
+      const taskQueueModule = await loaderRuntime.import('@changanhua/dsh-task-queue', scaffold.ctx.baseUrl, {}) as {
         createVerifiedAgentAuthority(session: Agent['session']): unknown
       }
       const owner = scaffold.ctx.taskQueue.forAgent(taskQueueModule.createVerifiedAgentAuthority(agent.session) as never)

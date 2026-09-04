@@ -1,9 +1,9 @@
 /** Agent-run-specific Queue admission tools. */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { createVerifiedAgentAuthority } from '@deepseek-ai/dsh-task-queue'
-import type { AgentWorkQueue, TaskQueue } from '@deepseek-ai/dsh-task-queue'
-import type {} from '@deepseek-ai/dsh-task-queue-executor-dsh'
+import { createVerifiedAgentAuthority } from '@changanhua/dsh-task-queue'
+import type { AgentWorkQueue, TaskQueue } from '@changanhua/dsh-task-queue'
+import type {} from '@changanhua/dsh-task-queue-executor-dsh'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name = 'tool-agent-run-task-queue'

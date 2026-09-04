@@ -14,6 +14,8 @@ Status: implemented
 
 access 是每条发布序列的属性,不是整个 scope 的属性:
 
+这些 access 选择只适用于 `deepseek-ai/deepseek-harness` 发布的官方产物。[仓库拥有的 npm 身份](2026-09-04-repository-owned-npm-scope.zh.md)阻止个人 fork 发布 public 或 restricted 的 `@deepseek-ai/*` 包。
+
 | 序列 | 成员 | `publishConfig.access` |
 |---|---|---|
 | vendored 框架 | `vendor/*` 九包 | `public` |

@@ -59,7 +59,7 @@ import {
   type VerificationVerdict,
   type WorkPacket,
   type WorkPacketDigestInput,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 
 const FIXTURE_TIME = '2026-08-29T00:00:00.000Z'
 const BASE_COMMIT = GitCommitId('1111111111111111111111111111111111111111')

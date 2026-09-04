@@ -4,11 +4,11 @@ import {
   QueueAttemptIdRef,
   RepositoryId,
   WorkPacketId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   QueueWorkIdRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import { RepositoryWorkspaceError } from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-delivery-protocol'
+import { RepositoryWorkspaceError } from '@changanhua/dsh-repo-workspace'
 import type { SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import {
   DeliveryCodexRunnerError,

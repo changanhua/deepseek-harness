@@ -3,18 +3,18 @@ import {
   codeVerifyOutputSchema,
   completionClaimSchema,
   verificationVerdictSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   CompletionClaim,
   VerificationVerdict,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   DeliveryCodexRunnerError,
-} from '@deepseek-ai/dsh-delivery-runner-codex'
-import type { CodeChangeRunRequest } from '@deepseek-ai/dsh-delivery-runner-codex'
-import { DeliveryVerifierError } from '@deepseek-ai/dsh-delivery-verifier'
-import type { DeliveryVerificationRunRequest } from '@deepseek-ai/dsh-delivery-verifier'
-import type { LiveAttempt, WorkFailure } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-delivery-runner-codex'
+import type { CodeChangeRunRequest } from '@changanhua/dsh-delivery-runner-codex'
+import { DeliveryVerifierError } from '@changanhua/dsh-delivery-verifier'
+import type { DeliveryVerificationRunRequest } from '@changanhua/dsh-delivery-verifier'
+import type { LiveAttempt, WorkFailure } from '@changanhua/dsh-task-queue'
 
 function failure(
   category: string,

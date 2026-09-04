@@ -19,7 +19,7 @@ import {
   type WorkStatus,
   type WorkView,
   type VerifiedAgentAuthority,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import { describe, expect, it, vi } from 'vitest'
 import LocalTaskQueue from '../../task-queue-local/src/index.ts'
 import {

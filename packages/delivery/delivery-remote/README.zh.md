@@ -3,7 +3,7 @@ description: "面向导入、发布、执行、验证并决定一次交付的用
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-remote
+# @changanhua/dsh-delivery-remote
 
 [English](README.md) | 中文
 

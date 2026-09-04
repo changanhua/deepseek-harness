@@ -4,7 +4,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-delivery-verifier'
+const PACKAGE_NAME = '@changanhua/dsh-delivery-verifier'
 
 /** Cordis companion plugin name. */
 export const name = 'delivery-verifier-invariant'

@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-task-queue-executor-dsh
+# @changanhua/dsh-task-queue-executor-dsh
 
 English | [中文](README.zh.md)
 
@@ -32,7 +32,7 @@ The final overlay keeps one-shot foreground shell execution under the base `work
 
 ## Model Experience
 
-Indirectly, through `@deepseek-ai/dsh-tool-agent-run-task-queue`, which owns admission, and `@deepseek-ai/dsh-tool-task-queue`, which owns stable terminal notification and explicit result retrieval; this provider only supplies the bounded typed outcome.
+Indirectly, through `@changanhua/dsh-tool-agent-run-task-queue`, which owns admission, and `@changanhua/dsh-tool-task-queue`, which owns stable terminal notification and explicit result retrieval; this provider only supplies the bounded typed outcome.
 
 #### KV Cache effect
 
@@ -40,6 +40,6 @@ No direct invalidation; the named consumer owns tool-schema and prompt-prefix ch
 
 ## Known Limitations and Deferred Work
 
-- **Admission is WorkKind-specific** — `@deepseek-ai/dsh-tool-agent-run-task-queue` admits only `agent.run@1`; other capabilities use their own WorkKind Consumers and handlers.
+- **Admission is WorkKind-specific** — `@changanhua/dsh-tool-agent-run-task-queue` admits only `agent.run@1`; other capabilities use their own WorkKind Consumers and handlers.
 - **No durable continuation** — task completion produces durable queue state and an owner notification, but does not wake or resume a goal by itself.
 - **One host owns a queue root** — multi-host session and task ownership remain outside this provider.

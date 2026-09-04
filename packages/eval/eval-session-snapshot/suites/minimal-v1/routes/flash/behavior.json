@@ -1,0 +1,39 @@
+{
+  "logs": [
+    {
+      "file": "project/main/session.jsonl",
+      "lines": [
+        {
+          "type": "session",
+          "version": 0,
+          "id": "{{SID}}",
+          "createdAt": 42,
+          "cwd": "{{CWD}}",
+          "delegationDepth": 0
+        },
+        {
+          "type": "request/header",
+          "data": {
+            "header": {
+              "config": {
+                "provider": "deepseek-official",
+                "model": "deepseek-v4-flash"
+              },
+              "system": "{{system}}",
+              "tools": "{{tools}}"
+            },
+            "reason": "initial"
+          }
+        },
+        {
+          "type": "turn/start",
+          "seq": 1,
+          "time": 9,
+          "data": {
+            "turn": 1
+          }
+        }
+      ]
+    }
+  ]
+}

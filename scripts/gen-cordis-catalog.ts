@@ -129,6 +129,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   workspaceRegistry: 'workspace.md',
   workspaceController: 'workspace.md',
   directoryPickerController: 'workspace.md',
+  workObservatory: 'work-observatory.md',
 }
 
 /**
@@ -379,6 +380,12 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   RuntimeFactInfo: 'runtime-facts.md',
   RuntimeFactKey: 'runtime-facts.md',
   RuntimeFactObservationResult: 'runtime-facts.md',
+  ClientObservation: 'work-observatory.md',
+  WorkObservatoryInterval: 'work-observatory.md',
+  WorkObservatoryRange: 'work-observatory.md',
+  WorkObservatoryRangeRequest: 'work-observatory.md',
+  WorkObservatorySessionSummary: 'work-observatory.md',
+  WorkObservatorySummary: 'work-observatory.md',
   AcceptanceCandidateResolver: 'delivery.md',
   AcceptanceDecision: 'delivery.md',
   AcceptanceEvidenceResolver: 'delivery.md',

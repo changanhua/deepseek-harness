@@ -3,7 +3,7 @@ description: "Personal Delivery 准入 bridge，以及 Queue 中 code.change@1 �
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-task-queue
+# @changanhua/dsh-delivery-task-queue
 
 [English](README.md) | 中文
 

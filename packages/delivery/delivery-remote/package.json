@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-delivery-remote",
+  "name": "@changanhua/dsh-delivery-remote",
   "description": "Typert Remote boundary for Personal Delivery Case shaping, approval, GitHub publication, execution, evidence, and acceptance",
   "version": "0.1.2-alpha.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/delivery/delivery-remote"
   },
   "type": "module",
@@ -51,15 +48,15 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-delivery": "workspace:^",
-    "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
-    "@deepseek-ai/dsh-delivery-github-intake": "workspace:^",
-    "@deepseek-ai/dsh-delivery-github-publisher": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
-    "@deepseek-ai/dsh-delivery-task-queue": "workspace:^",
+    "@changanhua/dsh-delivery": "workspace:^",
+    "@changanhua/dsh-delivery-evidence": "workspace:^",
+    "@changanhua/dsh-delivery-github-intake": "workspace:^",
+    "@changanhua/dsh-delivery-github-publisher": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery-task-queue": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-repo-workspace": "workspace:^",
-    "@deepseek-ai/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-repo-workspace": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^"
   },
   "dependencies": {
@@ -68,17 +65,18 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-delivery": "workspace:^",
-    "@deepseek-ai/dsh-delivery-evidence": "workspace:^",
-    "@deepseek-ai/dsh-delivery-github-intake": "workspace:^",
-    "@deepseek-ai/dsh-delivery-github-publisher": "workspace:^",
-    "@deepseek-ai/dsh-delivery-protocol": "workspace:^",
-    "@deepseek-ai/dsh-delivery-task-queue": "workspace:^",
-    "@deepseek-ai/dsh-delivery-testkit": "workspace:^",
+    "@changanhua/dsh-delivery": "workspace:^",
+    "@changanhua/dsh-delivery-evidence": "workspace:^",
+    "@changanhua/dsh-delivery-github-intake": "workspace:^",
+    "@changanhua/dsh-delivery-github-publisher": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-delivery-task-queue": "workspace:^",
+    "@changanhua/dsh-delivery-testkit": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-repo-workspace": "workspace:^",
-    "@deepseek-ai/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-repo-workspace": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
     "zod": "^4.4.3"
-  }
+  },
+  "private": true
 }

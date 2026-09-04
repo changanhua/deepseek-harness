@@ -8,10 +8,15 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { loadPackageIdentities } from './package-identities.ts'
 import { hasTypertRemoteNavigation, isForbiddenPublicationFile } from './publication-payload.ts'
 import { collectProjectReferenceFaceViolations } from './project-reference-faces.ts'
 
 const root = resolve(import.meta.dirname, '..')
+const packageIdentities = loadPackageIdentities(root)
+const personalPackagesByDirectory = new Map(
+  packageIdentities.personalPackages.map(identity => [identity.directory, identity]),
+)
 // vendor/* is single-level; packages/<group>/<pkg> nests one level deeper
 // (the group dirs — core/llm/shell/… — are pure containers with no manifest).
 const workspaceGlobs = [
@@ -47,7 +52,8 @@ const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.
  * {@link repositoryUrl}, which the Landlock packages keep because npm resolves
  * their trusted publishing against the repository that runs the workflow.
  */
-const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
+const publishedRepositoryUrl = packageIdentities.upstreamRepositoryUrl
+const personalRepositoryUrl = packageIdentities.personalRepositoryUrl
 /** Private packages that participate in workspace checks but not releases. */
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
 /** npm namespace reserved for private experimental packages. */
@@ -149,19 +155,6 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-client-ui-primitives': ['lib/**/*.css'],
   '@deepseek-ai/dsh-client-web': ['lib/**/*.css'],
   '@deepseek-ai/dsh-client-ui-theme': ['lib/styles'],
-  // The queue seam's browser-safe brand leaf is its own root bundle (the
-  // package root reaches dsh-subprocess through the executor-adapter
-  // signature, so the brand subpath must stay a standalone emitted entry).
-  '@deepseek-ai/dsh-task-queue': ['lib/brand.js'],
-  // Personal Delivery publishes stable golden JSON fixtures so independently
-  // developed packages validate the exact Protocol V1 examples.
-  '@deepseek-ai/dsh-delivery-protocol': ['fixtures/*.json'],
-  // GitHub intake publishes the exact Work Brief grammar fixtures consumed by
-  // independently developed Remote, testkit, and UI packages.
-  '@deepseek-ai/dsh-delivery-github-intake': [
-    'fixtures/*.json',
-    'fixtures/*.md',
-  ],
   // The supported parent-free Codex app-server boundary is intentionally a
   // narrow subpath rather than a root export or a new Cordis capability.
   '@deepseek-ai/dsh-subagent-codex': ['lib/app-server-run.js'],
@@ -189,17 +182,27 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-experimental-webworker-packer': ['bin.js', 'lib/repository-*.js'],
   '@deepseek-ai/dsh-subprocess-local': ['scripts/ensure-spawn-helper.mjs'],
 }
+/** Payload exceptions keyed by stable source directory instead of a mutable npm identity. */
+const personalPackageFileExtras: Readonly<Record<string, readonly string[]>> = {
+  // The queue seam's browser-safe brand leaf is its own root bundle.
+  'packages/task-queue/task-queue': ['lib/brand.js'],
+  // Stable fixtures are shared across independently developed delivery packages.
+  'packages/delivery/delivery-protocol': ['fixtures/*.json'],
+  'packages/delivery/delivery-github-intake': ['fixtures/*.json', 'fixtures/*.md'],
+  'packages/task-queue/task-queue-executor-dsh': ['worker.cordis.patch.yml'],
+}
 
 function sameStringList(actual: readonly string[] | undefined, expected: readonly string[]): boolean {
   return !!actual && actual.length === expected.length && actual.every((value, index) => value === expected[index])
 }
 
-export function expectedDshPackageFiles(manifest: PackageManifest): readonly string[] {
+export function expectedDshPackageFiles(manifest: PackageManifest, directory?: string): readonly string[] {
   const declaredPatch = manifest.dsh?.bundle?.patch
   const bundleFiles = declaredPatch === undefined ? [] : [declaredPatch.replace(/^\.\//, '')]
   const extras = [
     ...bundleFiles,
     ...(manifest.name ? packageFileExtras[manifest.name] ?? [] : []),
+    ...(directory ? personalPackageFileExtras[directory] ?? [] : []),
   ]
   return [
     'lib/index.js',
@@ -292,6 +295,7 @@ export function checkExperimentalManifest({ dir, manifest }: WorkspaceManifest):
 export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): string[] {
   const errors = checkExperimentalManifest({ dir, manifest })
   const label = manifest.name ?? dir
+  const personalIdentity = personalPackagesByDirectory.get(dir)
   const isLandlockPackageDir = dir.startsWith('native/landlock-run/packages/')
   const isPublicLandlockPackage = isLandlockPackageDir
     && manifest.name !== undefined
@@ -309,6 +313,21 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
       || manifest.repository.url !== repositoryUrl
       || manifest.repository.directory !== expectedDirectory) {
       errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
+    }
+  } else if (personalIdentity !== undefined) {
+    if (manifest.name !== personalIdentity.sourceName) {
+      errors.push(`${label}: personal source package must use ${personalIdentity.sourceName}`)
+    }
+    if (manifest.private !== true) {
+      errors.push(`${label}: personal source package must set \"private\": true`)
+    }
+    if (manifest.publishConfig !== undefined) {
+      errors.push(`${label}: personal source package must omit publishConfig`)
+    }
+    if (manifest.repository?.type !== 'git'
+      || manifest.repository.url !== personalRepositoryUrl
+      || manifest.repository.directory !== dir) {
+      errors.push(`${label}: personal source package repository must use ${personalRepositoryUrl} with directory ${dir}`)
     }
   } else if (releaseMemberDirectory.test(dir)) {
     // Release members state that they are publishable: npm refuses a private
@@ -340,8 +359,8 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     return errors
   }
 
-  if (manifest.name?.startsWith('@deepseek-ai/')) {
-    const allowedSources = publicationSourceAllowlist[manifest.name] ?? []
+  if (manifest.name?.startsWith('@deepseek-ai/') === true || personalIdentity !== undefined) {
+    const allowedSources = manifest.name === undefined ? [] : publicationSourceAllowlist[manifest.name] ?? []
     for (const file of manifest.files ?? []) {
       if (isForbiddenPublicationFile(file) && !allowedSources.includes(file)) {
         errors.push(`${label}: package.json files must not publish ${JSON.stringify(file)}`)
@@ -367,7 +386,8 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     }
   }
 
-  if (dir.startsWith('packages/') && manifest.name?.startsWith('@deepseek-ai/dsh-')) {
+  if (dir.startsWith('packages/')
+    && (manifest.name?.startsWith('@deepseek-ai/dsh-') === true || personalIdentity !== undefined)) {
     const peer = manifest.peerDependencies?.['@deepseek-ai/cordis']
     const dev = manifest.devDependencies?.['@deepseek-ai/cordis']
 
@@ -376,7 +396,7 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     if (peer && dev && peer !== dev) {
       errors.push(`${label}: @deepseek-ai/cordis peer (${peer}) and dev (${dev}) ranges must match`)
     }
-    if (manifest.version !== repositoryVersion) {
+    if (personalIdentity === undefined && manifest.version !== repositoryVersion) {
       errors.push(`${label}: package.json version must match root version ${repositoryVersion ?? '(missing)'}`)
     }
     if (manifest.type !== 'module') {
@@ -407,7 +427,7 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     if (invariantExport && (invariantExport.types === undefined || invariantExport.default === undefined)) {
       errors.push(`${label}: package.json exports["./invariant"] must declare both types and default targets`)
     }
-    const expectedFiles = expectedDshPackageFiles(manifest)
+    const expectedFiles = expectedDshPackageFiles(manifest, dir)
     if (!sameStringList(manifest.files, expectedFiles)) {
       errors.push(`${label}: package.json files must be ${JSON.stringify(expectedFiles)}`)
     }

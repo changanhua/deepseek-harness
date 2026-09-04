@@ -476,6 +476,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns fact declarations, centralized tool-relevance evaluation, and the order-120 baseline projection; providers register inspect-only or baseline facts and the inspection tool reads them on demand.',
   },
   {
+    key: 'workObservatory',
+    pkg: 'host-work-observatory',
+    title: 'Local human-Agent wall-clock evidence',
+    mode: 'core',
+    consumers: ['client-ui-work-observatory'],
+    note: 'Host-stamps browser state, projects Session step boundaries through storage-domain, and serves bounded normalized ranges to the dedicated Web workspace.',
+  },
+  {
     key: 'shellEnv',
     pkg: 'shell-env',
     title: 'Managed bash environment registry',
@@ -769,6 +777,18 @@ function pkgList(names: string[] | undefined, pkgsByShort: Map<string, Pkg>): st
   return names.map(name => pkgLink(pkgsByShort.get(name), name)).join(', ')
 }
 
+function packagesByShort(pkgs: readonly Pkg[], subject: string): Map<string, Pkg> {
+  const indexed = new Map<string, Pkg>()
+  for (const pkg of pkgs) {
+    const existing = indexed.get(pkg.short)
+    if (existing !== undefined) {
+      throw new Error(`${subject}: ambiguous package short name ${pkg.short}: ${existing.name}, ${pkg.name}`)
+    }
+    indexed.set(pkg.short, pkg)
+  }
+  return indexed
+}
+
 function tableCell(value: string): string {
   return value.replace(/\|/g, '\\|').replace(/\n/g, '<br>')
 }
@@ -788,7 +808,7 @@ function assertServiceRolesComplete(services: readonly ServiceEntry[]): void {
 
 function renderCapabilitySeams(pkgs: Pkg[], services: readonly ServiceEntry[]): string {
   assertServiceRolesComplete(services)
-  const pkgsByShort = new Map(pkgs.map(pkg => [pkg.short, pkg]))
+  const pkgsByShort = packagesByShort(pkgs, 'capability-seams')
   const maintenance = 'hybrid: services are discovered from Cordis declarations; interface/implementation/consumer roles are classified in `scripts/gen-doc-graphs.ts` with a completeness guard'
   const nodes = new Map<string, string>()
   const edges = new Set<string>()
@@ -1305,7 +1325,7 @@ function listenerPackages(listeners: Set<string>, pkgsByShort: Map<string, Pkg>)
 
 function renderEventRelations(pkgs: Pkg[], events: readonly EventEntry[]): string {
   const relations = collectEventRelations()
-  const pkgsByShort = new Map(pkgs.map(pkg => [pkg.short, pkg]))
+  const pkgsByShort = packagesByShort(pkgs, 'event-producer-consumer matrix')
   const maintenance = 'generated: Cordis event declarations and producer/listener edges are resolved from the repository TypeScript Program'
   const lines = generatedHeader('Event Producer And Consumer Matrix')
   lines.push(

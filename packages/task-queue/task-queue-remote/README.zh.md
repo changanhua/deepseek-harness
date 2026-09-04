@@ -16,7 +16,7 @@ Queue v2 operator facade 的宿主 Remote。生成的浏览器命名空间是 `c
 
 ## 消费方
 
-- `@deepseek-ai/dsh-client-ui-task-queue` 渲染 Queue 工作台。
+- `@changanhua/dsh-client-ui-task-queue` 渲染 Queue 工作台。
 - `@deepseek-ai/dsh-api-remotes` 挂载生成的 Remote contribution。
 
 ## Model Experience

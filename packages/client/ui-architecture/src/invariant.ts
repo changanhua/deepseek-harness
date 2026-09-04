@@ -1,10 +1,10 @@
-/** Package-owned invariant companion for `@deepseek-ai/dsh-client-ui-architecture`. */
+/** Package-owned invariant companion for `@changanhua/dsh-client-ui-architecture`. */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-client-ui-architecture'
+const PACKAGE_NAME = '@changanhua/dsh-client-ui-architecture'
 
 /** Cordis companion plugin name. */
 export const name = 'ui-architecture-invariant'

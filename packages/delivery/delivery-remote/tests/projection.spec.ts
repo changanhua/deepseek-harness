@@ -11,7 +11,7 @@ import {
   WorkPacketId,
   canonicalDigest,
   dispatchBindingSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   acceptedDecisionFixture,
   boundBindingFixture,
@@ -23,14 +23,14 @@ import {
   readyWorkPacketFixture,
   requirementDecisionFixture,
   submittingBindingFixture,
-} from '@deepseek-ai/dsh-delivery-testkit'
+} from '@changanhua/dsh-delivery-testkit'
 import {
   AttemptId,
   ResultId,
   WorkId,
   type OperatorWorkQueue,
   type WorkView,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import { describe, expect, it, vi } from 'vitest'
 import { DeliveryRemoteService } from '../src/index.ts'
 import { projectDeliverySnapshot } from '../src/projection.ts'

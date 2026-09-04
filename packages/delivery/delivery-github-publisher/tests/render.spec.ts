@@ -6,7 +6,7 @@ import {
   RepositoryId,
   VerificationCheckId,
   type ContractRevision,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { describe, expect, it } from 'vitest'
 import { GITHUB_ISSUE_BODY_MAX_BYTES, renderGitHubIssue } from '../src/render.ts'
 

@@ -3,7 +3,7 @@ import {
   contractRevisionFixture,
   issuePublicationFixture,
   readyWorkPacketFixture,
-} from '@deepseek-ai/dsh-delivery-testkit'
+} from '@changanhua/dsh-delivery-testkit'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('zod', async () => import('../../delivery-protocol/node_modules/zod/index.js'))

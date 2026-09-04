@@ -21,7 +21,7 @@ import type {
   DeliveryReviseCaseInput,
   DeliveryStartChangeInput,
   DeliveryStartVerificationInput,
-} from '@deepseek-ai/dsh-delivery-remote/types'
+} from '@changanhua/dsh-delivery-remote/types'
 import type { NS } from './locales.ts'
 
 /** Registration-side Host projection and its lifecycle actions. */

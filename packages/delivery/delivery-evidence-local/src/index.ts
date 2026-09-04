@@ -1,4 +1,4 @@
-/** Filesystem-backed immutable Delivery evidence provider. @module @deepseek-ai/dsh-delivery-evidence-local */
+/** Filesystem-backed immutable Delivery evidence provider. @module @changanhua/dsh-delivery-evidence-local */
 
 import { randomUUID } from 'node:crypto'
 import { link, lstat, mkdir, open, realpath, unlink } from 'node:fs/promises'
@@ -12,20 +12,20 @@ import {
   canonicalJson,
   evidenceBytesDigest,
   evidenceRefSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   EvidenceId as EvidenceIdType,
   EvidenceRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   DeliveryEvidence,
   DeliveryEvidenceError,
-} from '@deepseek-ai/dsh-delivery-evidence'
+} from '@changanhua/dsh-delivery-evidence'
 import { ensureDurableDirectoryWin32, publishNewPathWin32 } from './win32.ts'
 import type {
   SaveDeliveryEvidence,
   StoredDeliveryEvidence,
-} from '@deepseek-ai/dsh-delivery-evidence'
+} from '@changanhua/dsh-delivery-evidence'
 
 const LOCAL_EVIDENCE_ID = /^evidence-sha256-([0-9a-f]{64})$/u
 const MAX_LOCAL_EVIDENCE_BYTES = 64 * 1024 * 1024

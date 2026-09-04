@@ -3,7 +3,7 @@ description: "面向组合交付 profile 的维护者，提供本地持久化 Pe
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-local
+# @changanhua/dsh-delivery-local
 
 [English](README.md) | 中文
 

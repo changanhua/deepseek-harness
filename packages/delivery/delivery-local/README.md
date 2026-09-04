@@ -3,7 +3,7 @@ description: "Local durable Personal Delivery records for maintainers composing 
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-local
+# @changanhua/dsh-delivery-local
 
 English | [中文](README.zh.md)
 

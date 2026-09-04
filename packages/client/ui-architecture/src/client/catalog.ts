@@ -9,12 +9,13 @@ export interface ArchitecturePackage {
   readonly group: string
   readonly path: string
   readonly description: string
+  /** Full npm identities of in-repo peer dependencies. */
   readonly dependencies: readonly string[]
   readonly faces: readonly ArchitectureFace[]
 }
 
 /** Versioned build-time catalog embedded in the Client bundle. */
 export interface ArchitectureCatalog {
-  readonly schemaVersion: 1
+  readonly schemaVersion: 2
   readonly packages: readonly ArchitecturePackage[]
 }

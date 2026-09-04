@@ -21,7 +21,7 @@ import {
   verificationPlanSchema,
   verificationVerdictSchema,
   workPacketSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { describe, expect, it } from 'vitest'
 
 interface SchemaLike {
@@ -145,9 +145,9 @@ describe('protocol golden fixtures', () => {
       readonly dependencies?: Record<string, string>
       readonly exports?: Record<string, unknown>
     }
-    expect(source).not.toContain("declare module '@deepseek-ai/dsh-task-queue'")
+    expect(source).not.toContain("declare module '@changanhua/dsh-task-queue'")
     expect(source).not.toContain('PreparedCodeChange')
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-task-queue']).toBeUndefined()
+    expect(manifest.dependencies?.['@changanhua/dsh-task-queue']).toBeUndefined()
     expect(manifest.exports?.['./src/*']).toBeUndefined()
   })
 

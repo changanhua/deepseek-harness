@@ -26,7 +26,7 @@ Status: implemented
 | vendored framework | `vendor/*` 九个包 | 每包各自一条版本线 | `vendor-<包名>-v<版本>`（每包一个） | `release-vendor.yml`（pack）/ `release-vendor-publish.yml`（发布） |
 | native | `native/landlock-run/packages/*` | 自己的 `0.0.x` | `landlock-run-v<版本>` | `landlock-run-release.yml` |
 
-三组一律发到 npmjs.com 的 `@deepseek-ai` scope，且 access 按序列而非按 scope 区分：vendored 框架与 native 包是 `public`，dsh 族是 `restricted`（[理由](2026-08-13-public-vendor-and-native-sequences.zh.md)）。没有任何发布路径传 `--access`——一个选项无法服务级别互不相同的序列，且会覆盖真正拥有该级别的 manifest。
+三组都保留 npmjs.com 的 `@deepseek-ai` scope，仓库发布工具只允许从 `deepseek-ai/deepseek-harness` 发布；[仓库拥有的 npm 身份](2026-09-04-repository-owned-npm-scope.zh.md)会在个人 fork 中阻止这些序列。access 按序列而非按 scope 区分：vendored 框架与 native 包是 `public`，dsh 族是 `restricted`（[理由](2026-08-13-public-vendor-and-native-sequences.zh.md)）。没有任何发布路径传 `--access`——一个选项无法服务级别互不相同的序列，且会覆盖真正拥有该级别的 manifest。
 
 ### 版本由本地命令写进仓库，CI 只核对与上传
 
@@ -60,7 +60,7 @@ tag 只是 commit 指针，不是发布成功的证明。bump 会向 registry �
 
 ### 发布只在 GitHub 执行，由 registry 状态决定发什么
 
-发布只从 GitHub Actions 执行，没有本机发布路径。publish 不读 tag、不读任何「本次发布包含什么」的清单，而是对每个打包好的 tarball 拿版本与 registry 比对，分三态：
+官方 scope 只从 `deepseek-ai/deepseek-harness` 的 GitHub Actions 发布；不存在本机官方发布路径，个人 fork 会在访问 registry 前失败。publish 不读 tag、不读任何「本次发布包含什么」的清单，而是对每个打包好的 tarball 拿版本与 registry 比对，分三态：
 
 | 状态 | 处置 |
 |---|---|

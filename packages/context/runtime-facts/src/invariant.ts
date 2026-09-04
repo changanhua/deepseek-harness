@@ -1,11 +1,11 @@
-/** Runtime-facts projection invariant companion. @module @deepseek-ai/dsh-runtime-facts/invariant */
+/** Runtime-facts projection invariant companion. @module @changanhua/dsh-runtime-facts/invariant */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from './index.ts'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-runtime-facts'
+const PACKAGE_NAME = '@changanhua/dsh-runtime-facts'
 
 /** Cordis companion plugin name. */
 export const name = 'runtime-facts-invariant'

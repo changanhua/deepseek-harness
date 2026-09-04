@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { QueueWorkView, QueueWorkSummaryView } from '@deepseek-ai/dsh-task-queue-remote/views'
+import type { QueueWorkView, QueueWorkSummaryView } from '@changanhua/dsh-task-queue-remote/views'
 import { QueueWorkspace } from '../src/client/QueueWorkspace.tsx'
 import { zh, type TaskQueueKey } from '../src/client/locales.ts'
 import type { QueueSnapshot, QueueStore } from '../src/client/store.ts'

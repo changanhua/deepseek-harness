@@ -3,7 +3,7 @@ description: "Run one bounded Personal Delivery code-change Attempt through the 
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-runner-codex
+# @changanhua/dsh-delivery-runner-codex
 
 English | [中文](README.zh.md)
 

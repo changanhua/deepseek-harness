@@ -1,7 +1,7 @@
 /**
  * Independent fixed-plan verification runner for Personal Delivery.
  *
- * @module @deepseek-ai/dsh-delivery-verifier
+ * @module @changanhua/dsh-delivery-verifier
  */
 
 import { lstat, realpath, stat } from 'node:fs/promises'
@@ -10,7 +10,7 @@ import {
   DeliveryEvidenceError,
   type BoundDeliveryEvidenceWriter,
   type StoredDeliveryEvidence,
-} from '@deepseek-ai/dsh-delivery-evidence'
+} from '@changanhua/dsh-delivery-evidence'
 import {
   DELIVERY_SCHEMA_VERSION,
   RepositoryRelativePath,
@@ -39,11 +39,11 @@ import {
   type VerificationCheckId,
   type VerificationVerdict,
   type WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   RepositoryRangeFacts,
   VerificationWorkspaceLease,
-} from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-repo-workspace'
 import type {
   SubprocessHandle,
   SubprocessOutcome,

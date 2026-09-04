@@ -3,7 +3,7 @@ description: "从 GitHub Issue snapshot 创建或修订 Personal Delivery Case �
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-github-intake
+# @changanhua/dsh-delivery-github-intake
 
 [English](README.md) | 中文
 

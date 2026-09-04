@@ -2,11 +2,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { digestIntent, WorkId } from '@deepseek-ai/dsh-task-queue'
-import type { ChangeSet, WorkKindDefinition } from '@deepseek-ai/dsh-task-queue'
+import { digestIntent, WorkId } from '@changanhua/dsh-task-queue'
+import type { ChangeSet, WorkKindDefinition } from '@changanhua/dsh-task-queue'
 import { WorkQueueStore } from '../src/v2-store.ts'
 
-declare module '@deepseek-ai/dsh-task-queue' {
+declare module '@changanhua/dsh-task-queue' {
   interface WorkKindMap {
     'store-test@1': WorkKindDefinition<{ readonly prompt: string }, { readonly value: string }, { readonly value: string }, { readonly value: string }>
   }

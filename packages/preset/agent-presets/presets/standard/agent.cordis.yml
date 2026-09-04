@@ -54,7 +54,7 @@
 # Runtime facts stay on the host; this preset opts its agents into explicit
 # fact and executable inspection without making the tool global.
 - id: tool-runtime-inspect
-  name: '@deepseek-ai/dsh-tool-runtime-inspect'
+  name: '@changanhua/dsh-tool-runtime-inspect'
 
 # ── filesystem ──────────────────────────────────────────────────────────────
 
@@ -89,12 +89,12 @@
 # pre-step notification candidates, and the session/event ack finalizer — all
 # registered by one plugin apply.
 - id: tool-task-queue
-  name: '@deepseek-ai/dsh-tool-task-queue'
+  name: '@changanhua/dsh-tool-task-queue'
   config:
     maxNotificationsPerStep: 1
 
 - id: tool-agent-run-task-queue
-  name: '@deepseek-ai/dsh-tool-agent-run-task-queue'
+  name: '@changanhua/dsh-tool-agent-run-task-queue'
 
 # ── skills ──────────────────────────────────────────────────────────────────
 

@@ -3,7 +3,7 @@ description: "Personal Delivery 领域记录与幂等写入，覆盖 Case、requ
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery
+# @changanhua/dsh-delivery
 
 [English](README.md) | 中文
 

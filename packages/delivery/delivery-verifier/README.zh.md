@@ -3,7 +3,7 @@ description: "面向不可变 Personal Delivery 目标的独立固定计划验�
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-verifier
+# @changanhua/dsh-delivery-verifier
 
 [English](README.md) | 中文
 

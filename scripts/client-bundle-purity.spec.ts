@@ -104,6 +104,10 @@ describe('client bundle purity gate', () => {
     expect(() => resolveId('@deepseek-ai/dsh-goal')).toThrow(/purity/)
     expect(() => resolveId('@deepseek-ai/dsh-goal/client')).toThrow(/purity/)
     expect(() => resolveId('@deepseek-ai/dsh-goal/remote/nested')).toThrow(/purity/)
+    expect(resolveId('@changanhua/dsh-delivery/remote')).toBeNull()
+    expect(() => resolveId('@changanhua/dsh-delivery')).toThrow(/purity/)
+    expect(() => resolveId('@changanhua/dsh-delivery/client')).toThrow(/purity/)
+    expect(() => resolveId('@changanhua/dsh-delivery/remote/nested')).toThrow(/purity/)
   })
 
   it('throws on any other @deepseek-ai leak', () => {
@@ -121,6 +125,10 @@ describe('client bundle purity gate', () => {
     const requesting = purityResolveId('@deepseek-ai/dsh-api-session-controller')
     expect(requesting('@deepseek-ai/dsh-api-gateway/client')).toBeNull()
     expect(() => resolveId('@deepseek-ai/dsh-api-gateway/client')).toThrow(/purity/)
+
+    const personalRequesting = purityResolveId('@changanhua/dsh-client-ui-delivery')
+    expect(personalRequesting('@deepseek-ai/dsh-client-store')).toBeNull()
+    expect(() => personalRequesting('@changanhua/dsh-task-queue')).toThrow(/purity/)
   })
 
   it('externalizes the baseline independently of each package manifest', () => {

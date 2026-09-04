@@ -44,10 +44,10 @@
     # Runtime Awareness host plane: the registry and Host provider stay shared;
     # model-facing inspection is selected by each agent preset.
     - id: runtime-facts
-      name: '@deepseek-ai/dsh-runtime-facts'
+      name: '@changanhua/dsh-runtime-facts'
 
     - id: runtime-facts-host
-      name: '@deepseek-ai/dsh-runtime-facts-host'
+      name: '@changanhua/dsh-runtime-facts-host'
 
     # Host-owned opt-in sampled when a new Web session receives its preset
     # delegation tools. The Plugins page edits this settings namespace.
@@ -92,7 +92,15 @@
 
     # Read-only projection of the current Skills, Tools, and MCP server state.
     - id: capability-registry
-      name: '@deepseek-ai/dsh-host-capability-registry'
+      name: '@changanhua/dsh-host-capability-registry'
+
+    # Host-authoritative human activity and Session-step wall-clock evidence.
+    - id: work-observatory
+      name: '@changanhua/dsh-host-work-observatory'
+      config:
+        retentionDays: 90
+        maxClients: 128
+        maxQueryRecords: 10000
 
     # Session commands, cold reads, and live control over Typert Remote.
     - id: session-controller
@@ -209,7 +217,7 @@
       name: '@deepseek-ai/dsh-client-ui-settings-models'
 
     - id: ui-settings-skills
-      name: '@deepseek-ai/dsh-client-ui-settings-skills'
+      name: '@changanhua/dsh-client-ui-settings-skills'
 
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
@@ -310,15 +318,19 @@
 
     # Durable task-queue status and controls over the taskQueue Remote.
     - id: ui-task-queue
-      name: '@deepseek-ai/dsh-client-ui-task-queue'
+      name: '@changanhua/dsh-client-ui-task-queue'
 
     # Read-only Skills, Tools, and MCP server inventory.
     - id: ui-capability
-      name: '@deepseek-ai/dsh-client-ui-capability'
+      name: '@changanhua/dsh-client-ui-capability'
 
     # Build catalog and current Loader Runtime architecture explorer.
     - id: ui-architecture
-      name: '@deepseek-ai/dsh-client-ui-architecture'
+      name: '@changanhua/dsh-client-ui-architecture'
+
+    # Dedicated day/project view plus the app-scoped browser activity producer.
+    - id: ui-work-observatory
+      name: '@changanhua/dsh-client-ui-work-observatory'
 
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #

@@ -1,4 +1,4 @@
-/** Public runtime-fact declarations and observation results. @module @deepseek-ai/dsh-runtime-facts/src/types */
+/** Public runtime-fact declarations and observation results. @module @changanhua/dsh-runtime-facts/src/types */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { ScopeKey } from '@deepseek-ai/dsh-scope'

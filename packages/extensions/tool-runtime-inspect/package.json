@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-tool-runtime-inspect",
+  "name": "@changanhua/dsh-tool-runtime-inspect",
   "description": "Model-facing authoritative runtime fact and executable inspection",
   "version": "0.1.1-rc.2",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/extensions/tool-runtime-inspect"
   },
   "type": "module",
@@ -34,16 +31,17 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-runtime-facts": "workspace:^",
+    "@changanhua/dsh-runtime-facts": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-runtime-facts": "workspace:^",
+    "@changanhua/dsh-runtime-facts": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^"
-  }
+  },
+  "private": true
 }

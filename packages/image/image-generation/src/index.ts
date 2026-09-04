@@ -1,6 +1,6 @@
 /**
  * Service Definition for the shared image generation capability (`ctx.imageGeneration`).
- * @module @deepseek-ai/dsh-image-generation
+ * @module @changanhua/dsh-image-generation
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'

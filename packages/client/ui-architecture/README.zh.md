@@ -3,7 +3,7 @@ description: "在一个全页 Web 工作区中浏览完整的构建期 DSH 工�
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-client-ui-architecture
+# @changanhua/dsh-client-ui-architecture
 
 [English](README.md) | 中文
 

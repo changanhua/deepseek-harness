@@ -7,7 +7,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { RuntimeFactKey } from '@deepseek-ai/dsh-runtime-facts'
+import type { RuntimeFactKey } from '@changanhua/dsh-runtime-facts'
 import z from '@deepseek-ai/schemastery'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {

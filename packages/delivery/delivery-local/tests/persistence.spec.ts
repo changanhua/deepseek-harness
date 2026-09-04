@@ -12,8 +12,8 @@ import type {
   RecordRequirementDecisionRequest,
   ReviseDeliveryCaseRequest,
   WorkPacketDraft,
-} from '@deepseek-ai/dsh-delivery'
-import { DELIVERY_VERIFICATION_SOURCE_MAX_BYTES, DeliveryError } from '@deepseek-ai/dsh-delivery'
+} from '@changanhua/dsh-delivery'
+import { DELIVERY_VERIFICATION_SOURCE_MAX_BYTES, DeliveryError } from '@changanhua/dsh-delivery'
 import {
   DELIVERY_SCHEMA_VERSION,
   AcceptanceClauseId,
@@ -58,7 +58,7 @@ import {
   type VerificationVerdict,
   type WorkPacket,
   type WorkPacketDigestInput,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   MemoryMediaPool,
   MemoryStorageBackend,

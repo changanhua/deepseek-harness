@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-tool-image-generation-task-queue
+# @changanhua/dsh-tool-image-generation-task-queue
 
 [English](README.md) | 中文
 

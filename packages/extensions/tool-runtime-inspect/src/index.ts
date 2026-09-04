@@ -1,11 +1,11 @@
 /**
  * Model-facing authoritative runtime inspection over `ctx.runtimeFacts` and
  * `ctx.subprocess`.
- * @module @deepseek-ai/dsh-tool-runtime-inspect
+ * @module @changanhua/dsh-tool-runtime-inspect
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { factKey } from '@deepseek-ai/dsh-runtime-facts'
+import { factKey } from '@changanhua/dsh-runtime-facts'
 import { ToolArgsError, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import type { JsonSchemaNode, ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-subprocess'

@@ -1,24 +1,24 @@
 /**
  * GitHub Issue snapshot intake Consumer for Personal Delivery.
  *
- * @module @deepseek-ai/dsh-delivery-github-intake
+ * @module @changanhua/dsh-delivery-github-intake
  */
 
-import type Delivery from '@deepseek-ai/dsh-delivery'
-import type { DeliverySnapshot } from '@deepseek-ai/dsh-delivery'
+import type Delivery from '@changanhua/dsh-delivery'
+import type { DeliverySnapshot } from '@changanhua/dsh-delivery'
 import type {
   ContractRevision,
   DeliveryCase,
   GitHubRepositoryRef,
   RepositoryId,
   Sha256Digest,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   canonicalJson,
   githubIssueContentDigest,
   parseCanonicalGitHubIssueUrl,
   requirementOriginSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   parseGitHubIssueWorkBrief,
   workBriefContractRevisionDraft,

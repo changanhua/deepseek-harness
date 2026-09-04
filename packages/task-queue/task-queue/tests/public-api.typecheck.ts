@@ -3,9 +3,9 @@ import {
   type AdmissionContext, type LiveAttempt, type PrepareContext, type StartContext,
   type TaskQueue, type VerifiedAgentAuthority, type VerifiedOperatorAuthority,
   type WorkHandler, type WorkKindDefinition,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 
-declare module '@deepseek-ai/dsh-task-queue' {
+declare module '@changanhua/dsh-task-queue' {
   interface WorkKindMap {
     'typecheck@1': WorkKindDefinition<
       { readonly input: string },

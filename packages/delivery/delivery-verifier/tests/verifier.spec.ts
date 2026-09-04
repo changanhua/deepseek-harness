@@ -2,7 +2,7 @@ import { mkdtemp, realpath, symlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { DeliveryEvidenceError } from '@deepseek-ai/dsh-delivery-evidence'
+import { DeliveryEvidenceError } from '@changanhua/dsh-delivery-evidence'
 import {
   GitCommitId,
   QueueAttemptIdRef,
@@ -13,7 +13,7 @@ import {
   WorkPacketId,
   type EvidenceRef,
   type VerificationCheck,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import type { DeliveryVerificationRunRequest } from '../src/index.ts'
 import { createDeliveryVerifier } from '../src/index.ts'
