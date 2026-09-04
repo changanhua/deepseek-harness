@@ -1,0 +1,47 @@
+{
+  "skill_name": "dsh-runtime-composition-debug",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我改了 DSH Host/Client Remote 合同，源代码测试和 pnpm run build:web 都过了，但正在跑的网页还是 404 新 action。不要先改代码，帮我定位首个组合断层。",
+      "expected_output": "As systematic-debugging Phase 1, record reproduction, recent changes, and one artifact-layer hypothesis; then trace identity and classify artifact-stale or an earlier divergence. State build:web is not full dynamic Client proof.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "新 Provider 的单测都绿，包也发布在当前 checkout；dsh --profile personal-delivery 启动后却找不到 Service。请只读诊断从哪一层断了。",
+      "expected_output": "As systematic-debugging Phase 1, record the reproducible symptom, recent change, and one composition hypothesis; then trace source through generated declaration, Profile composition, and Loader activation without changing the Profile.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Host status 显示 Tool 已注册，但只有某个 Preset 下的 Agent 看不到，另一个 Preset 能用。检查 DSH 组合/运行 scope 的首个分歧，不能停服务。",
+      "expected_output": "As systematic-debugging Phase 1, record reproduction, recent differences, and one scope hypothesis; then use runtime scope evidence and classify scope-mismatch unless an earlier layer is disproven.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "packages/core/session/src/codec.ts 的 parseFrame 对空字符串返回错了。已有最小复现和 unit test，请修这个纯函数 bug。",
+      "expected_output": "Use systematic-debugging with focused tests/TDD, not the DSH multi-component Phase 1 path.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "DSH 要加一个新的持久化审计 WorkKind，应该放哪个包、服务定义怎么设计、是否要做 bridge？",
+      "expected_output": "Route to dsh-reuse and plugin architecture design, not composition debugging.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "一个 DSH Agent 正在用新改的 dsh-runtime-composition-debug 诊断另一个 DSH Profile 为何没有新 Tool；两者都显示同一包名，且共用 DSH_HOME 和 8317。不要修，先做只读首层定位。",
+      "expected_output": "Triggers the skill and first separates diagnostic DSH, controller/executor when present, and subject identities including checkout/build/Profile/home/ports/process. It rejects the diagnostic Agent's own source or Tool visibility as subject evidence, requires isolation before any later acceptance, and returns unverified if subject identity cannot be established safely.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "同一 subject identity 的 source-contract 与 generated-declaration 已有 fresh receipt；Profile composition 和 Loader activation 还没观察。可以派两个只读 Agent 并行查吗？",
+      "expected_output": "Reuses the fresh early-layer evidence but rejects parallel composition and Loader-activation probes because activation depends on proven composition. It may parallelize only complementary read-only facts within the current composition layer, keeps one primary hypothesis/classification owner, and waits for a composition receipt before probing activation.",
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "skill_name": "dsh-feature-charter",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我们想把 DSH 的 Eval 从现在的 replay/report 内核做成真正的独立验收能力：用户选定 revision 和两个 preset，批量跑 Agent，确定性检查加独立 grader，最后决定 Goal 是否能完成。先冻结 Epic 的最终目标和关闭条件，不要写实现计划。",
+      "expected_output": "Produces a charter that separates the final independent-acceptance user scenario from the existing kernel; names Definition/Provider/Consumer/Bridge hypotheses, authority and durable artifacts, Queue/Profile entry, real vertical, five-layer `required`/`N/A with reason` dispositions with required behavior verification, non-goals, and explicitly hands reuse and implementation decisions to later skills.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "DSH 要新增一个外部 Bundle，让团队成员从 Web 提交受审批的发布申请；Host 要保存申请，Agent 只能建议内容，审批人才能实际发布。我们要开一个 Epic，先把最终用户体验、权限、持久化、入口和验收纵切定下来。",
+      "expected_output": "Charters separate requester, model, Host, and approver authority; identifies persistent application evidence and the actual publish boundary; states a Profile/Web entry and a real approval-to-publication vertical without pretending to know current package names or writing code.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "准备把 DSH 的 provider 成本可见性做成一条产品线：用户在同一套 Profile 下比较模型预算、实际 token 和价格版本，并能在预算超限前阻止后续工作。请先立项，定义完成时用户到底能做什么。",
+      "expected_output": "Defines an end-user budget decision outcome, separates provider measurements from any budget gate/bridge, includes authority, retention, entry and observed decision evidence, classifies each closure layer as `required` or `N/A with reason` while requiring behavior verification, and avoids prematurely selecting a schema or scheduler.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "修复 packages/ui-task-queue 的中文状态标签，行为、接口、Profile 都不变。",
+      "expected_output": "Does not invoke a feature charter because this is an already-scoped mechanical localization edit; routes to the owning implementation and focused verification instead.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "DSH 里已经有 Session Snapshot adapter 和 Queue，我该直接复用、做 bridge，还是新建一个通用 artifact 平台？请先查当前代码和社区。",
+      "expected_output": "Does not use the charter as the decision maker; routes to dsh-reuse for evidence-backed reuse analysis, while noting a charter is only needed if the user outcome and acceptance boundary are not yet frozen.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "DSH 将用一个已验证的 controller Profile 驱动 Agent 修复 DSH 自己的 Queue，再由独立的 verifier Profile 运行验收；修复后的 DSH 不能自己说通过。人仍然决定是否合并或推送。请冻结这个 Epic 的最终目标和关闭条件，不要写实施计划。",
+      "expected_output": "Produces a self-hosting charter that separately freezes controller, subject, and verifier checkout/revision, build identity, Skill snapshot digest, Profile/runtime, DSH_HOME, data/log roots, and ports; a controller-owned immutable Verifier plan digest covering assertion, command, checker, fixtures/golden inputs, and environment inputs; and Credential & cost authority as none or an approved run ID/target/provider-model/scope-budget/expiry. It preserves rollback and human-only merge/push authority, and makes the verifier—not the changed subject or Skill—the closure evidence while retaining normal Definition/Provider/Consumer/Bridge hypotheses.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "这个 Feature Charter 已经批准，actor、入口、权限、持久化、真实纵切和关闭条件都没变；之后只改了实现与 README。请继续下一阶段。",
+      "expected_output": "Reuses the valid FeatureCharterReceipt without re-chartering or scanning the repository, states that implementation/docs did not invalidate the outcome, and hands off only the next open reuse/current-contract facts.",
+      "files": []
+    }
+  ]
+}

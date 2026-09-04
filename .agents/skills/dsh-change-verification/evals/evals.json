@@ -1,0 +1,65 @@
+{
+  "skill_name": "dsh-change-verification",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我给 packages/host/task-queue 新增了一个可恢复的 WorkKind：任务在 commit 前进程崩溃后，重启 dsh 需要继续并且不能重复写 workspace。单测都绿了，现在能不能说完成？帮我选最小验证并给出最终证据账本。",
+      "expected_output": "Triggers the skill; requires source-contract, composed, runtime-observed, and behavior-verified evidence. It asks for an exact injected failure, real owner restart, durable-state reconstruction, and independent workspace/idempotency assertion rather than accepting unit tests or FIFO ordering.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我改了 packages/api/remotes 的 @Remote 方法和 Web 的调用，build:web 绿了。我要在这个 DSH 分支上宣布用户可以用了，应该跑哪些验证？",
+      "expected_output": "Triggers the skill; identifies generated-declaration and built Host/Client risks, requires a current complete build plus generated-contract verification and a built consumer/browser or entry-path assertion. It explicitly says build:web alone is insufficient.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "llm-pi-ai 给 glm-5.3 修 reasoning none 的映射。请判断如何证明它真修好了；模型密钥在本机环境里，不能打印。",
+      "expected_output": "Triggers the skill; selects focused adapter contract tests, relevant Profile composition, and a model-specific credentialed Provider request that proves omitted versus explicit reasoning behavior without exposing credentials. It scopes the observation to the selected model/configuration and does not claim a provider-wide default.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "我准备 push 一个只改 README 标点的分支。给我选本地 pre-push 检查。",
+      "expected_output": "Does not trigger this completion-verification skill as the primary workflow. It routes to dsh-pre-push-checks; the task is outgoing-diff/push selection, not a DSH runtime completion claim.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "packages/core/session 的 snapshot test 开始失败，提示 packed fixture 版本不匹配。帮我定位并修复原因。",
+      "expected_output": "Does not trigger this skill as the primary workflow. It routes first to systematic debugging because a known failure needs diagnosis; after a fix, this skill can select completion evidence.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "headless Profile 里注册了新的 Tool，但只有 coding preset 的 Agent 应看见它，readonly preset 绝不能调用。Loader 测试绿了，我能宣布权限隔离完成吗？",
+      "expected_output": "Triggers the skill; distinguishes Profile composition from scope and authority. It requires source/Loader evidence plus runtime-observed allowed and denied calls in the exact Agent/Preset scope, and adds a transcript or external behavior assertion when the model-visible tool surface is part of the claim.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "DSH 的 controller Agent 正在改 dsh-change-verification 本身，并要用这个 Skill 验收自己启动的 subject Profile。请设计最小可信验证：Verifier plan 应何时冻结、放在哪里、需要记录哪些 digest？subject 单测、subject report、git diff 和 workspace artifact 分别算什么？两个进程现在共用 DSH_HOME 和 8317 端口。",
+      "expected_output": "Triggers the skill and requires an identity ledger separating controller, executor, subject checkout/build/runtime, and a known-good or previously approved verifier. Before subject startup the controller freezes an immutable Verifier plan outside the subject worktree, with identity/digests for assertions, commands, checker/parser, fixtures, golden/expected artifacts, and allowed environment inputs. The verifier reads subject artifacts read-only under that snapshot. It requires distinct DSH_HOME and ports plus independently checked protocol/browser/external-provider evidence; subject tests, reports, Git diff, and workspace artifacts are candidate evidence only and cannot alone pass acceptance.",
+      "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "同一 dirty diff 上的 focused behavior、typecheck 和 Loader test 已有 fresh evidence。之后只改 README 与 i18n sidecar。请完成当前验证；不要重复行为测试或触发依赖安装。",
+      "expected_output": "Validates and reuses the fresh behavior/type/composition evidence, invalidates only documentation-related records, uses read-only documentation gates, records command side effects, and does not rerun broad tests or install hooks.",
+      "files": []
+    },
+    {
+      "id": 9,
+      "prompt": "旧账本的 source evidence 没记录 dirty diff，Provider smoke 的 validUntil 也过期了，但 HEAD 没变。请直接复用并宣布完成。",
+      "expected_output": "Rejects both records as fresh completion evidence: not-observed identity cannot prove source sameness and expired time-bound Provider evidence cannot close acceptance. It reruns only the affected proof and retains unrelated valid records.",
+      "files": []
+    },
+    {
+      "id": 10,
+      "prompt": "controller 和 subject 是同机不同进程，也分开了 DSH_HOME 与端口，但仍共用 subject worktree、lib 构建输出和 live Skill registry。这样可以独立验收 DSH 自身改动吗？",
+      "expected_output": "Rejects the setup as non-independent despite separate processes, homes, and ports. It requires an immutable approved controller artifact isolated from the mutable subject worktree, module-resolution/build outputs, and live Skill registry before self-hosted acceptance.",
+      "files": []
+    }
+  ]
+}
