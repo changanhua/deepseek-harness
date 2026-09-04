@@ -81,7 +81,7 @@ function fakeResponse(): {
   return { response, state }
 }
 
-async function mounted(config?: { trustedHosts?: string[] }): Promise<{
+async function mounted(config?: { trustedHosts?: string[]; browserAuth?: boolean }): Promise<{
   routes: WebRoute[]
   upgrades: WebUpgradeRoute[]
   connection: HostConnectionHandle
@@ -235,6 +235,20 @@ describe('connection node half', () => {
       host: 'harness.example',
       cookie: browserCookie(connection, 'harness.example'),
     }))).toBeUndefined()
+    await dispose()
+  })
+
+  it('serves loopback index and API requests without a launch token when browser auth is disabled', async () => {
+    const { routes, connection, dispose } = await mounted({ browserAuth: false })
+    const root = fakeResponse()
+    expect(connection.authenticatedUrl('http://127.0.0.1:3080/')).toBe('http://127.0.0.1:3080/')
+    expect(connection.authorizeIndex(fakeRequest({ host: '127.0.0.1:3080' }, '/'), root.response)).toBe(true)
+    expect(root.state).toEqual({})
+    expect(connection.requestRejection(fakeRequest({ host: '127.0.0.1:3080' }))).toBeUndefined()
+
+    const api = fakeResponse()
+    await routes[0]!.handler(fakeRequest({ host: '127.0.0.1:3080' }), api.response)
+    expect(api.state.status).toBe(404)
     await dispose()
   })
 
