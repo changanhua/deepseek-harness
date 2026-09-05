@@ -2625,6 +2625,8 @@ Requires: `storage`
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
+  /** Storage hub registration name. Existing configurations default to `sqlite`. */
+  backendName?: string
   /**
    * Filesystem path to the SQLite database file. The special value `:memory:`
    * opens an in-process database (tests). On filesystems with POSIX modes,
@@ -2642,6 +2644,16 @@ export interface Config {
    * {@link JournalMode}.
    */
   journalMode?: JournalMode
+  /** Base for relative paths; the legacy behavior resolves from the process working directory. */
+  pathBase?: StoragePathBase
+  /** Hold the file for this connection's lifetime, or retain shared SQLite locking. */
+  ownership?: 'shared' | 'exclusive'
+  /** Explicit SQLite synchronous level; omission preserves SQLite's existing default. */
+  synchronous?: 'normal' | 'full' | 'extra'
+  /** Non-zero identity; only a newly created file or an exact stamped match opens. */
+  applicationId?: number
+  /** Require owner-private paths and reject unsafe aliases or writable ancestors. */
+  privateDirectory?: boolean
 }
 
 /**
@@ -2652,9 +2664,11 @@ export interface Config {
  * contradicts the durability clause of the KV backend contract.
  */
 export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
+
+export type StoragePathBase = 'cwd' | 'dsh-home'
 ```
 
-Source: [`packages/storage/storage-sqlite/src/index.ts:24`](../packages/storage/storage-sqlite/src/index.ts)
+Source: [`packages/storage/storage-sqlite/src/index.ts:39`](../packages/storage/storage-sqlite/src/index.ts)
 
 <a id="deepseek-aidsh-subagent-acp"></a>
 

@@ -84,8 +84,10 @@ export class DomainFacility {
   /**
    * Open one declared domain. Steps, each failing the whole call: reject a
    * name that is already open (`already-open`); resolve the backend route
-   * (`backend-not-found` passes through from the hub); require its `kv` facet
-   * (`facet-unsupported`); open the unit projected from the spec (backend
+   * (`backend-not-found` passes through from the hub); require every backend
+   * guarantee declared by the spec (`backend-requirement-unsatisfied`), then
+   * require its `kv` facet (`facet-unsupported`); open the unit projected from
+   * the spec (backend
    * `version-mismatch`/`malformed-medium` pass through); load and validate
    * every stored record against the spec's zod schemas (`invalid-record`
    * with the offending table and key); construct the domain.
@@ -105,6 +107,14 @@ export class DomainFacility {
     try {
       const backendName = this.config.routes?.[spec.name] ?? this.config.backend
       const backend = this.ctx.storage.backend.get(backendName)
+      const available = new Set(backend.guarantees ?? [])
+      const missing = (spec.requires ?? []).filter(guarantee => !available.has(guarantee))
+      if (missing.length > 0) {
+        throw new DomainError(
+          'backend-requirement-unsatisfied',
+          `backend '${backendName}' routed for domain '${spec.name}' does not provide: ${missing.join(', ')}`,
+        )
+      }
       if (!backend.kv) {
         throw new DomainError(
           'facet-unsupported',
