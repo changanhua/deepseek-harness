@@ -777,7 +777,7 @@
     },
     "packages/bundle/personal-delivery": {
       "ignoreDependencies": [
-        "@deepseek-ai/.+"
+        "@changanhua/dsh-client-ui-delivery"
       ]
     },
     "packages/delivery/delivery-protocol": {

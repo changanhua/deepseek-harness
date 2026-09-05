@@ -8,19 +8,19 @@ import {
   codeVerifyIntentSchema,
   resolvedCodeChangeSchema,
   resolvedCodeVerifySchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   CompletionClaim,
   DispatchBinding,
   ResolvedCodeChange,
   ResolvedCodeVerify,
   WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   OperatorWorkQueue,
   WorkView,
-} from '@deepseek-ai/dsh-task-queue'
-import { AttemptId, WorkId } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
+import { AttemptId, WorkId } from '@changanhua/dsh-task-queue'
 
 type DeliveryKind = typeof CODE_CHANGE_KIND | typeof CODE_VERIFY_KIND
 type DeliveryResolved = ResolvedCodeChange | ResolvedCodeVerify

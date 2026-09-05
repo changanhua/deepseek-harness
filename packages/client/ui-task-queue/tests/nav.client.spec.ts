@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import type { LocaleKeysOf } from '@deepseek-ai/dsh-client-ui-slots'
-import type { QueueStatsView, QueueWorkStatus } from '@deepseek-ai/dsh-task-queue-remote/views'
+import type { QueueStatsView, QueueWorkStatus } from '@changanhua/dsh-task-queue-remote/views'
 import { badgeFor } from '../src/client/QueueNavEntry.tsx'
 import { en, type TaskQueueKey } from '../src/client/locales.ts'
 import type { QueueSnapshot } from '../src/client/store.ts'

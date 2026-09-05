@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type {} from '@deepseek-ai/dsh-task-queue-remote/remote'
+import type {} from '@changanhua/dsh-task-queue-remote/remote'
 import type { QueueNavEntryInjected, QueueWorkspaceInjected } from './contract/slots.ts'
 import { QueueNavEntry } from './QueueNavEntry.tsx'
 import { QueueWorkspace } from './QueueWorkspace.tsx'

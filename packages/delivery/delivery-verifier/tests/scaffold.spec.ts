@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it, vi } from 'vitest'
-import type { CompletionClaim } from '@deepseek-ai/dsh-delivery-protocol'
+import type { CompletionClaim } from '@changanhua/dsh-delivery-protocol'
 import {
   DeliveryVerifierError,
   MAX_VERIFICATION_OUTPUT_BYTES,

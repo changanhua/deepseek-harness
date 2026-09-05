@@ -1,4 +1,4 @@
-import type Delivery from '@deepseek-ai/dsh-delivery'
+import type Delivery from '@changanhua/dsh-delivery'
 import {
   CODE_CHANGE_KIND,
   CODE_VERIFY_KIND,
@@ -6,9 +6,9 @@ import {
   canonicalDigest,
   codeChangeIntentSchema,
   codeVerifyIntentSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import type { DispatchBinding } from '@deepseek-ai/dsh-delivery-protocol'
-import type { OperatorWorkQueue } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-delivery-protocol'
+import type { DispatchBinding } from '@changanhua/dsh-delivery-protocol'
+import type { OperatorWorkQueue } from '@changanhua/dsh-task-queue'
 import { exactBoundQueueView } from './validation.ts'
 
 function invalid(message: string, cause?: unknown): Error {

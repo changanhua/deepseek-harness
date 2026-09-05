@@ -12,7 +12,7 @@ import {
   WorkPacketId,
   canonicalDigest,
   evidenceBytesDigest,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   Config,
   LocalDeliveryEvidence,
@@ -304,13 +304,32 @@ describe('local Delivery evidence store', () => {
     const envelopeDigest = canonicalDigest(envelope)
     const id = EvidenceId(`evidence-sha256-${envelopeDigest.slice('sha256:'.length)}`)
     await writeFile(join(root, 'references', `${id}.json`), JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: seed.schemaVersion,
       id,
       ...envelope,
       uri: `dsh-evidence://sha256/${digest.slice('sha256:'.length)}`,
       createdAt: '2026-08-29T00:00:00.000Z',
     }))
     await expect(evidence.resolve(id)).rejects.toMatchObject({ code: 'read-failed' })
+    const absoluteLimitEvidence = new LocalDeliveryEvidence(new Context(), {
+      root,
+      maxBytes: 64 * 1024 * 1024 + 2,
+    })
+    await expect(absoluteLimitEvidence.resolve(id)).rejects
+      .toThrow('exceeds the configured complete-byte limit')
+
+    const configuredEnvelope = { ...envelope, byteLength: 4 }
+    const configuredEnvelopeDigest = canonicalDigest(configuredEnvelope)
+    const configuredId = EvidenceId(`evidence-sha256-${configuredEnvelopeDigest.slice('sha256:'.length)}`)
+    await writeFile(join(root, 'references', `${configuredId}.json`), JSON.stringify({
+      schemaVersion: seed.schemaVersion,
+      id: configuredId,
+      ...configuredEnvelope,
+      uri: `dsh-evidence://sha256/${digest.slice('sha256:'.length)}`,
+      createdAt: '2026-08-29T00:00:00.000Z',
+    }))
+    await expect(evidence.resolve(configuredId)).rejects
+      .toThrow('exceeds the configured complete-byte limit')
   })
 
   it('refuses a link-shaped reference directory without writing through it', async () => {

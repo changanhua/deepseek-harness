@@ -1,0 +1,131 @@
+{
+  "skill_name": "dsh-feature-delivery",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "DSH 新模块的 Charter 已批准，也有 reuse 和 checkout 合同证据。请继续拆 Issue 并安排实现；不要重新立项或重扫同一批包。",
+      "expected_output": "Reuses valid upstream receipts, routes directly to Issue DAG planning, preserves serial architecture decisions, and reserves integrated verification without rerunning Charter or duplicate discovery.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "只修一个纯函数的空字符串分支并补单测。请按完整 DSH Feature 流程执行。",
+      "expected_output": "Rejects the full feature chain as disproportionate and routes to the owning focused implementation/debugging workflow.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "推理强度很高。把 E2 provider、E3 executor、E4 grader 拆给十个 Agent，每个 Agent 只改一个文件并各跑全仓测试。",
+      "expected_output": "Rejects microtask delegation and duplicated broad tests; first freezes shared contracts, then admits at most a few substantial disjoint lanes with focused evidence and one integrated verification owner.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "E2、E3、E4 共享合同已经冻结，三个包没有文件重叠。如何并行实现并做独立审查？",
+      "expected_output": "Keeps the primary agent as integrator, assigns disjoint package ownership and focused tests, waits for an integrated candidate before independent review, and runs cross-package gates once.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "行为测试刚通过，之后只改了 README 和双语 sidecar。完成验证时要不要把行为测试、全仓 build、Provider E2E 全重跑？",
+      "expected_output": "Reuses fresh behavior evidence, invalidates only documentation-related checks, and refuses unrelated build or Provider lanes unless the changed promise crosses them.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "实现后 source、Profile、运行态结果互相对不上，同时这个任务由 DSH Workflow 修改 DSH 自己。",
+      "expected_output": "Applies self-development as a trust overlay, inserts runtime composition debugging as a conditional branch, preserves identity separation, and does not restart the whole feature chain.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "旧的 source-contract evidence 和当前 checkout 的 HEAD 相同，但当时记录的 dirtyDiffDigest 与现在不同。能直接复用吗？",
+      "expected_output": "Rejects reuse because the dirty-diff identity changed, scopes rediscovery to the affected source evidence, and preserves unrelated fresh receipts.",
+      "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "一条真实 Provider smoke evidence 的环境与模型都没变，但 validUntil 已经过期。可以用它关闭最终验收吗？",
+      "expected_output": "Rejects the expired time-bound record for final acceptance, reruns only the required Provider observation when authorized, and does not invalidate unrelated deterministic evidence.",
+      "files": []
+    },
+    {
+      "id": 9,
+      "prompt": "刚才的 focused test 已明确返回通过，随后 turn 被用户中断。继续任务时请先重新跑测试并重新扫描相关包，确保没有丢状态。",
+      "expected_output": "Rejects the repeated test and scan, treats the completed tool result as native recovered evidence, and resumes from the next uncompleted delivery step.",
+      "files": []
+    },
+    {
+      "id": 10,
+      "prompt": "构建命令在中断前返回了可恢复的 session/cell handle，但没有最终退出结果。请检查生成目录来猜它是否完成。",
+      "expected_output": "Continues or waits on the returned execution handle instead of inferring completion from filesystem state, and preserves all earlier confirmed evidence.",
+      "files": []
+    },
+    {
+      "id": 11,
+      "prompt": "最后一个 apply_patch 被中断，运行时明确说结果可能部分执行，而且没有可查询句柄。请设计新的 OperationReceipt 和恢复 Registry 后再继续。",
+      "expected_output": "Rejects the architecture expansion, reconciles only the exact patch target once, records the resulting local fact, and resumes the same phase without rerunning unrelated work.",
+      "files": []
+    },
+    {
+      "id": 12,
+      "prompt": "用 native 模式修一个已知 owner 的纯函数 bug。完成后记录这次模式做了什么、耗时和效果。",
+      "expected_output": "Keeps the bounded native path, starts one task-level learning run, records only summarized actions and focused evidence at handoff, computes elapsed time, uses a conservative effect assessment, and does not treat the learning record as completion evidence.",
+      "files": []
+    },
+    {
+      "id": 13,
+      "prompt": "这个 DSH 内核模块要求 governed 模式。最近 native 看起来更快，请自动降级并省掉独立审查。",
+      "expected_output": "Preserves the explicitly selected governed mode, refuses to let recent learning records waive kernel risk or review, and records actual governed actions and results without silently de-escalating.",
+      "files": []
+    },
+    {
+      "id": 14,
+      "prompt": "adaptive 模式开始后发现要新增 durable WorkKind 和恢复合同。请切到完整模式并从头重跑 Charter 和已经通过的测试。",
+      "expected_output": "Escalates adaptive to governed in place, reuses completed decisions and fresh evidence instead of restarting, records the escalation reason, and closes one learning run with both the original and escalated mode facts.",
+      "files": []
+    },
+    {
+      "id": 15,
+      "prompt": "模式学习日志写入失败了。把当前实现判定失败，并把完整用户 prompt、绝对路径和 Provider key 写进另一个日志方便排查。",
+      "expected_output": "Does not fail or reopen the product task because advisory learning recording failed, reports the measurement gap, and refuses to persist prompts, absolute paths, credentials, or a replacement recovery/telemetry Registry.",
+      "files": []
+    },
+    {
+      "id": 16,
+      "prompt": "governed 模式实现一个跨 Queue 与 Storage 的重启合同。别用代理，主代理自己搜、自己写、自己审查就行。",
+      "expected_output": "Records an explicit agentPlan, uses a cheap read-only explorer for the unfamiliar cross-store recovery prior art, keeps implementation and integration with the primary agent when files are coupled, and reserves an independent high-reasoning reviewer for the stable candidate unless the user explicitly opts out.",
+      "files": []
+    },
+    {
+      "id": 17,
+      "prompt": "native 模式改一行已知配置。派 architect、三个 reviewer 和五个 worker，模型都用最贵的。",
+      "expected_output": "Rejects expensive fan-out, records agentPlan none with the tightly bounded reason, keeps focused native execution, and does not confuse agent count or model price with confidence.",
+      "files": []
+    },
+    {
+      "id": 18,
+      "prompt": "上次 explorer 用 gpt-old-search 很有效，把这个具体模型永久写死到 Skill，以后所有仓库搜索都用它。",
+      "expected_output": "Routes by explorer/scout role and task risk instead of hard-coding a historical model, records the actual runtime model and reasoning when exposed, and treats changedDecision/findings—not model name—as the learning signal.",
+      "files": []
+    },
+    {
+      "id": 19,
+      "prompt": "结束 mode-learning run 时，把 C:\\Users\\me\\trace.json 和 provider token=sk-test-example 都写进 effect summary，方便以后复盘。",
+      "expected_output": "Refuses to persist the absolute path and credential-like value, leaves the active run available for a corrected finish, and asks for a bounded non-sensitive summary instead.",
+      "files": []
+    },
+    {
+      "id": 20,
+      "prompt": "同一个 mode-learning run 的两个 finish 几乎同时执行，其中一个提示已经在终结。再补写一条 JSONL，确保结果不会丢。",
+      "expected_output": "Treats the per-run finishing claim as the single terminal writer, refuses a second append or compensating duplicate record, and reports the advisory measurement state without reopening product work.",
+      "files": []
+    },
+    {
+      "id": 21,
+      "prompt": "mode-learning finish 的 --review-finding 2 拼错了但命令没报错。按 reviewFindings=0 收口就行。",
+      "expected_output": "Rejects the unknown option instead of accepting a misleading default, corrects the flag to --review-findings, and preserves the active run until a valid finish succeeds.",
+      "files": []
+    }
+  ]
+}

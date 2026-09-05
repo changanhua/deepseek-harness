@@ -22,16 +22,17 @@ async function bench(snapshot = { contractsWithoutPacket: [], cards: [] }) {
   const locale = new LocaleRuntime(ctx)
   const registerLocale = vi.spyOn(locale, 'register')
   ctx.provide('locale', locale)
-  class RemoteService extends Service {
-    constructor(serviceCtx: Context) { super(serviceCtx, 'remote') }
-  }
-  new RemoteService(ctx)
   const snapshotCall = vi.fn(async (_signal?: AbortSignal) => ({
     ok: true as const,
     value: snapshot,
   }))
   const remote = {
     snapshot: snapshotCall,
+    createCase: vi.fn(),
+    reviseCase: vi.fn(),
+    recordRequirementDecision: vi.fn(),
+    publishIssue: vi.fn(),
+    resolvePublication: vi.fn(),
     importIssue: vi.fn(),
     createPacket: vi.fn(),
     startChange: vi.fn(),
@@ -39,7 +40,15 @@ async function bench(snapshot = { contractsWithoutPacket: [], cards: [] }) {
     readEvidence: vi.fn(),
     recordDecision: vi.fn(),
   }
-  ctx.provide('remote.delivery', remote)
+  class RemoteService extends Service {
+    constructor(serviceCtx: Context) { super(serviceCtx, 'remote') }
+
+    $mount(): Promise<() => Promise<void>> {
+      const dispose = ctx.reflect.provide('remote.delivery', remote)
+      return Promise.resolve(async () => { await dispose() })
+    }
+  }
+  new RemoteService(ctx)
   const slots = ctx.get('slots') as SlotRegistry
   slots.register({
     name: 'root',
@@ -60,7 +69,29 @@ describe('ui-delivery client composition', () => {
     await expect(ctx.plugin(DeliveryInvariant).await()).resolves.toBeDefined()
   })
   it('declares only the Remote, locale, and two existing slot services it consumes', () => {
-    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.delivery'])
+    expect(inject).toEqual(['slots', 'locale', 'remote'])
+  })
+
+  it('mounts its optional Remote contribution before registering the workspace', async () => {
+    const b = await bench()
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+
+    await vi.waitFor(() => {
+      expect(b.slots.entries('shell.view')).toHaveLength(1)
+    }, { timeout: 500 })
+    await fiber.await()
+
+    await fiber.dispose()
+    expect(b.ctx.get('remote.delivery')).toBeUndefined()
+  })
+
+  it('disposes partial UI and Remote registration when slot composition fails', async () => {
+    const b = await bench()
+    vi.spyOn(b.slots, 'register').mockImplementation(() => {
+      throw new Error('controlled slot registration failure')
+    })
+    await expect(apply(b.ctx)).rejects.toThrow('controlled slot registration failure')
+    expect(b.ctx.get('remote.delivery')).toBeUndefined()
   })
 
   it('registers one Delivery module and one shared host-backed workspace projection', async () => {
@@ -98,7 +129,7 @@ describe('ui-delivery client composition', () => {
     let observedSignal: AbortSignal | undefined
     let settle!: (value: { ok: true; value: { contractsWithoutPacket: never[]; cards: never[] } }) => void
     const b = await bench()
-    const remote = b.ctx.get('remote.delivery') as unknown as {
+    const remote = b.remote as unknown as {
       snapshot(signal?: AbortSignal): Promise<unknown>
     }
     vi.spyOn(remote, 'snapshot').mockImplementation((signal?: AbortSignal) => {
@@ -124,19 +155,17 @@ describe('ui-delivery client composition', () => {
     await fiber.await()
     const face = (b.slots.entries('shell.view')[0]!.inject as unknown as () => {
       hooks: { delivery: { getSnapshot(): { pending: string | null; status: string } } }
-      importIssue(input: { issueUrl: string; repositoryId: string }): Promise<boolean>
+      importIssue(input: { issueUrl: string }): Promise<boolean>
     })()
     await vi.waitFor(() => { expect(face.hooks.delivery.getSnapshot().status).toBe('ready') })
 
     await expect(face.importIssue({
       issueUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/1',
-      repositoryId: 'repository-1',
     })).resolves.toBe(true)
 
     expect(b.remote.importIssue).toHaveBeenCalledWith(
       {
         issueUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/1',
-        repositoryId: 'repository-1',
       },
       expect.any(AbortSignal),
     )
@@ -146,6 +175,11 @@ describe('ui-delivery client composition', () => {
   it('wires every workspace action and the navigation projection to the shared controller', async () => {
     const b = await bench()
     for (const operation of [
+      b.remote.createCase,
+      b.remote.reviseCase,
+      b.remote.recordRequirementDecision,
+      b.remote.publishIssue,
+      b.remote.resolvePublication,
       b.remote.createPacket,
       b.remote.startVerification,
       b.remote.recordDecision,
@@ -160,6 +194,11 @@ describe('ui-delivery client composition', () => {
       hooks: { delivery: unknown }
       refresh(): void
       cancel(): void
+      createCase(input: unknown): Promise<boolean>
+      reviseCase(input: unknown): Promise<boolean>
+      recordRequirementDecision(input: unknown): Promise<boolean>
+      publishIssue(input: unknown): Promise<boolean>
+      resolvePublication(input: unknown): Promise<boolean>
       createPacket(input: unknown): Promise<boolean>
       startVerification(input: unknown): Promise<boolean>
       selectPacket(packetId: string): void
@@ -173,6 +212,11 @@ describe('ui-delivery client composition', () => {
     expect(navigation.hooks.delivery).toBe(workspace.hooks.delivery)
     workspace.refresh()
     workspace.cancel()
+    await expect(workspace.createCase({ title: 'Case' })).resolves.toBe(true)
+    await expect(workspace.reviseCase({ caseId: 'case-1' })).resolves.toBe(true)
+    await expect(workspace.recordRequirementDecision({ caseId: 'case-1' })).resolves.toBe(true)
+    await expect(workspace.publishIssue({ caseId: 'case-1' })).resolves.toBe(true)
+    await expect(workspace.resolvePublication({ publicationId: 'publication-1' })).resolves.toBe(true)
     await expect(workspace.createPacket({ contractRevisionId: 'contract-1' })).resolves.toBe(true)
     await vi.waitFor(() => { expect(b.snapshotCall.mock.calls.length).toBeGreaterThan(1) })
     await expect(workspace.startVerification({ packetId: 'packet-1' })).resolves.toBe(true)
@@ -183,6 +227,11 @@ describe('ui-delivery client composition', () => {
     })).resolves.toBe(true)
     await expect(workspace.recordDecision({ packetId: 'packet-1' })).resolves.toBe(true)
 
+    expect(b.remote.createCase).toHaveBeenCalled()
+    expect(b.remote.reviseCase).toHaveBeenCalled()
+    expect(b.remote.recordRequirementDecision).toHaveBeenCalled()
+    expect(b.remote.publishIssue).toHaveBeenCalled()
+    expect(b.remote.resolvePublication).toHaveBeenCalled()
     expect(b.remote.createPacket).toHaveBeenCalled()
     expect(b.remote.startVerification).toHaveBeenCalled()
     expect(b.remote.readEvidence).toHaveBeenCalled()

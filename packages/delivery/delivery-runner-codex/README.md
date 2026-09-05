@@ -3,7 +3,7 @@ description: "Run one bounded Personal Delivery code-change Attempt through the 
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-runner-codex
+# @changanhua/dsh-delivery-runner-codex
 
 English | [中文](README.zh.md)
 
@@ -49,7 +49,7 @@ const claim = await run.done
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The runner validates Contract, Packet, resolved specification, lease, and evidence identities before it publishes a claim. It opens the worktree through `openWorkspace(signal)`, supplies only `lease.cwd` to the parent-free app-server transport, and disposes the complete subprocess tree before it parses the model envelope or asks the lease to checkpoint. A `completed` envelope requires a clean descendant checkpoint and publishes bounded model-output plus checkpoint-metadata evidence before the lease is removed. `blocked`, `needs-decision`, and `needs-scope-change` claims carry no invented checkpoint facts and preserve the lease. `DeliveryCodexRunnerError` distinguishes `invalid-request`, `startup`, `product`, `canceled`, `completion`, `ownership-lost`, and `cleanup`; an unpublished startup rollback that cannot prove process-tree quiescence is `cleanup` and preserves the lease, and every cleanup failure retains the earlier failure in an `AggregateError` cause.
+The runner validates Contract, Packet, resolved specification, lease, and evidence identities before it publishes a claim. It opens the worktree through `openWorkspace(signal)`, supplies only `lease.cwd` to the parent-free app-server transport, and disposes the complete subprocess tree before it parses the model envelope or asks the lease to checkpoint. On Windows, the explicit Codex child environment enables Git long-path handling in the Attempt worktree. A `completed` envelope requires a clean descendant checkpoint and publishes bounded model-output plus checkpoint-metadata evidence before the lease is removed. If envelope parsing fails, the runner publishes the retained model output before reporting the completion failure and includes its Evidence id in the diagnostic. `blocked`, `needs-decision`, and `needs-scope-change` claims carry no invented checkpoint facts and preserve the lease. `DeliveryCodexRunnerError` distinguishes `invalid-request`, `startup`, `product`, `canceled`, `completion`, `ownership-lost`, and `cleanup`; an unpublished startup rollback that cannot prove process-tree quiescence is `cleanup` and preserves the lease, and every cleanup failure retains the earlier failure in an `AggregateError` cause.
 
 -----
 

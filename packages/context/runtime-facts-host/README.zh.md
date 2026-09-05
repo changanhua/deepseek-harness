@@ -1,8 +1,8 @@
-# @deepseek-ai/dsh-runtime-facts-host
+# @changanhua/dsh-runtime-facts-host
 
 [English](README.md) | 中文
 
-[`@deepseek-ai/dsh-runtime-facts`](../runtime-facts/README.zh.md) 的宿主进程 Service Provider。它拥有 V1 宿主清单，在进程和启动环境为权威来源时取得快照，并把可热加载的执行环境与 Web 服务器值委托给各自所属服务。
+[`@changanhua/dsh-runtime-facts`](../runtime-facts/README.zh.md) 的宿主进程 Service Provider。它拥有 V1 宿主清单，在进程和启动环境为权威来源时取得快照，并把可热加载的执行环境与 Web 服务器值委托给各自所属服务。
 
 ## 事实清单
 

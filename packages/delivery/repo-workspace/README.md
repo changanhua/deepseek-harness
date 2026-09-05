@@ -3,7 +3,7 @@ description: "Repository identity verification and Attempt-owned isolated Git ch
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-repo-workspace
+# @changanhua/dsh-repo-workspace
 
 English | [中文](README.zh.md)
 

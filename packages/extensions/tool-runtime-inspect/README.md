@@ -1,4 +1,4 @@
-# `@deepseek-ai/dsh-tool-runtime-inspect`
+# `@changanhua/dsh-tool-runtime-inspect`
 
 English | [中文](README.zh.md)
 

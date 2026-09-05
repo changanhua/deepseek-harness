@@ -20,7 +20,8 @@ jobs:
   windows-build:
     name: Windows build and typecheck
     if: >-
-      github.actor == 'changanhua'
+      github.repository == 'changanhua/deepseek-harness'
+      && github.actor == 'changanhua'
       && github.event.pull_request.user.login == 'changanhua'
       && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-latest
@@ -44,9 +45,15 @@ jobs:
       - name: Install immutable dependencies
         shell: pwsh
         run: pnpm install --frozen-lockfile
+      - name: Check package identities
+        shell: pwsh
+        run: pnpm run check:package-identities
       - name: Build repository
         shell: pwsh
         run: pnpm run build
+      - name: Verify personal source distribution
+        shell: pwsh
+        run: pnpm run verify:personal-source
       - name: Confirm client typecheck
         shell: pwsh
         run: pnpm run typecheck:contracts-ready
@@ -54,7 +61,8 @@ jobs:
   c0-diff:
     name: C0 differential quality
     if: >-
-      github.actor == 'changanhua'
+      github.repository == 'changanhua/deepseek-harness'
+      && github.actor == 'changanhua'
       && github.event.pull_request.user.login == 'changanhua'
       && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-latest
@@ -156,6 +164,7 @@ jobs:
     needs: [windows-build, c0-diff]
     if: >-
       always()
+      && github.repository == 'changanhua/deepseek-harness'
       && github.event_name == 'pull_request'
       && github.actor == 'changanhua'
       && github.event.pull_request.user.login == 'changanhua'

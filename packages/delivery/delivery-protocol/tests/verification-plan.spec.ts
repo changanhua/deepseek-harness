@@ -6,7 +6,7 @@ import {
   resolveVerificationPlan,
   verificationPlanDocumentSchema,
   verificationPlanSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { describe, expect, it } from 'vitest'
 
 const fixtures = JSON.parse(

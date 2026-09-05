@@ -4,7 +4,7 @@
  * helpers never read the clock or mutate their input rows.
  */
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { QueueTaskState, QueueWorkSummaryView } from '@deepseek-ai/dsh-task-queue-remote/views'
+import type { QueueTaskState, QueueWorkSummaryView } from '@changanhua/dsh-task-queue-remote/views'
 
 /** The four operator filters over the `queued | running | attention | done` projection. */
 export type QueueFilter = 'all' | 'active' | 'attention' | 'done'

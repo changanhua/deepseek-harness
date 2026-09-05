@@ -3,7 +3,7 @@ description: "Personal Delivery 的不可变内容寻址证据发布与校验读
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-evidence
+# @changanhua/dsh-delivery-evidence
 
 [English](README.md) | 中文
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyChange, foldChanges, WorkId } from '@deepseek-ai/dsh-task-queue'
+import { applyChange, foldChanges, WorkId } from '@changanhua/dsh-task-queue'
 import { admitted, work } from './fixtures.ts'
 
 describe('durable projection immutability', () => {

@@ -2,7 +2,7 @@
  * Owned runtime-fact registry with synchronous baseline projection and
  * explicit asynchronous inspection.
  *
- * @module @deepseek-ai/dsh-runtime-facts
+ * @module @changanhua/dsh-runtime-facts
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'

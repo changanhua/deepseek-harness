@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-delivery-protocol",
+  "name": "@changanhua/dsh-delivery-protocol",
   "description": "Queue-independent durable records, strict runtime schemas, and canonical digests for Personal Delivery",
   "version": "0.1.2-alpha.1",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/delivery/delivery-protocol"
   },
   "type": "module",
@@ -45,8 +42,9 @@
   "devDependencies": {
     "@deepseek-ai/dsh-brand": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
     "@deepseek-ai/dsh-timeout": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
-  }
+  },
+  "private": true
 }

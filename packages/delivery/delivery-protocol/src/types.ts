@@ -5,24 +5,26 @@ import type {
   AcceptanceDecisionId,
   CompletionClaimId,
   ContractRevisionId,
+  DeliveryCaseId,
   DispatchBindingId,
   EvidenceId,
   ExecutorId,
   GitBlobId,
   GitCommitId,
+  IssuePublicationId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   RepositoryId,
   RepositoryRelativePath,
+  RequirementDecisionId,
   Sha256Digest,
-  SourceRefId,
   VerificationCheckId,
   VerificationVerdictId,
   WorkPacketId,
 } from './brand.ts'
 
 /** Current durable protocol version. */
-export type DeliverySchemaVersion = 1
+export type DeliverySchemaVersion = 2
 /** Supported ownerless Queue kinds. */
 export type DeliveryWorkKind = 'code.change@1' | 'code.verify@1'
 
@@ -32,20 +34,83 @@ export interface GitHubRepositoryRef {
   readonly name: string
 }
 
-/** Exact GitHub Issue snapshot adopted by a contract revision. */
-export interface SourceRef {
+/** Provenance of one immutable requirement revision. */
+export type RequirementOrigin =
+  | { readonly kind: 'human'; readonly actorId: string }
+  | {
+    readonly kind: 'github-import'
+    readonly repository: GitHubRepositoryRef
+    readonly issueNumber: number
+    readonly contentDigest: Sha256Digest
+  }
+
+/** Durable Personal Delivery Case anchoring one revision lineage. */
+export interface DeliveryCase {
   readonly schemaVersion: DeliverySchemaVersion
-  readonly id: SourceRefId
-  readonly provider: 'github'
+  readonly id: DeliveryCaseId
+  readonly repositoryId: RepositoryId
+  readonly headRevisionId: ContractRevisionId
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+/** Human-only requirement decision over one exact Case revision. */
+export interface RequirementDecision {
+  readonly schemaVersion: DeliverySchemaVersion
+  readonly id: RequirementDecisionId
+  readonly caseId: DeliveryCaseId
+  readonly revisionId: ContractRevisionId
+  readonly decision: 'approved' | 'rejected' | 'deferred'
+  readonly reason: string
+  readonly actor: { readonly kind: 'human'; readonly actorId: string }
+  readonly decisionNonce: string
+  readonly decidedAt: string
+}
+
+/** Exact published GitHub Issue coordinates retained by one publication. */
+export interface GitHubIssueRef {
   readonly repository: GitHubRepositoryRef
   readonly issueNumber: number
-  readonly canonicalUrl: string
-  readonly updatedAt: string
-  readonly title: string
-  readonly body: string
-  readonly contentDigest: Sha256Digest
-  readonly createdAt: string
+  readonly url: string
 }
+
+/** Safe coarse failure classification for one publication attempt. */
+export type PublicationFailureCategory =
+  | 'unmapped-repository'
+  | 'missing-credential'
+  | 'unapproved-revision'
+  | 'not-ready'
+  | 'rejected'
+  | 'invalid-response'
+  | 'transport'
+  | 'canceled'
+
+/** Truthful failure retained without raw provider detail or credentials. */
+export interface PublicationFailure {
+  readonly sideEffect: 'not-started' | 'unknown'
+  readonly category: PublicationFailureCategory
+  readonly detail: string
+  readonly occurredAt: string
+}
+
+/** One Issue publication attempt for an approved ready Case revision. */
+export type IssuePublication = {
+  readonly schemaVersion: DeliverySchemaVersion
+  readonly id: IssuePublicationId
+  readonly caseId: DeliveryCaseId
+  readonly revisionId: ContractRevisionId
+  readonly repository: GitHubRepositoryRef
+  readonly renderedDigest: Sha256Digest
+  readonly marker: string
+  readonly createdAt: string
+  readonly updatedAt: string
+} & (
+  | { readonly phase: 'prepared'; readonly issue: null; readonly failure: null }
+  | { readonly phase: 'publishing'; readonly issue: null; readonly failure: null }
+  | { readonly phase: 'published'; readonly issue: GitHubIssueRef; readonly failure: null }
+  | { readonly phase: 'failed'; readonly issue: null; readonly failure: PublicationFailure & { readonly sideEffect: 'not-started' } }
+  | { readonly phase: 'unknown'; readonly issue: null; readonly failure: PublicationFailure & { readonly sideEffect: 'unknown' } }
+)
 
 /** Human-verifiable outcome clause. */
 export interface AcceptanceClause {
@@ -103,12 +168,13 @@ export interface ReferenceLink {
   readonly url: string
 }
 
-/** Immutable adoption of one Issue snapshot and its delivery boundary. */
+/** Immutable requirement revision and its delivery boundary. */
 export interface ContractRevision {
   readonly schemaVersion: DeliverySchemaVersion
   readonly id: ContractRevisionId
   readonly previousRevisionId: ContractRevisionId | null
-  readonly sourceRef: SourceRef
+  readonly origin: RequirementOrigin
+  readonly title: string
   readonly repositoryId: RepositoryId | null
   readonly outcome: string | null
   readonly context: string

@@ -1,8 +1,9 @@
 import {
   acceptedDecisionFixture,
   contractRevisionFixture,
+  issuePublicationFixture,
   readyWorkPacketFixture,
-} from '@deepseek-ai/dsh-delivery-testkit'
+} from '@changanhua/dsh-delivery-testkit'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('zod', async () => import('../../delivery-protocol/node_modules/zod/index.js'))
@@ -57,9 +58,28 @@ describe('Delivery Typert browser result schemas', () => {
 
     const record = await resultSchema('recordDecision')
     const snapshot = await resultSchema('snapshot')
+    const publish = await resultSchema('publishIssue')
+    const resolvePublication = await resultSchema('resolvePublication')
+    const publication = issuePublicationFixture({ phase: 'published' })
+    const publicationView = {
+      id: publication.id,
+      caseId: publication.caseId,
+      revisionId: publication.revisionId,
+      phase: publication.phase,
+      failureCategory: null,
+      issue: publication.issue,
+      updatedAt: publication.updatedAt,
+      marker: publication.marker,
+      renderedDigest: publication.renderedDigest,
+      credential: 'host-only-token',
+    }
     const recordWire = record.parse(decision)
+    const publishWire = publish.parse(publicationView)
+    const resolutionWire = resolvePublication.parse(publicationView)
     const snapshotWire = snapshot.parse({
+      cases: [],
       contractsWithoutPacket: [],
+      publications: [publicationView],
       cards: [{
         contractRevision: contract,
         packet,
@@ -72,12 +92,23 @@ describe('Delivery Typert browser result schemas', () => {
       }],
     })
 
-    for (const wire of [recordWire, snapshotWire]) {
+    // The decision projection strips the Host-only decision actor; the
+    // version-2 Contract revision origin keeps its requirement-source actorId.
+    const recordSerialized = JSON.stringify(recordWire)
+    expect(recordSerialized).not.toContain('host-only-operator')
+    expect(recordSerialized).not.toContain('host-only-nonce')
+    expect(recordSerialized).not.toContain('actorId')
+    expect(recordSerialized).not.toContain('decisionNonce')
+    const snapshotSerialized = JSON.stringify(snapshotWire)
+    expect(snapshotSerialized).not.toContain('host-only-operator')
+    expect(snapshotSerialized).not.toContain('host-only-nonce')
+    expect(snapshotSerialized).not.toContain('decisionNonce')
+    for (const wire of [publishWire, resolutionWire, snapshotWire]) {
       const serialized = JSON.stringify(wire)
-      expect(serialized).not.toContain('host-only-operator')
-      expect(serialized).not.toContain('host-only-nonce')
-      expect(serialized).not.toContain('actorId')
-      expect(serialized).not.toContain('decisionNonce')
+      expect(serialized).not.toContain(publication.marker)
+      expect(serialized).not.toContain(publication.renderedDigest)
+      expect(serialized).not.toContain('host-only-token')
+      expect(serialized).not.toContain('credential')
     }
   })
 })

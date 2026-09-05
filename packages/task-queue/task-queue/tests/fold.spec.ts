@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { applyChange as applyChangeStrict, foldChanges as foldChangesStrict, hydrateFoldedQueue, lookupReceipt, snapshotFoldedQueue, AttemptId, AttentionId, BatchId, NotificationId, WorkId } from '@deepseek-ai/dsh-task-queue'
-import type { ChangeSet, FoldedQueue } from '@deepseek-ai/dsh-task-queue'
+import { applyChange as applyChangeStrict, foldChanges as foldChangesStrict, hydrateFoldedQueue, lookupReceipt, snapshotFoldedQueue, AttemptId, AttentionId, BatchId, NotificationId, WorkId } from '@changanhua/dsh-task-queue'
+import type { ChangeSet, FoldedQueue } from '@changanhua/dsh-task-queue'
 import { AT, LATER, admitted, batch, failure, receipt, result, running, started, work } from './fixtures.ts'
 
 /** Feed untrusted persisted facts to the runtime fold, which must reject malformed records. */

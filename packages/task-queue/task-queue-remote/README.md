@@ -16,7 +16,7 @@ The `./views` export owns JSON-compatible browser types: `QueueWorkSummaryView`,
 
 ## Consumers
 
-- `@deepseek-ai/dsh-client-ui-task-queue` renders the Queue workbench.
+- `@changanhua/dsh-client-ui-task-queue` renders the Queue workbench.
 - `@deepseek-ai/dsh-api-remotes` mounts the generated Remote contribution.
 
 ## Model Experience

@@ -3,7 +3,7 @@ description: "Personal Delivery 的仓库身份验证与 Attempt 独占隔离 Gi
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-repo-workspace
+# @changanhua/dsh-repo-workspace
 
 [English](README.md) | 中文
 

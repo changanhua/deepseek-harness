@@ -1,39 +1,51 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import type {
-  AdoptContractRevisionRequest,
+  CompleteIssuePublicationRequest,
   ContractRevisionDraft,
+  CreateDeliveryCaseRequest,
+  FailIssuePublicationRequest,
+  PrepareIssuePublicationRequest,
+  RecordRequirementDecisionRequest,
   ResolveVerificationSourceRequest,
-  SourceRefDraft,
+  ReviseDeliveryCaseRequest,
   WorkPacketDraft,
-} from '@deepseek-ai/dsh-delivery'
+} from '@changanhua/dsh-delivery'
 import {
   AcceptanceClauseId,
   ContractRevisionId,
+  DeliveryCaseId,
   ExecutorId,
   DispatchBindingId,
   EvidenceId,
   GitBlobId,
   GitCommitId,
+  IssuePublicationId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   RepositoryId,
   RepositoryRelativePath,
+  RequirementDecisionId,
   WorkPacketId,
   acceptanceDecisionSchema,
   canonicalDigest,
   completionClaimSchema,
   contractRevisionSchema,
+  deliveryCaseSchema,
   dispatchBindingSchema,
   evidenceRefSchema,
+  issuePublicationSchema,
+  issuePublicationIdForRevision,
+  requirementDecisionSchema,
   resumeCapsuleContentSchema,
-  sourceRefSchema,
   verificationPlanSchema,
   verificationVerdictSchema,
   workPacketSchema,
   type ContractRevision,
+  type DeliveryCase,
+  type GitHubIssueRef,
   type WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   FakeChangeWorkspaceLease,
   FakeDelivery,
@@ -44,12 +56,15 @@ import {
   boundBindingFixture,
   completedClaimFixture,
   contractRevisionFixture,
+  deliveryCaseFixture,
   evidenceRefFixture,
+  githubImportOriginFixture,
+  issuePublicationFixture,
   mountDeliveryTestkit,
   passedVerdictFixture,
   readyWorkPacketFixture,
+  requirementDecisionFixture,
   resumeCapsuleFixture,
-  sourceRefFixture,
   submittingBindingFixture,
   verificationPlanFixture,
   type MountedDeliveryTestkit,
@@ -61,6 +76,8 @@ const OTHER_COMMIT = GitCommitId('3333333333333333333333333333333333333333')
 const BLOB_ID = GitBlobId('4444444444444444444444444444444444444444')
 const REPOSITORY_ID = RepositoryId('repository-fixture')
 const PLAN_PATH = RepositoryRelativePath('.dsh/delivery-verification.json')
+const HUMAN_ACTOR = 'developer-fixture'
+const PUBLICATION_REPOSITORY = { owner: 'deepseek-ai', name: 'deepseek-harness' } as const
 
 function deferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
   let resolve = (): void => undefined
@@ -70,33 +87,101 @@ function deferred(): { readonly promise: Promise<void>; readonly resolve: () => 
   return { promise, resolve }
 }
 
-function adoptionRequest(
-  contract: ContractRevision,
-  idempotencyKey = 'adopt-contract-fixture-v1',
-): AdoptContractRevisionRequest {
-  const source: SourceRefDraft = {
-    repository: contract.sourceRef.repository,
-    issueNumber: contract.sourceRef.issueNumber,
-    canonicalUrl: contract.sourceRef.canonicalUrl,
-    updatedAt: contract.sourceRef.updatedAt,
-    title: contract.sourceRef.title,
-    body: contract.sourceRef.body,
-    contentDigest: contract.sourceRef.contentDigest,
+function revisionDraft(overrides: Partial<ContractRevisionDraft> = {}): ContractRevisionDraft {
+  const fixture = contractRevisionFixture()
+  return {
+    outcome: fixture.outcome,
+    context: fixture.context,
+    allowedScope: fixture.allowedScope,
+    forbiddenScope: fixture.forbiddenScope,
+    acceptanceClauses: fixture.acceptanceClauses,
+    openDecisions: fixture.openDecisions,
+    baseSelectionRule: fixture.baseSelectionRule,
+    verificationSource: fixture.verificationSource,
+    referenceLinks: fixture.referenceLinks,
+    ...overrides,
   }
-  const revision: ContractRevisionDraft = {
-    previousRevisionId: contract.previousRevisionId,
-    repositoryId: contract.repositoryId,
-    outcome: contract.outcome,
-    context: contract.context,
-    allowedScope: contract.allowedScope,
-    forbiddenScope: contract.forbiddenScope,
-    acceptanceClauses: contract.acceptanceClauses,
-    openDecisions: contract.openDecisions,
-    baseSelectionRule: contract.baseSelectionRule,
-    verificationSource: contract.verificationSource,
-    referenceLinks: contract.referenceLinks,
+}
+
+function createCaseRequest(
+  overrides: Partial<Omit<CreateDeliveryCaseRequest, 'idempotencyKey'>> = {},
+  idempotencyKey = 'create-case-fixture-v2',
+): CreateDeliveryCaseRequest {
+  return {
+    idempotencyKey,
+    repositoryId: REPOSITORY_ID,
+    origin: { kind: 'human', actorId: HUMAN_ACTOR },
+    title: 'Deliver one bounded change',
+    revision: revisionDraft(),
+    ...overrides,
   }
-  return { idempotencyKey, source, revision }
+}
+
+function reviseCaseRequest(
+  created: { readonly case: DeliveryCase; readonly revision: ContractRevision },
+  overrides: Partial<Omit<ReviseDeliveryCaseRequest, 'idempotencyKey'>> = {},
+  idempotencyKey = 'revise-case-fixture-v2',
+): ReviseDeliveryCaseRequest {
+  return {
+    idempotencyKey,
+    caseId: created.case.id,
+    expectedHeadRevisionId: created.revision.id,
+    origin: { kind: 'human', actorId: HUMAN_ACTOR },
+    title: 'Deliver one bounded change',
+    revision: revisionDraft(),
+    ...overrides,
+  }
+}
+
+function decisionRequest(
+  created: { readonly case: DeliveryCase; readonly revision: ContractRevision },
+  overrides: Partial<Omit<RecordRequirementDecisionRequest, 'idempotencyKey'>> = {},
+  idempotencyKey = 'decision-fixture-v2',
+): RecordRequirementDecisionRequest {
+  return {
+    idempotencyKey,
+    caseId: created.case.id,
+    revisionId: created.revision.id,
+    decision: 'approved',
+    reason: 'Requirement reviewed and approved.',
+    actorId: HUMAN_ACTOR,
+    decisionNonce: `nonce-${idempotencyKey}`,
+    ...overrides,
+  }
+}
+
+/** Create one Case and approve its root revision, the gate for Packets and publications. */
+async function createApprovedCase(
+  harness: MountedDeliveryTestkit,
+  key: string,
+  overrides: Partial<Omit<CreateDeliveryCaseRequest, 'idempotencyKey'>> = {},
+): Promise<{ case: DeliveryCase; revision: ContractRevision }> {
+  const created = await harness.delivery.createCase(createCaseRequest(overrides, `create-case-${key}`))
+  await harness.delivery.recordRequirementDecision(decisionRequest(created, {}, `decision-${key}`))
+  return created
+}
+
+function preparePublicationRequest(
+  created: { readonly case: DeliveryCase; readonly revision: ContractRevision },
+  overrides: Partial<Omit<PrepareIssuePublicationRequest, 'idempotencyKey'>> = {},
+  idempotencyKey = 'prepare-publication-fixture-v2',
+): PrepareIssuePublicationRequest {
+  const marker = '<!-- dsh-delivery:contracts-spec -->'
+  return {
+    idempotencyKey,
+    caseId: created.case.id,
+    revisionId: created.revision.id,
+    repository: PUBLICATION_REPOSITORY,
+    renderedDigest: canonicalDigest({ marker, revisionId: created.revision.id }),
+    marker,
+    ...overrides,
+  }
+}
+
+const PUBLISHED_ISSUE: GitHubIssueRef = {
+  repository: PUBLICATION_REPOSITORY,
+  issueNumber: 202,
+  url: 'https://github.com/deepseek-ai/deepseek-harness/issues/202',
 }
 
 function packetDraft(packet: WorkPacket): WorkPacketDraft {
@@ -110,27 +195,28 @@ function packetDraft(packet: WorkPacket): WorkPacketDraft {
   }
 }
 
-async function createStoredPacket(harness: MountedDeliveryTestkit): Promise<{
+async function createStoredPacket(harness: MountedDeliveryTestkit, key = 'stored-packet'): Promise<{
   readonly contract: ContractRevision
   readonly packet: WorkPacket
 }> {
-  const contract = await harness.delivery.adoptContractRevision(adoptionRequest(contractRevisionFixture()))
-  if (contract.repositoryId === null || contract.baseSelectionRule?.kind !== 'commit') {
+  const created = await createApprovedCase(harness, key)
+  const contract = created.revision
+  if (contract.baseSelectionRule?.kind !== 'commit') {
     throw new Error('delivery-testkit test fixture unexpectedly produced a not-ready Contract')
   }
-  harness.repoWorkspace.allowRevision(contract.repositoryId, contract.baseSelectionRule.commit)
+  harness.repoWorkspace.allowRevision(created.case.repositoryId, contract.baseSelectionRule.commit)
   const repository = await harness.repoWorkspace.resolveBase({
-    repositoryId: contract.repositoryId,
+    repositoryId: created.case.repositoryId,
     selectionRule: contract.baseSelectionRule,
   })
   const fixture = readyWorkPacketFixture({
     contractRevisionId: contract.id,
-    repositoryId: contract.repositoryId,
+    repositoryId: created.case.repositoryId,
     baseCommit: contract.baseSelectionRule.commit,
     acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
   })
   const packet = await harness.delivery.createWorkPacket({
-    idempotencyKey: 'create-packet-fixture-v1',
+    idempotencyKey: `create-packet-${key}`,
     contractRevisionId: contract.id,
     repository,
     packet: packetDraft(fixture),
@@ -244,8 +330,12 @@ async function resolveStoredEvidence(harness: MountedDeliveryTestkit, evidenceId
 
 describe('schema-validated Delivery fixtures', () => {
   it('builds every durable fixture through its production schema', () => {
-    expect(sourceRefSchema.parse(sourceRefFixture())).toEqual(sourceRefFixture())
     expect(contractRevisionSchema.parse(contractRevisionFixture())).toEqual(contractRevisionFixture())
+    expect(deliveryCaseSchema.parse(deliveryCaseFixture())).toEqual(deliveryCaseFixture())
+    expect(requirementDecisionSchema.parse(requirementDecisionFixture())).toEqual(requirementDecisionFixture())
+    for (const phase of ['prepared', 'publishing', 'published', 'failed', 'unknown'] as const) {
+      expect(issuePublicationSchema.parse(issuePublicationFixture({ phase }))).toEqual(issuePublicationFixture({ phase }))
+    }
     expect(verificationPlanSchema.parse(verificationPlanFixture())).toEqual(verificationPlanFixture())
     expect(workPacketSchema.parse(readyWorkPacketFixture())).toEqual(readyWorkPacketFixture())
     expect(dispatchBindingSchema.parse(submittingBindingFixture())).toEqual(submittingBindingFixture())
@@ -261,13 +351,38 @@ describe('schema-validated Delivery fixtures', () => {
     const first = contractRevisionFixture()
     const second = contractRevisionFixture()
     expect(first).not.toBe(second)
-    expect(first.sourceRef).not.toBe(second.sourceRef)
+    expect(first.origin).not.toBe(second.origin)
     expect(first.acceptanceClauses).not.toBe(second.acceptanceClauses)
     expect(first.acceptanceClauses[0]).not.toBe(second.acceptanceClauses[0])
-    expect(() => sourceRefFixture({ title: '' })).toThrow(/non-blank/)
+    expect(() => contractRevisionFixture({ title: '' })).toThrow(/non-blank/)
+    expect(() => githubImportOriginFixture({ issueNumber: 0 })).toThrow()
+    expect(() => contractRevisionFixture({
+      origin: githubImportOriginFixture({ repository: { owner: 'bad owner', name: 'deepseek-harness' } }),
+    })).toThrow()
     expect(() => readyWorkPacketFixture({ acceptanceClauseIds: [] })).toThrow()
     expect(contractRevisionFixture({ repositoryId: null }).repositoryId).toBeNull()
     expect(contractRevisionFixture({ baseSelectionRule: null }).baseSelectionRule).toBeNull()
+    expect(contractRevisionFixture({ verificationSource: null }).verificationSource).toBeNull()
+    expect(contractRevisionFixture({ previousRevisionId: ContractRevisionId('parent-revision') }).previousRevisionId)
+      .toBe('parent-revision')
+    expect(contractRevisionFixture({ outcome: null }).outcome).toBeNull()
+    expect(issuePublicationFixture().phase).toBe('prepared')
+    expect(issuePublicationFixture({ phase: 'published', issueNumber: 202 }).issue)
+      .toMatchObject({ issueNumber: 202, url: 'https://github.com/deepseek-ai/deepseek-harness/issues/202' })
+    expect(issuePublicationFixture({ phase: 'failed' }).failure)
+      .toMatchObject({ sideEffect: 'not-started' })
+    expect(issuePublicationFixture({ phase: 'unknown' }).failure)
+      .toMatchObject({ sideEffect: 'unknown' })
+    expect(() => issuePublicationFixture({ phase: 'prepared', issue: PUBLISHED_ISSUE })).toThrow()
+    expect(() => issuePublicationFixture({
+      phase: 'failed',
+      failure: {
+        sideEffect: 'unknown',
+        category: 'transport',
+        detail: 'A mismatched side-effect classification.',
+        occurredAt: '2026-08-29T00:00:00.000Z',
+      },
+    })).toThrow()
     expect(completedClaimFixture({ resumeCapsuleEvidenceId: EvidenceId('resume-evidence') }))
       .toMatchObject({ resumeCapsuleEvidenceId: 'resume-evidence' })
     expect(resumeCapsuleFixture({ checkpointCommit: null }).checkpointCommit).toBeNull()
@@ -324,51 +439,56 @@ describe('FakeDelivery contract', () => {
         allocateId: (family, ordinal) => `${family}-custom-${String(ordinal)}`,
       },
     })
-    const valid = contractRevisionFixture()
-    const badDigest = adoptionRequest(valid, 'bad-source-digest')
-    await expect(harness.delivery.adoptContractRevision({
-      ...badDigest,
-      source: { ...badDigest.source, body: 'mutated after digest' },
-    })).rejects.toMatchObject({ code: 'invalid-reference' })
-    await expect(harness.delivery.adoptContractRevision({
-      ...adoptionRequest(valid, 'missing-previous-revision'),
-      revision: {
-        ...adoptionRequest(valid).revision,
-        previousRevisionId: ContractRevisionId('missing-contract-revision'),
-      },
-    })).rejects.toMatchObject({ code: 'invalid-reference' })
-    await expect(harness.delivery.adoptContractRevision(adoptionRequest(valid, '')))
+    expect(() => githubImportOriginFixture({ repository: { owner: 'bad owner', name: 'deepseek-harness' } })).toThrow()
+    await expect(harness.delivery.createCase(createCaseRequest({}, '')))
       .rejects.toMatchObject({ code: 'idempotency-conflict' })
+    await expect(harness.delivery.recordRequirementDecision(decisionRequest({
+      case: deliveryCaseFixture({ id: DeliveryCaseId('missing-case') }),
+      revision: contractRevisionFixture({ id: ContractRevisionId('missing-revision') }),
+    }, {}, 'decision-missing-revision-v2'))).rejects.toMatchObject({ code: 'not-found' })
+    expect(harness.delivery.snapshot().contractRevisions).toEqual([])
 
-    const contract = await harness.delivery.adoptContractRevision(
-      adoptionRequest(valid, 'point-read-contract'),
-    )
-    expect(contract).toMatchObject({
-      id: 'contract-revision-custom-1',
-      createdAt: '2026-08-29T12:00:00.000Z',
-    })
-    expect(harness.delivery.getContractRevision(contract.id)).toEqual(contract)
+    const created = await harness.delivery.createCase(createCaseRequest({}, 'point-read-case-v2'))
+    expect(created.revision.id).toBe('contract-revision-custom-1')
+    expect(created.case.id).toBe('delivery-case-custom-1')
+    expect(created.case.createdAt).toBe('2026-08-29T12:00:00.000Z')
+    expect(harness.delivery.getCase(created.case.id)).toEqual(created.case)
+    expect(harness.delivery.getCase(DeliveryCaseId('missing-case'))).toBeUndefined()
+    expect(harness.delivery.getRequirementDecision(RequirementDecisionId('missing-decision'))).toBeUndefined()
+    expect(harness.delivery.getIssuePublication(IssuePublicationId('missing-publication'))).toBeUndefined()
     expect(harness.delivery.getContractRevision(ContractRevisionId('missing-contract'))).toBeUndefined()
+    expect(harness.delivery.getContractRevision(created.revision.id)).toEqual(created.revision)
     expect(harness.delivery.getWorkPacket(WorkPacketId('missing-packet'))).toBeUndefined()
     expect(harness.delivery.getDispatchBinding(DispatchBindingId('missing-binding'))).toBeUndefined()
 
-    if (contract.repositoryId === null || contract.baseSelectionRule?.kind !== 'commit') {
+    const other = await harness.delivery.createCase(createCaseRequest({}, 'point-read-other-case-v2'))
+    await expect(harness.delivery.recordRequirementDecision(decisionRequest(other, {
+      revisionId: created.revision.id,
+    }, 'decision-cross-case-v2'))).rejects.toMatchObject({ code: 'invalid-reference' })
+
+    const decision = await harness.delivery.recordRequirementDecision(
+      decisionRequest(created, {}, 'decision-point-read-v2'),
+    )
+    expect(decision.id).toBe('requirement-decision-custom-1')
+    expect(harness.delivery.getRequirementDecision(decision.id)).toEqual(decision)
+
+    if (created.revision.baseSelectionRule?.kind !== 'commit') {
       throw new Error('ready fixture lost repository facts')
     }
-    harness.repoWorkspace.allowRevision(contract.repositoryId, contract.baseSelectionRule.commit)
+    harness.repoWorkspace.allowRevision(created.case.repositoryId, created.revision.baseSelectionRule.commit)
     const repository = await harness.repoWorkspace.resolveBase({
-      repositoryId: contract.repositoryId,
-      selectionRule: contract.baseSelectionRule,
+      repositoryId: created.case.repositoryId,
+      selectionRule: created.revision.baseSelectionRule,
     })
     const fixture = readyWorkPacketFixture({
-      contractRevisionId: contract.id,
-      repositoryId: contract.repositoryId,
-      baseCommit: contract.baseSelectionRule.commit,
-      acceptanceClauseIds: contract.acceptanceClauses.map(clause => clause.id),
+      contractRevisionId: created.revision.id,
+      repositoryId: created.case.repositoryId,
+      baseCommit: created.revision.baseSelectionRule.commit,
+      acceptanceClauseIds: created.revision.acceptanceClauses.map(clause => clause.id),
     })
     const request = {
       idempotencyKey: 'point-read-packet',
-      contractRevisionId: contract.id,
+      contractRevisionId: created.revision.id,
       repository,
       packet: packetDraft(fixture),
     }
@@ -390,9 +510,9 @@ describe('FakeDelivery contract', () => {
       repository: otherRepository,
     })).rejects.toMatchObject({ code: 'invalid-reference' })
 
-    harness.repoWorkspace.allowRevision(contract.repositoryId, OTHER_COMMIT)
+    harness.repoWorkspace.allowRevision(created.case.repositoryId, OTHER_COMMIT)
     const otherBase = await harness.repoWorkspace.resolveBase({
-      repositoryId: contract.repositoryId,
+      repositoryId: created.case.repositoryId,
       selectionRule: { kind: 'commit', commit: OTHER_COMMIT },
     })
     await expect(harness.delivery.createWorkPacket({
@@ -433,98 +553,122 @@ describe('FakeDelivery contract', () => {
     await harness.dispose()
   })
 
-  it('enforces exact idempotency and Contract readiness before Packet creation', async () => {
+  it('creates a Case atomically and compare-and-sets its head across revisions', async () => {
     const harness = await mountDeliveryTestkit(new Context())
-    const request = adoptionRequest(contractRevisionFixture())
-    const first = await harness.delivery.adoptContractRevision(request)
-    const repeated = await harness.delivery.adoptContractRevision(request)
-    expect(repeated).toEqual(first)
-    expect(repeated).not.toBe(first)
-    expect(harness.delivery.snapshot().contractRevisions).toHaveLength(1)
+    const created = await harness.delivery.createCase(createCaseRequest({}, 'case-cas-v2'))
+    expect(created.revision.previousRevisionId).toBeNull()
+    expect(created.revision.origin).toEqual({ kind: 'human', actorId: HUMAN_ACTOR })
+    expect(created.revision.title).toBe('Deliver one bounded change')
+    expect(created.case).toMatchObject({
+      repositoryId: REPOSITORY_ID,
+      headRevisionId: created.revision.id,
+    })
+    expect(harness.delivery.getCase(created.case.id)).toEqual(created.case)
 
-    const changed = adoptionRequest(contractRevisionFixture({
-      sourceRef: sourceRefFixture({ title: 'A different source snapshot' }),
-    }))
-    await expect(harness.delivery.adoptContractRevision(changed)).rejects.toMatchObject({
-      code: 'idempotency-conflict',
-    })
+    const revised = await harness.delivery.reviseCase(reviseCaseRequest(created, {}, 'revise-cas-v2'))
+    expect(revised.revision.previousRevisionId).toBe(created.revision.id)
+    expect(revised.case.headRevisionId).toBe(revised.revision.id)
+    expect(harness.delivery.getCase(created.case.id)).toMatchObject({ headRevisionId: revised.revision.id })
 
-    if (first.repositoryId === null || first.baseSelectionRule?.kind !== 'commit') {
-      throw new Error('ready fixture lost the repository facts needed by this test')
-    }
-    harness.repoWorkspace.allowRevision(first.repositoryId, first.baseSelectionRule.commit)
-    const readyRepository = await harness.repoWorkspace.resolveBase({
-      repositoryId: first.repositoryId,
-      selectionRule: first.baseSelectionRule,
-    })
-    const packetFixture = readyWorkPacketFixture({
-      contractRevisionId: first.id,
-      repositoryId: first.repositoryId,
-      baseCommit: first.baseSelectionRule.commit,
-      acceptanceClauseIds: first.acceptanceClauses.map(clause => clause.id),
-    })
-    const created = await harness.delivery.createWorkPacket({
-      idempotencyKey: 'derived-contract-plan-v1',
-      contractRevisionId: first.id,
-      repository: readyRepository,
-      packet: packetDraft(packetFixture),
-    }, async () => { throw new Error('contract-field plan must not consult a blob resolver') })
-    expect(created.verificationPlan).toMatchObject({
-      checks: first.verificationSource?.kind === 'contract-field'
-        ? first.verificationSource.checks
-        : [],
-      provenance: {
-        kind: 'contract-field',
-        contractRevisionId: first.id,
-        field: 'verificationSource',
-      },
-    })
-    expect(harness.delivery.snapshot().workPackets).toHaveLength(1)
-
-    const blocked = await harness.delivery.adoptContractRevision(adoptionRequest(
-      contractRevisionFixture({ outcome: null }),
-      'adopt-blocked-contract-v1',
-    ))
-    if (blocked.repositoryId === null || blocked.baseSelectionRule?.kind !== 'commit') {
-      throw new Error('blocked fixture lost the repository facts needed by this test')
-    }
-    harness.repoWorkspace.allowRevision(blocked.repositoryId, blocked.baseSelectionRule.commit)
-    const repository = await harness.repoWorkspace.resolveBase({
-      repositoryId: blocked.repositoryId,
-      selectionRule: blocked.baseSelectionRule,
-    })
-    const candidate = readyWorkPacketFixture({
-      contractRevisionId: blocked.id,
-      repositoryId: blocked.repositoryId,
-      baseCommit: blocked.baseSelectionRule.commit,
-      acceptanceClauseIds: blocked.acceptanceClauses.map(clause => clause.id),
-    })
-    await expect(harness.delivery.createWorkPacket({
-      idempotencyKey: 'blocked-packet-v1',
-      contractRevisionId: blocked.id,
-      repository,
-      packet: packetDraft(candidate),
-    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    // A stale observed head fails closed with `conflict` and no branch.
+    await expect(harness.delivery.reviseCase(reviseCaseRequest(created, {}, 'revise-stale-head-v2')))
+      .rejects.toMatchObject({ code: 'conflict' })
+    await expect(harness.delivery.reviseCase(reviseCaseRequest(created, {
+      expectedHeadRevisionId: ContractRevisionId('missing-head-revision'),
+    }, 'revise-missing-head-v2'))).rejects.toMatchObject({ code: 'conflict' })
+    // A replayed revision whose head already moved returns the settled pair.
+    const replayed = await harness.delivery.reviseCase(reviseCaseRequest(created, {}, 'revise-cas-v2'))
+    expect(replayed.case).toEqual(revised.case)
+    expect(replayed.revision).toEqual(revised.revision)
+    const later = await harness.delivery.reviseCase(reviseCaseRequest(revised, {}, 'revise-after-replay-v2'))
+    expect(later.revision.previousRevisionId).toBe(revised.revision.id)
+    await expect(harness.delivery.reviseCase(reviseCaseRequest(created, {}, 'revise-cas-v2')))
+      .rejects.toMatchObject({ code: 'conflict' })
+    await expect(harness.delivery.reviseCase({
+      ...reviseCaseRequest(created, {}, 'revise-missing-case-v2'),
+      caseId: DeliveryCaseId('missing-case'),
+    })).rejects.toMatchObject({ code: 'not-found' })
+    expect(harness.delivery.snapshot().contractRevisions).toHaveLength(3)
     await harness.dispose()
   })
 
-  it('rejects a previous revision from another GitHub Issue lineage', async () => {
+  it('enforces exact idempotency across Case, decision, and Packet operations', async () => {
     const harness = await mountDeliveryTestkit(new Context())
-    const first = await harness.delivery.adoptContractRevision(adoptionRequest(
-      contractRevisionFixture(),
-      'adopt-lineage-first-v1',
-    ))
-    const second = await harness.delivery.adoptContractRevision(adoptionRequest(
-      contractRevisionFixture({
-        previousRevisionId: first.id,
-        sourceRef: sourceRefFixture({
-          updatedAt: '2026-08-29T00:01:00.000Z',
-          title: 'Deliver the next bounded revision',
-        }),
-      }),
-      'adopt-lineage-second-v1',
-    ))
-    expect(second.previousRevisionId).toBe(first.id)
+    const request = createCaseRequest({}, 'case-idempotent-v2')
+    const first = await harness.delivery.createCase(request)
+    const repeated = await harness.delivery.createCase(request)
+    expect(repeated).toEqual(first)
+    expect(repeated).not.toBe(first)
+    expect(harness.delivery.snapshot().deliveryCases).toHaveLength(1)
+    await expect(harness.delivery.createCase(createCaseRequest({
+      title: 'A different bounded change',
+    }, 'case-idempotent-v2'))).rejects.toMatchObject({ code: 'idempotency-conflict' })
+
+    const decisionRequestBase = decisionRequest(first, {}, 'decision-idempotent-v2')
+    const decision = await harness.delivery.recordRequirementDecision(decisionRequestBase)
+    expect(await harness.delivery.recordRequirementDecision(decisionRequestBase)).toEqual(decision)
+    expect(harness.delivery.getRequirementDecision(decision.id)).toEqual(decision)
+    // Different content under the same revision fails closed.
+    await expect(harness.delivery.recordRequirementDecision(decisionRequest(first, {
+      reason: 'A conflicting human reason.',
+    }, 'decision-conflicting-v2'))).rejects.toMatchObject({ code: 'idempotency-conflict' })
+    // Repeating identical content through another key returns the existing record.
+    expect(await harness.delivery.recordRequirementDecision(decisionRequest(first, {
+      decisionNonce: decision.decisionNonce,
+    }, 'decision-repeat-v2'))).toEqual(decision)
+    expect(harness.delivery.snapshot().requirementDecisions).toEqual([decision])
+
+    if (first.revision.baseSelectionRule?.kind !== 'commit') {
+      throw new Error('ready fixture lost the repository facts needed by this test')
+    }
+    harness.repoWorkspace.allowRevision(first.case.repositoryId, first.revision.baseSelectionRule.commit)
+    const readyRepository = await harness.repoWorkspace.resolveBase({
+      repositoryId: first.case.repositoryId,
+      selectionRule: first.revision.baseSelectionRule,
+    })
+    const packetFixture = readyWorkPacketFixture({
+      contractRevisionId: first.revision.id,
+      repositoryId: first.case.repositoryId,
+      baseCommit: first.revision.baseSelectionRule.commit,
+      acceptanceClauseIds: first.revision.acceptanceClauses.map(clause => clause.id),
+    })
+    const packetRequest = {
+      idempotencyKey: 'derived-contract-plan-v2',
+      contractRevisionId: first.revision.id,
+      repository: readyRepository,
+      packet: packetDraft(packetFixture),
+    }
+    const createdPacket = await harness.delivery.createWorkPacket(packetRequest, async () => {
+      throw new Error('contract-field plan must not consult a blob resolver')
+    })
+    expect(createdPacket.verificationPlan).toMatchObject({
+      checks: first.revision.verificationSource?.kind === 'contract-field'
+        ? first.revision.verificationSource.checks
+        : [],
+      provenance: {
+        kind: 'contract-field',
+        contractRevisionId: first.revision.id,
+        field: 'verificationSource',
+      },
+    })
+    expect(await harness.delivery.createWorkPacket(packetRequest)).toEqual(createdPacket)
+    await expect(harness.delivery.createWorkPacket({
+      ...packetRequest,
+      packet: { ...packetRequest.packet, objective: 'A conflicting Packet objective.' },
+    })).rejects.toMatchObject({ code: 'idempotency-conflict' })
+    expect(harness.delivery.snapshot().workPackets).toEqual([createdPacket])
+    await harness.dispose()
+  })
+
+  it('keeps a github-import child inside its Issue lineage', async () => {
+    const harness = await mountDeliveryTestkit(new Context())
+    const imported = await harness.delivery.createCase(createCaseRequest({
+      origin: githubImportOriginFixture(),
+    }, 'case-import-lineage-v2'))
+    const revised = await harness.delivery.reviseCase(reviseCaseRequest(imported, {
+      origin: githubImportOriginFixture({ title: 'Deliver the next bounded revision' }),
+    }, 'revise-import-lineage-v2'))
+    expect(revised.revision.previousRevisionId).toBe(imported.revision.id)
 
     const mismatches = [
       {
@@ -544,37 +688,268 @@ describe('FakeDelivery contract', () => {
       },
     ]
     for (const [index, mismatch] of mismatches.entries()) {
-      await expect(harness.delivery.adoptContractRevision(adoptionRequest(
-        contractRevisionFixture({
-          previousRevisionId: second.id,
-          sourceRef: sourceRefFixture({
-            repository: mismatch.repository,
-            issueNumber: mismatch.issueNumber,
-            title: `Cross-lineage ${mismatch.name}`,
-          }),
+      await expect(harness.delivery.reviseCase(reviseCaseRequest(revised, {
+        origin: githubImportOriginFixture({
+          repository: mismatch.repository,
+          issueNumber: mismatch.issueNumber,
+          title: `Cross-lineage ${mismatch.name}`,
         }),
-        `adopt-lineage-mismatch-${String(index)}-v1`,
-      ))).rejects.toMatchObject({ code: 'invalid-reference' })
+      }, `revise-import-mismatch-${String(index)}-v2`))).rejects.toMatchObject({ code: 'invalid-reference' })
     }
-    expect(harness.delivery.snapshot().contractRevisions).toHaveLength(2)
+    // A `human` child origin carries no lineage constraint.
+    const humanChild = await harness.delivery.reviseCase(reviseCaseRequest(revised, {}, 'revise-human-child-v2'))
+    expect(humanChild.revision.previousRevisionId).toBe(revised.revision.id)
+    expect(harness.delivery.snapshot().contractRevisions).toHaveLength(3)
+    await harness.dispose()
+  })
+
+  it('enforces the human approval gate before Packet creation and publication preparation', async () => {
+    const harness = await mountDeliveryTestkit(new Context())
+    const created = await harness.delivery.createCase(createCaseRequest({}, 'case-approval-gate-v2'))
+    const revision = created.revision
+    if (revision.baseSelectionRule?.kind !== 'commit') {
+      throw new Error('ready fixture lost the repository facts needed by this test')
+    }
+    harness.repoWorkspace.allowRevision(created.case.repositoryId, revision.baseSelectionRule.commit)
+    const repository = await harness.repoWorkspace.resolveBase({
+      repositoryId: created.case.repositoryId,
+      selectionRule: revision.baseSelectionRule,
+    })
+    const fixture = readyWorkPacketFixture({
+      contractRevisionId: revision.id,
+      repositoryId: created.case.repositoryId,
+      baseCommit: revision.baseSelectionRule.commit,
+      acceptanceClauseIds: revision.acceptanceClauses.map(clause => clause.id),
+    })
+    const packetRequest = {
+      idempotencyKey: 'packet-approval-gate-v2',
+      contractRevisionId: revision.id,
+      repository,
+      packet: packetDraft(fixture),
+    }
+    const publicationRequest = preparePublicationRequest(created, {}, 'publication-approval-gate-v2')
+    await expect(harness.delivery.createWorkPacket(packetRequest))
+      .rejects.toMatchObject({ code: 'approval-required' })
+    await expect(harness.delivery.prepareIssuePublication(publicationRequest))
+      .rejects.toMatchObject({ code: 'approval-required' })
+    expect(harness.delivery.snapshot().workPackets).toEqual([])
+    expect(harness.delivery.snapshot().issuePublications).toEqual([])
+
+    await harness.delivery.recordRequirementDecision(decisionRequest(created, {}, 'decision-approved-gate-v2'))
+    const packet = await harness.delivery.createWorkPacket(packetRequest)
+    expect(packet.contractRevisionId).toBe(revision.id)
+    const publication = await harness.delivery.prepareIssuePublication(publicationRequest)
+    expect(publication).toMatchObject({ phase: 'prepared', revisionId: revision.id })
+
+    const other = await createApprovedCase(harness, 'publication-cross-case-v2')
+    await expect(harness.delivery.prepareIssuePublication({
+      ...preparePublicationRequest(other, {}, 'publication-cross-case-v2'),
+      revisionId: revision.id,
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(harness.delivery.prepareIssuePublication(
+      preparePublicationRequest(other, {}, 'publication-other-revision-v2'),
+    )).resolves.toMatchObject({ revisionId: other.revision.id })
+
+    // Readiness stays independent of approval: an approved not-ready revision still fails.
+    const blocked = await harness.delivery.createCase(createCaseRequest({
+      revision: revisionDraft({ outcome: null }),
+    }, 'case-not-ready-v2'))
+    await harness.delivery.recordRequirementDecision(decisionRequest(blocked, {}, 'decision-not-ready-v2'))
+    const blockedRevision = blocked.revision
+    if (blockedRevision.baseSelectionRule?.kind !== 'commit') {
+      throw new Error('blocked fixture lost the repository facts needed by this test')
+    }
+    harness.repoWorkspace.allowRevision(blocked.case.repositoryId, blockedRevision.baseSelectionRule.commit)
+    const blockedRepository = await harness.repoWorkspace.resolveBase({
+      repositoryId: blocked.case.repositoryId,
+      selectionRule: blockedRevision.baseSelectionRule,
+    })
+    const blockedFixture = readyWorkPacketFixture({
+      contractRevisionId: blockedRevision.id,
+      repositoryId: blocked.case.repositoryId,
+      baseCommit: blockedRevision.baseSelectionRule.commit,
+      acceptanceClauseIds: blockedRevision.acceptanceClauses.map(clause => clause.id),
+    })
+    await expect(harness.delivery.createWorkPacket({
+      idempotencyKey: 'packet-not-ready-v2',
+      contractRevisionId: blockedRevision.id,
+      repository: blockedRepository,
+      packet: packetDraft(blockedFixture),
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(harness.delivery.prepareIssuePublication(preparePublicationRequest(blocked, {}, 'publication-not-ready-v2')))
+      .rejects.toMatchObject({ code: 'invalid-reference' })
+    await harness.dispose()
+  })
+
+  it('keeps one publication per revision across prepare, transition, failure, and resolution', async () => {
+    const harness = await mountDeliveryTestkit(new Context())
+    const created = await createApprovedCase(harness, 'publication-lifecycle-v2')
+    const prepared = await harness.delivery.prepareIssuePublication(
+      preparePublicationRequest(created, {}, 'prepare-publication-v2'),
+    )
+    expect(prepared.id).toBe(issuePublicationIdForRevision(created.case.id, created.revision.id))
+    expect(prepared).toMatchObject({
+      phase: 'prepared',
+      caseId: created.case.id,
+      revisionId: created.revision.id,
+      repository: PUBLICATION_REPOSITORY,
+      issue: null,
+      failure: null,
+    })
+    // A repeated preparation returns the existing record instead of a second attempt.
+    expect(await harness.delivery.prepareIssuePublication(
+      preparePublicationRequest(created, {}, 'prepare-publication-v2'),
+    )).toEqual(prepared)
+    expect(await harness.delivery.prepareIssuePublication(
+      preparePublicationRequest(created, {}, 'prepare-publication-second-key-v2'),
+    )).toEqual(prepared)
+    expect(harness.delivery.snapshot().issuePublications).toHaveLength(1)
+
+    const publishing = await harness.delivery.markIssuePublicationStarted(prepared.id)
+    expect(publishing).toMatchObject({ phase: 'publishing', issue: null, failure: null })
+    // An exact replay after the record advanced returns the current record.
+    expect(await harness.delivery.prepareIssuePublication(
+      preparePublicationRequest(created, {}, 'prepare-publication-v2'),
+    )).toEqual(publishing)
+    await expect(harness.delivery.markIssuePublicationStarted(prepared.id))
+      .rejects.toMatchObject({ code: 'invalid-transition' })
+
+    const failed = await harness.delivery.failIssuePublication({
+      publicationId: prepared.id,
+      expectedPhase: 'publishing',
+      failure: {
+        sideEffect: 'not-started',
+        category: 'canceled',
+        detail: 'The operator canceled the publication before it started.',
+        occurredAt: '2026-08-29T00:02:00.000Z',
+      },
+    } satisfies FailIssuePublicationRequest)
+    expect(failed).toMatchObject({ phase: 'failed', issue: null })
+
+    // Re-preparing a failed publication resets that same record for a new attempt.
+    const reset = await harness.delivery.prepareIssuePublication(
+      preparePublicationRequest(created, {}, 'prepare-publication-retry-v2'),
+    )
+    expect(reset).toMatchObject({ phase: 'prepared', issue: null, failure: null })
+    expect(reset.id).toBe(prepared.id)
+
+    await harness.delivery.markIssuePublicationStarted(prepared.id)
+    const unknown = await harness.delivery.failIssuePublication({
+      publicationId: prepared.id,
+      expectedPhase: 'publishing',
+      failure: {
+        sideEffect: 'unknown',
+        category: 'transport',
+        detail: 'The transport timed out after the request may have reached GitHub.',
+        occurredAt: '2026-08-29T00:03:00.000Z',
+      },
+    } satisfies FailIssuePublicationRequest)
+    expect(unknown).toMatchObject({ phase: 'unknown' })
+    // An unknown side effect refuses automatic re-preparation until human resolution.
+    await expect(harness.delivery.prepareIssuePublication(
+      preparePublicationRequest(created, {}, 'prepare-publication-unknown-v2'),
+    )).rejects.toMatchObject({ code: 'invalid-transition' })
+
+    const resolved = await harness.delivery.resolveIssuePublication({
+      resolution: 'confirm-not-created',
+      publicationId: prepared.id,
+      verificationBasis: 'Host GET returned 404 for the expected Issue location.',
+    })
+    expect(resolved).toMatchObject({ phase: 'prepared', issue: null, failure: null })
+
+    await harness.delivery.markIssuePublicationStarted(prepared.id)
+    const published = await harness.delivery.completeIssuePublication({
+      publicationId: prepared.id,
+      expectedPhase: 'publishing',
+      issue: PUBLISHED_ISSUE,
+    } satisfies CompleteIssuePublicationRequest)
+    expect(published).toMatchObject({ phase: 'published', issue: PUBLISHED_ISSUE })
+    expect(harness.delivery.getIssuePublication(prepared.id)).toEqual(published)
+    await expect(harness.delivery.resolveIssuePublication({
+      resolution: 'confirm-not-created',
+      publicationId: prepared.id,
+      verificationBasis: 'A published record no longer accepts resolution.',
+    })).rejects.toMatchObject({ code: 'invalid-transition' })
+    await expect(harness.delivery.markIssuePublicationStarted(prepared.id))
+      .rejects.toMatchObject({ code: 'invalid-transition' })
+    await harness.dispose()
+  })
+
+  it('rejects publication transitions and resolutions that bypass the state machine', async () => {
+    const harness = await mountDeliveryTestkit(new Context())
+    const created = await createApprovedCase(harness, 'publication-boundary-v2')
+    const publication = await harness.delivery.prepareIssuePublication(
+      preparePublicationRequest(created, {}, 'prepare-boundary-v2'),
+    )
+    await expect(harness.delivery.completeIssuePublication({
+      publicationId: publication.id,
+      expectedPhase: 'publishing',
+      issue: PUBLISHED_ISSUE,
+    } satisfies CompleteIssuePublicationRequest)).rejects.toMatchObject({ code: 'invalid-transition' })
+    await expect(harness.delivery.failIssuePublication({
+      publicationId: publication.id,
+      expectedPhase: 'publishing',
+      failure: {
+        sideEffect: 'not-started',
+        category: 'canceled',
+        detail: 'The operator canceled the publication before it started.',
+        occurredAt: '2026-08-29T00:02:00.000Z',
+      },
+    } satisfies FailIssuePublicationRequest)).rejects.toMatchObject({ code: 'invalid-transition' })
+    await expect(harness.delivery.resolveIssuePublication({
+      resolution: 'confirm-published',
+      publicationId: publication.id,
+      issue: PUBLISHED_ISSUE,
+      verificationBasis: 'Resolution does not apply from the prepared phase.',
+    })).rejects.toMatchObject({ code: 'invalid-transition' })
+    await expect(harness.delivery.resolveIssuePublication({
+      resolution: 'confirm-not-created',
+      publicationId: publication.id,
+      verificationBasis: '   ',
+    })).rejects.toMatchObject({ code: 'invalid-reference' })
+    await expect(harness.delivery.markIssuePublicationStarted(IssuePublicationId('missing-publication')))
+      .rejects.toMatchObject({ code: 'not-found' })
+    expect(harness.delivery.getIssuePublication(IssuePublicationId('missing-publication'))).toBeUndefined()
+    // A prepared record is untouched by every rejected transition.
+    expect(harness.delivery.getIssuePublication(publication.id)).toEqual(publication)
+    await harness.dispose()
+  })
+
+  it('returns snapshot record families in stable order with detached values', async () => {
+    const harness = await mountDeliveryTestkit(new Context())
+    const first = await createApprovedCase(harness, 'snapshot-first-v2')
+    const second = await harness.delivery.createCase(createCaseRequest({}, 'case-snapshot-second-v2'))
+    const snapshot = harness.delivery.snapshot()
+    expect(snapshot.deliveryCases.map(kase => kase.id)).toEqual([first.case.id, second.case.id])
+    expect(snapshot.contractRevisions.map(entry => entry.id)).toEqual([first.revision.id, second.revision.id])
+    expect(snapshot.requirementDecisions.map(entry => entry.revisionId)).toEqual([first.revision.id])
+    expect(snapshot.issuePublications).toEqual([])
+    const again = harness.delivery.snapshot()
+    expect(again).toEqual(snapshot)
+    expect(again).not.toBe(snapshot)
+    expect(again.deliveryCases[0]).not.toBe(snapshot.deliveryCases[0])
+    expect(again.contractRevisions[0]).not.toBe(snapshot.contractRevisions[0])
     await harness.dispose()
   })
 
   it('derives a git-blob plan only from the exact verified Contract base and strict source document', async () => {
     const harness = await mountDeliveryTestkit(new Context())
     const sourceChecks = verificationPlanFixture().checks
-    const contract = await harness.delivery.adoptContractRevision(adoptionRequest(
-      contractRevisionFixture({
+    const created = await createApprovedCase(harness, 'git-plan-v2', {
+      revision: revisionDraft({
         verificationSource: {
           kind: 'git-blob',
           path: PLAN_PATH,
           format: 'delivery-verification-plan@1',
         },
       }),
-      'adopt-git-plan-contract-v1',
-    ))
-    if (contract.repositoryId === null || contract.baseSelectionRule === null) {
+    })
+    const contract = created.revision
+    if (contract.baseSelectionRule === null) {
       throw new Error('git-plan fixture unexpectedly produced a not-ready Contract')
+    }
+    if (contract.repositoryId === null) {
+      throw new Error('git-plan fixture unexpectedly produced a Contract without a repository')
     }
     if (contract.baseSelectionRule.kind !== 'commit') throw new Error('git-plan fixture requires a commit base')
     harness.repoWorkspace.allowRevision(contract.repositoryId, contract.baseSelectionRule.commit)
@@ -1359,6 +1734,68 @@ describe('FakeDelivery contract', () => {
       decisionNonce: 'candidate-corrupt-evidence',
     }, async () => candidate, resolveEvidence)).rejects.toMatchObject({ code: 'digest-mismatch' })
     expect(harness.delivery.snapshot().acceptanceDecisions).toEqual([])
+    await harness.dispose()
+  })
+})
+
+describe('FakeDelivery resume capsule evidence', () => {
+  it('accepts a provenance-bound resume capsule as part of a completed claim', async () => {
+    const harness = await mountDeliveryTestkit(new Context())
+    const { packet } = await createStoredPacket(harness, 'resume-capsule')
+    const chain = await createAcceptanceChain(harness, packet)
+    const resumeCapsuleEvidenceId = EvidenceId('resume-capsule-evidence')
+    const completionClaim = completedClaimFixture({
+      ...chain.completionClaim,
+      resumeCapsuleEvidenceId,
+    })
+    const evidence = new Map(chain.evidenceRefs.map(reference => [reference.id, reference]))
+    const resumeProvenance = {
+      kind: 'change-attempt' as const,
+      packetId: packet.id,
+      queueWorkId: chain.changeQueueWorkId,
+      queueAttemptId: chain.changeQueueAttemptId,
+    }
+    evidence.set(resumeCapsuleEvidenceId, evidenceRefFixture({
+      id: resumeCapsuleEvidenceId,
+      kind: 'log',
+      provenance: resumeProvenance,
+    }))
+
+    const resolveEvidence = vi.fn(async (evidenceId: EvidenceId) => evidence.get(evidenceId))
+    const candidate = {
+      completionClaim,
+      changeQueueAttemptId: chain.changeQueueAttemptId,
+      verificationIntent: chain.verificationIntent,
+      verificationVerdict: chain.verificationVerdict,
+      verificationQueueAttemptId: chain.verificationQueueAttemptId,
+    }
+    const request = {
+      packetId: packet.id,
+      changeBindingId: chain.changeBinding.id,
+      verificationBindingId: chain.verificationBinding.id,
+      decision: 'accepted' as const,
+      reason: 'The resume capsule is bound to the completed change Attempt.',
+      actorId: HUMAN_ACTOR,
+    }
+    await expect(harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'reject-wrong-kind-resume-capsule',
+      decisionNonce: 'reject-wrong-kind-resume-capsule',
+    }, async () => candidate, resolveEvidence)).rejects.toMatchObject({ code: 'acceptance-denied' })
+
+    evidence.set(resumeCapsuleEvidenceId, evidenceRefFixture({
+      id: resumeCapsuleEvidenceId,
+      kind: 'resume-capsule',
+      provenance: resumeProvenance,
+    }))
+    const decision = await harness.delivery.recordAcceptanceDecision({
+      ...request,
+      idempotencyKey: 'accept-resume-capsule',
+      decisionNonce: 'accept-resume-capsule',
+    }, async () => candidate, resolveEvidence)
+
+    expect(decision.decision).toBe('accepted')
+    expect(resolveEvidence).toHaveBeenCalledWith(resumeCapsuleEvidenceId)
     await harness.dispose()
   })
 })

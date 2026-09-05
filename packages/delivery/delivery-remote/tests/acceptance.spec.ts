@@ -1,18 +1,18 @@
 import {
   QueueWorkIdRef,
   canonicalDigest,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   completedClaimFixture,
   passedVerdictFixture,
   readyWorkPacketFixture,
-} from '@deepseek-ai/dsh-delivery-testkit'
+} from '@changanhua/dsh-delivery-testkit'
 import {
   AttemptId,
   ResultId,
   WorkId,
   type WorkView,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import { describe, expect, it } from 'vitest'
 import { resolveAcceptanceCandidate } from '../src/acceptance.ts'
 

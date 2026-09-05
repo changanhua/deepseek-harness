@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-image-generation-task-queue
+# @changanhua/dsh-image-generation-task-queue
 
 English | [中文](README.zh.md)
 
@@ -10,7 +10,7 @@ Each attempt claims one `image-generation` resource unit. Deployment capacity an
 
 ## Model Experience
 
-Indirectly, through `@deepseek-ai/dsh-tool-image-generation-task-queue`, which owns image admission schemas and rendered results.
+Indirectly, through `@changanhua/dsh-tool-image-generation-task-queue`, which owns image admission schemas and rendered results.
 
 #### KV Cache effect
 

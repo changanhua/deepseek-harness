@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   CODE_CHANGE_KIND,
   CODE_VERIFY_KIND,
+  DELIVERY_SCHEMA_VERSION,
   DispatchBindingId,
   ExecutorId,
   GitCommitId,
@@ -9,9 +10,9 @@ import {
   Sha256Digest,
   WorkPacketId,
   canonicalDigest,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import { WorkId } from '@deepseek-ai/dsh-task-queue'
-import type { WorkHandler, WorkView } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-delivery-protocol'
+import { WorkId } from '@changanhua/dsh-task-queue'
+import type { WorkHandler, WorkView } from '@changanhua/dsh-task-queue'
 import { Config, DeliveryTaskQueueError, apply } from '../src/index.ts'
 
 const packetId = WorkPacketId('packet-recovery-1')
@@ -66,7 +67,7 @@ function binding(
     ? { packetId }
     : { packetId, targetCommit, verificationPlanDigest: planDigest }
   return {
-    schemaVersion: 1,
+    schemaVersion: DELIVERY_SCHEMA_VERSION,
     id: DispatchBindingId(`${kind}-${phase}`),
     packetId,
     kind,

@@ -3,7 +3,7 @@ description: "Explore the complete build-time DSH workspace package catalog, dep
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-client-ui-architecture
+# @changanhua/dsh-client-ui-architecture
 
 English | [中文](README.zh.md)
 

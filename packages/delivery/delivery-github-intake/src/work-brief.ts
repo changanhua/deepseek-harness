@@ -1,22 +1,20 @@
-/** Exact GitHub Issue Work Brief grammar for Delivery Contract adoption. */
+/** Exact GitHub Issue Work Brief grammar for Delivery Case imports. */
 
-import type { ContractRevisionDraft } from '@deepseek-ai/dsh-delivery'
+import type { ContractRevisionDraft } from '@changanhua/dsh-delivery'
 import {
   acceptanceClauseSchema,
   baseSelectionRuleSchema,
   contractVerificationSourceSchema,
   openDecisionSchema,
   referenceLinkSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   AcceptanceClause,
   BaseSelectionRule,
-  ContractRevisionId,
   ContractVerificationSource,
   OpenDecision,
   ReferenceLink,
-  RepositoryId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { parseDocument } from 'yaml'
 import { z } from 'zod'
 
@@ -114,7 +112,7 @@ export type GitHubIssueWorkBriefErrorCode =
   | 'invalid-yaml'
   | 'invalid-brief'
 
-/** Typed failure for an Issue whose authoritative Work Brief cannot be adopted. */
+/** Typed failure for an Issue whose authoritative Work Brief cannot be imported. */
 export class GitHubIssueWorkBriefError extends Error {
   /**
    * @param code - Stable grammar or value failure classification.
@@ -209,20 +207,14 @@ export function parseGitHubIssueWorkBrief(body: string): GitHubIssueWorkBrief {
 }
 
 /**
- * Map one validated Work Brief to the exact Delivery adoption draft.
+ * Map one validated Work Brief to the exact version-2 Delivery revision draft.
+ * The provider allocates the revision identity, lineage, repository binding,
+ * provenance origin, and timestamp; this mapping supplies requirement content only.
  * @param brief - Parsed authoritative Issue fields.
- * @param repositoryId - Operator-selected configured repository identity.
- * @param previousRevisionId - Host-derived previous revision for this Issue.
  * @returns a complete immutable Contract revision draft.
  */
-export function workBriefContractRevisionDraft(
-  brief: GitHubIssueWorkBrief,
-  repositoryId: RepositoryId,
-  previousRevisionId: ContractRevisionId | null,
-): ContractRevisionDraft {
+export function workBriefContractRevisionDraft(brief: GitHubIssueWorkBrief): ContractRevisionDraft {
   return structuredClone({
-    previousRevisionId,
-    repositoryId,
     outcome: brief.outcome,
     context: brief.context,
     allowedScope: brief.allowedScope,

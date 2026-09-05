@@ -1,0 +1,41 @@
+{
+  "skill_name": "dsh-self-development",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "让 DSH 的 Queue 自己跑一个任务：在当前 deepseek-harness checkout 里实现新的 WorkKind，然后由这个 DSH 实例测试并自动合并。",
+      "expected_output": "触发。建立 known-good controller 与 subject WorkKind/worktree 的隔离，冻结 Charter、目标 revision、controller Skill snapshot 和 subject 启动前的 immutable verifier plan；拒绝任何自动 merge，要求独立 verifier 与人工 merge 授权。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我们刚改了 .agents/skills/dsh-change-verification。请让本地 DSH Workflow 读取这个新 Skill，修复自身的 Profile 组合并判断这个 Skill 是否可以直接用于后续自动发布。",
+      "expected_output": "触发。将新 Skill 视为 subject，要求使用启动时的已批准快照作为 controller policy，并冻结 verifier plan；隔离 DSH_HOME/ports/data，subject report/diff 不能单独作为 world evidence，发布仍停在人工授权点。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "给 deepseek-harness 做 self-hosted nightly：DSH Goal 负责修改插件、build、跑真实 Profile、review，再把通过的结果推到 origin。我们可以给一个测试 API key。",
+      "expected_output": "触发。按 Charter→reuse/xia→issue stack→execution→verification→review→pre-push 路由；隔离 controller/subject 和冻结 verifier plan。注入或使用测试 API key 仍需 run id、目标、provider/model、scope/limit/expiry 授权；真实付费请求需准确目标和预算/金额上限，push 也需单独人工授权。",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "在当前 deepseek-harness 分支改 packages/core/session 的一个已定位类型错误，补一个单测并运行它；不要启动 DSH、Goal、Workflow 或 Queue。",
+      "expected_output": "不触发。这是普通外部 Codex 的机械仓库编辑；可按常规 DSH 包规则和测试流程处理。",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "查看已经组成的 task_queue_* WorkKind 的状态，取消其中一个用户明确点名的任务，并读取结果。不要改 deepseek-harness 或任何 DSH plugin。",
+      "expected_output": "不触发。应使用 dsh-task-queue；这里没有 DSH 自修改或自验证边界。",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "已冻结 Charter/Issue receipt。让三个高推理 DSH subject Agent 各自改一个独立包并跑 focused tests，controller 集成，最后让另一个 verifier 审查；不要让每个 Agent 跑全仓测试。",
+      "expected_output": "Applies self-development as an overlay, records disjoint subject lane ownership and isolated worlds, keeps integration with the controller, reserves the frozen independent verifier for the stable candidate, and runs shared broad evidence once rather than per worker.",
+      "files": []
+    }
+  ]
+}

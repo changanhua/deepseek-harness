@@ -4,25 +4,27 @@
 
 - insert:
     - id: delivery-local
-      name: '@deepseek-ai/dsh-delivery-local'
+      name: '@changanhua/dsh-delivery-local'
 
     - id: delivery-evidence-local
-      name: '@deepseek-ai/dsh-delivery-evidence-local'
+      name: '@changanhua/dsh-delivery-evidence-local'
       config:
         root: !!js dshHomePath('personal-delivery/evidence')
 
     - id: repo-workspace-git-local
-      name: '@deepseek-ai/dsh-repo-workspace-git-local'
+      name: '@changanhua/dsh-repo-workspace-git-local'
       config:
         repositories:
           workspace: !!js process.cwd()
         worktreeRoot: !!js dshHomePath('personal-delivery/worktrees')
 
     - id: delivery-task-queue
-      name: '@deepseek-ai/dsh-delivery-task-queue'
+      name: '@changanhua/dsh-delivery-task-queue'
 
     - id: delivery-remote
-      name: '@deepseek-ai/dsh-delivery-remote'
+      name: '@changanhua/dsh-delivery-remote'
+      config:
+        repositoryId: workspace
 
     - id: ui-delivery
-      name: '@deepseek-ai/dsh-client-ui-delivery'
+      name: '@changanhua/dsh-client-ui-delivery'

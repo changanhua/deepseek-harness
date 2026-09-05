@@ -15,7 +15,7 @@ import {
   verificationPlanSchema,
   verificationVerdictPlanFindings,
   verificationVerdictSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { describe, expect, it } from 'vitest'
 
 const fixtures = JSON.parse(await readFile(join(import.meta.dirname, '..', 'fixtures', 'valid.json'), 'utf8')) as {

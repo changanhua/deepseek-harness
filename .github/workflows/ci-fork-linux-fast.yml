@@ -9,6 +9,8 @@ on:
       - '.github/workflows/ci-upstream-watch.yml'
       - 'apps/**'
       - 'docs/**'
+      - 'downstream/**'
+      - 'FORK-DIVERGENCE.md'
       - 'native/**'
       - 'packages/**'
       - 'scripts/**'
@@ -71,6 +73,7 @@ jobs:
 
       - name: Check stable repository metadata
         run: |
+          pnpm run check:package-identities
           pnpm run verify-package-invariants
           pnpm run verify-doc-graphs
 

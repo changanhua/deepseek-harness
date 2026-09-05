@@ -3,7 +3,7 @@ description: "Personal Delivery admission bridge and exclusive owner of the code
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-task-queue
+# @changanhua/dsh-delivery-task-queue
 
 English | [中文](README.zh.md)
 

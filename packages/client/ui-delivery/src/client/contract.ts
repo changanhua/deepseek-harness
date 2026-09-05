@@ -12,11 +12,16 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { DeliveryEvidenceSelectionInput, DeliveryRuntimeState } from './runtime-controller.ts'
 import type {
   DeliveryCreatePacketInput,
+  DeliveryCreateCaseInput,
   DeliveryImportIssueInput,
+  DeliveryPublishIssueInput,
   DeliveryRecordDecisionInput,
+  DeliveryRecordRequirementDecisionInput,
+  DeliveryResolvePublicationInput,
+  DeliveryReviseCaseInput,
   DeliveryStartChangeInput,
   DeliveryStartVerificationInput,
-} from '@deepseek-ai/dsh-delivery-remote/types'
+} from '@changanhua/dsh-delivery-remote/types'
 import type { NS } from './locales.ts'
 
 /** Registration-side Host projection and its lifecycle actions. */
@@ -26,6 +31,11 @@ export interface DeliveryWorkspaceInjected {
   }
   readonly refresh: () => void
   readonly cancel: () => void
+  readonly createCase: (input: DeliveryCreateCaseInput) => Promise<boolean>
+  readonly reviseCase: (input: DeliveryReviseCaseInput) => Promise<boolean>
+  readonly recordRequirementDecision: (input: DeliveryRecordRequirementDecisionInput) => Promise<boolean>
+  readonly publishIssue: (input: DeliveryPublishIssueInput) => Promise<boolean>
+  readonly resolvePublication: (input: DeliveryResolvePublicationInput) => Promise<boolean>
   readonly importIssue: (input: DeliveryImportIssueInput) => Promise<boolean>
   readonly createPacket: (input: DeliveryCreatePacketInput) => Promise<boolean>
   readonly startChange: (input: DeliveryStartChangeInput) => Promise<boolean>

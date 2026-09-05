@@ -9,14 +9,14 @@ import {
   QueueWorkIdRef,
   VerificationVerdictId,
   WorkPacketId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   DeliveryAcceptanceDecisionView,
   DeliveryContractRevisionView,
   DeliveryDispatchBindingView,
   DeliveryWorkbenchCard,
   DeliveryWorkPacketView,
-} from '@deepseek-ai/dsh-delivery-remote/types'
+} from '@changanhua/dsh-delivery-remote/types'
 
 const TIME = '2026-08-29T00:00:00.000Z'
 const BASE = '1111111111111111111111111111111111111111'
@@ -28,22 +28,11 @@ export function contractRevisionFixture(
   overrides: Partial<DeliveryContractRevisionView> = {},
 ): DeliveryContractRevisionView {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: ContractRevisionId('contract-revision-fixture'),
     previousRevisionId: null,
-    sourceRef: {
-      schemaVersion: 1,
-      id: 'source-ref-fixture',
-      provider: 'github',
-      repository: { owner: 'deepseek-ai', name: 'deepseek-harness' },
-      issueNumber: 101,
-      canonicalUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/101',
-      updatedAt: TIME,
-      title: 'Deliver one bounded change',
-      body: 'Implement the accepted outcome and collect independent evidence.',
-      contentDigest: DIGEST,
-      createdAt: TIME,
-    },
+    origin: { kind: 'human' },
+    title: 'Deliver one bounded change',
     repositoryId: 'repository-fixture',
     outcome: 'A bounded change is implemented and independently verified.',
     context: 'The Consumer needs a deterministic Delivery contract.',
@@ -68,7 +57,7 @@ export function readyWorkPacketFixture(
 ): DeliveryWorkPacketView {
   const contractRevisionId = overrides.contractRevisionId ?? ContractRevisionId('contract-revision-fixture')
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: WorkPacketId('work-packet-fixture'),
     contractRevisionId,
     repositoryId: 'repository-fixture',
@@ -117,7 +106,7 @@ export function completedClaimFixture(
   overrides: Partial<CompletionClaimView> = {},
 ): CompletionClaimView {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'completion-claim-fixture',
     packetId: WorkPacketId('work-packet-fixture'),
     queueWorkId: QueueWorkIdRef('queue-work-fixture'),
@@ -143,7 +132,7 @@ export function passedVerdictFixture(
 ): VerificationVerdictView {
   const evidenceIds = overrides.evidenceIds ?? [EvidenceId('evidence-fixture')]
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: VerificationVerdictId('verification-verdict-fixture'),
     packetId: WorkPacketId('work-packet-fixture'),
     targetCommit: GitCommitId(TARGET),
@@ -178,7 +167,7 @@ export function acceptedDecisionFixture(
   overrides: Partial<DeliveryAcceptanceDecisionView> = {},
 ): DeliveryAcceptanceDecisionView {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: AcceptanceDecisionId('acceptance-decision-fixture'),
     packetId: WorkPacketId('work-packet-fixture'),
     targetCommit: GitCommitId(TARGET),

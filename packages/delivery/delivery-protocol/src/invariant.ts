@@ -3,7 +3,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-delivery-protocol'
+const PACKAGE_NAME = '@changanhua/dsh-delivery-protocol'
 
 /** Cordis companion plugin name. */
 export const name = 'delivery-protocol-invariant'

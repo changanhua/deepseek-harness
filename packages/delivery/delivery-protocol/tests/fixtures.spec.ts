@@ -8,18 +8,20 @@ import {
   codeVerifyOutputSchema,
   completionClaimSchema,
   contractRevisionSchema,
+  deliveryCaseSchema,
   dispatchBindingSchema,
   evidenceRefSchema,
+  issuePublicationSchema,
+  requirementDecisionSchema,
   resolvedCodeChangeSchema,
   resolvedCodeVerifySchema,
   resumeCapsuleContentSchema,
-  sourceRefSchema,
   verificationCheckSchema,
   verificationPlanDocumentSchema,
   verificationPlanSchema,
   verificationVerdictSchema,
   workPacketSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { describe, expect, it } from 'vitest'
 
 interface SchemaLike {
@@ -36,8 +38,10 @@ const invalid = JSON.parse(await readFile(join(fixtureRoot, 'invalid.json'), 'ut
 }
 
 const collections: Readonly<Record<string, SchemaLike>> = {
-  sourceRefs: sourceRefSchema,
+  deliveryCases: deliveryCaseSchema,
+  requirementDecisions: requirementDecisionSchema,
   contractRevisions: contractRevisionSchema,
+  issuePublications: issuePublicationSchema,
   verificationPlanDocuments: verificationPlanDocumentSchema,
   verificationPlans: verificationPlanSchema,
   workPackets: workPacketSchema,
@@ -56,8 +60,10 @@ const collections: Readonly<Record<string, SchemaLike>> = {
 }
 
 const namedSchemas: Readonly<Record<string, SchemaLike>> = {
-  sourceRef: sourceRefSchema,
+  deliveryCase: deliveryCaseSchema,
+  requirementDecision: requirementDecisionSchema,
   contractRevision: contractRevisionSchema,
+  issuePublication: issuePublicationSchema,
   verificationPlanDocument: verificationPlanDocumentSchema,
   verificationPlan: verificationPlanSchema,
   workPacket: workPacketSchema,
@@ -139,9 +145,9 @@ describe('protocol golden fixtures', () => {
       readonly dependencies?: Record<string, string>
       readonly exports?: Record<string, unknown>
     }
-    expect(source).not.toContain("declare module '@deepseek-ai/dsh-task-queue'")
+    expect(source).not.toContain("declare module '@changanhua/dsh-task-queue'")
     expect(source).not.toContain('PreparedCodeChange')
-    expect(manifest.dependencies?.['@deepseek-ai/dsh-task-queue']).toBeUndefined()
+    expect(manifest.dependencies?.['@changanhua/dsh-task-queue']).toBeUndefined()
     expect(manifest.exports?.['./src/*']).toBeUndefined()
   })
 

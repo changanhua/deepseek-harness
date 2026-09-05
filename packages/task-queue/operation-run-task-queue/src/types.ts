@@ -1,4 +1,4 @@
-import type { WorkKindDefinition } from '@deepseek-ai/dsh-task-queue'
+import type { WorkKindDefinition } from '@changanhua/dsh-task-queue'
 
 /** Caller intent for one host-configured operation. */
 export interface OperationRunIntent {
@@ -69,7 +69,7 @@ export interface Config {
   readonly operations: Readonly<Record<string, OperationDefinition>>
 }
 
-declare module '@deepseek-ai/dsh-task-queue' {
+declare module '@changanhua/dsh-task-queue' {
   interface WorkKindMap {
     'operation.run@1': WorkKindDefinition<
       OperationRunIntent,

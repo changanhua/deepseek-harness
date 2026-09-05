@@ -1,4 +1,4 @@
-/** Local Git repository facts and Attempt-owned worktree provider. @module @deepseek-ai/dsh-repo-workspace-git-local */
+/** Local Git repository facts and Attempt-owned worktree provider. @module @changanhua/dsh-repo-workspace-git-local */
 
 import { createHash, randomUUID } from 'node:crypto'
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, rmdir, unlink } from 'node:fs/promises'
@@ -11,16 +11,16 @@ import {
   GitCommitId,
   RepositoryRelativePath,
   canonicalJson,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   GitCommitId as GitCommitIdType,
   QueueAttemptIdRef,
   RepositoryId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   RepositoryWorkspace,
   RepositoryWorkspaceError,
-} from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-repo-workspace'
 import type {
   ChangeWorkspaceLease,
   CreateCheckpointRequest,
@@ -37,7 +37,7 @@ import type {
   VerifiedRepositoryBase,
   VerifiedRepositoryBlob,
   VerifiedRepositoryRevision,
-} from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-repo-workspace'
 import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subprocess'
 import { ensureDurableDirectoryWin32, publishNewPathWin32 } from './win32.ts'
 
@@ -45,6 +45,7 @@ const DEFAULT_GIT_GRACE_MS = 5_000
 const DEFAULT_GIT_OUTPUT_BYTES = 4 * 1024 * 1024
 const MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024
 const MAX_TIMER_DELAY_MS = 2_147_483_647
+const MAX_GIT_DIAGNOSTIC_CHARS = 512
 
 /** Configured repository identities and the isolated worktree parent. */
 export interface Config {
@@ -365,7 +366,10 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
         request.base.commit,
       ], request.signal)
       if (added.outcome.exitCode !== 0) {
-        throw new RepositoryWorkspaceError('unavailable', `Git could not create Attempt worktree '${cwd}'`)
+        throw new RepositoryWorkspaceError(
+          'unavailable',
+          withGitDiagnostic(`Git could not create Attempt worktree '${cwd}'`, added.stderr),
+        )
       }
     } else {
       if (!checkout.isDirectory() || checkout.isSymbolicLink()) {
@@ -420,7 +424,10 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
         request.target.commit,
       ], request.signal)
       if (added.outcome.exitCode !== 0) {
-        throw new RepositoryWorkspaceError('unavailable', `Git could not create Attempt worktree '${cwd}'`)
+        throw new RepositoryWorkspaceError(
+          'unavailable',
+          withGitDiagnostic(`Git could not create Attempt worktree '${cwd}'`, added.stderr),
+        )
       }
     } else {
       if (!checkout.isDirectory() || checkout.isSymbolicLink()) {
@@ -716,7 +723,13 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
     try {
       const executable = await this.context.subprocess.resolveExecutable('git', undefined, signal)
       handle = this.context.subprocess.spawn({
-        argv: [executable, '-C', repository, ...args],
+        argv: [
+          executable,
+          ...process.platform === 'win32' ? ['-c', 'core.longpaths=true'] : [],
+          '-C',
+          repository,
+          ...args,
+        ],
         cwd: dirname(repository),
         stdio: { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
         graceMs: this.graceMs,
@@ -769,6 +782,15 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       }
     }
   }
+}
+
+function withGitDiagnostic(message: string, stderr: string): string {
+  const diagnostic = stderr.trim().replace(/\s+/gu, ' ')
+  if (diagnostic.length === 0) return message
+  const bounded = diagnostic.length <= MAX_GIT_DIAGNOSTIC_CHARS
+    ? diagnostic
+    : `${diagnostic.slice(0, MAX_GIT_DIAGNOSTIC_CHARS - 1)}…`
+  return `${message}: ${bounded}`
 }
 
 class GitChangeWorkspaceLease implements ChangeWorkspaceLease {

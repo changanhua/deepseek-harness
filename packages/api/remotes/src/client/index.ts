@@ -7,12 +7,13 @@ import settingsControllerRemote from '@deepseek-ai/dsh-api-settings-controller/r
 import goalsRemote from '@deepseek-ai/dsh-goal/remote'
 import llmRemote from '@deepseek-ai/dsh-llm/remote'
 import dynamicRemote from '@deepseek-ai/dsh-cordis-host-runner/remote'
-import capabilityRegistryRemote from '@deepseek-ai/dsh-host-capability-registry/remote'
+import capabilityRegistryRemote from '@changanhua/dsh-host-capability-registry/remote'
 import pluginInventoryRemote from '@deepseek-ai/dsh-host-plugin-inventory/remote'
+import workObservatoryRemote from '@changanhua/dsh-host-work-observatory/remote'
 import messageFeedbackRemote from '@deepseek-ai/dsh-message-feedback/remote'
 import sessionReferencesRemote from '@deepseek-ai/dsh-session-reference/remote'
 import subagentsRemote from '@deepseek-ai/dsh-subagent/remote'
-import taskQueueRemote from '@deepseek-ai/dsh-task-queue-remote/remote'
+import taskQueueRemote from '@changanhua/dsh-task-queue-remote/remote'
 import sessionRemote from '@deepseek-ai/dsh-api-session-controller/remote'
 import workspaceRemote from '@deepseek-ai/dsh-api-workspace-controller/remote'
 import type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
@@ -24,18 +25,19 @@ export type {
   CapabilitySkill,
   CapabilitySnapshot,
   CapabilityTool,
-} from '@deepseek-ai/dsh-host-capability-registry/types'
+} from '@changanhua/dsh-host-capability-registry/types'
 export type {} from '@deepseek-ai/dsh-agent-presets/remote'
 export type {} from '@deepseek-ai/dsh-commands/remote'
 export type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
 export type {} from '@deepseek-ai/dsh-goal/remote'
 export type {} from '@deepseek-ai/dsh-llm/remote'
 export type {} from '@deepseek-ai/dsh-host-plugin-inventory/remote'
-export type {} from '@deepseek-ai/dsh-host-capability-registry/remote'
+export type {} from '@changanhua/dsh-host-capability-registry/remote'
+export type {} from '@changanhua/dsh-host-work-observatory/remote'
 export type {} from '@deepseek-ai/dsh-message-feedback/remote'
 export type {} from '@deepseek-ai/dsh-session-reference/remote'
 export type {} from '@deepseek-ai/dsh-subagent/remote'
-export type {} from '@deepseek-ai/dsh-task-queue-remote/remote'
+export type {} from '@changanhua/dsh-task-queue-remote/remote'
 export type * from '@deepseek-ai/dsh-subagent/client'
 export type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 export type * from '@deepseek-ai/dsh-api-session-controller/types'
@@ -166,7 +168,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   try {
     for (const contribution of [
       agentPresetsRemote, commandsRemote, settingsControllerRemote, goalsRemote, llmRemote, dynamicRemote,
-      pluginInventoryRemote, capabilityRegistryRemote, messageFeedbackRemote, sessionReferencesRemote,
+      pluginInventoryRemote, capabilityRegistryRemote, workObservatoryRemote, messageFeedbackRemote, sessionReferencesRemote,
       subagentsRemote, taskQueueRemote, sessionRemote, workspaceRemote,
     ]) {
       disposers.push(await ctx.remote.$mount(contribution))

@@ -1,55 +1,71 @@
 import {
-  DELIVERY_SCHEMA_VERSION,
   canonicalGitHubIssueUrl,
+  gitHubIssueRefSchema,
   isCanonicalGitHubIssueUrl,
   isGitHubRepositoryName,
   isGitHubRepositoryOwner,
   parseCanonicalGitHubIssueUrl,
-  sourceRefContentDigest,
-  sourceRefSchema,
+  requirementOriginSchema,
   type GitHubRepositoryRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { describe, expect, it } from 'vitest'
 
 const repository: GitHubRepositoryRef = {
   owner: 'deepseek-ai',
   name: 'deepseek-harness',
 }
-const title = 'Canonical GitHub Issue source'
-const body = 'Adopt only the exact public Issue coordinates.'
 
-function sourceCandidate(
-  canonicalUrl: string,
+function issueRefCandidate(
+  url: string,
   overrides: {
     readonly repository?: GitHubRepositoryRef
     readonly issueNumber?: number
   } = {},
 ): unknown {
   return {
-    schemaVersion: DELIVERY_SCHEMA_VERSION,
-    id: 'source-github-canonical',
-    provider: 'github',
     repository: overrides.repository ?? repository,
     issueNumber: overrides.issueNumber ?? 13,
-    canonicalUrl,
-    updatedAt: '2026-08-29T12:00:00.000Z',
-    title,
-    body,
-    contentDigest: sourceRefContentDigest({ title, body }),
-    createdAt: '2026-08-29T12:01:00.000Z',
+    url,
   }
 }
 
-describe('canonical GitHub Issue SourceRef', () => {
+function githubImportOriginCandidate(
+  overrides: {
+    readonly repository?: GitHubRepositoryRef
+    readonly issueNumber?: number
+    readonly contentDigest?: string
+  } = {},
+): unknown {
+  return {
+    kind: 'github-import',
+    repository: overrides.repository ?? repository,
+    issueNumber: overrides.issueNumber ?? 13,
+    contentDigest: overrides.contentDigest ?? `sha256:${'a'.repeat(64)}`,
+  }
+}
+
+describe('canonical GitHub Issue coordinates', () => {
   it('constructs, parses, and validates the exact public Issue coordinates', () => {
     const url = canonicalGitHubIssueUrl(repository, 13)
     expect(url).toBe('https://github.com/deepseek-ai/deepseek-harness/issues/13')
     expect(parseCanonicalGitHubIssueUrl(url)).toEqual({ repository, issueNumber: 13 })
     expect(isCanonicalGitHubIssueUrl(url, repository, 13)).toBe(true)
-    expect(sourceRefSchema.parse(sourceCandidate(url))).toMatchObject({
+    expect(gitHubIssueRefSchema.parse(issueRefCandidate(url))).toMatchObject({
       repository,
       issueNumber: 13,
-      canonicalUrl: url,
+      url,
+    })
+  })
+
+  it('accepts a github-import requirement origin with canonical coordinates', () => {
+    expect(requirementOriginSchema.parse(githubImportOriginCandidate())).toMatchObject({
+      kind: 'github-import',
+      repository,
+      issueNumber: 13,
+    })
+    expect(requirementOriginSchema.parse({ kind: 'human', actorId: 'user-local' })).toEqual({
+      kind: 'human',
+      actorId: 'user-local',
     })
   })
 
@@ -67,7 +83,7 @@ describe('canonical GitHub Issue SourceRef', () => {
   ])('rejects a non-canonical %s URL', (_name, url) => {
     expect(parseCanonicalGitHubIssueUrl(url)).toBeUndefined()
     expect(isCanonicalGitHubIssueUrl(url, repository, 13)).toBe(false)
-    expect(sourceRefSchema.safeParse(sourceCandidate(url)).success).toBe(false)
+    expect(gitHubIssueRefSchema.safeParse(issueRefCandidate(url)).success).toBe(false)
   })
 
   it.each([
@@ -77,7 +93,7 @@ describe('canonical GitHub Issue SourceRef', () => {
   ])('rejects a canonical URL for different %s coordinates', (_name, url) => {
     expect(parseCanonicalGitHubIssueUrl(url)).toBeDefined()
     expect(isCanonicalGitHubIssueUrl(url, repository, 13)).toBe(false)
-    expect(sourceRefSchema.safeParse(sourceCandidate(url)).success).toBe(false)
+    expect(gitHubIssueRefSchema.safeParse(issueRefCandidate(url)).success).toBe(false)
   })
 
   it.each([
@@ -95,10 +111,19 @@ describe('canonical GitHub Issue SourceRef', () => {
       : { ...repository, name: value }
     expect(isGitHubRepositoryOwner(candidateRepository.owner)
       && isGitHubRepositoryName(candidateRepository.name)).toBe(false)
-    expect(sourceRefSchema.safeParse(sourceCandidate(
+    expect(gitHubIssueRefSchema.safeParse(issueRefCandidate(
       `https://github.com/${candidateRepository.owner}/${candidateRepository.name}/issues/13`,
       { repository: candidateRepository },
     )).success).toBe(false)
+    expect(requirementOriginSchema.safeParse(githubImportOriginCandidate({
+      repository: candidateRepository,
+    })).success).toBe(false)
+  })
+
+  it('rejects non-positive or non-digest github-import origin fields', () => {
+    expect(requirementOriginSchema.safeParse(githubImportOriginCandidate({ issueNumber: 0 })).success).toBe(false)
+    expect(requirementOriginSchema.safeParse(githubImportOriginCandidate({ contentDigest: 'md5:abc' })).success).toBe(false)
+    expect(requirementOriginSchema.safeParse({ kind: 'human', actorId: ' ' }).success).toBe(false)
   })
 
   it('rejects invalid coordinates before constructing a URL', () => {

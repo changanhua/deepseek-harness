@@ -1,9 +1,10 @@
 import { mkdir, realpath, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { DeliveryEvidenceError } from '@deepseek-ai/dsh-delivery-evidence'
+import { DeliveryEvidenceError } from '@changanhua/dsh-delivery-evidence'
 import {
   ContractRevisionId,
+  DELIVERY_SCHEMA_VERSION,
   EvidenceId,
   GitCommitId,
   QueueAttemptIdRef,
@@ -17,7 +18,7 @@ import {
   verificationPlanDigest,
   verificationPlanSchema,
   type EvidenceRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   SubprocessHandle,
   SubprocessSpawnSpec,
@@ -349,7 +350,7 @@ describe('delivery verifier evidence failures', () => {
     const wrongId = EvidenceId('wrong-provenance-evidence')
     const wrongData = new TextEncoder().encode('wrong provenance evidence\n')
     const wrongRef = evidenceRefSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: DELIVERY_SCHEMA_VERSION,
       id: wrongId,
       kind: 'log',
       mediaType: 'text/plain',

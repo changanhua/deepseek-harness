@@ -1,10 +1,10 @@
-/** Package-owned invariant companion for `@deepseek-ai/dsh-repo-workspace`. @module @deepseek-ai/dsh-repo-workspace/invariant */
+/** Package-owned invariant companion for `@changanhua/dsh-repo-workspace`. @module @changanhua/dsh-repo-workspace/invariant */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-repo-workspace'
+const PACKAGE_NAME = '@changanhua/dsh-repo-workspace'
 /** Cordis companion plugin name. */
 export const name = 'repo-workspace-invariant'
 /** Service required before the companion can reserve package ownership. */

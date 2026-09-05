@@ -363,6 +363,7 @@ function main(): void {
   const family = releaseFamily(values.family)
   const root = process.cwd()
   const members = family.members(root)
+  family.publishOrder(members)
   family.verifyVersions(members)
 
   let planned: PlannedVersion[]

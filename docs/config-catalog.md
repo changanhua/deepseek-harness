@@ -9,6 +9,348 @@ This file is GENERATED from source (`scripts/gen-config-catalog.ts`) and verifie
 
 A `Requires:` line lists the service keys the plugin `inject`s: its `cordis.yml` tree must also load providers for those services. Scope is the harness tier (`packages/`); the vendored cordis plugins a config tree may also load (`hmr`, the console logger, …) are pinned upstream source ([vendoring policy](../vendor/README.md)) and not catalogued here.
 
+<a id="changanhuadsh-delivery-evidence-local"></a>
+
+## `@changanhua/dsh-delivery-evidence-local`
+
+```ts config-catalog
+/** Local evidence-store location. */
+export interface Config {
+  /** Private directory containing content-addressed evidence objects. */
+  readonly root: string
+  /** Complete-byte publication limit, capped by the P0 64 MiB ceiling. */
+  readonly maxBytes?: number
+}
+```
+
+Source: [`packages/delivery/delivery-evidence-local/src/index.ts:42`](../packages/delivery/delivery-evidence-local/src/index.ts)
+
+<a id="changanhuadsh-delivery-remote"></a>
+
+## `@changanhua/dsh-delivery-remote`
+
+Requires: `credentials` · `delivery` · `deliveryEvidence` · `repoWorkspace` · `taskQueue`
+
+```ts config-catalog
+/** Trusted single-operator identity configured on the Host, never supplied by browser input. */
+export interface Config {
+  /** Non-blank human operator identity minted by trusted Host configuration. */
+  readonly operatorId?: string
+  /** Single local repository bound to newly shaped human-origin Cases. */
+  readonly repositoryId?: string
+  /** Host-only map from Delivery repository ids to GitHub targets and credential references. */
+  readonly githubTargets?: Readonly<Record<string, {
+    /** GitHub repository owner used by the Host publisher. */
+    readonly owner: string
+    /** GitHub repository name paired with the configured owner. */
+    readonly name: string
+    /** Credential reference resolved by the Host for each publication operation. */
+    readonly credentialRef: string
+    /** Optional labels applied by the Host during Issue creation. */
+    readonly labels?: string[]
+  }>>
+}
+```
+
+Source: [`packages/delivery/delivery-remote/src/index.ts:103`](../packages/delivery/delivery-remote/src/index.ts)
+
+<a id="changanhuadsh-delivery-task-queue"></a>
+
+## `@changanhua/dsh-delivery-task-queue`
+
+Requires: `delivery` · `deliveryEvidence` · `repoWorkspace` · `subprocess` · `taskQueue`
+
+```ts config-catalog
+/** Loader-owned composition policy for both Delivery Queue handlers. */
+export interface Config {
+  /** Stable executor recorded on code-change bindings. */
+  readonly executorId?: typeof DEFAULT_EXECUTOR_ID
+  /** Optional Codex model override. */
+  readonly model?: string
+  /** Native unattended Codex approval and sandbox policy. */
+  readonly permissionMode?: CodexAppServerPermissionMode
+  /** Explicit child environment layered after credential scrubbing. */
+  readonly env?: Record<string, string>
+  /** Process-tree termination grace shared by runner and verifier. */
+  readonly disposeGraceMs?: number
+  /** Maximum retained UTF-8 bytes from Codex assistant output. */
+  readonly modelOutputBytes?: number
+  /** Maximum collected bytes from one verification check. */
+  readonly verificationOutputBytes?: number
+  /** Queue resource serialized across expensive Agent work. */
+  readonly resource?: string
+  /** Queue retry ceiling for both governed work kinds. */
+  readonly maxAttempts?: number
+  /** Stable verifier implementation identity persisted in verdicts. */
+  readonly verifierVersion?: string
+}
+```
+
+Depends on: [`CodexAppServerPermissionMode`](../packages/delivery/delivery-runner-codex/src/index.ts)
+
+Source: [`packages/delivery/delivery-task-queue/src/index.ts:91`](../packages/delivery/delivery-task-queue/src/index.ts)
+
+<a id="changanhuadsh-host-work-observatory"></a>
+
+## `@changanhua/dsh-host-work-observatory`
+
+Requires: `storageDomain` · `sessions`
+
+```ts config-catalog
+/** Deployment bounds for durable activity evidence. */
+export interface Config {
+  /** Whole days to retain browser transitions and completed Session steps. */
+  readonly retentionDays?: number
+  /** Maximum browser document identities retained concurrently. */
+  readonly maxClients?: number
+  /** Maximum retained transition and step rows one range read may consume. */
+  readonly maxQueryRecords?: number
+}
+```
+
+Source: [`packages/host/work-observatory/src/index.ts:33`](../packages/host/work-observatory/src/index.ts)
+
+<a id="changanhuadsh-image-generation-arkcli"></a>
+
+## `@changanhua/dsh-image-generation-arkcli`
+
+Requires: `imageGeneration` · `subprocess`
+
+```ts config-catalog
+/** Deployment limits for ArkCLI process output and decoded image resources. */
+export interface Config {
+  /** ArkCLI executable name or absolute host path. */
+  executable?: string
+  /** Fixed arguments placed before every ArkCLI subcommand, for host launchers such as `node.exe arkcli.js`. */
+  argvPrefix?: string[]
+  /** Maximum complete stdout bytes accepted from one ArkCLI invocation. */
+  stdoutMaxBytes?: number
+  /** Maximum stderr tail bytes retained for private failure classification. */
+  stderrMaxBytes?: number
+  /** Process-tree termination grace passed to the subprocess service. */
+  graceMs?: number
+  /** Bound for each process-tree quiescence probe after exit or cancellation. */
+  quiescenceTimeoutMs?: number
+  /** Maximum encoded bytes read from the generated file. */
+  maxImageBytes?: number
+  /** Maximum decoded pixels accepted from the generated image. */
+  maxImagePixels?: number
+  /** Minimum requested image pixels admitted before generation. */
+  minImagePixels?: number
+  /** Minimum admitted width-to-height ratio. */
+  minAspectRatio?: number
+  /** Maximum admitted width-to-height ratio. */
+  maxAspectRatio?: number
+}
+```
+
+Source: [`packages/image/image-generation-arkcli/src/index.ts:72`](../packages/image/image-generation-arkcli/src/index.ts)
+
+<a id="changanhuadsh-image-generation-task-queue"></a>
+
+## `@changanhua/dsh-image-generation-task-queue`
+
+Requires: `taskQueue` · `imageGeneration` · `attachments`
+
+```ts config-catalog
+/** Queue retry policy supplied by the deployment composition. */
+export interface Config {
+  /** Maximum admitted attempts for one image WorkItem. */
+  readonly maxAttempts?: number
+}
+```
+
+Source: [`packages/image/image-generation-task-queue/src/index.ts:11`](../packages/image/image-generation-task-queue/src/index.ts)
+
+<a id="changanhuadsh-operation-run-task-queue"></a>
+
+## `@changanhua/dsh-operation-run-task-queue`
+
+Requires: `taskQueue` · `subprocess`
+
+```ts config-catalog
+/** Host-owned allowlist supplied to the operation WorkKind bridge. */
+export interface Config {
+  /** Closed map from caller-visible ids to trusted, fixed operation definitions. */
+  readonly operations: Readonly<Record<string, OperationDefinition>>
+}
+
+/** Trusted host definition for one allowlisted operation revision. */
+export interface OperationDefinition {
+  /** Stable host revision persisted with admitted WorkItems. */
+  readonly revision: string
+  /** Host-facing explanation of the named operation. */
+  readonly description: string
+  /** Fixed, secret-free process vector selected by trusted deployment configuration. */
+  readonly argv: readonly string[]
+  /** Existing working directory validated before process start. */
+  readonly cwd: string
+  /** Queue resource capacity key claimed by every Attempt. */
+  readonly resource: string
+  /** Positive resource units claimed by every Attempt. */
+  readonly units: number
+  /** Positive upper bound on durable Attempts for one WorkItem. */
+  readonly maxAttempts: number
+  /** Positive byte bound for subprocess output collection. */
+  readonly collectBytes: number
+  /** Positive byte bound for stdout exposed in a successful Result. */
+  readonly resultBytes: number
+  /** Positive byte bound for the stderr tail retained in a failure. */
+  readonly failureTailBytes: number
+  /** Positive millisecond grace between process termination stages. */
+  readonly graceMs: number
+  /** Positive millisecond execution deadline. */
+  readonly timeoutMs: number
+}
+```
+
+Source: [`packages/task-queue/operation-run-task-queue/src/index.ts:21`](../packages/task-queue/operation-run-task-queue/src/index.ts)
+
+<a id="changanhuadsh-repo-workspace-git-local"></a>
+
+## `@changanhua/dsh-repo-workspace-git-local`
+
+Requires: `subprocess`
+
+```ts config-catalog
+/** Configured repository identities and the isolated worktree parent. */
+export interface Config {
+  /** Closed map from stable repository id to its local Git checkout root. */
+  readonly repositories: Readonly<Record<string, string>>
+  /** Directory below which attempt-owned worktrees are created. */
+  readonly worktreeRoot: string
+  /** Git process TERM-to-KILL grace. */
+  readonly graceMs?: number
+  /** Complete-byte cap for one Git command stream. */
+  readonly maxGitOutputBytes?: number
+}
+```
+
+Source: [`packages/delivery/repo-workspace-git-local/src/index.ts:51`](../packages/delivery/repo-workspace-git-local/src/index.ts)
+
+<a id="changanhuadsh-runtime-facts"></a>
+
+## `@changanhua/dsh-runtime-facts`
+
+Requires: `systemPrompt`
+
+```ts config-catalog
+/** Runtime fact projection configuration. */
+export interface Config {
+  /** Include baseline facts in the dynamic runtime-context snapshot. */
+  includeInRuntimeContext?: boolean
+}
+```
+
+Source: [`packages/context/runtime-facts/src/index.ts:29`](../packages/context/runtime-facts/src/index.ts)
+
+<a id="changanhuadsh-task-queue-executor-dsh"></a>
+
+## `@changanhua/dsh-task-queue-executor-dsh`
+
+Requires: `taskQueue` · `subprocess`
+
+```ts config-catalog
+/** Deployment configuration for the restricted DSH worker handler. */
+export interface Config {
+  /** Executable and fixed argv prefix used to launch the worker. */
+  launcher: string[]
+  /** DSH home exposed to the restricted worker process. */
+  dshHome: string
+  /** Working directory allowed for every admitted request. */
+  workspaceDir: string
+  /** DSH profile loaded by the worker. */
+  profile?: string
+  /** Maximum UTF-8 bytes persisted from the semantic worker answer. */
+  maxAssistantBytes?: number
+  /** Maximum stdout bytes retained before spill collection. */
+  collectBytes?: number
+  /** Maximum UTF-8 bytes retained from nonzero-exit stderr. */
+  failureTailBytes?: number
+  /** Grace period for worker termination. */
+  graceMs?: number
+  /** Maximum attempts permitted for one admitted worker request. */
+  maxAttempts?: number
+}
+```
+
+Source: [`packages/task-queue/task-queue-executor-dsh/src/index.ts:36`](../packages/task-queue/task-queue-executor-dsh/src/index.ts)
+
+<a id="changanhuadsh-task-queue-local"></a>
+
+## `@changanhua/dsh-task-queue-local`
+
+```ts config-catalog
+/** Local Queue v2 configuration. */
+export interface Config {
+  /** Schema-v3 Queue root; the composing row must keep older formats in a separate directory. */
+  queueRoot: string
+  /** Maximum simultaneous prepared or live attempts. */
+  maxConcurrent?: number
+  /** Deployment capacity by handler-declared resource name. */
+  resourceCapacity?: Record<string, number>
+  /** Maximum time teardown or post-start durability cleanup waits for execution quiescence. */
+  shutdownTimeoutMs?: number
+}
+```
+
+Source: [`packages/task-queue/task-queue-local/src/index.ts:73`](../packages/task-queue/task-queue-local/src/index.ts)
+
+<a id="changanhuadsh-task-queue-remote"></a>
+
+## `@changanhua/dsh-task-queue-remote`
+
+Requires: `taskQueue`
+
+```ts config-catalog
+/** Reserved Remote plugin configuration. */
+export type Config = Record<string, never>
+```
+
+Source: [`packages/task-queue/task-queue-remote/src/index.ts:16`](../packages/task-queue/task-queue-remote/src/index.ts)
+
+<a id="changanhuadsh-tool-agent-run-task-queue"></a>
+
+## `@changanhua/dsh-tool-agent-run-task-queue`
+
+Requires: `tools` · `taskQueue`
+
+```ts config-catalog
+/** Reserved admission-tool configuration. */
+export interface Config {}
+```
+
+Source: [`packages/task-queue/tool-agent-run-task-queue/src/index.ts:12`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
+
+<a id="changanhuadsh-tool-operation-run-task-queue"></a>
+
+## `@changanhua/dsh-tool-operation-run-task-queue`
+
+Requires: `tools` · `taskQueue`
+
+```ts config-catalog
+/** Reserved admission-tool configuration. */
+export interface Config {}
+```
+
+Source: [`packages/task-queue/tool-operation-run-task-queue/src/index.ts:16`](../packages/task-queue/tool-operation-run-task-queue/src/index.ts)
+
+<a id="changanhuadsh-tool-task-queue"></a>
+
+## `@changanhua/dsh-tool-task-queue`
+
+Requires: `tools` · `taskQueue` · `sessions`
+
+```ts config-catalog
+/** Required owner delivery bound. */
+export interface Config {
+  /** Maximum pending owner Notifications appended during one Agent pre-step. */
+  readonly maxNotificationsPerStep: number
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts:237`](../packages/task-queue/tool-task-queue/src/index.ts)
+
 <a id="deepseek-aidsh-acp"></a>
 
 ## `@deepseek-ai/dsh-acp`
@@ -586,74 +928,6 @@ export interface Config {
 
 Source: [`packages/credentials/credentials-local/src/index.ts:64`](../packages/credentials/credentials-local/src/index.ts)
 
-<a id="deepseek-aidsh-delivery-evidence-local"></a>
-
-## `@deepseek-ai/dsh-delivery-evidence-local`
-
-```ts config-catalog
-/** Local evidence-store location. */
-export interface Config {
-  /** Private directory containing content-addressed evidence objects. */
-  readonly root: string
-  /** Complete-byte publication limit, capped by the P0 64 MiB ceiling. */
-  readonly maxBytes?: number
-}
-```
-
-Source: [`packages/delivery/delivery-evidence-local/src/index.ts:42`](../packages/delivery/delivery-evidence-local/src/index.ts)
-
-<a id="deepseek-aidsh-delivery-remote"></a>
-
-## `@deepseek-ai/dsh-delivery-remote`
-
-Requires: `delivery` · `deliveryEvidence` · `repoWorkspace` · `taskQueue`
-
-```ts config-catalog
-/** Trusted single-operator identity configured on the Host, never supplied by browser input. */
-export interface Config {
-  /** Non-blank human operator identity minted by trusted Host configuration. */
-  readonly operatorId?: string
-}
-```
-
-Source: [`packages/delivery/delivery-remote/src/index.ts:77`](../packages/delivery/delivery-remote/src/index.ts)
-
-<a id="deepseek-aidsh-delivery-task-queue"></a>
-
-## `@deepseek-ai/dsh-delivery-task-queue`
-
-Requires: `delivery` · `deliveryEvidence` · `repoWorkspace` · `subprocess` · `taskQueue`
-
-```ts config-catalog
-/** Loader-owned composition policy for both Delivery Queue handlers. */
-export interface Config {
-  /** Stable executor recorded on code-change bindings. */
-  readonly executorId?: string
-  /** Optional Codex model override. */
-  readonly model?: string
-  /** Native unattended Codex approval and sandbox policy. */
-  readonly permissionMode?: CodexAppServerPermissionMode
-  /** Explicit child environment layered after credential scrubbing. */
-  readonly env?: Record<string, string>
-  /** Process-tree termination grace shared by runner and verifier. */
-  readonly disposeGraceMs?: number
-  /** Maximum retained UTF-8 bytes from Codex assistant output. */
-  readonly modelOutputBytes?: number
-  /** Maximum collected bytes from one verification check. */
-  readonly verificationOutputBytes?: number
-  /** Queue resource serialized across expensive Agent work. */
-  readonly resource?: string
-  /** Queue retry ceiling for both governed work kinds. */
-  readonly maxAttempts?: number
-  /** Stable verifier implementation identity persisted in verdicts. */
-  readonly verifierVersion?: string
-}
-```
-
-Depends on: [`CodexAppServerPermissionMode`](../packages/delivery/delivery-runner-codex/src/index.ts)
-
-Source: [`packages/delivery/delivery-task-queue/src/index.ts:71`](../packages/delivery/delivery-task-queue/src/index.ts)
-
 <a id="deepseek-aidsh-e2b"></a>
 
 ## `@deepseek-ai/dsh-e2b`
@@ -989,58 +1263,6 @@ export interface Config {
 ```
 
 Source: [`packages/host/webserver/src/index.ts:59`](../packages/host/webserver/src/index.ts)
-
-<a id="deepseek-aidsh-image-generation-arkcli"></a>
-
-## `@deepseek-ai/dsh-image-generation-arkcli`
-
-Requires: `imageGeneration` · `subprocess`
-
-```ts config-catalog
-/** Deployment limits for ArkCLI process output and decoded image resources. */
-export interface Config {
-  /** ArkCLI executable name or absolute host path. */
-  executable?: string
-  /** Fixed arguments placed before every ArkCLI subcommand, for host launchers such as `node.exe arkcli.js`. */
-  argvPrefix?: string[]
-  /** Maximum complete stdout bytes accepted from one ArkCLI invocation. */
-  stdoutMaxBytes?: number
-  /** Maximum stderr tail bytes retained for private failure classification. */
-  stderrMaxBytes?: number
-  /** Process-tree termination grace passed to the subprocess service. */
-  graceMs?: number
-  /** Bound for each process-tree quiescence probe after exit or cancellation. */
-  quiescenceTimeoutMs?: number
-  /** Maximum encoded bytes read from the generated file. */
-  maxImageBytes?: number
-  /** Maximum decoded pixels accepted from the generated image. */
-  maxImagePixels?: number
-  /** Minimum requested image pixels admitted before generation. */
-  minImagePixels?: number
-  /** Minimum admitted width-to-height ratio. */
-  minAspectRatio?: number
-  /** Maximum admitted width-to-height ratio. */
-  maxAspectRatio?: number
-}
-```
-
-Source: [`packages/image/image-generation-arkcli/src/index.ts:72`](../packages/image/image-generation-arkcli/src/index.ts)
-
-<a id="deepseek-aidsh-image-generation-task-queue"></a>
-
-## `@deepseek-ai/dsh-image-generation-task-queue`
-
-Requires: `taskQueue` · `imageGeneration` · `attachments`
-
-```ts config-catalog
-/** Queue retry policy supplied by the deployment composition. */
-export interface Config {
-  /** Maximum admitted attempts for one image WorkItem. */
-  readonly maxAttempts?: number
-}
-```
-
-Source: [`packages/image/image-generation-task-queue/src/index.ts:11`](../packages/image/image-generation-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-invariants"></a>
 
@@ -1645,50 +1867,6 @@ export interface Config {
 
 Source: [`packages/feedback/message-feedback/src/index.ts:49`](../packages/feedback/message-feedback/src/index.ts)
 
-<a id="deepseek-aidsh-operation-run-task-queue"></a>
-
-## `@deepseek-ai/dsh-operation-run-task-queue`
-
-Requires: `taskQueue` · `subprocess`
-
-```ts config-catalog
-/** Host-owned allowlist supplied to the operation WorkKind bridge. */
-export interface Config {
-  /** Closed map from caller-visible ids to trusted, fixed operation definitions. */
-  readonly operations: Readonly<Record<string, OperationDefinition>>
-}
-
-/** Trusted host definition for one allowlisted operation revision. */
-export interface OperationDefinition {
-  /** Stable host revision persisted with admitted WorkItems. */
-  readonly revision: string
-  /** Host-facing explanation of the named operation. */
-  readonly description: string
-  /** Fixed, secret-free process vector selected by trusted deployment configuration. */
-  readonly argv: readonly string[]
-  /** Existing working directory validated before process start. */
-  readonly cwd: string
-  /** Queue resource capacity key claimed by every Attempt. */
-  readonly resource: string
-  /** Positive resource units claimed by every Attempt. */
-  readonly units: number
-  /** Positive upper bound on durable Attempts for one WorkItem. */
-  readonly maxAttempts: number
-  /** Positive byte bound for subprocess output collection. */
-  readonly collectBytes: number
-  /** Positive byte bound for stdout exposed in a successful Result. */
-  readonly resultBytes: number
-  /** Positive byte bound for the stderr tail retained in a failure. */
-  readonly failureTailBytes: number
-  /** Positive millisecond grace between process termination stages. */
-  readonly graceMs: number
-  /** Positive millisecond execution deadline. */
-  readonly timeoutMs: number
-}
-```
-
-Source: [`packages/task-queue/operation-run-task-queue/src/index.ts:21`](../packages/task-queue/operation-run-task-queue/src/index.ts)
-
 <a id="deepseek-aidsh-permission-presets"></a>
 
 ## `@deepseek-ai/dsh-permission-presets`
@@ -1872,44 +2050,6 @@ export interface Config {
 ```
 
 Source: [`packages/guard/repeat-tool-reminder/src/index.ts:28`](../packages/guard/repeat-tool-reminder/src/index.ts)
-
-<a id="deepseek-aidsh-repo-workspace-git-local"></a>
-
-## `@deepseek-ai/dsh-repo-workspace-git-local`
-
-Requires: `subprocess`
-
-```ts config-catalog
-/** Configured repository identities and the isolated worktree parent. */
-export interface Config {
-  /** Closed map from stable repository id to its local Git checkout root. */
-  readonly repositories: Readonly<Record<string, string>>
-  /** Directory below which attempt-owned worktrees are created. */
-  readonly worktreeRoot: string
-  /** Git process TERM-to-KILL grace. */
-  readonly graceMs?: number
-  /** Complete-byte cap for one Git command stream. */
-  readonly maxGitOutputBytes?: number
-}
-```
-
-Source: [`packages/delivery/repo-workspace-git-local/src/index.ts:50`](../packages/delivery/repo-workspace-git-local/src/index.ts)
-
-<a id="deepseek-aidsh-runtime-facts"></a>
-
-## `@deepseek-ai/dsh-runtime-facts`
-
-Requires: `systemPrompt`
-
-```ts config-catalog
-/** Runtime fact projection configuration. */
-export interface Config {
-  /** Include baseline facts in the dynamic runtime-context snapshot. */
-  includeInRuntimeContext?: boolean
-}
-```
-
-Source: [`packages/context/runtime-facts/src/index.ts:29`](../packages/context/runtime-facts/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 
@@ -2768,71 +2908,6 @@ export interface Config {
 
 Source: [`packages/core/system-prompt/src/index.ts:237`](../packages/core/system-prompt/src/index.ts)
 
-<a id="deepseek-aidsh-task-queue-executor-dsh"></a>
-
-## `@deepseek-ai/dsh-task-queue-executor-dsh`
-
-Requires: `taskQueue` · `subprocess`
-
-```ts config-catalog
-/** Deployment configuration for the restricted DSH worker handler. */
-export interface Config {
-  /** Executable and fixed argv prefix used to launch the worker. */
-  launcher: string[]
-  /** DSH home exposed to the restricted worker process. */
-  dshHome: string
-  /** Working directory allowed for every admitted request. */
-  workspaceDir: string
-  /** DSH profile loaded by the worker. */
-  profile?: string
-  /** Maximum UTF-8 bytes persisted from the semantic worker answer. */
-  maxAssistantBytes?: number
-  /** Maximum stdout bytes retained before spill collection. */
-  collectBytes?: number
-  /** Maximum UTF-8 bytes retained from nonzero-exit stderr. */
-  failureTailBytes?: number
-  /** Grace period for worker termination. */
-  graceMs?: number
-  /** Maximum attempts permitted for one admitted worker request. */
-  maxAttempts?: number
-}
-```
-
-Source: [`packages/task-queue/task-queue-executor-dsh/src/index.ts:36`](../packages/task-queue/task-queue-executor-dsh/src/index.ts)
-
-<a id="deepseek-aidsh-task-queue-local"></a>
-
-## `@deepseek-ai/dsh-task-queue-local`
-
-```ts config-catalog
-/** Local Queue v2 configuration. */
-export interface Config {
-  /** Schema-v3 Queue root; the composing row must keep older formats in a separate directory. */
-  queueRoot: string
-  /** Maximum simultaneous prepared or live attempts. */
-  maxConcurrent?: number
-  /** Deployment capacity by handler-declared resource name. */
-  resourceCapacity?: Record<string, number>
-  /** Maximum time teardown or post-start durability cleanup waits for execution quiescence. */
-  shutdownTimeoutMs?: number
-}
-```
-
-Source: [`packages/task-queue/task-queue-local/src/index.ts:61`](../packages/task-queue/task-queue-local/src/index.ts)
-
-<a id="deepseek-aidsh-task-queue-remote"></a>
-
-## `@deepseek-ai/dsh-task-queue-remote`
-
-Requires: `taskQueue`
-
-```ts config-catalog
-/** Reserved Remote plugin configuration. */
-export type Config = Record<string, never>
-```
-
-Source: [`packages/task-queue/task-queue-remote/src/index.ts:16`](../packages/task-queue/task-queue-remote/src/index.ts)
-
 <a id="deepseek-aidsh-terminal-bash"></a>
 
 ## `@deepseek-ai/dsh-terminal-bash`
@@ -2927,19 +3002,6 @@ export type TokenMeterConfig = Record<string, never>
 ```
 
 Source: [`packages/llm/token-meter/src/types.ts:12`](../packages/llm/token-meter/src/types.ts)
-
-<a id="deepseek-aidsh-tool-agent-run-task-queue"></a>
-
-## `@deepseek-ai/dsh-tool-agent-run-task-queue`
-
-Requires: `tools` · `taskQueue`
-
-```ts config-catalog
-/** Reserved admission-tool configuration. */
-export interface Config {}
-```
-
-Source: [`packages/task-queue/tool-agent-run-task-queue/src/index.ts:12`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-bash"></a>
 
@@ -3105,19 +3167,6 @@ export interface Config {
 ```
 
 Source: [`packages/lsp/tool-lsp/src/index.ts:58`](../packages/lsp/tool-lsp/src/index.ts)
-
-<a id="deepseek-aidsh-tool-operation-run-task-queue"></a>
-
-## `@deepseek-ai/dsh-tool-operation-run-task-queue`
-
-Requires: `tools` · `taskQueue`
-
-```ts config-catalog
-/** Reserved admission-tool configuration. */
-export interface Config {}
-```
-
-Source: [`packages/task-queue/tool-operation-run-task-queue/src/index.ts:16`](../packages/task-queue/tool-operation-run-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-pwsh"></a>
 
@@ -3322,22 +3371,6 @@ export interface Config {
 Depends on: [`SubagentReportDelivery`](subsystems/subagent.md)
 
 Source: [`packages/subagent/tool-subagent-report/src/index.ts:27`](../packages/subagent/tool-subagent-report/src/index.ts)
-
-<a id="deepseek-aidsh-tool-task-queue"></a>
-
-## `@deepseek-ai/dsh-tool-task-queue`
-
-Requires: `tools` · `taskQueue` · `sessions`
-
-```ts config-catalog
-/** Required owner delivery bound. */
-export interface Config {
-  /** Maximum pending owner Notifications appended during one Agent pre-step. */
-  readonly maxNotificationsPerStep: number
-}
-```
-
-Source: [`packages/task-queue/tool-task-queue/src/index.ts:237`](../packages/task-queue/tool-task-queue/src/index.ts)
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 
@@ -3716,6 +3749,19 @@ Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
 
+- `@changanhua/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
+- `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
+- `@changanhua/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
+- `@changanhua/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
+- `@changanhua/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
+- `@changanhua/dsh-client-ui-work-observatory` ([`packages/client/ui-work-observatory/src/index.ts`](../packages/client/ui-work-observatory/src/index.ts))
+- `@changanhua/dsh-command-task-queue` — requires `commands` ([`packages/task-queue/command-task-queue/src/index.ts`](../packages/task-queue/command-task-queue/src/index.ts))
+- `@changanhua/dsh-delivery-local` — requires `storageDomain` ([`packages/delivery/delivery-local/src/index.ts`](../packages/delivery/delivery-local/src/index.ts))
+- `@changanhua/dsh-host-capability-registry` — requires `loader` · `skills` · `tools` · `agents` ([`packages/host/capability-registry/src/index.ts`](../packages/host/capability-registry/src/index.ts))
+- `@changanhua/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))
+- `@changanhua/dsh-runtime-facts-host` — requires `runtimeFacts` ([`packages/context/runtime-facts-host/src/index.ts`](../packages/context/runtime-facts-host/src/index.ts))
+- `@changanhua/dsh-tool-image-generation-task-queue` — requires `tools` · `taskQueue` ([`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts))
+- `@changanhua/dsh-tool-runtime-inspect` — requires `tools` · `runtimeFacts` · `subprocess` ([`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts))
 - `@deepseek-ai/dsh-acp-app` — requires `cmdlineArgs` ([`packages/bundle/acp-app/src/index.ts`](../packages/bundle/acp-app/src/index.ts))
 - `@deepseek-ai/dsh-agent` ([`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts))
 - `@deepseek-ai/dsh-api-remotes` — requires `typertGateway` ([`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts))
@@ -3725,16 +3771,13 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-modules` — requires `webServer` · `loader` ([`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-agent-preset` ([`packages/client/ui-agent-preset/src/index.ts`](../packages/client/ui-agent-preset/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-approval` ([`packages/client/ui-approval/src/index.ts`](../packages/client/ui-approval/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-attachment` ([`packages/client/ui-attachment/src/index.ts`](../packages/client/ui-attachment/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-brand-official` ([`packages/client/ui-brand-official/src/index.ts`](../packages/client/ui-brand-official/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-chat` ([`packages/client/ui-chat/src/index.ts`](../packages/client/ui-chat/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-commands` ([`packages/client/ui-commands/src/index.ts`](../packages/client/ui-commands/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-conversation` ([`packages/client/ui-conversation/src/index.ts`](../packages/client/ui-conversation/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-cordis` ([`packages/extensions/ui-cordis/src/index.ts`](../packages/extensions/ui-cordis/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-deliverables` — requires `systemPrompt` ([`packages/client/ui-deliverables/src/index.ts`](../packages/client/ui-deliverables/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-directory-picker-browse` ([`packages/client/ui-directory-picker-browse/src/index.ts`](../packages/client/ui-directory-picker-browse/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-directory-picker-native` ([`packages/client/ui-directory-picker-native/src/index.ts`](../packages/client/ui-directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-goal` ([`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts))
@@ -3753,11 +3796,9 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-settings-models` ([`packages/client/ui-settings-models/src/index.ts`](../packages/client/ui-settings-models/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-plugin-inventory` ([`packages/client/ui-settings-plugin-inventory/src/index.ts`](../packages/client/ui-settings-plugin-inventory/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-plugins` ([`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-sidebar` ([`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-skill` ([`packages/client/ui-skill/src/index.ts`](../packages/client/ui-skill/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-subagent` ([`packages/client/ui-subagent/src/index.ts`](../packages/client/ui-subagent/src/index.ts))
-- `@deepseek-ai/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-theme` ([`packages/client/ui-theme/src/index.ts`](../packages/client/ui-theme/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-tool` ([`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-trajectory` ([`packages/client/ui-trajectory/src/index.ts`](../packages/client/ui-trajectory/src/index.ts))
@@ -3767,23 +3808,18 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-command-compact` — requires `commands` · `compaction` ([`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts))
 - `@deepseek-ai/dsh-command-feedback` — requires `commands` ([`packages/feedback/command-feedback/src/index.ts`](../packages/feedback/command-feedback/src/index.ts))
 - `@deepseek-ai/dsh-command-goal` — requires `commands` · `goals` ([`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts))
-- `@deepseek-ai/dsh-command-task-queue` — requires `commands` ([`packages/task-queue/command-task-queue/src/index.ts`](../packages/task-queue/command-task-queue/src/index.ts))
 - `@deepseek-ai/dsh-commands` ([`packages/interaction/commands/src/index.ts`](../packages/interaction/commands/src/index.ts))
 - `@deepseek-ai/dsh-cordis-client-runner` ([`packages/extensions/cordis-client-runner/src/index.ts`](../packages/extensions/cordis-client-runner/src/index.ts))
 - `@deepseek-ai/dsh-deepseek-llm-api-extensions` ([`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts))
-- `@deepseek-ai/dsh-delivery-local` — requires `storageDomain` ([`packages/delivery/delivery-local/src/index.ts`](../packages/delivery/delivery-local/src/index.ts))
 - `@deepseek-ai/dsh-experimental-client-ui-agent-team` ([`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts))
 - `@deepseek-ai/dsh-fs-e2b` — requires `e2b` ([`packages/e2b/fs-e2b/src/index.ts`](../packages/e2b/fs-e2b/src/index.ts))
 - `@deepseek-ai/dsh-fs-observation-policy` ([`packages/fs/fs-observation-policy/src/index.ts`](../packages/fs/fs-observation-policy/src/index.ts))
 - `@deepseek-ai/dsh-goal-round-driver` — requires `agents` · `goals` · `sessions` ([`packages/goal/goal-round-driver/src/index.ts`](../packages/goal/goal-round-driver/src/index.ts))
-- `@deepseek-ai/dsh-host-capability-registry` — requires `loader` · `skills` · `tools` · `agents` ([`packages/host/capability-registry/src/index.ts`](../packages/host/capability-registry/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker-auto` — requires `webServer` · `loader` ([`packages/host/directory-picker-auto/src/index.ts`](../packages/host/directory-picker-auto/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker-native` ([`packages/host/directory-picker-native/src/index.ts`](../packages/host/directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-host-plugin-inventory` — requires `loader` ([`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts))
-- `@deepseek-ai/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))
 - `@deepseek-ai/dsh-llm` ([`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts))
 - `@deepseek-ai/dsh-lsp` ([`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts))
-- `@deepseek-ai/dsh-runtime-facts-host` — requires `runtimeFacts` ([`packages/context/runtime-facts-host/src/index.ts`](../packages/context/runtime-facts-host/src/index.ts))
 - `@deepseek-ai/dsh-schedule` — requires `agents` · `sessions` · `tools` · `sessionPersistence` ([`packages/schedule/schedule/src/index.ts`](../packages/schedule/schedule/src/index.ts))
 - `@deepseek-ai/dsh-session` ([`packages/core/session/src/index.ts`](../packages/core/session/src/index.ts))
 - `@deepseek-ai/dsh-session-checkpoint-policy` — requires `llm` · `sessionPersistence` · `sessions` · `tools` ([`packages/session/session-checkpoint-policy/src/index.ts`](../packages/session/session-checkpoint-policy/src/index.ts))
@@ -3797,8 +3833,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-tool-ask-user` — requires `tools` · `userQuestions` ([`packages/interaction/tool-ask-user/src/index.ts`](../packages/interaction/tool-ask-user/src/index.ts))
 - `@deepseek-ai/dsh-tool-call-timeout-policy` — requires `tools` ([`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts))
 - `@deepseek-ai/dsh-tool-cordis` — requires `tools` · `systemPrompt` · `dynamicCordisRunner` · `cordisInspect` ([`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts))
-- `@deepseek-ai/dsh-tool-image-generation-task-queue` — requires `tools` · `taskQueue` ([`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts))
-- `@deepseek-ai/dsh-tool-runtime-inspect` — requires `tools` · `runtimeFacts` · `subprocess` ([`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts))
 - `@deepseek-ai/dsh-tool-subagent-control` — requires `tools` · `subagents` ([`packages/subagent/tool-subagent-control/src/index.ts`](../packages/subagent/tool-subagent-control/src/index.ts))
 - `@deepseek-ai/dsh-user-questions` ([`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts))
 - `@deepseek-ai/dsh-webhook` — requires `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` ([`packages/webhook/webhook/src/index.ts`](../packages/webhook/webhook/src/index.ts))
@@ -3808,17 +3842,18 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 
 Abstract service classes — a deployment loads a concrete implementation package instead ([capability seams](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)).
 
+- `@changanhua/dsh-delivery` — abstract `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
+- `@changanhua/dsh-delivery-evidence` — abstract `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
+- `@changanhua/dsh-repo-workspace` — abstract `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))
+- `@changanhua/dsh-task-queue` — abstract `TaskQueue` ([`packages/task-queue/task-queue/src/index.ts`](../packages/task-queue/task-queue/src/index.ts))
 - `@deepseek-ai/dsh-attachment` — abstract `AttachmentStore` ([`packages/attachment/attachment/src/index.ts`](../packages/attachment/attachment/src/index.ts))
 - `@deepseek-ai/dsh-code-runtime` — abstract `CodeRuntime` ([`packages/code-runtime/code-runtime/src/index.ts`](../packages/code-runtime/code-runtime/src/index.ts))
 - `@deepseek-ai/dsh-compaction` — abstract `CompactionEngine` ([`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts))
 - `@deepseek-ai/dsh-credentials` — abstract `CredentialProvider` ([`packages/credentials/credentials/src/index.ts`](../packages/credentials/credentials/src/index.ts))
-- `@deepseek-ai/dsh-delivery` — abstract `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
-- `@deepseek-ai/dsh-delivery-evidence` — abstract `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
 - `@deepseek-ai/dsh-file-reference` — abstract `FileReferenceService` ([`packages/context/file-reference/src/index.ts`](../packages/context/file-reference/src/index.ts))
 - `@deepseek-ai/dsh-fs` — abstract `FileSystem` ([`packages/fs/fs/src/index.ts`](../packages/fs/fs/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker` — abstract `DirectoryPicker` ([`packages/host/directory-picker/src/index.ts`](../packages/host/directory-picker/src/index.ts))
 - `@deepseek-ai/dsh-jobs` — abstract `JobRegistry` ([`packages/jobs/jobs/src/index.ts`](../packages/jobs/jobs/src/index.ts))
-- `@deepseek-ai/dsh-repo-workspace` — abstract `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))
 - `@deepseek-ai/dsh-sandbox` — abstract `SandboxProvider` ([`packages/sandbox/sandbox/src/index.ts`](../packages/sandbox/sandbox/src/index.ts))
 - `@deepseek-ai/dsh-session-persistence` — abstract `SessionPersistence` ([`packages/session/session-persistence/src/index.ts`](../packages/session/session-persistence/src/index.ts))
 - `@deepseek-ai/dsh-session-query` — abstract `SessionQueryEngine` ([`packages/session-query/session-query/src/index.ts`](../packages/session-query/session-query/src/index.ts))
@@ -3826,13 +3861,21 @@ Abstract service classes — a deployment loads a concrete implementation packag
 - `@deepseek-ai/dsh-shell` — abstract `ShellExecutor` ([`packages/shell/shell/src/index.ts`](../packages/shell/shell/src/index.ts))
 - `@deepseek-ai/dsh-spill` — abstract `SpillStore` ([`packages/spill/spill/src/index.ts`](../packages/spill/spill/src/index.ts))
 - `@deepseek-ai/dsh-subprocess` — abstract `SubprocessRuntime` ([`packages/subprocess/subprocess/src/index.ts`](../packages/subprocess/subprocess/src/index.ts))
-- `@deepseek-ai/dsh-task-queue` — abstract `TaskQueue` ([`packages/task-queue/task-queue/src/index.ts`](../packages/task-queue/task-queue/src/index.ts))
 - `@deepseek-ai/dsh-workflow` — abstract `WorkflowEngine` ([`packages/workflow/workflow/src/index.ts`](../packages/workflow/workflow/src/index.ts))
 
 ## Library packages (no plugin entry)
 
 Imported as libraries by other packages; a `cordis.yml` cannot load them.
 
+- `@changanhua/dsh-delivery-github-intake` ([`packages/delivery/delivery-github-intake/src/index.ts`](../packages/delivery/delivery-github-intake/src/index.ts))
+- `@changanhua/dsh-delivery-github-publisher` ([`packages/delivery/delivery-github-publisher/src/index.ts`](../packages/delivery/delivery-github-publisher/src/index.ts))
+- `@changanhua/dsh-delivery-protocol` ([`packages/delivery/delivery-protocol/src/index.ts`](../packages/delivery/delivery-protocol/src/index.ts))
+- `@changanhua/dsh-delivery-runner-codex` ([`packages/delivery/delivery-runner-codex/src/index.ts`](../packages/delivery/delivery-runner-codex/src/index.ts))
+- `@changanhua/dsh-delivery-testkit` ([`packages/delivery/delivery-testkit/src/index.ts`](../packages/delivery/delivery-testkit/src/index.ts))
+- `@changanhua/dsh-delivery-verifier` ([`packages/delivery/delivery-verifier/src/index.ts`](../packages/delivery/delivery-verifier/src/index.ts))
+- `@changanhua/dsh-eval` ([`packages/eval/eval/src/index.ts`](../packages/eval/eval/src/index.ts))
+- `@changanhua/dsh-eval-session-snapshot` ([`packages/eval/eval-session-snapshot/src/index.ts`](../packages/eval/eval-session-snapshot/src/index.ts))
+- `@changanhua/dsh-personal-delivery` ([`packages/bundle/personal-delivery/src/index.ts`](../packages/bundle/personal-delivery/src/index.ts))
 - `@deepseek-ai/dsh-agent-loop-testkit` ([`packages/test-support/agent-loop-testkit/src/index.ts`](../packages/test-support/agent-loop-testkit/src/index.ts))
 - `@deepseek-ai/dsh-anonymous-user-id` ([`packages/identity/anonymous-user-id/src/index.ts`](../packages/identity/anonymous-user-id/src/index.ts))
 - `@deepseek-ai/dsh-app-boot` ([`packages/boot/app-boot/src/index.ts`](../packages/boot/app-boot/src/index.ts))
@@ -3846,11 +3889,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-client-web` ([`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts))
 - `@deepseek-ai/dsh-cmdline` ([`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts))
 - `@deepseek-ai/dsh-code-runtime-python` ([`packages/code-runtime/code-runtime-python/src/index.ts`](../packages/code-runtime/code-runtime-python/src/index.ts))
-- `@deepseek-ai/dsh-delivery-github-intake` ([`packages/delivery/delivery-github-intake/src/index.ts`](../packages/delivery/delivery-github-intake/src/index.ts))
-- `@deepseek-ai/dsh-delivery-protocol` ([`packages/delivery/delivery-protocol/src/index.ts`](../packages/delivery/delivery-protocol/src/index.ts))
-- `@deepseek-ai/dsh-delivery-runner-codex` ([`packages/delivery/delivery-runner-codex/src/index.ts`](../packages/delivery/delivery-runner-codex/src/index.ts))
-- `@deepseek-ai/dsh-delivery-testkit` ([`packages/delivery/delivery-testkit/src/index.ts`](../packages/delivery/delivery-testkit/src/index.ts))
-- `@deepseek-ai/dsh-delivery-verifier` ([`packages/delivery/delivery-verifier/src/index.ts`](../packages/delivery/delivery-verifier/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-profile` ([`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-web-profile` ([`packages/experimental/agent-team-web-profile/src/index.ts`](../packages/experimental/agent-team-web-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-webworker-packer` ([`packages/experimental/webworker-packer/src/index.ts`](../packages/experimental/webworker-packer/src/index.ts))
@@ -3862,7 +3900,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-loader-smoke` ([`packages/test-support/loader-smoke/src/index.ts`](../packages/test-support/loader-smoke/src/index.ts))
 - `@deepseek-ai/dsh-native-command` ([`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts))
 - `@deepseek-ai/dsh-output-retention` ([`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts))
-- `@deepseek-ai/dsh-personal-delivery` ([`packages/bundle/personal-delivery/src/index.ts`](../packages/bundle/personal-delivery/src/index.ts))
 - `@deepseek-ai/dsh-sandbox-windows-acl` ([`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts))
 - `@deepseek-ai/dsh-scope` ([`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts))
 - `@deepseek-ai/dsh-sdk-client` ([`packages/sdk/client/src/index.ts`](../packages/sdk/client/src/index.ts))

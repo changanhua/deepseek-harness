@@ -1,8 +1,8 @@
-# @deepseek-ai/dsh-tool-task-queue
+# @changanhua/dsh-tool-task-queue
 
 English | [中文](README.zh.md)
 
-`@deepseek-ai/dsh-tool-task-queue` exposes generic Queue v2 controls to a live Agent session. The plugin requires `tools`, `taskQueue`, `sessions`, and the required `maxNotificationsPerStep` bound. Every WorkItem operation derives an owner-fenced `AgentWorkQueue` from the current Session.
+`@changanhua/dsh-tool-task-queue` exposes generic Queue v2 controls to a live Agent session. The plugin requires `tools`, `taskQueue`, `sessions`, and the required `maxNotificationsPerStep` bound. Every WorkItem operation derives an owner-fenced `AgentWorkQueue` from the current Session.
 
 ## Tools
 

@@ -19,6 +19,7 @@ const [{ Context }, verifier, protocol, testkit, { default: LocalSubprocessRunti
 ])
 
 const {
+  DELIVERY_SCHEMA_VERSION,
   EvidenceId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
@@ -122,7 +123,7 @@ function scenarioRequest(root, check, closes, savedOutputs) {
         outputOrdinal += 1
         const id = EvidenceId(`built-verification-output-${String(outputOrdinal)}`)
         const reference = evidenceRefSchema.parse({
-          schemaVersion: 1,
+          schemaVersion: DELIVERY_SCHEMA_VERSION,
           id,
           kind: input.kind,
           mediaType: input.mediaType,

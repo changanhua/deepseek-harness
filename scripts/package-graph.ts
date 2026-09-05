@@ -8,11 +8,16 @@
 import { globSync, readFileSync } from 'node:fs'
 import { dirname, resolve, sep } from 'node:path'
 
-const SCOPE = '@deepseek-ai/dsh-'
+const PACKAGE_PREFIXES = ['@deepseek-ai/dsh-', '@changanhua/dsh-'] as const
+
+function packageShort(name: string): string | undefined {
+  const prefix = PACKAGE_PREFIXES.find(candidate => name.startsWith(candidate))
+  return prefix === undefined ? undefined : name.slice(prefix.length)
+}
 
 /** One harness package and its in-repo peer-dependency edges. */
 export interface PackageGraphNode {
-  /** Package name with the `@deepseek-ai/dsh-` prefix removed. */
+  /** Package name with its supported DSH scope prefix removed. */
   short: string
   /** Full npm package name. */
   name: string
@@ -20,7 +25,7 @@ export interface PackageGraphNode {
   group: string
   /** Repo-relative package directory. */
   rel: string
-  /** Short names of in-repo peer dependencies, sorted. */
+  /** Full npm names of in-repo peer dependencies, sorted by display name. */
   deps: string[]
 }
 
@@ -39,30 +44,32 @@ export function collectPackageGraph(root: string, groupOrder: readonly string[],
       name: string
       peerDependencies?: Record<string, string>
     }
-    if (!json.name.startsWith(SCOPE)) continue
+    const short = packageShort(json.name)
+    if (short === undefined) continue
     const [, group, leaf] = rel.split('/')
     if (group === undefined || leaf === undefined) throw new Error(`${gate}: unexpected package path ${rel}`)
-    const deps = Object.keys(json.peerDependencies ?? {})
-      .filter(dep => dep.startsWith(SCOPE))
-      .map(dep => dep.slice(SCOPE.length))
-      .sort()
+    const dependencies = Object.keys(json.peerDependencies ?? {})
+      .map(name => ({ name, short: packageShort(name) }))
+      .filter((dependency): dependency is { name: string; short: string } => dependency.short !== undefined)
+      .sort((left, right) => left.short.localeCompare(right.short) || left.name.localeCompare(right.name))
     packages.push({
-      short: json.name.slice(SCOPE.length),
+      short,
       name: json.name,
       group,
       rel: dirname(rel),
-      deps,
+      deps: dependencies.map(dependency => dependency.name),
     })
   }
   return topoSort(packages, groupOrder, gate)
 }
 
 function topoSort(packages: PackageGraphNode[], groupOrder: readonly string[], gate: string): PackageGraphNode[] {
-  const byName = new Map(packages.map(pkg => [pkg.short, pkg]))
+  const byName = new Map(packages.map(pkg => [pkg.name, pkg]))
+  if (byName.size !== packages.length) throw new Error(`${gate}: duplicate full npm package identity in package graph`)
   for (const pkg of packages) {
     for (const dependency of pkg.deps) {
       if (!byName.has(dependency)) {
-        throw new Error(`${gate}: ${pkg.name} references missing in-repo peer ${SCOPE}${dependency}`)
+        throw new Error(`${gate}: ${pkg.name} references missing in-repo peer ${dependency}`)
       }
     }
   }
@@ -82,8 +89,8 @@ function topoSort(packages: PackageGraphNode[], groupOrder: readonly string[], g
     }
     for (const pkg of ready) {
       out.push(pkg)
-      placed.add(pkg.short)
-      remaining.delete(pkg.short)
+      placed.add(pkg.name)
+      remaining.delete(pkg.name)
     }
   }
   return out
@@ -102,30 +109,30 @@ function sinkCycles(remaining: ReadonlyMap<string, PackageGraphNode>): PackageGr
   const visit = (pkg: PackageGraphNode): void => {
     const index = nextIndex
     nextIndex += 1
-    indices.set(pkg.short, index)
-    lowLinks.set(pkg.short, index)
+    indices.set(pkg.name, index)
+    lowLinks.set(pkg.name, index)
     stack.push(pkg)
-    stacked.add(pkg.short)
+    stacked.add(pkg.name)
     for (const dependency of pkg.deps) {
       const target = remaining.get(dependency)
       if (target === undefined) continue
-      if (!indices.has(target.short)) {
+      if (!indices.has(target.name)) {
         visit(target)
-        lowLinks.set(pkg.short, Math.min(requiredValue(lowLinks, pkg.short), requiredValue(lowLinks, target.short)))
-      } else if (stacked.has(target.short)) {
-        lowLinks.set(pkg.short, Math.min(requiredValue(lowLinks, pkg.short), requiredValue(indices, target.short)))
+        lowLinks.set(pkg.name, Math.min(requiredValue(lowLinks, pkg.name), requiredValue(lowLinks, target.name)))
+      } else if (stacked.has(target.name)) {
+        lowLinks.set(pkg.name, Math.min(requiredValue(lowLinks, pkg.name), requiredValue(indices, target.name)))
       }
     }
-    if (lowLinks.get(pkg.short) !== indices.get(pkg.short)) return
+    if (lowLinks.get(pkg.name) !== indices.get(pkg.name)) return
     const first = stack.pop()
     if (first === undefined) throw new Error('package graph traversal lost its active component')
-    stacked.delete(first.short)
+    stacked.delete(first.name)
     const component: PackageGraphComponent = [first]
     let member = first
     while (member !== pkg) {
       const next = stack.pop()
       if (next === undefined) throw new Error('package graph traversal lost its active component')
-      stacked.delete(next.short)
+      stacked.delete(next.name)
       component.push(next)
       member = next
     }
@@ -133,12 +140,12 @@ function sinkCycles(remaining: ReadonlyMap<string, PackageGraphNode>): PackageGr
   }
 
   for (const pkg of remaining.values()) {
-    if (!indices.has(pkg.short)) visit(pkg)
+    if (!indices.has(pkg.name)) visit(pkg)
   }
   return components.filter((component) => {
-    const names = new Set(component.map(pkg => pkg.short))
+    const names = new Set(component.map(pkg => pkg.name))
     const first = component[0]
-    const cyclic = component.length > 1 || first.deps.includes(first.short)
+    const cyclic = component.length > 1 || first.deps.includes(first.name)
     return cyclic && component.every(pkg => pkg.deps.every(dep => !remaining.has(dep) || names.has(dep)))
   })
 }
@@ -154,7 +161,7 @@ function comparePackages(a: PackageGraphNode, b: PackageGraphNode, groupOrder: r
   const groupB = groupOrder.indexOf(b.group)
   const normA = groupA === -1 ? Number.MAX_SAFE_INTEGER : groupA
   const normB = groupB === -1 ? Number.MAX_SAFE_INTEGER : groupB
-  return normA - normB || a.group.localeCompare(b.group) || a.short.localeCompare(b.short)
+  return normA - normB || a.group.localeCompare(b.group) || a.short.localeCompare(b.short) || a.name.localeCompare(b.name)
 }
 
 /** Stable Mermaid id for a graph value. */

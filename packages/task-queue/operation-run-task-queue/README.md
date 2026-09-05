@@ -1,8 +1,8 @@
-# @deepseek-ai/dsh-operation-run-task-queue
+# @changanhua/dsh-operation-run-task-queue
 
 English | [中文](README.zh.md)
 
-`@deepseek-ai/dsh-operation-run-task-queue` registers the `operation.run@1` WorkHandler. It resolves one caller-selected operation id to an immutable host allowlist entry before Queue persistence, then starts that resolved operation through `ctx.subprocess`.
+`@changanhua/dsh-operation-run-task-queue` registers the `operation.run@1` WorkHandler. It resolves one caller-selected operation id to an immutable host allowlist entry before Queue persistence, then starts that resolved operation through `ctx.subprocess`.
 
 ## Configuration
 
@@ -29,7 +29,7 @@ The package is not mounted by the base bundle. An opt-in composition mounts the 
 
 ```yaml
 - id: task-queue
-  name: '@deepseek-ai/dsh-task-queue-local'
+  name: '@changanhua/dsh-task-queue-local'
   config:
     resourceCapacity:
       operation-run: 1
@@ -38,7 +38,7 @@ The package is not mounted by the base bundle. An opt-in composition mounts the 
   name: '@deepseek-ai/dsh-subprocess-local'
 
 - id: operation-run-task-queue
-  name: '@deepseek-ai/dsh-operation-run-task-queue'
+  name: '@changanhua/dsh-operation-run-task-queue'
   config:
     operations:
       health.check:
@@ -70,7 +70,7 @@ Spawn failure is retryable only when no operation started. A non-zero exit recor
 
 #### What the model sees
 
-The model receives `operation.run@1` admission schemas from `@deepseek-ai/dsh-tool-operation-run-task-queue`; the generic owner-scoped Queue result read returns this handler's persisted result.
+The model receives `operation.run@1` admission schemas from `@changanhua/dsh-tool-operation-run-task-queue`; the generic owner-scoped Queue result read returns this handler's persisted result.
 
 #### Token effect
 

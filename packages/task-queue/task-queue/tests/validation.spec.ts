@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   applyChange as applyChangeStrict, foldChanges as foldChangesStrict, lookupReceipt,
   AttentionId, AttemptId, BatchId, NotificationId, WorkId,
-} from '@deepseek-ai/dsh-task-queue'
-import type { ChangeSet, FoldedQueue } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
+import type { ChangeSet, FoldedQueue } from '@changanhua/dsh-task-queue'
 import { AT, LATER, admitted, batch, failure, receipt, result, running, started, work } from './fixtures.ts'
 
 /** Keep malformed persistence fixtures outside the production ChangeSet type. */

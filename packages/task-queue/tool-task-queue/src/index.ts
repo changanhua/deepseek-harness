@@ -4,9 +4,9 @@ import z from '@deepseek-ai/schemastery'
 import { messageAccepted, type PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { freezeMessage, MessageId, type UserMessage } from '@deepseek-ai/dsh-llm'
 import type { JsonValue, Session } from '@deepseek-ai/dsh-session'
-import { canonicalJson, createVerifiedAgentAuthority } from '@deepseek-ai/dsh-task-queue'
-import type { AgentWorkQueue, TaskQueue, WorkStatus, WorkView } from '@deepseek-ai/dsh-task-queue'
-import type { Notification } from '@deepseek-ai/dsh-task-queue'
+import { canonicalJson, createVerifiedAgentAuthority } from '@changanhua/dsh-task-queue'
+import type { AgentWorkQueue, TaskQueue, WorkStatus, WorkView } from '@changanhua/dsh-task-queue'
+import type { Notification } from '@changanhua/dsh-task-queue'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 /** Cordis loader name. */

@@ -1,4 +1,4 @@
-/** Repository identity and isolated Git workspace Service Definition (`ctx.repoWorkspace`). @module @deepseek-ai/dsh-repo-workspace */
+/** Repository identity and isolated Git workspace Service Definition (`ctx.repoWorkspace`). @module @changanhua/dsh-repo-workspace */
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import type {
@@ -7,7 +7,7 @@ import type {
   GitCommitId,
   RepositoryId,
   RepositoryRelativePath,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   ChangeWorkspaceLease,
   InspectRepositoryRangeRequest,

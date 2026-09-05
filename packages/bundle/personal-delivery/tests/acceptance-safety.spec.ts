@@ -8,19 +8,19 @@ import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import LocalDelivery from '@deepseek-ai/dsh-delivery-local'
-import LocalDeliveryEvidence from '@deepseek-ai/dsh-delivery-evidence-local'
-import DeliveryRemote from '@deepseek-ai/dsh-delivery-remote'
-import * as DeliveryTaskQueue from '@deepseek-ai/dsh-delivery-task-queue'
-import GitLocalRepositoryWorkspace from '@deepseek-ai/dsh-repo-workspace-git-local'
+import LocalDelivery from '@changanhua/dsh-delivery-local'
+import LocalDeliveryEvidence from '@changanhua/dsh-delivery-evidence-local'
+import DeliveryRemote from '@changanhua/dsh-delivery-remote'
+import * as DeliveryTaskQueue from '@changanhua/dsh-delivery-task-queue'
+import GitLocalRepositoryWorkspace from '@changanhua/dsh-repo-workspace-git-local'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import {
   createVerifiedOperatorAuthority,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import LocalSubprocess from '@deepseek-ai/dsh-subprocess-local'
-import LocalTaskQueue from '@deepseek-ai/dsh-task-queue-local'
+import LocalTaskQueue from '@changanhua/dsh-task-queue-local'
 import { describe, expect, it, vi } from 'vitest'
 
 // The controlled app-server boundary is deliberately the only fake.  Queue,
@@ -56,8 +56,15 @@ vi.mock('@deepseek-ai/dsh-subagent-codex/app-server-run', async () => ({
 const run = promisify(execFile)
 const bundleRoot = join(import.meta.dirname, '..')
 const uiDeliveryHost = { apply(): void {} }
+const testCredentialsHost = {
+  apply(ctx: Context): void {
+    ctx.provide('credentials', { resolve: async () => undefined } as never)
+  },
+}
 
-async function waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
+const queueStateTimeoutMs = process.platform === 'win32' ? 5_000 : 2_000
+
+async function waitFor(check: () => boolean, timeoutMs = queueStateTimeoutMs): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (!check()) {
     if (Date.now() >= deadline) throw new Error('timed out waiting for Queue state')
@@ -92,11 +99,13 @@ async function bootDelivery(temp: string, repository: string): Promise<Context> 
     "- { id: storage, name: '@deepseek-ai/dsh-storage' }",
     "- id: storage-json\n  name: '@deepseek-ai/dsh-storage-json'\n  config:\n    root: " + JSON.stringify(join(temp, 'storage')),
     "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  config:\n    backend: json",
+    "- { id: credentials, name: '@test/dsh-credentials' }",
     "- { id: subprocess, name: '@deepseek-ai/dsh-subprocess-local' }",
-    "- id: task-queue\n  name: '@deepseek-ai/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(join(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1', patch,
+    "- id: task-queue\n  name: '@changanhua/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(join(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1', patch,
   ].join('\n'))
   const modules = new Map<string, unknown>([
-    ['@deepseek-ai/dsh-storage', Storage], ['@deepseek-ai/dsh-storage-json', StorageJson], ['@deepseek-ai/dsh-storage-domain', StorageDomain], ['@deepseek-ai/dsh-subprocess-local', LocalSubprocess], ['@deepseek-ai/dsh-task-queue-local', LocalTaskQueue], ['@deepseek-ai/dsh-delivery-local', LocalDelivery], ['@deepseek-ai/dsh-delivery-evidence-local', LocalDeliveryEvidence], ['@deepseek-ai/dsh-repo-workspace-git-local', GitLocalRepositoryWorkspace], ['@deepseek-ai/dsh-delivery-task-queue', DeliveryTaskQueue], ['@deepseek-ai/dsh-delivery-remote', DeliveryRemote], ['@deepseek-ai/dsh-client-ui-delivery', uiDeliveryHost],
+    ['@test/dsh-credentials', testCredentialsHost],
+    ['@deepseek-ai/dsh-storage', Storage], ['@deepseek-ai/dsh-storage-json', StorageJson], ['@deepseek-ai/dsh-storage-domain', StorageDomain], ['@deepseek-ai/dsh-subprocess-local', LocalSubprocess], ['@changanhua/dsh-task-queue-local', LocalTaskQueue], ['@changanhua/dsh-delivery-local', LocalDelivery], ['@changanhua/dsh-delivery-evidence-local', LocalDeliveryEvidence], ['@changanhua/dsh-repo-workspace-git-local', GitLocalRepositoryWorkspace], ['@changanhua/dsh-delivery-task-queue', DeliveryTaskQueue], ['@changanhua/dsh-delivery-remote', DeliveryRemote], ['@changanhua/dsh-client-ui-delivery', uiDeliveryHost],
   ])
   const ctx = new Context(); ctx.baseUrl = pathToFileURL(temp).href + '/'
   await ctx.plugin(Loader); ctx.loader.builtins.include = Include
@@ -127,7 +136,18 @@ async function completeChain(temp: string, command = 'process.exit(0)', stopAfte
   const ctx = await bootDelivery(temp, repository)
   const remote = ctx.get('deliveryRemote') as unknown as { internals: { fetch: typeof fetch }; importIssue(a: unknown, s: AbortSignal): Promise<{ id: string }>; createPacket(a: unknown, s: AbortSignal): Promise<{ id: string }>; startChange(a: unknown, s: AbortSignal): Promise<{ id: string; queueWorkId: string }>; startVerification(a: unknown, s: AbortSignal): Promise<{ id: string; queueWorkId: string }>; recordDecision(a: unknown, s: AbortSignal): Promise<unknown> }
   remote.internals.fetch = vi.fn(async () => new Response(JSON.stringify({ number: 7, html_url: 'https://github.com/example/project/issues/7', repository_url: 'https://api.github.com/repos/example/project', updated_at: '2026-08-30T12:00:00.000Z', title: 'safety', body: brief(command) }), { headers: { 'content-type': 'application/json' } }))
-  const signal = new AbortController().signal; const revision = await remote.importIssue({ issueUrl: 'https://github.com/example/project/issues/7', repositoryId: 'workspace' }, signal)
+  const signal = new AbortController().signal; const revision = await remote.importIssue({ issueUrl: 'https://github.com/example/project/issues/7' }, signal)
+  const deliveryCase = ctx.delivery.snapshot().deliveryCases.find(candidate => candidate.headRevisionId === revision.id)
+  if (deliveryCase === undefined) throw new Error('Imported revision has no owning Delivery Case')
+  await ctx.delivery.recordRequirementDecision({
+    idempotencyKey: `approve:${deliveryCase.id}:${revision.id}`,
+    caseId: deliveryCase.id,
+    revisionId: deliveryCase.headRevisionId,
+    decision: 'approved',
+    reason: 'Controlled safety acceptance approved the imported requirement.',
+    actorId: 'acceptance-operator',
+    decisionNonce: `approve:${revision.id}`,
+  })
   const packet = await remote.createPacket({ contractRevisionId: revision.id, packet: { objective, allowedPaths: [{ kind: 'subtree', path: 'src' }], forbiddenPaths: [], acceptanceClauseIds: ['accepted'], stopConditions: ['stop'], executorPreference: { mode: 'required', executorId: 'codex' } } }, signal)
   const change = await remote.startChange({ packetId: packet.id, executorId: 'codex' }, signal); const operator = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
   if (stopAfterChange) return { ctx, remote, packet, change, verification: undefined as never, signal, evidence: join(temp, 'evidence', 'objects', 'sha256'), operator, repository }
@@ -199,7 +219,7 @@ describe('Personal Delivery MVP safety acceptance', () => {
     } finally { runnerMode = 'complete'; await chain?.ctx.fiber.dispose(); await rm(temp, { recursive: true, force: true }) }
   })
 
-  it('7: failed command, forbidden change, missing evidence and digest corruption all refuse human acceptance', { timeout: 30_000 }, async () => {
+  it('7: failed command, forbidden change, missing evidence and digest corruption all refuse human acceptance', { timeout: process.platform === 'win32' ? 60_000 : 30_000 }, async () => {
     const variants = [
       { name: 'failed command', command: 'process.exit(1)', path: 'src/accepted.txt', corrupt: undefined },
       { name: 'forbidden path', command: 'process.exit(0)', path: 'outside.txt', corrupt: undefined },

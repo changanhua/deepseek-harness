@@ -34,7 +34,18 @@ In-package relative imports use explicit `.ts` specifiers in source (for example
 | `tsconfig.host.json` (Host package) or `tsconfig.client.json` (Client package) | add `{ "path": "./packages/<group>/<pkg>" }` to `references` — an ordinary package belongs to exactly one aggregate, never both. `api/remotes` uses a repository-specific split because the Host generates a contract that the Client consumes in a later phase; new packages must not copy it ([layout](../development.md#typescript-project-layout)) |
 | `knip.json` | only if the package has entrypoints that repository discovery does not already cover |
 
-A `packages/client/*` package additionally extends `tsconfig.base.client.json` instead of `tsconfig.base.json`, and a client plugin package declares `dsh.client` in package.json, exports `./client`, and calls the shared tsdown preset (`packages/client/tsdown.client.ts`) — see [packages/client/AGENTS.md](../../packages/client/AGENTS.md) for the client-side contract.
+A `packages/client/*` package additionally extends `tsconfig.base.client.json` instead of `tsconfig.base.json`.
+
+### Client plugin package
+
+For a browser plugin under `packages/client/<name>`, complete these steps in addition to the ordinary package setup:
+
+1. Create `package.json`, `tsconfig.json`, `tsdown.config.ts`, `src/index.ts`, `src/invariant.ts`, `src/client/index.ts`, and `README.md`. Name the package `@deepseek-ai/dsh-client-<name>`; add `src/css-modules.d.ts` only when it uses CSS Modules.
+2. Export `.`, `./invariant`, `./client`, `./src/*`, and `./package.json`; keep their emitted runtime files in `files`. The Node half has an empty `apply` when it exists only to keep the Cordis package contract.
+3. Add the `dsh.client` manifest with `platform: 'web'`. It requires the `./client` export. Set `immediately: true` only for stage-one-prefetch infrastructure rows; its `inject` package names are informational and do not order activation.
+4. Use `clientBundle()` from `packages/client/tsdown.client.ts`. Add each workspace dependency and `runtime-diagnostics/invariants` to `tsconfig.json` references, then add this package to `tsconfig.client.json`.
+5. Add its `dsh.client` row to `packages/bundle/web-app/cordis.patch.yml` and its dependency to `packages/bundle/web-app/package.json`. The profile resolves the declared row through the bundle dependencies.
+6. Choose dependency sections and non-baseline `dsh.client.external` requests under [client modules](../subsystems/client-modules.md) and the [modules README](../../packages/client/modules/README.md). To contribute to another package's slot, use `ctx.slots.inject()` so the contribution follows its declaration; rebuild with `pnpm --filter <pkg> bundle` before probing a live server.
 
 Covered automatically by globs or package-manifest discovery — no edits needed: root `package.json` workspaces, `scripts/publint-all.ts`, `tsdown.config.ts`, `.oxlintrc.json`, `scripts/check-workspace-constraints.ts`.
 

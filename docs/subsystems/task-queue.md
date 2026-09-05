@@ -6,7 +6,7 @@ The host-plane typed work queue (`ctx.taskQueue`). The contract package is [`dsh
 
 ## Service
 
-`ctx.taskQueue` is the abstract `TaskQueue` seam implemented by `LocalTaskQueue` (`@deepseek-ai/dsh-task-queue-local`). Agent and operator facades require verified authority. Both may admit work, but operator admission is a trusted host capability: it creates ownerless WorkItems under a separate idempotency namespace and no Session Notification. A `WorkHandler` resolves immutable admission facts, derives retry policy, declares resources, prepares dispatch, and synchronously returns a `LiveAttempt`; the provider persists the admitted policy and claims, then owns durable scheduling and attempt settlement.
+`ctx.taskQueue` is the abstract `TaskQueue` seam implemented by `LocalTaskQueue` (`@changanhua/dsh-task-queue-local`). Agent and operator facades require verified authority. Both may admit work, but operator admission is a trusted host capability: it creates ownerless WorkItems under a separate idempotency namespace and no Session Notification. A `WorkHandler` resolves immutable admission facts, derives retry policy, declares resources, prepares dispatch, and synchronously returns a `LiveAttempt`; the provider persists the admitted policy and claims, then owns durable scheduling and attempt settlement.
 
 ## Work model and state machine
 

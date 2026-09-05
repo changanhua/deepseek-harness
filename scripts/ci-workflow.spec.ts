@@ -379,6 +379,7 @@ describe('fork Linux compute workflows', () => {
     expect(pullRequest.paths).toContain('packages/**')
     expect(pullRequest.paths).toContain('.agents/notes/**')
     expect(pullRequest.paths).toContain('docs/**')
+    expect(pullRequest.paths).toContain('downstream/**')
     expect(pullRequest.paths).toContain('.github/workflows/ci-linux-lab.yml')
     expect(pullRequest.paths).toContain('.github/workflows/ci-upstream-watch.yml')
     expect(quality).toMatchObject({
@@ -391,6 +392,7 @@ describe('fork Linux compute workflows', () => {
     expect(quality.if).toContain('github.event.pull_request.head.repo.full_name == github.repository')
     const steps = JSON.stringify(quality.steps)
     expect(steps).toContain('pnpm install --frozen-lockfile')
+    expect(steps).toContain('pnpm run check:package-identities')
     expect(steps).toContain('pnpm run build:lib:host')
     expect(steps).toContain('pnpm run typecheck:contracts-ready')
     expect(steps).not.toContain('secrets.')
@@ -483,13 +485,13 @@ describe('Python release workflows', () => {
     expect(authorize.run).toContain('[ "$REPOSITORY" = "$PYPI_PUBLISHER_REPOSITORY" ]')
     expect(validateSteps).toContain('100000000')
     expect(publishRuntime).toMatchObject({
-      if: "github.event_name == 'workflow_dispatch' && inputs.publish",
+      if: "github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'workflow_dispatch' && inputs.publish",
       needs: 'validate',
       environment: 'pypi-runtime',
       permissions: { contents: 'read', 'id-token': 'write' },
     })
     expect(publishSdk).toMatchObject({
-      if: "github.event_name == 'workflow_dispatch' && inputs.publish",
+      if: "github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'workflow_dispatch' && inputs.publish",
       needs: ['validate', 'publish-runtime'],
       environment: 'pypi',
       permissions: { contents: 'read', 'id-token': 'write' },
@@ -689,17 +691,76 @@ describe('npm release workflows', () => {
       expect(Object.keys(workflow.jobs).sort()).toEqual(['pack'])
     }
 
+    const dshRehearsal = loadWorkflow('.github/workflows/release.yml')
+    const dshPack = workflowJob(dshRehearsal, 'pack')
+    expect(dshPack.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
+
     // publication is workflow_dispatch-only (never a PR check) and keeps the
     // npm-publish environment plus the shared dist-tag group.
     for (const file of ['release-publish.yml', 'release-vendor-publish.yml']) {
       const workflow = loadWorkflow(`.github/workflows/${file}`)
       if (!isRecord(workflow.on) || !isRecord(workflow.jobs)) throw new TypeError(`${file} must define on and jobs`)
       expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
+      for (const [jobName, job] of Object.entries(workflow.jobs)) {
+        if (!isRecord(job)) throw new TypeError(`${file} job ${jobName} must be an object`)
+        expect(job.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
+      }
       const publish = workflow.jobs.publish
       if (!isRecord(publish)) throw new TypeError(`${file} must define a publish job`)
       expect(publish.environment).toBe('npm-publish')
       expect(publish.concurrency).toMatchObject({ group: 'Release-publish' })
     }
+
+    const landlock = loadWorkflow('.github/workflows/landlock-run-release.yml')
+    if (!isRecord(landlock.jobs)) throw new TypeError('landlock-run-release.yml must define jobs')
+    for (const [jobName, job] of Object.entries(landlock.jobs)) {
+      if (!isRecord(job)) throw new TypeError(`landlock-run-release.yml job ${jobName} must be an object`)
+      const expected = jobName === 'publish'
+        ? "github.repository == 'deepseek-ai/deepseek-harness' && inputs.publish"
+        : "github.repository == 'deepseek-ai/deepseek-harness'"
+      expect(job.if).toBe(expected)
+    }
+  })
+})
+
+describe('personal source distribution CI', () => {
+  it('builds and boots the personal bundle only in the personal repository', () => {
+    const workflow = loadWorkflow('.github/workflows/ci-fork-windows.yml')
+    const build = workflowJob(workflow, 'windows-build')
+    const differential = workflowJob(workflow, 'c0-diff')
+    const aggregate = workflowJob(workflow, 'fork-checks')
+    if (!Array.isArray(build.steps)) throw new TypeError('fork Windows build must define steps')
+
+    const trustedPersonalPullRequest = (
+      "github.repository == 'changanhua/deepseek-harness'"
+      + " && github.actor == 'changanhua'"
+      + " && github.event.pull_request.user.login == 'changanhua'"
+      + ' && github.event.pull_request.head.repo.full_name == github.repository'
+    )
+    expect(build.if).toBe(trustedPersonalPullRequest)
+    expect(differential.if).toBe(trustedPersonalPullRequest)
+    expect(aggregate.if).toBe(
+      "always() && github.repository == 'changanhua/deepseek-harness'"
+      + " && github.event_name == 'pull_request'"
+      + " && github.actor == 'changanhua'"
+      + " && github.event.pull_request.user.login == 'changanhua'"
+      + ' && github.event.pull_request.head.repo.full_name == github.repository',
+    )
+
+    const steps = build.steps.filter(isRecord)
+    const names = steps.map(step => step.name).filter((name): name is string => typeof name === 'string')
+    const install = names.indexOf('Install immutable dependencies')
+    const identities = names.indexOf('Check package identities')
+    const repositoryBuild = names.indexOf('Build repository')
+    const sourceDistribution = names.indexOf('Verify personal source distribution')
+
+    expect(install).toBeGreaterThanOrEqual(0)
+    expect(identities).toBeGreaterThan(install)
+    expect(repositoryBuild).toBeGreaterThan(identities)
+    expect(sourceDistribution).toBeGreaterThan(repositoryBuild)
+    expect(steps.find(step => step.name === 'Verify personal source distribution')).toMatchObject({
+      run: 'pnpm run verify:personal-source',
+    })
   })
 })
 
@@ -715,8 +776,10 @@ describe('Documentation site publication', () => {
     // The site presents a released snapshot: a merge must never publish it, and
     // publication must never appear as a PR check.
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
+    expect(build.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
+    expect(deploy.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
 
-    // RELEASE_PUBLISH makes release:verify reject every ref that is not a dsh-v*
+    // RELEASE_VERIFY_TAG makes release:verify reject every ref that is not a dsh-v*
     // tag naming this tree's version, so the site and the npm sequence share one
     // definition of a released version.
     const steps = build.steps.filter(isRecord)
@@ -725,7 +788,7 @@ describe('Documentation site publication', () => {
       step => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
     )
     expect(verify).toMatchObject({
-      env: { RELEASE_PUBLISH: 'true' },
+      env: { RELEASE_VERIFY_TAG: 'true' },
       run: 'pnpm run release:verify --family dsh',
     })
     // Complete history: the release scripts read tags.

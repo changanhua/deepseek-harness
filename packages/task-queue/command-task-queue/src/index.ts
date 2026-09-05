@@ -1,8 +1,8 @@
 /** Human `/queue` controls for the trusted Queue v2 operator surface. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
-import { createVerifiedOperatorAuthority } from '@deepseek-ai/dsh-task-queue'
-import type { OperatorWorkQueue, WorkStatus, WorkView } from '@deepseek-ai/dsh-task-queue'
+import { createVerifiedOperatorAuthority } from '@changanhua/dsh-task-queue'
+import type { OperatorWorkQueue, WorkStatus, WorkView } from '@changanhua/dsh-task-queue'
 
 export const name = 'command-task-queue'
 export const inject = ['commands']

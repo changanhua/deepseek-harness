@@ -1,0 +1,59 @@
+/** Locale namespace registered by the Work Observatory client plugin. */
+export const NS = 'workObservatory'
+
+/** Simplified Chinese copy for every Work Observatory locale key. */
+export const zh = {
+  'nav.workObservatory': '工作观测',
+  'view.title': '工作观测',
+  'view.eyebrow': '本地证据 · 24 小时',
+  'view.subtitle': '按本机证据查看人机协作时间，不代表生产力或节省时间。',
+  'summary.human': '人类活跃',
+  'summary.visible': '页面可见',
+  'summary.agent': 'Agent 步骤',
+  'summary.together': '协作重叠',
+  'summary.solo': 'Agent 单独',
+  'filter.date': '日期',
+  'filter.project': '项目',
+  'filter.allProjects': '所有项目',
+  'action.refresh': '刷新',
+  'sessions.title': 'Session 明细',
+  'sessions.empty': '这个范围内还没有可显示的 Session 记录。',
+  'sessions.open': '打开 Session',
+  'status.loading': '正在读取本机证据…',
+  'status.error': '无法读取工作观测记录',
+  'timeline.label': '24 小时证据时间线',
+  'unit.second': '秒',
+  'unit.minute': '分钟',
+  'unit.hour': '小时',
+  'unit.separator': '',
+} as const
+
+/** English copy for every Work Observatory locale key. */
+export const en: Record<keyof typeof zh, string> = {
+  'nav.workObservatory': 'Work Observatory',
+  'view.title': 'Work Observatory',
+  'view.eyebrow': 'LOCAL EVIDENCE · 24H',
+  'view.subtitle': 'Local evidence of human-agent time; not a productivity or time-saved claim.',
+  'summary.human': 'Human active',
+  'summary.visible': 'Page visible',
+  'summary.agent': 'Agent steps',
+  'summary.together': 'Together',
+  'summary.solo': 'Agent solo',
+  'filter.date': 'Date',
+  'filter.project': 'Project',
+  'filter.allProjects': 'All projects',
+  'action.refresh': 'Refresh',
+  'sessions.title': 'Session detail',
+  'sessions.empty': 'No Session evidence exists in this range yet.',
+  'sessions.open': 'Open Session',
+  'status.loading': 'Reading local evidence…',
+  'status.error': 'Work Observatory evidence could not be read',
+  'timeline.label': '24 hour evidence timeline',
+  'unit.second': 's',
+  'unit.minute': 'm',
+  'unit.hour': 'h',
+  'unit.separator': ' ',
+}
+
+/** Stable locale keys shared by both Work Observatory dictionaries. */
+export type WorkObservatoryKey = keyof typeof zh

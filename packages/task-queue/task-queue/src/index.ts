@@ -44,7 +44,7 @@ declare module '@deepseek-ai/cordis' {
 export abstract class TaskQueue extends Service {
   /** @param ctx - Cordis context receiving the service. */
   constructor(ctx: Context) {
-    if (new.target === TaskQueue) throw new Error('@deepseek-ai/dsh-task-queue is abstract; load a durable provider')
+    if (new.target === TaskQueue) throw new Error('@changanhua/dsh-task-queue is abstract; load a durable provider')
     super(ctx, 'taskQueue')
   }
 

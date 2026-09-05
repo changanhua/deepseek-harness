@@ -3,13 +3,13 @@ description: "Deterministic fake Delivery providers and golden fixture builders 
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-testkit
+# @changanhua/dsh-delivery-testkit
 
 English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-delivery-testkit` supports isolated Delivery Consumer tests without importing local providers. It supplies concrete `FakeDelivery`, `FakeRepositoryWorkspace`, and `FakeDeliveryEvidence` Service Providers plus fresh Protocol V1 fixture builders. The fakes preserve production obligations: exact idempotency, provider-derived verification plans, host-only acceptance candidates and evidence reads, cross-binding checks, binding compare-and-set, repository owner conflicts, awaited cleanup, real SHA-256 evidence verification, and fail-loud unstubbed calls.
+`dsh-delivery-testkit` supports isolated Delivery Consumer tests without importing local providers. It supplies concrete `FakeDelivery`, `FakeRepositoryWorkspace`, and `FakeDeliveryEvidence` Service Providers plus fresh Protocol V2 fixture builders. The fakes preserve production obligations: exact idempotency, Case-head compare-and-set, human approval gating, the publication state machine with failed-record reset and human resolution, provider-derived verification plans, host-only acceptance candidates and evidence reads, cross-binding checks, binding compare-and-set, repository owner conflicts, awaited cleanup, real SHA-256 evidence verification, and fail-loud unstubbed calls.
 
 ## Use this package
 
@@ -20,7 +20,9 @@ const harness = await mountDeliveryTestkit(ctx)
 const packet = readyWorkPacketFixture()
 ```
 
-Repository behavior is explicit: allow the revisions, ref heads, exact blobs, and ranges a test needs, then queue a change or verification lease. Base resolution captures point-in-time commits, and blob reads enforce exact commit/path/object-id provenance, complete byte limits, abort propagation, and fresh detached bytes. `FakeDelivery` keeps every previous Contract revision in the same canonical GitHub Issue lineage, derives contract-field plans itself, and accepts a strict git-blob plan only through an operation-local branded-blob resolver with a Delivery-selected byte limit. It invokes the acceptance candidate only after validating both stored bindings, then asks a second host capability to resolve and integrity-read every evidence id it derives from the exact Queue claim and verdict. Evidence corruption controls remove or replace stored bytes without rewriting the durable reference. Every fixture builder parses a golden value through the production schema and returns a fresh clone, so one test cannot mutate another test's input.
+Fixture builders cover every durable record family: `contractRevisionFixture` carries its `origin` and `title` provenance, with `githubImportOriginFixture` for a `github-import` origin, and `deliveryCaseFixture`, `requirementDecisionFixture`, and `issuePublicationFixture` — whose phase-consistent defaults cover all five publication phases — complete the version-2 records alongside verification plans, Packets, bindings, claims, verdicts, acceptance decisions, evidence, and resume capsules. Every builder parses a golden value through the production schema and returns a fresh clone, so one test cannot mutate another test's input.
+
+Repository behavior is explicit: allow the revisions, ref heads, exact blobs, and ranges a test needs, then queue a change or verification lease. Base resolution captures point-in-time commits, and blob reads enforce exact commit/path/object-id provenance, complete byte limits, abort propagation, and fresh detached bytes. `FakeDelivery` commits a Case with its root revision atomically, moves the Case head only under the expected-head compare-and-set, keeps `github-import` child revisions inside their repository and Issue lineage, and gates Packet creation and publication preparation behind a ready, approved revision. It keeps every revision to one publication: repeated preparation returns the existing record, a failed record returns to `prepared` under its existing id for a new attempt, an unknown record requires human resolution, and every transition fails closed from the wrong phase. It invokes the acceptance candidate only after validating both stored bindings, then asks a second host capability to resolve and integrity-read every evidence id it derives from the exact Queue claim and verdict. Evidence corruption controls remove or replace stored bytes without rewriting the durable reference.
 
 Awaited Delivery writes are serialized per idempotency key. Concurrent exact retries return one durable object, a concurrent changed DTO conflicts after the winning write commits, and a failed resolver releases the key so retry remains possible.
 

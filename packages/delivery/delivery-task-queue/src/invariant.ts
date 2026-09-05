@@ -4,7 +4,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-delivery-task-queue'
+const PACKAGE_NAME = '@changanhua/dsh-delivery-task-queue'
 
 /** Cordis companion plugin name. */
 export const name = 'delivery-task-queue-invariant'

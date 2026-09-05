@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-client-ui-settings-skills
+# @changanhua/dsh-client-ui-settings-skills
 
 English | [中文](README.zh.md)
 

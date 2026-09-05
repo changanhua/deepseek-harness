@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
-import type { SkillEntryId, SkillManagementSnapshot } from '@deepseek-ai/dsh-host-capability-registry/types'
+import type { SkillEntryId, SkillManagementSnapshot } from '@changanhua/dsh-host-capability-registry/types'
 import { SkillsPopover } from '../src/client/SkillsPopover.tsx'
 import type { SkillsPopoverProps } from '../src/client/feature-types.ts'
 import type { SkillsSnapshotState } from '../src/client/skills-snapshot.ts'

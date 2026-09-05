@@ -1,0 +1,47 @@
+{
+  "skill_name": "dsh-issue-stack-planner",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Feature Charter 已批准：Eval 必须让用户从 dsh Profile 选择固定 revision 和两个 Preset，Queue 批量执行，独立 grader 保存报告，并能阻止 Goal 自行宣布成功。请拆成可交付的 DSH Issue DAG，给每项需求和证据追踪；先不要创建 GitHub Issue。",
+      "expected_output": "Kernel/provider/bridge/composition/consumer/acceptance DAG with a charter-closing acceptance gate and no GitHub mutation.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "已经批准要把新的审计 Provider 暴露给 Agent Tool，并在个人交付 Profile 中启用。请把这一能力拆成能独立审查、按依赖合并的 Issues，并说明每个 Issue 关掉后还不能宣称什么。",
+      "expected_output": "A DSH delivery DAG separating Definition/Provider, composition, consumer, and observed acceptance evidence.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "我们批准了 Workflow 只有在独立验收通过后才可完成。现有 Queue、Goal、Session 都能复用。请从最终用户可观察行为倒推 Issue 顺序和 requirement-to-evidence 表；不要改代码。",
+      "expected_output": "Backwards-planned DSH DAG with bridge and acceptance work and no code changes.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "DSH 要不要加一个 Eval 模块？先看看仓库里已有的 Session、Queue 和开源框架能不能复用，再决定值不值得做。",
+      "expected_output": "Route first to dsh-feature-charter; only after approval use dsh-reuse, then xia-pluginmaster if current-checkout architecture evidence is needed.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "#41、#42、#43 是依赖 PR，已经都审过了。请用 GitHub 官方 stack 功能按顺序合入 master。",
+      "expected_output": "Route to dsh-merging-stacked-prs rather than delivery DAG planning.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "已批准的 Charter 规定：DSH 用已知良好的 controller Profile 驱动对 DSH Queue 的修复，subject 在独立 DSH home 中构建运行，另一个独立 verifier Profile 验收；修复后的 DSH 或被改过的 Skill 不能给自己判通过，人保留 merge/push 权限。请拆成 Issue DAG，不要创建 GitHub Issue。",
+      "expected_output": "Creates only the established kernel/provider/bridge/composition/consumer/acceptance cards, with explicit controller/bootstrap and isolated-verifier dependencies. Every card has Executed by, Subject, and Verified by fields. The bootstrap/preflight and acceptance cards predeclare controller/subject/verifier checkout-build-Skill snapshot-Profile-DSH_HOME-data/log/ports, a controller-owned immutable Verifier plan digest with assertion/command/checker/fixtures-golden/environment inputs, and Credential & cost authority (`none` or authorization ID/target/provider-model/scope-budget/expiry). The acceptance card depends on controller bootstrap, subject work, and an independent verifier, preserves human-only merge/push authority, and does not treat controller/verifier as new roles.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "Charter、reuse 和当前合同 receipt 已批准。请拆 E2 provider、E3 executor、E4 grader；共享合同先冻结，三个包可以并行。把 README、subsystem、Cordis/module catalog、双语和 Agent Note 义务放到正确 Issue，不要等验收时再发现。",
+      "expected_output": "Consumes upstream receipts without repeating them, freezes shared contracts, marks only disjoint package lanes parallel, assigns conditional documentation/generated obligations to owning cards, and reserves cross-package checks for integration.",
+      "files": []
+    }
+  ]
+}

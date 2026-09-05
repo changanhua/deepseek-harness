@@ -19,7 +19,7 @@
 
 | 工具包 | 模型可见名称 | 依赖 | 写入／影响 | 随产品发布的别名 | 部署说明 |
 | --- | --- | --- | --- | --- | --- |
-| `@deepseek-ai/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`、`task_queue_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 agent.run@1 admission` | - | 类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，而不暴露 executor、profile、model、credential 或 shell 路由字段。 |
+| `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`、`task_queue_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 agent.run@1 admission` | - | 类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，而不暴露 executor、profile、model、credential 或 shell 路由字段。 |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`、`ctx.userQuestions` | `tool/call`、`tool/result after a UI/provider answers the question` | - | ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类答案。 |
 | `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`、`ctx.codeRuntime (execution time)`、`ctx.systemPrompt` | `tool/call`、`one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call`、`tool/result` | - | 在 `mode: code`／`mode: both` 下，它由工具注册表所有，作为可过滤能力层之外的保留传输机制（参见 Code Mode Agent Note）。在 `code` 下，它是注册表对协议格式（wire format）的唯一贡献；其他可见能力在使用已加载运行时语言生成的 SDK 章节中声明。程序通过 binding 调用这些能力，调用按照原生并发约定调度：启动顺序和策略遵循提交顺序，并发安全的函数体最多重叠执行 `maxParallelSubCalls` 个。调用会重新进入完整且受守卫保护的工具流水线，并将每个嵌套执行关联到此外层结果。 |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`、`ctx.systemPrompt`、`ctx.userQuestions (execution time, opportunistic)` | `tool/call`、`plan/mode inactive on an approved review`、`tool/result` | - | 规划未激活时，exit_plan_mode 仍保留在面向模型的 schema 中，这样状态转换不会在规划策略变更之外额外造成工具目录变动。其执行路径会拒绝规划模式之外的调用；在规划模式下，它通过用户交互 seam 提交计划（批准／根据反馈继续规划），批准后会在步骤边界记录规划模式已停用。 |
@@ -41,18 +41,18 @@
 | `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`、`ctx.subagents`、`ctx.systemPrompt` | `tool/call`、`tool/result`、`child session events through the chosen provider` | `subagent`、`subagent_fork` | 注册的工具名称取决于加载时 `toolName` 配置（默认为 `subagent`）；上述 schema 对应默认值。随产品发布的组合会为每个 subagent 后端加载一次该包，因此模型还会看到绑定到 fork 后端的 `subagent_fork`。每个实例的描述、`run_in_background` 参数与 system prompt 策略取决于它自己的 `backgroundMode` 和 `enableRunInBackground`，因此两个随附 schema 并不相同：`subagent` 为 `continuable`，省略参数时默认后台运行，并由 runtime 自动投递结束结果；`subagent_fork` 保持 `one-shot`，省略参数时默认前台运行。详见 `packages/bundle/base/cordis.patch.yml` 和 `examples/acp-agent/cordis.yml`。 |
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`、`list_agents`、`send_message` | `ctx.tools`、`ctx.subagents`、`ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`、`tool/result`、`child session events through ctx.subagents` | - | 这些是控制可继续后台 subagent 的全局命名工具：绑定提供方的 `tool-subagent` 实例注册不同的委派工具；本包注册一次 `send_message` 和 `interrupt_agent`，另由 `list_agents` 通过单独加载的 `/list-agents` 插件提供，其目录行使用 sessionProjections 和实时 Agent 注册表。 |
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`、`ctx.systemPrompt`、`a live continuable in-process child Agent` | `tool/call`、`tool/result`、`a user-role message in the direct parent session` | - | 按可继续的进程内子级注册，而非全局注册，因此该 schema 仅在这种子级内部可见，并且不受其全局 `toolFilter` 影响。同一份贡献还会安装子级作用域的 `tool:report` 系统提示词 section，本目录不渲染该 section。面向父级的 `send_message` 工具单独安装。 |
-| `@deepseek-ai/dsh-tool-image-generation-task-queue` | `image_generate_enqueue`、`image_generate_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 image.generate@1 admission` | - | 类型化的图像准入消费者。`image_generate_enqueue` 通过活动 Agent 权限记录 `image.generate@1` 意图；提供方发现和执行属于已注册的 WorkHandler。 |
-| `@deepseek-ai/dsh-tool-operation-run-task-queue` | `operation_run_enqueue`、`operation_run_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 operation.run@1 admission` | - | 类型化的 allowlist operation 准入消费者。它只接纳宿主配置的 `operationId`；executable、argv、cwd、environment、credential、resource 和 execution policy 均不在工具 schema 中。 |
+| `@changanhua/dsh-tool-image-generation-task-queue` | `image_generate_enqueue`、`image_generate_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 image.generate@1 admission` | - | 类型化的图像准入消费者。`image_generate_enqueue` 通过活动 Agent 权限记录 `image.generate@1` 意图；提供方发现和执行属于已注册的 WorkHandler。 |
+| `@changanhua/dsh-tool-operation-run-task-queue` | `operation_run_enqueue`、`operation_run_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 operation.run@1 admission` | - | 类型化的 allowlist operation 准入消费者。它只接纳宿主配置的 `operationId`；executable、argv、cwd、environment、credential、resource 和 execution policy 均不在工具 schema 中。 |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`、`job_list`、`job_output` | `ctx.tools`、`ctx.jobs`、`ctx.systemPrompt` | `tool/call`、`tool/result`、`user/message via agent.inject() for background completion notices` | - | 与任务种类无关的后台任务控制器：后台 bash 命令、PTY 发送和 subagent 都通过相同的 3 个工具读取、列出和终止。加载该插件会挂接控制器，从而启用生产方的 `ctx.jobs.start()`。 |
-| `@deepseek-ai/dsh-tool-task-queue` | `task_queue_cancel`、`task_queue_kinds`、`task_queue_list`、`task_queue_result`、`task_queue_retry`、`task_queue_stats`、`task_queue_status` | `ctx.tools`、`ctx.taskQueue`、`ctx.sessions`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 owner-scoped controls`、`来自持久终态 Notification 的 user/message` | - | 与 WorkKind 无关的持久控制器：通过宿主 `ctx.taskQueue` service 提供 `task_queue_*` 检查、结果读取、取消、重试和 WorkKind 工具，并通过 `ctx.sessions` 提供可重放安全的 owner Notification delivery。Work handler、admission Consumer 和宿主 resource capacity 分别组合。 |
+| `@changanhua/dsh-tool-task-queue` | `task_queue_cancel`、`task_queue_kinds`、`task_queue_list`、`task_queue_result`、`task_queue_retry`、`task_queue_stats`、`task_queue_status` | `ctx.tools`、`ctx.taskQueue`、`ctx.sessions`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 owner-scoped controls`、`来自持久终态 Notification 的 user/message` | - | 与 WorkKind 无关的持久控制器：通过宿主 `ctx.taskQueue` service 提供 `task_queue_*` 检查、结果读取、取消、重试和 WorkKind 工具，并通过 `ctx.sessions` 提供可重放安全的 owner Notification delivery。Work handler、admission Consumer 和宿主 resource capacity 分别组合。 |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`、`interrupt_agent`、`list_agents`、`send_message`、`spawn_teammate`、`team_task_create`、`team_task_get`、`team_task_list`、`team_task_update`、`wait_agent` | `ctx.tools`、`ctx.systemPrompt`、`ctx.agentTeams`、`an exact live Team member Agent` | `tool/call`、`team/member`、`team/message/queued`、`team/message/delivered`、`team/task`、`tool/result` | - | 这 10 个工具限定于隐式 Team Lead 与持久 teammate 作用域。随产品发布的 dsh-base bundle 默认禁用该包；文档中的 Agent Teams profile patch 会启用它，并禁用旧 continuable child 的同名控制工具。 |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
 
-<a id="deepseek-aidsh-tool-agent-run-task-queue"></a>
+<a id="changanhuadsh-tool-agent-run-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-agent-run-task-queue`
+## `@changanhua/dsh-tool-agent-run-task-queue`
 
 ### `task_queue_enqueue`
 
@@ -1723,9 +1723,9 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 按可继续的进程内子级注册，而非全局注册，因此该 schema 仅在这种子级内部可见，并且不受其全局 `toolFilter` 影响。同一份贡献还会安装子级作用域的 `tool:report` 系统提示词 section，本目录不渲染该 section。面向父级的 `send_message` 工具单独安装。
 
-<a id="deepseek-aidsh-tool-image-generation-task-queue"></a>
+<a id="changanhuadsh-tool-image-generation-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-image-generation-task-queue`
+## `@changanhua/dsh-tool-image-generation-task-queue`
 
 ### `image_generate_enqueue`
 
@@ -1857,9 +1857,9 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 类型化的图像准入消费者。`image_generate_enqueue` 通过活动 Agent 权限记录 `image.generate@1` 意图；提供方发现和执行属于已注册的 WorkHandler。
 
-<a id="deepseek-aidsh-tool-operation-run-task-queue"></a>
+<a id="changanhuadsh-tool-operation-run-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-operation-run-task-queue`
+## `@changanhua/dsh-tool-operation-run-task-queue`
 
 ### `operation_run_enqueue`
 
@@ -2017,9 +2017,9 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 与任务种类无关的后台任务控制器：后台 bash 命令、PTY 发送和 subagent 都通过相同的 3 个工具读取、列出和终止。加载该插件会挂接控制器，从而启用生产方的 `ctx.jobs.start()`。
 
-<a id="deepseek-aidsh-tool-task-queue"></a>
+<a id="changanhuadsh-tool-task-queue"></a>
 
-## `@deepseek-ai/dsh-tool-task-queue`
+## `@changanhua/dsh-tool-task-queue`
 
 ### `task_queue_cancel`
 

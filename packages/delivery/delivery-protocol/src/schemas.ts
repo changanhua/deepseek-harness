@@ -1,4 +1,4 @@
-/** Strict Zod schemas for every durable Delivery Protocol V1 object. */
+/** Strict Zod schemas for every durable Delivery Protocol V2 object. */
 
 import { z } from 'zod'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
@@ -7,22 +7,24 @@ import {
   AcceptanceDecisionId,
   CompletionClaimId,
   ContractRevisionId,
+  DeliveryCaseId,
   DispatchBindingId,
   EvidenceId,
   ExecutorId,
   GitBlobId,
   GitCommitId,
+  IssuePublicationId,
   QueueAttemptIdRef,
   QueueWorkIdRef,
   RepositoryId,
   RepositoryRelativePath,
+  RequirementDecisionId,
   Sha256Digest,
-  SourceRefId,
   VerificationCheckId,
   VerificationVerdictId,
   WorkPacketId,
 } from './brand.ts'
-import { sourceRefContentDigest, verificationPlanDigest, workPacketDigest } from './canonical.ts'
+import { verificationPlanDigest, workPacketDigest } from './canonical.ts'
 import {
   isCanonicalGitHubIssueUrl,
   isGitHubRepositoryName,
@@ -40,21 +42,26 @@ import type {
   CompletionClaim,
   ContractRevision,
   ContractVerificationSource,
+  DeliveryCase,
   DispatchBinding,
   EvidenceIntegrityFinding,
   EvidenceProvenance,
   EvidenceRef,
   ExecutorPreference,
+  GitHubIssueRef,
   GitHubRepositoryRef,
+  IssuePublication,
   OpenDecision,
   PathRule,
+  PublicationFailure,
   ReferenceLink,
+  RequirementDecision,
+  RequirementOrigin,
   ResolvedCodeChange,
   ResolvedCodeVerify,
   ResumeAttemptFacts,
   ResumeCapsuleContent,
   ResumeFailingCheck,
-  SourceRef,
   VerificationCheck,
   VerificationCheckResult,
   VerificationPlan,
@@ -64,8 +71,8 @@ import type {
   WorkPacket,
 } from './types.ts'
 
-/** Durable protocol version accepted by every V1 object schema. */
-export const DELIVERY_SCHEMA_VERSION = 1 as const
+/** Durable protocol version accepted by every V2 object schema. */
+export const DELIVERY_SCHEMA_VERSION = 2 as const
 /** Ownerless Queue kind that performs one bounded code change. */
 export const CODE_CHANGE_KIND = 'code.change@1' as const
 /** Ownerless Queue kind that independently verifies one immutable commit. */
@@ -88,7 +95,9 @@ function branded<T extends string>(factory: (value: string) => T): z.ZodType<T> 
   }).transform(factory)
 }
 
-const sourceRefIdSchema = branded(SourceRefId)
+const deliveryCaseIdSchema = branded(DeliveryCaseId)
+const requirementDecisionIdSchema = branded(RequirementDecisionId)
+const issuePublicationIdSchema = branded(IssuePublicationId)
 const contractRevisionIdSchema = branded(ContractRevisionId)
 const workPacketIdSchema = branded(WorkPacketId)
 const dispatchBindingIdSchema = branded(DispatchBindingId)
@@ -141,29 +150,135 @@ const gitHubRepositoryRefSchema = z.object({
   name: z.string().refine(isGitHubRepositoryName, { message: 'must be a canonical GitHub repository name' }),
 }).strict() satisfies z.ZodType<GitHubRepositoryRef>
 
-/** Runtime schema for an immutable GitHub Issue snapshot. */
-export const sourceRefSchema: z.ZodType<SourceRef> = z.object({
+/** Runtime schema for the provenance of one requirement revision. */
+export const requirementOriginSchema: z.ZodType<RequirementOrigin> = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('human'), actorId: nonBlankString }).strict(),
+  z.object({
+    kind: z.literal('github-import'),
+    repository: gitHubRepositoryRefSchema,
+    issueNumber: positiveSafeInteger,
+    contentDigest: sha256DigestSchema,
+  }).strict(),
+])
+
+/** Runtime schema for one durable Personal Delivery Case. */
+export const deliveryCaseSchema: z.ZodType<DeliveryCase> = z.object({
   schemaVersion: schemaVersionSchema,
-  id: sourceRefIdSchema,
-  provider: z.literal('github'),
+  id: deliveryCaseIdSchema,
+  repositoryId: repositoryIdSchema,
+  headRevisionId: contractRevisionIdSchema,
+  createdAt: utcInstantSchema,
+  updatedAt: utcInstantSchema,
+}).strict().superRefine((value, context) => {
+  if (Date.parse(value.updatedAt) < Date.parse(value.createdAt)) {
+    context.addIssue({ code: 'custom', path: ['updatedAt'], message: 'must not precede createdAt' })
+  }
+})
+
+/** Runtime schema for one human-only requirement decision. */
+export const requirementDecisionSchema: z.ZodType<RequirementDecision> = z.object({
+  schemaVersion: schemaVersionSchema,
+  id: requirementDecisionIdSchema,
+  caseId: deliveryCaseIdSchema,
+  revisionId: contractRevisionIdSchema,
+  decision: z.enum(['approved', 'rejected', 'deferred']),
+  reason: nonBlankString,
+  actor: z.object({ kind: z.literal('human'), actorId: nonBlankString }).strict(),
+  decisionNonce: nonBlankString,
+  decidedAt: utcInstantSchema,
+}).strict()
+
+/** Runtime schema for the exact published GitHub Issue coordinates. */
+export const gitHubIssueRefSchema: z.ZodType<GitHubIssueRef> = z.object({
   repository: gitHubRepositoryRefSchema,
   issueNumber: positiveSafeInteger,
-  canonicalUrl: z.url(),
-  updatedAt: utcInstantSchema,
-  title: nonBlankString,
-  body: z.string(),
-  contentDigest: sha256DigestSchema,
-  createdAt: utcInstantSchema,
+  url: z.url(),
 }).strict().superRefine((value, context) => {
-  if (!isCanonicalGitHubIssueUrl(value.canonicalUrl, value.repository, value.issueNumber)) {
+  if (!isCanonicalGitHubIssueUrl(value.url, value.repository, value.issueNumber)) {
     context.addIssue({
       code: 'custom',
-      path: ['canonicalUrl'],
+      path: ['url'],
       message: 'must be the canonical GitHub Issue URL for repository and issueNumber',
     })
   }
-  if (value.contentDigest !== sourceRefContentDigest(value)) {
-    context.addIssue({ code: 'custom', path: ['contentDigest'], message: 'does not match the title/body snapshot' })
+})
+
+/** Runtime schema for one truthful publication failure. */
+export const publicationFailureSchema: z.ZodType<PublicationFailure> = z.object({
+  sideEffect: z.enum(['not-started', 'unknown']),
+  category: z.enum([
+    'unmapped-repository',
+    'missing-credential',
+    'unapproved-revision',
+    'not-ready',
+    'rejected',
+    'invalid-response',
+    'transport',
+    'canceled',
+  ]),
+  detail: nonBlankString.max(2000),
+  occurredAt: utcInstantSchema,
+}).strict()
+
+const publicationFailureCategorySchema = z.enum([
+  'unmapped-repository',
+  'missing-credential',
+  'unapproved-revision',
+  'not-ready',
+  'rejected',
+  'invalid-response',
+  'transport',
+  'canceled',
+])
+
+/** Runtime schema for a failure proven never to have started its side effect. */
+export const nonStartedPublicationFailureSchema: z.ZodType<PublicationFailure & { readonly sideEffect: 'not-started' }> = z.object({
+  sideEffect: z.literal('not-started'),
+  category: publicationFailureCategorySchema,
+  detail: nonBlankString.max(2000),
+  occurredAt: utcInstantSchema,
+}).strict()
+
+/** Runtime schema for a failure with an uncertain external side effect. */
+export const unknownPublicationFailureSchema: z.ZodType<PublicationFailure & { readonly sideEffect: 'unknown' }> = z.object({
+  sideEffect: z.literal('unknown'),
+  category: publicationFailureCategorySchema,
+  detail: nonBlankString.max(2000),
+  occurredAt: utcInstantSchema,
+}).strict()
+
+const publicationCommon = {
+  schemaVersion: schemaVersionSchema,
+  id: issuePublicationIdSchema,
+  caseId: deliveryCaseIdSchema,
+  revisionId: contractRevisionIdSchema,
+  repository: gitHubRepositoryRefSchema,
+  renderedDigest: sha256DigestSchema,
+  marker: nonBlankString.max(512),
+  createdAt: utcInstantSchema,
+  updatedAt: utcInstantSchema,
+}
+
+/** Runtime schema for every valid Issue publication phase. */
+export const issuePublicationSchema: z.ZodType<IssuePublication> = z.union([
+  z.object({ ...publicationCommon, phase: z.literal('prepared'), issue: z.null(), failure: z.null() }).strict(),
+  z.object({ ...publicationCommon, phase: z.literal('publishing'), issue: z.null(), failure: z.null() }).strict(),
+  z.object({ ...publicationCommon, phase: z.literal('published'), issue: gitHubIssueRefSchema, failure: z.null() }).strict(),
+  z.object({
+    ...publicationCommon,
+    phase: z.literal('failed'),
+    issue: z.null(),
+    failure: nonStartedPublicationFailureSchema,
+  }).strict(),
+  z.object({
+    ...publicationCommon,
+    phase: z.literal('unknown'),
+    issue: z.null(),
+    failure: unknownPublicationFailureSchema,
+  }).strict(),
+]).superRefine((value, context) => {
+  if (Date.parse(value.updatedAt) < Date.parse(value.createdAt)) {
+    context.addIssue({ code: 'custom', path: ['updatedAt'], message: 'must not precede createdAt' })
   }
 })
 
@@ -284,7 +399,8 @@ export const contractRevisionSchema: z.ZodType<ContractRevision> = z.object({
   schemaVersion: schemaVersionSchema,
   id: contractRevisionIdSchema,
   previousRevisionId: contractRevisionIdSchema.nullable(),
-  sourceRef: sourceRefSchema,
+  origin: requirementOriginSchema,
+  title: nonBlankString,
   repositoryId: repositoryIdSchema.nullable(),
   outcome: nonBlankString.nullable(),
   context: z.string(),

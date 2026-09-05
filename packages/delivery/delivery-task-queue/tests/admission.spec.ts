@@ -17,20 +17,20 @@ import {
   WorkPacketId,
   canonicalDigest,
   verificationPlanDigest,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   CompletionClaim,
   DispatchBinding,
   VerificationCheck,
   WorkPacket,
-} from '@deepseek-ai/dsh-delivery-protocol'
-import type { VerifiedRepositoryRevision } from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-delivery-protocol'
+import type { VerifiedRepositoryRevision } from '@changanhua/dsh-repo-workspace'
 import {
   AttemptId,
   ResultId,
   WorkId,
-} from '@deepseek-ai/dsh-task-queue'
-import type { WorkView } from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
+import type { WorkView } from '@changanhua/dsh-task-queue'
 import {
   Config,
   startCodeChange,
@@ -79,7 +79,7 @@ function packet(
   overrides: Partial<WorkPacket> = {},
 ): WorkPacket {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: packetId,
     contractRevisionId,
     repositoryId,
@@ -105,7 +105,7 @@ function completedClaim(
   overrides: Partial<Extract<CompletionClaim, { readonly disposition: 'completed' }>> = {},
 ): Extract<CompletionClaim, { readonly disposition: 'completed' }> {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: CompletionClaimId('claim-1'),
     packetId,
     queueWorkId,
@@ -129,7 +129,7 @@ function submitting(
   inputDigest: Sha256Digest,
 ): SubmittingBinding {
   const common = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     id: verificationBindingId,
     packetId,
     inputDigest,
@@ -164,7 +164,7 @@ function changeBinding(
   readonly phase: 'bound'
 }> {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: changeBindingId,
     packetId,
     inputDigest: canonicalDigest({ packetId }),

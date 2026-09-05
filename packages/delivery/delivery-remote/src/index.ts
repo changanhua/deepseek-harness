@@ -1,41 +1,58 @@
-/** Browser-safe Personal Delivery Typert Remote. @module @deepseek-ai/dsh-delivery-remote */
+/** Browser-safe Personal Delivery Typert Remote. @module @changanhua/dsh-delivery-remote */
 
 import { Buffer } from 'node:buffer'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { DeliveryError, type AcceptanceEvidenceResolver } from '@deepseek-ai/dsh-delivery'
-import { DeliveryEvidenceError } from '@deepseek-ai/dsh-delivery-evidence'
-import { importGitHubIssue } from '@deepseek-ai/dsh-delivery-github-intake'
+import { DeliveryError, type AcceptanceEvidenceResolver } from '@changanhua/dsh-delivery'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { DeliveryEvidenceError } from '@changanhua/dsh-delivery-evidence'
+import { importGitHubIssue } from '@changanhua/dsh-delivery-github-intake'
+import {
+  publishGitHubIssue,
+  resolveGitHubIssuePublication,
+  type GitHubPublicationTarget,
+} from '@changanhua/dsh-delivery-github-publisher'
 import {
   ContractRevisionId,
+  DeliveryCaseId,
   DispatchBindingId,
   EvidenceId,
   ExecutorId,
+  IssuePublicationId,
   RepositoryId,
   WorkPacketId,
   canonicalDigest,
+  isGitHubRepositoryName,
+  isGitHubRepositoryOwner,
   type DispatchBinding,
   type QueueWorkIdRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   startCodeChange,
   startVerification,
   type DeliveryQueueBridgeDependencies,
-} from '@deepseek-ai/dsh-delivery-task-queue'
+} from '@changanhua/dsh-delivery-task-queue'
 import {
   createVerifiedOperatorAuthority,
   type OperatorWorkQueue,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   DeliveryAcceptanceDecisionView,
+  DeliveryCaseMutationView,
   DeliveryContractRevisionView,
+  DeliveryCreateCaseInput,
   DeliveryCreatePacketInput,
   DeliveryDispatchBindingView,
   DeliveryEvidenceView,
   DeliveryImportIssueInput,
+  DeliveryIssuePublicationView,
+  DeliveryPublishIssueInput,
   DeliveryReadEvidenceInput,
+  DeliveryResolvePublicationInput,
   DeliveryRecordDecisionInput,
+  DeliveryRecordRequirementDecisionInput,
+  DeliveryReviseCaseInput,
   DeliverySnapshotView,
   DeliveryStartChangeInput,
   DeliveryStartVerificationInput,
@@ -43,8 +60,11 @@ import type {
 } from './types.ts'
 import {
   projectAcceptanceDecision,
+  projectContractRevision,
   projectDeliverySnapshot,
   projectDispatchBinding,
+  projectIssuePublication,
+  projectRequirementDecision,
 } from './projection.ts'
 import {
   DeliveryAcceptanceCandidateError,
@@ -58,14 +78,20 @@ export type { DeliveryAttentionReason } from './types.ts'
 export type {
   DeliveryAcceptanceDecisionView,
   DeliveryContractRevisionView,
+  DeliveryCreateCaseInput,
   DeliveryCreatePacketInput,
   DeliveryDispatchBindingView,
   DeliveryEvidenceView,
   DeliveryImportIssueInput,
+  DeliveryIssuePublicationView,
   DeliveryLane,
   DeliveryRecordDecisionInput,
   DeliverySnapshotView,
   DeliveryReadEvidenceInput,
+  DeliveryPublishIssueInput,
+  DeliveryRecordRequirementDecisionInput,
+  DeliveryReviseCaseInput,
+  DeliveryResolvePublicationInput,
   DeliveryStartChangeInput,
   DeliveryStartVerificationInput,
   DeliveryWorkPacketView,
@@ -77,11 +103,31 @@ export type {
 export interface Config {
   /** Non-blank human operator identity minted by trusted Host configuration. */
   readonly operatorId?: string
+  /** Single local repository bound to newly shaped human-origin Cases. */
+  readonly repositoryId?: string
+  /** Host-only map from Delivery repository ids to GitHub targets and credential references. */
+  readonly githubTargets?: Readonly<Record<string, {
+    /** GitHub repository owner used by the Host publisher. */
+    readonly owner: string
+    /** GitHub repository name paired with the configured owner. */
+    readonly name: string
+    /** Credential reference resolved by the Host for each publication operation. */
+    readonly credentialRef: string
+    /** Optional labels applied by the Host during Issue creation. */
+    readonly labels?: string[]
+  }>>
 }
 
 /** Loader schema for the trusted Personal Delivery operator identity. */
 export const Config: z<Config> = z.object({
   operatorId: z.string().min(1).pattern(/\S/u).default('local-operator'),
+  repositoryId: z.string().min(1).pattern(/\S/u).default('workspace'),
+  githubTargets: z.dict(z.object({
+    owner: z.string().min(1),
+    name: z.string().min(1),
+    credentialRef: z.string().min(1).pattern(/^[A-Za-z_][A-Za-z0-9_]*$/u),
+    labels: z.array(z.string().min(1)).default([]),
+  })).default({}),
 })
 
 /** Replaceable boundaries used by focused tests; production keeps the real C0 Consumers. */
@@ -90,6 +136,8 @@ export interface DeliveryRemoteInternals {
   readonly importIssue: typeof importGitHubIssue
   readonly startCodeChange: typeof startCodeChange
   readonly startVerification: typeof startVerification
+  readonly publishGitHubIssue: typeof publishGitHubIssue
+  readonly resolveGitHubIssuePublication: typeof resolveGitHubIssuePublication
 }
 
 const DEFAULT_INTERNALS: DeliveryRemoteInternals = {
@@ -97,6 +145,8 @@ const DEFAULT_INTERNALS: DeliveryRemoteInternals = {
   importIssue: importGitHubIssue,
   startCodeChange,
   startVerification,
+  publishGitHubIssue,
+  resolveGitHubIssuePublication,
 }
 
 const MAX_BROWSER_EVIDENCE_BYTES = 256 * 1024
@@ -199,11 +249,13 @@ function requireBound(
 /** Host service contributing the reserved `delivery` Remote namespace. */
 export class DeliveryRemoteService extends TypertRemoteService {
   /** Domain, repository proof, and trusted Queue admission are required by the final methods. */
-  static inject = ['delivery', 'deliveryEvidence', 'repoWorkspace', 'taskQueue']
+  static inject = ['credentials', 'delivery', 'deliveryEvidence', 'repoWorkspace', 'taskQueue']
   static Config = Config
   private readonly queue: OperatorWorkQueue
   private readonly operatorId: string
+  private readonly repositoryId: RepositoryId
   private readonly internals: DeliveryRemoteInternals
+  private readonly githubTargets = new Map<string, GitHubPublicationTarget>()
 
   constructor(
     ctx: Context,
@@ -213,8 +265,159 @@ export class DeliveryRemoteService extends TypertRemoteService {
     super(ctx, 'deliveryRemote', { namespace: 'delivery' })
     this.operatorId = config.operatorId ?? 'local-operator'
     if (this.operatorId.trim() === '') throw new TypeError('delivery Remote operatorId must be non-blank')
+    this.repositoryId = RepositoryId(config.repositoryId ?? 'workspace')
     this.internals = internals
+    for (const [rawRepositoryId, rawTarget] of Object.entries(config.githubTargets ?? {})) {
+      const repositoryId = RepositoryId(rawRepositoryId)
+      if (!isGitHubRepositoryOwner(rawTarget.owner) || !isGitHubRepositoryName(rawTarget.name)) {
+        throw new TypeError(`delivery Remote GitHub target '${rawRepositoryId}' has invalid repository coordinates`)
+      }
+      this.githubTargets.set(repositoryId, {
+        repository: { owner: rawTarget.owner, name: rawTarget.name },
+        credentialRef: credentialRef(rawTarget.credentialRef),
+        labels: rawTarget.labels ?? [],
+      })
+    }
     this.queue = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
+  }
+
+  /**
+   * Shape one new human-origin Case in the Host-selected local repository.
+   * @param input - Browser-supplied title and initial contract revision.
+   * @param signal - Caller lifetime checked before the durable mutation.
+   * @returns the created Case and browser-safe head revision.
+   */
+  @Remote('createCase')
+  async createCase(input: DeliveryCreateCaseInput, signal: AbortSignal): Promise<DeliveryCaseMutationView> {
+    requireActive(signal, 'createCase')
+    try {
+      const digest = canonicalDigest({ repositoryId: this.repositoryId, input })
+      const created = await this.ctx.delivery.createCase({
+        idempotencyKey: `delivery:case:${digest}`,
+        repositoryId: this.repositoryId,
+        origin: { kind: 'human', actorId: this.operatorId },
+        title: input.title,
+        revision: input.revision,
+      })
+      return { case: created.case, revision: projectContractRevision(created.revision) }
+    } catch (error) {
+      throw remoteFailure('createCase', error, signal)
+    }
+  }
+
+  /**
+   * Revise the exact Case head observed by the browser.
+   * @param input - Replacement title/revision bound to the observed head id.
+   * @param signal - Caller lifetime checked before the durable mutation.
+   * @returns the revised Case and browser-safe head revision.
+   */
+  @Remote('reviseCase')
+  async reviseCase(input: DeliveryReviseCaseInput, signal: AbortSignal): Promise<DeliveryCaseMutationView> {
+    requireActive(signal, 'reviseCase')
+    try {
+      const digest = canonicalDigest(input)
+      const revised = await this.ctx.delivery.reviseCase({
+        idempotencyKey: `delivery:case-revision:${digest}`,
+        caseId: DeliveryCaseId(input.caseId),
+        expectedHeadRevisionId: ContractRevisionId(input.expectedHeadRevisionId),
+        origin: { kind: 'human', actorId: this.operatorId },
+        title: input.title,
+        revision: input.revision,
+      })
+      return { case: revised.case, revision: projectContractRevision(revised.revision) }
+    } catch (error) {
+      throw remoteFailure('reviseCase', error, signal)
+    }
+  }
+
+  /**
+   * Record human requirement authority without accepting a browser actor id.
+   * @param input - Case, revision, decision, and reason selected by the human.
+   * @param signal - Caller lifetime checked before the durable mutation.
+   * @returns the browser-safe durable requirement decision.
+   */
+  @Remote('recordRequirementDecision')
+  async recordRequirementDecision(
+    input: DeliveryRecordRequirementDecisionInput,
+    signal: AbortSignal,
+  ): Promise<import('./types.ts').DeliveryRequirementDecisionView> {
+    requireActive(signal, 'recordRequirementDecision')
+    try {
+      const decisionNonce = canonicalDigest(input)
+      const decision = await this.ctx.delivery.recordRequirementDecision({
+        idempotencyKey: `delivery:requirement-decision:${input.caseId}:${input.revisionId}:${decisionNonce}`,
+        caseId: DeliveryCaseId(input.caseId),
+        revisionId: ContractRevisionId(input.revisionId),
+        decision: input.decision,
+        reason: input.reason,
+        actorId: this.operatorId,
+        decisionNonce,
+      })
+      return projectRequirementDecision(decision)
+    } catch (error) {
+      throw remoteFailure('recordRequirementDecision', error, signal)
+    }
+  }
+
+  /**
+   * Publish one approved ready Case revision through Host-only GitHub configuration.
+   * @param input - Case and revision selected for publication.
+   * @param signal - Caller lifetime propagated through GitHub publication.
+   * @returns the browser-safe publication record.
+   */
+  @Remote('publishIssue')
+  async publishIssue(
+    input: DeliveryPublishIssueInput,
+    signal: AbortSignal,
+  ): Promise<DeliveryIssuePublicationView> {
+    requireActive(signal, 'publishIssue')
+    try {
+      const publication = await this.internals.publishGitHubIssue({
+        delivery: this.ctx.delivery,
+        credentials: this.ctx.credentials,
+        fetch: this.internals.fetch,
+        targetForRepository: repositoryId => this.githubTargets.get(repositoryId),
+        now: () => new Date().toISOString(),
+      }, {
+        caseId: DeliveryCaseId(input.caseId),
+        revisionId: ContractRevisionId(input.revisionId),
+        signal,
+      })
+      return projectIssuePublication(publication)
+    } catch (error) {
+      throw remoteFailure('publishIssue', error, signal)
+    }
+  }
+
+  /**
+   * Resolve one uncertain publication through a fresh Host-side GitHub GET.
+   * @param input - Publication identity and the operator-selected resolution action.
+   * @param signal - Caller lifetime propagated through GitHub reconciliation.
+   * @returns the reconciled browser-safe publication record.
+   */
+  @Remote('resolvePublication')
+  async resolvePublication(
+    input: DeliveryResolvePublicationInput,
+    signal: AbortSignal,
+  ): Promise<DeliveryIssuePublicationView> {
+    requireActive(signal, 'resolvePublication')
+    try {
+      const publication = await this.internals.resolveGitHubIssuePublication({
+        delivery: this.ctx.delivery,
+        credentials: this.ctx.credentials,
+        fetch: this.internals.fetch,
+        targetForRepository: repositoryId => this.githubTargets.get(repositoryId),
+        now: () => new Date().toISOString(),
+      }, {
+        resolution: input.resolution,
+        publicationId: IssuePublicationId(input.publicationId),
+        issueNumber: input.issueNumber,
+        signal,
+      })
+      return projectIssuePublication(publication)
+    } catch (error) {
+      throw remoteFailure('resolvePublication', error, signal)
+    }
   }
 
   /**
@@ -230,6 +433,7 @@ export class DeliveryRemoteService extends TypertRemoteService {
         this.ctx.delivery.snapshot(),
         this.queue.list(),
         this.queue.pendingAttentions(),
+        new Map([...this.githubTargets].map(([id, target]) => [id, target.repository])),
       )
     } catch (error) {
       throw remoteFailure('snapshot', error)
@@ -238,7 +442,7 @@ export class DeliveryRemoteService extends TypertRemoteService {
 
   /**
    * Explicitly adopt the current revision of one GitHub Issue URL.
-   * @param input - Operator-selected Issue URL and configured repository.
+   * @param input - Operator-selected Issue URL; the Host supplies the configured repository.
    * @param signal - Operation-local Remote cancellation.
    * @returns the adopted immutable Contract revision.
    */
@@ -254,7 +458,7 @@ export class DeliveryRemoteService extends TypertRemoteService {
         fetch: this.internals.fetch,
       }, {
         issueUrl: input.issueUrl,
-        repositoryId: RepositoryId(input.repositoryId),
+        repositoryId: this.repositoryId,
         signal,
       })
     } catch (error) {

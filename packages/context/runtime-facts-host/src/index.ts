@@ -2,12 +2,12 @@
  * Host-process runtime fact provider. Process constants and launch snapshots
  * stay static; hot-loadable service facts resolve through their owning seams.
  *
- * @module @deepseek-ai/dsh-runtime-facts-host
+ * @module @changanhua/dsh-runtime-facts-host
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import { factKey } from '@deepseek-ai/dsh-runtime-facts'
+import { factKey } from '@changanhua/dsh-runtime-facts'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import { sanitizeProxy } from './proxy.ts'

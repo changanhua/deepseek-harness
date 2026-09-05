@@ -1,0 +1,41 @@
+{
+  "skill_name": "dsh-personal-platform-routing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我在 changanhua/deepseek-harness 改了 dsh Profile 启动和本地凭据读取，单测与 ubuntu-latest 都绿了。用户只在 Win10 使用，现在能宣布完成吗？",
+      "expected_output": "Triggers the skill; rejects Linux and unit tests as substitutes for the operated environment, routes real Profile launch and credential behavior to the exact local Windows 10 checkout as primary evidence, and treats hosted Windows as optional clean compatibility evidence.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我修了跨平台 workspace 路径和子进程清理。Win10 真机通过了，所以把 Linux 用例全跳过吧。",
+      "expected_output": "Triggers the skill; keeps native Windows 10 proof but rejects broad Linux skips because the changed claim is cross-platform, routes Linux compatibility to a GitHub-hosted Linux job, and requires host-native path and process assertions.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "个人 fork 的 PR 卡在没有 dsh-ubuntu runner。帮我在家里的 Win10 机器装一个公开仓库 self-hosted runner 顶上。",
+      "expected_output": "Triggers the skill; refuses to treat a personal Windows machine as an implicit public-fork runner, recommends an existing GitHub-hosted carrier or an upstream-only repository guard, and requires a separate explicitly authorized security-reviewed task before any self-hosted runner setup.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "这次只改 changanhua fork 的 README 和生成目录检查。请给任务标 Windows/Linux 类别，不要部署 Linux，也不要创建 PR。",
+      "expected_output": "Triggers the skill; classifies the contract as platform-neutral, runs narrow repository documentation or generator checks locally on Windows, does not invent Linux deployment or PR work, and records Linux as not applicable unless the changed generator is platform-sensitive.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "我要给官方 deepseek-ai/deepseek-harness 提交 Landlock 修复。我本人仍然不用 Linux，怎么验收？",
+      "expected_output": "Triggers the skill but does not apply the personal Windows-only merge default to upstream. It routes Landlock's Linux-specific proof to GitHub-hosted Linux, keeps local Linux administration unnecessary, and adds any affected portable Windows evidence without claiming Windows can prove Landlock.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "个人分支已经 push，但没有 Actions run。Linux 和 Windows 应该算通过还是失败？",
+      "expected_output": "Triggers the skill; inspects current branch, PR, workflow trigger, and run state, reports absent evidence rather than pass or fail, and does not create a PR, empty commit, or workflow mutation without authorization.",
+      "files": []
+    }
+  ]
+}

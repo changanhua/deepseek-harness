@@ -1,13 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-task-queue-local",
+  "name": "@changanhua/dsh-task-queue-local",
   "description": "Durable local backend for the DeepSeek Harness task queue seam — single-writer segment log, mutation FIFO with faulted protocol, inbox admission, and the two-phase scheduler",
   "version": "0.1.0-rc.5",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
     "directory": "packages/task-queue/task-queue-local"
   },
   "type": "module",
@@ -32,7 +29,7 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
     "@deepseek-ai/dsh-atomic-write": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
@@ -43,10 +40,11 @@
   },
   "devDependencies": {
     "@deepseek-ai/dsh-attachment-local": "workspace:^",
-    "@deepseek-ai/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
     "@deepseek-ai/dsh-atomic-write": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
-  }
+  },
+  "private": true
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AttemptId } from '@deepseek-ai/dsh-task-queue'
+import { AttemptId } from '@changanhua/dsh-task-queue'
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
-import type { ImageGeneration, ImageGenerationInput } from '@deepseek-ai/dsh-image-generation'
+import type { ImageGeneration, ImageGenerationInput } from '@changanhua/dsh-image-generation'
 import { createImageGenerateHandler } from '../src/index.ts'
 
 describe('image.generate@1 handler', () => {

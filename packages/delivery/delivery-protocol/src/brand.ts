@@ -2,10 +2,14 @@
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
 
-/** Identifies an immutable GitHub Issue snapshot. */
-export type SourceRefId = Branded<'DeliverySourceRefId'>
-/** Identifies an immutable delivery-contract revision. */
+/** Identifies one immutable delivery-contract revision. */
 export type ContractRevisionId = Branded<'DeliveryContractRevisionId'>
+/** Identifies one durable Personal Delivery Case. */
+export type DeliveryCaseId = Branded<'DeliveryCaseId'>
+/** Identifies one human requirement decision over a Case revision. */
+export type RequirementDecisionId = Branded<'DeliveryRequirementDecisionId'>
+/** Identifies one Issue publication attempt for a Case revision. */
+export type IssuePublicationId = Branded<'DeliveryIssuePublicationId'>
 /** Identifies one immutable bounded work packet. */
 export type WorkPacketId = Branded<'DeliveryWorkPacketId'>
 /** Identifies one persisted Queue-admission handshake. */
@@ -48,17 +52,29 @@ function opaqueId(label: string, value: string): string {
 }
 
 /**
- * Validate and brand a SourceRef identity.
- * @param value - Non-blank SourceRef identity.
- * @returns the validated branded identity.
- */
-export const SourceRefId = (value: string): SourceRefId => opaqueId('SourceRefId', value) as SourceRefId
-/**
  * Validate and brand a ContractRevision identity.
  * @param value - Non-blank ContractRevision identity.
  * @returns the validated branded identity.
  */
 export const ContractRevisionId = (value: string): ContractRevisionId => opaqueId('ContractRevisionId', value) as ContractRevisionId
+/**
+ * Validate and brand a DeliveryCase identity.
+ * @param value - Non-blank DeliveryCase identity.
+ * @returns the validated branded identity.
+ */
+export const DeliveryCaseId = (value: string): DeliveryCaseId => opaqueId('DeliveryCaseId', value) as DeliveryCaseId
+/**
+ * Validate and brand a RequirementDecision identity.
+ * @param value - Non-blank RequirementDecision identity.
+ * @returns the validated branded identity.
+ */
+export const RequirementDecisionId = (value: string): RequirementDecisionId => opaqueId('RequirementDecisionId', value) as RequirementDecisionId
+/**
+ * Validate and brand an IssuePublication identity.
+ * @param value - Non-blank IssuePublication identity.
+ * @returns the validated branded identity.
+ */
+export const IssuePublicationId = (value: string): IssuePublicationId => opaqueId('IssuePublicationId', value) as IssuePublicationId
 /**
  * Validate and brand a WorkPacket identity.
  * @param value - Non-blank WorkPacket identity.

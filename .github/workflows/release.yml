@@ -28,6 +28,10 @@ env:
 jobs:
   pack:
     name: Pack npm tarballs
+    # Personal forks carry source-only packages outside the official family.
+    # Their ordinary CI still runs, but an official release rehearsal would be
+    # expected to fail the mixed-scope dependency-closure gate.
+    if: github.repository == 'deepseek-ai/deepseek-harness'
     runs-on: ubuntu-24.04
     steps:
       # Complete history: the release scripts read tags.

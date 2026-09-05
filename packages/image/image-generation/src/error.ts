@@ -1,6 +1,6 @@
 /**
  * Runtime errors for the image generation capability seam.
- * @module @deepseek-ai/dsh-image-generation/error
+ * @module @changanhua/dsh-image-generation/error
  */
 
 import type { ImageGenerationErrorCode } from './types.ts'

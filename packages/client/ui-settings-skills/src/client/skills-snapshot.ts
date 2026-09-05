@@ -9,7 +9,7 @@
 
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { SkillManagementSnapshot } from '@deepseek-ai/dsh-host-capability-registry/types'
+import type { SkillManagementSnapshot } from '@changanhua/dsh-host-capability-registry/types'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 
@@ -50,7 +50,7 @@ export interface SkillsSnapshotController {
 
 /**
  * Build the snapshot controller for one feature assembly.
- * @param api - the wire face restricted to the management domain.
+ * @param remote - the wire face restricted to the management domain.
  * @returns the controller.
  */
 export function createSkillsSnapshotController(remote: SkillManagementRemoteFace): SkillsSnapshotController {

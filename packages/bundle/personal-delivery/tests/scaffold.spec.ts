@@ -7,17 +7,23 @@ import { Context } from '@deepseek-ai/cordis'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import LocalDelivery from '@deepseek-ai/dsh-delivery-local'
-import LocalDeliveryEvidence from '@deepseek-ai/dsh-delivery-evidence-local'
-import { sourceRefContentDigest } from '@deepseek-ai/dsh-delivery-protocol'
-import DeliveryRemote from '@deepseek-ai/dsh-delivery-remote'
-import * as DeliveryTaskQueue from '@deepseek-ai/dsh-delivery-task-queue'
-import GitLocalRepositoryWorkspace from '@deepseek-ai/dsh-repo-workspace-git-local'
+import LocalDelivery from '@changanhua/dsh-delivery-local'
+import LocalDeliveryEvidence from '@changanhua/dsh-delivery-evidence-local'
+import {
+  AcceptanceClauseId,
+  GitCommitId,
+  RepositoryId,
+  VerificationCheckId,
+  githubIssueContentDigest,
+} from '@changanhua/dsh-delivery-protocol'
+import DeliveryRemote from '@changanhua/dsh-delivery-remote'
+import * as DeliveryTaskQueue from '@changanhua/dsh-delivery-task-queue'
+import GitLocalRepositoryWorkspace from '@changanhua/dsh-repo-workspace-git-local'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import LocalSubprocess from '@deepseek-ai/dsh-subprocess-local'
-import LocalTaskQueue from '@deepseek-ai/dsh-task-queue-local'
+import LocalTaskQueue from '@changanhua/dsh-task-queue-local'
 import { load } from 'js-yaml'
 import { describe, expect, it } from 'vitest'
 
@@ -39,12 +45,12 @@ describe('Personal Delivery bundle composition', () => {
     const rows = patch.flatMap(entry => entry.insert ?? [])
 
     expect(rows.map(row => [row.id, row.name])).toEqual([
-      ['delivery-local', '@deepseek-ai/dsh-delivery-local'],
-      ['delivery-evidence-local', '@deepseek-ai/dsh-delivery-evidence-local'],
-      ['repo-workspace-git-local', '@deepseek-ai/dsh-repo-workspace-git-local'],
-      ['delivery-task-queue', '@deepseek-ai/dsh-delivery-task-queue'],
-      ['delivery-remote', '@deepseek-ai/dsh-delivery-remote'],
-      ['ui-delivery', '@deepseek-ai/dsh-client-ui-delivery'],
+      ['delivery-local', '@changanhua/dsh-delivery-local'],
+      ['delivery-evidence-local', '@changanhua/dsh-delivery-evidence-local'],
+      ['repo-workspace-git-local', '@changanhua/dsh-repo-workspace-git-local'],
+      ['delivery-task-queue', '@changanhua/dsh-delivery-task-queue'],
+      ['delivery-remote', '@changanhua/dsh-delivery-remote'],
+      ['ui-delivery', '@changanhua/dsh-client-ui-delivery'],
     ])
     expect(rows.find(row => row.id === 'delivery-evidence-local')?.config).toEqual({
       root: { __jsExpr: "dshHomePath('personal-delivery/evidence')" },
@@ -69,7 +75,7 @@ describe('Personal Delivery bundle composition', () => {
       "- id: storage-json\n  name: '@deepseek-ai/dsh-storage-json'\n  config:\n    root: " + JSON.stringify(resolve(temp, 'storage')),
       "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  config:\n    backend: json",
       "- { id: subprocess, name: '@deepseek-ai/dsh-subprocess-local' }",
-      "- id: task-queue\n  name: '@deepseek-ai/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(resolve(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1',
+      "- id: task-queue\n  name: '@changanhua/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(resolve(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1',
       patch,
     ].join('\n'))
 
@@ -78,13 +84,13 @@ describe('Personal Delivery bundle composition', () => {
       ['@deepseek-ai/dsh-storage-json', StorageJson],
       ['@deepseek-ai/dsh-storage-domain', StorageDomain],
       ['@deepseek-ai/dsh-subprocess-local', LocalSubprocess],
-      ['@deepseek-ai/dsh-task-queue-local', LocalTaskQueue],
-      ['@deepseek-ai/dsh-delivery-local', LocalDelivery],
-      ['@deepseek-ai/dsh-delivery-evidence-local', LocalDeliveryEvidence],
-      ['@deepseek-ai/dsh-repo-workspace-git-local', GitLocalRepositoryWorkspace],
-      ['@deepseek-ai/dsh-delivery-task-queue', DeliveryTaskQueue],
-      ['@deepseek-ai/dsh-delivery-remote', DeliveryRemote],
-      ['@deepseek-ai/dsh-client-ui-delivery', uiDeliveryHost],
+      ['@changanhua/dsh-task-queue-local', LocalTaskQueue],
+      ['@changanhua/dsh-delivery-local', LocalDelivery],
+      ['@changanhua/dsh-delivery-evidence-local', LocalDeliveryEvidence],
+      ['@changanhua/dsh-repo-workspace-git-local', GitLocalRepositoryWorkspace],
+      ['@changanhua/dsh-delivery-task-queue', DeliveryTaskQueue],
+      ['@changanhua/dsh-delivery-remote', DeliveryRemote],
+      ['@changanhua/dsh-client-ui-delivery', uiDeliveryHost],
     ])
     const boot = async (): Promise<Context> => {
       const ctx = new Context()
@@ -121,31 +127,31 @@ describe('Personal Delivery bundle composition', () => {
 
       const title = 'Compose Personal Delivery'
       const body = 'Keep one restart-stable Contract revision.'
-      const revision = await first.delivery.adoptContractRevision({
+      const { case: createdCase, revision } = await first.delivery.createCase({
         idempotencyKey: 'personal-delivery-loader-restart',
-        source: {
+        repositoryId: RepositoryId('workspace'),
+        origin: {
+          kind: 'github-import',
           repository: { owner: 'changanhua', name: 'deepseek-harness' },
           issueNumber: 1,
-          canonicalUrl: 'https://github.com/changanhua/deepseek-harness/issues/1',
-          updatedAt: '2026-08-30T00:00:00.000Z',
-          title,
-          body,
-          contentDigest: sourceRefContentDigest({ title, body }),
+          contentDigest: githubIssueContentDigest({ title, body }),
         },
+        title,
         revision: {
-          previousRevisionId: null,
-          repositoryId: 'workspace',
           outcome: 'Prove the final bundle composition.',
           context: 'The Loader owns the complete Personal Delivery chain.',
           allowedScope: ['The Personal Delivery bundle.'],
           forbiddenScope: ['Unrelated packages.'],
-          acceptanceClauses: [{ id: 'bundle-composes', text: 'The complete chain boots.' }],
+          acceptanceClauses: [{ id: AcceptanceClauseId('bundle-composes'), text: 'The complete chain boots.' }],
           openDecisions: [],
-          baseSelectionRule: { kind: 'commit', commit: '8d25c4ccd4ce5578a699b97b654cd6b46f733f63' },
+          baseSelectionRule: {
+            kind: 'commit',
+            commit: GitCommitId('8d25c4ccd4ce5578a699b97b654cd6b46f733f63'),
+          },
           verificationSource: {
             kind: 'contract-field',
             checks: [{
-              id: 'bundle-smoke',
+              id: VerificationCheckId('bundle-smoke'),
               name: 'Bundle smoke',
               argv: [process.execPath, '--version'],
               cwd: '.',
@@ -156,12 +162,14 @@ describe('Personal Delivery bundle composition', () => {
           },
           referenceLinks: [],
         },
-      } as never)
+      })
+      expect(createdCase.headRevisionId).toBe(revision.id)
       await first.fiber.dispose()
       first = undefined
 
       reopened = await boot()
       expect(reopened.delivery.getContractRevision(revision.id)).toEqual(revision)
+      expect(reopened.delivery.getCase(createdCase.id)).toEqual(createdCase)
     } finally {
       await first?.fiber.dispose()
       await reopened?.fiber.dispose()

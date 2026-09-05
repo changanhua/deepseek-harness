@@ -6,12 +6,14 @@ Personal Delivery 定义不可变需求、有界 Packet、repository proof、evi
 
 ## Public protocol
 
-[`@deepseek-ai/dsh-delivery-protocol`](../../packages/delivery/delivery-protocol/README.zh.md) 是普通且 Queue 无关的 library。每个持久对象都携带 `schemaVersion: 1`；opaque id 保持字符串，Git commit 使用完整 object id，UTC timestamp 使用 RFC 3339，content digest 使用小写 `sha256:<64 hex>`。它的严格运行时 schema 会拒绝未知字段和非法 discriminated combination，而不是静默规范化另一种格式。
+[`@changanhua/dsh-delivery-protocol`](../../packages/delivery/delivery-protocol/README.zh.md) 是普通且 Queue 无关的 library。每个持久对象都携带 `schemaVersion: 2`；opaque id 保持字符串，Git commit 使用完整 object id，UTC timestamp 使用 RFC 3339，content digest 使用小写 `sha256:<64 hex>`。它的严格运行时 schema 会拒绝未知字段和非法 discriminated combination，而不是静默规范化另一种格式。
 
 | Public type | 职责 |
 |---|---|
-| `SourceRef` | 精确记录已采纳 GitHub Issue 的 owner/name、number、URL、更新时间、title/body snapshot 和 content digest |
-| `ContractRevision` | 不可变 outcome、repository 选择、scope、acceptance clause、open decision、base-selection rule、verification source 和 reference |
+| `DeliveryCase` | repository-bound 的持久 requirement identity，其 head 通过 expected-head compare-and-set revision 推进 |
+| `ContractRevision` | 不可变 title、human 或 GitHub-import origin、outcome、repository 选择、scope、acceptance clause、open decision、base-selection rule、verification source 和 reference |
+| `RequirementDecision` | 针对精确 Case revision 的一个人工 `approved`、`rejected` 或 `deferred` authority decision |
+| `IssuePublication` | 一个 revision 对应的持久 prepared、publishing、failed、unknown 或 published GitHub Issue side-effect record |
 | `WorkPacket` | 绑定到一个 Contract revision、repository、完整 base commit、path rule、acceptance id、stop condition、executor preference 和 Delivery 派生 `VerificationPlan` 的有界 objective；plan 至少有一项 check |
 | `DispatchBinding` | 跨 store Queue admission handshake 的持久 `submitting` 或 `bound` 一半 |
 | `CompletionClaim` | change execution 产生的 `completed`、`blocked`、`needs-decision` 或 `needs-scope-change` 业务输出 |
@@ -32,7 +34,7 @@ Protocol 还导出 `code.change@1` 和 `code.verify@1` 的常量与持久 DTO：
 | `ctx.repoWorkspace` | `RepositoryWorkspace` | [`dsh-repo-workspace`](../../packages/delivery/repo-workspace/README.zh.md) | [`dsh-repo-workspace-git-local`](../../packages/delivery/repo-workspace-git-local/README.zh.md)：本地 Git/Subprocess |
 | `ctx.deliveryEvidence` | `DeliveryEvidence` | [`dsh-delivery-evidence`](../../packages/delivery/delivery-evidence/README.zh.md) | [`dsh-delivery-evidence-local`](../../packages/delivery/delivery-evidence-local/README.zh.md)：本地 content-addressed bytes |
 
-`Delivery` 采纳 Contract revision、派生 Packet、开始并绑定 dispatch、记录人工决定、读取单条 Contract/Packet/binding record，并返回 detached snapshot。`createWorkPacket()` 接受由 `RepositoryWorkspace.resolveBase()` 铸造的 `VerifiedRepositoryBase`，不接受 caller 提供的 verification plan。Delivery 在 provider 内部派生 `contract-field` plan。对 `git-blob` source，Delivery 为 operation-local resolver 选择已验证 base、Contract 拥有的 path 与固定完整字节上限；它验证 `RepositoryWorkspace.readBlob()` 返回的 `VerifiedRepositoryBlob`、解析可信文档，并自行派生 plan provenance 与 digest。Delivery 不存储 Queue Attempt、retry state、Git checkout、evidence 字节或可写 UI lane。
+`Delivery` 创建并修订 Case、记录 requirement authority 与 publication state、派生 Packet、开始并绑定 dispatch、记录 acceptance decision、读取单条 record，并返回 detached snapshot。`createWorkPacket()` 接受由 `RepositoryWorkspace.resolveBase()` 铸造的 `VerifiedRepositoryBase`，不接受 caller 提供的 verification plan。Delivery 在 provider 内部派生 `contract-field` plan。对 `git-blob` source，Delivery 为 operation-local resolver 选择已验证 base、Contract 拥有的 path 与固定完整字节上限；它验证 `RepositoryWorkspace.readBlob()` 返回的 `VerifiedRepositoryBlob`、解析可信文档，并自行派生 plan provenance 与 digest。Delivery 不存储 Queue Attempt、retry state、Git checkout、evidence 字节或可写 UI lane。
 
 `RepositoryWorkspace.resolveBase()` 证明不可变 Contract rule 选中的完整 commit，包括对 ref-head 的时点观测。`readBlob()` 证明该精确 base 上一个有界 path 与 Git blob id。`inspectRevision()` 重新建立已持久完整 commit 的证明，`inspectRange()` 派生 ancestry 与 changed path，两个 checkout method 则返回 Attempt 拥有且必须等待 cleanup 的 lease。repository 由配置的 `repositoryId` 选择，而不是持久绝对 host path。
 
@@ -48,7 +50,7 @@ Protocol 还导出 `code.change@1` 和 `code.verify@1` 的常量与持久 DTO：
 
 [`dsh-delivery-verifier`](../../packages/delivery/delivery-verifier/README.zh.md) 在独立 target checkout 中执行可信 fixed argv，检查精确 repository range 与 path rule，完整性读取必需 evidence，并生成有界 check evidence 与 Verdict。
 
-GitHub intake 校验精确的公开 `github.com/{owner}/{repository}/issues/{number}` URL 语法，抓取一次显式 snapshot，要求一个带标记的 `dsh-delivery-work-brief@1` YAML fence，并幂等采纳不可变 revision。类型化 `delivery` Remote 提供 projection 以及 import、Packet creation、change start、verification start、evidence read 与人工 decision operation，但不授予浏览器 Queue authority。浏览器包渲染五个派生 lane，Personal Delivery bundle 则激活完整本地链路。
+GitHub intake 校验精确的公开 `github.com/{owner}/{repository}/issues/{number}` URL 语法，抓取一次显式 snapshot，要求一个带标记的 `dsh-delivery-work-brief@1` YAML fence，并幂等创建或修订 Case，但不批准它。Host-only publisher 渲染一个已批准且 ready 的 revision，在有界 GitHub POST 前持久 publication intent，并且绝不自动重试 unknown side effect。类型化 `delivery` Remote 提供 Case shaping、requirement decision、publication、reconciliation、Packet execution、evidence 与 acceptance，但不授予 browser Queue 或 credential authority。Browser package 以 Case 为主记录，把 Issue import 与 Packet evidence 保持为次级 action。
 
 ## Readiness 与验收
 
@@ -56,9 +58,9 @@ GitHub intake 校验精确的公开 `github.com/{owner}/{repository}/issues/{num
 
 Dispatch 约定写入确定性 `submitting` binding、由 operator enqueue Queue work，然后有条件地把返回的 Work id 记录为 `bound`。重复同一 canonical input 会使用同一 key。已绑定 record 绝不更换 Queue Work identity。
 
-验收从一个 Packet 加两个 Delivery 拥有的 bound binding id 开始：同一 Packet 的一个 change binding 和一个 verification binding。Delivery 把其存储的 Queue Work id 交给 host-only candidate resolver，交叉校验返回的成功 Attempt id、completed Claim、verification intent 和 Verdict，再自行派生普通 acceptance 必须通过第二个 host-only capability 解析并完整性读取的每个 evidence id。保留的浏览器 DTO 不能提供 Verdict、actor id 或 idempotency key；单用户 host 使用 `delivery-remote` 配置的 `operatorId`（默认 `local-operator`）作为 actor，并根据所选 target 与 decision nonce 派生 key。普通 acceptance 需要精确匹配、passed 且 evidence 完整的 Verdict。Rejection 与显式人工 waiver 仍是不同决定。
+验收从一个 Packet 加两个 Delivery 拥有的 bound binding id 开始：同一 Packet 的一个 change binding 和一个 verification binding。Delivery 把其存储的 Queue Work id 交给 host-only candidate resolver，交叉校验返回的成功 Attempt id、completed Claim、verification intent 和 Verdict，再自行派生普通 acceptance 必须通过第二个 host-only capability 解析并完整性读取的每个 evidence id。保留的浏览器 DTO 不能提供 Verdict、actor id 或 idempotency key；单用户 host 使用 `delivery-remote` 配置的 `operatorId`（默认 `local-operator`）作为 actor，根据有界 content 派生 requirement-decision identity，而 acceptance 保留其显式 decision nonce。普通 acceptance 需要精确匹配、passed 且 evidence 完整的 Verdict。Rejection 与显式人工 waiver 仍是不同决定。
 
-`DeliveryLane` view 把 Ready、Running、Review、Blocked 和 Accepted 命名为不可变 Delivery record 与 Queue view 上的 projection，而不是可写持久 state。Delivery workbench 渲染这些 projection，并且只调用狭窄 Remote operation。
+`DeliveryCaseLane` view 把 Shaping、Ready、Running、Review、Blocked 和 Accepted 命名为当前 Case head、requirement authority、publication state、下游 Packet 与 Queue view 上的 projection。Packet lane 与 publication phase 保持为独立派生轴，而不是可写持久 Case status。
 
 ## Failure 与 recovery 约定
 
@@ -68,9 +70,9 @@ Evidence publication 先于成功 Claim 或 Verdict。缺失、无法解析或 d
 
 ## Scope 与 limitation
 
-这套约定仅覆盖显式 GitHub Issue URL 接入、已配置本地 repository identity、Codex change execution、fixed-command independent verification、不可变 evidence 和显式人工 acceptance。它排除 GitHub webhook synchronization 和 write-back、自动 PR 创建或 merge、quota-triggered launch、value scoring、精确 Codex thread resume、general artifact platform、Batch/DAG delivery、multi-host lease、team、RBAC 和 multi-tenancy。
+这套约定仅覆盖 human 或显式 GitHub Issue requirement intake、已配置本地 repository identity、一次 Host-authorized GitHub Issue publication、Codex change execution、fixed-command independent verification、不可变 evidence 和显式人工 acceptance。它排除 webhook synchronization、发布后编辑已有 Issue、自动 PR 创建或 merge、quota-triggered launch、value scoring、精确 Codex thread resume、general artifact platform、Batch/DAG delivery、multi-host lease、team、RBAC 和 multi-tenancy。
 
-本地 Windows bundle 提供完整 P0 composition。部署仍需把真实 Git toplevel 作为启动目录、使用现有 Codex authentication，并叠加 base Web profile；remote host、Linux 部署、webhook intake、自动 PR/merge 与 multi-user authority 仍不在本范围内。
+本地 Windows bundle 提供 repository id 为 `workspace` 的完整 local composition；在 Host 配置把该 id 映射到 owner/name 与 credential reference 前，GitHub publication 保持禁用。部署仍需把真实 Git toplevel 作为启动目录、使用现有 Codex authentication，并叠加 base Web profile；remote host、Linux 部署、webhook intake、自动 PR/merge 与 multi-user authority 仍不在本范围内。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -86,17 +88,45 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 Durable Personal Delivery records and their idempotent write operations. Providers allocate ids and timestamps, validate protocol objects at the storage boundary, and serialize writes. The service does not persist Queue lifecycle, executor handles, verification bytes, or UI lanes.
 
+Authority boundaries fixed by the version-2 contract: model-facing callers may create and revise Cases and propose Packets, but only human actors record requirement decisions, resolve uncertain publications, and accept delivery outcomes. Every revision must be ready and explicitly approved before Packet creation or Issue publication.
+
 ```ts cordis-catalog
 /**
- * Adopt one exact source snapshot as an immutable Contract revision.
- * @param request - Source, interpreted revision, and deterministic idempotency key.
- * @returns the existing or newly committed revision.
+ * Atomically create one Delivery Case and its root requirement revision.
+ * The root revision carries a `null` `previousRevisionId`, the request's
+ * origin and title, and the Case's repository binding.
+ * @param request - Repository, origin, title, requirement content, and deterministic idempotency key.
+ * @returns the existing pair for a repeated identical request, or the newly committed pair.
  */
-abstract adoptContractRevision(request: AdoptContractRevisionRequest): Promise<ContractRevision>
+abstract createCase(request: CreateDeliveryCaseRequest): Promise<{ case: DeliveryCase; revision: ContractRevision }>
+
+/**
+ * Create one child revision and move the Case head atomically under an
+ * expected-head compare-and-set. The write fails with `conflict` when the
+ * Case head no longer equals `expectedHeadRevisionId`, so concurrent
+ * revisions cannot silently branch one Case. A `github-import` child origin
+ * must name the same repository and Issue number as its `github-import`
+ * parent; `human` origins carry no lineage constraint.
+ * @param request - Case, observed head, origin, title, requirement content, and idempotency key.
+ * @returns the Case with its advanced head plus the newly committed child revision.
+ */
+abstract reviseCase(request: ReviseDeliveryCaseRequest): Promise<{ case: DeliveryCase; revision: ContractRevision }>
+
+/**
+ * Record the one human requirement decision for an exact Case revision.
+ * Repeating identical decision content returns the existing record;
+ * different content under the same revision fails closed with
+ * `idempotency-conflict`.
+ * @param request - Case and revision references, human decision fields, and idempotency key.
+ * @returns the existing or newly committed decision.
+ */
+abstract recordRequirementDecision(request: RecordRequirementDecisionRequest): Promise<RequirementDecision>
 
 /**
  * Create one immutable Packet after the repository provider resolved the Contract base.
- * @param request - Ready Contract id, verified base, caller-selected Packet fields, and idempotency key.
+ * The revision must belong to a Case, be ready, and carry an `approved`
+ * requirement decision; missing approval fails with `approval-required`.
+ * @param request - Approved ready revision id, verified base, caller-selected Packet fields, and idempotency key.
  * @param resolveVerificationSource - Host-only Git blob resolver used when the Contract names a blob source.
  * @returns the existing or newly committed Packet.
  */
@@ -124,6 +154,76 @@ abstract bindDispatch(request: BindDispatchRequest): Promise<DispatchBinding & {
  * @returns the existing or newly committed decision.
  */
 abstract recordAcceptanceDecision( request: RecordAcceptanceDecisionRequest, resolveCandidate: AcceptanceCandidateResolver, resolveEvidence: AcceptanceEvidenceResolver, ): Promise<AcceptanceDecision>
+
+/**
+ * Commit the first durable publication intent for an approved ready Case
+ * revision. A revision owns at most one publication: repeated preparation
+ * returns the existing record, a `failed` record is reset to `prepared`
+ * under its existing id for a new attempt, and an `unknown` record refuses
+ * preparation until human resolution.
+ * @param request - Case and revision references, target repository, rendered digest, marker, and idempotency key.
+ * @returns the existing, reset, or newly committed publication in phase `prepared`.
+ */
+abstract prepareIssuePublication(request: PrepareIssuePublicationRequest): Promise<IssuePublication>
+
+/**
+ * Move a `prepared` publication to `publishing` before any external
+ * request crosses the side-effect boundary. Any other current phase fails
+ * closed with `invalid-transition`, so a repeated start can never mask a
+ * concurrent attempt.
+ * @param publicationId - Durable publication identity.
+ * @returns the publication in phase `publishing`.
+ */
+abstract markIssuePublicationStarted(publicationId: IssuePublicationId): Promise<IssuePublication & { phase: 'publishing' }>
+
+/**
+ * Commit the verified GitHub Issue onto a `publishing` record. The
+ * transition fails closed unless the record is still `publishing`.
+ * @param request - Publication id, expected `publishing` phase, and the validated exact Issue reference.
+ * @returns the publication in phase `published` with its Issue binding.
+ */
+abstract completeIssuePublication(request: CompleteIssuePublicationRequest): Promise<IssuePublication & { phase: 'published' }>
+
+/**
+ * Record a truthful failure for a `publishing` record. A `not-started`
+ * side effect lands in phase `failed`; an `unknown` side effect lands in
+ * phase `unknown` for human resolution and is never retried automatically.
+ * @param request - Publication id, expected `publishing` phase, and the classified failure.
+ * @returns the publication in phase `failed` or `unknown`.
+ */
+abstract failIssuePublication(request: FailIssuePublicationRequest): Promise<IssuePublication & { phase: 'failed' | 'unknown' }>
+
+/**
+ * Apply a human-authorized resolution to an unresolved publication.
+ * `confirm-published` requires the verified exact Issue reference and
+ * moves `unknown` or stalled `publishing` records to `published`;
+ * `confirm-not-created` requires an explicit verification basis and returns
+ * such records to `prepared`. Any other current phase fails closed.
+ * @param request - Resolution kind, publication id, and resolution evidence.
+ * @returns the resolved publication.
+ */
+abstract resolveIssuePublication(request: ResolveIssuePublicationRequest): Promise<IssuePublication>
+
+/**
+ * Read one durable Delivery Case.
+ * @param id - Durable Case identity.
+ * @returns the Case or `undefined` when absent.
+ */
+abstract getCase(id: DeliveryCaseId): DeliveryCase | undefined
+
+/**
+ * Read one human requirement decision.
+ * @param id - Durable decision identity.
+ * @returns the decision or `undefined` when absent.
+ */
+abstract getRequirementDecision(id: RequirementDecisionId): RequirementDecision | undefined
+
+/**
+ * Read one Issue publication.
+ * @param id - Durable publication identity.
+ * @returns the current publication projection or `undefined` when absent.
+ */
+abstract getIssuePublication(id: IssuePublicationId): IssuePublication | undefined
 
 /**
  * Read one adopted Contract revision.

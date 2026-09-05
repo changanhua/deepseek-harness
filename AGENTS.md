@@ -18,6 +18,8 @@ Use repository scripts for install, test, typecheck, build, hygiene, docs, and e
 
 Only `dsh` profiles launch supported Node applications; package bins, demos, and public SDK argv escapes are forbidden ([application launch](docs/architecture.md#application-launch)).
 
+After an interruption, resume from Codex task and tool state: reuse completed results, continue a returned execution handle, and reconcile only the exact target of the last mutating tool when the runtime explicitly marks its outcome unknown. Do not restart discovery or verified checks, and do not infer a DSH architecture or Skill defect from that tool-level ambiguity ([delivery recovery](.agents/skills/dsh-feature-delivery/SKILL.md#resume-after-interruption)).
+
 ## Conventions
 
 Package design, ownership, lifecycle, runtime-invariant, and Agent Note rules live in [packages/AGENTS.md](packages/AGENTS.md) and [.agents/notes/README.md](.agents/notes/README.md). Type, tunable, dependency, and source/artifact rules live in [docs/development.md](docs/development.md); validation, secrets, and provider-e2e policy live in [docs/testing.md](docs/testing.md); concurrency, subprocess, and teardown rules live in [docs/defensive-patterns.md](docs/defensive-patterns.md). Fork-specific differences are recorded in [FORK-DIVERGENCE.md](FORK-DIVERGENCE.md).

@@ -14,6 +14,8 @@ A restricted dependency is what actually blocks a public consumer. Every harness
 
 Access is a property of each release sequence, not of the scope:
 
+These access choices apply only to official artifacts published by `deepseek-ai/deepseek-harness`. The [repository-owned npm identity](2026-09-04-repository-owned-npm-scope.md) prevents the personal fork from publishing either public or restricted `@deepseek-ai/*` packages.
+
 | Sequence | Members | `publishConfig.access` |
 |---|---|---|
 | vendored framework | the nine `vendor/*` packages | `public` |

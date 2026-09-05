@@ -1,6 +1,10 @@
 import { Context } from '@deepseek-ai/cordis'
-import { DeliveryGitHubIntakeError } from '@deepseek-ai/dsh-delivery-github-intake'
-import { startCodeChange, startVerification } from '@deepseek-ai/dsh-delivery-task-queue'
+import { DeliveryGitHubIntakeError } from '@changanhua/dsh-delivery-github-intake'
+import {
+  publishGitHubIssue,
+  resolveGitHubIssuePublication,
+} from '@changanhua/dsh-delivery-github-publisher'
+import { startCodeChange, startVerification } from '@changanhua/dsh-delivery-task-queue'
 import { describe, expect, it } from 'vitest'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import * as RemoteInvariant from '../src/invariant.ts'
@@ -22,8 +26,10 @@ function context(): Context {
   ctx.provide('delivery', {
     snapshot: () => ({
       contractRevisions: [], workPackets: [], dispatchBindings: [], acceptanceDecisions: [],
+      deliveryCases: [], requirementDecisions: [], issuePublications: [],
     }),
   } as never)
+  ctx.provide('credentials', {} as never)
   ctx.provide('deliveryEvidence', {} as never)
   ctx.provide('repoWorkspace', {} as never)
   ctx.provide('taskQueue', {
@@ -40,19 +46,40 @@ describe('Delivery Remote host boundary', () => {
     await ctx.fiber.dispose()
   })
   it('keeps the trusted operator id host-owned and non-blank', () => {
-    expect(Config({})).toEqual({ operatorId: 'local-operator' })
+    expect(Config({})).toEqual({ operatorId: 'local-operator', repositoryId: 'workspace', githubTargets: {} })
+    expect(Config({
+      githubTargets: {
+        workspace: { owner: 'example', name: 'project', credentialRef: 'GITHUB_CANARY_TOKEN' },
+      },
+    })).toMatchObject({
+      githubTargets: { workspace: { labels: [] } },
+    })
     expect(() => Config({ operatorId: '  ' })).toThrow()
     expect(() => new DeliveryRemoteService(context(), { operatorId: '  ' })).toThrow(
       'operatorId must be non-blank',
     )
+    expect(() => new DeliveryRemoteService(context(), {
+      githubTargets: {
+        workspace: { owner: 'bad owner', name: 'project', credentialRef: 'GITHUB_TOKEN' },
+      },
+    })).toThrow('invalid repository coordinates')
+    expect(() => new DeliveryRemoteService(context(), {
+      githubTargets: {
+        workspace: { owner: 'example', name: 'bad name', credentialRef: 'GITHUB_TOKEN' },
+      },
+    })).toThrow('invalid repository coordinates')
   })
 
   it('constructs the delivery namespace and returns an empty browser snapshot', () => {
-    const service = new DeliveryRemoteService(context())
+    const service = new DeliveryRemoteService(context(), {
+      githubTargets: {
+        workspace: { owner: 'example', name: 'project', credentialRef: 'GITHUB_TOKEN' },
+      },
+    })
 
     expect(service).toBeInstanceOf(DeliveryRemoteService)
     expect(service.snapshot(new AbortController().signal)).toEqual({
-      contractsWithoutPacket: [], cards: [],
+      cases: [], contractsWithoutPacket: [], cards: [], publications: [],
     })
   })
 
@@ -62,12 +89,13 @@ describe('Delivery Remote host boundary', () => {
       importIssue: async () => { throw networkFailureIntakeError() },
       startCodeChange,
       startVerification,
+      publishGitHubIssue,
+      resolveGitHubIssuePublication,
     }
     const service = new DeliveryRemoteService(context(), {}, internals)
 
     await expect(service.importIssue({
       issueUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/13',
-      repositoryId: 'repository-1',
     }, new AbortController().signal)).rejects.toMatchObject({
       failure: {
         code: 'unavailable',

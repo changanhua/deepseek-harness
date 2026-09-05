@@ -5,7 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { TextRetainer } from '@deepseek-ai/dsh-output-retention'
 import type { SubprocessHandle, SubprocessSpawnSpec, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
-import type { LiveAttempt, WorkFailure, WorkHandler, WorkKindDefinition } from '@deepseek-ai/dsh-task-queue'
+import type { LiveAttempt, WorkFailure, WorkHandler, WorkKindDefinition } from '@changanhua/dsh-task-queue'
 
 export const name = 'task-queue-executor-dsh'
 export const inject = ['taskQueue', 'subprocess']
@@ -26,7 +26,7 @@ export interface AgentRunIntent { readonly prompt: string }
 export interface ResolvedAgentRun { readonly prompt: string; readonly workspaceDir: string }
 /** Semantic worker result persisted as the terminal WorkResult output. */
 export interface AgentRunOutput { readonly summary: string; readonly assistantText?: string }
-declare module '@deepseek-ai/dsh-task-queue' {
+declare module '@changanhua/dsh-task-queue' {
   interface WorkKindMap {
     'agent.run@1': WorkKindDefinition<AgentRunIntent, ResolvedAgentRun, ResolvedAgentRun, AgentRunOutput>
   }

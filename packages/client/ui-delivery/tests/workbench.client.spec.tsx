@@ -2,7 +2,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ComponentType } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -10,12 +10,13 @@ import {
   EvidenceId,
   QueueWorkIdRef,
   WorkPacketId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
+  DeliveryCaseCard,
   DeliverySnapshotView,
   DeliveryWorkbenchCard,
   DeliveryWorkbenchDispatch,
-} from '@deepseek-ai/dsh-delivery-remote/types'
+} from '@changanhua/dsh-delivery-remote/types'
 import { apply, inject } from '../src/client/index.ts'
 import type {
   DeliveryNavEntryProps,
@@ -41,17 +42,48 @@ afterEach(async () => {
 const copy: Record<string, string> = {
   'nav.delivery': '交付',
   'view.title': '个人交付',
-  'view.subtitle': '从采用的 Issue 修订到独立验证与人工决定。',
+  'view.subtitle': '先记下本地 Case，需要时再完善、推进或发布到 GitHub。',
   'view.refresh': '刷新',
   'view.loading': '正在读取交付台账…',
   'view.retry': '重试',
   'view.cancel': '取消当前操作',
-  'view.empty': '还没有已采用的 Issue 修订或工作包。',
+  'view.empty': '还没有 Case。先记下一条想法，稍后再决定是否推进。',
+  'case.createTitle': '记下一个想法',
+  'case.reviseTitle': '完善推进条件（可选）',
+  'case.idea': '需求想法',
+  'case.title': '需求标题',
+  'case.outcome': '期望结果',
+  'case.context': '背景与约束',
+  'case.scope': '允许范围（每行一个）',
+  'case.acceptance': '验收条件（每行一个）',
+  'case.create': '保存到本地',
+  'case.revise': '保存新修订',
+  'case.list': '交付事项',
+  'case.count': '{count} 个 Case',
+  'case.shaping': '成形中',
+  'case.ready': '可执行',
+  'case.running': '执行中',
+  'case.review': '待验收',
+  'case.blocked': '需处理',
+  'case.accepted': '已完成',
+  'case.approve': '批准当前修订',
+  'case.defer': '暂缓当前修订',
+  'case.reject': '拒绝当前修订',
+  'case.reason': '决定原因',
+  'case.publish': '发布为 GitHub Issue',
+  'case.target': '发布目标：{target}',
+  'case.noTarget': 'Host 尚未配置 GitHub 发布目标。',
+  'case.publication.prepared': '等待发布',
+  'case.publication.publishing': '正在发布',
+  'case.publication.failed': '发布失败：{category}',
+  'case.publication.unknown': '发布结果未知，需要人工核对。',
+  'case.publication.published': '已发布 #{number}',
+  'case.issueNumber': '已存在的 Issue 编号',
+  'case.confirmPublished': '确认已发布',
   'view.error': '交付台账读取失败：{message}',
-  'import.title': '导入 Issue',
+  'import.title': '从 GitHub 导入（可选）',
   'import.issueUrl': 'GitHub Issue URL',
-  'import.repository': '仓库引用',
-  'import.submit': '采用当前修订',
+  'import.submit': '导入当前修订',
   'packet.title': '创建工作包',
   'packet.contract': '合同修订',
   'packet.objective': '工作包目标',
@@ -138,18 +170,25 @@ async function components() {
   contexts.push(ctx)
   await ctx.plugin(SlotRegistry).await()
   ctx.provide('locale', new LocaleRuntime(ctx))
-  class RemoteService extends Service {
-    constructor(serviceCtx: Context) { super(serviceCtx, 'remote') }
-  }
-  new RemoteService(ctx)
-  ctx.provide('remote.delivery', {
+  const deliveryRemote = {
     snapshot: vi.fn(async () => ({
       ok: true as const,
       value: { contractsWithoutPacket: [], cards: [] },
     })),
+    createCase: vi.fn(), reviseCase: vi.fn(), recordRequirementDecision: vi.fn(),
+    publishIssue: vi.fn(), resolvePublication: vi.fn(),
     importIssue: vi.fn(), createPacket: vi.fn(), startChange: vi.fn(),
     startVerification: vi.fn(), readEvidence: vi.fn(), recordDecision: vi.fn(),
-  })
+  }
+  class RemoteService extends Service {
+    constructor(serviceCtx: Context) { super(serviceCtx, 'remote') }
+
+    $mount(): Promise<() => Promise<void>> {
+      const dispose = ctx.reflect.provide('remote.delivery', deliveryRemote)
+      return Promise.resolve(async () => { await dispose() })
+    }
+  }
+  new RemoteService(ctx)
   const slots = ctx.get('slots') as SlotRegistry
   slots.register({
     name: 'root',
@@ -174,11 +213,19 @@ const standardHooks = {
   useWorkspaces: (() => { throw new Error('unused') }) as DeliveryWorkspaceProps['useWorkspaces'],
 }
 
-function runtime(snapshot?: DeliverySnapshotView, overrides: Partial<DeliveryRuntimeState> = {}): DeliveryRuntimeState {
+type DeliverySnapshotFixture = Omit<DeliverySnapshotView, 'cases' | 'publications'>
+  & Partial<Pick<DeliverySnapshotView, 'cases' | 'publications'>>
+
+function runtime(snapshot?: DeliverySnapshotFixture, overrides: Partial<DeliveryRuntimeState> = {}): DeliveryRuntimeState {
+  const normalized = snapshot === undefined ? undefined : {
+    cases: [],
+    publications: [],
+    ...snapshot,
+  }
   return {
     status: snapshot === undefined ? 'idle' : 'ready',
     error: null,
-    snapshot,
+    snapshot: normalized,
     pending: null,
     actionError: null,
     lastSucceeded: null,
@@ -238,12 +285,56 @@ function card(
   }
 }
 
+function caseCard(overrides: Partial<DeliveryCaseCard> = {}): DeliveryCaseCard {
+  const headRevision = contractRevisionFixture({ id: 'revision-case' as never, title: 'Ship the governed outcome' })
+  return {
+    case: {
+      schemaVersion: 2,
+      id: 'case-primary' as never,
+      repositoryId: headRevision.repositoryId!,
+      headRevisionId: headRevision.id,
+      createdAt: '2026-08-29T00:00:00.000Z',
+      updatedAt: '2026-08-29T00:00:00.000Z',
+    },
+    headRevision,
+    readiness: { ready: true, reasons: [] },
+    requirementDecision: null,
+    publication: null,
+    publicationTarget: { owner: 'example', name: 'delivery-canary' },
+    lane: 'shaping',
+    packets: [],
+    ...overrides,
+  }
+}
+
+function approvedCaseCard(overrides: Partial<DeliveryCaseCard> = {}): DeliveryCaseCard {
+  const base = caseCard()
+  return {
+    ...base,
+    lane: 'ready',
+    requirementDecision: {
+      id: 'decision-primary' as never,
+      caseId: base.case.id,
+      revisionId: base.headRevision.id,
+      decision: 'approved',
+      reason: 'The exact revision is ready.',
+      decidedAt: '2026-08-29T00:00:01.000Z',
+    },
+    ...overrides,
+  }
+}
+
 function workspaceProps(state: DeliveryRuntimeState) {
   return {
     ...standardHooks,
     useDelivery: (<T,>(selector: (value: DeliveryRuntimeState) => T): T => selector(state)),
     refresh: vi.fn(),
     cancel: vi.fn(),
+    createCase: vi.fn<DeliveryWorkspaceProps['createCase']>(async () => true),
+    reviseCase: vi.fn<DeliveryWorkspaceProps['reviseCase']>(async () => true),
+    recordRequirementDecision: vi.fn<DeliveryWorkspaceProps['recordRequirementDecision']>(async () => true),
+    publishIssue: vi.fn<DeliveryWorkspaceProps['publishIssue']>(async () => true),
+    resolvePublication: vi.fn<DeliveryWorkspaceProps['resolvePublication']>(async () => true),
     importIssue: vi.fn<DeliveryWorkspaceProps['importIssue']>(async () => true),
     createPacket: vi.fn<DeliveryWorkspaceProps['createPacket']>(async () => true),
     startChange: vi.fn<DeliveryWorkspaceProps['startChange']>(async () => true),
@@ -297,6 +388,210 @@ describe('Personal Delivery workbench', () => {
     />)
   })
 
+  it('saves one idea as a shaping local Case before requirement shaping is requested', async () => {
+    const { Workspace } = await components()
+    const emptyProps = workspaceProps(runtime({ cases: [], contractsWithoutPacket: [], cards: [], publications: [] }))
+    render(<Workspace {...emptyProps} />)
+    const form = screen.getByRole('form', { name: '记下一个想法' })
+    expect(within(form).queryByRole('textbox', { name: '期望结果' })).toBeNull()
+    fireEvent.submit(form)
+    expect(emptyProps.createCase).not.toHaveBeenCalled()
+    fireEvent.change(within(form).getByRole('textbox', { name: '需求想法' }), {
+      target: { value: 'Make local Case the default intake\nKeep GitHub optional.' },
+    })
+    fireEvent.submit(form)
+    const createInput = emptyProps.createCase.mock.calls[0]?.[0]
+    expect(createInput?.title).toBe('Make local Case the default intake')
+    expect(createInput?.revision).toEqual({
+      outcome: null,
+      context: 'Make local Case the default intake\nKeep GitHub optional.',
+      allowedScope: [],
+      forbiddenScope: [],
+      acceptanceClauses: [],
+      openDecisions: [],
+      baseSelectionRule: null,
+      verificationSource: null,
+      referenceLinks: [],
+    })
+    expect(JSON.stringify(emptyProps.createCase.mock.calls[0])).not.toMatch(/repositoryId|actorId|idempotency/u)
+  })
+
+  it('keeps the captured idea visible when the local Case write is refused', async () => {
+    const { Workspace } = await components()
+    const props = workspaceProps(runtime({ cases: [], contractsWithoutPacket: [], cards: [], publications: [] }))
+    props.createCase.mockResolvedValue(false)
+    render(<Workspace {...props} />)
+    const form = screen.getByRole('form', { name: '记下一个想法' })
+    const idea = within(form).getByRole('textbox', { name: '需求想法' }) as HTMLTextAreaElement
+    fireEvent.change(idea, { target: { value: 'Keep this idea after a failed write.' } })
+    fireEvent.submit(form)
+
+    await waitFor(() => { expect(props.createCase).toHaveBeenCalledOnce() })
+    expect(idea.value).toBe('Keep this idea after a failed write.')
+  })
+
+  it('shapes, approves, and publishes an existing Case only after the user chooses to advance it', async () => {
+    const { Workspace } = await components()
+    const shaping = caseCard()
+    const shapingProps = workspaceProps(runtime({ cases: [shaping], contractsWithoutPacket: [], cards: [], publications: [] }))
+    const rendered = render(<Workspace {...shapingProps} />)
+    const shapingSummary = screen.getByText('完善推进条件（可选）', { selector: 'summary' })
+    const shapingDisclosure = shapingSummary.closest('details')
+    expect(shapingDisclosure?.hasAttribute('open')).toBe(false)
+    fireEvent.click(shapingSummary)
+    expect(shapingDisclosure?.hasAttribute('open')).toBe(true)
+    const shapingForm = screen.getByRole('form', { name: '完善推进条件（可选）' })
+    expect(within(shapingForm).getByRole('textbox', { name: '期望结果' })).not.toBeNull()
+    fireEvent.change(within(shapingForm).getByRole('textbox', { name: '需求标题' }), {
+      target: { value: '' },
+    })
+    fireEvent.submit(shapingForm)
+    expect(shapingProps.reviseCase).not.toHaveBeenCalled()
+    fireEvent.change(within(shapingForm).getByRole('textbox', { name: '需求标题' }), {
+      target: { value: ' Revised governed outcome ' },
+    })
+    fireEvent.change(within(shapingForm).getByRole('textbox', { name: '期望结果' }), {
+      target: { value: ' Ship a revised outcome. ' },
+    })
+    fireEvent.change(within(shapingForm).getByRole('textbox', { name: '背景与约束' }), {
+      target: { value: ' Preserve the exact Case lineage. ' },
+    })
+    fireEvent.change(within(shapingForm).getByRole('textbox', { name: '允许范围（每行一个）' }), {
+      target: { value: 'packages/client/ui-delivery\n\n packages/delivery ' },
+    })
+    fireEvent.change(within(shapingForm).getByRole('textbox', { name: '验收条件（每行一个）' }), {
+      target: { value: 'UI test passes\n C0 remains green ' },
+    })
+    fireEvent.submit(shapingForm)
+    expect(shapingProps.reviseCase.mock.calls[0]?.[0]).toMatchObject({
+      caseId: String(shaping.case.id),
+      expectedHeadRevisionId: String(shaping.headRevision.id),
+      title: 'Revised governed outcome',
+      revision: {
+        outcome: 'Ship a revised outcome.',
+        context: 'Preserve the exact Case lineage.',
+        allowedScope: ['packages/client/ui-delivery', 'packages/delivery'],
+        acceptanceClauses: [
+          { id: 'acceptance-1', text: 'UI test passes' },
+          { id: 'acceptance-2', text: 'C0 remains green' },
+        ],
+      },
+    })
+
+    fireEvent.change(screen.getByRole('textbox', { name: '决定原因' }), { target: { value: 'The exact revision is ready.' } })
+    fireEvent.click(screen.getByRole('button', { name: '暂缓当前修订' }))
+    fireEvent.click(screen.getByRole('button', { name: '拒绝当前修订' }))
+    fireEvent.click(screen.getByRole('button', { name: '批准当前修订' }))
+    expect(shapingProps.recordRequirementDecision).toHaveBeenCalledWith({
+      caseId: String(shaping.case.id),
+      revisionId: String(shaping.headRevision.id),
+      decision: 'approved',
+      reason: 'The exact revision is ready.',
+    })
+    expect(JSON.stringify(shapingProps.recordRequirementDecision.mock.calls[0])).not.toMatch(/actorId|decisionNonce|idempotency/u)
+
+    const approved = approvedCaseCard()
+    const approvedProps = workspaceProps(runtime({ cases: [approved], contractsWithoutPacket: [], cards: [], publications: [] }))
+    rendered.rerender(<Workspace {...approvedProps} />)
+    fireEvent.click(screen.getByRole('button', { name: '发布为 GitHub Issue' }))
+    expect(approvedProps.publishIssue).toHaveBeenCalledWith({
+      caseId: String(approved.case.id),
+      revisionId: String(approved.headRevision.id),
+    })
+  })
+
+  it('keeps an unshaped local Case focused on its saved idea instead of downstream work', async () => {
+    const { Workspace } = await components()
+    const base = caseCard()
+    const localIdea = {
+      ...base,
+      headRevision: {
+        ...base.headRevision,
+        outcome: null,
+        context: 'Make local Case the default intake.\nKeep GitHub optional.',
+        allowedScope: [],
+        acceptanceClauses: [],
+        baseSelectionRule: null,
+        verificationSource: null,
+      },
+      readiness: {
+        ready: false,
+        reasons: ['missing-outcome', 'missing-scope', 'missing-acceptance', 'missing-base-selection', 'missing-verification-source'],
+      },
+      publicationTarget: null,
+    } satisfies DeliveryCaseCard
+    render(<Workspace {...workspaceProps(runtime({ cases: [localIdea], contractsWithoutPacket: [], cards: [], publications: [] }))} />)
+
+    expect(screen.getByText(/Make local Case the default intake\.\s+Keep GitHub optional\./u, { selector: 'p' })).not.toBeNull()
+    expect(screen.getByText('Host 尚未配置 GitHub 发布目标。')).not.toBeNull()
+    expect(screen.queryByRole('form', { name: '创建工作包' })).toBeNull()
+    expect(screen.queryByRole('navigation', { name: '工作包台账' })).toBeNull()
+
+    const captureSummary = screen.getByText('记下一个想法', { selector: 'summary' })
+    const captureDisclosure = captureSummary.closest('details')
+    fireEvent.click(captureSummary)
+    const captureForm = screen.getByRole('form', { name: '记下一个想法' })
+    const ideaInput = within(captureForm).getByRole('textbox', { name: '需求想法' }) as HTMLTextAreaElement
+    fireEvent.change(ideaInput, { target: { value: 'A second local idea' } })
+    fireEvent.submit(captureForm)
+    await waitFor(() => { expect(ideaInput.value).toBe('') })
+    expect(captureDisclosure?.hasAttribute('open')).toBe(false)
+  })
+
+  it('renders every publication phase and reconciles an unknown Issue by exact number', async () => {
+    const { Workspace } = await components()
+    const base = approvedCaseCard()
+    const publication = {
+      id: 'publication-primary' as never,
+      caseId: base.case.id,
+      revisionId: base.headRevision.id,
+      phase: 'prepared' as const,
+      failureCategory: null,
+      issue: null,
+      updatedAt: '2026-08-29T00:00:02.000Z',
+    }
+    const propsFor = (cardValue: DeliveryCaseCard) => workspaceProps(runtime({
+      cases: [cardValue], contractsWithoutPacket: [], cards: [],
+      publications: cardValue.publication === null ? [] : [cardValue.publication],
+    }))
+    let props = propsFor(approvedCaseCard({ publication }))
+    const rendered = render(<Workspace {...props} />)
+    expect(screen.getByText('等待发布')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '发布为 GitHub Issue' }))
+    expect(props.publishIssue).toHaveBeenCalledOnce()
+
+    props = propsFor(approvedCaseCard({ publication: { ...publication, phase: 'publishing' } }))
+    rendered.rerender(<Workspace {...props} />)
+    expect(screen.getByText('正在发布')).not.toBeNull()
+
+    props = propsFor(approvedCaseCard({ publication: { ...publication, phase: 'failed', failureCategory: null } }))
+    rendered.rerender(<Workspace {...props} />)
+    expect(screen.getByText('发布失败：')).not.toBeNull()
+
+    props = propsFor(approvedCaseCard({ publication: { ...publication, phase: 'failed', failureCategory: 'transport' } }))
+    rendered.rerender(<Workspace {...props} />)
+    expect(screen.getByText('发布失败：transport')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '发布为 GitHub Issue' }))
+    expect(props.publishIssue).toHaveBeenCalledWith({ caseId: String(base.case.id), revisionId: String(base.headRevision.id) })
+
+    const publishedIssue = {
+      repository: { owner: 'example', name: 'delivery-canary' },
+      issueNumber: 42,
+      url: 'https://github.com/example/delivery-canary/issues/42',
+    }
+    props = propsFor(approvedCaseCard({ publication: { ...publication, phase: 'published', issue: publishedIssue } }))
+    rendered.rerender(<Workspace {...props} />)
+    expect(screen.getByRole('link', { name: '已发布 #42' }).getAttribute('href')).toBe(publishedIssue.url)
+
+    props = propsFor(approvedCaseCard({ publication: { ...publication, phase: 'unknown', failureCategory: 'transport' } }))
+    rendered.rerender(<Workspace {...props} />)
+    fireEvent.change(screen.getByRole('textbox', { name: '已存在的 Issue 编号' }), { target: { value: '42' } })
+    fireEvent.click(screen.getByRole('button', { name: '确认已发布' }))
+    expect(props.resolvePublication).toHaveBeenCalledWith({
+      publicationId: String(publication.id), resolution: 'confirm-published', issueNumber: 42,
+    })
+  })
+
   it('renders honest loading, error, and empty states with recovery controls', async () => {
     const { Workspace } = await components()
     const loadingProps = workspaceProps(runtime(undefined, { status: 'loading' }))
@@ -312,8 +607,10 @@ describe('Personal Delivery workbench', () => {
     expect(errorProps.refresh).toHaveBeenCalledOnce()
 
     rendered.rerender(<Workspace {...workspaceProps(runtime({ contractsWithoutPacket: [], cards: [] }))} />)
-    expect(screen.getByText('还没有已采用的 Issue 修订或工作包。')).not.toBeNull()
-    expect(screen.getByRole('form', { name: '导入 Issue' })).not.toBeNull()
+    expect(screen.getByText('还没有 Case。先记下一条想法，稍后再决定是否推进。')).not.toBeNull()
+    expect(screen.getByRole('form', { name: '从 GitHub 导入（可选）' })).not.toBeNull()
+    expect(screen.queryByRole('form', { name: '创建工作包' })).toBeNull()
+    expect(screen.queryByRole('navigation', { name: '工作包台账' })).toBeNull()
 
     rendered.rerender(<Workspace {...workspaceProps(runtime({ contractsWithoutPacket: [], cards: [] }, {
       status: 'error', error: null, actionError: 'mutation failed', lastSucceeded: 'read-evidence',
@@ -325,26 +622,22 @@ describe('Personal Delivery workbench', () => {
   it('imports an Issue and creates a bounded Packet without browser-minted authority fields', async () => {
     const { Workspace } = await components()
     const contract = contractRevisionFixture()
+    const importedIssueUrl = 'https://github.com/deepseek-ai/deepseek-harness/issues/101'
     const props = workspaceProps(runtime({ contractsWithoutPacket: [contract], cards: [] }))
     render(<Workspace {...props} />)
 
-    fireEvent.submit(screen.getByRole('form', { name: '导入 Issue' }))
+    fireEvent.submit(screen.getByRole('form', { name: '从 GitHub 导入（可选）' }))
     fireEvent.submit(screen.getByRole('form', { name: '创建工作包' }))
     expect(props.importIssue).not.toHaveBeenCalled()
     expect(props.createPacket).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByRole('textbox', { name: 'GitHub Issue URL' }), {
-      target: { value: contract.sourceRef.canonicalUrl },
+      target: { value: importedIssueUrl },
     })
-    fireEvent.change(screen.getByRole('textbox', { name: '仓库引用' }), {
-      target: { value: String(contract.repositoryId) },
-    })
-    fireEvent.click(within(screen.getByRole('form', { name: '导入 Issue' }))
-      .getByRole('button', { name: '采用当前修订' }))
-    expect(props.importIssue).toHaveBeenCalledWith({
-      issueUrl: contract.sourceRef.canonicalUrl,
-      repositoryId: String(contract.repositoryId),
-    })
+    expect(screen.queryByRole('textbox', { name: '仓库引用' })).toBeNull()
+    fireEvent.click(within(screen.getByRole('form', { name: '从 GitHub 导入（可选）' }))
+      .getByRole('button', { name: '导入当前修订' }))
+    expect(props.importIssue).toHaveBeenCalledWith({ issueUrl: importedIssueUrl })
 
     fireEvent.change(screen.getByRole('textbox', { name: '工作包目标' }), {
       target: { value: 'Implement the bounded UI.' },
@@ -614,6 +907,9 @@ describe('Personal Delivery workbench', () => {
     expect(onlyOption.getAttribute('aria-selected')).toBe('true')
     expect(screen.getByRole('button', { name: '开始独立验证' }).hasAttribute('disabled')).toBe(true)
     expect(screen.getByRole('button', { name: /读取证据/ }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: '运行中 0' }))
+    expect(screen.queryAllByRole('option')).toHaveLength(0)
+    expect(screen.getByText('选择一个工作包查看证据链与允许的操作。')).not.toBeNull()
 
     const activeProps = workspaceProps(runtime({
       contractsWithoutPacket: [], cards: [ready, review],
@@ -634,6 +930,37 @@ describe('Personal Delivery workbench', () => {
     expect(options[1]).toBe(document.activeElement)
     fireEvent.keyDown(options[1]!, { key: 'Enter' })
     expect(options[1]).toBe(document.activeElement)
+  })
+
+  it('switches Case selection and falls back when the selected Case disappears', async () => {
+    const { Workspace } = await components()
+    const first = caseCard()
+    const secondHead = contractRevisionFixture({
+      id: 'revision-second-case' as never,
+      title: 'Second governed outcome',
+    })
+    const second = caseCard({
+      case: {
+        ...first.case,
+        id: 'case-second' as never,
+        headRevisionId: secondHead.id,
+      },
+      headRevision: secondHead,
+    })
+    const props = workspaceProps(runtime({
+      cases: [first, second], contractsWithoutPacket: [], cards: [], publications: [],
+    }))
+    const rendered = render(<Workspace {...props} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Second governed outcome/u }))
+    expect(screen.getByRole('button', { name: /Second governed outcome/u }).getAttribute('aria-pressed')).toBe('true')
+
+    rendered.rerender(<Workspace {...props} useDelivery={selector => selector(runtime({
+      cases: [first], contractsWithoutPacket: [], cards: [], publications: [],
+    }))} />)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ship the governed outcome/u }).getAttribute('aria-pressed')).toBe('true')
+    })
   })
 
   it('describes non-text evidence and rejects oversized, malformed, mismatched, or invalid UTF-8 text', async () => {

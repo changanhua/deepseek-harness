@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-runtime-facts
+# @changanhua/dsh-runtime-facts
 
 English | [中文](README.zh.md)
 
@@ -8,7 +8,7 @@ Owned registry for secret-free scalar facts about the active Harness runtime. Pr
 
 ```yaml
 - id: runtime-facts
-  name: '@deepseek-ai/dsh-runtime-facts'
+  name: '@changanhua/dsh-runtime-facts'
   config:
     includeInRuntimeContext: true
 ```

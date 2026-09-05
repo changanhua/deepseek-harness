@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   checkExperimentalDependencyIsolation,
   checkExperimentalManifest,
+  checkWorkspaceManifest,
   expectedDshPackageFiles,
   type WorkspaceManifest,
 } from './check-workspace-constraints.ts'
@@ -87,5 +88,49 @@ describe('package payload constraints', () => {
       'cordis.patch.yml',
       'lib/types/**/*.d.ts',
     ])
+  })
+
+  it('keys personal payload exceptions by stable source directory', () => {
+    expect(expectedDshPackageFiles({ name: '@changanhua/dsh-task-queue-executor-dsh' },
+      'packages/task-queue/task-queue-executor-dsh')).toContain('worker.cordis.patch.yml')
+  })
+
+  it('keeps rescoped personal packages private while applying the DSH package shape', () => {
+    const manifest = {
+      name: '@changanhua/dsh-task-queue',
+      version: '9.8.7-personal.1',
+      private: true,
+      type: 'module',
+      main: 'lib/index.js',
+      types: 'lib/types/index.d.ts',
+      exports: {
+        '.': {
+          types: './lib/types/index.d.ts',
+          default: './lib/index.js',
+        },
+      },
+      files: [
+        'lib/index.js',
+        'lib/invariant.js',
+        'lib/brand.js',
+        'lib/types/**/*.d.ts',
+      ],
+      repository: {
+        type: 'git',
+        url: 'git+https://github.com/changanhua/deepseek-harness.git',
+        directory: 'packages/task-queue/task-queue',
+      },
+      peerDependencies: { '@deepseek-ai/cordis': 'workspace:^' },
+      devDependencies: { '@deepseek-ai/cordis': 'workspace:^' },
+    }
+
+    expect(checkWorkspaceManifest({ dir: 'packages/task-queue/task-queue', manifest })).toEqual([])
+    expect(checkWorkspaceManifest({
+      dir: 'packages/task-queue/task-queue',
+      manifest: { ...manifest, private: false, publishConfig: { access: 'public' } },
+    })).toEqual(expect.arrayContaining([
+      expect.stringMatching(/personal source package must set \"private\": true/),
+      expect.stringMatching(/personal source package must omit publishConfig/),
+    ]))
   })
 })

@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-task-queue
+# @changanhua/dsh-task-queue
 
 [English](README.md) | 中文
 

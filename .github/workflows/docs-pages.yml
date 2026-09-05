@@ -35,6 +35,9 @@ env:
 
 jobs:
   build:
+    # This site is an official dsh release surface. Personal forks keep docs
+    # build coverage in ordinary CI but do not dispatch the official tag gate.
+    if: github.repository == 'deepseek-ai/deepseek-harness'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,7 +64,7 @@ jobs:
       # carries.
       - name: Verify release version
         env:
-          RELEASE_PUBLISH: 'true'
+          RELEASE_VERIFY_TAG: 'true'
         run: pnpm run release:verify --family dsh
 
       - name: Configure Pages
@@ -80,6 +83,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.repository == 'deepseek-ai/deepseek-harness'
     runs-on: ubuntu-latest
     permissions:
       pages: write

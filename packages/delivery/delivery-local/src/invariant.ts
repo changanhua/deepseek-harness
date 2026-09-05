@@ -1,11 +1,11 @@
-/** Package-owned invariant companion for `@deepseek-ai/dsh-delivery-local`. */
+/** Package-owned invariant companion for `@changanhua/dsh-delivery-local`. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
-import { canonicalJson } from '@deepseek-ai/dsh-delivery-protocol'
+import { canonicalJson } from '@changanhua/dsh-delivery-protocol'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-delivery-local'
+const PACKAGE_NAME = '@changanhua/dsh-delivery-local'
 
 /** Cordis companion plugin name. */
 export const name = 'delivery-local-invariant'
@@ -50,6 +50,9 @@ function project(ctx: Context, table: string, id: string): unknown {
     case 'work_packets': return ctx.delivery.getWorkPacket(id as never)
     case 'dispatch_bindings': return ctx.delivery.getDispatchBinding(id as never)
     case 'acceptance_decisions': return ctx.delivery.snapshot().acceptanceDecisions.find(value => value.id === id)
+    case 'delivery_cases': return ctx.delivery.getCase(id as never)
+    case 'requirement_decisions': return ctx.delivery.getRequirementDecision(id as never)
+    case 'issue_publications': return ctx.delivery.getIssuePublication(id as never)
     default: return undefined
   }
 }

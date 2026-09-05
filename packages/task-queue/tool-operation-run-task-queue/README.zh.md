@@ -1,34 +1,34 @@
-# @deepseek-ai/dsh-tool-operation-run-task-queue
+# @changanhua/dsh-tool-operation-run-task-queue
 
 [English](README.md) | 中文
 
-`@deepseek-ai/dsh-tool-operation-run-task-queue` 为 host-configured `operation.run@1` work 注册 model-facing Queue admission。它从实时 Agent Session 派生 owner 权限，只提交 operation ids；operation WorkHandler 持有 resolution 和 execution。
+`@changanhua/dsh-tool-operation-run-task-queue` 为 host-configured `operation.run@1` work 注册 model-facing Queue admission。它从实时 Agent Session 派生 owner 权限，只提交 operation ids；operation WorkHandler 持有 resolution 和 execution。
 
 ## 工具
 
 - `operation_run_enqueue(title, operationId, idempotencyKey)` 持久化入队一个 host-configured operation，并返回其 WorkItem id。
 - `operation_run_enqueue_batch(items, idempotencyKey, maxParallel)` 原子入队带独立标题的 operation ids，并返回其 Batch id；`maxParallel` 必须是正安全整数。
 
-两个工具都会在 ToolRuntime dispatch 前关闭 parameter objects。它们需要实时 Agent Session，将调用 session 保留为 Queue owner，且只返回持久化 id。通用 `task_queue_kinds`、status、result、cancellation、retry、statistics 和 Notification delivery 仍由 `@deepseek-ai/dsh-tool-task-queue` 提供。
+两个工具都会在 ToolRuntime dispatch 前关闭 parameter objects。它们需要实时 Agent Session，将调用 session 保留为 Queue owner，且只返回持久化 id。通用 `task_queue_kinds`、status、result、cancellation、retry、statistics 和 Notification delivery 仍由 `@changanhua/dsh-tool-task-queue` 提供。
 
 ## 配置与 Opt-in 组合
 
-插件没有配置字段，且不由 base bundle 挂载。只有当 Queue provider 为已解析 operation resource 配置了 capacity，且 `@deepseek-ai/dsh-operation-run-task-queue` 已带 host allowlist 挂载时，它才有作用。
+插件没有配置字段，且不由 base bundle 挂载。只有当 Queue provider 为已解析 operation resource 配置了 capacity，且 `@changanhua/dsh-operation-run-task-queue` 已带 host allowlist 挂载时，它才有作用。
 
 ```yaml
 - id: task-queue
-  name: '@deepseek-ai/dsh-task-queue-local'
+  name: '@changanhua/dsh-task-queue-local'
   config:
     resourceCapacity:
       operation-run: 1
 
 - id: operation-run-task-queue
-  name: '@deepseek-ai/dsh-operation-run-task-queue'
+  name: '@changanhua/dsh-operation-run-task-queue'
   config:
     operations: host-reviewed allowlist
 
 - id: tool-operation-run-task-queue
-  name: '@deepseek-ai/dsh-tool-operation-run-task-queue'
+  name: '@changanhua/dsh-tool-operation-run-task-queue'
 ```
 
 ## 准入、结果与失败
@@ -45,7 +45,7 @@ schemas 有意只暴露 title、operation id、idempotency key、Batch items 和
 
 #### 模型看到的内容
 
-模型收到 [`operation_run_enqueue` 和 `operation_run_enqueue_batch`](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-operation-run-task-queue) schemas 及渲染后的 durable ids；catalog 持有其完整 JSON Schema。
+模型收到 [`operation_run_enqueue` 和 `operation_run_enqueue_batch`](../../../docs/tool-catalog.zh.md#changanhuadsh-tool-operation-run-task-queue) schemas 及渲染后的 durable ids；catalog 持有其完整 JSON Schema。
 
 #### Token 影响
 

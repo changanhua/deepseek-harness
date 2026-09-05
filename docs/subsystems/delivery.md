@@ -6,12 +6,14 @@ Personal Delivery defines immutable requirements, bounded Packets, repository pr
 
 ## Public protocol
 
-[`@deepseek-ai/dsh-delivery-protocol`](../../packages/delivery/delivery-protocol/README.md) is a plain Queue-independent library. Every durable object carries `schemaVersion: 1`; opaque ids remain strings, Git commits use full object ids, UTC timestamps use RFC 3339, and content digests use lowercase `sha256:<64 hex>`. Its strict runtime schemas reject unknown fields and invalid discriminated combinations instead of silently normalizing another format.
+[`@changanhua/dsh-delivery-protocol`](../../packages/delivery/delivery-protocol/README.md) is a plain Queue-independent library. Every durable object carries `schemaVersion: 2`; opaque ids remain strings, Git commits use full object ids, UTC timestamps use RFC 3339, and content digests use lowercase `sha256:<64 hex>`. Its strict runtime schemas reject unknown fields and invalid discriminated combinations instead of silently normalizing another format.
 
 | Public type | Responsibility |
 |---|---|
-| `SourceRef` | Exact adopted GitHub Issue owner/name, number, URL, update instant, title/body snapshot, and content digest |
-| `ContractRevision` | Immutable outcome, repository choice, scope, acceptance clauses, open decisions, base-selection rule, verification source, and references |
+| `DeliveryCase` | Durable repository-bound requirement identity whose head advances through expected-head compare-and-set revisions |
+| `ContractRevision` | Immutable title, human or GitHub-import origin, outcome, repository choice, scope, acceptance clauses, open decisions, base-selection rule, verification source, and references |
+| `RequirementDecision` | One human `approved`, `rejected`, or `deferred` authority decision for an exact Case revision |
+| `IssuePublication` | Durable prepared, publishing, failed, unknown, or published GitHub Issue side-effect record for one revision |
 | `WorkPacket` | One bounded objective pinned to a Contract revision, repository, full base commit, path rules, acceptance ids, stop conditions, executor preference, and Delivery-derived `VerificationPlan` with at least one check |
 | `DispatchBinding` | Durable `submitting` or `bound` half of the cross-store Queue admission handshake |
 | `CompletionClaim` | `completed`, `blocked`, `needs-decision`, or `needs-scope-change` business output from change execution |
@@ -32,7 +34,7 @@ Three abstract Cordis services own the host capabilities. Their definitions cont
 | `ctx.repoWorkspace` | `RepositoryWorkspace` | [`dsh-repo-workspace`](../../packages/delivery/repo-workspace/README.md) | [`dsh-repo-workspace-git-local`](../../packages/delivery/repo-workspace-git-local/README.md): local Git/Subprocess |
 | `ctx.deliveryEvidence` | `DeliveryEvidence` | [`dsh-delivery-evidence`](../../packages/delivery/delivery-evidence/README.md) | [`dsh-delivery-evidence-local`](../../packages/delivery/delivery-evidence-local/README.md): local content-addressed bytes |
 
-`Delivery` adopts Contract revisions, derives Packets, begins and binds dispatches, records human decisions, reads individual Contract/Packet/binding records, and returns a detached snapshot. `createWorkPacket()` accepts a `VerifiedRepositoryBase` minted by `RepositoryWorkspace.resolveBase()` and no caller-supplied verification plan. Delivery derives a `contract-field` plan inside the provider. For a `git-blob` source, Delivery selects the verified base, Contract-owned path, and fixed complete-byte limit for an operation-local resolver; it validates the returned `VerifiedRepositoryBlob` from `RepositoryWorkspace.readBlob()`, parses the trusted document, and derives the plan provenance and digest. Delivery stores no Queue Attempt, retry state, Git checkout, evidence bytes, or writable UI lane.
+`Delivery` creates and revises Cases, records requirement authority and publication state, derives Packets, begins and binds dispatches, records acceptance decisions, reads individual records, and returns a detached snapshot. `createWorkPacket()` accepts a `VerifiedRepositoryBase` minted by `RepositoryWorkspace.resolveBase()` and no caller-supplied verification plan. Delivery derives a `contract-field` plan inside the provider. For a `git-blob` source, Delivery selects the verified base, Contract-owned path, and fixed complete-byte limit for an operation-local resolver; it validates the returned `VerifiedRepositoryBlob` from `RepositoryWorkspace.readBlob()`, parses the trusted document, and derives the plan provenance and digest. Delivery stores no Queue Attempt, retry state, Git checkout, evidence bytes, or writable UI lane.
 
 `RepositoryWorkspace.resolveBase()` proves the full commit selected by the immutable Contract rule, including a point-in-time ref-head observation. `readBlob()` proves one bounded path and Git blob id at that exact base. `inspectRevision()` re-establishes an already persisted full commit, `inspectRange()` derives ancestry and changed paths, and the two checkout methods return Attempt-owned leases whose cleanup must be awaited. A configured `repositoryId`, not a durable absolute host path, selects the repository.
 
@@ -48,7 +50,7 @@ Three abstract Cordis services own the host capabilities. Their definitions cont
 
 [`dsh-delivery-verifier`](../../packages/delivery/delivery-verifier/README.md) executes trusted fixed argv in an independent target checkout, checks the exact repository range and path rules, integrity-reads required evidence, and produces the bounded check evidence and Verdict.
 
-GitHub intake validates the exact public `github.com/{owner}/{repository}/issues/{number}` URL grammar, fetches one explicit snapshot, requires one marked `dsh-delivery-work-brief@1` YAML fence, and idempotently adopts the immutable revision. The typed `delivery` Remote exposes projection plus import, Packet creation, change start, verification start, evidence read, and human decision operations without browser Queue authority. The browser package renders the five derived lanes, and the Personal Delivery bundle activates the complete local chain.
+GitHub intake validates the exact public `github.com/{owner}/{repository}/issues/{number}` URL grammar, fetches one explicit snapshot, requires one marked `dsh-delivery-work-brief@1` YAML fence, and idempotently creates or revises a Case without approving it. The Host-only publisher renders one approved ready revision, persists publication intent before its bounded GitHub POST, and never retries an unknown side effect automatically. The typed `delivery` Remote exposes Case shaping, requirement decisions, publication, reconciliation, Packet execution, evidence, and acceptance without browser Queue or credential authority. The browser package uses Cases as its primary records and keeps Issue import and Packet evidence as secondary actions.
 
 ## Readiness and acceptance
 
@@ -56,9 +58,9 @@ GitHub intake validates the exact public `github.com/{owner}/{repository}/issues
 
 The dispatch contract writes a deterministic `submitting` binding, operator-enqueues Queue work, and conditionally records the returned Work id as `bound`. Repeating the same canonical input uses the same key. A bound record never changes Queue Work identity.
 
-Acceptance starts from one Packet plus two Delivery-owned bound binding ids: one change and one verification binding for that same Packet. Delivery passes their stored Queue Work ids to a host-only candidate resolver, cross-checks the returned successful Attempt ids, completed Claim, verification intent, and Verdict, then derives every evidence id that an ordinary acceptance must resolve and integrity-read through a second host-only capability. The reserved browser DTO cannot supply a Verdict, actor id, or idempotency key; the single-user host uses `delivery-remote`'s configured `operatorId` (default `local-operator`) as actor and derives the key from the selected target plus decision nonce. Ordinary acceptance requires the exact passed, evidence-complete Verdict. Rejection and explicit human waiver remain distinct decisions.
+Acceptance starts from one Packet plus two Delivery-owned bound binding ids: one change and one verification binding for that same Packet. Delivery passes their stored Queue Work ids to a host-only candidate resolver, cross-checks the returned successful Attempt ids, completed Claim, verification intent, and Verdict, then derives every evidence id that an ordinary acceptance must resolve and integrity-read through a second host-only capability. The reserved browser DTO cannot supply a Verdict, actor id, or idempotency key; the single-user host uses `delivery-remote`'s configured `operatorId` (default `local-operator`) as actor and derives requirement-decision identity from bounded content while acceptance retains its explicit decision nonce. Ordinary acceptance requires the exact passed, evidence-complete Verdict. Rejection and explicit human waiver remain distinct decisions.
 
-The `DeliveryLane` view names Ready, Running, Review, Blocked, and Accepted as projections over immutable Delivery records and Queue views, not writable durable states. The Delivery workbench renders those projections and invokes only the narrow Remote operations.
+The `DeliveryCaseLane` view names Shaping, Ready, Running, Review, Blocked, and Accepted as projections over the current Case head, requirement authority, publication state, downstream Packets, and Queue views. Packet lanes and publication phases remain separate derived axes rather than writable durable Case status.
 
 ## Failure and recovery contracts
 
@@ -68,9 +70,9 @@ Evidence publication precedes a successful Claim or Verdict. Missing, unresolved
 
 ## Scope and limitations
 
-The contract is limited to explicit GitHub Issue URL intake, configured local repository identity, Codex change execution, fixed-command independent verification, immutable evidence, and explicit human acceptance. It excludes GitHub webhook synchronization and write-back, automatic PR creation or merge, quota-triggered launch, value scoring, exact Codex thread resumption, a general artifact platform, Batch/DAG delivery, multi-host leases, teams, RBAC, and multi-tenancy.
+The contract is limited to human or explicit GitHub Issue requirement intake, configured local repository identity, one Host-authorized GitHub Issue publication, Codex change execution, fixed-command independent verification, immutable evidence, and explicit human acceptance. It excludes webhook synchronization, editing an existing Issue after publication, automatic PR creation or merge, quota-triggered launch, value scoring, exact Codex thread resumption, a general artifact platform, Batch/DAG delivery, multi-host leases, teams, RBAC, and multi-tenancy.
 
-The local Windows bundle supplies the complete P0 composition. Deployments still provide a real Git toplevel as the launch directory, existing Codex authentication, and the base Web profile; remote hosts, Linux deployment, webhook intake, automatic PR/merge, and multi-user authority remain outside this scope.
+The local Windows bundle supplies the complete local composition with repository id `workspace`; GitHub publication stays disabled until Host configuration maps that id to owner/name and a credential reference. Deployments still provide a real Git toplevel as the launch directory, existing Codex authentication, and the base Web profile; remote hosts, Linux deployment, webhook intake, automatic PR/merge, and multi-user authority remain outside this scope.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -86,17 +88,45 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 Durable Personal Delivery records and their idempotent write operations. Providers allocate ids and timestamps, validate protocol objects at the storage boundary, and serialize writes. The service does not persist Queue lifecycle, executor handles, verification bytes, or UI lanes.
 
+Authority boundaries fixed by the version-2 contract: model-facing callers may create and revise Cases and propose Packets, but only human actors record requirement decisions, resolve uncertain publications, and accept delivery outcomes. Every revision must be ready and explicitly approved before Packet creation or Issue publication.
+
 ```ts cordis-catalog
 /**
- * Adopt one exact source snapshot as an immutable Contract revision.
- * @param request - Source, interpreted revision, and deterministic idempotency key.
- * @returns the existing or newly committed revision.
+ * Atomically create one Delivery Case and its root requirement revision.
+ * The root revision carries a `null` `previousRevisionId`, the request's
+ * origin and title, and the Case's repository binding.
+ * @param request - Repository, origin, title, requirement content, and deterministic idempotency key.
+ * @returns the existing pair for a repeated identical request, or the newly committed pair.
  */
-abstract adoptContractRevision(request: AdoptContractRevisionRequest): Promise<ContractRevision>
+abstract createCase(request: CreateDeliveryCaseRequest): Promise<{ case: DeliveryCase; revision: ContractRevision }>
+
+/**
+ * Create one child revision and move the Case head atomically under an
+ * expected-head compare-and-set. The write fails with `conflict` when the
+ * Case head no longer equals `expectedHeadRevisionId`, so concurrent
+ * revisions cannot silently branch one Case. A `github-import` child origin
+ * must name the same repository and Issue number as its `github-import`
+ * parent; `human` origins carry no lineage constraint.
+ * @param request - Case, observed head, origin, title, requirement content, and idempotency key.
+ * @returns the Case with its advanced head plus the newly committed child revision.
+ */
+abstract reviseCase(request: ReviseDeliveryCaseRequest): Promise<{ case: DeliveryCase; revision: ContractRevision }>
+
+/**
+ * Record the one human requirement decision for an exact Case revision.
+ * Repeating identical decision content returns the existing record;
+ * different content under the same revision fails closed with
+ * `idempotency-conflict`.
+ * @param request - Case and revision references, human decision fields, and idempotency key.
+ * @returns the existing or newly committed decision.
+ */
+abstract recordRequirementDecision(request: RecordRequirementDecisionRequest): Promise<RequirementDecision>
 
 /**
  * Create one immutable Packet after the repository provider resolved the Contract base.
- * @param request - Ready Contract id, verified base, caller-selected Packet fields, and idempotency key.
+ * The revision must belong to a Case, be ready, and carry an `approved`
+ * requirement decision; missing approval fails with `approval-required`.
+ * @param request - Approved ready revision id, verified base, caller-selected Packet fields, and idempotency key.
  * @param resolveVerificationSource - Host-only Git blob resolver used when the Contract names a blob source.
  * @returns the existing or newly committed Packet.
  */
@@ -124,6 +154,76 @@ abstract bindDispatch(request: BindDispatchRequest): Promise<DispatchBinding & {
  * @returns the existing or newly committed decision.
  */
 abstract recordAcceptanceDecision( request: RecordAcceptanceDecisionRequest, resolveCandidate: AcceptanceCandidateResolver, resolveEvidence: AcceptanceEvidenceResolver, ): Promise<AcceptanceDecision>
+
+/**
+ * Commit the first durable publication intent for an approved ready Case
+ * revision. A revision owns at most one publication: repeated preparation
+ * returns the existing record, a `failed` record is reset to `prepared`
+ * under its existing id for a new attempt, and an `unknown` record refuses
+ * preparation until human resolution.
+ * @param request - Case and revision references, target repository, rendered digest, marker, and idempotency key.
+ * @returns the existing, reset, or newly committed publication in phase `prepared`.
+ */
+abstract prepareIssuePublication(request: PrepareIssuePublicationRequest): Promise<IssuePublication>
+
+/**
+ * Move a `prepared` publication to `publishing` before any external
+ * request crosses the side-effect boundary. Any other current phase fails
+ * closed with `invalid-transition`, so a repeated start can never mask a
+ * concurrent attempt.
+ * @param publicationId - Durable publication identity.
+ * @returns the publication in phase `publishing`.
+ */
+abstract markIssuePublicationStarted(publicationId: IssuePublicationId): Promise<IssuePublication & { phase: 'publishing' }>
+
+/**
+ * Commit the verified GitHub Issue onto a `publishing` record. The
+ * transition fails closed unless the record is still `publishing`.
+ * @param request - Publication id, expected `publishing` phase, and the validated exact Issue reference.
+ * @returns the publication in phase `published` with its Issue binding.
+ */
+abstract completeIssuePublication(request: CompleteIssuePublicationRequest): Promise<IssuePublication & { phase: 'published' }>
+
+/**
+ * Record a truthful failure for a `publishing` record. A `not-started`
+ * side effect lands in phase `failed`; an `unknown` side effect lands in
+ * phase `unknown` for human resolution and is never retried automatically.
+ * @param request - Publication id, expected `publishing` phase, and the classified failure.
+ * @returns the publication in phase `failed` or `unknown`.
+ */
+abstract failIssuePublication(request: FailIssuePublicationRequest): Promise<IssuePublication & { phase: 'failed' | 'unknown' }>
+
+/**
+ * Apply a human-authorized resolution to an unresolved publication.
+ * `confirm-published` requires the verified exact Issue reference and
+ * moves `unknown` or stalled `publishing` records to `published`;
+ * `confirm-not-created` requires an explicit verification basis and returns
+ * such records to `prepared`. Any other current phase fails closed.
+ * @param request - Resolution kind, publication id, and resolution evidence.
+ * @returns the resolved publication.
+ */
+abstract resolveIssuePublication(request: ResolveIssuePublicationRequest): Promise<IssuePublication>
+
+/**
+ * Read one durable Delivery Case.
+ * @param id - Durable Case identity.
+ * @returns the Case or `undefined` when absent.
+ */
+abstract getCase(id: DeliveryCaseId): DeliveryCase | undefined
+
+/**
+ * Read one human requirement decision.
+ * @param id - Durable decision identity.
+ * @returns the decision or `undefined` when absent.
+ */
+abstract getRequirementDecision(id: RequirementDecisionId): RequirementDecision | undefined
+
+/**
+ * Read one Issue publication.
+ * @param id - Durable publication identity.
+ * @returns the current publication projection or `undefined` when absent.
+ */
+abstract getIssuePublication(id: IssuePublicationId): IssuePublication | undefined
 
 /**
  * Read one adopted Contract revision.

@@ -1,5 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
-import { DeliveryError } from '@deepseek-ai/dsh-delivery'
+import { DeliveryError } from '@changanhua/dsh-delivery'
+import type { GitHubPublisherDependencies } from '@changanhua/dsh-delivery-github-publisher'
 import {
   DispatchBindingId,
   EvidenceId,
@@ -8,35 +9,37 @@ import {
   QueueAttemptIdRef,
   QueueWorkIdRef,
   RepositoryRelativePath,
-  RepositoryId,
   Sha256Digest,
   VerificationVerdictId,
   canonicalDigest,
   dispatchBindingSchema,
   type DispatchBinding,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   acceptedDecisionFixture,
   boundBindingFixture,
   completedClaimFixture,
   contractRevisionFixture,
+  deliveryCaseFixture,
   evidenceRefFixture,
+  issuePublicationFixture,
+  requirementDecisionFixture,
   passedVerdictFixture,
   readyWorkPacketFixture,
   submittingBindingFixture,
-} from '@deepseek-ai/dsh-delivery-testkit'
+} from '@changanhua/dsh-delivery-testkit'
 import {
   DeliveryTaskQueueError,
   startCodeChange as bridgeStartCodeChange,
   startVerification as bridgeStartVerification,
-} from '@deepseek-ai/dsh-delivery-task-queue'
+} from '@changanhua/dsh-delivery-task-queue'
 import {
   AttemptId,
   ResultId,
   WorkId,
   type OperatorWorkQueue,
   type WorkView,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import { describe, expect, it, vi } from 'vitest'
 import { DeliveryRemoteService, type Config } from '../src/index.ts'
 
@@ -57,6 +60,8 @@ interface TestInternals {
   readonly importIssue: (...args: readonly unknown[]) => Promise<unknown>
   readonly startCodeChange: (...args: readonly unknown[]) => Promise<unknown>
   readonly startVerification: (...args: readonly unknown[]) => Promise<unknown>
+  readonly publishGitHubIssue: (...args: readonly unknown[]) => Promise<unknown>
+  readonly resolveGitHubIssuePublication: (...args: readonly unknown[]) => Promise<unknown>
 }
 
 const ServiceWithInternals = DeliveryRemoteService as unknown as new (
@@ -74,7 +79,7 @@ function verificationBinding(
     verificationPlanDigest: packet.verificationPlan.digest,
   }
   return dispatchBindingSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: DispatchBindingId('binding-verify'),
     packetId: packet.id,
     inputDigest: canonicalDigest(intent),
@@ -149,12 +154,14 @@ function makeHarness(options: {
   readonly evidence?: Record<string, unknown>
   readonly repository?: Record<string, unknown>
   readonly operator?: Partial<OperatorWorkQueue>
+  readonly credentials?: Record<string, unknown>
   readonly internals?: Partial<TestInternals>
   readonly config?: Config
 } = {}) {
   const delivery = {
     snapshot: () => ({
       contractRevisions: [], workPackets: [], dispatchBindings: [], acceptanceDecisions: [],
+      deliveryCases: [], requirementDecisions: [], issuePublications: [],
     }),
     ...options.delivery,
   }
@@ -171,6 +178,8 @@ function makeHarness(options: {
     importIssue: vi.fn(async () => contractRevisionFixture()),
     startCodeChange: vi.fn(async () => boundBindingFixture()),
     startVerification: vi.fn(async () => verificationBinding()),
+    publishGitHubIssue: vi.fn(async () => issuePublicationFixture({ phase: 'published' })),
+    resolveGitHubIssuePublication: vi.fn(async () => issuePublicationFixture({ phase: 'published' })),
     ...options.internals,
   }
   const ctx = new Context()
@@ -178,6 +187,7 @@ function makeHarness(options: {
   ctx.provide('deliveryEvidence', evidence as never)
   ctx.provide('repoWorkspace', repository as never)
   ctx.provide('taskQueue', taskQueue as never)
+  ctx.provide('credentials', (options.credentials ?? {}) as never)
   const service = new ServiceWithInternals(
     ctx,
     options.config ?? {},
@@ -187,9 +197,185 @@ function makeHarness(options: {
 }
 
 describe('Delivery Remote explicit operations', () => {
+  it('creates, revises, and decides Cases with repository and actor authority kept on the Host', async () => {
+    const revision = contractRevisionFixture()
+    const deliveryCase = deliveryCaseFixture({ headRevisionId: revision.id, repositoryId: revision.repositoryId! })
+    const createCase = vi.fn(async () => ({ case: deliveryCase, revision }))
+    const reviseCase = vi.fn(async () => ({ case: deliveryCase, revision }))
+    const decision = requirementDecisionFixture({ caseId: deliveryCase.id, revisionId: revision.id })
+    const recordRequirementDecision = vi.fn(async () => decision)
+    const harness = makeHarness({
+      config: { operatorId: 'trusted-human', repositoryId: String(revision.repositoryId) },
+      delivery: { createCase, reviseCase, recordRequirementDecision },
+    })
+    const draft = {
+      outcome: revision.outcome,
+      context: revision.context,
+      allowedScope: revision.allowedScope,
+      forbiddenScope: revision.forbiddenScope,
+      acceptanceClauses: revision.acceptanceClauses,
+      openDecisions: revision.openDecisions,
+      baseSelectionRule: revision.baseSelectionRule,
+      verificationSource: revision.verificationSource,
+      referenceLinks: revision.referenceLinks,
+    }
+    const signal = new AbortController().signal
+
+    await harness.service.createCase({ title: revision.title, revision: draft }, signal)
+    expect(createCase).toHaveBeenCalledWith(expect.objectContaining({
+      repositoryId: revision.repositoryId,
+      origin: { kind: 'human', actorId: 'trusted-human' },
+      title: revision.title,
+      revision: draft,
+      idempotencyKey: expect.stringMatching(/^delivery:case:sha256:/u),
+    }))
+
+    await harness.service.reviseCase({
+      caseId: String(deliveryCase.id),
+      expectedHeadRevisionId: String(revision.id),
+      title: revision.title,
+      revision: draft,
+    }, signal)
+    expect(reviseCase).toHaveBeenCalledWith(expect.objectContaining({
+      caseId: deliveryCase.id,
+      expectedHeadRevisionId: revision.id,
+      origin: { kind: 'human', actorId: 'trusted-human' },
+    }))
+
+    await harness.service.recordRequirementDecision({
+      caseId: String(deliveryCase.id),
+      revisionId: String(revision.id),
+      decision: 'approved',
+      reason: 'The requirement is ready.',
+    }, signal)
+    expect(recordRequirementDecision).toHaveBeenCalledWith(expect.objectContaining({
+      actorId: 'trusted-human',
+      caseId: deliveryCase.id,
+      revisionId: revision.id,
+      decisionNonce: expect.stringMatching(/^sha256:/u),
+    }))
+  })
+
+  it('publishes through Host-only target and credential dependencies with a safe wire result', async () => {
+    const contract = contractRevisionFixture()
+    if (contract.repositoryId === null) throw new Error('publication fixture requires a repository')
+    const publication = issuePublicationFixture({
+      caseId: 'delivery-case-remote' as never,
+      revisionId: contract.id,
+      phase: 'published',
+      issueNumber: 42,
+    })
+    const publishGitHubIssue = vi.fn<TestInternals['publishGitHubIssue']>(async () => publication)
+    const resolve = vi.fn(async () => ({ value: 'host-only-token', source: 'test' }))
+    const harness = makeHarness({
+      config: {
+        githubTargets: {
+          [String(contract.repositoryId)]: {
+            owner: 'example',
+            name: 'project',
+            credentialRef: 'GITHUB_CANARY_TOKEN',
+            labels: ['dsh-delivery-canary'],
+          },
+        },
+      },
+      credentials: { resolve },
+      internals: { publishGitHubIssue },
+    })
+    const signal = new AbortController().signal
+
+    const result = await harness.service.publishIssue({
+      caseId: String(publication.caseId),
+      revisionId: String(publication.revisionId),
+    }, signal)
+
+    expect(publishGitHubIssue).toHaveBeenCalledWith(expect.objectContaining({
+      delivery: harness.delivery,
+      credentials: expect.objectContaining({ resolve }),
+      fetch: harness.internals.fetch,
+      targetForRepository: expect.any(Function),
+      now: expect.any(Function),
+    }), {
+      caseId: publication.caseId,
+      revisionId: publication.revisionId,
+      signal,
+    })
+    const publishCall = publishGitHubIssue.mock.calls[0]
+    if (publishCall === undefined) throw new Error('publisher was not called')
+    const hostDependencies = publishCall[0] as GitHubPublisherDependencies
+    expect(hostDependencies.targetForRepository(contract.repositoryId)).toEqual({
+      repository: { owner: 'example', name: 'project' },
+      credentialRef: 'GITHUB_CANARY_TOKEN',
+      labels: ['dsh-delivery-canary'],
+    })
+    expect(hostDependencies.now()).toMatch(/^\d{4}-\d{2}-\d{2}T/u)
+    expect(result).toEqual({
+      id: publication.id,
+      caseId: publication.caseId,
+      revisionId: publication.revisionId,
+      phase: 'published',
+      failureCategory: null,
+      issue: publication.issue,
+      updatedAt: publication.updatedAt,
+    })
+    expect(JSON.stringify(result)).not.toContain(publication.marker)
+    expect(JSON.stringify(result)).not.toContain(publication.renderedDigest)
+    expect(JSON.stringify(result)).not.toContain('host-only-token')
+  })
+
+  it('resolves uncertain publication through the Host target without exposing its configuration', async () => {
+    const contract = contractRevisionFixture()
+    if (contract.repositoryId === null) throw new Error('publication fixture requires a repository')
+    const publication = issuePublicationFixture({
+      caseId: 'delivery-case-resolution' as never,
+      revisionId: contract.id,
+      phase: 'published',
+      issueNumber: 42,
+    })
+    const resolveGitHubIssuePublication = vi.fn<TestInternals['resolveGitHubIssuePublication']>(async () => publication)
+    const harness = makeHarness({
+      config: {
+        githubTargets: {
+          [String(contract.repositoryId)]: {
+            owner: 'example',
+            name: 'project',
+            credentialRef: 'GITHUB_CANARY_TOKEN',
+          },
+        },
+      },
+      internals: { resolveGitHubIssuePublication },
+    })
+    const signal = new AbortController().signal
+
+    const result = await harness.service.resolvePublication({
+      resolution: 'confirm-published',
+      publicationId: String(publication.id),
+      issueNumber: 42,
+    }, signal)
+
+    const resolveCall = resolveGitHubIssuePublication.mock.calls[0]
+    if (resolveCall === undefined) throw new Error('publication resolver was not called')
+    const hostDependencies = resolveCall[0] as GitHubPublisherDependencies
+    const request = resolveCall[1]
+    expect(hostDependencies.targetForRepository(contract.repositoryId)).toEqual({
+      repository: { owner: 'example', name: 'project' },
+      credentialRef: 'GITHUB_CANARY_TOKEN',
+      labels: [],
+    })
+    expect(hostDependencies.now()).toMatch(/^\d{4}-\d{2}-\d{2}T/u)
+    expect(request).toEqual({
+      resolution: 'confirm-published',
+      publicationId: publication.id,
+      issueNumber: 42,
+      signal,
+    })
+    expect(result).toMatchObject({ id: publication.id, phase: 'published' })
+    expect(JSON.stringify(result)).not.toContain('GITHUB_CANARY_TOKEN')
+  })
+
   it('forwards Issue import, Packet creation, change start, and verification start through narrow host capabilities', async () => {
     const contract = contractRevisionFixture()
     const packet = readyWorkPacketFixture()
+    const issueUrl = 'https://github.com/example/project/issues/42'
     const resolveBase = vi.fn(async () => ({
       repositoryId: contract.repositoryId,
       commit: packet.baseCommit,
@@ -197,6 +383,7 @@ describe('Delivery Remote explicit operations', () => {
     }))
     const createWorkPacket = vi.fn(async () => packet)
     const harness = makeHarness({
+      config: { repositoryId: String(contract.repositoryId) },
       delivery: {
         getContractRevision: vi.fn(() => contract),
         createWorkPacket,
@@ -213,10 +400,7 @@ describe('Delivery Remote explicit operations', () => {
       executorPreference: packet.executorPreference,
     }
 
-    await expect(harness.service.importIssue({
-      issueUrl: contract.sourceRef.canonicalUrl,
-      repositoryId: String(contract.repositoryId),
-    }, signal)).resolves.toEqual(contract)
+    await expect(harness.service.importIssue({ issueUrl }, signal)).resolves.toEqual(contract)
     await expect(harness.service.createPacket({
       contractRevisionId: String(contract.id),
       packet: draft,
@@ -232,7 +416,7 @@ describe('Delivery Remote explicit operations', () => {
       delivery: harness.delivery,
       fetch: harness.internals.fetch,
     }, {
-      issueUrl: contract.sourceRef.canonicalUrl,
+      issueUrl,
       repositoryId: contract.repositoryId,
       signal,
     })
@@ -355,13 +539,54 @@ describe('Delivery Remote explicit operations', () => {
       delivery: {
         getContractRevision: () => contract,
         getWorkPacket: () => packet,
+        createCase: vi.fn(async () => { throw new Error(secret) }),
+        reviseCase: vi.fn(async () => { throw new Error(secret) }),
+        recordRequirementDecision: vi.fn(async () => { throw new Error(secret) }),
       },
       repository: { resolveBase: vi.fn(async () => { throw new Error(secret) }) },
       internals: {
         startCodeChange: vi.fn(async () => { throw new Error(secret) }),
         startVerification: vi.fn(async () => { throw new Error(secret) }),
+        publishGitHubIssue: vi.fn(async () => { throw new Error(secret) }),
+        resolveGitHubIssuePublication: vi.fn(async () => { throw new Error(secret) }),
       },
     })
+
+    const draft = {
+      outcome: contract.outcome,
+      context: contract.context,
+      allowedScope: contract.allowedScope,
+      forbiddenScope: contract.forbiddenScope,
+      acceptanceClauses: contract.acceptanceClauses,
+      openDecisions: contract.openDecisions,
+      baseSelectionRule: contract.baseSelectionRule,
+      verificationSource: contract.verificationSource,
+      referenceLinks: contract.referenceLinks,
+    }
+
+    await expect(harness.service.createCase({ title: contract.title, revision: draft }, signal))
+      .rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
+    await expect(harness.service.reviseCase({
+      caseId: 'case-secret',
+      expectedHeadRevisionId: String(contract.id),
+      title: contract.title,
+      revision: draft,
+    }, signal)).rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
+    await expect(harness.service.recordRequirementDecision({
+      caseId: 'case-secret',
+      revisionId: String(contract.id),
+      decision: 'approved',
+      reason: 'Approve the bounded contract.',
+    }, signal)).rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
+    await expect(harness.service.publishIssue({
+      caseId: 'case-secret',
+      revisionId: String(contract.id),
+    }, signal)).rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
+    await expect(harness.service.resolvePublication({
+      resolution: 'confirm-published',
+      publicationId: 'publication-secret',
+      issueNumber: 42,
+    }, signal)).rejects.toMatchObject({ failure: expect.objectContaining({ code: 'internal' }) })
 
     await expect(harness.service.createPacket({
       contractRevisionId: String(contract.id),
@@ -1123,7 +1348,6 @@ describe('Delivery Remote explicit operations', () => {
 
     await expect(harness.service.importIssue({
       issueUrl: 'https://github.com/deepseek-ai/deepseek-harness/issues/1',
-      repositoryId: String(RepositoryId('repository-fixture')),
     }, controller.signal)).rejects.toMatchObject({
       failure: expect.objectContaining({ code: 'cancelled' }),
     })

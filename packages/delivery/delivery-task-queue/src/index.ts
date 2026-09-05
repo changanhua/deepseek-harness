@@ -1,12 +1,12 @@
 /**
  * Personal Delivery admission bridge and exclusive Queue WorkKind owner.
  *
- * @module @deepseek-ai/dsh-delivery-task-queue
+ * @module @changanhua/dsh-delivery-task-queue
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type Delivery from '@deepseek-ai/dsh-delivery'
+import type Delivery from '@changanhua/dsh-delivery'
 import {
   CODE_CHANGE_KIND,
   CODE_VERIFY_KIND,
@@ -21,7 +21,7 @@ import {
   resolvedCodeChangeSchema,
   resolvedCodeVerifySchema,
   workPacketSchema,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type {
   CodeChangeIntent,
   CodeChangeOutput,
@@ -32,36 +32,36 @@ import type {
   ResolvedCodeChange,
   ResolvedCodeVerify,
   WorkPacketId,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import {
   CODEX_APP_SERVER_PERMISSION_MODES,
   MAX_MODEL_OUTPUT_BYTES,
   createCodexChangeRunner,
-} from '@deepseek-ai/dsh-delivery-runner-codex'
+} from '@changanhua/dsh-delivery-runner-codex'
 import type {
   CodeChangeRunRequest,
   CodexAppServerPermissionMode,
   StartCodeChange as StartCodeChangeRun,
-} from '@deepseek-ai/dsh-delivery-runner-codex'
+} from '@changanhua/dsh-delivery-runner-codex'
 import {
   MAX_VERIFICATION_OUTPUT_BYTES,
   createDeliveryVerifier,
-} from '@deepseek-ai/dsh-delivery-verifier'
+} from '@changanhua/dsh-delivery-verifier'
 import type {
   DeliveryVerificationRunRequest,
   StartDeliveryVerification,
-} from '@deepseek-ai/dsh-delivery-verifier'
-import type DeliveryEvidence from '@deepseek-ai/dsh-delivery-evidence'
-import type RepositoryWorkspace from '@deepseek-ai/dsh-repo-workspace'
+} from '@changanhua/dsh-delivery-verifier'
+import type DeliveryEvidence from '@changanhua/dsh-delivery-evidence'
+import type RepositoryWorkspace from '@changanhua/dsh-repo-workspace'
 import {
   WorkId,
   createVerifiedOperatorAuthority,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import type {
   OperatorWorkQueue,
   WorkHandler,
   WorkKindDefinition,
-} from '@deepseek-ai/dsh-task-queue'
+} from '@changanhua/dsh-task-queue'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { reconcileDeliveryQueueBindings } from './recovery.ts'
 import { settleChange, settleVerification } from './settlement.ts'
@@ -130,7 +130,7 @@ export const Config: z<Config> = z.object({
   verifierVersion: z.string().min(1).default(DEFAULT_VERIFIER_VERSION),
 })
 
-declare module '@deepseek-ai/dsh-task-queue' {
+declare module '@changanhua/dsh-task-queue' {
   interface WorkKindMap {
     'code.change@1': WorkKindDefinition<
       CodeChangeIntent,

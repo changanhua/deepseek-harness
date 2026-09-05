@@ -1,8 +1,8 @@
-# @deepseek-ai/dsh-runtime-facts-host
+# @changanhua/dsh-runtime-facts-host
 
 English | [中文](README.zh.md)
 
-Host-process Service Provider for [`@deepseek-ai/dsh-runtime-facts`](../runtime-facts/README.md). It owns the V1 host inventory, takes process and launch-environment snapshots where those are authoritative, and delegates hot-loadable execution-world and Web-server values to their owning services.
+Host-process Service Provider for [`@changanhua/dsh-runtime-facts`](../runtime-facts/README.md). It owns the V1 host inventory, takes process and launch-environment snapshots where those are authoritative, and delegates hot-loadable execution-world and Web-server values to their owning services.
 
 ## Fact inventory
 

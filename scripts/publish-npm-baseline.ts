@@ -18,6 +18,7 @@ import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep 
 import { createInterface } from 'node:readline/promises'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
+import { assertPublicationIdentity } from './package-identities.ts'
 import { validateTarballPayload } from './publication-payload.ts'
 
 const DEFAULT_REGISTRY = 'https://registry.npm.harnessment.com'
@@ -623,6 +624,16 @@ class RegistryPublication {
   ) {}
 
   async publish(assumeYes: boolean): Promise<void> {
+    assertPublicationIdentity(
+      {
+        githubActions: process.env.GITHUB_ACTIONS,
+        packageNames: [
+          ...this.bundle.manifest.packages.map(pkg => pkg.name),
+          RELEASE_ENTRY_PACKAGE,
+        ],
+        repository: process.env.GITHUB_REPOSITORY,
+      },
+    )
     this.pingRegistry()
     this.requireIdentity()
     if (!assumeYes) await this.confirm()

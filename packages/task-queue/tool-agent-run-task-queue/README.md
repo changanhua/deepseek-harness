@@ -1,15 +1,15 @@
-# @deepseek-ai/dsh-tool-agent-run-task-queue
+# @changanhua/dsh-tool-agent-run-task-queue
 
 English | [中文](README.zh.md)
 
-`@deepseek-ai/dsh-tool-agent-run-task-queue` provides WorkKind-specific Queue admission for `agent.run@1`. It derives owner authority from the live Agent Session and exposes no executor, profile, model, credential, or shell selection.
+`@changanhua/dsh-tool-agent-run-task-queue` provides WorkKind-specific Queue admission for `agent.run@1`. It derives owner authority from the live Agent Session and exposes no executor, profile, model, credential, or shell selection.
 
 ## Tools
 
 - `task_queue_enqueue(title, prompt, idempotencyKey)` admits one restricted Harness worker request.
 - `task_queue_enqueue_batch(items, idempotencyKey, maxParallel)` atomically admits individually titled requests while preserving the caller's positive Batch concurrency bound.
 
-The Queue provider resolves and persists the worker specification, policy, and resource claims. Generic list, status, result, cancellation, retry, statistics, and Notification delivery remain in `@deepseek-ai/dsh-tool-task-queue`.
+The Queue provider resolves and persists the worker specification, policy, and resource claims. Generic list, status, result, cancellation, retry, statistics, and Notification delivery remain in `@changanhua/dsh-tool-task-queue`.
 
 ## Config
 

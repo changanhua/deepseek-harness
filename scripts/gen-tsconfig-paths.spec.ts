@@ -22,6 +22,11 @@ describe('generated tsconfig package aliases', () => {
       source: './packages/core/session/src',
       hasInvariant: true,
     })
+    expect(aliases.find(alias => alias.specifier === '@changanhua/dsh-runtime-facts')).toEqual({
+      specifier: '@changanhua/dsh-runtime-facts',
+      source: './packages/context/runtime-facts/src',
+      hasInvariant: true,
+    })
     // Sorted, so a package added anywhere lands in a stable spot in the diff.
     expect([...aliases].sort((a, b) => a.specifier.localeCompare(b.specifier))).toEqual(aliases)
     // Only packages named after their directory: the rest carry hand-written
@@ -84,6 +89,7 @@ describe('generated tsconfig package aliases', () => {
     // match their directory: those carry hand-written aliases.
     const names = collectPackageNames()
     expect(names).toContain('@deepseek-ai/dsh-typert-protocol')
+    expect(names).toContain('@changanhua/dsh-runtime-facts')
     expect(uncoveredPackages(names, mappedSpecifiers(config))).toEqual([])
   })
 

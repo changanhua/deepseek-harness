@@ -1,17 +1,17 @@
 ---
-description: "Personal Delivery browser Remote for users importing, running, verifying, and deciding one delivery."
+description: "Personal Delivery browser Remote for users importing, publishing, running, verifying, and deciding one delivery."
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-delivery-remote
+# @changanhua/dsh-delivery-remote
 
 English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-delivery-remote` implements the browser-safe `ctx.remote.delivery` namespace, its derived workbench projection, and six explicit operations without exposing raw Queue enqueue authority, filesystem paths, process handles, credentials, or a generic shell.
+`dsh-delivery-remote` implements the browser-safe `ctx.remote.delivery` namespace for shaping, approving, publishing, executing, verifying, and accepting Delivery Cases without exposing raw Queue authority, filesystem paths, process handles, credentials, or a generic shell.
 
-The snapshot joins one Delivery read with the trusted operator's Queue view into five derived lanes. Every asynchronous operation accepts an operation-local `AbortSignal`; stable Typert failures classify expected domain refusals without copying arbitrary infrastructure text into the browser.
+The snapshot joins one Delivery read with the trusted operator's Queue view into six derived Case phases, downstream Packet cards, readiness reasons, and safe publication state. Every asynchronous operation accepts an operation-local `AbortSignal`; stable Typert failures classify expected domain refusals without copying arbitrary infrastructure text into the browser.
 
 ## Contents
 
@@ -25,8 +25,13 @@ The snapshot joins one Delivery read with the trusted operator's Queue view into
 
 ## Remote methods
 
-- `snapshot()` returns Contract revisions without Packets and Packet cards derived into Ready, Running, Review, Blocked, or Accepted lanes.
-- `importIssue(input, signal)` explicitly adopts the current revision of one GitHub Issue URL for the required configured repository. The Issue's strict Work Brief owns Contract fields, while the host derives any previous revision; neither base/plan substitution nor lineage is browser input.
+- `snapshot()` returns ordered Case cards with their head revision, readiness, requirement decision, configured publication target, safe publication state, and downstream Packet cards. Human actor ids, publication markers, digests, and failure details remain Host-only.
+- `createCase(input, signal)` creates one human-origin Case in the Host-configured `repositoryId`; the browser supplies requirement content but no repository, actor, identity, or idempotency field.
+- `reviseCase(input, signal)` advances one observed Case head through the Delivery compare-and-set boundary and returns the browser-safe child revision.
+- `recordRequirementDecision(input, signal)` records approval, rejection, or deferral for one exact revision. Trusted Host configuration supplies the actor, and the Host derives the decision nonce and idempotency key.
+- `importIssue(input, signal)` explicitly imports the current revision of one GitHub Issue URL into a Case for the required configured repository. The Issue's strict Work Brief owns requirement fields, while the Host derives Case lineage; neither base/plan substitution nor lineage is browser input.
+- `publishIssue(input, signal)` accepts one Case and revision selection. The Host resolves `githubTargets[repositoryId]`, re-resolves its credential reference for this operation, and delegates the durable external side-effect boundary to the GitHub publisher.
+- `resolvePublication(input, signal)` accepts one uncertain publication and candidate Issue number. The Host performs a fresh authenticated GET and confirms `published` only after the exact terminal marker and digest match.
 - `createPacket(input, signal)` accepts only the selected Contract and bounded Packet draft. The host resolves repository identity, base proof, and verification source from the immutable Contract, then derives the idempotency key from Contract identity and the canonical Packet digest.
 - `startChange(input, signal)` delegates the idempotent binding and ownerless Queue admission to the Delivery/Queue bridge.
 - `startVerification(input, signal)` accepts a Packet and its bound change dispatch; the host derives the exact checkpoint and trusted verification plan before admission.
@@ -39,13 +44,13 @@ The `./types` export contains the JSON wire declarations. Generated `./typert` a
 
 ## Authority boundary
 
-The Remote injects `delivery`, `deliveryEvidence`, `repoWorkspace`, and `taskQueue`, but does not make browser input authoritative. Git proves commits, Queue owns execution, and evidence storage resolves and integrity-reads every exact referenced object. In this single-user MVP, trusted Host configuration supplies a non-blank `operatorId` (default `local-operator`) as the decision actor; `actorId` is never a browser field. Only the human decision endpoint may request an acceptance record. Browser inputs contain selections rather than authority-bearing identities, raw Queue payloads, host paths, provider URIs, or caller-defined idempotency keys.
+The Remote injects `credentials`, `delivery`, `deliveryEvidence`, `repoWorkspace`, and `taskQueue`, but does not make browser input authoritative. Git proves commits, Queue owns execution, evidence storage resolves and integrity-reads every exact referenced object, and the publisher owns GitHub request uncertainty. Trusted Host configuration supplies a non-blank `operatorId` (default `local-operator`), one `repositoryId` for new human Cases (default `workspace`), and optional `githubTargets` entries keyed by Delivery repository id; each target carries owner, repository name, a credential reference, and optional Issue labels, never a token value. Browser inputs contain bounded content and selections rather than authority-bearing identities, raw Queue payloads, host paths, provider URIs, publication markers, digests, credentials, or caller-defined idempotency keys.
 
 <a id="dev-note"></a>
 
 ## Dev Note
 
-Keep the five lanes derived. Do not add a writable status or expose generic Queue operator authority to the browser.
+Keep Case phases, Packet lanes, readiness, and publication presentation derived. Do not add a writable status or expose generic Queue operator authority to the browser.
 
 ## Model Experience
 
@@ -67,5 +72,6 @@ None; this package never assembles model input.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Composition remains external** — a supported profile must compose the Delivery domain, evidence, repository workspace, Queue bridge, Typert transport, this Remote, and a concrete GitHub intake provider before a real browser flow can run.
+- **Composition remains external** — a supported profile must compose credentials, the Delivery domain, evidence, repository workspace, Queue bridge, Typert transport, this Remote, and the GitHub intake/publisher libraries before a real browser flow can run.
 - **Single trusted operator** — `operatorId` is Host configuration rather than browser input or a multi-user authentication claim.
+- **Publication target configuration is static per Host activation** — editing `githubTargets` requires recomposition; credentials themselves are re-resolved for every operation.

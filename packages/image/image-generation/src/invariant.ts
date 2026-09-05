@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-image-generation`.
- * @module @deepseek-ai/dsh-image-generation/invariant
+ * Package-owned invariant companion for `@changanhua/dsh-image-generation`.
+ * @module @changanhua/dsh-image-generation/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-image-generation'
+const PACKAGE_NAME = '@changanhua/dsh-image-generation'
 
 /** Cordis companion plugin name. */
 export const name = 'image-generation-invariant'

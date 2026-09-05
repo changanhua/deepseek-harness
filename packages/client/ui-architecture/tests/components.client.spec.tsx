@@ -8,17 +8,17 @@ import type { ArchitectureWorkspaceProps } from '../src/client/contract.ts'
 import type { ArchitectureRuntimeState } from '../src/client/runtime-controller.ts'
 
 const catalog: ArchitectureCatalog = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   packages: [
     {
       name: '@deepseek-ai/dsh-feature', short: 'feature', group: 'client',
       path: 'packages/client/feature', description: 'Visible client feature',
-      dependencies: ['foundation'], faces: ['client'],
+      dependencies: ['@deepseek-ai/dsh-foundation'], faces: ['client'],
     },
     {
       name: '@deepseek-ai/dsh-viewer', short: 'viewer', group: 'core',
       path: 'packages/core/viewer', description: 'Consumer of the feature',
-      dependencies: ['feature'], faces: ['remote'],
+      dependencies: ['@deepseek-ai/dsh-feature'], faces: ['remote'],
     },
     {
       name: '@deepseek-ai/dsh-foundation', short: 'foundation', group: 'util',
@@ -134,6 +134,35 @@ describe('Architecture UI', () => {
     expect(within(detail).getByText('foundation')).not.toBeNull()
     expect(within(detail).getByText('viewer')).not.toBeNull()
     expect(within(detail).getByText('当前运行时 · active')).not.toBeNull()
+  })
+
+  it('navigates dependency relationships by full npm identity across scopes', () => {
+    const scopedCatalog: ArchitectureCatalog = {
+      schemaVersion: 2,
+      packages: [{
+        name: '@deepseek-ai/dsh-shared', short: 'shared', group: 'core',
+        path: 'packages/core/shared', description: 'Official shared package', dependencies: [], faces: ['package'],
+      }, {
+        name: '@changanhua/dsh-shared', short: 'shared', group: 'personal',
+        path: 'packages/personal/shared', description: 'Personal shared package', dependencies: [], faces: ['package'],
+      }, {
+        name: '@changanhua/dsh-consumer', short: 'consumer', group: 'personal',
+        path: 'packages/personal/consumer', description: 'Personal consumer',
+        dependencies: ['@changanhua/dsh-shared'], faces: ['client'],
+      }],
+    }
+    render(<ArchitectureWorkspace
+      {...unusedStandardHooks}
+      catalog={scopedCatalog}
+      useRuntime={useRuntime}
+      refresh={vi.fn()}
+      t={t as never}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /consumer — Personal consumer/ }))
+    const detail = screen.getByTestId('architecture-package-detail')
+    fireEvent.click(within(detail).getByRole('button', { name: 'shared' }))
+    expect(within(detail).getByText('packages/personal/shared')).not.toBeNull()
   })
 
   it('searches names, paths, and descriptions', () => {

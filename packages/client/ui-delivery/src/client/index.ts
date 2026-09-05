@@ -6,7 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import type {} from '@deepseek-ai/dsh-delivery-remote/remote'
+import deliveryRemote from '@changanhua/dsh-delivery-remote/remote'
 import type { DeliveryNavInjected, DeliveryWorkspaceInjected } from './contract.ts'
 import { DeliveryNavEntry } from './DeliveryNavEntry.tsx'
 import { DeliveryWorkbench } from './DeliveryWorkbench.tsx'
@@ -30,10 +30,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Services used by the two slot entries and generated Delivery Remote. */
-export const inject = ['slots', 'locale', 'remote', 'remote.delivery']
+export const inject = ['slots', 'locale', 'remote']
 
 /** Register the Delivery module and lifecycle-owned Host projection. */
-export function apply(ctx: ClientContext): void {
+function registerUi(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-delivery: dictionaries')
   const runtime = createDeliveryRuntimeController(ctx.remote.delivery)
   ctx.effect(() => {
@@ -45,6 +45,11 @@ export function apply(ctx: ClientContext): void {
     hooks: { delivery: runtime.source },
     refresh: () => { runtime.load() },
     cancel: () => { runtime.cancel() },
+    createCase: input => runtime.createCase(input),
+    reviseCase: input => runtime.reviseCase(input),
+    recordRequirementDecision: input => runtime.recordRequirementDecision(input),
+    publishIssue: input => runtime.publishIssue(input),
+    resolvePublication: input => runtime.resolvePublication(input),
     importIssue: input => runtime.importIssue(input),
     createPacket: input => runtime.createPacket(input),
     startChange: input => runtime.startChange(input),
@@ -69,4 +74,21 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: navInjected,
   }, DeliveryNavEntry))
+}
+
+/** Mount the generated Delivery Remote contribution before registering its consumers. */
+export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
+  const disposeRemote = await ctx.remote.$mount(deliveryRemote)
+  const ui = ctx.inject(['slots', 'locale', 'remote', 'remote.delivery'], registerUi)
+  try {
+    await ui
+  } catch (error) {
+    await ui.dispose()
+    await disposeRemote()
+    throw error
+  }
+  return async () => {
+    await ui.dispose()
+    await disposeRemote()
+  }
 }

@@ -3,7 +3,7 @@ description: "Local Git identity checks, bounded blob reads, and Attempt-owned w
 kind: "package-reference"
 ---
 
-# @deepseek-ai/dsh-repo-workspace-git-local
+# @changanhua/dsh-repo-workspace-git-local
 
 English | [中文](README.zh.md)
 
@@ -40,7 +40,7 @@ Choose this provider for one-host repositories whose configured path is the exac
 | `graceMs` | `5000` | TERM-to-KILL grace used by each governed Git subprocess. |
 | `maxGitOutputBytes` | `4 MiB` | Complete per-stream Git diagnostic limit; configuration cannot exceed `64 MiB`. |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-repo-workspace-git-local) is the exhaustive field reference.
+The generated [configuration catalog](../../../docs/config-catalog.md#changanhuadsh-repo-workspace-git-local) is the exhaustive field reference.
 
 -----
 
@@ -50,7 +50,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The provider checks every configured path against Git's physical toplevel before minting revision proofs. Blob reads resolve `commit:path`, verify object type and size, then collect raw piped bytes. Attempt ids become SHA-256 directory names; a crash-durable ownership marker binds purpose, repository, base, and target across provider reconstruction. POSIX publication syncs the marker and affected directories, while Windows uses a write-through namespace move. Cleanup re-proves the root, owner directory, checkout identity, and exact regular marker before mutation; it removes only the exact Git registration and never prunes unrelated worktrees. `lstat` traversal does not follow link-shaped descendants, and every Git process reaches whole-tree exit before its operation settles.
+The provider checks every configured path against Git's physical toplevel before minting revision proofs. Blob reads resolve `commit:path`, verify object type and size, then collect raw piped bytes. Attempt ids become SHA-256 directory names; a crash-durable ownership marker binds purpose, repository, base, and target across provider reconstruction. POSIX publication syncs the marker and affected directories, while Windows uses a write-through namespace move and supplies `core.longpaths=true` to every Git invocation. A failed worktree creation reports a whitespace-normalized Git diagnostic capped at 512 characters. Cleanup re-proves the root, owner directory, checkout identity, and exact regular marker before mutation; it removes only the exact Git registration and never prunes unrelated worktrees. `lstat` traversal does not follow link-shaped descendants, and every Git process reaches whole-tree exit before its operation settles.
 
 </details>
 

@@ -1,7 +1,7 @@
 import type {
   QueueAttemptIdRef,
   QueueWorkIdRef,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import type { CodeChangeRunRequest } from '../src/index.ts'
 
 type Expect<Value extends true> = Value

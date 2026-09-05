@@ -1,11 +1,14 @@
-import { canonicalJson as queueCanonicalJson } from '@deepseek-ai/dsh-task-queue'
+import { canonicalJson as queueCanonicalJson } from '@changanhua/dsh-task-queue'
 import {
   canonicalDigest,
   canonicalJson,
+  ContractRevisionId,
+  DeliveryCaseId,
   GitCommitId,
+  issuePublicationIdForRevision,
   RepositoryRelativePath,
   Sha256Digest,
-} from '@deepseek-ai/dsh-delivery-protocol'
+} from '@changanhua/dsh-delivery-protocol'
 import { describe, expect, it } from 'vitest'
 
 describe('delivery canonical identity', () => {
@@ -24,6 +27,20 @@ describe('delivery canonical identity', () => {
   it('produces a stable lowercase SHA-256 digest', () => {
     expect(canonicalDigest({ b: 2, a: 1 })).toBe(canonicalDigest({ a: 1, b: 2 }))
     expect(canonicalDigest({ a: 1 })).toMatch(/^sha256:[0-9a-f]{64}$/u)
+  })
+
+  it('derives one stable publication identity from its owning Case revision', () => {
+    expect(issuePublicationIdForRevision(
+      DeliveryCaseId('case-1'),
+      ContractRevisionId('revision-1'),
+    )).toBe('issue-publication-6a80d20cdb9109a85454154a9aabc4669352cc7aac6debcd359430fbae19f586')
+    expect(issuePublicationIdForRevision(
+      DeliveryCaseId('case-1'),
+      ContractRevisionId('revision-2'),
+    )).not.toBe(issuePublicationIdForRevision(
+      DeliveryCaseId('case-2'),
+      ContractRevisionId('revision-1'),
+    ))
   })
 
   it.each([

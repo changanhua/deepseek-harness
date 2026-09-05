@@ -1,9 +1,9 @@
-/** Package-owned invariant companion for `@deepseek-ai/dsh-repo-workspace-git-local`. */
+/** Package-owned invariant companion for `@changanhua/dsh-repo-workspace-git-local`. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-repo-workspace-git-local'
+const PACKAGE_NAME = '@changanhua/dsh-repo-workspace-git-local'
 
 /** Cordis companion plugin name. */
 export const name = 'repo-workspace-git-local-invariant'
