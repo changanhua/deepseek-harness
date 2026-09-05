@@ -545,6 +545,17 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       if (status.outcome.exitCode !== 0 || status.stdout.byteLength !== 0) {
         throw new RepositoryWorkspaceError('checkpoint-failed', 'checkpoint worktree is not clean')
       }
+      // A SHA in Delivery storage is not a Git GC root. Retain the object graph
+      // before the caller can publish completion and remove the detached checkout.
+      const retained = await this.runGit(repository, [
+        'update-ref',
+        '--no-deref',
+        `refs/changanhua/delivery/checkpoints/${checkpointCommit}`,
+        checkpointCommit,
+      ], request.signal)
+      if (retained.outcome.exitCode !== 0) {
+        throw new RepositoryWorkspaceError('checkpoint-failed', 'Git could not retain the governed checkpoint')
+      }
       return Object.freeze({
         repositoryId,
         baseCommit,

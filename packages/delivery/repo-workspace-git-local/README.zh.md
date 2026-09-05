@@ -31,6 +31,8 @@ kind: "package-reference"
 
 当单宿主 repository 的配置路径就是精确 Git toplevel 时，选择此提供方。`resolveBase()` 在不创建 checkout 的情况下捕获完整 commit；`readBlob()` 在调用方给出的完整字节上限内读取 Git object storage；修改与验证 worktree 只会在 Queue Attempt 拥有其 lease 后开始。
 
+成功的检查点会在 lease 可被删除前，保留在提供方拥有的 `refs/changanhua/delivery/checkpoints/<commit>` 命名空间下。这些本地 Git 引用让 commit 及其可达对象在 worktree 清理、提供方重启和 Git 垃圾回收后仍然保留。引用写入失败会使检查点失败；Delivery runner 会保留 checkout 供恢复。提供方更新引用时不会跟随符号引用，因此保留操作不会被重定向到用户分支。
+
 ### 配置
 
 | 字段 | 默认值 | 含义 |
@@ -88,6 +90,7 @@ kind: "package-reference"
 
 - **仅限本地执行世界** — remote workspace 与 multi-host lease 需要另一个提供方和生命周期决策。
 - **保留的 worktree 需要 operator 操作** — 不确定的 Attempt 会保留 checkout；此提供方不会授权 retry 或虚构成功。
+- **检查点在本地无限期保留** — lease 清理绝不会删除检查点引用。它们不是远端备份，也不会自动修复历史上没有引用保护的检查点。释放保留的对象需要 operator 明确作出保留策略决定；没有自动到期或释放 API。
 
 <a id="dev-note"></a>
 ### 开发说明

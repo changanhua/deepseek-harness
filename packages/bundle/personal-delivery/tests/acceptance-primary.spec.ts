@@ -466,6 +466,10 @@ describe('Personal Delivery acceptance harness', () => {
       const operator = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
       const change = await remote.startChange({ packetId: packet.id, executorId: 'codex' }, signal)
       await waitFor(() => operator.get(change.queueWorkId as never).state.status === 'succeeded')
+      // The runner has removed its detached worktree; only durable refs may
+      // keep its checkpoint available to the independently started verifier.
+      await git(repository, 'reflog', 'expire', '--expire=now', '--all')
+      await git(repository, 'gc', '--prune=now')
       const verification = await remote.startVerification({
         packetId: packet.id,
         changeBindingId: change.id,

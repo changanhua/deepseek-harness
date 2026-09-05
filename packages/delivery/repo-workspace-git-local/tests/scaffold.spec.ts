@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, renameSync } from 'node:fs'
 import { access, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -621,6 +622,40 @@ describe('local Git repository workspace', () => {
     await ctx.fiber.dispose()
   })
 
+  it('retains a checkpoint without following a pre-existing symbolic reference into the user branch', async () => {
+    const { repository, firstCommit } = await fixtureRepository()
+    const worktreeRoot = await temporaryRoot('dsh-repo-workspace-leases')
+    const repositoryId = RepositoryId('repository-checkpoint-symbolic-ref')
+    const ctx = new Context()
+    const subprocess = new TestSubprocessRuntime(ctx)
+    const spawn = subprocess.spawn.bind(subprocess)
+    vi.spyOn(subprocess, 'spawn').mockImplementation((spec) => {
+      if (spec.argv.includes('update-ref')) {
+        const ref = spec.argv.find(argument => argument.startsWith('refs/changanhua/delivery/checkpoints/'))
+        if (ref === undefined) throw new Error('checkpoint reference is missing')
+        execFileSync('git', ['-C', repository, 'symbolic-ref', ref, 'refs/heads/main'], { windowsHide: true })
+      }
+      return spawn(spec)
+    })
+    try {
+      const workspace = new GitLocalRepositoryWorkspace(ctx, {
+        repositories: { [repositoryId]: repository }, worktreeRoot,
+      })
+      const base = await workspace.inspectRevision({ repositoryId, commit: firstCommit })
+      const lease = await workspace.openChange({ ownerAttemptId: QueueAttemptIdRef('symbolic-ref-checkpoint'), base })
+      await writeFile(join(lease.cwd, 'tracked.txt'), 'retained without moving main\n')
+      const checkpoint = await lease.checkpoint({ message: 'symbolic-ref retention' })
+      await lease.close('remove')
+      expect(await fixtureGit(repository, 'rev-parse', 'refs/heads/main')).toBe(firstCommit)
+      expect(await fixtureGit(repository, 'show', `${checkpoint.checkpointCommit}:tracked.txt`))
+        .toBe('retained without moving main')
+      expect(await fixtureGit(repository, 'for-each-ref', '--format=%(symref)', `refs/changanhua/delivery/checkpoints/${checkpoint.checkpointCommit}`))
+        .toBe('')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('opens an idempotent exact-target verification lease without changing owner purpose', async () => {
     const { repository, firstCommit } = await fixtureRepository()
     await writeFile(join(repository, 'tracked.txt'), 'verification target\n')
@@ -1186,6 +1221,19 @@ describe('local Git repository workspace', () => {
       { stdout: 'dirty\0' },
     ])
     await expect(current.lease.checkpoint({ message: 'dirty status fails' }))
+      .rejects.toMatchObject({ code: 'checkpoint-failed' })
+    await current.ctx.fiber.dispose()
+
+    current = await scenario([
+      { exitCode: 0 },
+      { exitCode: 0 },
+      { stdout: `${checkpointCommit}\n` },
+      { exitCode: 0 },
+      { stdout: 'tracked.txt\0' },
+      { stdout: '' },
+      { exitCode: 1 },
+    ])
+    await expect(current.lease.checkpoint({ message: 'retention fails' }))
       .rejects.toMatchObject({ code: 'checkpoint-failed' })
     await current.ctx.fiber.dispose()
 
