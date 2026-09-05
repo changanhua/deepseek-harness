@@ -83,6 +83,10 @@ function lines(value: string): string[] {
   return value.split(/\r?\n/u).map(line => line.trim()).filter(line => line !== '')
 }
 
+function argumentLines(value: string): string[] {
+  return value === '' ? [] : value.split(/\r?\n/u)
+}
+
 function pathRules(value: string): DeliveryCreatePacketInput['packet']['allowedPaths'] {
   return lines(value).map(path => ({ kind: 'subtree', path: path as never }))
 }
@@ -191,41 +195,174 @@ function CaseForm(props: Pick<DeliveryWorkspaceProps, 'reviseCase' | 't'> & {
   busy: boolean
 }) {
   const revision = props.card.headRevision
+  type BaseSelectionKind = NonNullable<typeof revision.baseSelectionRule>['kind']
+  type VerificationSourceKind = NonNullable<typeof revision.verificationSource>['kind']
+  type InlineCheck = Extract<NonNullable<typeof revision.verificationSource>, { readonly kind: 'contract-field' }>['checks'][number]
+  type CheckFields = {
+    readonly id: string
+    readonly original: InlineCheck | null
+    readonly name: string
+    readonly program: string
+    readonly argumentsText: string
+    readonly cwd: string
+    readonly timeoutMs: string
+    readonly severity: InlineCheck['severity']
+    readonly expectedExitCodes: string
+  }
+  const initialBaseKind = revision.baseSelectionRule?.kind ?? 'ref-head'
+  const initialBaseValue = revision.baseSelectionRule?.kind === 'commit'
+    ? revision.baseSelectionRule.commit
+    : revision.baseSelectionRule?.ref ?? 'HEAD'
+  const initialVerificationKind = revision.verificationSource?.kind ?? 'git-blob'
+  const checkFields = (check: InlineCheck): CheckFields => ({
+    id: String(check.id),
+    original: check,
+    name: check.name,
+    program: check.argv[0] as string,
+    argumentsText: check.argv.slice(1).join('\n'),
+    cwd: check.cwd,
+    timeoutMs: String(check.timeoutMs),
+    severity: check.severity,
+    expectedExitCodes: check.expectedExitCodes.join(', '),
+  })
+  const initialChecks = revision.verificationSource?.kind === 'contract-field'
+    ? revision.verificationSource.checks.map(checkFields)
+    : []
+  const initialOutcome = revision.outcome ?? ''
+  const initialContext = revision.context
+  const initialScope = revision.allowedScope.join('\n')
+  const initialAcceptance = revision.acceptanceClauses.map(clause => clause.text).join('\n')
   const [title, setTitle] = useState(revision.title)
-  const [outcome, setOutcome] = useState(revision.outcome ?? '')
-  const [context, setContext] = useState(revision.context)
-  const [scope, setScope] = useState(revision.allowedScope.join('\n'))
-  const [acceptance, setAcceptance] = useState(revision.acceptanceClauses.map(clause => clause.text).join('\n'))
+  const [outcome, setOutcome] = useState(initialOutcome)
+  const [context, setContext] = useState(initialContext)
+  const [scope, setScope] = useState(initialScope)
+  const [acceptance, setAcceptance] = useState(initialAcceptance)
+  const [baseKind, setBaseKind] = useState<BaseSelectionKind>(initialBaseKind)
+  const [baseValue, setBaseValue] = useState(initialBaseValue)
+  const [verificationKind, setVerificationKind] = useState<VerificationSourceKind>(initialVerificationKind)
+  const [verificationPath, setVerificationPath] = useState(revision.verificationSource?.kind === 'git-blob' ? revision.verificationSource.path : '')
+  const [checks, setChecks] = useState<CheckFields[]>(initialChecks)
+  const [errors, setErrors] = useState<DeliveryKey[]>([])
   useEffect(() => {
     setTitle(revision.title)
-    setOutcome(revision.outcome ?? '')
-    setContext(revision.context)
-    setScope(revision.allowedScope.join('\n'))
-    setAcceptance(revision.acceptanceClauses.map(clause => clause.text).join('\n'))
+    setOutcome(initialOutcome)
+    setContext(initialContext)
+    setScope(initialScope)
+    setAcceptance(initialAcceptance)
+    setBaseKind(revision.baseSelectionRule?.kind ?? 'ref-head')
+    setBaseValue(revision.baseSelectionRule?.kind === 'commit' ? revision.baseSelectionRule.commit : revision.baseSelectionRule?.ref ?? 'HEAD')
+    setVerificationKind(revision.verificationSource?.kind ?? 'git-blob')
+    setVerificationPath(revision.verificationSource?.kind === 'git-blob' ? revision.verificationSource.path : '')
+    setChecks(revision.verificationSource?.kind === 'contract-field' ? revision.verificationSource.checks.map(checkFields) : [])
+    setErrors([])
   }, [revision.id])
-  const allowedScope = lines(scope)
-  const acceptanceClauses = lines(acceptance).map((text, index) => ({
-    id: `acceptance-${String(index + 1)}` as never,
-    text,
-  }))
-  const ready = title.trim() !== '' && outcome.trim() !== ''
-    && allowedScope.length > 0 && acceptanceClauses.length > 0 && !props.busy
+  const allowedScope = scope === initialScope ? revision.allowedScope : lines(scope)
+  const acceptanceClauses = acceptance === initialAcceptance
+    ? revision.acceptanceClauses
+    : (() => {
+      const oldAcceptanceByText = new Map<string, string[]>()
+      for (const clause of revision.acceptanceClauses) {
+        const matching = oldAcceptanceByText.get(clause.text) ?? []
+        matching.push(String(clause.id))
+        oldAcceptanceByText.set(clause.text, matching)
+      }
+      const usedAcceptanceIds = new Set<string>()
+      return lines(acceptance).map((text, index) => {
+        const preservedId = oldAcceptanceByText.get(text)?.shift()
+        let id = preservedId ?? `acceptance-${String(index + 1)}`
+        let suffix = 1
+        while (usedAcceptanceIds.has(id) || (!preservedId && revision.acceptanceClauses.some(clause => String(clause.id) === id))) {
+          id = `acceptance-${String(index + 1)}-${String(suffix++)}`
+        }
+        usedAcceptanceIds.add(id)
+        return { id: id as never, text }
+      })
+    })()
+  const baseUnchanged = revision.baseSelectionRule?.kind === baseKind && initialBaseValue === baseValue
+  const baseSelectionRule = baseUnchanged
+    ? revision.baseSelectionRule
+    : baseKind === 'commit'
+      ? { kind: 'commit' as const, commit: baseValue.trim() as never }
+      : { kind: 'ref-head' as const, ref: baseValue.trim() }
+  const originalSource = revision.verificationSource
+  const sourceUnchanged = originalSource?.kind === verificationKind
+    && (originalSource.kind === 'git-blob'
+      ? originalSource.path === verificationPath
+      : initialChecks.length === checks.length && checks.every((check, index) => {
+        const original = initialChecks[index]
+        return original !== undefined && check.id === original.id && check.name === original.name
+          && check.program === original.program && check.argumentsText === original.argumentsText
+          && check.cwd === original.cwd && check.timeoutMs === original.timeoutMs
+          && check.severity === original.severity && check.expectedExitCodes === original.expectedExitCodes
+      }))
+  const verificationSource = sourceUnchanged
+    ? originalSource
+    : verificationKind === 'git-blob'
+      ? { kind: 'git-blob' as const, path: verificationPath.trim() as never, format: 'delivery-verification-plan@1' as const }
+      : {
+        kind: 'contract-field' as const,
+        checks: checks.map(check => check.original !== null
+          ? {
+            id: check.id as never,
+            name: check.name === check.original.name ? check.original.name : check.name.trim(),
+            argv: [check.program === check.original.argv[0] ? check.original.argv[0] : check.program.trim(), ...(check.argumentsText === check.original.argv.slice(1).join('\n') ? check.original.argv.slice(1) : argumentLines(check.argumentsText))] as const,
+            cwd: (check.cwd === check.original.cwd ? check.original.cwd : check.cwd.trim()) as never,
+            timeoutMs: check.timeoutMs === String(check.original.timeoutMs) ? check.original.timeoutMs : Number(check.timeoutMs),
+            severity: check.severity,
+            expectedExitCodes: check.expectedExitCodes === check.original.expectedExitCodes.join(', ')
+              ? check.original.expectedExitCodes
+              : check.expectedExitCodes.split(',').map(value => Number(value.trim())),
+          }
+          : {
+            id: check.id as never,
+            name: check.name.trim(),
+            argv: [check.program.trim(), ...argumentLines(check.argumentsText)] as const,
+            cwd: check.cwd.trim() as never,
+            timeoutMs: Number(check.timeoutMs),
+            severity: check.severity,
+            expectedExitCodes: check.expectedExitCodes.split(',').map(value => Number(value.trim())),
+          }),
+      }
+  const validationErrors = (): DeliveryKey[] => {
+    const nextErrors: DeliveryKey[] = []
+    if (title.trim() === '' || outcome.trim() === '' || allowedScope.length === 0 || acceptanceClauses.length === 0 || baseValue.trim() === '') nextErrors.push('case.error.required')
+    if (baseKind === 'commit' && !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(baseValue.trim())) nextErrors.push('case.error.commit')
+    if (verificationKind === 'git-blob' && verificationPath.trim() === '') nextErrors.push('case.error.planPath')
+    if (verificationKind === 'contract-field' && (!checks.length || checks.some(check => check.name.trim() === '' || check.program.trim() === '' || check.cwd.trim() === '' || !/^\d+$/u.test(check.timeoutMs) || Number(check.timeoutMs) <= 0 || check.expectedExitCodes.split(',').some(value => !/^\d+$/u.test(value.trim()))))) nextErrors.push('case.error.check')
+    return nextErrors
+  }
+  const ready = validationErrors().length === 0 && !props.busy
+  const updateCheck = (index: number, patch: Partial<CheckFields>) => {
+    setChecks(current => current.map((check, candidate) => candidate === index ? { ...check, ...patch } : check))
+  }
+  const addCheck = () => {
+    const oldCheckIds = revision.verificationSource?.kind === 'contract-field'
+      ? revision.verificationSource.checks.map(check => String(check.id))
+      : []
+    const existingIds = new Set([...oldCheckIds, ...checks.map(check => check.id)])
+    let index = checks.length + 1
+    let id = `check-${String(index)}`
+    while (existingIds.has(id)) id = `check-${String(++index)}`
+    setChecks(current => [...current, { id, original: null, name: '', program: '', argumentsText: '', cwd: '.', timeoutMs: '30000', severity: 'required', expectedExitCodes: '0' }])
+  }
   return (
     <form className={css.commandCard} aria-label={props.t('case.reviseTitle')} onSubmit={(event) => {
       event.preventDefault()
-      if (!ready) return
+      const nextErrors = validationErrors()
+      setErrors(nextErrors)
+      if (!ready || nextErrors.length > 0) return
       const input = {
         title: title.trim(),
         revision: {
-          outcome: outcome.trim(),
-          context: context.trim(),
+          outcome: outcome === initialOutcome ? revision.outcome : outcome.trim(),
+          context: context === initialContext ? revision.context : context.trim(),
           allowedScope,
-          forbiddenScope: [],
+          forbiddenScope: revision.forbiddenScope,
           acceptanceClauses,
-          openDecisions: [],
-          baseSelectionRule: { kind: 'ref-head' as const, ref: 'refs/heads/main' },
-          verificationSource: null,
-          referenceLinks: [],
+          openDecisions: revision.openDecisions,
+          baseSelectionRule,
+          verificationSource,
+          referenceLinks: revision.referenceLinks,
         },
       }
       void props.reviseCase({
@@ -242,7 +379,33 @@ function CaseForm(props: Pick<DeliveryWorkspaceProps, 'reviseCase' | 't'> & {
         <label><span>{props.t('case.scope')}</span><textarea value={scope} disabled={props.busy} onChange={(event) => { setScope(event.currentTarget.value) }} /></label>
         <label><span>{props.t('case.acceptance')}</span><textarea value={acceptance} disabled={props.busy} onChange={(event) => { setAcceptance(event.currentTarget.value) }} /></label>
       </div>
-      <button type="submit" disabled={!ready}>{props.t('case.revise')}</button>
+      <div className={css.twoFields}>
+        <label><span>{props.t('case.baseKind')}</span><select value={baseKind} disabled={props.busy} onChange={(event) => { setBaseKind(event.currentTarget.value as BaseSelectionKind) }}><option value="ref-head">{props.t('case.base.refHead')}</option><option value="commit">{props.t('case.base.commit')}</option></select></label>
+        <label><span>{props.t(baseKind === 'commit' ? 'case.commit' : 'case.ref')}</span><input value={baseValue} disabled={props.busy} onChange={(event) => { setBaseValue(event.currentTarget.value) }} /></label>
+      </div>
+      <label><span>{props.t('case.verificationSource')}</span><select value={verificationKind} disabled={props.busy} onChange={(event) => { setVerificationKind(event.currentTarget.value as VerificationSourceKind) }}><option value="git-blob">{props.t('case.source.gitBlob')}</option><option value="contract-field">{props.t('case.source.contractField')}</option></select></label>
+      {verificationKind === 'git-blob'
+        ? <label><span>{props.t('case.planPath')}</span><input value={verificationPath} disabled={props.busy} onChange={(event) => { setVerificationPath(event.currentTarget.value) }} /></label>
+        : <fieldset className={css.clauses}>
+          <legend>{props.t('case.inlineChecks')}</legend>
+          {checks.map((check, index) => <section key={check.id} className={css.commandCard}>
+            <label><span>{props.t('case.checkName')}</span><input value={check.name} disabled={props.busy} onChange={(event) => { updateCheck(index, { name: event.currentTarget.value }) }} /></label>
+            <label><span>{props.t('case.checkProgram')}</span><input value={check.program} disabled={props.busy} onChange={(event) => { updateCheck(index, { program: event.currentTarget.value }) }} /></label>
+            <label><span>{props.t('case.checkArguments')}</span><textarea value={check.argumentsText} disabled={props.busy} onChange={(event) => { updateCheck(index, { argumentsText: event.currentTarget.value }) }} /></label>
+            <div className={css.twoFields}>
+              <label><span>{props.t('case.checkCwd')}</span><input value={check.cwd} disabled={props.busy} onChange={(event) => { updateCheck(index, { cwd: event.currentTarget.value }) }} /></label>
+              <label><span>{props.t('case.checkTimeout')}</span><input inputMode="numeric" value={check.timeoutMs} disabled={props.busy} onChange={(event) => { updateCheck(index, { timeoutMs: event.currentTarget.value }) }} /></label>
+            </div>
+            <div className={css.twoFields}>
+              <label><span>{props.t('case.checkSeverity')}</span><select value={check.severity} disabled={props.busy} onChange={(event) => { updateCheck(index, { severity: event.currentTarget.value as InlineCheck['severity'] }) }}><option value="required">{props.t('case.check.required')}</option><option value="optional">{props.t('case.check.optional')}</option></select></label>
+              <label><span>{props.t('case.checkExitCodes')}</span><input inputMode="numeric" value={check.expectedExitCodes} disabled={props.busy} onChange={(event) => { updateCheck(index, { expectedExitCodes: event.currentTarget.value }) }} /></label>
+            </div>
+            <button type="button" disabled={props.busy} onClick={() => { setChecks(current => current.filter((_check, candidate) => candidate !== index)) }}>{props.t('case.removeCheck')}</button>
+          </section>)}
+          <button type="button" disabled={props.busy} onClick={addCheck}>{props.t('case.addCheck')}</button>
+        </fieldset>}
+      {errors.map(error => <p key={error} className={css.muted} role="alert">{props.t(error)}</p>)}
+      <button type="submit" disabled={props.busy}>{props.t('case.revise')}</button>
     </form>
   )
 }
