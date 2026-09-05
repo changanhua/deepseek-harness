@@ -68,6 +68,10 @@
       "risk": {
         "level": "medium",
         "points": 5
+      },
+      "heatmap": {
+        "architectureCentrality": 2,
+        "dataMigrationRisk": 1
       }
     },
     {
@@ -105,8 +109,10 @@
         ".github/workflows/release.yml",
         "scripts/ci-workflow.spec.ts",
         "scripts/fork-windows-workflow.spec.ts",
+        "scripts/generate-divergence-report.ts",
         "scripts/run-fork-c0-diff.spec.ts",
-        "scripts/run-fork-c0-diff.ts"
+        "scripts/run-fork-c0-diff.ts",
+        "scripts/upstream-compatibility-report.spec.ts"
       ],
       "reason": "The public personal fork must not inherit official-repository write automation or Linux deployment assumptions; Windows 10 is the supported local runtime.",
       "whyPluginIsInsufficient": "GitHub Actions permissions and runner selection are evaluated outside the DSH plugin runtime.",
@@ -116,10 +122,11 @@
       "securityEffect": "Owner guards and read-only permissions remove inherited write authority; Linux remains advisory.",
       "tests": [
         "scripts/ci-workflow.spec.ts",
-        "scripts/fork-windows-workflow.spec.ts"
+        "scripts/fork-windows-workflow.spec.ts",
+        "scripts/upstream-compatibility-report.spec.ts"
       ],
       "upstreamCanaryTests": [
-        "pnpm exec vitest run scripts/ci-workflow.spec.ts scripts/fork-windows-workflow.spec.ts"
+        "pnpm exec vitest run scripts/ci-workflow.spec.ts scripts/fork-windows-workflow.spec.ts scripts/upstream-compatibility-report.spec.ts"
       ],
       "migrationPlan": "Retain fork-owned workflow entry points while selectively importing upstream job improvements.",
       "rollbackPlan": "Disable the fork workflows before restoring any official workflow file; never restore write permissions implicitly.",
@@ -127,6 +134,7 @@
       "upstreamIssueOrPr": null,
       "expiryReviewDate": "2026-12-05",
       "knownMergeConflicts": [
+        ".github/workflows/ci-upstream-watch.yml",
         ".github/workflows/ci.yml",
         ".github/workflows/release.yml"
       ],
@@ -134,6 +142,10 @@
       "risk": {
         "level": "high",
         "points": 8
+      },
+      "heatmap": {
+        "architectureCentrality": 4,
+        "dataMigrationRisk": 1
       }
     },
     {
@@ -210,6 +222,10 @@
       "risk": {
         "level": "critical",
         "points": 10
+      },
+      "heatmap": {
+        "architectureCentrality": 4,
+        "dataMigrationRisk": 2
       }
     },
     {
@@ -262,6 +278,10 @@
       "risk": {
         "level": "high",
         "points": 7
+      },
+      "heatmap": {
+        "architectureCentrality": 4,
+        "dataMigrationRisk": 1
       }
     },
     {
@@ -321,6 +341,10 @@
       "risk": {
         "level": "high",
         "points": 8
+      },
+      "heatmap": {
+        "architectureCentrality": 3,
+        "dataMigrationRisk": 1
       }
     },
     {
@@ -374,6 +398,10 @@
       "risk": {
         "level": "medium",
         "points": 5
+      },
+      "heatmap": {
+        "architectureCentrality": 3,
+        "dataMigrationRisk": 1
       }
     },
     {
@@ -419,6 +447,10 @@
       "risk": {
         "level": "high",
         "points": 7
+      },
+      "heatmap": {
+        "architectureCentrality": 4,
+        "dataMigrationRisk": 1
       }
     },
     {
@@ -482,6 +514,10 @@
       "risk": {
         "level": "high",
         "points": 7
+      },
+      "heatmap": {
+        "architectureCentrality": 4,
+        "dataMigrationRisk": 2
       }
     },
     {
@@ -537,6 +573,10 @@
       "risk": {
         "level": "medium",
         "points": 5
+      },
+      "heatmap": {
+        "architectureCentrality": 4,
+        "dataMigrationRisk": 1
       }
     },
     {
@@ -588,6 +628,10 @@
       "risk": {
         "level": "medium",
         "points": 4
+      },
+      "heatmap": {
+        "architectureCentrality": 2,
+        "dataMigrationRisk": 1
       }
     }
   ]

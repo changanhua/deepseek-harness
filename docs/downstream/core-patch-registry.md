@@ -58,9 +58,10 @@ An expired or over-budget registry pauses new private core work. Remove or repla
 ## Further Exploration
 
 - [Fork divergence record](../../FORK-DIVERGENCE.md)
+- [Upstream compatibility canary](upstream-compatibility.md)
 - [Repository-owned npm identity](../../.agents/notes/implemented/process/2026-09-04-repository-owned-npm-scope.md)
 - [Core patch budget decision](../../.agents/notes/implemented/process/2026-09-05-downstream-core-patch-budget.md)
 
 ## Dev Note
 
-The latest-upstream canary and compatibility heatmap consume this registry in the next governance phase; they are not evidence that the current supported base has changed.
+The latest-upstream canary and compatibility heatmap consume this registry without changing the supported base. A maintainer admits a new base only through a separate reviewed baseline update.

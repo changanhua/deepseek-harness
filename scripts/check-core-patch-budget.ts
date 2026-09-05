@@ -52,6 +52,7 @@ interface CorePatch {
   readonly knownMergeConflicts: readonly string[]
   readonly lastRevalidatedUpstreamSha: string
   readonly risk: { readonly level: 'low' | 'medium' | 'high' | 'critical'; readonly points: number }
+  readonly heatmap: { readonly architectureCentrality: number; readonly dataMigrationRisk: number }
 }
 
 interface CorePatchRegistry {
@@ -289,11 +290,22 @@ export function validateCorePatchDocuments(baseline: unknown, registry: unknown)
       || Number(risk.points) > 10) {
       errors.push(`${label}.risk must contain level and 1-10 points`)
     }
+    const heatmap = candidate.heatmap
+    if (!isRecord(heatmap)
+      || !Number.isInteger(heatmap.architectureCentrality)
+      || Number(heatmap.architectureCentrality) < 1
+      || Number(heatmap.architectureCentrality) > 4
+      || !Number.isInteger(heatmap.dataMigrationRisk)
+      || Number(heatmap.dataMigrationRisk) < 1
+      || Number(heatmap.dataMigrationRisk) > 4) {
+      errors.push(`${label}.heatmap factors must be integers from 1 to 4`)
+    }
   }
   return errors
 }
 
-function patternMatches(pattern: string, path: string): boolean {
+/** Match one validated registry pattern against a repository-relative path. */
+export function matchesCorePatchPath(pattern: string, path: string): boolean {
   const expression = pattern
     .split('/')
     .map(segment => segment === '**'
@@ -334,7 +346,7 @@ function personalPackageDirectories(root: string): string[] {
 
 function ownedAddition(path: string, personalDirectories: readonly string[], patterns: readonly string[]): boolean {
   return personalDirectories.some(directory => path === directory || path.startsWith(`${directory}/`))
-    || patterns.some(pattern => patternMatches(pattern, path))
+    || patterns.some(pattern => matchesCorePatchPath(pattern, path))
 }
 
 function upstreamModifiedPaths(
@@ -405,7 +417,9 @@ export function checkCorePatchGovernance(
     typedRegistry.downstreamOwnedAdditions,
   )
   const registeredPatterns = active.flatMap(patch => patch.affectedFiles)
-  const unregisteredUpstreamPaths = modifiedPaths.filter(path => !registeredPatterns.some(pattern => patternMatches(pattern, path)))
+  const unregisteredUpstreamPaths = modifiedPaths.filter(
+    path => !registeredPatterns.some(pattern => matchesCorePatchPath(pattern, path)),
+  )
 
   if (!objectExists(root, typedBaseline.recordedPersonalHeadSha)) {
     errors.push(`recorded personal head is absent: ${typedBaseline.recordedPersonalHeadSha}`)
@@ -465,7 +479,7 @@ export function checkCorePatchGovernance(
         errors.push(`${patch.id}: registered test resolves outside the repository: ${test}`)
       }
     }
-    if (!patch.affectedFiles.some(pattern => modifiedPaths.some(path => patternMatches(pattern, path)))) {
+    if (!patch.affectedFiles.some(pattern => modifiedPaths.some(path => matchesCorePatchPath(pattern, path)))) {
       errors.push(`${patch.id}: active patch does not cover an upstream-owned modified path`)
     }
   }

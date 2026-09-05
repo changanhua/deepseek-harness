@@ -58,9 +58,10 @@ pnpm run check:core-patches
 ## 进一步探索
 
 - [Fork divergence 记录](../../FORK-DIVERGENCE.md)
+- [上游兼容性 canary](upstream-compatibility.zh.md)
 - [仓库拥有的 npm 身份](../../.agents/notes/implemented/process/2026-09-04-repository-owned-npm-scope.zh.md)
 - [Core patch 预算决定](../../.agents/notes/implemented/process/2026-09-05-downstream-core-patch-budget.zh.md)
 
 ## Dev Note
 
-下一治理阶段由 latest-upstream canary 与 compatibility heatmap 消费本 registry；它们并不证明当前受支持基线已经变化。
+latest-upstream canary 与 compatibility heatmap 会消费本 registry，但不会改变受支持基线。只有经过单独审查的基线更新才能准入新的 base。

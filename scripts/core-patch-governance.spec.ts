@@ -93,6 +93,7 @@ function fixturePatch(base: string): Record<string, unknown> {
     knownMergeConflicts: ['packages/core/example/src/index.ts'],
     lastRevalidatedUpstreamSha: base,
     risk: { level: 'low', points: 1 },
+    heatmap: { architectureCentrality: 1, dataMigrationRisk: 1 },
   }
 }
 
