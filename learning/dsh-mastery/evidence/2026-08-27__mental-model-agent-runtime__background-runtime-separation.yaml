@@ -1,0 +1,51 @@
+version: 1
+unit: mental-model-agent-runtime
+capabilities:
+  - runtime_mental_model
+  - state_ownership
+  - capability_boundary
+recorded_at: "2026-08-27T15:38:37+08:00"
+
+attempt:
+  prompt_or_task: |
+    用户发起后台代码索引后立即关闭聊天和浏览器，10 分钟后重新打开 DSH。
+    回答：谁继续执行索引、谁保存进度、新 Agent 如何知道旧任务进度、Agent Loop 是否还需要活着。
+  prediction_before_reveal: |
+    后台任务的job，storage，读storage，被关闭了
+
+observations:
+  - claim: Learner now understands that the conversational Agent Loop does not need to remain alive for the background task to continue.
+    evidence: The answer states the Agent Loop is closed while the background work continues.
+  - claim: Learner correctly keeps progress in durable storage and has a new Agent read that storage to recover task status.
+    evidence: The answer says "storage" owns progress and the new Agent "读storage".
+  - claim: The remaining terminology gap is executor identity.
+    evidence: The answer names the "job" as the actor that continues execution. A Job is normally the persisted/scheduled work record; the active executor is a Worker / Job Runner / background runtime that claims and executes that Job.
+
+verification:
+  method: focused correction check on conversation-runtime vs background-runtime separation
+  result: pass
+
+evidence_items:
+  answer_unseen_background_task_analysis: pass
+
+assessment:
+  strengths:
+    - Correct separation between conversation lifetime and background work lifetime.
+    - Correct durable progress ownership.
+    - Correct recovery path for a newly created Agent.
+  misconceptions:
+    - Distinguish the durable Job record from the Worker/Job Runner that executes it.
+  demonstrated:
+    runtime_mental_model: pass
+    state_ownership: pass
+    capability_boundary: partial
+  routing:
+    ready_for: []
+    revisit:
+      - mental-model-agent-runtime
+
+artifacts:
+  commits: []
+  files: []
+  prs:
+    - "#9"

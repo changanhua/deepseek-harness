@@ -1,0 +1,50 @@
+version: 1
+unit: mental-model-agent-runtime
+capabilities:
+  - runtime_mental_model
+  - capability_boundary
+recorded_at: "2026-08-27T15:44:08+08:00"
+
+attempt:
+  prompt_or_task: |
+    TaskQueueService 当前把任务存在 SQLite，以后可能换 PostgreSQL。
+    分别说明 Tool、Service、Provider、Storage，并指出哪一层不一定需要。
+  prediction_before_reveal: |
+    tool是模型操作任务，service是任务队列的边界，provider是具体实现的提供者接口，它的实现可以是sqlite也可是postgresql这类storage
+
+observations:
+  - claim: Learner correctly identifies Tool as the model-facing command surface.
+    evidence: The answer says Tool is how the model operates tasks.
+  - claim: Learner correctly identifies Service as the task-queue capability boundary.
+    evidence: The answer explicitly describes Service as the task-queue boundary rather than the concrete database implementation.
+  - claim: Learner now separates replaceable implementation from the Service contract.
+    evidence: The answer places SQLite/PostgreSQL behind a provider/implementation boundary instead of making the Service itself equal to one database.
+  - claim: The Provider layer is optional terminology/indirection rather than a mandatory layer in every DSH capability.
+    evidence: In this scenario replaceability is useful, but the same design could also use a storage adapter/interface without introducing a distinct DSH Provider abstraction.
+
+verification:
+  method: teacher transfer check after two earlier partial attempts
+  result: pass
+
+evidence_items:
+  explain_why_task_queue_is_not_only_tools: pass
+
+assessment:
+  strengths:
+    - Correct Tool versus Service separation.
+    - Correct capability boundary versus concrete storage implementation separation.
+    - Correctly recognizes SQLite/PostgreSQL as replaceable storage backends.
+  misconceptions: []
+  demonstrated:
+    runtime_mental_model: pass
+    capability_boundary: pass
+  routing:
+    ready_for:
+      - trace-real-request
+    revisit: []
+
+artifacts:
+  commits: []
+  files: []
+  prs:
+    - "#9"

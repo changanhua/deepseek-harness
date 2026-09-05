@@ -1,0 +1,58 @@
+version: 1
+unit: mental-model-agent-runtime
+capabilities:
+  - runtime_mental_model
+  - state_ownership
+  - capability_boundary
+recorded_at: "2026-08-27T14:58:14+08:00"
+
+attempt:
+  prompt_or_task: |
+    为 DSH 设计一个后台代码索引器的心智模型：扫描可能持续 20 分钟，
+    用户可以继续聊天、查询进度，DSH 重启后不能丢任务。
+    回答 SEE / ACT / OWN / SURVIVE，以及 Tool、Service、持久化状态和 Agent Loop 的职责。
+  prediction_before_reveal: |
+    see是提示词、上下文、tool scheme，act是tool/command，own是durable storage，survive是索引能力。tool:操作当前索引库，service是具体扫描和建立索引的方法，持久化当前索引结果和索引任务状态。loop负责协调调用以维持异步索引
+
+observations:
+  - claim: Learner now correctly distinguishes the model-facing SEE and ACT surfaces.
+    evidence: The answer identifies prompt/context/tool schema for SEE and Tool/command for ACT.
+  - claim: Learner correctly places authoritative task/index state in durable storage.
+    evidence: The answer says current index results and indexing task state should be persisted.
+  - claim: SURVIVE is still interpreted as a capability rather than as facts/state that must outlive a lifetime boundary.
+    evidence: The answer says "survive是索引能力" instead of naming the job record, progress/checkpoint, index artifacts, or other durable facts that must survive session/process restart.
+  - claim: Agent Loop is still assigned ownership of long-running asynchronous work.
+    evidence: The answer says the loop coordinates calls "to maintain asynchronous indexing". The conversational loop may dispatch the start/query Tool calls, but the background worker/service/job runtime must continue independently of the active model turn or session.
+  - claim: Service responsibility is directionally correct but still described too narrowly as a concrete scanning method.
+    evidence: A Service is better treated as the indexing/job capability boundary; concrete scanning/index-building implementations may sit behind that boundary and may optionally be replaceable providers.
+
+verification:
+  method: transfer review on an unseen background-indexer scenario
+  result: partial
+
+evidence_items:
+  answer_unseen_background_task_analysis: partial
+
+assessment:
+  strengths:
+    - SEE and ACT are now separated correctly.
+    - Durable storage is correctly identified as authoritative owner for long-lived job/index state.
+    - The answer recognizes that both task state and produced index results need persistence.
+  misconceptions:
+    - SURVIVE names the durable facts that must cross turn/session/process/machine boundaries, not the abstract indexing capability itself.
+    - Agent Loop must not be the component that keeps a 20-minute background job alive; otherwise closing the session or losing the loop would threaten the work.
+    - Service is a capability/domain boundary, not merely one concrete scanning method; implementation/provider indirection is optional and should exist only when useful.
+  demonstrated:
+    runtime_mental_model: partial
+    state_ownership: pass
+    capability_boundary: partial
+  routing:
+    ready_for: []
+    revisit:
+      - mental-model-agent-runtime
+
+artifacts:
+  commits: []
+  files: []
+  prs:
+    - "#9"
