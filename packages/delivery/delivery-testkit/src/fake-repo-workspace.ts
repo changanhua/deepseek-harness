@@ -114,6 +114,12 @@ export class FakeChangeWorkspaceLease extends FakeWorkspaceLeaseLifecycle implem
 
 /** Exact-target fake lease with recorded close calls. */
 export class FakeVerificationWorkspaceLease extends FakeWorkspaceLeaseLifecycle implements VerificationWorkspaceLease {
+  /** Fake checkouts assume unchanged inputs while their scripted lease remains open. */
+  async assertUnchanged(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
+    this.assertOpen()
+  }
+
   constructor(
     readonly ownerAttemptId: QueueAttemptIdRef,
     readonly repositoryId: RepositoryId,

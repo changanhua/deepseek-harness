@@ -656,6 +656,30 @@ describe('local Git repository workspace', () => {
     }
   })
 
+  it.each(['--skip-worktree', '--assume-unchanged', 'inspection-failed'] as const)('rejects unverifiable tracked inputs: %s', async (mode) => {
+    const { repository, firstCommit } = await fixtureRepository()
+    const ctx = new Context()
+    new TestSubprocessRuntime(ctx, spec => mode === 'inspection-failed' && spec.argv.includes('ls-files'))
+    const repositoryId = RepositoryId('verification-integrity')
+    const provider = new GitLocalRepositoryWorkspace(ctx, {
+      repositories: { [repositoryId]: repository },
+      worktreeRoot: await temporaryRoot('dsh-verification-integrity'),
+    })
+    try {
+      const base = await provider.inspectRevision({ repositoryId, commit: firstCommit })
+      const lease = await provider.openVerification({ ownerAttemptId: QueueAttemptIdRef('integrity'), base, target: base })
+      if (mode !== 'inspection-failed') {
+        await fixtureGit(lease.cwd, 'update-index', mode, 'tracked.txt')
+        await writeFile(join(lease.cwd, 'tracked.txt'), 'hidden edit')
+      }
+      await expect(lease.assertUnchanged()).rejects.toMatchObject({ code: 'verification-drift' })
+      await lease.close('preserve')
+      await expect(access(lease.cwd)).resolves.toBeUndefined()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('opens an idempotent exact-target verification lease without changing owner purpose', async () => {
     const { repository, firstCommit } = await fixtureRepository()
     await writeFile(join(repository, 'tracked.txt'), 'verification target\n')
@@ -690,14 +714,17 @@ describe('local Git repository workspace', () => {
       targetCommit,
     })
     expect(await fixtureGit(lease.cwd, 'rev-parse', 'HEAD')).toBe(targetCommit)
+    await expect(lease.assertUnchanged()).resolves.toBeUndefined()
     expect(lease.cwd).not.toBe(other.cwd)
     await expect(workspace.openChange({ ownerAttemptId, base })).rejects.toMatchObject({ code: 'owner-conflict' })
     await expect(workspace.openVerification({ ownerAttemptId, base, target: base }))
       .rejects.toMatchObject({ code: 'owner-conflict' })
     await lease.close('preserve')
+    await expect(lease.assertUnchanged()).rejects.toMatchObject({ code: 'owner-conflict' })
     await lease.close('preserve')
     await expect(lease.close('remove')).rejects.toMatchObject({ code: 'owner-conflict' })
     const firstRemoval = other.close('remove')
+    await expect(other.assertUnchanged()).rejects.toMatchObject({ code: 'owner-conflict' })
     const repeatedRemoval = other.close('remove')
     await expect(other.close('preserve')).rejects.toMatchObject({ code: 'owner-conflict' })
     await expect(Promise.all([firstRemoval, repeatedRemoval])).resolves.toEqual([undefined, undefined])

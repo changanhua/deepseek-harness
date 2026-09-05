@@ -442,6 +442,30 @@ export class GitLocalRepositoryWorkspace extends RepositoryWorkspace {
       request.base.commit,
       request.target.commit,
       cwd,
+      async (signal) => {
+        await assertSamePhysicalDirectory(checkoutDirectory, 'owner-conflict')
+        await this.verifyLeaseMarker(owner.path, marker, 'owner-conflict')
+        await this.verifyRecoveredCheckout(repository, cwd, request.target.commit, signal)
+        const flags = await this.runGit(cwd, ['ls-files', '-v', '-z'], signal)
+        if (flags.outcome.exitCode !== 0) {
+          throw new RepositoryWorkspaceError('verification-drift', 'Git could not inspect verification index flags')
+        }
+        // Skip-worktree and assume-unchanged can hide tracked edits from Git diff.
+        const entries = new TextDecoder('utf-8', { fatal: true }).decode(flags.stdout).split('\0')
+        if (entries.some(entry => /^[a-zS]/u.test(entry))) {
+          throw new RepositoryWorkspaceError('verification-drift', 'verification index must not hide tracked inputs')
+        }
+        for (const indexArgs of [[], ['--cached']]) {
+          const diff = await this.runGit(cwd, [
+            '-c', 'core.fsmonitor=false', '-c', 'core.ignoreStat=false',
+            'diff', '--no-ext-diff', '--no-textconv', '--ignore-submodules=none',
+            '--exit-code', '--quiet', ...indexArgs, request.target.commit, '--',
+          ], signal)
+          if (diff.outcome.exitCode !== 0) {
+            throw new RepositoryWorkspaceError('verification-drift', 'verification index or tracked inputs differ from the target commit')
+          }
+        }
+      },
       disposition => this.closeLease(repository, rootDirectory, owner, checkoutDirectory, marker, disposition),
       forgetOnRemove,
     )
@@ -856,6 +880,7 @@ class GitChangeWorkspaceLease implements ChangeWorkspaceLease {
 
 class GitVerificationWorkspaceLease implements VerificationWorkspaceLease {
   private closed: RepositoryWorkspaceDisposition | undefined
+  private active: Promise<void> = Promise.resolve()
   private closing: { readonly disposition: RepositoryWorkspaceDisposition; readonly promise: Promise<void> } | undefined
 
   constructor(
@@ -864,9 +889,19 @@ class GitVerificationWorkspaceLease implements VerificationWorkspaceLease {
     readonly baseCommit: GitCommitIdType,
     readonly targetCommit: GitCommitIdType,
     readonly cwd: string,
+    private readonly inspectUnchanged: (signal?: AbortSignal) => Promise<void>,
     private readonly closeWorkspace: (disposition: RepositoryWorkspaceDisposition) => Promise<void>,
     private readonly forgetOnRemove: () => void,
   ) {}
+
+  assertUnchanged(signal?: AbortSignal): Promise<void> {
+    if (this.closed !== undefined || this.closing !== undefined) {
+      return Promise.reject(new RepositoryWorkspaceError('owner-conflict', 'verification workspace is closing or closed'))
+    }
+    const operation = this.active.then(() => this.inspectUnchanged(signal))
+    this.active = operation.then(() => undefined, () => undefined)
+    return operation
+  }
 
   close(disposition: RepositoryWorkspaceDisposition): Promise<void> {
     if (this.closed !== undefined) {
@@ -879,7 +914,7 @@ class GitVerificationWorkspaceLease implements VerificationWorkspaceLease {
         ? this.closing.promise
         : Promise.reject(new RepositoryWorkspaceError('owner-conflict', 'workspace is closing with another disposition'))
     }
-    const promise = this.closeWorkspace(disposition).then(() => {
+    const promise = this.active.then(() => this.closeWorkspace(disposition)).then(() => {
       this.closed = disposition
       if (disposition === 'remove') this.forgetOnRemove()
     })

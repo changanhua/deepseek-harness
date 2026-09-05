@@ -40,6 +40,8 @@ const verdict = await run.done
 
 验证器只会执行可信 `WorkPacket` 计划中已有的固定 `argv`。验证结果是持久化的 `VerificationVerdict`；它只为人工决策提供证据，绝不会自动作出验收决定。
 
+验证器会在每项检查前，以及其进程树和输出发布结束后，等待 lease 的 `assertUnchanged()`。HEAD、索引或已跟踪输入发生变化，或完整性检查失败时，`done` 会以 `workspace-integrity` 拒绝，停止后续检查，并保留检出目录供 operator 检查。Queue 桥接器记录验证失败，因此普通验收没有可使用的通过判定。允许未跟踪构建输出；改写已跟踪生成文件的检查不属于针对未变目标的验证。
+
 各项检查按顺序运行；验证器既不进行 shell 插值，也不覆盖环境变量。`Subprocess` 提供方会使用已剔除凭据的父进程环境，强制执行进程树范围的终止，并公开彼此独立的退出结果。每条保存的 `verification-output` 记录都包含进程结果以及保留的 `stdout` 和 `stderr`，并在 UTF-8 边界裁剪到配置的总字节预算。
 
 `disposeGraceMs` 必须是正整数，且不能超过平台计时器上限。`verificationOutputBytes` 必须是正安全整数，且不能超过 `MAX_VERIFICATION_OUTPUT_BYTES`（64 MiB）。Queue 桥接器默认给每项检查分配 64 KiB 输出预算；调用此函数时必须显式传入这两个部署限制。
@@ -49,7 +51,7 @@ const verdict = await run.done
 
 Queue 桥接器先要求声明的状态为 `completed`，证明 `claim.packetId === packet.id` 和 `claim.checkpointCommit === resolved.targetCommit`，再将其作为 `CompletedChangeClaim` 传入；它还会传入当前的 `verificationQueueWorkId` 与 `verificationQueueAttemptId`。执行前，验证器会在运行时校验 `ContractRevision`、`WorkPacket`、声明、已解析目标、可信计划以及 worktree 租约标识。`claim.evidenceIds` 中的每个标识都是必需输入；证据缺失、大小不符、摘要不符或来源错误都会生成 Protocol 检查结果，并使判定失败。
 
-`inspectRange(signal)` 会为精确的基准提交与目标提交独立推导祖先关系和完整的变更路径集合。它返回后，验证器会立即校验标识、祖先标志与规范化路径，去除重复路径，并在下一项异步操作前冻结一份由自身持有的快照，防止提供方继续改写原对象。`openWorkspace(signal)` 会打开固定到该目标提交、仅供读取和执行的检出目录。`resolveEvidence(id, signal)` 与 `readEvidence(ref, signal)` 会在重启后贯通从持久标识到证据字节的完整性校验。`evidenceFor(checkId)` 提供已绑定来源信息的写入器；验证器还要求每个输出引用都精确匹配 `WorkPacket`、验证 Queue 工作、验证尝试和检查。这些函数只服务于本次操作，不会新增 Cordis 能力。
+`inspectRange(signal)` 会为精确的基准提交与目标提交独立推导祖先关系和完整的变更路径集合。它返回后，验证器会立即校验标识、祖先标志与规范化路径，去除重复路径，并在下一项异步操作前冻结一份由自身持有的快照，防止提供方继续改写原对象。`openWorkspace(signal)` 会打开位于该目标提交的隔离检出目录，并提供由 provider 负责的完整性断言。`resolveEvidence(id, signal)` 与 `readEvidence(ref, signal)` 会在重启后贯通从持久标识到证据字节的完整性校验。`evidenceFor(checkId)` 提供已绑定来源信息的写入器；验证器还要求每个输出引用都精确匹配 `WorkPacket`、验证 Queue 工作、验证尝试和检查。这些函数只服务于本次操作，不会新增 Cordis 能力。
 
 启动任何进程前，验证器会要求 worktree 的 `ownerAttemptId` 等于 `verificationQueueAttemptId`，并对每个仓库相对的 `VerificationCheck.cwd` 调用 `lstat` 与 `realpath`。工作目录必须是租约根目录内的物理目录；任何通过符号链接或 Windows 目录联接跳出根目录的路径都会被拒绝。验证器不会在目标检出目录中重新发现计划，只会执行 `WorkPacket` 中已经解析的检查。
 
@@ -77,6 +79,7 @@ Queue 桥接器先要求声明的状态为 `completed`，证明 `claim.packetId 
 <a id="known-limitations-and-deferred-work"></a>
 
 - **验证提供隔离，但不是代码沙箱**——固定命令可以在由变更尝试持有的检出目录内执行仓库代码；部署方仍负责选择 `Subprocess` 提供方，并配置操作系统级约束。
+- **完整性在检查之间观察**——单项检查内部修改后恢复、Git clean filter 等价内容以及同用户并发写入，需要更强的部署隔离。执行或输出发布错误本身已阻止判定，但可能跳过后置完整性检查，并沿用普通的停稳后清理行为。
 - **验证器不在运行时发现计划**——任意 shell 文本、仓库提供的可执行策略和模型生成命令都不属于此包。
 - **验收仍由人工负责**——通过的判定不会调用 `recordAcceptanceDecision`，也不能合并或接受交付。
 

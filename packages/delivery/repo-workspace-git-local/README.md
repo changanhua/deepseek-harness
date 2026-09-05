@@ -33,6 +33,8 @@ Choose this provider for one-host repositories whose configured path is the exac
 
 A successful checkpoint is retained under the provider-owned `refs/changanhua/delivery/checkpoints/<commit>` namespace before the lease can be removed. These local Git references preserve the commit and its reachable objects through worktree cleanup, provider restart, and Git garbage collection. A reference-write failure rejects the checkpoint; the Delivery runner preserves the checkout for recovery. The provider updates references without following symbolic references, so retention cannot redirect a write into a user branch.
 
+Verification leases recheck physical checkout ownership, Git repository identity, HEAD, index, and tracked content through `assertUnchanged()`. Both the index and checkout must match the target under Git comparison semantics. Skip-worktree and assume-unchanged flags are rejected because they can hide tracked edits. Untracked and ignored build outputs are permitted; generated files already tracked by Git remain protected inputs.
+
 ### Configuration
 
 | Field | Default | Meaning |
@@ -89,6 +91,7 @@ None; this package never assembles model input.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **Local execution world only** — remote workspaces and multi-host leases require another provider and lifecycle decision.
+- **Point-in-time integrity only** — checks are not an OS sandbox, do not prove raw-byte equivalence across Git clean filters, and cannot detect an edit restored within one check. Host Git configuration, executable discovery, and same-user background writers remain deployment trust concerns.
 - **Preserved worktrees require operator action** — an uncertain Attempt keeps its checkout; this provider does not authorize retry or invent success.
 - **Checkpoint retention is local and indefinite** — lease cleanup never removes checkpoint references. They are not a remote backup or an automatic repair of historical unreferenced checkpoints. Releasing retained objects requires an operator's explicit retention decision; there is no automatic expiry or release API.
 

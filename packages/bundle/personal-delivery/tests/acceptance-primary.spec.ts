@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -401,7 +401,15 @@ describe('Personal Delivery acceptance harness', () => {
     }
   })
 
-  it('carries one human Case through approval, execution, verification, acceptance, and restart', { timeout: 30_000 }, async () => {
+  it.each([
+    ['clean', 'process.exit(0)', false],
+    ['tracked-edit', "require('node:fs').writeFileSync('src/accepted.txt', 'tampered')", true],
+    ['index-edit', "require('node:fs').writeFileSync('src/accepted.txt', 'staged'); require('node:child_process').execFileSync('git', ['add', 'src/accepted.txt'])", true],
+    ['index-only', "const fs = require('node:fs'); const original = fs.readFileSync('src/accepted.txt'); fs.writeFileSync('src/accepted.txt', 'staged'); require('node:child_process').execFileSync('git', ['add', 'src/accepted.txt']); fs.writeFileSync('src/accepted.txt', original)", true],
+    ['hidden-edit', "require('node:child_process').execFileSync('git', ['update-index', '--assume-unchanged', 'src/accepted.txt']); require('node:fs').writeFileSync('src/accepted.txt', 'tampered')", true],
+    ['head-change', "require('node:child_process').execFileSync('git', ['checkout', '--detach', 'HEAD^'])", true],
+    ['generated', "require('node:fs').writeFileSync('build-output.txt', 'generated')", false],
+  ] as const)('carries one human Case through verification integrity (%s), acceptance, and restart', { timeout: 30_000 }, async (_scenario, checkScript, drift) => {
     const temp = await mkdtemp(join(tmpdir(), 'dsh-delivery-case-acceptance-'))
     const repository = join(temp, 'repository')
     let ctx: Context | undefined
@@ -436,7 +444,15 @@ describe('Personal Delivery acceptance harness', () => {
             checks: [{
               id: VerificationCheckId('human-case-node-smoke'),
               name: 'Node smoke',
-              argv: ['node', '-e', 'process.exit(0)'],
+              argv: ['node', '-e', checkScript],
+              cwd: '.',
+              timeoutMs: 5_000,
+              severity: 'required',
+              expectedExitCodes: [0],
+            }, {
+              id: VerificationCheckId('human-case-second-check'),
+              name: 'Second check',
+              argv: ['node', '-e', "require('node:fs').writeFileSync('second-check.txt', 'ran')"],
               cwd: '.',
               timeoutMs: 5_000,
               severity: 'required',
@@ -474,15 +490,33 @@ describe('Personal Delivery acceptance harness', () => {
         packetId: packet.id,
         changeBindingId: change.id,
       }, signal)
-      await waitFor(() => operator.get(verification.queueWorkId as never).state.status === 'succeeded')
-      await expect(remote.recordDecision({
+      await waitFor(() => ['succeeded', 'failed'].includes(operator.get(verification.queueWorkId as never).state.status))
+      expect(operator.get(verification.queueWorkId as never).state.status).toBe(drift ? 'failed' : 'succeeded')
+      if (drift) {
+        expect(operator.get(verification.queueWorkId as never).state).toMatchObject({
+          failure: { category: 'delivery-verification-workspace-integrity' },
+        })
+        const worktrees = (await run('git', ['-C', repository, 'worktree', 'list', '--porcelain'])).stdout
+          .split('\n').filter(line => line.startsWith('worktree ')).map(line => line.slice('worktree '.length).trim())
+        expect(worktrees).toHaveLength(2)
+        const preserved = worktrees.find(path => resolve(path) !== resolve(repository))!
+        await expect(access(preserved)).resolves.toBeUndefined()
+        await expect(access(join(preserved, 'second-check.txt'))).rejects.toMatchObject({ code: 'ENOENT' })
+      } else {
+        expect(operator.get(verification.queueWorkId as never).result).toMatchObject({
+          output: { verificationVerdict: { status: 'passed' } },
+        })
+      }
+      const decision = remote.recordDecision({
         packetId: packet.id,
         changeBindingId: change.id,
         verificationBindingId: verification.id,
         decision: 'accepted',
         reason: 'The independent verdict and immutable evidence satisfy the Case.',
         decisionNonce: 'human-case-acceptance-1',
-      }, signal)).resolves.toMatchObject({ decision: 'accepted' })
+      }, signal)
+      if (drift) await expect(decision).rejects.toBeDefined()
+      else await expect(decision).resolves.toMatchObject({ decision: 'accepted' })
 
       await ctx.fiber.dispose()
       ctx = undefined
@@ -496,7 +530,14 @@ describe('Personal Delivery acceptance harness', () => {
       })
       expect(reopened.delivery.getWorkPacket(packet.id as never)).toMatchObject({ id: packet.id })
       expect(reopened.delivery.snapshot().requirementDecisions).toHaveLength(1)
-      expect(reopened.delivery.snapshot().acceptanceDecisions).toHaveLength(1)
+      expect(reopened.delivery.snapshot().acceptanceDecisions).toHaveLength(drift ? 0 : 1)
+      if (drift) {
+        const restoredRemote = reopened.get('deliveryRemote') as unknown as DeliveryRemoteOperations
+        await expect(restoredRemote.recordDecision({
+          packetId: packet.id, changeBindingId: change.id, verificationBindingId: verification.id,
+          decision: 'accepted', reason: 'Probe persisted verification refusal.', decisionNonce: 'post-restart-refusal',
+        }, signal)).rejects.toBeDefined()
+      }
     } finally {
       await ctx?.fiber.dispose()
       await reopened?.fiber.dispose()

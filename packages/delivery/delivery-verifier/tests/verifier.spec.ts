@@ -36,6 +36,37 @@ function startFixture(
 }
 
 describe('delivery verifier execution', () => {
+  it.each(['before', 'after', 'canceled'] as const)('rejects an unproven workspace %s a check and preserves it', async (phase) => {
+    const fixture = await createVerifierFixture()
+    const controller = new AbortController()
+    const spawn = vi.fn(() => settledSubprocessHandle())
+    const originalOpen = fixture.request.openWorkspace
+    let inspections = 0
+    const request: DeliveryVerificationRunRequest = {
+      ...fixture.request,
+      openWorkspace: async signal => ({
+        ...await originalOpen(signal),
+        async assertUnchanged() {
+          inspections += 1
+          if (phase === 'after' && inspections === 1) return
+          if (phase === 'canceled') controller.abort(new Error('canceled while inspecting'))
+          throw new Error('tracked input drift')
+        },
+      }),
+    }
+    try {
+      const run = createDeliveryVerifier({
+        subprocess: { spawn }, verifierVersion: 'integrity-test',
+        disposeGraceMs: 100, verificationOutputBytes: 4096,
+      })(request, controller.signal)
+      await expect(run.done).rejects.toMatchObject({ code: phase === 'canceled' ? 'canceled' : 'workspace-integrity' })
+      expect(spawn).toHaveBeenCalledTimes(phase === 'after' ? 1 : 0)
+      expect(fixture.close).toHaveBeenCalledExactlyOnceWith('preserve')
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
   it('executes the trusted fixed argv and produces a passed verdict', async () => {
     const fixture = await createVerifierFixture()
     try {
