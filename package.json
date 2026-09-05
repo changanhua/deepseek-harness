@@ -67,6 +67,7 @@
     "check:ci:windows-observational": "tsx scripts/run-gates.ts ci-windows-observational",
     "check:ci:fork-c0-diff": "tsx scripts/run-fork-c0-diff.ts",
     "check:package-identities": "tsx scripts/package-identities.ts",
+    "check:core-patches": "tsx scripts/check-core-patch-budget.ts",
     "check:node-compat": "tsx scripts/run-gates.ts node-compat",
     "knip": "knip --treat-config-hints-as-errors",
     "publint": "tsx scripts/publint-all.ts",

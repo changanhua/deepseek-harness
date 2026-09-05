@@ -1,11 +1,10 @@
 # Fork divergence record
 
-A human-readable record of deliberate differences between this fork and the official upstream, used as the reconciliation reference when merging upstream. The machine-checked [package identity registry](downstream/package-identities.json) owns npm scope, repository identity, and the explicit personal-package set.
+A human-readable record of deliberate differences between this fork and the official upstream, used as the reconciliation reference when merging upstream. The machine-checked [upstream baseline](upstream-base.json) owns Git revision facts, the [core patch registry](core-patches.json) owns bounded edits to upstream code, and the [package identity registry](downstream/package-identities.json) owns npm provenance and the explicit personal-package set.
 
 ## Identity
 
-- Supported upstream base: `cd5ef8148158c3a752a658978873241fdf8e2bbc` (`dsh-v0.1.2-alpha.1`).
-- Observed upstream tip on 2026-09-04: `76fda729799fe9b3848dbe2c211d4b231032b81e`.
+- Supported base, observed upstream tip, recorded personal head, merge base, divergence counts, and revalidation time: [`upstream-base.json`](upstream-base.json).
 - Official upstream: `https://github.com/deepseek-ai/deepseek-harness.git`
 - This fork: `https://github.com/changanhua/deepseek-harness.git`
 - Official packages retain `@deepseek-ai/*`; repository publication tooling permits them only from a GitHub Actions run for `deepseek-ai/deepseek-harness`. Personal source packages use `@changanhua/*`, stay private, have no release family, and remain blocked until their publication policy is promoted from `blocked-until-release-verified` to `personal`. npm credentials and trusted-publisher policy remain the external authority.
@@ -32,6 +31,7 @@ A human-readable record of deliberate differences between this fork and the offi
 | 16 | `packages/host/capability-registry`, `packages/client/ui-capability`, `packages/client/ui-settings-skills` | Fork-only read-only capability and Skills-management projection over the `capabilityRegistry` Remote. |
 | 17 | `packages/client/ui-layout`, `packages/client/ui-sidebar` | Fork keeps the `shell.view`/`sidebar.modules` module ring so Queue and Capability views can replace the center view without unmounting conversation state. |
 | 18 | `downstream/package-identities.json`, 41 personal package directories, publication scripts and workflows | Personal source packages use `@changanhua/*`, personal repository metadata, and `private: true`; imports, Loader rows, TypeScript paths, catalogs, and the lockfile use the same identities. Existing package versions remain unchanged and no Personal release family exists. The official DSH release closure validates registered exclusions and rejects every source or packed-manifest runtime edge to these source-only packages. Official DSH rehearsal, npm/docs publication, and public Python publication remain official-repository-only; personal-repository CI builds the source and boots the personal bundle through the built CLI. |
+| 19 | `upstream-base.json`, `core-patches.json`, `scripts/check-core-patch-budget.ts` | Git baseline facts and active private core patches have separate machine owners. The checker rejects unregistered upstream-owned core edits, missing evidence or exit fields, expired reviews, invalid commit ancestry, compatibility adapters that claim facts, and patch counts or risk above the recorded budget. |
 
 ## Non-divergence workspace residue
 

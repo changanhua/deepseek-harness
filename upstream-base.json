@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "officialRepository": "deepseek-ai/deepseek-harness",
+  "officialDefaultBranch": "master",
+  "forkRepository": "changanhua/deepseek-harness",
+  "forkDefaultBranch": "master",
+  "supportedUpstreamBase": {
+    "sha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+    "tag": "dsh-v0.1.2-alpha.1"
+  },
+  "recordedPersonalHeadSha": "4c602e3a76542920e04d274e39737649842b6a8d",
+  "observedUpstreamHeadSha": "d347e703908d0406b7a7ef80e3a0e594d86b2215",
+  "mergeBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+  "divergence": {
+    "personalAhead": 227,
+    "personalBehind": 984
+  },
+  "lastRevalidatedAt": "2026-09-05T00:19:49.405Z",
+  "revalidationScope": "git-history-and-current-fork-gates",
+  "runtimeEvidence": [
+    "Fork CI (Windows) at 667b8cb495cb675fbcccb0f5d06946c95feb43f6",
+    "Linux Fast (advisory) at 667b8cb495cb675fbcccb0f5d06946c95feb43f6",
+    "C0 differential quality at 667b8cb495cb675fbcccb0f5d06946c95feb43f6"
+  ]
+}

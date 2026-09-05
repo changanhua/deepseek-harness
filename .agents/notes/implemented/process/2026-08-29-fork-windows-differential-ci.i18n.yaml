@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-08-29-fork-windows-differential-ci.md
-2026-08-29-fork-windows-differential-ci.md: 4f79046e8e7ac9c5f78a384dc41ca69a375c2f85
-2026-08-29-fork-windows-differential-ci.zh.md: 8cb583256c099da032454909433be39b78467c42
+2026-08-29-fork-windows-differential-ci.md: 27ffe3b28b5b43e2aec479507cb6043f88422026
+2026-08-29-fork-windows-differential-ci.zh.md: f072e34ea99690b5c298f9bd482d3bdfcbd6edc5

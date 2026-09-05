@@ -739,24 +739,31 @@ describe('personal source distribution CI', () => {
     )
     expect(build.if).toBe(trustedPersonalPullRequest)
     expect(differential.if).toBe(trustedPersonalPullRequest)
-    expect(aggregate.if).toBe(
-      "always() && github.repository == 'changanhua/deepseek-harness'"
-      + " && github.event_name == 'pull_request'"
-      + " && github.actor == 'changanhua'"
-      + " && github.event.pull_request.user.login == 'changanhua'"
-      + ' && github.event.pull_request.head.repo.full_name == github.repository',
-    )
+    expect(aggregate.if).toBe('always()')
+    if (!Array.isArray(aggregate.steps)) throw new TypeError('fork aggregate must define steps')
+    const aggregateStep = aggregate.steps.filter(isRecord).find(step => step.name === 'Require every fork check')
+    expect(aggregateStep).toMatchObject({
+      env: {
+        ACTOR: '${{ github.actor }}',
+        AUTHOR: '${{ github.event.pull_request.user.login }}',
+        HEAD_REPOSITORY: '${{ github.event.pull_request.head.repo.full_name }}',
+        REPOSITORY: '${{ github.repository }}',
+      },
+    })
+    expect(isRecord(aggregateStep) && aggregateStep.run).toContain("$env:ACTOR -ne 'changanhua'")
 
     const steps = build.steps.filter(isRecord)
     const names = steps.map(step => step.name).filter((name): name is string => typeof name === 'string')
     const install = names.indexOf('Install immutable dependencies')
     const identities = names.indexOf('Check package identities')
+    const corePatches = names.indexOf('Check private core patch budget')
     const repositoryBuild = names.indexOf('Build repository')
     const sourceDistribution = names.indexOf('Verify personal source distribution')
 
     expect(install).toBeGreaterThanOrEqual(0)
     expect(identities).toBeGreaterThan(install)
-    expect(repositoryBuild).toBeGreaterThan(identities)
+    expect(corePatches).toBeGreaterThan(identities)
+    expect(repositoryBuild).toBeGreaterThan(corePatches)
     expect(sourceDistribution).toBeGreaterThan(repositoryBuild)
     expect(steps.find(step => step.name === 'Verify personal source distribution')).toMatchObject({
       run: 'pnpm run verify:personal-source',

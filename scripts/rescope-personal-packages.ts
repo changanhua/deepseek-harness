@@ -43,13 +43,13 @@ export function excludedFromPersonalRescope(file: string): boolean {
   return !EXTENSIONS.some(extension => file.endsWith(extension))
 }
 
-/** Decode the registry-v2 `legacyName` and `sourceName` fields. */
+/** Decode the registry-v3 `legacyName` and `sourceName` fields. */
 export function personalPackageRenamesFromRegistry(parsed: unknown): {
   repositoryUrl: string
   renames: readonly PersonalPackageRename[]
 } {
   if (!isRecord(parsed)) throw new Error(`${REGISTRY_PATH} must be an object`)
-  if (parsed.schemaVersion !== 2) throw new Error(`${REGISTRY_PATH}.schemaVersion must be 2`)
+  if (parsed.schemaVersion !== 3) throw new Error(`${REGISTRY_PATH}.schemaVersion must be 3`)
   if (typeof parsed.personalRepositoryUrl !== 'string' || parsed.personalRepositoryUrl === '') {
     throw new Error(`${REGISTRY_PATH}.personalRepositoryUrl must be a non-empty string`)
   }
@@ -68,7 +68,7 @@ export function personalPackageRenamesFromRegistry(parsed: unknown): {
   return { repositoryUrl: parsed.personalRepositoryUrl, renames }
 }
 
-/** Read the registry-v2 source identities. */
+/** Read the registry-v3 source identities. */
 export function loadPersonalPackageRenames(root: string = ROOT): {
   repositoryUrl: string
   renames: readonly PersonalPackageRename[]

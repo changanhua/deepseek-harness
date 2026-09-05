@@ -9,8 +9,6 @@ import {
 } from './publication-identity.mjs'
 
 const REGISTRY_PATH = 'downstream/package-identities.json'
-const SHA_PATTERN = /^[0-9a-f]{40}$/u
-
 export interface PersonalPackageIdentity {
   readonly directory: string
   /** Package name used before the downstream rescope. */
@@ -23,7 +21,7 @@ export interface PersonalPackageIdentity {
 }
 
 export interface PackageIdentityRegistry {
-  readonly schemaVersion: 2
+  readonly schemaVersion: 3
   readonly versionPolicy: 'preserve-existing-during-rescope'
   readonly personalScope: string
   readonly personalRepository: string
@@ -31,8 +29,6 @@ export interface PackageIdentityRegistry {
   readonly upstreamScope: string
   readonly upstreamRepository: string
   readonly upstreamRepositoryUrl: string
-  readonly supportedUpstreamCommit: string
-  readonly observedUpstreamCommit: string
   readonly unlistedPackageOrigin: 'upstream'
   readonly vendorPathPrefix: 'vendor/'
   readonly personalPackages: readonly PersonalPackageIdentity[]
@@ -53,7 +49,7 @@ function requiredString(record: Record<string, unknown>, field: string, label: s
 export function validatePackageIdentityRegistry(input: unknown): string[] {
   if (!isRecord(input)) return ['package identity registry must be a JSON object']
   const errors: string[] = []
-  if (input.schemaVersion !== 2) errors.push('schemaVersion must be 2')
+  if (input.schemaVersion !== 3) errors.push('schemaVersion must be 3')
   if (input.versionPolicy !== 'preserve-existing-during-rescope') {
     errors.push('versionPolicy must be preserve-existing-during-rescope')
   }
@@ -63,8 +59,12 @@ export function validatePackageIdentityRegistry(input: unknown): string[] {
   const upstreamScope = requiredString(input, 'upstreamScope', 'registry', errors)
   const upstreamRepository = requiredString(input, 'upstreamRepository', 'registry', errors)
   const upstreamRepositoryUrl = requiredString(input, 'upstreamRepositoryUrl', 'registry', errors)
-  const supportedUpstreamCommit = requiredString(input, 'supportedUpstreamCommit', 'registry', errors)
-  const observedUpstreamCommit = requiredString(input, 'observedUpstreamCommit', 'registry', errors)
+  if ('supportedUpstreamCommit' in input) {
+    errors.push('supportedUpstreamCommit moved to upstream-base.json and must not be duplicated here')
+  }
+  if ('observedUpstreamCommit' in input) {
+    errors.push('observedUpstreamCommit moved to upstream-base.json and must not be duplicated here')
+  }
 
   if (personalScope !== undefined && !/^@[a-z0-9][a-z0-9._-]*$/u.test(personalScope)) {
     errors.push(`personalScope is not an npm scope: ${personalScope}`)
@@ -79,12 +79,6 @@ export function validatePackageIdentityRegistry(input: unknown): string[] {
   if (upstreamRepository !== undefined
     && upstreamRepositoryUrl !== `git+https://github.com/${upstreamRepository}.git`) {
     errors.push('upstreamRepositoryUrl must match upstreamRepository')
-  }
-  if (supportedUpstreamCommit !== undefined && !SHA_PATTERN.test(supportedUpstreamCommit)) {
-    errors.push('supportedUpstreamCommit must be a lowercase 40-character commit SHA')
-  }
-  if (observedUpstreamCommit !== undefined && !SHA_PATTERN.test(observedUpstreamCommit)) {
-    errors.push('observedUpstreamCommit must be a lowercase 40-character commit SHA')
   }
   if (input.unlistedPackageOrigin !== 'upstream') {
     errors.push('unlistedPackageOrigin must remain upstream; personal origin is always explicit')
