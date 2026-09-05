@@ -12,7 +12,7 @@ Status: implemented
 
 ## Decision
 
-[`downstream/package-identities.json`](../../../../downstream/package-identities.json) 统一拥有两个 npm scope、各自唯一的发布仓库、受支持与已观察的上游 commit，以及显式个人包集合。未列出的包默认归上游所有，`vendor/*` 保持 vendor 来源；只有经过审查的 registry 修改才能把包认定为个人包。
+[`downstream/package-identities.json`](../../../../downstream/package-identities.json) 统一拥有两个 npm scope、各自唯一的发布仓库和显式个人包集合。[下游 core patch 决定](2026-09-05-downstream-core-patch-budget.zh.md)把受支持与已观察的 Git revision 交给 [`upstream-base.json`](../../../../upstream-base.json)。未列出的包默认归上游所有，`vendor/*` 保持 vendor 来源；只有经过审查的 registry 修改才能把包认定为个人包。
 
 个人 scope 是 `@changanhua`。每个已确认的个人包都记录旧名称、源码名称、源码身份、发布策略、尚不存在的发布族，以及明确的发布阻断项。全部 41 个条目都使用 `blocked-until-release-verified`；manifest、import、bundle 行、TypeScript path、目录和 lockfile 采用个人源码名称，现有版本保持不变。源码版 CLI 把个人 Delivery bundle 声明为 workspace dependency，因此构建后的入口会从安装本身解析该 bundle，不依赖测试运行器或全局模块搜索路径。
 
@@ -26,7 +26,7 @@ dsh、vendor、baseline 和 Landlock 发布路径都会在第一次访问 regist
 
 ## Package ownership
 
-registry 包含个人分支在受支持上游 commit `cd5ef8148158c3a752a658978873241fdf8e2bbc` 之后引入的 41 个 package manifest。显式列入代表所有权决定；commit 比较只是审查证据，不是判断后来上游新增包的推断规则。
+registry 包含个人分支在 [`upstream-base.json`](../../../../upstream-base.json) 所记录受支持 commit 之后引入的 41 个 package manifest。显式列入代表所有权决定；commit 比较只是审查证据，不是判断后来上游新增包的推断规则。
 
 个人包是 source-only workspace 成员：manifest 指向个人仓库，设置 `private: true`，省略 `publishConfig`，并按目录从官方 DSH 发布族中排除。只有当 tarball 依赖和配置闭包经过独立验证、Personal 发布族已经定义、`private` 被移除且发布策略改为 `personal` 后，一个包才可以发布。个人包可以继续依赖未修改的官方 Service Definition。依赖私改上游实现的包保持 source-only，直到该依赖被抽离或获得自己的个人发布身份。
 

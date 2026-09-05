@@ -12,9 +12,9 @@ This fork supports ordinary application development on Windows, while its inheri
 
 Repository Actions settings keep `.github/workflows/ci.yml` and unrelated automatic workflows disabled. `.github/workflows/ci-fork-windows.yml` owns pull-request validation for the fork and runs only on GitHub-hosted Windows runners.
 
-The blocking build job runs the repository build and client typecheck without building the documentation site. A separate C0 job detects Delivery-owned paths; when present, it builds the trusted base and head, runs the same Static, Knip, documentation, lint, and duplication definitions in both checkouts, and rejects diagnostics introduced by the head. The C0 job also runs focused Delivery tests with per-file 100% coverage thresholds.
+The blocking build job checks out complete fork history, validates package identity and the private core patch budget, then runs the repository build and client typecheck without building the documentation site. A separate C0 job detects Delivery-owned paths; when present, it builds the trusted base and head, runs the same Static, Knip, documentation, lint, and duplication definitions in both checkouts, and rejects diagnostics introduced by the head. The C0 job also runs focused Delivery tests with per-file 100% coverage thresholds.
 
-The `fork checks passed` job aggregates the build and C0 results. The base-branch ruleset requires that stable check name, so a failed, cancelled, or skipped blocking job prevents a merge.
+The `fork checks passed` job runs for every pull request, rejects any actor, author, or head repository outside the owner-controlled same-repository boundary, and aggregates the build and C0 results. The base-branch ruleset requires that stable check name, so an untrusted identity or a failed, cancelled, or skipped blocking job prevents a merge.
 
 ## Alternatives considered
 

@@ -55,9 +55,9 @@ describe('personal package rescope', () => {
     expect(rewritePersonalPackageText(input, RENAMES)).toEqual({ text: input, replacements: 0 })
   })
 
-  it('uses the registry-v2 sourceName and sourceIdentity fields', () => {
+  it('uses the registry-v3 sourceName and sourceIdentity fields', () => {
     expect(personalPackageRenamesFromRegistry({
-      schemaVersion: 2,
+      schemaVersion: 3,
       personalRepositoryUrl: 'git+https://github.com/changanhua/deepseek-harness.git',
       personalPackages: [{
         directory: 'packages/delivery/delivery',

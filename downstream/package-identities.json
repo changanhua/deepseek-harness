@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "versionPolicy": "preserve-existing-during-rescope",
   "personalScope": "@changanhua",
   "personalRepository": "changanhua/deepseek-harness",
@@ -7,8 +7,6 @@
   "upstreamScope": "@deepseek-ai",
   "upstreamRepository": "deepseek-ai/deepseek-harness",
   "upstreamRepositoryUrl": "git+https://github.com/deepseek-ai/deepseek-harness.git",
-  "supportedUpstreamCommit": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
-  "observedUpstreamCommit": "76fda729799fe9b3848dbe2c211d4b231032b81e",
   "unlistedPackageOrigin": "upstream",
   "vendorPathPrefix": "vendor/",
   "personalPackages": [

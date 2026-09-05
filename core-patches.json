@@ -1,0 +1,594 @@
+{
+  "schemaVersion": 1,
+  "supportedUpstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+  "budget": {
+    "maxActivePatches": 14,
+    "maxRiskPoints": 70,
+    "maxCriticalPatches": 1
+  },
+  "downstreamOwnedAdditions": [
+    "scripts/douban-top250/**"
+  ],
+  "patches": [
+    {
+      "id": "fork-documentation-and-development-governance",
+      "status": "active",
+      "kind": "unavoidable-core-patch",
+      "title": "Keep the downstream documentation and repository-rule model",
+      "owner": "personal-distribution",
+      "introducedAt": "2026-08-26",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "164d02b91dcb28f3c1f1b0e14755e6df5f6e7a9b",
+        "4b360444f62dffa59b23b6f97abb754d51b25d3c"
+      ],
+      "affectedUpstreamPackages": [],
+      "affectedFiles": [
+        "AGENTS.md",
+        "lefthook.yml",
+        "scripts/doc-budgets.manifest.json",
+        "scripts/doc-standard.spec.ts",
+        "scripts/check-core-patch-budget.ts",
+        "scripts/core-patch-governance.spec.ts",
+        "scripts/gen-doc-graphs.ts",
+        "scripts/project-doc-site.spec.ts",
+        "scripts/run-gates.spec.ts",
+        "scripts/run-gates.ts",
+        "scripts/translation-pairing.manifest.json",
+        "scripts/type-equiv.manifest.json",
+        "scripts/verify-package-readme-model-experience.ts",
+        "scripts/verify-subsystem-pages.ts",
+        "website/docs.ts"
+      ],
+      "reason": "The personal fork uses a compact root constitution, repository-owned documentation tiers, and owner-controlled bilingual reconciliation.",
+      "whyPluginIsInsufficient": "Repository instructions, documentation generators, and commit hooks execute before any DSH plugin is loaded.",
+      "whyCompatibilityAdapterIsInsufficient": "These files define repository policy and validation rather than an upstream runtime API.",
+      "factOwnershipEffect": "none",
+      "dataFormatEffect": "Documentation pairing metadata remains repository-owned and versioned with its source documents.",
+      "securityEffect": "No runtime authority is added; commit-time checks remain local repository policy.",
+      "tests": [
+        "scripts/doc-standard.spec.ts",
+        "scripts/run-gates.spec.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm run test:docs",
+        "pnpm run doc-sync"
+      ],
+      "migrationPlan": "Restore upstream documentation gates only after they cover the fork's owner-controlled pairing workflow.",
+      "rollbackPlan": "Revert the isolated governance commits and regenerate documentation artifacts from the supported upstream base.",
+      "replacementCondition": "Upstream adopts equivalent tiered instructions and an asynchronous owner-controlled bilingual workflow.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-12-05",
+      "knownMergeConflicts": [
+        "AGENTS.md",
+        "lefthook.yml",
+        "scripts/run-gates.ts"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "medium",
+        "points": 5
+      }
+    },
+    {
+      "id": "fork-actions-security-and-platform-policy",
+      "status": "active",
+      "kind": "unavoidable-core-patch",
+      "title": "Keep personal-fork Actions read-only and Windows-first",
+      "owner": "personal-distribution",
+      "introducedAt": "2026-08-30",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "74c50737806bfcfb160fd80c2608cccb089d402d",
+        "21acf271d364c0dacaec691f51229f199561e581"
+      ],
+      "affectedUpstreamPackages": [],
+      "affectedFiles": [
+        ".github/workflows/build-exe-for-python-sdk.yml",
+        ".github/workflows/build-preview-cloudflare.yml",
+        ".github/workflows/ci-fork-linux-fast.yml",
+        ".github/workflows/ci-fork-windows.yml",
+        ".github/workflows/ci-linux-lab.yml",
+        ".github/workflows/ci-master.yml",
+        ".github/workflows/ci-upstream-watch.yml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/docs-pages.yml",
+        ".github/workflows/dsh-on-issue.yml",
+        ".github/workflows/e2e.yml",
+        ".github/workflows/issue-lifecycle.yml",
+        ".github/workflows/issue-policy.yml",
+        ".github/workflows/landlock-run-release.yml",
+        ".github/workflows/pi-ai-provider-e2e.yml",
+        ".github/workflows/python-release.yml",
+        ".github/workflows/release-publish.yml",
+        ".github/workflows/release-vendor-publish.yml",
+        ".github/workflows/release.yml",
+        "scripts/ci-workflow.spec.ts",
+        "scripts/fork-windows-workflow.spec.ts",
+        "scripts/run-fork-c0-diff.spec.ts",
+        "scripts/run-fork-c0-diff.ts"
+      ],
+      "reason": "The public personal fork must not inherit official-repository write automation or Linux deployment assumptions; Windows 10 is the supported local runtime.",
+      "whyPluginIsInsufficient": "GitHub Actions permissions and runner selection are evaluated outside the DSH plugin runtime.",
+      "whyCompatibilityAdapterIsInsufficient": "The difference is repository trust policy, not an API-version translation.",
+      "factOwnershipEffect": "none",
+      "dataFormatEffect": "none",
+      "securityEffect": "Owner guards and read-only permissions remove inherited write authority; Linux remains advisory.",
+      "tests": [
+        "scripts/ci-workflow.spec.ts",
+        "scripts/fork-windows-workflow.spec.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm exec vitest run scripts/ci-workflow.spec.ts scripts/fork-windows-workflow.spec.ts"
+      ],
+      "migrationPlan": "Retain fork-owned workflow entry points while selectively importing upstream job improvements.",
+      "rollbackPlan": "Disable the fork workflows before restoring any official workflow file; never restore write permissions implicitly.",
+      "replacementCondition": "Upstream workflows expose a repository-identity-safe downstream mode and equivalent Windows routing.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-12-05",
+      "knownMergeConflicts": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "high",
+        "points": 8
+      }
+    },
+    {
+      "id": "personal-source-distribution-identity",
+      "status": "active",
+      "kind": "unavoidable-core-patch",
+      "title": "Separate personal source packages from official publication identity",
+      "owner": "personal-distribution",
+      "introducedAt": "2026-09-04",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "aae0e2e12ce68ee72d58926826cdf1082c770b16",
+        "a9215f11eda22420730c79599af82d642981defa",
+        "0e3c5a2493f90055faeba770782ee9b3ee79c3a0"
+      ],
+      "affectedUpstreamPackages": [
+        "apps/cli",
+        "packages/api/remotes"
+      ],
+      "affectedFiles": [
+        "apps/cli/**",
+        "knip.json",
+        "native/landlock-run/**",
+        "package.json",
+        "packages/api/remotes/**",
+        "pnpm-lock.yaml",
+        "scripts/check-workspace-constraints.spec.ts",
+        "scripts/check-workspace-constraints.ts",
+        "scripts/client-bundle-purity.spec.ts",
+        "scripts/gen-cordis-catalog.ts",
+        "scripts/package-identities.spec.ts",
+        "scripts/package-identities.ts",
+        "scripts/publication-identity.d.mts",
+        "scripts/publication-identity.mjs",
+        "scripts/rescope-personal-packages.spec.ts",
+        "scripts/rescope-personal-packages.ts",
+        "scripts/gen-module-graph.ts",
+        "scripts/gen-tool-catalog.ts",
+        "scripts/gen-tsconfig-paths.spec.ts",
+        "scripts/gen-tsconfig-paths.ts",
+        "scripts/package-graph.spec.ts",
+        "scripts/package-graph.ts",
+        "scripts/publish-npm-baseline.ts",
+        "scripts/release/**",
+        "tsconfig.base.json",
+        "tsconfig.client.json",
+        "tsconfig.host.json"
+      ],
+      "reason": "Personal product packages require an explicit @changanhua source identity while official packages retain @deepseek-ai ownership.",
+      "whyPluginIsInsufficient": "Package names, TypeScript paths, workspace locks, release closure, and repository metadata are build-time identities.",
+      "whyCompatibilityAdapterIsInsufficient": "An adapter cannot change npm ownership or prevent an official release from traversing personal source packages.",
+      "factOwnershipEffect": "Package provenance is owned by downstream/package-identities.json; runtime domain facts are unchanged.",
+      "dataFormatEffect": "Package and lockfile identities change only for the explicit personal package set; persisted user data is unchanged.",
+      "securityEffect": "Publication remains fail-closed and personal packages remain private.",
+      "tests": [
+        "scripts/package-identities.spec.ts",
+        "apps/cli/tests/personal-source-distribution.e2e.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm run check:package-identities",
+        "pnpm run verify:personal-source"
+      ],
+      "migrationPlan": "Use the registry-driven rescope script for newly classified personal packages; do not bulk-rewrite unlisted upstream packages.",
+      "rollbackPlan": "Reverse only registry-listed package identities and regenerate paths, catalogs, and the lockfile from the same commit.",
+      "replacementCondition": "Personal packages move to a separate workspace or upstream gains a first-class downstream namespace mechanism.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-12-05",
+      "knownMergeConflicts": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "tsconfig.base.json"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "critical",
+        "points": 10
+      }
+    },
+    {
+      "id": "personal-product-bundle-composition",
+      "status": "active",
+      "kind": "unavoidable-core-patch",
+      "title": "Compose personal products through existing DSH bundles",
+      "owner": "personal-distribution",
+      "introducedAt": "2026-08-30",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "2e3b29ca1a8972ba51c99e35fcfbe7a689bc42d6",
+        "9e786f670ac6d05799d0c6d2e2e3703f6fdd3b18"
+      ],
+      "affectedUpstreamPackages": [
+        "packages/bundle/base",
+        "packages/bundle/headless",
+        "packages/bundle/web-app"
+      ],
+      "affectedFiles": [
+        "apps/web/**",
+        "packages/bundle/base/**",
+        "packages/bundle/headless/**",
+        "packages/bundle/web-app/**"
+      ],
+      "reason": "Personal Queue, Delivery, runtime-fact, and workbench plugins must be mounted through supported Profile and Bundle composition without modifying their domain owners.",
+      "whyPluginIsInsufficient": "The capabilities are plugins, but shipped personal product composition still requires bounded edits to upstream-owned bundle manifests and patches.",
+      "whyCompatibilityAdapterIsInsufficient": "The current upstream bundle has no external overlay declaration that can ship as part of this monorepo without touching its manifests.",
+      "factOwnershipEffect": "Bundles only compose providers and consumers; Queue, Delivery, Session, and Git keep their existing facts.",
+      "dataFormatEffect": "none",
+      "securityEffect": "Personal capabilities remain opt-in and inherit the owning service authority checks.",
+      "tests": [
+        "packages/bundle/base/tests/base.spec.ts",
+        "packages/bundle/headless/tests/headless.spec.ts",
+        "packages/bundle/web-app/tests/startup.spec.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm exec vitest run packages/bundle/base packages/bundle/headless packages/bundle/web-app"
+      ],
+      "migrationPlan": "Move personal rows into a standalone downstream Profile layer when profile distribution can reference external bundles without editing upstream manifests.",
+      "rollbackPlan": "Remove the personal rows and package edges from each bundle while preserving the underlying personal packages and data.",
+      "replacementCondition": "A shipped downstream overlay can compose all personal plugins without modifying upstream bundle files.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-12-05",
+      "knownMergeConflicts": [
+        "packages/bundle/base/cordis.patch.yml",
+        "packages/bundle/web-app/cordis.patch.yml"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "high",
+        "points": 7
+      }
+    },
+    {
+      "id": "personal-client-workbench-extension",
+      "status": "active",
+      "kind": "unavoidable-core-patch",
+      "title": "Retain client slots used by personal workspaces",
+      "owner": "personal-distribution",
+      "introducedAt": "2026-08-25",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "259905397b5c70b9ba2b829054993e9cf7beb648",
+        "4df70d97bdd8a4666c998b8f85e0e5009f16187c"
+      ],
+      "affectedUpstreamPackages": [
+        "packages/client"
+      ],
+      "affectedFiles": [
+        "packages/client/AGENTS.md",
+        "packages/client/tsdown.client.ts",
+        "packages/client/ui-conversation/package.json",
+        "packages/client/ui-layout/**",
+        "packages/client/ui-settings-general/**",
+        "packages/client/ui-settings/src/client/contract/settings-navigator.ts",
+        "packages/client/ui-settings/src/client/index.ts",
+        "packages/client/ui-sidebar/**",
+        "packages/client/ui-workspace/**",
+        "scripts/architecture-catalog.spec.ts",
+        "scripts/architecture-catalog.ts",
+        "scripts/gen-architecture-catalog.ts"
+      ],
+      "reason": "Personal Queue, capability, architecture, Delivery, and observatory views need stable client slots without replacing the conversation state owner.",
+      "whyPluginIsInsufficient": "The personal views are plugins, but the supported upstream client shell at this base does not expose every required navigation and center-view slot.",
+      "whyCompatibilityAdapterIsInsufficient": "A thin adapter cannot register a slot the upstream shell does not expose.",
+      "factOwnershipEffect": "Client packages project Host facts and own no Queue, Delivery, or Session truth.",
+      "dataFormatEffect": "Only client-local view selection is retained; durable domain formats are unchanged.",
+      "securityEffect": "Browser projections remain read-only unless the owning Remote operation authorizes a mutation.",
+      "tests": [
+        "packages/client/ui-layout/tests/apply.client.spec.ts",
+        "packages/client/ui-sidebar/tests/apply.client.spec.tsx",
+        "scripts/client-bundle-purity.spec.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm run typecheck:contracts-ready",
+        "pnpm run test:gui"
+      ],
+      "migrationPlan": "Adapt personal UI plugins to upstream-owned equivalent slots, then remove only the shell patch after dual behavior checks.",
+      "rollbackPlan": "Disable personal UI plugins and restore upstream shell components; Host domain data remains intact.",
+      "replacementCondition": "Upstream client slots support the same lifecycle, navigation, and conversation-preservation behavior.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-12-05",
+      "knownMergeConflicts": [
+        "packages/client/ui-layout/src/client/AppFrame.tsx",
+        "packages/client/ui-sidebar/src/client/SidebarRoot.tsx"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "high",
+        "points": 8
+      }
+    },
+    {
+      "id": "runtime-facts-capability-adapters",
+      "status": "active",
+      "kind": "compatibility-adapter",
+      "title": "Project personal runtime facts through stable Host and Client adapters",
+      "owner": "runtime-facts",
+      "introducedAt": "2026-08-28",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "fba26798d6baa4e85964a4eea21bc7a8cdb3d5f8",
+        "958fd0facf6b1f4628b0886843b6d835a673c6c0"
+      ],
+      "affectedUpstreamPackages": [
+        "packages/extensions",
+        "packages/host",
+        "packages/preset/agent-presets",
+        "packages/runtime-diagnostics/invariants"
+      ],
+      "affectedFiles": [
+        "packages/extensions/cordis-client-runner/**",
+        "packages/extensions/cordis-host-runner/**",
+        "packages/extensions/tool-cordis/**",
+        "packages/preset/agent-presets/**",
+        "packages/runtime-diagnostics/invariants/**"
+      ],
+      "reason": "Personal runtime-fact and capability packages need narrow projections into upstream Host, client catalog, and preset composition points.",
+      "whyPluginIsInsufficient": "Most behavior is plugin-owned; these remaining paths translate upstream registration and generated-catalog shapes at the integration boundary.",
+      "whyCompatibilityAdapterIsInsufficient": "not-applicable: this entry is the bounded compatibility adapter.",
+      "factOwnershipEffect": "none",
+      "dataFormatEffect": "none",
+      "securityEffect": "Adapters expose only read-only projections and do not widen tool execution authority.",
+      "tests": [
+        "packages/context/runtime-facts/tests/runtime-facts.invariant.spec.ts",
+        "packages/host/work-observatory/tests/service.spec.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm exec vitest run packages/context packages/host packages/extensions"
+      ],
+      "migrationPlan": "Provide the same personal service contract from an upstream-native registry when its behavior is equivalent.",
+      "rollbackPlan": "Remove adapter registrations; the owning personal stores and packages remain independently removable.",
+      "replacementCondition": "Upstream exposes equivalent scoped registration and read-only projection contracts.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-12-05",
+      "knownMergeConflicts": [
+        "packages/extensions/cordis-client-runner/src/client/slot-catalog.ts",
+        "packages/extensions/cordis-host-runner/src/inspect-registry.ts"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "medium",
+        "points": 5
+      }
+    },
+    {
+      "id": "codex-parent-free-execution-adapter",
+      "status": "active",
+      "kind": "compatibility-adapter",
+      "title": "Run Codex Delivery work without a live parent Agent",
+      "owner": "personal-delivery",
+      "introducedAt": "2026-08-29",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "1df9b53b2c56cda31ff8e80a969eb6c94b8e3251",
+        "698433772ae8b7f24e3750f8d36aff7ef595ac21"
+      ],
+      "affectedUpstreamPackages": [
+        "packages/subagent/subagent-codex"
+      ],
+      "affectedFiles": [
+        "packages/subagent/subagent-codex/**"
+      ],
+      "reason": "Operator-owned Delivery attempts require the existing Codex App Server adapter with explicit cwd and cancellation but no fabricated parent Agent session.",
+      "whyPluginIsInsufficient": "The reusable Codex transport implementation is upstream-owned and originally bound execution to a parent Agent lifecycle.",
+      "whyCompatibilityAdapterIsInsufficient": "not-applicable: the runner change is retained as a narrow adapter and contains no Delivery state.",
+      "factOwnershipEffect": "none",
+      "dataFormatEffect": "none",
+      "securityEffect": "The caller must provide the worktree cwd and AbortSignal; the adapter does not grant Queue or Delivery authority.",
+      "tests": [
+        "packages/subagent/subagent-codex/tests/subagent-codex.spec.ts",
+        "packages/subagent/subagent-codex/tests/real-product.spec.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm exec vitest run packages/subagent/subagent-codex"
+      ],
+      "migrationPlan": "Switch the Delivery runner to an upstream-native parent-free execution operation after API and cancellation parity are proven.",
+      "rollbackPlan": "Disable the Personal Delivery runner and restore upstream Codex adapter behavior; existing Delivery records remain readable.",
+      "replacementCondition": "Upstream Codex provider supports explicit cwd, parent-free invocation, AbortSignal, and process-tree quiescence.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-12-05",
+      "knownMergeConflicts": [
+        "packages/subagent/subagent-codex/src/run.ts"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "high",
+        "points": 7
+      }
+    },
+    {
+      "id": "windows-process-and-recovery-hardening",
+      "status": "active",
+      "kind": "upstream-candidate",
+      "title": "Preserve Windows process and recovery behavior used by personal workflows",
+      "owner": "runtime-reliability",
+      "introducedAt": "2026-08-27",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "987b3b62b750a706be6f1785bb923e61a897b990",
+        "d43b2ac128a113f7673ac89955f996a85eceffe8"
+      ],
+      "affectedUpstreamPackages": [
+        "packages/compaction/compaction-basic",
+        "packages/e2b/subprocess-e2b",
+        "packages/session/session-checkpoint-policy",
+        "packages/shell/pwsh-local",
+        "packages/skill/skill",
+        "packages/skill/skill-filesystem",
+        "packages/subprocess/subprocess",
+        "packages/subprocess/subprocess-local",
+        "packages/terminal/terminal-bash"
+      ],
+      "affectedFiles": [
+        "packages/compaction/compaction-basic/**",
+        "packages/e2b/subprocess-e2b/**",
+        "packages/session/session-checkpoint-policy/**",
+        "packages/shell/pwsh-local/**",
+        "packages/skill/skill-filesystem/**",
+        "packages/skill/skill/**",
+        "packages/subprocess/subprocess-local/**",
+        "packages/subprocess/subprocess/**",
+        "packages/terminal/terminal-bash/**"
+      ],
+      "reason": "Personal Windows workflows depend on deterministic cancellation, process-tree quiescence, checkpoint recovery, and bounded filesystem behavior.",
+      "whyPluginIsInsufficient": "The affected lifecycle rules sit inside existing subprocess, checkpoint, terminal, and Skill owners.",
+      "whyCompatibilityAdapterIsInsufficient": "Wrapping these owners cannot repair cancellation or recovery invariants after the inner operation already commits an incorrect state.",
+      "factOwnershipEffect": "Existing Session, subprocess, and Skill services keep their facts; no new store is introduced.",
+      "dataFormatEffect": "Legacy Queue folds default missing dismissed state; no new incompatible persisted format is introduced here.",
+      "securityEffect": "Path checks and process teardown tighten existing boundaries.",
+      "tests": [
+        "packages/session/session-checkpoint-policy/tests/session-checkpoint-policy.spec.ts",
+        "packages/subprocess/subprocess/tests/service.spec.ts",
+        "packages/skill/skill/tests/skill.spec.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm exec vitest run packages/session/session-checkpoint-policy packages/subprocess packages/skill"
+      ],
+      "migrationPlan": "Cherry-pick or adopt upstream fixes only after Windows behavior parity is proven.",
+      "rollbackPlan": "Revert each isolated reliability commit independently; do not roll back persisted user data with code.",
+      "replacementCondition": "Equivalent fixes land upstream and pass the same Windows behavior tests.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-11-05",
+      "knownMergeConflicts": [
+        "packages/subprocess/subprocess/src/index.ts",
+        "packages/session/session-checkpoint-policy/tests/session-checkpoint-policy.spec.ts"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "high",
+        "points": 7
+      }
+    },
+    {
+      "id": "core-tool-and-agent-authority-hardening",
+      "status": "active",
+      "kind": "upstream-candidate",
+      "title": "Keep tool registration and Agent inbox authority invariants",
+      "owner": "runtime-reliability",
+      "introducedAt": "2026-08-28",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "efa45d68752167d5a97242f37ae0e9728e6199de",
+        "858892b33a0b168272d36b3c8cdfd5073f456d6f"
+      ],
+      "affectedUpstreamPackages": [
+        "packages/core/agent",
+        "packages/core/tools",
+        "packages/experimental/agent-team",
+        "packages/fs/tool-fs-search",
+        "packages/llm/llm"
+      ],
+      "affectedFiles": [
+        "packages/core/agent/**",
+        "packages/core/agent-loop/**",
+        "packages/core/tools/**",
+        "packages/experimental/agent-team/**",
+        "packages/fs/tool-fs-search/**",
+        "packages/llm/llm/**"
+      ],
+      "reason": "Personal Queue and multi-Agent consumers require object-rooted tool schemas, staged activation, and inbox ownership semantics that fail closed.",
+      "whyPluginIsInsufficient": "Registration validation and inbox commit ordering must execute inside the service that owns those operations.",
+      "whyCompatibilityAdapterIsInsufficient": "An outer adapter can be bypassed by direct service consumers and cannot repair already-published state.",
+      "factOwnershipEffect": "Core Agent and Tool services retain their existing facts and enforce their own commit points.",
+      "dataFormatEffect": "none",
+      "securityEffect": "Invalid tool schemas and unauthorized staged work are rejected before publication.",
+      "tests": [
+        "packages/core/agent/tests/agent.spec.ts",
+        "packages/core/tools/tests/tools.spec.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm exec vitest run packages/core/agent packages/core/tools packages/experimental/agent-team"
+      ],
+      "migrationPlan": "Drop individual fork commits when upstream behavior and negative tests become equivalent.",
+      "rollbackPlan": "Revert one invariant commit at a time and keep its negative test as the comparison oracle.",
+      "replacementCondition": "Upstream enforces equivalent registration, activation, and inbox ownership at the final operation.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-11-05",
+      "knownMergeConflicts": [
+        "packages/core/agent/src/inbox.ts",
+        "packages/core/tools/src/index.ts"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "medium",
+        "points": 5
+      }
+    },
+    {
+      "id": "web-provider-and-settings-adapters",
+      "status": "active",
+      "kind": "compatibility-adapter",
+      "title": "Align web providers with personal settings and runtime facts",
+      "owner": "web-providers",
+      "introducedAt": "2026-08-28",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "445a73aa2340df5d30d9a166bc51d206a69c07af",
+        "0e0bfd18dc1b78a5c4d63c939d70eca31a077046"
+      ],
+      "affectedUpstreamPackages": [
+        "packages/web/web",
+        "packages/web/web-search-exa",
+        "packages/web/web-search-perplexity"
+      ],
+      "affectedFiles": [
+        "packages/web/web-search-exa/**",
+        "packages/web/web-search-perplexity/**",
+        "packages/web/web/**"
+      ],
+      "reason": "Web providers must consume the selected settings, credentials, and runtime-fact contracts without creating provider-specific policy stores.",
+      "whyPluginIsInsufficient": "The providers are plugins; these remaining edits adapt upstream package contracts to the personal settings plane.",
+      "whyCompatibilityAdapterIsInsufficient": "not-applicable: this entry is the bounded compatibility adapter.",
+      "factOwnershipEffect": "none",
+      "dataFormatEffect": "none",
+      "securityEffect": "Credential resolution remains in the credential owner and provider configuration does not grant Agent authority.",
+      "tests": [
+        "packages/web/web-search-exa/tests/exa.spec.ts",
+        "packages/web/web-search-perplexity/tests/perplexity.spec.ts",
+        "packages/web/web/tests/web.search-selected.spec.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm exec vitest run packages/web/web packages/web/web-search-exa packages/web/web-search-perplexity"
+      ],
+      "migrationPlan": "Replace adapters with upstream provider settings contracts after behavior parity is proven.",
+      "rollbackPlan": "Remove the provider adapters and fall back to upstream provider configuration without migrating credential data.",
+      "replacementCondition": "Upstream providers consume equivalent settings, credential, and runtime-fact contracts.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-12-05",
+      "knownMergeConflicts": [
+        "packages/web/web/src/index.ts",
+        "packages/web/web-search-perplexity/src/index.ts"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "medium",
+        "points": 4
+      }
+    }
+  ]
+}

@@ -18,7 +18,9 @@ describe('package identity registry', () => {
     const registry = loadPackageIdentities(root)
 
     expect(checkPackageIdentities(root)).toEqual([])
-    expect(registry.schemaVersion).toBe(2)
+    expect(registry.schemaVersion).toBe(3)
+    expect(registry).not.toHaveProperty('supportedUpstreamCommit')
+    expect(registry).not.toHaveProperty('observedUpstreamCommit')
     expect(registry.personalScope).toBe('@changanhua')
     expect(registry.personalPackages).toHaveLength(41)
     expect(registry.versionPolicy).toBe('preserve-existing-during-rescope')
@@ -63,6 +65,19 @@ describe('package identity registry', () => {
       expect.stringMatching(/must start with @changanhua\//),
       expect.stringMatching(/duplicate source package name/),
     ]))
+  })
+
+  it('keeps upstream baseline facts in upstream-base.json only', () => {
+    const registry = loadPackageIdentities(root)
+
+    expect(validatePackageIdentityRegistry({
+      ...registry,
+      supportedUpstreamCommit: '1111111111111111111111111111111111111111',
+    })).toContain('supportedUpstreamCommit moved to upstream-base.json and must not be duplicated here')
+    expect(validatePackageIdentityRegistry({
+      ...registry,
+      observedUpstreamCommit: '2222222222222222222222222222222222222222',
+    })).toContain('observedUpstreamCommit moved to upstream-base.json and must not be duplicated here')
   })
 
   it('keeps direct personal identities out of the Python distribution entry inputs', () => {
