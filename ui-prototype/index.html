@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-dark="true">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DSH · Agent Home 原型</title>
+<style>
+  :root {
+    --bg: #0c0e14;
+    --bg-elev: #12141d;
+    --panel: #171a24;
+    --panel-2: #1c202c;
+    --border: #262b3a;
+    --border-soft: #1f2432;
+    --text: #e6e9f2;
+    --text-dim: #9aa1b5;
+    --text-faint: #6b7288;
+    --accent: #4f8cff;
+    --accent-soft: rgba(79,140,255,.14);
+    --green: #35c47f;
+    --amber: #f0a63c;
+    --red: #f0565a;
+    --violet: #9a7bff;
+    --radius: 10px;
+    --radius-sm: 7px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+            "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", "JetBrains Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  /* ============ 三栏 AppFrame ============ */
+  .app {
+    display: grid;
+    grid-template-columns: 248px 1fr;
+    height: 100vh;
+    transition: grid-template-columns .18s ease;
+  }
+  .app.rail { grid-template-columns: 60px 1fr; }
+
+  /* ---- 侧栏 ---- */
+  .sidebar {
+    background: var(--bg-elev);
+    border-right: 1px solid var(--border-soft);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+  .brand-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 14px 10px;
+    min-height: 48px;
+  }
+  .brand-mark {
+    width: 24px; height: 24px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent), var(--violet));
+    display: grid; place-items: center; flex: none;
+    font-size: 13px; font-weight: 700; color: #fff;
+  }
+  .brand-name { font-weight: 600; font-size: 14px; letter-spacing: .2px; }
+  .brand-sub { font-size: 11px; color: var(--text-faint); margin-top: -2px; }
+  .brand-text { flex: 1; min-width: 0; }
+  .toggle-btn {
+    margin-left: auto; background: none; border: 0; color: var(--text-faint);
+    cursor: pointer; padding: 4px; border-radius: 6px; font-size: 15px;
+  }
+  .toggle-btn:hover { background: var(--panel); color: var(--text); }
+
+  .new-session {
+    margin: 4px 12px 8px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: var(--radius-sm);
+    border: 1px dashed var(--border); color: var(--text-dim);
+    cursor: pointer; background: none; font: inherit; font-size: 13px;
+  }
+  .new-session:hover { border-color: var(--accent); color: var(--text); }
+
+  .section-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--text-faint); padding: 10px 14px 4px;
+  }
+  .nav-list { display: flex; flex-direction: column; gap: 1px; padding: 0 8px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: var(--radius-sm);
+    color: var(--text-dim); cursor: pointer; border: 0; background: none;
+    font: inherit; font-size: 13px; width: 100%; text-align: left;
+  }
+  .nav-item:hover { background: var(--panel); color: var(--text); }
+  .nav-item.active { background: var(--accent-soft); color: var(--text); }
+  .nav-item .ico { width: 16px; height: 16px; flex: none; display: grid; place-items: center; }
+  .nav-item .badge {
+    margin-left: auto; font-size: 11px; padding: 1px 7px; border-radius: 20px;
+    background: var(--panel-2); color: var(--text-dim);
+  }
+  .nav-item .badge.warn { background: rgba(240,166,60,.16); color: var(--amber); }
+  .nav-item .badge.run  { background: rgba(79,140,255,.16); color: var(--accent); }
+  .nav-item .badge.err  { background: rgba(240,86,90,.16); color: var(--red); }
+  .sidebar .spacer { flex: 1; }
+  .foot {
+    padding: 8px; border-top: 1px solid var(--border-soft);
+    display: flex; flex-direction: column; gap: 1px;
+  }
+
+  /* rail 态：只显示图标 */
+  .app.rail .brand-text, .app.rail .brand-sub,
+  .app.rail .new-session span, .app.rail .section-label,
+  .app.rail .nav-item .label, .app.rail .nav-item .badge,
+  .app.rail .foot .label { display: none; }
+  .app.rail .new-session { justify-content: center; padding: 8px 0; }
+  .app.rail .nav-item { justify-content: center; padding: 9px 0; }
+  .app.rail .brand-row { justify-content: center; }
+  .app.rail .toggle-btn { position: absolute; top: 14px; right: 10px; }
+
+  /* ============ 主区 ============ */
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .topbar {
+    height: 48px; border-bottom: 1px solid var(--border-soft);
+    display: flex; align-items: center; gap: 10px; padding: 0 16px;
+    background: var(--bg-elev);
+  }
+  .topbar .title { font-weight: 600; }
+  .topbar .crumb { color: var(--text-faint); font-size: 12px; }
+  .kbd-hint {
+    margin-left: auto; display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text-faint);
+  }
+  kbd {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px;
+    font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  }
+  .content { flex: 1; overflow-y: auto; padding: 20px; }
+
+  /* ============ 看板 ============ */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border-soft);
+    border-radius: var(--radius); padding: 14px;
+  }
+  .card h3 {
+    margin: 0 0 10px; font-size: 13px; font-weight: 600;
+    color: var(--text-dim); display: flex; align-items: center; gap: 8px;
+    letter-spacing: .2px;
+  }
+  .card h3 .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .dot.ok { background: var(--green); }
+  .dot.busy { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .dot.idle { background: var(--text-faint); }
+  .dot.warn { background: var(--amber); }
+
+  /* agent 状态 */
+  .agent-state { display: flex; align-items: center; gap: 12px; }
+  .agent-avatar {
+    width: 44px; height: 44px; border-radius: 12px; flex: none;
+    background: linear-gradient(135deg, #1d2340, #2a2140);
+    display: grid; place-items: center; font-size: 20px;
+  }
+  .agent-meta .name { font-weight: 600; }
+  .agent-meta .status { font-size: 12px; color: var(--green); }
+  .agent-meta .status.idle { color: var(--text-faint); }
+
+  .kv { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .kv-row { display: flex; justify-content: space-between; font-size: 12px; }
+  .kv-row .k { color: var(--text-faint); }
+  .kv-row .v { color: var(--text); font-family: var(--mono); font-size: 11.5px; }
+
+  /* 任务列表 */
+  .task-row {
+    display: flex; align-items: center; gap: 10px; padding: 7px 0;
+    border-bottom: 1px solid var(--border-soft); font-size: 13px;
+  }
+  .task-row:last-child { border-bottom: 0; }
+  .task-row .t-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-row .t-time { color: var(--text-faint); font-size: 12px; font-family: var(--mono); }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 5px; background: var(--panel-2); color: var(--text-dim); flex: none; }
+  .tag.green { background: rgba(53,196,127,.14); color: var(--green); }
+  .tag.blue  { background: rgba(79,140,255,.14); color: var(--accent); }
+  .tag.amber { background: rgba(240,166,60,.14); color: var(--amber); }
+
+  /* 插件健康度 */
+  .plugin-row { display: flex; align-items: center; gap: 9px; padding: 6px 0; font-size: 13px; }
+  .plugin-row .p-name { flex: 1; font-family: var(--mono); font-size: 12px; }
+  .plugin-row .p-state { font-size: 11px; }
+
+  /* 服务入口卡片 */
+  .service-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .service {
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 12px; cursor: pointer; background: var(--panel-2);
+    transition: transform .08s ease, border-color .08s ease;
+  }
+  .service:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .service .s-ico { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; margin-bottom: 8px; font-size: 14px; }
+  .service .s-name { font-size: 13px; font-weight: 500; }
+  .service .s-desc { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+  .service .s-badge { font-size: 10px; margin-top: 6px; }
+
+  /* ============ 命令面板 ============ */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(4,6,10,.55);
+    backdrop-filter: blur(2px); display: none;
+    align-items: flex-start; justify-content: center; padding-top: 12vh;
+    z-index: 100;
+  }
+  .overlay.open { display: flex; }
+  .palette {
+    width: 560px; max-width: 92vw; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: 0 24px 80px rgba(0,0,0,.5); overflow: hidden;
+    animation: pop .14s ease;
+  }
+  @keyframes pop { from { transform: scale(.98) translateY(-6px); opacity: 0; } }
+  .palette-input {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 16px; border-bottom: 1px solid var(--border-soft);
+  }
+  .palette-input input {
+    flex: 1; background: none; border: 0; outline: none; color: var(--text);
+    font: inherit; font-size: 15px;
+  }
+  .palette-input .search-ico { color: var(--text-faint); }
+  .palette-list { max-height: 360px; overflow-y: auto; padding: 6px; }
+  .palette-group { font-size: 11px; color: var(--text-faint); padding: 10px 12px 4px; letter-spacing: .4px; }
+  .palette-item {
+    display: flex; align-items: center; gap: 11px; padding: 9px 12px;
+    border-radius: 8px; cursor: pointer; font-size: 13.5px;
+  }
+  .palette-item .pi-ico { width: 28px; height: 28px; border-radius: 7px; background: var(--panel-2); display: grid; place-items: center; font-size: 14px; flex: none; }
+  .palette-item .pi-body { flex: 1; min-width: 0; }
+  .palette-item .pi-title { color: var(--text); }
+  .palette-item .pi-desc { font-size: 11.5px; color: var(--text-faint); }
+  .palette-item .pi-kbd { color: var(--text-faint); font-size: 11px; font-family: var(--mono); }
+  .palette-item.active { background: var(--accent-soft); }
+  .palette-item.active .pi-title { color: var(--text); }
+  .palette-foot {
+    border-top: 1px solid var(--border-soft); padding: 8px 14px;
+    display: flex; gap: 14px; font-size: 11px; color: var(--text-faint);
+  }
+
+  /* 提示 toast */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--panel-2); border: 1px solid var(--border);
+    padding: 9px 16px; border-radius: 9px; font-size: 13px;
+    opacity: 0; pointer-events: none; transition: opacity .18s ease;
+    z-index: 200;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <!-- ================= 侧栏 ================= -->
+  <aside class="sidebar">
+    <div class="brand-row">
+      <div class="brand-mark">DS</div>
+      <div class="brand-text">
+        <div class="brand-name">DeepSeek Harness</div>
+        <div class="brand-sub">Personal Agent · 本地构建</div>
+      </div>
+      <button class="toggle-btn" id="toggleBtn" title="折叠侧栏">«</button>
+    </div>
+
+    <button class="new-session" onclick="toast('新建会话（原型占位）')">
+      <span style="font-size:15px">＋</span><span>新建会话</span>
+    </button>
+
+    <div class="section-label">模块</div>
+    <nav class="nav-list" id="modules">
+      <button class="nav-item active" data-view="home">
+        <span class="ico">🏠</span><span class="label">Home 看板</span>
+      </button>
+      <button class="nav-item" data-view="queue">
+        <span class="ico">📋</span><span class="label">任务队列</span>
+        <span class="badge run">2</span>
+      </button>
+      <button class="nav-item" data-view="capability">
+        <span class="ico">🧩</span><span class="label">能力</span>
+        <span class="badge">37</span>
+      </button>
+      <button class="nav-item" data-view="delivery">
+        <span class="ico">📦</span><span class="label">交付</span>
+        <span class="badge warn">1</span>
+      </button>
+      <button class="nav-item" data-view="architecture">
+        <span class="ico">🏗️</span><span class="label">架构</span>
+      </button>
+    </nav>
+
+    <div class="spacer"></div>
+
+    <div class="section-label">工作区</div>
+    <div class="nav-list">
+      <button class="nav-item"><span class="ico">📁</span><span class="label">deepseek-harness</span></button>
+      <button class="nav-item"><span class="ico">📁</span><span class="label">my-services</span></button>
+    </div>
+
+    <div class="foot">
+      <button class="nav-item" onclick="toast('设置（原型占位）')">
+        <span class="ico">⚙️</span><span class="label">设置</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ================= 主区 ================= -->
+  <main class="main">
+    <div class="topbar">
+      <span class="title" id="viewTitle">Home 看板</span>
+      <span class="crumb">/ 总览</span>
+      <div class="kbd-hint">
+        命令面板 <kbd>Ctrl</kbd><kbd>K</kbd>
+      </div>
+    </div>
+
+    <div class="content" id="content">
+      <!-- Home 看板 -->
+      <section id="view-home" class="view">
+        <div class="grid">
+          <!-- Agent 状态 -->
+          <div class="card">
+            <h3><span class="dot busy"></span>Agent 状态</h3>
+            <div class="agent-state">
+              <div class="agent-avatar">🤖</div>
+              <div class="agent-meta">
+                <div class="name">Personal Agent</div>
+                <div class="status">运行中 · 3 个子代理</div>
+              </div>
+            </div>
+            <div class="kv">
+              <div class="kv-row"><span class="k">模型</span><span class="v">deepseek-v4-pro</span></div>
+              <div class="kv-row"><span class="k">模式</span><span class="v">Standard</span></div>
+              <div class="kv-row"><span class="k">搜索</span><span class="v">exa</span></div>
+              <div class="kv-row"><span class="k">目标</span><span class="v">1 个进行中</span></div>
+            </div>
+          </div>
+
+          <!-- 活动任务 -->
+          <div class="card">
+            <h3><span class="dot busy"></span>活动任务</h3>
+            <div class="task-row">
+              <span class="t-label">批量翻译 docs/zh/*.md</span>
+              <span class="tag blue">queue</span>
+              <span class="t-time">12s</span>
+            </div>
+            <div class="task-row">
+              <span class="t-label">子代理：audit packages/client</span>
+              <span class="tag green">subagent</span>
+              <span class="t-time">1m</span>
+            </div>
+            <div class="task-row">
+              <span class="t-label">workflow: 语料清洗</span>
+              <span class="tag amber">blocked</span>
+              <span class="t-time">—</span>
+            </div>
+          </div>
+
+          <!-- 插件健康度 -->
+          <div class="card">
+            <h3><span class="dot ok"></span>插件健康度</h3>
+            <div class="plugin-row"><span class="p-name">ui-task-queue</span><span class="p-state" style="color:var(--green)">● 正常</span></div>
+            <div class="plugin-row"><span class="p-name">ui-delivery</span><span class="p-state" style="color:var(--green)">● 正常</span></div>
+            <div class="plugin-row"><span class="p-name">web-search-exa</span><span class="p-state" style="color:var(--green)">● 正常</span></div>
+            <div class="plugin-row"><span class="p-name">my-rss-service</span><span class="p-state" style="color:var(--amber)">● 无凭证</span></div>
+            <div class="plugin-row"><span class="p-name">my-notes-service</span><span class="p-state" style="color:var(--red)">● 加载失败</span></div>
+          </div>
+
+          <!-- 服务入口 -->
+          <div class="card" style="grid-column: 1 / -1;">
+            <h3><span class="dot ok"></span>我的服务（服务入口）</h3>
+            <div class="service-grid">
+              <div class="service" onclick="toast('打开「RSS 订阅」')">
+                <div class="s-ico" style="background:rgba(79,140,255,.16)">📡</div>
+                <div class="s-name">RSS 订阅</div>
+                <div class="s-desc">聚合关注源</div>
+                <div class="s-badge"><span class="tag green">12 未读</span></div>
+              </div>
+              <div class="service" onclick="toast('打开「笔记」')">
+                <div class="s-ico" style="background:rgba(154,123,255,.16)">📝</div>
+                <div class="s-name">笔记</div>
+                <div class="s-desc">Markdown 知识库</div>
+              </div>
+              <div class="service" onclick="toast('打开「日程」')">
+                <div class="s-ico" style="background:rgba(53,196,127,.16)">📅</div>
+                <div class="s-name">日程</div>
+                <div class="s-desc">日历与提醒</div>
+              </div>
+              <div class="service" onclick="toast('打开「监控」')">
+                <div class="s-ico" style="background:rgba(240,166,60,.16)">📈</div>
+                <div class="s-name">监控</div>
+                <div class="s-desc">服务健康与指标</div>
+              </div>
+              <div class="service" onclick="toast('安装新插件')">
+                <div class="s-ico" style="background:var(--panel-2)">＋</div>
+                <div class="s-name">安装新插件</div>
+                <div class="s-desc">从市场 / 本地添加</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 近期交付 -->
+          <div class="card" style="grid-column: 1 / -1;">
+            <h3><span class="dot idle"></span>近期交付</h3>
+            <div class="task-row">
+              <span class="t-label">packages/client/ui-prototype/index.html</span>
+              <span class="tag">file</span>
+              <span class="t-time">2 分钟前</span>
+            </div>
+            <div class="task-row">
+              <span class="t-label">docs/architecture.md 修订</span>
+              <span class="tag">file</span>
+              <span class="t-time">1 小时前</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 占位视图 -->
+      <section id="view-queue" class="view" hidden>
+        <div class="card"><h3>任务队列</h3><p style="color:var(--text-dim)">（原型占位 —— 现有 shell.view 模块）</p></div>
+      </section>
+      <section id="view-capability" class="view" hidden>
+        <div class="card"><h3>能力</h3><p style="color:var(--text-dim)">（原型占位 —— 现有 shell.view 模块）</p></div>
+      </section>
+      <section id="view-delivery" class="view" hidden>
+        <div class="card"><h3>交付</h3><p style="color:var(--text-dim)">（原型占位 —— 现有 shell.view 模块）</p></div>
+      </section>
+      <section id="view-architecture" class="view" hidden>
+        <div class="card"><h3>架构</h3><p style="color:var(--text-dim)">（原型占位 —— 现有 shell.view 模块）</p></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ================= 命令面板 ================= -->
+<div class="overlay" id="overlay">
+  <div class="palette">
+    <div class="palette-input">
+      <span class="search-ico">⌕</span>
+      <input id="paletteInput" placeholder="搜索服务、命令、模块…" autocomplete="off" />
+      <kbd>Esc</kbd>
+    </div>
+    <div class="palette-list" id="paletteList"></div>
+    <div class="palette-foot">
+      <span>↑↓ 选择</span><span>Enter 打开</span><span>Esc 关闭</span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ============ 侧栏折叠 ============
+  const app = document.getElementById('app');
+  const toggleBtn = document.getElementById('toggleBtn');
+  toggleBtn.addEventListener('click', () => {
+    app.classList.toggle('rail');
+    toggleBtn.textContent = app.classList.contains('rail') ? '»' : '«';
+  });
+
+  // ============ 视图切换 ============
+  const viewTitle = document.getElementById('viewTitle');
+  const titles = { home: 'Home 看板', queue: '任务队列', capability: '能力', delivery: '交付', architecture: '架构' };
+  document.querySelectorAll('#modules .nav-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#modules .nav-item').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const v = btn.dataset.view;
+      document.querySelectorAll('.view').forEach(s => s.hidden = true);
+      document.getElementById('view-' + v).hidden = false;
+      viewTitle.textContent = titles[v];
+    });
+  });
+
+  // ============ 命令面板 ============
+  const overlay = document.getElementById('overlay');
+  const paletteInput = document.getElementById('paletteInput');
+  const paletteList = document.getElementById('paletteList');
+
+  // 命令面板条目：模拟「模块 + 服务 + 命令」三源聚合
+  const ITEMS = [
+    { group: '模块', icon: '🏠', title: 'Home 看板', desc: 'Agent 总览', kbd: '', run: () => goto('home') },
+    { group: '模块', icon: '📋', title: '任务队列', desc: '后台任务与工作流', kbd: '', run: () => goto('queue') },
+    { group: '模块', icon: '🧩', title: '能力', desc: 'Skills / MCP / Tools', kbd: '', run: () => goto('capability') },
+    { group: '模块', icon: '📦', title: '交付', desc: '成果物工作台', kbd: '', run: () => goto('delivery') },
+    { group: '我的服务', icon: '📡', title: 'RSS 订阅', desc: 'rss-service 插件', kbd: '', run: () => toast('打开「RSS 订阅」') },
+    { group: '我的服务', icon: '📝', title: '笔记', desc: 'notes-service 插件', kbd: '', run: () => toast('打开「笔记」') },
+    { group: '我的服务', icon: '📅', title: '日程', desc: 'calendar-service 插件', kbd: '', run: () => toast('打开「日程」') },
+    { group: '我的服务', icon: '📈', title: '监控', desc: 'monitor-service 插件', kbd: '', run: () => toast('打开「监控」') },
+    { group: '命令', icon: '🔀', title: '/model 切换模型', desc: '会话内命令', kbd: '', run: () => toast('执行 /model') },
+    { group: '命令', icon: '🔀', title: '/new 新建会话', desc: '会话内命令', kbd: '', run: () => toast('执行 /new') },
+    { group: '命令', icon: '⚙️', title: '打开设置', desc: 'Settings', kbd: '', run: () => toast('打开设置') },
+  ];
+
+  function renderPalette(query) {
+    const q = query.trim().toLowerCase();
+    const filtered = ITEMS.filter(it =>
+      !q || it.title.toLowerCase().includes(q) || it.desc.toLowerCase().includes(q) || it.group.toLowerCase().includes(q)
+    );
+    let html = '';
+    let lastGroup = '';
+    filtered.forEach((it, i) => {
+      if (it.group !== lastGroup) {
+        html += `<div class="palette-group">${it.group}</div>`;
+        lastGroup = it.group;
+      }
+      html += `<div class="palette-item" data-i="${i}">
+        <span class="pi-ico">${it.icon}</span>
+        <span class="pi-body"><div class="pi-title">${it.title}</div><div class="pi-desc">${it.desc}</div></span>
+        ${it.kbd ? `<span class="pi-kbd">${it.kbd}</span>` : ''}
+      </div>`;
+    });
+    if (filtered.length === 0) html = `<div class="palette-group">无匹配结果</div>`;
+    paletteList.innerHTML = html;
+    return filtered;
+  }
+
+  let currentItems = ITEMS;
+  let activeIdx = 0;
+
+  function renderActive() {
+    const items = paletteList.querySelectorAll('.palette-item');
+    items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+    const active = items[activeIdx];
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+
+  function openPalette() {
+    overlay.classList.add('open');
+    paletteInput.value = '';
+    currentItems = renderPalette('');
+    activeIdx = 0;
+    renderActive();
+    setTimeout(() => paletteInput.focus(), 0);
+  }
+  function closePalette() { overlay.classList.remove('open'); }
+
+  paletteInput.addEventListener('input', () => {
+    currentItems = renderPalette(paletteInput.value);
+    activeIdx = 0;
+    renderActive();
+  });
+  paletteInput.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, currentItems.length - 1); renderActive(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); renderActive(); }
+    else if (e.key === 'Enter') { e.preventDefault(); currentItems[activeIdx]?.run(); closePalette(); }
+    else if (e.key === 'Escape') { closePalette(); }
+  });
+  paletteList.addEventListener('click', (e) => {
+    const el = e.target.closest('.palette-item');
+    if (!el) return;
+    currentItems[Number(el.dataset.i)]?.run();
+    closePalette();
+  });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closePalette(); });
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
+  });
+
+  // ============ 辅助 ============
+  function goto(v) {
+    const btn = document.querySelector(`#modules .nav-item[data-view="${v}"]`);
+    if (btn) btn.click();
+  }
+  let toastTimer;
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+</script>
+</body>
+</html>
