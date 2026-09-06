@@ -51,6 +51,7 @@ The kernel packages boot and serve the page; the UI feature packages present it.
 | [`ui-goal/`](ui-goal/README.md) | Presents and manages the current goal | — |
 | [`ui-trajectory/`](ui-trajectory/README.md) | Presents alternate views of agent activity | — |
 | [`ui-work-observatory/`](ui-work-observatory/README.md) | Presents bounded human-activity and Session-step wall-clock evidence | — |
+| [`ui-content/`](ui-content/README.md) | Captures completed plain-text assistant replies into the content library and presents a read-only library view | — |
 | [`ui-commands/`](ui-commands/README.md) | Provides session-aware command discovery and dispatch | — |
 | [`ui-input-trigger/`](ui-input-trigger/README.md) | Coordinates inline command and reference suggestions | — |
 | [`ui-skill/`](ui-skill/README.md) | Adds skill references to inline suggestions | — |
