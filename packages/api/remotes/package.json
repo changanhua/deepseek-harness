@@ -59,6 +59,10 @@
     "@deepseek-ai/dsh-typert-protocol": "workspace:^"
   },
   "peerDependencies": {
+    "@changanhua/dsh-content-remote": "workspace:^",
+    "@changanhua/dsh-host-capability-registry": "workspace:^",
+    "@changanhua/dsh-host-work-observatory": "workspace:^",
+    "@changanhua/dsh-task-queue-remote": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-agent-presets": "workspace:^",
     "@deepseek-ai/dsh-api-gateway": "workspace:^",
@@ -71,8 +75,6 @@
     "@deepseek-ai/dsh-file-reference": "workspace:^",
     "@deepseek-ai/dsh-goal": "workspace:^",
     "@deepseek-ai/dsh-host-plugin-inventory": "workspace:^",
-    "@changanhua/dsh-host-capability-registry": "workspace:^",
-    "@changanhua/dsh-host-work-observatory": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-message-feedback": "workspace:^",
@@ -80,11 +82,14 @@
     "@deepseek-ai/dsh-session-reference": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
     "@deepseek-ai/dsh-subagent": "workspace:^",
-    "@changanhua/dsh-task-queue-remote": "workspace:^",
     "@deepseek-ai/dsh-user-approval": "workspace:^",
     "@deepseek-ai/dsh-user-questions": "workspace:^"
   },
   "devDependencies": {
+    "@changanhua/dsh-content-remote": "workspace:^",
+    "@changanhua/dsh-host-capability-registry": "workspace:^",
+    "@changanhua/dsh-host-work-observatory": "workspace:^",
+    "@changanhua/dsh-task-queue-remote": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-agent-presets": "workspace:^",
     "@deepseek-ai/dsh-api-gateway": "workspace:^",
@@ -97,8 +102,6 @@
     "@deepseek-ai/dsh-file-reference": "workspace:^",
     "@deepseek-ai/dsh-goal": "workspace:^",
     "@deepseek-ai/dsh-host-plugin-inventory": "workspace:^",
-    "@changanhua/dsh-host-capability-registry": "workspace:^",
-    "@changanhua/dsh-host-work-observatory": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-message-feedback": "workspace:^",
@@ -106,7 +109,6 @@
     "@deepseek-ai/dsh-session-reference": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
     "@deepseek-ai/dsh-subagent": "workspace:^",
-    "@changanhua/dsh-task-queue-remote": "workspace:^",
     "@deepseek-ai/dsh-user-approval": "workspace:^",
     "@deepseek-ai/dsh-user-questions": "workspace:^"
   }

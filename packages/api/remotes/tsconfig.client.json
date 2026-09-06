@@ -46,6 +46,9 @@
       "path": "../../host/work-observatory"
     },
     {
+      "path": "../../content/content-remote"
+    },
+    {
       "path": "../../interaction/commands"
     },
     {

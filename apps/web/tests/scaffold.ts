@@ -348,11 +348,17 @@ export interface LaunchOptions {
 }
 
 /** Dispose the booted tree and remove both owned temp roots, reporting every independent cleanup failure. */
-async function cleanupScaffoldWorld(ctx: Context, workspaceCwd: string, persistenceRoot: string): Promise<unknown[]> {
+async function cleanupScaffoldWorld(
+  ctx: Context,
+  workspaceCwd: string,
+  persistenceRoot: string,
+  contentStorageRoot: string,
+): Promise<unknown[]> {
   const failures: unknown[] = []
   await Promise.resolve(ctx.fiber.dispose()).catch((error: unknown) => failures.push(error))
   await rm(workspaceCwd, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
   await rm(persistenceRoot, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
+  await rm(contentStorageRoot, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
   return failures
 }
 
@@ -389,6 +395,13 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     }
   }
   const workspaceCwd = await realpath(await mkdtemp(join(tmpdir(), 'dsh-web-e2e-ws-')))
+  // Windows private-directory validation walks every ancestor. Keep the
+  // disposable content medium below LocalAppData, whose ACL chain is owner
+  // safe, instead of the shared %TEMP% root used for the rest of the scaffold.
+  const contentStorageBase = process.platform === 'win32'
+    ? (process.env.LOCALAPPDATA ?? tmpdir())
+    : tmpdir()
+  const contentStorageRoot = await realpath(await mkdtemp(join(contentStorageBase, 'dsh-web-e2e-content-')))
   // Isolated harness home: the settings/credentials rows resolve $DSH_HOME
   // paths at load, and an in-process boot must NEVER touch the developer's
   // real ~/.dsh document or credential file.
@@ -427,6 +440,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   } catch (error) {
     const failures: unknown[] = [error]
     await rm(workspaceCwd, { recursive: true, force: true }).catch((cleanupError: unknown) => failures.push(cleanupError))
+    await rm(contentStorageRoot, { recursive: true, force: true }).catch((cleanupError: unknown) => failures.push(cleanupError))
     restoreSkillRootEnvironment()
     if (failures.length > 1) throw new AggregateError(failures, 'web scaffold temp-root setup failed')
     throw error
@@ -472,6 +486,23 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     // to an absolute temp root (removed with the workspace at close) so tests
     // never write the user's harness home.
     { id: 'storage-json', config: { root: join(workspaceCwd, '.dsh-storages') } },
+    // Keep the real owner-private guarantee. The path is rooted below
+    // LocalAppData on Windows because the ACL audit rejects shared %TEMP%
+    // ancestors; the directory is unique to this scaffold and removed at
+    // teardown. A patch replaces the whole config, so every field is restated.
+    {
+      id: 'content-sqlite',
+      config: {
+        backendName: 'content_sqlite',
+        path: join(contentStorageRoot, 'content', 'main', 'content.sqlite'),
+        pathBase: 'cwd',
+        journalMode: 'delete',
+        ownership: 'exclusive',
+        synchronous: 'extra',
+        applicationId: 1146308675,
+        privateDirectory: true,
+      },
+    },
     // Skill discovery is model-visible input. Pin every host-level root inside
     // the owned temp world so ~/.dsh, ~/.agents, and a bundled-root env setting
     // cannot change replay requests or conversation goldens. Project roots stay
@@ -715,7 +746,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     }
   } catch (error) {
     if (process.cwd() !== originalCwd) process.chdir(originalCwd)
-    const cleanupFailures = await cleanupScaffoldWorld(ctx, workspaceCwd, persistenceRoot)
+    const cleanupFailures = await cleanupScaffoldWorld(ctx, workspaceCwd, persistenceRoot, contentStorageRoot)
     restoreCredentialEnvironment()
     restoreSkillRootEnvironment()
     if (cleanupFailures.length > 0) {
@@ -787,7 +818,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       }
       try {
         stopObservingSessions()
-        failures.push(...await cleanupScaffoldWorld(ctx, workspaceCwd, persistenceRoot))
+        failures.push(...await cleanupScaffoldWorld(ctx, workspaceCwd, persistenceRoot, contentStorageRoot))
       } finally {
         restoreCredentialEnvironment()
         restoreSkillRootEnvironment()

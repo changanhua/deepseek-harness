@@ -49,6 +49,18 @@
       ]
     },
     {
+      "directory": "packages/client/ui-content",
+      "legacyName": "@deepseek-ai/dsh-client-ui-content",
+      "sourceName": "@changanhua/dsh-client-ui-content",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent",
+        "upstream-private-api-dependency"
+      ]
+    },
+    {
       "directory": "packages/client/ui-delivery",
       "legacyName": "@deepseek-ai/dsh-client-ui-delivery",
       "sourceName": "@changanhua/dsh-client-ui-delivery",
@@ -103,7 +115,9 @@
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,
-      "blockers": ["release-family-absent"]
+      "blockers": [
+        "release-family-absent"
+      ]
     },
     {
       "directory": "packages/content/content-domain",
@@ -112,7 +126,9 @@
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,
-      "blockers": ["release-family-absent"]
+      "blockers": [
+        "release-family-absent"
+      ]
     },
     {
       "directory": "packages/content/content-remote",
@@ -121,7 +137,9 @@
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,
-      "blockers": ["release-family-absent"]
+      "blockers": [
+        "release-family-absent"
+      ]
     },
     {
       "directory": "packages/content/content-session",
@@ -130,7 +148,9 @@
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,
-      "blockers": ["release-family-absent"]
+      "blockers": [
+        "release-family-absent"
+      ]
     },
     {
       "directory": "packages/context/runtime-facts",

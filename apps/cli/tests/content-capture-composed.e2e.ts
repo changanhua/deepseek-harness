@@ -58,36 +58,13 @@ interface CaptureReceipt {
   readonly versionId: string | null
 }
 
-/** The overlay mounts the content composition over the default web profile. */
+/** The shipped web composition already mounts the content stack; the overlay injects only the capture probe. */
 async function seedComposition(dshHome: string): Promise<string> {
   const patchFile = join(dshHome, 'content-capture.patch.yml')
   await writeFile(patchFile, [
     '- insert:',
-    '    - id: content-capture-storage-sqlite',
-    `      name: ${pathToFileURL(builtStorageSqlite).href}`,
-    '      config:',
-    '        backendName: content_sqlite',
-    "        path: 'content/main/content.sqlite'",
-    '        pathBase: dsh-home',
-    '        journalMode: delete',
-    '        ownership: exclusive',
-    '        synchronous: extra',
-    `        applicationId: ${String(0x44534843)}`,
-    '        privateDirectory: true',
-    '    - id: content-domain',
-    `      name: ${pathToFileURL(builtContentDomain).href}`,
-    '    - id: content-session',
-    `      name: ${pathToFileURL(builtContentSession).href}`,
-    '    - id: content-remote',
-    `      name: ${pathToFileURL(builtContentRemote).href}`,
     '    - id: content-capture-probe',
     `      name: ${probeFixture}`,
-    '  # A patch replaces the whole row config, so the JSON backend stays routed.',
-    '- id: storage-domain',
-    '  config:',
-    '    backend: json',
-    '    routes:',
-    '      content_library: content_sqlite',
     '',
   ].join('\n'))
   return patchFile
@@ -299,9 +276,16 @@ describe.skipIf(!existsSync(builtBin) || !existsSync(builtContentRemote))
         args: { input: { operationId: 'capture-composed-0002', sessionId: seed.sessionId, messageId: seed.messageId } },
       })).toEqual({ value: receipt })
 
-      // Wire fields cannot forge caller authority or source verification.
+      // A forged authority field never reaches Content: the wire descriptor
+      // strips it, and the source idempotency answer is unchanged.
       expect(await call(port, firstUrl.host, cookie, 'contentRemote/capture', {
         args: { input: { operationId: 'capture-composed-0003', sessionId: seed.sessionId, messageId: seed.messageId, isHuman: true } },
+      })).toEqual({ value: receipt })
+
+      // A payload the wire accepts but the domain schema rejects settles as
+      // invalid_request without touching the library.
+      expect(await call(port, firstUrl.host, cookie, 'contentRemote/capture', {
+        args: { input: { operationId: 'capture-composed-0004', sessionId: seed.sessionId, messageId: '' } },
       })).toEqual({ code: 'invalid_request' })
 
       await stopWeb(first)

@@ -28,6 +28,15 @@
     path: ':memory:'
     openAt: never
 
+# The content medium is a SQLite backend routed under the shared storage hub;
+# this restatement replaces the base row's whole config, so the JSON backend
+# stays the default for every other domain.
+- id: storage-domain
+  config:
+    backend: json
+    routes:
+      content_library: content_sqlite
+
 - id: tools
   config:
     # TEMPORARY workaround: DSH_TOOLS_MODE (native|ptc|both) opts a whole dsh
@@ -101,6 +110,31 @@
         retentionDays: 90
         maxClients: 128
         maxQueryRecords: 10000
+
+    # Personal content library: the SQLite medium, the durable domain over
+    # it, the trusted Session source bridge, and the Typert Remote the browser
+    # surface consumes. The storage-domain row below routes content_library
+    # onto the new backend.
+    - id: content-sqlite
+      name: '@deepseek-ai/dsh-storage-sqlite'
+      config:
+        backendName: content_sqlite
+        path: 'content/main/content.sqlite'
+        pathBase: dsh-home
+        journalMode: delete
+        ownership: exclusive
+        synchronous: extra
+        applicationId: 1146308675
+        privateDirectory: true
+
+    - id: content-domain
+      name: '@changanhua/dsh-content-domain'
+
+    - id: content-session
+      name: '@changanhua/dsh-content-session'
+
+    - id: content-remote
+      name: '@changanhua/dsh-content-remote'
 
     # Session commands, cold reads, and live control over Typert Remote.
     - id: session-controller
@@ -331,6 +365,11 @@
     # Dedicated day/project view plus the app-scoped browser activity producer.
     - id: ui-work-observatory
       name: '@changanhua/dsh-client-ui-work-observatory'
+
+    # Content library workspace and the per-message capture entry, over the
+    # contentRemote Remote.
+    - id: ui-content
+      name: '@changanhua/dsh-client-ui-content'
 
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #

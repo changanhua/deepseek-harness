@@ -178,9 +178,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerProps: [
       '/** Owner currency of finalized-assistant actions. */\nexport interface AssistantActionOwnerProps {\n  messageId: MessageId\n}',
     ],
-    ownerPropsReferences: [
-      'MessageId',
-    ],
+    ownerPropsReferences: [],
     standardProps: [
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'useSessions: UseSessions',
@@ -200,6 +198,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'conversation.chat.node\' (client-ui-chat), so it exists while that entry is mounted',
     occupants: [
+      '@changanhua/dsh-client-ui-content CaptureAction id \'capture\'',
       'client-ui-message-feedback MessageFeedbackActions id \'feedback\'',
     ],
     replaceRisk: 'none',
@@ -378,7 +377,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       '/** Owner values used to elect a composer takeover. */\nexport interface ComposerChainProps {\n  /** Current Session identity used by temporary business-owned entries. */\n  sessionId: SessionId | undefined\n  /** Current Session lifecycle state, absent without a selected Session. */\n  session: SessionSnapshot | undefined\n  /** Effective business-owned interaction awaiting the user in this Session. */\n  pendingInteraction: SessionPendingInteraction | undefined\n}',
     ],
     ownerPropsReferences: [
-      'SessionId',
       'SessionPendingInteraction',
       'SessionSnapshot',
     ],
@@ -1000,7 +998,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       '/** Message image group handed to the optional attachment presentation plugin. */\nexport interface MessageImagesOwnerProps {\n  /** Durable references or submission-echo previews in source order. */\n  images: readonly MessageImageSource[]\n  /** Session-authorized image URL loader for the durable arm. */\n  loadImage: MessageImageLoader\n  /** Horizontal placement inside the owning record. */\n  align: \'start\' | \'end\'\n}',
     ],
     ownerPropsReferences: [
-      'Message',
       'MessageImageLoader',
       'MessageImageSource',
     ],
@@ -1165,9 +1162,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerProps: [
       '/** Plain breadcrumb data handed to the optional lineage renderer. */\nexport interface ConversationHeaderLineageOwnerProps {\n  /** Session represented by this breadcrumb title. */\n  lineageSessionId: SessionId\n  /** Display title available to a combined title/control renderer. */\n  displayTitle: string\n  /** Navigate to an ancestor title when present. */\n  openTitle?: () => void\n}',
     ],
-    ownerPropsReferences: [
-      'SessionId',
-    ],
+    ownerPropsReferences: [],
     standardProps: [
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'useSessions: UseSessions',
@@ -1259,7 +1254,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       '/** Message image group handed to the optional attachment presentation plugin. */\nexport interface MessageImagesOwnerProps {\n  /** Durable references or submission-echo previews in source order. */\n  images: readonly MessageImageSource[]\n  /** Session-authorized image URL loader for the durable arm. */\n  loadImage: MessageImageLoader\n  /** Horizontal placement inside the owning record. */\n  align: \'start\' | \'end\'\n}',
     ],
     ownerPropsReferences: [
-      'Message',
       'MessageImageLoader',
       'MessageImageSource',
     ],
@@ -1945,6 +1939,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [
       '@changanhua/dsh-client-ui-architecture ArchitectureWorkspace id \'architecture\'',
       '@changanhua/dsh-client-ui-capability CapabilityWorkspace id \'capability\'',
+      '@changanhua/dsh-client-ui-content ContentLibraryWorkspace id \'content-library\'',
       '@changanhua/dsh-client-ui-delivery DeliveryWorkbench id \'delivery\'',
       '@changanhua/dsh-client-ui-task-queue QueueWorkspace id \'queue\'',
       '@changanhua/dsh-client-ui-work-observatory WorkObservatoryWorkspace id \'work-observatory\'',
@@ -2127,6 +2122,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [
       '@changanhua/dsh-client-ui-architecture ArchitectureNavEntry id \'architecture-module\'',
       '@changanhua/dsh-client-ui-capability CapabilityNavEntry id \'capability-module\'',
+      '@changanhua/dsh-client-ui-content ContentLibraryNavEntry id \'content-library-module\'',
       '@changanhua/dsh-client-ui-delivery DeliveryNavEntry id \'delivery-module\'',
       '@changanhua/dsh-client-ui-task-queue QueueNavEntry id \'queue-module\'',
       '@changanhua/dsh-client-ui-work-observatory WorkObservatoryNavEntry id \'work-observatory-module\'',
