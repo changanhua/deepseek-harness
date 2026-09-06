@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsh-intelligence/evals/scoring.schema.json",
+  "title": "Scoring / Rubric",
+  "description": "第一轮最看重的四个指标；其次为成本与设计指标。指标先记原始计数（blocking / unsupported inventions / hallucinated symbols），evidence_grounding_rate = 有证据支持的 required claims / required claims。分数只来自 normalized findings（由不可变 raw output 派生），禁止 eval → knowledge 自动晋升。",
+  "type": "object",
+  "required": ["primary_metrics", "secondary_metrics", "weights", "promotion_policy"],
+  "properties": {
+    "primary_metrics": {
+      "type": "array",
+      "items": { "type": "string", "enum": [
+        "architecture_blocking_findings",
+        "unsupported_inventions",
+        "hallucinated_symbols",
+        "evidence_grounding_rate"
+      ] }
+    },
+    "secondary_metrics": {
+      "type": "array",
+      "items": { "type": "string", "enum": [
+        "design_delta_rate",
+        "seam_pass_at_1",
+        "placement_pass_at_1",
+        "token_cost",
+        "latency"
+      ] }
+    },
+    "weights": {
+      "type": "object",
+      "properties": {
+        "P0": { "type": "integer", "minimum": 0 },
+        "P1": { "type": "integer", "minimum": 0 },
+        "P2": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "promotion_policy": {
+      "description": "private holdout 是测试集，不是训练集：失败只能 → candidate lesson，不能 → Pattern validated。",
+      "type": "object",
+      "required": ["eval_to_knowledge"],
+      "properties": {
+        "eval_to_knowledge": { "const": "failure-to-candidate-lesson-only" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

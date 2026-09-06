@@ -1,0 +1,177 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsh-intelligence/schemas/architecture-decision-packet.schema.json",
+  "title": "Architecture Decision Packet (ADP)",
+  "description": "把自然语言需求转换成可检查决策；dsh_placement 先决定设计落在 DSH 哪里。来自 docs/dsh-post-training-system-design.md §5（新版）。",
+  "type": "object",
+  "required": ["schema_version", "id", "revision", "task", "evidence", "dsh_placement", "decision", "proof_obligations"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "pattern": "^adp-" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "task": {
+      "type": "object",
+      "required": ["raw_requirement_ref", "desired_outcomes", "non_goals", "scope", "risk_tier", "classifications"],
+      "properties": {
+        "raw_requirement_ref": { "type": "string" },
+        "desired_outcomes": { "type": "array", "items": { "type": "string" } },
+        "non_goals": { "type": "array", "items": { "type": "string" } },
+        "scope": { "type": "array", "items": { "type": "string" } },
+        "risk_tier": { "type": "string", "enum": ["T0", "T1", "T2"] },
+        "classifications": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["capsule_id", "required_refs"],
+      "properties": {
+        "capsule_id": { "type": "string" },
+        "required_refs": { "type": "array", "items": { "type": "string" } },
+        "unresolved_facts": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "dsh_placement": {
+      "type": "object",
+      "required": ["implementation_kind", "domain_owner", "seam_disposition", "existing_runtime_owners", "dsh_concepts", "event_mapping"],
+      "properties": {
+        "implementation_kind": {
+          "type": "string",
+          "enum": ["repo-tool", "domain-component", "existing-consumer", "new-seam"]
+        },
+        "domain_owner": { "type": "string" },
+        "seam_disposition": { "type": "string", "enum": ["none", "reuse", "compose", "invent"] },
+        "existing_runtime_owners": {
+          "type": "object",
+          "properties": {
+            "agent_execution": { "type": "string" },
+            "model_history": { "type": "string" },
+            "tool_registry": { "type": "string" },
+            "inference": { "type": "string" }
+          }
+        },
+        "dsh_concepts": {
+          "type": "object",
+          "required": ["references", "redefines"],
+          "properties": {
+            "references": { "type": "array", "items": { "type": "string" } },
+            "redefines": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "event_mapping": {
+          "type": "object",
+          "required": ["domain_mutations", "model_visible_projection", "live_execution_signals"],
+          "properties": {
+            "domain_mutations": { "type": "array", "items": { "type": "string" } },
+            "model_visible_projection": { "type": "array", "items": { "type": "string" } },
+            "live_execution_signals": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "public_service_justification": {
+          "type": "object",
+          "properties": {
+            "current_consumers": { "type": "array", "items": { "type": "string" } },
+            "independent_role_evolution": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "alternatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "mode": { "type": "string" },
+          "satisfies": { "type": "array", "items": { "type": "string" } },
+          "violates": { "type": "array", "items": { "type": "string" } },
+          "evidence_refs": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["selected_alternative", "mode"],
+      "properties": {
+        "selected_alternative": { "type": "string" },
+        "mode": { "type": "string" },
+        "invention_proof": {
+          "type": "object",
+          "properties": {
+            "inspected_existing_seams": { "type": "array", "items": { "type": "string" } },
+            "rejected_adaptations": { "type": "array", "items": { "type": "string" } },
+            "missing_capability": { "type": "string" },
+            "why_composition_is_insufficient": { "type": "string" },
+            "approval_ref": { "type": "string" }
+          }
+        }
+      }
+    },
+    "capability": {
+      "type": ["object", "null"],
+      "properties": {
+        "service_definition": { "type": "object" },
+        "providers": { "type": "array", "items": { "type": "string" } },
+        "consumers": { "type": "array", "items": { "type": "string" } },
+        "existing_extension_points": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "state": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "authoritative_owner": { "type": "string" },
+          "source_of_truth": { "type": "string" },
+          "durability": { "type": "string", "enum": ["process", "session-log", "domain-store", "external"] },
+          "mutation_serialization": { "type": "string" },
+          "replay": { "type": "string" },
+          "restart_recovery": { "type": "string" },
+          "cancellation": { "type": "string" },
+          "terminal_states": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "lifecycle": { "type": "object" },
+    "boundaries": { "type": "object" },
+    "configuration": { "type": "object" },
+    "model_visibility": { "type": "object" },
+    "observability": { "type": "object" },
+    "proof_obligations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "rule_ids", "statement"],
+        "properties": {
+          "id": { "type": "string" },
+          "rule_ids": { "type": "array", "items": { "type": "string" } },
+          "statement": { "type": "string" },
+          "evidence_refs": { "type": "array", "items": { "type": "string" } },
+          "falsification": { "type": "string" },
+          "verification_refs": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "properties": {
+        "unit": { "type": "array", "items": { "type": "string" } },
+        "invariant_negative_controls": { "type": "array", "items": { "type": "string" } },
+        "integration": { "type": "array", "items": { "type": "string" } },
+        "snapshots": { "type": "array", "items": { "type": "string" } },
+        "real_entry_path": { "type": "array", "items": { "type": "string" } },
+        "runtime_acceptance": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "open_questions": { "type": "array", "items": { "type": "string" } },
+    "owned_artifacts": {
+      "type": "object",
+      "properties": {
+        "canonical": { "type": "array", "items": { "type": "string" } },
+        "executable": { "type": "array", "items": { "type": "string" } },
+        "rebuildable": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "forbidden_runtime_ownership": { "type": "array", "items": { "type": "string" } }
+  }
+}

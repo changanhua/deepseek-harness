@@ -1,0 +1,11 @@
+# Token Budgets — 防止上下文稀释
+# 来自 docs/dsh-post-training-system-design.md §A4 / §B3。
+schema_version: 1
+budgets:
+  contract_kernel_resident_max_tokens: 1200
+  precedent_max_count: 3
+  fragments_per_model_step_max: 6
+  default_retrieval_payload_max_tokens: 6000
+  fragment_mode:
+    default: structured-summary-plus-pointer
+    overflow: compress

@@ -1,0 +1,94 @@
+# Architecture Intelligence V0 自用 ADP
+# 先于任何能力设计固定本系统的 DSH 落点：repo-tool，none disposition，零平行运行时。
+# 若未来需求改变任一字段，先提交新的 ADP 与 proposed Agent Note，再决定是否进入 packages/。
+schema_version: 1
+id: adp-architecture-intelligence-self
+revision: 1
+task:
+  raw_requirement_ref: artifact:docs/dsh-post-training-system-design.md
+  desired_outcomes:
+    - V0 以仓库级开发工作流减少写代码前的错误 seam/owner/lifecycle 漏项
+  non_goals:
+    - 不注册 Cordis Service
+    - 不拥有 Agent/Session/Tool/LLM/运行时事件域
+    - 不进入 packages/ 产品 seam
+  scope: [.agents/dsh-intelligence, scripts/dsh-intelligence, .dsh-intelligence]
+  risk_tier: T0
+  classifications: [repository-development-workflow]
+evidence:
+  capsule_id: evidence:repo-snapshot
+  required_refs: [docs/dsh-post-training-system-design.md, docs/architecture.md]
+  unresolved_facts: []
+dsh_placement:
+  implementation_kind: repo-tool
+  domain_owner: repository-development-workflow
+  seam_disposition: none
+  existing_runtime_owners:
+    agent_execution: ctx.agents
+    model_history: ctx.sessions
+    tool_registry: ctx.tools
+    inference: ctx.llm
+  dsh_concepts:
+    references: [Agent, Session, Tool, Skill, SessionEvent, capability-seam]
+    redefines: []
+  event_mapping:
+    domain_mutations: [repository-artifact-write]
+    model_visible_projection: []
+    live_execution_signals: []
+  public_service_justification:
+    current_consumers: []
+    independent_role_evolution: []
+alternatives: []
+decision:
+  selected_alternative: repo-tool-scaffold
+  mode: adapt
+capability: null
+state: []
+lifecycle:
+  register: n/a
+  activate: n/a
+  hot_reload: n/a
+  dispose_to_quiescence: n/a
+  crash: n/a
+boundaries:
+  host_client: []
+  process_worker: []
+  session_durable: []
+  wire: []
+  trust: []
+configuration:
+  owner: repository-development-workflow
+  schema_ref: .agents/dsh-intelligence/schemas
+  precedence: []
+  resolve_point: script-invocation
+  hot_update_semantics: n/a
+  secrets: []
+model_visibility:
+  inputs: []
+  session_event_or_projection: []
+  replay: n/a
+  compaction: n/a
+observability:
+  events: []
+  diagnostics: [scripts/dsh-intelligence/validate-adp.ts findings]
+  operator_actions: []
+proof_obligations:
+  - id: obligation-self-repo-tool
+    rule_ids: [C02, C06, C10]
+    statement: V0 不拥有 Agent/Session/Tool/LLM/运行时事件域，不注册 Cordis Service，不重定义 DSH 概念。
+    evidence_refs: [docs/dsh-post-training-system-design.md]
+    falsification: 若 self-adp 或任何工具新增 ctx.*、重定义 DSH 身份/owner、或把领域 mutation 强塞为通用 SessionEvent。
+    verification_refs: [scripts/dsh-intelligence/validate-adp.ts]
+verification:
+  unit: []
+  invariant_negative_controls: []
+  integration: []
+  snapshots: []
+  real_entry_path: []
+  runtime_acceptance: []
+open_questions: []
+owned_artifacts:
+  canonical: [.agents/dsh-intelligence]
+  executable: [scripts/dsh-intelligence]
+  rebuildable: [.dsh-intelligence]
+forbidden_runtime_ownership: [Agent, Session, ToolRegistry, Llm, CordisService, SessionEventDomain]

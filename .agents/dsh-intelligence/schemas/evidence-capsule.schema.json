@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsh-intelligence/schemas/evidence-capsule.schema.json",
+  "title": "Evidence Capsule",
+  "description": "回答当前 checkout/profile/环境到底是什么；静态事实与运行观察严格分层。",
+  "type": "object",
+  "required": ["schema_version", "id", "created_at", "target_snapshot", "static_manifest", "runtime_observations", "unavailable", "conflicts"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "pattern": "^evidence:" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "target_snapshot": {
+      "type": "object",
+      "required": ["repository", "revision", "branch", "profile", "host_scope"],
+      "properties": {
+        "repository": { "type": "string" },
+        "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "branch": { "type": "string" },
+        "upstream_base": { "type": "string" },
+        "dirty_paths": { "type": "array", "items": { "type": "string" } },
+        "profile": { "type": "string" },
+        "host_scope": { "type": "string" }
+      }
+    },
+    "static_manifest": {
+      "type": "object",
+      "required": ["dump_config_ref", "generated_catalogs", "exact_source_refs"],
+      "properties": {
+        "dump_config_ref": { "type": "string" },
+        "generated_catalogs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "path", "digest", "source_ref"],
+            "properties": {
+              "kind": { "type": "string" },
+              "path": { "type": "string" },
+              "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "source_ref": { "type": "string" }
+            }
+          }
+        },
+        "exact_source_refs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "runtime_observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "collector": { "type": "string" },
+          "observed_at": { "type": "string", "format": "date-time" },
+          "scope": { "type": "object" },
+          "claim": { "type": "string" },
+          "artifact_ref": { "type": "string" }
+        },
+        "required": ["collector", "observed_at", "claim"]
+      }
+    },
+    "unavailable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fact": { "type": "string" },
+          "reason": {
+            "type": "string",
+            "enum": ["not-mounted", "no-live-instance", "unsupported", "not-requested"]
+          }
+        },
+        "required": ["fact", "reason"]
+      }
+    },
+    "conflicts": { "type": "array" }
+  }
+}

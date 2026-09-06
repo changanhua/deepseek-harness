@@ -1,0 +1,16 @@
+# Phase 0 visible regression — UI branch display vs Session fork
+schema_version: 1
+id: task-ui-branch-fork
+title: UI branch display for alternate continuations
+description: >-
+  编辑器界面要为同一对话提供“备选续写分支”展示，允许用户看到多个候选回复路径。
+  这是 UI 层分支展示，不改变会话历史本身的持久化语义。
+classifications: [ui-wire, model-visible]
+risk_tier: T1
+mutation_trigger: "session fork"
+baseline_trap: >-
+  仅因 UI 分支展示就声明 Session fork，但没有 durable history divergence。
+expected_design:
+  - 使用领域分支引用（UI 层 view），不调用真实 Session fork
+  - model_visibility 投影清晰；无持久历史分叉时不得声明 fork
+  - dsh_placement.event_mapping 把 domain mutation 与 model-visible projection 分开

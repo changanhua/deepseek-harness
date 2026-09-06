@@ -1,0 +1,56 @@
+# Pattern seed — candidate，未晋升；默认检索不会加载 candidates/
+schema_version: 1
+id: pattern-owned-durable-scheduler
+title: Scheduler owns subprocess lifecycle
+status: candidate
+statement: >-
+  跨进程、可重启的调度器必须由唯一 scheduler owner 独占 spawn/terminate/wait，
+  并把任务记录、恢复与并发序列化显式建模；持久 PID 不拥有 kill 权威（见对应 anti-pattern）。
+problem_signature:
+  - durable-state
+  - orchestration
+  - subprocess
+  - restart-survival
+forces:
+  - 恢复必须覆盖在途与已提交任务，不能只覆盖已启动进程
+  - 并发 mutation 需要单一序列化 owner
+  - model-visible 通知必须可由 session log 重建
+applies_when:
+  - 任务需跨进程/跨 session 存活
+  - 存在重启恢复矩阵与两阶段 claim
+does_not_apply_when:
+  - 仅 process-local 的后台 job，无需重启恢复
+required_roles:
+  - Service Definition owner
+  - Provider（durable local）
+  - Consumer（Tool / UI）
+state_ownership:
+  - task-record: scheduler
+  - notification: scheduler（经 outbox）
+lifecycle_obligations:
+  - pending -> starting -> running 两阶段
+  - faulted / retry / cancel / outbox ACK CAS
+decision_template:
+  - 先填 dsh_placement（domain-component / existing-consumer / new-seam）
+  - 每个状态一个 authoritative owner
+  - 每项关键选择写成可证伪 proof obligation
+verification_obligations:
+  - 负向控制：启动恢复覆盖并发写
+  - 真实 subprocess entry path
+detection_queries:
+  - adp 里 state.durability=domain-store 但缺 restart_recovery/replay/cancellation
+evidence_cases: []
+counter_examples: []
+source_contract_refs:
+  - packages/task-queue/task-queue/README.md
+confidence: low
+provenance:
+  origin: model-generated
+  artifact_kind: pattern
+  lifecycle: candidate
+  revision: ''
+version_range:
+  first_validated_revision: ''
+  last_revalidated_revision: ''
+revalidation_triggers:
+  - task-queue seam 或恢复语义变更

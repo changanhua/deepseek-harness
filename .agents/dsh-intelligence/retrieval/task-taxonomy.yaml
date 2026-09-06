@@ -1,0 +1,40 @@
+# Task Taxonomy — V0 第一层 deterministic router
+# 每个分类映射到风险触发器与必填 ADP sections。
+schema_version: 1
+taxonomy:
+  - id: mechanical-change
+    labels: [T0, 机械/局部改动]
+    requires: [condensed-adp]
+    risk_triggers: []
+  - id: single-package-behavior
+    labels: [T1, 单包行为]
+    requires: [owner, lifecycle, verification]
+    risk_triggers: []
+  - id: durable-state
+    labels: [T2, 持久化/重启/队列]
+    requires: [state, recovery, replay, concurrency]
+    risk_triggers: [durable, restart, queue]
+  - id: capability-seam
+    labels: [T2, 新 seam/Service Definition]
+    requires: [capability, dsh_placement.seam_disposition, invention-proof]
+    risk_triggers: [ctx., provider, service-definition]
+  - id: orchestration
+    labels: [T2, 编排/子进程/跨边界]
+    requires: [state, lifecycle, boundaries]
+    risk_triggers: [subprocess, worker, orchestration]
+  - id: model-visible
+    labels: [T2, 模型可见性/session log]
+    requires: [model_visibility, session-event-replay]
+    risk_triggers: [tool, prompt, model-visible]
+  - id: ui-wire
+    labels: [T2, UI/远程/wire]
+    requires: [boundaries.host_client, boundaries.wire]
+    risk_triggers: [UI, remote, wire]
+  - id: configuration-plane
+    labels: [T1, 配置/默认值/凭证]
+    requires: [configuration, secrets]
+    risk_triggers: [settings, default, credential]
+  - id: repository-workflow
+    labels: [T0, 仓库开发工作流]
+    requires: [dsh_placement.implementation_kind=repo-tool]
+    risk_triggers: []
