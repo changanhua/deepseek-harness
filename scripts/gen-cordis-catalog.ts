@@ -66,6 +66,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   codeRuntime: 'code-runtime.md',
   commands: 'commands.md',
   compaction: 'compaction.md',
+  content: 'content.md',
   cordisInspect: 'extensions.md',
   authorization: 'credentials.md',
   credentials: 'credentials.md',
@@ -246,6 +247,21 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
  * appear on more than one page.
  */
 export const LINK_MAP: Readonly<Record<string, string>> = {
+  CaptureCommand: 'content.md',
+  ContentAccess: 'content.md',
+  ContentCommand: 'content.md',
+  ContentEntry: 'content.md',
+  ContentReceipt: 'content.md',
+  ContentSnapshot: 'content.md',
+  ContentSourceResolver: 'content.md',
+  ContentStatus: 'content.md',
+  ContentLimits: 'content.md',
+  ContentErrorCode: 'content.md',
+  ResolvedCapture: 'content.md',
+  ContentVersion: 'content.md',
+  ContentDraft: 'content.md',
+  OperationRecord: 'content.md',
+  SessionSource: 'content.md',
   Agent: 'core.md',
   AgentCancelCause: 'core.md',
   AgentFactory: 'core.md',
@@ -826,7 +842,7 @@ export const CORDIS_CATALOG_POLICY: CordisCatalogPolicy = {
   linkedTypePages: LINK_MAP,
   foundationTypeNames: FOUNDATION_TYPE_NAMES,
   typeLinkExemptions: TYPE_LINK_EXEMPTIONS,
-  runtimeServiceExclusions: new Set(['cordisInspect', 'dynamicCordisRunner']),
+  runtimeServiceExclusions: new Set(['cordisInspect', 'dynamicCordisRunner', 'content']),
   runtimeServices: [{
     key: 'timer',
     type: 'TimerService',

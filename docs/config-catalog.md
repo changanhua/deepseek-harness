@@ -9,6 +9,24 @@ This file is GENERATED from source (`scripts/gen-config-catalog.ts`) and verifie
 
 A `Requires:` line lists the service keys the plugin `inject`s: its `cordis.yml` tree must also load providers for those services. Scope is the harness tier (`packages/`); the vendored cordis plugins a config tree may also load (`hmr`, the console logger, …) are pinned upstream source ([vendoring policy](../vendor/README.md)) and not catalogued here.
 
+<a id="changanhuadsh-content-domain"></a>
+
+## `@changanhua/dsh-content-domain`
+
+```ts config-catalog
+/** Byte limits count all retained data; lowering them never prevents reading existing valid data. */
+export interface Config {
+  /** Maximum UTF-8 bytes in one retained body. */
+  bodyBytes?: number
+  /** Maximum JSON UTF-8 bytes in one entry, including versions and receipts. */
+  entryBytes?: number
+  /** Maximum JSON UTF-8 bytes in the complete logical Domain envelope. */
+  libraryBytes?: number
+}
+```
+
+Source: [`packages/content/content-domain/src/index.ts:25`](../packages/content/content-domain/src/index.ts)
+
 <a id="changanhuadsh-delivery-evidence-local"></a>
 
 ## `@changanhua/dsh-delivery-evidence-local`
@@ -2665,10 +2683,11 @@ export interface Config {
  */
 export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 
+/** Resolution base for a relative database path. */
 export type StoragePathBase = 'cwd' | 'dsh-home'
 ```
 
-Source: [`packages/storage/storage-sqlite/src/index.ts:39`](../packages/storage/storage-sqlite/src/index.ts)
+Source: [`packages/storage/storage-sqlite/src/index.ts:40`](../packages/storage/storage-sqlite/src/index.ts)
 
 <a id="deepseek-aidsh-subagent-acp"></a>
 
@@ -3856,6 +3875,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 
 Abstract service classes — a deployment loads a concrete implementation package instead ([capability seams](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)).
 
+- `@changanhua/dsh-content` — abstract `Content` ([`packages/content/content/src/index.ts`](../packages/content/content/src/index.ts))
 - `@changanhua/dsh-delivery` — abstract `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
 - `@changanhua/dsh-delivery-evidence` — abstract `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
 - `@changanhua/dsh-repo-workspace` — abstract `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))

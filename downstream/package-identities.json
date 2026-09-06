@@ -97,6 +97,24 @@
       ]
     },
     {
+      "directory": "packages/content/content",
+      "legacyName": "@deepseek-ai/dsh-content",
+      "sourceName": "@changanhua/dsh-content",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": ["release-family-absent"]
+    },
+    {
+      "directory": "packages/content/content-domain",
+      "legacyName": "@deepseek-ai/dsh-content-domain",
+      "sourceName": "@changanhua/dsh-content-domain",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": ["release-family-absent"]
+    },
+    {
       "directory": "packages/context/runtime-facts",
       "legacyName": "@deepseek-ai/dsh-runtime-facts",
       "sourceName": "@changanhua/dsh-runtime-facts",

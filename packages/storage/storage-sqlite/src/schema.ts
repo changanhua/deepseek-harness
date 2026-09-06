@@ -28,9 +28,12 @@ export const STORAGE_SQLITE_SCHEMA_VERSION = 1
  * contradicts the durability clause of the KV backend contract.
  */
 export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
+/** Connection ownership retained for the lifetime of this backend. */
 export type SqliteOwnership = 'shared' | 'exclusive'
+/** Explicit SQLite commit synchronization level. */
 export type SqliteSynchronous = 'normal' | 'full' | 'extra'
 
+/** Validated policy applied before the database is exposed to consumers. */
 export interface OpenDatabaseOptions {
   readonly journalMode: JournalMode
   readonly ownership: SqliteOwnership
@@ -68,7 +71,7 @@ async function createDatabaseFile(path: string): Promise<boolean> {
  * A zero `user_version` is stamped with {@link STORAGE_SQLITE_SCHEMA_VERSION};
  * every other non-current version rejects rather than being migrated in place.
  * @param path - the SQLite database file to open, or `:memory:`.
- * @param journalMode - validated journal pragma.
+ * @param options - Validated ownership, journaling, synchronization and identity policy.
  * @returns the open handle with pragmas applied and the unit metadata tables ensured.
  */
 export async function openDatabase(path: string, options: OpenDatabaseOptions): Promise<DatabaseSync> {

@@ -11,6 +11,7 @@ export const UNIT_NAME_RE = /^[a-z][a-z0-9_]*$/
 
 /** Runtime properties a backend may declare after enforcing them at open. */
 export const STORAGE_BACKEND_GUARANTEES = ['single-writer', 'commit-sync', 'private-root'] as const
+/** One property that a routed domain may require before opening its medium. */
 export type StorageBackendGuarantee = typeof STORAGE_BACKEND_GUARANTEES[number]
 
 /**

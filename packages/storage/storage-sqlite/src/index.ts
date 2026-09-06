@@ -28,6 +28,7 @@ export {
   type SqliteSynchronous,
 } from './schema.ts'
 
+/** Resolution base for a relative database path. */
 export type StoragePathBase = 'cwd' | 'dsh-home'
 
 /** Cordis plugin name. */
@@ -80,7 +81,13 @@ export const Config: z<Config> = z.object({
   privateDirectory: z.boolean().default(false),
 })
 
-/** Resolve a configured database path without changing legacy relative-path behavior. */
+/**
+ * Resolve a configured database path without changing legacy relative-path behavior.
+ * @param path - Database file path or the in-memory sentinel.
+ * @param pathBase - Base selected by the configuration.
+ * @param env - Environment used by the public Harness-home resolver.
+ * @returns Absolute file path, or the unchanged in-memory sentinel.
+ */
 export function resolveStoragePath(
   path: string,
   pathBase: StoragePathBase,

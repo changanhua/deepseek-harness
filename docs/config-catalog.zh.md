@@ -11,6 +11,24 @@
 
 `Requires:` 行列出插件通过 `inject` 注入的服务键：其 `cordis.yml` 树还必须加载这些服务的提供者。范围限定为 harness 层级（`packages/`）；配置树还可能加载的 vendored cordis 插件（`hmr`、控制台日志记录器等）固定为上游源代码（参见 [vendoring policy](../vendor/README.md)），未收录于此目录。
 
+<a id="changanhuadsh-content-domain"></a>
+
+## `@changanhua/dsh-content-domain`
+
+```ts config-catalog
+/** Byte limits count all retained data; lowering them never prevents reading existing valid data. */
+export interface Config {
+  /** Maximum UTF-8 bytes in one retained body. */
+  bodyBytes?: number
+  /** Maximum JSON UTF-8 bytes in one entry, including versions and receipts. */
+  entryBytes?: number
+  /** Maximum JSON UTF-8 bytes in the complete logical Domain envelope. */
+  libraryBytes?: number
+}
+```
+
+来源：[`packages/content/content-domain/src/index.ts:25`](../packages/content/content-domain/src/index.ts)
+
 <a id="deepseek-aidsh-acp"></a>
 
 ## `@deepseek-ai/dsh-acp`
@@ -2541,10 +2559,11 @@ export interface Config {
  */
 export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 
+/** Resolution base for a relative database path. */
 export type StoragePathBase = 'cwd' | 'dsh-home'
 ```
 
-来源：[`packages/storage/storage-sqlite/src/index.ts:39`](../packages/storage/storage-sqlite/src/index.ts)
+来源：[`packages/storage/storage-sqlite/src/index.ts:40`](../packages/storage/storage-sqlite/src/index.ts)
 
 <a id="deepseek-aidsh-subagent-acp"></a>
 
@@ -3843,6 +3862,7 @@ export interface Config {
 - `@deepseek-ai/dsh-code-runtime` — 抽象 `CodeRuntime` ([`packages/code-runtime/code-runtime/src/index.ts`](../packages/code-runtime/code-runtime/src/index.ts))
 - `@deepseek-ai/dsh-compaction` — 抽象 `CompactionEngine` ([`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts))
 - `@deepseek-ai/dsh-credentials` — 抽象 `CredentialProvider` ([`packages/credentials/credentials/src/index.ts`](../packages/credentials/credentials/src/index.ts))
+- `@changanhua/dsh-content` — 抽象 `Content` ([`packages/content/content/src/index.ts`](../packages/content/content/src/index.ts))
 - `@changanhua/dsh-delivery` — 抽象 `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
 - `@changanhua/dsh-delivery-evidence` — 抽象 `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
 - `@deepseek-ai/dsh-file-reference` — 抽象 `FileReferenceService` ([`packages/context/file-reference/src/index.ts`](../packages/context/file-reference/src/index.ts))

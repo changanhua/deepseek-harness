@@ -127,7 +127,12 @@ const WINDOWS_PRIVATE_PATH_SCRIPT = String.raw`
 }
 `
 
-/** Build the scrubbed environment for the fixed Windows ACL helper. */
+/**
+ * Build the scrubbed environment for the fixed Windows ACL helper.
+ * @param path - Target passed as data to the fixed helper.
+ * @param kind - Directory creation/verification or database-file verification.
+ * @returns Scrubbed parent environment plus the two explicit helper inputs.
+ */
 export function privateDirectoryChildEnv(path: string, kind: 'directory' | 'file'): Record<string, string> {
   return {
     ...scrubbedParentEnv(),
@@ -151,7 +156,10 @@ async function checkWindowsPath(path: string, kind: 'directory' | 'file'): Promi
   })
 }
 
-/** Create or verify the database's owner-private parent directory. */
+/**
+ * Create or verify the database's owner-private parent directory.
+ * @param databasePath - Resolved path whose parent must satisfy private storage policy.
+ */
 export async function preparePrivateDirectory(databasePath: string): Promise<void> {
   const directory = dirname(databasePath)
   if (process.platform === 'win32') {
@@ -216,7 +224,10 @@ export async function preparePrivateDirectory(databasePath: string): Promise<voi
   }
 }
 
-/** Verify the database file itself after exclusive creation or discovery. */
+/**
+ * Verify the database file itself after exclusive creation or discovery.
+ * @param databasePath - Existing file to check without changing its permissions.
+ */
 export async function verifyPrivateDatabaseFile(databasePath: string): Promise<void> {
   const info = await lstat(databasePath)
   if (info.isSymbolicLink() || !info.isFile()) {

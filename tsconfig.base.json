@@ -269,6 +269,10 @@
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@changanhua/dsh-command-task-queue": ["./packages/task-queue/command-task-queue/src"],
       "@changanhua/dsh-command-task-queue/invariant": ["./packages/task-queue/command-task-queue/src/invariant.ts"],
+      "@changanhua/dsh-content": ["./packages/content/content/src"],
+      "@changanhua/dsh-content/invariant": ["./packages/content/content/src/invariant.ts"],
+      "@changanhua/dsh-content-domain": ["./packages/content/content-domain/src"],
+      "@changanhua/dsh-content-domain/invariant": ["./packages/content/content-domain/src/invariant.ts"],
       "@changanhua/dsh-delivery": ["./packages/delivery/delivery/src"],
       "@changanhua/dsh-delivery/invariant": ["./packages/delivery/delivery/src/invariant.ts"],
       "@changanhua/dsh-delivery-evidence": ["./packages/delivery/delivery-evidence/src"],
