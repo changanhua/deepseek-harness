@@ -191,6 +191,13 @@ export interface HostConnectionHandle {
   readonly fetch: HostConnectionFetch
 
   /**
+   * Assert that one handler signal belongs to a currently authorized HTTP request.
+   * @param signal - signal received from the current Connection HTTP handler.
+   * @throws when the signal was not issued for an active authorized request.
+   */
+  assertAuthorized(signal: AbortSignal): void
+
+  /**
    * Compose exact Fetch routes and the shared-channel RPC interceptor.
    * @param channel - shared channel mounted by Connection.
    * @returns Fetch handler for trusted, authenticated requests.

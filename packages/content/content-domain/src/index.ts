@@ -59,7 +59,11 @@ export class ContentDomain extends Content {
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx)
-    this.limits = Object.freeze(parse(ContentLimitsSchema, { ...DEFAULT_CONTENT_LIMITS, ...config }))
+    this.limits = Object.freeze(parse(ContentLimitsSchema, {
+      bodyBytes: config.bodyBytes ?? DEFAULT_CONTENT_LIMITS.bodyBytes,
+      entryBytes: config.entryBytes ?? DEFAULT_CONTENT_LIMITS.entryBytes,
+      libraryBytes: config.libraryBytes ?? DEFAULT_CONTENT_LIMITS.libraryBytes,
+    }))
     this.state = { phase: 'unavailable', reason: 'unavailable', limits: this.limits }
   }
 
@@ -284,7 +288,7 @@ function verifyDigest(entry: ContentEntry): void {
 /** Request digests ignore property insertion order, but retain every supplied semantic field. */
 function canonical(value: unknown): string {
   // Every caller passes a parsed command/source object; these schemas contain no arrays or undefined roots.
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) as string
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
   const object = value as Record<string, unknown>
   return `{${Object.keys(object).filter(key => object[key] !== undefined).sort()
     .map(key => `${JSON.stringify(key)}:${canonical(object[key])}`).join(',')}}`

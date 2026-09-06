@@ -49,7 +49,7 @@ export const ContentEntrySchema = z.strictObject({
   projectRefs: z.array(id), favorite: z.boolean(), archived: z.boolean(),
   creation: OperationRecordSchema, receipts: z.array(OperationRecordSchema).min(1).max(256),
 }).superRefine((entry, ctx) => {
-  const fail = () => ctx.addIssue({ code: 'custom', message: 'Inconsistent content record' })
+  const fail = () => { ctx.addIssue({ code: 'custom', message: 'Inconsistent content record' }) }
   const versions = entry.versions
   if (entry.headVersionId !== (versions.at(-1)?.id ?? null)) fail()
   if ((entry.kind === 'original') !== (entry.source !== null)) fail()

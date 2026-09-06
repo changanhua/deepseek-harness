@@ -20,12 +20,14 @@ This family preserves useful text independently of its source conversation. The 
 <a id="packages"></a>
 ## Packages
 
-Both packages use the personal namespace.
+These packages use the personal namespace.
 
 | Package | Role |
 |---|---|
 | [`content`](content/README.md) | Content schemas and Service Definition |
 | [`content-domain`](content-domain/README.md) | Durable aggregates, revision checks and retry receipts |
+| [`content-session`](content-session/README.md) | Verified completed plain-text Session sources |
+| [`content-remote`](content-remote/README.md) | Authenticated browser reads and mutations |
 
 <a id="related-documentation"></a>
 ## Related documentation

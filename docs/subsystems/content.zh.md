@@ -94,4 +94,80 @@ abstract capture( command: CaptureCommand, resolveSource: ContentSourceResolver,
 ```
 
 Source: [`packages/content/content/src/index.ts`](../../packages/content/content/src/index.ts)
+
+<a id="ctxcontentremote--contentremote"></a>
+
+### `ctx.contentRemote` — `ContentRemote`
+
+The Connection owns browser authentication; Content owns the commit-time authorization callback.
+
+```ts cordis-catalog
+/**
+ * Read library availability and limits after authenticating the browser request.
+ * @param signal - Exact active signal supplied by Connection.
+ * @returns Payload-free provider status.
+ */
+@Remote('status') status(signal: AbortSignal): ContentStatus
+
+/**
+ * Read the committed original, versions and current draft.
+ * @param entryId - Stored content identity.
+ * @param signal - Exact active signal supplied by Connection.
+ * @returns Detached entry or null when absent.
+ */
+@Remote('get') get(entryId: string, signal: AbortSignal): ContentEntry | null
+
+/**
+ * Export one consistent committed logical library snapshot.
+ * @param signal - Exact active signal supplied by Connection.
+ * @returns Content records, including originals and saved drafts.
+ */
+@Remote('snapshot') snapshot(signal: AbortSignal): ContentSnapshot
+
+/**
+ * Reconcile a command whose response was lost.
+ * @param entryId - Stored content identity.
+ * @param operationId - Original retained command identity.
+ * @param signal - Exact active signal supplied by Connection.
+ * @returns Committed receipt or null; absence does not prove non-commit.
+ */
+@Remote('receipt') receipt(entryId: string, operationId: string, signal: AbortSignal): ContentReceipt | null
+
+/**
+ * Submit one strict content command with a repeated authorization check at commit admission.
+ * @param input - Retained command; wire fields cannot assert source verification or caller authority.
+ * @param signal - Exact active signal supplied by Connection.
+ * @returns The durable original or newly committed receipt.
+ */
+@Remote('execute') async execute(input: ContentCommand, signal: AbortSignal): Promise<ContentReceipt>
+
+/**
+ * Capture a complete plain-text assistant message read by the Host from its Session.
+ * @param input - Session id and canonical decimal event sequence as messageId, plus operationId.
+ * @param signal - Exact active signal supplied by Connection.
+ * @returns Canonical durable capture receipt; repeated clicks reuse the saved original.
+ */
+@Remote('capture') async capture(input: CaptureCommand, signal: AbortSignal): Promise<ContentReceipt>
+```
+
+Source: [`packages/content/content-remote/src/index.ts`](../../packages/content/content-remote/src/index.ts)
+
+<a id="ctxcontentsession--contentsession"></a>
+
+### `ctx.contentSession` — `ContentSession`
+
+Host-only bridge from Session observations to Content's verified source contract.
+
+```ts cordis-catalog
+/**
+ * Resolve a completed, text-only assistant message without activating its Agent.
+ * @param request - Capture identity and the canonical source event sequence.
+ * @param authorize - Trusted access check, repeated after the source read.
+ * @param signal - Caller cancellation boundary.
+ * @returns verified full-message text suitable for Content.capture().
+ */
+async resolve(request: CaptureCommand, authorize: ContentAccess, signal: AbortSignal): Promise<ResolvedCapture>
+```
+
+Source: [`packages/content/content-session/src/index.ts`](../../packages/content/content-session/src/index.ts)
 <!-- END GENERATED cordis-surface -->

@@ -67,6 +67,8 @@ export const SERVICE_PAGE: Record<string, string> = {
   commands: 'commands.md',
   compaction: 'compaction.md',
   content: 'content.md',
+  contentSession: 'content.md',
+  contentRemote: 'content.md',
   cordisInspect: 'extensions.md',
   authorization: 'credentials.md',
   credentials: 'credentials.md',
@@ -842,7 +844,7 @@ export const CORDIS_CATALOG_POLICY: CordisCatalogPolicy = {
   linkedTypePages: LINK_MAP,
   foundationTypeNames: FOUNDATION_TYPE_NAMES,
   typeLinkExemptions: TYPE_LINK_EXEMPTIONS,
-  runtimeServiceExclusions: new Set(['cordisInspect', 'dynamicCordisRunner', 'content']),
+  runtimeServiceExclusions: new Set(['cordisInspect', 'dynamicCordisRunner', 'content', 'contentSession', 'contentRemote']),
   runtimeServices: [{
     key: 'timer',
     type: 'TimerService',

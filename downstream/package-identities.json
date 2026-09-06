@@ -115,6 +115,24 @@
       "blockers": ["release-family-absent"]
     },
     {
+      "directory": "packages/content/content-remote",
+      "legacyName": "@deepseek-ai/dsh-content-remote",
+      "sourceName": "@changanhua/dsh-content-remote",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": ["release-family-absent"]
+    },
+    {
+      "directory": "packages/content/content-session",
+      "legacyName": "@deepseek-ai/dsh-content-session",
+      "sourceName": "@changanhua/dsh-content-session",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": ["release-family-absent"]
+    },
+    {
       "directory": "packages/context/runtime-facts",
       "legacyName": "@deepseek-ai/dsh-runtime-facts",
       "sourceName": "@changanhua/dsh-runtime-facts",

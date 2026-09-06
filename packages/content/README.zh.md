@@ -20,12 +20,14 @@ kind: "package-group"
 <a id="packages"></a>
 ## 包
 
-两个包都使用个人命名空间。
+这些包都使用个人命名空间。
 
 | 包 | 职责 |
 |---|---|
 | [`content`](content/README.zh.md) | 内容 schema 和 Service Definition |
 | [`content-domain`](content-domain/README.zh.md) | 持久聚合记录、修订检查和重试回执 |
+| [`content-session`](content-session/README.zh.md) | 经核实的已完成纯文本会话来源 |
+| [`content-remote`](content-remote/README.zh.md) | 经过认证的浏览器读取与修改 |
 
 <a id="related-documentation"></a>
 ## 相关文档

@@ -12,7 +12,7 @@ describe('content invariant ownership', () => {
       expect(() => ctx.invariants.register('@changanhua/dsh-content', () => {})).toThrow(/already registered/u)
       await fiber.dispose()
       const dispose = ctx.invariants.register('@changanhua/dsh-content', () => {})
-      await dispose()
+      dispose()
     } finally {
       await fiber.dispose()
       await registry.dispose()

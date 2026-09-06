@@ -238,6 +238,61 @@ describe('connection node half', () => {
     await dispose()
   })
 
+  it('binds authorization only for active shared and dedicated RPC bridge signals', async () => {
+    const { routes, connection, dispose } = await mounted()
+    const observed: AbortSignal[] = []
+    const assertSignal = async (_endpoint: string, _payload: unknown, signal: AbortSignal) => {
+      connection.assertAuthorized(signal)
+      expect(() => { connection.assertAuthorized(new AbortController().signal) }).toThrow('request is not authorized')
+      observed.push(signal)
+      return { ok: true as const, value: null }
+    }
+    const removeShared = connection.rpc.intercept('/api', () => true, assertSignal)
+    const removeDedicated = connection.rpc.handle('/rpc', assertSignal)
+    const cookie = browserCookie(connection, '127.0.0.1:3080')
+    const request = (rpcId: string): ClientRequest => ({
+      type: 'client-request',
+      rpcId: RpcId(rpcId),
+      method: 'goals/create',
+      payload: {},
+    })
+    for (const [path, rpcId] of [[API_PATH, 'shared'], ['/rpc', 'dedicated']] as const) {
+      const response = fakeResponse()
+      const route = routes.find(candidate => candidate.path === path)
+      if (route === undefined) throw new Error(`missing ${path} route`)
+      await route.handler(fakePost({ host: '127.0.0.1:3080', cookie }, `${path}/goals/create`, request(rpcId)), response.response)
+      expect(response.state.status).toBe(200)
+    }
+    expect(observed).toHaveLength(2)
+    for (const signal of observed) {
+      expect(() => { connection.assertAuthorized(signal) }).toThrow('request is not authorized')
+    }
+
+    await removeDedicated()
+    await removeShared()
+    await dispose()
+  })
+
+  it('rejects a shared RPC signal when its bridge response closes', async () => {
+    const { routes, connection, dispose } = await mounted()
+    const { response, state } = fakeResponse()
+    const remove = connection.rpc.intercept('/api', () => true, async (_endpoint, _payload, signal) => {
+      response.emit('close')
+      expect(() => { connection.assertAuthorized(signal) }).toThrow('request is not authorized')
+      return { ok: true, value: null }
+    })
+    const cookie = browserCookie(connection, '127.0.0.1:3080')
+    const route = routes.find(candidate => candidate.path === API_PATH)
+    if (route === undefined) throw new Error('missing /api route')
+    await route.handler(fakePost({ host: '127.0.0.1:3080', cookie }, '/api/goals/create', {
+      type: 'client-request', rpcId: RpcId('cancelled'), method: 'goals/create', payload: {},
+    }), response)
+    expect(state.status).toBe(200)
+
+    await remove()
+    await dispose()
+  })
+
   it('provides a disposable dedicated RPC channel', async () => {
     const ctx = new Context()
     const routes: WebRoute[] = []
