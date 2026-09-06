@@ -22,7 +22,7 @@ export function badgeFor(snapshot: QueueSnapshot, t: QueueNavEntryProps['t']):
   if (needsOperator > 0) return { text: `${needsOperator} ${t('nav.queue.failed')}`, kind: 'hot' }
   const running = stats.byStatus.running
   if (running > 0) return { text: `${running} ${t('nav.queue.running')}`, kind: 'idle' }
-  return { text: stats.paused ? 'paused' : t('nav.queue.idle'), kind: 'plain' }
+  return { text: stats.paused ? t('nav.queue.paused') : t('nav.queue.idle'), kind: 'plain' }
 }
 
 /**
