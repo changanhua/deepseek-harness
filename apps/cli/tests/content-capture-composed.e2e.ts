@@ -21,8 +21,17 @@ const builtContentDomain = lib('content', 'content-domain')
 const builtContentSession = lib('content', 'content-session')
 const builtContentRemote = lib('content', 'content-remote')
 const builtStorageSqlite = lib('storage', 'storage-sqlite')
+const builtConnection = lib('client', 'connection')
+const builtGateway = lib('api', 'gateway')
+const builtTypertRegistry = lib('typert', 'registry')
 const probeFixture = pathToFileURL(resolve(import.meta.dirname, 'fixtures/content-capture-probe.mjs')).href
 const timeoutMs = 90_000
+
+// The composed web profile mounts these node libraries directly; a missing
+// bundle otherwise surfaces as an opaque host load failure after spawn, so
+// the test fails with the build command before starting any server.
+const requiredLibraries = [builtBin, builtConnection, builtGateway, builtTypertRegistry, builtStorageSqlite,
+  builtContentDomain, builtContentSession, builtContentRemote]
 
 interface RunningWeb {
   readonly child: ChildProcess
@@ -239,6 +248,10 @@ async function call(port: number, host: string, cookie: string, endpoint: string
 describe.skipIf(!existsSync(builtBin) || !existsSync(builtContentRemote))
 ('composed human Content capture over the real web stack', () => {
   it('captures a completed Session reply through an authenticated browser request and survives a restart', { timeout: timeoutMs * 2 + 40_000 }, async () => {
+    const missingLibraries = requiredLibraries.filter(path => !existsSync(path))
+    if (missingLibraries.length > 0) {
+      throw new Error(`composed capture validation is missing built libraries (${missingLibraries.join(', ')}). Run \`pnpm run build:lib\` first.`)
+    }
     const dshHome = await mkdtemp(join(process.platform === 'win32' ? homedir() : tmpdir(), 'dsh-content-capture-composed-'))
     const patchFile = await seedComposition(dshHome)
     const port = await reservePort()
