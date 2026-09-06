@@ -21,7 +21,7 @@ A professional engineer with no repository context should answer the following a
 
 Check each material statement against its strongest owner. Use package metadata for names and entry points, public types and JSDoc for API contracts, runtime code for behavior, tests for exercised failure paths, generated catalogs for exhaustive inventories, and active Agent Notes for rationale. Never treat a prior README, discussion, or report as stronger than current code and tests.
 
-For every operational claim — a CLI command, a config snippet, a default value, an error message, a platform difference — the evidence is running it, not reading it. Execute the exact command or mount the exact configuration against the current checkout before the page may state its behavior; quote only observed output, warnings, and failures. Claims that depend on unavailable keys or networks name their verification owner instead of asserting behavior. For pre-existing pages, compare against latest `origin/master` and re-verify stale statements against code.
+For a claim of an observed operation, require evidence from that operation in the identified target. Source inspection can establish a declared default or contract, not that the runtime uses it. A draft can describe explicitly proposed behavior without executing it. Claims depending on unavailable keys or networks name their verification owner instead of asserting success. Compare maintained pages with their owning source and verified integration base when relevant, not an assumed `origin/master` from a different personal checkout.
 
 Classify the package before reviewing its install guidance: `dsh.bundle.patch` in `package.json` makes it a bundle (installable via `dsh plugin --profile <name> add <package>`, the only shape that command activates as a layer); an `apply` export or default service export makes it a plugin (mounted as a `cordis.yml` row); a plain module API makes it a library (a dependency with no install path). Reject install guidance written for another shape.
 
@@ -50,7 +50,7 @@ The `session-persistence-sqlite` README pair ([English](../../../../packages/ses
 
 ## Verification
 
-Run the smallest focused checks while iterating, then the standing documentation checks:
+Select applicable checks from the target's scripts. Record and verify affected bilingual pairs; run comprehensive lanes required for that target's maintained-document integration. These command families are not a mandatory sequence for every prose change:
 
 ```sh
 pnpm run test:docs
@@ -61,6 +61,8 @@ git diff --check
 ```
 
 Also run the repository's skill-invocation metadata check for skill changes and compare English/Chinese physical line counts for a line-aligned pair. Re-read the final diff once for factual completeness and once for brevity, navigation, and ownership.
+
+Local discussion artifacts outside the corpus need scoped readability/link checks, not corpus or build lanes. Forward-test meaningful Skill routing changes on realistic requests; metadata and text matching alone do not prove that an agent selects the right owner or amount of work.
 
 ## Dev Note
 

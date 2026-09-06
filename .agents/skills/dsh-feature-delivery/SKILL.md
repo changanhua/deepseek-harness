@@ -1,11 +1,13 @@
 ---
 name: dsh-feature-delivery
-description: Use when an approved or emerging DeepSeek Harness feature must move across Charter, reuse/current-contract discovery, Issue DAG planning, implementation, verification, and optional self-development or runtime-debug branches without repeating decisions, repository scans, or fresh evidence. Route small or already-scoped changes directly to their owning workflow instead of loading the full feature chain.
+description: Coordinate an authorized DSH feature delivery across discovery, planning, implementation, and verification without repeating decisions or fresh evidence. Route bounded changes directly to their owner. Do not start this workflow for product discussion, design-only output, or a standalone local visual draft.
 ---
 
 # DSH Feature Delivery
 
 Coordinate DSH feature work through shared receipts and fresh evidence. This Skill owns routing, handoff validation, parallel-work admission, and integration checkpoints. It does not repeat architecture, implementation, debugging, review, or verification rules owned by the selected Skills.
+
+Distinguish design authority from implementation authority. Words such as durable, autonomous, or cross-Agent in a design discussion do not start governed delivery. For actual repository work, establish [checkout and package ownership](../dsh-reuse/references/checkout-ownership.md) once; preserve personal-package, upstream-component, and integration responsibilities through each handoff.
 
 Read [the handoff and evidence protocol](references/handoff-evidence.md) when the task spans more than one phase, reuses prior evidence, or may use subagents.
 
@@ -23,7 +25,7 @@ Choose one task-level mode before the first delivery action. An explicit user ch
 
 Mode changes process depth, not permissions or completion semantics. `adaptive` escalates to `governed` when work introduces a Service, Provider, WorkKind, persistence or recovery contract, security/authority boundary, DSH self-development, unclear ownership, or a source/composition/runtime disagreement. Reuse completed work and evidence during escalation; never restart the task merely to change mode. De-escalate only when the user explicitly asks or the task is re-scoped so the original trigger no longer exists.
 
-At mode selection, start one learning run with the repository script. At a terminal handoff, finish it once with the actual actions, elapsed time, highest evidence, review findings, evidence reuse, and bounded effect assessment. Supply summaries rather than prompts or payloads; the helper rejects recognizable sensitive forms and competing finalization. Do not record every tool call. Learning records are advisory local artifacts: they do not prove completion, control recovery, change authorization, or replace receipts. A recording failure is reported but never blocks the user's task.
+For a delivery task using this workflow, start one learning run with the target repository's existing script if available. Do not start one for design-only work, install a missing helper, or mutate another checkout to obtain it. At terminal handoff, finish it once with actual actions, elapsed time, highest evidence, review findings, evidence reuse, and bounded effect assessment. Supply summaries rather than prompts or payloads; preserve the helper's sensitive-data and finalization checks. Learning records do not prove completion, control recovery, change authorization, or replace receipts. A recording failure is reported but never blocks the task.
 
 ## Route proportionately
 

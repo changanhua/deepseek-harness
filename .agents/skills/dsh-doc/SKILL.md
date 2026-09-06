@@ -1,6 +1,6 @@
 ---
 name: dsh-doc
-description: Create, restructure, review, audit, or migrate DeepSeek Harness Markdown documentation, package READMEs, and the documentation website using audience-first hierarchy, kind-mapped YAML metadata, bilingual line alignment, summary/contents navigation, progressive user-to-developer detail, executed-operation fact-checking, and repository validation. Use for new or revised DSH docs, docs-tree organization, documentation-quality audits and budgets, website page publishing, and bilingual documentation structure changes.
+description: Write or review maintained DSH documentation, package READMEs, and documentation-site pages under their actual owner's rules. Use lightweight handling for local design scratch; conversational product advice does not require a documentation workflow. Apply bilingual and repository gates to the affected documentation corpus and claims.
 ---
 
 # DeepSeek Harness documentation
@@ -27,6 +27,14 @@ The DeepSeek Harness documentation standard: make every page searchable, newcome
 
 Follow this sequence for each requested scope. Keep the common reader path brief, but do not delete failures, ownership, limitations, or other required contracts merely to reduce words.
 
+### Select the document owner and stage
+
+Distinguish a conversational answer, local discussion draft, maintained documentation, and publication request before loading templates or running checks. Do not create a file merely because the user discusses DSH. For a requested local draft outside the maintained corpus, preserve the user's language, proposed/current distinction, provenance, and open questions; check that artifact's readability and links without forcing a package README skeleton, counterpart, Agent Note, or repository build.
+
+For maintained files, resolve [checkout and package ownership](../dsh-reuse/references/checkout-ownership.md), then read the nearest instructions and the target's actual documentation scope. Personal packages can remain under `packages/`; applicable repository instructions still apply. Do not assume another checkout's ownership, pairing exclusions, or commands. Placement follows the artifact's real lifetime and audience, not a desire to evade required checks.
+
+The following steps apply to maintained documentation and only to references needed for its format. A draft is not implemented-product documentation merely because it is Markdown.
+
 1. Read root and more-specific `AGENTS.md`, [the documentation standard](../../../docs/AGENTS.md), the target page, its source/tests, navigation owner, and bilingual record.
 2. Classify the page by one primary job and reader: product quick start, user task guide, contributor tutorial, architecture overview, package/subsystem reference, generated reference, agent instruction, decision record, or scratch.
 3. Place the page at its nearest owner. Keep package contracts beside package code; use `docs/` for cross-package learning, user, developer, architecture, discussion, and expiring scratch material.
@@ -34,16 +42,16 @@ Follow this sequence for each requested scope. Keep the common reader path brief
 5. Add or revise YAML metadata — assign the `kind` that maps to the template for this document's job — then write `Summary`, `Table of Contents`, user-facing content, developer-facing content, optional `Further Exploration`, and final `Dev Note` in that order where the document type permits.
 6. Update the bilingual counterpart in the same pass. Keep headings, lists, tables, code, links, frontmatter layout, and physical line count aligned.
 7. Verify every claim against code, tests, generators, package metadata, or a current decision owner — and run the operations the page instructs, per the fact-check procedure below. Update the owner before any derivative artifact.
-8. Run focused checks, then `pnpm run test:docs`, `pnpm run doc-sync`, `pnpm run lint`, and `git diff --check`; re-read the complete diff for correctness and then for brevity and repository fit.
+8. Select checks from the target's scripts and affected corpus: links/format, pairing for an in-scope pair, metadata for a README or Skill, and freshness for generated content. Run comprehensive documentation checks when required by the actual integration scope or CI; full lint/build, unrelated corpus repair, and network access are not default prerequisites for a local draft or focused prose edit. Re-read the complete scoped diff and run `git diff --check` before reporting it ready.
 
 ## Fact-check procedure: test, do not assume
 
-Documentation states how the product behaves today, and the only admissible evidence for an operation claim is having run it. This procedure is mandatory for every new document and every new paragraph that claims an operation, command, default, error, or platform difference.
+For maintained product documentation, distinguish a declared source contract from observed operation. Source can establish a declared default; only the identified runtime establishes that it is active. Apply this procedure to current-behavior claims, not explicitly proposed design scenarios. A verification requirement never authorizes installation, credential use, spending, publication, or a service restart; mark the observation unverified when the task does not permit it.
 
 1. **Classify the subject before writing install guidance.** Read the facts, never the folder name: `package.json` for a `dsh.bundle.patch` declaration, and the entry file for the plugin shape (`apply` export or a default service export is a plugin; a plain module API is a library). A bundle installs with `dsh plugin --profile <name> add <package>` and is the only package shape for which that command activates a profile layer; a plugin mounts as a `cordis.yml` row; a library is a dependency with no install path of its own. Packages with special status (libraries, bundles) get their own README template — never a plugin README with install guidance that does not apply.
-2. **Run every claimed operation against the current checkout.** Execute each CLI command, config snippet, and profile or patch example exactly as the document will show it; write down only what you observed, including the exact output, warnings, and failure modes. If a claim depends on a key or a network you do not have, say so and name the verification owner instead of asserting the behavior.
-3. **Delete what you could not reproduce.** Never carry a command, field, default value, or behavior from memory, analogy, or a neighboring package's README. When a claim fails to reproduce, fix the claim — not the test.
-4. **Check old docs against latest master.** Before revising pre-existing pages, `git fetch origin` and compare the section against `origin/master`; the pairing sidecar recovers the last-confirmed text of either side. A stale statement on master is still wrong: correct it against the code, not against the old prose.
+2. **Verify claimed operations in the intended target.** Within existing authority, execute commands and examples exactly as documented before claiming they work. Record observed output, warnings, and failures. Without authority, credentials, or a required environment, identify the unverified operation and its verification owner; do not invent evidence or widen the task.
+3. **Remove unsupported assertions.** Ground names, fields, defaults, and contracts in their current source rather than memory, analogy, or a neighboring README. Correct failed claims, not tests. An explicitly proposed scenario or source-declared contract can remain labeled as such; it must not be reported as an observed result.
+4. **Check against the intended target.** Reconcile a maintained statement with its owning checkout's source and, for integration, the verified base. Fetch only when remote freshness matters to that task; do not assume `origin/master` is the personal implementation or compare every local draft against it. Pairing records recover last-confirmed text, not current runtime behavior.
 5. **Re-record the pair after every edit.** Each paired edit re-runs `pnpm run verify-translation-pairing --write <pair>` so the sidecar tracks the confirmed pair.
 
 ## Kind system and templates
@@ -59,7 +67,7 @@ Open the template before writing and follow its skeleton and rules; it states wh
 
 ## Voice rules
 
-These rules decide what a section may say. They apply to every authored human-facing page, and to package READMEs with particular force.
+These rules describe maintained current-product pages, especially package READMEs. Explicitly requested design drafts describe proposed behavior and open choices instead; keep their non-authoritative status visible without forcing the whole design into a Dev Note.
 
 - **Summary says what the subject does.** The opening `Summary` and the user-facing sections describe what a user or agent can DO with the subject — outcomes, benefits, when to choose it, main cost — never its role, type, or internal identity. "The seam registers `ctx.x` and appends `x/event` records" is identity narration; "you can save a note per message and it survives restarts" is what it does.
 - **Developer sections explain, never enumerate.** Folded implementation content covers the overall design concept, architecture, and hand-waving dataflow — enough to understand how the package works — and links code for exact detail. No full API catalogs, exhaustive column lists, event-payload enumerations, or JSDoc restatement inside the folds.
@@ -121,7 +129,7 @@ Validate the affected format, not merely Markdown syntax. A strong promise needs
 - Package READMEs: run model-experience and limitation checks, then package-focused tests when behavior claims changed; re-run every command the README instructs before merging a claim about it.
 - Skills: run the repository's skill-invocation metadata check.
 
-Run `pnpm run test:docs` for the quick comprehensive documentation checks (pairing, wrap, links, README gates, budgets, skill metadata, Agent Note gates) before the full `pnpm run doc-sync`.
+For maintained-document integration requiring comprehensive repository lanes, run the target's `test:docs` before `doc-sync`. A focused check does not prove those broader lanes passed; do not run them for an artifact outside their corpus. Never weaken a required check or repair unrelated failures to obtain a green result for another scope.
 
 ## Dev Note
 

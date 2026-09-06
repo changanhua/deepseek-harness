@@ -49,7 +49,11 @@ Isolate controller, executor, subject, and verifier Profiles when they can coexi
 
 ## 1. Establish the claim and delivery surface
 
+First classify whether the promise is a product change or an artifact-only change. For product work, resolve [checkout and package ownership](../dsh-reuse/references/checkout-ownership.md) before choosing commands. Personal-package tests, shared-core checks, and the composed personal Profile prove different claims; a Skill loaded from an older checkout cannot select another checkout's scripts by assumption.
+
 Read the root and nearest `AGENTS.md`, then inspect the relevant current diff, owning package, config rows, tests, and entry path. Preserve unrelated WIP. Record whether the target is source checkout, built artifact, a specific `dsh` Profile, or a deployed process.
+
+For design-document or Skill-only changes, use the artifact's scope instead of the product-discovery steps: applicable format, links, metadata, and independent realistic requests when routing behavior changes. Proposed capability descriptions do not change product runtime. Future runtime evidence remains `not run`; unrelated build, Profile, browser, Provider and Linux-deployment checks are not required to deliver that artifact. An actual composition or runtime change still requires its corresponding evidence below.
 
 State the claim in one observable sentence. Examples:
 
@@ -92,6 +96,7 @@ Use the matrix’s smallest sufficient row. Typical selections:
 - **Host/Client or Remote contract:** verify generated declarations and run the full build when a Client bundle, dynamic extension, package export, or built runtime is consumed. `build:web` alone cannot refresh all dynamic Client bundles after Host/Client contract changes.
 - **Provider:** exercise the model-specific configuration in a real Provider request when credentials are available. Record the selected model, non-secret configuration identity, request outcome, and mapped usage/error. A mock proves the adapter contract, not Provider reality.
 - **Durable work, cancellation, restart, or recovery:** include the exact admission/dispatch/commit or failure point, stop the owning runtime, restart it, and assert durable state and absence of duplicate side effects. FIFO admission is not proof of serialized execution.
+- **Headless recovery acceptance:** `behavior-verified` still requires the owning entry path and an independent assertion on durable or external state even without a GUI. Browser availability does not decide whether recovery behavior must be verified.
 - **GUI:** build the relevant artifact, run the real server and user flow, then assert browser-visible state. A GIF is required for a PR changing product-user-visible GUI under `record-browser-gif`; a unit or DOM-only test cannot demonstrate a real model-backed flow.
 
 Never add a with-key, browser, restart, or full build merely as ceremony. Add it when a lower layer leaves the stated behavior falsifiable. Conversely, do not omit it because unit tests are green when the promise crosses that boundary.

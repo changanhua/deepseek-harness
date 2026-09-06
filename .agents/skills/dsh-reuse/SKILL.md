@@ -46,6 +46,8 @@ If the user has already supplied these facts, do not interview them again. Ask o
 
 ## 2. Search DSH by semantics
 
+Resolve [checkout and package ownership](references/checkout-ownership.md) before capability searches. The personal identity registry and manifests determine ownership even when paths still look upstream-owned. An old checkout's negative search, scope name, or command inventory is not evidence about the refactored personal target.
+
 Read the applicable `AGENTS.md` files and use the sources in [search-sources.md](references/search-sources.md). Search for both nouns and behavior: service keys, request/result types, events, tools, WorkKinds, lifecycle states, authorization, persistence, cancellation, retry, and output artifacts.
 
 Inspect the current branch and `git status` before treating source as shipped. Preserve all WIP. A candidate found only in an uncommitted diff is useful overlap evidence but remains `current-checkout WIP`; it is not a committed capability or runtime proof. Inspect another branch, pull request, or worktree only when the user names it or the current task explicitly requires that comparison.
@@ -115,7 +117,7 @@ Read [decision-rubric.md](references/decision-rubric.md) for ambiguous cases.
 - **Vendor/Fork** — a community implementation or Skill contains valuable behavior, but DSH needs a pinned, reviewed, locally constrained copy.
 - **Build** — no candidate owns the essential semantics, and an adapter would relocate rather than remove the missing behavior.
 
-Prefer a Bridge over teaching either domain core about the other. Consumers depend on Service Definitions, never concrete Providers; Bundles select Providers and deployment defaults. A read-only capability index may aid development, but it must not become a second runtime service registry or a dependency of product plugins.
+Prefer a Bridge when two domains have independent semantics. Do not preserve an unsuitable core contract merely to minimize upstream divergence: a justified personal core change remains an option, with affected consumers and verification identified. Consumers depend on Service Definitions, never concrete Providers; Bundles select Providers and deployment defaults. A read-only capability index may aid development, but it must not become a second runtime service registry or a dependency of product plugins.
 
 ## 7. Define the minimum change
 
