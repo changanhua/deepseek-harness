@@ -400,6 +400,28 @@ describe('ContentDomain storage contract', () => {
       .rejects.toMatchObject({ code: 'operation_conflict' })
   })
 
+  it('persists an unverified web source and rejects a changed source under the same operation identity', async () => {
+    const pool = new MemoryMediaPool()
+    const first = await harness(pool)
+    const request = {
+      type: 'save-text' as const, entryId: 'web-source', operationId: 'web-op', title: 'Saved reply', body: 'Captured text',
+      source: {
+        type: 'web-page' as const, scope: 'single-reply' as const, verification: 'unverified' as const,
+        url: 'https://chatgpt.com/c/example', pageTitle: 'Example conversation', site: 'ChatGPT',
+        capturedAt: '2026-09-07T00:00:00.000Z', externalMessageId: 'message-1',
+      },
+    }
+    const receipt = await first.ctx.content.execute(request, allow)
+    expect(first.ctx.content.get('web-source', allow)?.source).toEqual(request.source)
+    await expect(first.ctx.content.execute({ ...request, source: { ...request.source, site: 'Changed' } }, allow))
+      .rejects.toMatchObject({ code: 'operation_conflict' })
+    await first.fiber.dispose()
+
+    const reopened = await harness(pool)
+    expect(reopened.ctx.content.get('web-source', allow)?.source).toEqual(request.source)
+    expect(await reopened.ctx.content.execute(request, allow)).toEqual(receipt)
+  })
+
   it('retains version receipts permanently after the recent metadata window advances', async () => {
     const { ctx } = await harness()
     const imported = await ctx.content.execute({

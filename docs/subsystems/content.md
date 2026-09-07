@@ -20,6 +20,8 @@ Capture takes only Session and message references. Trusted host code supplies bo
 
 ## Persistence and availability
 
+Web imports use an unverified `web-page` source with URL, page title, site, capture scope and client-declared capture time. The [browser bridge](../../packages/content/content-browser/README.md) connects an approved extension installation to the same `save-text` path. Its `BrowserConnectRequest` describes a pending approval; `BrowserGrantSummary` exposes non-secret installation metadata. Grant authority and browser extraction remain separate from the Content record contract.
+
 The provider stores one aggregate per entry in `content_library` version 1, using the `entries` table and the `single` layout. It requires `single-writer`, `commit-sync` and `private-root`; [storage](storage.md) owns enforcement. The content provider owns the Domain handle, while the backend plugin owns the database connection.
 
 Content state remains inspectable when storage is unavailable. A successful save requires the Domain write to resolve. An uncertain storage failure disables further reads and writes from the suspect cache; recovery reopens the provider and its backend. The [provider reference](../../packages/content/content-domain/README.md) owns size budgets and operational limits. Human transport, Session authorization and browser workflow acceptance belong to their consumers.
@@ -94,6 +96,62 @@ abstract capture( command: CaptureCommand, resolveSource: ContentSourceResolver,
 ```
 
 Source: [`packages/content/content/src/index.ts`](../../packages/content/content/src/index.ts)
+
+<a id="ctxcontentbrowser--contentbrowser"></a>
+
+### `ctx.contentBrowser` — `ContentBrowser`
+
+Host service and signed-in Remote owner for extension grants.
+
+```ts cordis-catalog
+/**
+ * Dispatch a bounded extension request after the route checks the Host authority.
+ * @param request - HTTP request carrying a verified extension Origin and operation credentials.
+ * @returns Narrow protocol data or a payload-free error response.
+ */
+async fetch(request: Request): Promise<Response>
+
+/**
+ * Read an approval request without exposing exchange credentials.
+ * @param requestId - Identity from the extension link.
+ * @param signal - Active authenticated Connection signal.
+ * @returns Detached metadata; absent, expired or unauthorized reads reject.
+ */
+@Remote request(requestId: string, signal: AbortSignal): BrowserConnectRequest
+
+/**
+ * Grant import access after explicit approval by the signed-in user.
+ * @param requestId - Pending request identity.
+ * @param signal - Active authenticated Connection signal, checked again before mutation.
+ * @returns Metadata after durable grant commit; never a bearer token.
+ */
+@Remote async approve(requestId: string, signal: AbortSignal): Promise<BrowserConnectRequest>
+
+/**
+ * Reject a pending request in the same installation lane as approval.
+ * @param requestId - Pending request identity.
+ * @param signal - Active authenticated Connection signal.
+ * @returns Rejected metadata; an already approved request requires revocation instead.
+ */
+@Remote async reject(requestId: string, signal: AbortSignal): Promise<BrowserConnectRequest>
+
+/**
+ * List authorized installations using explicit non-secret metadata.
+ * @param signal - Active authenticated Connection signal.
+ * @returns Grant summaries; invalid owner records fail closed.
+ */
+@Remote async grants(signal: AbortSignal): Promise<BrowserGrantSummary[]>
+
+/**
+ * Revoke an installation, token delivery and its not-yet-committed imports.
+ * @param installationId - Identity from the signed-in grant list.
+ * @param signal - Active authenticated Connection signal.
+ * @returns Resolves after credential commit; previously saved content remains.
+ */
+@Remote async revoke(installationId: string, signal: AbortSignal): Promise<void>
+```
+
+Source: [`packages/content/content-browser/src/index.ts`](../../packages/content/content-browser/src/index.ts)
 
 <a id="ctxcontentremote--contentremote"></a>
 

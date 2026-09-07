@@ -692,6 +692,9 @@ importers:
         specifier: workspace:^
         version: link:../../typert/protocol
     devDependencies:
+      '@changanhua/dsh-content-browser':
+        specifier: workspace:^
+        version: link:../../content/content-browser
       '@changanhua/dsh-content-remote':
         specifier: workspace:^
         version: link:../../content/content-remote
@@ -1579,6 +1582,9 @@ importers:
       '@changanhua/dsh-client-ui-work-observatory':
         specifier: workspace:^
         version: link:../../client/ui-work-observatory
+      '@changanhua/dsh-content-browser':
+        specifier: workspace:^
+        version: link:../../content/content-browser
       '@changanhua/dsh-content-domain':
         specifier: workspace:^
         version: link:../../content/content-domain
@@ -2445,6 +2451,9 @@ importers:
       '@changanhua/dsh-content':
         specifier: workspace:^
         version: link:../../content/content
+      '@changanhua/dsh-content-browser':
+        specifier: workspace:^
+        version: link:../../content/content-browser
       '@changanhua/dsh-content-remote':
         specifier: workspace:^
         version: link:../../content/content-remote
@@ -4593,6 +4602,37 @@ importers:
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
+
+  packages/content/content-browser:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@changanhua/dsh-content':
+        specifier: workspace:^
+        version: link:../content
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-client-connection':
+        specifier: workspace:^
+        version: link:../../client/connection
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:^
+        version: link:../../credentials/credentials
+      '@deepseek-ai/dsh-host-webserver':
+        specifier: workspace:^
+        version: link:../../host/webserver
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../typert/protocol
 
   packages/content/content-domain:
     dependencies:

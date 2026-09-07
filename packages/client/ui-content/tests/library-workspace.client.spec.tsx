@@ -109,6 +109,21 @@ function mount(options: MountOptions = {}) {
 }
 
 describe('ContentLibraryWorkspace', () => {
+  it('shows a website capture and its safe source link separately from Session provenance', async () => {
+    const source = {
+      type: 'web-page' as const, scope: 'single-reply' as const, verification: 'unverified' as const,
+      url: 'https://chatgpt.com/c/example', pageTitle: 'A conversation', site: 'ChatGPT',
+      capturedAt: '2026-09-07T01:00:00.000Z',
+    }
+    const { store } = mount({ remote: remote({ snapshot: async () => ({ ok: true, value: { formatVersion: 1, entries: [entry('web:one', { source })] } }) }) })
+    await waitFor(() => { expect(screen.getByText('Captured reply')).toBeTruthy() })
+    fireEvent.click(screen.getByRole('button', { name: /Captured reply/u }))
+    expect(screen.getByText(zh['entry.kind.web'])).toBeTruthy()
+    const link = screen.getByRole('link', { name: 'A conversation' })
+    expect(link.getAttribute('href')).toBe(source.url)
+    expect(screen.getByText(zh['detail.source.unverified'])).toBeTruthy()
+    store.dispose()
+  })
   it('loads the library on mount and renders the entries newest first', async () => {
     const older = entry('source_old', {
       createdAt: '2026-09-05T00:00:00.000Z',

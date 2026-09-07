@@ -224,6 +224,25 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
   }
 
   /**
+   * Refresh and open an externally addressed entry; newer navigation wins.
+   * @param entryId - Content identity from the browser link.
+   */
+  async openEntry(entryId: string): Promise<void> {
+    if (this.disposed) return
+    const generation = ++this.editorGeneration
+    this.publish({ ...this.view, editor: null, editConflict: false, selectedEntryId: null })
+    await this.refreshAfterWrite()
+    while (!this.editAbort.signal.aborted && this.loadLane !== null && this.getSnapshot().loadState === 'loading') await this.loadLane
+    if (this.editAbort.signal.aborted || generation !== this.editorGeneration || this.getSnapshot().loadState !== 'ready'
+      || this.view.status?.phase !== 'ready') return
+    if (!this.view.entries.some(entry => entry.id === entryId)) {
+      this.publish({ ...this.view, loadState: 'error', error: ENTRY_GONE })
+      return
+    }
+    this.publish({ ...this.view, selectedEntryId: entryId })
+  }
+
+  /**
    * Open the editor for one new entry. The create command is issued by the
    * editor's own save verb; this seat only marks the intent.
    */

@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在同样暴露 `contentRemote` Host Remote 及其背后内容介质的 Client 组合中挂载这个浏览器包。
+在暴露 `contentRemote`、`contentBrowser` 及其背后内容介质的 Client 组合中挂载这个浏览器包。
 
 ### 何时选择它
 
@@ -37,7 +37,9 @@ kind: "package-reference"
 - name: '@changanhua/dsh-client-ui-content'
 ```
 
-本包没有浏览器配置。它的 `dsh.client.inject` 声明要求 Remote 装配、locale、Chat、Conversation、layout、renderer 与 sidebar 包；Cordis 主体要求槽位注册表、`contentRemote` 命名空间与 locale 服务。
+本包没有浏览器配置。它的 `dsh.client.inject` 声明要求 Remote 装配、locale、Chat、Conversation、layout、renderer 与 sidebar 包；Cordis 主体要求槽位注册表、layout、两个 Content Remote 命名空间与 locale 服务。
+
+浏览器导入展示网页标题、链接与未验证来源标识。扩展通过 `/#content-entry=<entryId>` 刷新并选中已保存条目。`/#extension-connect=<requestId>` 打开显式批准对话框；访问 URL 不会授权。**浏览器连接**列出安装实例并支持撤销。[浏览器桥](../../content/content-browser/README.zh.md) 拥有授权协议。
 
 从常驻侧栏打开**内容库**读取已提交条目；在助手回复的操作栏点击**捕获到内容库**捕获该消息。已捕获的消息显示带条目 ID 的按压状态；再次点击会重放原始创建回执，而不是重复条目。
 

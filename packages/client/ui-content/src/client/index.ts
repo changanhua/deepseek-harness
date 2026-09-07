@@ -26,6 +26,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls the generated contentRemote namespace merge.
 import type {} from '@changanhua/dsh-content-remote/remote'
 import { ContentLibraryStore } from './controller.ts'
+import { BrowserConnectionStore } from './browser-connection.ts'
+import { BrowserConnectionPanel, type BrowserConnectionInjected } from './BrowserConnectionPanel.tsx'
+import type {} from '@changanhua/dsh-content-browser/remote'
 import { CaptureAction } from './CaptureAction.tsx'
 import { ContentLibraryNavEntry } from './ContentLibraryNavEntry.tsx'
 import { ContentLibraryWorkspace } from './ContentLibraryWorkspace.tsx'
@@ -51,7 +54,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required services: the slot registry, the Remote namespace, and the copy. */
-export const inject = ['slots', 'locale', 'remote', 'remote.contentRemote']
+export const inject = ['slots', 'locale', 'layout', 'remote', 'remote.contentRemote', 'remote.contentBrowser']
 
 /**
  * Client plugin body: the library store, the workspace and its sidebar
@@ -64,8 +67,42 @@ export function apply(ctx: ClientContext): void {
   // One store per plugin fiber: every slot contribution below closes over
   // it, and the effect disposer drops it with the fiber that created it.
   const store = new ContentLibraryStore(ctx.remote.contentRemote)
+  const browserConnection = new BrowserConnectionStore(ctx.remote.contentBrowser)
 
   ctx.effect(() => () => { store.dispose() }, 'ui-content: library lifecycle')
+  ctx.effect(() => () => { browserConnection.dispose() }, 'ui-content: browser connection lifecycle')
+
+  ctx.effect(() => {
+    const navigate = (): void => {
+      const params = new URLSearchParams(window.location.hash.slice(1))
+      const requestId = params.get('extension-connect')
+      if (requestId !== null && requestId.length > 0 && requestId.length <= 128) {
+        void browserConnection.open(requestId)
+        return
+      }
+      browserConnection.close()
+      const entryId = params.get('content-entry')
+      if (entryId !== null && entryId.length > 0 && entryId.length <= 512) {
+        ctx.layout.openModule('content-library')
+        void store.openEntry(entryId)
+      }
+    }
+    window.addEventListener('hashchange', navigate)
+    navigate()
+    return () => { window.removeEventListener('hashchange', navigate) }
+  }, 'ui-content: browser deep links')
+
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay', id: 'content-browser-connection', order: 100, locale: NS,
+    inject: (): BrowserConnectionInjected => ({
+      hooks: { browserConnection },
+      approve: browserConnection.approve,
+      reject: browserConnection.reject,
+      revoke: id => browserConnection.revoke(id),
+      reload: browserConnection.reload,
+      close: browserConnection.close,
+    }),
+  }, BrowserConnectionPanel))
 
   // A reconnect can only invalidate what was already read; an idle store
   // stays idle until something asks for it.
@@ -89,6 +126,7 @@ export function apply(ctx: ClientContext): void {
       saveDraft: (title, body) => store.saveDraft(title, body),
       commitVersion: (title, body) => store.commitVersion(title, body),
       setMetadata: (entryId, patch) => store.setMetadata(entryId, patch),
+      openBrowserConnections: () => { void browserConnection.open() },
     }),
   }, ContentLibraryWorkspace))
 

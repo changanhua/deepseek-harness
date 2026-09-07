@@ -25,7 +25,7 @@ Keep saved text intact while editing a separate draft. Consumers use one shared 
 
 Import the definition to implement a provider or a trusted host consumer. Mount [content-domain](../content-domain/README.md) as the concrete service; the abstract definition is not a standalone storage plugin and has no configuration.
 
-Every read and mutation takes a trusted synchronous authorization callback. The callback must throw when the caller lacks access. Wire adapters derive that callback from the authenticated connection; a request field cannot provide it. Mutations repeat the check at execution, after any asynchronous source preparation. Manual text commands cannot supply verified source facts.
+Every read and mutation takes a trusted synchronous authorization callback. The callback must throw when the caller lacks access. Wire adapters derive that callback from the authenticated connection; a request field cannot provide it. Mutations repeat the check at execution, after any asynchronous source preparation. A `save-text` command may retain an unverified provided-text or web-page source; web pages retain their HTTP(S), credential-free URL, page title, site, capture time and optional external message identity. It cannot supply a Host-verified Session source, and `create` accepts no source.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

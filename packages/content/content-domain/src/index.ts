@@ -121,7 +121,7 @@ export class ContentDomain extends Content {
       if (known) return replay(known, requestDigest)
       if (parsed.type === 'create' || parsed.type === 'save-text') {
         if (previous) throw new ContentError('operation_conflict')
-        return this.write(active, createEntry(parsed, requestDigest))
+        return this.write(active, createEntry(parsed, requestDigest, parsed.type === 'save-text' ? parsed.source : undefined))
       }
       if (!previous) throw new ContentError('not_found')
       return this.write(active, mutateEntry(previous, parsed, requestDigest))

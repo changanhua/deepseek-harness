@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Save original text, edit a separate draft and recover committed versions after reopening the library. Each successful command commits its receipt with the complete entry. Conflicting text edits reject rather than overwriting another draft. The provider uses Storage Domain and requires a dedicated backend with single-writer, synchronized-commit and private-directory guarantees.
+Save original text, edit a separate draft and recover committed versions after reopening the library. Each successful command commits its receipt with the complete entry, including an unverified provided-text or web-page source. Conflicting text edits reject rather than overwriting another draft. The provider uses Storage Domain and requires a dedicated backend with single-writer, synchronized-commit and private-directory guarantees.
 
 ## Table of Contents
 

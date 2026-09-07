@@ -42,6 +42,8 @@ export {
 export { HostConnectionService } from './rpc-host.ts'
 
 export { API_PATH } from './api-path.ts'
+/** Raw HTTP adapter for a dedicated Host bridge that owns authorization. */
+export { bridge } from './http-bridge.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'client-connection'

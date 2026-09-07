@@ -30,7 +30,7 @@ function byCreationDesc(left: ContentEntry, right: ContentEntry): number {
  */
 export function ContentLibraryWorkspace({
   useLibrary, refresh, select, beginCreate, beginEdit, closeEditor, clearConflict,
-  createEntry, saveDraft, commitVersion, setMetadata, t,
+  createEntry, saveDraft, commitVersion, setMetadata, openBrowserConnections, t,
 }: LibraryWorkspaceProps) {
   // Load the library on mount: the workspace is the one seat that always
   // wants current data, so it never renders from a cold store.
@@ -63,6 +63,7 @@ export function ContentLibraryWorkspace({
           <p className={css.subtitle}>{t('view.subtitle')}</p>
         </div>
         <div className={css.headActions}>
+          <button type="button" className={css.detailAction} onClick={openBrowserConnections}>{t('extension.title')}</button>
           <button
             type="button"
             className={css.newEntry}
@@ -192,7 +193,9 @@ function EntryRow({ entry, selected, onSelect, t }: EntryRowProps) {
     >
       <span className={css.rowTitle}>{title}</span>
       <span className={css.badges}>
-        <span className={css.badge}>{t(entry.kind === 'original' ? 'entry.kind.original' : 'entry.kind.idea')}</span>
+        <span className={css.badge}>{t(entry.source?.type === 'web-page' ? 'entry.kind.web'
+          : entry.source?.type === 'user-provided' ? 'detail.source.provided'
+            : entry.kind === 'original' ? 'entry.kind.original' : 'entry.kind.idea')}</span>
         {entry.draft !== null && <span className={css.badge}>{t('entry.draft')}</span>}
         {entry.favorite && <span className={css.badge}>{t('entry.favorite')}</span>}
         {entry.archived && <span className={css.badge}>{t('entry.archived')}</span>}
@@ -240,10 +243,18 @@ function EntryDetail({ entry, onEdit, onMetadata, onReload, t }: EntryDetailProp
     : entry.source?.type === 'user-provided'
       ? t('detail.source.provided')
       : null
+  const webpage = entry.source?.type === 'web-page' ? entry.source : null
   return (
     <div className={css.detail}>
       {source !== null && (
         <p className={css.detailMeta}>{`${t('detail.source')}: ${source}`}</p>
+      )}
+      {webpage !== null && (
+        <div className={css.detailMeta}>
+          <p>{t('detail.source')}: {webpage.site}</p>
+          <a href={webpage.url} target="_blank" rel="noopener noreferrer">{webpage.pageTitle || webpage.url}</a>
+          <p>{t('detail.source.unverified')}</p>
+        </div>
       )}
       {head !== undefined && (
         <>

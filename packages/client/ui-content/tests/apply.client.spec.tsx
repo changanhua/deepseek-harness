@@ -56,6 +56,11 @@ async function bench() {
   }
   new RemoteService(ctx)
   ctx.provide('remote.contentRemote', contentRemote)
+  ctx.provide('remote.contentBrowser', {
+    request: vi.fn(), approve: vi.fn(), reject: vi.fn(),
+    grants: async () => ({ ok: true, value: [] }), revoke: vi.fn(),
+  } as never)
+  ctx.provide('layout', { toggleSidebar: vi.fn(), openDetails: vi.fn(), closeDetails: vi.fn(), openModule: vi.fn() })
   await ctx.plugin(SlotRegistry).await()
   ctx.slots.register({
     name: 'root',
@@ -63,6 +68,7 @@ async function bench() {
       'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       'shell.view': { kind: 'list', scope: 'root' },
       'sidebar.modules': { kind: 'list', scope: 'root' },
+      'shell.overlay': { kind: 'list', scope: 'root' },
     },
   } as never, (() => null) as never)
   ctx.provide('locale', new LocaleRuntime(ctx))

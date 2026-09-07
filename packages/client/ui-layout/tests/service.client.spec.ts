@@ -11,6 +11,7 @@ function fakePanels(): PanelActions {
     openDetails: vi.fn(),
     closeDetails: vi.fn(),
     setActiveModule: vi.fn(),
+    openModule: vi.fn(),
   }
 }
 

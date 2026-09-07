@@ -667,6 +667,49 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'contentBrowser',
+    summary: 'Host service and signed-in Remote owner for extension grants.',
+    description: 'Host service and signed-in Remote owner for extension grants.',
+    methods: [
+      {
+        signature: 'async fetch(request: Request): Promise<Response>',
+        description: 'Dispatch a bounded extension request after the route checks the Host authority.',
+        parameters: [{ name: 'request', description: 'HTTP request carrying a verified extension Origin and operation credentials.' }],
+        returns: 'Narrow protocol data or a payload-free error response.',
+      },
+      {
+        signature: '@Remote request(requestId: string, signal: AbortSignal): BrowserConnectRequest',
+        description: 'Read an approval request without exposing exchange credentials.',
+        parameters: [{ name: 'requestId', description: 'Identity from the extension link.' }, { name: 'signal', description: 'Active authenticated Connection signal.' }],
+        returns: 'Detached metadata; absent, expired or unauthorized reads reject.',
+      },
+      {
+        signature: '@Remote async approve(requestId: string, signal: AbortSignal): Promise<BrowserConnectRequest>',
+        description: 'Grant import access after explicit approval by the signed-in user.',
+        parameters: [{ name: 'requestId', description: 'Pending request identity.' }, { name: 'signal', description: 'Active authenticated Connection signal, checked again before mutation.' }],
+        returns: 'Metadata after durable grant commit; never a bearer token.',
+      },
+      {
+        signature: '@Remote async reject(requestId: string, signal: AbortSignal): Promise<BrowserConnectRequest>',
+        description: 'Reject a pending request in the same installation lane as approval.',
+        parameters: [{ name: 'requestId', description: 'Pending request identity.' }, { name: 'signal', description: 'Active authenticated Connection signal.' }],
+        returns: 'Rejected metadata; an already approved request requires revocation instead.',
+      },
+      {
+        signature: '@Remote async grants(signal: AbortSignal): Promise<BrowserGrantSummary[]>',
+        description: 'List authorized installations using explicit non-secret metadata.',
+        parameters: [{ name: 'signal', description: 'Active authenticated Connection signal.' }],
+        returns: 'Grant summaries; invalid owner records fail closed.',
+      },
+      {
+        signature: '@Remote async revoke(installationId: string, signal: AbortSignal): Promise<void>',
+        description: 'Revoke an installation, token delivery and its not-yet-committed imports.',
+        parameters: [{ name: 'installationId', description: 'Identity from the signed-in grant list.' }, { name: 'signal', description: 'Active authenticated Connection signal.' }],
+        returns: 'Resolves after credential commit; previously saved content remains.',
+      },
+    ],
+  },
+  {
     key: 'credentials',
     summary: 'Abstract credential service over two key spaces that answer two questions.',
     description: 'Abstract credential service over two key spaces that answer two questions.\n\nA CredentialRef answers "what is behind this environment-variable name", layered over the process environment, the provider-managed store, and `.env` files. One seam-wide rule binds that half: an empty stored value is absent everywhere — `resolve` skips it, `describe` reports it unconfigured — so a blank never masquerades as a configured secret.\n\nA CredentialKey answers "what credential does this plugin hold for this id". Nothing can layer here — an authorization grant has no environment to be read from — so presence of the record is the whole fact, and modifyRecord is the only write path because a correct write depends on the current value (a token refresh is read-decide-replace under one lock).',
@@ -3996,6 +4039,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
   },
   {
+    name: 'BrowserConnectRequest',
+    declaration: 'export interface BrowserConnectRequest {\n    readonly requestId: string;\n    readonly installationId: string;\n    readonly extensionId: string;\n    readonly expiresAt: string;\n    readonly status: \'pending\' | \'approved\' | \'rejected\';\n}',
+  },
+  {
+    name: 'BrowserGrantSummary',
+    declaration: 'export interface BrowserGrantSummary {\n    readonly installationId: string;\n    readonly extensionId: string;\n    readonly createdAt: string;\n    readonly scope: \'content:import\';\n}',
+  },
+  {
     name: 'ChangedPathFinding',
     declaration: 'export interface ChangedPathFinding {\n    readonly path: RepositoryRelativePath;\n    readonly kind: \'forbidden\' | \'outside-allowed\';\n}',
   },
@@ -6862,10 +6913,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WebSearchSource',
     declaration: 'export interface WebSearchSource {\n    readonly url: string;\n    readonly title?: string;\n    readonly snippet?: string;\n    readonly publishedAt?: string;\n}',
-  },
-  {
-    name: 'WebSource',
-    declaration: 'export interface WebSource {\n    url: string;\n    title?: string;\n    snippet?: string;\n    publishedAt?: string;\n}',
   },
   {
     name: 'WebUpgradeRoute',

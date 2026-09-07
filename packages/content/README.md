@@ -28,6 +28,7 @@ These packages use the personal namespace.
 | [`content-domain`](content-domain/README.md) | Durable aggregates, revision checks and retry receipts |
 | [`content-session`](content-session/README.md) | Verified completed plain-text Session sources |
 | [`content-remote`](content-remote/README.md) | Authenticated browser reads and mutations |
+| [`content-browser`](content-browser/README.md) | Extension authorization and webpage imports |
 
 <a id="related-documentation"></a>
 ## Related documentation

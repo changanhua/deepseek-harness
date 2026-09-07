@@ -30,6 +30,21 @@ export const ProvidedSourceSchema = z.strictObject({
   type: z.literal('user-provided'), scope: z.literal('provided-text'), verification: z.literal('unverified'),
 })
 
+/** An external page reports its own metadata and cannot claim Host verification. */
+export const WebSourceSchema = z.strictObject({
+  type: z.literal('web-page'), scope: z.enum(['selection', 'single-reply']), verification: z.literal('unverified'),
+  url: z.url().refine((value) => {
+    try {
+      const parsed = new URL(value)
+      return (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+        && parsed.username.length === 0 && parsed.password.length === 0
+    } catch {
+      return false
+    }
+  }, 'Expected credential-free HTTP(S) URL'),
+  pageTitle: text, site: text, capturedAt: z.iso.datetime(), externalMessageId: id.optional(),
+})
+
 /** Immutable text revision. Providers verify bodySha256 over the exact UTF-8 body on open. */
 export const ContentVersionSchema = z.strictObject({
   id, number: revision, title: text, body: text, bodySha256: digest,
@@ -44,7 +59,7 @@ export const ContentDraftSchema = z.strictObject({
 /** Complete per-entry atomic record. Revisions, references and receipt history fail closed. */
 export const ContentEntrySchema = z.strictObject({
   id, kind: z.enum(['idea', 'original']), createdAt: z.iso.datetime(), entryRevision: revision,
-  source: z.union([SessionSourceSchema, ProvidedSourceSchema]).nullable(),
+  source: z.union([SessionSourceSchema, ProvidedSourceSchema, WebSourceSchema]).nullable(),
   versions: z.array(ContentVersionSchema), headVersionId: versionRef, draft: ContentDraftSchema.nullable(),
   projectRefs: z.array(id), favorite: z.boolean(), archived: z.boolean(),
   creation: OperationRecordSchema, receipts: z.array(OperationRecordSchema).min(1).max(256),
@@ -85,10 +100,13 @@ export const ContentEntrySchema = z.strictObject({
 const commandIdentity = { entryId: id, operationId: id }
 const draftGuard = { expectedDraftRevision: revision, basedOnVersionId: versionRef }
 
-/** Only the named changes are permitted; missing revisions or extra authority fields reject. */
+/** Only the named changes are permitted; save-text accepts only unverified provided or web sources. */
 export const ContentCommandSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('create'), ...commandIdentity, title: text, body: text }),
-  z.strictObject({ type: z.literal('save-text'), ...commandIdentity, title: text, body: text }),
+  z.strictObject({
+    type: z.literal('save-text'), ...commandIdentity, title: text, body: text,
+    source: z.union([ProvidedSourceSchema, WebSourceSchema]).optional(),
+  }),
   z.strictObject({ type: z.literal('start-draft'), ...commandIdentity, expectedEntryRevision: revision }),
   z.strictObject({ type: z.literal('save-draft'), ...commandIdentity, ...draftGuard, title: text, body: text }),
   z.strictObject({ type: z.literal('commit-version'), ...commandIdentity, ...draftGuard, expectedHeadVersionId: versionRef }),

@@ -136,6 +136,9 @@
     - id: content-remote
       name: '@changanhua/dsh-content-remote'
 
+    - id: content-browser
+      name: '@changanhua/dsh-content-browser'
+
     # Session commands, cold reads, and live control over Typert Remote.
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'

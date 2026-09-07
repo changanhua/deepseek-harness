@@ -9,7 +9,7 @@ import {
 } from './rpc.ts'
 import { clientRequestSchema } from './rpc-schema.ts'
 import { bridge, type FetchHandler } from './http-bridge.ts'
-import { isTrustedApiRequest } from './api-request-trust.ts'
+import { isTrustedApiAuthority, isTrustedApiRequest } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
 import type { BrowserAuth } from './browser-auth.ts'
 import type {
@@ -103,6 +103,11 @@ export class HostConnectionService extends Service implements HostConnectionHand
   requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection {
     if (!isTrustedApiRequest(request, this.trustedHosts)) return 403
     return this.browserAuth.isAuthenticated(request) ? undefined : 401
+  }
+
+  /** Apply the Host authority fence for a bridge that owns its own authentication. */
+  requestAuthorityRejection(request: ConnectionTrustRequest): 403 | undefined {
+    return isTrustedApiAuthority(request, this.trustedHosts) ? undefined : 403
   }
 
   /** Assert that a signal was issued by this service for an active authorized request. */

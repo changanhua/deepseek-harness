@@ -10,12 +10,12 @@ type EditCommand = Exclude<ContentCommand, CreateCommand>
  * Construct a draft or original; creation and its receipt are one aggregate.
  * @param command - Parsed creation input.
  * @param requestDigest - Canonical request digest retained for retries.
- * @param source - Verified source for host captures; manual imports retain their unverified default.
+ * @param source - Verified Session capture, or unverified manual text or web-page source.
  * @returns A new aggregate that has not yet been committed.
  */
 export function createEntry(
   command: CreateCommand, requestDigest: string,
-  source: ContentEntry['source'] = { type: 'user-provided', scope: 'provided-text', verification: 'unverified' },
+  source: Exclude<ContentEntry['source'], null> = { type: 'user-provided', scope: 'provided-text', verification: 'unverified' },
 ): ContentEntry {
   const original = command.type === 'save-text'
   const versionId = original ? randomUUID() : null

@@ -28,6 +28,8 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@changanhua/dsh-client-ui-content": ["./packages/client/ui-content/src"],
+      "@changanhua/dsh-content-browser/types": ["./packages/content/content-browser/src/types.ts"],
       "@deepseek-ai/cordis": ["./vendor/cordis/src"],
       "@deepseek-ai/cosmokit": ["./vendor/cosmokit/src"],
       "@deepseek-ai/schemastery": ["./vendor/schemastery/src"],
@@ -271,6 +273,8 @@
       "@changanhua/dsh-command-task-queue/invariant": ["./packages/task-queue/command-task-queue/src/invariant.ts"],
       "@changanhua/dsh-content": ["./packages/content/content/src"],
       "@changanhua/dsh-content/invariant": ["./packages/content/content/src/invariant.ts"],
+      "@changanhua/dsh-content-browser": ["./packages/content/content-browser/src"],
+      "@changanhua/dsh-content-browser/invariant": ["./packages/content/content-browser/src/invariant.ts"],
       "@changanhua/dsh-content-domain": ["./packages/content/content-domain/src"],
       "@changanhua/dsh-content-domain/invariant": ["./packages/content/content-domain/src/invariant.ts"],
       "@changanhua/dsh-content-remote": ["./packages/content/content-remote/src"],

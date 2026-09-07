@@ -25,7 +25,7 @@ This package gives the Web application the content-library surface over the pers
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the browser package in a Client composition that also exposes the `contentRemote` Host Remote and the content medium behind it.
+Mount the browser package in a Client composition that exposes `contentRemote`, `contentBrowser` and the content medium behind them.
 
 ### When to choose it
 
@@ -37,7 +37,9 @@ Choose it for a Web surface whose composition mounts the content stack (`content
 - name: '@changanhua/dsh-client-ui-content'
 ```
 
-The package has no browser configuration. Its `dsh.client.inject` declaration requires the Remote assembly, locale, Chat, Conversation, layout, renderer, and sidebar packages; its Cordis body requires the slot registry, the `contentRemote` namespace, and the locale service.
+The package has no browser configuration. Its `dsh.client.inject` declaration requires the Remote assembly, locale, Chat, Conversation, layout, renderer, and sidebar packages; its Cordis body requires the slot registry, layout, both Content Remote namespaces and the locale service.
+
+Browser imports show their website title, link and unverified provenance. The extension opens `/#content-entry=<entryId>` to refresh and select the saved entry. `/#extension-connect=<requestId>` opens an explicit approval dialog; visiting the URL does not grant access. **Browser connections** lists installations and permits revocation. [The browser bridge](../../content/content-browser/README.md) owns the authorization protocol.
 
 Open **Content Library** from the persistent sidebar to read committed entries; click **Capture to library** in an assistant reply's action strip to capture that message. A captured message shows a pressed state with its entry id; clicking again replays the original creation receipt instead of duplicating the entry.
 

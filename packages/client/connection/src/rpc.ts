@@ -213,6 +213,15 @@ export interface HostConnectionHandle {
   requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection
 
   /**
+   * Apply only Connection's Host authority fence. Dedicated bridges that
+   * authenticate with their own bearer grant use this instead of browser
+   * cookie authentication.
+   * @param request - request headers from the HTTP or upgrade request.
+   * @returns 403 when the request authority is not trusted, otherwise undefined.
+   */
+  requestAuthorityRejection(request: ConnectionTrustRequest): 403 | undefined
+
+  /**
    * Authenticate one frontend index request, owning a token redirect or 401.
    * @param request - root or configured-index HTTP request.
    * @param response - response owned when the result is false.

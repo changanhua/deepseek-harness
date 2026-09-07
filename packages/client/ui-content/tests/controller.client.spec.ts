@@ -15,6 +15,30 @@ import type { CaptureTarget } from '../src/client/capture-target.ts'
 const TARGET: CaptureTarget = { seq: 34, messageId: 'm-1' }
 const SESSION = 's1' as SessionId
 
+it('opens a freshly imported entry from the current Host snapshot', async () => {
+  const { remote: face } = remote({ snapshot: async () => ({ ok: true, value: { formatVersion: 1, entries: [entry('web:one')] } }) })
+  const store = new ContentLibraryStore(face)
+  await store.openEntry('web:one')
+  expect(store.getSnapshot().selectedEntryId).toBe('web:one')
+  expect(store.getSnapshot().entries).toHaveLength(1)
+  await store.openEntry('missing')
+  expect(store.getSnapshot().error?.code).toBe('not_found')
+  store.dispose()
+})
+
+it('does not let a delayed deep link replace a newer user selection', async () => {
+  let resolveSnapshot!: (value: RemoteResult<ContentSnapshotLike>) => void
+  const { remote: face } = remote({ snapshot: () => new Promise((done) => { resolveSnapshot = done }) })
+  const store = new ContentLibraryStore(face)
+  const opening = store.openEntry('web:one')
+  await Promise.resolve()
+  store.select('source_x')
+  resolveSnapshot({ ok: true, value: { formatVersion: 1, entries: [entry('web:one'), entry()] } })
+  await opening
+  expect(store.getSnapshot().selectedEntryId).toBe('source_x')
+  store.dispose()
+})
+
 function receipt(overrides: Partial<ContentReceipt> = {}): ContentReceipt {
   return { operationId: 'op-1', entryId: 'source_x', entryRevision: 1, draftRevision: null, versionId: 'v1', ...overrides }
 }

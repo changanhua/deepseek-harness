@@ -120,6 +120,17 @@
       ]
     },
     {
+      "directory": "packages/content/content-browser",
+      "legacyName": "@deepseek-ai/dsh-content-browser",
+      "sourceName": "@changanhua/dsh-content-browser",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/content/content-domain",
       "legacyName": "@deepseek-ai/dsh-content-domain",
       "sourceName": "@changanhua/dsh-content-domain",

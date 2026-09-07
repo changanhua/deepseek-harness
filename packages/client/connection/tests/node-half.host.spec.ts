@@ -238,6 +238,31 @@ describe('connection node half', () => {
     await dispose()
   })
 
+  it('offers the authority fence to bearer-authenticated sibling bridges without a browser cookie', async () => {
+    const { connection, dispose } = await mounted({ trustedHosts: ['harness.example'] })
+    expect(connection.requestAuthorityRejection(fakeRequest({ host: 'harness.example' }))).toBeUndefined()
+    expect(connection.requestAuthorityRejection(fakeRequest({
+      host: 'harness.example', origin: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
+      'sec-fetch-site': 'none',
+    }))).toBeUndefined()
+    expect(connection.requestAuthorityRejection(fakeRequest({ host: 'other.example' }))).toBe(403)
+    await dispose()
+  })
+
+  it('keeps normal /api cross-site and foreign-Origin requests forbidden after cookie authentication', async () => {
+    const { routes, connection, dispose } = await mounted({ trustedHosts: ['harness.example'] })
+    const cookie = browserCookie(connection, 'harness.example')
+    for (const headers of [
+      { host: 'harness.example', cookie, origin: 'http://other.example' },
+      { host: 'harness.example', cookie, origin: 'http://harness.example', 'sec-fetch-site': 'cross-site' },
+    ]) {
+      const attempted = fakeResponse()
+      await routes[0]!.handler(fakeRequest(headers), attempted.response)
+      expect(attempted.state).toMatchObject({ status: 403, body: 'forbidden' })
+    }
+    await dispose()
+  })
+
   it('binds authorization only for active shared and dedicated RPC bridge signals', async () => {
     const { routes, connection, dispose } = await mounted()
     const observed: AbortSignal[] = []

@@ -20,6 +20,8 @@
 
 ## 持久化与可用性
 
+网页导入使用未验证的 `web-page` 来源，包含 URL、页面标题、站点、采集范围和客户端声明的采集时间。[浏览器桥](../../packages/content/content-browser/README.zh.md) 把已批准的扩展安装连接到同一个 `save-text` 入口。其 `BrowserConnectRequest` 描述待批准请求，`BrowserGrantSummary` 暴露不含秘密的安装元数据。授权与浏览器提取独立于 Content 记录约定。
+
 提供方在版本 1 的 `content_library` 中为每条内容保存一个聚合记录，使用 `entries` 表和 `single` 布局。它要求 `single-writer`、`commit-sync` 和 `private-root`；[存储](storage.zh.md) 拥有执行这些保证的责任。内容提供方拥有 Domain 句柄，后端插件拥有数据库连接。
 
 存储不可用时仍可查询内容状态。保存成功必须以 Domain 写入完成为准。不确定的存储失败会禁止继续从可疑缓存读取或写入；恢复需要重新打开提供方及其后端。[提供方参考](../../packages/content/content-domain/README.zh.md) 拥有大小预算和操作限制。人类传输、Session 授权和浏览器工作流验收归其消费方负责。
@@ -94,6 +96,62 @@ abstract capture( command: CaptureCommand, resolveSource: ContentSourceResolver,
 ```
 
 Source: [`packages/content/content/src/index.ts`](../../packages/content/content/src/index.ts)
+
+<a id="ctxcontentbrowser--contentbrowser"></a>
+
+### `ctx.contentBrowser` — `ContentBrowser`
+
+Host service and signed-in Remote owner for extension grants.
+
+```ts cordis-catalog
+/**
+ * Dispatch a bounded extension request after the route checks the Host authority.
+ * @param request - HTTP request carrying a verified extension Origin and operation credentials.
+ * @returns Narrow protocol data or a payload-free error response.
+ */
+async fetch(request: Request): Promise<Response>
+
+/**
+ * Read an approval request without exposing exchange credentials.
+ * @param requestId - Identity from the extension link.
+ * @param signal - Active authenticated Connection signal.
+ * @returns Detached metadata; absent, expired or unauthorized reads reject.
+ */
+@Remote request(requestId: string, signal: AbortSignal): BrowserConnectRequest
+
+/**
+ * Grant import access after explicit approval by the signed-in user.
+ * @param requestId - Pending request identity.
+ * @param signal - Active authenticated Connection signal, checked again before mutation.
+ * @returns Metadata after durable grant commit; never a bearer token.
+ */
+@Remote async approve(requestId: string, signal: AbortSignal): Promise<BrowserConnectRequest>
+
+/**
+ * Reject a pending request in the same installation lane as approval.
+ * @param requestId - Pending request identity.
+ * @param signal - Active authenticated Connection signal.
+ * @returns Rejected metadata; an already approved request requires revocation instead.
+ */
+@Remote async reject(requestId: string, signal: AbortSignal): Promise<BrowserConnectRequest>
+
+/**
+ * List authorized installations using explicit non-secret metadata.
+ * @param signal - Active authenticated Connection signal.
+ * @returns Grant summaries; invalid owner records fail closed.
+ */
+@Remote async grants(signal: AbortSignal): Promise<BrowserGrantSummary[]>
+
+/**
+ * Revoke an installation, token delivery and its not-yet-committed imports.
+ * @param installationId - Identity from the signed-in grant list.
+ * @param signal - Active authenticated Connection signal.
+ * @returns Resolves after credential commit; previously saved content remains.
+ */
+@Remote async revoke(installationId: string, signal: AbortSignal): Promise<void>
+```
+
+Source: [`packages/content/content-browser/src/index.ts`](../../packages/content/content-browser/src/index.ts)
 
 <a id="ctxcontentremote--contentremote"></a>
 

@@ -69,6 +69,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   content: 'content.md',
   contentSession: 'content.md',
   contentRemote: 'content.md',
+  contentBrowser: 'content.md',
   cordisInspect: 'extensions.md',
   authorization: 'credentials.md',
   credentials: 'credentials.md',
@@ -253,6 +254,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ContentAccess: 'content.md',
   ContentCommand: 'content.md',
   ContentEntry: 'content.md',
+  BrowserConnectRequest: 'content.md',
+  BrowserGrantSummary: 'content.md',
   ContentReceipt: 'content.md',
   ContentSnapshot: 'content.md',
   ContentSourceResolver: 'content.md',
@@ -726,6 +729,8 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
   'Promise',
   'Record',
   'Readonly',
+  'Request',
+  'Response',
   'Uint8Array',
 ])
 

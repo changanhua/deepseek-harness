@@ -2,7 +2,7 @@ import type { z } from 'zod'
 import type {
   CaptureCommandSchema, ContentCommandSchema, ContentDraftSchema, ContentEntrySchema, ContentLimitsSchema,
   ContentReceiptSchema, ContentSnapshotSchema, ContentVersionSchema, OperationRecordSchema,
-  ResolvedCaptureSchema, SessionSourceSchema,
+  ResolvedCaptureSchema, SessionSourceSchema, WebSourceSchema,
 } from './schema.ts'
 
 /** Schema-derived ContentEntry value. */
@@ -23,6 +23,8 @@ export type CaptureCommand = z.infer<typeof CaptureCommandSchema>
 export type ResolvedCapture = z.infer<typeof ResolvedCaptureSchema>
 /** Schema-derived SessionSource value. */
 export type SessionSource = z.infer<typeof SessionSourceSchema>
+/** Schema-derived external, unverified page source. */
+export type WebSource = z.infer<typeof WebSourceSchema>
 /** Schema-derived ContentLimits value. */
 export type ContentLimits = z.infer<typeof ContentLimitsSchema>
 /** Schema-derived ContentSnapshot value. */

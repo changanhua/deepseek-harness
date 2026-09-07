@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="src/sidebar.css">
+    <title>DSH 收藏</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">d</span><strong>DSH 收藏</strong></div>
+        <div class="topbar-actions"><button id="connection-status" class="connection-status" type="button" aria-label="查看连接设置"></button><button id="show-settings" class="icon-button" type="button" aria-label="连接设置">⚙</button></div>
+      </header>
+      <section id="notice" class="notice" hidden aria-live="polite"></section>
+      <section id="empty" class="panel-body" hidden>
+        <div class="empty-mark">⌑</div>
+        <h1>留下值得再读的内容</h1>
+        <p id="empty-hint">在网页中选中文字，再右键选择“收藏选区到 DSH”。</p>
+        <div class="current-page"><span>当前页面</span><strong id="page-title"></strong></div>
+        <div class="secondary-actions"><button id="capture-selection" class="secondary full" type="button">收藏选中的文字</button><button id="choose-reply" class="link-button" type="button">选择当前页面的一条回复 →</button><button id="enable-site" class="link-button" type="button" hidden>启用此网站的快捷收藏 →</button></div>
+      </section>
+      <section id="capture" class="panel-body" hidden>
+        <div class="source-line"><span id="source-label"></span><button id="open-source" class="link-button" type="button">查看原文 ↗</button></div>
+        <div class="title-row"><textarea id="title" class="capture-title" rows="2" maxlength="160" readonly aria-label="收藏标题"></textarea><button id="edit-title" class="icon-button" type="button" aria-label="修改标题" hidden>✎</button></div>
+        <p id="capture-destination" class="micro"></p>
+        <article id="markdown" class="reading" aria-label="采集正文预览"></article>
+      </section>
+      <section id="settings" class="panel-body" hidden>
+        <button id="hide-settings" class="link-button back" type="button">← 返回收藏</button>
+        <h1>连接 DSH</h1>
+        <p>地址和授权会记住，日常收藏无需重复设置。</p>
+        <div class="connection-card"><strong id="settings-phase"></strong><span id="settings-current-url"></span></div>
+        <label class="field">服务地址<input id="base-url" inputmode="url" spellcheck="false" placeholder="http://127.0.0.1:3080"></label>
+        <p class="micro">默认连接本机 3080。只有使用其他端口或服务器时才需修改。</p>
+      </section>
+      <footer id="footer" class="footer"></footer>
+    </main>
+    <script type="module" src="src/sidebar.js"></script>
+  </body>
+</html>

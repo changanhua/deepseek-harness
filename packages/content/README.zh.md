@@ -28,6 +28,7 @@ kind: "package-group"
 | [`content-domain`](content-domain/README.zh.md) | 持久聚合记录、修订检查和重试回执 |
 | [`content-session`](content-session/README.zh.md) | 经核实的已完成纯文本会话来源 |
 | [`content-remote`](content-remote/README.zh.md) | 经过认证的浏览器读取与修改 |
+| [`content-browser`](content-browser/README.zh.md) | 扩展授权与网页导入 |
 
 <a id="related-documentation"></a>
 ## 相关文档

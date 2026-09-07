@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ContentCommandSchema, ContentEntrySchema } from '../src/schema.ts'
+import { ContentCommandSchema, ContentEntrySchema, WebSourceSchema } from '../src/schema.ts'
 
 const result = { operationId: 'create-1', entryId: 'idea-1', entryRevision: 1, draftRevision: 1, versionId: null }
 const operation = { operationId: 'create-1', requestDigest: 'a'.repeat(64), result }
@@ -71,10 +71,29 @@ describe('content records', () => {
 })
 
 describe('content commands', () => {
-  it('accepts only supplied text for manual imports', () => {
+  it('accepts an unverified web source for manual imports and rejects forged verified sources', () => {
     const command = { type: 'save-text', operationId: 'op', entryId: 'text', title: '', body: '\r\n' }
     expect(ContentCommandSchema.parse(command)).toEqual(command)
-    expect(ContentCommandSchema.safeParse({ ...command, source: { verification: 'host-verified' } }).success).toBe(false)
+    const source = {
+      type: 'web-page', scope: 'single-reply', verification: 'unverified',
+      url: 'https://chatgpt.com/c/example', pageTitle: 'Example', site: 'ChatGPT',
+      capturedAt: '2026-09-07T00:00:00.000Z', externalMessageId: 'message-1',
+    }
+    expect(ContentCommandSchema.parse({ ...command, source })).toEqual({ ...command, source })
+    expect(ContentCommandSchema.safeParse({ ...command, source: {
+      type: 'session-message', sessionId: 'session', messageId: 'message', captureId: 'capture',
+      scope: 'full-message', verification: 'host-verified', boundary: 'completed-text',
+    } }).success).toBe(false)
+    expect(ContentCommandSchema.safeParse({ ...command, type: 'create', source }).success).toBe(false)
+  })
+
+  it.each([
+    'ftp://example.com/article', 'https://user:password@example.com/article', 'not a url',
+  ])('rejects a web source URL outside the HTTP(S) credential-free boundary: %s', (url) => {
+    expect(WebSourceSchema.safeParse({
+      type: 'web-page', scope: 'selection', verification: 'unverified', url,
+      pageTitle: 'Example', site: 'Example', capturedAt: '2026-09-07T00:00:00.000Z',
+    }).success).toBe(false)
   })
 
   it.each([

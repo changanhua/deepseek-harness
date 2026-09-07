@@ -19,6 +19,8 @@ export interface LibraryInjected {
   }
   /** Re-read status and snapshot behind the current view. */
   refresh: () => void
+  /** Review and revoke browser installations authorized to import content. */
+  openBrowserConnections: () => void
   /**
    * Open one entry in the detail pane.
    * @param entryId - entry to open, or null to close the pane.
