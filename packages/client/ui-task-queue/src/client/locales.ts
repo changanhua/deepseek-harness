@@ -113,6 +113,7 @@ export const zh = {
   'wait.batchCapacity': '等待本批次执行槽（上限 {capacity}）',
   'wait.resourceCapacity': '等待资源 {resource}（已用 {used}/{capacity}，请求 {requested}）',
   'wait.schedulerTurn': '等待调度',
+  'wait.retryBackoff': '等待重试，最早执行时间：{at}',
 } satisfies Record<string, string>
 
 /** The taskQueue namespace key union. */
@@ -231,4 +232,5 @@ export const en = {
   'wait.batchCapacity': 'Waiting for a batch execution slot (limit {capacity})',
   'wait.resourceCapacity': 'Waiting for {resource} (using {used}/{capacity}, requesting {requested})',
   'wait.schedulerTurn': 'Waiting for scheduling',
+  'wait.retryBackoff': 'Waiting to retry, eligible at {at}',
 } satisfies Record<TaskQueueKey, string>

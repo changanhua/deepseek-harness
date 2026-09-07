@@ -113,6 +113,7 @@ function waitReasonLabel(reason: QueueWaitReasonView, t: QueueWorkspaceProps['t'
     case 'dispatch-paused': return t('wait.dispatchPaused')
     case 'queue-faulted': return t('wait.queueFaulted')
     case 'handler-unavailable': return t('wait.handlerUnavailable')
+    case 'retry-backoff': return t('wait.retryBackoff', { at: formatDateTime(reason.eligibleAt) })
     case 'global-capacity': return t('wait.globalCapacity', { capacity: reason.capacity })
     case 'batch-capacity': return t('wait.batchCapacity', { capacity: reason.capacity })
     case 'resource-capacity': return t('wait.resourceCapacity', reason)

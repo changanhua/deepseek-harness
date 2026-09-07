@@ -20,6 +20,8 @@ schema-v3 root 包含 `manifest.json`、append-only `active.jsonl`、digest-chec
 
 Handler 声明 `ResourceClaim`，准入会针对部署 `resourceCapacity` 校验并记录到每个 WorkItem。全局 `maxConcurrent`、持久化 claims 与 Batch `maxParallel` 限制派发。operator facade 暴露 running、paused 或 faulted 的 Provider dispatch state，并为每个 queued WorkItem 派生等待原因，而不增加另一种 durable status。store 同步失败时仍发布之前的 projection，并停止后续 mutation，直到重开和 recovery。`pause()` 只影响新派发。shipped image handler 是 `image.generate@1`；`agent.run@1` 是受限 DSH worker handler；`operation.run@1` 占用 `operation-run` capacity。
 
+自动重试的最早执行时间是推导的等待信息，通过 `QueueWaitReason { kind: 'retry-backoff', eligibleAt }` 和对应浏览器视图公开。Local provider 从持久化的重试事实重建有上限的指数退避，并拥有唤醒计时器；参见[本地调度](../../packages/task-queue/task-queue-local/README.zh.md#scheduling)。业务阶段恢复复用已有作用域内的幂等准入与结果读取；[接入契约](../../packages/task-queue/task-queue/README.zh.md#stage-recovery-integration)将业务进度留在 Queue 之外。
+
 ## Host operation
 
 `operation.run@1` 将一个 host-configured operation definition bridge 为持久 work。准入只接收 `operationId`；Bridge 解析封闭的 host allowlist，并将 operation id、revision、argv、working directory、resource claim、retry policy、output limits 与 timing limits 持久化为 immutable facts。它通过 `ctx.subprocess` 启动已解析的 argv，保留有界 output，并且只会在 subprocess tree quiescence 后结算；cancellation 与 timeout 都会终止该树。
