@@ -33,7 +33,7 @@ const lease = await ctx.repoWorkspace.openChange({ ownerAttemptId, base: packetB
 
 Once a Packet persists its exact `baseCommit`, change and verification execution re-establish only a `VerifiedRepositoryRevision` for that commit. Checkout opening deliberately does not re-resolve the Contract's original `ref-head`: after a restart, ref movement must not redirect already admitted work.
 
-A change lease can create one governed checkpoint after the executor process tree is quiescent. A verification lease is pinned to an exact target commit. Every lease must be closed and awaited with `remove` after settled work or `preserve` when side effects remain uncertain. Cleanup rejection is part of the attempt outcome and must not be hidden.
+A change lease can create one governed checkpoint after the executor process tree is quiescent. A verification lease exposes `assertUnchanged(signal)` to recheck repository identity, HEAD, index, and tracked inputs against its exact target before and after each quiescent check; untracked outputs are permitted. The assertion rejects on drift or an inspection failure and cannot run on a closing or closed lease. Every lease must be closed and awaited with `remove` after settled work or `preserve` when integrity or side effects remain uncertain. Cleanup rejection is part of the attempt outcome and must not be hidden.
 
 ## Understand the implementation
 
@@ -65,3 +65,4 @@ No request prefix is changed.
 
 - This contract defines local Git worktrees only; remote workspaces and multi-host leases are unsupported without another provider and lifecycle decision.
 - Preserved uncertain workspaces require explicit operator handling; this service does not invent success or authorize Queue retry.
+- Integrity assertions are point-in-time observations, not an operating-system read-only sandbox. A check that modifies and restores inputs between observations requires stronger deployment isolation.

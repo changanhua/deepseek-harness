@@ -36,6 +36,10 @@ Remote contribution、slot registration 与 locale dictionary 会在 plugin disp
 
 默认入口把一段想法保存为本地 Shaping Case，其中 outcome、scope、acceptance、base 与 verification field 可以暂不完整。补全这些交付条件是显式 revision action；Existing-Issue import 与 GitHub publication 是次级 action。Browser 只提交有界 content 与 selection；repository binding、human actor identity、idempotency、credential、publication marker、raw Queue authority 与 acceptance proof 均由 Host 拥有。
 
+修订表单接受分支、Git 引用或完整 commit SHA。未设置的基线从 `HEAD` 开始，不假定仓库使用 `main`。验证来源可以是选定基线中按仓库相对路径指定的 `delivery-verification-plan@1` 文件，也可以是分别填写程序与逐行参数的检查项。每个检查项提供工作目录、超时、必需或可选级别及预期退出码。保存表单不会运行命令；Host 在创建 Packet 时解析计划，并保留既有批准与验证规则。
+
+修订时会保留未编辑的禁止范围、待决定事项、参考链接和验收条款标识。已有验证检查及其参数边界在对应字段未改变时保持原样。表单不会代替 operator 解决未决产品问题或作出批准。
+
 <a id="dev-note"></a>
 
 ## 开发说明

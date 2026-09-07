@@ -20,6 +20,8 @@ Preparation requires the requested Attempt to be the Work's active starting Atte
 
 Runner and verifier success is parsed again at the Bridge with exact Packet, Work, Attempt, target, plan, and verifier identities. Cancellation settles `canceled`. Proven validation and startup failures settle non-retriable `failed/not-started`; quiescent product, completion, workspace-boundary, or execution failures settle non-retriable `failed/started`; ownership, cleanup, unexpected rejection, or malformed successful output settles `unknown/unknown`.
 
+The [verification integrity rule](../bug-fix/2026-09-05-verification-workspace-integrity.md) adds `workspace-integrity` to started failures when a checkout cannot prove the target inputs. The verifier preserves that checkout without producing a Verdict; this does not add another Queue lifecycle or acceptance owner.
+
 Activation obtains operator authority only inside the trusted Host composition. It uses Queue staged registration for both handlers, so Queue can perform receipt lookup or new recovery admission without claiming Work. It validates the Delivery snapshot, cross-checks exact Queue `list()` and `get()` views, reconciles every `submitting` binding, and then activates both exact registrations. Recovery accepts only an exactly reconstructed canonical input and deterministic key, including 40- or 64-hex Git targets. A failed activation leaves admitted recovery Work queued without an Attempt, and rollback or normal disposal attempts every registered disposer before reporting collected failures. Recovery stores no projection and never creates an acceptance decision.
 
 ## Alternatives considered

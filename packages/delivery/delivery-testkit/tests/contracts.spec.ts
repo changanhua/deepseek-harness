@@ -2167,11 +2167,16 @@ describe('FakeRepositoryWorkspace failure controls', () => {
 
     const verifyOwner = QueueAttemptIdRef('verification-reuse-owner')
     repo.queueVerificationWorkspace({ cwd: '/tmp/verification-reuse' })
-    await repo.openVerification({ ownerAttemptId: verifyOwner, base, target })
+    const verification = await repo.openVerification({ ownerAttemptId: verifyOwner, base, target })
+    await expect(verification.assertUnchanged()).resolves.toBeUndefined()
+    const canceled = AbortSignal.abort(new Error('canceled inspection'))
+    await expect(verification.assertUnchanged(canceled)).rejects.toBe(canceled.reason)
     await expect(repo.openVerification({ ownerAttemptId: verifyOwner, base, target: otherTarget }))
       .rejects.toMatchObject({ code: 'owner-conflict' })
     await expect(repo.openChange({ ownerAttemptId: verifyOwner, base }))
       .rejects.toMatchObject({ code: 'owner-conflict' })
+    await verification.close('preserve')
+    await expect(verification.assertUnchanged()).rejects.toThrow('closed fake workspace')
   })
 
   it('rejects forged revision and base proofs', async () => {

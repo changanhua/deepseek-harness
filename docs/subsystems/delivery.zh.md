@@ -38,6 +38,8 @@ Protocol 还导出 `code.change@1` 和 `code.verify@1` 的常量与持久 DTO：
 
 `RepositoryWorkspace.resolveBase()` 证明不可变 Contract rule 选中的完整 commit，包括对 ref-head 的时点观测。`readBlob()` 证明该精确 base 上一个有界 path 与 Git blob id。`inspectRevision()` 重新建立已持久完整 commit 的证明，`inspectRange()` 派生 ancestry 与 changed path，两个 checkout method 则返回 Attempt 拥有且必须等待 cleanup 的 lease。repository 由配置的 `repositoryId` 选择，而不是持久绝对 host path。
 
+`VerificationWorkspaceLease.assertUnchanged()` 在每项验证检查前后，重新核对目标的仓库身份、HEAD、索引和已跟踪输入，同时允许未跟踪输出。漂移或无法证明完整性的检查会阻止 Verdict 并保留检出目录；Queue 记录验证失败，普通验收仍不可用。这些观察不是 OS 沙箱，也不持续监控文件系统；Git 特有限制由[本地 provider](../../packages/delivery/repo-workspace-git-local/README.zh.md#known-limitations-and-deferred-work)说明。
+
 `DeliveryEvidence.save()` 原子发布有界不可变字节，`resolve()` 把持久 `EvidenceId` 映射为新鲜 metadata，对缺失对象返回 `undefined`，`read()` 在返回 detached 字节前验证 identity、length 和 digest。Claim 与 Verdict 保留 evidence id；URI 或已解析 reference 绝不替代经完整性校验的读取。`bind()` 在 runner 获得 writer 前固定 Work/Attempt 或 verification-check provenance。
 
 [`dsh-delivery-testkit`](../../packages/delivery/delivery-testkit/README.zh.md) 为三个 definition 提供可用的具体 fake。这些 fake 不导入本地 provider，便可覆盖 base/blob authority、Packet plan 派生、两条 binding 的验收解析、evidence 完整性与自有 checkout lifecycle。

@@ -23,6 +23,23 @@ const built = requiredArtifacts.every(existsSync)
  * a host build so the verifier and local Subprocess Service Provider both load from `lib/`.
  */
 describe.skipIf(!built)('delivery verifier built public entry', () => {
+  it('rejects changed Git inputs through the built provider and retains their checkouts', async () => {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [
+      join(packageRoot, 'tests/fixtures/built-git-integrity.mjs'), repositoryRoot,
+    ], { windowsHide: true, timeout: 30_000, maxBuffer: 1024 * 1024 })
+    expect(stderr).toBe('')
+    expect(JSON.parse(stdout.trim())).toEqual({
+      entry: 'built Git, subprocess, evidence and verifier',
+      observations: [
+        { name: 'clean', outcome: 'passed-and-removed' },
+        { name: 'generated', outcome: 'passed-and-removed' },
+        { name: 'tracked', outcome: 'rejected-and-preserved' },
+        { name: 'head', outcome: 'rejected-and-preserved' },
+        { name: 'index', outcome: 'rejected-and-preserved' },
+      ],
+    })
+  }, 35_000)
+
   it('uses the production local subprocess provider for success, bounds, timeout, and tree cancellation', async () => {
     const { stdout, stderr } = await execFileAsync(process.execPath, [fixture, repositoryRoot], {
       cwd: dirname(fixture),
