@@ -68,7 +68,10 @@ export class WorkQueueStore {
    */
   current(): FoldedQueue { return this.projection }
 
-  /** Whether an append failure has stopped this store from accepting mutations. */
+  /**
+   * Report whether an append failure has stopped this store from accepting mutations.
+   * @returns Whether the store rejects further mutations until it is reopened.
+   */
   isFaulted(): boolean { return this.fault !== undefined }
 
   /**

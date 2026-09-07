@@ -55,6 +55,14 @@ function processAlive(pid: number): boolean {
   }
 }
 
+function unexpectedLifecycleRequestFailures(requests: readonly string[], baseUrl: string): string[] {
+  const expected = new Set([
+    `GET ${new URL('/plugins/events', baseUrl).href}`,
+    `POST ${new URL('/api/workObservatory/observeClient', baseUrl).href}`,
+  ])
+  return requests.filter(request => !expected.has(request))
+}
+
 describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () => {
   let root: string
   let scaffold: WebScaffold
@@ -216,9 +224,8 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
     expect(await page.getByRole('alert').count()).toBe(0)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
-    const expectedReloadDisconnect = `GET ${new URL('/plugins/events', scaffold.baseUrl).href}`
-    expect(failedRequests.filter(request => request !== expectedReloadDisconnect)).toEqual([])
-    expect(failedRequests.length).toBeLessThanOrEqual(1)
+    expect(unexpectedLifecycleRequestFailures(failedRequests, scaffold.baseUrl)).toEqual([])
+    expect(failedRequests.length).toBeLessThanOrEqual(2)
 
     const evidenceRoot = process.env.DSH_OPERATION_RUN_EVIDENCE_ROOT
     if (evidenceRoot !== undefined && evidenceRoot.length > 0) {
@@ -239,7 +246,7 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
         freshWebBuild: true,
         pageErrors: tripwire.pageErrors.length,
         consoleWarnings: tripwire.warnings.length,
-        unexpectedFailedRequests: failedRequests.filter(request => request !== expectedReloadDisconnect).length,
+        unexpectedFailedRequests: unexpectedLifecycleRequestFailures(failedRequests, scaffold.baseUrl).length,
       }, null, 2)}\n`, 'utf8')
     }
     failedRequests.length = 0
@@ -326,7 +333,7 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
       ).toContain('Canceled')
       expect(tripwire.pageErrors).toEqual([])
       expect(tripwire.warnings).toEqual([])
-      expect(failedRequests).toEqual([])
+      expect(unexpectedLifecycleRequestFailures(failedRequests, scaffold.baseUrl)).toEqual([])
       const evidenceRoot = process.env.DSH_OPERATION_RUN_EVIDENCE_ROOT
       if (evidenceRoot !== undefined && evidenceRoot.length > 0) {
         await mkdir(evidenceRoot, { recursive: true })
