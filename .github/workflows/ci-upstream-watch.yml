@@ -1,82 +1,227 @@
-name: Upstream Watch (manual)
+name: Upstream compatibility canary
 
 on:
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: Branch or ref in deepseek-ai/deepseek-harness
+        description: Branch in deepseek-ai/deepseek-harness
         required: true
         type: string
         default: master
+  schedule:
+    - cron: '23 3 * * 1'
 
 permissions:
   contents: read
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  UPSTREAM_REF: ${{ github.event.inputs.upstream_ref || 'master' }}
 
 concurrency:
   group: upstream-watch-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  report:
-    name: Upstream drift report
-    if: github.actor == 'changanhua'
+  detect:
+    name: Detect latest official head
+    if: >-
+      github.repository == 'changanhua/deepseek-harness'
+      && (github.event_name == 'schedule' || github.actor == 'changanhua')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.latest.outputs.changed }}
+      target_sha: ${{ steps.latest.outputs.target_sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Compare recorded and latest official heads
+        id: latest
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$UPSTREAM_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ "$UPSTREAM_REF" == -* ]] || [[ "$UPSTREAM_REF" == *..* ]]; then
+            echo "Invalid upstream branch: $UPSTREAM_REF" >&2
+            exit 2
+          fi
+
+          target_sha=$(git ls-remote --exit-code \
+            https://github.com/deepseek-ai/deepseek-harness.git \
+            "refs/heads/$UPSTREAM_REF" | awk 'NR == 1 { print $1 }')
+          if [[ ! "$target_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Unable to resolve official branch: $UPSTREAM_REF" >&2
+            exit 2
+          fi
+          recorded_sha=$(node -e \
+            "const fs=require('node:fs');const value=JSON.parse(fs.readFileSync('upstream-base.json','utf8'));process.stdout.write(value.observedUpstreamHeadSha)")
+          changed=false
+          if [[ "$target_sha" != "$recorded_sha" ]]; then
+            changed=true
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "# Upstream compatibility canary"
+            echo
+            echo "- Recorded official head: \`$recorded_sha\`"
+            echo "- Latest official head: \`$target_sha\`"
+            echo "- Heavy checks required: **$changed**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  report:
+    name: Compatibility report
+    needs: detect
+    if: needs.detect.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      merge_status: ${{ steps.compatibility.outputs.merge_status }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Fetch upstream and write a read-only drift report
-        env:
-          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+          dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+      - name: Fetch the exact official branch head
+        shell: bash
         run: |
-          if [[ ! "$UPSTREAM_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ "$UPSTREAM_REF" == -* ]] || [[ "$UPSTREAM_REF" == *..* ]]; then
-            echo "Invalid upstream ref: $UPSTREAM_REF" >&2
-            exit 2
-          fi
-
+          set -euo pipefail
           git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
-          upstream=refs/upstream-watch/target
-          git fetch --no-tags upstream "$UPSTREAM_REF:$upstream"
-          merge_base=$(git merge-base HEAD "$upstream")
-          ahead=$(git rev-list --count "$upstream..HEAD")
-          behind=$(git rev-list --count "HEAD..$upstream")
-
-          merge_status=clean
-          if ! git merge-tree --write-tree HEAD "$upstream" >/tmp/upstream-merge-tree.txt 2>&1; then
-            merge_status=conflicts
+          git fetch --no-tags upstream "refs/heads/$UPSTREAM_REF:refs/upstream-watch/target"
+          actual_sha=$(git rev-parse refs/upstream-watch/target^{commit})
+          if [[ "$actual_sha" != "${{ needs.detect.outputs.target_sha }}" ]]; then
+            echo "Official branch advanced during this run; retry against a stable head." >&2
+            exit 3
+          fi
+      - name: Install immutable dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify the private core patch registry
+        run: pnpm run check:core-patches -- --require-observed-upstream
+      - name: Generate structured report and step summary
+        id: compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --silent run report:upstream-compatibility -- \
+            --upstream-ref refs/upstream-watch/target \
+            --format markdown \
+            --json-output upstream-compatibility.json >> "$GITHUB_STEP_SUMMARY"
+          merge_status=$(node -e \
+            "const value=require('./upstream-compatibility.json');process.stdout.write(value.mergeStatus)")
+          echo "merge_status=$merge_status" >> "$GITHUB_OUTPUT"
+      - name: Upload compatibility evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: upstream-compatibility-${{ needs.detect.outputs.target_sha }}
+          path: upstream-compatibility.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Require a clean synthetic merge before platform gates
+        shell: bash
+        run: |
+          if [[ "${{ steps.compatibility.outputs.merge_status }}" != clean ]]; then
+            echo "The synthetic merge has conflicts; inspect the uploaded compatibility report." >&2
+            exit 1
           fi
 
-          {
-            echo "# Upstream drift report"
-            echo
-            echo "- Repository: \`${{ github.repository }}\`"
-            echo "- Current head: \`${{ github.sha }}\`"
-            echo "- Upstream ref: \`deepseek-ai/deepseek-harness@$UPSTREAM_REF\`"
-            echo "- Merge base: \`$merge_base\`"
-            echo "- Fork-only commits: **$ahead**"
-            echo "- Upstream commits not in this ref: **$behind**"
-            echo "- Synthetic merge: **$merge_status**"
-            echo
-            echo "## Changed top-level areas"
-            echo '```text'
-            git diff --dirstat=files,0 "$merge_base..$upstream"
-            echo '```'
-            echo
-            echo "## Upstream commits"
-            echo '```text'
-            git log --oneline --no-merges -n 100 "HEAD..$upstream"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+  windows-gate:
+    name: Windows compatibility gate
+    needs: [detect, report]
+    if: needs.report.outputs.merge_status == 'clean'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Enable Developer Mode
+        shell: pwsh
+        run: >-
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+          dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+      - name: Build an ephemeral merged checkout
+        shell: pwsh
+        run: |
+          git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+          git fetch --no-tags upstream "refs/heads/$($env:UPSTREAM_REF):refs/upstream-watch/target"
+          $actualSha = git rev-parse "refs/upstream-watch/target^{commit}"
+          if ($actualSha -ne "${{ needs.detect.outputs.target_sha }}") {
+            throw "Official branch advanced during this run; retry against a stable head."
+          }
+          git merge --no-commit --no-ff refs/upstream-watch/target
+          if ($LASTEXITCODE -ne 0) {
+            git merge --abort
+            throw "Synthetic merge disagreed with the report."
+          }
+      - name: Install merged dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+      - name: Check merged package identities
+        shell: pwsh
+        run: pnpm run check:package-identities
+      - name: Build merged repository
+        shell: pwsh
+        run: pnpm run build
+      - name: Verify merged personal source distribution
+        shell: pwsh
+        run: pnpm run verify:personal-source
+      - name: Typecheck merged contracts
+        shell: pwsh
+        run: pnpm run typecheck:contracts-ready
 
-          if [[ "$merge_status" == conflicts ]]; then
-            {
-              echo
-              echo "## Merge-tree diagnostics"
-              echo '```text'
-              sed -n '1,200p' /tmp/upstream-merge-tree.txt
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
+  linux-advisory:
+    name: Linux compatibility advisory
+    needs: [detect, report]
+    if: needs.report.outputs.merge_status == 'clean'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+          dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+      - name: Build an ephemeral merged checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+          git fetch --no-tags upstream "refs/heads/$UPSTREAM_REF:refs/upstream-watch/target"
+          actual_sha=$(git rev-parse refs/upstream-watch/target^{commit})
+          if [[ "$actual_sha" != "${{ needs.detect.outputs.target_sha }}" ]]; then
+            echo "Official branch advanced during this run; retry against a stable head." >&2
+            exit 3
           fi
+          git merge --no-commit --no-ff refs/upstream-watch/target
+      - name: Install merged dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check merged package identities
+        run: pnpm run check:package-identities
+      - name: Build merged Host libraries
+        run: pnpm run build:lib:host
+      - name: Typecheck merged contracts
+        run: pnpm run typecheck:contracts-ready

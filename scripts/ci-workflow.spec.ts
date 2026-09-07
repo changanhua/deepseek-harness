@@ -418,22 +418,74 @@ describe('fork Linux compute workflows', () => {
     expect(JSON.stringify(workflow)).not.toContain('secrets.')
   })
 
-  it('keeps upstream watch manual, read-only, and report-only', () => {
+  it('runs a weekly read-only upstream canary and gates heavy work on a new SHA', () => {
     const workflow = loadWorkflow('.github/workflows/ci-upstream-watch.yml')
+    const detect = workflowJob(workflow, 'detect')
     const report = workflowJob(workflow, 'report')
-    if (!Array.isArray(report.steps)) throw new TypeError('Upstream watch must define report steps')
+    const windows = workflowJob(workflow, 'windows-gate')
+    const linux = workflowJob(workflow, 'linux-advisory')
+    if (!Array.isArray(detect.steps) || !Array.isArray(report.steps)
+      || !Array.isArray(windows.steps) || !Array.isArray(linux.steps)) {
+      throw new TypeError('Upstream watch must define detect, report, Windows, and Linux steps')
+    }
 
-    expect(Object.keys(workflow.on as Record<string, unknown>)).toEqual(['workflow_dispatch'])
+    expect(Object.keys(workflow.on as Record<string, unknown>).sort()).toEqual(['schedule', 'workflow_dispatch'])
+    expect((workflow.on as Record<string, unknown>).schedule).toEqual([{ cron: '23 3 * * 1' }])
     expect(workflow.permissions).toEqual({ contents: 'read' })
-    expect(report).toMatchObject({ 'runs-on': 'ubuntu-latest', 'timeout-minutes': 10 })
-    const steps = JSON.stringify(report.steps)
-    expect(steps).toContain('refs/upstream-watch/target')
-    expect(steps).toContain('$UPSTREAM_REF:$upstream')
-    expect(steps).not.toContain('upstream/$UPSTREAM_REF')
-    expect(steps).toContain('git merge-tree --write-tree')
-    expect(steps).toContain('GITHUB_STEP_SUMMARY')
-    expect(steps).not.toContain('git push')
-    expect(steps).not.toContain('secrets.')
+    expect(detect).toMatchObject({
+      'runs-on': 'ubuntu-latest',
+      outputs: {
+        changed: '${{ steps.latest.outputs.changed }}',
+        target_sha: '${{ steps.latest.outputs.target_sha }}',
+      },
+    })
+    const detectSteps = JSON.stringify(detect.steps)
+    expect(detectSteps).toContain('git ls-remote')
+    expect(detectSteps).toContain('observedUpstreamHeadSha')
+    expect(detectSteps).toContain('GITHUB_OUTPUT')
+    expect(detectSteps).not.toContain('pnpm install')
+
+    expect(report).toMatchObject({
+      needs: 'detect',
+      if: "needs.detect.outputs.changed == 'true'",
+      'runs-on': 'ubuntu-latest',
+    })
+    const reportSteps = JSON.stringify(report.steps)
+    expect(reportSteps).toContain('pnpm run check:core-patches -- --require-observed-upstream')
+    expect(reportSteps).toContain('pnpm --silent run report:upstream-compatibility')
+    expect(reportSteps).toContain('--format markdown')
+    expect(reportSteps).toContain('--json-output upstream-compatibility.json')
+    expect(reportSteps).toContain('GITHUB_STEP_SUMMARY')
+    expect(reportSteps).toContain('actions/upload-artifact@')
+
+    expect(windows).toMatchObject({
+      needs: ['detect', 'report'],
+      if: "needs.report.outputs.merge_status == 'clean'",
+      'runs-on': 'windows-latest',
+    })
+    const windowsSteps = JSON.stringify(windows.steps)
+    expect(windowsSteps).toContain('git merge --no-commit --no-ff refs/upstream-watch/target')
+    expect(windowsSteps).toContain('pnpm run check:package-identities')
+    expect(windowsSteps).toContain('pnpm run build')
+    expect(windowsSteps).toContain('pnpm run verify:personal-source')
+    expect(windowsSteps).toContain('pnpm run typecheck:contracts-ready')
+
+    expect(linux).toMatchObject({
+      needs: ['detect', 'report'],
+      if: "needs.report.outputs.merge_status == 'clean'",
+      'runs-on': 'ubuntu-latest',
+      'continue-on-error': true,
+    })
+    const linuxSteps = JSON.stringify(linux.steps)
+    expect(linuxSteps).toContain('git merge --no-commit --no-ff refs/upstream-watch/target')
+    expect(linuxSteps).toContain('pnpm run check:package-identities')
+    expect(linuxSteps).toContain('pnpm run build:lib:host')
+
+    const serialized = JSON.stringify(workflow)
+    expect(serialized).not.toContain('git push')
+    expect(serialized).not.toContain('secrets.')
+    expect(serialized).not.toContain('pull_request_target')
+    expect(serialized).not.toContain('contents:write')
   })
 })
 
@@ -739,24 +791,31 @@ describe('personal source distribution CI', () => {
     )
     expect(build.if).toBe(trustedPersonalPullRequest)
     expect(differential.if).toBe(trustedPersonalPullRequest)
-    expect(aggregate.if).toBe(
-      "always() && github.repository == 'changanhua/deepseek-harness'"
-      + " && github.event_name == 'pull_request'"
-      + " && github.actor == 'changanhua'"
-      + " && github.event.pull_request.user.login == 'changanhua'"
-      + ' && github.event.pull_request.head.repo.full_name == github.repository',
-    )
+    expect(aggregate.if).toBe('always()')
+    if (!Array.isArray(aggregate.steps)) throw new TypeError('fork aggregate must define steps')
+    const aggregateStep = aggregate.steps.filter(isRecord).find(step => step.name === 'Require every fork check')
+    expect(aggregateStep).toMatchObject({
+      env: {
+        ACTOR: '${{ github.actor }}',
+        AUTHOR: '${{ github.event.pull_request.user.login }}',
+        HEAD_REPOSITORY: '${{ github.event.pull_request.head.repo.full_name }}',
+        REPOSITORY: '${{ github.repository }}',
+      },
+    })
+    expect(isRecord(aggregateStep) && aggregateStep.run).toContain("$env:ACTOR -ne 'changanhua'")
 
     const steps = build.steps.filter(isRecord)
     const names = steps.map(step => step.name).filter((name): name is string => typeof name === 'string')
     const install = names.indexOf('Install immutable dependencies')
     const identities = names.indexOf('Check package identities')
+    const corePatches = names.indexOf('Check private core patch budget')
     const repositoryBuild = names.indexOf('Build repository')
     const sourceDistribution = names.indexOf('Verify personal source distribution')
 
     expect(install).toBeGreaterThanOrEqual(0)
     expect(identities).toBeGreaterThan(install)
-    expect(repositoryBuild).toBeGreaterThan(identities)
+    expect(corePatches).toBeGreaterThan(identities)
+    expect(repositoryBuild).toBeGreaterThan(corePatches)
     expect(sourceDistribution).toBeGreaterThan(repositoryBuild)
     expect(steps.find(step => step.name === 'Verify personal source distribution')).toMatchObject({
       run: 'pnpm run verify:personal-source',

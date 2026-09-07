@@ -12,7 +12,7 @@ Package absence from one upstream revision is not proof of personal ownership. R
 
 ## Decision
 
-[`downstream/package-identities.json`](../../../../downstream/package-identities.json) owns the two npm scopes, their only publishing repositories, the supported and observed upstream commits, and the explicit personal-package set. Unlisted packages default to upstream ownership, `vendor/*` remains vendor provenance, and only a reviewed registry edit can classify a package as personal.
+[`downstream/package-identities.json`](../../../../downstream/package-identities.json) owns the two npm scopes, their only publishing repositories, and the explicit personal-package set. The [downstream core patch decision](2026-09-05-downstream-core-patch-budget.md) gives supported and observed Git revisions to [`upstream-base.json`](../../../../upstream-base.json). Unlisted packages default to upstream ownership, `vendor/*` remains vendor provenance, and only a reviewed registry edit can classify a package as personal.
 
 The personal scope is `@changanhua`. Each confirmed personal package records its legacy name, source name, source identity, publication policy, absent release family, and explicit publication blockers. All 41 entries use `blocked-until-release-verified`; their manifests, imports, bundle rows, TypeScript paths, catalogs, and lockfile use the personal source names, while their existing versions remain unchanged. The source CLI declares the personal Delivery bundle as a workspace dependency, so its built entry resolves that bundle from the installation instead of relying on a test runner or global module search path.
 
@@ -26,7 +26,7 @@ The official DSH rehearsal and documentation deployment jobs run only in `deepse
 
 ## Package ownership
 
-The registry contains the 41 package manifests introduced on the personal line after supported upstream commit `cd5ef8148158c3a752a658978873241fdf8e2bbc`. Explicit inclusion records the ownership decision; the commit comparison is evidence for review, not an inference rule for later upstream additions.
+The registry contains the 41 package manifests introduced on the personal line after the supported commit recorded in [`upstream-base.json`](../../../../upstream-base.json). Explicit inclusion records the ownership decision; the commit comparison is evidence for review, not an inference rule for later upstream additions.
 
 A personal package is a source-only workspace member: its manifest points to the personal repository, sets `private: true`, omits `publishConfig`, and is excluded by directory from the official DSH release family. A package becomes publishable only after its tarball dependency and configuration closure is independently verified, a Personal release family is defined, `private` is removed, and its publication policy changes to `personal`. Personal packages may continue to depend on unchanged official Service Definitions. A package that requires a privately modified upstream implementation remains source-only until that dependency is extracted or receives its own personal release identity.
 

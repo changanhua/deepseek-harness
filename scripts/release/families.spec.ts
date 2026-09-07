@@ -40,7 +40,7 @@ function buildFixture(environment: Record<string, string>): string {
 /** A valid registry with one source-only personal package. */
 function personalRegistry(directory: string, sourceName: string): Record<string, unknown> {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     versionPolicy: 'preserve-existing-during-rescope',
     personalScope: '@changanhua',
     personalRepository: 'changanhua/deepseek-harness',
@@ -48,8 +48,6 @@ function personalRegistry(directory: string, sourceName: string): Record<string,
     upstreamScope: '@deepseek-ai',
     upstreamRepository: 'deepseek-ai/deepseek-harness',
     upstreamRepositoryUrl: 'git+https://github.com/deepseek-ai/deepseek-harness.git',
-    supportedUpstreamCommit: '1111111111111111111111111111111111111111',
-    observedUpstreamCommit: '1111111111111111111111111111111111111111',
     unlistedPackageOrigin: 'upstream',
     vendorPathPrefix: 'vendor/',
     personalPackages: [{
