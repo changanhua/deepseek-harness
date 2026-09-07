@@ -633,6 +633,57 @@
         "architectureCentrality": 2,
         "dataMigrationRisk": 1
       }
+    },
+    {
+      "id": "local-web-browser-auth-policy",
+      "status": "active",
+      "kind": "compatibility-adapter",
+      "title": "Allow the local Web Profile to disable browser token authentication",
+      "owner": "local-web-runtime",
+      "introducedAt": "2026-09-04",
+      "upstreamBaseSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "commits": [
+        "b84893478cb4ed145615fceea0cf33b5c264bd32"
+      ],
+      "affectedUpstreamPackages": [
+        "packages/client/connection"
+      ],
+      "affectedFiles": [
+        "packages/client/connection/src/browser-auth.ts",
+        "packages/client/connection/src/index.ts",
+        "packages/client/connection/tests/node-half.host.spec.ts"
+      ],
+      "reason": "The local-only Web Profile needs a clean loopback URL while the reusable Connection default remains authenticated.",
+      "whyPluginIsInsufficient": "The browser authentication middleware and its validated configuration are owned by the upstream Connection package before a profile can select the behavior.",
+      "whyCompatibilityAdapterIsInsufficient": "not-applicable: this entry is the bounded compatibility adapter.",
+      "factOwnershipEffect": "none",
+      "dataFormatEffect": "The optional browserAuth configuration field defaults to true and changes no durable data.",
+      "securityEffect": "Only an explicit profile setting disables browser token authentication; the reusable default remains enabled and non-loopback exposure stays rejected.",
+      "tests": [
+        "packages/client/connection/tests/node-half.host.spec.ts",
+        "packages/bundle/web-app/tests/startup.spec.ts"
+      ],
+      "upstreamCanaryTests": [
+        "pnpm exec vitest run packages/client/connection packages/bundle/web-app"
+      ],
+      "migrationPlan": "Move the option into an upstream-supported local-profile policy when one exposes the same secure default and loopback restriction.",
+      "rollbackPlan": "Remove the browserAuth option and restore token authentication in the local Web Profile; no durable migration is required.",
+      "replacementCondition": "Upstream supports a profile-scoped clean loopback URL while retaining authenticated reusable defaults and rejecting unauthenticated non-loopback exposure.",
+      "upstreamIssueOrPr": null,
+      "expiryReviewDate": "2026-12-05",
+      "knownMergeConflicts": [
+        "packages/client/connection/src/browser-auth.ts",
+        "packages/client/connection/src/index.ts"
+      ],
+      "lastRevalidatedUpstreamSha": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+      "risk": {
+        "level": "high",
+        "points": 4
+      },
+      "heatmap": {
+        "architectureCentrality": 3,
+        "dataMigrationRisk": 1
+      }
     }
   ]
 }
