@@ -10,6 +10,7 @@ export type QueueTaskOutcome = 'succeeded' | 'failed' | 'canceled' | null
 export type QueueDispatchStateView = 'running' | 'paused' | 'faulted'
 /** Browser-safe explanation for a queued WorkItem that has not been claimed. */
 export type QueueWaitReasonView =
+  | { kind: 'retry-backoff'; eligibleAt: string }
   | { kind: 'dispatch-paused' }
   | { kind: 'queue-faulted' }
   | { kind: 'handler-unavailable' }

@@ -117,6 +117,12 @@ const attentionDetail: QueueWorkView = {
 }
 
 describe('QueueWorkspace', () => {
+  it('shows automatic retry eligibility without presenting the queued work as running', () => {
+    const eligibleAt = '2026-09-08T00:00:01.000Z'
+    renderWorkspace(makeSnapshot({ rows: [row({ id: 'retry-1', waitReason: { kind: 'retry-backoff', eligibleAt } })] }))
+    expect(screen.getByText(`等待重试，最早执行时间：${new Date(eligibleAt).toLocaleString()}`)).toBeTruthy()
+  })
+
   it('explains the current resource wait on a queued row', () => {
     const waiting = row({
       id: 'waiting-1', title: 'Waiting worker',

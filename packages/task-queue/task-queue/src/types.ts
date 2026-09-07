@@ -36,6 +36,7 @@ export type QueueWaitReason =
   | { readonly kind: 'dispatch-paused' }
   | { readonly kind: 'queue-faulted' }
   | { readonly kind: 'handler-unavailable' }
+  | { readonly kind: 'retry-backoff'; readonly eligibleAt: string }
   | { readonly kind: 'global-capacity'; readonly capacity: number }
   | { readonly kind: 'batch-capacity'; readonly batchId: BatchId; readonly capacity: number }
   | { readonly kind: 'resource-capacity'; readonly resource: string; readonly capacity: number; readonly used: number; readonly requested: number }

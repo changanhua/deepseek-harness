@@ -404,6 +404,7 @@ function autoRetry(queue: MutableQueue, workId: WorkId, at: string, siblings: re
   const work = requireWork(queue, workId)
   if (state.status !== 'failed' || failureEvent === undefined || !canAutoRetry(failureEvent.failure)) throw new Error(`fold: automatic retry requires retriable failure with sideEffect not-started for ${workId}`)
   if (state.attemptCount >= work.policy.maxAttempts) throw new Error(`fold: automatic retry exceeds maxAttempts for ${workId}`)
+  validateRetryTiming(at, state.attemptCount)
   queue.statesByWorkId.set(workId, freeze({ ...state, status: 'queued', activeAttemptId: null, resultId: null, updatedAt: at }))
 }
 
@@ -509,6 +510,9 @@ function copySnapshot<K, V>(target: Map<K, V>, values: readonly V[], keyOf: (val
 
 function validateHydrated(queue: MutableQueue): void {
   for (const [workId, state] of queue.statesByWorkId) {
+    if (state.status === 'queued' && state.failure !== null && canAutoRetry(state.failure)) {
+      validateRetryTiming(state.updatedAt, state.attemptCount)
+    }
     if (!queue.worksById.has(workId) || state.workId !== workId) throw new Error(`fold: snapshot State references unknown WorkItem ${workId}`)
     if (state.activeAttemptId !== null) {
       const attempt = queue.attemptsById.get(state.activeAttemptId)
@@ -522,6 +526,12 @@ function validateHydrated(queue: MutableQueue): void {
   for (const notification of queue.notificationsById.values()) {
     const work = queue.worksById.get(notification.workId)
     if (work === undefined || work.ownerSessionId !== notification.ownerSessionId) throw new Error(`fold: snapshot Notification ${notification.id} has invalid owner`)
+  }
+}
+
+function validateRetryTiming(at: string, attemptCount: number): void {
+  if (!Number.isFinite(Date.parse(at)) || !Number.isSafeInteger(attemptCount) || attemptCount < 1) {
+    throw new Error('fold: automatic retry has invalid durable timing facts')
   }
 }
 
