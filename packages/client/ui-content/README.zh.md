@@ -13,16 +13,16 @@ kind: "package-reference"
 
 ## 目录
 
-- [使用本包](#使用本包)
-- [理解实现](#理解实现)
-- [进一步探索](#进一步探索)
+- [使用本包](#use-this-package)
+- [理解实现](#understand-the-implementation)
+- [进一步探索](#further-exploration)
 - [Model Experience](#model-experience)
-- [已知限制与推迟的工作](#已知限制与推迟的工作)
-- [开发注记](#开发注记)
+- [已知限制与推迟的工作](#known-limitations-and-deferred-work)
+- [开发注记](#dev-note)
 
 -----
 
-<a id="使用本包"></a>
+<a id="use-this-package"></a>
 ## 使用本包
 
 在同样暴露 `contentRemote` Host Remote 及其背后内容介质的 Client 组合中挂载这个浏览器包。
@@ -43,9 +43,11 @@ kind: "package-reference"
 
 **新建条目**创建一条手动条目，其文本保存在首个草稿里。**编辑**把条目打开进编辑器：**保存草稿**写入工作文本，**提交版本**把草稿折叠为新的不可变版本。**收藏**与**归档**切换条目的元数据。当保存或提交带着过期修订到达——另一个窗口编辑了同一条目——编辑器会重读条目并展示双方内容；**保留我的编辑**让下一次保存在新基线上重试，**采用库里的内容**把编辑器重置为重读到的文本。
 
+文本发生变化后才能点击**保存草稿**。冲突发生后，必须先选择保留哪一方，才能保存或提交。详情区可以添加或移除项目引用；编辑与元数据操作失败时显示本地化错误。元数据冲突后必须点击**重新载入条目**才能再次尝试，不会自动重试。同一条目同时只能有一个写操作，同一页面同时只能捕获一条消息。
+
 -----
 
-<a id="理解实现"></a>
+<a id="understand-the-implementation"></a>
 ## 理解实现
 
 <details>
@@ -53,7 +55,7 @@ kind: "package-reference"
 
 每个插件 fiber 一个 `ContentLibraryStore`，同时支撑工作台、编辑器与每个捕获入口。加载通道在单条 AbortSignal 绑定的通道上先读 status 再读 snapshot，原样发布 Host 阶段（opening、unavailable、closed），并合并并发刷新。每次捕获尝试铸造新的 `capture-ui:<sessionId>:<seq>:<nonce>` operation id，只发送该 id、会话 id 与助手消息的事件序号，把同一消息的并发点击合并到进行中的尝试上，成功后重读 snapshot。按钮可见性由 Chat 投影（`AssistantMessageNode`）上的纯选择函数决定：有持久消息 id、无中断标记、全部块为纯文本且至少一个非空。
 
-编辑通过每条目一条编辑 lane 上的单一 `execute` 通道提交 Host 的严格命令。创建铸造 `idea-ui:<nonce>` 条目 id；保存草稿与提交版本的守卫修订读取自已提交视图、绝不来自编辑器，过期基线由 Host 拒绝而不是在这里预测。每条命令等到视图刷新落地后 lane 才返回，同一条目的下一条命令读到的守卫总是新鲜的。`revision_conflict` 只重读被竞争的条目、拼进视图，并把编辑器标记为冲突，绝不触碰编辑器本地文本；丢失的传输先经 `receipt` 通道对账再显示失败。元数据意图是幂等的绝对赋值，因此在重读修订上重试一次是安全的。编辑器的标题与正文是组件本地状态；store 永不持有进行中的文本。
+编辑与元数据共享每条目一条 `execute` 通道。创建生成 `idea-ui:<nonce>` 条目 id；保存草稿与提交版本携带 Host 返回的守卫修订。每条已提交命令会使先前的读取失效，并等待新快照后才返回；无法读取基线时仍显示失败。`revision_conflict` 重读被竞争的条目，并将打开的编辑器标记为冲突，不替换其本地文本。传输丢失通过 `receipt` 对账。导航会使尚未完成的打开编辑器结果失效；插件卸载会取消全部请求并阻止发布结果。编辑器的标题与正文仍是组件本地状态。
 
 确切的归属文件是 [`src/client/capture-target.ts`](src/client/capture-target.ts)、[`src/client/controller.ts`](src/client/controller.ts)、[`src/client/EntryEditor.tsx`](src/client/EntryEditor.tsx)、[`src/client/CaptureAction.tsx`](src/client/CaptureAction.tsx) 与 [`src/client/ContentLibraryWorkspace.tsx`](src/client/ContentLibraryWorkspace.tsx)。
 
@@ -61,13 +63,13 @@ kind: "package-reference"
 
 -----
 
-<a id="进一步探索"></a>
+<a id="further-exploration"></a>
 ## 进一步探索
 
-- [Content 定义包](../../content/content/README.md) — 本界面渲染的持久化命令、回执与错误码。
-- [Content Remote](../../content/content-remote/README.md) — 本包消费的已认证命名空间。
-- [Slots 子系统](../../../docs/subsystems/slots.md) — assistant-actions、shell 视图与侧栏插入点。
-- [Web Client 子系统](../../../docs/subsystems/web-client.md) — 动态 Client 包加载。
+- [Content 定义包](../../content/content/README.zh.md) — 本界面渲染的持久化命令、回执与错误码。
+- [Content Remote](../../content/content-remote/README.zh.md) — 本包消费的已认证命名空间。
+- [Slots 子系统](../../../docs/subsystems/slots.zh.md) — assistant-actions、shell 视图与侧栏插入点。
+- [Web Client 子系统](../../../docs/subsystems/web-client.zh.md) — 动态 Client 包加载。
 
 -----
 
@@ -82,19 +84,19 @@ kind: "package-reference"
 
 ## 已知限制与推迟的工作
 
-<a id="已知限制与推迟的工作"></a>
+<a id="known-limitations-and-deferred-work"></a>
 
 - **条目标题来自 Host** — 捕获在 Host 记录标题之前没有用户可见标题；行回退显示头版本标题，新捕获可能为空。
 - **仅限纯文本** — reasoning、tool call、图片、混合块与中断前缀都不可捕获，与 Host 来源解析器一致；没有部分捕获。
 - **无跨界面捕获状态** — 页面刷新会清除按压状态；内容库本身是权威，对同一来源的后续捕获会重放原始创建回执。
 - **编辑器文本仅存于当前页面** — 进行中的草稿标题或正文存在于编辑器组件里；刷新页面会丢弃。已持久化的草稿与版本始终在 Host 上。
 
-<a id="开发注记"></a>
+<a id="dev-note"></a>
 ### 开发注记
 
 <details>
 <summary>维护者的工作上下文 — 点击展开</summary>
 
-个人内容栈由 `dsh-web-app` bundle 挂载；本包只是浏览器半。浏览器 e2e 位于 `apps/web/tests/content-capture.e2e.ts` 与 `apps/web/tests/content-edit.e2e.ts`，HTTP 组合通道位于 `apps/cli/tests/content-capture-composed.e2e.ts`。
+个人内容栈由 `dsh-web-app` bundle 挂载；本包只是浏览器半。浏览器 e2e 位于 `apps/web/tests/content-capture.e2e.ts` 与 `apps/web/tests/content-edit.e2e.ts`；`apps/web/tests/content-restart.e2e.ts` 检查构建后的 `dsh web` 重启前后的捕获、草稿、版本和元数据。HTTP 组合通道位于 `apps/cli/tests/content-capture-composed.e2e.ts`。
 
 </details>

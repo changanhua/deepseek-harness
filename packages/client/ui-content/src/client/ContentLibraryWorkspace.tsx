@@ -8,10 +8,11 @@
  * @module @changanhua/dsh-client-ui-content/client/ContentLibraryWorkspace
  */
 
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ContentEntry } from '@changanhua/dsh-content/types'
 import type { LibraryWorkspaceProps } from './contract.ts'
+import type { EditOutcome, MetadataPatch } from './controller.ts'
 import { EntryEditor } from './EntryEditor.tsx'
 import { contentErrorKey } from './locales.ts'
 import css from './ContentLibraryWorkspace.module.css'
@@ -153,9 +154,9 @@ export function ContentLibraryWorkspace({
                     : (
                       <EntryDetail
                         entry={selected}
-                        onEdit={() => { void beginEdit(entry.id) }}
-                        onFavorite={() => { void setMetadata(entry.id, { favorite: !entry.favorite }) }}
-                        onArchive={() => { void setMetadata(entry.id, { archived: !entry.archived }) }}
+                        onEdit={() => beginEdit(entry.id)}
+                        onMetadata={patch => setMetadata(entry.id, patch)}
+                        onReload={refresh}
                         t={t}
                       />
                     )
@@ -204,14 +205,35 @@ function EntryRow({ entry, selected, onSelect, t }: EntryRowProps) {
 
 interface EntryDetailProps {
   readonly entry: ContentEntry
-  readonly onEdit: () => void
-  readonly onFavorite: () => void
-  readonly onArchive: () => void
+  readonly onEdit: () => Promise<EditOutcome>
+  readonly onMetadata: (patch: MetadataPatch) => Promise<EditOutcome>
+  readonly onReload: () => void
   readonly t: LibraryWorkspaceProps['t']
 }
 
 /** The committed head body, source, and the edit/metadata action row. */
-function EntryDetail({ entry, onEdit, onFavorite, onArchive, t }: EntryDetailProps) {
+function EntryDetail({ entry, onEdit, onMetadata, onReload, t }: EntryDetailProps) {
+  const [actionState, setActionState] = useState<'ready' | 'pending' | 'stale'>('ready')
+  const [failure, setFailure] = useState<string | null>(null)
+  const [projectRef, setProjectRef] = useState('')
+  const running = useRef(false)
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => { alive.current = false }
+  }, [])
+  const run = async (action: () => Promise<EditOutcome>): Promise<void> => {
+    if (running.current || actionState === 'stale') return
+    running.current = true
+    setActionState('pending')
+    setFailure(null)
+    const result = await action()
+    running.current = false
+    if (!alive.current) return
+    setActionState(!result.ok && result.error.code === 'revision_conflict' ? 'stale' : 'ready')
+    if (!result.ok) setFailure(t(contentErrorKey(result.error.code)))
+  }
+  const disabled = actionState !== 'ready'
   const head = entry.versions.at(-1)
   const source = entry.source?.type === 'session-message'
     ? t('detail.source.session')
@@ -230,14 +252,41 @@ function EntryDetail({ entry, onEdit, onFavorite, onArchive, t }: EntryDetailPro
         </>
       )}
       <div className={css.detailActions}>
-        <button type="button" className={css.detailAction} onClick={onEdit}>{t('action.edit')}</button>
-        <button type="button" className={css.detailAction} onClick={onFavorite}>
+        <button type="button" className={css.detailAction} disabled={disabled} onClick={() => { void run(onEdit) }}>{t('action.edit')}</button>
+        <button type="button" className={css.detailAction} disabled={disabled} onClick={() => { void run(() => onMetadata({ favorite: !entry.favorite })) }}>
           {t(entry.favorite ? 'action.unfavorite' : 'action.favorite')}
         </button>
-        <button type="button" className={css.detailAction} onClick={onArchive}>
+        <button type="button" className={css.detailAction} disabled={disabled} onClick={() => { void run(() => onMetadata({ archived: !entry.archived })) }}>
           {t(entry.archived ? 'action.unarchive' : 'action.archive')}
         </button>
       </div>
+      <div className={css.detailActions}>
+        <input className={css.projectInput} aria-label={t('detail.projectRef')} value={projectRef}
+          disabled={disabled} onChange={(event) => { setProjectRef(event.target.value) }} />
+        <button type="button" className={css.detailAction}
+          disabled={disabled || projectRef.trim() === '' || entry.projectRefs.includes(projectRef.trim())}
+          onClick={() => { void run(() => onMetadata({ addProjectRef: projectRef.trim() })) }}>
+          {t('action.addProjectRef')}
+        </button>
+      </div>
+      {entry.projectRefs.map(ref => (
+        <div key={ref} className={css.detailActions}>
+          <span>{ref}</span>
+          <button type="button" className={css.detailAction} disabled={disabled}
+            aria-label={`${t('action.removeProjectRef')} ${ref}`}
+            onClick={() => { void run(() => onMetadata({ removeProjectRef: ref })) }}>
+            {t('action.removeProjectRef')}
+          </button>
+        </div>
+      ))}
+      {failure !== null && <p role="status">{failure}</p>}
+      {actionState === 'stale' && (
+        <button type="button" className={css.detailAction} onClick={() => {
+          onReload()
+          setActionState('ready')
+          setFailure(null)
+        }}>{t('action.reloadEntry')}</button>
+      )}
     </div>
   )
 }

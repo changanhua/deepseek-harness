@@ -57,18 +57,27 @@ export function EntryEditor({
   const [failure, setFailure] = useState<string | null>(null)
   const [settled, setSettled] = useState<string | null>(null)
   const alive = useRef(true)
-  useEffect(() => () => { alive.current = false }, [])
+  useEffect(() => {
+    alive.current = true
+    return () => { alive.current = false }
+  }, [])
 
   const isNew = entry === null
   const remote = conflict ? textOf(entry) : null
+  const baseline = textOf(entry)
+  const changed = title !== baseline.title || body !== baseline.body
+  const running = useRef(false)
 
   const run = async (action: 'save' | 'commit'): Promise<void> => {
+    if (running.current || conflict || (action === 'save' && !isNew && !changed)) return
+    running.current = true
     setFailure(null)
     setSettled(null)
     setInFlight(action)
     const outcome = action === 'save'
       ? await (isNew ? onCreate(title, body) : onSave(title, body))
       : await onCommit(title, body)
+    running.current = false
     if (!alive.current) return
     setInFlight(null)
     if (!outcome.ok) setFailure(t(contentErrorKey(outcome.error.code)))
@@ -144,7 +153,7 @@ export function EntryEditor({
                 <button
                   type="button"
                   className={css.buttonPrimary}
-                  disabled={inFlight !== null}
+                  disabled={inFlight !== null || conflict || !changed}
                   onClick={() => { void run('save') }}
                 >
                   {inFlight === 'save' ? t('editor.saving') : t('action.saveDraft')}
@@ -152,7 +161,7 @@ export function EntryEditor({
                 <button
                   type="button"
                   className={css.button}
-                  disabled={inFlight !== null}
+                  disabled={inFlight !== null || conflict}
                   onClick={() => { void run('commit') }}
                 >
                   {inFlight === 'commit' ? t('editor.committing') : t('action.commit')}

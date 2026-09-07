@@ -20,6 +20,10 @@ export const zh = {
   'action.unfavorite': '取消收藏',
   'action.archive': '归档',
   'action.unarchive': '取消归档',
+  'detail.projectRef': '项目引用',
+  'action.addProjectRef': '添加项目引用',
+  'action.removeProjectRef': '移除项目引用',
+  'action.reloadEntry': '重新载入条目',
   'editor.newTitle': '新条目',
   'editor.create': '创建',
   'editor.titlePlaceholder': '标题',
@@ -65,6 +69,7 @@ export const zh = {
   'error.unavailable': '内容库暂时不可用',
   'error.closed': '内容库已关闭',
   'error.transport': '网络连接中断，请重试',
+  'error.busy': '此条目正在保存，请稍后重试',
 } as const
 
 /** English copy for every Content library locale key. */
@@ -86,6 +91,10 @@ export const en: Record<keyof typeof zh, string> = {
   'action.unfavorite': 'Remove favorite',
   'action.archive': 'Archive',
   'action.unarchive': 'Unarchive',
+  'detail.projectRef': 'Project reference',
+  'action.addProjectRef': 'Add project reference',
+  'action.removeProjectRef': 'Remove project reference',
+  'action.reloadEntry': 'Reload entry',
   'editor.newTitle': 'New entry',
   'editor.create': 'Create',
   'editor.titlePlaceholder': 'Title',
@@ -131,6 +140,7 @@ export const en: Record<keyof typeof zh, string> = {
   'error.unavailable': 'The content library is temporarily unavailable',
   'error.closed': 'The content library is closed',
   'error.transport': 'The network connection dropped; try again',
+  'error.busy': 'This entry is being saved; try again when it finishes',
 }
 
 /** Stable locale keys shared by both Content library dictionaries. */
@@ -152,6 +162,7 @@ const ERROR_KEYS: Partial<Record<string, ContentKey>> = {
   unavailable: 'error.unavailable',
   closed: 'error.closed',
   transport: 'error.transport',
+  busy: 'error.busy',
 }
 
 /**

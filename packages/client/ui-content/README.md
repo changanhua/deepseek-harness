@@ -43,6 +43,8 @@ Open **Content Library** from the persistent sidebar to read committed entries; 
 
 **New entry** creates a manual entry whose text lives in a first draft. **Edit** opens an entry in the editor: **Save draft** writes the working text, and **Commit version** folds the draft into a new immutable version. **Favorite** and **Archive** toggle the entry's metadata. When a save or commit arrives on a stale revision — another window edited the same entry — the editor re-reads the entry and shows both sides; **Keep my edit** retries the next save on the fresh base, and **Use library content** resets the editor to the re-read text.
 
+**Save draft** is disabled until the text changes. A conflict blocks saving and committing until a side is chosen. The detail pane can add or remove project references; failed edit and metadata actions show localized errors. Metadata conflicts require **Reload entry** before another attempt and never retry automatically. Only one write per entry and one capture per page can run at a time.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -53,7 +55,7 @@ Open **Content Library** from the persistent sidebar to read committed entries; 
 
 One `ContentLibraryStore` per plugin fiber backs the workspace, the editor, and every capture entry. The load lane runs status then snapshot on one AbortSignal-backed lane, publishes Host phases verbatim (opening, unavailable, closed), and collapses concurrent refreshes. Each capture attempt mints a fresh `capture-ui:<sessionId>:<seq>:<nonce>` operation id, sends only that id plus the session id and the assistant message's event sequence, deduplicates concurrent clicks onto the in-flight attempt, and re-reads the snapshot after success. Button visibility is decided by a pure selection over the Chat projection (`AssistantMessageNode`): a durable message id, no interruption, and every block plain text with at least one non-blank character.
 
-Editing submits the Host's strict commands through one `execute` channel per entry lane. Creating mints an `idea-ui:<nonce>` entry id; saving drafts and committing versions read their guard revisions from the committed view, never from the editor, so a stale base is rejected by the Host rather than predicted. Each command awaits its view refresh before the lane returns, so a following command on the same entry reads fresh guards. A `revision_conflict` re-reads exactly the contested entry, splices it into the view, and marks the editor conflicted without touching the editor's local text; a lost transport is reconciled through the `receipt` channel before failure is shown. Metadata intents are idempotent absolute assignments, so one conflict retry on the re-read revision is safe. The editor's title and body are component-local state; the store never holds in-progress text.
+Editing and metadata share one `execute` lane per entry. Creating mints an `idea-ui:<nonce>` entry id; saving drafts and committing versions carry the Host-returned guard revisions. Each committed command invalidates earlier reads and awaits a new snapshot before returning; an unreadable baseline remains a visible failure. A `revision_conflict` re-reads the contested entry and marks an open editor conflicted without replacing its local text. Lost transport is reconciled through `receipt`. Navigation invalidates pending editor-opening results, and plugin disposal aborts all requests and prevents publication. The editor's title and body remain component-local state.
 
 The exact owners are [`src/client/capture-target.ts`](src/client/capture-target.ts), [`src/client/controller.ts`](src/client/controller.ts), [`src/client/EntryEditor.tsx`](src/client/EntryEditor.tsx), [`src/client/CaptureAction.tsx`](src/client/CaptureAction.tsx), and [`src/client/ContentLibraryWorkspace.tsx`](src/client/ContentLibraryWorkspace.tsx).
 
@@ -95,6 +97,6 @@ None; captures and library reads never enter model context or start a model requ
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-The personal content stack is mounted by the `dsh-web-app` bundle; this package is the browser half only. The browser e2e lives at `apps/web/tests/content-capture.e2e.ts` and `apps/web/tests/content-edit.e2e.ts`, and the HTTP composed lane at `apps/cli/tests/content-capture-composed.e2e.ts`.
+The personal content stack is mounted by the `dsh-web-app` bundle; this package is its browser half. Browser e2e lives in `apps/web/tests/content-capture.e2e.ts` and `apps/web/tests/content-edit.e2e.ts`; `apps/web/tests/content-restart.e2e.ts` checks capture, drafts, versions and metadata across built `dsh web` restarts. The HTTP composed lane lives in `apps/cli/tests/content-capture-composed.e2e.ts`.
 
 </details>

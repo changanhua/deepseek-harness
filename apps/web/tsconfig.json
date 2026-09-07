@@ -109,6 +109,7 @@
     "tests/pwsh-terminal.e2e.ts",
     "tests/workflow-run.e2e.ts",
     "tests/content-capture.e2e.ts",
+    "tests/content-restart.e2e.ts",
     "tests/content-edit.e2e.ts"
   ],
   "references": [

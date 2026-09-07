@@ -487,7 +487,7 @@ describe('ContentLibraryStore editor and edit commands', () => {
     store.dispose()
   })
 
-  it('issues a metadata command and retries once on a fresh revision after a conflict', async () => {
+  it('re-reads a metadata conflict without silently retrying the write', async () => {
     let conflict = true
     const { remote: face, calls } = remote({
       snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [draftedEntry()] } }),
@@ -507,11 +507,82 @@ describe('ContentLibraryStore editor and edit commands', () => {
     await store.refresh()
 
     const outcome = await store.setMetadata('idea_x', { favorite: true })
-    expect(outcome).toMatchObject({ ok: true })
+    expect(outcome).toMatchObject({ ok: false, error: { code: 'revision_conflict' } })
     const executed = calls.filter(call => call.method === 'execute')
-    expect(executed).toHaveLength(2)
+    expect(executed).toHaveLength(1)
     expect((executed[0]?.args as { type: string }).type).toBe('metadata')
-    expect((executed[1]?.args as { type: string; favorite: boolean }).favorite).toBe(true)
+    expect(calls.filter(call => call.method === 'get')).toHaveLength(1)
+    store.dispose()
+  })
+
+  it('refuses a different write while a draft save owns the entry', async () => {
+    let settle!: (value: RemoteResult<ContentReceipt>) => void
+    const { remote: face, calls } = remote({
+      snapshot: () => Promise.resolve({ ok: true, value: { formatVersion: 1, entries: [draftedEntry()] } }),
+      execute: () => new Promise((resolve) => { settle = resolve }),
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+    await store.beginEdit('idea_x')
+    const saving = store.saveDraft('New', 'Body')
+    const metadata = store.setMetadata('idea_x', { favorite: true })
+    expect(calls.filter(call => call.method === 'execute')).toHaveLength(1)
+    settle({ ok: true, value: receipt() })
+    await saving
+    expect(await metadata).toMatchObject({ ok: false, error: { code: 'busy' } })
+    store.dispose()
+  })
+
+  it('a completed write supersedes an older snapshot before returning', async () => {
+    let settle!: (value: RemoteResult<ContentSnapshotLike>) => void
+    let reads = 0
+    const fresh = { ...draftedEntry(), entryRevision: 2, favorite: true }
+    const { remote: face } = remote({
+      snapshot: () => {
+        reads += 1
+        if (reads === 2) return new Promise((resolve) => { settle = resolve })
+        return Promise.resolve({ ok: true, value: { formatVersion: 1, entries: [reads === 1 ? draftedEntry() : fresh] } })
+      },
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+    const oldRead = store.refresh()
+    await vi.waitFor(() => { expect(reads).toBe(2) })
+    const writing = store.setMetadata('idea_x', { favorite: true })
+    await vi.waitFor(() => { expect(reads).toBe(3) })
+    expect(await writing).toEqual({ ok: true })
+    settle({ ok: true, value: { formatVersion: 1, entries: [draftedEntry()] } })
+    await oldRead
+    expect(store.getSnapshot().entries[0]).toMatchObject({ entryRevision: 2, favorite: true })
+    store.dispose()
+  })
+
+  it('does not report a write as ready when the following snapshot fails', async () => {
+    let reads = 0
+    const { remote: face } = remote({ snapshot: () => ++reads === 1
+      ? Promise.resolve({ ok: true, value: { formatVersion: 1, entries: [draftedEntry()] } })
+      : Promise.resolve({ ok: false, error: { code: 'closed', message: 'closed', details: {} } }),
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+    expect(await store.setMetadata('idea_x', { favorite: true })).toMatchObject({ ok: false, error: { code: 'closed' } })
+    expect(store.getSnapshot().entries[0]?.favorite).toBe(false)
+    store.dispose()
+  })
+
+  it('does not reopen an editor after navigation superseded start-draft', async () => {
+    let settle!: (value: RemoteResult<ContentReceipt>) => void
+    const { remote: face } = remote({
+      snapshot: () => Promise.resolve({ ok: true, value: { formatVersion: 1, entries: [entry()] } }),
+      execute: () => new Promise((resolve) => { settle = resolve }),
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+    const opening = store.beginEdit('source_x')
+    store.beginCreate()
+    settle({ ok: true, value: receipt() })
+    await opening
+    expect(store.getSnapshot().editor).toEqual({ entryId: null })
     store.dispose()
   })
 

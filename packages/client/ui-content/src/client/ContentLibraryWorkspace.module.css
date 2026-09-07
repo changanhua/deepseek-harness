@@ -204,9 +204,18 @@
 
 .detailActions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding-top: 2px;
+}
+
+.projectInput {
+  min-width: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
 }
 
 .detailAction {

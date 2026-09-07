@@ -30,9 +30,13 @@ export function CaptureAction({ messageId, sessionId, useChat, useLibrary, captu
   const capturedEntryId = useLibrary(view =>
     key === null ? undefined : view.captured.get(key))
   const pending = useLibrary(view => key !== null && view.pendingCapture?.key === key)
+  const captureBusy = useLibrary(view => view.pendingCapture !== null)
   const [failure, setFailure] = useState<string | null>(null)
   const alive = useRef(true)
-  useEffect(() => () => { alive.current = false }, [])
+  useEffect(() => {
+    alive.current = true
+    return () => { alive.current = false }
+  }, [])
 
   if (target === undefined) return null
 
@@ -51,7 +55,7 @@ export function CaptureAction({ messageId, sessionId, useChat, useLibrary, captu
           aria-label={settledLabel}
           aria-pressed={captured || undefined}
           data-active={captured || undefined}
-          disabled={pending}
+          disabled={captureBusy}
           onClick={() => {
             setFailure(null)
             // The store deduplicates concurrent attempts per message, so a

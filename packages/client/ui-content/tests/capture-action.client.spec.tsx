@@ -7,7 +7,7 @@
  * "captured" state, and failures render their localized copy inline.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import type { AssistantMessageNode, ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ContentReceipt } from '@changanhua/dsh-content/types'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
@@ -165,6 +165,20 @@ describe('CaptureAction', () => {
     fireEvent.click(ui.getByLabelText(zh['capture.action']))
     const notice = await ui.findByRole('status')
     expect(notice.textContent).toBe(zh['error.forbidden'])
+    store.dispose()
+  })
+
+  it('disables other capture actions while a message is being captured', async () => {
+    let settle!: (value: RemoteResult<ContentReceipt>) => void
+    const { face } = remote({ capture: () => new Promise((resolve) => { settle = resolve }) })
+    const { ui, store } = mount({ remote: face })
+    let pending!: Promise<unknown>
+    await act(async () => { pending = store.capture(SESSION, { seq: 99, messageId: 'other' }) })
+    expect((ui.getByLabelText(zh['capture.action']) as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => {
+      settle({ ok: true, value: { operationId: 'op', entryId: 'source_other', entryRevision: 1, draftRevision: null, versionId: 'v1' } })
+      await pending
+    })
     store.dispose()
   })
 

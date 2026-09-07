@@ -308,6 +308,8 @@ describe('ContentLibraryWorkspace editing', () => {
     const editorTitle = screen.getByLabelText(zh['editor.titlePlaceholder']) as HTMLInputElement
     expect(editorTitle.value).toBe('Drafted')
 
+    expect(screen.getByRole('button', { name: zh['action.saveDraft'] }).hasAttribute('disabled')).toBe(true)
+    fireEvent.change(editorTitle, { target: { value: 'Updated title' } })
     fireEvent.click(screen.getByRole('button', { name: zh['action.saveDraft'] }))
     await waitFor(() => { expect(screen.getByText(zh['editor.draftSaved'])).toBeTruthy() })
     store.dispose()
@@ -366,6 +368,8 @@ describe('ContentLibraryWorkspace editing', () => {
     expect(alert.textContent).toContain(zh['editor.conflict'])
     expect(screen.getByText(zh['editor.conflict.local'])).toBeTruthy()
     expect(screen.getByText(zh['editor.conflict.remote'])).toBeTruthy()
+    expect(screen.getByRole('button', { name: zh['action.saveDraft'] }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: zh['action.commit'] }).hasAttribute('disabled')).toBe(true)
 
     // "Keep my edit" clears the mark; the next save retries on the fresh base.
     fireEvent.click(screen.getByRole('button', { name: zh['editor.conflict.keepLocal'] }))
@@ -373,6 +377,49 @@ describe('ContentLibraryWorkspace editing', () => {
     conflict = false
     fireEvent.click(screen.getByRole('button', { name: zh['action.saveDraft'] }))
     await waitFor(() => { expect(screen.getByText(zh['editor.draftSaved'])).toBeTruthy() })
+    store.dispose()
+  })
+
+  it.each(['forbidden', 'closed', 'operation_conflict', 'source_conflict'])(
+    'shows a localized metadata failure for %s without leaking server details', async (code) => {
+      const { store } = mount({ remote: remote({
+        snapshot: () => Promise.resolve({ ok: true, value: { formatVersion: 1, entries: [drafted()] } }),
+        execute: () => Promise.resolve({ ok: false, error: { code, message: 'PRIVATE /secret/path', details: {} } }),
+      }) })
+      fireEvent.click(await screen.findByText('Drafted'))
+      fireEvent.click(screen.getByRole('button', { name: zh['action.favorite'] }))
+      const status = await screen.findByRole('status')
+      expect(status.textContent).toBe(zh[`error.${code}` as keyof typeof zh])
+      expect(screen.queryByText(/PRIVATE/u)).toBeNull()
+      expect(screen.getByRole('button', { name: zh['action.favorite'] })).toBeTruthy()
+      store.dispose()
+    },
+  )
+
+  it('adds and removes a project reference through metadata', async () => {
+    let current = drafted()
+    const commands: Record<string, unknown>[] = []
+    const { store } = mount({ remote: remote({
+      snapshot: () => Promise.resolve({ ok: true, value: { formatVersion: 1, entries: [current] } }),
+      execute: (input) => {
+        commands.push(input)
+        current = { ...current, entryRevision: current.entryRevision + 1,
+          projectRefs: typeof input.addProjectRef === 'string' ? [input.addProjectRef] : [] }
+        return Promise.resolve({ ok: true, value: {
+          operationId: String(input.operationId), entryId: current.id,
+          entryRevision: current.entryRevision, draftRevision: 1, versionId: null,
+        } })
+      },
+    }) })
+    fireEvent.click(await screen.findByText('Drafted'))
+    const project = screen.getByLabelText('项目引用')
+    fireEvent.change(project, { target: { value: 'project-a' } })
+    fireEvent.click(screen.getByRole('button', { name: '添加项目引用' }))
+    await screen.findByText('project-a')
+    expect(commands[0]).toMatchObject({ type: 'metadata', expectedEntryRevision: 1, addProjectRef: 'project-a' })
+    fireEvent.click(screen.getByRole('button', { name: '移除项目引用 project-a' }))
+    await waitFor(() => { expect(screen.queryByText('project-a')).toBeNull() })
+    expect(commands[1]).toMatchObject({ type: 'metadata', expectedEntryRevision: 2, removeProjectRef: 'project-a' })
     store.dispose()
   })
 })

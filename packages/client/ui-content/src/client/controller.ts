@@ -157,6 +157,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
   private readonly editAbort = new AbortController()
   private readonly editPromises = new Map<string, Promise<EditOutcome>>()
   private disposed = false
+  private editorGeneration = 0
 
   /**
    * @param remote - the contentRemote Remote namespace.
@@ -181,11 +182,12 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
   }
 
   /**
-   * Re-read status and snapshot on the single load lane. A newer refresh
-   * aborts the previous request and takes the lane, so a late reply from a
-   * superseded load can neither resolve nor publish.
+   * Re-read status and snapshot, sharing concurrent ordinary refreshes.
+   * A committed write or connection reset supersedes this lane, and its
+   * aborted or older generation cannot publish a late result.
    */
   refresh(): Promise<void> {
+    if (this.disposed) return Promise.resolve()
     if (this.loadLane !== null) return this.loadLane
     // A new lane cancels the previous request outright; the generation check
     // below additionally guarantees its results can never publish.
@@ -208,7 +210,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
    */
   resync(): Promise<void> {
     if (this.view.loadState === 'idle') return Promise.resolve()
-    return this.refresh()
+    return this.refreshAfterWrite()
   }
 
   /**
@@ -217,6 +219,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
    */
   select(entryId: string | null): void {
     if (this.view.selectedEntryId === entryId) return
+    this.editorGeneration += 1
     this.publish({ ...this.view, selectedEntryId: entryId })
   }
 
@@ -225,6 +228,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
    * editor's own save verb; this seat only marks the intent.
    */
   beginCreate(): void {
+    this.editorGeneration += 1
     this.publish({ ...this.view, editor: Object.freeze({ entryId: null }), editConflict: false })
   }
 
@@ -233,6 +237,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
    * and its refresh lands; only the presentation is dropped.
    */
   closeEditor(): void {
+    this.editorGeneration += 1
     if (this.view.editor === null) return
     this.publish({ ...this.view, editor: null, editConflict: false })
   }
@@ -250,12 +255,13 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
    * Open the editor on one entry. A draft that already exists is opened as
    * committed; an original without one is given a draft through a real
    * start-draft command, so the editor never fabricates a base the Host did
-   * not record. A start-draft conflict re-reads the entry and opens whatever
-   * draft is there now.
+   * not record. A start-draft conflict re-reads the entry and remains a
+   * failed attempt until the user explicitly reloads and retries.
    * @param entryId - entry to edit.
    */
   async beginEdit(entryId: string): Promise<EditOutcome> {
     if (this.disposed) return DISPOSED_EDIT
+    const generation = ++this.editorGeneration
     const entry = this.view.entries.find(item => item.id === entryId)
     if (entry === undefined) return { ok: false, error: ENTRY_GONE }
     if (entry.draft !== null) {
@@ -266,16 +272,8 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
       type: 'start-draft', entryId, operationId: editOperationId(entryId),
       expectedEntryRevision: entry.entryRevision,
     }))
-    if (!carried.ok) {
-      // A start-draft conflict usually means another window opened a draft;
-      // the re-read landed it in the view, so edit that draft directly.
-      const now = this.view.entries.find(item => item.id === entryId)
-      if (now !== undefined && now.draft !== null) {
-        this.publish({ ...this.view, editor: Object.freeze({ entryId }), editConflict: false })
-        return { ok: true }
-      }
-      return carried
-    }
+    if (!carried.ok) return carried
+    if (generation !== this.editorGeneration) return { ok: false, error: { code: 'cancelled', message: '' } }
     this.publish({ ...this.view, editor: Object.freeze({ entryId }), editConflict: false })
     return { ok: true }
   }
@@ -290,12 +288,14 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
    */
   async createEntry(title: string, body: string): Promise<EditOutcome> {
     if (this.disposed) return DISPOSED_EDIT
+    const generation = this.editorGeneration
     const entryId = newEntryId()
     return this.editLane('create', async () => {
       const carried = await this.command(entryId, {
         type: 'create', entryId, operationId: editOperationId(entryId), title, body,
       })
       if (!carried.ok) return carried
+      if (generation !== this.editorGeneration) return { ok: false, error: { code: 'cancelled', message: '' } }
       this.publish({ ...this.view, editor: Object.freeze({ entryId }), editConflict: false })
       this.select(entryId)
       return { ok: true }
@@ -314,6 +314,8 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
    * @param body - editor-local body.
    */
   async saveDraft(title: string, body: string): Promise<EditOutcome> {
+    if (this.disposed) return DISPOSED_EDIT
+    if (this.view.editConflict) return { ok: false, error: { code: 'revision_conflict', message: '' } }
     const entryId = this.requireEditorEntry()
     return this.editLane(entryId, () => this.saveDraftText(entryId, title, body))
   }
@@ -330,7 +332,10 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
    * @param body - editor-local body.
    */
   async commitVersion(title: string, body: string): Promise<EditOutcome> {
+    if (this.disposed) return DISPOSED_EDIT
+    if (this.view.editConflict) return { ok: false, error: { code: 'revision_conflict', message: '' } }
     const entryId = this.requireEditorEntry()
+    const generation = this.editorGeneration
     return this.editLane(entryId, async () => {
       const entry = this.view.entries.find(item => item.id === entryId)
       const draft = entry?.draft ?? null
@@ -348,7 +353,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
         expectedDraftRevision: freshDraft.draftRevision, basedOnVersionId: freshDraft.basedOnVersionId,
         expectedHeadVersionId: fresh.headVersionId,
       })
-      if (carried.ok) {
+      if (carried.ok && generation === this.editorGeneration) {
         // A committed version closes the editor: the draft it edited is gone.
         this.publish({ ...this.view, editor: null, editConflict: false })
       }
@@ -358,23 +363,14 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
 
   /**
    * Apply one metadata intent (favorite, archive, or project reference).
-   * The revision comes from the committed view; a conflict re-reads the
-   * entry and retries the same intent once on the fresh revision, because
-   * every patch field is an idempotent absolute assignment.
+   * The revision comes from the committed view. A conflict re-reads the
+   * entry and returns failure without retrying the user's intent.
    * @param entryId - entry to change.
    * @param patch - the metadata intent, at least one field.
    */
   async setMetadata(entryId: string, patch: MetadataPatch): Promise<EditOutcome> {
     if (this.disposed) return DISPOSED_EDIT
-    return this.editLane(`meta:${entryId}`, async () => {
-      const first = await this.metadataCommand(entryId, patch)
-      if (first.ok || first.error.code !== 'revision_conflict') return first
-      const reloaded = await this.reloadEntry(entryId)
-      if (!reloaded) return first
-      const retried = await this.metadataCommand(entryId, patch)
-      if (retried.ok) void this.refresh()
-      return retried
-    })
+    return this.editLane(entryId, () => this.metadataCommand(entryId, patch))
   }
 
   /**
@@ -391,6 +387,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
     const key = captureKey(sessionId, target)
     const pending = this.capturePromises.get(key)
     if (pending !== undefined) return pending
+    if (this.view.pendingCapture !== null) return { ok: false, error: { code: 'busy', message: '' } }
     const attempt = this.captureOnce(sessionId, target, key)
     this.capturePromises.set(key, attempt)
     try {
@@ -416,10 +413,11 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
     return entryId
   }
 
-  /** Serialize and deduplicate one edit lane; an in-flight attempt is shared. */
+  /** Refuse overlapping writes rather than return another action's receipt. */
   private async editLane(key: string, run: () => Promise<EditOutcome>): Promise<EditOutcome> {
+    if (this.disposed) return DISPOSED_EDIT
     const pending = this.editPromises.get(key)
-    if (pending !== undefined) return pending
+    if (pending !== undefined) return { ok: false, error: { code: 'busy', message: '' } }
     const attempt = run()
     this.editPromises.set(key, attempt)
     try {
@@ -484,8 +482,8 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
       if (this.disposed) return DISPOSED_EDIT
       if (!carried.ok) {
         if (carried.error.code === 'revision_conflict') {
-          const reloaded = await this.reloadEntry(entryId)
-          if (reloaded && this.view.editor?.entryId === entryId) {
+          await this.reloadEntry(entryId)
+          if (!this.editAbort.signal.aborted && this.view.editor?.entryId === entryId) {
             this.publish({ ...this.view, editConflict: true })
           }
         }
@@ -493,8 +491,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
       }
       // The command is committed. The view refresh settles before the lane
       // returns, so a following command on the same entry reads fresh guards.
-      await this.refresh()
-      return { ok: true }
+      return await this.settleCommittedWrite()
     } catch (error) {
       if (this.disposed) return DISPOSED_EDIT
       // A thrown transport error leaves the commit unknown. The receipt
@@ -504,8 +501,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
         // dispose() aborts this signal, including while the receipt lookup is in flight.
         if (this.editAbort.signal.aborted) return DISPOSED_EDIT
         if (reconciled.ok && reconciled.value !== null) {
-          await this.refresh()
-          return { ok: true }
+          return await this.settleCommittedWrite()
         }
       } catch {
         // The receipt query itself failed; the original transport loss stands.
@@ -525,6 +521,9 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
    * @returns true when the fresh entry landed in the view.
    */
   private async reloadEntry(entryId: string): Promise<boolean> {
+    this.loadGeneration += 1
+    this.loadAbort?.abort()
+    this.loadLane = null
     try {
       const carried = await this.remote.get(entryId, this.editAbort.signal)
       if (this.disposed || !carried.ok) return false
@@ -566,7 +565,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
       this.publish({ ...this.view, captured: Object.freeze(captured) })
       // The capture is committed; the list refresh is presentation repair and
       // its own failure must not fail the click.
-      void this.refresh()
+      void this.refreshAfterWrite()
       return { ok: true, entryId: carried.value.entryId }
     } catch (error) {
       if (this.disposed) return DISPOSED
@@ -631,8 +630,28 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
     return this.disposed || signal.aborted || generation !== this.loadGeneration
   }
 
+  /** A committed write or new connection invalidates every earlier read. */
+  private refreshAfterWrite(): Promise<void> {
+    this.loadAbort?.abort()
+    this.loadLane = null
+    return this.refresh()
+  }
+
+  /** Do not release a successful edit on an unreadable or closed baseline. */
+  private async settleCommittedWrite(): Promise<EditOutcome> {
+    await this.refreshAfterWrite()
+    while (!this.disposed && this.loadLane !== null && this.view.loadState === 'loading') await this.loadLane
+    if (this.disposed) return DISPOSED_EDIT
+    if (this.view.error !== null) return { ok: false, error: this.view.error }
+    if (this.view.status?.phase !== 'ready') {
+      return { ok: false, error: { code: this.view.status?.phase ?? 'unavailable', message: '' } }
+    }
+    return { ok: true }
+  }
+
   /** Replace the view and contain subscriber failures at the observable boundary. */
   private publish(view: ContentLibraryView): void {
+    if (this.disposed) return
     this.view = Object.freeze(view)
     for (const listener of this.listeners) {
       try {
