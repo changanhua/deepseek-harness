@@ -37,6 +37,9 @@ export type {
   CaptureOutcome, ContentLibraryRemote, ContentLibraryView, LibraryError,
   LibraryLoadState, PendingCapture,
 } from './controller.ts'
+export type {
+  EditOutcome, EditorSession, MetadataPatch,
+} from './controller.ts'
 export type { CaptureTarget } from './capture-target.ts'
 export type { ContentKey } from './locales.ts'
 
@@ -78,6 +81,14 @@ export function apply(ctx: ClientContext): void {
       hooks: { library: store },
       refresh: () => { void store.refresh() },
       select: (entryId) => { store.select(entryId) },
+      beginCreate: () => { store.beginCreate() },
+      beginEdit: entryId => store.beginEdit(entryId),
+      closeEditor: () => { store.closeEditor() },
+      clearConflict: () => { store.clearConflict() },
+      createEntry: (title, body) => store.createEntry(title, body),
+      saveDraft: (title, body) => store.saveDraft(title, body),
+      commitVersion: (title, body) => store.commitVersion(title, body),
+      setMetadata: (entryId, patch) => store.setMetadata(entryId, patch),
     }),
   }, ContentLibraryWorkspace))
 

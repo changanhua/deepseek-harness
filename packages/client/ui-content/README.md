@@ -1,5 +1,5 @@
 ---
-description: "Content library browser package for users capturing a completed plain-text assistant reply and reading the committed library."
+description: "Content library browser package for users capturing a completed plain-text assistant reply, editing drafts, committing versions, and reading the committed library."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package gives the Web application the content-library surface over the personal Content Host stack: a per-message capture entry in the assistant-action strip, a persistent sidebar entry, and a read-only library workspace. A user captures a completed, pure-text assistant reply; the entry lands in the library, where its committed title, badges, and head body can be read. The Host owns idempotency, source verification, and revisions, so repeated captures and reconnects cannot produce duplicates or lost updates on this surface.
+This package gives the Web application the content-library surface over the personal Content Host stack: a per-message capture entry in the assistant-action strip, a persistent sidebar entry, and a library workspace with editing. A user captures a completed, pure-text assistant reply or creates a manual entry; the entry lands in the library, where it can be edited as a draft, committed as an immutable version, favorited, and archived. The Host owns idempotency, source verification, and revisions, so repeated captures and reconnects cannot produce duplicates or lost updates on this surface.
 
 ## Table of Contents
 
@@ -41,6 +41,8 @@ The package has no browser configuration. Its `dsh.client.inject` declaration re
 
 Open **Content Library** from the persistent sidebar to read committed entries; click **Capture to library** in an assistant reply's action strip to capture that message. A captured message shows a pressed state with its entry id; clicking again replays the original creation receipt instead of duplicating the entry.
 
+**New entry** creates a manual entry whose text lives in a first draft. **Edit** opens an entry in the editor: **Save draft** writes the working text, and **Commit version** folds the draft into a new immutable version. **Favorite** and **Archive** toggle the entry's metadata. When a save or commit arrives on a stale revision — another window edited the same entry — the editor re-reads the entry and shows both sides; **Keep my edit** retries the next save on the fresh base, and **Use library content** resets the editor to the re-read text.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -49,9 +51,11 @@ Open **Content Library** from the persistent sidebar to read committed entries; 
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-One `ContentLibraryStore` per plugin fiber backs the workspace and every capture entry. The load lane runs status then snapshot on one AbortSignal-backed lane, publishes Host phases verbatim (opening, unavailable, closed), and collapses concurrent refreshes. Each capture attempt mints a fresh `capture-ui:<sessionId>:<seq>:<nonce>` operation id, sends only that id plus the session id and the assistant message's event sequence, deduplicates concurrent clicks onto the in-flight attempt, and re-reads the snapshot after success. Button visibility is decided by a pure selection over the Chat projection (`AssistantMessageNode`): a durable message id, no interruption, and every block plain text with at least one non-blank character.
+One `ContentLibraryStore` per plugin fiber backs the workspace, the editor, and every capture entry. The load lane runs status then snapshot on one AbortSignal-backed lane, publishes Host phases verbatim (opening, unavailable, closed), and collapses concurrent refreshes. Each capture attempt mints a fresh `capture-ui:<sessionId>:<seq>:<nonce>` operation id, sends only that id plus the session id and the assistant message's event sequence, deduplicates concurrent clicks onto the in-flight attempt, and re-reads the snapshot after success. Button visibility is decided by a pure selection over the Chat projection (`AssistantMessageNode`): a durable message id, no interruption, and every block plain text with at least one non-blank character.
 
-The exact owners are [`src/client/capture-target.ts`](src/client/capture-target.ts), [`src/client/controller.ts`](src/client/controller.ts), [`src/client/CaptureAction.tsx`](src/client/CaptureAction.tsx), and [`src/client/ContentLibraryWorkspace.tsx`](src/client/ContentLibraryWorkspace.tsx).
+Editing submits the Host's strict commands through one `execute` channel per entry lane. Creating mints an `idea-ui:<nonce>` entry id; saving drafts and committing versions read their guard revisions from the committed view, never from the editor, so a stale base is rejected by the Host rather than predicted. Each command awaits its view refresh before the lane returns, so a following command on the same entry reads fresh guards. A `revision_conflict` re-reads exactly the contested entry, splices it into the view, and marks the editor conflicted without touching the editor's local text; a lost transport is reconciled through the `receipt` channel before failure is shown. Metadata intents are idempotent absolute assignments, so one conflict retry on the re-read revision is safe. The editor's title and body are component-local state; the store never holds in-progress text.
+
+The exact owners are [`src/client/capture-target.ts`](src/client/capture-target.ts), [`src/client/controller.ts`](src/client/controller.ts), [`src/client/EntryEditor.tsx`](src/client/EntryEditor.tsx), [`src/client/CaptureAction.tsx`](src/client/CaptureAction.tsx), and [`src/client/ContentLibraryWorkspace.tsx`](src/client/ContentLibraryWorkspace.tsx).
 
 </details>
 
@@ -80,10 +84,10 @@ None; captures and library reads never enter model context or start a model requ
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Read-only library** — the workspace lists and reads entries; draft editing, version commits, and metadata commands are deferred to the next increment and are not reachable from this surface.
 - **Entry titles come from the Host** — a capture has no user-visible title until the Host records one; the row falls back to the head version's title, which may be empty for fresh captures.
 - **Plain text only** — reasoning, tool calls, images, mixed blocks, and interrupted prefixes are never capturable, matching the Host source resolver; there is no partial capture.
 - **No cross-surface capture status** — a page reload clears the pressed state; the library itself is authoritative, and a later capture of the same source replays the original creation receipt.
+- **Editor text is page-local** — an in-progress draft title or body lives in the editor component; a reload discards it. Persisted drafts and versions stay on the Host.
 
 <a id="dev-note"></a>
 ### Dev Note
@@ -91,6 +95,6 @@ None; captures and library reads never enter model context or start a model requ
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-The personal content stack is mounted by the `dsh-web-app` bundle; this package is the browser half only. The browser e2e lives at `apps/web/tests/content-capture.e2e.ts`, and the HTTP composed lane at `apps/cli/tests/content-capture-composed.e2e.ts`.
+The personal content stack is mounted by the `dsh-web-app` bundle; this package is the browser half only. The browser e2e lives at `apps/web/tests/content-capture.e2e.ts` and `apps/web/tests/content-edit.e2e.ts`, and the HTTP composed lane at `apps/cli/tests/content-capture-composed.e2e.ts`.
 
 </details>

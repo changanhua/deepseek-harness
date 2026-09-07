@@ -43,6 +43,11 @@ async function bench() {
         value: { operationId: input.operationId, entryId: 'source_x', entryRevision: 1, draftRevision: null, versionId: 'v1' },
       })
     },
+    execute: () => Promise.resolve({
+      ok: true as const,
+      value: { operationId: 'op', entryId: 'source_x', entryRevision: 2, draftRevision: 2, versionId: null },
+    }),
+    receipt: () => Promise.resolve({ ok: true as const, value: null }),
   }
   class RemoteService extends Service {
     constructor(serviceCtx: Context) {

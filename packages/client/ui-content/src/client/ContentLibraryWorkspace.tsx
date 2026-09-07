@@ -1,9 +1,10 @@
 /**
- * The content library workspace: a read-only view over the committed
- * library. Load state, Host medium phase, emptiness, and failures each render
- * their own controlled surface; entry bodies and sources are read from the
- * snapshot's immutable entries. Revision and idempotency judgments stay on
- * the Host — this view restates nothing.
+ * The content library workspace: a read-only list over the committed library
+ * plus the editor entry points (new entry, edit, favorite, archive). Load
+ * state, Host medium phase, emptiness, and failures each render their own
+ * controlled surface; entry bodies and sources are read from the snapshot's
+ * immutable entries. Revision and idempotency judgments stay on the Host —
+ * this view restates nothing and never predicts a conflict.
  * @module @changanhua/dsh-client-ui-content/client/ContentLibraryWorkspace
  */
 
@@ -11,6 +12,7 @@ import { useEffect } from 'react'
 import { IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ContentEntry } from '@changanhua/dsh-content/types'
 import type { LibraryWorkspaceProps } from './contract.ts'
+import { EntryEditor } from './EntryEditor.tsx'
 import { contentErrorKey } from './locales.ts'
 import css from './ContentLibraryWorkspace.module.css'
 
@@ -20,11 +22,15 @@ function byCreationDesc(left: ContentEntry, right: ContentEntry): number {
 }
 
 /**
- * Read-only content library over the shared library store.
+ * Read-only content library over the shared library store, with the editor
+ * seat for new and existing entries.
  * @param props - the injected store hooks and verbs, and the copy.
  * @returns the workspace surface for the current load state and phase.
  */
-export function ContentLibraryWorkspace({ useLibrary, refresh, select, t }: LibraryWorkspaceProps) {
+export function ContentLibraryWorkspace({
+  useLibrary, refresh, select, beginCreate, beginEdit, closeEditor, clearConflict,
+  createEntry, saveDraft, commitVersion, setMetadata, t,
+}: LibraryWorkspaceProps) {
   // Load the library on mount: the workspace is the one seat that always
   // wants current data, so it never renders from a cold store.
   useEffect(() => { refresh() }, [refresh])
@@ -33,12 +39,20 @@ export function ContentLibraryWorkspace({ useLibrary, refresh, select, t }: Libr
   const reason = useLibrary(view => view.status?.reason ?? null)
   const entries = useLibrary(view => view.entries)
   const selectedEntryId = useLibrary(view => view.selectedEntryId)
+  const editor = useLibrary(view => view.editor)
+  const editConflict = useLibrary(view => view.editConflict)
   const error = useLibrary(view => view.error)
 
   const selected = selectedEntryId === null
     ? undefined
     : entries.find(entry => entry.id === selectedEntryId)
   const ordered = [...entries].sort(byCreationDesc)
+  const editing = editor ?? null
+  const editingEntry = editing === null
+    ? null
+    : editing.entryId === null
+      ? null
+      : entries.find(entry => entry.id === editing.entryId) ?? null
 
   return (
     <div className={css.root}>
@@ -47,15 +61,25 @@ export function ContentLibraryWorkspace({ useLibrary, refresh, select, t }: Libr
           <h1 className={css.title}>{t('view.title')}</h1>
           <p className={css.subtitle}>{t('view.subtitle')}</p>
         </div>
-        <button
-          type="button"
-          className={css.refresh}
-          aria-label={t('action.refresh')}
-          disabled={loadState === 'loading'}
-          onClick={refresh}
-        >
-          <IconRefreshOutline16 />
-        </button>
+        <div className={css.headActions}>
+          <button
+            type="button"
+            className={css.newEntry}
+            disabled={editing !== null || loadState !== 'ready' || phase !== 'ready'}
+            onClick={beginCreate}
+          >
+            {t('action.new')}
+          </button>
+          <button
+            type="button"
+            className={css.refresh}
+            aria-label={t('action.refresh')}
+            disabled={loadState === 'loading'}
+            onClick={refresh}
+          >
+            <IconRefreshOutline16 />
+          </button>
+        </div>
       </header>
 
       {loadState === 'error' && (
@@ -78,26 +102,67 @@ export function ContentLibraryWorkspace({ useLibrary, refresh, select, t }: Libr
         </div>
       )}
 
-      {loadState === 'ready' && phase === 'ready' && entries.length === 0 && (
+      {loadState === 'ready' && phase === 'ready' && entries.length === 0 && editing === null && (
         <div className={css.empty}>
           <p>{t('library.empty')}</p>
           <p className={css.emptyHint}>{t('library.emptyHint')}</p>
         </div>
       )}
 
+      {editing !== null && editing.entryId === null && (
+        <EntryEditor
+          entry={null}
+          conflict={false}
+          onCreate={createEntry}
+          onSave={saveDraft}
+          onCommit={commitVersion}
+          onClose={closeEditor}
+          onKeepLocal={clearConflict}
+          onUseRemote={clearConflict}
+          t={t}
+        />
+      )}
+
       {entries.length > 0 && (
         <ul className={css.list}>
-          {ordered.map(entry => (
-            <li key={entry.id}>
-              <EntryRow
-                entry={entry}
-                selected={entry.id === selectedEntryId}
-                onSelect={select}
-                t={t}
-              />
-              {selected !== undefined && entry.id === selected.id && <EntryDetail entry={selected} t={t} />}
-            </li>
-          ))}
+          {ordered.map((entry) => {
+            const isEditing = editing !== null && editing.entryId === entry.id
+            return (
+              <li key={entry.id}>
+                <EntryRow
+                  entry={entry}
+                  selected={entry.id === selectedEntryId}
+                  onSelect={select}
+                  t={t}
+                />
+                {selected !== undefined && entry.id === selected.id && (
+                  isEditing
+                    ? (
+                      <EntryEditor
+                        entry={editingEntry}
+                        conflict={editConflict}
+                        onCreate={createEntry}
+                        onSave={saveDraft}
+                        onCommit={commitVersion}
+                        onClose={closeEditor}
+                        onKeepLocal={clearConflict}
+                        onUseRemote={clearConflict}
+                        t={t}
+                      />
+                    )
+                    : (
+                      <EntryDetail
+                        entry={selected}
+                        onEdit={() => { void beginEdit(entry.id) }}
+                        onFavorite={() => { void setMetadata(entry.id, { favorite: !entry.favorite }) }}
+                        onArchive={() => { void setMetadata(entry.id, { archived: !entry.archived }) }}
+                        t={t}
+                      />
+                    )
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
@@ -139,11 +204,14 @@ function EntryRow({ entry, selected, onSelect, t }: EntryRowProps) {
 
 interface EntryDetailProps {
   readonly entry: ContentEntry
+  readonly onEdit: () => void
+  readonly onFavorite: () => void
+  readonly onArchive: () => void
   readonly t: LibraryWorkspaceProps['t']
 }
 
-/** The committed head body and source of one opened entry. */
-function EntryDetail({ entry, t }: EntryDetailProps) {
+/** The committed head body, source, and the edit/metadata action row. */
+function EntryDetail({ entry, onEdit, onFavorite, onArchive, t }: EntryDetailProps) {
   const head = entry.versions.at(-1)
   const source = entry.source?.type === 'session-message'
     ? t('detail.source.session')
@@ -161,6 +229,15 @@ function EntryDetail({ entry, t }: EntryDetailProps) {
           <pre className={css.body}>{head.body}</pre>
         </>
       )}
+      <div className={css.detailActions}>
+        <button type="button" className={css.detailAction} onClick={onEdit}>{t('action.edit')}</button>
+        <button type="button" className={css.detailAction} onClick={onFavorite}>
+          {t(entry.favorite ? 'action.unfavorite' : 'action.favorite')}
+        </button>
+        <button type="button" className={css.detailAction} onClick={onArchive}>
+          {t(entry.archived ? 'action.unarchive' : 'action.archive')}
+        </button>
+      </div>
     </div>
   )
 }

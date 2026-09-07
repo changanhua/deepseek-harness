@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type {
-  ContentEntry, ContentSnapshot, ContentStatus,
+  ContentEntry, ContentReceipt, ContentSnapshot, ContentStatus,
 } from '@changanhua/dsh-content/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -52,6 +52,9 @@ function entry(id = 'source_x', overrides: Partial<ContentEntry> = {}): ContentE
 interface RemoteScript {
   status?: () => Promise<RemoteResult<ContentStatus>>
   snapshot?: () => Promise<RemoteResult<ContentSnapshot>>
+  get?: (entryId: string) => Promise<RemoteResult<ContentEntry | null>>
+  execute?: (input: Record<string, unknown>) => Promise<RemoteResult<ContentReceipt>>
+  receipt?: (entryId: string, operationId: string) => Promise<RemoteResult<ContentReceipt | null>>
 }
 
 /** A remote double publishing the scripted replies to a real store. */
@@ -62,11 +65,17 @@ function remote(script: RemoteScript = {}) {
       value: { phase: 'ready', reason: null, limits: { bodyBytes: 1, entryBytes: 1, libraryBytes: 1 } },
     })),
     snapshot: script.snapshot ?? (() => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [] } })),
-    get: () => Promise.resolve({ ok: true as const, value: null }),
+    get: entryId => script.get?.(entryId) ?? Promise.resolve({ ok: true as const, value: null }),
     capture: () => Promise.resolve({
       ok: true as const,
       value: { operationId: 'op', entryId: 'source_x', entryRevision: 1, draftRevision: null, versionId: 'v1' },
     }),
+    execute: input => script.execute?.(input) ?? Promise.resolve({
+      ok: true as const,
+      value: { operationId: 'op', entryId: 'source_x', entryRevision: 2, draftRevision: 2, versionId: null },
+    }),
+    receipt: (entryId, operationId) =>
+      script.receipt?.(entryId, operationId) ?? Promise.resolve({ ok: true as const, value: null }),
   }
   return face
 }
@@ -83,7 +92,18 @@ function mount(options: MountOptions = {}) {
   const useLibrary = bindSnapshotSelector(store)
   const refresh = options.refresh ?? (() => { void store.refresh() })
   const select = options.select ?? ((entryId: string | null) => { store.select(entryId) })
-  const props = { useLibrary, refresh, select, t } as unknown as LibraryWorkspaceProps
+  const props = {
+    useLibrary, refresh, select, t,
+    beginCreate: () => { store.beginCreate() },
+    beginEdit: (entryId: string) => store.beginEdit(entryId),
+    closeEditor: () => { store.closeEditor() },
+    clearConflict: () => { store.clearConflict() },
+    createEntry: (title: string, body: string) => store.createEntry(title, body),
+    saveDraft: (title: string, body: string) => store.saveDraft(title, body),
+    commitVersion: (title: string, body: string) => store.commitVersion(title, body),
+    setMetadata: (entryId: string, patch: { favorite?: boolean; archived?: boolean; addProjectRef?: string; removeProjectRef?: string }) =>
+      store.setMetadata(entryId, patch),
+  } as unknown as LibraryWorkspaceProps
   const ui = render(<ContentLibraryWorkspace {...props} />)
   return { ui, store, refresh: options.refresh, select: options.select }
 }
@@ -227,5 +247,132 @@ describe('ContentLibraryWorkspace', () => {
     expect(await screen.findByRole('status')).toBeTruthy()
     release?.()
     await waitFor(() => { expect(screen.getByText(zh['library.empty'])).toBeTruthy() })
+  })
+})
+
+describe('ContentLibraryWorkspace editing', () => {
+  /** A drafted idea entry the edit tests operate on. */
+  function drafted(id = 'idea_x'): ContentEntry {
+    const operation = {
+      operationId: `op-${id}`, requestDigest: 'a'.repeat(64),
+      result: { operationId: `op-${id}`, entryId: id, entryRevision: 1, draftRevision: 1, versionId: null },
+    }
+    return {
+      id, kind: 'idea', createdAt: '2026-09-06T00:00:00.000Z', entryRevision: 1,
+      source: null, versions: [], headVersionId: null,
+      draft: { title: 'Drafted', body: 'DRAFT BODY', draftRevision: 1, basedOnVersionId: null },
+      projectRefs: [], favorite: false, archived: false, creation: operation, receipts: [operation],
+    }
+  }
+
+  it('opens the new-entry editor through the header button and creates through it', async () => {
+    const { store } = mount({
+      remote: remote({
+        execute: input => Promise.resolve({
+          ok: true as const,
+          value: {
+            operationId: (input as { operationId: string }).operationId,
+            entryId: 'idea-ui:1', entryRevision: 1, draftRevision: 1, versionId: null,
+          },
+        }),
+      }),
+    })
+    await waitFor(() => { expect(screen.getByText(zh['library.empty'])).toBeTruthy() })
+
+    fireEvent.click(screen.getByRole('button', { name: zh['action.new'] }))
+    expect(screen.getByLabelText(zh['editor.titlePlaceholder'])).toBeTruthy()
+    fireEvent.change(screen.getByLabelText(zh['editor.titlePlaceholder']), { target: { value: 'My title' } })
+    fireEvent.change(screen.getByLabelText(zh['editor.bodyPlaceholder']), { target: { value: 'My body' } })
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.create'] }))
+
+    await waitFor(() => { expect(store.getSnapshot().editor?.entryId).toMatch(/^idea-ui:/u) })
+    expect(store.getSnapshot().selectedEntryId).toBe(store.getSnapshot().editor?.entryId)
+    store.dispose()
+  })
+
+  it('opens the editor from the detail action row and saves the draft', async () => {
+    const { store } = mount({
+      remote: remote({
+        snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [drafted()] } }),
+        execute: () => Promise.resolve({
+          ok: true as const,
+          value: { operationId: 'op-2', entryId: 'idea_x', entryRevision: 2, draftRevision: 2, versionId: null },
+        }),
+      }),
+    })
+    await waitFor(() => { expect(screen.getByText('Drafted')).toBeTruthy() })
+    fireEvent.click(screen.getByText('Drafted'))
+
+    fireEvent.click(screen.getByRole('button', { name: zh['action.edit'] }))
+    await waitFor(() => { expect(store.getSnapshot().editor?.entryId).toBe('idea_x') })
+    const editorTitle = screen.getByLabelText(zh['editor.titlePlaceholder']) as HTMLInputElement
+    expect(editorTitle.value).toBe('Drafted')
+
+    fireEvent.click(screen.getByRole('button', { name: zh['action.saveDraft'] }))
+    await waitFor(() => { expect(screen.getByText(zh['editor.draftSaved'])).toBeTruthy() })
+    store.dispose()
+  })
+
+  it('toggles favorite and archive through the detail action row', async () => {
+    const commands: string[] = []
+    const { store } = mount({
+      remote: remote({
+        snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [drafted()] } }),
+        execute: (input) => {
+          commands.push((input as { type: string }).type)
+          return Promise.resolve({
+            ok: true as const,
+            value: { operationId: 'op-3', entryId: 'idea_x', entryRevision: 2, draftRevision: 1, versionId: null },
+          })
+        },
+      }),
+    })
+    await waitFor(() => { expect(screen.getByText('Drafted')).toBeTruthy() })
+    fireEvent.click(screen.getByText('Drafted'))
+
+    fireEvent.click(screen.getByRole('button', { name: zh['action.favorite'] }))
+    await waitFor(() => { expect(commands).toEqual(['metadata']) })
+    expect(store.getSnapshot().editConflict).toBe(false)
+    store.dispose()
+  })
+
+  it('renders the conflict surface with both sides and resolves either way', async () => {
+    let conflict = true
+    const reloaded = drafted('idea_x')
+    const { store } = mount({
+      remote: remote({
+        snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [drafted()] } }),
+        get: () => Promise.resolve({ ok: true as const, value: reloaded }),
+        execute: input => conflict
+          ? Promise.resolve({ ok: false as const, error: { code: 'revision_conflict', message: 'stale', details: {} } })
+          : Promise.resolve({
+            ok: true as const,
+            value: {
+              operationId: (input as { operationId: string }).operationId,
+              entryId: 'idea_x', entryRevision: 2, draftRevision: 2, versionId: null,
+            },
+          }),
+      }),
+    })
+    await waitFor(() => { expect(screen.getByText('Drafted')).toBeTruthy() })
+    fireEvent.click(screen.getByText('Drafted'))
+    fireEvent.click(screen.getByRole('button', { name: zh['action.edit'] }))
+    await waitFor(() => { expect(store.getSnapshot().editor?.entryId).toBe('idea_x') })
+
+    // Save into a conflict: the editor keeps the local text and shows both.
+    fireEvent.change(screen.getByLabelText(zh['editor.titlePlaceholder']), { target: { value: 'My side' } })
+    fireEvent.click(screen.getByRole('button', { name: zh['action.saveDraft'] }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain(zh['editor.conflict'])
+    expect(screen.getByText(zh['editor.conflict.local'])).toBeTruthy()
+    expect(screen.getByText(zh['editor.conflict.remote'])).toBeTruthy()
+
+    // "Keep my edit" clears the mark; the next save retries on the fresh base.
+    fireEvent.click(screen.getByRole('button', { name: zh['editor.conflict.keepLocal'] }))
+    await waitFor(() => { expect(store.getSnapshot().editConflict).toBe(false) })
+    conflict = false
+    fireEvent.click(screen.getByRole('button', { name: zh['action.saveDraft'] }))
+    await waitFor(() => { expect(screen.getByText(zh['editor.draftSaved'])).toBeTruthy() })
+    store.dispose()
   })
 })

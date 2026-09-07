@@ -3,18 +3,21 @@
  * the plugin's apply and disposed with its fiber — never a module singleton.
  * The Host owns idempotency, revision checks, and source verification: this
  * store never reconciles content locally. It re-reads the whole snapshot
- * after every successful capture instead of patching a projection, and every
- * in-flight request is bound to the store's lifetime through an AbortSignal,
- * so results from a superseded load can neither resolve nor land.
+ * after every successful capture or edit instead of patching a projection,
+ * every in-flight request is bound to the store's lifetime through an
+ * AbortSignal, and a revision conflict re-reads exactly the contested entry
+ * before surfacing the choice — the editor's local text is never silently
+ * replaced or discarded.
  * @module @changanhua/dsh-client-ui-content/client/controller
  */
 
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
-  ContentEntry, ContentReceipt, ContentSnapshot, ContentStatus,
+  ContentCommand, ContentEntry, ContentReceipt, ContentSnapshot, ContentStatus,
 } from '@changanhua/dsh-content/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { captureKey, captureNonce, captureOperationId, type CaptureTarget } from './capture-target.ts'
 
 /** The Remote calls this store needs, narrowed from the generated face. */
@@ -26,6 +29,31 @@ export interface ContentLibraryRemote {
     input: { operationId: string; sessionId: string; messageId: string },
     signal?: AbortSignal,
   ) => Promise<RemoteResult<ContentReceipt>>
+  execute: (input: ContentCommand, signal?: AbortSignal) => Promise<RemoteResult<ContentReceipt>>
+  receipt: (entryId: string, operationId: string, signal?: AbortSignal) => Promise<RemoteResult<ContentReceipt | null>>
+}
+
+/** One metadata intent; the wire rejects an empty command.
+ * @property favorite - set or clear the favorite flag.
+ * @property archived - set or clear the archived flag.
+ * @property addProjectRef - attach one project reference id.
+ * @property removeProjectRef - detach one project reference id.
+ */
+export interface MetadataPatch {
+  readonly favorite?: boolean
+  readonly archived?: boolean
+  readonly addProjectRef?: string
+  readonly removeProjectRef?: string
+}
+
+/** Settled shape of one library edit attempt. */
+export type EditOutcome =
+  | { ok: true }
+  | { ok: false; error: LibraryError }
+
+/** One open editor seat: a new entry (no id yet) or one existing entry. */
+export interface EditorSession {
+  readonly entryId: string | null
 }
 
 /** Single load-lane state: one machine, not independent booleans. */
@@ -58,6 +86,10 @@ export interface ContentLibraryView {
   pendingCapture: PendingCapture | null
   /** entryId per capture this page performed, keyed by {@link captureKey}. */
   captured: ReadonlyMap<string, string>
+  /** Open editor seat: one new entry (null id) or one existing entry. */
+  editor: EditorSession | null
+  /** True after a revision conflict re-read while the editor is open. */
+  editConflict: boolean
   /** The last load failure, cleared by the next successful load. */
   error: LibraryError | null
 }
@@ -74,6 +106,8 @@ const INITIAL_VIEW: ContentLibraryView = Object.freeze({
   selectedEntryId: null,
   pendingCapture: null,
   captured: new Map(),
+  editor: null,
+  editConflict: false,
   error: null,
 })
 
@@ -81,6 +115,30 @@ const DISPOSED: CaptureOutcome = Object.freeze({
   ok: false,
   error: Object.freeze({ code: 'disposed', message: 'content library store is disposed' }),
 })
+
+const DISPOSED_EDIT: EditOutcome = DISPOSED
+const ENTRY_GONE: LibraryError = Object.freeze({
+  code: 'not_found', message: 'the addressed entry is no longer in the view',
+})
+const DRAFT_GONE: LibraryError = Object.freeze({
+  code: 'invalid_transition', message: 'the draft vanished before the edit settled',
+})
+
+/**
+ * Operation id for one edit attempt. A fresh nonce per command means every
+ * user action owns its own idempotency record; the entry address inside
+ * keeps retries recognizable while never deriving authority from content.
+ * @param entryId - the entry this command addresses.
+ * @returns an operation id within the Content identity bound.
+ */
+function editOperationId(entryId: string): string {
+  return `edit-ui:${entryId}:${randomUUID()}`.slice(0, 512)
+}
+
+/** Entry id for one manual creation; the Host records it verbatim. */
+function newEntryId(): string {
+  return `idea-ui:${randomUUID()}`
+}
 
 /**
  * Page-wide library store. One instance backs the workspace view and every
@@ -96,6 +154,8 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
   private loadAbort: AbortController | null = null
   private readonly captureAbort = new AbortController()
   private readonly capturePromises = new Map<string, Promise<CaptureOutcome>>()
+  private readonly editAbort = new AbortController()
+  private readonly editPromises = new Map<string, Promise<EditOutcome>>()
   private disposed = false
 
   /**
@@ -161,6 +221,163 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
   }
 
   /**
+   * Open the editor for one new entry. The create command is issued by the
+   * editor's own save verb; this seat only marks the intent.
+   */
+  beginCreate(): void {
+    this.publish({ ...this.view, editor: Object.freeze({ entryId: null }), editConflict: false })
+  }
+
+  /**
+   * Close the editor seat. An in-flight edit is not cancelled — it settles
+   * and its refresh lands; only the presentation is dropped.
+   */
+  closeEditor(): void {
+    if (this.view.editor === null) return
+    this.publish({ ...this.view, editor: null, editConflict: false })
+  }
+
+  /**
+   * Clear the conflict mark after the user chose a side; the re-read entry is
+   * already in the view and the editor keeps or resets its own text.
+   */
+  clearConflict(): void {
+    if (!this.view.editConflict) return
+    this.publish({ ...this.view, editConflict: false })
+  }
+
+  /**
+   * Open the editor on one entry. A draft that already exists is opened as
+   * committed; an original without one is given a draft through a real
+   * start-draft command, so the editor never fabricates a base the Host did
+   * not record. A start-draft conflict re-reads the entry and opens whatever
+   * draft is there now.
+   * @param entryId - entry to edit.
+   */
+  async beginEdit(entryId: string): Promise<EditOutcome> {
+    if (this.disposed) return DISPOSED_EDIT
+    const entry = this.view.entries.find(item => item.id === entryId)
+    if (entry === undefined) return { ok: false, error: ENTRY_GONE }
+    if (entry.draft !== null) {
+      this.publish({ ...this.view, editor: Object.freeze({ entryId }), editConflict: false })
+      return { ok: true }
+    }
+    const carried = await this.editLane(entryId, async () => this.command(entryId, {
+      type: 'start-draft', entryId, operationId: editOperationId(entryId),
+      expectedEntryRevision: entry.entryRevision,
+    }))
+    if (!carried.ok) {
+      // A start-draft conflict usually means another window opened a draft;
+      // the re-read landed it in the view, so edit that draft directly.
+      const now = this.view.entries.find(item => item.id === entryId)
+      if (now !== undefined && now.draft !== null) {
+        this.publish({ ...this.view, editor: Object.freeze({ entryId }), editConflict: false })
+        return { ok: true }
+      }
+      return carried
+    }
+    this.publish({ ...this.view, editor: Object.freeze({ entryId }), editConflict: false })
+    return { ok: true }
+  }
+
+  /**
+   * Create one new entry whose first draft holds the given text. The Host
+   * owns the entry identity check; the id is minted here only because the
+   * wire command requires the caller to name one. On success the editor
+   * stays open on the created entry and the detail pane selects it.
+   * @param title - draft title.
+   * @param body - draft body.
+   */
+  async createEntry(title: string, body: string): Promise<EditOutcome> {
+    if (this.disposed) return DISPOSED_EDIT
+    const entryId = newEntryId()
+    return this.editLane('create', async () => {
+      const carried = await this.command(entryId, {
+        type: 'create', entryId, operationId: editOperationId(entryId), title, body,
+      })
+      if (!carried.ok) return carried
+      this.publish({ ...this.view, editor: Object.freeze({ entryId }), editConflict: false })
+      this.select(entryId)
+      return { ok: true }
+    })
+  }
+
+  /**
+   * Save the editor's local text as the entry's draft. Revisions come from
+   * the committed view, never from the editor, so a stale base is rejected
+   * by the Host rather than predicted here. A revision conflict re-reads
+   * exactly this entry and marks the editor conflicted instead of touching
+   * the local text. When the draft vanished (another window committed), the
+   * save re-opens one through start-draft before writing, which is the
+   * "keep my side" path after a conflict.
+   * @param title - editor-local title.
+   * @param body - editor-local body.
+   */
+  async saveDraft(title: string, body: string): Promise<EditOutcome> {
+    const entryId = this.requireEditorEntry()
+    return this.editLane(entryId, () => this.saveDraftText(entryId, title, body))
+  }
+
+  /**
+   * Commit the editor's local text as a new immutable version. The text is
+   * first saved into the draft (re-creating one through start-draft when
+   * the base has none), then one commit-version command carries the
+   * Host-recorded draft into the version list. Both steps run on the
+   * entry's edit lane and the view refresh between them settles before the
+   * next command reads its guards, so the pair cannot interleave with a
+   * stale base.
+   * @param title - editor-local title.
+   * @param body - editor-local body.
+   */
+  async commitVersion(title: string, body: string): Promise<EditOutcome> {
+    const entryId = this.requireEditorEntry()
+    return this.editLane(entryId, async () => {
+      const entry = this.view.entries.find(item => item.id === entryId)
+      const draft = entry?.draft ?? null
+      const upToDate = entry !== undefined && draft !== null
+        && draft.title === title && draft.body === body
+      if (!upToDate) {
+        const saved = await this.saveDraftText(entryId, title, body)
+        if (!saved.ok) return saved
+      }
+      const fresh = this.view.entries.find(item => item.id === entryId)
+      const freshDraft = fresh?.draft ?? null
+      if (fresh === undefined || freshDraft === null) return { ok: false, error: DRAFT_GONE }
+      const carried = await this.command(entryId, {
+        type: 'commit-version', entryId, operationId: editOperationId(entryId),
+        expectedDraftRevision: freshDraft.draftRevision, basedOnVersionId: freshDraft.basedOnVersionId,
+        expectedHeadVersionId: fresh.headVersionId,
+      })
+      if (carried.ok) {
+        // A committed version closes the editor: the draft it edited is gone.
+        this.publish({ ...this.view, editor: null, editConflict: false })
+      }
+      return carried
+    })
+  }
+
+  /**
+   * Apply one metadata intent (favorite, archive, or project reference).
+   * The revision comes from the committed view; a conflict re-reads the
+   * entry and retries the same intent once on the fresh revision, because
+   * every patch field is an idempotent absolute assignment.
+   * @param entryId - entry to change.
+   * @param patch - the metadata intent, at least one field.
+   */
+  async setMetadata(entryId: string, patch: MetadataPatch): Promise<EditOutcome> {
+    if (this.disposed) return DISPOSED_EDIT
+    return this.editLane(`meta:${entryId}`, async () => {
+      const first = await this.metadataCommand(entryId, patch)
+      if (first.ok || first.error.code !== 'revision_conflict') return first
+      const reloaded = await this.reloadEntry(entryId)
+      if (!reloaded) return first
+      const retried = await this.metadataCommand(entryId, patch)
+      if (retried.ok) void this.refresh()
+      return retried
+    })
+  }
+
+  /**
    * Capture one completed assistant message. Every attempt mints a fresh
    * operation id; repeated clicks while one attempt is in flight share it,
    * and a later attempt after a failure starts a new operation. The Host's
@@ -188,7 +405,140 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
     this.disposed = true
     this.loadAbort?.abort()
     this.captureAbort.abort()
+    this.editAbort.abort()
     this.listeners.clear()
+  }
+
+  /** The entry the open editor addresses; editing without a seat is a bug. */
+  private requireEditorEntry(): string {
+    const entryId = this.view.editor?.entryId ?? null
+    if (entryId === null) throw new Error('ui-content: no open editor session')
+    return entryId
+  }
+
+  /** Serialize and deduplicate one edit lane; an in-flight attempt is shared. */
+  private async editLane(key: string, run: () => Promise<EditOutcome>): Promise<EditOutcome> {
+    const pending = this.editPromises.get(key)
+    if (pending !== undefined) return pending
+    const attempt = run()
+    this.editPromises.set(key, attempt)
+    try {
+      return await attempt
+    } finally {
+      this.editPromises.delete(key)
+    }
+  }
+
+  /**
+   * One save with whatever draft base exists; missing bases are re-opened.
+   * The caller owns the entry's edit lane, so this core never nests one.
+   */
+  private async saveDraftText(entryId: string, title: string, body: string): Promise<EditOutcome> {
+    if (this.disposed) return DISPOSED_EDIT
+    const entry = this.view.entries.find(item => item.id === entryId)
+    if (entry === undefined) return { ok: false, error: ENTRY_GONE }
+    let draftRevision: number
+    let basedOnVersionId: string | null
+    if (entry.draft === null) {
+      // Another window committed the draft; "keep my side" re-opens one
+      // from the current head and writes the local text over it.
+      const opened = await this.command(entryId, {
+        type: 'start-draft', entryId, operationId: editOperationId(entryId),
+        expectedEntryRevision: entry.entryRevision,
+      })
+      if (!opened.ok) return opened
+      const fresh = this.view.entries.find(item => item.id === entryId)
+      const freshDraft = fresh?.draft ?? null
+      if (freshDraft === null) return { ok: false, error: DRAFT_GONE }
+      draftRevision = freshDraft.draftRevision
+      basedOnVersionId = freshDraft.basedOnVersionId
+    } else {
+      draftRevision = entry.draft.draftRevision
+      basedOnVersionId = entry.draft.basedOnVersionId
+    }
+    return this.command(entryId, {
+      type: 'save-draft', entryId, operationId: editOperationId(entryId),
+      expectedDraftRevision: draftRevision, basedOnVersionId, title, body,
+    })
+  }
+
+  /** One metadata command against the currently committed revision. */
+  private async metadataCommand(entryId: string, patch: MetadataPatch): Promise<EditOutcome> {
+    const entry = this.view.entries.find(item => item.id === entryId)
+    if (entry === undefined) return { ok: false, error: ENTRY_GONE }
+    return this.command(entryId, {
+      type: 'metadata', entryId, operationId: editOperationId(entryId),
+      expectedEntryRevision: entry.entryRevision, ...patch,
+    })
+  }
+
+  /**
+   * Submit one strict content command and settle its outcome. A revision
+   * conflict re-reads the contested entry, refreshes it into the view, and
+   * marks the open editor conflicted; a transport loss asks the Host
+   * whether the command already committed before reporting failure.
+   */
+  private async command(entryId: string, input: ContentCommand): Promise<EditOutcome> {
+    try {
+      const carried = await this.remote.execute(input, this.editAbort.signal)
+      if (this.disposed) return DISPOSED_EDIT
+      if (!carried.ok) {
+        if (carried.error.code === 'revision_conflict') {
+          const reloaded = await this.reloadEntry(entryId)
+          if (reloaded && this.view.editor?.entryId === entryId) {
+            this.publish({ ...this.view, editConflict: true })
+          }
+        }
+        return { ok: false, error: { code: carried.error.code, message: carried.error.message } }
+      }
+      // The command is committed. The view refresh settles before the lane
+      // returns, so a following command on the same entry reads fresh guards.
+      await this.refresh()
+      return { ok: true }
+    } catch (error) {
+      if (this.disposed) return DISPOSED_EDIT
+      // A thrown transport error leaves the commit unknown. The receipt
+      // channel answers for this exact operation before failure is shown.
+      try {
+        const reconciled = await this.remote.receipt(entryId, input.operationId, this.editAbort.signal)
+        // dispose() aborts this signal, including while the receipt lookup is in flight.
+        if (this.editAbort.signal.aborted) return DISPOSED_EDIT
+        if (reconciled.ok && reconciled.value !== null) {
+          await this.refresh()
+          return { ok: true }
+        }
+      } catch {
+        // The receipt query itself failed; the original transport loss stands.
+      }
+      return {
+        ok: false,
+        error: { code: 'transport', message: error instanceof Error ? error.message : String(error) },
+      }
+    }
+  }
+
+  /**
+   * Re-read exactly one entry and splice it into the view; a vanished entry
+   * falls back to a whole-library refresh, which also clears it from the
+   * list.
+   * @param entryId - entry to re-read.
+   * @returns true when the fresh entry landed in the view.
+   */
+  private async reloadEntry(entryId: string): Promise<boolean> {
+    try {
+      const carried = await this.remote.get(entryId, this.editAbort.signal)
+      if (this.disposed || !carried.ok) return false
+      if (carried.value === null) {
+        void this.refresh()
+        return false
+      }
+      const entries = this.view.entries.filter(item => item.id !== entryId)
+      entries.push(carried.value)
+      this.publish({ ...this.view, entries: Object.freeze(entries) })
+      return true
+    } catch {
+      return false
+    }
   }
 
   /** One wire attempt; the caller owns the in-flight bookkeeping. */

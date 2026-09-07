@@ -5,7 +5,7 @@
  * store refusing further work.
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { ContentEntry, ContentReceipt, ContentStatus } from '@changanhua/dsh-content/types'
+import type { ContentDraft, ContentEntry, ContentReceipt, ContentStatus } from '@changanhua/dsh-content/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ContentLibraryRemote } from '../src/client/controller.ts'
@@ -56,6 +56,9 @@ interface RemoteScript {
     input: { operationId: string; sessionId: string; messageId: string },
     signal?: AbortSignal,
   ) => Promise<RemoteResult<ContentReceipt>>
+  get?: (entryId: string, signal?: AbortSignal) => Promise<RemoteResult<ContentEntry | null>>
+  execute?: (input: Record<string, unknown>, signal?: AbortSignal) => Promise<RemoteResult<ContentReceipt>>
+  receipt?: (entryId: string, operationId: string, signal?: AbortSignal) => Promise<RemoteResult<ContentReceipt | null>>
 }
 
 const EMPTY_SNAPSHOT: ContentSnapshotLike = { formatVersion: 1, entries: [] }
@@ -72,10 +75,21 @@ function remote(script: RemoteScript = {}) {
       calls.push({ method: 'snapshot', args: { aborted: signal?.aborted } })
       return script.snapshot?.() ?? Promise.resolve({ ok: true as const, value: EMPTY_SNAPSHOT })
     },
-    get: () => Promise.resolve({ ok: true as const, value: null }),
+    get: (entryId, signal) => {
+      calls.push({ method: 'get', args: { entryId, aborted: signal?.aborted } })
+      return script.get?.(entryId, signal) ?? Promise.resolve({ ok: true as const, value: null })
+    },
     capture: (input, signal) => {
       calls.push({ method: 'capture', args: { ...input, aborted: signal?.aborted } })
       return script.capture?.(input, signal) ?? Promise.resolve({ ok: true as const, value: receipt() })
+    },
+    execute: (input, signal) => {
+      calls.push({ method: 'execute', args: { ...(input as Record<string, unknown>), aborted: signal?.aborted } })
+      return script.execute?.(input, signal) ?? Promise.resolve({ ok: true as const, value: receipt({ draftRevision: 1 }) })
+    },
+    receipt: (entryId, operationId, signal) => {
+      calls.push({ method: 'receipt', args: { entryId, operationId, aborted: signal?.aborted } })
+      return script.receipt?.(entryId, operationId, signal) ?? Promise.resolve({ ok: true as const, value: null })
     },
   }
   return { calls, remote }
@@ -262,6 +276,258 @@ describe('ContentLibraryStore capture', () => {
       expect(calls.filter(call => call.method === 'snapshot')).toHaveLength(1)
     })
     expect(store.getSnapshot().entries.map(item => entryOf(item).id)).toEqual(['source_x'])
+    store.dispose()
+  })
+})
+
+/** An entry holding a draft (an idea entry with draftRevision 1). */
+function draftedEntry(id = 'idea_x', draft: Partial<ContentDraft> = {}): ContentEntry {
+  const operation = {
+    operationId: `op-${id}`, requestDigest: 'a'.repeat(64),
+    result: { operationId: `op-${id}`, entryId: id, entryRevision: 1, draftRevision: 1, versionId: null },
+  }
+  return {
+    id, kind: 'idea', createdAt: '2026-09-06T00:00:00.000Z', entryRevision: 1,
+    source: null, versions: [], headVersionId: null,
+    draft: { title: 'D', body: 'BODY', draftRevision: 1, basedOnVersionId: null, ...draft },
+    projectRefs: [], favorite: false, archived: false, creation: operation, receipts: [operation],
+  }
+}
+
+describe('ContentLibraryStore editor and edit commands', () => {
+  it('opens the editor seat for a new entry and for an entry with a draft', async () => {
+    const { remote: face } = remote({
+      snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [draftedEntry()] } }),
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+
+    store.beginCreate()
+    expect(store.getSnapshot().editor).toMatchObject({ entryId: null })
+    store.closeEditor()
+    expect(store.getSnapshot().editor).toBeNull()
+
+    const outcome = await store.beginEdit('idea_x')
+    expect(outcome).toMatchObject({ ok: true })
+    expect(store.getSnapshot().editor).toMatchObject({ entryId: 'idea_x' })
+    store.dispose()
+  })
+
+  it('opens a draft through a real start-draft command for an original without one', async () => {
+    const { remote: face, calls } = remote({
+      snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [entry()] } }),
+      get: () => Promise.resolve({ ok: true as const, value: {
+        ...entry(), entryRevision: 2,
+        draft: { title: 'T', body: 'BODY', draftRevision: 2, basedOnVersionId: 'v1' },
+        receipts: entry().receipts,
+      } }),
+      execute: input => Promise.resolve({
+        ok: true as const,
+        value: receipt({ operationId: (input as { operationId: string }).operationId, draftRevision: 2 }),
+      }),
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+
+    const outcome = await store.beginEdit('source_x')
+    expect(outcome).toMatchObject({ ok: true })
+    const start = calls.find(call => call.method === 'execute')
+    const command = start?.args as { type: string; expectedEntryRevision: number }
+    expect(command.type).toBe('start-draft')
+    expect(command.expectedEntryRevision).toBe(1)
+    expect(store.getSnapshot().editor).toMatchObject({ entryId: 'source_x' })
+    store.dispose()
+  })
+
+  it('creates a new entry with the editor text and opens the seat on it', async () => {
+    const { remote: face, calls } = remote({
+      execute: (input) => {
+        const command = input as { type: string; entryId: string }
+        return Promise.resolve({
+          ok: true as const,
+          value: receipt({ entryId: command.entryId, operationId: (input as { operationId: string }).operationId, draftRevision: 1 }),
+        })
+      },
+    })
+    const store = new ContentLibraryStore(face)
+    store.beginCreate()
+
+    const outcome = await store.createEntry('Title', 'Body text')
+    expect(outcome).toMatchObject({ ok: true })
+    const create = calls.find(call => call.method === 'execute')
+    const command = create?.args as { type: string; title: string; body: string; entryId: string }
+    expect(command.type).toBe('create')
+    expect(command.title).toBe('Title')
+    expect(command.body).toBe('Body text')
+    expect(command.entryId).toMatch(/^idea-ui:/u)
+    expect(store.getSnapshot().editor?.entryId).toMatch(/^idea-ui:/u)
+    expect(store.getSnapshot().selectedEntryId).toBe(command.entryId)
+    store.dispose()
+  })
+
+  it('saves the draft with the current draft guards, then updates the view', async () => {
+    const { remote: face, calls } = remote({
+      snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [draftedEntry()] } }),
+      execute: input => Promise.resolve({
+        ok: true as const,
+        value: receipt({ operationId: (input as { operationId: string }).operationId, draftRevision: 2 }),
+      }),
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+    await store.beginEdit('idea_x')
+
+    const outcome = await store.saveDraft('New title', 'New body')
+    expect(outcome).toMatchObject({ ok: true })
+    const save = calls.find(call => call.method === 'execute')
+    const command = save?.args as {
+      type: string
+      expectedDraftRevision: number
+      basedOnVersionId: string | null
+      title: string
+      body: string
+    }
+    expect(command.type).toBe('save-draft')
+    expect(command.expectedDraftRevision).toBe(1)
+    expect(command.basedOnVersionId).toBeNull()
+    expect(command.title).toBe('New title')
+    expect(command.body).toBe('New body')
+    store.dispose()
+  })
+
+  it('re-opens a vanished draft through start-draft and then saves the local text', async () => {
+    let conflict = true
+    const { remote: face, calls } = remote({
+      snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [draftedEntry()] } }),
+      // The conflict re-read returns an original whose draft another window
+      // already committed, so the re-read view entry has no draft.
+      get: () => Promise.resolve({ ok: true as const, value: entry('idea_x') }),
+      execute: (input) => {
+        const command = input as { type: string }
+        if (command.type === 'save-draft' && conflict) {
+          conflict = false
+          return Promise.resolve({ ok: false as const, error: { code: 'revision_conflict', message: 'stale', details: {} } })
+        }
+        return Promise.resolve({
+          ok: true as const,
+          value: receipt({ operationId: (input as { operationId: string }).operationId, draftRevision: 2 }),
+        })
+      },
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+    await store.beginEdit('idea_x')
+
+    // A save hits a conflict and re-reads; the re-read shows no draft.
+    const conflicted = await store.saveDraft('Keep', 'Mine')
+    expect(conflicted).toMatchObject({ ok: false, error: { code: 'revision_conflict' } })
+    expect(store.getSnapshot().editConflict).toBe(true)
+    store.clearConflict()
+
+    // "Keep my side": the next save re-opens a draft, then writes the text.
+    const retried = await store.saveDraft('Keep', 'Mine')
+    expect(retried).toMatchObject({ ok: true })
+    const executed = calls.filter(call => call.method === 'execute')
+    expect(executed.map(call => (call.args as { type: string }).type)).toEqual(['save-draft', 'start-draft', 'save-draft'])
+    store.dispose()
+  })
+
+  it('revision conflict re-reads the entry and marks the editor conflicted', async () => {
+    let conflict = true
+    const { remote: face, calls } = remote({
+      snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [draftedEntry()] } }),
+      get: () => Promise.resolve({ ok: true as const, value: draftedEntry('idea_x') }),
+      execute: () => conflict
+        ? Promise.resolve({ ok: false as const, error: { code: 'revision_conflict', message: 'stale', details: {} } })
+        : Promise.resolve({ ok: true as const, value: receipt({ draftRevision: 2 }) }),
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+    await store.beginEdit('idea_x')
+
+    const failed = await store.saveDraft('Mine', 'Text')
+    expect(failed).toMatchObject({ ok: false, error: { code: 'revision_conflict' } })
+    expect(store.getSnapshot().editConflict).toBe(true)
+    expect(calls.filter(call => call.method === 'get')).toHaveLength(1)
+
+    store.clearConflict()
+    expect(store.getSnapshot().editConflict).toBe(false)
+    conflict = false
+    const retried = await store.saveDraft('Mine', 'Text')
+    expect(retried).toMatchObject({ ok: true })
+    store.dispose()
+  })
+
+  it('commits a version by saving then committing, and closes the editor', async () => {
+    const { remote: face, calls } = remote({
+      snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [draftedEntry()] } }),
+      execute: (input) => {
+        const command = input as { type: string }
+        if (command.type === 'save-draft') {
+          return Promise.resolve({
+            ok: true as const,
+            value: receipt({ operationId: (input as { operationId: string }).operationId, draftRevision: 2 }),
+          })
+        }
+        return Promise.resolve({
+          ok: true as const,
+          value: receipt({ operationId: (input as { operationId: string }).operationId, draftRevision: null, versionId: 'v2' }),
+        })
+      },
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+    await store.beginEdit('idea_x')
+
+    const outcome = await store.commitVersion('Final', 'Body')
+    expect(outcome).toMatchObject({ ok: true })
+    const executed = calls.filter(call => call.method === 'execute')
+    expect(executed.map(call => (call.args as { type: string }).type)).toEqual(['save-draft', 'commit-version'])
+    expect(store.getSnapshot().editor).toBeNull()
+    store.dispose()
+  })
+
+  it('issues a metadata command and retries once on a fresh revision after a conflict', async () => {
+    let conflict = true
+    const { remote: face, calls } = remote({
+      snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [draftedEntry()] } }),
+      get: () => Promise.resolve({ ok: true as const, value: draftedEntry('idea_x') }),
+      execute: (input) => {
+        if (conflict) {
+          conflict = false
+          return Promise.resolve({ ok: false as const, error: { code: 'revision_conflict', message: 'stale', details: {} } })
+        }
+        return Promise.resolve({
+          ok: true as const,
+          value: receipt({ operationId: (input as { operationId: string }).operationId, draftRevision: 1 }),
+        })
+      },
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+
+    const outcome = await store.setMetadata('idea_x', { favorite: true })
+    expect(outcome).toMatchObject({ ok: true })
+    const executed = calls.filter(call => call.method === 'execute')
+    expect(executed).toHaveLength(2)
+    expect((executed[0]?.args as { type: string }).type).toBe('metadata')
+    expect((executed[1]?.args as { type: string; favorite: boolean }).favorite).toBe(true)
+    store.dispose()
+  })
+
+  it('reconciles a lost transport via the receipt channel before reporting failure', async () => {
+    const { remote: face, calls } = remote({
+      snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [draftedEntry()] } }),
+      execute: () => Promise.reject(new Error('wire dropped')),
+      receipt: () => Promise.resolve({ ok: true as const, value: receipt({ draftRevision: 2 }) }),
+    })
+    const store = new ContentLibraryStore(face)
+    await store.refresh()
+    await store.beginEdit('idea_x')
+
+    const outcome = await store.saveDraft('T', 'B')
+    expect(outcome).toMatchObject({ ok: true })
+    expect(calls.filter(call => call.method === 'receipt')).toHaveLength(1)
     store.dispose()
   })
 })
