@@ -464,7 +464,9 @@
       "commits": [
         "987b3b62b750a706be6f1785bb923e61a897b990",
         "d43b2ac128a113f7673ac89955f996a85eceffe8",
-        "dbfc25c50ae0d9f243ca9b4f1ae65057c4967e91"
+        "dbfc25c50ae0d9f243ca9b4f1ae65057c4967e91",
+        "0c59168aaaf7f4a7dfe180bc870e58f67f23ae43",
+        "524d3011303c960eb0836718467a809a4220f745"
       ],
       "affectedUpstreamPackages": [
         "packages/compaction/compaction-basic",
@@ -472,6 +474,7 @@
         "packages/host/directory-picker-native",
         "packages/session/session-checkpoint-policy",
         "packages/shell/pwsh-local",
+        "packages/shell/tool-pwsh-persistent",
         "packages/skill/skill",
         "packages/skill/skill-filesystem",
         "packages/subprocess/subprocess",
@@ -485,14 +488,15 @@
         "packages/host/directory-picker-native/tests/win32-dialog-bindings.spec.ts",
         "packages/session/session-checkpoint-policy/**",
         "packages/shell/pwsh-local/**",
+        "packages/shell/tool-pwsh-persistent/**",
         "packages/skill/skill-filesystem/**",
         "packages/skill/skill/**",
         "packages/subprocess/subprocess-local/**",
         "packages/subprocess/subprocess/**",
         "packages/terminal/terminal-bash/**"
       ],
-      "reason": "Personal Windows workflows depend on deterministic cancellation, process-tree quiescence, checkpoint recovery, bounded filesystem behavior, and pointer-safe native picker path decoding.",
-      "whyPluginIsInsufficient": "The affected rules sit inside existing subprocess, checkpoint, terminal, Skill, and native picker owners.",
+      "reason": "Personal Windows workflows depend on deterministic cancellation, process-tree quiescence, checkpoint recovery, bounded filesystem behavior, pointer-safe native picker path decoding, and controlled PowerShell prompt readiness.",
+      "whyPluginIsInsufficient": "The affected rules sit inside existing subprocess, checkpoint, terminal, persistent shell tool, Skill, and native picker owners.",
       "whyCompatibilityAdapterIsInsufficient": "Wrapping these owners cannot repair cancellation or recovery invariants after the inner operation commits an incorrect state, or recover a native string after its COM pointer is decoded incorrectly.",
       "factOwnershipEffect": "Existing Session, subprocess, Skill, and native picker services keep their facts; no new store is introduced.",
       "dataFormatEffect": "Legacy Queue folds default missing dismissed state; native picker decoding changes no durable format, and no new incompatible persisted format is introduced here.",
@@ -500,11 +504,13 @@
       "tests": [
         "packages/host/directory-picker-native/tests/win32-dialog-bindings.spec.ts",
         "packages/session/session-checkpoint-policy/tests/session-checkpoint-policy.spec.ts",
+        "packages/shell/tool-pwsh-persistent/tests/tools.spec.ts",
+        "packages/subprocess/subprocess-local/tests/spawn.spec.ts",
         "packages/subprocess/subprocess/tests/service.spec.ts",
         "packages/skill/skill/tests/skill.spec.ts"
       ],
       "upstreamCanaryTests": [
-        "pnpm exec vitest run packages/host/directory-picker-native packages/session/session-checkpoint-policy packages/subprocess packages/skill"
+        "pnpm exec vitest run packages/host/directory-picker-native packages/session/session-checkpoint-policy packages/shell/tool-pwsh-persistent packages/subprocess packages/skill"
       ],
       "migrationPlan": "Cherry-pick or adopt upstream fixes only after Windows behavior parity is proven.",
       "rollbackPlan": "Revert each isolated reliability commit independently; do not roll back persisted user data with code.",
@@ -512,6 +518,7 @@
       "upstreamIssueOrPr": null,
       "expiryReviewDate": "2026-11-05",
       "knownMergeConflicts": [
+        "packages/shell/tool-pwsh-persistent/src/index.ts",
         "packages/subprocess/subprocess/src/index.ts",
         "packages/session/session-checkpoint-policy/tests/session-checkpoint-policy.spec.ts"
       ],
