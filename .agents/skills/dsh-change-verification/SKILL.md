@@ -11,7 +11,7 @@ Use this skill when the question is whether a change or milestone is *actually c
 
 ## Outcome
 
-Before a completion claim, produce a short evidence ledger with:
+For a bounded change, use the existing task results and report the changed promise, relevant checks, and remaining limits. Do not serialize a new ledger or receipt when those facts are already clear. For multi-owner acceptance, an explicit verification handoff, or a complex evidence claim, produce a short evidence ledger with:
 
 - the changed promise and entry path;
 - the required and deliberately omitted layers;
@@ -156,4 +156,4 @@ After this skill selects evidence:
 
 Do not use this skill to choose a feature architecture (`dsh-reuse` / plugin architecture work), to submit Queue work (`dsh-task-queue`), or to diagnose a known failing symptom (`systematic-debugging`).
 
-Produce a `VerificationReceipt` that distinguishes reused, rerun, failed, omitted, and still-unverified evidence. It never upgrades a worker or subject self-report into independent acceptance.
+At a verification handoff, provide the reused, rerun, failed, omitted, and still-unverified evidence the recipient needs. Use a structured `VerificationReceipt` only when required by that recipient or requested deliverable; direct work can report the same facts concisely. Neither format upgrades a worker or subject self-report into independent acceptance.

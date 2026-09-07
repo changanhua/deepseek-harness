@@ -10,6 +10,8 @@ DSH Feature Skill 单独使用时能做出可靠决定，但多阶段运行中�
 
 ## Decision
 
+[按需交付决策](2026-09-07-demand-driven-skill-delivery.zh.md) 取代本节的强制阶段 receipt、技术关键词触发完整流程、默认模式度量与强制代理计划。证据、归属、集成、中断和度量结算保障仍然适用。
+
 [`dsh-feature-delivery`](../../../skills/dsh-feature-delivery/SKILL.md) 拥有轻量路由、任务级 receipt、evidence freshness、并行工作准入和集成 checkpoint。Receipt 可以存在 task artifact 或 DSH durable metadata 中；它不是新的仓库 Registry，也不是必须提交的格式。没有有效 receipt 时，单个 Skill 仍可独立使用并完成最小发现。
 
 Feature 决定保持串行：Charter、reuse/current-contract ownership、Issue DAG、集成、authority 和最终 acceptance。共享合同冻结后，不同的只读 evidence question 和 implementation lane 可以并行。主代理拥有集成和完成声明；worker 拥有不重叠的文件/包和 focused check；独立 reviewer 等待稳定的集成候选。

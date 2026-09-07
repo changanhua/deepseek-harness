@@ -33,7 +33,9 @@ Distinguish a conversational answer, local discussion draft, maintained document
 
 For maintained files, resolve [checkout and package ownership](../dsh-reuse/references/checkout-ownership.md), then read the nearest instructions and the target's actual documentation scope. Personal packages can remain under `packages/`; applicable repository instructions still apply. Do not assume another checkout's ownership, pairing exclusions, or commands. Placement follows the artifact's real lifetime and audience, not a desire to evade required checks.
 
-The following steps apply to maintained documentation and only to references needed for its format. A draft is not implemented-product documentation merely because it is Markdown.
+For a focused correction to an existing maintained file, patch the affected passage and required counterpart, check its changed claims and links, and run the applicable format/pairing checks. Preserve the existing structure unless that structure is the defect. Do not repeat page classification, load every template, re-execute unrelated documented commands, or begin publication merely because one passage changed. Broader checks remain required when the changed promise or actual integration scope needs them.
+
+The following sequence is for creating or substantially restructuring maintained documentation, and only the relevant format references apply. A draft is not implemented-product documentation merely because it is Markdown.
 
 1. Read root and more-specific `AGENTS.md`, [the documentation standard](../../../docs/AGENTS.md), the target page, its source/tests, navigation owner, and bilingual record.
 2. Classify the page by one primary job and reader: product quick start, user task guide, contributor tutorial, architecture overview, package/subsystem reference, generated reference, agent instruction, decision record, or scratch.

@@ -1,6 +1,10 @@
 # DSH Skill handoff and evidence protocol
 
-Use this protocol only for multi-phase or multi-agent DSH feature work. A receipt is a task-scoped handoff, not a new repository Registry, durable format, or required committed artifact.
+Use this protocol for an actual transfer between agents or sessions, an explicitly requested structured report, or evidence whose identity cannot be established from the current task. The same agent moving between phases reuses its conversation, plan, and tool results without creating receipts. A receipt is an optional handoff representation, not a repository Registry, durable format, or prerequisite for continuing work.
+
+## Minimum useful handoff
+
+Send only what the recipient needs: accepted outcome and constraints, owned work and next action, evidence locations with the inputs they concern, and unresolved questions. An existing task message, plan, or result can carry these facts. Do not restate the same decision in several named receipts or fill irrelevant fields with boilerplate. The structures below are references for recipients that need explicit fields; they are not required output templates for every task.
 
 ## Common receipt envelope
 
@@ -22,7 +26,7 @@ remainingGaps: [<unproven or undecided facts>]
 invalidatesWhen: [<specific input changes>]
 ```
 
-The producing Skill may render this as Markdown instead of YAML, but it preserves the same fields. A later Skill verifies identity and required fields before reuse. Missing optional detail causes focused discovery, not wholesale restart.
+When a recipient requires this envelope, preserve the fields it actually consumes and enough identity to interpret the evidence. Otherwise use a compact natural-language handoff. Missing formatting is not missing evidence; verify relevant facts from their existing source and investigate only what is absent.
 
 ## Evidence record
 
@@ -45,12 +49,14 @@ observedAt: <UTC timestamp>
 validUntil: <UTC timestamp or not-applicable>
 ```
 
-Reuse a record only when its inputs, relevant environment, subject identity, and claim still match. Any `not-observed` field needed for that comparison makes the record non-reusable. A `time-bound` record requires a finite `validUntil` later than the reuse time; an `environment-bound` record requires the recorded environment to be re-established. A failed record is diagnostic evidence, not a reason to run a broader suite.
+Reuse evidence only when its relevant inputs, environment, subject identity, and claim still match. Known edit history and tool results in a continuous task can establish this without a new serialized record or digest. At a transfer, preserve the identity needed to make that comparison; unknown identity does not establish sameness. For records explicitly classified as time-bound, retain a finite validUntil; environment-bound evidence needs the relevant environment re-established. A failed record is diagnostic evidence, not a reason to run a broader suite.
+
+Immutable snapshots, digests, and pre-execution verifier plans remain required by the owning self-development, security, or persistence contract when applicable. A shorter handoff cannot relax those guarantees.
 
 ## Invalidation rules
 
 - Implementation changes invalidate focused behavior, type, build, generated, and runtime evidence that depends on those files; they do not invalidate an approved product outcome by themselves.
-- A changed dirty-diff digest or relevant-input digest invalidates source-bound evidence that consumed it. `not-observed` is not a wildcard and cannot establish sameness.
+- Changes to relevant source inputs invalidate evidence that consumed them. A digest is one way to compare those inputs; changes to unrelated files do not by themselves invalidate the result. `not-observed` is not a wildcard and cannot establish sameness.
 - Public Service, Remote, config, persistence, or package-export changes also invalidate the owning generated declarations and documentation surfaces.
 - Package-manifest changes invalidate dependency-state and module-graph evidence.
 - Profile, Bundle, Loader, Host/Client, or build-input changes invalidate composition and affected runtime evidence.
@@ -72,7 +78,7 @@ Do not run Feature acceptance for every authoring edit. Do not use Publish check
 
 ## Multi-agent handoff
 
-Every delegated lane records:
+State each delegated lane's question or exclusive ownership, needed evidence, and stopping condition in its task message or existing plan. Include dependencies and prohibited overlap where relevant. Use this optional structure only when it helps coordinate the lanes:
 
 ```yaml
 owner: <agent/role>
@@ -86,7 +92,9 @@ stopWhen: <deliverable, conflict, or missing authority>
 
 The primary agent integrates. Read-only explorers may run concurrently only for distinct questions. Implementation workers may run concurrently only after shared contracts are frozen and file ownership is disjoint. The reviewer receives the stable integrated diff, Charter/Issue receipts, and evidence ledger; it does not receive an intended verdict or rerun every fresh check by default.
 
-## Skill-specific receipts
+## Receipt names for structured handoffs
+
+These names identify different kinds of facts when a recipient needs that distinction. They do not require separate documents or a fixed sequence. Reuse one report or existing task context rather than generating parallel copies.
 
 - `FeatureCharterReceipt`: Epic outcome, actor/entry/result, hard boundaries, non-goals, required real vertical, top-level closure, and open facts only.
 - `ReuseDecisionReceipt`: direct-reuse/adapt/bridge/vendor/build decision with source evidence and rejected alternatives.
