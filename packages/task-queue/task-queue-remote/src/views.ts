@@ -6,6 +6,17 @@ export type QueueWorkStatus = 'queued' | 'starting' | 'running' | 'unknown' | 's
 export type QueueTaskState = 'queued' | 'running' | 'attention' | 'done'
 /** Terminal outcome carried only by a completed operator task. */
 export type QueueTaskOutcome = 'succeeded' | 'failed' | 'canceled' | null
+/** Provider-owned dispatch state projected over the browser transport. */
+export type QueueDispatchStateView = 'running' | 'paused' | 'faulted'
+/** Browser-safe explanation for a queued WorkItem that has not been claimed. */
+export type QueueWaitReasonView =
+  | { kind: 'dispatch-paused' }
+  | { kind: 'queue-faulted' }
+  | { kind: 'handler-unavailable' }
+  | { kind: 'global-capacity'; capacity: number }
+  | { kind: 'batch-capacity'; batchId: string; capacity: number }
+  | { kind: 'resource-capacity'; resource: string; capacity: number; used: number; requested: number }
+  | { kind: 'scheduler-turn' }
 /** Browser-safe failure facts used when an operator confirms an unknown attempt failed. */
 export interface QueueFailureInput {
   category: string
@@ -31,6 +42,7 @@ export interface QueueWorkSummaryView {
   ownerSessionId: string | null
   createdAt: string
   updatedAt: string
+  waitReason: QueueWaitReasonView | null
 }
 /** Attempt projection embedded in WorkItem detail. */
 export interface QueueWorkAttemptView {
@@ -49,7 +61,13 @@ export interface QueueWorkView extends QueueWorkSummaryView {
   result: { id: string; output: QueueJsonValue; createdAt: string } | null
 }
 /** Aggregate Queue counters and dispatch pause state. */
-export interface QueueStatsView { paused: boolean; byStatus: Record<QueueWorkStatus, number>; byKind: Record<string, number> }
+export interface QueueStatsView {
+  dispatchState: QueueDispatchStateView
+  /** Compatibility projection for existing clients; true only for an explicit pause. */
+  paused: boolean
+  byStatus: Record<QueueWorkStatus, number>
+  byKind: Record<string, number>
+}
 /** Filters accepted by the snapshot Remote method. */
 export interface QueueSnapshotInput { statuses?: QueueWorkStatus[]; limit?: number; detailId?: string }
 /** Snapshot returned by one Remote read. */

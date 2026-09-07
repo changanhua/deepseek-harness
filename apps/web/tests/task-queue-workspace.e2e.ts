@@ -104,8 +104,13 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
     page.on('requestfailed', (request) => { failedRequests.push(`${request.method()} ${request.url()}`) })
-    await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
-    await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+    try {
+      await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+    } catch (error) {
+      const body = (await page.textContent('body'))?.slice(0, 2_000) ?? ''
+      throw new Error(`Queue workspace shell did not render; pageErrors=${JSON.stringify(tripwire.pageErrors)} warnings=${JSON.stringify(tripwire.warnings)} failedRequests=${JSON.stringify(failedRequests)} body=${JSON.stringify(body)}`, { cause: error })
+    }
     agent = operationAgent(scaffold)
   }, 120_000)
 
@@ -346,6 +351,66 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
         handle.terminate()
         await handle.waitForExit()
       }
+    }
+  }, 90_000)
+
+  it('explains a staged handler wait and cancels its Batch from the workbench', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-queue-batch-wait'))
+    const registration = scaffold.ctx.taskQueue.registerHandler({
+      kind: 'operation.batch-wait-e2e@1' as never,
+      async resolveAdmission(input) { return input },
+      resources() { return [] },
+      policy() { return { maxAttempts: 1 } },
+      async prepare(resolved) { return resolved },
+      start() { return { done: new Promise(() => {}), async cancel() {} } },
+    }, { activation: 'staged' })
+    try {
+      const loaderRuntime = scaffold.ctx.loader.internal
+      if (loaderRuntime === undefined) throw new Error('Loader runtime is unavailable')
+      if (scaffold.ctx.baseUrl === undefined) throw new Error('Loader base URL is unavailable')
+      const taskQueueModule = await loaderRuntime.import('@changanhua/dsh-task-queue', scaffold.ctx.baseUrl, {}) as {
+        createVerifiedOperatorAuthority(): unknown
+      }
+      const operator = scaffold.ctx.taskQueue.forOperator(taskQueueModule.createVerifiedOperatorAuthority() as never)
+      const batchId = await operator.enqueueBatch({
+        kind: 'operation.batch-wait-e2e@1',
+        items: [
+          { title: 'Batch wait one', input: { value: 1 } },
+          { title: 'Batch wait two', input: { value: 2 } },
+        ],
+        sharedPayload: {},
+        idempotencyKey: 'operation-batch-wait-e2e-v1',
+        maxParallel: 1,
+      } as never)
+      const workIds = operator.list()
+        .filter(view => view.work.batchId === batchId)
+        .map(view => view.work.id)
+      expect(workIds).toHaveLength(2)
+
+      await page.reload({ waitUntil: 'load' })
+      await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+      await page.getByRole('button', { name: 'Queue' }).click()
+      const workspace = page.locator('section[aria-label="Task Queue"]')
+      await workspace.getByRole('button', { name: 'Refresh' }).click()
+      const first = workspace.locator('section[aria-label="Task list"] li').filter({ hasText: 'Batch wait one' })
+      await expect.poll(() => first.textContent(), { timeout: 15_000 }).toContain('Waiting for the handler to become available')
+      await first.getByRole('button').first().click()
+      await workspace.getByRole('button', { name: `View batch ${batchId}` }).click()
+      const batchRows = workspace.locator('section[aria-label="Task list"] li')
+      await expect.poll(() => batchRows.count(), { timeout: 15_000 }).toBe(2)
+
+      await workspace.getByRole('button', { name: 'Cancel unfinished work' }).click()
+      const dialog = page.getByRole('dialog', { name: 'Cancel unfinished batch work' })
+      await dialog.getByRole('checkbox').check()
+      await dialog.getByRole('button', { name: 'Confirm' }).click()
+      await waitFor(
+        () => workIds.every(id => operator.get(id).state.status === 'canceled'),
+        'Batch cancellation',
+      )
+      expect(tripwire.pageErrors).toEqual([])
+      expect(tripwire.warnings).toEqual([])
+    } finally {
+      registration()
     }
   }, 90_000)
 })

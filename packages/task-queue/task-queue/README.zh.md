@@ -20,7 +20,7 @@ Caller 在外部解析前 canonicalize intent 并计算 digest。相同 idempote
 
 ## Authority
 
-Provider 验证 initiator identity，再把 opaque `VerifiedAgentAuthority` 或 `VerifiedOperatorAuthority` 传给 `forAgent()` 或 `forOperator()`。Service Definition 不接受 caller 自报的 session id，也不暴露公共 operator facade。因此 `OperatorWorkQueue.enqueue()` 与 `enqueueBatch()` 是 host capability，而不是模型或浏览器权限。确认 Attention 记录不会裁定 unknown Work。
+Provider 验证 initiator identity，再把 opaque `VerifiedAgentAuthority` 或 `VerifiedOperatorAuthority` 传给 `forAgent()` 或 `forOperator()`。Service Definition 不接受 caller 自报的 session id，也不暴露公共 operator facade。因此 `OperatorWorkQueue.enqueue()` 与 `enqueueBatch()` 是 host capability，而不是模型或浏览器权限。进程内 `dispatchState()` 会报告 running、paused 或 faulted 的派发状态，`waitReason()` 则解释一个 queued WorkItem，而不持久化另一份 Work state。确认 Attention 记录不会裁定 unknown Work。
 
 ## Model Experience
 

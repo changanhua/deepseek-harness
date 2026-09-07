@@ -38,6 +38,51 @@ async function appendAdmission(store: WorkQueueStore, seq: number, work: ReturnT
 }
 
 describe('LocalTaskQueue v2 scheduler', () => {
+  it('explains whether queued work is waiting for a handler or a paused dispatcher', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-wait-reason-'))
+    const queueContext = new Context()
+    try {
+      const queue = new LocalTaskQueue(queueContext, { queueRoot: root })
+      const internals = queue as unknown as { ready: Promise<void>; store: WorkQueueStore }
+      await internals.ready
+      const work = admittedWork('waiting-work', 'waiting')
+      await appendAdmission(internals.store, 1, work)
+      const operator = queue.forOperator(createVerifiedOperatorAuthority()) as unknown as {
+        waitReason(id: WorkId): unknown
+        pause(): void
+      }
+
+      expect(operator.waitReason(work.id)).toEqual({ kind: 'handler-unavailable' })
+      operator.pause()
+      expect(operator.waitReason(work.id)).toEqual({ kind: 'dispatch-paused' })
+    } finally {
+      await queueContext.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('reports closing and faulted dispatch from the same provider state used by claims', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-dispatch-state-'))
+    const queueContext = new Context()
+    try {
+      const queue = new LocalTaskQueue(queueContext, { queueRoot: root })
+      const internals = queue as unknown as { ready: Promise<void>; closing: boolean; store: WorkQueueStore }
+      await internals.ready
+      const operator = queue.forOperator(createVerifiedOperatorAuthority())
+      expect(operator.dispatchState()).toBe('running')
+
+      internals.closing = true
+      expect(operator.dispatchState()).toBe('paused')
+
+      internals.closing = false
+      vi.spyOn(internals.store, 'isFaulted').mockReturnValue(true)
+      expect(operator.dispatchState()).toBe('faulted')
+    } finally {
+      await queueContext.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('admits idempotent ownerless single and Batch work through the trusted operator facade', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-operator-admission-'))
     const queueContext = new Context()

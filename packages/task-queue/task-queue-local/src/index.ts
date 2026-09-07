@@ -9,7 +9,7 @@ import {
 import type {
   AgentWorkQueue, AttemptOutcome, BatchRequest, ChangeSet, EnqueueRequest, LiveAttempt, OperatorWorkQueue,
   PreparedWork, Receipt, ResourceClaim, UnknownResolution, VerifiedAgentAuthority, VerifiedOperatorAuthority,
-  WorkFailure, WorkHandler, ResolvedWork, WorkItem, WorkKind, WorkPolicy, WorkView,
+  WorkFailure, WorkHandler, ResolvedWork, WorkItem, WorkKind, WorkPolicy, WorkView, QueueWaitReason,
 } from '@changanhua/dsh-task-queue'
 import { WorkQueueStore } from './v2-store.ts'
 
@@ -147,8 +147,10 @@ export class LocalTaskQueue extends TaskQueue {
       get: id => this.view(id),
       cancel: id => this.cancel(id),
       retry: id => this.retry(id),
+      dispatchState: () => this.dispatchState(),
+      waitReason: id => this.waitReason(id),
       pause: () => { this.paused = true },
-      resume: () => { this.paused = false; void this.pump() },
+      resume: () => { this.paused = false; this.schedulePump() },
       resolveUnknown: (id, resolution) => this.resolveUnknown(id, resolution),
       pendingAttentions: () => this.pendingAttentions(),
     }
@@ -191,9 +193,9 @@ export class LocalTaskQueue extends TaskQueue {
         throw new Error(`task queue handler registration is already active for ${String(handler.kind)}`)
       }
       entry.active = true
-      void this.pump()
+      this.schedulePump()
     }
-    if (entry.active) void this.pump()
+    if (entry.active) this.schedulePump()
     return registration
   }
 
@@ -242,7 +244,7 @@ export class LocalTaskQueue extends TaskQueue {
       ])
       await this.store.append(change)
       this.ctx.emit('task-queue/changed', { seq: change.seq, changeId: change.changeId })
-      void this.pump()
+      this.schedulePump()
       return id
     })
   }
@@ -306,7 +308,7 @@ export class LocalTaskQueue extends TaskQueue {
       const change = this.change(events)
       await this.store.append(change)
       this.ctx.emit('task-queue/changed', { seq: change.seq, changeId: change.changeId })
-      void this.pump()
+      this.schedulePump()
       return batchId
     })
   }
@@ -400,7 +402,7 @@ export class LocalTaskQueue extends TaskQueue {
     const state = this.store.current().statesByWorkId.get(id)
     if (state?.status !== 'failed') throw new Error(`manual retry requires failed WorkItem ${id}`)
     await this.commit([{ type: 'work/manual-retry-authorized', workId: id, at: new Date().toISOString() }])
-    void this.pump()
+    this.schedulePump()
   }
 
   private async resolveUnknown(id: WorkId, resolution: UnknownResolution): Promise<void> {
@@ -416,7 +418,7 @@ export class LocalTaskQueue extends TaskQueue {
       events.push(this.notification(id, state.activeAttemptId, null, work.ownerSessionId, at))
     }
     await this.commit(events)
-    void this.pump()
+    this.schedulePump()
   }
 
   private async pump(): Promise<void> {
@@ -430,7 +432,7 @@ export class LocalTaskQueue extends TaskQueue {
         if (claimed === null) break
         const settled = this.execute(claimed).finally(() => {
           this.executing.delete(claimed.attemptId)
-          void this.pump()
+          this.schedulePump()
         })
         claimed.execution.settled = settled
         void settled.catch(() => undefined)
@@ -440,7 +442,18 @@ export class LocalTaskQueue extends TaskQueue {
     }
   }
 
-  private dispatchIsPaused(): boolean { return this.paused || this.closing }
+  private dispatchState(): import('@changanhua/dsh-task-queue').QueueDispatchState {
+    if (this.store.isFaulted()) return 'faulted'
+    return this.paused || this.closing ? 'paused' : 'running'
+  }
+
+  private dispatchIsPaused(): boolean { return this.dispatchState() !== 'running' }
+
+  private schedulePump(): void {
+    void this.pump().catch((error: unknown) => {
+      this.ctx.logger.error(`task queue dispatch stopped: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
 
   private async claimNext(): Promise<{
     readonly attemptId: AttemptId
@@ -822,21 +835,43 @@ export class LocalTaskQueue extends TaskQueue {
   }
 
   private canClaim(work: WorkItem): boolean {
+    return this.blockingReason(work) === null
+  }
+
+  private waitReason(id: WorkId): QueueWaitReason | null {
+    const folded = this.store.current()
+    const work = folded.worksById.get(id)
+    const state = folded.statesByWorkId.get(id)
+    if (work === undefined || state === undefined) throw new Error(`unknown WorkItem ${id}`)
+    if (state.status !== 'queued') return null
+    return this.blockingReason(work) ?? { kind: 'scheduler-turn' }
+  }
+
+  private blockingReason(work: WorkItem): QueueWaitReason | null {
+    const dispatchState = this.dispatchState()
+    if (dispatchState === 'faulted') return { kind: 'queue-faulted' }
+    if (dispatchState === 'paused') return { kind: 'dispatch-paused' }
+    if (this.handlers.get(work.kind)?.active !== true) return { kind: 'handler-unavailable' }
+    if (this.executing.size >= this.maxConcurrent) return { kind: 'global-capacity', capacity: this.maxConcurrent }
     if (work.batchId !== null) {
       const batch = this.store.current().batchesById.get(work.batchId)
       if (batch === undefined) throw new Error(`task queue WorkItem ${work.id} references an unknown Batch`)
       const activeInBatch = [...this.executing.values()].filter(
         execution => this.store.current().worksById.get(execution.workId)?.batchId === batch.id,
       ).length
-      if (activeInBatch >= batch.maxParallel) return false
+      if (activeInBatch >= batch.maxParallel) return { kind: 'batch-capacity', batchId: batch.id, capacity: batch.maxParallel }
     }
-    return work.resources.every((claim) => {
+    for (const claim of work.resources) {
       const used = [...this.executing.values()].reduce((sum, execution) => {
         const matching = execution.claims.find(existing => existing.resource === claim.resource)
         return sum + (matching?.units ?? 0)
       }, 0)
-      return (this.resourceCapacity[claim.resource] ?? 0) >= claim.units + used
-    })
+      const capacity = this.resourceCapacity[claim.resource] ?? 0
+      if (capacity < claim.units + used) {
+        return { kind: 'resource-capacity', resource: claim.resource, capacity, used, requested: claim.units }
+      }
+    }
+    return null
   }
 
   private assertClaims(claims: readonly ResourceClaim[]): void {

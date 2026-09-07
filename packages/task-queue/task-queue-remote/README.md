@@ -6,13 +6,13 @@ Host Remote for the Queue v2 operator facade. The generated browser namespace is
 
 ## Remote methods
 
-- `snapshot(input)` returns aggregate status counters, bounded WorkItem rows, and optional selected detail from one operator read. Each row includes the four-state operator projection (`queued`, `running`, `attention`, `done`) and a terminal outcome when done. An omitted limit still accepts an empty Queue.
+- `snapshot(input)` returns aggregate status counters, bounded WorkItem rows, and optional selected detail from one operator read. Each row includes the four-state operator projection (`queued`, `running`, `attention`, `done`), the provider-derived wait reason while queued, and a terminal outcome when done. Dispatch state (`running`, `paused`, or `faulted`) comes from the Queue provider; the legacy `paused` boolean remains a compatibility projection. An omitted limit still accepts an empty Queue.
 - `cancel(id)` requests cancellation of one WorkItem.
 - `retry(id)` retries one failed WorkItem.
 - `resolveUnknown(id, resolution)` applies one restricted operator decision to an unknown attempt. Browser input can authorize another attempt or confirm failure; it cannot reconcile live ownership or supply an unverified success result.
 - `pause()` and `resume()` control dispatch without disabling admission or operator actions.
 
-The `./views` export owns JSON-compatible browser types: `QueueWorkSummaryView`, `QueueWorkAttemptView`, `QueueWorkView`, `QueueStatsView`, `QueueSnapshotInput`, `QueueSnapshotView`, and `QueueUnknownResolutionInput`. Result output is canonicalized before it crosses the Remote transport.
+The `./views` export owns JSON-compatible browser types: `QueueWorkSummaryView`, `QueueWaitReasonView`, `QueueWorkAttemptView`, `QueueWorkView`, `QueueStatsView`, `QueueSnapshotInput`, `QueueSnapshotView`, and `QueueUnknownResolutionInput`. Result output is canonicalized before it crosses the Remote transport.
 
 ## Consumers
 

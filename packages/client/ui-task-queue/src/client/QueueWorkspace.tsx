@@ -19,7 +19,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { JsonTreeLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
-  QueueJsonValue, QueueTaskState, QueueWorkSummaryView, QueueWorkView,
+  QueueJsonValue, QueueTaskState, QueueWaitReasonView, QueueWorkSummaryView, QueueWorkView,
 } from '@changanhua/dsh-task-queue-remote/views'
 import type { QueueWorkspaceProps } from './contract/slots.ts'
 import type { QueueActionResult } from './store.ts'
@@ -31,18 +31,17 @@ import type { QueueAge, QueueFilter } from './view-model.ts'
 import css from './QueueWorkspace.module.css'
 
 /** One in-flight mutation, scoped to its work ID so other rows stay usable. */
-type PendingKind = 'cancel' | 'retry' | 'authorize-retry' | 'confirm-failed'
+type PendingKind = 'cancel' | 'retry' | 'authorize-retry' | 'confirm-failed' | 'cancel-batch' | 'retry-batch'
 type PendingAction = {
   workId: string
   kind: PendingKind
 } | null
 
 /** The dialog waiting on a checked risk acknowledgement. */
-type ConfirmationKind = 'cancel' | 'authorize-retry'
-type Confirmation = {
-  workId: string
-  kind: ConfirmationKind
-} | null
+type Confirmation =
+  | { workId: string; kind: 'cancel' | 'authorize-retry' }
+  | { batchId: string; kind: 'cancel-batch' }
+  | null
 
 /** A mutation failure that stays visible beside its row and in the detail. */
 type ActionError = { workId: string; message: string } | null
@@ -99,11 +98,34 @@ function isQueueArray(value: QueueJsonValue): value is readonly QueueJsonValue[]
   return Array.isArray(value)
 }
 
+function isQueueObject(value: QueueJsonValue): value is { readonly [key: string]: QueueJsonValue } {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function stringField(value: { readonly [key: string]: QueueJsonValue }, key: string): string | null {
+  const field = value[key]
+  return typeof field === 'string' ? field : null
+}
+
+/** Describe a scheduler-owned wait without presenting it as durable Work state. */
+function waitReasonLabel(reason: QueueWaitReasonView, t: QueueWorkspaceProps['t']): string {
+  switch (reason.kind) {
+    case 'dispatch-paused': return t('wait.dispatchPaused')
+    case 'queue-faulted': return t('wait.queueFaulted')
+    case 'handler-unavailable': return t('wait.handlerUnavailable')
+    case 'global-capacity': return t('wait.globalCapacity', { capacity: reason.capacity })
+    case 'batch-capacity': return t('wait.batchCapacity', { capacity: reason.capacity })
+    case 'resource-capacity': return t('wait.resourceCapacity', reason)
+    case 'scheduler-turn': return t('wait.schedulerTurn')
+  }
+}
+
 /** Render the operator workspace over one shared QueueStore. */
 export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
   const snapshot = useSyncExternalStore(queue.subscribe, queue.getSnapshot, queue.getSnapshot)
   const [filter, setFilter] = useState<QueueFilter>('all')
   const [query, setQuery] = useState('')
+  const [batchFilter, setBatchFilter] = useState<string | null>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [confirmation, setConfirmation] = useState<Confirmation>(null)
   const [failureReason, setFailureReason] = useState('')
@@ -122,15 +144,23 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
   }, [snapshot.selectedId])
 
   const rows = useMemo(
-    () => projectQueueRows(snapshot.rows, filter, query),
-    [snapshot.rows, filter, query],
+    () => projectQueueRows(snapshot.rows, filter, query, batchFilter),
+    [snapshot.rows, filter, query, batchFilter],
   )
   const counts = useMemo(() => countQueueRows(snapshot.rows), [snapshot.rows])
   const nowMs = Date.now()
   const detail = snapshot.detail
   const confirmationRow = confirmation === null
     ? null
-    : snapshot.rows.find(row => row.id === confirmation.workId) ?? null
+    : 'workId' in confirmation
+      ? snapshot.rows.find(row => row.id === confirmation.workId) ?? null
+      : null
+  const batchRows = batchFilter === null ? [] : snapshot.rows.filter(row => row.batchId === batchFilter)
+  const cancelableBatchIds = batchRows
+    .filter(row => row.state === 'queued' || row.state === 'running')
+    .map(row => row.id)
+  const failedBatchIds = batchRows.filter(row => row.outcome === 'failed').map(row => row.id)
+  const batchActionId = batchFilter === null ? null : `batch:${batchFilter}`
 
   const isPending = (workId: string): boolean => pendingAction?.workId === workId
 
@@ -162,7 +192,7 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
     }
   }
 
-  function openConfirmation(workId: string, kind: ConfirmationKind): void {
+  function openConfirmation(workId: string, kind: 'cancel' | 'authorize-retry'): void {
     setAcknowledged(false)
     setConfirmation({ workId, kind })
   }
@@ -174,12 +204,16 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
 
   function confirmConfirmation(): void {
     if (confirmation === null) return
-    const { workId, kind } = confirmation
     setAcknowledged(false)
     setConfirmation(null)
-    if (kind === 'cancel') {
+    if (confirmation.kind === 'cancel-batch') {
+      const workId = `batch:${confirmation.batchId}`
+      void act(workId, 'cancel-batch', () => queue.cancelMany(cancelableBatchIds), t('feedback.batchCanceled'))
+    } else if (confirmation.kind === 'cancel') {
+      const { workId } = confirmation
       void act(workId, 'cancel', () => queue.cancel(workId), t('feedback.canceled'))
     } else {
+      const { workId } = confirmation
       void act(
         workId,
         'authorize-retry',
@@ -318,7 +352,47 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
     return null
   }
 
-  function renderResult(output: QueueJsonValue): ReactNode {
+  function renderResult(kind: string, output: QueueJsonValue): ReactNode {
+    if (isQueueObject(output) && kind === 'agent.run@1') {
+      const summary = stringField(output, 'summary')
+      const assistantText = stringField(output, 'assistantText')
+      if (summary !== null || assistantText !== null) return (
+        <div className={css.resultCard}>
+          {summary !== null && <p>{summary}</p>}
+          {assistantText !== null && <pre>{assistantText}</pre>}
+        </div>
+      )
+    }
+    if (isQueueObject(output) && kind === 'operation.run@1') {
+      const summary = stringField(output, 'summary')
+      const stdout = output.stdout
+      const stdoutText = stdout !== undefined && isQueueObject(stdout) ? stringField(stdout, 'text') : null
+      if (summary !== null || stdoutText !== null) return (
+        <div className={css.resultCard}>
+          {summary !== null && <p>{summary}</p>}
+          {stdoutText !== null && <pre>{stdoutText}</pre>}
+        </div>
+      )
+    }
+    if (isQueueObject(output) && kind === 'image.generate@1') {
+      const provider = stringField(output, 'provider')
+      const model = stringField(output, 'model')
+      const rawAttachments = output.attachments
+      const attachments = rawAttachments !== undefined && isQueueArray(rawAttachments) ? rawAttachments : []
+      if (provider !== null || model !== null || attachments.length > 0) return (
+        <div className={css.resultCard}>
+          <p>{[provider, model].filter(value => value !== null).join(' · ')}</p>
+          <ul>
+            {attachments.map((attachment) => {
+              const label = isQueueObject(attachment)
+                ? stringField(attachment, 'name') ?? stringField(attachment, 'attachmentId') ?? t('result.imageAttachment')
+                : t('result.imageAttachment')
+              return <li key={isQueueObject(attachment) ? stringField(attachment, 'attachmentId') ?? label : JSON.stringify(attachment)}>{label}</li>
+            })}
+          </ul>
+        </div>
+      )
+    }
     if (output !== null && typeof output === 'object') {
       return (
         <JsonTree
@@ -350,6 +424,17 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
             <div><span>{t('list.columns.attempt')}</span><b>{view.attemptCount}/{view.maxAttempts}</b></div>
             <div><span>{t('detail.created')}</span><b>{formatDateTime(view.createdAt)}</b></div>
             <div><span>{t('detail.updated')}</span><b>{formatDateTime(view.updatedAt)}</b></div>
+            {view.batchId !== null && (
+              <div>
+                <span>{t('detail.batch')}</span>
+                <Button size="sm" variant="outline" onClick={() => { setBatchFilter(view.batchId) }}>
+                  {t('batch.view', { id: view.batchId })}
+                </Button>
+              </div>
+            )}
+            {view.waitReason !== null && (
+              <div><span>{t('detail.waitReason')}</span><b>{waitReasonLabel(view.waitReason, t)}</b></div>
+            )}
           </div>
         </section>
         {view.failure !== null && (
@@ -397,7 +482,7 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
         </section>
         <section className={css.section} aria-label={t('detail.result')}>
           <h4 className={css.sectionLabel}>{t('detail.result')}</h4>
-          {view.result === null ? <p>{t('detail.resultNone')}</p> : renderResult(view.result.output)}
+          {view.result === null ? <p>{t('detail.resultNone')}</p> : renderResult(view.kind, view.result.output)}
         </section>
         <details className={css.advanced}>
           <summary>{t('detail.advanced')}</summary>
@@ -408,15 +493,20 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
   }
 
   const isRetryConfirmation = confirmation?.kind === 'authorize-retry'
-  const confirmationTitle = isRetryConfirmation ? t('attention.retryTitle') : t('attention.cancelTitle')
+  const isBatchCancelConfirmation = confirmation?.kind === 'cancel-batch'
+  const confirmationTitle = isRetryConfirmation
+    ? t('attention.retryTitle')
+    : isBatchCancelConfirmation ? t('batch.cancelTitle') : t('attention.cancelTitle')
   const confirmationDescription = isRetryConfirmation
     ? t('attention.retryDescription', { title: confirmationRow?.title ?? '' })
-    : confirmationRow?.state === 'queued'
-      ? t('attention.cancelQueuedDescription')
-      : t('attention.cancelRunningDescription')
+    : isBatchCancelConfirmation
+      ? t('batch.cancelDescription', { count: cancelableBatchIds.length })
+      : confirmationRow?.state === 'queued'
+        ? t('attention.cancelQueuedDescription')
+        : t('attention.cancelRunningDescription')
   const confirmationAcknowledge = isRetryConfirmation
     ? t('attention.retryAcknowledge')
-    : t('attention.cancelAcknowledge')
+    : isBatchCancelConfirmation ? t('batch.cancelAcknowledge') : t('attention.cancelAcknowledge')
 
   return (
     <section className={css.workspace} aria-label={t('view.title')}>
@@ -459,6 +549,29 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
               onChange={(event) => { setQuery(event.target.value) }}
             />
           </div>
+          {batchFilter !== null && batchActionId !== null && (
+            <div className={css.batchToolbar} aria-label={t('batch.actions')}>
+              <span>{t('batch.current', { id: batchFilter, count: batchRows.length })}</span>
+              <Button size="sm" variant="outline" onClick={() => { setBatchFilter(null) }}>{t('batch.clear')}</Button>
+              <Button
+                size="sm"
+                disabled={pendingAction !== null || failedBatchIds.length === 0}
+                onClick={() => { void act(batchActionId, 'retry-batch', () => queue.retryMany(failedBatchIds), t('feedback.batchRetried')) }}
+              >
+                {t('batch.retryFailed')}
+              </Button>
+              <Button
+                size="sm"
+                disabled={pendingAction !== null || cancelableBatchIds.length === 0}
+                onClick={() => { setAcknowledged(false); setConfirmation({ batchId: batchFilter, kind: 'cancel-batch' }) }}
+              >
+                {t('batch.cancelUnfinished')}
+              </Button>
+              {actionError !== null && actionError.workId === batchActionId && (
+                <p className={css.rowError} role="alert">{actionError.message}</p>
+              )}
+            </div>
+          )}
           {rows.length === 0 ? renderEmpty() : (
             <ul className={css.rows}>
               {rows.map(row => (
@@ -478,6 +591,9 @@ export function QueueWorkspace({ queue, t }: QueueWorkspaceProps) {
                     <span className={css.rowOwner}>{row.ownerSessionId ?? t('detail.ownerNone')}</span>
                     <span className={css.rowAttempt}>{t('list.columns.attempt')} {row.attemptCount}/{row.maxAttempts}</span>
                     <span className={css.rowAge}>{ageLabel(queueAge(row.updatedAt, nowMs), t)}</span>
+                    {row.waitReason !== null && (
+                      <span className={css.rowWait}>{waitReasonLabel(row.waitReason, t)}</span>
+                    )}
                   </button>
                   <div className={css.rowActions}>{rowAction(row)}</div>
                   {actionError !== null && actionError.workId === row.id && (

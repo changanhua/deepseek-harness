@@ -27,6 +27,7 @@ const t = (key: string, params?: Record<string, unknown>): string => {
 function makeSnapshot(overrides: Partial<QueueSnapshot> = {}): QueueSnapshot {
   return {
     stats: {
+      dispatchState: 'running',
       paused: false,
       byStatus: { queued: 0, starting: 0, running: 0, unknown: 0, succeeded: 0, failed: 0, canceled: 0 },
       byKind: {},
@@ -56,6 +57,7 @@ function row(partial: Partial<QueueWorkSummaryView> & { id: string }): QueueWork
     ownerSessionId: null,
     createdAt: '2026-08-27T09:00:00.000Z',
     updatedAt: '2026-08-27T09:00:00.000Z',
+    waitReason: null,
     ...partial,
   }
 }
@@ -67,11 +69,15 @@ function makeQueue(
     cancel?: () => Promise<{ ok: boolean; message: string }>
     retry?: () => Promise<{ ok: boolean; message: string }>
     resolveUnknown?: () => Promise<{ ok: boolean; message: string }>
+    cancelMany?: () => Promise<{ ok: boolean; message: string }>
+    retryMany?: () => Promise<{ ok: boolean; message: string }>
   } = {},
 ) {
   const cancel = overrides.cancel ?? vi.fn(async () => ({ ok: true, message: 'ok' }))
   const retry = overrides.retry ?? vi.fn(async () => ({ ok: true, message: 'ok' }))
   const resolveUnknown = overrides.resolveUnknown ?? vi.fn(async () => ({ ok: true, message: 'ok' }))
+  const cancelMany = overrides.cancelMany ?? vi.fn(async () => ({ ok: true, message: 'ok' }))
+  const retryMany = overrides.retryMany ?? vi.fn(async () => ({ ok: true, message: 'ok' }))
   const queue = {
     subscribe: vi.fn(() => () => {}),
     getSnapshot: vi.fn(() => snapshot),
@@ -80,8 +86,10 @@ function makeQueue(
     cancel,
     retry,
     resolveUnknown,
+    cancelMany,
+    retryMany,
   } as unknown as QueueStore
-  return { queue, cancel, retry, resolveUnknown }
+  return { queue, cancel, retry, resolveUnknown, cancelMany, retryMany }
 }
 
 function renderWorkspace(snapshot: QueueSnapshot, overrides: Parameters<typeof makeQueue>[1] = {}) {
@@ -109,6 +117,83 @@ const attentionDetail: QueueWorkView = {
 }
 
 describe('QueueWorkspace', () => {
+  it('explains the current resource wait on a queued row', () => {
+    const waiting = row({
+      id: 'waiting-1', title: 'Waiting worker',
+      waitReason: { kind: 'resource-capacity', resource: 'agent-run', capacity: 1, used: 1, requested: 1 },
+    })
+
+    renderWorkspace(makeSnapshot({ rows: [waiting] }))
+
+    expect(screen.getByText('等待资源 agent-run（已用 1/1，请求 1）')).toBeTruthy()
+  })
+
+  it('focuses one batch and operates on its failed and unfinished work', async () => {
+    const queued = row({ id: 'queued-1', title: 'Queued batch work', batchId: 'batch-1' })
+    const running = row({ id: 'running-1', title: 'Running batch work', batchId: 'batch-1', state: 'running', status: 'running' })
+    const failed = row({ id: 'failed-1', title: 'Failed batch work', batchId: 'batch-1', state: 'done', status: 'failed', outcome: 'failed' })
+    const other = row({ id: 'other-1', title: 'Other batch work', batchId: 'batch-2' })
+    const detail: QueueWorkView = { ...queued, failure: null, attempts: [], result: null }
+    const cancelMany = vi.fn(async () => ({ ok: true, message: 'ok' }))
+    const retryMany = vi.fn(async () => ({ ok: true, message: 'ok' }))
+    renderWorkspace(makeSnapshot({
+      rows: [queued, running, failed, other], selectedId: queued.id, detail,
+    }), { cancelMany, retryMany })
+
+    fireEvent.click(screen.getByRole('button', { name: '查看批次 batch-1' }))
+    expect(screen.queryByText('Other batch work')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '重试失败任务' }))
+    await waitFor(() => { expect(retryMany).toHaveBeenCalledWith(['failed-1']) })
+
+    fireEvent.click(screen.getByRole('button', { name: '取消未完成任务' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('checkbox'))
+    fireEvent.click(within(dialog).getByRole('button', { name: t('dialog.confirm') }))
+    await waitFor(() => { expect(cancelMany).toHaveBeenCalledWith(['queued-1', 'running-1']) })
+  })
+
+  it('renders an agent result as readable output instead of a JSON tree', () => {
+    const work = row({
+      id: 'agent-1', title: 'Agent work', kind: 'agent.run@1', state: 'done', status: 'succeeded', outcome: 'succeeded',
+    })
+    const detail: QueueWorkView = {
+      ...work,
+      failure: null,
+      attempts: [],
+      result: {
+        id: 'result-1',
+        output: { summary: 'dsh worker completed with semantic result', assistantText: 'Implemented and verified the change.' },
+        createdAt: '2026-08-27T09:05:00.000Z',
+      },
+    }
+
+    renderWorkspace(makeSnapshot({ rows: [work], selectedId: work.id, detail }))
+
+    const result = screen.getByRole('region', { name: t('detail.result') })
+    expect(within(result).getByText('dsh worker completed with semantic result')).toBeTruthy()
+    expect(within(result).getByText('Implemented and verified the change.')).toBeTruthy()
+    expect(within(result).queryByText('summary:')).toBeNull()
+  })
+
+  it('falls back to the JSON tree when a known WorkKind has an unfamiliar result shape', () => {
+    const work = row({
+      id: 'agent-new-result', title: 'Agent work', kind: 'agent.run@1', state: 'done', status: 'succeeded', outcome: 'succeeded',
+    })
+    const detail: QueueWorkView = {
+      ...work,
+      failure: null,
+      attempts: [],
+      result: { id: 'result-new', output: { newField: 'preserved' }, createdAt: '2026-08-27T09:05:00.000Z' },
+    }
+
+    renderWorkspace(makeSnapshot({ rows: [work], selectedId: work.id, detail }))
+
+    const result = screen.getByRole('region', { name: t('detail.result') })
+    expect(within(result).getByText('newField:')).toBeTruthy()
+    expect(within(result).getByText('"preserved"')).toBeTruthy()
+  })
+
   it('orders attention before running, queued, and done and exposes four filter counts', () => {
     const rows = [
       row({ id: 'done-old', title: 'Done old', state: 'done', outcome: 'failed', updatedAt: '2026-08-27T08:00:00.000Z' }),

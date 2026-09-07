@@ -4,18 +4,18 @@ import { canonicalJson, createVerifiedOperatorAuthority } from '@changanhua/dsh-
 import type { OperatorWorkQueue, UnknownResolution, WorkView } from '@changanhua/dsh-task-queue'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  QueueJsonValue, QueueSnapshotInput, QueueSnapshotView, QueueStatsView, QueueUnknownResolutionInput,
-  QueueTaskOutcome, QueueTaskState, QueueWorkSummaryView, QueueWorkView,
+  QueueDispatchStateView, QueueJsonValue, QueueSnapshotInput, QueueSnapshotView, QueueStatsView, QueueUnknownResolutionInput,
+  QueueTaskOutcome, QueueTaskState, QueueWaitReasonView, QueueWorkSummaryView, QueueWorkView,
 } from './views.ts'
 
 export type {
-  QueueSnapshotInput, QueueSnapshotView, QueueStatsView, QueueUnknownResolutionInput, QueueFailureInput,
-  QueueTaskOutcome, QueueTaskState, QueueWorkAttemptView, QueueWorkStatus, QueueWorkSummaryView, QueueWorkView,
+  QueueSnapshotInput, QueueSnapshotView, QueueStatsView, QueueUnknownResolutionInput, QueueFailureInput, QueueDispatchStateView,
+  QueueTaskOutcome, QueueTaskState, QueueWaitReasonView, QueueWorkAttemptView, QueueWorkStatus, QueueWorkSummaryView, QueueWorkView,
 } from './views.ts'
 /** Reserved Remote plugin configuration. */
 export type Config = Record<string, never>
 
-function summary(view: WorkView): QueueWorkSummaryView {
+function summary(view: WorkView, waitReason: QueueWaitReasonView | null): QueueWorkSummaryView {
   const presentation = present(view)
   return {
     id: view.work.id, kind: view.work.kind, title: view.work.title, status: view.state.status,
@@ -23,6 +23,7 @@ function summary(view: WorkView): QueueWorkSummaryView {
     attemptCount: view.state.attemptCount, maxAttempts: view.work.policy.maxAttempts,
     batchId: view.work.batchId, ownerSessionId: view.work.ownerSessionId,
     createdAt: view.work.createdAt, updatedAt: view.state.updatedAt,
+    waitReason,
   }
 }
 /** Project detailed durable states into the four states used by the MVP operator UI. */
@@ -37,9 +38,9 @@ function present(view: WorkView): { state: QueueTaskState; outcome: QueueTaskOut
     case 'canceled': return { state: 'done', outcome: 'canceled' }
   }
 }
-function detail(view: WorkView): QueueWorkView {
+function detail(view: WorkView, waitReason: QueueWaitReasonView | null): QueueWorkView {
   return {
-    ...summary(view),
+    ...summary(view, waitReason),
     failure: view.state.failure,
     attempts: view.attempts.map(attempt => ({
       id: attempt.id, ordinal: attempt.ordinal, status: attempt.status, startedAt: attempt.startedAt,
@@ -53,11 +54,11 @@ function detail(view: WorkView): QueueWorkView {
       : { id: view.result.id, output: remoteJson(view.result.output), createdAt: view.result.createdAt },
   }
 }
-function stats(views: readonly WorkView[], paused: boolean): QueueStatsView {
+function stats(views: readonly WorkView[], dispatchState: QueueDispatchStateView): QueueStatsView {
   const byStatus: QueueStatsView['byStatus'] = { queued: 0, starting: 0, running: 0, unknown: 0, succeeded: 0, failed: 0, canceled: 0 }
   const byKind: Record<string, number> = {}
   for (const view of views) { byStatus[view.state.status] += 1; byKind[view.work.kind] = (byKind[view.work.kind] ?? 0) + 1 }
-  return { paused, byStatus, byKind }
+  return { dispatchState, paused: dispatchState === 'paused', byStatus, byKind }
 }
 
 function unknownResolution(input: unknown): UnknownResolution {
@@ -94,7 +95,6 @@ function unknownResolution(input: unknown): UnknownResolution {
 export class TaskQueueRemoteService extends TypertRemoteService {
   static inject = ['taskQueue']
   private readonly queue: OperatorWorkQueue
-  private paused = false
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'taskQueueRemote', { namespace: 'taskQueue' })
     void config
@@ -117,9 +117,13 @@ export class TaskQueueRemoteService extends TypertRemoteService {
     const limit = input.limit === undefined ? Math.max(selected.length, 1) : input.limit
     if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('Queue snapshot limit must be a positive integer')
     const requested = input.detailId === undefined ? null : all.find(view => view.work.id === input.detailId) ?? null
+    const waitReason = (view: WorkView): QueueWaitReasonView | null => view.state.status === 'queued'
+      ? this.queue.waitReason(view.work.id)
+      : null
     return {
-      stats: stats(all, this.paused), rows: selected.slice(0, limit).map(summary),
-      detail: requested === null ? null : detail(requested),
+      stats: stats(all, this.queue.dispatchState()),
+      rows: selected.slice(0, limit).map(view => summary(view, waitReason(view))),
+      detail: requested === null ? null : detail(requested, waitReason(requested)),
     }
   }
   /**
@@ -146,10 +150,10 @@ export class TaskQueueRemoteService extends TypertRemoteService {
   }
   /** Pause dispatch while retaining admissions and operator actions. */
   @Remote('pause')
-  pause(): void { this.queue.pause(); this.paused = true }
+  pause(): void { this.queue.pause() }
   /** Resume dispatch. */
   @Remote('resume')
-  resume(): void { this.queue.resume(); this.paused = false }
+  resume(): void { this.queue.resume() }
 }
 /** Validate and copy a result output before it crosses the JSON Remote boundary. */
 function remoteJson(value: unknown): QueueJsonValue { return JSON.parse(canonicalJson(value)) as QueueJsonValue }

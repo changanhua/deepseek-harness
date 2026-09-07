@@ -51,6 +51,19 @@ export function foldChanges(changes: readonly ChangeSet[]): FoldedQueue {
  * @param change - Next consecutive ChangeSet.
  */
 export function applyChange(folded: FoldedQueue, change: ChangeSet): void {
+  const next = projectChange(folded, change)
+  INTERNAL.set(folded, requireInternal(next))
+}
+
+/**
+ * Validate and fold one ChangeSet into a new projection without publishing it
+ * through the supplied projection. Durable stores use this to stage a change
+ * until its bytes have been synced.
+ * @param folded - Current projection returned by foldChanges.
+ * @param change - Next consecutive ChangeSet.
+ * @returns A new projection containing the validated change.
+ */
+export function projectChange(folded: FoldedQueue, change: ChangeSet): FoldedQueue {
   const current = requireInternal(folded)
   if (!Number.isSafeInteger(change.seq) || change.seq !== current.lastSeq + 1) throw new Error(`fold: seq ${change.seq} out of order; expected ${current.lastSeq + 1}`)
   if (change.changeId === '' || current.changeIds.has(change.changeId)) throw new Error(`fold: duplicate or empty changeId ${change.changeId}`)
@@ -63,7 +76,7 @@ export function applyChange(folded: FoldedQueue, change: ChangeSet): void {
   validateChangeSetOutboxes(current, next, durable)
   next.lastSeq = durable.seq
   next.changeIds.add(durable.changeId)
-  INTERNAL.set(folded, next)
+  return createProjection(next)
 }
 
 /**

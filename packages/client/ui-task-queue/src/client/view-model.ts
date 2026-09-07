@@ -44,15 +44,18 @@ function matchesFilter(row: QueueWorkSummaryView, filter: QueueFilter): boolean 
  * @param rows - snapshot rows to project.
  * @param filter - which state set to keep.
  * @param query - case-insensitive title/id search; empty matches everything.
+ * @param batchId - optional Batch identity to keep.
  * @returns a new array in display order.
  */
 export function projectQueueRows(
   rows: readonly QueueWorkSummaryView[],
   filter: QueueFilter,
   query: string,
+  batchId: string | null = null,
 ): QueueWorkSummaryView[] {
   const needle = query.trim().toLowerCase()
-  const filtered = rows.filter(row => matchesFilter(row, filter)
+  const filtered = rows.filter(row => (batchId === null || row.batchId === batchId)
+    && matchesFilter(row, filter)
     && (needle === '' || row.title.toLowerCase().includes(needle) || row.id.toLowerCase().includes(needle)))
   return filtered.slice().sort((left, right) => {
     const rank = STATE_RANK[left.state] - STATE_RANK[right.state]

@@ -80,6 +80,17 @@
   flex-wrap: wrap;
 }
 
+.batchToolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+
 .count {
   margin-left: 5px;
   font-weight: 700;
@@ -191,6 +202,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.rowWait {
+  flex-basis: 100%;
+  padding-left: 20px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+}
+
 .rowActions {
   display: flex;
   align-items: center;
@@ -203,6 +221,29 @@
   color: var(--dsw-alias-state-error-primary);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.resultCard p {
+  margin: 0 0 8px;
+}
+
+.resultCard pre {
+  /* This scrolling l2 result surface owns the matching scrollbar elevation. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+.resultCard ul {
+  margin: 0;
+  padding-left: 20px;
 }
 
 .detailHead {

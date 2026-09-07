@@ -20,6 +20,7 @@ function makeRemoteFace() {
       ok: true as const,
       value: {
         stats: {
+          dispatchState: 'running',
           paused: false,
           byStatus: {
             queued: 0, starting: 0, running: 0, unknown: 0,

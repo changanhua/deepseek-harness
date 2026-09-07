@@ -14,11 +14,11 @@ export type {
   OperatorWorkQueue, PreparedWork, PrepareContext, QueueFoldSnapshot, Receipt, ResolvedWork, ResourceClaim,
   SideEffectState, StartContext, UnknownResolution, VerifiedAgentAuthority, VerifiedOperatorAuthority,
   WorkAttempt, WorkFailure, WorkHandler, WorkInput, WorkItem, WorkKind, WorkKindDefinition,
-  WorkOutput, WorkPolicy, WorkResult, WorkState, WorkStatus, WorkView,
+  WorkOutput, WorkPolicy, WorkResult, WorkState, WorkStatus, WorkView, QueueDispatchState, QueueWaitReason,
 } from './types.ts'
 export { AttentionId, AttemptId, BatchId, NotificationId, ResultId, WorkId } from './brand.ts'
 export { createVerifiedAgentAuthority, createVerifiedOperatorAuthority, assertVerifiedAgentAuthority, assertVerifiedOperatorAuthority } from './authority.ts'
-export { applyChange, foldChanges, hydrateFoldedQueue, lookupReceipt, snapshotFoldedQueue } from './fold.ts'
+export { applyChange, foldChanges, hydrateFoldedQueue, lookupReceipt, projectChange, snapshotFoldedQueue } from './fold.ts'
 export type { FoldedQueue } from './fold.ts'
 export { canAutoRetry, isTerminalState } from './transitions.ts'
 export { canonicalJson, canonicalQueueState, digestIntent } from './canonical.ts'

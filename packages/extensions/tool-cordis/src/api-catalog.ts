@@ -5093,7 +5093,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'OperatorWorkQueue',
-    declaration: 'export interface OperatorWorkQueue {\n    enqueue<K extends WorkKind>(request: EnqueueRequest<K>): Promise<WorkId>;\n    enqueueBatch<K extends WorkKind>(request: BatchRequest<K>): Promise<BatchId>;\n    list(): readonly WorkView[];\n    get(id: WorkId): WorkView;\n    cancel(id: WorkId): Promise<void>;\n    retry(id: WorkId): Promise<void>;\n    pause(): void;\n    resume(): void;\n    resolveUnknown(workId: WorkId, resolution: UnknownResolution): Promise<void>;\n    pendingAttentions(): readonly Attention[];\n}',
+    declaration: 'export interface OperatorWorkQueue {\n    enqueue<K extends WorkKind>(request: EnqueueRequest<K>): Promise<WorkId>;\n    enqueueBatch<K extends WorkKind>(request: BatchRequest<K>): Promise<BatchId>;\n    list(): readonly WorkView[];\n    get(id: WorkId): WorkView;\n    cancel(id: WorkId): Promise<void>;\n    retry(id: WorkId): Promise<void>;\n    dispatchState(): QueueDispatchState;\n    waitReason(id: WorkId): QueueWaitReason | null;\n    pause(): void;\n    resume(): void;\n    resolveUnknown(workId: WorkId, resolution: UnknownResolution): Promise<void>;\n    pendingAttentions(): readonly Attention[];\n}',
   },
   {
     name: 'PathRule',
@@ -5230,6 +5230,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'QueueAttemptIdRef',
     declaration: 'export type QueueAttemptIdRef = Branded<\'DeliveryQueueAttemptIdRef\'>;',
+  },
+  {
+    name: 'QueueDispatchState',
+    declaration: 'export type QueueDispatchState = \'running\' | \'paused\' | \'faulted\';',
+  },
+  {
+    name: 'QueueWaitReason',
+    declaration: 'export type QueueWaitReason = {\n    readonly kind: \'dispatch-paused\';\n} | {\n    readonly kind: \'queue-faulted\';\n} | {\n    readonly kind: \'handler-unavailable\';\n} | {\n    readonly kind: \'global-capacity\';\n    readonly capacity: number;\n} | {\n    readonly kind: \'batch-capacity\';\n    readonly batchId: BatchId;\n    readonly capacity: number;\n} | {\n    readonly kind: \'resource-capacity\';\n    readonly resource: string;\n    readonly capacity: number;\n    readonly used: number;\n    readonly requested: number;\n} | {\n    readonly kind: \'scheduler-turn\';\n};',
   },
   {
     name: 'QueueWorkIdRef',

@@ -6,13 +6,13 @@ Queue v2 operator facade 的宿主 Remote。生成的浏览器命名空间是 `c
 
 ## Remote 方法
 
-- `snapshot(input)` 通过一次 operator 读取返回聚合状态计数、有限 WorkItem 行与可选的所选详情。每行都包含四状态 operator 投影（`queued`、`running`、`attention`、`done`）和已结束时的 outcome。未传 limit 时也能接受空 Queue。
+- `snapshot(input)` 通过一次 operator 读取返回聚合状态计数、有限 WorkItem 行与可选的所选详情。每行都包含四状态 operator 投影（`queued`、`running`、`attention`、`done`）、queued 期间由 provider 推导的等待原因，以及已结束时的 outcome。派发状态（`running`、`paused` 或 `faulted`）来自 Queue provider；旧有 `paused` boolean 保留为兼容投影。未传 limit 时也能接受空 Queue。
 - `cancel(id)` 请求取消一个 WorkItem。
 - `retry(id)` 重试一个失败 WorkItem。
 - `resolveUnknown(id, resolution)` 对 unknown attempt 应用受限 operator 决定。浏览器输入可以授权另一次 Attempt或确认失败；不能 reconcile 实时 ownership，也不能提供未经验证的成功 result。
 - `pause()` 与 `resume()` 控制派发，但不禁用准入或 operator 操作。
 
-`./views` 导出拥有 JSON-compatible 浏览器类型：`QueueWorkSummaryView`、`QueueWorkAttemptView`、`QueueWorkView`、`QueueStatsView`、`QueueSnapshotInput`、`QueueSnapshotView` 与 `QueueUnknownResolutionInput`。结果 output 在跨越 Remote transport 前会经过 canonicalize。
+`./views` 导出拥有 JSON-compatible 浏览器类型：`QueueWorkSummaryView`、`QueueWaitReasonView`、`QueueWorkAttemptView`、`QueueWorkView`、`QueueStatsView`、`QueueSnapshotInput`、`QueueSnapshotView` 与 `QueueUnknownResolutionInput`。结果 output 在跨越 Remote transport 前会经过 canonicalize。
 
 ## 消费方
 

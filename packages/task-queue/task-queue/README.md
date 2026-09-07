@@ -20,7 +20,7 @@ Callers canonicalize and digest intent before external resolution. A matching id
 
 ## Authority
 
-The provider verifies initiator identity and passes an opaque `VerifiedAgentAuthority` or `VerifiedOperatorAuthority` to `forAgent()` or `forOperator()`. The Service Definition neither accepts a caller-supplied session id nor exposes a public operator facade. `OperatorWorkQueue.enqueue()` and `enqueueBatch()` are therefore host capabilities, not model or browser authority. Acknowledging an Attention record does not resolve unknown work.
+The provider verifies initiator identity and passes an opaque `VerifiedAgentAuthority` or `VerifiedOperatorAuthority` to `forAgent()` or `forOperator()`. The Service Definition neither accepts a caller-supplied session id nor exposes a public operator facade. `OperatorWorkQueue.enqueue()` and `enqueueBatch()` are therefore host capabilities, not model or browser authority. Its process-local `dispatchState()` reports running, paused, or faulted dispatch, while `waitReason()` explains one queued WorkItem without persisting another Work state. Acknowledging an Attention record does not resolve unknown work.
 
 ## Model Experience
 
