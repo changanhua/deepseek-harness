@@ -288,101 +288,60 @@ describe('UiWorkspaceService', () => {
     })
   })
 
-  it('opens the recent Workspace after both baselines arrive', async () => {
+  it('waits for an explicit start after both baselines arrive', async () => {
     const b = bench()
     b.sessions.create.mockResolvedValue(sid('initial'))
-
-    const stableFirst = workspace('stable-first', [], '2026-01-01T00:00:00.000Z')
-    const recent = workspace('recent', [], '2026-01-02T00:00:00.000Z')
-    b.workspaces.list.set(workspaceState([stableFirst, recent]))
-    expect(b.sessions.create).not.toHaveBeenCalled()
+    b.workspaces.list.set(workspaceState([
+      workspace('older', [], '2026-01-01T00:00:00.000Z'),
+      workspace('recent', [], '2026-01-02T00:00:00.000Z'),
+    ]))
     b.sessions.list.set(sessionState())
-
-    await vi.waitFor(() => {
-      expect(b.sessions.open).toHaveBeenCalledWith(sid('initial'))
-    })
+    await flush()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+    expect(b.sessions.open).not.toHaveBeenCalled()
+    b.uiWorkspace.startSession()
+    await vi.waitFor(() => { expect(b.sessions.open).toHaveBeenCalledWith(sid('initial')) })
     expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('recent') })
-    expect(b.workspaces.list.getSnapshot().items.map(item => item.workspaceId)).toEqual([
-      wid('stable-first'), wid('recent'),
-    ])
   })
 
-  it('uses Workspace creation time when members are absent and preserves Host tie order', async () => {
+  it('uses Workspace creation time and Host tie order for an explicit start', async () => {
     const b = bench()
     b.sessions.create.mockResolvedValue(sid('initial'))
-
     b.workspaces.list.set(workspaceState([
       workspace('newest', [sid('missing')], '2026-03-01T00:00:00.000Z'),
       workspace('same-time', [], '2026-03-01T00:00:00.000Z'),
       workspace('older', [], '2026-01-01T00:00:00.000Z'),
     ]))
     b.sessions.list.set(sessionState())
-
-    await vi.waitFor(() => {
-      expect(b.sessions.open).toHaveBeenCalledWith(sid('initial'))
-    })
+    b.uiWorkspace.startSession()
+    await vi.waitFor(() => { expect(b.sessions.open).toHaveBeenCalledWith(sid('initial')) })
     expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('newest') })
   })
 
-  it('retries failed initial selection and never overwrites a later selection', async () => {
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  it('keeps manual selection across refreshed baselines without starting work', async () => {
     const b = bench()
-    let attempts = 0
-    b.sessions.create.mockImplementation(() => ++attempts === 1
-      ? Promise.reject(new Error('attach exploded'))
-      : Promise.resolve(sid('retry')))
     b.workspaces.list.set(workspaceState([workspace('recent')]))
     b.sessions.list.set(sessionState())
-    await vi.waitFor(() => {
-      expect(warning).toHaveBeenCalledWith('initial workspace selection failed:', expect.any(Error))
-    })
+    b.sessions.open(sid('manual'))
     b.workspaces.list.update(state => ({ ...state, items: [...state.items] }))
-    await vi.waitFor(() => {
-      expect(b.sessions.open).toHaveBeenCalledWith(sid('retry'))
-    })
-    expect(attempts).toBe(2)
-
-    const changed = bench()
-    const pending = Promise.withResolvers<SessionId>()
-    changed.sessions.create.mockImplementation(() => pending.promise)
-    changed.workspaces.list.set(workspaceState([workspace('recent')]))
-    changed.sessions.list.set(sessionState())
-    await vi.waitFor(() => { expect(changed.sessions.create).toHaveBeenCalledOnce() })
-    changed.sessions.open(sid('manual'))
-    pending.resolve(sid('automatic'))
     await flush()
-    expect(changed.sessions.open).toHaveBeenCalledTimes(1)
-    expect(changed.sessions.open).toHaveBeenCalledWith(sid('manual'))
+    expect(b.sessions.create).not.toHaveBeenCalled()
+    expect(b.sessions.open).toHaveBeenCalledTimes(1)
+    expect(b.sessions.open).toHaveBeenCalledWith(sid('manual'))
   })
 
-  it('stops initial navigation when its Cordis lifetime is disposed', async () => {
-    const success = bench()
-    const resolved = Promise.withResolvers<SessionId>()
-    success.sessions.create.mockImplementation(() => resolved.promise)
-    success.workspaces.list.set(workspaceState([workspace('recent')]))
-    success.sessions.list.set(sessionState())
-    await vi.waitFor(() => { expect(success.sessions.create).toHaveBeenCalledOnce() })
-    await success.ctx.fiber.dispose()
-    resolved.resolve(sid('late'))
-    await flush()
-    expect(success.sessions.open).not.toHaveBeenCalled()
-    success.workspaces.list.set(workspaceState([workspace('ignored')]))
-    expect(success.sessions.create).toHaveBeenCalledOnce()
-
-    const failure = bench()
-    const rejected = Promise.withResolvers<SessionId>()
-    failure.sessions.create.mockImplementation(() => rejected.promise)
-    failure.workspaces.list.set(workspaceState([workspace('recent')]))
-    failure.sessions.list.set(sessionState())
-    await vi.waitFor(() => { expect(failure.sessions.create).toHaveBeenCalledOnce() })
-    const staleReconciles = failure.workspaces.list.listenersSnapshot()
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    await failure.ctx.fiber.dispose()
-    rejected.reject(new Error('late failure'))
-    await flush()
+  it('unsubscribes archive reconciliation when its Cordis lifetime is disposed', async () => {
+    const current = summary('current')
+    const b = bench({
+      sessions: sessionState([current], current.id),
+      workspaces: workspaceState([workspace('one', [current.id])]),
+    })
+    const staleReconciles = b.workspaces.list.listenersSnapshot()
+    await b.ctx.fiber.dispose()
+    b.workspaces.list.set(workspaceState([workspace('one', [current.id])], [current.id]))
     for (const reconcile of staleReconciles) reconcile()
-    expect(warning).not.toHaveBeenCalled()
-    expect(failure.sessions.create).toHaveBeenCalledOnce()
+    expect(b.sessions.clear).not.toHaveBeenCalled()
+    expect(b.sessions.create).not.toHaveBeenCalled()
   })
 
   it('clears a current Session only after it enters the archive baseline', () => {

@@ -46,7 +46,7 @@ Session 自己持有首条输入并驱动一条内部流水线：必要时以预
 
 ### 用户动线
 
-应用首次进入时等待 Workspace 与 Session 两份基线 ready。仍有效的真实 Session selection 被恢复；否则进入 New Session，并固定选择一次最近 Workspace。最近 Workspace 取其成员 Session 的最大 `updatedAt`，空 Workspace 回退到 `createdAt`；该派生只决定默认目标，不改变 Host Workspace 顺序，也不会在后续 hydration 时二次改选。
+应用首次进入时打开[个人工作台](2026-09-09-personal-workbench-navigation.zh.md)，不创建或选择 Session。此前选中的真实 Session 可以在该视图后方保持恢复。显式新会话操作依次选择当前 Session 所属 Workspace、最近 Workspace；最近目标取成员 `updatedAt` 最大值，并回退到 Workspace 的 `createdAt`。这个派生目标不改变 Host Workspace 顺序。
 
 完全没有 Workspace 时，页面创建默认名为 `workspace` 的前端 Workspace 对象和指向它的前端 Session。两者不写 Host，composer 始终可输入；首次发送才依次 materialize Workspace、attach Session、发送消息。
 

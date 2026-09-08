@@ -156,39 +156,9 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   private watchNavigation(): () => void {
-    let initial: 'waiting' | 'connecting' | 'done' = 'waiting'
     let disposed = false
     const reconcile = (): void => {
-      if (disposed) return
-      if (this.clearArchivedCurrent()) return
-      if (initial !== 'waiting') return
-      const workspace = this.workspaces.list.getSnapshot()
-      const sessions = this.sessions.list.getSnapshot()
-      if (workspace.phase !== 'ready' || sessions.phase !== 'ready') return
-      if (sessions.current !== undefined) {
-        initial = 'done'
-        return
-      }
-      const target = recentWorkspace(workspace.items, sessions.byId)
-      if (target === undefined) {
-        initial = 'done'
-        return
-      }
-      initial = 'connecting'
-      void this.connectWorkspace(target).then(
-        (sessionId) => {
-          if (disposed) return
-          if (this.sessions.list.getSnapshot().current === undefined) {
-            this.sessions.open(sessionId)
-          }
-          initial = 'done'
-        },
-        (reason: unknown) => {
-          if (disposed) return
-          initial = 'waiting'
-          console.warn('initial workspace selection failed:', reason)
-        },
-      )
+      if (!disposed) this.clearArchivedCurrent()
     }
     const disposeWorkspaces = this.workspaces.list.subscribe(reconcile)
     const disposeSessions = this.sessions.list.subscribe(reconcile)

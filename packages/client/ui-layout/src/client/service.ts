@@ -27,6 +27,8 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Select a module without toggling an already active destination off. */
+  activateModule(module: string): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -57,6 +59,11 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  /** Navigate to a known module while preserving its idempotent selection. */
+  activateModule(module: string): void {
+    this.#require().activateModule(module)
   }
 
   #require(): PanelActions {

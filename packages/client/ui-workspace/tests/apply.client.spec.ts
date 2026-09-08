@@ -86,6 +86,26 @@ function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
 }
 
 describe('ui-workspace apply', () => {
+  it('tracks module availability and removes workbench entries when its plugin is disposed', async () => {
+    const b = await bench()
+    b.slots.register({ name: 'root', children: {
+      'shell.view': { kind: 'list', scope: 'root' },
+      'sidebar.primary': { kind: 'list', scope: 'root' },
+    } } as never, () => null)
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const entry = b.slots.entries('shell.view').find(item => item.options.id === 'workbench')!
+    const injected = (entry.inject as unknown as () => { hooks: { modules: { getSnapshot(): readonly string[] } } })()
+    expect(injected.hooks.modules.getSnapshot()).toEqual(['workbench'])
+    const removeQueue = b.slots.register({ name: 'shell.view', id: 'queue' }, () => null)
+    await vi.waitFor(() => { expect(injected.hooks.modules.getSnapshot()).toContain('queue') })
+    removeQueue()
+    await vi.waitFor(() => { expect(injected.hooks.modules.getSnapshot()).not.toContain('queue') })
+    await fiber.dispose()
+    expect(b.slots.entries('shell.view')).toHaveLength(0)
+    expect(b.slots.entries('sidebar.primary')).toHaveLength(0)
+  })
+
   it('declares the services it drives', () => {
     expect(inject).toEqual([
       'slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.directoryPicker',
@@ -112,6 +132,8 @@ describe('ui-workspace apply', () => {
 
   it('routes browser actions and picker creation to the services', async () => {
     const b = await bench()
+    const activateModule = vi.fn()
+    b.ctx.provide('layout', { activateModule } as never)
     declare(b.slots, 'sidebar.workspaces', 'conversation.hero.workspace')
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     const startSession = vi.spyOn(b.ctx.uiWorkspace, 'startSession').mockImplementation(() => undefined)
@@ -139,6 +161,7 @@ describe('ui-workspace apply', () => {
       expect(b.open).toHaveBeenCalledWith('forked')
     })
     expect(b.fork).toHaveBeenCalledWith({ sessionId: 'session', increaseTitle: true })
+    expect(activateModule).toHaveBeenLastCalledWith('conversation')
     await browser.renameWorkspace('ws' as never, 'renamed')
     expect(b.rename).toHaveBeenCalledWith('ws', 'renamed')
     await browser.insertSessionBefore('ws' as never, 's1' as never, 's2' as never)

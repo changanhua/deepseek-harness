@@ -85,10 +85,10 @@ export function probeFreePort(): Promise<number> {
 
 /**
  * Drive the hero's workspace picker through the composed directory dialog
- * until the live composer unlocks. A fresh world has no Workspace, so the boot
- * lands in the Workspace-trigger view state (startup auto-selection has nothing to
- * select); every scenario that types into the composer must connect one
- * first. With nothing to list, activating the composer surface raises the dialog directly —
+ * until the live composer unlocks. A fresh world opens the workbench without
+ * a Workspace; this helper explicitly enters the new-session composer first.
+ * Every scenario that types into the composer must connect a Workspace.
+ * With nothing to list, activating the composer surface raises the dialog directly —
  * adding a workspace is the picker's only entry. The directory is staged here
  * and adopted through the path editor, which is idempotent across the repeated
  * connects a scenario may make; creating a folder from inside the dialog (the
@@ -102,6 +102,9 @@ export function probeFreePort(): Promise<number> {
  */
 export async function connectFreshWorkspace(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
+  if (!await page.getByRole('textbox', { name: 'Choose workspace' }).isVisible()) {
+    await page.getByRole('button', { name: 'New session', exact: true }).last().click()
+  }
   await page.getByRole('textbox', { name: 'Choose workspace' }).click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
   await dialog.waitFor({ timeout: 10_000 })
@@ -127,6 +130,9 @@ export async function connectFreshWorkspace(page: Page, root: string, name = 'wo
  */
 export async function connectFreshWorkspaceZh(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
+  if (!await page.getByRole('textbox', { name: '选择工作区' }).isVisible()) {
+    await page.getByRole('button', { name: '新建会话', exact: true }).last().click()
+  }
   await page.getByRole('textbox', { name: '选择工作区' }).click()
   const dialog = page.getByRole('dialog', { name: '选择工作区目录' })
   await dialog.waitFor({ timeout: 10_000 })

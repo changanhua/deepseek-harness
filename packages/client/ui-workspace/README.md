@@ -27,6 +27,10 @@ English | [中文](README.zh.md)
 
 Use the sidebar to browse Workspaces and their Sessions, reorder them, and start new ones; use the picker in the Session Intent hero to choose a Workspace for a new session. An open Workspace shows five non-blank Sessions by default and keeps the selected blank **New Session** as one provisional extra row until its first prompt. **Show more** reveals the hidden remainder; closing and reopening the Workspace restores this folded projection.
 
+### Workbench overview
+
+The workbench opens on **Overview** and provides **Needs you**, **In progress**, **Recent work**, project summaries, and **Capabilities & tools**. These views read the existing Workspace, Session, and pending-interaction projections; viewing a project does not create or select a Session. Blank, archived, and subagent-origin Sessions are excluded from the work list, while running descendants remain visible through their parent. **New result** means a Session ended while unread, not that its output passed verification or acceptance. Opening work returns to its existing conversation; tool cards open only modules registered in the current composition.
+
 ### Reordering and view options
 
 View options combine grouping with one browser-persisted Session order per account: **Manual** and **Last updated** apply in either presentation. Entering Last updated performs a complete recency sort and later user prompts or steers promote their Session once; entering Manual preserves every current position and disables later promotion. Dragging edits the current order in either mode; Manual-mode drags for real Workspaces also update the Host Session account, while Ungrouped and flat-list orders remain browser-local. In a collapsed group, drag boundaries follow rendered rows and place the source before intervening hidden rows, so a drag cannot hide its source. Workspace drag order is Host-durable in either Session order mode.

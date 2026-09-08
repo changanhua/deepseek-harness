@@ -41,6 +41,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * module-ring state it can switch (`setActiveModule`).
      */
     'sidebar.modules': { kind: 'list'; scope: 'root'; owner: SidebarModuleOwnerProps }
+    /** Primary work navigation, before the project browser. */
+    'sidebar.primary': { kind: 'list'; scope: 'root'; owner: SidebarModuleOwnerProps }
     /**
      * The settings seat at the sidebar foot. Declared by this package's
      * 'sidebar' entry; ui-settings registers its trigger row + modal panel.
@@ -138,6 +140,7 @@ export type SidebarRootComponentProps =
     | 'sidebar.brand.name'
     | 'sidebar.workspaces'
     | 'sidebar.modules'
+    | 'sidebar.primary'
     | 'sidebar.settings'
     | 'sidebar.footer.action'
   >

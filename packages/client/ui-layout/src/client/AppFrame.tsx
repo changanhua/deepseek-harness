@@ -162,7 +162,8 @@ export function AppFrame({
   const sidebarPreference = sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
-  const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
+  const visibleDetails = detailsSession === undefined || activeModule !== DEFAULT_MODULE ? 0 : panels.details
+  const cols = computeColumns(viewport, sidebarPreference, visibleDetails)
   const colsRef = useRef(cols)
   colsRef.current = cols
 
