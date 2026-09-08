@@ -23,6 +23,18 @@
       ]
     },
     {
+      "directory": "packages/bundle/personal-memory",
+      "legacyName": "@deepseek-ai/dsh-personal-memory",
+      "sourceName": "@changanhua/dsh-personal-memory",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent",
+        "transitive-private-api-dependency"
+      ]
+    },
+    {
       "directory": "packages/client/ui-architecture",
       "legacyName": "@deepseek-ai/dsh-client-ui-architecture",
       "sourceName": "@changanhua/dsh-client-ui-architecture",
@@ -368,6 +380,50 @@
       "directory": "packages/image/tool-image-generation-task-queue",
       "legacyName": "@deepseek-ai/dsh-tool-image-generation-task-queue",
       "sourceName": "@changanhua/dsh-tool-image-generation-task-queue",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/memory/command-memory",
+      "legacyName": "@deepseek-ai/dsh-command-memory",
+      "sourceName": "@changanhua/dsh-command-memory",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/memory/memory",
+      "legacyName": "@deepseek-ai/dsh-memory",
+      "sourceName": "@changanhua/dsh-memory",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/memory/memory-local",
+      "legacyName": "@deepseek-ai/dsh-memory-local",
+      "sourceName": "@changanhua/dsh-memory-local",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/memory/tool-memory",
+      "legacyName": "@deepseek-ai/dsh-tool-memory",
+      "sourceName": "@changanhua/dsh-tool-memory",
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,

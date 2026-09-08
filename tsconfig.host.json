@@ -18,6 +18,7 @@
     "apps/web/tests/scaffold-hermetic.e2e.ts",
     "apps/web/tests/startup-rpc-budget.e2e.ts",
     "apps/web/tests/minimal-preset.snapshot.ts",
+    "apps/web/tests/project-memory.snapshot.ts",
     "apps/web/tests/message-feedback-protocol.snapshot.ts",
     "apps/web/tests/live-interactions.e2e.ts",
     "apps/web/tests/question-composer.e2e.ts",
@@ -364,6 +365,11 @@
     { "path": "./packages/lsp/lsp" },
     { "path": "./packages/lsp/lsp-stdio" },
     { "path": "./packages/lsp/tool-lsp" },
+    { "path": "./packages/memory/memory" },
+    { "path": "./packages/memory/memory-local" },
+    { "path": "./packages/memory/tool-memory" },
+    { "path": "./packages/memory/command-memory" },
+    { "path": "./packages/bundle/personal-memory" },
     { "path": "./apps/cli" }
   ]
 }

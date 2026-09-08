@@ -15,6 +15,7 @@ This table connects model-visible tool names to the plugin package and service s
 
 | Tool package | Model-visible names | Requires | Writes / affects | Shipped aliases | Deployment note |
 | --- | --- | --- | --- | --- | --- |
+| `@changanhua/dsh-tool-memory` | `memory_propose`, `memory_read`, `memory_search` | `ctx.tools`, `ctx.systemPrompt`, `ctx.projectMemory`, `a live Agent in a registered Workspace` | `tool/call`, `tool/result`, `candidate revisions and proposal receipts in the project_memory domain` | - | Explicit opt-in project memory. Models can search, read checked claims, and propose candidates; human acceptance, rejection, and withdrawal are separate command operations. |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`, `task_queue_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 agent.run@1 admission` | - | The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields. |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`, `ctx.userQuestions` | `tool/call`, `tool/result after a UI/provider answers the question` | - | ask_user_question pauses the tool call until the active UI provider returns a human answer. |
 | `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`, `ctx.codeRuntime (execution time)`, `ctx.systemPrompt` | `tool/call`, `one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call`, `tool/result` | - | Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: ptc` / `mode: both` (see the PTC mode Agent Note). Under `ptc` it is the registry's only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime's language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result. |
@@ -46,6 +47,169 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
+
+<a id="changanhuadsh-tool-memory"></a>
+
+## `@changanhua/dsh-tool-memory`
+
+### `memory_propose`
+
+Propose a source-backed project memory or revision for human review; never activates it.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "topic_key": {
+      "type": "string",
+      "description": "Stable project topic, such as validation.command; reuse it for related claims."
+    },
+    "kind": {
+      "type": "string",
+      "description": "Type of reusable claim.",
+      "enum": [
+        "fact",
+        "decision",
+        "preference",
+        "method"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Short descriptive title."
+    },
+    "statement": {
+      "type": "string",
+      "description": "One reusable claim, at most 2000 Unicode characters."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Optional retrieval tags.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "conditions": {
+      "type": "string",
+      "description": "When this claim applies; explanatory text, not executable policy."
+    },
+    "sources": {
+      "type": "array",
+      "description": "One to five source locators; never supply a hash or a verification claim.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "A project file or a persisted Session event.",
+            "enum": [
+              "file",
+              "session-event"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "Project-relative file path; required only for file sources."
+          },
+          "line": {
+            "type": "integer",
+            "description": "Optional positive file line number for navigation."
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Same-project Session id; required only for session-event sources."
+          },
+          "seq": {
+            "type": "integer",
+            "description": "Non-negative persisted event sequence; required only for session-event sources."
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      }
+    },
+    "memory_id": {
+      "type": "string",
+      "description": "Existing memory id when proposing a revision; also supply expected_version."
+    },
+    "expected_version": {
+      "type": "integer",
+      "description": "Observed recordVersion when proposing a revision; also supply memory_id."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Stable key for this logical proposal; keep it unchanged when retrying."
+    }
+  },
+  "required": [
+    "topic_key",
+    "kind",
+    "title",
+    "statement",
+    "sources",
+    "idempotency_key"
+  ]
+}
+```
+
+Source: [`packages/memory/tool-memory/src/index.ts`](../packages/memory/tool-memory/src/index.ts)
+
+### `memory_read`
+
+Read one project memory after checking its current sources, review date, and conflicts.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Memory id returned by memory_search or memory_propose."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+Source: [`packages/memory/tool-memory/src/index.ts`](../packages/memory/tool-memory/src/index.ts)
+
+### `memory_search`
+
+Find usable, source-checked memory in the current project.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Words describing relevant project decisions, facts, preferences, or methods."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Optional tags that every returned memory must have.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Requested result count, bounded by the configured maximum."
+    }
+  },
+  "required": [
+    "query"
+  ]
+}
+```
+
+Source: [`packages/memory/tool-memory/src/index.ts`](../packages/memory/tool-memory/src/index.ts)
+
+Explicit opt-in project memory. Models can search, read checked claims, and propose candidates; human acceptance, rejection, and withdrawal are separate command operations.
 
 <a id="changanhuadsh-tool-agent-run-task-queue"></a>
 

@@ -19,6 +19,7 @@
 
 | 工具包 | 模型可见名称 | 依赖 | 写入／影响 | 随产品发布的别名 | 部署说明 |
 | --- | --- | --- | --- | --- | --- |
+| `@changanhua/dsh-tool-memory` | `memory_propose`、`memory_read`、`memory_search` | `ctx.tools`、`ctx.systemPrompt`、`ctx.projectMemory`、`已注册 Workspace 中的活动 Agent` | `tool/call`、`tool/result`、`project_memory domain 中的候选版本与提案回执` | - | 显式启用的项目记忆。模型可以检索、读取经过检查的命题并提出候选；人工接纳、拒绝与撤回是独立命令操作。 |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`、`task_queue_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 agent.run@1 admission` | - | 类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，而不暴露 executor、profile、model、credential 或 shell 路由字段。 |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`、`ctx.userQuestions` | `tool/call`、`tool/result after a UI/provider answers the question` | - | ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类答案。 |
 | `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`、`ctx.codeRuntime (execution time)`、`ctx.systemPrompt` | `tool/call`、`one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call`、`tool/result` | - | 在 `mode: code`／`mode: both` 下，它由工具注册表所有，作为可过滤能力层之外的保留传输机制（参见 Code Mode Agent Note）。在 `code` 下，它是注册表对协议格式（wire format）的唯一贡献；其他可见能力在使用已加载运行时语言生成的 SDK 章节中声明。程序通过 binding 调用这些能力，调用按照原生并发约定调度：启动顺序和策略遵循提交顺序，并发安全的函数体最多重叠执行 `maxParallelSubCalls` 个。调用会重新进入完整且受守卫保护的工具流水线，并将每个嵌套执行关联到此外层结果。 |
@@ -49,6 +50,169 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
+
+<a id="changanhuadsh-tool-memory"></a>
+
+## `@changanhua/dsh-tool-memory`
+
+### `memory_propose`
+
+提出有来源的项目记忆候选或修订，交由人工复核；该操作不会激活记忆。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "topic_key": {
+      "type": "string",
+      "description": "Stable project topic, such as validation.command; reuse it for related claims."
+    },
+    "kind": {
+      "type": "string",
+      "description": "Type of reusable claim.",
+      "enum": [
+        "fact",
+        "decision",
+        "preference",
+        "method"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Short descriptive title."
+    },
+    "statement": {
+      "type": "string",
+      "description": "One reusable claim, at most 2000 Unicode characters."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Optional retrieval tags.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "conditions": {
+      "type": "string",
+      "description": "When this claim applies; explanatory text, not executable policy."
+    },
+    "sources": {
+      "type": "array",
+      "description": "One to five source locators; never supply a hash or a verification claim.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "A project file or a persisted Session event.",
+            "enum": [
+              "file",
+              "session-event"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "Project-relative file path; required only for file sources."
+          },
+          "line": {
+            "type": "integer",
+            "description": "Optional positive file line number for navigation."
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Same-project Session id; required only for session-event sources."
+          },
+          "seq": {
+            "type": "integer",
+            "description": "Non-negative persisted event sequence; required only for session-event sources."
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      }
+    },
+    "memory_id": {
+      "type": "string",
+      "description": "Existing memory id when proposing a revision; also supply expected_version."
+    },
+    "expected_version": {
+      "type": "integer",
+      "description": "Observed recordVersion when proposing a revision; also supply memory_id."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Stable key for this logical proposal; keep it unchanged when retrying."
+    }
+  },
+  "required": [
+    "topic_key",
+    "kind",
+    "title",
+    "statement",
+    "sources",
+    "idempotency_key"
+  ]
+}
+```
+
+来源：[`packages/memory/tool-memory/src/index.ts`](../packages/memory/tool-memory/src/index.ts)
+
+### `memory_read`
+
+检查当前来源、复核期限与冲突后，读取一条项目记忆。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Memory id returned by memory_search or memory_propose."
+    }
+  },
+  "required": [
+    "id"
+  ]
+}
+```
+
+来源：[`packages/memory/tool-memory/src/index.ts`](../packages/memory/tool-memory/src/index.ts)
+
+### `memory_search`
+
+查找当前项目中经过来源检查且可用的记忆。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Words describing relevant project decisions, facts, preferences, or methods."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Optional tags that every returned memory must have.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Requested result count, bounded by the configured maximum."
+    }
+  },
+  "required": [
+    "query"
+  ]
+}
+```
+
+来源：[`packages/memory/tool-memory/src/index.ts`](../packages/memory/tool-memory/src/index.ts)
+
+显式启用的项目记忆。模型可以检索、读取经过检查的命题并提出候选；人工接纳、拒绝与撤回是独立命令操作。
 
 <a id="changanhuadsh-tool-agent-run-task-queue"></a>
 

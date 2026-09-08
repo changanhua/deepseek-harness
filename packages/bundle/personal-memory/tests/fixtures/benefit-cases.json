@@ -1,0 +1,52 @@
+[
+  {
+    "id": "package-manager",
+    "kind": "decision",
+    "topic": "project.package-manager",
+    "title": "Package manager version",
+    "statement": "This project uses pnpm@10.15.0 as its packageManager.",
+    "request": "Create package-manager.json with only the packageManager field, following this project's recorded package-manager decision.",
+    "output": "package-manager.json",
+    "expected": { "packageManager": "pnpm@10.15.0" }
+  },
+  {
+    "id": "documentation",
+    "kind": "decision",
+    "topic": "project.documentation",
+    "title": "Documentation language policy",
+    "statement": "Maintained project documentation uses the ordered languages en and zh, with paired set to true.",
+    "request": "Create documentation-policy.json with the languages array and paired boolean required by this project's documentation policy.",
+    "output": "documentation-policy.json",
+    "expected": { "languages": ["en", "zh"], "paired": true }
+  },
+  {
+    "id": "validation",
+    "kind": "method",
+    "topic": "project.validation",
+    "title": "Focused verification method",
+    "statement": "The project's focused verification command is pnpm run test -- packages/memory/memory/tests.",
+    "request": "Create validation.json containing only command, using the project's focused verification method. Do not execute the command.",
+    "output": "validation.json",
+    "expected": { "command": "pnpm run test -- packages/memory/memory/tests" }
+  },
+  {
+    "id": "output-preference",
+    "kind": "preference",
+    "topic": "project.output",
+    "title": "Project response preference",
+    "statement": "The project owner requests output language zh-CN and style concise.",
+    "request": "Create output-preferences.json with language and style matching the project owner's recorded response preference.",
+    "output": "output-preferences.json",
+    "expected": { "language": "zh-CN", "style": "concise" }
+  },
+  {
+    "id": "launch",
+    "kind": "method",
+    "topic": "project.launch",
+    "title": "Supported application launch",
+    "statement": "The project's supported application launch command is dsh --profile web.",
+    "request": "Create launch.json containing only command, using this project's recorded supported application launch method. Do not launch a process.",
+    "output": "launch.json",
+    "expected": { "command": "dsh --profile web" }
+  }
+]

@@ -271,6 +271,19 @@ export const architectureCatalog: ArchitectureCatalog = {
       ],
     },
     {
+      name: '@changanhua/dsh-personal-memory',
+      short: 'personal-memory',
+      group: 'bundle',
+      path: 'packages/bundle/personal-memory',
+      description: 'Explicit project-memory bundle with proposal tools and human review commands',
+      dependencies: [
+        '@deepseek-ai/dsh-invariants',
+      ],
+      faces: [
+        'bundle',
+      ],
+    },
+    {
       name: '@deepseek-ai/dsh-sdk-app',
       short: 'sdk-app',
       group: 'bundle',
@@ -3163,6 +3176,76 @@ export const architectureCatalog: ArchitectureCatalog = {
       ],
       faces: [
         'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-command-memory',
+      short: 'command-memory',
+      group: 'memory',
+      path: 'packages/memory/command-memory',
+      description: 'Human review, acceptance and withdrawal commands for project memory',
+      dependencies: [
+        '@changanhua/dsh-memory',
+        '@deepseek-ai/dsh-agent',
+        '@deepseek-ai/dsh-commands',
+        '@deepseek-ai/dsh-invariants',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-memory-local',
+      short: 'memory-local',
+      group: 'memory',
+      path: 'packages/memory/memory-local',
+      description: 'Local durable project memory with workspace isolation and checked source provenance',
+      dependencies: [
+        '@changanhua/dsh-memory',
+        '@deepseek-ai/dsh-agent',
+        '@deepseek-ai/dsh-commands',
+        '@deepseek-ai/dsh-fs',
+        '@deepseek-ai/dsh-invariants',
+        '@deepseek-ai/dsh-session',
+        '@deepseek-ai/dsh-session-persistence',
+        '@deepseek-ai/dsh-session-query',
+        '@deepseek-ai/dsh-storage-domain',
+        '@deepseek-ai/dsh-workspace',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-memory',
+      short: 'memory',
+      group: 'memory',
+      path: 'packages/memory/memory',
+      description: 'Project-scoped memory records, source evidence and human decision contracts',
+      dependencies: [
+        '@deepseek-ai/dsh-agent',
+        '@deepseek-ai/dsh-invariants',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-tool-memory',
+      short: 'tool-memory',
+      group: 'memory',
+      path: 'packages/memory/tool-memory',
+      description: 'Project-memory proposal and source-checked recall tools',
+      dependencies: [
+        '@changanhua/dsh-memory',
+        '@deepseek-ai/dsh-agent',
+        '@deepseek-ai/dsh-invariants',
+        '@deepseek-ai/dsh-llm',
+        '@deepseek-ai/dsh-system-prompt',
+        '@deepseek-ai/dsh-tools',
+      ],
+      faces: [
+        'tool',
       ],
     },
     {

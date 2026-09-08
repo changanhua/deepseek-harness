@@ -29,6 +29,7 @@ This group maps the installable patch layers used by `dsh --profile`. Each packa
 | [`sdk-app`](sdk-app/README.md) | SDK JSON-RPC stdio application over base | mounts the SDK server |
 | [`sdk-minimal`](sdk-minimal/README.md) | Standalone minimal SDK application without base or Web | — (complete patch tree) |
 | [`personal-delivery`](personal-delivery/README.md) | Local Windows Personal Delivery layer over the base Web profile | `delivery`, `deliveryEvidence`, `repoWorkspace`, `remote.delivery` |
+| [`personal-memory`](personal-memory/README.md) | Explicit local project-memory layer over a Workspace-enabled Profile | `projectMemory`, model tools, human `/memory` command |
 
 In-box bundles resolve from the dsh installation; out-of-tree bundles install into a profile through `dsh plugin --profile <name> add <package>`.
 

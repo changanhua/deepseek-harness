@@ -9,6 +9,22 @@ This file is GENERATED from source (`scripts/gen-config-catalog.ts`) and verifie
 
 A `Requires:` line lists the service keys the plugin `inject`s: its `cordis.yml` tree must also load providers for those services. Scope is the harness tier (`packages/`); the vendored cordis plugins a config tree may also load (`hmr`, the console logger, …) are pinned upstream source ([vendoring policy](../vendor/README.md)) and not catalogued here.
 
+<a id="changanhuadsh-command-memory"></a>
+
+## `@changanhua/dsh-command-memory`
+
+Requires: `commands` · `projectMemory`
+
+```ts config-catalog
+/** Human output limits do not grant any model write or approval authority. */
+export interface Config {
+  /** Complete result byte limit; minimum reserves room for a durable mutation acknowledgment. */
+  maxOutputBytes?: number
+}
+```
+
+Source: [`packages/memory/command-memory/src/index.ts:15`](../packages/memory/command-memory/src/index.ts)
+
 <a id="changanhuadsh-delivery-evidence-local"></a>
 
 ## `@changanhua/dsh-delivery-evidence-local`
@@ -162,6 +178,36 @@ export interface Config {
 
 Source: [`packages/image/image-generation-task-queue/src/index.ts:11`](../packages/image/image-generation-task-queue/src/index.ts)
 
+<a id="changanhuadsh-memory-local"></a>
+
+## `@changanhua/dsh-memory-local`
+
+Requires: `storageDomain` · `workspaceRegistry` · `sessions` · `sessionPersistence` · `sessionQuery` · `fs`
+
+```ts config-catalog
+/** Local storage ownership and bounded read/write policies. */
+export interface Config {
+  /** Absolute lock directory shared by every composition targeting this memory store. */
+  ownershipRoot: string
+  /** Default interval from human acceptance to the next required review. */
+  reviewAfterDays?: number
+  /** Maximum stored memories per Workspace; full stores reject rather than evict. */
+  maxRecordsPerWorkspace?: number
+  /** Maximum immutable content versions per memory. */
+  maxRevisions?: number
+  /** Maximum committed mutations per memory. */
+  maxReceipts?: number
+  /** Maximum bytes read from one file or retained source event text. */
+  maxSourceBytes?: number
+  /** Maximum UTF-8 bytes of a complete model-facing service result. */
+  maxOutputBytes?: number
+  /** Maximum checked, usable results returned by a lexical search. */
+  maxSearchResults?: number
+}
+```
+
+Source: [`packages/memory/memory-local/src/index.ts:19`](../packages/memory/memory-local/src/index.ts)
+
 <a id="changanhuadsh-operation-run-task-queue"></a>
 
 ## `@changanhua/dsh-operation-run-task-queue`
@@ -294,7 +340,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/task-queue/task-queue-local/src/index.ts:73`](../packages/task-queue/task-queue-local/src/index.ts)
+Source: [`packages/task-queue/task-queue-local/src/index.ts:83`](../packages/task-queue/task-queue-local/src/index.ts)
 
 <a id="changanhuadsh-task-queue-remote"></a>
 
@@ -321,6 +367,24 @@ export interface Config {}
 ```
 
 Source: [`packages/task-queue/tool-agent-run-task-queue/src/index.ts:12`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
+
+<a id="changanhuadsh-tool-memory"></a>
+
+## `@changanhua/dsh-tool-memory`
+
+Requires: `tools` · `systemPrompt` · `projectMemory`
+
+```ts config-catalog
+/** Deployment-owned result and cooperative execution bounds. */
+export interface Config {
+  /** Complete rendered result byte limit; at most 16 KiB. */
+  maxOutputBytes?: number
+  /** Tool execution deadline, enforced by the composed tool-timeout policy. */
+  timeoutMs?: number
+}
+```
+
+Source: [`packages/memory/tool-memory/src/index.ts:17`](../packages/memory/tool-memory/src/index.ts)
 
 <a id="changanhuadsh-tool-operation-run-task-queue"></a>
 
@@ -3846,6 +3910,7 @@ Abstract service classes — a deployment loads a concrete implementation packag
 
 - `@changanhua/dsh-delivery` — abstract `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
 - `@changanhua/dsh-delivery-evidence` — abstract `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
+- `@changanhua/dsh-memory` — abstract `ProjectMemory` ([`packages/memory/memory/src/index.ts`](../packages/memory/memory/src/index.ts))
 - `@changanhua/dsh-repo-workspace` — abstract `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))
 - `@changanhua/dsh-task-queue` — abstract `TaskQueue` ([`packages/task-queue/task-queue/src/index.ts`](../packages/task-queue/task-queue/src/index.ts))
 - `@deepseek-ai/dsh-attachment` — abstract `AttachmentStore` ([`packages/attachment/attachment/src/index.ts`](../packages/attachment/attachment/src/index.ts))
@@ -3878,6 +3943,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@changanhua/dsh-eval` ([`packages/eval/eval/src/index.ts`](../packages/eval/eval/src/index.ts))
 - `@changanhua/dsh-eval-session-snapshot` ([`packages/eval/eval-session-snapshot/src/index.ts`](../packages/eval/eval-session-snapshot/src/index.ts))
 - `@changanhua/dsh-personal-delivery` ([`packages/bundle/personal-delivery/src/index.ts`](../packages/bundle/personal-delivery/src/index.ts))
+- `@changanhua/dsh-personal-memory` ([`packages/bundle/personal-memory/src/index.ts`](../packages/bundle/personal-memory/src/index.ts))
 - `@deepseek-ai/dsh-agent-loop-testkit` ([`packages/test-support/agent-loop-testkit/src/index.ts`](../packages/test-support/agent-loop-testkit/src/index.ts))
 - `@deepseek-ai/dsh-anonymous-user-id` ([`packages/identity/anonymous-user-id/src/index.ts`](../packages/identity/anonymous-user-id/src/index.ts))
 - `@deepseek-ai/dsh-app-boot` ([`packages/boot/app-boot/src/index.ts`](../packages/boot/app-boot/src/index.ts))

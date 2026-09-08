@@ -1,0 +1,54 @@
+- banner:
+  - navigation "Session hierarchy":
+    - button "Read README.md and propose exactly" [disabled]
+  - img
+  - text: Standard mode
+  - button "Skills":
+    - img
+    - text: Skills
+  - button "Session log":
+    - text: Session log
+    - img
+  - tablist:
+    - tab "Chat" [selected]
+    - tab "Trajectory"
+- button "System prompt":
+  - img
+  - img
+  - text: System prompt
+- text: Read README.md and propose exactly one project memory for its validation command. Use topic_key validation.command, kind method, title Project validation, and idempotency_key web-validation-rule. Use the README.md file as the source. Do not run the command or change files. After the proposal succeeds, reply exactly MEMORY_CANDIDATE_READY and stop. {{clock}}
+- button "Copy":
+  - img
+- button "2 tool calls":
+  - text: 2 tool calls
+  - img
+- paragraph: MEMORY_CANDIDATE_READY
+- button "Turn usage 33.3K tok · Cache hit 66.5%":
+  - img
+  - img
+  - text: Turn usage 33.3K tok · Cache hit 66.5%
+- button "Copy":
+  - img
+- button "Good response":
+  - img
+- button "Bad response":
+  - img
+- button "Branch into a new conversation":
+  - img
+- text: {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s
+- 'button "memory 记忆：{{memoryId}} 主题：validation.command 当前状态：没有生效版本；生效版本 无；待确认版本 1。 版本 1（待确认）：Project validation ```text 验证本项目的命令是 `pnpm verify:memory-web`,在需要验证项目时应使用此命令。 ``` 适用条件： ```text 当需要对本项目执行验证时。 ``` 来源依据： - README.md：内容一致；SHA-256 ce0fd5143b7f794ca9386261f9053fcc66eead4035d5ba0ad9e1c697d1bb9c45 ```text # Project validation The project validation command is `pnpm verify:memory-web`. Use this command when validating this project. ``` 检查时间：{{timestamp}} 历史共 1 个版本；按版本查看：/memory show {{memoryId}}@<版本号> 接纳：/memory accept {{memoryId}}@1 拒绝：/memory reject {{memoryId}}@1"':
+  - img
+  - img
+  - text: "memory 记忆：{{memoryId}} 主题：validation.command 当前状态：没有生效版本；生效版本 无；待确认版本 1。 版本 1（待确认）：Project validation ```text 验证本项目的命令是 `pnpm verify:memory-web`,在需要验证项目时应使用此命令。 ``` 适用条件： ```text 当需要对本项目执行验证时。 ``` 来源依据： - README.md：内容一致；SHA-256 ce0fd5143b7f794ca9386261f9053fcc66eead4035d5ba0ad9e1c697d1bb9c45 ```text # Project validation The project validation command is `pnpm verify:memory-web`. Use this command when validating this project. ``` 检查时间：{{timestamp}} 历史共 1 个版本；按版本查看：/memory show {{memoryId}}@<版本号> 接纳：/memory accept {{memoryId}}@1 拒绝：/memory reject {{memoryId}}@1"
+- img
+- text: memory 已接纳：{{memoryId}}@1。
+- textbox "Message or run a task... / commands, @ files or sessions"
+- button "Commands":
+  - img
+- 'button "Access mode, current: Workspace Write"': Workspace Write
+- button "Select model, current DeepSeek-V4-Flash":
+  - text: DeepSeek-V4-Flash
+  - img
+- button "9% of context used"
+- button "Send message" [disabled]
+- text: 1 turns · 3 steps LLM {{duration}} · Tool call {{duration}} TTFT avg {{duration}} · {{throughput}} tok/s Cache hit 66% Input 32.9K tok · Output 341 tok

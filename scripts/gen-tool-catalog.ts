@@ -61,6 +61,8 @@ import Lsp from '@deepseek-ai/dsh-lsp'
 import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
+import ProjectMemory from '@changanhua/dsh-memory'
+import * as ToolMemory from '@changanhua/dsh-tool-memory'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import LocalTaskQueue from '@changanhua/dsh-task-queue-local'
 import * as ToolAgentRunTaskQueue from '@changanhua/dsh-tool-agent-run-task-queue'
@@ -98,6 +100,19 @@ class CatalogAttachmentStore extends AttachmentStore {
 
   override readImage(_ref: ImageAttachmentRef): Promise<StoredImageAttachment> {
     return Promise.reject(new Error('gen-tool-catalog: attachment reads are unreachable during schema harvest'))
+  }
+}
+
+/** Fail-closed Definition implementation used only to harvest registered schemas. */
+class CatalogProjectMemory extends ProjectMemory {
+  override search(): Promise<never> { return this.unreachable() }
+  override read(): Promise<never> { return this.unreachable() }
+  override propose(): Promise<never> { return this.unreachable() }
+  override decide(): Promise<never> { return this.unreachable() }
+  override inspect(): Promise<never> { return this.unreachable() }
+
+  private unreachable(): Promise<never> {
+    return Promise.reject(new Error('gen-tool-catalog: memory operations are unreachable during schema harvest'))
   }
 }
 
@@ -195,6 +210,18 @@ export interface ToolPackage {
  * guard proves it is exhaustive against the on-disk glob.
  */
 const TOOL_PACKAGES: ToolPackage[] = [
+  {
+    pkg: '@changanhua/dsh-tool-memory',
+    dir: 'tool-memory',
+    source: 'packages/memory/tool-memory/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.projectMemory', 'a live Agent in a registered Workspace'],
+    writes: ['tool/call', 'tool/result', 'candidate revisions and proposal receipts in the project_memory domain'],
+    async mount(ctx) {
+      await ctx.plugin(CatalogProjectMemory)
+      await ctx.plugin(ToolMemory)
+    },
+    note: 'Explicit opt-in project memory. Models can search, read checked claims, and propose candidates; human acceptance, rejection, and withdrawal are separate command operations.',
+  },
   {
     pkg: '@changanhua/dsh-tool-agent-run-task-queue',
     dir: 'tool-agent-run-task-queue',

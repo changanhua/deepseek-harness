@@ -11,6 +11,22 @@
 
 `Requires:` 行列出插件通过 `inject` 注入的服务键：其 `cordis.yml` 树还必须加载这些服务的提供者。范围限定为 harness 层级（`packages/`）；配置树还可能加载的 vendored cordis 插件（`hmr`、控制台日志记录器等）固定为上游源代码（参见 [vendoring policy](../vendor/README.md)），未收录于此目录。
 
+<a id="changanhuadsh-command-memory"></a>
+
+## `@changanhua/dsh-command-memory`
+
+需要： `commands` · `projectMemory`
+
+```ts config-catalog
+/** Human output limits do not grant any model write or approval authority. */
+export interface Config {
+  /** Complete result byte limit; minimum reserves room for a durable mutation acknowledgment. */
+  maxOutputBytes?: number
+}
+```
+
+来源： [`packages/memory/command-memory/src/index.ts:15`](../packages/memory/command-memory/src/index.ts)
+
 <a id="deepseek-aidsh-acp"></a>
 
 ## `@deepseek-ai/dsh-acp`
@@ -1667,6 +1683,36 @@ export interface Config {
 
 来源：[`packages/feedback/message-feedback/src/index.ts:49`](../packages/feedback/message-feedback/src/index.ts)
 
+<a id="changanhuadsh-memory-local"></a>
+
+## `@changanhua/dsh-memory-local`
+
+需要： `storageDomain` · `workspaceRegistry` · `sessions` · `sessionPersistence` · `sessionQuery` · `fs`
+
+```ts config-catalog
+/** Local storage ownership and bounded read/write policies. */
+export interface Config {
+  /** Absolute lock directory shared by every composition targeting this memory store. */
+  ownershipRoot: string
+  /** Default interval from human acceptance to the next required review. */
+  reviewAfterDays?: number
+  /** Maximum stored memories per Workspace; full stores reject rather than evict. */
+  maxRecordsPerWorkspace?: number
+  /** Maximum immutable content versions per memory. */
+  maxRevisions?: number
+  /** Maximum committed mutations per memory. */
+  maxReceipts?: number
+  /** Maximum bytes read from one file or retained source event text. */
+  maxSourceBytes?: number
+  /** Maximum UTF-8 bytes of a complete model-facing service result. */
+  maxOutputBytes?: number
+  /** Maximum checked, usable results returned by a lexical search. */
+  maxSearchResults?: number
+}
+```
+
+来源： [`packages/memory/memory-local/src/index.ts:19`](../packages/memory/memory-local/src/index.ts)
+
 <a id="changanhuadsh-operation-run-task-queue"></a>
 
 ## `@changanhua/dsh-operation-run-task-queue`
@@ -3124,6 +3170,24 @@ export interface Config {
 
 来源：[`packages/lsp/tool-lsp/src/index.ts:58`](../packages/lsp/tool-lsp/src/index.ts)
 
+<a id="changanhuadsh-tool-memory"></a>
+
+## `@changanhua/dsh-tool-memory`
+
+需要： `tools` · `systemPrompt` · `projectMemory`
+
+```ts config-catalog
+/** Deployment-owned result and cooperative execution bounds. */
+export interface Config {
+  /** Complete rendered result byte limit; at most 16 KiB. */
+  maxOutputBytes?: number
+  /** Tool execution deadline, enforced by the composed tool-timeout policy. */
+  timeoutMs?: number
+}
+```
+
+来源： [`packages/memory/tool-memory/src/index.ts:17`](../packages/memory/tool-memory/src/index.ts)
+
 <a id="changanhuadsh-tool-operation-run-task-queue"></a>
 
 ## `@changanhua/dsh-tool-operation-run-task-queue`
@@ -3831,6 +3895,7 @@ export interface Config {
 - `@deepseek-ai/dsh-code-runtime` — 抽象 `CodeRuntime` ([`packages/code-runtime/code-runtime/src/index.ts`](../packages/code-runtime/code-runtime/src/index.ts))
 - `@deepseek-ai/dsh-compaction` — 抽象 `CompactionEngine` ([`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts))
 - `@deepseek-ai/dsh-credentials` — 抽象 `CredentialProvider` ([`packages/credentials/credentials/src/index.ts`](../packages/credentials/credentials/src/index.ts))
+- `@changanhua/dsh-memory` — 抽象 `ProjectMemory` ([`packages/memory/memory/src/index.ts`](../packages/memory/memory/src/index.ts))
 - `@changanhua/dsh-delivery` — 抽象 `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
 - `@changanhua/dsh-delivery-evidence` — 抽象 `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
 - `@deepseek-ai/dsh-file-reference` — 抽象 `FileReferenceService` ([`packages/context/file-reference/src/index.ts`](../packages/context/file-reference/src/index.ts))
@@ -3883,6 +3948,7 @@ export interface Config {
 - `@deepseek-ai/dsh-loader-smoke` ([`packages/test-support/loader-smoke/src/index.ts`](../packages/test-support/loader-smoke/src/index.ts))
 - `@deepseek-ai/dsh-native-command` ([`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts))
 - `@deepseek-ai/dsh-output-retention` ([`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts))
+- `@changanhua/dsh-personal-memory` ([`packages/bundle/personal-memory/src/index.ts`](../packages/bundle/personal-memory/src/index.ts))
 - `@changanhua/dsh-personal-delivery` ([`packages/bundle/personal-delivery/src/index.ts`](../packages/bundle/personal-delivery/src/index.ts))
 - `@deepseek-ai/dsh-sandbox-windows-acl` ([`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts))
 - `@deepseek-ai/dsh-scope` ([`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts))
