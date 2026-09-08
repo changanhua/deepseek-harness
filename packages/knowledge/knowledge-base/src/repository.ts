@@ -16,6 +16,7 @@ import {
   executionConfigSchema, generationControlSchema, knowledgeDomainSpec, projectRecordSchema, reviewDecisionSchema, stageOwnerSchema,
 } from './state.ts'
 import type { EntryCommit, PreparedStage, ProjectRecord, StageOwner, StageRecord } from './state.ts'
+import type { KnowledgeSiyuanProjection, SiyuanProjectInput } from './siyuan.ts'
 
 const GENERATE_INSTRUCTION = '生成一篇知识条目，只返回一个 JSON 对象，不加代码围栏。字段类型严格为：id:string，title:string，type:string（与 seed.type 相同），seedIds:string[]，depends:string[]，related:string[]，conditions:string（一个字符串，不能是数组），body:string（Markdown正文），citations:{sourceId:string,snapshotId:string,quote:string}[]。quote 必须逐字来自提供来源；seedIds 包含目标种子，depends 与种子一致。面向读者任务给出可执行步骤、适用条件和可观察验收，不夸大来源。'
 const REVIEW_INSTRUCTION = '审查条目中的主张是否得到提供来源支持、是否完成读者任务。只返回 JSON：status(pass|fail|unresolved),issues(字符串数组),summary。pass 必须 issues 为空；事实不明不得猜测通过。'
@@ -97,6 +98,7 @@ export class KnowledgeRepository {
   private constructor(
     private readonly domain: Domain<typeof knowledgeDomainSpec>,
     readonly files: KnowledgeFiles,
+    private readonly remote?: Pick<KnowledgeSiyuanProjection, 'assertCurrent'>,
   ) { this.projects = domain.table('projects') }
 
   /**
@@ -104,12 +106,13 @@ export class KnowledgeRepository {
    *
    * @param facility - 当前组合的 Domain facility。
    * @param root - 受管理绝对内容根。
+   * @param remote - 可选的思源当前性断言。
    * @returns 已打开的仓库；调用方负责关闭。
    */
-  static async open(facility: DomainFacility, root: string): Promise<KnowledgeRepository> {
+  static async open(facility: DomainFacility, root: string, remote?: Pick<KnowledgeSiyuanProjection, 'assertCurrent'>): Promise<KnowledgeRepository> {
     const files = new KnowledgeFiles(root)
     const domain = await facility.open(knowledgeDomainSpec)
-    const repository = new KnowledgeRepository(domain, files)
+    const repository = new KnowledgeRepository(domain, files, remote)
     try {
       for (const [, record] of domain.table('projects').entries()) {
         if (record.currentRelease !== null) {
@@ -325,10 +328,12 @@ export class KnowledgeRepository {
       if (record.approvedHash !== canonicalHash(record.spec)) throw new Error('knowledge-base: plan must be confirmed')
       const seed = this.seed(record, entryId)
       const current = record.entries[entryId]
+      if (current) await this.remote?.assertCurrent(id, entryId, current.entry)
       const actual = await this.files.readEntry(id, entryId)
       const actualHash = actual === null ? null : contentHash(actual)
       if (actualHash !== (current?.contentHash ?? null)) throw new KnowledgeFileConflictError('knowledge-base: working entry changed; adopt it before generation')
       for (const parent of seed.depends) {
+        if (record.entries[parent]) await this.remote?.assertCurrent(id, parent, record.entries[parent].entry)
         if (!record.entries[parent] || record.entries[parent].stale) throw new Error('knowledge-base: prerequisite not ready: ' + parent)
         const content = await this.files.readEntry(id, parent)
         if (content === null || contentHash(content) !== record.entries[parent].contentHash) throw new KnowledgeFileConflictError('knowledge-base: prerequisite working entry changed: ' + parent)
@@ -490,6 +495,8 @@ export class KnowledgeRepository {
       if (expected !== stage.prepared.inputHash) throw new Error('knowledge-base: stage input became stale')
       const response = await this.files.putArtifact(id, raw)
       const parsed: unknown = JSON.parse(raw)
+      await this.saveStage(record, stageId, { ...stage, owner, responseHash: response.hash })
+      await this.assertRemoteInputs(record, seed)
       if (stage.prepared.action === 'review') {
         const decision = reviewDecisionSchema.parse(parsed)
         const entry = recordValue(record.entries, seed.id)
@@ -514,6 +521,7 @@ export class KnowledgeRepository {
       }
       stage = { ...stage, owner, responseHash: response.hash, candidate, state: 'publishing' }
       await this.saveStage(record, stageId, stage)
+      await this.assertRemoteInputs(record, seed)
       await this.files.writeEntry(id, seed.id, markdown, stage.prepared.expectedHash)
       record = this.read(id)
       stage = { ...stage, state: 'completed' }
@@ -553,6 +561,7 @@ export class KnowledgeRepository {
         || contentHash(content) !== candidate.contentHash || content !== renderEntry(candidate.entry)) {
         throw new Error('knowledge-base: recovery evidence mismatch')
       }
+      await this.assertRemoteInputs(record, this.seed(record, stage.prepared.entryId))
       await this.files.writeEntry(id, stage.prepared.entryId, content, stage.prepared.expectedHash)
       record = this.read(id)
       const seed = this.seed(record, stage.prepared.entryId)
@@ -606,6 +615,61 @@ export class KnowledgeRepository {
   publish(id: string, version: string): Promise<{ path: string; manifestHash: string }> {
     if (version.startsWith('draft-')) return Promise.reject(new Error('knowledge-base: draft- is reserved for draft exports'))
     return this.release(id, version, false)
+  }
+
+  /**
+   * 从已核验不可变发布物读取思源同步输入。
+   *
+   * @param id - 项目 ID。
+   * @param version - 正式发布版本 ID。
+   * @returns 已发布条目和来源元数据。
+   */
+  async publication(id: string, version: string): Promise<SiyuanProjectInput> {
+    const record = this.get(id), release = record.releases[version]
+    if (!release || version.startsWith('draft-')) throw new Error('knowledge-base: a formal release is required')
+    await this.files.verifyRelease(id, version, release)
+    const entries: KnowledgeEntry[] = []
+    for (const [entryId, hash] of Object.entries(release.entries)) {
+      const entry = parseEntry(await this.files.readArtifact(id, hash))
+      if (entry.id !== entryId) throw new Error('knowledge-base: published entry identity differs')
+      entries.push(entry)
+    }
+    const sources = [...new Set(entries.flatMap(entry => entry.citations.map(citation => citation.sourceId + ':' + citation.snapshotId)))]
+      .map((key) => {
+        const source = recordValue(record.sources, key)
+        return { sourceId: source.sourceId, snapshotId: source.snapshotId, title: source.title, ...(source.url ? { url: source.url } : {}) }
+      })
+    return { projectId: id, title: record.spec.title, readerTask: record.spec.readerTask, version, entries, sources }
+  }
+
+  /**
+   * 接纳已回读的思源条目，生成本地证据快照并失效审查。相同内容的恢复不重复提交。
+   * @param id - 项目 ID。
+   * @param entryId - 待接纳条目 ID。
+   * @param input - 已确认的远端内容。
+   * @param expectedHash - 接纳前的本地内容摘要。
+   * @returns 接纳后的条目；语义审查仍需重新运行。
+   */
+  adoptRemote(id: string, entryId: string, input: KnowledgeEntry, expectedHash: string): Promise<EntryCommit> {
+    const entry = knowledgeEntrySchema.parse(input)
+    return this.serial(id, async () => {
+      const record = this.read(id), previous = record.entries[entryId], seed = this.seed(record, entryId)
+      if (!previous || entry.id !== entryId) throw new Error('knowledge-base: remote entry identity differs')
+      const text = renderEntry(entry)
+      if (canonicalHash(previous.entry) === canonicalHash(entry)) return structuredClone(previous)
+      if (previous.contentHash !== expectedHash) throw new Error('knowledge-base: local entry changed before adoption')
+      const issues = checkEntry(entry, record.spec, this.sources(record, seed))
+      if (issues.length) throw new Error('knowledge-base: remote entry rejected: ' + issues.join(', '))
+      const artifact = await this.files.putArtifact(id, text)
+      await this.files.writeEntry(id, entryId, text, previous.contentHash)
+      const commit: EntryCommit = { entry, artifactHash: artifact.hash, contentHash: contentHash(text),
+        inputHash: this.fingerprint(record, seed), revision: previous.revision + 1, stale: false, review: null }
+      const affected = new Set(impactClosure([entryId], record.spec.seeds))
+      const entries = Object.fromEntries(Object.entries(record.entries)
+        .map(([key, value]) => [key, affected.has(key) ? { ...value, stale: true } : value]))
+      await this.save({ ...record, entries: { ...entries, [entryId]: commit } })
+      return structuredClone(commit)
+    })
   }
 
   /**
@@ -731,6 +795,8 @@ export class KnowledgeRepository {
       const commit = record.entries[seed.id], issues: string[] = []
       if (!commit) issues.push('entry_missing')
       else {
+        try { await this.remote?.assertCurrent(id, seed.id, commit.entry) }
+        catch (error) { issues.push('siyuan_not_current:' + (error instanceof Error ? error.message : String(error))) }
         const actual = await this.files.readEntry(id, seed.id)
         observed[seed.id] = actual === null ? null : contentHash(actual)
         if (actual === null || contentHash(actual) !== commit.contentHash) issues.push('working_copy_changed')
@@ -763,6 +829,13 @@ export class KnowledgeRepository {
         })),
         semanticDuplicates: 'not_run', semanticContradictions: 'not_run',
       },
+    }
+  }
+
+  private async assertRemoteInputs(record: ProjectRecord, seed: KnowledgeSeed): Promise<void> {
+    for (const id of [seed.id, ...seed.depends]) {
+      const current = record.entries[id]
+      if (current) await this.remote?.assertCurrent(record.spec.id, id, current.entry)
     }
   }
 

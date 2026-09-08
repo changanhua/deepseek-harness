@@ -13,6 +13,11 @@ import type { KnowledgeEntry, KnowledgeSeed } from '../src/model.ts'
 const roots: string[] = []
 const closers: (() => Promise<void>)[] = []
 
+interface CorruptReleaseManifest { entries: Record<string, string>; files: Record<string, string> }
+interface CorruptDomain {
+  tables: { projects: Record<string, { releases: Record<string, { entries: Record<string, string>; manifestHash: string }> }> }
+}
+
 function specification(id: string, seeds: KnowledgeSeed[] = [{
   id: 'first', title: '第一步', goal: '完成第一步', type: 'method' as const,
   depends: [], sourceIds: ['source'], required: true,
@@ -28,14 +33,14 @@ function entry(snapshotId: string, id = 'first', depends: string[] = [], sourceI
   }
 }
 
-async function open(root?: string) {
+async function open(root?: string, remote?: Parameters<typeof KnowledgeRepository.open>[2]) {
   root ??= await mkdtemp(join(tmpdir(), 'knowledge-final-coverage-'))
   if (!roots.includes(root)) roots.push(root)
   const ctx = new Context()
   await ctx.plugin(Storage)
   const backend = new JsonStorageBackend(join(root, 'domain'))
   ctx.storage.backend.register('json', backend)
-  const repository = await KnowledgeRepository.open(new DomainFacility(ctx, { backend: 'json' }), join(root, 'content'))
+  const repository = await KnowledgeRepository.open(new DomainFacility(ctx, { backend: 'json' }), join(root, 'content'), remote)
   let closed = false
   const close = async () => {
     if (closed) return
@@ -81,6 +86,67 @@ async function review(repository: KnowledgeRepository, projectId: string, id = '
 }
 
 describe('KnowledgeRepository 最终可达分支', () => {
+  it('接纳思源编辑仅失效受影响的条目，并将远端不可用作为发布问题', async () => {
+    const seeds: KnowledgeSeed[] = [
+      { id: 'first', title: '第一步', goal: '完成第一步', type: 'method', depends: [], sourceIds: ['source'], required: true },
+      { id: 'second', title: '独立方法', goal: '完成独立方法', type: 'method', depends: [], sourceIds: ['source'], required: true },
+    ]
+    const { repository, project, source, root, close } = await prepared('remote-independent', seeds)
+    for (const id of ['first', 'second']) {
+      await generate(repository, project.id, source.snapshotId, id)
+      await review(repository, project.id, id)
+    }
+    const independent = repository.get(project.id).entries.second
+    await repository.adoptRemote(project.id, 'first', { ...entry(source.snapshotId), body: '用户补充的操作方法。' }, repository.get(project.id).entries.first!.contentHash)
+    expect(repository.get(project.id).entries.second).toEqual(independent)
+    expect(repository.get(project.id).entries.first!.review).toBeNull()
+    await close()
+    const reopened = await open(root, { assertCurrent: async () => { throw '思源暂不可用' } })
+    const checked = await reopened.repository.check(project.id)
+    expect(checked.publishable).toBe(false)
+    expect(checked.entries.every(item => item.issues.includes('siyuan_not_current:思源暂不可用'))).toBe(true)
+  })
+
+  it('思源接纳拒绝尚未生成的条目，正式发布输入保留无 URL 来源', async () => {
+    const { repository, project, source } = await prepared('remote-boundary')
+    await expect(repository.adoptRemote(project.id, 'first', entry(source.snapshotId), 'a'.repeat(64))).rejects.toThrow(/identity/)
+    await generate(repository, project.id, source.snapshotId)
+    await review(repository, project.id)
+    await repository.publish(project.id, 'v1')
+    const value = await repository.publication(project.id, 'v1')
+    expect(value.entries[0]?.id).toBe('first')
+    expect(value.sources[0]).toEqual({ sourceId: 'source', snapshotId: source.snapshotId, title: '来源' })
+    await repository.exportDraft(project.id, 'partial')
+    await expect(repository.publication(project.id, 'draft-partial')).rejects.toThrow(/formal release/)
+  })
+
+  it('导出到思源前拒绝哈希自洽但条目身份串错的发布数据', async () => {
+    const { repository, project, source, root, close } = await prepared('remote-corrupt')
+    await generate(repository, project.id, source.snapshotId)
+    await review(repository, project.id)
+    await repository.publish(project.id, 'v1')
+    await close()
+    const domainPath = join(root, 'domain', 'knowledge_base.json')
+    const stored = JSON.parse(await readFile(domainPath, 'utf8')) as CorruptDomain
+    const releasePath = join(root, 'content', 'projects', project.id, 'releases', 'v1')
+    const badContent = renderEntry(entry(source.snapshotId, 'another'))
+    const { contentHash } = await import('../src/files.ts')
+    const badHash = contentHash(badContent)
+    await writeFile(join(root, 'content', 'projects', project.id, 'artifacts', badHash + '.txt'), badContent)
+    await writeFile(join(releasePath, 'entry-first.md'), badContent)
+    const manifestPath = join(releasePath, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as CorruptReleaseManifest
+    manifest.entries.first = badHash
+    manifest.files['entry-first.md'] = badHash
+    const release = stored.tables.projects[project.id]?.releases.v1
+    if (!release) throw new Error('fixture release is missing')
+    release.entries.first = badHash
+    release.manifestHash = canonicalHash(manifest)
+    await writeFile(manifestPath, JSON.stringify(manifest))
+    await writeFile(domainPath, JSON.stringify(stored))
+    const reopened = await open(root)
+    await expect(reopened.repository.publication(project.id, 'v1')).rejects.toThrow(/identity differs/)
+  })
   it('来源更新使受影响条目失效，并在依赖恢复后自动恢复下游新鲜度', async () => {
     const seeds: KnowledgeSeed[] = [
       { id: 'first', title: '第一步', goal: '完成第一步', type: 'method', depends: [], sourceIds: ['source-a'], required: true },

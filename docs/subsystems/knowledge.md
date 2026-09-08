@@ -2,7 +2,7 @@
 
 English | [中文](knowledge.zh.md)
 
-The [knowledge package group](../../packages/knowledge/README.md) owns source-grounded, editable libraries. It separates content and business commits from Queue execution. The [decision record](../../.agents/notes/implemented/feature/2026-09-08-knowledge-base-native-codex.md) explains that ownership boundary; package READMEs own configuration and user operations.
+The [knowledge package group](../../packages/knowledge/README.md) owns source-grounded, editable libraries. It separates content and business commits from Queue execution. Optional SiYuan projection records keep editable documents connected to the same project without treating a Markdown export as the business ledger. The [decision record](../../.agents/notes/implemented/feature/2026-09-08-knowledge-base-native-codex.md) explains that ownership boundary; package READMEs own configuration and user operations.
 
 ## Business values
 
@@ -14,6 +14,7 @@ The [model schemas](../../packages/knowledge/knowledge-base/src/model.ts) reject
 | `SourceSnapshot` | Immutable logical source/version identity, text, URL, capture time, raw and normalized hashes, and extractor version. Unavailable provenance is explicit. |
 | `KnowledgeEntry` | Closed frontmatter plus Markdown body, applicable conditions and literal citations bound to source snapshots. `depends` propagates input changes; `related` only links reading material. |
 | `KnowledgeCheck` | Current input fingerprint, required/covered counts, coverage or null when no seeds are required, publishability and per-entry problems. |
+| `SiyuanProjectMapping` | Trusted notebook/root binding, stable document IDs, observed baselines, pending create intents, and separately named update candidates for a project. |
 
 The [state schemas](../../packages/knowledge/knowledge-base/src/state.ts) define the `knowledge_base` Domain. Project records hold approved specifications, source history and availability observations, current entry commits, stage bindings and immutable release records. Its control table holds the persistent native-Codex stop reason. A project is shared by sessions in the same trusted Profile; the business Domain has no session-private ACL. Queue state is referenced, never reconstructed from Markdown.
 
@@ -21,13 +22,13 @@ The [state schemas](../../packages/knowledge/knowledge-base/src/state.ts) define
 
 `PreparedStage` freezes the project, entry, action, expected working-file hash, input fingerprint and complete prompt. The Queue bridge owns `knowledge.stage@1`; stable admission binds the stage to one Work. A `StageRecord` retains the returned response hash and Work/Attempt owner before accepting a candidate. Its prepared/publishing/completed values describe business commit progress rather than Queue execution status.
 
-`EntryCommit` binds exact Markdown bytes, immutable content, input identity, a readable revision number and an optional review. Review decisions are pass/fail/unresolved; a passing decision alone is insufficient when the working file or any judged input changed. The fingerprint includes the generator/reviewer recipe and observable execution configuration. The one-shot native adapter does not expose inherited model resolution or usage, so those values remain unknown; it does not promise replay of a remote thread.
+`EntryCommit` binds exact Markdown bytes, immutable content, input identity, a readable revision number and an optional review. Review decisions are pass/fail/unresolved; a passing decision alone is insufficient when editable content or any judged input changed. The fingerprint includes the generator/reviewer recipe and observable execution configuration. The one-shot native adapter does not expose inherited model resolution or usage, so those values remain unknown; it does not promise replay of a remote thread.
 
 ## Publication and recovery
 
-Formal releases include checked entry versions, project/map views, source metadata, review/check summaries and a manifest of file hashes. A partial draft lists missing or unverified work and does not update the current release. Source text remains in local immutable history; release metadata excludes the full source text.
+Formal releases include checked entry versions, project/map views, source metadata, review/check summaries and a manifest of file hashes. A partial draft lists missing or unverified work and does not update the current release. Source text remains in local immutable history; release metadata excludes the full source text. With SiYuan configured, a formal release may create first entry documents and a version directory; later release content becomes a candidate document and does not replace the original editable document.
 
-The Domain owns `currentRelease`. Opening the repository validates the selected release and reconstructs `current-release.json`, including a null selection. This repairs the file projection after a cross-store interruption. Rollback selects a verified immutable release and preserves working files. File replacement detects changes since reading, retains candidate artifacts on conflict and does not claim a cross-store transaction or power-loss durability.
+The Domain owns `currentRelease`. Opening the repository validates the selected release and reconstructs `current-release.json`, including a null selection. This repairs the file projection after a cross-store interruption. Rollback selects a verified immutable release and preserves editable content. A SiYuan mapping saves create intent before dispatch, reads resulting documents back, and retains an unknown create without a discoverable document for operator reconciliation. It never updates an existing entry document in place. Adoption accepts only a readback title/body snapshot, invalidates the prior review, and rejects changed source or condition sections. File replacement detects changes since reading, retains candidate artifacts on conflict and does not claim a cross-store transaction or power-loss durability.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

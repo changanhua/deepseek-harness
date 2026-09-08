@@ -2,7 +2,7 @@
 
 [English](knowledge.md) | 中文
 
-[知识包族](../../packages/knowledge/README.zh.md)拥有基于来源的可编辑知识库，将内容与业务提交同 Queue 执行分开。[决策记录](../../.agents/notes/implemented/feature/2026-09-08-knowledge-base-native-codex.zh.md)说明了该归属边界，各包 README 维护配置和用户操作。
+[知识包族](../../packages/knowledge/README.zh.md)拥有基于来源的可编辑知识库，将内容与业务提交同 Queue 执行分开。可选思源投影记录将可编辑文档连接至同一项目，不把 Markdown 导出视为业务账本。[决策记录](../../.agents/notes/implemented/feature/2026-09-08-knowledge-base-native-codex.zh.md)说明了该归属边界，各包 README 维护配置和用户操作。
 
 ## 业务值
 
@@ -14,6 +14,7 @@
 | `SourceSnapshot` | 不可变逻辑来源/版本身份、文本、URL、采集时间、原始及规范化哈希和提取器版本；无法取得的追溯信息明确表示。 |
 | `KnowledgeEntry` | 封闭 frontmatter 和 Markdown 正文、适用条件、绑定来源快照的字面引用；`depends` 传播输入变化，`related` 仅关联阅读内容。 |
 | `KnowledgeCheck` | 当前输入指纹、必需/覆盖数量、无必需种子时为 null 的覆盖率、发布资格及各条目问题。 |
+| `SiyuanProjectMapping` | 一个项目的可信笔记本/根绑定、稳定文档 ID、观测基线、待创建意图和单独命名的更新候选。 |
 
 [状态 schema](../../packages/knowledge/knowledge-base/src/state.ts)定义 `knowledge_base` Domain。项目记录保存已确认规格、来源历史与可用性观察、当前条目提交、阶段绑定及不可变发布记录。control 表保存原生 Codex 的持久停止原因。同一受信 Profile 内的项目由其会话共享，业务 Domain 不提供 session 私有 ACL。Queue 状态只被引用，不从 Markdown 重建。
 
@@ -21,13 +22,13 @@
 
 `PreparedStage` 固定项目、条目、操作、预期工作文件哈希、输入指纹和完整提示词。Queue 桥接拥有 `knowledge.stage@1`，稳定准入将阶段绑定到一个 Work。`StageRecord` 在接收候选前保留返回响应哈希及其 Work/Attempt 归属。prepared/publishing/completed 描述业务提交进度，不代表 Queue 执行状态。
 
-`EntryCommit` 绑定精确 Markdown 字节、不可变内容、输入身份、便于阅读的修订序号和可选审查。审查结论为 pass/fail/unresolved；工作文件或任何被判断输入变化后，仅有通过结论仍不足以发布。指纹包含生成/审查配方及可观察执行配置。一轮临时原生适配器不暴露继承后的模型解析结果或用量，因此这些值保留 unknown，也不承诺恢复远程会话。
+`EntryCommit` 绑定精确 Markdown 字节、不可变内容、输入身份、便于阅读的修订序号和可选审查。审查结论为 pass/fail/unresolved；可编辑内容或任何被判断输入变化后，仅有通过结论仍不足以发布。指纹包含生成/审查配方及可观察执行配置。一轮临时原生适配器不暴露继承后的模型解析结果或用量，因此这些值保留 unknown，也不承诺恢复远程会话。
 
 ## 发布和恢复
 
-正式版本包含已检查条目、项目与地图视图、来源元数据、审查/检查摘要以及文件哈希清单。部分草稿列出缺失或未验证工作，不改变当前发布版本。来源全文保留在本地不可变历史中，发布元数据不包含完整来源正文。
+正式版本包含已检查条目、项目与地图视图、来源元数据、审查/检查摘要以及文件哈希清单。部分草稿列出缺失或未验证工作，不改变当前发布版本。来源全文保留在本地不可变历史中，发布元数据不包含完整来源正文。配置思源后，正式版本可以创建首次条目文档和版本目录；后续版本内容成为候选文档，不会替换原始可编辑文档。
 
-Domain 拥有 `currentRelease`。仓库打开时核验选定版本并重建 `current-release.json`，其中允许 null 选择，从而修复跨存储中断后的文件投影。回退选择已经核验的不可变发布版本，保留工作文件。文件替换检查读取后的变更，在冲突时保留候选产物，不承诺跨存储事务或断电耐久。
+Domain 拥有 `currentRelease`。仓库打开时核验选定版本并重建 `current-release.json`，其中允许 null 选择，从而修复跨存储中断后的文件投影。回退选择已经核验的不可变发布版本，保留可编辑内容。思源映射在派发前保存创建意图，回读结果文档；若已派发创建没有可发现文档，会保留该未知创建供操作者处理。它不会原地更新既有条目文档。接纳仅接收已回读标题/正文快照，使原审查失效，并拒绝变更过的来源或适用条件段。文件替换检查读取后的变更，在冲突时保留候选产物，不承诺跨存储事务或断电耐久。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

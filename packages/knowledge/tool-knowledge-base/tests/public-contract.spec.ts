@@ -52,6 +52,15 @@ function toolExecution(agent?: ToolRunContext['agent']): ToolRunContext {
 }
 
 describe('知识库工具公开操作契约', () => {
+  it('SiYuan 操作在未组合能力时失败，模型不能接纳远端编辑或触发迁入', async () => {
+    const { deps } = dependencies()
+    await expect(executeKnowledgeRequest({ action: 'siyuan-status', projectId: 'game' }, deps, new AbortController().signal)).rejects.toThrow(/未配置思源/)
+    const tool = createKnowledgeTool(deps)
+    for (const request of [
+      { action: 'siyuan-sync', projectId: 'game', version: 'v1' },
+      { action: 'siyuan-adopt', projectId: 'game', entryId: 'scope', snapshotHash: 'a'.repeat(64) },
+    ]) await expect(tool.execute({ request: JSON.stringify(request) }, toolExecution({} as never))).rejects.toThrow(/人类命令/)
+  })
   it('build 拒绝未确认计划与非法修订上限', async () => {
     const record = { spec, approvedHash: null, entries: {}, stages: {} }
     const deps = { repository: { get: () => record, generationStop: () => null }, queue: {} }

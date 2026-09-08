@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-08-knowledge-base-native-codex.md
-2026-09-08-knowledge-base-native-codex.md: 202679c4fb1fe94df575b5754b387f8e25a2942e
-2026-09-08-knowledge-base-native-codex.zh.md: 52fcea3f296c4cff93763495c224fe2e1fb78940
+2026-09-08-knowledge-base-native-codex.md: 7a5bc49ea84c1c8ead160c7afe3ec10a0f622953
+2026-09-08-knowledge-base-native-codex.zh.md: c510533ceb4cbcc442fb1410f8b133db6c61d422

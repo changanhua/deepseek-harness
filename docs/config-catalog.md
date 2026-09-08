@@ -173,10 +173,21 @@ Requires: `storageDomain`
 export interface Config {
   /** 绝对路径；模型不能通过业务工具覆盖此值。 */
   root: string
+  /** 使用已配置的原生 MCP 服务；省略时保留文件模式。 */
+  siyuan?: false | {
+    /** 已由 MCP Client 注册的思源服务名称。 */
+    serverName: string
+    /** 保存知识正文的思源笔记本 ID。 */
+    notebook: string
+    /** 新建项目文档的绝对人类可读路径。 */
+    rootPath: string
+    /** 可选的项目 ID 到已有根文档 ID 映射，用于复用指定入口。 */
+    projectRoots?: Record<string, string>
+  }
 }
 ```
 
-Source: [`packages/knowledge/knowledge-base/src/index.ts:16`](../packages/knowledge/knowledge-base/src/index.ts)
+Source: [`packages/knowledge/knowledge-base/src/index.ts:25`](../packages/knowledge/knowledge-base/src/index.ts)
 
 <a id="changanhuadsh-knowledge-base-task-queue"></a>
 

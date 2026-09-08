@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This group lets a DSH profile build an editable knowledge library from versioned sources, inspect the result, and publish a checked release when the user chooses. The business package owns Domain records, working Markdown, and releases; the Queue bridge owns durable Codex-stage execution; the bundle exposes the tool and `/knowledge` command. Projects in one trusted Profile are shared across its sessions; this group provides no session-private ACL. Open the package pages for configuration, failure handling, and model-facing details.
+This group lets a DSH profile build an editable knowledge library from versioned sources, inspect the result, publish a checked release, and optionally maintain the current entries in SiYuan. The business package owns Domain records, source snapshots, version exports, and release evidence; the Queue bridge owns durable Codex-stage execution; the bundle exposes the tool and `/knowledge` command. The optional SiYuan projection owns editable document mappings and adoption observations. Projects in one trusted Profile are shared across its sessions; this group provides no session-private ACL. Open the package pages for configuration, failure handling, and model-facing details.
 
 ## Table of Contents
 
@@ -26,7 +26,7 @@ The packages divide durable content, execution recovery, and human or model requ
 
 | Package | Role |
 |---|---|
-| [`knowledge-base`](knowledge-base/README.md) | Stores project facts, editable entries, immutable artifacts, checks, and releases. |
+| [`knowledge-base`](knowledge-base/README.md) | Stores project facts, source snapshots, editable entries or SiYuan mappings, immutable artifacts, checks, and releases. |
 | [`knowledge-base-task-queue`](knowledge-base-task-queue/README.md) | Runs prepared knowledge stages through the durable local Queue and recovers verified results. |
 | [`tool-knowledge-base`](tool-knowledge-base/README.md) | Adds the knowledge bundle, `knowledge_base` model tool, and optional `/knowledge` command. |
 

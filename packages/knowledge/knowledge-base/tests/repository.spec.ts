@@ -37,6 +37,27 @@ afterEach(async () => {
 })
 
 describe('知识业务的持久提交', () => {
+  it('思源手改接纳会失效旧审查，重复接纳不增加修订或重写工作文件', async () => {
+    const { repo } = await harness()
+    await repo.create(spec)
+    const source = await repo.ingest(spec.id, { sourceId: 'engine', title: '资料', text: '先验证核心玩法。', fetchedAt: '2026-09-08T00:00:00Z' })
+    await repo.confirmPlan(spec.id, canonicalHash(spec))
+    const stage = await repo.prepareStage(spec.id, 'prototype', 'generate')
+    await repo.bindStage(spec.id, stage.id, 'remote-work')
+    const entry = { id: 'prototype', title: '玩法原型', type: 'method' as const, seedIds: ['prototype'], depends: [], related: [],
+      conditions: '个人原型', body: '旧正文。', citations: [{ sourceId: 'engine', snapshotId: source.snapshotId, quote: '先验证核心玩法。' }] }
+    await repo.acceptResult(spec.id, stage.id, JSON.stringify(entry), { workId: 'remote-work', attemptId: 'remote-attempt' })
+    const expected = repo.get(spec.id).entries.prototype!.contentHash
+    const edited = { ...entry, body: '思源中的用户编辑。' }
+    const accepted = await repo.adoptRemote(spec.id, 'prototype', edited, expected)
+    expect(accepted.entry.body).toBe('思源中的用户编辑。')
+    expect(accepted.review).toBeNull()
+    expect(await repo.adoptRemote(spec.id, 'prototype', edited, expected)).toEqual(accepted)
+    await expect(repo.adoptRemote(spec.id, 'prototype', { ...edited, body: '另一个编辑。' }, expected)).rejects.toThrow(/changed/)
+    await expect(repo.adoptRemote(spec.id, 'prototype', { ...edited, id: 'different' }, expected)).rejects.toThrow(/identity/)
+    await expect(repo.adoptRemote(spec.id, 'prototype', { ...edited, citations: [{ ...edited.citations[0]!, quote: '资料未支持的文字。' }] }, accepted.contentHash)).rejects.toThrow(/rejected/)
+    await expect(repo.publication(spec.id, 'missing')).rejects.toThrow(/formal release/)
+  })
   it('停止闸跨重启保留，只有显式恢复才能解除', async () => {
     const { repo, root, close } = await harness()
     expect(repo.generationStop()).toBeNull()

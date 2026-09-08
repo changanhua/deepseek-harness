@@ -32,7 +32,11 @@ describe('知识工具插件公开注册', () => {
       },
     }
     const ctx = {
-      knowledgeBase: { repository }, knowledgeQueue: {}, tools,
+      knowledgeBase: { repository, siyuan: { verify: async (id: string, signal: AbortSignal) => {
+        expect(id).toBe('game')
+        expect(signal.aborted).toBe(false)
+        return { documents: 2, searchable: true, conflicts: [], complete: true }
+      } } }, knowledgeQueue: {}, tools,
       get: (name: string) => {
         if (name === 'commands') return commands
         if (name === 'web' && webEnabled) return {
@@ -55,6 +59,9 @@ describe('知识工具插件公开注册', () => {
     expect(listed.result).toContain('游戏原型')
     expect(tool.presentCall({ request: '{"action":"list"}' })).toEqual({ card: 'generic', title: '知识库', kind: 'execute' })
     const human = command!
+    const verification = await human.handler({ rawInput: '{"action":"siyuan-verify","projectId":"game"}', signal })
+    expect(verification.kind).toBe('success')
+    expect(JSON.parse(verification.text)).toMatchObject({ documents: 2, complete: true })
     await expect(human.handler({ rawInput: '{"action":"fetch","projectId":"game","sourceId":"manual","title":"资料","url":"https://example.test/failure"}', signal }))
       .resolves.toEqual({ kind: 'error', text: 'network failure' })
     expect(fetched).toEqual(['https://example.test/failure'])

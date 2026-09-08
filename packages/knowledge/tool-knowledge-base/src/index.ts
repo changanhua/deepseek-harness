@@ -8,7 +8,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import {
   canonicalHash, impactClosure, knowledgeIdSchema, projectSpecSchema,
 } from '@changanhua/dsh-knowledge-base'
-import type { KnowledgeRepository, SourceInput } from '@changanhua/dsh-knowledge-base'
+import type { KnowledgeRepository, SourceInput, KnowledgeSiyuanProjection } from '@changanhua/dsh-knowledge-base'
 import type KnowledgeQueueService from '@changanhua/dsh-knowledge-base-task-queue'
 import type { WebFetchResult } from '@deepseek-ai/dsh-web'
 import type {} from '@deepseek-ai/dsh-commands'
@@ -21,6 +21,11 @@ const source = {
   url: z.url().optional(),
 }
 const requests = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('siyuan-sync'), ...project, version: knowledgeIdSchema }),
+  z.strictObject({ action: z.literal('siyuan-status'), ...project }),
+  z.strictObject({ action: z.literal('siyuan-verify'), ...project }),
+  z.strictObject({ action: z.literal('siyuan-inspect'), ...entry }),
+  z.strictObject({ action: z.literal('siyuan-adopt'), ...entry, snapshotHash: z.string().regex(/^[a-f0-9]{64}$/u) }),
   z.strictObject({ action: z.literal('create'), spec: projectSpecSchema }),
   z.strictObject({ action: z.literal('list') }),
   z.strictObject({ action: z.literal('source'), ...project, ...source, text: z.string().min(1).max(200_000) }),
@@ -53,6 +58,7 @@ export interface KnowledgeToolDependencies {
   repository: KnowledgeRepository
   queue: Pick<KnowledgeQueueService, 'enqueueStage' | 'status' | 'cancel' | 'correctStage' | 'retryStage' | 'resumeStage' | 'stopGeneration'>
   fetch?: (url: string, signal: AbortSignal) => Promise<WebFetchResult>
+  siyuan?: KnowledgeSiyuanProjection
 }
 
 /**
@@ -113,6 +119,33 @@ export async function executeKnowledgeRequest(
   const request = requests.parse(input)
   const repo = deps.repository
   switch (request.action) {
+    case 'siyuan-sync':
+      if (!deps.siyuan) throw new Error('knowledge-base: 当前 Profile 未配置思源')
+      return deps.siyuan.sync(await repo.publication(request.projectId, request.version), signal)
+    case 'siyuan-status': {
+      if (!deps.siyuan) throw new Error('knowledge-base: 当前 Profile 未配置思源')
+      const state = deps.siyuan.status(request.projectId)
+      return { projectId: request.projectId, currentVersion: state.currentVersion, targetVersion: state.targetVersion,
+        rootDocumentId: state.root?.documentId,
+        entries: Object.entries(state.entries).map(([id, entry]) => ({
+          id, documentId: entry.documentId, candidates: Object.values(entry.candidates).map(candidate => candidate.documentId),
+        })) }
+    }
+    case 'siyuan-verify':
+      if (!deps.siyuan) throw new Error('knowledge-base: 当前 Profile 未配置思源')
+      return deps.siyuan.verify(request.projectId, signal)
+    case 'siyuan-inspect':
+      if (!deps.siyuan) throw new Error('knowledge-base: 当前 Profile 未配置思源')
+      return deps.siyuan.inspect(request.projectId, request.entryId, signal)
+    case 'siyuan-adopt': {
+      if (!deps.siyuan) throw new Error('knowledge-base: 当前 Profile 未配置思源')
+      const prior = repo.get(request.projectId).entries[request.entryId]
+      if (!prior) throw new Error('knowledge-base: 条目不存在')
+      await deps.siyuan.accept(request.projectId, request.entryId, request.snapshotHash, async (entry) => {
+        await repo.adoptRemote(request.projectId, request.entryId, entry, prior.contentHash)
+      }, signal)
+      return { projectId: request.projectId, entryId: request.entryId, reviewRequired: true }
+    }
     case 'create': {
       const record = await repo.create(request.spec)
       return { projectId: record.spec.id, planHash: canonicalHash(record.spec), confirmed: record.approvedHash !== null }
@@ -207,7 +240,7 @@ function renderResult(value: unknown): string {
 export function createKnowledgeTool(deps: KnowledgeToolDependencies): ReturnType<typeof defineTool> {
   return defineTool({
     name: 'knowledge_base',
-    description: '创建、维护和发布带来源的 Markdown 知识库。request 是含 action 的 JSON：create 带 spec；source 带 projectId/sourceId/title/text；fetch 带 projectId/sourceId/title/url；refresh 带 projectId/sourceId；plan、status、check、build 带 projectId；confirm 再带 planHash；generate、review、adopt 再带 entryId；publish、export-draft、rollback 带 projectId/version；diff 带 projectId/from/to；work、cancel、retry、correct、resume 带 workId；stop-generation 和 resume-generation 无其它字段。先检查并确认规划，再 build；maxRevisions 为初次生成后的修订次数，0–3，默认2。build 不自动发布，unknown 不自动重发。retry 仅重试明确未启动的失败；correct 仅修正已返回但格式校验失败的响应；resume 仅接收已有可验证结果。全局停止会保留进度并等待活动调用结束；模型工具不能解除停止，只有人类命令或可信 Host 可 resume-generation。',
+    description: '创建、维护和发布带来源的知识库，可通过已配置的思源连接阅读和维护。request 是含 action 的 JSON：create 带 spec；source 带 projectId/sourceId/title/text；fetch 带 projectId/sourceId/title/url；refresh 带 projectId/sourceId；plan、status、check、build 带 projectId；confirm 再带 planHash；generate、review、adopt 再带 entryId；publish、export-draft、rollback 带 projectId/version；diff 带 projectId/from/to；work、cancel、retry、correct、resume 带 workId；stop-generation 和 resume-generation 无其它字段。先检查并确认规划，再 build；maxRevisions 为初次生成后的修订次数，0–3，默认2。build 不自动发布，unknown 不自动重发。retry 仅重试明确未启动的失败；correct 仅修正已返回但格式校验失败的响应；resume 仅接收已有可验证结果。全局停止会保留进度并等待活动调用结束；模型工具不能解除停止，只有人类命令或可信 Host 可 resume-generation。思源读操作：siyuan-status、siyuan-verify 带 projectId；siyuan-inspect 再带 entryId。siyuan-sync 带 projectId/version，siyuan-adopt 带 projectId/entryId/snapshotHash，二者只允许人类命令或可信 Host；更新会保留独立候选，不覆盖已有思源正文。',
     parameters: {
       request: { type: 'string', required: true, description: '包含 action 与相应业务字段的 JSON 对象。' },
     },
@@ -221,6 +254,7 @@ export function createKnowledgeTool(deps: KnowledgeToolDependencies): ReturnType
       if (!exec.agent) throw new Error('knowledge-base: 操作需要已建立的会话')
       const request = parseKnowledgeRequest(args.request)
       if (request.action === 'resume-generation') throw new Error('knowledge-base: 模型工具不能解除生成停止')
+      if (request.action === 'siyuan-sync' || request.action === 'siyuan-adopt') throw new Error('knowledge-base: 思源写入与接纳需要人类命令或可信 Host')
       const result = await executeKnowledgeRequest(request, deps, exec.signal)
       return { result: renderResult(result) }
     },
@@ -236,6 +270,7 @@ export const inject = ['tools', 'knowledgeBase', 'knowledgeQueue']
 export function apply(ctx: Context): () => void {
   const deps: KnowledgeToolDependencies = {
     repository: ctx.knowledgeBase.repository, queue: ctx.knowledgeQueue,
+    ...(ctx.knowledgeBase.siyuan ? { siyuan: ctx.knowledgeBase.siyuan } : {}),
     fetch: (url, signal) => {
       const web = ctx.get('web')
       if (!web) return Promise.reject(new Error('knowledge-base: 当前 Profile 未配置来源抓取能力'))

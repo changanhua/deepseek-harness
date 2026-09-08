@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-knowledge-base` keeps a source-grounded knowledge project durable while leaving each committed entry as editable Markdown. It records source snapshots, prepared generation inputs, captured responses, accepted candidates, reviews, checks, and immutable releases in one Domain-backed project, so a later Queue recovery can finish a verified receipt or candidate without calling a model again. Choose it when a profile needs managed content and explicit publication; it does not supply a model tool or schedule work by itself. A file write is complete before the package reports it, but this package does not promise power-loss durability.
+`dsh-knowledge-base` keeps a source-grounded knowledge project durable while leaving each committed entry editable in its configured content store. It records source snapshots, prepared generation inputs, captured responses, accepted candidates, reviews, checks, immutable releases, and optional SiYuan mappings in Domain-backed records. A later Queue recovery can finish a verified receipt or candidate without calling a model again. Choose it when a profile needs managed content and explicit publication; it does not supply a model tool or schedule work by itself. A file write is complete before the package reports it, but this package does not promise power-loss durability.
 
 ## Table of Contents
 
@@ -37,17 +37,32 @@ Mount this service with a Storage Domain provider and give it an absolute manage
 
 | Field | Default | Meaning |
 |---|---|---|
-| `root` | required | Absolute root containing managed projects, working entries, artifacts, reports, and releases. |
+| `root` | required | Absolute root containing managed projects, source snapshots, version exports, artifacts, reports, and releases. |
+| `siyuan` | `false` | Optional trusted SiYuan target. When enabled, use an existing `mcp-client` server by name and configure its notebook, root path, and optional fixed project-root documents. |
 
-The generated [configuration catalog](../../../docs/config-catalog.md) is the exhaustive source for accepted configuration.
+The generated [configuration catalog](../../../docs/config-catalog.md) is the exhaustive source for accepted configuration. To make SiYuan the editable library, configure the already-composed MCP client; the service invokes that client's native `mcp__<serverName>__document`, `block`, and `search` tools. It does not install a client or alter a daily-use Profile.
+
+```yaml
+- name: '@changanhua/dsh-knowledge-base'
+  config:
+    root: /absolute/path/to/knowledge-base
+    siyuan:
+      serverName: siyuan
+      notebook: your-notebook-id
+      rootPath: /AI 生成知识库
+      projectRoots:
+        game-vibe: existing-project-document-id
+```
 
 ### Content and publication
 
-Create a project, ingest or fetch source snapshots through a consumer, confirm its plan hash, and prepare stages for `plan`, `generate`, or `review`. Accepted generation writes a Markdown working entry and an immutable artifact; edits to the working file remain visible until the caller adopts them. `check` compares current files, sources, dependencies, and recorded review decisions. `publish` only succeeds after the current checks pass, and it creates a versioned immutable release rather than automatically publishing on generation completion.
+Create a project, ingest or fetch source snapshots through a consumer, confirm its plan hash, and prepare stages for `plan`, `generate`, or `review`. Accepted generation stores an immutable artifact and an editable working entry. When SiYuan is configured, `siyuan-sync` creates the first editable entry documents from a formal release; later generated versions become separately named candidates and never overwrite that original document. `siyuan-inspect` returns the current title, body, and confirmation hash. A user changes the original title or body in SiYuan, then uses `siyuan-adopt` with that hash to accept the edit and invalidate its prior review. Changes to the source-and-conditions section are rejected for adoption. `siyuan-status` reports the durable mapping, and `siyuan-verify` reads the live documents and search index; a version directory is only a reading entry point, not live completion evidence.
+
+`check` compares current managed content, sources, dependencies, recorded review decisions, and configured SiYuan mappings. `publish` only succeeds after the current checks pass, and it creates a versioned immutable release rather than automatically publishing on generation completion. Source snapshots and version exports remain under `root`; the SiYuan mapping records write intent and stable document identifiers. If a dispatched document creation has no matching document on recovery, the service stops at that continuation point for operator reconciliation instead of retrying the create.
 
 Projects under one managed root are shared by sessions in the same trusted Profile. The package does not attach session-private ACLs to a project, entry, artifact, or release.
 
-Release `sources.json` records source metadata and snapshot identities, not full source text. Copying a working Markdown file to another installation does not restore the Domain record, its prepared stage, or a Queue work item.
+Release `sources.json` records source metadata and snapshot identities, not full source text. Copying an editable document or a Markdown export to another installation does not restore the Domain record, its prepared stage, Queue work item, or SiYuan mapping.
 
 -----
 
@@ -57,13 +72,14 @@ Release `sources.json` records source metadata and snapshot identities, not full
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-One Domain project record is the business authority. A stage moves through prepared, publishing, and completed business states while the Queue retains Work and Attempt state separately. `captureResponse` records a completed native response before cleanup, and `recoverStage` validates that receipt or a candidate before it writes a missing entry or replays a completed stage. Files provide editable Markdown and immutable content-addressed artifacts; releases copy checked artifacts into a manifest-verified version directory.
+One Domain project record is the business authority. A stage moves through prepared, publishing, and completed business states while the Queue retains Work and Attempt state separately. `captureResponse` records a completed native response before cleanup, and `recoverStage` validates that receipt or a candidate before it writes a missing entry or replays a completed stage. Files retain source snapshots, exports, and immutable content-addressed artifacts. The optional SiYuan projection holds write intent, stable document IDs, observed baselines, and candidates; it reads before adoption and does not update an existing entry document in place.
 
 | File | Role |
 |---|---|
 | [`src/repository.ts`](src/repository.ts) | Project operations, stage acceptance and recovery, checks, and publication. |
 | [`src/files.ts`](src/files.ts) | Managed Markdown, immutable artifacts, and release file publication. |
 | [`src/state.ts`](src/state.ts) | Domain records for projects, stages, candidates, and releases. |
+| [`src/siyuan.ts`](src/siyuan.ts) | Optional SiYuan mapping, readback, adoption, and create recovery intent. |
 
 </details>
 
@@ -107,6 +123,7 @@ These constraints define the content and recovery boundary.
 - **Publication omits source bodies** — releases retain source metadata and snapshot identities but do not export the full imported text.
 - **Model review is not human fact verification** — a passing review checks the recorded response against the available sources and rules; readers still validate consequential claims in practice.
 - **Library semantics remain advisory** — checks list exact normalized-body/condition duplicate candidates. Semantic duplicate and contradiction checks report `not_run`; individual source review does not prove their absence.
+- **SiYuan creation can require operator reconciliation** — if a dispatched create has no discoverable document after recovery, this version retains the continuation point and does not expose an operator-resolution action.
 
 <a id="dev-note"></a>
 ### Dev Note

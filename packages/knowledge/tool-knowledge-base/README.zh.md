@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## Summary
 
-`dsh-tool-knowledge-base` 为 `dsh --profile` 界面添加可编辑、基于来源的知识库工作流。其 bundle patch 挂载业务仓库、原生 Codex Queue 桥接和 `knowledge_base` 工具；带 commands 的 Profile 也会获得 `/knowledge`。在 `dsh-base` 后添加 bundle，然后使用显式的 create、source、confirm、build、check、publish 和恢复请求。build 不会自动发布，生成会保持停止，直到人工 `/knowledge` 命令或可信 Host 发送 `resume-generation`；模型工具会拒绝该 action。
+`dsh-tool-knowledge-base` 为 `dsh --profile` 界面添加可编辑、基于来源的知识库工作流。其 bundle patch 挂载业务仓库、原生 Codex Queue 桥接和 `knowledge_base` 工具；带 commands 的 Profile 也会获得 `/knowledge`。在 `dsh-base` 后添加 bundle，然后使用显式的 create、source、confirm、build、check、publish、思源和恢复请求。build 不会自动发布，生成会保持停止，直到人工 `/knowledge` 命令或可信 Host 发送 `resume-generation`；模型工具会拒绝该 action。
 
 ## Table of Contents
 
@@ -41,10 +41,16 @@ kind: "package-bundle"
 {"action":"build","projectId":"game-vibe"}
 {"action":"check","projectId":"game-vibe"}
 {"action":"publish","projectId":"game-vibe","version":"v1"}
+{"action":"siyuan-sync","projectId":"game-vibe","version":"v1"}
+{"action":"siyuan-verify","projectId":"game-vibe"}
 {"action":"status","projectId":"game-vibe"}
 ```
 
 `build.maxRevisions` 为 0–3，默认 2；同一输入的格式修正也使用该配置上限。build 在 `unknown` 工作时停止，绝不自动重发。仅在已验证收据可结算未知工作后使用 `resume`；仅对已知 `not-started` 失败使用 `retry`，仅对已知 `knowledge-validation` 失败使用 `correct`。`export-draft` 显式写入部分草稿，不登记完整发布或修改 `currentRelease`；`diff` 先核验两个完整发布，再列出新增、删除和变化的条目 ID。`stop-generation` 持久保存停止状态并等待已知活动调用结束。只有人工 `/knowledge` 命令与可信 Host 请求路径可以发送 `resume-generation`；`knowledge_base` 工具调用会被拒绝。
+
+### 思源编辑
+
+同步前配置 `knowledge-base.siyuan` 和既有原生 `mcp-client` 服务。`siyuan-sync` 仅接收正式已发布版本，创建首次条目文档或单独命名的更新候选。`siyuan-status` 报告映射文档和候选 ID。人员在思源中编辑条目标题或知识正文段后，先用 `siyuan-inspect` 回读并取得 `snapshotHash`，再通过 `/knowledge` 或可信 Host 以该哈希调用 `siyuan-adopt`。面向模型的工具允许 `siyuan-status`、`siyuan-verify` 和 `siyuan-inspect`，但拒绝 `siyuan-sync` 和 `siyuan-adopt`。来源与适用条件段的修改不会被接纳。需要实时文档和搜索索引证据时运行 `siyuan-verify`；版本目录只为读者链接条目。
 
 ### Profile Queue override
 
@@ -58,7 +64,7 @@ bundle patch 会在既有 Queue 容量旁设置 `knowledge-base: 1` 和 `codex: 
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-`cordis.patch.yml` 是位于 `dsh-base` 之上的 layer。它配置 Queue 容量，并按依赖顺序插入仓库、Queue bridge 和工具。request executor 会在调用包服务前校验封闭 action 集；面向模型的 executor 会拒绝 `resume-generation`，人工命令和可信 Host 则通过同一业务 executor 执行该 action。它不会向模型暴露 subprocess、credential 或 storage 配置。
+`cordis.patch.yml` 是位于 `dsh-base` 之上的 layer。它配置 Queue 容量，并按依赖顺序插入仓库、Queue bridge 和工具。request executor 会在调用包服务前校验封闭 action 集；面向模型的 executor 会拒绝 `resume-generation`、`siyuan-sync` 和 `siyuan-adopt`，人工命令和可信 Host 则通过同一业务 executor 执行这些 action。它不会向模型暴露 subprocess、credential 或 storage 配置。
 
 | File | Role |
 |---|---|
@@ -107,6 +113,7 @@ bundle patch 会在既有 Queue 容量旁设置 `knowledge-base: 1` 和 `codex: 
 - **修正次数有界** — `maxRevisions` 同时限制格式修正和审查驱动再生成，为 0–3 次额外修订，默认值为 2。
 - **unknown work 需要显式恢复** — build 不会重发副作用不确定的模型 work。
 - **fetch 依赖 Profile** — URL fetch 和 refresh 需要可选 web service；直接来源文本不需要。
+- **思源写入需要可信调用方** — 模型工具不能同步或接纳；需要配置原生 MCP client，并通过人工命令或可信 Host 路径调用。
 
 <a id="dev-note"></a>
 ### Dev Note
