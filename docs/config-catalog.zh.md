@@ -1064,6 +1064,44 @@ export interface Config {
 
 来源：[`packages/image/image-generation-task-queue/src/index.ts:11`](../packages/image/image-generation-task-queue/src/index.ts)
 
+<a id="changanhuadsh-knowledge-base"></a>
+
+## `@changanhua/dsh-knowledge-base`
+
+需要：`storageDomain`
+
+```ts config-catalog
+/** 由可信 Profile 指定受管理内容根。 */
+export interface Config {
+  /** 绝对路径；模型不能通过业务工具覆盖此值。 */
+  root: string
+}
+```
+
+来源：[`packages/knowledge/knowledge-base/src/index.ts:16`](../packages/knowledge/knowledge-base/src/index.ts)
+
+<a id="changanhuadsh-knowledge-base-task-queue"></a>
+
+## `@changanhua/dsh-knowledge-base-task-queue`
+
+需要：`knowledgeBase` · `taskQueue` · `subprocess`
+
+```ts config-catalog
+/** 可信 Profile 为知识阶段执行指定的非秘密配置。 */
+export interface Config {
+  /** 可选原生模型名称；省略时继承 Codex 自身配置。 */
+  readonly model?: string
+  /** Codex 原生权限模式，默认禁止交互批准。 */
+  readonly permissionMode?: CodexAppServerPermissionMode
+  /** 释放 Codex 子进程树时各终止阶段使用的宽限毫秒数。 */
+  readonly disposeGraceMs?: number
+}
+```
+
+依赖：`CodexAppServerPermissionMode`（`@deepseek-ai/dsh-subagent-codex/app-server-run`）
+
+来源：[`packages/knowledge/knowledge-base-task-queue/src/index.ts:20`](../packages/knowledge/knowledge-base-task-queue/src/index.ts)
+
 <a id="deepseek-aidsh-invariants"></a>
 
 ## `@deepseek-ai/dsh-invariants`
@@ -3817,6 +3855,7 @@ export interface Config {
 - `@deepseek-ai/dsh-tool-call-timeout-policy` — 需要 `tools` ([`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts))
 - `@deepseek-ai/dsh-tool-cordis` — 需要 `tools` · `systemPrompt` · `dynamicCordisRunner` · `cordisInspect` ([`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts))
 - `@changanhua/dsh-tool-image-generation-task-queue` — 需要 `tools` · `taskQueue` ([`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts))
+- `@changanhua/dsh-tool-knowledge-base` — 需要 `tools` · `knowledgeBase` · `knowledgeQueue` ([`packages/knowledge/tool-knowledge-base/src/index.ts`](../packages/knowledge/tool-knowledge-base/src/index.ts))
 - `@changanhua/dsh-tool-runtime-inspect` — 需要 `tools` · `runtimeFacts` · `subprocess` ([`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts))
 - `@deepseek-ai/dsh-tool-subagent-control` — 需要 `tools` · `subagents` ([`packages/subagent/tool-subagent-control/src/index.ts`](../packages/subagent/tool-subagent-control/src/index.ts))
 - `@deepseek-ai/dsh-user-questions` ([`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts))

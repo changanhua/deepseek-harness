@@ -42,6 +42,7 @@
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`、`list_agents`、`send_message` | `ctx.tools`、`ctx.subagents`、`ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`、`tool/result`、`child session events through ctx.subagents` | - | 这些是控制可继续后台 subagent 的全局命名工具：绑定提供方的 `tool-subagent` 实例注册不同的委派工具；本包注册一次 `send_message` 和 `interrupt_agent`，另由 `list_agents` 通过单独加载的 `/list-agents` 插件提供，其目录行使用 sessionProjections 和实时 Agent 注册表。 |
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`、`ctx.systemPrompt`、`a live continuable in-process child Agent` | `tool/call`、`tool/result`、`a user-role message in the direct parent session` | - | 按可继续的进程内子级注册，而非全局注册，因此该 schema 仅在这种子级内部可见，并且不受其全局 `toolFilter` 影响。同一份贡献还会安装子级作用域的 `tool:report` 系统提示词 section，本目录不渲染该 section。面向父级的 `send_message` 工具单独安装。 |
 | `@changanhua/dsh-tool-image-generation-task-queue` | `image_generate_enqueue`、`image_generate_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 image.generate@1 admission` | - | 类型化的图像准入消费者。`image_generate_enqueue` 通过活动 Agent 权限记录 `image.generate@1` 意图；提供方发现和执行属于已注册的 WorkHandler。 |
+| `@changanhua/dsh-tool-knowledge-base` | `knowledge_base` | `ctx.tools`、`ctx.knowledgeBase`、`ctx.knowledgeQueue`、`ctx.taskQueue`、`ctx.subprocess` | `tool/call`、`tool/result`、通过显式请求写入的 knowledge-base Domain 记录和受管内容 | - | `knowledge_base` 只接受封闭的业务请求。它将 Profile 配置、子进程控制、凭据和直接存储访问置于工具之外；生成由 Queue 支持，未知工作绝不自动重试，发布保持显式。 |
 | `@changanhua/dsh-tool-operation-run-task-queue` | `operation_run_enqueue`、`operation_run_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 operation.run@1 admission` | - | 类型化的 allowlist operation 准入消费者。它只接纳宿主配置的 `operationId`；executable、argv、cwd、environment、credential、resource 和 execution policy 均不在工具 schema 中。 |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`、`job_list`、`job_output` | `ctx.tools`、`ctx.jobs`、`ctx.systemPrompt` | `tool/call`、`tool/result`、`user/message via agent.inject() for background completion notices` | - | 与任务种类无关的后台任务控制器：后台 bash 命令、PTY 发送和 subagent 都通过相同的 3 个工具读取、列出和终止。加载该插件会挂接控制器，从而启用生产方的 `ctx.jobs.start()`。 |
 | `@changanhua/dsh-tool-task-queue` | `task_queue_cancel`、`task_queue_kinds`、`task_queue_list`、`task_queue_result`、`task_queue_retry`、`task_queue_stats`、`task_queue_status` | `ctx.tools`、`ctx.taskQueue`、`ctx.sessions`、`执行时处于活动状态的 Agent 会话` | `tool/call`、`tool/result`、`Queue v2 owner-scoped controls`、`来自持久终态 Notification 的 user/message` | - | 与 WorkKind 无关的持久控制器：通过宿主 `ctx.taskQueue` service 提供 `task_queue_*` 检查、结果读取、取消、重试和 WorkKind 工具，并通过 `ctx.sessions` 提供可重放安全的 owner Notification delivery。Work handler、admission Consumer 和宿主 resource capacity 分别组合。 |
@@ -1856,6 +1857,33 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 来源：[`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts)
 
 类型化的图像准入消费者。`image_generate_enqueue` 通过活动 Agent 权限记录 `image.generate@1` 意图；提供方发现和执行属于已注册的 WorkHandler。
+
+<a id="changanhuadsh-tool-knowledge-base"></a>
+
+## `@changanhua/dsh-tool-knowledge-base`
+
+### `knowledge_base`
+
+创建、维护和发布带来源的 Markdown 知识库。request 是含 action 的 JSON：create 带 spec；source 带 projectId/sourceId/title/text；fetch 带 projectId/sourceId/title/url；refresh 带 projectId/sourceId；plan、status、check、build 带 projectId；confirm 再带 planHash；generate、review、adopt 再带 entryId；publish、export-draft、rollback 带 projectId/version；diff 带 projectId/from/to；work、cancel、retry、correct、resume 带 workId；stop-generation 和 resume-generation 无其它字段。先检查并确认规划，再 build；maxRevisions 为初次生成后的修订次数，0–3，默认2。build 不自动发布，unknown 不自动重发。retry 仅重试明确未启动的失败；correct 仅修正已返回但格式校验失败的响应；resume 仅接收已有可验证结果。全局停止会保留进度并等待活动调用结束；模型工具不能解除停止，只有人类命令或可信 Host 可 resume-generation。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "request": {
+      "type": "string",
+      "description": "包含 action 与相应业务字段的 JSON 对象。"
+    }
+  },
+  "required": [
+    "request"
+  ]
+}
+```
+
+来源：[`packages/knowledge/tool-knowledge-base/src/index.ts`](../packages/knowledge/tool-knowledge-base/src/index.ts)
+
+`knowledge_base` 只接受封闭的业务请求。它将 Profile 配置、子进程控制、凭据和直接存储访问置于工具之外；生成由 Queue 支持，未知工作绝不自动重试，发布保持显式。
 
 <a id="changanhuadsh-tool-operation-run-task-queue"></a>
 

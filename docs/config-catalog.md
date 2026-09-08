@@ -162,6 +162,44 @@ export interface Config {
 
 Source: [`packages/image/image-generation-task-queue/src/index.ts:11`](../packages/image/image-generation-task-queue/src/index.ts)
 
+<a id="changanhuadsh-knowledge-base"></a>
+
+## `@changanhua/dsh-knowledge-base`
+
+Requires: `storageDomain`
+
+```ts config-catalog
+/** 由可信 Profile 指定受管理内容根。 */
+export interface Config {
+  /** 绝对路径；模型不能通过业务工具覆盖此值。 */
+  root: string
+}
+```
+
+Source: [`packages/knowledge/knowledge-base/src/index.ts:16`](../packages/knowledge/knowledge-base/src/index.ts)
+
+<a id="changanhuadsh-knowledge-base-task-queue"></a>
+
+## `@changanhua/dsh-knowledge-base-task-queue`
+
+Requires: `knowledgeBase` · `taskQueue` · `subprocess`
+
+```ts config-catalog
+/** 可信 Profile 为知识阶段执行指定的非秘密配置。 */
+export interface Config {
+  /** 可选原生模型名称；省略时继承 Codex 自身配置。 */
+  readonly model?: string
+  /** Codex 原生权限模式，默认禁止交互批准。 */
+  readonly permissionMode?: CodexAppServerPermissionMode
+  /** 释放 Codex 子进程树时各终止阶段使用的宽限毫秒数。 */
+  readonly disposeGraceMs?: number
+}
+```
+
+Depends on: `CodexAppServerPermissionMode` (`@deepseek-ai/dsh-subagent-codex/app-server-run`)
+
+Source: [`packages/knowledge/knowledge-base-task-queue/src/index.ts:20`](../packages/knowledge/knowledge-base-task-queue/src/index.ts)
+
 <a id="changanhuadsh-operation-run-task-queue"></a>
 
 ## `@changanhua/dsh-operation-run-task-queue`
@@ -294,7 +332,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/task-queue/task-queue-local/src/index.ts:73`](../packages/task-queue/task-queue-local/src/index.ts)
+Source: [`packages/task-queue/task-queue-local/src/index.ts:83`](../packages/task-queue/task-queue-local/src/index.ts)
 
 <a id="changanhuadsh-task-queue-remote"></a>
 
@@ -3763,6 +3801,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@changanhua/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))
 - `@changanhua/dsh-runtime-facts-host` — requires `runtimeFacts` ([`packages/context/runtime-facts-host/src/index.ts`](../packages/context/runtime-facts-host/src/index.ts))
 - `@changanhua/dsh-tool-image-generation-task-queue` — requires `tools` · `taskQueue` ([`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts))
+- `@changanhua/dsh-tool-knowledge-base` — requires `tools` · `knowledgeBase` · `knowledgeQueue` ([`packages/knowledge/tool-knowledge-base/src/index.ts`](../packages/knowledge/tool-knowledge-base/src/index.ts))
 - `@changanhua/dsh-tool-runtime-inspect` — requires `tools` · `runtimeFacts` · `subprocess` ([`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts))
 - `@deepseek-ai/dsh-acp-app` — requires `cmdlineArgs` ([`packages/bundle/acp-app/src/index.ts`](../packages/bundle/acp-app/src/index.ts))
 - `@deepseek-ai/dsh-agent` ([`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts))

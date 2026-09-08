@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
+  "include": ["src"],
+  "references": [
+    { "path": "../../../vendor/cordis" },
+    { "path": "../knowledge-base" },
+    { "path": "../knowledge-base-task-queue" },
+    { "path": "../../core/tools" },
+    { "path": "../../interaction/commands" },
+    { "path": "../../web/web" },
+    { "path": "../../runtime-diagnostics/invariants" }
+  ]
+}

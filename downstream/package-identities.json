@@ -376,6 +376,42 @@
       ]
     },
     {
+      "directory": "packages/knowledge/knowledge-base",
+      "legacyName": "@deepseek-ai/dsh-knowledge-base",
+      "sourceName": "@changanhua/dsh-knowledge-base",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent",
+        "upstream-private-api-dependency"
+      ]
+    },
+    {
+      "directory": "packages/knowledge/knowledge-base-task-queue",
+      "legacyName": "@deepseek-ai/dsh-knowledge-base-task-queue",
+      "sourceName": "@changanhua/dsh-knowledge-base-task-queue",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent",
+        "upstream-private-api-dependency"
+      ]
+    },
+    {
+      "directory": "packages/knowledge/tool-knowledge-base",
+      "legacyName": "@deepseek-ai/dsh-tool-knowledge-base",
+      "sourceName": "@changanhua/dsh-tool-knowledge-base",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent",
+        "upstream-private-api-dependency"
+      ]
+    },
+    {
       "directory": "packages/task-queue/command-task-queue",
       "legacyName": "@deepseek-ai/dsh-command-task-queue",
       "sourceName": "@changanhua/dsh-command-task-queue",

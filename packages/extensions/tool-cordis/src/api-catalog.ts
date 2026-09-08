@@ -1266,6 +1266,60 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'knowledgeBase',
+    summary: 'Domain 和内容文件的唯一业务 owner。',
+    description: 'Domain 和内容文件的唯一业务 owner。',
+    methods: [],
+  },
+  {
+    key: 'knowledgeQueue',
+    summary: '将知识阶段绑定到持久 Queue，并维护项目级生成停止门。',
+    description: '将知识阶段绑定到持久 Queue，并维护项目级生成停止门。',
+    methods: [
+      {
+        signature: 'async enqueueStage( projectId: string, entryId: string, action: PreparedStage[\'action\'], ): Promise<{ workId: string; stageId: string }>',
+        description: '准备并准入一个新阶段；全局生成已停止时拒绝写入 Queue。',
+        parameters: [{ name: 'projectId', description: '受管理项目 ID。' }, { name: 'entryId', description: '目标条目或规划阶段 ID。' }, { name: 'action', description: '该阶段执行的业务动作。' }],
+        returns: 'Queue 工作及持久阶段身份。',
+      },
+      {
+        signature: 'status(workId: string): WorkView',
+        description: '返回已绑定知识阶段的 Queue 视图，拒绝其他工作种类或失配绑定。',
+        parameters: [{ name: 'workId', description: 'Queue 工作 ID。' }],
+        returns: '经项目阶段绑定核验的工作视图。',
+      },
+      {
+        signature: 'async stopGeneration(): Promise<void>',
+        description: '显式停止整个知识生成器，等待已知在途调用清理并保留未知结果。',
+        parameters: [],
+      },
+      {
+        signature: 'cancel(workId: string): Promise<void>',
+        description: '请求取消已绑定的知识阶段。',
+        parameters: [{ name: 'workId', description: 'Queue 工作 ID。' }],
+        returns: 'Queue 接受取消请求后完成。',
+      },
+      {
+        signature: 'async correctStage(workId: string): Promise<{ workId: string; stageId: string }>',
+        description: '仅为本地校验拒绝的响应创建修正阶段；未知结果不得绕过恢复核验。',
+        parameters: [{ name: 'workId', description: '失败的 Queue 工作 ID。' }],
+        returns: '新修正阶段的 Queue 工作及阶段身份。',
+      },
+      {
+        signature: 'async retryStage(workId: string): Promise<void>',
+        description: '仅重试确定尚未发起模型请求的失败工作。',
+        parameters: [{ name: 'workId', description: '可重试的 Queue 工作 ID。' }],
+        returns: 'Queue 接受重试请求后完成。',
+      },
+      {
+        signature: 'async resumeStage(workId: string): Promise<void>',
+        description: '只在仓库存在可验证完成记录时授权未知工作重新调度。',
+        parameters: [{ name: 'workId', description: '状态为 unknown 的 Queue 工作 ID。' }],
+        returns: 'Queue 接受恢复授权后完成。',
+      },
+    ],
+  },
+  {
     key: 'llm',
     summary: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
     description: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
@@ -5132,6 +5186,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PreparedReferencedMessage {\n    content: ContentBlock[];\n    additionalContext?: UserMessage;\n}',
   },
   {
+    name: 'PreparedStage',
+    declaration: 'export type PreparedStage = z.infer<typeof preparedStageSchema>;',
+  },
+  {
     name: 'PreparedWork',
     declaration: 'export type PreparedWork<K extends WorkKind> = WorkKindMap[K] extends WorkKindDefinition<unknown, unknown, infer T, unknown> ? T : never;',
   },
@@ -5237,7 +5295,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'QueueWaitReason',
-    declaration: 'export type QueueWaitReason = {\n    readonly kind: \'dispatch-paused\';\n} | {\n    readonly kind: \'queue-faulted\';\n} | {\n    readonly kind: \'handler-unavailable\';\n} | {\n    readonly kind: \'global-capacity\';\n    readonly capacity: number;\n} | {\n    readonly kind: \'batch-capacity\';\n    readonly batchId: BatchId;\n    readonly capacity: number;\n} | {\n    readonly kind: \'resource-capacity\';\n    readonly resource: string;\n    readonly capacity: number;\n    readonly used: number;\n    readonly requested: number;\n} | {\n    readonly kind: \'scheduler-turn\';\n};',
+    declaration: 'export type QueueWaitReason = {\n    readonly kind: \'dispatch-paused\';\n} | {\n    readonly kind: \'queue-faulted\';\n} | {\n    readonly kind: \'handler-unavailable\';\n} | {\n    readonly kind: \'retry-backoff\';\n    readonly eligibleAt: string;\n} | {\n    readonly kind: \'global-capacity\';\n    readonly capacity: number;\n} | {\n    readonly kind: \'batch-capacity\';\n    readonly batchId: BatchId;\n    readonly capacity: number;\n} | {\n    readonly kind: \'resource-capacity\';\n    readonly resource: string;\n    readonly capacity: number;\n    readonly used: number;\n    readonly requested: number;\n} | {\n    readonly kind: \'scheduler-turn\';\n};',
   },
   {
     name: 'QueueWorkIdRef',
@@ -6741,7 +6799,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'VerificationWorkspaceLease',
-    declaration: 'export interface VerificationWorkspaceLease extends RepositoryWorkspaceLease {\n    readonly baseCommit: GitCommitId;\n    readonly targetCommit: GitCommitId;\n}',
+    declaration: 'export interface VerificationWorkspaceLease extends RepositoryWorkspaceLease {\n    readonly baseCommit: GitCommitId;\n    readonly targetCommit: GitCommitId;\n    assertUnchanged(signal?: AbortSignal): Promise<void>;\n}',
   },
   {
     name: 'VerifiedAgentAuthority',

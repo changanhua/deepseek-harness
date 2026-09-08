@@ -1,0 +1,22 @@
+# Apply after dsh-base. Profile-local configuration remains the final layer.
+- id: task-queue
+  config:
+    queueRoot: !!js dshHomePath('task-queue-v3')
+    maxConcurrent: 3
+    shutdownTimeoutMs: 5000
+    resourceCapacity:
+      image-generation: 3
+      agent-run: 1
+      operation-run: 1
+      knowledge-base: 1
+      codex: 1
+
+- insert:
+    - id: knowledge-base
+      name: '@changanhua/dsh-knowledge-base'
+      config:
+        root: !!js dshHomePath('knowledge-base')
+    - id: knowledge-base-task-queue
+      name: '@changanhua/dsh-knowledge-base-task-queue'
+    - id: tool-knowledge-base
+      name: '@changanhua/dsh-tool-knowledge-base'

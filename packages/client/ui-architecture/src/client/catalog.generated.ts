@@ -2966,6 +2966,57 @@ export const architectureCatalog: ArchitectureCatalog = {
       ],
     },
     {
+      name: '@changanhua/dsh-knowledge-base-task-queue',
+      short: 'knowledge-base-task-queue',
+      group: 'knowledge',
+      path: 'packages/knowledge/knowledge-base-task-queue',
+      description: 'Queue v2 bridge for durable knowledge-base stages',
+      dependencies: [
+        '@changanhua/dsh-knowledge-base',
+        '@changanhua/dsh-task-queue',
+        '@deepseek-ai/dsh-invariants',
+        '@deepseek-ai/dsh-subagent-codex',
+        '@deepseek-ai/dsh-subprocess',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-knowledge-base',
+      short: 'knowledge-base',
+      group: 'knowledge',
+      path: 'packages/knowledge/knowledge-base',
+      description: 'Editable source-grounded knowledge libraries with durable business records and publication checks',
+      dependencies: [
+        '@deepseek-ai/dsh-atomic-write',
+        '@deepseek-ai/dsh-invariants',
+        '@deepseek-ai/dsh-storage-domain',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-tool-knowledge-base',
+      short: 'tool-knowledge-base',
+      group: 'knowledge',
+      path: 'packages/knowledge/tool-knowledge-base',
+      description: 'Knowledge library operations for model tools and human DSH commands',
+      dependencies: [
+        '@changanhua/dsh-knowledge-base',
+        '@changanhua/dsh-knowledge-base-task-queue',
+        '@deepseek-ai/dsh-commands',
+        '@deepseek-ai/dsh-invariants',
+        '@deepseek-ai/dsh-tools',
+        '@deepseek-ai/dsh-web',
+      ],
+      faces: [
+        'bundle',
+        'tool',
+      ],
+    },
+    {
       name: '@deepseek-ai/dsh-deepseek-llm-api-extensions',
       short: 'deepseek-llm-api-extensions',
       group: 'llm',
