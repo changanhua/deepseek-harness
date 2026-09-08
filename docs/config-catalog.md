@@ -187,7 +187,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/knowledge/knowledge-base/src/index.ts:25`](../packages/knowledge/knowledge-base/src/index.ts)
+Source: [`packages/knowledge/knowledge-base/src/index.ts:26`](../packages/knowledge/knowledge-base/src/index.ts)
 
 <a id="changanhuadsh-knowledge-base-task-queue"></a>
 

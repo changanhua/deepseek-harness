@@ -23,6 +23,17 @@ function executionContext(): ToolRunContext {
 }
 
 describe('知识工具的思源请求', () => {
+  it('可在未同步前查看任意任务地图，并读取尚无目标版本的思源状态', async () => {
+    const map = { projectId: 'photography', title: '摄影观察', readerTask: '判断曝光', nodes: [], layers: [] }
+    const deps = {
+      repository: { map: (id: string) => { expect(id).toBe('photography'); return { map, markdown: '尚未形成条目规划' } } },
+      queue: {}, siyuan: { status: () => ({ currentVersion: null, targetVersion: null, root: null, entries: {}, versions: {} }) },
+    }
+    await expect(executeKnowledgeRequest({ action: 'map', projectId: 'photography' }, deps as never, signal))
+      .resolves.toEqual({ map, markdown: '尚未形成条目规划' })
+    await expect(executeKnowledgeRequest({ action: 'siyuan-status', projectId: 'photography' }, deps as never, signal))
+      .resolves.toMatchObject({ currentVersion: null, targetVersion: null, entries: [] })
+  })
   it('将正式发布版传给同步，并把状态压缩为映射和候选文档 ID', async () => {
     let published: [string, string] | undefined
     let synchronized: SiyuanProjectInput | undefined
@@ -36,6 +47,7 @@ describe('知识工具的思源请求', () => {
         expect(projectId).toBe('game')
         return {
           currentVersion: 'v1', targetVersion: 'v2', root: { documentId: 'root-doc' },
+          versions: { v2: { knowledgeMap: { documentId: 'map-doc' } } },
           entries: { scope: { documentId: 'scope-doc', candidates: { [hash('c')]: { documentId: 'candidate-doc' } } } },
           intents: { 'entry:scope': { markdown: 'must not be returned' } },
         }
@@ -55,6 +67,7 @@ describe('知识工具的思源请求', () => {
     expect(synchronized).toBe(release)
     await expect(executeKnowledgeRequest({ action: 'siyuan-status', projectId: 'game' }, deps as never, signal))
       .resolves.toEqual({ projectId: 'game', currentVersion: 'v1', targetVersion: 'v2', rootDocumentId: 'root-doc',
+        mapDocumentId: 'map-doc',
         entries: [{ id: 'scope', documentId: 'scope-doc', candidates: ['candidate-doc'] }] })
   })
 

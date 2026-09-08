@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Every project has a knowledge map derived from its own specification, prerequisite graph, and included entries. The repository's `map` method exposes it before publication, including planned but unwritten units. Each release and partial export contains `map.md` and `map.json`; the map retains the reader task, unit goals, source IDs, prerequisites, related entries, and inclusion status. SiYuan synchronization creates a versioned map with native entry links, reads it back before reporting completion, and preserves an edited map as a conflict. Historical maps use the specification frozen in the verified release, not the current plan.
+
 Mount this service with a Storage Domain provider and give it an absolute managed content root.
 
 ### Minimal configuration

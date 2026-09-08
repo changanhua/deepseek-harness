@@ -32,4 +32,6 @@ When SiYuan is configured through an existing native MCP client, synchronization
 
 ## Consequences
 
+Knowledge maps belong to the generator contract for every topic. A deterministic projection of the persisted plan and entries drives the current map command, versioned Markdown/JSON exports, and SiYuan maps. Reusing one representation prevents sample-only navigation and avoids another mutable map authority. Published maps read the frozen release specification; a changed or missing SiYuan map cannot satisfy synchronization completion.
+
 The split preserves editable content and execution evidence without a second writable task ledger. Backups must include source snapshots, exports, the corresponding Domain/Queue data, and any SiYuan mapping record. File publication and SiYuan projection provide no cross-store transaction or power-loss durability guarantee. Source location checks and model review do not prove domain completeness or replace reader verification. The first configured content focuses on AI-assisted game development; a smaller photography example exercises the same contracts.

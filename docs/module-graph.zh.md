@@ -78,6 +78,7 @@ flowchart TD
     pkg_delivery_evidence["delivery-evidence"]
     pkg_delivery_evidence_local["delivery-evidence-local"]
     pkg_delivery_github_intake["delivery-github-intake"]
+    pkg_delivery_github_publisher["delivery-github-publisher"]
     pkg_delivery_local["delivery-local"]
     pkg_delivery_protocol["delivery-protocol"]
     pkg_delivery_remote["delivery-remote"]
@@ -510,9 +511,6 @@ flowchart TD
   pkg_experimental_inspector --> pkg_client_modules
   pkg_experimental_inspector --> pkg_host_webserver
   pkg_experimental_inspector --> pkg_invariants
-  pkg_knowledge_base --> pkg_atomic_write
-  pkg_knowledge_base --> pkg_invariants
-  pkg_knowledge_base --> pkg_storage_domain
   pkg_session --> pkg_brand
   pkg_session --> pkg_invariants
   pkg_session --> pkg_llm
@@ -563,6 +561,10 @@ flowchart TD
   pkg_delivery_github_intake --> pkg_delivery
   pkg_delivery_github_intake --> pkg_delivery_protocol
   pkg_delivery_github_intake --> pkg_invariants
+  pkg_delivery_github_publisher --> pkg_credentials
+  pkg_delivery_github_publisher --> pkg_delivery
+  pkg_delivery_github_publisher --> pkg_delivery_protocol
+  pkg_delivery_github_publisher --> pkg_invariants
   pkg_delivery_local --> pkg_delivery
   pkg_delivery_local --> pkg_delivery_protocol
   pkg_delivery_local --> pkg_invariants
@@ -804,9 +806,11 @@ flowchart TD
   pkg_skill_filesystem --> pkg_home_paths
   pkg_skill_filesystem --> pkg_invariants
   pkg_skill_filesystem --> pkg_skill
+  pkg_delivery_remote --> pkg_credentials
   pkg_delivery_remote --> pkg_delivery
   pkg_delivery_remote --> pkg_delivery_evidence
   pkg_delivery_remote --> pkg_delivery_github_intake
+  pkg_delivery_remote --> pkg_delivery_github_publisher
   pkg_delivery_remote --> pkg_delivery_protocol
   pkg_delivery_remote --> pkg_delivery_task_queue
   pkg_delivery_remote --> pkg_invariants
@@ -1027,6 +1031,11 @@ flowchart TD
   pkg_tool_jobs --> pkg_output_retention
   pkg_tool_jobs --> pkg_system_prompt
   pkg_tool_jobs --> pkg_tools
+  pkg_knowledge_base --> pkg_atomic_write
+  pkg_knowledge_base --> pkg_invariants
+  pkg_knowledge_base --> pkg_llm
+  pkg_knowledge_base --> pkg_storage_domain
+  pkg_knowledge_base --> pkg_tools
   pkg_tool_lsp --> pkg_invariants
   pkg_tool_lsp --> pkg_llm
   pkg_tool_lsp --> pkg_lsp
@@ -2052,7 +2061,6 @@ flowchart TD
 | [`client-hmr`](../packages/client/hmr) | `client` | [`client-modules`](../packages/client/modules), [`host-webserver`](../packages/host/webserver), [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`credentials-local`](../packages/credentials/credentials-local) | `credentials` | [`atomic-write`](../packages/util/atomic-write), [`credentials`](../packages/credentials/credentials), [`home-paths`](../packages/util/home-paths), [`invariants`](../packages/runtime-diagnostics/invariants), [`launch-environment`](../packages/util/launch-environment) |
 | [`experimental-inspector`](../packages/experimental/inspector) | `experimental` | [`client-modules`](../packages/client/modules), [`host-webserver`](../packages/host/webserver), [`invariants`](../packages/runtime-diagnostics/invariants) |
-| [`knowledge-base`](../packages/knowledge/knowledge-base) | `knowledge` | [`atomic-write`](../packages/util/atomic-write), [`invariants`](../packages/runtime-diagnostics/invariants), [`storage-domain`](../packages/storage/storage-domain) |
 | [`session`](../packages/core/session) | `core` | [`brand`](../packages/util/brand), [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope), [`typert-protocol`](../packages/typert/protocol) |
 | [`system-prompt`](../packages/core/system-prompt) | `core` | [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope) |
 | [`skill`](../packages/skill/skill) | `skill` | [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope) |
@@ -2066,6 +2074,7 @@ flowchart TD
 | [`agent`](../packages/core/agent) | `core` | [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`system-prompt`](../packages/core/system-prompt), [`typert-protocol`](../packages/typert/protocol) |
 | [`skill-badge`](../packages/skill/skill-badge) | `skill` | [`invariants`](../packages/runtime-diagnostics/invariants), [`skill`](../packages/skill/skill) |
 | [`delivery-github-intake`](../packages/delivery/delivery-github-intake) | `delivery` | [`delivery`](../packages/delivery/delivery), [`delivery-protocol`](../packages/delivery/delivery-protocol), [`invariants`](../packages/runtime-diagnostics/invariants) |
+| [`delivery-github-publisher`](../packages/delivery/delivery-github-publisher) | `delivery` | [`credentials`](../packages/credentials/credentials), [`delivery`](../packages/delivery/delivery), [`delivery-protocol`](../packages/delivery/delivery-protocol), [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`delivery-local`](../packages/delivery/delivery-local) | `delivery` | [`delivery`](../packages/delivery/delivery), [`delivery-protocol`](../packages/delivery/delivery-protocol), [`invariants`](../packages/runtime-diagnostics/invariants), [`storage-domain`](../packages/storage/storage-domain) |
 | [`delivery-testkit`](../packages/delivery/delivery-testkit) | `delivery` | [`delivery`](../packages/delivery/delivery), [`delivery-evidence`](../packages/delivery/delivery-evidence), [`delivery-protocol`](../packages/delivery/delivery-protocol), [`invariants`](../packages/runtime-diagnostics/invariants), [`repo-workspace`](../packages/delivery/repo-workspace) |
 | [`spill`](../packages/spill/spill) | `spill` | [`brand`](../packages/util/brand), [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`session`](../packages/core/session) |
@@ -2120,7 +2129,7 @@ flowchart TD
 | [`fs-local`](../packages/fs/fs-local) | `fs` | [`fs`](../packages/fs/fs), [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`fs-observation-policy`](../packages/fs/fs-observation-policy) | `fs` | [`fs`](../packages/fs/fs), [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`skill-filesystem`](../packages/skill/skill-filesystem) | `skill` | [`fs`](../packages/fs/fs), [`home-paths`](../packages/util/home-paths), [`invariants`](../packages/runtime-diagnostics/invariants), [`skill`](../packages/skill/skill) |
-| [`delivery-remote`](../packages/delivery/delivery-remote) | `delivery` | [`delivery`](../packages/delivery/delivery), [`delivery-evidence`](../packages/delivery/delivery-evidence), [`delivery-github-intake`](../packages/delivery/delivery-github-intake), [`delivery-protocol`](../packages/delivery/delivery-protocol), [`delivery-task-queue`](../packages/delivery/delivery-task-queue), [`invariants`](../packages/runtime-diagnostics/invariants), [`repo-workspace`](../packages/delivery/repo-workspace), [`task-queue`](../packages/task-queue/task-queue), [`typert-protocol`](../packages/typert/protocol) |
+| [`delivery-remote`](../packages/delivery/delivery-remote) | `delivery` | [`credentials`](../packages/credentials/credentials), [`delivery`](../packages/delivery/delivery), [`delivery-evidence`](../packages/delivery/delivery-evidence), [`delivery-github-intake`](../packages/delivery/delivery-github-intake), [`delivery-github-publisher`](../packages/delivery/delivery-github-publisher), [`delivery-protocol`](../packages/delivery/delivery-protocol), [`delivery-task-queue`](../packages/delivery/delivery-task-queue), [`invariants`](../packages/runtime-diagnostics/invariants), [`repo-workspace`](../packages/delivery/repo-workspace), [`task-queue`](../packages/task-queue/task-queue), [`typert-protocol`](../packages/typert/protocol) |
 | [`hook-protocol`](../packages/hooks/hook-protocol) | `hooks` | [`invariants`](../packages/runtime-diagnostics/invariants), [`session`](../packages/core/session), [`shell`](../packages/shell/shell) |
 | [`headless`](../packages/bundle/headless) | `bundle` | [`agent`](../packages/core/agent), [`agent-default-model`](../packages/core/agent-default-model), [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`session`](../packages/core/session) |
 | [`compaction`](../packages/compaction/compaction) | `compaction` | [`brand`](../packages/util/brand), [`commands`](../packages/interaction/commands), [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`session`](../packages/core/session) |
@@ -2159,6 +2168,7 @@ flowchart TD
 | [`tool-image-generation-task-queue`](../packages/image/tool-image-generation-task-queue) | `image` | [`image-generation-task-queue`](../packages/image/image-generation-task-queue), [`invariants`](../packages/runtime-diagnostics/invariants), [`task-queue`](../packages/task-queue/task-queue), [`tools`](../packages/core/tools) |
 | [`tool-ask-user`](../packages/interaction/tool-ask-user) | `interaction` | [`agent`](../packages/core/agent), [`invariants`](../packages/runtime-diagnostics/invariants), [`tools`](../packages/core/tools), [`user-questions`](../packages/interaction/user-questions) |
 | [`tool-jobs`](../packages/jobs/tool-jobs) | `jobs` | [`agent`](../packages/core/agent), [`invariants`](../packages/runtime-diagnostics/invariants), [`jobs`](../packages/jobs/jobs), [`llm`](../packages/llm/llm), [`output-retention`](../packages/util/output-retention), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools) |
+| [`knowledge-base`](../packages/knowledge/knowledge-base) | `knowledge` | [`atomic-write`](../packages/util/atomic-write), [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`storage-domain`](../packages/storage/storage-domain), [`tools`](../packages/core/tools) |
 | [`tool-lsp`](../packages/lsp/tool-lsp) | `lsp` | [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`lsp`](../packages/lsp/lsp), [`system-prompt`](../packages/core/system-prompt), [`timeout`](../packages/util/timeout), [`tools`](../packages/core/tools) |
 | [`mcp-client`](../packages/mcp/mcp-client) | `mcp` | [`attachment`](../packages/attachment/attachment), [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope), [`subprocess`](../packages/subprocess/subprocess), [`timeout`](../packages/util/timeout), [`tools`](../packages/core/tools) |
 | [`agent-presets`](../packages/preset/agent-presets) | `preset` | [`agent`](../packages/core/agent), [`atomic-write`](../packages/util/atomic-write), [`home-paths`](../packages/util/home-paths), [`invariants`](../packages/runtime-diagnostics/invariants), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`session-projection`](../packages/session/session-projection), [`settings`](../packages/settings/settings), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol) |

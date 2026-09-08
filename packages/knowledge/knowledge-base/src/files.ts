@@ -218,11 +218,11 @@ export class KnowledgeFiles {
    * @param projectId - 受管理项目 ID。
    * @param version - 要核验的发布版本。
    * @param expected - 持久业务记录中的清单摘要和条目摘要。
-   * @returns 所有发布文件与清单匹配后完成。
+   * @returns 已核验的发布文件内容，供消费者读取同一版本的规格与地图。
    */
   async verifyRelease(
     projectId: string, version: string, expected: { manifestHash: string; entries: Readonly<Record<string, string>> },
-  ): Promise<void> {
+  ): Promise<Record<string, string>> {
     await this.initialize(projectId)
     hash(expected.manifestHash)
     const release = join(this.projectDirectory(projectId), 'releases', id(version, 'release'))
@@ -248,6 +248,7 @@ export class KnowledgeFiles {
       throw new Error('knowledge files: release manifest files are invalid')
     }
     const declaredFiles = Object.entries(manifestFiles as Record<string, unknown>)
+    const verified: Record<string, string> = {}
     for (const [name, digest] of declaredFiles) {
       if (!this.isAllowedReleaseFile(name) && !/^entry-[a-z][a-z0-9-]{0,63}\.md$/u.test(name)) {
         throw new Error(`knowledge files: forbidden manifest file: ${name}`)
@@ -258,12 +259,14 @@ export class KnowledgeFiles {
       if (typeof digest !== 'string') throw new Error(`knowledge files: invalid release file hash: ${name}`)
       const content = await this.readRequiredRegular(join(release, name))
       if (contentHash(content) !== hash(digest)) throw new Error(`knowledge files: release file content hash mismatch: ${name}`)
+      verified[name] = content
     }
     const names = await readdir(release)
     const expectedNames = new Set(['manifest.json', ...declaredFiles.map(([name]) => name)])
     if (names.length !== expectedNames.size || names.some(name => !expectedNames.has(name))) {
       throw new Error('knowledge files: release directory files differ from manifest')
     }
+    return verified
   }
 
   /**
@@ -390,7 +393,7 @@ export class KnowledgeFiles {
 
   private isAllowedReleaseFile(name: string): boolean {
     return name === 'manifest.json' || name === 'README.md' || name === 'project.yaml'
-      || name === 'map.md' || name === 'sources.json' || name === 'checks.json'
+      || name === 'map.md' || name === 'map.json' || name === 'sources.json' || name === 'checks.json'
       || /^review-[a-z][a-z0-9-]{0,63}\.json$/u.test(name)
   }
 

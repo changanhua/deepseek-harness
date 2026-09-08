@@ -83,6 +83,10 @@ it('初次迁入后重跑与重启均不重复创建，正文在思源而非超�
   const first = await h.projection.sync(input(), signal())
   expect(first).toMatchObject({ createdEntries: ['scope'], candidates: [], conflicts: [], complete: true })
   const mapping = h.projection.status('game').entries.scope!
+  const map = await h.remote.getKramdown(first.mapDocumentId)
+  expect(map).toContain('读者任务：写出玩法说明。')
+  expect(map).toContain(mapping.documentId)
+  expect(map).toContain('要解决的问题：小型原型')
   expect((await h.remote.getKramdown(mapping.documentId))).toContain('先验证一个循环。')
   expect((await h.remote.getKramdown(mapping.documentId))).not.toContain('{{{row')
   const count = h.remote.creates.length
@@ -90,7 +94,20 @@ it('初次迁入后重跑与重启均不重复创建，正文在思源而非超�
   const reopened = await harness(h.remote, h.root)
   expect((await reopened.projection.sync(input(), signal())).createdEntries).toEqual([])
   expect(h.remote.creates).toHaveLength(count)
+  expect(reopened.projection.status('game').versions.v1?.knowledgeMap?.documentId).toBe(first.mapDocumentId)
   expect(await reopened.projection.verify('game', signal())).toMatchObject({ documents: 1, searchable: true, conflicts: [], complete: true })
+})
+
+it('手改地图后不能仍宣称该版本完整匹配，也不覆盖手改地图', async () => {
+  const h = await harness()
+  const first = await h.projection.sync(input(), signal())
+  const map = h.remote.docs.get(first.mapDocumentId)!
+  map.markdown += '\n用户调整的阅读建议。'
+  expect(await h.projection.verify('game', signal())).toMatchObject({ complete: false, conflicts: ['@map'] })
+  expect(await h.projection.sync(input(), signal())).toMatchObject({ complete: false, conflicts: ['@map'] })
+  expect(map.markdown).toContain('用户调整的阅读建议。')
+  h.remote.docs.delete(first.mapDocumentId)
+  await expect(h.projection.sync(input(), signal())).rejects.toThrow('missing remote document')
 })
 it('思源已创建而响应丢失时只核对目标并恢复；尚未创建时不会盲目重试', async () => {
   const h = await harness()

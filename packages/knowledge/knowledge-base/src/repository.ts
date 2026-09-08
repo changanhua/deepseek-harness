@@ -4,6 +4,8 @@
  * @module @changanhua/dsh-knowledge-base/repository
  */
 import { dump, load } from 'js-yaml'
+import { createKnowledgeMap, renderKnowledgeMap } from './map.ts'
+import type { KnowledgeMap } from './map.ts'
 import { ZodError } from 'zod'
 import type { Domain, DomainFacility, KvTable } from '@deepseek-ai/dsh-storage-domain'
 import { KnowledgeFiles, contentHash, KnowledgeFileConflictError } from './files.ts'
@@ -627,7 +629,9 @@ export class KnowledgeRepository {
   async publication(id: string, version: string): Promise<SiyuanProjectInput> {
     const record = this.get(id), release = record.releases[version]
     if (!release || version.startsWith('draft-')) throw new Error('knowledge-base: a formal release is required')
-    await this.files.verifyRelease(id, version, release)
+    const publishedFiles = await this.files.verifyRelease(id, version, release)
+    const specification = projectSpecSchema.parse(load(publishedFiles['project.yaml'] as string))
+    if (specification.id !== id) throw new Error('knowledge-base: published specification identity differs')
     const entries: KnowledgeEntry[] = []
     for (const [entryId, hash] of Object.entries(release.entries)) {
       const entry = parseEntry(await this.files.readArtifact(id, hash))
@@ -639,7 +643,20 @@ export class KnowledgeRepository {
         const source = recordValue(record.sources, key)
         return { sourceId: source.sourceId, snapshotId: source.snapshotId, title: source.title, ...(source.url ? { url: source.url } : {}) }
       })
-    return { projectId: id, title: record.spec.title, readerTask: record.spec.readerTask, version, entries, sources }
+    return { projectId: id, title: specification.title, readerTask: specification.readerTask, version, entries, sources, specification }
+  }
+
+  /**
+   * 从当前规划与已提交条目读取任务地图，不增加模型调用。
+   * @param id - 项目 ID。
+   * @returns 当前地图与可阅读的 Markdown；待生成单元保持可见。
+   */
+  map(id: string): { map: KnowledgeMap; markdown: string } {
+    const record = this.get(id)
+    const entries = Object.values(record.entries).map(commit => commit.entry)
+    const map = createKnowledgeMap(record.spec, entries)
+    const links = Object.fromEntries(entries.map(entry => [entry.id, '[' + entry.title + '](entry-' + entry.id + '.md)']))
+    return { map, markdown: renderKnowledgeMap(map, links) }
   }
 
   /**
@@ -691,6 +708,9 @@ export class KnowledgeRepository {
       const record = this.read(id)
       const selected = report.entries.filter(entry => draft ? !!record.entries[entry.id] : entry.issues.length === 0)
       const hashes = Object.fromEntries(selected.map(item => [item.id, recordValue(record.entries, item.id).contentHash]))
+      const map = createKnowledgeMap(record.spec, selected.map(item => recordValue(record.entries, item.id).entry))
+      const mapLinks = Object.fromEntries(map.nodes.filter(node => node.included)
+        .map(node => [node.id, '[' + node.title + '](entry-' + node.id + '.md)']))
       const files: Record<string, string> = {
         'README.md': '# ' + record.spec.title + (draft ? '（部分草稿）' : '') + '\n\n' + record.spec.readerTask + '\n\n'
           + selected.map(item => '- [' + recordValue(record.entries, item.id).entry.title + '](entry-' + item.id + '.md)').join('\n')
@@ -699,10 +719,8 @@ export class KnowledgeRepository {
             : '\n\n本版本通过结构、引用位置、依赖和模型语义审查。模型审查不能替代读者的实践验证。')
           + '\n\n[知识地图](map.md) · [来源快照](sources.json) · [检查报告](checks.json)\n',
         'project.yaml': dump(record.spec, { noRefs: true, lineWidth: -1 }),
-        'map.md': '# 知识地图\n\n' + record.spec.seeds.map(seed =>
-          '## ' + seed.title + '\n\n' + seed.goal + '\n\n前置：'
-          + (seed.depends.length ? seed.depends.map(parent => '[' + parent + '](entry-' + parent + '.md)').join('、') : '无')
-          + '\n\n' + (hashes[seed.id] ? '[阅读条目](entry-' + seed.id + '.md)' : '本版本未收录') + '\n').join('\n'),
+        'map.md': renderKnowledgeMap(map, mapLinks),
+        'map.json': JSON.stringify(map, null, 2) + '\n',
         'sources.json': JSON.stringify(Object.fromEntries(Object.entries(record.latestSources).map(([sourceId, snapshotId]) => {
           const { text: _text, ...metadata } = recordValue(record.sources, sourceId + ':' + snapshotId)
           return [sourceId, metadata]

@@ -95,6 +95,28 @@ afterEach(async () => {
 })
 
 describe('SiYuan 投影的错误与恢复边界', () => {
+  it('写入前拒绝串项目的地图规划，同版本不能偷偷替换地图目标', async () => {
+    const h = await harness()
+    const published = project()
+    published.specification = { id: 'another', title: '另一主题', readerTask: '不同任务', language: 'zh', seeds: [] }
+    expect(() => h.projection.sync(published, signal())).toThrow('map project identity differs')
+    expect(h.remote.creates).toBe(0)
+    published.specification = { id: 'game', title: published.title, readerTask: published.readerTask, language: 'zh', seeds: [
+      { id: 'scope', title: '范围', goal: '明确最小范围', type: 'method', depends: [], sourceIds: ['manual'], required: true },
+    ] }
+    await h.projection.sync(published, signal())
+    published.specification.seeds[0]!.goal = '未经新版本确认的另一用途'
+    await expect(h.projection.sync(published, signal())).rejects.toThrow('immutable map input changed')
+  })
+
+  it('版本目录创建返回丢失后复用原意图，不重复建立地图或目录', async () => {
+    const h = await harness()
+    h.remote.failAfterPath = '/知识/游戏知识/版本目录 v1'
+    await expect(h.projection.sync(project(), signal())).rejects.toThrow('create result lost')
+    const count = h.remote.creates
+    await expect(h.projection.sync(project(), signal())).resolves.toMatchObject({ complete: true, createdEntries: [] })
+    expect(h.remote.creates).toBe(count)
+  })
   it('在写远端前拒绝无效目标、重复 ID、缺失依赖和环依赖', async () => {
     const remote = new Remote()
     const root = await mkdtemp(join(tmpdir(), 'knowledge-siyuan-invalid-')); roots.push(root)
@@ -252,7 +274,7 @@ describe('SiYuan 投影的错误与恢复边界', () => {
     await expect(recovering.projection.sync(project(), signal())).rejects.toThrow('temporary readback failure')
     const creates = recovering.remote.creates
     await expect(recovering.projection.sync(project(), signal())).resolves.toMatchObject({ createdEntries: ['scope'], complete: true })
-    expect(recovering.remote.creates).toBe(creates + 2)
+    expect(recovering.remote.creates).toBe(creates + 3)
   })
 
   it('不允许因 v2 内容不同而接管 v1 未知创建结果', async () => {

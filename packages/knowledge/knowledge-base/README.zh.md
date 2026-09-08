@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## Use this package
 
+每个项目都从自身规格、前置关系和已收录条目派生知识地图。仓库的 `map` 方法可在发布前查看地图，包含已规划但未生成的单元。每次发布和部分导出都包含 `map.md` 与 `map.json`；地图保留读者任务、单元目标、来源 ID、前置知识、关联条目及收录状态。思源同步自动生成带原生条目链接的版本地图，回读后才报告完成，手改地图会保留并报告冲突。历史地图采用已核验发布物中冻结的规格，不采用当前规划。
+
 使用 Storage Domain provider 挂载该服务，并提供绝对的受管内容根目录。
 
 ### Minimal configuration

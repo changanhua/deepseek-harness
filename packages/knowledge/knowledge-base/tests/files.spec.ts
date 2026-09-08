@@ -108,7 +108,7 @@ describe('KnowledgeFiles', () => {
     const release = await store.exportProject('project', 'v3', { ...exported, 'manifest.json': JSON.stringify(manifest) })
     await expect(store.verifyRelease('project', 'v3', {
       manifestHash: canonicalHash(manifest), entries: manifest.entries,
-    })).resolves.toBeUndefined()
+    })).resolves.toMatchObject({ 'entry-entry.md': '发布稿', 'map.md': '# 地图\n' })
     await writeFile(join(release, 'entry-entry.md'), '篡改')
     await expect(store.verifyRelease('project', 'v3', {
       manifestHash: canonicalHash(manifest), entries: manifest.entries,

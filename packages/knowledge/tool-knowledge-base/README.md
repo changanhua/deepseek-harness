@@ -31,6 +31,8 @@ In a built source checkout with a configured Web profile, the supported add-on l
 
 ### Minimal workflow
 
+Every knowledge task produces its own map. Use `{"action":"map","projectId":"<id>"}` to inspect the current plan and entry relationships. Publication always includes the map; `siyuan-sync` automatically writes its SiYuan counterpart and returns `mapDocumentId`. No topic-specific manual map or extra model call is required.
+
 Use each JSON object as the `request` string of `knowledge_base`, or append it to `/knowledge`. After `plan`, inspect the returned work until it succeeds, then read `status` and confirm its current `planHash` before building.
 
 ```json

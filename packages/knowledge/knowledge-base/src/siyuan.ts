@@ -5,8 +5,10 @@ import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { gfm } from 'micromark-extension-gfm'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain, DomainFacility, KvTable } from '@deepseek-ai/dsh-storage-domain'
-import { canonicalHash, knowledgeEntrySchema, knowledgeIdSchema } from './model.ts'
+import { canonicalHash, knowledgeEntrySchema, knowledgeIdSchema, projectSpecSchema } from './model.ts'
 import type { KnowledgeEntry } from './model.ts'
+import { createKnowledgeMap, renderKnowledgeMap } from './map.ts'
+import type { ProjectSpec } from './model.ts'
 import type { SiyuanGateway } from './siyuan-gateway.ts'
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/u)
@@ -26,6 +28,7 @@ export const siyuanProjectSchema = z.strictObject({
   })),
   intents: z.record(z.string(), intent), versions: z.record(knowledgeIdSchema, z.strictObject({
     fingerprint: digest, entries: z.record(knowledgeIdSchema, knowledgeEntrySchema), catalog: doc.nullable(), complete: z.boolean(),
+    knowledgeMap: doc.optional(),
   })),
 })
 /** 独立内容连接记录，不改变已交付的生成域格式。 */
@@ -44,6 +47,8 @@ export interface SiyuanProjectInput {
   version: string
   entries: KnowledgeEntry[]
   sources: { sourceId: string; snapshotId: string; title: string; url?: string }[]
+  /** 发布时冻结的规划；直接集成调用未提供时按条目用途构造最小地图。 */
+  specification?: ProjectSpec
 }
 const FOOTER = '## 来源与适用范围'
 const BODY = '## 知识正文'
@@ -233,12 +238,17 @@ export class KnowledgeSiyuanProjection {
     conflicts: string[]
     complete: boolean
     rootDocumentId: string
+    mapDocumentId: string
   }> {
     signal = AbortSignal.any([signal, this.lifetime.signal])
     const input = structuredClone(project)
     knowledgeIdSchema.parse(input.projectId); knowledgeIdSchema.parse(input.version)
     input.entries = input.entries.map(entry => knowledgeEntrySchema.parse(entry))
     const sorted = ordered(input.entries)
+    if (input.specification) {
+      input.specification = projectSpecSchema.parse(input.specification)
+      if (input.specification.id !== input.projectId) throw new Error('knowledge-base: map project identity differs')
+    }
     return this.serial(async () => {
       signal.throwIfAborted()
       let record = this.projects.get(input.projectId)
@@ -247,7 +257,9 @@ export class KnowledgeSiyuanProjection {
           root: null, currentVersion: null, targetVersion: null, entries: {}, intents: {}, versions: {} }
         await this.save(record)
       } else record = this.status(input.projectId)
-      const fingerprint = canonicalHash(input)
+      // 规划来自已核验的发布快照；既有版本的内容身份不因新增地图派生输入而改变。
+      const { specification: _specification, ...contentInput } = input
+      const fingerprint = canonicalHash(contentInput)
       const version = record.versions[input.version]
       if (version && version.fingerprint !== fingerprint) throw new Error('knowledge-base: immutable SiYuan version changed')
       record.targetVersion = input.version
@@ -291,22 +303,48 @@ export class KnowledgeSiyuanProjection {
           await this.save(record); candidates.push(entry.id)
         }
       }
+      const current = record.versions[input.version] as SiyuanProjectMapping['versions'][string]
+      const specification = input.specification ?? {
+        id: input.projectId, title: input.title, readerTask: input.readerTask, language: 'zh-CN',
+        seeds: sorted.map(entry => ({
+          id: entry.id, title: entry.title, goal: entry.conditions, type: entry.type, depends: entry.depends,
+          sourceIds: [...new Set(entry.citations.map(citation => citation.sourceId))], required: true,
+        })),
+      }
+      const map = createKnowledgeMap(specification, sorted)
+      const mapLinks = Object.fromEntries(sorted.map((entry) => {
+        const mapped = record.entries[entry.id] as SiyuanProjectMapping['entries'][string]
+        return [entry.id, `((${mapped.documentId} "${quote(entry.title)}"))`]
+      }))
+      const mapMarkdown = renderKnowledgeMap(map, mapLinks)
+        + '\n地图描述本版本规划，链接指向可编辑的当前条目；有未接纳候选时，当前正文可能与本版本不同。\n'
+        + '\n版本：' + input.version + '\n\nDSHKB ' + input.projectId + ' map ' + input.version + '\n'
+      if (current.knowledgeMap && current.knowledgeMap.contentHash !== markdownIdentity(mapMarkdown)) {
+        throw new Error('knowledge-base: immutable map input changed')
+      }
+      current.knowledgeMap ??= await this.ensure(record, 'map-v1:' + input.version, root.hPath,
+        '知识地图 ' + input.version, mapMarkdown, signal)
+      await this.save(record)
+      const mapReadback = await this.read(current.knowledgeMap.documentId, signal)
+      if (markdownIdentity(mapReadback.markdown) !== current.knowledgeMap.contentHash) conflicts.push('@map')
       const complete = conflicts.length === 0 && candidates.length === 0
         && Object.keys(record.entries).length === input.entries.length
-      const current = record.versions[input.version] as SiyuanProjectMapping['versions'][string]
       if (!current.catalog) {
         const entries = record.entries
         const links = sorted.map((entry) => {
           const mapped = entries[entry.id] as SiyuanProjectMapping['entries'][string]
           return `- ((${mapped.documentId} "${quote(entry.title)}"))`
         }).join('\n')
-        current.catalog = await this.ensure(record, 'version:' + input.version, root.hPath, '版本目录 ' + input.version,
-          `# ${input.title} · ${input.version}\n\n${input.readerTask}\n\n这是版本阅读目录，链接指向可继续编辑的当前条目。当前内容是否与本版本一致，需重新运行思源检查；本目录不是实时通过凭证。\n\n${links}\n\nDSHKB ${input.projectId} version ${input.version}\n`, signal)
+        const catalogKey = 'version:' + input.version
+        const catalogMarkdown = record.intents[catalogKey]?.markdown
+          ?? `# ${input.title} · ${input.version}\n\n${input.readerTask}\n\n((${current.knowledgeMap.documentId} "知识地图：目标、阅读路径与条目关系"))\n\n这是版本阅读目录，链接指向可继续编辑的当前条目。当前内容是否与本版本一致，需重新运行思源检查；本目录不是实时通过凭证。\n\n${links}\n\nDSHKB ${input.projectId} version ${input.version}\n`
+        current.catalog = await this.ensure(record, catalogKey, root.hPath, '版本目录 ' + input.version, catalogMarkdown, signal)
       }
       current.complete = complete
       if (complete) record.currentVersion = input.version
       await this.save(record)
-      return { createdEntries, candidates, conflicts, complete, rootDocumentId: record.root.documentId }
+      return { createdEntries, candidates, conflicts, complete, rootDocumentId: record.root.documentId,
+        mapDocumentId: current.knowledgeMap.documentId }
     })
   }
   /**
@@ -379,11 +417,16 @@ export class KnowledgeSiyuanProjection {
       const matches = new Set(await this.gateway.search(this.config.notebook, 'DSHKB ' + projectId, signal))
       const searchable = Object.values(record.entries).every(entry => matches.has(entry.documentId))
       const target = record.targetVersion ? record.versions[record.targetVersion] : undefined
+      const mapDocument = target?.knowledgeMap
+      if (mapDocument) {
+        const observed = await this.read(mapDocument.documentId, signal)
+        if (markdownIdentity(observed.markdown) !== mapDocument.contentHash) conflicts.push('@map')
+      }
       const matchesTarget = target && Object.keys(target.entries).length === Object.keys(record.entries).length
       && Object.entries(target.entries).every(([id, entry]) => canonicalHash(record.entries[id]?.accepted ?? null) === canonicalHash(entry))
       return {
         documents: Object.keys(record.entries).length, searchable, conflicts,
-        complete: !!matchesTarget && searchable && conflicts.length === 0,
+        complete: !!matchesTarget && !!mapDocument && matches.has(mapDocument.documentId) && searchable && conflicts.length === 0,
       }
     })
   }

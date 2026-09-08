@@ -126,6 +126,12 @@ importers:
 
   apps/cli:
     dependencies:
+      '@changanhua/dsh-knowledge-base':
+        specifier: workspace:^
+        version: link:../../packages/knowledge/knowledge-base
+      '@changanhua/dsh-knowledge-base-task-queue':
+        specifier: workspace:^
+        version: link:../../packages/knowledge/knowledge-base-task-queue
       '@changanhua/dsh-operation-run-task-queue':
         specifier: workspace:^
         version: link:../../packages/task-queue/operation-run-task-queue
@@ -135,6 +141,9 @@ importers:
       '@changanhua/dsh-task-queue-executor-dsh':
         specifier: workspace:^
         version: link:../../packages/task-queue/task-queue-executor-dsh
+      '@changanhua/dsh-tool-knowledge-base':
+        specifier: workspace:^
+        version: link:../../packages/knowledge/tool-knowledge-base
       '@changanhua/dsh-tool-operation-run-task-queue':
         specifier: workspace:^
         version: link:../../packages/task-queue/tool-operation-run-task-queue

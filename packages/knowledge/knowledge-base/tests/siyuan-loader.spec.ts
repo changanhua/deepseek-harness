@@ -140,7 +140,7 @@ describe('SiYuan 的真实 Loader 组合', () => {
     const first = await ctx.knowledgeBase.siyuan!.sync(await repository.publication('game', 'v1'), new AbortController().signal)
     expect(first).toMatchObject({ createdEntries: ['scope', 'loop'], candidates: [], conflicts: [], complete: true })
     expect([...remote.documents.values()].filter(item => item.markdown.includes('[受控资料](https://example.test/manual)'))).toHaveLength(2)
-    expect([...remote.documents.values()].filter(item => item.markdown.includes('DSHKB game'))).toHaveLength(4)
+    expect([...remote.documents.values()].filter(item => item.markdown.includes('DSHKB game'))).toHaveLength(5)
     const created = remote.creates
     await ctx.fiber.dispose(); contexts.splice(contexts.indexOf(ctx), 1)
 

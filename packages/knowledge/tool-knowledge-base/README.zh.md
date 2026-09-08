@@ -31,6 +31,8 @@ kind: "package-bundle"
 
 ### Minimal workflow
 
+每次知识任务都会生成自己的地图。使用 `{"action":"map","projectId":"<id>"}` 查看当前规划与条目关系；发布总是包含地图，`siyuan-sync` 自动写入对应思源地图并返回 `mapDocumentId`。无需为特定主题手工补地图，也不增加额外模型调用。
+
 将每个 JSON 对象作为 `knowledge_base` 的 `request` 字符串，或放在 `/knowledge` 命令之后。`plan` 返回工作后，先查看该工作直到成功，再读取 `status` 并确认当前 `planHash`，然后构建。
 
 ```json

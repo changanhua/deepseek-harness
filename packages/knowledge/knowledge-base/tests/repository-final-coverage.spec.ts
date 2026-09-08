@@ -86,6 +86,46 @@ async function review(repository: KnowledgeRepository, projectId: string, id = '
 }
 
 describe('KnowledgeRepository 最终可达分支', () => {
+  it('同步历史地图时拒绝哈希自洽但归属其他项目的发布规格', async () => {
+    const h = await prepared('map-identity')
+    await generate(h.repository, h.project.id, h.source.snapshotId)
+    await review(h.repository, h.project.id)
+    const release = await h.repository.publish(h.project.id, 'v1')
+    await h.close()
+    const domainPath = join(h.root, 'domain', 'knowledge_base.json')
+    const stored = JSON.parse(await readFile(domainPath, 'utf8')) as CorruptDomain
+    const manifestPath = join(release.path, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as CorruptReleaseManifest
+    const yamlPath = join(release.path, 'project.yaml')
+    const yaml = (await readFile(yamlPath, 'utf8')).replace('id: map-identity', 'id: another')
+    const { contentHash } = await import('../src/files.ts')
+    manifest.files['project.yaml'] = contentHash(yaml)
+    stored.tables.projects[h.project.id]!.releases.v1!.manifestHash = canonicalHash(manifest)
+    await writeFile(yamlPath, yaml)
+    await writeFile(manifestPath, JSON.stringify(manifest))
+    await writeFile(domainPath, JSON.stringify(stored))
+    const resumed = await open(h.root)
+    await expect(resumed.repository.publication(h.project.id, 'v1')).rejects.toThrow('specification identity differs')
+  })
+  it('每次发布自动交付包含该任务目标和结构数据的知识地图', async () => {
+    const { repository, project, source } = await prepared('any-topic-map')
+    await generate(repository, project.id, source.snapshotId)
+    await review(repository, project.id)
+    const release = await repository.publish(project.id, 'v1')
+    const map = await readFile(join(release.path, 'map.md'), 'utf8')
+    expect(map).toContain(project.readerTask)
+    expect(map).toContain(project.title)
+    const structured = JSON.parse(await readFile(join(release.path, 'map.json'), 'utf8')) as { projectId: string }
+    expect(structured.projectId).toBe(project.id)
+    const current = repository.map(project.id)
+    expect(current.map.readerTask).toBe(project.readerTask)
+    expect(current.markdown).toContain('entry-first.md')
+    await repository.setPlan(project.id, project.seeds.map(seed => ({ ...seed, goal: '后来改变的规划目标' })))
+    const published = await repository.publication(project.id, 'v1')
+    expect(published.title).toBe(project.title)
+    expect(published.specification?.readerTask).toBe(project.readerTask)
+    expect(published.specification?.seeds[0]?.goal).toBe('完成第一步')
+  })
   it('接纳思源编辑仅失效受影响的条目，并将远端不可用作为发布问题', async () => {
     const seeds: KnowledgeSeed[] = [
       { id: 'first', title: '第一步', goal: '完成第一步', type: 'method', depends: [], sourceIds: ['source'], required: true },

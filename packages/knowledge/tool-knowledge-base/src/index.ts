@@ -38,6 +38,7 @@ const requests = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('build'), ...project, maxRevisions: z.number().int().min(0).max(3).default(2) }),
   z.strictObject({ action: z.literal('adopt'), ...entry }),
   z.strictObject({ action: z.literal('status'), ...project }),
+  z.strictObject({ action: z.literal('map'), ...project }),
   z.strictObject({ action: z.literal('check'), ...project }),
   z.strictObject({ action: z.literal('publish'), ...project, version: knowledgeIdSchema }),
   z.strictObject({ action: z.literal('export-draft'), ...project, version: knowledgeIdSchema }),
@@ -119,6 +120,7 @@ export async function executeKnowledgeRequest(
   const request = requests.parse(input)
   const repo = deps.repository
   switch (request.action) {
+    case 'map': return repo.map(request.projectId)
     case 'siyuan-sync':
       if (!deps.siyuan) throw new Error('knowledge-base: 当前 Profile 未配置思源')
       return deps.siyuan.sync(await repo.publication(request.projectId, request.version), signal)
@@ -127,6 +129,7 @@ export async function executeKnowledgeRequest(
       const state = deps.siyuan.status(request.projectId)
       return { projectId: request.projectId, currentVersion: state.currentVersion, targetVersion: state.targetVersion,
         rootDocumentId: state.root?.documentId,
+        mapDocumentId: state.targetVersion ? state.versions[state.targetVersion]?.knowledgeMap?.documentId : undefined,
         entries: Object.entries(state.entries).map(([id, entry]) => ({
           id, documentId: entry.documentId, candidates: Object.values(entry.candidates).map(candidate => candidate.documentId),
         })) }
@@ -240,7 +243,7 @@ function renderResult(value: unknown): string {
 export function createKnowledgeTool(deps: KnowledgeToolDependencies): ReturnType<typeof defineTool> {
   return defineTool({
     name: 'knowledge_base',
-    description: '创建、维护和发布带来源的知识库，可通过已配置的思源连接阅读和维护。request 是含 action 的 JSON：create 带 spec；source 带 projectId/sourceId/title/text；fetch 带 projectId/sourceId/title/url；refresh 带 projectId/sourceId；plan、status、check、build 带 projectId；confirm 再带 planHash；generate、review、adopt 再带 entryId；publish、export-draft、rollback 带 projectId/version；diff 带 projectId/from/to；work、cancel、retry、correct、resume 带 workId；stop-generation 和 resume-generation 无其它字段。先检查并确认规划，再 build；maxRevisions 为初次生成后的修订次数，0–3，默认2。build 不自动发布，unknown 不自动重发。retry 仅重试明确未启动的失败；correct 仅修正已返回但格式校验失败的响应；resume 仅接收已有可验证结果。全局停止会保留进度并等待活动调用结束；模型工具不能解除停止，只有人类命令或可信 Host 可 resume-generation。思源读操作：siyuan-status、siyuan-verify 带 projectId；siyuan-inspect 再带 entryId。siyuan-sync 带 projectId/version，siyuan-adopt 带 projectId/entryId/snapshotHash，二者只允许人类命令或可信 Host；更新会保留独立候选，不覆盖已有思源正文。',
+    description: '创建、维护和发布带来源的知识库，可通过已配置的思源连接阅读和维护。request 是含 action 的 JSON：create 带 spec；source 带 projectId/sourceId/title/text；fetch 带 projectId/sourceId/title/url；refresh 带 projectId/sourceId；plan、map、status、check、build 带 projectId；confirm 再带 planHash；generate、review、adopt 再带 entryId；publish、export-draft、rollback 带 projectId/version；diff 带 projectId/from/to；work、cancel、retry、correct、resume 带 workId；stop-generation 和 resume-generation 无其它字段。每次任务的知识地图由规划自动构造，map 可查看当前地图；每次发布包含 map.md 和 map.json，思源同步自动生成该版本地图。先检查并确认规划，再 build；maxRevisions 为初次生成后的修订次数，0–3，默认2。build 不自动发布，unknown 不自动重发。retry 仅重试明确未启动的失败；correct 仅修正已返回但格式校验失败的响应；resume 仅接收已有可验证结果。全局停止会保留进度并等待活动调用结束；模型工具不能解除停止，只有人类命令或可信 Host 可 resume-generation。思源读操作：siyuan-status、siyuan-verify 带 projectId；siyuan-inspect 再带 entryId。siyuan-sync 带 projectId/version，siyuan-adopt 带 projectId/entryId/snapshotHash，二者只允许人类命令或可信 Host；更新会保留独立候选，不覆盖已有思源正文。',
     parameters: {
       request: { type: 'string', required: true, description: '包含 action 与相应业务字段的 JSON 对象。' },
     },
