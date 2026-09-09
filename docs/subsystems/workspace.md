@@ -18,6 +18,10 @@ type WorkspaceId = Branded<'WorkspaceId'>
 
 `WorkspaceId` is a [branded id](core.md#branded-ids). Path identity is separate: `realpathNormalize` (`fs.realpath`; trailing slashes, `..`, and symlinks resolved) is the one uniqueness canon — workspace paths are stored canonicalized, uniqueness is string equality of canonical paths (a symlink to an owned directory collides), and attach-time session cwd checks go through the same canon.
 
+## Project resources
+
+The [Workspace Controller](../../packages/api/workspace-controller/README.md#project-resources) exposes human-operated project resources alongside Workspace navigation. `ResourceId` identifies one saved entry. `ResourceInput` accepts a new note, an existing project file, or a local service command. `ResourceView` combines the saved entry with its current Host-owned process observation; `ResourceList` returns these rows and the project configuration path. `ResourceFile` is a bounded plain-text preview. The declarations live in [the controller's types](../../packages/api/workspace-controller/src/types.ts); storage and process policies stay with that package.
+
 ## The workspace entity
 
 Consumers see only the `Workspace` interface; the implementation stays package-private.
@@ -190,6 +194,51 @@ Source: [`packages/api/workspace-controller/src/directory-picker.ts`](../../pack
 Host service backing the generated `ctx.remote.workspace` namespace.
 
 ```ts cordis-catalog
+/**
+ * Read project resource configuration and process observations.
+ * @param workspaceId - registered project.
+ * @returns saved resources and configuration path.
+ */
+@Remote('resourcesList') resourcesList(workspaceId: WorkspaceId): Promise<ResourceList>
+
+/**
+ * Add a Markdown note, file reference or manual service recipe.
+ * @param workspaceId - registered project.
+ * @param input - human-authored resource.
+ * @returns saved entry.
+ */
+@Remote('resourcesAdd') resourcesAdd(workspaceId: WorkspaceId, input: ResourceInput): Promise<ResourceView>
+
+/**
+ * Preview a bounded plain-text project file.
+ * @param workspaceId - registered project.
+ * @param id - resource identity.
+ * @returns resolved path and plain text.
+ */
+@Remote('resourcesRead') resourcesRead(workspaceId: WorkspaceId, id: ResourceId): Promise<ResourceFile>
+
+/**
+ * Remove an entry while retaining its files.
+ * @param workspaceId - registered project.
+ * @param id - stopped resource identity.
+ */
+@Remote('resourcesRemove') resourcesRemove(workspaceId: WorkspaceId, id: ResourceId): Promise<void>
+
+/**
+ * Start an owned local service without tying it to a Session.
+ * @param workspaceId - registered project.
+ * @param id - service identity.
+ * @returns process observation, not a health guarantee.
+ */
+@Remote('resourcesStart') resourcesStart(workspaceId: WorkspaceId, id: ResourceId): Promise<ResourceView>
+
+/**
+ * Stop an owned service and await its process tree.
+ * @param workspaceId - registered project.
+ * @param id - service identity.
+ */
+@Remote('resourcesStop') resourcesStop(workspaceId: WorkspaceId, id: ResourceId): Promise<void>
+
 /**
  * Create or idempotently resolve one Workspace over an existing directory.
  * @param request - directory path to register.

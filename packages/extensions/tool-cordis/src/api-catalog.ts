@@ -3129,6 +3129,40 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Host service backing the generated `ctx.remote.workspace` namespace.',
     methods: [
       {
+        signature: '@Remote(\'resourcesList\') resourcesList(workspaceId: WorkspaceId): Promise<ResourceList>',
+        description: 'Read project resource configuration and process observations.',
+        parameters: [{ name: 'workspaceId', description: 'registered project.' }],
+        returns: 'saved resources and configuration path.',
+      },
+      {
+        signature: '@Remote(\'resourcesAdd\') resourcesAdd(workspaceId: WorkspaceId, input: ResourceInput): Promise<ResourceView>',
+        description: 'Add a Markdown note, file reference or manual service recipe.',
+        parameters: [{ name: 'workspaceId', description: 'registered project.' }, { name: 'input', description: 'human-authored resource.' }],
+        returns: 'saved entry.',
+      },
+      {
+        signature: '@Remote(\'resourcesRead\') resourcesRead(workspaceId: WorkspaceId, id: ResourceId): Promise<ResourceFile>',
+        description: 'Preview a bounded plain-text project file.',
+        parameters: [{ name: 'workspaceId', description: 'registered project.' }, { name: 'id', description: 'resource identity.' }],
+        returns: 'resolved path and plain text.',
+      },
+      {
+        signature: '@Remote(\'resourcesRemove\') resourcesRemove(workspaceId: WorkspaceId, id: ResourceId): Promise<void>',
+        description: 'Remove an entry while retaining its files.',
+        parameters: [{ name: 'workspaceId', description: 'registered project.' }, { name: 'id', description: 'stopped resource identity.' }],
+      },
+      {
+        signature: '@Remote(\'resourcesStart\') resourcesStart(workspaceId: WorkspaceId, id: ResourceId): Promise<ResourceView>',
+        description: 'Start an owned local service without tying it to a Session.',
+        parameters: [{ name: 'workspaceId', description: 'registered project.' }, { name: 'id', description: 'service identity.' }],
+        returns: 'process observation, not a health guarantee.',
+      },
+      {
+        signature: '@Remote(\'resourcesStop\') resourcesStop(workspaceId: WorkspaceId, id: ResourceId): Promise<void>',
+        description: 'Stop an owned service and await its process tree.',
+        parameters: [{ name: 'workspaceId', description: 'registered project.' }, { name: 'id', description: 'service identity.' }],
+      },
+      {
         signature: '@Remote(\'create\') create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue>',
         description: 'Create or idempotently resolve one Workspace over an existing directory.',
         parameters: [{ name: 'request', description: 'directory path to register.' }],
@@ -5448,6 +5482,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResourceClaim',
     declaration: 'export interface ResourceClaim {\n    readonly resource: string;\n    readonly units: number;\n}',
+  },
+  {
+    name: 'ResourceFile',
+    declaration: 'export interface ResourceFile {\n    path: string;\n    text: string;\n}',
+  },
+  {
+    name: 'ResourceId',
+    declaration: 'export type ResourceId = Branded<\'ProjectResourceId\'>;',
+  },
+  {
+    name: 'ResourceInput',
+    declaration: 'export type ResourceInput = {\n    kind: \'note\';\n    name: string;\n    content: string;\n} | {\n    kind: \'file\';\n    name: string;\n    path: string;\n} | {\n    kind: \'service\';\n    name: string;\n    cwd: string;\n    command: string;\n    url?: string | undefined;\n};',
+  },
+  {
+    name: 'ResourceList',
+    declaration: 'export interface ResourceList {\n    entries: ResourceView[];\n    configPath: string;\n}',
+  },
+  {
+    name: 'ResourceView',
+    declaration: 'export interface ResourceView {\n    id: ResourceId;\n    kind: \'note\' | \'file\' | \'service\';\n    name: string;\n    path?: string;\n    cwd?: string;\n    command?: string;\n    url?: string | undefined;\n    status: \'file\' | \'stopped\' | \'running\' | \'exited\' | \'failed\';\n    pid?: number;\n    logs?: string;\n    logsTruncated?: boolean;\n    error?: string;\n    exitCode?: number | null;\n}',
   },
   {
     name: 'RestoredSessionOptions',

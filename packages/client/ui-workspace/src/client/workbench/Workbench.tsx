@@ -77,14 +77,19 @@ function statusKey(item: WorkbenchItem): WorkbenchKey {
 export function Workbench({
   useSessions, useWorkspaces, useSessionPendingInteraction, useModules, useStore,
   actions, openSession, prepareComposer, composer, openModule, t,
+  useResources, resourceLoad, resourceAdd, resourceAct, resourceClosePreview,
 }: WorkbenchProps) {
   const sessions = useSessions(state => state)
   const workspaces = useWorkspaces(state => state)
   const pending = useSessionPendingInteraction(state => state)
   const modules = useModules(value => value)
   const view = useStore(state => state)
+  const resources = useResources(state => state)
   const overview = useMemo(() => deriveWorkbench(sessions, workspaces, pending), [sessions, workspaces, pending])
   const project = overview.projects.find(item => item.workspaceId === view.projectId)
+  useEffect(() => {
+    if (view.page === 'project' && project !== undefined) void resourceLoad(project.workspaceId)
+  }, [view.page, project?.workspaceId, resourceLoad])
   const ready = sessions.phase === 'ready' && workspaces.phase === 'ready'
   const currentBlank = sessions.current !== undefined && sessions.byId[sessions.current]?.blank === true
   const preparedHome = useRef<string>()
@@ -140,6 +145,11 @@ export function Workbench({
           : <>
             {!phaseReady && <p role="status" className={css.notice}>{t('home.unavailable')}</p>}
             {(view.page === 'overview' || view.page === 'project') && composer}
+            {view.page === 'project' && project !== undefined && <Resources
+              key={project.workspaceId} workspaceId={project.workspaceId}
+              state={resources.workspaceId === project.workspaceId ? resources : { busy: true }} t={t}
+              resourceLoad={resourceLoad} resourceAdd={resourceAdd}
+              resourceAct={resourceAct} resourceClosePreview={resourceClosePreview} />}
             {view.page === 'overview' ? <>
               {section(t('nav.attention'), 'attention')}
               {overview.attention.length > 0 ? <div className={css.attention}>{overview.attention.slice(0, 4).map(item => work(item, true))}</div> : <p className={css.empty}>{t('home.noAttention')}</p>}
@@ -159,3 +169,4 @@ export function Workbench({
     </div>
   </div>
 }
+import { Resources } from './Resources.tsx'

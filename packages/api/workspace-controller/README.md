@@ -22,6 +22,15 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+<a id="project-resources"></a>
+### Project resources
+
+The project resource operations save version-1 configuration in `.dsh/resources.json` beneath the registered Workspace. New notes are ordinary UTF-8 Markdown files in `.dsh/resources/`; existing file references and service working directories must resolve inside the project, including through links. Removing an entry retains its files. Text previews and configuration are bounded by `resourceMaxBytes` (262144 by default). Agents read these ordinary files through existing file tools; this package adds no model tools or automatic context injection.
+
+Service recipes contain a foreground command, working directory and optional HTTP(S) address. A human starts them through the Workspace Remote; the local subprocess provider owns their process trees and scrubs inherited credentials. Windows commands use noninteractive PowerShell; other local hosts use `sh`. Processes outlive conversations and stop on controller disposal or normal Host exit; a new Host starts with stopped recipes. `running` describes a process, not application health. Each recipe retains bounded recent stdout/stderr (`resourceLogBytes`, default 65536); `resourceGraceMs` (default 2000) controls termination escalation. There is no automatic restart or durable log archive.
+
+Writes acquire `.dsh/resources.lock` and atomically replace configuration. A concurrent writer receives a busy error and can retry explicitly. A crash may leave the lock: remove that exact lock only after verifying no writer is active. Malformed or unsupported configuration is rejected without replacement. Multiple Hosts do not share process ownership; this is a local project resource facility, not a service supervisor across Hosts.
+
 The Host controller serializes mutations whose correctness depends on current registry state and returns stable `WorkspaceError` values for expected failures. Its `follow()` stream synchronously attaches to durable Workspace changes, emits one complete baseline first, then emits ordered `upsert`, `remove`, `order`, and `archived` increments. A reconnect starts another generation with a replacement baseline, so consumers do not depend on receiving every increment while disconnected.
 
 The Client entry provides `ClientWorkspaceModel` and `createWorkspaceStateStream()`. The model owns Workspace rows, registry order, archived Session ids, unary mutation echoes, and stream/unary race resolution. A newer Host row wins by `updatedAt`; a committed stream order outranks an older unary response; a removed Workspace id cannot be resurrected by delayed data. The package exposes framework-neutral snapshots and subscriptions, leaving navigation policy and React hooks to the UI owner.

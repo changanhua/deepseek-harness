@@ -22,6 +22,15 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+<a id="project-resources"></a>
+### 项目资源
+
+项目资源操作把版本 1 配置保存在已登记 Workspace 下的 `.dsh/resources.json`。新资料是 `.dsh/resources/` 中的普通 UTF-8 Markdown 文件；已有文件引用和服务工作目录在解析链接后也必须位于项目内。移除登记会保留文件。文本预览和配置大小由 `resourceMaxBytes` 限制，默认 262144 字节。Agent 通过已有文件工具读取这些普通文件；本包不增加模型工具或自动上下文注入。
+
+服务配置包含前台命令、工作目录和可选的 HTTP(S) 地址。用户通过 Workspace Remote 手动启动服务；本地 subprocess Provider 管理进程树，并清理继承环境中的凭据。Windows 命令使用非交互 PowerShell，其他本地主机使用 `sh`。进程跨会话运行，在控制器释放或 Host 正常退出时停止；新 Host 中的服务配置处于已停止状态。`running` 表示进程运行，不表示应用健康。每项服务保留有界的最近 stdout/stderr，`resourceLogBytes` 默认 65536；`resourceGraceMs` 默认 2000 毫秒，控制终止升级等待时间。不提供自动重启或持久日志归档。
+
+写入取得 `.dsh/resources.lock` 后原子替换配置。并发写入方收到忙碌错误，可以显式重试。崩溃可能留下锁；仅在确认没有写入方活动后移除该锁文件。格式错误或版本不支持的配置会被拒绝，不会被替换。多个 Host 不共享进程所有权；本能力管理本地项目资源，不跨 Host 监管服务。
+
 Host 控制器会串行执行正确性取决于当前 registry 状态的变更，并为预期失败返回稳定的 `WorkspaceError` 值。它的 `follow()` 流会同步订阅持久 Workspace 变更，先发出一份完整 baseline，再按顺序发出 `upsert`、`remove`、`order` 和 `archived` 增量。重连会以替换 baseline 开始新一代，因此消费方不依赖收到断线期间的每个增量。
 
 Client 入口提供 `ClientWorkspaceModel` 和 `createWorkspaceStateStream()`。该模型拥有 Workspace 行、registry 顺序、已归档 Session id、一元变更回声，以及流与一元调用的竞态处理。较新的 Host 行按 `updatedAt` 获胜；已提交的流顺序优先于较旧的一元响应；已经移除的 Workspace id 不会被延迟数据复活。该包公开与框架无关的快照和订阅，把导航策略与 React hook 留给 UI owner。

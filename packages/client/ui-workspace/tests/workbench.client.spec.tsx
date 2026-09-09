@@ -40,6 +40,7 @@ function fixture(overrides: Partial<WorkbenchProps> = {}) {
     useSessions: hook(sessions([row('方案'), row('运行', { running: true }), row('其他')])),
     useWorkspaces: hook(workspace()), useSessionPendingInteraction: hook(pending),
     useModules: hook(['workbench', 'queue', 'capability']),
+    useResources: hook({ busy: false }), resourceLoad: vi.fn(), resourceAdd: vi.fn(), resourceAct: vi.fn(), resourceClosePreview: vi.fn(),
     useStore: bindSnapshotSelector(instance), actions: instance.actions,
     openSession: vi.fn(), startSession: vi.fn(), prepareComposer: vi.fn(), composer: null,
     openModule: vi.fn(), t: makeTranslate(zh) as never,
@@ -81,8 +82,7 @@ describe('workbench facts and navigation', () => {
     expect(screen.queryByText('其他')).toBeNull()
     expect(b.props.openSession).not.toHaveBeenCalled()
     expect(b.props.startSession).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: /在这个项目中开始对话/ }))
-    expect(b.props.startSession).toHaveBeenCalledWith(project.workspaceId)
+    expect(b.props.prepareComposer).toHaveBeenCalledWith(project.workspaceId)
   })
 
   it('lists only tool pages actually registered in the current composition', () => {

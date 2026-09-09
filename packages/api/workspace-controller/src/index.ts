@@ -1,6 +1,11 @@
 /** Host Workspace Remote owner: explicit commands and reconnect-safe state. */
 
 import { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/dsh-subprocess'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import { ProjectResources, type ResourceOptions } from './resources.ts'
+import type { ResourceId, ResourceInput, ResourceList, ResourceView, ResourceFile } from './types.ts'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { WorkspaceCommands } from './commands.ts'
 import { DirectoryPickerController } from './directory-picker.ts'
@@ -33,21 +38,95 @@ declare module '@deepseek-ai/cordis' {
 /** Host service backing the generated `ctx.remote.workspace` namespace. */
 export class WorkspaceController extends TypertRemoteService {
   static inject = ['typert', 'workspaceRegistry']
+  static Config = z.object({
+    resourceMaxBytes: z.natural().min(1024).default(262144),
+    resourceLogBytes: z.natural().min(2).default(65536),
+    resourceGraceMs: z.natural().min(1).max(2147483647).default(2000),
+  })
 
   private readonly commands: WorkspaceCommands
   private readonly feed: WorkspaceFeed
+  private readonly resources: ProjectResources
 
-  /** @param ctx - Host context containing the Workspace registry. */
-  constructor(ctx: Context) {
+  /**
+   * @param ctx - Host context containing the Workspace registry.
+   */
+  constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'workspaceController', { namespace: 'workspace' })
     this.commands = new WorkspaceCommands(ctx)
     this.feed = new WorkspaceFeed(ctx)
+    const options: ResourceOptions = {
+      maxBytes: config.resourceMaxBytes ?? 262144,
+      logBytes: config.resourceLogBytes ?? 65536,
+      graceMs: config.resourceGraceMs ?? 2000,
+    }
+    this.resources = new ProjectResources((id) => {
+      const workspace = ctx.workspaceRegistry.get(id)
+      if (workspace === undefined) throw new Error(`Unknown workspace: ${id}`)
+      return workspace.path
+    }, () => {
+      const subprocess = ctx.get('subprocess')
+      if (subprocess === undefined) throw new Error('Local subprocess provider is unavailable')
+      return subprocess
+    }, options)
+    ctx.effect(() => () => this.resources.dispose(), 'workspace.resources')
     // This package is the Loader entry for both Remote owners it hosts: the
     // directory-picking seam is abstract and never an entry itself. The child
     // stays pending until a picking backend is composed, so a host without one
     // registers no picking namespace instead of answering an unservable verb.
     ctx.plugin(DirectoryPickerController)
   }
+
+  /**
+   * Read project resource configuration and process observations.
+   * @param workspaceId - registered project.
+   * @returns saved resources and configuration path.
+   */
+  @Remote('resourcesList')
+  resourcesList(workspaceId: WorkspaceId): Promise<ResourceList> { return this.resources.list(workspaceId) }
+
+  /**
+   * Add a Markdown note, file reference or manual service recipe.
+   * @param workspaceId - registered project.
+   * @param input - human-authored resource.
+   * @returns saved entry.
+   */
+  @Remote('resourcesAdd')
+  resourcesAdd(workspaceId: WorkspaceId, input: ResourceInput): Promise<ResourceView> { return this.resources.add(workspaceId, input) }
+
+  /**
+   * Preview a bounded plain-text project file.
+   * @param workspaceId - registered project.
+   * @param id - resource identity.
+   * @returns resolved path and plain text.
+   */
+  @Remote('resourcesRead')
+  resourcesRead(workspaceId: WorkspaceId, id: ResourceId): Promise<ResourceFile> { return this.resources.read(workspaceId, id) }
+
+  /**
+   * Remove an entry while retaining its files.
+   * @param workspaceId - registered project.
+   * @param id - stopped resource identity.
+   */
+  @Remote('resourcesRemove')
+  resourcesRemove(workspaceId: WorkspaceId, id: ResourceId): Promise<void> { return this.resources.remove(workspaceId, id) }
+
+  /**
+   * Start an owned local service without tying it to a Session.
+   * @param workspaceId - registered project.
+   * @param id - service identity.
+   * @returns process observation, not a health guarantee.
+   */
+  @Remote('resourcesStart')
+  resourcesStart(workspaceId: WorkspaceId, id: ResourceId): Promise<ResourceView> { return this.resources.start(workspaceId, id) }
+
+  /**
+   * Stop an owned service and await its process tree.
+   * @param workspaceId - registered project.
+   * @param id - service identity.
+   */
+  @Remote('resourcesStop')
+  resourcesStop(workspaceId: WorkspaceId, id: ResourceId): Promise<void> { return this.resources.stop(workspaceId, id) }
 
   /**
    * Create or idempotently resolve one Workspace over an existing directory.
@@ -121,3 +200,13 @@ export class WorkspaceController extends TypertRemoteService {
 }
 
 export default WorkspaceController
+
+/** Project resource storage, preview, output and shutdown bounds. */
+export interface Config {
+  /** Maximum bytes in a resource configuration or text preview. */
+  resourceMaxBytes?: number
+  /** Combined retained stdout and stderr bytes per service. */
+  resourceLogBytes?: number
+  /** Grace before process-tree termination escalates. */
+  resourceGraceMs?: number
+}

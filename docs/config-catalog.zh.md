@@ -715,6 +715,26 @@ export interface Config {
 
 来源：[`packages/api/settings-controller/src/index.ts:41`](../packages/api/settings-controller/src/index.ts)
 
+<a id="deepseek-aidsh-api-workspace-controller"></a>
+
+## `@deepseek-ai/dsh-api-workspace-controller`
+
+需要： `typert` · `workspaceRegistry`
+
+```ts config-catalog
+/** Project resource storage, preview, output and shutdown bounds. */
+export interface Config {
+  /** Maximum bytes in a resource configuration or text preview. */
+  resourceMaxBytes?: number
+  /** Combined retained stdout and stderr bytes per service. */
+  resourceLogBytes?: number
+  /** Grace before process-tree termination escalates. */
+  resourceGraceMs?: number
+}
+```
+
+来源： [`packages/api/workspace-controller/src/index.ts:205`](../packages/api/workspace-controller/src/index.ts)
+
 <a id="deepseek-aidsh-attachment-local"></a>
 
 ## `@deepseek-ai/dsh-attachment-local`
@@ -3819,7 +3839,6 @@ export interface Config {
 - `@deepseek-ai/dsh-acp-app` — 需要 `cmdlineArgs` ([`packages/bundle/acp-app/src/index.ts`](../packages/bundle/acp-app/src/index.ts))
 - `@deepseek-ai/dsh-agent` ([`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts))
 - `@deepseek-ai/dsh-api-remotes` — 需要 `typertGateway` ([`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts))
-- `@deepseek-ai/dsh-api-workspace-controller` — 需要 `typert` · `workspaceRegistry` ([`packages/api/workspace-controller/src/index.ts`](../packages/api/workspace-controller/src/index.ts))
 - `@deepseek-ai/dsh-authorization` — 需要 `credentials` ([`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts))
 - `@deepseek-ai/dsh-client-locale` ([`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts))
 - `@deepseek-ai/dsh-client-modules` — 需要 `webServer` · `loader` ([`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts))

@@ -8,6 +8,7 @@
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { z as zCore } from 'zod'
+import type { Branded } from '@deepseek-ai/dsh-brand'
 
 type ZodIssue = zCore.core.$ZodIssue
 
@@ -147,3 +148,39 @@ export type WorkspaceFollowIncrement =
 export type WorkspaceFollowFrame =
   | { readonly type: 'baseline'; readonly value: WorkspaceBaseline }
   | WorkspaceFollowIncrement
+/** Stable project resource identity, distinct from Workspace and Session ids. */
+export type ResourceId = Branded<'ProjectResourceId'>
+
+/** Human input for a project file, a new Markdown note, or a manually started service. */
+export type ResourceInput =
+  | { kind: 'note'; name: string; content: string }
+  | { kind: 'file'; name: string; path: string }
+  | { kind: 'service'; name: string; cwd: string; command: string; url?: string | undefined }
+
+/** Project file entry or saved local service recipe. */
+export type ProjectResource =
+  | { id: ResourceId; kind: 'note' | 'file'; name: string; path: string }
+  | { id: ResourceId; kind: 'service'; name: string; cwd: string; command: string; url?: string | undefined }
+
+/** Resource configuration with the last observed Host-owned process state. */
+export interface ResourceView {
+  id: ResourceId
+  kind: 'note' | 'file' | 'service'
+  name: string
+  path?: string
+  cwd?: string
+  command?: string
+  url?: string | undefined
+  status: 'file' | 'stopped' | 'running' | 'exited' | 'failed'
+  pid?: number
+  logs?: string
+  logsTruncated?: boolean
+  error?: string
+  exitCode?: number | null
+}
+
+/** A fresh resource list; file paths and configuration stay in the project directory. */
+export interface ResourceList { entries: ResourceView[]; configPath: string }
+
+/** Bounded plain-text file preview, never interpreted as HTML. */
+export interface ResourceFile { path: string; text: string }

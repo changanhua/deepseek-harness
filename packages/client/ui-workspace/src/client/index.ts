@@ -34,6 +34,7 @@ import { Workbench, WorkbenchNav } from './workbench/Workbench.tsx'
 import { createWorkbenchStore } from './workbench/store.ts'
 import { en as workbenchEn, zh as workbenchZh } from './workbench/locales.ts'
 import type { WorkbenchInjected } from './workbench/contract.ts'
+import { createResourcesRuntime } from './workbench/resources-runtime.ts'
 
 export type { UiWorkspace } from './navigation.ts'
 export type {
@@ -66,7 +67,7 @@ const NS = 'workspace'
  * declaration through `slots.inject()` instead of assuming order.
  */
 export const inject = [
-  'slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.directoryPicker',
+  'slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.directoryPicker', 'remote.workspace',
 ]
 
 /**
@@ -86,6 +87,8 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace: dictionaries')
 
   const workbenchStore = createWorkbenchStore()
+  const resources = createResourcesRuntime(() => ctx.remote.workspace)
+  ctx.effect(() => () => { resources.dispose() }, 'ui-workspace: resources')
   ctx.effect(() => ctx.locale.register('workbench', { zh: workbenchZh, en: workbenchEn }), 'ui-workspace: workbench dictionaries')
   const modules = createSnapshotStore<readonly string[]>([])
   ctx.effect(() => {
@@ -103,7 +106,11 @@ export function apply(ctx: Context): void {
     locale: 'workbench',
     store: workbenchStore,
     inject: (): WorkbenchInjected => ({
-      hooks: { modules },
+      hooks: { modules, resources: resources.source },
+      resourceLoad: resources.load,
+      resourceAdd: resources.add,
+      resourceAct: resources.act,
+      resourceClosePreview: resources.closePreview,
       openSession: (id) => {
         sessions.open(id)
         ctx.get('layout')?.activateModule('conversation')

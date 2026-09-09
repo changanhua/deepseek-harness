@@ -4,6 +4,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { createWorkbenchStore } from './store.ts'
 import type { WorkbenchKey } from './locales.ts'
+import type { createResourcesRuntime, ResourcesState } from './resources-runtime.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 
@@ -16,7 +17,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Callback and observable data passed from plugin assembly, never a transport object. */
 export type WorkbenchInjected = {
-  hooks: { modules: HostObservable<readonly string[]> }
+  hooks: { modules: HostObservable<readonly string[]>; resources: HostObservable<ResourcesState> }
+  resourceLoad: ReturnType<typeof createResourcesRuntime>['load']
+  resourceAdd: ReturnType<typeof createResourcesRuntime>['add']
+  resourceAct: ReturnType<typeof createResourcesRuntime>['act']
+  resourceClosePreview: ReturnType<typeof createResourcesRuntime>['closePreview']
   openSession: (id: SessionId) => void
   startSession: (workspaceId?: WorkspaceId) => void
   prepareComposer: (workspaceId?: WorkspaceId) => void

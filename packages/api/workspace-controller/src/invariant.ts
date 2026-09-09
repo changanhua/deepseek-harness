@@ -11,7 +11,7 @@ export const name = 'api-workspace-controller-invariant'
 /** Service required before the companion can reserve package ownership. */
 export const inject = ['invariants']
 
-/** No runtime invariant: Workspace Registry owns persistence; every stream generation is a full projection. */
+/** No runtime invariant: Workspace owns membership; resources validate disk schemas and own process handles without event projections. */
 const install: InvariantInstaller = () => {}
 
 /** Register this package's invariant companion. */
