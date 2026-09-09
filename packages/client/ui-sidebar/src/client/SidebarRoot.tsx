@@ -60,7 +60,9 @@ export function SidebarRoot({
   toggleSidebar,
   t,
   renderSlot,
+  usePrimaryNavigation,
 }: SidebarRootComponentProps) {
+  const hasPrimaryNavigation = usePrimaryNavigation(value => value)
   // Wide content stays mounted while the collapse animates (fading via
   // .collapsed .wide), unmounts at settle, and remounts right away on expand.
   const [settled, setSettled] = useState(collapsed)
@@ -217,11 +219,10 @@ export function SidebarRoot({
         })}
       </div>
 
-      {/* First-level module entries (Queue and future module workspaces) stack
-          above the foot; the frame's module-ring state rides straight through. */}
-      <div className={css.modulesArea}>
+      {/* Standalone compositions keep their module shortcuts when no primary navigation is mounted. */}
+      {!hasPrimaryNavigation && <div className={css.modulesArea}>
         {renderSlot('sidebar.modules', { wide, activeModule, setActiveModule })}
-      </div>
+      </div>}
 
       {/* Footer actions stack above Settings in both sidebar widths. */}
       <div className={css.footArea}>

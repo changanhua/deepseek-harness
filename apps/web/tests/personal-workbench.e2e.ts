@@ -63,6 +63,8 @@ describe('web e2e: personal workbench', () => {
     await page.screenshot({ path: join(SHOTS, 'tools.png'), fullPage: true })
     await surface.getByRole('button', { name: /Background queue/ }).click()
     await page.getByRole('heading', { name: 'Task Queue', exact: true }).waitFor({ timeout: 15_000 })
+    await page.getByRole('button', { name: 'Back to capabilities & tools', exact: true }).click()
+    await surface.getByRole('heading', { name: 'Capabilities & tools', exact: true }).waitFor()
     await page.getByRole('button', { name: 'Overview', exact: true }).click()
     await page.getByRole('heading', { name: 'Pick up where you left off' }).waitFor()
     expect(tripwire.pageErrors).toEqual([])
@@ -73,6 +75,29 @@ describe('web e2e: personal workbench', () => {
     await page.getByRole('heading', { name: 'Pick up where you left off' }).waitFor()
     await expect.poll(() => page.locator('[data-workbench]').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
     await page.screenshot({ path: join(SHOTS, 'mobile.png'), fullPage: true })
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    expect(tripwire.pageErrors).toEqual([])
+  })
+
+  it('removes duplicate shortcuts and provides a return path for every tool', async () => {
+    for (const name of ['Capabilities', 'Work Observatory', 'Architecture', 'Queue']) {
+      expect(await page.getByRole('button', { name, exact: true }).count()).toBe(0)
+    }
+    expect(await page.getByRole('button', { name: 'Settings', exact: true }).isVisible()).toBe(true)
+    await page.getByRole('button', { name: 'Capabilities & tools', exact: true }).click()
+    const surface = page.locator('[data-workbench]')
+    const tools = await surface.getByRole('button').allTextContents()
+    const cards = tools.filter(text => text.includes('Open →'))
+    expect(cards.length).toBeGreaterThanOrEqual(4)
+    for (const name of cards) {
+      await surface.getByRole('button').filter({ hasText: name }).click()
+      await page.getByRole('button', { name: 'Back to capabilities & tools', exact: true }).click()
+      await surface.getByRole('heading', { name: 'Capabilities & tools', exact: true }).waitFor()
+    }
+    await surface.getByRole('button', { name: /Background queue/ }).click()
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.getByRole('button', { name: 'Back to capabilities & tools', exact: true }).click()
+    await surface.getByRole('heading', { name: 'Capabilities & tools', exact: true }).waitFor()
     await page.setViewportSize({ width: 1440, height: 1000 })
     expect(tripwire.pageErrors).toEqual([])
   })

@@ -27,7 +27,7 @@ kind: "package-reference"
 
 侧边栏是导航外壳：用户看到品牌、启动新会话、折叠轨道、切换一级模块并到达 Settings。功能插件填充它的席位——ui-workspace 填充 `sidebar.workspaces`，Queue 与 Capability 入口注册进 `sidebar.modules`，ui-settings 在 `sidebar.settings` 注册触发行与设置面板。模块入口接收活动模块 id 与 `setActiveModule`；打开 Session 会把中心列切回 `conversation`。
 
-`sidebar.primary` 列表席位把主要工作导航放在项目浏览区上方。其条目接收与 `sidebar.modules` 相同的宽度和模块选择属性；贡献方释放时会移除对应导航。新会话控件会显式返回对话，即使复用了当前选中的空白 Session。
+`sidebar.primary` 列表席位把主要工作导航放在项目浏览区上方。其条目接收与 `sidebar.modules` 相同的宽度和模块选择属性；贡献方释放时会移除对应导航。主要导航挂载期间，shell 会隐藏重复的 `sidebar.modules` 快捷入口并保留设置。新会话控件会显式返回对话，即使复用了当前选中的空白 Session。
 
 ### 品牌与 New Session
 

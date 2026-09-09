@@ -28,7 +28,7 @@ type AttentionSnapshot = Parameters<Parameters<SidebarRootComponentProps['useSes
 const noAttention: AttentionSnapshot = new Map()
 const useSessionPendingInteraction: SidebarRootComponentProps['useSessionPendingInteraction'] = selector => selector(noAttention)
 
-function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; width?: number } = {}) {
+function mountShell({ collapsed = false, width = 300, primary = false }: { collapsed?: boolean; width?: number; primary?: boolean } = {}) {
   const startSession = vi.fn()
   const toggleSidebar = vi.fn()
   const setActiveModule = vi.fn()
@@ -44,6 +44,7 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
       collapsed={current.collapsed} width={current.width}
       activeModule={current.activeModule} setActiveModule={setActiveModule}
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
+      usePrimaryNavigation={select => select(primary)}
       startSession={startSession} toggleSidebar={toggleSidebar} t={t}
       renderSlot={((
         key: string,
@@ -98,6 +99,12 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
 }
 
 describe('SidebarRoot shell', () => {
+  it('hides legacy module shortcuts while primary navigation is available and keeps Settings', () => {
+    mountShell({ primary: true })
+    expect(screen.queryByTestId('modules-seat')).toBeNull()
+    expect(screen.getByTestId('primary-navigation')).toBeTruthy()
+    expect(screen.getByTestId('settings-seat')).toBeTruthy()
+  })
   it('routes New Session (capsule + wordmark) and the column toggle', () => {
     const b = mountShell()
     expect(screen.getByTestId('custom-brand-mark')).toBeTruthy()
@@ -116,6 +123,7 @@ describe('SidebarRoot shell', () => {
     vi.stubEnv('DSH_CLIENT_GIT_DIRTY', 'true')
     vi.stubEnv('DSH_CLIENT_VERSION', '1.2.3-rc.4')
     const { container } = render(<SidebarRoot
+      usePrimaryNavigation={select => select(false)}
       collapsed={false} width={300} activeModule="conversation" setActiveModule={vi.fn()}
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
       startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
@@ -134,6 +142,7 @@ describe('SidebarRoot shell', () => {
   ])('omits unavailable build-version suffixes from %j', (environment, expected) => {
     for (const [name, value] of Object.entries(environment)) vi.stubEnv(name, value)
     render(<SidebarRoot
+      usePrimaryNavigation={select => select(false)}
       collapsed={false} width={300} activeModule="conversation" setActiveModule={vi.fn()}
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
       startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
@@ -147,6 +156,7 @@ describe('SidebarRoot shell', () => {
 
   it('retains the local-build fallback without complete build metadata', () => {
     render(<SidebarRoot
+      usePrimaryNavigation={select => select(false)}
       collapsed={false} width={300} activeModule="conversation" setActiveModule={vi.fn()}
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
       startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}

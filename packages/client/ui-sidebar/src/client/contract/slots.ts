@@ -8,7 +8,7 @@
  * above the foot, and the foot is the `sidebar.settings` registrant's
  * (ui-settings), followed by optional footer actions in `sidebar.footer.action`.
  */
-import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, PropsHooks, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 // Type-only: pulls ui-layout's SlotMap merge (the 'sidebar' entry) into every
 // program that sees this contract, so PropsRuntime<'sidebar'> resolves.
@@ -118,6 +118,8 @@ export interface SidebarFooterActionOwnerProps {
  * the New Session button and toggling the column.
  */
 export type SidebarRootInjected = {
+  /** Primary navigation replaces the legacy module shortcuts when mounted. */
+  hooks: { primaryNavigation: HostObservable<boolean> }
   /**
    * Start a New Session: with a workspace, reuse-or-create its blank session
    * and open it; without one, inherit the current Session Workspace, then the
@@ -144,4 +146,4 @@ export type SidebarRootComponentProps =
     | 'sidebar.settings'
     | 'sidebar.footer.action'
   >
-  & SidebarRootInjected & PropsLocale<'sidebar'>
+  & Omit<SidebarRootInjected, 'hooks'> & PropsHooks<SidebarRootInjected['hooks']> & PropsLocale<'sidebar'>

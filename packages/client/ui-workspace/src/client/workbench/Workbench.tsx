@@ -43,6 +43,11 @@ export function WorkbenchNav({
     if (activeModule === 'conversation') setActiveModule('workbench')
   }, [activeModule, actions, setActiveModule, view.initialized])
   return <nav className={css.navigation} aria-label={t('home.workspace')}>
+    {MODULES.some(module => module.id === activeModule) && <button type="button" className={clsx(css.navItem, !wide && css.rail)}
+      aria-label={t('nav.returnToTools')} title={wide ? undefined : t('nav.returnToTools')}
+      onClick={() => { actions.navigate('tools'); setActiveModule('workbench') }}>
+      <span className={css.backIcon} aria-hidden="true">←</span>{wide && <span>{t('nav.returnToTools')}</span>}
+    </button>}
     {NAVIGATION.map((page) => {
       const count = page === 'attention' ? overview.attention.length : page === 'running' ? overview.running.length : undefined
       const label = t(`nav.${page}`)

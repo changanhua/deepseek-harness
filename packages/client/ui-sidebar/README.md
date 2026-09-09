@@ -27,7 +27,7 @@ English | [中文](README.zh.md)
 
 The sidebar is the navigation shell: users see the brand, start new sessions, collapse the rail, switch first-level modules, and reach Settings. Feature plugins fill its seats — ui-workspace fills `sidebar.workspaces`, Queue and Capability entries register into `sidebar.modules`, and ui-settings registers the trigger row and settings panel at `sidebar.settings`. Module entries receive the active module id and `setActiveModule`; opening a Session routes the center column back to `conversation`.
 
-The `sidebar.primary` list seat places primary work navigation above the project browser. Its entries receive the same width and module-selection props as `sidebar.modules`; disposing the contributor removes its navigation. The New Session controls explicitly return to conversation even when the selected blank Session is reused.
+The `sidebar.primary` list seat places primary work navigation above the project browser. Its entries receive the same width and module-selection props as `sidebar.modules`; disposing the contributor removes its navigation. While primary navigation is mounted, the shell hides the duplicate `sidebar.modules` shortcuts and keeps Settings visible. The New Session controls explicitly return to conversation even when the selected blank Session is reused.
 
 ### Brand and New Session
 
