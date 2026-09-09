@@ -6,11 +6,11 @@ English | [中文](2026-09-09-personal-workbench-navigation.zh.md)
 
 ## Problem
 
-A conversation-first home requires users to reopen individual threads to find running work, unread results, and pending decisions. Project browsing must not create work merely to display its status.
+A conversation-first home requires users to reopen individual threads to find running work, unread results, and pending decisions. The workbench also needs a usable composer in place of an input-shaped navigation button.
 
 ## Decision
 
-The [Workspace UI](../../../../packages/client/ui-workspace/README.md) owns a workbench projection over the existing Session list, Workspace membership, and pending-interaction sources. Its view state is shared between primary navigation and the main module; domain state remains with the existing controllers. Work rows open their existing conversations, and project cards select only a viewing filter. Available tool cards follow the module registry through its registration lifecycle.
+The [Workspace UI](../../../../packages/client/ui-workspace/README.md) owns a workbench projection over the existing Session list, Workspace membership, and pending-interaction sources. Its view state is shared between primary navigation and the main content; domain state remains with the existing controllers. Work rows open their existing conversations. Overview and project pages receive the original Conversation composer through `conversation.home` and prepare a reusable blank Session through the normal New Session flow. Available tool cards follow the module registry through its registration lifecycle.
 
 The [sidebar](../../../../packages/client/ui-sidebar/README.md) provides an additive primary-navigation seat. The [layout](../../../../packages/client/ui-layout/README.md) provides idempotent module activation alongside the existing toggle action. A hidden conversation retains its draft and mounted details while the workbench is visible.
 

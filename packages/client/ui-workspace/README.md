@@ -29,7 +29,7 @@ Use the sidebar to browse Workspaces and their Sessions, reorder them, and start
 
 ### Workbench overview
 
-The workbench opens on **Overview** and provides **Needs you**, **In progress**, **Recent work**, project summaries, and **Capabilities & tools**. These views read the existing Workspace, Session, and pending-interaction projections; viewing a project does not create or select a Session. Blank, archived, and subagent-origin Sessions are excluded from the work list, while running descendants remain visible through their parent. **New result** means a Session ended while unread, not that its output passed verification or acceptance. Opening work returns to its existing conversation; tool cards open only modules registered in the current composition.
+The workbench opens on **Overview** and provides **Needs you**, **In progress**, **Recent work**, project summaries, and **Capabilities & tools**. These views read the existing Workspace, Session, and pending-interaction projections. Overview and project pages embed the existing Conversation composer, including Workspace, preset, attachment, permission, and model controls; they prepare a reusable blank Session through the normal New Session flow. The first message opens the conversation without a second input screen. Blank, archived, and subagent-origin Sessions are excluded from the work list, while running descendants remain visible through their parent. **New result** means a Session ended while unread, not that its output passed verification or acceptance. Opening work returns to its existing conversation; tool cards open only modules registered in the current composition.
 
 ### Reordering and view options
 

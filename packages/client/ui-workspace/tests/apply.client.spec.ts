@@ -90,13 +90,14 @@ describe('ui-workspace apply', () => {
     const b = await bench()
     b.slots.register({ name: 'root', children: {
       'shell.view': { kind: 'list', scope: 'root' },
+      'conversation.home': { kind: 'single', scope: 'root' },
       'sidebar.primary': { kind: 'list', scope: 'root' },
     } } as never, () => null)
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
-    const entry = b.slots.entries('shell.view').find(item => item.options.id === 'workbench')!
+    const entry = b.slots.entries('conversation.home')[0]!
     const injected = (entry.inject as unknown as () => { hooks: { modules: { getSnapshot(): readonly string[] } } })()
-    expect(injected.hooks.modules.getSnapshot()).toEqual(['workbench'])
+    expect(injected.hooks.modules.getSnapshot()).toEqual([])
     const removeQueue = b.slots.register({ name: 'shell.view', id: 'queue' }, () => null)
     await vi.waitFor(() => { expect(injected.hooks.modules.getSnapshot()).toContain('queue') })
     removeQueue()
@@ -104,6 +105,7 @@ describe('ui-workspace apply', () => {
     await fiber.dispose()
     expect(b.slots.entries('shell.view')).toHaveLength(0)
     expect(b.slots.entries('sidebar.primary')).toHaveLength(0)
+    expect(b.slots.entries('conversation.home')).toHaveLength(0)
   })
 
   it('declares the services it drives', () => {

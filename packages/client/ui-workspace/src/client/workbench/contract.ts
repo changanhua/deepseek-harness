@@ -19,11 +19,12 @@ export type WorkbenchInjected = {
   hooks: { modules: HostObservable<readonly string[]> }
   openSession: (id: SessionId) => void
   startSession: (workspaceId?: WorkspaceId) => void
+  prepareComposer: (workspaceId?: WorkspaceId) => void
   openModule: (id: string) => void
 }
 
 /** Main workbench props, including standard live session and workspace sources. */
-export type WorkbenchProps = PropsRuntime<'shell.view'>
+export type WorkbenchProps = PropsRuntime<'conversation.home'>
   & PropsStore<ReturnType<typeof createWorkbenchStore>>
   & PropsLocale<'workbench'>
   & PropsHooks<WorkbenchInjected['hooks']>

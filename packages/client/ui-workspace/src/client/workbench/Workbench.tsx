@@ -1,5 +1,5 @@
 /** Project-first navigation over the existing live session and workspace sources. */
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import clsx from 'clsx'
 import type { WorkbenchNavProps, WorkbenchProps } from './contract.ts'
 import { deriveWorkbench } from './model.ts'
@@ -75,7 +75,8 @@ function statusKey(item: WorkbenchItem): WorkbenchKey {
 
 /** Main surface: empty/loading/error states are distinct from a ready empty workspace. */
 export function Workbench({
-  useSessions, useWorkspaces, useSessionPendingInteraction, useModules, useStore, actions, openSession, startSession, openModule, t,
+  useSessions, useWorkspaces, useSessionPendingInteraction, useModules, useStore,
+  actions, openSession, prepareComposer, composer, openModule, t,
 }: WorkbenchProps) {
   const sessions = useSessions(state => state)
   const workspaces = useWorkspaces(state => state)
@@ -84,6 +85,18 @@ export function Workbench({
   const view = useStore(state => state)
   const overview = useMemo(() => deriveWorkbench(sessions, workspaces, pending), [sessions, workspaces, pending])
   const project = overview.projects.find(item => item.workspaceId === view.projectId)
+  const ready = sessions.phase === 'ready' && workspaces.phase === 'ready'
+  const currentBlank = sessions.current !== undefined && sessions.byId[sessions.current]?.blank === true
+  const preparedHome = useRef<string>()
+  useEffect(() => {
+    if (view.page !== 'overview' && view.page !== 'project') { preparedHome.current = undefined; return }
+    if (!ready) return
+    const key = `${view.page}:${project?.workspaceId ?? ''}`
+    if (preparedHome.current === key) return
+    preparedHome.current = key
+    if (currentBlank && (project === undefined || (sessions.current !== undefined && project.sessionIds.includes(sessions.current)))) return
+    prepareComposer(project?.workspaceId)
+  }, [ready, view.page, project, currentBlank, sessions.current, prepareComposer])
   const title = view.page === 'overview' ? t('home.title')
     : view.page === 'project' ? project?.title ?? t('nav.project') : t(`nav.${view.page}`)
   const work = (item: WorkbenchItem, card = false) => <button type="button" key={item.id}
@@ -126,9 +139,7 @@ export function Workbench({
         : view.page === 'project' && project === undefined ? <p className={css.empty} role="status">{t('home.projectMissing')}</p>
           : <>
             {!phaseReady && <p role="status" className={css.notice}>{t('home.unavailable')}</p>}
-            {(view.page === 'overview' || view.page === 'project') && <button type="button" className={css.compose} onClick={() => { startSession(project?.workspaceId) }}>
-              <span>{t('home.prompt')}</span><span className={css.composeFoot}>{view.page === 'project' ? t('home.newProjectChat') : t('home.new')}<span className={css.send}>↑</span></span>
-            </button>}
+            {(view.page === 'overview' || view.page === 'project') && composer}
             {view.page === 'overview' ? <>
               {section(t('nav.attention'), 'attention')}
               {overview.attention.length > 0 ? <div className={css.attention}>{overview.attention.slice(0, 4).map(item => work(item, true))}</div> : <p className={css.empty}>{t('home.noAttention')}</p>}

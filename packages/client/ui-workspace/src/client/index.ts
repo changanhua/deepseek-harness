@@ -98,9 +98,8 @@ export function apply(ctx: Context): void {
     update()
     return off
   }, 'ui-workspace: available workbench modules')
-  ctx.slots.inject('shell.view', () => ctx.slots.register({
-    name: 'shell.view',
-    id: 'workbench',
+  ctx.slots.inject('conversation.home', () => ctx.slots.register({
+    name: 'conversation.home',
     locale: 'workbench',
     store: workbenchStore,
     inject: (): WorkbenchInjected => ({
@@ -113,6 +112,7 @@ export function apply(ctx: Context): void {
         ctx.get('layout')?.activateModule('conversation')
         uiWorkspace.startSession(workspaceId)
       },
+      prepareComposer: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
       openModule: (id) => {
         if (modules.getSnapshot().includes(id)) ctx.get('layout')?.activateModule(id)
       },

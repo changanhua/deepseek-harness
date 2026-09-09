@@ -124,7 +124,7 @@ export function AppFrame({
   useLayoutEffect(() => {
     if (lastCurrentSession.current !== currentSession
       && lastCurrentSession.current !== undefined && currentSession !== undefined
-      && activeModule !== DEFAULT_MODULE) {
+      && activeModule !== DEFAULT_MODULE && activeModule !== 'workbench') {
       actions.setActiveModule(DEFAULT_MODULE)
     }
     lastCurrentSession.current = currentSession
@@ -219,10 +219,10 @@ export function AppFrame({
             is session-maybe; SessionProvider withholds the strict details
             entry while no session is current. */}
         <CenterColumn>
-          <div className={css.modulePane} hidden={activeModule !== DEFAULT_MODULE}>
-            {renderSlot('conversation', {})}
+          <div className={css.modulePane} hidden={activeModule !== DEFAULT_MODULE && activeModule !== 'workbench'}>
+            {renderSlot('conversation', { home: activeModule === 'workbench', onOpenConversation: () => { actions.activateModule(DEFAULT_MODULE) } })}
           </div>
-          {activeModule !== DEFAULT_MODULE && (
+          {activeModule !== DEFAULT_MODULE && activeModule !== 'workbench' && (
             <div className={css.modulePane}>{renderSlot('shell.view', {}, { only: activeModule })}</div>
           )}
         </CenterColumn>

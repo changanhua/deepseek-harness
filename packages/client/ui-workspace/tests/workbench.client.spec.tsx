@@ -41,7 +41,8 @@ function fixture(overrides: Partial<WorkbenchProps> = {}) {
     useWorkspaces: hook(workspace()), useSessionPendingInteraction: hook(pending),
     useModules: hook(['workbench', 'queue', 'capability']),
     useStore: bindSnapshotSelector(instance), actions: instance.actions,
-    openSession: vi.fn(), startSession: vi.fn(), openModule: vi.fn(), t: makeTranslate(zh) as never,
+    openSession: vi.fn(), startSession: vi.fn(), prepareComposer: vi.fn(), composer: null,
+    openModule: vi.fn(), t: makeTranslate(zh) as never,
     ...overrides,
   }
   return { props, instance }

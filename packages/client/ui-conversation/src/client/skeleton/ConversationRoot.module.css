@@ -34,6 +34,15 @@
   --dsh-composer-dock-inset: 8px;
 }
 
+.composerStack.homeComposer {
+  width: 100%;
+  max-width: none;
+  margin: 0 0 30px;
+  padding: 0;
+  --dsh-composer-card-max-width: 100%;
+}
+.homeComposerSeat { flex: none; --dsh-composer-text-max-height: 336px; }
+
 .header {
   position: relative;
   /* Above the width handles (which start at top: 0) so the breadcrumb row and

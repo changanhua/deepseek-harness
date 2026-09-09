@@ -6,11 +6,11 @@ Status: implemented
 
 ## Problem
 
-以对话为中心的首页要求用户逐个重新打开会话，才能找到正在运行的工作、未读结果和待处理决定。浏览项目状态不应顺带创建工作。
+以对话为中心的首页要求用户逐个重新打开会话，才能找到正在运行的工作、未读结果和待处理决定。工作台还需要可直接使用的输入组件，以替换外观像输入框的导航按钮。
 
 ## Decision
 
-[Workspace UI](../../../../packages/client/ui-workspace/README.zh.md) 拥有基于现有 Session 列表、Workspace 成员关系和待交互来源的工作台投影。主要导航和主模块共享视图状态；领域状态仍由现有控制器持有。工作行打开已有对话，项目卡片只选择浏览筛选条件。可用工具卡片随模块注册表的注册生命周期变化。
+[Workspace UI](../../../../packages/client/ui-workspace/README.zh.md) 拥有基于现有 Session 列表、Workspace 成员关系和待交互来源的工作台投影。主要导航和主内容共享视图状态；领域状态仍由现有控制器持有。工作行打开已有对话。总览和项目页通过 `conversation.home` 接收原有 Conversation 输入组件，并通过正常的新会话流程准备可复用的空白 Session。可用工具卡片随模块注册表的注册生命周期变化。
 
 [侧栏](../../../../packages/client/ui-sidebar/README.zh.md) 提供附加的主要导航席位。[布局](../../../../packages/client/ui-layout/README.zh.md) 在原有切换动作之外提供幂等模块激活。工作台显示时，隐藏的对话保留草稿和已挂载的详情。
 

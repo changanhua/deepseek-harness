@@ -118,7 +118,12 @@ export interface SidebarOwnerProps {
 }
 
 /** Conversation owner share: business state and actions belong to the registrant. */
-export interface ConvOwnerProps {}
+export interface ConvOwnerProps {
+  /** Render the home contribution around the resident composer. */
+  home?: boolean
+  /** Leave home after its blank Session receives its first message. */
+  onOpenConversation?: () => void
+}
 
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
