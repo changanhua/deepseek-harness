@@ -10,7 +10,7 @@ import { globSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -52,6 +52,10 @@ import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
 import * as ToolRuntimeInspect from '@changanhua/dsh-tool-runtime-inspect'
+import { Browser } from '@changanhua/dsh-browser'
+import BrowserActivity from '@changanhua/dsh-browser-activity'
+import ApprovalService from '@deepseek-ai/dsh-user-approval'
+import * as ToolBrowser from '@changanhua/dsh-tool-browser'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
@@ -109,6 +113,21 @@ class CatalogAttachmentStore extends AttachmentStore {
 
 const root = resolve(import.meta.dirname, '..')
 const OUT = 'docs/tool-catalog.md'
+
+/** Browser capabilities are present for schema harvest, but cannot perform observations or actions. */
+class CatalogBrowser extends Browser {
+  isAuthorized(): boolean { return false }
+  instances(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+  observe(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+  execute(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+  prepare(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+  executePrepared(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+}
+
+/** Activates the optional activity tool without opening any storage backend. */
+class CatalogBrowserActivity extends BrowserActivity {
+  protected override [Service.init](): void {}
+}
 
 /**
  * Register the descriptor needed to mount schema-producing consumers. Declares
@@ -201,6 +220,25 @@ export interface ToolPackage {
  * guard proves it is exhaustive against the on-disk glob.
  */
 const TOOL_PACKAGES: ToolPackage[] = [
+  {
+    pkg: '@changanhua/dsh-tool-browser', dir: 'tool-browser',
+    source: {
+      browser_instances: 'packages/browser/tool-browser/src/index.ts', browser_tabs: 'packages/browser/tool-browser/src/index.ts',
+      browser_snapshot: 'packages/browser/tool-browser/src/index.ts', browser_action: 'packages/browser/tool-browser/src/index.ts',
+      browser_task_start: 'packages/browser/tool-browser/src/index.ts', browser_task_verify: 'packages/browser/tool-browser/src/index.ts',
+      browser_activity_search: 'packages/browser/tool-browser/src/activity.ts',
+    },
+    requires: ['ctx.browser', 'ctx.tools', 'ctx.approval', 'ctx.browserActivity for historical activity search', 'an initiating Agent session'],
+    writes: ['tool/call', 'tool/result', 'approved page actions through Browser'],
+    async mount(ctx) {
+      await ctx.plugin(CatalogBrowser)
+      await ctx.plugin(CatalogBrowserActivity)
+      await ctx.plugin(ApprovalService)
+      await ctx.plugin(ToolBrowser)
+      if (!ctx.tools.get('browser_activity_search')) throw new Error('optional activity search was not harvested')
+    },
+    note: 'Activity search is present only when browserActivity is composed. It reads the initiating Session under current Host grants, including while Chrome is offline.',
+  },
   {
     pkg: '@changanhua/dsh-tool-agent-run-task-queue',
     dir: 'tool-agent-run-task-queue',

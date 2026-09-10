@@ -82,6 +82,7 @@
     { "path": "./packages/client/ui-jobs" },
     { "path": "./packages/client/ui-task-queue" },
     { "path": "./packages/client/ui-capability" },
+    { "path": "./packages/client/ui-content" },
     { "path": "./packages/client/ui-architecture" },
     { "path": "./packages/client/ui-work-observatory" },
     { "path": "./packages/client/ui-directory-picker-browse" },

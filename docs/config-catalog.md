@@ -9,6 +9,43 @@ This file is GENERATED from source (`scripts/gen-config-catalog.ts`) and verifie
 
 A `Requires:` line lists the service keys the plugin `inject`s: its `cordis.yml` tree must also load providers for those services. Scope is the harness tier (`packages/`); the vendored cordis plugins a config tree may also load (`hmr`, the console logger, …) are pinned upstream source ([vendoring policy](../vendor/README.md)) and not catalogued here.
 
+<a id="changanhuadsh-content-browser"></a>
+
+## `@changanhua/dsh-content-browser`
+
+Requires: `webServer` · `connection` · `credentials` · `content`
+
+```ts config-catalog
+export interface ContentBrowserConfig {
+  /** Lifetime of a pending connection request, in milliseconds. */
+  requestTTL?: number
+  /** Maximum number of pending connection requests. */
+  pendingLimit?: number
+  /** Maximum accepted request body size, in bytes. */
+  maxRequestBodyBytes?: number
+}
+```
+
+Source: [`packages/content/content-browser/src/index.ts:36`](../packages/content/content-browser/src/index.ts)
+
+<a id="changanhuadsh-content-domain"></a>
+
+## `@changanhua/dsh-content-domain`
+
+```ts config-catalog
+/** Byte limits count all retained data; lowering them never prevents reading existing valid data. */
+export interface Config {
+  /** Maximum UTF-8 bytes in one retained body. */
+  bodyBytes?: number
+  /** Maximum JSON UTF-8 bytes in one entry, including versions and receipts. */
+  entryBytes?: number
+  /** Maximum JSON UTF-8 bytes in the complete logical Domain envelope. */
+  libraryBytes?: number
+}
+```
+
+Source: [`packages/content/content-domain/src/index.ts:25`](../packages/content/content-domain/src/index.ts)
+
 <a id="changanhuadsh-delivery-evidence-local"></a>
 
 ## `@changanhua/dsh-delivery-evidence-local`
@@ -842,7 +879,7 @@ export interface ConnectionConfig {
 }
 ```
 
-Source: [`packages/client/connection/src/index.ts:70`](../packages/client/connection/src/index.ts)
+Source: [`packages/client/connection/src/index.ts:72`](../packages/client/connection/src/index.ts)
 
 <a id="deepseek-aidsh-client-hmr"></a>
 
@@ -2696,6 +2733,8 @@ Requires: `storage`
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
+  /** Storage hub registration name. Existing configurations default to `sqlite`. */
+  backendName?: string
   /**
    * Filesystem path to the SQLite database file. The special value `:memory:`
    * opens an in-process database (tests). On filesystems with POSIX modes,
@@ -2713,6 +2752,16 @@ export interface Config {
    * {@link JournalMode}.
    */
   journalMode?: JournalMode
+  /** Base for relative paths; the legacy behavior resolves from the process working directory. */
+  pathBase?: StoragePathBase
+  /** Hold the file for this connection's lifetime, or retain shared SQLite locking. */
+  ownership?: 'shared' | 'exclusive'
+  /** Explicit SQLite synchronous level; omission preserves SQLite's existing default. */
+  synchronous?: 'normal' | 'full' | 'extra'
+  /** Non-zero identity; only a newly created file or an exact stamped match opens. */
+  applicationId?: number
+  /** Require owner-private paths and reject unsafe aliases or writable ancestors. */
+  privateDirectory?: boolean
 }
 
 /**
@@ -2723,9 +2772,12 @@ export interface Config {
  * contradicts the durability clause of the KV backend contract.
  */
 export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
+
+/** Resolution base for a relative database path. */
+export type StoragePathBase = 'cwd' | 'dsh-home'
 ```
 
-Source: [`packages/storage/storage-sqlite/src/index.ts:24`](../packages/storage/storage-sqlite/src/index.ts)
+Source: [`packages/storage/storage-sqlite/src/index.ts:40`](../packages/storage/storage-sqlite/src/index.ts)
 
 <a id="deepseek-aidsh-subagent-acp"></a>
 
@@ -2841,6 +2893,7 @@ export interface Config {
 
 /** Profile-selectable non-interactive Codex permission mode. */
 export type CodexPermissionMode =
+  | 'read-only'
   | 'never'
   | 'approve-for-me'
   | 'dangerously-bypass-approvals-and-sandbox'
@@ -3419,7 +3472,7 @@ export interface Config {
 
 Depends on: [`AgentOptions`](subsystems/core.md)
 
-Source: [`packages/subagent/tool-subagent/src/index.ts:49`](../packages/subagent/tool-subagent/src/index.ts)
+Source: [`packages/subagent/tool-subagent/src/index.ts:51`](../packages/subagent/tool-subagent/src/index.ts)
 
 <a id="deepseek-aidsh-tool-subagent-report"></a>
 
@@ -3822,11 +3875,14 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 
 - `@changanhua/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
 - `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
+- `@changanhua/dsh-client-ui-content` ([`packages/client/ui-content/src/index.ts`](../packages/client/ui-content/src/index.ts))
 - `@changanhua/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
 - `@changanhua/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
 - `@changanhua/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
 - `@changanhua/dsh-client-ui-work-observatory` ([`packages/client/ui-work-observatory/src/index.ts`](../packages/client/ui-work-observatory/src/index.ts))
 - `@changanhua/dsh-command-task-queue` — requires `commands` ([`packages/task-queue/command-task-queue/src/index.ts`](../packages/task-queue/command-task-queue/src/index.ts))
+- `@changanhua/dsh-content-remote` — requires `connection` · `content` · `contentSession` ([`packages/content/content-remote/src/index.ts`](../packages/content/content-remote/src/index.ts))
+- `@changanhua/dsh-content-session` — requires `sessionQuery` ([`packages/content/content-session/src/index.ts`](../packages/content/content-session/src/index.ts))
 - `@changanhua/dsh-delivery-local` — requires `storageDomain` ([`packages/delivery/delivery-local/src/index.ts`](../packages/delivery/delivery-local/src/index.ts))
 - `@changanhua/dsh-host-capability-registry` — requires `loader` · `skills` · `tools` · `agents` ([`packages/host/capability-registry/src/index.ts`](../packages/host/capability-registry/src/index.ts))
 - `@changanhua/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))
@@ -3913,6 +3969,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 
 Abstract service classes — a deployment loads a concrete implementation package instead ([capability seams](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)).
 
+- `@changanhua/dsh-content` — abstract `Content` ([`packages/content/content/src/index.ts`](../packages/content/content/src/index.ts))
 - `@changanhua/dsh-delivery` — abstract `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
 - `@changanhua/dsh-delivery-evidence` — abstract `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
 - `@changanhua/dsh-repo-workspace` — abstract `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))

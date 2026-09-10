@@ -11,6 +11,43 @@
 
 `Requires:` 行列出插件通过 `inject` 注入的服务键：其 `cordis.yml` 树还必须加载这些服务的提供者。范围限定为 harness 层级（`packages/`）；配置树还可能加载的 vendored cordis 插件（`hmr`、控制台日志记录器等）固定为上游源代码（参见 [vendoring policy](../vendor/README.md)），未收录于此目录。
 
+<a id="changanhuadsh-content-browser"></a>
+
+## `@changanhua/dsh-content-browser`
+
+Requires: `webServer` · `connection` · `credentials` · `content`
+
+```ts config-catalog
+export interface ContentBrowserConfig {
+  /** Lifetime of a pending connection request, in milliseconds. */
+  requestTTL?: number
+  /** Maximum number of pending connection requests. */
+  pendingLimit?: number
+  /** Maximum accepted request body size, in bytes. */
+  maxRequestBodyBytes?: number
+}
+```
+
+来源：[`packages/content/content-browser/src/index.ts:36`](../packages/content/content-browser/src/index.ts)
+
+<a id="changanhuadsh-content-domain"></a>
+
+## `@changanhua/dsh-content-domain`
+
+```ts config-catalog
+/** Byte limits count all retained data; lowering them never prevents reading existing valid data. */
+export interface Config {
+  /** Maximum UTF-8 bytes in one retained body. */
+  bodyBytes?: number
+  /** Maximum JSON UTF-8 bytes in one entry, including versions and receipts. */
+  entryBytes?: number
+  /** Maximum JSON UTF-8 bytes in the complete logical Domain envelope. */
+  libraryBytes?: number
+}
+```
+
+来源：[`packages/content/content-domain/src/index.ts:25`](../packages/content/content-domain/src/index.ts)
+
 <a id="changanhuadsh-delivery-evidence-local"></a>
 
 ## `@changanhua/dsh-delivery-evidence-local`
@@ -25,7 +62,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/delivery/delivery-evidence-local/src/index.ts:18`](../packages/delivery/delivery-evidence-local/src/index.ts)
+来源：[`packages/delivery/delivery-evidence-local/src/index.ts:42`](../packages/delivery/delivery-evidence-local/src/index.ts)
 
 <a id="changanhuadsh-delivery-remote"></a>
 
@@ -54,7 +91,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/delivery/delivery-remote/src/index.ts:41`](../packages/delivery/delivery-remote/src/index.ts)
+来源：[`packages/delivery/delivery-remote/src/index.ts:103`](../packages/delivery/delivery-remote/src/index.ts)
 
 <a id="changanhuadsh-delivery-task-queue"></a>
 
@@ -90,7 +127,7 @@ export interface Config {
 
 依赖：[`CodexAppServerPermissionMode`](../packages/delivery/delivery-runner-codex/src/index.ts)
 
-来源：[`packages/delivery/delivery-task-queue/src/index.ts:71`](../packages/delivery/delivery-task-queue/src/index.ts)
+来源：[`packages/delivery/delivery-task-queue/src/index.ts:91`](../packages/delivery/delivery-task-queue/src/index.ts)
 
 <a id="changanhuadsh-host-work-observatory"></a>
 
@@ -164,55 +201,6 @@ export interface Config {
 
 来源：[`packages/image/image-generation-task-queue/src/index.ts:11`](../packages/image/image-generation-task-queue/src/index.ts)
 
-<a id="changanhuadsh-knowledge-base"></a>
-
-## `@changanhua/dsh-knowledge-base`
-
-需要：`storageDomain`
-
-```ts config-catalog
-/** 由可信 Profile 指定受管理内容根。 */
-export interface Config {
-  /** 绝对路径；模型不能通过业务工具覆盖此值。 */
-  root: string
-  /** 使用已配置的原生 MCP 服务；省略时保留文件模式。 */
-  siyuan?: false | {
-    /** 已由 MCP Client 注册的思源服务名称。 */
-    serverName: string
-    /** 保存知识正文的思源笔记本 ID。 */
-    notebook: string
-    /** 新建项目文档的绝对人类可读路径。 */
-    rootPath: string
-    /** 可选的项目 ID 到已有根文档 ID 映射，用于复用指定入口。 */
-    projectRoots?: Record<string, string>
-  }
-}
-```
-
-来源：[`packages/knowledge/knowledge-base/src/index.ts:25`](../packages/knowledge/knowledge-base/src/index.ts)
-
-<a id="changanhuadsh-knowledge-base-task-queue"></a>
-
-## `@changanhua/dsh-knowledge-base-task-queue`
-
-需要：`knowledgeBase` · `taskQueue` · `subprocess`
-
-```ts config-catalog
-/** 可信 Profile 为知识阶段执行指定的非秘密配置。 */
-export interface Config {
-  /** 可选原生模型名称；省略时继承 Codex 自身配置。 */
-  readonly model?: string
-  /** Codex 原生权限模式，默认禁止交互批准。 */
-  readonly permissionMode?: CodexAppServerPermissionMode
-  /** 释放 Codex 子进程树时各终止阶段使用的宽限毫秒数。 */
-  readonly disposeGraceMs?: number
-}
-```
-
-依赖：`CodexAppServerPermissionMode`（`@deepseek-ai/dsh-subagent-codex/app-server-run`）
-
-来源：[`packages/knowledge/knowledge-base-task-queue/src/index.ts:20`](../packages/knowledge/knowledge-base-task-queue/src/index.ts)
-
 <a id="changanhuadsh-operation-run-task-queue"></a>
 
 ## `@changanhua/dsh-operation-run-task-queue`
@@ -277,7 +265,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/delivery/repo-workspace-git-local/src/index.ts:28`](../packages/delivery/repo-workspace-git-local/src/index.ts)
+来源：[`packages/delivery/repo-workspace-git-local/src/index.ts:51`](../packages/delivery/repo-workspace-git-local/src/index.ts)
 
 <a id="changanhuadsh-runtime-facts"></a>
 
@@ -345,7 +333,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/task-queue/task-queue-local/src/index.ts:61`](../packages/task-queue/task-queue-local/src/index.ts)
+来源：[`packages/task-queue/task-queue-local/src/index.ts:73`](../packages/task-queue/task-queue-local/src/index.ts)
 
 <a id="changanhuadsh-task-queue-remote"></a>
 
@@ -715,26 +703,6 @@ export interface Config {
 
 来源：[`packages/api/settings-controller/src/index.ts:41`](../packages/api/settings-controller/src/index.ts)
 
-<a id="deepseek-aidsh-api-workspace-controller"></a>
-
-## `@deepseek-ai/dsh-api-workspace-controller`
-
-需要： `typert` · `workspaceRegistry`
-
-```ts config-catalog
-/** Project resource storage, preview, output and shutdown bounds. */
-export interface Config {
-  /** Maximum bytes in a resource configuration or text preview. */
-  resourceMaxBytes?: number
-  /** Combined retained stdout and stderr bytes per service. */
-  resourceLogBytes?: number
-  /** Grace before process-tree termination escalates. */
-  resourceGraceMs?: number
-}
-```
-
-来源： [`packages/api/workspace-controller/src/index.ts:205`](../packages/api/workspace-controller/src/index.ts)
-
 <a id="deepseek-aidsh-attachment-local"></a>
 
 ## `@deepseek-ai/dsh-attachment-local`
@@ -837,14 +805,12 @@ export interface ConnectionConfig {
   trustedHosts?: string[]
   /** Absolute browser-session lifetime in days. Default: 30. */
   cookieMaxAgeDays?: number
-  /** Require the process launch token and signed browser cookie. Default: true. */
-  browserAuth?: boolean
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
 }
 ```
 
-来源：[`packages/client/connection/src/index.ts:70`](../packages/client/connection/src/index.ts)
+来源：[`packages/client/connection/src/index.ts:72`](../packages/client/connection/src/index.ts)
 
 <a id="deepseek-aidsh-client-hmr"></a>
 
@@ -2698,6 +2664,8 @@ export interface Config {
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
+  /** Storage hub registration name. Existing configurations default to `sqlite`. */
+  backendName?: string
   /**
    * Filesystem path to the SQLite database file. The special value `:memory:`
    * opens an in-process database (tests). On filesystems with POSIX modes,
@@ -2715,6 +2683,16 @@ export interface Config {
    * {@link JournalMode}.
    */
   journalMode?: JournalMode
+  /** Base for relative paths; the legacy behavior resolves from the process working directory. */
+  pathBase?: StoragePathBase
+  /** Hold the file for this connection's lifetime, or retain shared SQLite locking. */
+  ownership?: 'shared' | 'exclusive'
+  /** Explicit SQLite synchronous level; omission preserves SQLite's existing default. */
+  synchronous?: 'normal' | 'full' | 'extra'
+  /** Non-zero identity; only a newly created file or an exact stamped match opens. */
+  applicationId?: number
+  /** Require owner-private paths and reject unsafe aliases or writable ancestors. */
+  privateDirectory?: boolean
 }
 
 /**
@@ -2725,9 +2703,12 @@ export interface Config {
  * contradicts the durability clause of the KV backend contract.
  */
 export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
+
+/** Resolution base for a relative database path. */
+export type StoragePathBase = 'cwd' | 'dsh-home'
 ```
 
-来源：[`packages/storage/storage-sqlite/src/index.ts:24`](../packages/storage/storage-sqlite/src/index.ts)
+来源：[`packages/storage/storage-sqlite/src/index.ts:40`](../packages/storage/storage-sqlite/src/index.ts)
 
 <a id="deepseek-aidsh-subagent-acp"></a>
 
@@ -2843,6 +2824,7 @@ export interface Config {
 
 /** Profile-selectable non-interactive Codex permission mode. */
 export type CodexPermissionMode =
+  | 'read-only'
   | 'never'
   | 'approve-for-me'
   | 'dangerously-bypass-approvals-and-sandbox'
@@ -3421,7 +3403,7 @@ export interface Config {
 
 依赖：[`AgentOptions`](subsystems/core.zh.md)
 
-来源：[`packages/subagent/tool-subagent/src/index.ts:49`](../packages/subagent/tool-subagent/src/index.ts)
+来源：[`packages/subagent/tool-subagent/src/index.ts:51`](../packages/subagent/tool-subagent/src/index.ts)
 
 <a id="deepseek-aidsh-tool-subagent-report"></a>
 
@@ -3824,21 +3806,24 @@ export interface Config {
 
 - `@changanhua/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
 - `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
+- `@changanhua/dsh-client-ui-content` ([`packages/client/ui-content/src/index.ts`](../packages/client/ui-content/src/index.ts))
 - `@changanhua/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
 - `@changanhua/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
 - `@changanhua/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
 - `@changanhua/dsh-client-ui-work-observatory` ([`packages/client/ui-work-observatory/src/index.ts`](../packages/client/ui-work-observatory/src/index.ts))
 - `@changanhua/dsh-command-task-queue` — 需要 `commands` ([`packages/task-queue/command-task-queue/src/index.ts`](../packages/task-queue/command-task-queue/src/index.ts))
+- `@changanhua/dsh-content-remote` — 需要 `connection` · `content` · `contentSession` ([`packages/content/content-remote/src/index.ts`](../packages/content/content-remote/src/index.ts))
+- `@changanhua/dsh-content-session` — 需要 `sessionQuery` ([`packages/content/content-session/src/index.ts`](../packages/content/content-session/src/index.ts))
 - `@changanhua/dsh-delivery-local` — 需要 `storageDomain` ([`packages/delivery/delivery-local/src/index.ts`](../packages/delivery/delivery-local/src/index.ts))
 - `@changanhua/dsh-host-capability-registry` — 需要 `loader` · `skills` · `tools` · `agents` ([`packages/host/capability-registry/src/index.ts`](../packages/host/capability-registry/src/index.ts))
 - `@changanhua/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))
 - `@changanhua/dsh-runtime-facts-host` — 需要 `runtimeFacts` ([`packages/context/runtime-facts-host/src/index.ts`](../packages/context/runtime-facts-host/src/index.ts))
 - `@changanhua/dsh-tool-image-generation-task-queue` — 需要 `tools` · `taskQueue` ([`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts))
-- `@changanhua/dsh-tool-knowledge-base` — 需要 `tools` · `knowledgeBase` · `knowledgeQueue` ([`packages/knowledge/tool-knowledge-base/src/index.ts`](../packages/knowledge/tool-knowledge-base/src/index.ts))
 - `@changanhua/dsh-tool-runtime-inspect` — 需要 `tools` · `runtimeFacts` · `subprocess` ([`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts))
 - `@deepseek-ai/dsh-acp-app` — 需要 `cmdlineArgs` ([`packages/bundle/acp-app/src/index.ts`](../packages/bundle/acp-app/src/index.ts))
 - `@deepseek-ai/dsh-agent` ([`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts))
 - `@deepseek-ai/dsh-api-remotes` — 需要 `typertGateway` ([`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts))
+- `@deepseek-ai/dsh-api-workspace-controller` — 需要 `typert` · `workspaceRegistry` ([`packages/api/workspace-controller/src/index.ts`](../packages/api/workspace-controller/src/index.ts))
 - `@deepseek-ai/dsh-authorization` — 需要 `credentials` ([`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts))
 - `@deepseek-ai/dsh-client-locale` ([`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts))
 - `@deepseek-ai/dsh-client-modules` — 需要 `webServer` · `loader` ([`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts))
@@ -3915,6 +3900,7 @@ export interface Config {
 
 抽象服务类——部署时应改为加载具体实现包（参见[能力 seam](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)）。
 
+- `@changanhua/dsh-content` — 抽象 `Content` ([`packages/content/content/src/index.ts`](../packages/content/content/src/index.ts))
 - `@changanhua/dsh-delivery` — 抽象 `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
 - `@changanhua/dsh-delivery-evidence` — 抽象 `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
 - `@changanhua/dsh-repo-workspace` — 抽象 `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))

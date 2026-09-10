@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { sandboxDefineTool } from '../src/guard.ts'
-import { syntaxErrorContext } from '../src/sandbox.ts'
+import { HOST_BUILTIN_INSPECTION, syntaxErrorContext } from '../src/sandbox.ts'
 import { AGENT_A, call, CONTENT_OUTPUT_CODE, mount, setup, text, running } from './helpers.ts'
 
 /**
@@ -95,6 +95,54 @@ describe('sandbox isolation and Node-API traps', () => {
     expect(log).toHaveBeenCalledWith(`[cordis:${id}]`, 'warned')
     expect(log).toHaveBeenCalledWith(`[cordis:${id}]`, 'applied', 'function')
     expect(error).toHaveBeenCalledWith(`[cordis:${id}]`, 'errored')
+    vi.restoreAllMocks()
+  })
+
+  it('provides AbortController for cancellable Service calls and advertises it to Inspect', async () => {
+    const harness = await setup()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const id = await mount(harness, `
+      const controller = new AbortController()
+      controller.signal.throwIfAborted()
+      return { name: 'signal', apply(ctx) { console.log(controller.signal.aborted) } }
+    `)
+    expect(log).toHaveBeenCalledWith(`[cordis:${id}]`, false)
+    expect(HOST_BUILTIN_INSPECTION).toContainEqual(expect.objectContaining({ name: 'AbortController' }))
+    vi.restoreAllMocks()
+  })
+
+  it('advertises the concrete browser entry input and result shapes to dynamic packages', () => {
+    const browser = HOST_BUILTIN_INSPECTION.find(item => item.name === 'harness')
+    expect(browser?.signatures).toEqual(expect.arrayContaining([
+      expect.stringContaining('regionSelector: string'),
+      expect.stringContaining('selector: string'),
+      expect.stringContaining('sampleLimit?: number'),
+      expect.stringContaining('outcome: observed | failed | cancelled | unknown'),
+    ]))
+  })
+
+  it('contains rejected async event handlers instead of letting them escape the Host', async () => {
+    const harness = await setup()
+    await mount(harness, `
+      return {
+        name: 'async-event-failure',
+        apply(ctx) {
+          ctx.on('probe/event', async () => { throw new Error('event boom') })
+        },
+      }
+    `)
+    const emit = harness.ctx.emit as unknown as (...args: unknown[]) => unknown
+    expect(() => { emit('probe/event', {}) }).not.toThrow()
+    await new Promise(resolve => setTimeout(resolve, 0))
+  })
+
+  it('exposes the owning Session identity through the harness builtin', async () => {
+    const harness = await setup()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const id = await mount(harness, `
+      return { name: 'owner', apply(ctx) { console.log(harness.sessionId) } }
+    `)
+    expect(log).toHaveBeenCalledWith(`[cordis:${id}]`, AGENT_A.id)
     vi.restoreAllMocks()
   })
 

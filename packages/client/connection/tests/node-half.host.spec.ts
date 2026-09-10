@@ -81,7 +81,7 @@ function fakeResponse(): {
   return { response, state }
 }
 
-async function mounted(config?: { trustedHosts?: string[]; browserAuth?: boolean }): Promise<{
+async function mounted(config?: { trustedHosts?: string[] }): Promise<{
   routes: WebRoute[]
   upgrades: WebUpgradeRoute[]
   connection: HostConnectionHandle
@@ -238,17 +238,83 @@ describe('connection node half', () => {
     await dispose()
   })
 
-  it('serves loopback index and API requests without a launch token when browser auth is disabled', async () => {
-    const { routes, connection, dispose } = await mounted({ browserAuth: false })
-    const root = fakeResponse()
-    expect(connection.authenticatedUrl('http://127.0.0.1:3080/')).toBe('http://127.0.0.1:3080/')
-    expect(connection.authorizeIndex(fakeRequest({ host: '127.0.0.1:3080' }, '/'), root.response)).toBe(true)
-    expect(root.state).toEqual({})
-    expect(connection.requestRejection(fakeRequest({ host: '127.0.0.1:3080' }))).toBeUndefined()
+  it('offers the authority fence to bearer-authenticated sibling bridges without a browser cookie', async () => {
+    const { connection, dispose } = await mounted({ trustedHosts: ['harness.example'] })
+    expect(connection.requestAuthorityRejection(fakeRequest({ host: 'harness.example' }))).toBeUndefined()
+    expect(connection.requestAuthorityRejection(fakeRequest({
+      host: 'harness.example', origin: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
+      'sec-fetch-site': 'none',
+    }))).toBeUndefined()
+    expect(connection.requestAuthorityRejection(fakeRequest({ host: 'other.example' }))).toBe(403)
+    await dispose()
+  })
 
-    const api = fakeResponse()
-    await routes[0]!.handler(fakeRequest({ host: '127.0.0.1:3080' }), api.response)
-    expect(api.state.status).toBe(404)
+  it('keeps normal /api cross-site and foreign-Origin requests forbidden after cookie authentication', async () => {
+    const { routes, connection, dispose } = await mounted({ trustedHosts: ['harness.example'] })
+    const cookie = browserCookie(connection, 'harness.example')
+    for (const headers of [
+      { host: 'harness.example', cookie, origin: 'http://other.example' },
+      { host: 'harness.example', cookie, origin: 'http://harness.example', 'sec-fetch-site': 'cross-site' },
+    ]) {
+      const attempted = fakeResponse()
+      await routes[0]!.handler(fakeRequest(headers), attempted.response)
+      expect(attempted.state).toMatchObject({ status: 403, body: 'forbidden' })
+    }
+    await dispose()
+  })
+
+  it('binds authorization only for active shared and dedicated RPC bridge signals', async () => {
+    const { routes, connection, dispose } = await mounted()
+    const observed: AbortSignal[] = []
+    const assertSignal = async (_endpoint: string, _payload: unknown, signal: AbortSignal) => {
+      connection.assertAuthorized(signal)
+      expect(() => { connection.assertAuthorized(new AbortController().signal) }).toThrow('request is not authorized')
+      observed.push(signal)
+      return { ok: true as const, value: null }
+    }
+    const removeShared = connection.rpc.intercept('/api', () => true, assertSignal)
+    const removeDedicated = connection.rpc.handle('/rpc', assertSignal)
+    const cookie = browserCookie(connection, '127.0.0.1:3080')
+    const request = (rpcId: string): ClientRequest => ({
+      type: 'client-request',
+      rpcId: RpcId(rpcId),
+      method: 'goals/create',
+      payload: {},
+    })
+    for (const [path, rpcId] of [[API_PATH, 'shared'], ['/rpc', 'dedicated']] as const) {
+      const response = fakeResponse()
+      const route = routes.find(candidate => candidate.path === path)
+      if (route === undefined) throw new Error(`missing ${path} route`)
+      await route.handler(fakePost({ host: '127.0.0.1:3080', cookie }, `${path}/goals/create`, request(rpcId)), response.response)
+      expect(response.state.status).toBe(200)
+    }
+    expect(observed).toHaveLength(2)
+    for (const signal of observed) {
+      expect(() => { connection.assertAuthorized(signal) }).toThrow('request is not authorized')
+    }
+
+    await removeDedicated()
+    await removeShared()
+    await dispose()
+  })
+
+  it('rejects a shared RPC signal when its bridge response closes', async () => {
+    const { routes, connection, dispose } = await mounted()
+    const { response, state } = fakeResponse()
+    const remove = connection.rpc.intercept('/api', () => true, async (_endpoint, _payload, signal) => {
+      response.emit('close')
+      expect(() => { connection.assertAuthorized(signal) }).toThrow('request is not authorized')
+      return { ok: true, value: null }
+    })
+    const cookie = browserCookie(connection, '127.0.0.1:3080')
+    const route = routes.find(candidate => candidate.path === API_PATH)
+    if (route === undefined) throw new Error('missing /api route')
+    await route.handler(fakePost({ host: '127.0.0.1:3080', cookie }, '/api/goals/create', {
+      type: 'client-request', rpcId: RpcId('cancelled'), method: 'goals/create', payload: {},
+    }), response)
+    expect(state.status).toBe(200)
+
+    await remove()
     await dispose()
   })
 

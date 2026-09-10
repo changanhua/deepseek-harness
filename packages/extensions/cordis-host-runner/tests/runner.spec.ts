@@ -419,6 +419,81 @@ describe('dynamic runner dispatch', () => {
 })
 
 describe('dynamic runner teardown', () => {
+  it('binds browser entry ownership and automatically unmounts it on stop', async () => {
+    const { ctx, runner } = await setup()
+    const calls: Array<{ sessionId: string; action: Record<string, unknown> }> = []
+    ctx.provide('browser', { execute: async (operation: { sessionId: string; action: Record<string, unknown> }) => {
+      calls.push(structuredClone(operation))
+      return { requestId: `request-${calls.length}`, sessionId: operation.sessionId, installationId: 'installation-1',
+        outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'entry_inspect'
+          ? { matched: 2, valid: 2, samples: [] }
+          : operation.action.kind === 'entry_mount' ? { mounted: 2 } : { unmounted: true } }
+    } } as never)
+    const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'entries', purpose: 'collect', host: `
+      return { name: 'entries', async apply() {
+        await harness.browser.inspect({ installationId: 'installation-1', page: ${JSON.stringify(page)},
+          regionSelector: 'main', selector: ':scope > article' })
+        await harness.browser.mount({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'feed',
+          regionSelector: 'main', selector: ':scope > article', label: '收集标题' })
+      } }
+    ` })
+    await expect(runner.run(AGENT_A, pluginId, packageId, 'run')).resolves.toMatchObject({ ok: true })
+    expect(calls).toHaveLength(2)
+    expect(calls[0]).toMatchObject({ sessionId: AGENT_A.id, action: { kind: 'entry_inspect' } })
+    expect(calls[1]).toMatchObject({ sessionId: AGENT_A.id, action: { kind: 'entry_mount', mountId: `${pluginId}:feed` } })
+
+    await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
+    expect(calls).toHaveLength(3)
+    expect(calls[2]).toMatchObject({ sessionId: AGENT_A.id,
+      action: { kind: 'entry_unmount', mountId: `${pluginId}:feed`, page } })
+  })
+
+  it('reports page cleanup as pending when stop cannot observe the unmount', async () => {
+    const { ctx, runner } = await setup()
+    let calls = 0
+    ctx.provide('browser', { execute: async (operation: { sessionId: string; installationId: string; action: Record<string, unknown> }) => {
+      calls++
+      return { requestId: `request-${calls}`, sessionId: operation.sessionId, installationId: operation.installationId,
+        outcome: operation.action.kind === 'entry_unmount' && calls === 2 ? 'unknown' : 'observed', delivery: 'sent' }
+    } } as never)
+    const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'entries', purpose: 'collect', host: `
+      return { name: 'entries', async apply() {
+        await harness.browser.mount({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'feed',
+          regionSelector: 'main', selector: ':scope > article', label: '收集标题' })
+      } }
+    ` })
+    await runner.run(AGENT_A, pluginId, packageId, 'run')
+
+    await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({
+      ok: true, cleanupPending: [`${pluginId}:feed`],
+    })
+    await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
+    expect(calls).toBe(3)
+  })
+
+  it('cleans a mount whose original delivery outcome was unknown', async () => {
+    const { ctx, runner } = await setup()
+    const calls: Array<Record<string, unknown>> = []
+    ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => {
+      calls.push(structuredClone(operation))
+      return { outcome: operation.action.kind === 'entry_mount' ? 'unknown' : 'observed', delivery: 'sent' }
+    } } as never)
+    const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'uncertain', purpose: 'collect', host: `
+      return { name: 'uncertain', async apply() {
+        await harness.browser.mount({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'feed',
+          regionSelector: 'main', selector: ':scope > article', label: '收集标题' })
+      } }
+    ` })
+    await runner.run(AGENT_A, pluginId, packageId, 'run')
+
+    await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
+    expect(calls).toHaveLength(2)
+    expect(calls[1]).toMatchObject({ action: { kind: 'entry_unmount', mountId: `${pluginId}:feed` } })
+  })
+
   it('stops both halves while keeping the definition runnable', async () => {
     const { ctx, runner, gateway } = await setup()
     gateway.answer = 'approve'

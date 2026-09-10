@@ -206,6 +206,10 @@ flowchart TD
     pkg_compaction_basic["compaction-basic"]
     pkg_compaction_tool_result_pruner["compaction-tool-result-pruner"]
   end
+  subgraph group_content["packages/content"]
+    pkg_content["content"]
+    pkg_content_domain["content-domain"]
+  end
   subgraph group_context["packages/context"]
     pkg_agent_instructions["agent-instructions"]
     pkg_file_reference["file-reference"]
@@ -434,6 +438,7 @@ flowchart TD
   pkg_client_web --> pkg_invariants
   pkg_code_runtime --> pkg_invariants
   pkg_code_runtime_python --> pkg_invariants
+  pkg_content --> pkg_invariants
   pkg_e2b --> pkg_invariants
   pkg_eval --> pkg_invariants
   pkg_eval_session_snapshot --> pkg_invariants
@@ -479,8 +484,10 @@ flowchart TD
   pkg_storage_domain --> pkg_storage
   pkg_storage_json --> pkg_invariants
   pkg_storage_json --> pkg_storage
+  pkg_storage_sqlite --> pkg_home_paths
   pkg_storage_sqlite --> pkg_invariants
   pkg_storage_sqlite --> pkg_storage
+  pkg_storage_sqlite --> pkg_subprocess
   pkg_subprocess_local --> pkg_invariants
   pkg_subprocess_local --> pkg_subprocess
   pkg_subprocess_local --> pkg_timeout
@@ -501,6 +508,9 @@ flowchart TD
   pkg_client_hmr --> pkg_client_modules
   pkg_client_hmr --> pkg_host_webserver
   pkg_client_hmr --> pkg_invariants
+  pkg_content_domain --> pkg_content
+  pkg_content_domain --> pkg_invariants
+  pkg_content_domain --> pkg_storage_domain
   pkg_credentials_local --> pkg_atomic_write
   pkg_credentials_local --> pkg_credentials
   pkg_credentials_local --> pkg_home_paths
@@ -2021,6 +2031,7 @@ flowchart TD
 | [`client-web`](../packages/client/web) | `client` | [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`code-runtime`](../packages/code-runtime/code-runtime) | `code-runtime` | [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`code-runtime-python`](../packages/code-runtime/code-runtime-python) | `code-runtime` | [`invariants`](../packages/runtime-diagnostics/invariants) |
+| [`content`](../packages/content/content) | `content` | [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`e2b`](../packages/e2b/e2b) | `e2b` | [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`eval`](../packages/eval/eval) | `eval` | [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`eval-session-snapshot`](../packages/eval/eval-session-snapshot) | `eval` | [`invariants`](../packages/runtime-diagnostics/invariants) |
@@ -2050,7 +2061,7 @@ flowchart TD
 | [`image-generation-arkcli`](../packages/image/image-generation-arkcli) | `image` | [`image-generation`](../packages/image/image-generation), [`invariants`](../packages/runtime-diagnostics/invariants), [`subprocess`](../packages/subprocess/subprocess) |
 | [`storage-domain`](../packages/storage/storage-domain) | `storage` | [`invariants`](../packages/runtime-diagnostics/invariants), [`storage`](../packages/storage/storage) |
 | [`storage-json`](../packages/storage/storage-json) | `storage` | [`invariants`](../packages/runtime-diagnostics/invariants), [`storage`](../packages/storage/storage) |
-| [`storage-sqlite`](../packages/storage/storage-sqlite) | `storage` | [`invariants`](../packages/runtime-diagnostics/invariants), [`storage`](../packages/storage/storage) |
+| [`storage-sqlite`](../packages/storage/storage-sqlite) | `storage` | [`home-paths`](../packages/util/home-paths), [`invariants`](../packages/runtime-diagnostics/invariants), [`storage`](../packages/storage/storage), [`subprocess`](../packages/subprocess/subprocess) |
 | [`subprocess-local`](../packages/subprocess/subprocess-local) | `subprocess` | [`invariants`](../packages/runtime-diagnostics/invariants), [`subprocess`](../packages/subprocess/subprocess), [`timeout`](../packages/util/timeout) |
 | [`typert-loader`](../packages/typert/loader) | `typert` | [`invariants`](../packages/runtime-diagnostics/invariants), [`typert-registry`](../packages/typert/registry) |
 | [`llm`](../packages/llm/llm) | `llm` | [`attachment`](../packages/attachment/attachment), [`brand`](../packages/util/brand), [`invariants`](../packages/runtime-diagnostics/invariants), [`timeout`](../packages/util/timeout), [`typert-protocol`](../packages/typert/protocol) |
@@ -2058,6 +2069,7 @@ flowchart TD
 | [`repo-workspace`](../packages/delivery/repo-workspace) | `delivery` | [`delivery-protocol`](../packages/delivery/delivery-protocol), [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`attachment-local`](../packages/attachment/attachment-local) | `attachment` | [`attachment`](../packages/attachment/attachment), [`home-paths`](../packages/util/home-paths), [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`client-hmr`](../packages/client/hmr) | `client` | [`client-modules`](../packages/client/modules), [`host-webserver`](../packages/host/webserver), [`invariants`](../packages/runtime-diagnostics/invariants) |
+| [`content-domain`](../packages/content/content-domain) | `content` | [`content`](../packages/content/content), [`invariants`](../packages/runtime-diagnostics/invariants), [`storage-domain`](../packages/storage/storage-domain) |
 | [`credentials-local`](../packages/credentials/credentials-local) | `credentials` | [`atomic-write`](../packages/util/atomic-write), [`credentials`](../packages/credentials/credentials), [`home-paths`](../packages/util/home-paths), [`invariants`](../packages/runtime-diagnostics/invariants), [`launch-environment`](../packages/util/launch-environment) |
 | [`experimental-inspector`](../packages/experimental/inspector) | `experimental` | [`client-modules`](../packages/client/modules), [`host-webserver`](../packages/host/webserver), [`invariants`](../packages/runtime-diagnostics/invariants) |
 | [`session`](../packages/core/session) | `core` | [`brand`](../packages/util/brand), [`invariants`](../packages/runtime-diagnostics/invariants), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope), [`typert-protocol`](../packages/typert/protocol) |

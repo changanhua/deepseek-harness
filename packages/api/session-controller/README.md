@@ -23,6 +23,10 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+A prompt's `(sessionId, requestId)` identifies one immutable submission. The Host freezes the input, hashes its delivery mode, normalized time zone and ordered content, then serializes admission with model selection. The digest is stored on the existing user source. Matching messages or any prior inbox insertion in the Session's non-seed log prevent a second delivery, including after queue removal; a different digest returns `request-conflict`. Image promotion follows this check. Both first admission and a matching retry wait for the Session flush barrier before returning `accepted`, so a failed flush retries persistence rather than reinserting the message. An inherited fork seed does not reserve the child's request ids.
+
+The flush barrier confirms persistence only when the Session composition has a listener that completes it. `SessionStore.flush()` returns `false` when no listener is attached, and an in-memory composition does not promise recovery across a Host restart. Before inbox insertion, the request signal can still cancel while image preparation runs; after admission, the accepted input flushes as one serialized Host submission.
+
 History pages and follow opening snapshots carry a discriminated `SessionHistoryRecord`. Both variants use `{ type, event }`: `type: 'event'` carries one raw `SessionWireEvent`, while `type: 'chunks'` carries one lossless `ChunkRowEvent` for consecutive same-block `assistant/chunk` deltas. Both inner values expose `type`, `seq`, `time`, and `data`, so the Client retains each accepted record as one `SessionEventLikeEntry` without record-by-record conversion. A packed event's `seq` and `time` identify its first member, and `data` retains the fragment and timestamp-gap arrays. Live follow frames remain individual `event` records. Tool arguments, result content, failures, and `tool/result.data.meta` pass through unchanged; the controller does not resolve a Tool definition, run a presenter, or attach UI data.
 
 Each endpoint states its activation policy. List, search, attachment, history pages, log following, skill discovery, and workspace-path opening can inspect persistence without activating an Agent; `canOpenWorkspacePath()` reports native-opening availability without addressing a Session. Queue mutation and cancellation require live state; model, rename, prompt, and file-reference operations may resolve or resume an ordinary Session. Create and fork are the only operations that create a new Agent directly. The skill catalog instead uses a live Agent when present or the recorded preset's standing scope when cold, so listing never starts an Agent.
@@ -48,7 +52,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as invoked Agent commands own any model-visible effect.
+The controller registers no model tools or prompt sections. Its `prompt` operation delivers user-confirmed input to the addressed Agent, which owns the resulting model request and any model-visible response.
 
 #### KV Cache effect
 

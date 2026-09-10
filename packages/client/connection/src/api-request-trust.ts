@@ -116,3 +116,15 @@ export function isTrustedApiRequest(request: ConnectionTrustRequest, trustedHost
     return false
   }
 }
+
+/**
+ * Decide whether the Host header names this deployment, without browser-origin
+ * policy. Dedicated extension bridges use this before their own Origin and
+ * bearer-grant checks because a Chrome extension is intentionally cross-origin.
+ */
+export function isTrustedApiAuthority(request: ConnectionTrustRequest, trustedHosts: readonly string[]): boolean {
+  const host = header(request.headers, 'host')
+  if (host === undefined) return false
+  const hostUrl = parseAuthority(host)
+  return hostUrl !== undefined && (isLoopbackHostname(hostUrl.hostname) || isTrustedAuthority(hostUrl, trustedHosts))
+}

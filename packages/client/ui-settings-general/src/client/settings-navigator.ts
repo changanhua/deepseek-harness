@@ -4,8 +4,9 @@
  * this service is the only channel a feature controller (like
  * ui-settings-skills) uses to command SettingsRoot from outside the shell's
  * React tree: it broadcasts an `open(id)` intent to the current SettingsRoot,
- * which applies it through the same state mutation a nav click or an
- * onboarding `openSection` uses.
+ * or retains the latest one until SettingsRoot subscribes. The root applies it
+ * through the same state mutation a nav click or an onboarding `openSection`
+ * uses.
  */
 
 import { Service } from '@deepseek-ai/cordis'
@@ -16,12 +17,14 @@ import type { SettingsNavigator } from '@deepseek-ai/dsh-client-ui-settings/clie
 export type SettingsOpenListener = (id: string) => void
 
 /**
- * Broadcasts section-open intents to the mounted SettingsRoot. Keeping the
- * listener inside the shell component lets the contract stay dependency-free:
- * ui-settings declares the type, this class provides it.
+ * Broadcasts section-open intents to the mounted SettingsRoot, retaining one
+ * early intent for its first subscriber. Keeping the listener inside the shell
+ * component lets the contract stay dependency-free: ui-settings declares the
+ * type, this class provides it.
  */
 export class SettingsNavigatorService extends Service implements SettingsNavigator {
   private readonly listeners = new Set<SettingsOpenListener>()
+  private pending: string | undefined
 
   /**
    * Register the service under the `settingsNavigator` Context key.
@@ -33,6 +36,10 @@ export class SettingsNavigatorService extends Service implements SettingsNavigat
 
   /** Open the settings panel on one registered section id. */
   open(id: string): void {
+    if (this.listeners.size === 0) {
+      this.pending = id
+      return
+    }
     for (const listener of [...this.listeners]) listener(id)
   }
 
@@ -45,6 +52,11 @@ export class SettingsNavigatorService extends Service implements SettingsNavigat
    */
   subscribe(listener: SettingsOpenListener): () => void {
     this.listeners.add(listener)
+    if (this.pending !== undefined) {
+      const id = this.pending
+      this.pending = undefined
+      listener(id)
+    }
     return () => { this.listeners.delete(listener) }
   }
 }

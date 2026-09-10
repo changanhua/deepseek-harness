@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 2,
   "versionPolicy": "preserve-existing-during-rescope",
   "personalScope": "@changanhua",
   "personalRepository": "changanhua/deepseek-harness",
@@ -7,9 +7,66 @@
   "upstreamScope": "@deepseek-ai",
   "upstreamRepository": "deepseek-ai/deepseek-harness",
   "upstreamRepositoryUrl": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+  "supportedUpstreamCommit": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
+  "observedUpstreamCommit": "76fda729799fe9b3848dbe2c211d4b231032b81e",
   "unlistedPackageOrigin": "upstream",
   "vendorPathPrefix": "vendor/",
   "personalPackages": [
+    {
+      "directory": "packages/browser/browser",
+      "legacyName": "@deepseek-ai/dsh-browser",
+      "sourceName": "@changanhua/dsh-browser",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/browser/browser-activity",
+      "legacyName": "@deepseek-ai/dsh-browser-activity",
+      "sourceName": "@changanhua/dsh-browser-activity",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/browser/browser-extension",
+      "legacyName": "@deepseek-ai/dsh-browser-extension",
+      "sourceName": "@changanhua/dsh-browser-extension",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/browser/browser-monitor",
+      "legacyName": "@deepseek-ai/dsh-browser-monitor",
+      "sourceName": "@changanhua/dsh-browser-monitor",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/browser/tool-browser",
+      "legacyName": "@deepseek-ai/dsh-tool-browser",
+      "sourceName": "@changanhua/dsh-tool-browser",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
     {
       "directory": "packages/bundle/personal-delivery",
       "legacyName": "@deepseek-ai/dsh-personal-delivery",
@@ -38,6 +95,18 @@
       "directory": "packages/client/ui-capability",
       "legacyName": "@deepseek-ai/dsh-client-ui-capability",
       "sourceName": "@changanhua/dsh-client-ui-capability",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent",
+        "upstream-private-api-dependency"
+      ]
+    },
+    {
+      "directory": "packages/client/ui-content",
+      "legacyName": "@deepseek-ai/dsh-client-ui-content",
+      "sourceName": "@changanhua/dsh-client-ui-content",
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,
@@ -92,6 +161,61 @@
       "blockers": [
         "release-family-absent",
         "upstream-private-api-dependency"
+      ]
+    },
+    {
+      "directory": "packages/content/content",
+      "legacyName": "@deepseek-ai/dsh-content",
+      "sourceName": "@changanhua/dsh-content",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/content/content-browser",
+      "legacyName": "@deepseek-ai/dsh-content-browser",
+      "sourceName": "@changanhua/dsh-content-browser",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/content/content-domain",
+      "legacyName": "@deepseek-ai/dsh-content-domain",
+      "sourceName": "@changanhua/dsh-content-domain",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/content/content-remote",
+      "legacyName": "@deepseek-ai/dsh-content-remote",
+      "sourceName": "@changanhua/dsh-content-remote",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/content/content-session",
+      "legacyName": "@deepseek-ai/dsh-content-session",
+      "sourceName": "@changanhua/dsh-content-session",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
       ]
     },
     {
@@ -373,42 +497,6 @@
       "releaseFamily": null,
       "blockers": [
         "release-family-absent"
-      ]
-    },
-    {
-      "directory": "packages/knowledge/knowledge-base",
-      "legacyName": "@deepseek-ai/dsh-knowledge-base",
-      "sourceName": "@changanhua/dsh-knowledge-base",
-      "sourceIdentity": "personal",
-      "publicationPolicy": "blocked-until-release-verified",
-      "releaseFamily": null,
-      "blockers": [
-        "release-family-absent",
-        "upstream-private-api-dependency"
-      ]
-    },
-    {
-      "directory": "packages/knowledge/knowledge-base-task-queue",
-      "legacyName": "@deepseek-ai/dsh-knowledge-base-task-queue",
-      "sourceName": "@changanhua/dsh-knowledge-base-task-queue",
-      "sourceIdentity": "personal",
-      "publicationPolicy": "blocked-until-release-verified",
-      "releaseFamily": null,
-      "blockers": [
-        "release-family-absent",
-        "upstream-private-api-dependency"
-      ]
-    },
-    {
-      "directory": "packages/knowledge/tool-knowledge-base",
-      "legacyName": "@deepseek-ai/dsh-tool-knowledge-base",
-      "sourceName": "@changanhua/dsh-tool-knowledge-base",
-      "sourceIdentity": "personal",
-      "publicationPolicy": "blocked-until-release-verified",
-      "releaseFamily": null,
-      "blockers": [
-        "release-family-absent",
-        "upstream-private-api-dependency"
       ]
     },
     {

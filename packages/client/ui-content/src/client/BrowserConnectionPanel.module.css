@@ -1,0 +1,24 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  background: var(--dsw-alias-bg-layer-2);
+}
+.panel {
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1.5rem;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-overlay);
+  color: var(--dsw-alias-label-primary);
+}
+.actions { display: flex; gap: .75rem; margin-top: 1rem; }
+.actions button, .grant button { cursor: pointer; padding: .5rem .75rem; }
+.identity { overflow-wrap: anywhere; }
+.grant { display: grid; gap: .5rem; margin-block: 1rem; }

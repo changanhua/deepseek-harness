@@ -21,12 +21,17 @@ import type {
   CapabilitySkill,
   CapabilityTool,
 } from '@changanhua/dsh-host-capability-registry/types'
+import { en } from './locales.ts'
 import { skillZh, toolZh } from './zhNames.ts'
 import css from './CapabilityWorkspace.module.css'
 
 type Tab = 'skills' | 'mcp' | 'tools'
 
-const TABS: Tab[] = ['skills', 'mcp', 'tools']
+/** Tab discriminators derived from the label keys, so the tab bar cannot drift
+ *  from the dictionary that renders its captions. */
+const TABS = Object.keys(en)
+  .filter((key): key is `tab.${Tab}` => key.startsWith('tab.'))
+  .map(key => key.slice('tab.'.length) as Tab)
 
 /** The three row collections the tabs project; a module that exists but is
  * not yet loaded (or errored) is represented as `undefined`. */
@@ -326,7 +331,7 @@ function toListItems(filtered: FilteredRows, t: CapabilityWorkspaceProps['t']): 
     return filtered.rows.map(s => ({
       key: { kind: 'mcp', id: s.id } as SelectionKey,
       title: s.serverName,
-      subtitle: `mcp__${s.serverName}__*`,
+      subtitle: t('mcp.namespace.pattern').replace('{server}', s.serverName),
       tags: [s.transport, `${s.registeredTools} ${t('mcp.tools')}`],
     }))
   }

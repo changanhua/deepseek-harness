@@ -8,12 +8,28 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { DatabaseSync } from 'node:sqlite'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { isAbsolute, resolve } from 'node:path'
 import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
-import type { KvFacet, KvUnit, KvUnitDescriptor, StorageBackend } from '@deepseek-ai/dsh-storage'
+import type {
+  KvFacet,
+  KvUnit,
+  KvUnitDescriptor,
+  StorageBackend,
+  StorageBackendGuarantee,
+} from '@deepseek-ai/dsh-storage'
 import { openDatabase, recordTableName, type JournalMode } from './schema.ts'
 import { SqliteKvUnit } from './unit.ts'
 
-export { STORAGE_SQLITE_SCHEMA_VERSION, type JournalMode } from './schema.ts'
+export {
+  STORAGE_SQLITE_SCHEMA_VERSION,
+  type JournalMode,
+  type SqliteOwnership,
+  type SqliteSynchronous,
+} from './schema.ts'
+
+/** Resolution base for a relative database path. */
+export type StoragePathBase = 'cwd' | 'dsh-home'
 
 /** Cordis plugin name. */
 export const name = 'storage-sqlite'
@@ -22,6 +38,8 @@ export const inject = ['storage']
 
 /** Plugin configuration. */
 export interface Config {
+  /** Storage hub registration name. Existing configurations default to `sqlite`. */
+  backendName?: string
   /**
    * Filesystem path to the SQLite database file. The special value `:memory:`
    * opens an in-process database (tests). On filesystems with POSIX modes,
@@ -39,13 +57,45 @@ export interface Config {
    * {@link JournalMode}.
    */
   journalMode?: JournalMode
+  /** Base for relative paths; the legacy behavior resolves from the process working directory. */
+  pathBase?: StoragePathBase
+  /** Hold the file for this connection's lifetime, or retain shared SQLite locking. */
+  ownership?: 'shared' | 'exclusive'
+  /** Explicit SQLite synchronous level; omission preserves SQLite's existing default. */
+  synchronous?: 'normal' | 'full' | 'extra'
+  /** Non-zero identity; only a newly created file or an exact stamped match opens. */
+  applicationId?: number
+  /** Require owner-private paths and reject unsafe aliases or writable ancestors. */
+  privateDirectory?: boolean
 }
 
 /** Schemastery validator for {@link Config}. */
 export const Config: z<Config> = z.object({
+  backendName: z.string().pattern(UNIT_NAME_RE).default('sqlite'),
   path: z.string().required(),
   journalMode: z.union(['wal', 'delete', 'truncate', 'persist'] as const).default('wal'),
+  pathBase: z.union(['cwd', 'dsh-home'] as const).default('cwd'),
+  ownership: z.union(['shared', 'exclusive'] as const).default('shared'),
+  synchronous: z.union(['normal', 'full', 'extra'] as const),
+  applicationId: z.number().step(1).min(1).max(0x7fff_ffff),
+  privateDirectory: z.boolean().default(false),
 })
+
+/**
+ * Resolve a configured database path without changing legacy relative-path behavior.
+ * @param path - Database file path or the in-memory sentinel.
+ * @param pathBase - Base selected by the configuration.
+ * @param env - Environment used by the public Harness-home resolver.
+ * @returns Absolute file path, or the unchanged in-memory sentinel.
+ */
+export function resolveStoragePath(
+  path: string,
+  pathBase: StoragePathBase,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  if (path === ':memory:' || isAbsolute(path)) return path
+  return pathBase === 'dsh-home' ? resolve(resolveDshHome(undefined, env), path) : resolve(path)
+}
 
 /**
  * The SQLite {@link StorageBackend}. Owns one `DatabaseSync` connection and
@@ -53,6 +103,7 @@ export const Config: z<Config> = z.object({
  * version stamp in `units`, and ensures the unit's record tables.
  */
 export class SqliteStorageBackend implements StorageBackend {
+  readonly guarantees: readonly StorageBackendGuarantee[]
   /** The key-value facet; the only shape this backend serves. */
   readonly kv: KvFacet = { open: descriptor => this.openUnit(descriptor) }
 
@@ -65,7 +116,27 @@ export class SqliteStorageBackend implements StorageBackend {
    * @param config - Validated plugin configuration.
    */
   constructor(config: Config) {
-    this.ready = openDatabase(config.path, (config as Required<Config>).journalMode)
+    const resolved = config as Config & {
+      backendName: string
+      journalMode: JournalMode
+      ownership: 'shared' | 'exclusive'
+      pathBase: StoragePathBase
+      privateDirectory: boolean
+    }
+    this.guarantees = Object.freeze([
+      ...(resolved.ownership === 'exclusive' ? ['single-writer' as const] : []),
+      ...(resolved.synchronous === 'full' || resolved.synchronous === 'extra'
+        ? ['commit-sync' as const]
+        : []),
+      ...(resolved.privateDirectory ? ['private-root' as const] : []),
+    ])
+    this.ready = openDatabase(resolveStoragePath(resolved.path, resolved.pathBase), {
+      journalMode: resolved.journalMode,
+      ownership: resolved.ownership,
+      ...resolved.synchronous === undefined ? {} : { synchronous: resolved.synchronous },
+      ...resolved.applicationId === undefined ? {} : { applicationId: resolved.applicationId },
+      privateDirectory: resolved.privateDirectory,
+    })
     // Mark the rejection handled: every primitive re-awaits `ready`, so an
     // open failure still surfaces to each caller; this guard only prevents an
     // unhandled-rejection crash when the failure precedes the first use.
@@ -97,25 +168,32 @@ export class SqliteStorageBackend implements StorageBackend {
 
   private async materializeUnit(descriptor: KvUnitDescriptor): Promise<SqliteKvUnit> {
     const db = await this.ready
-    const row = db.prepare('SELECT version FROM units WHERE name = ?').get(descriptor.name) as
-      | { version: number }
-      | undefined
-    if (row === undefined) {
-      db.prepare('INSERT INTO units (name, version) VALUES (?, ?)').run(descriptor.name, descriptor.version)
-    } else if (row.version !== descriptor.version) {
-      throw new StorageError(
-        'version-mismatch',
-        `kv unit '${descriptor.name}' is stamped version ${row.version} on the medium, incompatible with descriptor version ${descriptor.version}`,
-      )
-    }
-    for (const table of descriptor.tables) {
-      // Both segments passed UNIT_NAME_RE, so the identifier is safe in DDL.
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS "${recordTableName(descriptor.name, table)}" (
-          key   TEXT PRIMARY KEY,
-          value TEXT NOT NULL
-        ) STRICT
-      `)
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const row = db.prepare('SELECT version FROM units WHERE name = ?').get(descriptor.name) as
+        | { version: number }
+        | undefined
+      if (row === undefined) {
+        db.prepare('INSERT INTO units (name, version) VALUES (?, ?)').run(descriptor.name, descriptor.version)
+      } else if (row.version !== descriptor.version) {
+        throw new StorageError(
+          'version-mismatch',
+          `kv unit '${descriptor.name}' is stamped version ${row.version} on the medium, incompatible with descriptor version ${descriptor.version}`,
+        )
+      }
+      for (const table of descriptor.tables) {
+        // Both segments passed UNIT_NAME_RE, so the identifier is safe in DDL.
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS "${recordTableName(descriptor.name, table)}" (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+          ) STRICT
+        `)
+      }
+      db.exec('COMMIT')
+    } catch (error) {
+      try { db.exec('ROLLBACK') } catch {}
+      throw error
     }
     return new SqliteKvUnit(db, descriptor, () => {
       this.units.delete(descriptor.name)
@@ -157,12 +235,13 @@ export class SqliteStorageBackend implements StorageBackend {
  */
 export function apply(ctx: Context, config: Config) {
   const backend = new SqliteStorageBackend(config)
+  const backendName = (config as Config & { backendName: string }).backendName
   ctx.effect(() => {
-    const dispose = ctx.storage.backend.register('sqlite', backend)
+    const dispose = ctx.storage.backend.register(backendName, backend)
     return async () => {
       dispose()
       await backend.close()
     }
   }, 'storage-sqlite.registerBackend')
-  ctx.provide(storageBackendServiceKey('sqlite'), backend)
+  ctx.provide(storageBackendServiceKey(backendName), backend)
 }

@@ -40,7 +40,7 @@ type LayoutActions = {
   openDetails: (draft: LayoutState) => void
   closeDetails: (draft: LayoutState) => void
   setActiveModule: (draft: LayoutState, module: string) => void
-  activateModule: (draft: LayoutState, module: string) => void
+  openModule: (draft: LayoutState, module: string) => void
 }
 
 /**
@@ -79,7 +79,7 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       setActiveModule: (d, module: string) => {
         d.activeModule = d.activeModule === module ? DEFAULT_MODULE : module
       },
-      activateModule: (d, module: string) => { d.activeModule = module },
+      openModule: (d, module: string) => { d.activeModule = module },
     },
   })
   return handle

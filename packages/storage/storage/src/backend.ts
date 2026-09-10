@@ -9,12 +9,24 @@
 /** Allowed format for unit and table names: safe as a file name and as a SQL identifier segment without escaping. */
 export const UNIT_NAME_RE = /^[a-z][a-z0-9_]*$/
 
+/** Runtime properties a backend may declare after enforcing them at open. */
+export const STORAGE_BACKEND_GUARANTEES = ['single-writer', 'commit-sync', 'private-root'] as const
+/** One property that a routed domain may require before opening its medium. */
+export type StorageBackendGuarantee = typeof STORAGE_BACKEND_GUARANTEES[number]
+
 /**
  * One registered backend. A backend owns exactly one medium and shares its
  * lifecycle across all facets; facets are optional members — a backend that
  * cannot serve a data kind simply omits it, and resolution fails loud instead.
  */
 export interface StorageBackend {
+  /**
+   * Guarantees this configured backend enforces before a facet open resolves.
+   * Absence means no guarantee; declarations are routing metadata, while the
+   * backend remains responsible for validating the real medium and failing
+   * closed when the configured guarantee cannot be established.
+   */
+  readonly guarantees?: readonly StorageBackendGuarantee[]
   /** Key-value operations; absent when this backend cannot serve them. */
   readonly kv?: KvFacet
 

@@ -77,7 +77,11 @@ export function apply(ctx: Context): void {
       platform: { type: 'string', required: true, enum: ['host', 'client'], description: 'Runtime platform that owns the Provider.' },
       provider: { type: 'string', required: true, description: 'Exact Provider ID returned by cordis_inspect_list.' },
       method: { type: 'string', required: true, description: 'Exact method name declared by the Provider manifest.' },
-      input: { type: 'json', description: 'Optional query input; it must satisfy the method input schema.' },
+      input: {
+        type: 'object',
+        additionalProperties: true,
+        description: 'Optional query input; it must satisfy the method input schema.',
+      },
     },
     output: {
       schema: { type: 'json' },
@@ -336,18 +340,26 @@ export function apply(ctx: Context): void {
       'Stop the current Run of a dynamic Plugin and cancel unfinished approval or activation requests. Retain the '
       + 'Plugin, every immutable Package, grants, currentPackageId, and nextPackageId so it can later run or update '
       + 'directly. Stopping an already stopped Plugin succeeds idempotently. Use this Tool to disable effects '
-      + 'temporarily; use cordis_undefine for permanent removal.',
+      + 'temporarily; use cordis_undefine for permanent removal. cleanupPending lists browser entry mounts whose '
+      + 'removal was requested but could not be observed, so do not claim their page effects are gone.',
     parameters: {
       pluginId: { type: 'string', required: true, description: 'Stable dynamic Plugin ID to stop.' },
     },
     output: {
-      schema: { type: 'object', additionalProperties: false, properties: { pluginId: { type: 'string', required: true } } },
-      render: (_args, value) => [{ type: 'text', text: `Dynamic Plugin ${value.pluginId} is stopped; its definition and versions remain.` }],
+      schema: { type: 'object', additionalProperties: false, properties: {
+        pluginId: { type: 'string', required: true },
+        cleanupPending: { type: 'array', items: { type: 'string' } },
+      } },
+      render: (_args, value) => [{ type: 'text', text: value.cleanupPending === undefined
+        ? `Dynamic Plugin ${value.pluginId} is stopped; its definition and versions remain.`
+        : `Dynamic Plugin ${value.pluginId} is stopped, but browser cleanup remains unobserved for: ${value.cleanupPending.join(', ')}.` }],
     },
     async execute(args, exec) {
       const receipt = await ctx.dynamicCordisRunner.stop(requireAgent(exec), CordisDynamicPluginId(args.pluginId))
       if (!receipt.ok && receipt.reason !== 'not-running') throw new Error(receipt.message)
-      return { pluginId: args.pluginId }
+      return { pluginId: args.pluginId, ...receipt.ok && receipt.cleanupPending !== undefined
+        ? { cleanupPending: [...receipt.cleanupPending] }
+        : {} }
     },
     presentCall: presentStopCall,
   }))

@@ -53,6 +53,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 | [`workflow/`](workflow/README.zh.md) | 工作流 seam、worker 线程引擎、面向模型的 `workflow`/`ralph` 工具 |
 | [`webhook/`](webhook/README.zh.md) | 已验证外部事件、受信规则与即发即弃 Workspace Session |
 | [`web/`](web/README.zh.md) | Web 能力系列：seam、搜索/获取提供方、面向模型的 Web 工具 |
+| [`browser/`](browser/README.zh.md) | 会话寻址的浏览器操作、经认证的 Chrome worker 网关和由所有者批准的授权 |
 | [`attachment/`](attachment/README.zh.md) | 持久附件标识、校验、本地内容寻址存储 |
 | [`spill/`](spill/README.zh.md) | spill 能力系列：存储 seam、本地实现、工具结果 spill 策略 |
 | [`todo/`](todo/README.zh.md) | 面向模型的 `todo_write` 工具 |
@@ -68,6 +69,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 | [`settings/`](settings/README.zh.md) | 用户设置 seam + 基于文件的提供方 |
 | [`credentials/`](credentials/README.zh.md) | 凭据引用/记录 seam + 环境变量优先于 `.env` 的提供方 + 询问人类的授权 flow |
 | [`storage/`](storage/README.zh.md) | 非会话存储中枢 + 后端 + 领域形式 |
+| [`content/`](content/README.zh.md) | 个人保存文本、不可变版本和可编辑草稿 |
 | [`workspace/`](workspace/README.zh.md) | Workspace 实体 |
 | [`sdk/`](sdk/README.zh.md) | 进程外 SDK：JSON-RPC 协议与 TypeScript 客户端／服务器 |
 | [`acp/`](acp/README.zh.md) | 仅面向自动化的 Agent Client Protocol 服务器 |

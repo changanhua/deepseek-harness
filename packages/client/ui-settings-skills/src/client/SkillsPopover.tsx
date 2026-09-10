@@ -74,8 +74,8 @@ export function SkillsPopover({ sessionId, adopt, useSessions, useSnapshot, load
                   <li key={entry.id} className={css.row}>
                     <span>{entry.summary.name}</span>
                     <span className={css.invocation}>
-                      {entry.summary.invocation.modelInvocable ? 'M' : ''}
-                      {entry.summary.invocation.userInvocable ? 'U' : ''}
+                      {entry.summary.invocation.modelInvocable ? t('modelInvocable') : ''}
+                      {entry.summary.invocation.userInvocable ? t('userInvocable') : ''}
                     </span>
                   </li>
                 ))}

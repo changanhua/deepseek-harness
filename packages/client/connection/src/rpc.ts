@@ -191,6 +191,13 @@ export interface HostConnectionHandle {
   readonly fetch: HostConnectionFetch
 
   /**
+   * Assert that one handler signal belongs to a currently authorized HTTP request.
+   * @param signal - signal received from the current Connection HTTP handler.
+   * @throws when the signal was not issued for an active authorized request.
+   */
+  assertAuthorized(signal: AbortSignal): void
+
+  /**
    * Compose exact Fetch routes and the shared-channel RPC interceptor.
    * @param channel - shared channel mounted by Connection.
    * @returns Fetch handler for trusted, authenticated requests.
@@ -204,6 +211,15 @@ export interface HostConnectionHandle {
    * @returns rejection status, or undefined when the route may accept the request.
    */
   requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection
+
+  /**
+   * Apply only Connection's Host authority fence. Dedicated bridges that
+   * authenticate with their own bearer grant use this instead of browser
+   * cookie authentication.
+   * @param request - request headers from the HTTP or upgrade request.
+   * @returns 403 when the request authority is not trusted, otherwise undefined.
+   */
+  requestAuthorityRejection(request: ConnectionTrustRequest): 403 | undefined
 
   /**
    * Authenticate one frontend index request, owning a token redirect or 401.

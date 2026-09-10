@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
+  "include": ["src"],
+  "references": [
+    { "path": "../../../vendor/cordis" },
+    { "path": "../content" },
+    { "path": "../../credentials/credentials" },
+    { "path": "../../client/connection/tsconfig.host.json" },
+    { "path": "../../host/webserver" },
+    { "path": "../../typert/protocol" },
+    { "path": "../../runtime-diagnostics/invariants" }
+  ]
+}

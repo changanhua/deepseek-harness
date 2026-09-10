@@ -12,8 +12,8 @@ import { BackendRegistry } from './registry.ts'
 export { BackendRegistry } from './registry.ts'
 export { StorageError } from './error.ts'
 export type { StorageErrorCode } from './error.ts'
-export { UNIT_NAME_RE } from './backend.ts'
-export type { StorageBackend, KvFacet, KvUnit, KvUnitDescriptor } from './backend.ts'
+export { STORAGE_BACKEND_GUARANTEES, UNIT_NAME_RE } from './backend.ts'
+export type { StorageBackend, StorageBackendGuarantee, KvFacet, KvUnit, KvUnitDescriptor } from './backend.ts'
 
 /**
  * Derive the Cordis lifecycle service that one named backend plugin provides.

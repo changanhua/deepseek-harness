@@ -23,6 +23,7 @@ import type {
 // Type-only service merge for ctx.slots.
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { renderSessionArea } from './session-provider.tsx'
+import { installSessionDeepLink } from './deep-link.ts'
 
 /** Selector hook over the Session Controller list and current selection. */
 export type UseSessions = SnapshotSelectorHook<SessionListState>
@@ -504,6 +505,7 @@ export const inject = ['sessions', 'slots']
  */
 export function apply(ctx: Context): void {
   const service = new UiSession(ctx, ctx.sessions)
+  if (typeof window !== 'undefined') ctx.effect(() => installSessionDeepLink(ctx.sessions, window), 'ui-session: explicit Session deep links')
   ctx.slots.provideRoot({
     hooks: {
       sessions: ctx.sessions.list,

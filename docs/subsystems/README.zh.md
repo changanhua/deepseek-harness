@@ -6,6 +6,7 @@
 
 | 页面 | 负责内容 |
 |---|---|
+| [browser.zh.md](browser.zh.md) | 已授权 Chrome 安装、显式页面与元素引用、有界操作及未知结果恢复 |
 | [core.md](core.zh.md) | `packages/core` 如何控制 agent loop（智能体循环）：逐包的循环说明、agent 创建与所有权（`AgentHandle`）、`Agent` 句柄的投递/取消/拦截约定，以及全仓通用类型模式（`…Map → 派生联合`、品牌化 id） |
 | [llm-streaming.md](llm-streaming.zh.md) | `packages/llm` 的对话类型——`Message`/`ContentBlock`、组装完成的模型请求、`StreamChunk` wire protocol 和适配器约定（adapter contract）、`BlockAssembler`，以及 `LlmAdapter` 提供方约定 |
 | [token-meter.md](token-meter.zh.md) | 不可变的标量与位置回放度量，附带已消费日志修订号 |
@@ -55,6 +56,7 @@
 | [web-server.md](web-server.zh.md) | HTTP 载体：`WebRouteKind`/`WebRoute`、匹配顺序、可认领的回退席位、index 渲染挂接点 |
 | [webhook.md](webhook.zh.md) | 通过身份验证的提供方交付、任意程序化规则，以及 fire-and-forget 的 Workspace Session 创建 |
 | [storage.md](storage.zh.md) | 存储子系统：后端约定（`StorageBackend`）、`StorageForms`、`DomainSpec`/`Domain`、`domain/changed` |
+| [content.md](content.zh.md) | 个人内容：原文、不可变版本、草稿和已提交回执 |
 | [workspace.md](workspace.zh.md) | 工作区注册表：`Workspace`/`WorkspaceId`、注册与解析、与会话 `cwd` 的关系 |
 | [web-client.md](web-client.zh.md) | 浏览器架构：启动、Remote 通信、配对的 Client model、UI adapter、Conversation 组装、Slots 与重连语义 |
 | [client-modules.md](client-modules.zh.md) | Web 插件表：`dsh.client` 声明、`WebBootGraph` 线上组合、bundle 路由与 index 转换 |

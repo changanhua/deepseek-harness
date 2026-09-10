@@ -68,6 +68,15 @@ describe('defineDomain', () => {
     // The default (single) layout is absent from the descriptor.
     expect(descriptorOf(spec)).not.toHaveProperty('layout')
   })
+
+  it('rejects unknown backend guarantee requirements', () => {
+    expect(() => defineDomain({
+      name: 'guarded',
+      version: 1,
+      requires: ['magical' as 'single-writer'],
+      tables: {},
+    })).toThrow(/backend guarantee/)
+  })
 })
 
 describe('DomainFacility.open', () => {
@@ -94,6 +103,46 @@ describe('DomainFacility.open', () => {
     const { ctx, facility } = await harness({ config: { backend: 'nokv' } })
     ctx.storage.backend.register('nokv', { close: async () => {} })
     await expect(facility.open(spec)).rejects.toMatchObject({ code: 'facet-unsupported' })
+  })
+
+  it('rejects a backend missing a required guarantee before opening its medium', async () => {
+    const { ctx, facility } = await harness({ config: { backend: 'guarded' } })
+    const open = vi.fn()
+    ctx.storage.backend.register('guarded', {
+      guarantees: ['single-writer'],
+      kv: { open },
+      close: async () => {},
+    })
+    const guarded = defineDomain({
+      name: 'guarded',
+      version: 1,
+      requires: ['single-writer', 'commit-sync'] as const,
+      tables: {},
+    })
+
+    await expect(facility.open(guarded)).rejects.toMatchObject({
+      name: 'DomainError',
+      code: 'backend-requirement-unsatisfied',
+    })
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('opens when the backend declares every required guarantee', async () => {
+    const { ctx, facility } = await harness({ config: { backend: 'guarded' } })
+    const backend = new MemoryStorageBackend()
+    ctx.storage.backend.register('guarded', {
+      guarantees: ['single-writer', 'commit-sync', 'private-root'],
+      kv: backend.kv,
+      close: () => backend.close(),
+    })
+    const guarded = defineDomain({
+      name: 'guarded',
+      version: 1,
+      requires: ['single-writer', 'commit-sync'] as const,
+      tables: {},
+    })
+
+    await expect(facility.open(guarded)).resolves.toBeDefined()
   })
 
   it('falls back to the default backend when no route table is configured', async () => {

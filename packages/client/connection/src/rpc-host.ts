@@ -9,7 +9,7 @@ import {
 } from './rpc.ts'
 import { clientRequestSchema } from './rpc-schema.ts'
 import { bridge, type FetchHandler } from './http-bridge.ts'
-import { isTrustedApiRequest } from './api-request-trust.ts'
+import { isTrustedApiAuthority, isTrustedApiRequest } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
 import type { BrowserAuth } from './browser-auth.ts'
 import type {
@@ -59,6 +59,9 @@ declare module '@deepseek-ai/cordis' {
 export class HostConnectionService extends Service implements HostConnectionHandle {
   private readonly interceptors = new Map<string, ConnectionRpcInterceptor>()
   private readonly fetchRoutes = new Map<string, RegisteredFetchRoute>()
+  private readonly authorizedRequests = new WeakMap<AbortSignal, ConnectionTrustRequest>()
+  private readonly activeRequestSignals = new Set<AbortSignal>()
+  private disposed = false
 
   /**
    * Provide the Host half over the active HTTP server.
@@ -72,6 +75,10 @@ export class HostConnectionService extends Service implements HostConnectionHand
     private readonly browserAuth: BrowserAuth,
   ) {
     super(ctx, 'connection')
+    ctx.effect(() => () => {
+      this.disposed = true
+      this.activeRequestSignals.clear()
+    }, 'client-connection: authorization lifecycle')
   }
 
   /** Generic channel registry scoped to the Context reading this service. */
@@ -98,6 +105,20 @@ export class HostConnectionService extends Service implements HostConnectionHand
     return this.browserAuth.isAuthenticated(request) ? undefined : 401
   }
 
+  /** Apply the Host authority fence for a bridge that owns its own authentication. */
+  requestAuthorityRejection(request: ConnectionTrustRequest): 403 | undefined {
+    return isTrustedApiAuthority(request, this.trustedHosts) ? undefined : 403
+  }
+
+  /** Assert that a signal was issued by this service for an active authorized request. */
+  assertAuthorized(signal: AbortSignal): void {
+    const request = this.authorizedRequests.get(signal)
+    const rejected = request === undefined ? 'unbound' : this.requestRejection(request)
+    if (this.disposed || !this.activeRequestSignals.has(signal) || signal.aborted || rejected !== undefined) {
+      throw new Error('connection: request is not authorized')
+    }
+  }
+
   /** Authenticate an index request through the process-token exchange or cookie. */
   authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean {
     return this.browserAuth.authorizeIndex(request, response)
@@ -117,7 +138,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
     channel: '/api',
   ): ConnectionFetchHandler {
     return {
-      fetch: (request) => {
+      fetch: request => this.withAuthorizedRequest(request, () => {
         const pathname = new URL(request.url).pathname
         const route = this.fetchRoutes.get(pathname)
         if (route?.methods.has(request.method) === true) return route.fetch(request)
@@ -127,7 +148,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
           return Promise.resolve(new Response('not found', { status: 404 }))
         }
         return interceptor.fetchHandler.fetch(request)
-      },
+      }),
     }
   }
 
@@ -166,7 +187,9 @@ export class HostConnectionService extends Service implements HostConnectionHand
           res.end(rejection === 401 ? 'unauthorized' : 'forbidden')
           return
         }
-        await bridge(req, res, fetchHandler)
+        await bridge(req, res, {
+          fetch: request => this.withAuthorizedRequest(request, () => fetchHandler.fetch(request)),
+        })
       },
     }
     return owner.effect(
@@ -197,6 +220,21 @@ export class HostConnectionService extends Service implements HostConnectionHand
         this.interceptors.delete(channel)
       }
     }, `client-connection: ${channel} rpc interceptor`)
+  }
+
+  private async withAuthorizedRequest<T>(
+    request: Request,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (this.disposed) throw new Error('connection: request is not authorized')
+    this.authorizedRequests.set(request.signal, { headers: new Headers(request.headers) })
+    this.activeRequestSignals.add(request.signal)
+    try {
+      return await operation()
+    } finally {
+      this.authorizedRequests.delete(request.signal)
+      this.activeRequestSignals.delete(request.signal)
+    }
   }
 }
 

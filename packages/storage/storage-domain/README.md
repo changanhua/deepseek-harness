@@ -33,7 +33,7 @@ Choose it for any host-side data that must survive restarts and stay valid again
 
 ### Declaring a domain
 
-The owning package declares the domain once with `defineDomain` — name, version, and zod record schemas — and exports it. `defineDomain` fails loud at module load on a bad name, a non-integer version, or a global schema that accepts `null`.
+The owning package declares the domain once with `defineDomain` — name, version, zod record schemas, and any required backend guarantees — and exports it. `defineDomain` fails loud at module load on a bad name, a non-integer version, an unknown guarantee, or a global schema that accepts `null`.
 
 ```text
 // Owning package, once:
@@ -70,7 +70,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Observable behavior and failures
 
-Every write resolves only after the backend acknowledges durability, and each emits one `domain/changed` event in write order. Failures carry stable `DomainError` codes: `already-open` (the name is open or still closing), `facet-unsupported` (the routed backend serves no `kv` facet), `invalid-record` (a stored record or global fails its schema, naming the table and key), `missing-key` (an `update` on an absent record), and `closed` (any use after close). Backend failures such as `version-mismatch` pass through unchanged.
+Every write resolves only after the backend acknowledges durability, and each emits one `domain/changed` event in write order. Failures carry stable `DomainError` codes: `already-open` (the name is open or still closing), `backend-requirement-unsatisfied` (the route lacks a required guarantee), `facet-unsupported` (the routed backend serves no `kv` facet), `invalid-record` (a stored record or global fails its schema, naming the table and key), `missing-key` (an `update` on an absent record), and `closed` (any use after close). Backend failures such as `version-mismatch` pass through unchanged.
 
 -----
 
@@ -91,7 +91,7 @@ The domain layer is a single implementation, not an abstracted seam: consumers d
 
 ### Open sequence
 
-`DomainFacility.open(spec)` runs a strict sequence, each step failing the whole call: reject a name already open or still closing (`already-open`); resolve the route (`backend-not-found`); require the `kv` facet (`facet-unsupported`); open the unit (backend `version-mismatch`/`malformed-medium` pass through); load and validate every stored record and the global against the spec's schemas (`invalid-record`); construct the domain. The caller owns the handle; the facility closes any domain left open when it unmounts, and a closed domain's name frees for reopening only after teardown completes.
+`DomainFacility.open(spec)` runs a strict sequence, each step failing the whole call: reject a name already open or still closing (`already-open`); resolve the route (`backend-not-found`); require every declared backend guarantee (`backend-requirement-unsatisfied`) and the `kv` facet (`facet-unsupported`); open the unit (backend `version-mismatch`/`malformed-medium` pass through); load and validate every stored record and the global against the spec's schemas (`invalid-record`); construct the domain. The caller owns the handle; the facility closes any domain left open when it unmounts, and a closed domain's name frees for reopening only after teardown completes.
 
 ### Source map
 

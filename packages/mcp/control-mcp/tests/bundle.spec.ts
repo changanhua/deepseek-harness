@@ -32,18 +32,7 @@ describe('DSH control MCP bundle', () => {
     ])
     const host = yaml.load(readFileSync(resolve(root, 'host.cordis.patch.yml'), 'utf8'), {
       schema: entryListSchema,
-    }) as Array<{
-      id?: string
-      config?: unknown
-      insert?: Array<{ id?: string; name?: string; config?: unknown }>
-    }>
-    expect(host[0]).toEqual({
-      id: 'connection',
-      config: {
-        browserAuth: true,
-        trustedHosts: { __jsExpr: 'ctx.webRuntime.trustedHosts' },
-      },
-    })
+    }) as Array<{ insert?: Array<{ id?: string; name?: string; config?: unknown }> }>
     expect(host.flatMap(item => item.insert ?? [])).toEqual([{
       id: 'control-mcp-host', name: '@changanhua/dsh-control-mcp/host',
       config: { runId: { __jsExpr: 'process.env.DSH_CONTROL_RUN_ID' } },

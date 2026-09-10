@@ -21,6 +21,12 @@
       "path": "../storage"
     },
     {
+      "path": "../../subprocess/subprocess"
+    },
+    {
+      "path": "../../util/home-paths"
+    },
+    {
       "path": "../../runtime-diagnostics/invariants"
     }
   ]

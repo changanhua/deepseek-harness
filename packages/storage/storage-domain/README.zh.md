@@ -33,7 +33,7 @@ kind: "package-reference"
 
 ### 声明领域
 
-所属包用 `defineDomain` 声明一次领域——名称、版本与 zod 记录 schema——并导出它。名称非法、版本不是非负整数、或全局 schema 接受 `null` 时，`defineDomain` 会在模块加载时明确报错。
+所属包用 `defineDomain` 声明一次领域——名称、版本、zod 记录 schema 与所需后端保证——并导出它。名称非法、版本不是非负整数、保证未知、或全局 schema 接受 `null` 时，`defineDomain` 会在模块加载时明确报错。
 
 ```text
 // Owning package, once:
@@ -70,7 +70,7 @@ domain.table('workspaces').update(id, (r) => ({ ...r, path: newPath }))
 
 ### 可观察行为与失败
 
-每次写入只在后端确认持久后 resolve，并按写入顺序各发出一次 `domain/changed` 事件。失败携带稳定的 `DomainError` 代码：`already-open`（名称已打开或仍在关闭）、`facet-unsupported`（已路由后端不提供 `kv` 分面）、`invalid-record`（已存记录或全局不符合其 schema，并指明表与键）、`missing-key`（对不存在的记录执行 `update`）与 `closed`（关闭后的任何使用）。`version-mismatch` 等后端失败会原样透传。
+每次写入只在后端确认持久后 resolve，并按写入顺序各发出一次 `domain/changed` 事件。失败携带稳定的 `DomainError` 代码：`already-open`（名称已打开或仍在关闭）、`backend-requirement-unsatisfied`（路由缺少所需保证）、`facet-unsupported`（已路由后端不提供 `kv` 分面）、`invalid-record`（已存记录或全局不符合其 schema，并指明表与键）、`missing-key`（对不存在的记录执行 `update`）与 `closed`（关闭后的任何使用）。`version-mismatch` 等后端失败会原样透传。
 
 -----
 
@@ -91,7 +91,7 @@ domain.table('workspaces').update(id, (r) => ({ ...r, path: newPath }))
 
 ### 打开顺序
 
-`DomainFacility.open(spec)` 按严格顺序执行，任一步骤失败都会让整个调用失败：拒绝已打开或仍在关闭的名称（`already-open`）；解析路由（`backend-not-found`）；要求 `kv` 分面（`facet-unsupported`）；打开单元（后端 `version-mismatch`／`malformed-medium` 透传）；加载并根据 spec 的 schema 校验每条已存记录与全局（`invalid-record`）；构造领域。调用方持有句柄；设施会在卸载时关闭任何仍打开的领域，已关闭领域的名称只在 teardown 完成后才能重新打开。
+`DomainFacility.open(spec)` 按严格顺序执行，任一步骤失败都会让整个调用失败：拒绝已打开或仍在关闭的名称（`already-open`）；解析路由（`backend-not-found`）；要求全部已声明后端保证（`backend-requirement-unsatisfied`）和 `kv` 分面（`facet-unsupported`）；打开单元（后端 `version-mismatch`／`malformed-medium` 透传）；加载并根据 spec 的 schema 校验每条已存记录与全局（`invalid-record`）；构造领域。调用方持有句柄；设施会在卸载时关闭任何仍打开的领域，已关闭领域的名称只在 teardown 完成后才能重新打开。
 
 ### 源码地图
 

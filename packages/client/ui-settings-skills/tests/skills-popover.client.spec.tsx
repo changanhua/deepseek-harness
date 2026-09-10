@@ -67,7 +67,7 @@ describe('SkillsPopover', () => {
     fireEvent.click(trigger)
     expect(load).toHaveBeenCalledWith(S1)
     expect(screen.getByText('demo')).toBeTruthy()
-    expect(screen.getByText('MU')).toBeTruthy()
+    expect(screen.getByText('modelInvocableuserInvocable')).toBeTruthy()
   })
 
   it('Manage all adopts the session and opens the section via the navigator callback', () => {

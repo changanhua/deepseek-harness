@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DSH · 解读</title>
+    <link rel="stylesheet" href="src/reader.css">
+  </head>
+  <body>
+    <header class="toolbar">
+      <strong>DSH · 解读</strong>
+      <label class="picker-label">当前解读<select id="answer-picker" aria-label="选择解读"></select></label>
+      <div class="controls">
+        <button id="smaller" type="button" aria-label="缩小字号">A−</button>
+        <button id="larger" type="button" aria-label="放大字号">A＋</button>
+        <button id="latest" type="button">最新解读</button>
+        <button id="model-settings" type="button">DSH 完整设置 ↗</button>
+        <button id="stop-reading" type="button" hidden>停止解读</button>
+      </div>
+    </header>
+    <main class="paper">
+      <section id="reader-connection" class="reader-connection" aria-labelledby="connect-title" hidden>
+        <h2 id="connect-title">连接 DSH，开始解读</h2>
+        <p id="connect-description"></p>
+        <form id="reader-connect-form">
+          <label for="reader-base-url">DSH 地址</label>
+          <input id="reader-base-url" type="url" required spellcheck="false" placeholder="http://127.0.0.1:3080">
+          <button id="reader-connect" type="submit">保存并连接</button>
+        </form>
+        <div id="connect-pending" class="connect-pending" hidden>
+          <button id="connect-open" type="button">打开 DSH 连接页 ↗</button>
+          <button id="connect-continue" type="button">已完成，继续</button>
+          <button id="connect-cancel" type="button">修改地址</button>
+        </div>
+        <p id="connect-error" role="alert" hidden></p>
+      </section>
+      <div class="metadata"><span id="status" role="status">正在读取解读…</span><a id="source" target="_blank" rel="noreferrer" hidden>知乎原文 ↗</a></div>
+      <details class="reading-settings"><summary>解读模型与推理强度</summary><div class="reading-model-controls">
+        <select id="reading-model" aria-label="解读模型"><option value="">使用 DSH 默认模型</option></select>
+        <select id="reading-effort" aria-label="解读推理强度"><option value="">推理强度：默认</option></select>
+        <button id="refresh-models" type="button">刷新模型</button>
+      </div></details>
+      <p id="model-summary" class="model-summary"></p>
+      <h1 id="title">解读内容</h1>
+      <p id="empty">在知乎点击“AI 总结解读”，生成的内容会同步显示在这里。</p>
+      <article id="answer" aria-label="完整解读"></article>
+      <p class="history-note">最近 30 条解读保存在扩展中，仅供查看，不会发送给下一次解读。</p>
+    </main>
+    <script type="module" src="src/reader.js"></script>
+  </body>
+</html>

@@ -43,6 +43,10 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/content/content': { kind: 'none', reason: 'The human content definition registers no model tools or context.' },
+  'packages/content/content-domain': { kind: 'none', reason: 'The content persistence provider registers no model tools or context.' },
+  'packages/content/content-session': { kind: 'none', reason: 'The human Session source bridge registers no model tools or context.' },
+  'packages/content/content-remote': { kind: 'none', reason: 'The authenticated Content Remote registers no model tools or context.' },
   'packages/util/crypto': { kind: 'indirect', reason: 'Pure identifier minting; the ids consumers mint with it never enter prompts as semantic content.' },
   'packages/attachment/attachment': { kind: 'indirect', reason: 'The storage seam delegates model request rendering to provider adapters.' },
   'packages/attachment/attachment-local': { kind: 'indirect', reason: 'The local backend delegates model request rendering to provider adapters.' },
@@ -118,6 +122,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/client/ui-trajectory': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/ui-work-observatory': { kind: 'none', reason: 'This browser activity producer and read-only workspace register no model-facing Tool, prompt section, or Session event.' },
   'packages/client/ui-workspace': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
+  'packages/client/ui-content': { kind: 'none', reason: 'this browser capture entry and read-only library view register no model-facing Tool, prompt section, or Session event; captured text never enters model context or telemetry.' },
   'packages/client/ui-directory-picker-browse': { kind: 'none', reason: 'Browser-side directory-browsing surface; registers nothing model-facing.' },
   'packages/client/ui-directory-picker-native': { kind: 'none', reason: 'Browser-side surface driving the host OS chooser; registers nothing model-facing.' },
   'packages/client/ui-theme': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },

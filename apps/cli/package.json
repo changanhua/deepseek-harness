@@ -81,6 +81,7 @@
     "@deepseek-ai/dsh-tool-pwsh": "workspace:^",
     "@deepseek-ai/dsh-tool-ralph": "workspace:^",
     "@changanhua/dsh-tool-runtime-inspect": "workspace:^",
+    "@changanhua/dsh-tool-browser": "workspace:^",
     "@deepseek-ai/dsh-schedule": "workspace:^",
     "@deepseek-ai/dsh-tool-skill": "workspace:^",
     "@deepseek-ai/dsh-tool-str-replace-editor": "workspace:^",

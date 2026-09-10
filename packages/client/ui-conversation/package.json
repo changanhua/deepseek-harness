@@ -49,7 +49,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@deepseek-ai/dsh-settings": "workspace:^",
     "clsx": "^2.0.0",
     "@deepseek-ai/schemastery": "workspace:^",
     "@lexical/history": "^0.49.0",

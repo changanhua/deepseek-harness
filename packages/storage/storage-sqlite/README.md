@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-storage-sqlite` is a storage backend that hosts every routed unit in one SQLite database file, storing each record as one JSON document per row, registered as backend `sqlite`. A single record update touches exactly one row, which is what makes this the right medium for high-frequency, point-sized writes. Choose it when a domain's data changes often or the deployment prefers one queryable database; choose the JSON backend when the data should be readable as plain files. The backend is host-side only: it contributes no prompt, tool, or schema, so the model and the agent loop never see it.
+`dsh-storage-sqlite` hosts routed units in one SQLite database file, storing each record as one JSON document per row. A composition can mount several named instances and require an instance to prove exclusive ownership, commit synchronization, and a private filesystem root before a domain opens. Choose it for frequent point-sized writes or a local queryable database; choose the JSON backend when humans need plain files. The backend is host-side only: it contributes no prompt, tool, or schema, so the model and the agent loop never see it.
 
 ## Table of Contents
 
@@ -33,7 +33,7 @@ Choose it when writes are frequent and point-sized — each key maps to exactly 
 
 ### Configuration
 
-Two fields: the database path and the journal mode. `:memory:` opens an in-process database whose contents disappear with the process.
+The default instance remains compatible with existing configurations. Use explicit ownership, synchronization, identity, and directory controls only for domains that require those guarantees. `:memory:` opens an in-process database whose contents disappear with the process.
 
 ```yaml
 - name: '@deepseek-ai/dsh-storage'
@@ -47,14 +47,20 @@ Two fields: the database path and the journal mode. `:memory:` opens an in-proce
 
 | Field | Default | Meaning |
 |---|---|---|
+| `backendName` | `sqlite` | Storage hub registration name |
 | `path` | required | SQLite database file path, or `:memory:` |
 | `journalMode` | `wal` | Journal mode: `wal`, `delete`, `truncate`, or `persist` |
+| `pathBase` | `cwd` | Resolve relative paths from the process cwd or `dsh-home` |
+| `ownership` | `shared` | Shared locking or a file-backed `exclusive` connection |
+| `synchronous` | SQLite default | `normal`, `full`, or `extra`; `full` and `extra` declare `commit-sync` |
+| `applicationId` | unset | File-only non-zero identity; foreign or unversioned databases reject |
+| `privateDirectory` | `false` | Create or verify an owner-private local directory before opening |
 
-`wal` suits local disks; a rollback-journal mode (`delete`/`truncate`/`persist`) fits filesystems where WAL's shared-memory files do not work, such as network mounts. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-storage-sqlite) is the exhaustive source for every accepted field and its JSDoc.
+`exclusive` requires a file-backed `delete` journal and holds the connection lock until close; a second owner fails immediately. `applicationId` also requires a file because an in-memory database cannot retain the identity across reopen. `privateDirectory` creates and verifies each protected DACL component on Windows NTFS and rejects unsafe existing ACLs, reparse points, hard-link aliases, UNC paths, and non-NTFS volumes. It does not isolate another process running as the same Windows user. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-storage-sqlite) is the exhaustive source for every accepted field and its JSDoc.
 
 ### Observable behavior
 
-Missing directories and database files are created owner-only (`0o700`/`0o600`); an existing database keeps its modes. A unit whose stored format version differs from its descriptor rejects `version-mismatch`, and a database stamped with a physical layout version other than the current one rejects outright — no migration, pre-release stance. Failures carry stable `StorageError` codes, and writes are durable once resolved.
+Missing directories and database files use owner-only POSIX modes when supported. With `privateDirectory`, the backend verifies the real directory and file permissions before SQLite opens. An explicit `applicationId` prevents an empty-looking foreign database from being claimed; incompatible physical or unit versions reject rather than migrate. Writes are durable once resolved under the configured SQLite guarantees.
 
 -----
 
@@ -75,14 +81,15 @@ The backend is a document-per-row layout over one `node:sqlite` connection, desi
 
 ### Open sequence
 
-Opening the database mirrors the session-persistence SQLite backend: `mkdir` the parent `0o700`, exclusively create a missing file `0o600`, apply `PRAGMA foreign_keys = ON` and the journal mode, check `user_version`, create the `units` and `unit_globals` metadata tables, and stamp fresh databases last so a failure leaves the medium unstamped.
+Open disables extension loading, applies connection security settings, verifies the optional private path, acquires the requested lock, and checks journal mode, application identity, and physical version in a transaction before publishing readiness. Fresh metadata and each unit's tables materialize transactionally, so failed initialization leaves neither a version stamp nor a partial unit registration.
 
 ### Source map
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: backend registration, `path`/`journalMode` config, unit table |
+| [`src/index.ts`](src/index.ts) | Plugin entry: named registration, configuration, guarantees, unit table |
 | [`src/schema.ts`](src/schema.ts) | Open sequence, physical layout version, metadata tables, record table naming |
+| [`src/private-directory.ts`](src/private-directory.ts) | Private path creation and native permission verification |
 | [`src/unit.ts`](src/unit.ts) | One opened unit: prepared statements, JSON value parse, close |
 | [`src/invariant.ts`](src/invariant.ts) | Invariant companion (no runtime invariant: versions are open-time checks) |
 
@@ -127,7 +134,8 @@ None — the backend never touches live request prefixes.
 These limits define when this backend is a poor fit or needs special operational care. They are current package constraints, not a task backlog.
 
 - **Synchronous driver blocks the event loop** — each write is a synchronous `DatabaseSync` call; the block lasts a single statement, which is acceptable at domain-data scale.
-- **No busy-wait or retry policy** — a competing connection holding a write lock rejects the operation immediately instead of waiting; the domain layer's write chain serializes writes within one process, and cross-process coordination is out of scope.
+- **No busy-wait or lock stealing** — a competing connection rejects immediately; exclusive ownership never waits for, terminates, or recovers another process.
+- **Windows ACLs do not isolate the same user** — another process with the same user token can read the database file; capability discovery and Agent authorization require a separate policy layer.
 - **Only the current physical layout version opens** — any other stamped `user_version` is rejected rather than migrated (pre-release stance).
 - **Open sequence duplicated from the session packages** — `openDatabase` mirrors the session-persistence SQLite open sequence; extraction into a shared medium layer is deferred to the planned session-backend migration.
 
