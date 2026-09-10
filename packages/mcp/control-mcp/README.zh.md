@@ -53,7 +53,7 @@ pnpm dsh --profile control-mcp
 
 ### 获得的能力
 
-连接器暴露十一个工具：关闭 Host；针对一个 Session 的打开、提示、等待和事件读取；不含源码的 Dynamic Cordis 检查；浏览器安装、标签页、快照和条目选择器检查；以及结构化证据导出。`dsh_browser_snapshot` 返回页面事实，但不选择选择器。`dsh_browser_entry_inspect` 只在快照成功后接受候选选择器，并从保存的观察中提供页面身份。
+连接器暴露十二个工具：关闭 Host；针对一个 Session 的打开、提示、等待、事件读取和运行观察；不含源码的 Dynamic Cordis 检查；浏览器安装、标签页、快照和条目选择器检查；以及结构化证据导出。`dsh_session_observe` 返回当前阶段、事件 cursor，以及尚未回答的 `ask_user_question`。`dsh_browser_snapshot` 返回页面事实，但不选择选择器。`dsh_browser_entry_inspect` 只在快照成功后接受候选选择器，并从保存的观察中提供页面身份。
 
 -----
 

@@ -169,6 +169,12 @@ export function createDshControlMcpServer(caller: DshControlCaller): McpServer {
     annotations: { readOnlyHint: true },
   }, async (params, extra) => readResult(caller, 'session_events', params, extra.signal))
 
+  server.registerTool('dsh_session_observe', {
+    description: 'Return the bound Session phase, event cursor, and any unanswered user question.',
+    inputSchema: z.object({ sessionId }),
+    annotations: { readOnlyHint: true },
+  }, async (params, extra) => readResult(caller, 'session_observe', params, extra.signal))
+
   server.registerTool('dsh_cordis_inspect', {
     description: 'Read source-free Dynamic Cordis lifecycle state owned by the bound Session.',
     inputSchema: z.object({ sessionId }),

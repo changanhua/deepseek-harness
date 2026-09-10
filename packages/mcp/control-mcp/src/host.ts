@@ -96,7 +96,7 @@ async function handleRequest(
 }
 
 const METHODS = new Set<ControlRequest['method']>([
-  'session_open', 'session_prompt', 'session_wait', 'session_events', 'cordis_inspect',
+  'session_open', 'session_prompt', 'session_wait', 'session_events', 'session_observe', 'cordis_inspect',
   'browser_instances', 'browser_tabs', 'browser_snapshot', 'evidence_export',
   'browser_entry_inspect',
 ])

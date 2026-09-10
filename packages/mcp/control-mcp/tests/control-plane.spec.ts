@@ -180,6 +180,82 @@ describe('DSH control plane', () => {
     })
   })
 
+  it('observes the current phase and exposes an unanswered user question', async () => {
+    const events = [
+      { seq: 0, type: 'turn/start', time: 1, data: { turn: 0 } },
+      {
+        seq: 1,
+        type: 'tool/call',
+        time: 2,
+        data: {
+          turn: 0,
+          step: 1,
+          callId: 'question-1',
+          name: 'ask_user_question',
+          arguments: JSON.stringify({ questions: [{ id: 'next', question: '继续吗？' }] }),
+        },
+      },
+    ]
+    const control = new DshControlPlane({
+      runId: 'run-1',
+      sessions: {
+        create: async () => ({ sessionId: 'session-1' }),
+        prompt: async () => ({ accepted: true }),
+        inspect: async sessionId => ({ meta: { id: sessionId }, events }),
+        getAgent: () => ({ status: 'running' as const, whenIdle: async () => {} }),
+      },
+    })
+    const signal = new AbortController().signal
+    await control.handle({
+      runId: 'run-1', requestId: 'open-1', method: 'session_open',
+      params: { sessionId: 'session-1', cwd: 'C:/task' },
+    }, signal)
+
+    await expect(control.handle({
+      runId: 'run-1', requestId: 'observe-1', method: 'session_observe',
+      params: { sessionId: 'session-1' },
+    }, signal)).resolves.toEqual({
+      runId: 'run-1',
+      sessionId: 'session-1',
+      status: 'running',
+      phase: 'waiting_for_attention',
+      cursor: 1,
+      attention: {
+        kind: 'user_question',
+        callId: 'question-1',
+        questions: [{ id: 'next', question: '继续吗？' }],
+      },
+    })
+  })
+
+  it.each([
+    ['completed', { type: 'turn/end', data: { reason: { kind: 'complete' } } }],
+    ['failed', { type: 'turn/end', data: { reason: { kind: 'error' } } }],
+  ] as const)('maps an idle turn end to the %s phase', async (phase, tail) => {
+    const control = new DshControlPlane({
+      runId: 'run-1',
+      sessions: {
+        create: async () => ({ sessionId: 'session-1' }),
+        prompt: async () => ({ accepted: true }),
+        inspect: async sessionId => ({
+          meta: { id: sessionId },
+          events: [{ seq: 0, type: tail.type, time: 1, data: tail.data }],
+        }),
+        getAgent: () => ({ status: 'idle' as const, whenIdle: async () => {} }),
+      },
+    })
+    const signal = new AbortController().signal
+    await control.handle({
+      runId: 'run-1', requestId: 'open-1', method: 'session_open',
+      params: { sessionId: 'session-1', cwd: 'C:/task' },
+    }, signal)
+
+    await expect(control.handle({
+      runId: 'run-1', requestId: `observe-${phase}`, method: 'session_observe',
+      params: { sessionId: 'session-1' },
+    }, signal)).resolves.toMatchObject({ status: 'idle', phase, cursor: 0 })
+  })
+
   it('bounds retained write receipts without breaking an existing idempotent replay', async () => {
     const control = new DshControlPlane({
       runId: 'run-1',

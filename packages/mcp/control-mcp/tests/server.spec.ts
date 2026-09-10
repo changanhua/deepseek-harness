@@ -23,6 +23,7 @@ describe('DSH control MCP server', () => {
       'dsh_cordis_inspect',
       'dsh_evidence_export',
       'dsh_session_events',
+      'dsh_session_observe',
       'dsh_session_open',
       'dsh_session_prompt',
       'dsh_session_wait',
@@ -40,6 +41,12 @@ describe('DSH control MCP server', () => {
     expect(call).toHaveBeenCalledWith('session_prompt', {
       sessionId: 'session-1', text: '继续执行', mode: 'queue',
     }, 'prompt-1', expect.any(AbortSignal))
+    await expect(client.callTool({
+      name: 'dsh_session_observe', arguments: { sessionId: 'session-1' },
+    })).resolves.toMatchObject({ isError: false, structuredContent: { result: { accepted: true } } })
+    expect(call).toHaveBeenCalledWith('session_observe', {
+      sessionId: 'session-1',
+    }, expect.any(String), expect.any(AbortSignal))
     await expect(client.callTool({ name: 'dsh_control_close', arguments: {} })).resolves.toMatchObject({
       isError: false, structuredContent: { result: { closed: true } },
     })

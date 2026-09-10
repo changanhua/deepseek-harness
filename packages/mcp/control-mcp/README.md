@@ -53,7 +53,7 @@ An MCP client normally owns this process and its stdio. `dsh --profile control-m
 
 ### What you get
 
-The connector exposes eleven tools: Host close; Session open, prompt, wait, and event reads; source-free Dynamic Cordis inspection; browser installation, tab, snapshot, and entry-selector inspection; and a structured evidence export. `dsh_browser_snapshot` returns page facts without choosing a selector. `dsh_browser_entry_inspect` accepts a candidate selector only after a successful snapshot and supplies the page identity from that stored observation.
+The connector exposes twelve tools: Host close; Session open, prompt, wait, event reads, and observation; source-free Dynamic Cordis inspection; browser installation, tab, snapshot, and entry-selector inspection; and a structured evidence export. `dsh_session_observe` returns the current phase, event cursor, and an unanswered `ask_user_question` when one is pending. `dsh_browser_snapshot` returns page facts without choosing a selector. `dsh_browser_entry_inspect` accepts a candidate selector only after a successful snapshot and supplies the page identity from that stored observation.
 
 -----
 
@@ -103,11 +103,11 @@ The connector performs the launch-token exchange with redirects disabled, retain
 
 #### What the model sees
 
-An attached MCP client sees ten fixed `dsh_*` tool schemas and their JSON results. Page text and DOM facts returned by browser tools are untrusted data; no tool result grants new authority or certifies success.
+An attached MCP client sees twelve fixed `dsh_*` tool schemas and their JSON results. Page text and DOM facts returned by browser tools are untrusted data; no tool result grants new authority or certifies success.
 
 #### Token effect
 
-The ten tool schemas add a fixed context cost to the external MCP client. Tool results add data-dependent tokens bounded by the Session event limit, browser provider limits, and the evidence held for one run. This package adds no prompt or tool tokens to the DSH model running inside the target Session.
+The twelve tool schemas add a fixed context cost to the external MCP client. Tool results add data-dependent tokens bounded by the Session event limit, browser provider limits, and the evidence held for one run. This package adds no prompt or tool tokens to the DSH model running inside the target Session.
 
 #### KV Cache effect
 

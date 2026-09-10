@@ -57,6 +57,7 @@ export interface ControlRequest {
     | 'session_prompt'
     | 'session_wait'
     | 'session_events'
+    | 'session_observe'
     | 'cordis_inspect'
     | 'browser_instances'
     | 'browser_tabs'
@@ -102,6 +103,9 @@ export class DshControlPlane {
       case 'session_events':
         this.readCount++
         return await this.sessionEvents(request.params, signal)
+      case 'session_observe':
+        this.readCount++
+        return await this.sessionObserve(request.params, signal)
       case 'cordis_inspect':
         this.readCount++
         return this.cordisInspect(request.params)
@@ -196,6 +200,27 @@ export class DshControlPlane {
   private assertSession(sessionId: string): void {
     if (this.sessionId === undefined || this.sessionId !== sessionId) {
       throw new Error('session is not bound to this control run')
+    }
+  }
+
+  private async sessionObserve(
+    params: Readonly<Record<string, unknown>>,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const sessionId = requiredString(params.sessionId, 'sessionId')
+    this.assertSession(sessionId)
+    const inspected = await this.options.sessions.inspect(sessionId, signal)
+    const status = this.options.sessions.getAgent(sessionId)?.status ?? 'idle'
+    const attention = pendingUserQuestion(inspected.events)
+    const last = inspected.events.at(-1)
+    const phase = attention === undefined ? phaseOf(status, last) : 'waiting_for_attention'
+    return {
+      runId: this.options.runId,
+      sessionId,
+      status,
+      phase,
+      cursor: last?.seq ?? -1,
+      ...(attention === undefined ? {} : { attention }),
     }
   }
 
@@ -347,6 +372,45 @@ export class DshControlPlane {
       },
       operations: { reads: this.readCount, writes: this.writeCount, waits: this.waitCount },
     }
+  }
+}
+
+function phaseOf(
+  status: 'idle' | 'running',
+  event: ControlSessionEvent | undefined,
+): 'idle' | 'running' | 'completed' | 'failed' {
+  if (status === 'running') return 'running'
+  if (event?.type !== 'turn/end' || !isRecord(event.data) || !isRecord(event.data.reason)) return 'idle'
+  return event.data.reason.kind === 'complete' ? 'completed' : 'failed'
+}
+
+function pendingUserQuestion(events: readonly ControlSessionEvent[]): Readonly<Record<string, unknown>> | undefined {
+  const calls = new Map<string, Readonly<Record<string, unknown>>>()
+  const results = new Set<string>()
+  for (const event of events) {
+    if (!isRecord(event.data)) continue
+    const callId = event.data.callId
+    if (typeof callId !== 'string' || callId.length === 0) continue
+    if (event.type === 'tool/result') {
+      results.add(callId)
+      continue
+    }
+    if (event.type === 'tool/call' && event.data.name === 'ask_user_question') {
+      calls.set(callId, event.data)
+    }
+  }
+  const pending = [...calls.entries()].find(([callId]) => !results.has(callId))
+  if (pending === undefined) return undefined
+  const [callId, data] = pending
+  const raw = data.arguments
+  if (typeof raw !== 'string') return { kind: 'user_question', callId }
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return isRecord(parsed) && Array.isArray(parsed.questions)
+      ? { kind: 'user_question', callId, questions: structuredClone(parsed.questions) }
+      : { kind: 'user_question', callId }
+  } catch {
+    return { kind: 'user_question', callId }
   }
 }
 

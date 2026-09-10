@@ -88,7 +88,7 @@ describe('control-mcp profile', () => {
       const listed = await read()
       const tools = (listed.result as { tools: Array<{ name: string }> }).tools
       expect(tools.map(tool => tool.name)).toContain('dsh_browser_entry_inspect')
-      expect(tools).toHaveLength(11)
+      expect(tools).toHaveLength(12)
       send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: {
         name: 'dsh_session_open',
         arguments: { requestId: 'open-1', cwd: 'C:/task', sessionId: 'session-1' },
@@ -100,6 +100,17 @@ describe('control-mcp profile', () => {
       expect(observedPayload).toEqual({
         runId, requestId: 'open-1', method: 'session_open',
         params: { cwd: 'C:/task', sessionId: 'session-1' },
+      })
+      send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: {
+        name: 'dsh_session_observe', arguments: { sessionId: 'session-1' },
+      } })
+      await expect(read()).resolves.toMatchObject({
+        jsonrpc: '2.0', id: 4,
+        result: { isError: false, structuredContent: { result: { sessionId: 'session-1', runId } } },
+      })
+      expect(observedPayload).toEqual({
+        runId, requestId: expect.any(String), method: 'session_observe',
+        params: { sessionId: 'session-1' },
       })
       child.stdin.end()
       await expect(new Promise<number | null>(resolveExit => child.once('exit', resolveExit))).resolves.toBe(0)
