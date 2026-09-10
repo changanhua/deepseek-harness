@@ -419,6 +419,88 @@ describe('dynamic runner dispatch', () => {
 })
 
 describe('dynamic runner teardown', () => {
+  it('waits for an in-flight mount and blocks stale calls before confirming stop', async () => {
+    const { ctx, runner } = await setup()
+    let complete: ((result: object) => void) | undefined
+    let mountSignal: AbortSignal | undefined
+    const calls: string[] = []
+    ctx.provide('browser', { execute: async (operation: { action: { kind: string } }, signal: AbortSignal) => {
+      calls.push(operation.action.kind)
+      if (operation.action.kind === 'entry_mount') {
+        mountSignal = signal
+        return new Promise((resolve) => { complete = resolve })
+      }
+      expect(signal.aborted).toBe(false)
+      return { outcome: 'observed', value: { unmounted: true, remaining: 0 } }
+    } } as never)
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'race', purpose: 'collect', host: `
+      const mount = () => harness.browser.mount({installationId:'i',page:{tabId:1,frameId:0,documentId:'d',url:'https://example.test'},
+        slot:'feed',regionSelector:'main',selector:':scope article',label:'Collect'})
+      harness.handle('mount', mount)
+      return {name:'race',apply(ctx){ctx.provide('capturedMount',mount)}}
+    ` })
+    const active = await runner.run(AGENT_A, pluginId, packageId, 'run')
+    if (!active.ok) throw new Error(active.message)
+    const mount = ctx.get('capturedMount') as () => Promise<unknown>
+    const working = mount()
+    expect(complete).toBeDefined()
+    const stopping = runner.stop(AGENT_A, pluginId)
+    expect(mountSignal?.aborted).toBe(true)
+    await expect(mount()).rejects.toBeDefined()
+    complete!({ outcome: 'observed', value: { mounted: 1 } })
+    await working
+    expect(await stopping).toEqual({ ok: true })
+    expect(calls).toEqual(['entry_mount', 'entry_unmount'])
+  })
+
+  it.each([undefined, { unmounted: true }, { unmounted: true, remaining: 1 }])('retains cleanup without zero-residue evidence: %j', async (value) => {
+    const { ctx, runner } = await setup()
+    ctx.provide('browser', { execute: async () => ({ outcome: 'observed', value }) } as never)
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'entries', purpose: 'collect', host: `
+      return { name: 'entries', async apply() {
+        await harness.browser.mount({ installationId: 'i', page: {tabId:1,frameId:0,documentId:'d',url:'https://example.test'}, slot:'feed',
+          regionSelector:'main',selector:':scope article',label:'Collect' })
+      } }
+    ` })
+    await runner.run(AGENT_A, pluginId, packageId, 'run')
+    expect(await runner.stop(AGENT_A, pluginId)).toMatchObject({ cleanupPending: [`${pluginId}:feed`] })
+    expect(await runner.undefine(AGENT_A, pluginId)).toMatchObject({ ok: false, reason: 'cleanup-pending' })
+    expect(runner.inspectPlugin(AGENT_A, pluginId).pluginId).toBe(pluginId)
+  })
+
+  it('retains detached business state on stop and rejects a different owner', async () => {
+    const { runner } = await setup()
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'state', purpose: 'collection', host: `
+      harness.state.set('collection', [{title:'A', link:'https://example.test/a'}])
+      return { name:'state', apply() {} }
+    ` })
+    await runner.run(AGENT_A, pluginId, packageId, 'run')
+    const read = runner.inspectPlugin(AGENT_A, pluginId)
+    read.state.collection = []
+    await runner.stop(AGENT_A, pluginId)
+    expect(runner.inspectPlugin(AGENT_A, pluginId).state.collection).toEqual([{ title: 'A', link: 'https://example.test/a' }])
+    expect(() => runner.inspectPlugin(AGENT_B, pluginId)).toThrow('dynamic plugin')
+  })
+
+  it('releases document caches when permanently removing a stopped plugin', async () => {
+    const { ctx, runner } = await setup()
+    const calls: Array<{ action: Record<string, unknown> }> = []
+    ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => {
+      calls.push(operation)
+      return { outcome: 'observed', value: { unmounted: true, remaining: 0 } }
+    } } as never)
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'entries', purpose: 'collect', host: `
+      return { name:'entries', async apply() {
+        await harness.browser.mount({ installationId:'i', page:{tabId:1,frameId:0,documentId:'d',url:'https://example.test'},slot:'feed',
+          regionSelector:'main',selector:':scope article',label:'Collect' })
+      } }
+    ` })
+    await runner.run(AGENT_A, pluginId, packageId, 'run')
+    await runner.stop(AGENT_A, pluginId)
+    expect(await runner.undefine(AGENT_A, pluginId)).toEqual({ ok: true, wasRunning: false })
+    expect(calls.at(-1)?.action).toMatchObject({ kind: 'entry_unmount', forgetCollected: true })
+  })
+
   it('binds browser entry ownership and automatically unmounts it on stop', async () => {
     const { ctx, runner } = await setup()
     const calls: Array<{ sessionId: string; action: Record<string, unknown> }> = []
@@ -427,7 +509,7 @@ describe('dynamic runner teardown', () => {
       return { requestId: `request-${calls.length}`, sessionId: operation.sessionId, installationId: 'installation-1',
         outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'entry_inspect'
           ? { matched: 2, valid: 2, samples: [] }
-          : operation.action.kind === 'entry_mount' ? { mounted: 2 } : { unmounted: true } }
+          : operation.action.kind === 'entry_mount' ? { mounted: 2 } : { unmounted: true, remaining: 0 } }
     } } as never)
     const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'entries', purpose: 'collect', host: `
@@ -455,7 +537,8 @@ describe('dynamic runner teardown', () => {
     ctx.provide('browser', { execute: async (operation: { sessionId: string; installationId: string; action: Record<string, unknown> }) => {
       calls++
       return { requestId: `request-${calls}`, sessionId: operation.sessionId, installationId: operation.installationId,
-        outcome: operation.action.kind === 'entry_unmount' && calls === 2 ? 'unknown' : 'observed', delivery: 'sent' }
+        outcome: operation.action.kind === 'entry_unmount' && calls === 2 ? 'unknown' : 'observed', delivery: 'sent',
+        value: { unmounted: true, remaining: 0 } }
     } } as never)
     const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'entries', purpose: 'collect', host: `
@@ -478,7 +561,7 @@ describe('dynamic runner teardown', () => {
     const calls: Array<Record<string, unknown>> = []
     ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => {
       calls.push(structuredClone(operation))
-      return { outcome: operation.action.kind === 'entry_mount' ? 'unknown' : 'observed', delivery: 'sent' }
+      return { outcome: operation.action.kind === 'entry_mount' ? 'unknown' : 'observed', delivery: 'sent', value: { unmounted: true, remaining: 0 } }
     } } as never)
     const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'uncertain', purpose: 'collect', host: `
