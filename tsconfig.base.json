@@ -266,9 +266,13 @@
       "@changanhua/dsh-client-ui-task-queue/invariant": ["./packages/client/ui-task-queue/src/invariant.ts"],
       "@deepseek-ai/dsh-subagent-codex/app-server-run": ["./packages/subagent/subagent-codex/src/app-server-run.ts"],
       "@deepseek-ai/dsh-util-crypto": ["./packages/util/crypto/src"],
+      "@changanhua/dsh-control-mcp/startup": ["./packages/mcp/control-mcp/src/startup.ts"],
+      "@changanhua/dsh-control-mcp/host": ["./packages/mcp/control-mcp/src/host.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@changanhua/dsh-command-task-queue": ["./packages/task-queue/command-task-queue/src"],
       "@changanhua/dsh-command-task-queue/invariant": ["./packages/task-queue/command-task-queue/src/invariant.ts"],
+      "@changanhua/dsh-control-mcp": ["./packages/mcp/control-mcp/src"],
+      "@changanhua/dsh-control-mcp/invariant": ["./packages/mcp/control-mcp/src/invariant.ts"],
       "@changanhua/dsh-delivery": ["./packages/delivery/delivery/src"],
       "@changanhua/dsh-delivery/invariant": ["./packages/delivery/delivery/src/invariant.ts"],
       "@changanhua/dsh-delivery-evidence": ["./packages/delivery/delivery-evidence/src"],

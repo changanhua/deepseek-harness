@@ -412,6 +412,18 @@
       ]
     },
     {
+      "directory": "packages/mcp/control-mcp",
+      "legacyName": "@deepseek-ai/dsh-control-mcp",
+      "sourceName": "@changanhua/dsh-control-mcp",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent",
+        "upstream-private-api-dependency"
+      ]
+    },
+    {
       "directory": "packages/task-queue/command-task-queue",
       "legacyName": "@deepseek-ai/dsh-command-task-queue",
       "sourceName": "@changanhua/dsh-command-task-queue",

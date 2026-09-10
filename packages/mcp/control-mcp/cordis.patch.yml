@@ -1,0 +1,16 @@
+# Complete standalone stdio MCP application. It connects to a separately
+# launched, explicitly patched, loopback DSH Host.
+
+- insert:
+    - id: control-mcp-startup
+      name: '@changanhua/dsh-control-mcp/startup'
+
+    - id: control-mcp-server
+      name: '@changanhua/dsh-control-mcp'
+      inject: [controlMcpStartup, loader]
+      config:
+        origin: !!js process.env.DSH_CONTROL_ORIGIN
+        runId: !!js process.env.DSH_CONTROL_RUN_ID
+        hostHome: !!js process.env.DSH_CONTROL_HOST_HOME
+        autoStartHost: !!js process.env.DSH_CONTROL_AUTOSTART !== 'false'
+        tokenEnv: DSH_CONTROL_TOKEN

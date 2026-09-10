@@ -184,6 +184,10 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
 }
 /** Payload exceptions keyed by stable source directory instead of a mutable npm identity. */
 const personalPackageFileExtras: Readonly<Record<string, readonly string[]>> = {
+  // The control bundle exposes separate Loader entries for its Host and stdio halves.
+  'packages/mcp/control-mcp': [
+    'host.cordis.patch.yml',
+  ],
   // The queue seam's browser-safe brand leaf is its own root bundle.
   'packages/task-queue/task-queue': ['lib/brand.js'],
   // Stable fixtures are shared across independently developed delivery packages.

@@ -1,0 +1,8 @@
+# Opt-in patch for the isolated target Web Host. The normal web profile does
+# not mount this control surface.
+
+- insert:
+    - id: control-mcp-host
+      name: '@changanhua/dsh-control-mcp/host'
+      config:
+        runId: !!js process.env.DSH_CONTROL_RUN_ID
