@@ -1,0 +1,53 @@
+:root{color-scheme:light dark;--bg:#f3f5f8;--paper:#fff;--text:#202633;--muted:#687386;--line:#e3e7ee;--link:#1768cf;--font-size:20px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+.toolbar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:24px;padding:14px 28px;background:var(--paper);border-bottom:1px solid var(--line);flex-wrap:wrap;font-size:14px}
+.toolbar strong{white-space:nowrap;font-size:17px}
+.picker-label{display:flex;align-items:center;gap:10px;min-width:0;flex:1;color:var(--muted)}
+select{width:100%;max-width:520px;min-width:0}
+button,select{font:inherit;color:var(--text);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 11px}
+button{cursor:pointer;white-space:nowrap}
+button:hover{background:var(--bg)}
+.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+a{color:var(--link);text-decoration:none;overflow-wrap:anywhere}
+a:hover{text-decoration:underline}
+.paper{width:calc(100% - 56px);max-width:1180px;margin:28px auto 80px;padding:40px clamp(24px,5vw,72px) 64px;background:var(--paper);border:1px solid var(--line);border-radius:16px}
+.metadata{display:flex;justify-content:space-between;gap:16px;color:var(--muted);font-size:14px;flex-wrap:wrap}
+.model-summary{font-size:12px;color:var(--muted);margin:10px 0;overflow-wrap:anywhere}
+h1{font-size:clamp(24px,2.2vw,34px);line-height:1.5;overflow-wrap:anywhere;margin:22px 0 30px}
+#empty{color:var(--muted);line-height:1.8}
+#answer{font-size:var(--font-size);line-height:1.9;overflow-wrap:anywhere}
+#answer p{margin:0 0 1.1em}
+#answer h1,#answer h2,#answer h3{line-height:1.5;margin:1.5em 0 .65em}
+#answer h1{font-size:1.5em}#answer h2{font-size:1.3em}#answer h3{font-size:1.13em}
+#answer ul,#answer ol{padding-left:1.6em;margin:.8em 0 1.2em}
+#answer li{padding-left:.2em;margin:.4em 0}
+#answer blockquote{margin:1em 0;padding:.4em 1em;border-left:3px solid var(--link);color:var(--muted);background:var(--bg)}
+#answer pre{overflow:auto;padding:20px;border-radius:10px;background:var(--bg);font-size:.85em;line-height:1.6}
+#answer :not(pre)>code{padding:.12em .3em;border-radius:4px;background:var(--bg);font-size:.88em}
+.history-note{color:var(--muted);font-size:13px;margin-top:40px;line-height:1.7}
+[hidden]{display:none!important}
+.embedded .toolbar { position:static;padding:8px 14px;gap:8px;font-size:12px; }
+.embedded .toolbar > strong, .embedded #open-web { display:none; }
+.embedded .toolbar button,.embedded .toolbar select { padding:5px 7px; }
+.embedded .paper { width:100%;max-width:none;margin:0;padding:20px 24px 48px;border:0;border-radius:0; }
+.embedded h1 { font-size:22px;margin:16px 0 22px; }
+.embedded #answer { line-height:1.8; }
+.embedded .metadata { font-size:12px; }
+@media(prefers-color-scheme:dark){:root{--bg:#141619;--paper:#1c1f24;--text:#e7eaf0;--muted:#a0a9b8;--line:#343b46;--link:#83b5ff}}
+@media(max-width:760px){.toolbar{padding:12px 16px;gap:12px}.picker-label{order:3;flex-basis:100%}.controls{margin-left:auto}.paper{width:calc(100% - 24px);margin:12px auto 40px;padding:24px 20px}:root{--font-size:18px}}
+.reading-settings{font-size:13px;margin:14px 0;color:var(--muted)}
+.reading-settings summary{cursor:pointer}
+.reading-model-controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.reading-model-controls select{flex:1;min-width:160px;font-size:13px}
+.reading-model-controls button{font-size:13px}
+.reader-connection{padding:24px;border:1px solid var(--line);border-radius:12px;background:var(--bg);margin-bottom:24px;font-size:15px}
+.reader-connection h2{margin:0 0 12px;font-size:22px}
+.reader-connection p{color:var(--muted);line-height:1.7}
+#reader-connect-form{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:22px}
+#reader-connect-form label{flex-basis:100%}
+#reader-base-url{flex:1;min-width:150px;width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--text);font:inherit}
+#reader-connect{background:var(--link);color:var(--paper);border-color:var(--link)}
+.connect-pending{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+#connect-error{color:var(--text);margin-bottom:0}
+.picker-label{white-space:nowrap}

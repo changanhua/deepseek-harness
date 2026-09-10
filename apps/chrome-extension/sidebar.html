@@ -4,37 +4,42 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="src/sidebar.css">
-    <title>DSH 收藏</title>
+    <title>DSH 浏览器助手</title>
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
-        <div class="brand"><span class="brand-mark">d</span><strong>DSH 收藏</strong></div>
-        <div class="topbar-actions"><button id="connection-status" class="connection-status" type="button" aria-label="查看连接设置"></button><button id="show-settings" class="icon-button" type="button" aria-label="连接设置">⚙</button></div>
+        <div><strong>DSH 浏览器助手</strong><span id="connection-label" class="connection-label"></span></div>
+        <div><button id="show-conversation" type="button" aria-pressed="true">对话</button><button id="open-reader" type="button" aria-pressed="false">解读</button><button id="session-picker" type="button">会话</button><button id="show-monitors" type="button">监控</button><button id="show-activity" type="button">活动</button><button id="show-settings" type="button" aria-label="连接设置">⚙</button></div>
       </header>
+      <section id="reader-panel" aria-label="解读" hidden><iframe id="reader-frame" title="AI 解读内容"></iframe></section>
       <section id="notice" class="notice" hidden aria-live="polite"></section>
-      <section id="empty" class="panel-body" hidden>
-        <div class="empty-mark">⌑</div>
-        <h1>留下值得再读的内容</h1>
-        <p id="empty-hint">在网页中选中文字，再右键选择“收藏选区到 DSH”。</p>
-        <div class="current-page"><span>当前页面</span><strong id="page-title"></strong></div>
-        <div class="secondary-actions"><button id="capture-selection" class="secondary full" type="button">收藏选中的文字</button><button id="choose-reply" class="link-button" type="button">选择当前页面的一条回复 →</button><button id="enable-site" class="link-button" type="button" hidden>启用此网站的快捷收藏 →</button></div>
+      <section id="connection-panel" class="connection-panel" hidden></section>
+      <section id="session-menu" class="session-menu" hidden></section>
+      <section id="site-access" class="site-access" aria-label="所有网站权限" hidden></section>
+      <section id="settings" class="settings" hidden>
+        <button id="hide-settings" type="button">← 返回</button>
+        <label>DSH 地址<input id="base-url" inputmode="url" spellcheck="false" placeholder="http://127.0.0.1:3080"></label>
+        <label>网页操作引擎<select id="browser-engine"><option value="puppeteer">Puppeteer（推荐）</option><option value="dom">DOM 兼容模式</option></select></label>
+        <small>用于助手点击和输入。Puppeteer 使用浏览器输入通道；解读内容的提取不受影响。</small>
+        <div class="model-settings"><strong>DSH 配置</strong><p id="model-summary"></p><button id="configure-model" type="button">打开 DSH 完整设置 ↗</button><small>配置服务商、API 地址、密钥和自定义模型。解读模型与推理强度在“解读”页单独选择，每次独立请求。</small></div>
+        <button id="save-settings" class="primary" type="button">保存并连接</button>
+        <button id="disconnect" type="button">断开连接</button>
+        <button id="open-assistant-window" type="button">在独立助手窗口中打开</button>
+        <small>全局唤起：Ctrl+Shift+7。Chrome 须在运行；可在扩展快捷键设置中改键。</small>
       </section>
-      <section id="capture" class="panel-body" hidden>
-        <div class="source-line"><span id="source-label"></span><button id="open-source" class="link-button" type="button">查看原文 ↗</button></div>
-        <div class="title-row"><textarea id="title" class="capture-title" rows="2" maxlength="160" readonly aria-label="收藏标题"></textarea><button id="edit-title" class="icon-button" type="button" aria-label="修改标题" hidden>✎</button></div>
-        <p id="capture-destination" class="micro"></p>
-        <article id="markdown" class="reading" aria-label="采集正文预览"></article>
-      </section>
-      <section id="settings" class="panel-body" hidden>
-        <button id="hide-settings" class="link-button back" type="button">← 返回收藏</button>
-        <h1>连接 DSH</h1>
-        <p>地址和授权会记住，日常收藏无需重复设置。</p>
-        <div class="connection-card"><strong id="settings-phase"></strong><span id="settings-current-url"></span></div>
-        <label class="field">服务地址<input id="base-url" inputmode="url" spellcheck="false" placeholder="http://127.0.0.1:3080"></label>
-        <p class="micro">默认连接本机 3080。只有使用其他端口或服务器时才需修改。</p>
-      </section>
-      <footer id="footer" class="footer"></footer>
+      <section id="monitors" class="monitors" hidden aria-live="polite"></section>
+      <section id="activity" class="monitors" hidden aria-live="polite"></section>
+      <section id="conversation" class="conversation" aria-live="polite"></section>
+      <section id="contexts" class="contexts"></section>
+      <section id="action-approvals" class="action-approvals" aria-live="polite" hidden></section>
+      <section id="unresolved-actions" class="unresolved-actions" aria-live="polite" hidden></section>
+      <footer class="composer-wrap">
+        <div class="capture-actions"><button id="capture-selection" type="button">选区</button><button id="capture-body" type="button">正文</button><button id="capture-screenshot" type="button">截图</button><button id="stop-session" type="button">停止</button></div>
+        <div id="pending-actions" class="pending-actions"></div>
+        <textarea id="composer" rows="3" placeholder="向 DSH 描述接下来要做什么"></textarea>
+        <div class="send-row"><button id="send-queue" class="primary" type="button">发送</button><button id="send-steer" type="button">立即介入</button><button id="open-session" type="button">在 Web 中打开 ↗</button></div>
+      </footer>
     </main>
     <script type="module" src="src/sidebar.js"></script>
   </body>

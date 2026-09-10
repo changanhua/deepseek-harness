@@ -1,0 +1,9 @@
+# Optional: load explicitly when the local SiYuan native MCP server is enabled.
+- insert:
+    - id: browser-siyuan
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: siyuan
+        transport: streamable-http
+        url: http://127.0.0.1:6806/mcp
+        failOnStartupError: false
