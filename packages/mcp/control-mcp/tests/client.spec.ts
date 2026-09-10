@@ -54,7 +54,7 @@ describe('DSH control HTTP client', () => {
   it('re-exchanges the launch token once when the current Host invalidates the cookie', async () => {
     const cookies: string[] = []
     let call = 0
-    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const fetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       call++
       if (call === 1 || call === 3) {
         return new Response(null, {
