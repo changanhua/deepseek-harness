@@ -58,6 +58,7 @@ export function apply(ctx: Context, config: Config): void {
     sessions: {
       create: request => ctx.sessionController.create(request as never),
       prompt: (request, signal) => ctx.sessionController.prompt(request as never, signal),
+      cancel: request => ctx.sessionController.cancel(request as never),
       inspect: (sessionId, signal) => ctx.sessionController.inspect(sessionId as never, signal) as never,
       getAgent: sessionId => ctx.agents.get(sessionId as never),
       subscribe: (sessionId, notify) => {
@@ -119,8 +120,8 @@ async function handleRequest(
 }
 
 const METHODS = new Set<ControlRequest['method']>([
-  'runtime_status',
-  'session_open', 'session_prompt', 'session_wait', 'session_events', 'session_observe', 'session_attention_answer', 'cordis_inspect',
+  'runtime_status', 'request_receipt',
+  'session_open', 'session_prompt', 'session_wait', 'session_events', 'session_observe', 'session_attention_answer', 'session_cancel', 'cordis_inspect',
   'browser_instances', 'browser_tabs', 'browser_snapshot', 'evidence_export',
   'browser_entry_inspect',
 ])

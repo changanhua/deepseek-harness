@@ -11,6 +11,7 @@ describe('DSH control plane', () => {
       sessions: {
         create,
         prompt,
+        cancel: () => ({ accepted: true }),
         inspect: async sessionId => ({ meta: { id: sessionId }, events: [] }),
         getAgent: () => undefined,
       },
@@ -29,6 +30,24 @@ describe('DSH control plane', () => {
     await expect(control.handle(request, signal)).resolves.toEqual({ accepted: true })
     await expect(control.handle(request, signal)).resolves.toEqual({ accepted: true })
     expect(prompt).toHaveBeenCalledOnce()
+    await expect(control.handle({
+      runId: 'run-1', requestId: 'receipt-1', method: 'request_receipt',
+      params: { requestId: 'prompt-1' },
+    }, signal)).resolves.toEqual({
+      requestId: 'prompt-1', found: true, method: 'session_prompt',
+      status: 'fulfilled', value: { accepted: true },
+    })
+    await expect(control.handle({
+      runId: 'run-1', requestId: 'receipt-2', method: 'request_receipt',
+      params: { requestId: 'missing' },
+    }, signal)).resolves.toEqual({ requestId: 'missing', found: false })
+
+    const cancel = {
+      runId: 'run-1', requestId: 'cancel-1', method: 'session_cancel' as const,
+      params: { sessionId: 'session-1' },
+    }
+    await expect(control.handle(cancel, signal)).resolves.toEqual({ accepted: true })
+    await expect(control.handle(cancel, signal)).resolves.toEqual({ accepted: true })
 
     await expect(control.handle({
       runId: 'run-1', requestId: 'prompt-2', method: 'session_prompt',
@@ -60,6 +79,7 @@ describe('DSH control plane', () => {
       sessions: {
         create: async () => ({ sessionId: 'session-1' }),
         prompt: async () => ({ accepted: true }),
+        cancel: () => ({ accepted: true }),
         inspect: async sessionId => ({ meta: { id: sessionId }, events: [] }),
         getAgent: () => undefined,
       },
@@ -133,6 +153,7 @@ describe('DSH control plane', () => {
       sessions: {
         create: async () => ({ sessionId: 'session-1' }),
         prompt: async () => ({ accepted: true }),
+        cancel: () => ({ accepted: true }),
         inspect: async sessionId => ({ meta: { id: sessionId, cwd: 'C:/task' }, events }),
         getAgent: sessionId => sessionId === 'session-1' ? agent : undefined,
       },
@@ -206,6 +227,7 @@ describe('DSH control plane', () => {
       sessions: {
         create: async () => ({ sessionId: 'session-1' }),
         prompt: async () => ({ accepted: true }),
+        cancel: () => ({ accepted: true }),
         inspect: async sessionId => ({ meta: { id: sessionId }, events }),
         getAgent: () => ({ status: 'running' as const, whenIdle: async () => {} }),
       },
@@ -247,6 +269,7 @@ describe('DSH control plane', () => {
       sessions: {
         create: async () => ({ sessionId: 'session-1' }),
         prompt: async () => ({ accepted: true }),
+        cancel: () => ({ accepted: true }),
         inspect: async sessionId => ({ meta: { id: sessionId }, events: [] }),
         getAgent: () => undefined,
       },
@@ -284,6 +307,7 @@ describe('DSH control plane', () => {
       sessions: {
         create: async () => ({ sessionId: 'session-1' }),
         prompt: async () => ({ accepted: true }),
+        cancel: () => ({ accepted: true }),
         inspect: async sessionId => ({
           meta: { id: sessionId },
           events: [{ seq: 0, type: tail.type, time: 1, data: tail.data }],
@@ -310,6 +334,7 @@ describe('DSH control plane', () => {
       sessions: {
         create: async () => ({ sessionId: 'session-1' }),
         prompt: async () => ({ accepted: true }),
+        cancel: () => ({ accepted: true }),
         inspect: async sessionId => ({ meta: { id: sessionId }, events: [] }),
         getAgent: () => undefined,
       },

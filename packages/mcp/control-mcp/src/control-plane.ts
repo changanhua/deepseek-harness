@@ -21,6 +21,7 @@ export interface ControlSessionDependencies {
     readonly mode: 'queue' | 'steer'
     readonly content: readonly [{ readonly type: 'text'; readonly text: string }]
   }, signal: AbortSignal): Promise<{ readonly accepted: true }>
+  cancel(request: { readonly sessionId: string }): { readonly accepted: true }
   inspect(sessionId: string, signal?: AbortSignal): Promise<{
     readonly meta: Readonly<Record<string, unknown>>
     readonly events: readonly ControlSessionEvent[]
@@ -59,12 +60,14 @@ export interface ControlRequest {
   readonly requestId: string
   readonly method:
     | 'runtime_status'
+    | 'request_receipt'
     | 'session_open'
     | 'session_prompt'
     | 'session_wait'
     | 'session_events'
     | 'session_observe'
     | 'session_attention_answer'
+    | 'session_cancel'
     | 'cordis_inspect'
     | 'browser_instances'
     | 'browser_tabs'
@@ -76,8 +79,14 @@ export interface ControlRequest {
 
 interface CachedWrite {
   readonly fingerprint: string
+  readonly method: ControlRequest['method']
   readonly result: Promise<unknown>
+  readonly receipt: Promise<WriteReceipt>
 }
+
+type WriteReceipt =
+  | { readonly status: 'fulfilled'; readonly value: unknown }
+  | { readonly status: 'rejected'; readonly error: { readonly message: string; readonly code?: string } }
 
 /** A single connector run may claim exactly one Session. */
 export class DshControlPlane {
@@ -110,9 +119,13 @@ export class DshControlPlane {
         this.readCount++
         return { runId: this.options.runId, sessionId: this.sessionId ?? null,
           identity: await this.options.runtime?.() ?? null }
+      case 'request_receipt':
+        this.readCount++
+        return await this.requestReceipt(request.params)
       case 'session_open':
       case 'session_prompt':
       case 'session_attention_answer':
+      case 'session_cancel':
         return await this.idempotentWrite(request, signal)
       case 'session_wait':
         this.waitCount++
@@ -158,10 +171,22 @@ export class DshControlPlane {
     }
     const result = request.method === 'session_open' ? this.open(request.params)
       : request.method === 'session_attention_answer' ? this.sessionAttentionAnswer(request.params, signal)
-        : this.prompt(request.requestId, request.params, signal)
+        : request.method === 'session_cancel' ? this.sessionCancel(request.params)
+          : this.prompt(request.requestId, request.params, signal)
+    const receipt = result.then<WriteReceipt, WriteReceipt>(
+      value => ({ status: 'fulfilled', value }),
+      (error: unknown) => ({ status: 'rejected', error: errorValue(error) }),
+    )
     this.writeCount++
-    this.writes.set(request.requestId, { fingerprint, result })
+    this.writes.set(request.requestId, { fingerprint, method: request.method, result, receipt })
     return result
+  }
+
+  private async requestReceipt(params: Readonly<Record<string, unknown>>): Promise<unknown> {
+    const requestId = requiredString(params.requestId, 'requestId')
+    const write = this.writes.get(requestId)
+    if (write === undefined) return { requestId, found: false }
+    return { requestId, found: true, method: write.method, ...await write.receipt }
   }
 
   private async open(params: Readonly<Record<string, unknown>>): Promise<unknown> {
@@ -253,6 +278,12 @@ export class DshControlPlane {
     if (this.options.attention === undefined) throw new Error('attention service is unavailable')
     signal.throwIfAborted()
     return this.options.attention.answer(sessionId, attentionId, { answers: parseAttentionAnswers(params.answers) })
+  }
+
+  private sessionCancel(params: Readonly<Record<string, unknown>>): Promise<unknown> {
+    const sessionId = requiredString(params.sessionId, 'sessionId')
+    this.assertSession(sessionId)
+    return Promise.resolve(this.options.sessions.cancel({ sessionId }))
   }
 
   private async browserInstances(params: Readonly<Record<string, unknown>>): Promise<unknown> {
@@ -458,6 +489,13 @@ function eventPage(events: readonly ControlSessionEvent[], afterSeq: number, lim
   const cursor = page.at(-1)?.seq ?? afterSeq
   const latestSeq = events.at(-1)?.seq ?? -1
   return { cursor, latestSeq, hasMore: cursor < latestSeq, events: page }
+}
+
+function errorValue(error: unknown): { readonly message: string; readonly code?: string } {
+  const message = error instanceof Error ? error.message : String(error)
+  return typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+    ? { message, code: error.code }
+    : { message }
 }
 
 function parseAttentionAnswers(value: unknown): AskUserQuestionAnswer['answers'] {

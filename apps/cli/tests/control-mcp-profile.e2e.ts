@@ -88,7 +88,7 @@ describe('control-mcp profile', () => {
       const listed = await read()
       const tools = (listed.result as { tools: Array<{ name: string }> }).tools
       expect(tools.map(tool => tool.name)).toContain('dsh_browser_entry_inspect')
-      expect(tools).toHaveLength(14)
+      expect(tools).toHaveLength(16)
       send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: {
         name: 'dsh_session_open',
         arguments: { requestId: 'open-1', cwd: 'C:/task', sessionId: 'session-1' },

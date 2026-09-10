@@ -132,6 +132,12 @@ export function createDshControlMcpServer(caller: DshControlCaller): McpServer {
     annotations: { readOnlyHint: true },
   }, async (params, extra) => readResult(caller, 'runtime_status', params, extra.signal))
 
+  server.registerTool('dsh_request_receipt', {
+    description: 'Reconcile an earlier write after a lost or uncertain MCP reply. Absence does not prove the Host never committed it.',
+    inputSchema: z.object({ requestId }),
+    annotations: { readOnlyHint: true },
+  }, async (params, extra) => readResult(caller, 'request_receipt', params, extra.signal))
+
   server.registerTool('dsh_session_open', {
     description: 'Create or adopt the single DSH Session bound to this validation run.',
     inputSchema: z.object({
@@ -192,6 +198,12 @@ export function createDshControlMcpServer(caller: DshControlCaller): McpServer {
     inputSchema: z.object({ requestId, sessionId, attentionId: z.string().uuid(), answers: z.array(attentionAnswer).min(1).max(32) }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   }, async ({ requestId: id, ...params }, extra) => resultOf(caller.call('session_attention_answer', params, id, extra.signal)))
+
+  server.registerTool('dsh_session_cancel', {
+    description: 'Cancel the active bound Session turn while preserving queued and steering input for subsequent work. Reuse requestId after a lost reply.',
+    inputSchema: z.object({ requestId, sessionId }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  }, async ({ requestId: id, ...params }, extra) => resultOf(caller.call('session_cancel', params, id, extra.signal)))
 
   server.registerTool('dsh_cordis_inspect', {
     description: 'Read source-free Dynamic Cordis lifecycle state owned by the bound Session.',

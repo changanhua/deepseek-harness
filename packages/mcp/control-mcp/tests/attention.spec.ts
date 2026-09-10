@@ -35,6 +35,7 @@ describe('live control questions', () => {
       sessions: {
         create: async () => ({ sessionId: 'one' }),
         prompt: async () => ({ accepted: true }),
+        cancel: () => ({ accepted: true }),
         inspect: async () => ({ meta: {}, events }),
         getAgent: () => ({ status: 'running', whenIdle: async () => {} }),
         subscribe: () => () => {},

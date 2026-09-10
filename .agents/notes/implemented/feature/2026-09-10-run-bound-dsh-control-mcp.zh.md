@@ -20,7 +20,7 @@ Status: implemented
 
 MCP server 暴露固定操作：运行身份、Session 打开/提示/等待/事件/实时观察/问题回答、不含源码的 Cordis inventory、浏览器安装/标签页/快照/条目检查以及证据导出。它不暴露任意 Remote endpoint、Context 对象、Node.js 执行、shell、文件系统、Dynamic Cordis 变更或验收决定。
 
-Session 打开、提示与问题回答要求调用方生成幂等 key。Host 保留固定数量的写入 receipt，容量耗尽后拒绝新写入，同时分别统计读取和等待。原问题结束后，相同回答请求仍可重放 receipt；receipt 和待答请求只属于当前进程。证据导出包括包代码指纹、适配器加载时的源码身份、当前观察及 Session 事件，由独立 verifier 解释这些事实。
+Session 打开、提示、取消与问题回答要求调用方生成幂等 key。Host 保留固定数量的写入 receipt，容量耗尽后拒绝新写入，同时分别统计读取和等待。receipt 查询可核对不确定回复而不再次写入；相同写入会重放 receipt，同一身份换成其他内容则拒绝。取消会保留等待稍后执行的输入。receipt 和待答请求只属于当前进程。证据导出包括包代码指纹、适配器加载时的源码身份、当前观察及 Session 事件，由独立 verifier 解释这些事实。
 
 默认关闭的 Host 仅为精确绑定的存活 Agent 接管现有 `user-questions/request` waterfall。每个待答请求获得独立身份，取消和释放立即撤回请求。运行观察读取这些真实待答请求，不从历史工具调用猜测问题是否仍未回答。等待在出现问题或 Agent 停止运行时返回；分页 cursor 只推进到实际返回的事件。现有问题工具记录提交的答案，并继续原 Agent 循环。必须由人决定的事项仍属于人，桥接不覆盖审批策略。
 

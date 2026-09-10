@@ -15,10 +15,11 @@ describe('Codex to DSH development round', () => {
     await mkdir(profileDir, { recursive: true })
     await writeFile(join(profileDir, 'cordis.patch.yml'), '- id: session-title-llm\n  disabled: true\n')
     const model = await startMockLlmServer({
-      sequence: ['tool_call_success', 'success'], repeatLast: false,
+      sequence: ['tool_call_success', 'success', 'slow_success'], repeatLast: false,
       toolName: 'ask_user_question',
       toolArguments: JSON.stringify({ questions: [{ id: 'next', question: 'Choose the next development step.' }] }),
       successText: 'Development round continued after the answer.',
+      chunkDelayMs: 100,
     })
     const repository = resolve(import.meta.dirname, '../../../..')
     const transport = new StdioClientTransport({
@@ -61,6 +62,9 @@ describe('Codex to DSH development round', () => {
         answers: [{ id: 'next', selected: [], custom: 'Inspect the focused package result.' }] }
       await expect(call('dsh_session_attention_answer', answer)).resolves.toEqual({ answered: true })
       await expect(call('dsh_session_attention_answer', answer)).resolves.toEqual({ answered: true })
+      await expect(call('dsh_request_receipt', { requestId: 'answer' })).resolves.toMatchObject({
+        found: true, method: 'session_attention_answer', status: 'fulfilled', value: { answered: true },
+      })
       const done = await call('dsh_session_wait', { sessionId, afterSeq: waiting.cursor, timeoutMs: 15_000 })
       expect(done, JSON.stringify(done)).toMatchObject({ phase: 'completed', attention: [], timedOut: false })
       const evidence = await call('dsh_evidence_export', { sessionId })
@@ -71,6 +75,14 @@ describe('Codex to DSH development round', () => {
       expect(JSON.stringify(model.requests[1]!.body)).toContain('Inspect the focused package result.')
       expect(JSON.stringify(model.requests[1]!.body)).toContain(steering)
       expect(evidence.observation).toMatchObject({ phase: 'completed', attention: [] })
+      await call('dsh_session_prompt', { requestId: 'cancel-prompt', sessionId, text: 'Start cancellable work.' })
+      await expect.poll(() => model.requests.length, { timeout: 10_000 }).toBe(3)
+      await call('dsh_session_cancel', { requestId: 'cancel', sessionId })
+      await expect(call('dsh_request_receipt', { requestId: 'cancel' })).resolves.toMatchObject({
+        found: true, method: 'session_cancel', status: 'fulfilled', value: { accepted: true },
+      })
+      const cancelled = await call('dsh_session_wait', { sessionId, afterSeq: done.cursor, timeoutMs: 15_000 })
+      expect(cancelled, JSON.stringify(cancelled)).toMatchObject({ phase: 'cancelled', timedOut: false })
       await call('dsh_control_close')
       const pid = (runtime.identity as { pid: number }).pid
       expect(() => process.kill(pid, 0)).toThrow()

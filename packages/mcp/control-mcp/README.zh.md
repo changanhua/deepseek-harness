@@ -53,7 +53,7 @@ pnpm dsh --profile control-mcp
 
 ### 获得的能力
 
-连接器暴露十四个工具，覆盖运行身份、Host 关闭、Session 打开/提示/等待/事件/观察/问题回答、无源码的 Dynamic Cordis 检查、浏览器安装/标签页/快照/条目检查以及证据导出。`dsh_runtime_status` 可在绑定 Session 前调用，返回适配器加载时观察到的进程、Profile、home、包代码指纹和源码工作区。包指纹不代表整个应用构建或后续源码变更的验证结果。
+连接器暴露十六个工具，覆盖运行身份与写入核对、Host 关闭、Session 打开/提示/取消/等待/事件/观察/问题回答、无源码的 Dynamic Cordis 检查、浏览器安装/标签页/快照/条目检查以及证据导出。`dsh_runtime_status` 可在绑定 Session 前调用，返回适配器加载时观察到的进程、Profile、home、包代码指纹和源码工作区。包指纹不代表整个应用构建或后续源码变更的验证结果。
 
 一次开发回合先打开 Session、提交指令，再调用 `dsh_session_wait`。Agent 空闲、出现真实待答问题或超时时，等待返回阶段、问题和有界事件页。后续事件读取沿用返回的 `cursor`；`hasMore` 和 `latestSeq` 区分分页未读完与已读到末尾。`dsh_session_observe` 直接读取阶段与待答问题。回答时向 `dsh_session_attention_answer` 提交 `attentionId`、调用方生成的 `requestId` 和每个问题 id 的答案。现有问题服务恢复原工具调用，并把答案记录进 Session。补充指令可通过 `session_prompt` 的 `mode: steer` 提交。
 
@@ -70,7 +70,7 @@ pnpm dsh --profile control-mcp
 
 ### 写入、等待与证据
 
-Session 打开、提示和问题回答要求调用方生成 `requestId`。回复丢失后重试相同 id 和内容；即使问题已结束，匹配的 receipt 仍会重放，换成其他内容则拒绝。Host 最多保留 `maxWriteReceipts` 个写入结果，默认 256 个，满额后拒绝新写入。这些 receipt 和待答请求不跨 Host 重启恢复。证据导出包含运行身份、当前观察、Session 事件和操作计数，结果判断由外部检查者负责。
+Session 打开、提示、取消和问题回答要求调用方生成 `requestId`。回复丢失后重试相同 id 和内容；即使问题已结束，匹配的 receipt 仍会重放，换成其他内容则拒绝。`dsh_request_receipt` 可在不重复写入的情况下核对结果；未找到只表示当前 Host 进程没有保留该 receipt。`dsh_session_cancel` 中断当前回合并保留排队或 steering 输入，后续 prompt 可唤醒新工作。Host 最多保留 `maxWriteReceipts` 个写入结果，默认 256 个，满额后拒绝新写入。这些 receipt 和待答请求不跨 Host 重启恢复。证据导出包含运行身份、当前观察、Session 事件和操作计数，结果判断由外部检查者负责。
 
 ### 认证与恢复
 
@@ -107,11 +107,11 @@ Session 打开、提示和问题回答要求调用方生成 `requestId`。回复
 
 #### 模型看到什么
 
-已连接的 MCP 客户端会看到十四个固定 `dsh_*` 工具 schema 及其 JSON 结果。问题文本和浏览器页面事实都是不可信数据；任何工具结果都不会授予新权限或证明成功。
+已连接的 MCP 客户端会看到十六个固定 `dsh_*` 工具 schema 及其 JSON 结果。问题文本和浏览器页面事实都是不可信数据；任何工具结果都不会授予新权限或证明成功。
 
 #### Token 影响
 
-十四个工具 schema 给外部 MCP 客户端增加固定上下文成本。事件页和问题批次有界，完整证据导出的大小随 Session 历史增长。本包不向目标 DSH 模型添加工具或提示章节；提交的问题答案会进入其现有工具结果和后续模型上下文。
+十六个工具 schema 给外部 MCP 客户端增加固定上下文成本。事件页和问题批次有界，完整证据导出的大小随 Session 历史增长。本包不向目标 DSH 模型添加工具或提示章节；提交的问题答案会进入其现有工具结果和后续模型上下文。
 
 #### KV Cache 影响
 
