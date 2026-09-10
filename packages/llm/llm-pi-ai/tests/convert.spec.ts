@@ -837,6 +837,7 @@ describe('mapStopReason / mapUsage', () => {
   })
 
   it.each([
+    'Response incomplete: network_error',
     'other side closed',
     'HTTP2 request did not get a response',
     'WebSocket closed unexpectedly',
@@ -851,8 +852,16 @@ describe('mapStopReason / mapUsage', () => {
     'Stream ended without finish_reason',
   ])('maps pi-ai transport wording %j', (errorMessage) => {
     expect(mapStopReason(assistant({ stopReason: 'error', errorMessage })))
-      .toMatchObject({ kind: 'error', failure: { code: 'TRANSPORT' } })
+      .toEqual({ kind: 'error', failure: { message: errorMessage, code: 'TRANSPORT' } })
   })
+
+  it.each(['content_filter', 'unknown_reason', 'network_error_other'])(
+    'keeps an unrelated incomplete reason %j as a generic error', (reason) => {
+      const errorMessage = `Response incomplete: ${reason}`
+      expect(mapStopReason(assistant({ stopReason: 'error', errorMessage })))
+        .toEqual({ kind: 'error', failure: { message: errorMessage, code: 'PI_AI_ERROR' } })
+    },
+  )
 
   it('uses pi-ai provider-specific overflow classification without losing rate-limit exclusions', () => {
     expect(mapStopReason(assistant({
