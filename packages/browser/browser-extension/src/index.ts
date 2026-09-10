@@ -57,6 +57,7 @@ interface Peer {
 
 /** One live page entry mount; late clicks from another document are rejected against it. */
 interface MountRegistration {
+  acceptingClicks: boolean
   readonly installationId: string
   readonly sessionId: string
   readonly grantEpoch: number
@@ -180,6 +181,10 @@ export class BrowserExtension extends Browser {
     const parsed = browserActionSchema.safeParse(fixed.action)
     if (!parsed.success) return this.failure(fixed, signal, 'invalid_action')
     const action = normalizeAction(parsed.data)
+    if (action.kind === 'entry_mount' || action.kind === 'entry_unmount') {
+      const mount = this.mounts.get(`${fixed.installationId}\u0000${action.mountId}`)
+      if (mount !== undefined && mount.sessionId !== fixed.sessionId) return this.failure(fixed, signal, 'mount_owner_mismatch')
+    }
     const mutates = !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(action.kind)
     if (action.kind === 'entry_mount' && this.mounts.size >= this.config.maxMounts
       && !this.mounts.has(`${fixed.installationId}\u0000${action.mountId}`)) {
@@ -246,19 +251,26 @@ export class BrowserExtension extends Browser {
       mutates, payload: jsonValueSchema.parse(payload),
       ...(target === undefined ? {} : { target: { tabId: target.tabId, frameId: target.frameId, documentId: target.documentId } }),
     })
+    const unmount = action.kind === 'entry_unmount' ? this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) : undefined
+    if (unmount) unmount.acceptingClicks = false
     const result = await this.requests.execute(request, signal)
     // Register or clear the page mount inside the dispatch that owns the grant
     // epoch, so late clicks are checked against the authorization that mounted them.
     if (action.kind === 'entry_mount') {
       if (result.outcome === 'observed') {
         this.mounts.set(`${operation.installationId}\u0000${action.mountId}`, {
+          acceptingClicks: true,
           installationId: operation.installationId, sessionId: operation.sessionId, grantEpoch: grant.grantEpoch,
           tabId: action.page.tabId, frameId: action.page.frameId, documentId: action.page.documentId,
           url: action.page.url, mountId: action.mountId,
         })
       }
     } else if (action.kind === 'entry_unmount') {
-      this.mounts.delete(`${operation.installationId}\u0000${action.mountId}`)
+      const value = result.value as { unmounted?: unknown; remaining?: unknown } | undefined
+      if (result.outcome === 'observed' && value?.unmounted === true && value.remaining === 0
+        && this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) === unmount) {
+        this.mounts.delete(`${operation.installationId}\u0000${action.mountId}`)
+      }
     }
     return {
       requestId: result.requestId,
@@ -484,7 +496,7 @@ export class BrowserExtension extends Browser {
     if (grant === undefined) throw Object.assign(new Error('authentication required'), { code: 'authentication required' })
     const key = `${grant.installationId}\u0000${input.mountId}`
     const mount = this.mounts.get(key)
-    if (mount === undefined) return { accepted: false }
+    if (mount === undefined || !mount.acceptingClicks) return { accepted: false }
     if (mount.grantEpoch !== grant.grantEpoch || !this.grants.permit(grant) || !grant.scopes.includes('browser:write')
       || mount.tabId !== input.tabId || mount.frameId !== input.frameId
       || mount.documentId !== input.documentId || mount.url !== input.url) {
@@ -518,6 +530,8 @@ function allows(grant: GrantSummary, url: string): boolean {
   try { const parsed = new URL(url); return ['http:', 'https:'].includes(parsed.protocol) && (grant.origins.includes('*') || grant.origins.includes(parsed.origin)) } catch { return false }
 }
 function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): BrowserAction {
+  if (action.kind === 'entry_unmount') return { kind: action.kind, page: action.page, mountId: action.mountId,
+    ...(action.forgetCollected === undefined ? {} : { forgetCollected: action.forgetCollected }) }
   if (action.kind === 'entry_inspect') {
     return { kind: action.kind, page: action.page, regionSelector: action.regionSelector, selector: action.selector,
       ...(action.titleSelector === undefined ? {} : { titleSelector: action.titleSelector }),

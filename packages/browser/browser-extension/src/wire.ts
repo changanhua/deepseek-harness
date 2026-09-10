@@ -49,7 +49,7 @@ export const browserActionSchema = z.discriminatedUnion('kind', [
     label: z.string().min(1).max(64), titleSelector: z.string().max(256).optional(),
     linkSelector: z.string().max(256).optional(),
     collected: z.array(z.string().max(8192)).max(512).optional() }).strict(),
-  z.object({ kind: z.literal('entry_unmount'), page, mountId: id }).strict(),
+  z.object({ kind: z.literal('entry_unmount'), page, mountId: id, forgetCollected: z.boolean().optional() }).strict(),
 ])
 const identity = z.object({
   protocolVersion: z.literal(1), grantEpoch: z.number().int().positive(), requestId: z.uuid({ version: 'v4' }),

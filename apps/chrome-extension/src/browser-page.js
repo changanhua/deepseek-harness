@@ -402,18 +402,48 @@
   // clicked item's title+link back to the assistant through chrome.runtime.
   const MAX_ENTRY_ITEMS = 2000
   const entryMounts = new Map()
-  const entryStyle = collected => `display:inline-block;padding:2px 10px;margin:0 0 0 8px;font-size:12px;line-height:1.4;border:1px solid ${collected ? 'transparent' : '#99a'};border-radius:10px;background:${collected ? '#eee' : '#f0f4ff'};color:${collected ? '#888' : '#2255aa'};cursor:${collected ? 'default' : 'pointer'};font-family:system-ui,sans-serif;${collected ? 'opacity:0.65;' : ''}`
-  const entryOf = (item, action) => {
+  const entryInspections = new Map()
+  const entryCollections = new Map()
+  // Protocol retention bounds for one injected document, including owner keys.
+  const MAX_ENTRY_RECORDS = 128
+  const MAX_COLLECTION_BYTES = 65_536
+  const entryOwner = request => JSON.stringify([request.sessionId, request.installationId, request.grantEpoch,
+    request.payload.page?.tabId, request.payload.page?.frameId, request.payload.page?.documentId])
+  const bindingKey = request => JSON.stringify([entryOwner(request), request.payload.regionSelector, request.payload.selector,
+    request.payload.titleSelector ?? null, request.payload.linkSelector ?? null])
+  const buttonsFor = mountId => [...document.querySelectorAll('[data-dsh-entry-mount-id]')]
+    .filter(button => button.dataset.dshEntryMountId === mountId)
+  const entryText = node => {
+    if (!node) return ''
+    const clone = node.cloneNode(true)
+    for (const button of clone.querySelectorAll?.('[data-dsh-entry-mount]') ?? []) button.remove()
+    return text(clone.textContent).slice(0, 200)
+  }
+  const fieldsOf = (item, action) => {
     const titleNode = action.titleSelector ? item.querySelector(action.titleSelector) : item.querySelector('a')
     const linkNode = action.linkSelector ? item.querySelector(action.linkSelector) : item.querySelector('a[href]')
-    return { title: text((titleNode ?? item).textContent).slice(0, 200), link: linkNode?.href ?? '' }
+    return { item, titleNode, linkNode, title: entryText(titleNode ?? item), link: linkNode?.href ?? '' }
+  }
+  const sameFields = (left, right) => left.item === right.item && left.titleNode === right.titleNode
+    && left.linkNode === right.linkNode && left.title === right.title && left.link === right.link
+  const bindingFacts = action => {
+    const regions = [...document.querySelectorAll(action.regionSelector)]
+    if (regions.length !== 1) return { error: 'ambiguous_region' }
+    if (!action.selector.startsWith(':scope')) return { error: 'binding_outside_region' }
+    const root = regions[0]
+    const matches = [...root.querySelectorAll(action.selector)]
+    return { root, rows: matches.slice(0, MAX_ENTRY_ITEMS).map(item => fieldsOf(item, action)), count: matches.length }
+  }
+  const entryStyle = collected => `display:inline-block;padding:2px 10px;margin:0 0 0 8px;font-size:12px;line-height:1.4;border:1px solid ${collected ? 'transparent' : '#99a'};border-radius:10px;background:${collected ? '#eee' : '#f0f4ff'};color:${collected ? '#888' : '#2255aa'};cursor:${collected ? 'default' : 'pointer'};font-family:system-ui,sans-serif;${collected ? 'opacity:0.65;' : ''}`
+  const entryOf = (item, action) => {
+    const { title, link } = fieldsOf(item, action)
+    return { title, link }
   }
   const entryUnmountById = mountId => {
     const existing = entryMounts.get(mountId)
-    if (!existing) return
-    existing.observer.disconnect()
+    existing?.observer.disconnect()
     entryMounts.delete(mountId)
-    for (const button of document.querySelectorAll(`[data-dsh-entry-mount-id="${mountId}"]`)) button.remove()
+    for (const button of buttonsFor(mountId)) button.remove()
   }
   const validEntryBinding = action => typeof action.regionSelector === 'string' && action.regionSelector.length > 0
     && typeof action.selector === 'string' && action.selector.length > 0 && action.selector.length <= 256
@@ -428,28 +458,17 @@
     const action = request.payload
     const page = actionPage(action)
     if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'stale_document', quiescent: true })
-    let regions, matches
-    try {
-      regions = [...document.querySelectorAll(action.regionSelector)]
-      if (regions.length !== 1) return receipt(request, 'failed', { reason: 'ambiguous_region', quiescent: true })
-      if (!action.selector.startsWith(':scope')) {
-        return receipt(request, 'failed', { reason: 'binding_outside_region', quiescent: true })
-      }
-      matches = [...regions[0].querySelectorAll(action.selector)].slice(0, MAX_ENTRY_ITEMS)
-    } catch {
+    const key = bindingKey(request)
+    entryInspections.delete(key)
+    let facts
+    try { facts = bindingFacts(action) } catch {
       return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true })
     }
-    if (matches.some(item => !regions[0].contains(item))) {
-      return receipt(request, 'failed', { reason: 'binding_outside_region', quiescent: true })
-    }
+    if (facts.error) return receipt(request, 'failed', { reason: facts.error, quiescent: true })
     const limit = action.sampleLimit ?? 6
     const links = new Map()
     let valid = 0, missingTitle = 0, missingLink = 0
-    const records = matches.map((item, index) => {
-      const titleNode = action.titleSelector ? item.querySelector(action.titleSelector) : item.querySelector('a')
-      const linkNode = action.linkSelector ? item.querySelector(action.linkSelector) : item.querySelector('a[href]')
-      const title = text((titleNode ?? item).textContent).slice(0, 200)
-      const link = linkNode?.href ?? ''
+    const records = facts.rows.map(({ titleNode, title, link }, index) => {
       const hasTitle = action.titleSelector ? titleNode !== null && title !== '' : title !== ''
       const hasLink = link !== ''
       if (!hasTitle) missingTitle++
@@ -469,10 +488,12 @@
       if (sampleIndexes.size >= limit) break
       sampleIndexes.add(record.index)
     }
+    if (entryInspections.size >= MAX_ENTRY_RECORDS) return receipt(request, 'failed', { reason: 'inspect_capacity', quiescent: true })
+    entryInspections.set(key, { owner: entryOwner(request), ...facts })
     return receipt(request, 'observed', { quiescent: true, value: {
-      matched: matches.length, valid, missingTitle, missingLink,
+      matched: facts.rows.length, valid, missingTitle, missingLink,
       duplicateLinks: [...links.values()].filter(count => count > 1).reduce((sum, count) => sum + count - 1, 0),
-      truncated: matches.length >= MAX_ENTRY_ITEMS,
+      truncated: facts.count > MAX_ENTRY_ITEMS,
       samples: [...sampleIndexes].sort((left, right) => left - right).map(index => records[index]),
     } })
   }
@@ -491,14 +512,36 @@
     const action = request.payload
     const page = actionPage(action)
     if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'stale_document', quiescent: true })
+    const fail = reason => receipt(request, 'failed', { reason, quiescent: true })
+    const owner = entryOwner(request)
+    const existing = entryMounts.get(action.mountId)
+    if (existing && existing.owner !== owner) return fail('mount_owner_mismatch')
+    const key = bindingKey(request)
+    const inspected = entryInspections.get(key)
+    if (!inspected) return fail('inspect_required')
+    let facts
+    try { facts = bindingFacts(action) } catch { return fail('invalid_action') }
+    if (facts.error) return fail(facts.error)
+    if (facts.root !== inspected.root || facts.count !== inspected.count || facts.rows.length !== inspected.rows.length
+      || !facts.rows.every((row, index) => sameFields(row, inspected.rows[index]))) return fail('stale_binding')
+    if (!existing && entryMounts.size >= MAX_ENTRY_RECORDS) return fail('mount_capacity')
+    const collectionKey = JSON.stringify([owner, action.mountId])
+    const collected = new Set(action.collected ?? entryCollections.get(collectionKey) ?? [])
+    const nextCollections = new Map(entryCollections)
+    nextCollections.set(collectionKey, [...collected])
+    if (nextCollections.size > MAX_ENTRY_RECORDS || new TextEncoder().encode(JSON.stringify([...nextCollections])).byteLength > MAX_COLLECTION_BYTES) return fail('collection_capacity')
     entryUnmountById(action.mountId)
-    const collected = new Set(action.collected ?? [])
+    entryCollections.set(collectionKey, [...collected])
     const documentId = request.target?.documentId ?? page?.documentId ?? ''
     let mounted = 0
+    const attached = new Map()
+    const invalidated = new WeakSet()
     const attach = item => {
       if (mounted >= MAX_ENTRY_ITEMS || !item?.isConnected || !item.appendChild) return
-      if (item.querySelector(`[data-dsh-entry-mount-id="${action.mountId}"]`)) return
+      if (attached.has(item) || invalidated.has(item)) return
       const entry = entryOf(item, action)
+      if (!entry.link) return
+      const fields = fieldsOf(item, action)
       const isCollected = entry.link !== '' && collected.has(entry.link)
       const button = document.createElement('button')
       button.type = 'button'
@@ -509,53 +552,56 @@
       button.textContent = isCollected ? `${action.label} · 已加入` : action.label
       if (isCollected) button.disabled = true
       button.addEventListener('click', () => {
-        if (entry.link === '') return
+        if (!item.isConnected || !facts.root.isConnected || location.href !== page?.url
+          || !sameFields(fields, fieldsOf(item, action)) || entryMounts.get(action.mountId)?.owner !== owner) {
+          button.remove(); invalidated.add(item); attached.delete(item); return
+        }
         void chrome.runtime.sendMessage({ type: 'dsh-entry-click', mountId: action.mountId, documentId,
           url: location.href, entry: { title: entry.title, link: entry.link } })
       })
       item.appendChild(button)
+      attached.set(item, { button, fields })
       mounted++
     }
-    let root = document, matches
-    try {
-      if (action.regionSelector !== undefined) {
-        const regions = [...document.querySelectorAll(action.regionSelector)]
-        if (regions.length !== 1 || !action.selector.startsWith(':scope')) {
-          return receipt(request, 'failed', { reason: regions.length !== 1 ? 'ambiguous_region' : 'binding_outside_region', quiescent: true })
-        }
-        root = regions[0]
-      }
-      matches = [...root.querySelectorAll(action.selector)].slice(0, MAX_ENTRY_ITEMS)
-    }
-    catch { return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true }) }
-    for (const item of matches) attach(item)
-    const observer = new MutationObserver(mutations => {
+    const root = facts.root
+    for (const row of facts.rows) attach(row.item)
+    const observer = new MutationObserver(() => {
       if (!entryMounts.has(action.mountId)) return
-      if (action.regionSelector !== undefined) {
-        for (const match of root.querySelectorAll(action.selector)) attach(match)
-        return
-      }
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType !== Node.ELEMENT_NODE) continue
-          if (node.matches?.(action.selector)) attach(node)
-          else for (const match of node.querySelectorAll?.(action.selector) ?? []) attach(match)
+      for (const [item, record] of attached) {
+        if (!root.isConnected || !item.isConnected || !root.contains(item) || !sameFields(record.fields, fieldsOf(item, action))) {
+          record.button.remove(); invalidated.add(item); attached.delete(item); mounted--
         }
       }
+      if (root.isConnected) for (const match of root.querySelectorAll(action.selector)) attach(match)
     })
-    observer.observe(root, { childList: true, subtree: true })
-    entryMounts.set(action.mountId, { observer })
+    observer.observe(document, { childList: true, subtree: true, attributes: true, characterData: true })
+    entryMounts.set(action.mountId, { observer, owner, key })
     return receipt(request, 'observed', { quiescent: true, value: { mounted, collected: [...collected] } })
   }
   const entryUnmount = request => {
     prune()
     if (!validIdentity(request) || request.payload?.kind !== 'entry_unmount'
-      || typeof request.payload.mountId !== 'string' || !request.payload.mountId)
+      || typeof request.payload.mountId !== 'string' || !request.payload.mountId
+      || request.payload.forgetCollected !== undefined && typeof request.payload.forgetCollected !== 'boolean')
       return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true })
     const page = actionPage(request.payload)
     if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'stale_document', quiescent: true })
+    const owner = entryOwner(request)
+    const existing = entryMounts.get(request.payload.mountId)
+    if (existing && existing.owner !== owner) return receipt(request, 'failed', { reason: 'mount_owner_mismatch', quiescent: true })
+    for (const [key, inspection] of entryInspections) if (inspection.owner === owner) entryInspections.delete(key)
     entryUnmountById(request.payload.mountId)
-    return receipt(request, 'observed', { quiescent: true, value: { unmounted: true } })
+    if (request.payload.forgetCollected) entryCollections.delete(JSON.stringify([owner, request.payload.mountId]))
+    return receipt(request, 'observed', { quiescent: true, value: { unmounted: true, remaining: buttonsFor(request.payload.mountId).length } })
+  }
+  const releaseEntries = (installationId, sessionId) => {
+    const matches = owner => {
+      const parts = JSON.parse(owner)
+      return (installationId === undefined || parts[1] === installationId) && (sessionId === undefined || parts[0] === sessionId)
+    }
+    for (const [mountId, mount] of entryMounts) if (matches(mount.owner)) entryUnmountById(mountId)
+    for (const [key, inspection] of entryInspections) if (matches(inspection.owner)) entryInspections.delete(key)
+    for (const key of entryCollections.keys()) if (matches(JSON.parse(key)[0])) entryCollections.delete(key)
   }
 
   const inspect = (identity, { cancel = false } = {}) => {
@@ -644,7 +690,7 @@
   }
 
   globalThis.__dshBrowserAssistant = Object.freeze({ snapshot, prepare, execute, inspect,
-    entryInspect, entryMount, entryUnmount,
+    entryInspect, entryMount, entryUnmount, releaseEntries,
     documentToken: () => documentToken, startExternal, externalNode, issueExternal, completeExternal,
     guardExternal: request => {
       const record = externalRecord(request)

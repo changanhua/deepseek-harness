@@ -32,6 +32,9 @@ interface BrowserElementReference {
 type BrowserAction =
   | { readonly kind: 'tabs' }
   | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean }
+  | { readonly kind: 'entry_inspect'; readonly page: BrowserPage; readonly regionSelector: string; readonly selector: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly sampleLimit?: number }
+  | { readonly kind: 'entry_mount'; readonly page: BrowserPage; readonly mountId: string; readonly regionSelector?: string; readonly selector: string; readonly label: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly collected?: readonly string[] }
+  | { readonly kind: 'entry_unmount'; readonly page: BrowserPage; readonly mountId: string; readonly forgetCollected?: boolean }
   | { readonly kind: 'navigate'; readonly page: BrowserPage; readonly url: string }
   | { readonly kind: 'click'; readonly element: BrowserElementReference; readonly intent: string }
   | { readonly kind: 'fill'; readonly element: BrowserElementReference; readonly value: string; readonly intent: string }
@@ -83,6 +86,12 @@ interface BrowserActionResult {
   readonly value?: JsonValue
 }
 ```
+
+## 页面入口与站点适配
+
+条目预检与挂载遵循 [Browser 条目契约](../../packages/browser/browser/README.zh.md)。其证据绑定当前区域和字段节点，包括同文档内的替换，而非普通动作的准备票据。文档运行时最多保留 128 条预检记录与 128 条收集记录；收集键和值合计不超过 65,536 个 UTF-8 字节，每个集合最多 512 个链接。容量拒绝保留已有集合。
+
+manifest 显式声明的 `zhihu-feed.js` 内容脚本负责独立的阅读流适配。它的站点选择器不是页面模型默认值，也不构成页面模型泛化证据。模型调用方使用 Cordis preset 的页面模型 Skill 和运行器 facade；`browser_action` 不开放条目操作。
 
 ## 准备动作
 
