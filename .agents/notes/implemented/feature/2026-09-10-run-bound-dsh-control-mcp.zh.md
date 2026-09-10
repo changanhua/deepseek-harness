@@ -18,9 +18,11 @@ Status: implemented
 
 每个 Host 请求都携带已配置的 `runId`。第一次成功打开 Session 会把该适配器实例绑定到一个 Session。浏览器访问只有在新的安装观察中出现后才绑定安装；快照只接受最新标签页观察中的标签页；条目检查则使用最近一次成功快照的页面身份。调用方不能为条目检查提供文档身份。
 
-MCP server 暴露固定操作：Session 打开、提示、等待和事件；不含源码的 Cordis inventory；浏览器安装、标签页、快照和条目检查；以及证据导出。它不暴露任意 Remote endpoint、Context 对象、Node.js 执行、shell、文件系统、Dynamic Cordis 变更或验收决定。
+MCP server 暴露固定操作：运行身份、Session 打开/提示/等待/事件/实时观察/问题回答、不含源码的 Cordis inventory、浏览器安装/标签页/快照/条目检查以及证据导出。它不暴露任意 Remote endpoint、Context 对象、Node.js 执行、shell、文件系统、Dynamic Cordis 变更或验收决定。
 
-Session 打开与提示要求调用方生成幂等 key。Host 保留固定数量的写入 receipt，容量耗尽后拒绝新写入，同时分别统计读取和等待。证据导出返回 Host 观察到的 JSON 与操作计数；独立 verifier 根据自己冻结的预期解释这些事实。
+Session 打开、提示与问题回答要求调用方生成幂等 key。Host 保留固定数量的写入 receipt，容量耗尽后拒绝新写入，同时分别统计读取和等待。原问题结束后，相同回答请求仍可重放 receipt；receipt 和待答请求只属于当前进程。证据导出包括包代码指纹、适配器加载时的源码身份、当前观察及 Session 事件，由独立 verifier 解释这些事实。
+
+默认关闭的 Host 仅为精确绑定的存活 Agent 接管现有 `user-questions/request` waterfall。每个待答请求获得独立身份，取消和释放立即撤回请求。运行观察读取这些真实待答请求，不从历史工具调用猜测问题是否仍未回答。等待在出现问题或 Agent 停止运行时返回；分页 cursor 只推进到实际返回的事件。现有问题工具记录提交的答案，并继续原 Agent 循环。必须由人决定的事项仍属于人，桥接不覆盖审批策略。
 
 ## 考虑过的替代方案
 

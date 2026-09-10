@@ -116,10 +116,21 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
 
 const sessionId = z.string().min(1).describe('Session bound to this validation run.')
 const requestId = z.string().min(1).describe('Caller-minted idempotency key for this write.')
+const attentionAnswer = z.object({
+  id: z.string().min(1),
+  selected: z.array(z.string()),
+  custom: z.string().optional(),
+})
 
 /** Construct the complete bounded MCP server without claiming a transport. */
 export function createDshControlMcpServer(caller: DshControlCaller): McpServer {
   const server = new McpServer({ name: 'dsh-control', version: '1.0.0' })
+
+  server.registerTool('dsh_runtime_status', {
+    description: 'Identify the connected DSH process, Profile, home, code fingerprint, and source checkout before opening a Session.',
+    inputSchema: z.object({}),
+    annotations: { readOnlyHint: true },
+  }, async (params, extra) => readResult(caller, 'runtime_status', params, extra.signal))
 
   server.registerTool('dsh_session_open', {
     description: 'Create or adopt the single DSH Session bound to this validation run.',
@@ -150,11 +161,12 @@ export function createDshControlMcpServer(caller: DshControlCaller): McpServer {
   }, async ({ requestId: id, ...params }, extra) => resultOf(caller.call('session_prompt', params, id, extra.signal)))
 
   server.registerTool('dsh_session_wait', {
-    description: 'Wait until the bound Session becomes idle or the bounded timeout expires, then return new events.',
+    description: 'Wait until the bound Session needs an answer, becomes idle, or times out; return its phase, live questions, and the next event page.',
     inputSchema: z.object({
       sessionId,
       afterSeq: z.number().int().min(-1).optional(),
       timeoutMs: z.number().int().min(1).max(60_000).optional(),
+      limit: z.number().int().min(1).max(1000).optional(),
     }),
     annotations: { readOnlyHint: true },
   }, async (params, extra) => readResult(caller, 'session_wait', params, extra.signal))
@@ -170,10 +182,16 @@ export function createDshControlMcpServer(caller: DshControlCaller): McpServer {
   }, async (params, extra) => readResult(caller, 'session_events', params, extra.signal))
 
   server.registerTool('dsh_session_observe', {
-    description: 'Return the bound Session phase, event cursor, and any unanswered user question.',
+    description: 'Return the bound Session phase, latest event cursor, and live pending questions with their attentionId.',
     inputSchema: z.object({ sessionId }),
     annotations: { readOnlyHint: true },
   }, async (params, extra) => readResult(caller, 'session_observe', params, extra.signal))
+
+  server.registerTool('dsh_session_attention_answer', {
+    description: 'Return a caller-supplied answer to an observed live question. Relay decisions reserved for the human. Reuse requestId when retrying a lost reply.',
+    inputSchema: z.object({ requestId, sessionId, attentionId: z.string().uuid(), answers: z.array(attentionAnswer).min(1).max(32) }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  }, async ({ requestId: id, ...params }, extra) => resultOf(caller.call('session_attention_answer', params, id, extra.signal)))
 
   server.registerTool('dsh_cordis_inspect', {
     description: 'Read source-free Dynamic Cordis lifecycle state owned by the bound Session.',

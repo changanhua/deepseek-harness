@@ -22,6 +22,8 @@ describe('DSH control MCP server', () => {
       'dsh_control_close',
       'dsh_cordis_inspect',
       'dsh_evidence_export',
+      'dsh_runtime_status',
+      'dsh_session_attention_answer',
       'dsh_session_events',
       'dsh_session_observe',
       'dsh_session_open',
@@ -47,6 +49,17 @@ describe('DSH control MCP server', () => {
     expect(call).toHaveBeenCalledWith('session_observe', {
       sessionId: 'session-1',
     }, expect.any(String), expect.any(AbortSignal))
+    await expect(client.callTool({
+      name: 'dsh_session_attention_answer',
+      arguments: {
+        requestId: 'answer-1', sessionId: 'session-1', attentionId: '00000000-0000-4000-8000-000000000001',
+        answers: [{ id: 'next', selected: ['继续'] }],
+      },
+    })).resolves.toMatchObject({ isError: false, structuredContent: { result: { accepted: true } } })
+    expect(call).toHaveBeenCalledWith('session_attention_answer', {
+      sessionId: 'session-1', attentionId: '00000000-0000-4000-8000-000000000001',
+      answers: [{ id: 'next', selected: ['继续'] }],
+    }, 'answer-1', expect.any(AbortSignal))
     await expect(client.callTool({ name: 'dsh_control_close', arguments: {} })).resolves.toMatchObject({
       isError: false, structuredContent: { result: { closed: true } },
     })

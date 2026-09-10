@@ -53,7 +53,11 @@ pnpm dsh --profile control-mcp
 
 ### 获得的能力
 
-连接器暴露十二个工具：关闭 Host；针对一个 Session 的打开、提示、等待、事件读取和运行观察；不含源码的 Dynamic Cordis 检查；浏览器安装、标签页、快照和条目选择器检查；以及结构化证据导出。`dsh_session_observe` 返回当前阶段、事件 cursor，以及尚未回答的 `ask_user_question`。`dsh_browser_snapshot` 返回页面事实，但不选择选择器。`dsh_browser_entry_inspect` 只在快照成功后接受候选选择器，并从保存的观察中提供页面身份。
+连接器暴露十四个工具，覆盖运行身份、Host 关闭、Session 打开/提示/等待/事件/观察/问题回答、无源码的 Dynamic Cordis 检查、浏览器安装/标签页/快照/条目检查以及证据导出。`dsh_runtime_status` 可在绑定 Session 前调用，返回适配器加载时观察到的进程、Profile、home、包代码指纹和源码工作区。包指纹不代表整个应用构建或后续源码变更的验证结果。
+
+一次开发回合先打开 Session、提交指令，再调用 `dsh_session_wait`。Agent 空闲、出现真实待答问题或超时时，等待返回阶段、问题和有界事件页。后续事件读取沿用返回的 `cursor`；`hasMore` 和 `latestSeq` 区分分页未读完与已读到末尾。`dsh_session_observe` 直接读取阶段与待答问题。回答时向 `dsh_session_attention_answer` 提交 `attentionId`、调用方生成的 `requestId` 和每个问题 id 的答案。现有问题服务恢复原工具调用，并把答案记录进 Session。补充指令可通过 `session_prompt` 的 `mode: steer` 提交。
+
+控制 Host 只接管精确绑定的存活 Agent 的问题；其他 Agent 沿用已有回答者。必须由人决定的事项仍需人的回答。取消或 Host 释放会撤回问题，过期身份会被拒绝；并发问题保持独立。Host 最多保留 32 个待答请求，每批问题和答案各限 64 KiB。答案校验问题 id、已提供的选项及单选/多选语义，审批策略保持不变。`dsh_browser_snapshot` 返回页面事实，条目检查仅使用最近一次成功快照的页面身份。
 
 -----
 
@@ -66,7 +70,7 @@ pnpm dsh --profile control-mcp
 
 ### 写入、等待与证据
 
-`dsh_session_open` 和 `dsh_session_prompt` 要求调用方生成 `requestId`。Host 最多保留 `maxWriteReceipts` 个幂等写入结果，默认值为 256；固定容量用尽后拒绝新的写入。读取、写入和等待操作分别计数。`dsh_evidence_export` 在 MCP 结果中返回有界的 Host 观察 JSON；它不会写入任意路径，也不会宣告验收通过。
+Session 打开、提示和问题回答要求调用方生成 `requestId`。回复丢失后重试相同 id 和内容；即使问题已结束，匹配的 receipt 仍会重放，换成其他内容则拒绝。Host 最多保留 `maxWriteReceipts` 个写入结果，默认 256 个，满额后拒绝新写入。这些 receipt 和待答请求不跨 Host 重启恢复。证据导出包含运行身份、当前观察、Session 事件和操作计数，结果判断由外部检查者负责。
 
 ### 认证与恢复
 
@@ -103,11 +107,11 @@ pnpm dsh --profile control-mcp
 
 #### 模型看到什么
 
-已连接的 MCP 客户端会看到十个固定 `dsh_*` 工具 schema 及其 JSON 结果。浏览器工具返回的页面文本和 DOM 事实是不可信数据；任何工具结果都不会授予新权限或证明成功。
+已连接的 MCP 客户端会看到十四个固定 `dsh_*` 工具 schema 及其 JSON 结果。问题文本和浏览器页面事实都是不可信数据；任何工具结果都不会授予新权限或证明成功。
 
 #### Token 影响
 
-十个工具 schema 会给外部 MCP 客户端增加固定上下文成本。工具结果会增加依数据而变的 token，其上限受 Session 事件限制、浏览器 provider 限制及一次运行中保留的证据约束。本包不会给目标 Session 内运行的 DSH 模型增加 prompt 或工具 token。
+十四个工具 schema 给外部 MCP 客户端增加固定上下文成本。事件页和问题批次有界，完整证据导出的大小随 Session 历史增长。本包不向目标 DSH 模型添加工具或提示章节；提交的问题答案会进入其现有工具结果和后续模型上下文。
 
 #### KV Cache 影响
 

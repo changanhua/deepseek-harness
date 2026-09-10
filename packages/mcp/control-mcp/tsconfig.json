@@ -12,6 +12,8 @@
     { "path": "../../core/agent" },
     { "path": "../../api/session-controller/tsconfig.host.json" },
     { "path": "../../client/connection/tsconfig.host.json" },
+    { "path": "../../interaction/user-questions/tsconfig.json" },
+    { "path": "../../util/home-paths" },
     { "path": "../../runtime-diagnostics/invariants" }
   ]
 }

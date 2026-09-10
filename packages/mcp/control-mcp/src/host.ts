@@ -4,8 +4,11 @@ import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
+import type {} from '@deepseek-ai/dsh-user-questions'
 import type { HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { DshControlPlane, type ControlRequest } from './control-plane.ts'
+import { ControlAttentions } from './attention.ts'
+import { captureRuntimeIdentity } from './runtime.ts'
 
 export const name = 'dsh-control-mcp-host'
 export const inject = ['connection', 'sessionController', 'agents']
@@ -45,18 +48,38 @@ export function apply(ctx: Context, config: Config): void {
   }
   const browser = ctx.get('browser') as OptionalBrowser | undefined
   const cordis = ctx.get('dynamicCordisRunner') as OptionalCordisRunner | undefined
+  const attention = new ControlAttentions()
+  const runtime = captureRuntimeIdentity()
+  void runtime.catch(() => {})
   const plane = new DshControlPlane({
     runId: config.runId,
+    runtime: () => runtime,
     maxWriteReceipts: config.maxWriteReceipts ?? 256,
     sessions: {
       create: request => ctx.sessionController.create(request as never),
       prompt: (request, signal) => ctx.sessionController.prompt(request as never, signal),
       inspect: (sessionId, signal) => ctx.sessionController.inspect(sessionId as never, signal) as never,
       getAgent: sessionId => ctx.agents.get(sessionId as never),
+      subscribe: (sessionId, notify) => {
+        const offEvent = ctx.on('session/event', (session) => { if (String(session.id) === sessionId) notify() })
+        const offStatus = ctx.on('agent/status', ({ agent }) => { if (String(agent.id) === sessionId) notify() })
+        return () => { offEvent(); offStatus() }
+      },
     },
     ...(browser === undefined ? {} : { browser }),
+    attention,
     ...(cordis === undefined ? {} : { cordis }),
   })
+  ctx.on('user-questions/request', (request, next) => {
+    const sessionId = plane.boundSessionId()
+    const agent = request.agent
+    if (sessionId === undefined || agent === undefined || String(agent.id) !== sessionId
+      || ctx.agents.get(agent.id) !== agent) return next()
+    return attention.ask(sessionId, request)
+  }, { prepend: true })
+  ctx.effect(() => () => {
+    attention.dispose()
+  }, 'dsh-control-mcp.attention')
   const connection = ctx.get('connection') as HostConnectionHandle
   connection.rpc.handle('/dsh-control', (endpoint, payload, signal) =>
     handleRequest(plane, endpoint, payload, signal))
@@ -96,7 +119,8 @@ async function handleRequest(
 }
 
 const METHODS = new Set<ControlRequest['method']>([
-  'session_open', 'session_prompt', 'session_wait', 'session_events', 'session_observe', 'cordis_inspect',
+  'runtime_status',
+  'session_open', 'session_prompt', 'session_wait', 'session_events', 'session_observe', 'session_attention_answer', 'cordis_inspect',
   'browser_instances', 'browser_tabs', 'browser_snapshot', 'evidence_export',
   'browser_entry_inspect',
 ])

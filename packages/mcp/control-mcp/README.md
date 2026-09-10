@@ -53,7 +53,11 @@ An MCP client normally owns this process and its stdio. `dsh --profile control-m
 
 ### What you get
 
-The connector exposes twelve tools: Host close; Session open, prompt, wait, event reads, and observation; source-free Dynamic Cordis inspection; browser installation, tab, snapshot, and entry-selector inspection; and a structured evidence export. `dsh_session_observe` returns the current phase, event cursor, and an unanswered `ask_user_question` when one is pending. `dsh_browser_snapshot` returns page facts without choosing a selector. `dsh_browser_entry_inspect` accepts a candidate selector only after a successful snapshot and supplies the page identity from that stored observation.
+The connector exposes fourteen tools covering runtime identity; Host close; Session open, prompt, wait, events, observation and question answers; source-free Dynamic Cordis inspection; browser installations, tabs, snapshots and entry selectors; and evidence export. `dsh_runtime_status` works before Session binding and reports the process, Profile, home, package-code fingerprint and source checkout observed at adapter load. Its package fingerprint does not certify the whole application build or later source changes.
+
+A development round opens a Session, submits an instruction, and calls `dsh_session_wait`. Waiting returns when the Agent becomes idle, a live question needs an answer, or the timeout expires. The result includes phase, pending questions and a bounded event page. Continue event reads with the returned `cursor`; `hasMore` and `latestSeq` distinguish a partially read page from the end. `dsh_session_observe` reads the phase and live questions without waiting. For a question, call `dsh_session_attention_answer` with its `attentionId`, a caller-minted `requestId` and answers for every question id. The existing question service resumes the original tool call and records the answer in the Session. A follow-up instruction may use `session_prompt` with `mode: steer`.
+
+The control Host claims questions only from its exact live bound Agent; other agents retain their existing answerers. Human-only decisions still require the human's answer. Cancellation or Host disposal retracts pending questions, and a stale identity rejects. Concurrent questions remain independent. The Host keeps at most 32 pending requests; each question batch and answer is limited to 64 KiB. Answers validate question ids, offered options and single/multi-select semantics. Approval policy is unchanged. `dsh_browser_snapshot` returns page facts; entry inspection uses only the latest successful snapshot's page identity.
 
 -----
 
@@ -66,7 +70,7 @@ Every request carries the configured `runId`. The first successful `dsh_session_
 
 ### Writes, waits, and evidence
 
-`dsh_session_open` and `dsh_session_prompt` require caller-minted `requestId` values. The Host retains up to `maxWriteReceipts` idempotent write results, with a default of 256, and rejects a new write when that fixed capacity is full. Read, write, and wait operations are counted separately. `dsh_evidence_export` returns bounded Host-observed JSON in the MCP result; it does not write an arbitrary path and does not declare acceptance.
+Session open, prompt and attention answers require caller-minted `requestId` values. Reuse the same id and payload after a lost reply; a matching receipt replays even after the question settles, while another payload rejects. The Host retains up to `maxWriteReceipts` write results, with a default of 256, and rejects new writes when full. These receipts and live questions do not survive Host restart. Evidence export includes runtime identity, current observation, Session events and operation counts; an external checker owns the verdict.
 
 ### Authentication and recovery
 
@@ -103,11 +107,11 @@ The connector performs the launch-token exchange with redirects disabled, retain
 
 #### What the model sees
 
-An attached MCP client sees twelve fixed `dsh_*` tool schemas and their JSON results. Page text and DOM facts returned by browser tools are untrusted data; no tool result grants new authority or certifies success.
+An attached MCP client sees fourteen fixed `dsh_*` tool schemas and their JSON results. Question text and browser page facts are untrusted data; no tool result grants new authority or certifies success.
 
 #### Token effect
 
-The twelve tool schemas add a fixed context cost to the external MCP client. Tool results add data-dependent tokens bounded by the Session event limit, browser provider limits, and the evidence held for one run. This package adds no prompt or tool tokens to the DSH model running inside the target Session.
+The fourteen tool schemas add a fixed context cost to the external MCP client. Event pages and question batches are bounded; a complete evidence export scales with Session history. The package adds no tools or prompt sections to the target DSH model; a supplied question answer enters its existing tool result and subsequent model context.
 
 #### KV Cache effect
 

@@ -18,9 +18,11 @@ The connector accepts only HTTP loopback origins. It exchanges the target Host's
 
 Every Host request carries a configured `runId`. The first successful Session open binds that adapter instance to one Session. Browser access binds an installation only after it appears in a fresh instance observation, accepts snapshots only for tabs from the latest tab observation, and supplies the latest successful snapshot's page identity to entry inspection. Callers cannot provide a document identity for entry inspection.
 
-The MCP server exposes fixed operations for Session open, prompt, wait, and events; source-free Cordis inventory; browser instances, tabs, snapshots, and entry inspection; and evidence export. It exposes no arbitrary Remote endpoint, Context object, Node.js execution, shell, filesystem, Dynamic Cordis mutation, or acceptance decision.
+The MCP server exposes fixed operations for runtime identity; Session open, prompt, wait, events, live observation and question answers; source-free Cordis inventory; browser instances, tabs, snapshots and entry inspection; and evidence export. It exposes no arbitrary Remote endpoint, Context object, Node.js execution, shell, filesystem, Dynamic Cordis mutation, or acceptance decision.
 
-Session open and prompt require caller-minted idempotency keys. The Host retains a fixed number of write receipts and rejects new writes after capacity is exhausted, while reads and waits remain separately counted. Evidence export returns the Host's observed JSON and operation counts; an independent verifier interprets those facts against its own frozen expectations.
+Session open, prompt and question answers require caller-minted idempotency keys. The Host retains a fixed number of write receipts and rejects new writes after capacity is exhausted, while reads and waits remain separately counted. A repeated answer replays its receipt after the original question settles. Receipts and pending questions are process-local. Evidence export includes package-code fingerprint, source identity at adapter load, current observation and Session events; an independent verifier interprets these facts.
+
+The opt-in Host answers the existing `user-questions/request` waterfall only for its exact live bound Agent. Pending requests receive independent identities; cancellation and disposal retract them. Observation reads these live requests instead of inferring unanswered questions from historical tool calls. Waiting wakes for a live question or Agent settlement, and event-page cursors advance only over returned events. The existing question tool records the supplied answer and continues the same Agent loop. Human-only decisions remain human-owned; the bridge adds no approval-policy override.
 
 ## Alternatives considered
 

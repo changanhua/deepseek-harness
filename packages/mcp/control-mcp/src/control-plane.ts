@@ -1,4 +1,6 @@
 /** Run-bound control logic shared by the Host route and its tests. */
+import type { AskUserQuestionAnswer } from '@deepseek-ai/dsh-user-questions'
+import type { ControlAttentions } from './attention.ts'
 
 export interface ControlSessionEvent {
   readonly seq: number
@@ -7,6 +9,7 @@ export interface ControlSessionEvent {
 }
 
 export interface ControlSessionDependencies {
+  subscribe?(sessionId: string, notify: () => void): () => void
   create(request: {
     readonly cwd?: string
     readonly sessionId?: string
@@ -30,8 +33,10 @@ export interface ControlSessionDependencies {
 
 export interface DshControlPlaneOptions {
   readonly runId: string
+  readonly runtime?: () => Promise<Readonly<Record<string, unknown>>>
   readonly sessions: ControlSessionDependencies
   readonly browser?: ControlBrowserDependencies
+  readonly attention?: Pick<ControlAttentions, 'list' | 'subscribe' | 'answer'>
   readonly cordis?: ControlCordisDependencies
   readonly maxWriteReceipts?: number
 }
@@ -53,11 +58,13 @@ export interface ControlRequest {
   readonly runId: string
   readonly requestId: string
   readonly method:
+    | 'runtime_status'
     | 'session_open'
     | 'session_prompt'
     | 'session_wait'
     | 'session_events'
     | 'session_observe'
+    | 'session_attention_answer'
     | 'cordis_inspect'
     | 'browser_instances'
     | 'browser_tabs'
@@ -87,6 +94,11 @@ export class DshControlPlane {
 
   constructor(private readonly options: DshControlPlaneOptions) {}
 
+  /** Return the single Session claimed by this run, if one has been opened. */
+  boundSessionId(): string | undefined {
+    return this.sessionId
+  }
+
   /** Dispatch one authenticated, run-bound operation. */
   async handle(request: ControlRequest, signal: AbortSignal): Promise<unknown> {
     signal.throwIfAborted()
@@ -94,8 +106,13 @@ export class DshControlPlane {
       return Promise.reject(new Error('runId does not match this control run'))
     }
     switch (request.method) {
+      case 'runtime_status':
+        this.readCount++
+        return { runId: this.options.runId, sessionId: this.sessionId ?? null,
+          identity: await this.options.runtime?.() ?? null }
       case 'session_open':
       case 'session_prompt':
+      case 'session_attention_answer':
         return await this.idempotentWrite(request, signal)
       case 'session_wait':
         this.waitCount++
@@ -139,9 +156,9 @@ export class DshControlPlane {
     if (this.writes.size >= (this.options.maxWriteReceipts ?? 256)) {
       return Promise.reject(new Error('write receipt capacity is exhausted'))
     }
-    const result = request.method === 'session_open'
-      ? this.open(request.params)
-      : this.prompt(request.requestId, request.params, signal)
+    const result = request.method === 'session_open' ? this.open(request.params)
+      : request.method === 'session_attention_answer' ? this.sessionAttentionAnswer(request.params, signal)
+        : this.prompt(request.requestId, request.params, signal)
     this.writeCount++
     this.writes.set(request.requestId, { fingerprint, result })
     return result
@@ -193,8 +210,7 @@ export class DshControlPlane {
     const inspected = await this.options.sessions.inspect(sessionId, signal)
     const afterSeq = optionalInteger(params.afterSeq, 'afterSeq', -1)
     const limit = optionalInteger(params.limit, 'limit', 200, 1, 1000)
-    const events = inspected.events.filter(event => event.seq > afterSeq).slice(-limit)
-    return { sessionId, cursor: inspected.events.at(-1)?.seq ?? -1, events }
+    return { sessionId, ...eventPage(inspected.events, afterSeq, limit) }
   }
 
   private assertSession(sessionId: string): void {
@@ -210,18 +226,33 @@ export class DshControlPlane {
     const sessionId = requiredString(params.sessionId, 'sessionId')
     this.assertSession(sessionId)
     const inspected = await this.options.sessions.inspect(sessionId, signal)
+    return this.observationFor(sessionId, inspected.events)
+  }
+
+  private observationFor(sessionId: string, events: readonly ControlSessionEvent[]) {
     const status = this.options.sessions.getAgent(sessionId)?.status ?? 'idle'
-    const attention = pendingUserQuestion(inspected.events)
-    const last = inspected.events.at(-1)
-    const phase = attention === undefined ? phaseOf(status, last) : 'waiting_for_attention'
+    const attention = this.options.attention?.list(sessionId) ?? []
+    const phase = attention.length > 0 ? 'waiting_for_attention' : phaseOf(status, events)
     return {
       runId: this.options.runId,
       sessionId,
       status,
       phase,
-      cursor: last?.seq ?? -1,
-      ...(attention === undefined ? {} : { attention }),
+      cursor: events.at(-1)?.seq ?? -1,
+      attention,
     }
+  }
+
+  private async sessionAttentionAnswer(
+    params: Readonly<Record<string, unknown>>,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const sessionId = requiredString(params.sessionId, 'sessionId')
+    this.assertSession(sessionId)
+    const attentionId = requiredString(params.attentionId, 'attentionId')
+    if (this.options.attention === undefined) throw new Error('attention service is unavailable')
+    signal.throwIfAborted()
+    return this.options.attention.answer(sessionId, attentionId, { answers: parseAttentionAnswers(params.answers) })
   }
 
   private async browserInstances(params: Readonly<Record<string, unknown>>): Promise<unknown> {
@@ -324,15 +355,44 @@ export class DshControlPlane {
     this.assertSession(sessionId)
     const afterSeq = optionalInteger(params.afterSeq, 'afterSeq', -1)
     const timeoutMs = optionalInteger(params.timeoutMs, 'timeoutMs', 30_000, 1, 60_000)
-    const agent = this.options.sessions.getAgent(sessionId)
-    const timedOut = agent === undefined ? false : await waitForIdle(agent, timeoutMs, signal)
+    const timedOut = await this.waitForSettlement(sessionId, timeoutMs, signal)
     const inspected = await this.options.sessions.inspect(sessionId, signal)
+    const status = this.options.sessions.getAgent(sessionId)?.status ?? 'idle'
+    const attention = this.options.attention?.list(sessionId) ?? []
     return {
       sessionId,
-      status: this.options.sessions.getAgent(sessionId)?.status ?? 'idle',
-      cursor: inspected.events.at(-1)?.seq ?? -1,
+      status,
+      phase: attention.length > 0 ? 'waiting_for_attention' : phaseOf(status, inspected.events),
+      attention,
       timedOut,
-      events: inspected.events.filter(event => event.seq > afterSeq),
+      ...eventPage(inspected.events, afterSeq, optionalInteger(params.limit, 'limit', 200, 1, 1000)),
+    }
+  }
+
+  private async waitForSettlement(sessionId: string, timeoutMs: number, signal: AbortSignal): Promise<boolean> {
+    if (signal.aborted) throw signal.reason
+    const settled = () => this.options.sessions.getAgent(sessionId)?.status !== 'running'
+      || (this.options.attention?.list(sessionId).length ?? 0) > 0
+    if (settled()) return false
+    const wake = Promise.withResolvers<boolean>()
+    const notify = () => { if (settled()) wake.resolve(false) }
+    const offSession = this.options.sessions.subscribe?.(sessionId, notify)
+    const offAttention = this.options.attention?.subscribe(notify)
+    const abort = () => { wake.reject(signal.reason) }
+    signal.addEventListener('abort', abort, { once: true })
+    const timer = setTimeout(() => { wake.resolve(true) }, timeoutMs)
+    // Consumers without an event subscription retain the existing whole-agent idle wait.
+    const agent = this.options.sessions.getAgent(sessionId)
+    if (offSession === undefined && agent !== undefined) void agent.whenIdle().then(notify, wake.reject)
+    try {
+      if (signal.aborted) abort()
+      else notify()
+      return await wake.promise
+    } finally {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', abort)
+      offSession?.()
+      offAttention?.()
     }
   }
 
@@ -356,6 +416,8 @@ export class DshControlPlane {
     const instances = browser === undefined ? [] : await browser.instances()
     return {
       runId: this.options.runId,
+      identity: await this.options.runtime?.() ?? null,
+      observation: this.observationFor(sessionId, inspected.events),
       binding: {
         sessionId,
         ...(this.installationId === undefined ? {} : { installationId: this.installationId }),
@@ -377,41 +439,44 @@ export class DshControlPlane {
 
 function phaseOf(
   status: 'idle' | 'running',
-  event: ControlSessionEvent | undefined,
-): 'idle' | 'running' | 'completed' | 'failed' {
+  events: readonly ControlSessionEvent[],
+): string {
   if (status === 'running') return 'running'
-  if (event?.type !== 'turn/end' || !isRecord(event.data) || !isRecord(event.data.reason)) return 'idle'
-  return event.data.reason.kind === 'complete' ? 'completed' : 'failed'
+  const boundary = events.findLast(event => event.type === 'turn/start' || event.type === 'turn/end')
+  if (boundary === undefined) return 'idle'
+  if (boundary.type === 'turn/start' || !isRecord(boundary.data) || !isRecord(boundary.data.reason)) return 'unknown'
+  const kind = boundary.data.reason.kind
+  if (kind === 'completed') return 'completed'
+  if (kind === 'error') return 'failed'
+  if (kind === 'aborted') return 'cancelled'
+  if (kind === 'blocked' || kind === 'interrupted' || kind === 'max-tokens') return kind
+  return 'unknown'
 }
 
-function pendingUserQuestion(events: readonly ControlSessionEvent[]): Readonly<Record<string, unknown>> | undefined {
-  const calls = new Map<string, Readonly<Record<string, unknown>>>()
-  const results = new Set<string>()
-  for (const event of events) {
-    if (!isRecord(event.data)) continue
-    const callId = event.data.callId
-    if (typeof callId !== 'string' || callId.length === 0) continue
-    if (event.type === 'tool/result') {
-      results.add(callId)
-      continue
+function eventPage(events: readonly ControlSessionEvent[], afterSeq: number, limit: number) {
+  const page = events.filter(event => event.seq > afterSeq).slice(0, limit)
+  const cursor = page.at(-1)?.seq ?? afterSeq
+  const latestSeq = events.at(-1)?.seq ?? -1
+  return { cursor, latestSeq, hasMore: cursor < latestSeq, events: page }
+}
+
+function parseAttentionAnswers(value: unknown): AskUserQuestionAnswer['answers'] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 32
+    || Buffer.byteLength(JSON.stringify(value)) > 65_536) throw new Error('answers must be a bounded non-empty array')
+  return value.map((item, index) => {
+    if (!isRecord(item) || typeof item.id !== 'string' || item.id.length === 0
+      || !Array.isArray(item.selected) || item.selected.some(option => typeof option !== 'string')) {
+      throw new Error(`answers[${String(index)}] must contain id and string selected values`)
     }
-    if (event.type === 'tool/call' && event.data.name === 'ask_user_question') {
-      calls.set(callId, event.data)
+    if (item.custom !== undefined && typeof item.custom !== 'string') {
+      throw new Error(`answers[${String(index)}].custom must be a string`)
     }
-  }
-  const pending = [...calls.entries()].find(([callId]) => !results.has(callId))
-  if (pending === undefined) return undefined
-  const [callId, data] = pending
-  const raw = data.arguments
-  if (typeof raw !== 'string') return { kind: 'user_question', callId }
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    return isRecord(parsed) && Array.isArray(parsed.questions)
-      ? { kind: 'user_question', callId, questions: structuredClone(parsed.questions) }
-      : { kind: 'user_question', callId }
-  } catch {
-    return { kind: 'user_question', callId }
-  }
+    return {
+      id: item.id,
+      selected: [...item.selected] as string[],
+      ...(item.custom === undefined ? {} : { custom: item.custom }),
+    }
+  })
 }
 
 function requiredString(value: unknown, field: string): string {
@@ -449,34 +514,6 @@ function requiredIntegerAllowing(value: unknown, field: string, minimum: number)
     throw new Error(`${field} must be a safe integer greater than or equal to ${String(minimum)}`)
   }
   return value as number
-}
-
-async function waitForIdle(
-  agent: { readonly status: 'idle' | 'running'; whenIdle(): Promise<void> },
-  timeoutMs: number,
-  signal: AbortSignal,
-): Promise<boolean> {
-  if (agent.status === 'idle') return false
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let abort: (() => void) | undefined
-  const timeout = new Promise<'timeout'>((resolve) => {
-    timer = setTimeout(() => { resolve('timeout') }, timeoutMs)
-  })
-  const cancelled = new Promise<never>((_resolve, reject) => {
-    abort = () => { reject(signal.reason ?? new DOMException('Aborted', 'AbortError')) }
-    signal.addEventListener('abort', abort, { once: true })
-  })
-  try {
-    const result = await Promise.race([
-      agent.whenIdle().then(() => 'idle' as const),
-      timeout,
-      cancelled,
-    ])
-    return result === 'timeout'
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-    if (abort !== undefined) signal.removeEventListener('abort', abort)
-  }
 }
 
 function observedTabIds(result: Readonly<Record<string, unknown>>): Set<number> {

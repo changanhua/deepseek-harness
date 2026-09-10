@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DshControlPlane } from '../src/control-plane.ts'
+import { ControlAttentions } from '../src/attention.ts'
 
 describe('DSH control plane', () => {
   it('binds the run to one session and deduplicates the same prompt request', async () => {
@@ -121,7 +122,7 @@ describe('DSH control plane', () => {
     const events = [
       { seq: 0, type: 'turn/start', time: 1, data: { turn: 0 } },
       { seq: 1, type: 'assistant/message', time: 2, data: { content: [] } },
-      { seq: 2, type: 'turn/end', time: 3, data: { turn: 0, reason: { kind: 'complete' } } },
+      { seq: 2, type: 'turn/end', time: 3, data: { turn: 0, reason: { kind: 'completed' } } },
     ]
     const agent = {
       status: 'running' as 'idle' | 'running',
@@ -153,6 +154,7 @@ describe('DSH control plane', () => {
       params: { sessionId: 'session-1', afterSeq: 0, timeoutMs: 1000 },
     }, signal)).resolves.toEqual({
       sessionId: 'session-1', status: 'idle', cursor: 2, timedOut: false,
+      phase: 'completed', attention: [], latestSeq: 2, hasMore: false,
       events: events.slice(1),
     })
     expect(agent.whenIdle).toHaveBeenCalledOnce()
@@ -160,7 +162,7 @@ describe('DSH control plane', () => {
     await expect(control.handle({
       runId: 'run-1', requestId: 'events-1', method: 'session_events',
       params: { sessionId: 'session-1', afterSeq: 1, limit: 1 },
-    }, signal)).resolves.toEqual({ sessionId: 'session-1', cursor: 2, events: [events[2]] })
+    }, signal)).resolves.toEqual({ sessionId: 'session-1', cursor: 2, latestSeq: 2, hasMore: false, events: [events[2]] })
     await expect(control.handle({
       runId: 'run-1', requestId: 'cordis-1', method: 'cordis_inspect',
       params: { sessionId: 'session-1' },
@@ -181,6 +183,8 @@ describe('DSH control plane', () => {
   })
 
   it('observes the current phase and exposes an unanswered user question', async () => {
+    const attention = new ControlAttentions()
+    const answering = attention.ask('session-1', { questions: [{ id: 'next', question: '继续吗？' }] })
     const events = [
       { seq: 0, type: 'turn/start', time: 1, data: { turn: 0 } },
       {
@@ -198,6 +202,7 @@ describe('DSH control plane', () => {
     ]
     const control = new DshControlPlane({
       runId: 'run-1',
+      attention,
       sessions: {
         create: async () => ({ sessionId: 'session-1' }),
         prompt: async () => ({ accepted: true }),
@@ -220,17 +225,59 @@ describe('DSH control plane', () => {
       status: 'running',
       phase: 'waiting_for_attention',
       cursor: 1,
-      attention: {
+      attention: [{
         kind: 'user_question',
-        callId: 'question-1',
+        attentionId: expect.any(String),
         questions: [{ id: 'next', question: '继续吗？' }],
+      }],
+    })
+    attention.answer('session-1', attention.list('session-1')[0]!.attentionId, { answers: [{ id: 'next', selected: [] }] })
+    await answering
+  })
+
+  it('answers the pending user question through the bound control run', async () => {
+    const attention = new ControlAttentions()
+    const answering = attention.ask('session-1', {
+      questions: [{ id: 'next', question: '继续吗？', options: [{ label: '继续' }] }],
+    })
+    const attentionId = attention.list('session-1')[0]!.attentionId
+    const control = new DshControlPlane({
+      runId: 'run-1',
+      attention,
+      sessions: {
+        create: async () => ({ sessionId: 'session-1' }),
+        prompt: async () => ({ accepted: true }),
+        inspect: async sessionId => ({ meta: { id: sessionId }, events: [] }),
+        getAgent: () => undefined,
       },
     })
+    const signal = new AbortController().signal
+    await control.handle({
+      runId: 'run-1', requestId: 'open-1', method: 'session_open',
+      params: { sessionId: 'session-1', cwd: 'C:/task' },
+    }, signal)
+
+    const request = {
+      runId: 'run-1', requestId: 'answer-1', method: 'session_attention_answer',
+      params: {
+        sessionId: 'session-1', attentionId,
+        answers: [{ id: 'next', selected: ['继续'] }],
+      },
+    } as const
+    await expect(control.handle(request, signal)).resolves.toEqual({ answered: true })
+    await expect(answering).resolves.toEqual({
+      answers: [{ id: 'next', selected: ['继续'] }],
+    })
+    expect(attention.list('session-1')).toEqual([])
+    await expect(control.handle(request, signal)).resolves.toEqual({ answered: true })
+    await expect(control.handle({ ...request, params: { ...request.params, answers: [{ id: 'next', selected: [] }] } }, signal))
+      .rejects.toThrow('requestId was already used')
   })
 
   it.each([
-    ['completed', { type: 'turn/end', data: { reason: { kind: 'complete' } } }],
+    ['completed', { type: 'turn/end', data: { reason: { kind: 'completed' } } }],
     ['failed', { type: 'turn/end', data: { reason: { kind: 'error' } } }],
+    ['cancelled', { type: 'turn/end', data: { reason: { kind: 'aborted' } } }],
   ] as const)('maps an idle turn end to the %s phase', async (phase, tail) => {
     const control = new DshControlPlane({
       runId: 'run-1',
