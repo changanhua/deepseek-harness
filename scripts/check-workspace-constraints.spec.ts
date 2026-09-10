@@ -95,6 +95,25 @@ describe('package payload constraints', () => {
       'packages/task-queue/task-queue-executor-dsh')).toContain('worker.cordis.patch.yml')
   })
 
+  it('publishes every loader entry and the opt-in Host patch for control MCP', () => {
+    expect(expectedDshPackageFiles({
+      name: '@changanhua/dsh-control-mcp',
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+      exports: {
+        './startup': { default: './lib/startup.js' },
+        './host': { default: './lib/types/host.js' },
+      },
+    }, 'packages/mcp/control-mcp')).toEqual([
+      'lib/index.js',
+      'lib/invariant.js',
+      'lib/startup.js',
+      'cordis.patch.yml',
+      'host.cordis.patch.yml',
+      'lib/types/**/*.js',
+      'lib/types/**/*.d.ts',
+    ])
+  })
+
   it('keeps rescoped personal packages private while applying the DSH package shape', () => {
     const manifest = {
       name: '@changanhua/dsh-task-queue',

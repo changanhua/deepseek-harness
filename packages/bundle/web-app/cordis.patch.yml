@@ -36,6 +36,8 @@
     backend: json
     routes:
       content_library: content_sqlite
+      browser_monitors: content_sqlite
+      browser_activity: content_sqlite
 
 - id: tools
   config:
@@ -138,6 +140,15 @@
 
     - id: content-browser
       name: '@changanhua/dsh-content-browser'
+
+    - id: browser-extension
+      name: '@changanhua/dsh-browser-extension'
+
+    - id: browser-activity
+      name: '@changanhua/dsh-browser-activity'
+
+    - id: browser-monitor
+      name: '@changanhua/dsh-browser-monitor'
 
     # Session commands, cold reads, and live control over Typert Remote.
     - id: session-controller

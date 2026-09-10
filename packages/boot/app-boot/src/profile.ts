@@ -155,6 +155,10 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
     bundles: ['@deepseek-ai/dsh-sdk-minimal'],
     patchReload: 'startup',
   },
+  'control-mcp': {
+    bundles: ['@changanhua/dsh-control-mcp'],
+    patchReload: 'startup',
+  },
 }
 
 /** Installation-owned bundle tuples normalized to the shipped template. */

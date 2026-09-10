@@ -28,6 +28,20 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@changanhua/dsh-browser": ["./packages/browser/browser/src"],
+      "@changanhua/dsh-browser/types": ["./packages/browser/browser/src/types.ts"],
+      "@changanhua/dsh-browser/invariant": ["./packages/browser/browser/src/invariant.ts"],
+      "@changanhua/dsh-browser-extension": ["./packages/browser/browser-extension/src"],
+      "@changanhua/dsh-browser-extension/types": ["./packages/browser/browser-extension/src/types.ts"],
+      "@changanhua/dsh-browser-extension/invariant": ["./packages/browser/browser-extension/src/invariant.ts"],
+      "@changanhua/dsh-tool-browser": ["./packages/browser/tool-browser/src"],
+      "@changanhua/dsh-tool-browser/invariant": ["./packages/browser/tool-browser/src/invariant.ts"],
+      "@changanhua/dsh-browser-activity": ["./packages/browser/browser-activity/src"],
+      "@changanhua/dsh-browser-activity/types": ["./packages/browser/browser-activity/src/types.ts"],
+      "@changanhua/dsh-browser-activity/invariant": ["./packages/browser/browser-activity/src/invariant.ts"],
+      "@changanhua/dsh-browser-monitor": ["./packages/browser/browser-monitor/src"],
+      "@changanhua/dsh-browser-monitor/types": ["./packages/browser/browser-monitor/src/types.ts"],
+      "@changanhua/dsh-browser-monitor/invariant": ["./packages/browser/browser-monitor/src/invariant.ts"],
       "@changanhua/dsh-client-ui-content": ["./packages/client/ui-content/src"],
       "@changanhua/dsh-content-browser/types": ["./packages/content/content-browser/src/types.ts"],
       "@deepseek-ai/cordis": ["./vendor/cordis/src"],
@@ -268,6 +282,8 @@
       "@changanhua/dsh-client-ui-task-queue/invariant": ["./packages/client/ui-task-queue/src/invariant.ts"],
       "@deepseek-ai/dsh-subagent-codex/app-server-run": ["./packages/subagent/subagent-codex/src/app-server-run.ts"],
       "@deepseek-ai/dsh-util-crypto": ["./packages/util/crypto/src"],
+      "@changanhua/dsh-control-mcp/startup": ["./packages/mcp/control-mcp/src/startup.ts"],
+      "@changanhua/dsh-control-mcp/host": ["./packages/mcp/control-mcp/src/host.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@changanhua/dsh-command-task-queue": ["./packages/task-queue/command-task-queue/src"],
       "@changanhua/dsh-command-task-queue/invariant": ["./packages/task-queue/command-task-queue/src/invariant.ts"],
@@ -281,6 +297,8 @@
       "@changanhua/dsh-content-remote/invariant": ["./packages/content/content-remote/src/invariant.ts"],
       "@changanhua/dsh-content-session": ["./packages/content/content-session/src"],
       "@changanhua/dsh-content-session/invariant": ["./packages/content/content-session/src/invariant.ts"],
+      "@changanhua/dsh-control-mcp": ["./packages/mcp/control-mcp/src"],
+      "@changanhua/dsh-control-mcp/invariant": ["./packages/mcp/control-mcp/src/invariant.ts"],
       "@changanhua/dsh-delivery": ["./packages/delivery/delivery/src"],
       "@changanhua/dsh-delivery/invariant": ["./packages/delivery/delivery/src/invariant.ts"],
       "@changanhua/dsh-delivery-evidence": ["./packages/delivery/delivery-evidence/src"],

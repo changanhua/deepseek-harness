@@ -1,0 +1,15 @@
+# Opt-in patch for the isolated target Web Host. The normal web profile does
+# not mount this control surface.
+
+- id: connection
+  config:
+    # The ordinary local Web profile is authentication-free. This isolated
+    # control Host restores the launch-token exchange that fences its RPC route.
+    browserAuth: true
+    trustedHosts: !!js ctx.webRuntime.trustedHosts
+
+- insert:
+    - id: control-mcp-host
+      name: '@changanhua/dsh-control-mcp/host'
+      config:
+        runId: !!js process.env.DSH_CONTROL_RUN_ID
