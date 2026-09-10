@@ -23,6 +23,7 @@ describe('DSH control MCP server', () => {
       'dsh_cordis_inspect',
       'dsh_evidence_export',
       'dsh_request_receipt',
+      'dsh_runtime_inspect',
       'dsh_runtime_status',
       'dsh_session_attention_answer',
       'dsh_session_cancel',

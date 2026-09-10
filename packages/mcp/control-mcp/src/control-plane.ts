@@ -35,11 +35,17 @@ export interface ControlSessionDependencies {
 export interface DshControlPlaneOptions {
   readonly runId: string
   readonly runtime?: () => Promise<Readonly<Record<string, unknown>>>
+  readonly runtimeInspect?: ControlRuntimeInspectDependencies
   readonly sessions: ControlSessionDependencies
   readonly browser?: ControlBrowserDependencies
   readonly attention?: Pick<ControlAttentions, 'list' | 'subscribe' | 'answer'>
   readonly cordis?: ControlCordisDependencies
   readonly maxWriteReceipts?: number
+}
+
+export interface ControlRuntimeInspectDependencies {
+  plugins(): Promise<Readonly<Record<string, unknown>>> | Readonly<Record<string, unknown>>
+  capabilities(sessionId: string): Promise<Readonly<Record<string, unknown>>>
 }
 
 export interface ControlBrowserDependencies {
@@ -60,6 +66,7 @@ export interface ControlRequest {
   readonly requestId: string
   readonly method:
     | 'runtime_status'
+    | 'runtime_inspect'
     | 'request_receipt'
     | 'session_open'
     | 'session_prompt'
@@ -119,6 +126,9 @@ export class DshControlPlane {
         this.readCount++
         return { runId: this.options.runId, sessionId: this.sessionId ?? null,
           identity: await this.options.runtime?.() ?? null }
+      case 'runtime_inspect':
+        this.readCount++
+        return await this.runtimeInspect(request.params)
       case 'request_receipt':
         this.readCount++
         return await this.requestReceipt(request.params)
@@ -187,6 +197,33 @@ export class DshControlPlane {
     const write = this.writes.get(requestId)
     if (write === undefined) return { requestId, found: false }
     return { requestId, found: true, method: write.method, ...await write.receipt }
+  }
+
+  private async runtimeInspect(params: Readonly<Record<string, unknown>>): Promise<unknown> {
+    const view = requiredString(params.view, 'view')
+    const query = optionalString(params.query, 'query')?.toLocaleLowerCase('en-US')
+    const limit = optionalInteger(params.limit, 'limit', 100, 1, 200)
+    const inspect = this.options.runtimeInspect
+    if (inspect === undefined) throw new Error('runtime inspection is unavailable')
+    if (view === 'plugins') {
+      const snapshot = await inspect.plugins()
+      const entries = Array.isArray(snapshot.entries) ? snapshot.entries : []
+      return boundedMatches('plugins', entries, query, limit)
+    }
+    if (view === 'capabilities') {
+      if (this.sessionId === undefined) throw new Error('capability inspection requires a bound Session')
+      const snapshot = await inspect.capabilities(this.sessionId)
+      return {
+        view,
+        sessionId: this.sessionId,
+        skills: boundedMatches('skills', Array.isArray(snapshot.skills) ? snapshot.skills : [], query, limit),
+        tools: boundedMatches('tools', Array.isArray(snapshot.tools) ? snapshot.tools : [], query, limit),
+        mcpServers: boundedMatches(
+          'mcpServers', Array.isArray(snapshot.mcpServers) ? snapshot.mcpServers : [], query, limit,
+        ),
+      }
+    }
+    throw new Error('view must be plugins or capabilities')
   }
 
   private async open(params: Readonly<Record<string, unknown>>): Promise<unknown> {
@@ -496,6 +533,13 @@ function errorValue(error: unknown): { readonly message: string; readonly code?:
   return typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
     ? { message, code: error.code }
     : { message }
+}
+
+function boundedMatches(view: string, values: readonly unknown[], query: string | undefined, limit: number) {
+  const matching = query === undefined ? values : values.filter(value =>
+    JSON.stringify(value).toLocaleLowerCase('en-US').includes(query))
+  return { view, total: values.length, matched: matching.length, truncated: matching.length > limit,
+    entries: structuredClone(matching.slice(0, limit)) }
 }
 
 function parseAttentionAnswers(value: unknown): AskUserQuestionAnswer['answers'] {

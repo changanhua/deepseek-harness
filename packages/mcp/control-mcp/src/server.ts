@@ -132,6 +132,16 @@ export function createDshControlMcpServer(caller: DshControlCaller): McpServer {
     annotations: { readOnlyHint: true },
   }, async (params, extra) => readResult(caller, 'runtime_status', params, extra.signal))
 
+  server.registerTool('dsh_runtime_inspect', {
+    description: 'Read the live Loader plugin inventory or the bound Session capability registry, with optional text filtering and bounded results.',
+    inputSchema: z.object({
+      view: z.enum(['plugins', 'capabilities']),
+      query: z.string().min(1).max(256).optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+    }),
+    annotations: { readOnlyHint: true },
+  }, async (params, extra) => readResult(caller, 'runtime_inspect', params, extra.signal))
+
   server.registerTool('dsh_request_receipt', {
     description: 'Reconcile an earlier write after a lost or uncertain MCP reply. Absence does not prove the Host never committed it.',
     inputSchema: z.object({ requestId }),

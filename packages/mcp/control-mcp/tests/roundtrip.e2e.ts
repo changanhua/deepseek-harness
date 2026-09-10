@@ -48,7 +48,19 @@ describe('Codex to DSH development round', () => {
         pid: expect.any(Number), profile: 'web', dshHome: hostHome,
         code: { face: 'built', sha256: expect.stringMatching(/^[a-f0-9]{64}$/u) },
       } })
+      await expect(call('dsh_runtime_inspect', {
+        view: 'plugins', query: 'control-mcp/host', limit: 5,
+      })).resolves.toMatchObject({
+        view: 'plugins', matched: 1, truncated: false,
+        entries: [{ moduleName: '@changanhua/dsh-control-mcp/host', enabled: true, fiberPhase: 'active' }],
+      })
       const { sessionId } = await call('dsh_session_open', { requestId: 'open', cwd: root, agentPreset: 'standard' })
+      await expect(call('dsh_runtime_inspect', {
+        view: 'capabilities', query: 'ask_user_question', limit: 5,
+      })).resolves.toMatchObject({
+        view: 'capabilities', sessionId,
+        tools: { matched: 1, entries: [{ name: 'ask_user_question' }] },
+      })
       await call('dsh_session_prompt', { requestId: 'prompt', sessionId, text: 'Ask for my next step, then continue.' })
       const waiting = await call('dsh_session_wait', { sessionId, timeoutMs: 15_000 })
       expect(waiting, JSON.stringify(waiting)).toMatchObject({ phase: 'waiting_for_attention', timedOut: false })

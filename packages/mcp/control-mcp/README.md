@@ -53,7 +53,7 @@ An MCP client normally owns this process and its stdio. `dsh --profile control-m
 
 ### What you get
 
-The connector exposes sixteen tools covering runtime identity and write reconciliation; Host close; Session open, prompt, cancel, wait, events, observation and question answers; source-free Dynamic Cordis inspection; browser installations, tabs, snapshots and entry selectors; and evidence export. `dsh_runtime_status` works before Session binding and reports the process, Profile, home, package-code fingerprint and source checkout observed at adapter load. Its package fingerprint does not certify the whole application build or later source changes.
+The connector exposes seventeen tools covering runtime identity, composition and write reconciliation; Host close; Session open, prompt, cancel, wait, events, observation and question answers; source-free Dynamic Cordis inspection; browser installations, tabs, snapshots and entry selectors; and evidence export. `dsh_runtime_status` works before Session binding and reports the process, Profile, home, package-code fingerprint and source checkout observed at adapter load. Its package fingerprint does not certify the whole application build or later source changes. `dsh_runtime_inspect` reads the current Loader plugin inventory or, after Session binding, its scoped Skills, tools and configured MCP servers. Query and result limits avoid returning the full registries when Codex needs one capability.
 
 A development round opens a Session, submits an instruction, and calls `dsh_session_wait`. Waiting returns when the Agent becomes idle, a live question needs an answer, or the timeout expires. The result includes phase, pending questions and a bounded event page. Continue event reads with the returned `cursor`; `hasMore` and `latestSeq` distinguish a partially read page from the end. `dsh_session_observe` reads the phase and live questions without waiting. For a question, call `dsh_session_attention_answer` with its `attentionId`, a caller-minted `requestId` and answers for every question id. The existing question service resumes the original tool call and records the answer in the Session. A follow-up instruction may use `session_prompt` with `mode: steer`.
 
@@ -107,11 +107,11 @@ The connector performs the launch-token exchange with redirects disabled, retain
 
 #### What the model sees
 
-An attached MCP client sees sixteen fixed `dsh_*` tool schemas and their JSON results. Question text and browser page facts are untrusted data; no tool result grants new authority or certifies success.
+An attached MCP client sees seventeen fixed `dsh_*` tool schemas and their JSON results. Question text and browser page facts are untrusted data; no tool result grants new authority or certifies success.
 
 #### Token effect
 
-The sixteen tool schemas add a fixed context cost to the external MCP client. Event pages and question batches are bounded; a complete evidence export scales with Session history. The package adds no tools or prompt sections to the target DSH model; a supplied question answer enters its existing tool result and subsequent model context.
+The seventeen tool schemas add a fixed context cost to the external MCP client. Event pages, registry queries and question batches are bounded; a complete evidence export scales with Session history. The package adds no tools or prompt sections to the target DSH model; a supplied question answer enters its existing tool result and subsequent model context.
 
 #### KV Cache effect
 

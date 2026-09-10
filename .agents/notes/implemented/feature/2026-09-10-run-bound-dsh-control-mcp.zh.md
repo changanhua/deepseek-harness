@@ -18,7 +18,7 @@ Status: implemented
 
 每个 Host 请求都携带已配置的 `runId`。第一次成功打开 Session 会把该适配器实例绑定到一个 Session。浏览器访问只有在新的安装观察中出现后才绑定安装；快照只接受最新标签页观察中的标签页；条目检查则使用最近一次成功快照的页面身份。调用方不能为条目检查提供文档身份。
 
-MCP server 暴露固定操作：运行身份、Session 打开/提示/等待/事件/实时观察/问题回答、不含源码的 Cordis inventory、浏览器安装/标签页/快照/条目检查以及证据导出。它不暴露任意 Remote endpoint、Context 对象、Node.js 执行、shell、文件系统、Dynamic Cordis 变更或验收决定。
+MCP server 暴露固定操作：运行身份及当前 Loader 或 Session 作用域能力检查、Session 打开/提示/取消/等待/事件/实时观察/问题回答、不含源码的 Cordis inventory、浏览器安装/标签页/快照/条目检查、写入核对以及证据导出。注册表检查读取既有投影所有者，并限制筛选结果数量。它不暴露任意 Remote endpoint、Context 对象、Node.js 执行、shell、文件系统、Dynamic Cordis 变更或验收决定。
 
 Session 打开、提示、取消与问题回答要求调用方生成幂等 key。Host 保留固定数量的写入 receipt，容量耗尽后拒绝新写入，同时分别统计读取和等待。receipt 查询可核对不确定回复而不再次写入；相同写入会重放 receipt，同一身份换成其他内容则拒绝。取消会保留等待稍后执行的输入。receipt 和待答请求只属于当前进程。证据导出包括包代码指纹、适配器加载时的源码身份、当前观察及 Session 事件，由独立 verifier 解释这些事实。
 

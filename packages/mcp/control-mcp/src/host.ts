@@ -41,6 +41,14 @@ interface OptionalCordisRunner {
   inventory(): readonly Readonly<Record<string, unknown>>[]
 }
 
+interface OptionalPluginInventory {
+  list(): Readonly<Record<string, unknown>>
+}
+
+interface OptionalCapabilityRegistry {
+  list(request: { readonly sessionId: string }): Promise<Readonly<Record<string, unknown>>>
+}
+
 /** Register the exact POST route behind the existing Connection authentication fence. */
 export function apply(ctx: Context, config: Config): void {
   if (typeof config.runId !== 'string' || config.runId.length === 0) {
@@ -48,12 +56,24 @@ export function apply(ctx: Context, config: Config): void {
   }
   const browser = ctx.get('browser') as OptionalBrowser | undefined
   const cordis = ctx.get('dynamicCordisRunner') as OptionalCordisRunner | undefined
+  const pluginInventory = ctx.get('pluginInventory') as OptionalPluginInventory | undefined
+  const capabilityRegistry = ctx.get('capabilityRegistry') as OptionalCapabilityRegistry | undefined
   const attention = new ControlAttentions()
   const runtime = captureRuntimeIdentity()
   void runtime.catch(() => {})
   const plane = new DshControlPlane({
     runId: config.runId,
     runtime: () => runtime,
+    runtimeInspect: {
+      plugins: () => {
+        if (pluginInventory === undefined) throw new Error('plugin inventory is unavailable')
+        return pluginInventory.list()
+      },
+      capabilities: (sessionId) => {
+        if (capabilityRegistry === undefined) return Promise.reject(new Error('capability registry is unavailable'))
+        return capabilityRegistry.list({ sessionId })
+      },
+    },
     maxWriteReceipts: config.maxWriteReceipts ?? 256,
     sessions: {
       create: request => ctx.sessionController.create(request as never),
@@ -120,7 +140,7 @@ async function handleRequest(
 }
 
 const METHODS = new Set<ControlRequest['method']>([
-  'runtime_status', 'request_receipt',
+  'runtime_status', 'runtime_inspect', 'request_receipt',
   'session_open', 'session_prompt', 'session_wait', 'session_events', 'session_observe', 'session_attention_answer', 'session_cancel', 'cordis_inspect',
   'browser_instances', 'browser_tabs', 'browser_snapshot', 'evidence_export',
   'browser_entry_inspect',
