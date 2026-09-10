@@ -73,9 +73,33 @@
 
 ## 3. 工作包
 
-### WP0 基线固定（先行）
+### 3.0 执行环境分工（本地 vs 云端）
 
-1. （已批准）160 项 WIP 在拓展 worktree 内按主题落为基线提交（保留作者身份），使后续改动可区分。
+本计划按「是否需要真机环境」切分执行责任。云端执行者指通过 GitHub 读写本分支的远程 agent：它只承担纯代码、fixture 与文档的编写。一切需要本机 Windows、真实 Chrome/MV3 扩展、Playwright、DSH Host、真实模型与费用的工作留在本地。云端提交只声明「未运行测试」，测试结论由本地执行者或仓库 CI 给出。
+
+| 工作包 | 云端可做 | 本地必须做 |
+| --- | --- | --- |
+| WP0 基线固定 | — | 落基线提交、推送本分支（已完成） |
+| WP1.0 实验入口与计量 | — | 接通 subject 工具路径、Host 计数与运行日志 |
+| WP1.1 挂载前置强制 | `browser-page.js` 预检记录、`stale_binding`/`inspect_required`、类型与错误说明、runner facade 及 README | 运行扩展单测与 e2e；`browser-entry.spec.ts` 用例的实际执行结果 |
+| WP1.2 停止清理核对 | runner 收尾与回执核对、controller 终止路径代码、扩展残留计数 | 真实 Host、取消/离线/在途挂载的 e2e |
+| WP1.3 collected 默认保留 | 缓存键与所有者释放路径代码 | 卸载→重新 inspect→重挂保留态的 e2e |
+| WP1.4 站点事实审计 | grep 审计与 `docs/subsystems/browser.md` 边界小节 | 审计在本地基线复核 |
+| WP1.5 证据拒绝防线 | `entry_mount` 无链接条目处理 | 单测执行 |
+| WP1.6 节点复用 | 观察器与点击前核对代码 | 节点复用 e2e |
+| WP1.7 业务结果核验 | checker 与只读状态读取代码 | 真实 Host 上的 collection 核对 |
+| WP2 Skill 沉淀 | 全部文本（含 `cordis-plugin-development` 更正） | `pnpm vitest run packages/preset/agent-presets` |
+| WP3 开发集 fixture | 静态页面、期望数据、fixture server 用例 | 真实浏览器加载扩展跑通 |
+| WP4 结构变化与拒绝矩阵 | e2e 用例代码与 B1–B6 构造 | 运行 e2e 并断言真实回执 |
+| WP5 冻结验收口径 | 表格补值（费用上限除外）与清单模板 | 提交冻结 commit；费用上限由用户给出 |
+| WP6 多模型对比 | — | 真实模型、Host、浏览器实例、隔离与计量 |
+| WP7 留出集执行 | — | 同上；留出集由准备者封存后本地执行 |
+
+云端执行者边界：只修改本分支内文件；不推送 `master`、不开 PR、不合并；不得把站点事实写进运行时路径、Skill 规则或提示（第 2.2 节）；不得读取或写入封存留出集的内容；无法在本地验证的行为按「未验证」表述；需要真机事实才能决定的实现细节提出而不猜。云端改动的返回值以本地测试结论为准，不以 agent 自述为准。
+
+### WP0 基线固定（已完成，本地执行）
+
+1. （已批准）160 项 WIP 已按主题落为基线提交，位于 `964fd9d5b4` 之上：忽略本地运行时数据的 `.gitignore`、浏览器包族、扩展与 Web e2e、MCP control-mcp 接线、Cordis 扩展与 session 控制器、文档与 preset。本地运行时数据（`.dsh-page-model-verify/`，含凭证）与 `.codex/` 已排除且不入库。
 2. 记录起点：`git rev-parse HEAD`、`git status` 快照存入实验记录目录（见 6.2）。
 3. 确认 Windows 执行环境：Playwright 用 `C:\Users\xbh\node_modules\playwright`（1.58.2，chromium 已下载），不使用系统 Chrome/Edge `--headless`；脚本与截图放 `.playwright-mcp/`（gitignored）。
 
@@ -188,7 +212,7 @@ B 组中 B1/B4/B5/B6 为机制拒绝（e2e 直接断言回执）；B2/B3 为证�
 ## 4. 依赖与不做的事
 
 - 依赖：拓展 worktree 既有 WIP（页面模型、扩展、mcp 整合 e2e）、Playwright 本地安装、仓库测试脚本矩阵（`docs/development.md`）。
-- 不做：不合并/不推送/不开 PR（需用户逐项授权）；不动 `.worktrees/browser-page-model-v1` 之外的 worktree；不访问真实站点（除 WP3 可选人工校准且需当场授权）；不引入向量检索、语义选择器推导等新能力——本计划只验证既有机制与护栏的泛化。
+- 分支与发布：把本工作分支 `codex/browser-page-model-v1` 推送到 origin 是云端执行者读取基线的前提（已授权）；不推送 `master`、不开 PR、不合并（需用户逐项授权）；不动 `.worktrees/browser-page-model-v1` 之外的 worktree；不访问真实站点（除 WP3 可选人工校准且需当场授权）；不引入向量检索、语义选择器推导等新能力——本计划只验证既有机制与护栏的泛化。
 - 提交纪律：WP1–WP4、WP5、WP7 的产物各自成 commit；站点事实只出现在测试与示例文件中。
 
 ## 5. 已裁决的决策（2026-09-10 用户批准）
