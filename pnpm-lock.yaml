@@ -15,6 +15,15 @@ importers:
 
   .:
     devDependencies:
+      '@changanhua/dsh-knowledge-base':
+        specifier: workspace:^
+        version: link:packages/knowledge/knowledge-base
+      '@changanhua/dsh-knowledge-base-task-queue':
+        specifier: workspace:^
+        version: link:packages/knowledge/knowledge-base-task-queue
+      '@changanhua/dsh-tool-knowledge-base':
+        specifier: workspace:^
+        version: link:packages/knowledge/tool-knowledge-base
       '@deepseek-ai/dsh-tool-session-query':
         specifier: workspace:^
         version: link:packages/session-query/tool-session-query

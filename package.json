@@ -163,6 +163,9 @@
     "postinstall": "node scripts/install-lefthook.mjs"
   },
   "devDependencies": {
+    "@changanhua/dsh-knowledge-base": "workspace:^",
+    "@changanhua/dsh-knowledge-base-task-queue": "workspace:^",
+    "@changanhua/dsh-tool-knowledge-base": "workspace:^",
     "@deepseek-ai/dsh-tool-session-query": "workspace:^",
     "@deepseek-ai/dsh-web-fetch-http": "workspace:^",
     "@stylistic/eslint-plugin": "^5.10.0",
