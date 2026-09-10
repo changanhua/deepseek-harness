@@ -140,7 +140,7 @@ Session 打开、提示、取消和问题回答要求调用方生成 `requestId`
 <a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与延期工作
 
-- **浏览器能力是可选运行时依赖**——目标 Host 没有 `browser` service 时，浏览器工具返回结构化错误。完整浏览器运行时验收属于与独立开发的浏览器页面模型的集成工作。
+- **浏览器能力是可选运行时依赖**——每次操作都读取当前加载的提供方，包括晚于控制适配器激活的提供方。提供方不可用时，浏览器工具返回结构化错误；卸载提供方不会重置运行的 Session 绑定或写入回执。浏览器集成测试使用独立开发的浏览器页面模型，普通网站账号不在其测试数据范围内。
 - **channel 是本地且绑定运行的**——只支持 stdio MCP 加 HTTP loopback Host。不提供共享 HTTP MCP server、发现 registry 或多 Host 路由。
 - **Cordis 控制是只读的**——本包报告不含源码的生命周期状态，但不定义、运行、更新或停止 Dynamic Cordis package。
 - **证据是观察而非判断**——外部验收仍必须把导出事实与独立冻结的 verifier plan 对比。

@@ -37,9 +37,9 @@ export interface DshControlPlaneOptions {
   readonly runtime?: () => Promise<Readonly<Record<string, unknown>>>
   readonly runtimeInspect?: ControlRuntimeInspectDependencies
   readonly sessions: ControlSessionDependencies
-  readonly browser?: ControlBrowserDependencies
+  readonly browser?: ControlBrowserDependencies | undefined
   readonly attention?: Pick<ControlAttentions, 'list' | 'subscribe' | 'answer'>
-  readonly cordis?: ControlCordisDependencies
+  readonly cordis?: ControlCordisDependencies | undefined
   readonly maxWriteReceipts?: number
 }
 

@@ -54,10 +54,6 @@ export function apply(ctx: Context, config: Config): void {
   if (typeof config.runId !== 'string' || config.runId.length === 0) {
     throw new Error('dsh-control-mcp-host: runId must be a non-empty string')
   }
-  const browser = ctx.get('browser') as OptionalBrowser | undefined
-  const cordis = ctx.get('dynamicCordisRunner') as OptionalCordisRunner | undefined
-  const pluginInventory = ctx.get('pluginInventory') as OptionalPluginInventory | undefined
-  const capabilityRegistry = ctx.get('capabilityRegistry') as OptionalCapabilityRegistry | undefined
   const attention = new ControlAttentions()
   const runtime = captureRuntimeIdentity()
   void runtime.catch(() => {})
@@ -66,10 +62,12 @@ export function apply(ctx: Context, config: Config): void {
     runtime: () => runtime,
     runtimeInspect: {
       plugins: () => {
+        const pluginInventory = ctx.get('pluginInventory') as OptionalPluginInventory | undefined
         if (pluginInventory === undefined) throw new Error('plugin inventory is unavailable')
         return pluginInventory.list()
       },
       capabilities: (sessionId) => {
+        const capabilityRegistry = ctx.get('capabilityRegistry') as OptionalCapabilityRegistry | undefined
         if (capabilityRegistry === undefined) return Promise.reject(new Error('capability registry is unavailable'))
         return capabilityRegistry.list({ sessionId })
       },
@@ -87,9 +85,10 @@ export function apply(ctx: Context, config: Config): void {
         return () => { offEvent(); offStatus() }
       },
     },
-    ...(browser === undefined ? {} : { browser }),
+    // Optional providers can activate after this adapter or unload independently.
+    get browser() { return ctx.get('browser') as OptionalBrowser | undefined },
     attention,
-    ...(cordis === undefined ? {} : { cordis }),
+    get cordis() { return ctx.get('dynamicCordisRunner') as OptionalCordisRunner | undefined },
   })
   ctx.on('user-questions/request', (request, next) => {
     const sessionId = plane.boundSessionId()

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-10-run-bound-dsh-control-mcp.md
-2026-09-10-run-bound-dsh-control-mcp.md: 1f824c217a561bfc41020d93512fcfc91e264573
-2026-09-10-run-bound-dsh-control-mcp.zh.md: c2fcde26d58608c4a8390f0ce6f35c8058c3552f
+2026-09-10-run-bound-dsh-control-mcp.md: 73bf1adfdee8feac04b231402dd57ebe3ee57cef
+2026-09-10-run-bound-dsh-control-mcp.zh.md: c043b715594830b781b1b53d9390ca6c876f7462

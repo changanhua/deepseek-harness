@@ -139,7 +139,7 @@ The tool list is stable for a fixed package version and can remain in a reusable
 
 ## Known Limitations and Deferred Work
 
-- **Browser capability is an optional runtime dependency** — browser tools return a structured error when the target Host has no `browser` service. Full browser runtime acceptance belongs to the integration with the independently developed browser page model.
+- **Browser capability is an optional runtime dependency** — each operation resolves the currently loaded provider, including one activated after the control adapter. Browser tools return a structured error when the provider is unavailable; unloading it does not reset the run's Session binding or write receipts. Browser integration tests use the separately developed browser page model; ordinary website accounts are outside their fixtures.
 - **The channel is local and run-scoped** — only stdio MCP plus an HTTP loopback Host is supported. There is no shared HTTP MCP server, discovery registry, or multi-Host routing.
 - **Cordis control is read-only** — the package reports source-free lifecycle state but does not define, run, update, or stop Dynamic Cordis packages.
 - **Evidence is observation, not judgment** — external acceptance must still compare the exported facts with an independently frozen verifier plan.
