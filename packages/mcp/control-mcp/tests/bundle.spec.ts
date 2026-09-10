@@ -25,6 +25,7 @@ describe('DSH control MCP bundle', () => {
           hostHome: { __jsExpr: 'process.env.DSH_CONTROL_HOST_HOME' },
           origin: { __jsExpr: 'process.env.DSH_CONTROL_ORIGIN' },
           runId: { __jsExpr: 'process.env.DSH_CONTROL_RUN_ID' },
+          cliEntry: { __jsExpr: 'process.env.DSH_CONTROL_CLI_ENTRY' },
           tokenEnv: 'DSH_CONTROL_TOKEN',
         },
       },

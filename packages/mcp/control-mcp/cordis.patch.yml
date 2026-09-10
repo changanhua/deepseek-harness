@@ -13,4 +13,5 @@
         runId: !!js process.env.DSH_CONTROL_RUN_ID
         hostHome: !!js process.env.DSH_CONTROL_HOST_HOME
         autoStartHost: !!js process.env.DSH_CONTROL_AUTOSTART !== 'false'
+        cliEntry: !!js process.env.DSH_CONTROL_CLI_ENTRY
         tokenEnv: DSH_CONTROL_TOKEN
