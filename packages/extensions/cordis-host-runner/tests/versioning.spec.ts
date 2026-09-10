@@ -4,6 +4,39 @@ import { AGENT_A, CLIENT_CODE, setup } from './helpers.ts'
 const HOST = 'return { apply() {} }'
 
 describe('dynamic Plugin versions', () => {
+  it('keeps bounded plugin state across a package update without exposing another plugin', async () => {
+    const { ctx, runner } = await setup()
+    const first = runner.define({ sessionId: AGENT_A.id, plugin: { kind: 'new', idPrefix: 'state' },
+      name: 'collector v1', purpose: 'collect links', code: { host: `
+        return { name: 'collector-v1', apply(ctx) {
+          harness.state.set('collected', [{ title: 'A', link: 'https://example.test/a' }])
+          ctx.provide('entryState', { read: () => harness.state.get('collected') })
+        } }
+      ` } })
+    await expect(runner.run(AGENT_A, first.pluginId, first.packageId, 'run')).resolves.toMatchObject({ ok: true })
+    expect((ctx.get('entryState') as { read(): unknown }).read()).toEqual([{ title: 'A', link: 'https://example.test/a' }])
+
+    const second = runner.define({ sessionId: AGENT_A.id, plugin: { kind: 'existing', pluginId: first.pluginId },
+      name: 'collector v2', purpose: 'collect links', code: { host: `
+        return { name: 'collector-v2', apply(ctx) {
+          const existing = harness.state.get('collected')
+          harness.state.set('collected', [...existing, { title: 'B', link: 'https://example.test/b' }])
+          ctx.provide('entryState', { read: () => harness.state.get('collected') })
+        } }
+      ` } })
+    await expect(runner.run(AGENT_A, first.pluginId, second.packageId, 'update')).resolves.toMatchObject({ ok: true })
+    expect((ctx.get('entryState') as { read(): unknown }).read()).toEqual([
+      { title: 'A', link: 'https://example.test/a' }, { title: 'B', link: 'https://example.test/b' },
+    ])
+
+    const other = runner.define({ sessionId: AGENT_A.id, plugin: { kind: 'new', idPrefix: 'other' },
+      name: 'other', purpose: 'isolation probe', code: { host: `
+        return { name: 'other', apply(ctx) { ctx.provide('otherState', { read: () => harness.state.get('collected') }) } }
+      ` } })
+    await runner.run(AGENT_A, other.pluginId, other.packageId, 'run')
+    expect((ctx.get('otherState') as { read(): unknown }).read()).toBeUndefined()
+  })
+
   it('keeps currentPackageId when an update fails and clears nextPackageId after rollback', async () => {
     const { runner } = await setup()
     const first = runner.define({

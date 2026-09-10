@@ -302,7 +302,7 @@ export type DynamicCordisRunResponse =
 
 /** Result of stopping a Plugin without deleting its Packages. */
 export type DynamicCordisStopResponse =
-  | { ok: true }
+  | { ok: true; cleanupPending?: readonly string[] }
   | { ok: false; reason: 'plugin-missing' | 'not-running'; message: string }
 
 /** Result of bringing up the Host half before loading the Client half. */

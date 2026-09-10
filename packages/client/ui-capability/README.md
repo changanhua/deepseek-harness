@@ -26,7 +26,10 @@ summary cards, and a per-row detail drawer.
 One `CapabilityStore` (snapshot/subscribe) serves both entries. On the current
 session it calls `ctx.remote.capabilityRegistry.list({ sessionId })`, caching the
 host projection with a generation guard so a stale response never overwrites a
-newer load. The store exposes `load` / `retry` / `reset`; the view renders
+newer load. The plugin waits for the session service before subscribing to the
+current selection, including when that service activates later during browser
+startup. Disposal removes the selection subscription and both slot entries.
+The store exposes `load` / `retry` / `reset`; the view renders
 `status: loading | ready | error`. A missing Remote namespace falls back to an
 explicit `{ ok: false }` error so the UI shows "failed to read capabilities"
 with a retry rather than silently rendering empty data.

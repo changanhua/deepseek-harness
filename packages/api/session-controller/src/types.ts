@@ -196,6 +196,7 @@ export interface SessionErrorDetailsMap {
   'agent-preset-not-found': { readonly agentPreset: string; readonly available: readonly string[] }
   'agent-preset-invalid': { readonly agentPreset: string; readonly reason: string }
   'agent-busy': { readonly reason: string }
+  'request-conflict': { readonly sessionId: SessionId; readonly requestId: SessionRequestId }
   'attachment-error': { readonly reason: string }
   'queue-item-not-found': { readonly itemId: MessageId }
   'steer-unavailable': { readonly itemId: MessageId }
@@ -379,7 +380,13 @@ export type SessionRequestId = Branded<'session-request-id'>
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     /** Browser prompt correlation and optional Host-validated time zone. */
-    'user-rpc': { kind: 'user'; rpcId: SessionRequestId; clientTimeZone?: string }
+    'user-rpc': {
+      kind: 'user'
+      rpcId: SessionRequestId
+      /** SHA-256 digest of the normalized prompt input that owns `rpcId`. */
+      rpcDigest?: string
+      clientTimeZone?: string
+    }
   }
 }
 
