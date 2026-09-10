@@ -13,7 +13,8 @@ describe('DSH control HTTP client', () => {
           headers: { location: '/', 'set-cookie': 'dsh_session=signed; Path=/; HttpOnly; SameSite=Strict' },
         })
       }
-      const body = JSON.parse(String(init?.body)) as {
+      expect(typeof init?.body).toBe('string')
+      const body = JSON.parse(init?.body as string) as {
         type: string
         rpcId: string
         method: string
@@ -64,7 +65,8 @@ describe('DSH control HTTP client', () => {
       }
       cookies.push(new Headers(init?.headers).get('cookie') ?? '')
       if (call === 2) return new Response('unauthorized', { status: 401 })
-      const request = JSON.parse(String(init?.body)) as { rpcId: string }
+      expect(typeof init?.body).toBe('string')
+      const request = JSON.parse(init?.body as string) as { rpcId: string }
       return new Response(JSON.stringify({
         type: 'server-response', rpcId: request.rpcId, result: { ok: true, value: { recovered: true } },
       }), { status: 200, headers: { 'content-type': 'application/json' } })

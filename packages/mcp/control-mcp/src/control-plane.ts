@@ -305,16 +305,19 @@ export class DshControlPlane {
     }
   }
 
-  private async sessionAttentionAnswer(
+  private sessionAttentionAnswer(
     params: Readonly<Record<string, unknown>>,
     signal: AbortSignal,
   ): Promise<unknown> {
-    const sessionId = requiredString(params.sessionId, 'sessionId')
-    this.assertSession(sessionId)
-    const attentionId = requiredString(params.attentionId, 'attentionId')
-    if (this.options.attention === undefined) throw new Error('attention service is unavailable')
-    signal.throwIfAborted()
-    return this.options.attention.answer(sessionId, attentionId, { answers: parseAttentionAnswers(params.answers) })
+    // Validation throws must become rejections so the write retains a failure receipt.
+    return new Promise((resolve) => {
+      const sessionId = requiredString(params.sessionId, 'sessionId')
+      this.assertSession(sessionId)
+      const attentionId = requiredString(params.attentionId, 'attentionId')
+      if (this.options.attention === undefined) throw new Error('attention service is unavailable')
+      signal.throwIfAborted()
+      resolve(this.options.attention.answer(sessionId, attentionId, { answers: parseAttentionAnswers(params.answers) }))
+    })
   }
 
   private sessionCancel(params: Readonly<Record<string, unknown>>): Promise<unknown> {
@@ -453,8 +456,8 @@ export class DshControlPlane {
     const agent = this.options.sessions.getAgent(sessionId)
     if (offSession === undefined && agent !== undefined) void agent.whenIdle().then(notify, wake.reject)
     try {
-      if (signal.aborted) abort()
-      else notify()
+      signal.throwIfAborted()
+      notify()
       return await wake.promise
     } finally {
       clearTimeout(timer)
@@ -555,7 +558,7 @@ function parseAttentionAnswers(value: unknown): AskUserQuestionAnswer['answers']
     }
     return {
       id: item.id,
-      selected: [...item.selected] as string[],
+      selected: (item.selected as string[]).slice(),
       ...(item.custom === undefined ? {} : { custom: item.custom }),
     }
   })

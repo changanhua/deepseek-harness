@@ -249,7 +249,7 @@ describe('DSH control plane', () => {
       cursor: 1,
       attention: [{
         kind: 'user_question',
-        attentionId: expect.any(String),
+        attentionId: expect.any(String) as string,
         questions: [{ id: 'next', question: '继续吗？' }],
       }],
     })
@@ -294,6 +294,13 @@ describe('DSH control plane', () => {
     expect(attention.list('session-1')).toEqual([])
     await expect(control.handle(request, signal)).resolves.toEqual({ answered: true })
     await expect(control.handle({ ...request, params: { ...request.params, answers: [{ id: 'next', selected: [] }] } }, signal))
+      .rejects.toThrow('requestId was already used')
+    const stale = { ...request, requestId: 'stale-answer' }
+    await expect(control.handle(stale, signal)).rejects.toThrow('no longer pending')
+    await expect(control.handle({
+      runId: 'run-1', requestId: 'lookup', method: 'request_receipt', params: { requestId: stale.requestId },
+    }, signal)).resolves.toMatchObject({ found: true, status: 'rejected', error: { message: 'attention is no longer pending for this Session' } })
+    await expect(control.handle({ ...stale, params: { ...stale.params, answers: [] } }, signal))
       .rejects.toThrow('requestId was already used')
   })
 

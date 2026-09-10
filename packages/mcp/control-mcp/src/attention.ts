@@ -31,9 +31,9 @@ export class ControlAttentions {
     return () => { this.listeners.delete(listener) }
   }
 
-  ask(sessionId: string, request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer> {
+  async ask(sessionId: string, request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer> {
     if (this.disposed) return Promise.reject(new Error('control Host disposed'))
-    if (request.signal?.aborted) return Promise.reject(request.signal.reason)
+    request.signal?.throwIfAborted()
     if (this.pending.size >= 32 || request.questions.length > 32
       || new Set(request.questions.map(question => question.id)).size !== request.questions.length
       || Buffer.byteLength(JSON.stringify(request.questions)) > 65_536) {
@@ -43,7 +43,7 @@ export class ControlAttentions {
       attentionId: randomUUID(), kind: 'user_question', questions: structuredClone(request.questions),
     }
     const deferred = Promise.withResolvers<AskUserQuestionAnswer>()
-    const abort = () => settle(undefined, request.signal?.reason ?? new Error('question aborted'))
+    const abort = () => { settle(undefined, request.signal?.reason ?? new Error('question aborted')) }
     const settle = (answer?: AskUserQuestionAnswer, error?: unknown): void => {
       if (!this.pending.delete(value.attentionId)) return
       request.signal?.removeEventListener('abort', abort)

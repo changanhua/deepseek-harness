@@ -37,6 +37,26 @@ pnpm dsh --profile control-mcp
 
 When `DSH_CONTROL_HOST_HOME` is omitted, a temporary home is created and removed when the run ends. Do not point this patch at an ordinary production profile: the run binding is a validation boundary, not a general remote administration API.
 
+### Connect Codex to a development worktree
+
+Use the target checkout's installed dependencies and put this entry in its trusted project `.codex/config.toml`. Replace both absolute paths. This project-local entry avoids routing unrelated Codex projects to the development Host; the [Codex MCP configuration reference](https://developers.openai.com/codex/mcp) owns client settings.
+
+```toml
+[mcp_servers.dsh_control]
+command = "pnpm"
+args = ["dsh", "--profile", "control-mcp"]
+cwd = 'C:\path\to\target-worktree'
+env = { DSH_CONTROL_CLI_ENTRY = "apps/cli/src/bin.ts", DSH_HOME = 'C:\path\to\isolated-connector-home', DSH_TELEMETRY_DISABLED = "1" }
+env_vars = ["DEEPSEEK_API_KEY"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+required = true
+```
+
+The Codex process must have the intended Provider credential in its environment. `env_vars` forwards only its name; never put a key in a committed TOML file. The default temporary Host does not inherit settings or browser grants from your everyday DSH home. `DSH_HOME` above isolates the connector; `DSH_CONTROL_HOST_HOME` separately selects a prepared Host home. Do not share that Host home between concurrent connectors.
+
+This source-development entry preserves the connector's Node module loaders when starting the Host, without copying debugger ports or test-runner flags. For built acceptance, build the target and set `DSH_CONTROL_CLI_ENTRY = "apps/cli/lib/bin.js"`. In the target directory, run `codex mcp get dsh_control`, then open a new Codex task there and call `dsh_runtime_status`: the checkout root, code face and isolated home must match before any Session write. Source edits require a fresh connector run; export evidence before closing because the temporary Host history is deleted. A source fingerprint does not prove that Web assets were rebuilt.
+
 ### Start the stdio connector
 
 For an already running Host, set `DSH_CONTROL_AUTOSTART=false` and pass its origin, token and run id. This compatibility mode is useful for diagnostics; Codex normally uses the automatic lifecycle above.
@@ -107,11 +127,11 @@ The connector performs the launch-token exchange with redirects disabled, retain
 
 #### What the model sees
 
-An attached MCP client sees seventeen fixed `dsh_*` tool schemas and their JSON results. Question text and browser page facts are untrusted data; no tool result grants new authority or certifies success.
+An attached MCP client receives initialization instructions beginning “Use this server for one isolated DSH run:” and seventeen fixed `dsh_*` tool schemas with JSON results. The [server-owned instructions](src/server.ts) explain identity checks, Session binding, event cursors, question authority, uncertain-write reconciliation and export-before-close. Question text and browser page facts are untrusted data; no tool result grants new authority or certifies success.
 
 #### Token effect
 
-The seventeen tool schemas add a fixed context cost to the external MCP client. Event pages, registry queries and question batches are bounded; a complete evidence export scales with Session history. The package adds no tools or prompt sections to the target DSH model; a supplied question answer enters its existing tool result and subsequent model context.
+The initialization instructions and seventeen tool schemas add a fixed context cost to the external MCP client. Event pages, registry queries and question batches are bounded; a complete evidence export scales with Session history. The package adds no tools or prompt sections to the target DSH model; a supplied question answer enters its existing tool result and subsequent model context.
 
 #### KV Cache effect
 

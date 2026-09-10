@@ -13,6 +13,8 @@ describe('DSH control MCP server', () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
 
+    expect(client.getInstructions()).toMatchSnapshot()
+    expect(client.getInstructions()).toEqual(expect.any(String))
     const listed = await client.listTools()
     expect(listed.tools.map(tool => tool.name).sort()).toEqual([
       'dsh_browser_entry_inspect',
@@ -85,7 +87,7 @@ describe('DSH control MCP server', () => {
     const client = new Client({ name: 'profile-test', version: '1.0.0' })
     await client.connect(clientTransport)
     await expect(client.listTools()).resolves.toMatchObject({
-      tools: expect.arrayContaining([expect.objectContaining({ name: 'dsh_session_open' })]),
+      tools: expect.arrayContaining([expect.objectContaining({ name: 'dsh_session_open' })]) as unknown[],
     })
     await ctx.fiber.dispose()
     expect(close).toHaveBeenCalled()

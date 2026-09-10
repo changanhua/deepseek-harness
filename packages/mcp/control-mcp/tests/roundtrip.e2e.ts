@@ -45,8 +45,8 @@ describe('Codex to DSH development round', () => {
       await client.connect(transport)
       const runtime = await call('dsh_runtime_status')
       expect(runtime).toMatchObject({ runId: 'development-round', sessionId: null, identity: {
-        pid: expect.any(Number), profile: 'web', dshHome: hostHome,
-        code: { face: 'built', sha256: expect.stringMatching(/^[a-f0-9]{64}$/u) },
+        pid: expect.any(Number) as number, profile: 'web', dshHome: hostHome,
+        code: { face: 'built', sha256: expect.stringMatching(/^[a-f0-9]{64}$/u) as string },
       } })
       await expect(call('dsh_runtime_inspect', {
         view: 'plugins', query: 'control-mcp/host', limit: 5,

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import type { spawn as nodeSpawn } from 'node:child_process'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import { parseHostAnnouncement, startManagedDshHost } from '../src/lifecycle.ts'
@@ -13,25 +14,29 @@ describe('managed DSH Host lifecycle', () => {
 
   it('starts from the CLI profile and terminates the child on stop', async () => {
     const child = new FakeChild()
-    const spawn = vi.fn(() => child as never)
+    const spawn = vi.fn<typeof nodeSpawn>(() => child as never)
     const host = await startManagedDshHost({
       runId: 'run-1',
       hostHome: 'C:/isolated-host',
       hostPatch: 'C:/patch.yml',
       executable: 'node.exe',
       cliEntry: 'C:/repo/apps/cli/lib/bin.js',
-      spawn,
+      spawn: spawn as unknown as typeof nodeSpawn,
       startupTimeoutMs: 1000,
     })
     expect(host.origin).toBe('http://127.0.0.1:43122')
-    expect(spawn).toHaveBeenCalledWith('node.exe', [
+    const [command, args, options] = spawn.mock.calls[0]!
+    expect(command).toBe('node.exe')
+    expect(args).toEqual([
       'C:/repo/apps/cli/lib/bin.js', '--profile', 'web', '--patch', 'C:/patch.yml',
       '--no-open', '--port', '0',
-    ], expect.objectContaining({
-      env: expect.objectContaining({ DSH_HOME: 'C:/isolated-host', DSH_CONTROL_RUN_ID: 'run-1' }),
-      windowsHide: true,
-    }))
-    await host.stop()
+    ])
+    expect(options?.env?.DSH_HOME).toBe('C:/isolated-host')
+    expect(options?.env?.DSH_CONTROL_RUN_ID).toBe('run-1')
+    expect(options?.windowsHide).toBe(true)
+    const stop = host.stop()
+    expect(host.stop()).toBe(stop)
+    await stop
     expect(child.killedSignal).toBe('SIGTERM')
     await host.stop()
     expect(child.killCount).toBe(1)
@@ -39,21 +44,28 @@ describe('managed DSH Host lifecycle', () => {
 
   it('preserves the source loader when the managed Host uses a TypeScript CLI entry', async () => {
     const child = new FakeChild()
-    const spawn = vi.fn(() => child as never)
-    const host = await startManagedDshHost({
-      runId: 'run-source',
-      hostHome: 'C:/isolated-host',
-      hostPatch: 'C:/patch.yml',
-      executable: process.execPath,
-      cliEntry: 'C:/repo/apps/cli/src/bin.ts',
-      spawn,
-      startupTimeoutMs: 1000,
-    })
-    expect(spawn).toHaveBeenCalledWith(process.execPath, [
-      ...process.execArgv, 'C:/repo/apps/cli/src/bin.ts', '--profile', 'web', '--patch', 'C:/patch.yml',
-      '--no-open', '--port', '0',
-    ], expect.anything())
-    await host.stop()
+    const spawn = vi.fn<typeof nodeSpawn>(() => child as never)
+    const originalArgs = process.execArgv
+    process.execArgv = ['--inspect=9229', '--test', '--import', 'tsx/esm', '--loader=fixture-loader']
+    try {
+      const host = await startManagedDshHost({
+        runId: 'run-source',
+        hostHome: 'C:/isolated-host',
+        hostPatch: 'C:/patch.yml',
+        executable: process.execPath,
+        cliEntry: 'C:/repo/apps/cli/src/bin.ts',
+        spawn: spawn as unknown as typeof nodeSpawn,
+        startupTimeoutMs: 1000,
+      })
+      expect(spawn.mock.calls[0]?.[1]).toEqual([
+        '--import', 'tsx/esm', '--loader=fixture-loader',
+        'C:/repo/apps/cli/src/bin.ts', '--profile', 'web', '--patch', 'C:/patch.yml',
+        '--no-open', '--port', '0',
+      ])
+      await host.stop()
+    } finally {
+      process.execArgv = originalArgs
+    }
   })
 })
 

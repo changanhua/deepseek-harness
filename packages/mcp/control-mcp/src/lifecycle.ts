@@ -43,10 +43,9 @@ export async function startManagedDshHost(options: ManagedHostOptions): Promise<
     throw new Error('cannot auto-start DSH Host: CLI entry is unavailable')
   }
   const patch = options.hostPatch ?? defaultHostPatch()
-  // `pnpm dsh` runs the source CLI through tsx. Preserve that loader when the
-  // managed child also uses the source entry; built CLI entries stay plain
-  // Node processes and do not inherit the parent test/runtime flags.
-  const nodeArgs = cliEntry.endsWith('.ts') ? process.execArgv : []
+  // Source entries need the same module loaders, but must not inherit debug
+  // ports or test-runner flags from the connector process.
+  const nodeArgs = cliEntry.endsWith('.ts') ? sourceLoaderArgs(process.execArgv) : []
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...options.env,
@@ -55,7 +54,8 @@ export async function startManagedDshHost(options: ManagedHostOptions): Promise<
   }
   delete env.DSH_CONTROL_ORIGIN
   delete env.DSH_CONTROL_TOKEN
-  const child = (options.spawn ?? nodeSpawn)(executable, [...nodeArgs,
+  const child = (options.spawn ?? nodeSpawn)(executable, [
+    ...nodeArgs,
     cliEntry,
     '--profile', 'web',
     '--patch', patch,
@@ -69,16 +69,14 @@ export async function startManagedDshHost(options: ManagedHostOptions): Promise<
   })
   try {
     const announcement = await readAnnouncement(child, options.startupTimeoutMs ?? 30_000)
-    let stopped = false
+    let stopping: Promise<void> | undefined
     return {
       ...announcement,
       home,
-      stop: async () => {
-        if (stopped) return
-        stopped = true
+      stop: () => stopping ??= (async () => {
         await stopChild(child, options.killTimeoutMs ?? 5_000)
         if (ownsHome) await removeHome(home)
-      },
+      })(),
     }
   } catch (error) {
     await stopChild(child, options.killTimeoutMs ?? 5_000).catch(() => {})
@@ -101,7 +99,7 @@ function readAnnouncement(child: ChildProcess, timeoutMs: number): Promise<HostL
   return new Promise((resolve, reject) => {
     let output = ''
     let settled = false
-    const timer = setTimeout(() => finish(new Error(`DSH Host did not announce readiness within ${String(timeoutMs)}ms`)), timeoutMs)
+    const timer = setTimeout(() => { finish(new Error(`DSH Host did not announce readiness within ${String(timeoutMs)}ms`)) }, timeoutMs)
     const finish = (error?: Error, value?: HostLaunchAnnouncement): void => {
       if (settled) return
       settled = true
@@ -125,9 +123,9 @@ function readAnnouncement(child: ChildProcess, timeoutMs: number): Promise<HostL
       }
       if (output.length > 64_000) output = output.slice(-32_000)
     }
-    const onStdout = (chunk: unknown): void => inspect(chunk)
-    const onStderr = (chunk: unknown): void => inspect(chunk)
-    const onError = (error: Error): void => finish(error)
+    const onStdout = (chunk: unknown): void => { inspect(chunk) }
+    const onStderr = (chunk: unknown): void => { inspect(chunk) }
+    const onError = (error: Error): void => { finish(error) }
     const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
       finish(new Error(`DSH Host exited before readiness (code=${String(code)}, signal=${String(signal)})`))
     }
@@ -141,9 +139,10 @@ function readAnnouncement(child: ChildProcess, timeoutMs: number): Promise<HostL
 }
 
 async function stopChild(child: ChildProcess, timeoutMs: number): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return
+  const running = () => child.exitCode === null && child.signalCode === null
+  if (!running()) return
   const exited = new Promise<void>((resolve) => {
-    child.once('exit', () => resolve())
+    child.once('exit', () => { resolve() })
   })
   child.kill('SIGTERM')
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -152,7 +151,7 @@ async function stopChild(child: ChildProcess, timeoutMs: number): Promise<void> 
     new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs) }),
   ])
   if (timer !== undefined) clearTimeout(timer)
-  if (child.exitCode === null && child.signalCode === null) {
+  if (running()) {
     child.kill('SIGKILL')
     await exited
   }
@@ -170,4 +169,19 @@ function defaultHostPatch(): string {
   const found = candidates.find(path => existsSync(path))
   if (found !== undefined) return found
   return join(dirname(fileURLToPath(import.meta.url)), 'host.cordis.patch.yml')
+}
+
+function sourceLoaderArgs(args: readonly string[]): string[] {
+  const result: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === undefined) continue
+    const value = args[i + 1]
+    if (/^--(?:import|loader|experimental-loader)=/u.test(arg)) result.push(arg)
+    else if (/^--(?:import|loader|experimental-loader)$/u.test(arg) && value !== undefined) {
+      result.push(arg, value)
+      i++
+    }
+  }
+  return result
 }

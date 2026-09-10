@@ -16,6 +16,7 @@ export function apply(ctx: Context): void {
     .helpOption('-h, --help', 'show this help')
     .addHelpText('after', `
 Optional environment:
+  DSH_CONTROL_CLI_ENTRY    Host CLI entry; use apps/cli/src/bin.ts for source development
   DSH_CONTROL_HOST_HOME    prepared isolated Host home; otherwise a temporary home is used
   DSH_CONTROL_AUTOSTART    set false only when attaching to an already running Host
 `)

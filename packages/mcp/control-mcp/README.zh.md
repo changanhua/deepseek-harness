@@ -37,6 +37,26 @@ pnpm dsh --profile control-mcp
 
 省略 `DSH_CONTROL_HOST_HOME` 时，连接器会创建临时 home，并在运行结束时删除。不要把此 patch 指向普通生产 profile：运行绑定是验证边界，不是通用远程管理 API。
 
+### 将 Codex 接入开发 worktree
+
+使用目标 checkout 已安装的依赖，将下面的配置放入其受信任项目的 `.codex/config.toml`，并替换两个绝对路径。项目内配置可以避免把其他 Codex 项目指向开发 Host；客户端设置以 [Codex MCP 配置参考](https://developers.openai.com/codex/mcp)为准。
+
+```toml
+[mcp_servers.dsh_control]
+command = "pnpm"
+args = ["dsh", "--profile", "control-mcp"]
+cwd = 'C:\path\to\target-worktree'
+env = { DSH_CONTROL_CLI_ENTRY = "apps/cli/src/bin.ts", DSH_HOME = 'C:\path\to\isolated-connector-home', DSH_TELEMETRY_DISABLED = "1" }
+env_vars = ["DEEPSEEK_API_KEY"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+required = true
+```
+
+Codex 进程的环境中必须有目标提供方的凭据。`env_vars` 只声明要转发的变量名，不要把密钥写入提交到仓库的 TOML 文件。默认临时 Host 不继承日常 DSH home 的设置和浏览器授权。上面的 `DSH_HOME` 隔离连接器；`DSH_CONTROL_HOST_HOME` 则单独指定准备好的 Host home。并发连接器不要共享这个 Host home。
+
+此源码开发入口在启动 Host 时保留连接器的 Node 模块加载器，但不复制调试端口或测试运行参数。验收构建产物时，先构建目标，再设置 `DSH_CONTROL_CLI_ENTRY = "apps/cli/lib/bin.js"`。在目标目录执行 `codex mcp get dsh_control`，然后在那里打开新的 Codex 任务并调用 `dsh_runtime_status`：worktree 根目录、代码形态与隔离 home 必须匹配，之后才能写入 Session。源码修改需要新连接器运行才会加载；关闭前先导出证据，因为临时 Host 的历史会被删除。源码指纹不证明 Web 资源已经重新构建。
+
 ### 启动 stdio 连接器
 
 如果要连接已经运行的 Host，可设置 `DSH_CONTROL_AUTOSTART=false`，再传入它的 origin、token 和 run id。这是诊断兼容模式；Codex 通常使用上面的自动生命周期。
@@ -107,11 +127,11 @@ Session 打开、提示、取消和问题回答要求调用方生成 `requestId`
 
 #### 模型看到什么
 
-已连接的 MCP 客户端会看到十七个固定 `dsh_*` 工具 schema 及其 JSON 结果。问题文本和浏览器页面事实都是不可信数据；任何工具结果都不会授予新权限或证明成功。
+已连接的 MCP 客户端会收到以 “Use this server for one isolated DSH run:” 开头的初始化指引，以及十七个固定 `dsh_*` 工具 schema 和 JSON 结果。[server 拥有的指引](src/server.ts)说明身份检查、Session 绑定、事件游标、问题权限、不确定写入核对及关闭前导出。问题文本和浏览器页面事实都是不可信数据；任何工具结果都不会授予新权限或证明成功。
 
 #### Token 影响
 
-十七个工具 schema 给外部 MCP 客户端增加固定上下文成本。事件页、注册表查询和问题批次有界，完整证据导出的大小随 Session 历史增长。本包不向目标 DSH 模型添加工具或提示章节；提交的问题答案会进入其现有工具结果和后续模型上下文。
+初始化指引和十七个工具 schema 给外部 MCP 客户端增加固定上下文成本。事件页、注册表查询和问题批次有界，完整证据导出的大小随 Session 历史增长。本包不向目标 DSH 模型添加工具或提示章节；提交的问题答案会进入其现有工具结果和后续模型上下文。
 
 #### KV Cache 影响
 
