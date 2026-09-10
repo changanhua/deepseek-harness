@@ -740,6 +740,28 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 来源：[`packages/subagent/subagent/src/descriptor.ts:38`](../packages/subagent/subagent/src/descriptor.ts)
 
+<a id="subagentforeground-input--log-only"></a>
+
+#### `subagent/foreground-input` — 仅日志
+
+```ts persistence-catalog
+/** Log-only input identity captured before a foreground child starts. */
+'subagent/foreground-input': ForegroundInputBindingData
+```
+
+来源：[`packages/subagent/tool-subagent/src/types.ts:24`](../packages/subagent/tool-subagent/src/types.ts)
+
+<a id="subagentforeground-stale--log-only"></a>
+
+#### `subagent/foreground-stale` — 仅日志
+
+```ts persistence-catalog
+/** Log-only obsolete output, retained without entering model history. */
+'subagent/foreground-stale': ForegroundStaleResultData
+```
+
+来源：[`packages/subagent/tool-subagent/src/types.ts:26`](../packages/subagent/tool-subagent/src/types.ts)
+
 <a id="subagentmodel-selection-policy--log-only"></a>
 
 #### `subagent/model-selection-policy` — 仅日志

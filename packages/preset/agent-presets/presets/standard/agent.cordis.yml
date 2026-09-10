@@ -56,6 +56,9 @@
 - id: tool-runtime-inspect
   name: '@changanhua/dsh-tool-runtime-inspect'
 
+- id: tool-browser
+  name: '@changanhua/dsh-tool-browser'
+
 # ── filesystem ──────────────────────────────────────────────────────────────
 
 # Both register into the host `tools` registry and provide nothing, so

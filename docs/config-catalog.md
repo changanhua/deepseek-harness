@@ -9,6 +9,25 @@ This file is GENERATED from source (`scripts/gen-config-catalog.ts`) and verifie
 
 A `Requires:` line lists the service keys the plugin `inject`s: its `cordis.yml` tree must also load providers for those services. Scope is the harness tier (`packages/`); the vendored cordis plugins a config tree may also load (`hmr`, the console logger, …) are pinned upstream source ([vendoring policy](../vendor/README.md)) and not catalogued here.
 
+<a id="changanhuadsh-content-browser"></a>
+
+## `@changanhua/dsh-content-browser`
+
+Requires: `webServer` · `connection` · `credentials` · `content`
+
+```ts config-catalog
+export interface ContentBrowserConfig {
+  /** Lifetime of a pending connection request, in milliseconds. */
+  requestTTL?: number
+  /** Maximum number of pending connection requests. */
+  pendingLimit?: number
+  /** Maximum accepted request body size, in bytes. */
+  maxRequestBodyBytes?: number
+}
+```
+
+Source: [`packages/content/content-browser/src/index.ts:36`](../packages/content/content-browser/src/index.ts)
+
 <a id="changanhuadsh-content-domain"></a>
 
 ## `@changanhua/dsh-content-domain`
@@ -789,7 +808,7 @@ export interface ConnectionConfig {
 }
 ```
 
-Source: [`packages/client/connection/src/index.ts:70`](../packages/client/connection/src/index.ts)
+Source: [`packages/client/connection/src/index.ts:72`](../packages/client/connection/src/index.ts)
 
 <a id="deepseek-aidsh-client-hmr"></a>
 
@@ -2803,6 +2822,7 @@ export interface Config {
 
 /** Profile-selectable non-interactive Codex permission mode. */
 export type CodexPermissionMode =
+  | 'read-only'
   | 'never'
   | 'approve-for-me'
   | 'dangerously-bypass-approvals-and-sandbox'
@@ -3381,7 +3401,7 @@ export interface Config {
 
 Depends on: [`AgentOptions`](subsystems/core.md)
 
-Source: [`packages/subagent/tool-subagent/src/index.ts:49`](../packages/subagent/tool-subagent/src/index.ts)
+Source: [`packages/subagent/tool-subagent/src/index.ts:51`](../packages/subagent/tool-subagent/src/index.ts)
 
 <a id="deepseek-aidsh-tool-subagent-report"></a>
 
@@ -3784,11 +3804,14 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 
 - `@changanhua/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
 - `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
+- `@changanhua/dsh-client-ui-content` ([`packages/client/ui-content/src/index.ts`](../packages/client/ui-content/src/index.ts))
 - `@changanhua/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
 - `@changanhua/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
 - `@changanhua/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
 - `@changanhua/dsh-client-ui-work-observatory` ([`packages/client/ui-work-observatory/src/index.ts`](../packages/client/ui-work-observatory/src/index.ts))
 - `@changanhua/dsh-command-task-queue` — requires `commands` ([`packages/task-queue/command-task-queue/src/index.ts`](../packages/task-queue/command-task-queue/src/index.ts))
+- `@changanhua/dsh-content-remote` — requires `connection` · `content` · `contentSession` ([`packages/content/content-remote/src/index.ts`](../packages/content/content-remote/src/index.ts))
+- `@changanhua/dsh-content-session` — requires `sessionQuery` ([`packages/content/content-session/src/index.ts`](../packages/content/content-session/src/index.ts))
 - `@changanhua/dsh-delivery-local` — requires `storageDomain` ([`packages/delivery/delivery-local/src/index.ts`](../packages/delivery/delivery-local/src/index.ts))
 - `@changanhua/dsh-host-capability-registry` — requires `loader` · `skills` · `tools` · `agents` ([`packages/host/capability-registry/src/index.ts`](../packages/host/capability-registry/src/index.ts))
 - `@changanhua/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))

@@ -109,4 +109,49 @@ describe('the shipped preset root', () => {
       expect(toolWeb.config.fetch, id).toBe(true)
     }
   })
+
+  it('routes external-page entry features through the mounted Browser service', async () => {
+    const composition = await readFile(join(SHIPPED_PRESET_ROOT, 'cordis', 'agent.cordis.yml'), 'utf8')
+    const entries: unknown = yaml.load(composition, { schema: entryListSchema })
+    if (!Array.isArray(entries)) throw new TypeError('cordis preset must contain a Cordis entry list')
+    const ids = entries.flatMap((entry: unknown) => typeof entry === 'object' && entry !== null && 'id' in entry
+      ? [entry.id]
+      : [])
+    expect(ids).toContain('tool-browser')
+    expect(ids).toContain('tool-cordis')
+
+    const skill = await readFile(join(
+      SHIPPED_PRESET_ROOT,
+      'cordis',
+      'skills',
+      'cordis-plugin-development',
+      'SKILL.md',
+    ), 'utf8')
+
+    expect(skill).toContain('external webpage')
+    expect(skill).toContain('entry_mount')
+    expect(skill).toContain('entry_inspect')
+    expect(skill).toContain('browser/entry-click')
+    expect(skill).toContain('sessionController.prompt')
+    expect(skill).toContain('requires a live `AbortSignal` as its second argument')
+    expect(skill).toContain('browser assistant sidebar')
+    expect(skill).toContain('new AbortController()')
+    expect(skill).toContain('result.value.tabs')
+    expect(skill).toContain('snapshot.value.page')
+    expect(skill).toContain('value.mounted')
+    expect(skill).toContain('last successful mount')
+    expect(skill).toContain('harness.browser.inspect')
+    expect(skill).toContain('harness.browser.mount')
+    expect(skill).toContain('harness.state')
+    expect(skill).toContain('browser_instances')
+    expect(skill).toContain('browser_tabs')
+    expect(skill).toContain('browser_snapshot')
+    expect(skill).toContain('Do not ask the user for a URL or CSS selector')
+    expect(skill).toContain('browser_snapshot.documentId` is optional')
+    expect(skill).toContain('collected` field is an array of absolute links')
+    expect(skill).toContain('regionSelector')
+    expect(skill).toContain(':scope')
+    expect(skill).toContain('automatically unmounts')
+    expect(skill).toContain('Do not spawn another browser')
+  })
 })
