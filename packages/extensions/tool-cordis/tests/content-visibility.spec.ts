@@ -58,6 +58,6 @@ describe('inspect query tool schema', () => {
     const tool = registered.find(candidate => candidate.name === 'cordis_stop')
     const result = await tool?.execute({ pluginId: 'plugin-1' }, { agent: {} })
     expect(result).toEqual({ pluginId: 'plugin-1', cleanupPending: ['plugin-1:feed'] })
-    expect(tool?.output.render({}, result)[0].text).toContain('plugin-1:feed')
+    expect(tool?.output.render({}, result)[0]?.text).toContain('plugin-1:feed')
   })
 })

@@ -88,7 +88,7 @@ it('attaches to the extension Session, diagnoses selectors, answers and steers, 
     const tabs = await call<{ value: { tabs: Array<{ tabId: number; url: string }> } }>('dsh_browser_tabs', { sessionId, installationId })
     const target = tabs.value.tabs.find(tab => tab.url === source.url())
     expect(target).toBeDefined()
-    const snapshot = await call('dsh_browser_snapshot', { sessionId, installationId, tabId: target.tabId, frameId: 0, textLimit: 2000 })
+    const snapshot = await call('dsh_browser_snapshot', { sessionId, installationId, tabId: target!.tabId, frameId: 0, textLimit: 2000 })
     expect(snapshot.outcome).toBe('observed')
     const selectors = { sessionId, installationId, regionSelector: 'main', selector: ':scope article', linkSelector: 'a.u-url' }
     const wrong = await call('dsh_browser_entry_inspect', { ...selectors, titleSelector: 'a.title' })
@@ -103,7 +103,7 @@ it('attaches to the extension Session, diagnoses selectors, answers and steers, 
     const steering = 'Use a.u-url: the independent browser observation found one valid entry.'
     await call('dsh_session_prompt', { requestId: 'selector-steer', sessionId, mode: 'steer', text: steering })
     await call('dsh_session_attention_answer', { requestId: 'selector-answer', sessionId,
-      attentionId: waiting.attention[0].attentionId, answers: [{ id: 'selector', selected: [], custom: 'a.u-url' }] })
+      attentionId: waiting.attention[0]!.attentionId, answers: [{ id: 'selector', selected: [], custom: 'a.u-url' }] })
     await expect(call('dsh_session_wait', { sessionId, afterSeq: waiting.cursor, timeoutMs: 15_000 }))
       .resolves.toMatchObject({ phase: 'completed', attention: [] })
     await panel.getByText('Continued with the selector observed by Codex.', { exact: true }).waitFor()
