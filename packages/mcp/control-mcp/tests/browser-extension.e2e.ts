@@ -109,7 +109,7 @@ it('attaches to the extension Session, diagnoses selectors, answers and steers, 
     await panel.getByText('Continued with the selector observed by Codex.', { exact: true }).waitFor()
     expect(JSON.stringify(model.requests[1])).toContain(steering)
     expect((await binding(panel)).sessionId).toBe(sessionId)
-    const evidence = await call<{ observation: { phase: unknown } }>('dsh_evidence_export', { sessionId })
+    const evidence = await call<{ binding: unknown; observation: { phase: unknown } }>('dsh_evidence_export', { sessionId })
     expect(evidence.binding).toEqual({ sessionId, installationId })
     const artifactRoot = join(repository, '.artifacts/control-mcp-integration')
     await mkdir(artifactRoot, { recursive: true })
