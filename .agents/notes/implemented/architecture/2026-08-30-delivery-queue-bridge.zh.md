@@ -20,6 +20,8 @@ Preparation 要求所请求的 Attempt 正是 Work 当前 active 且处于 start
 
 Runner 和 verifier success 会在 Bridge 再次解析，并验证精确 Packet、Work、Attempt、target、plan 和 verifier identity。Cancellation 结算为 `canceled`。已证明的 validation 和 startup failure 结算为不可重试的 `failed/not-started`；已完全停稳的 product、completion、workspace-boundary 或 execution failure 结算为不可重试的 `failed/started`；ownership、cleanup、unexpected rejection 或 malformed successful output 结算为 `unknown/unknown`。
 
+[验证完整性规则](../bug-fix/2026-09-05-verification-workspace-integrity.zh.md) 将无法证明检出目录目标输入的 `workspace-integrity` 归为已启动失败。verifier 保留该检出目录且不生成 Verdict；这不会新增 Queue 生命周期或验收负责方。
+
 Activation 仅在可信 Host composition 内取得 operator authority。它为两个 handler 使用 Queue staged registration，让 Queue 能执行 receipt lookup 或新 recovery admission，但不能 claim Work。它会验证 Delivery snapshot、交叉校验精确的 Queue `list()` 与 `get()` view、协调每个 `submitting` binding，然后激活两个 exact registration。Recovery 只接受精确重建的 canonical input 与 deterministic key，其中 Git target 可以是 40 或 64 个十六进制字符。失败的 activation 会让已准入的 recovery Work 保持 queued 且不产生 Attempt；无论是 rollback 还是正常 disposal，都会先尝试每个已注册 disposer，再报告收集到的 failure。Recovery 不存储 projection，也绝不创建 acceptance decision。
 
 ## 考虑过的替代方案

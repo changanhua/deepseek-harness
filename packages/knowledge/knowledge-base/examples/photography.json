@@ -1,0 +1,80 @@
+{
+  "spec": {
+    "id": "photography",
+    "title": "摄影小样例：可复用的拍摄与整理知识输入",
+    "readerTask": "为一次小型拍摄写出拍摄意图、现场检查与导出归档清单；本例只演示跨主题复用，不替代器材手册或授权协议。",
+    "language": "中文",
+    "seeds": [
+      {
+        "id": "shoot-intent",
+        "title": "拍摄意图",
+        "goal": "用主体、受众、画面用途和一项可观察结果限定一次拍摄。",
+        "type": "method",
+        "depends": [],
+        "sourceIds": [
+          "adobe-crop"
+        ],
+        "required": true
+      },
+      {
+        "id": "frame-check",
+        "title": "取景检查",
+        "goal": "在拍摄或裁切前核对主体、边缘、水平和输出比例。",
+        "type": "method",
+        "depends": [
+          "shoot-intent"
+        ],
+        "sourceIds": [
+          "adobe-crop"
+        ],
+        "required": true
+      },
+      {
+        "id": "edit-nondestructive",
+        "title": "非破坏编辑与版本",
+        "goal": "保留原片和编辑步骤，导出前验证文件用途与版本。",
+        "type": "method",
+        "depends": [
+          "frame-check"
+        ],
+        "sourceIds": [
+          "adobe-crop"
+        ],
+        "required": true
+      },
+      {
+        "id": "archive-release",
+        "title": "交付归档",
+        "goal": "将最终导出、原片位置、许可或人物同意状态和交付说明一起记录。",
+        "type": "method",
+        "depends": [
+          "edit-nondestructive"
+        ],
+        "sourceIds": [
+          "creative-commons-licenses"
+        ],
+        "required": true
+      }
+    ]
+  },
+  "sources": [
+    {
+      "sourceId": "adobe-crop",
+      "title": "Crop and straighten photos — Adobe Photoshop Help",
+      "fetchedAt": "2026-09-07T21:44:01.498Z",
+      "url": "https://helpx.adobe.com/photoshop/desktop/crop-resize-transform/crop-straighten/crop-photos.html",
+      "text": "Crop photos\n\nLearn how to trim a photo in Adobe Photoshop to remove unwanted areas and improve composition.\n\nTry it in the app You'll get a sample file to follow along with as you learn how to crop photos.\n\nSelect the Crop tool from the toolbar to display adjustable crop borders around your image.\n\nDrag the corner or edge handles to resize the crop area.\n\nPress Enter (Windows), Return (macOS), or select Done.\n\nTo adjust your crop, hover outside a corner to rotate the crop box, then drag when the curved arrow appears. To move the crop box, drag it from inside.",
+      "rawContentHash": "a53f585237347467b5faf6091468bab451396a10af637f0c6a1f259448714de1",
+      "extractorVersion": "jsdom-article-section-v2"
+    },
+    {
+      "sourceId": "creative-commons-licenses",
+      "title": "Sharing Openly, Sharing Globally — Creative Commons",
+      "fetchedAt": "2026-09-07T21:44:03.302Z",
+      "url": "https://creativecommons.org/cc-licenses/",
+      "text": "Established in 2002, the CC licenses make it possible for everyone around the world to share knowledge, creativity, and culture, legally and freely.\n\nLicenses for the global public good\n\nCC licenses are a global digital public good and part of the essential infrastructure that makes sharing online possible. Today, there are tens of billions of CC-licensed works across the internet, spanning education, science, culture, and art, and more.\n\nCC licenses do more than function legally—they express values. The CC icons, now recognized around the world, represent openness, collaboration, and participation. For example, the CC logo is so ubiquitous it is part of the permanent design collection at The Museum of Modern Art in New York.\n\nLike the public infrastructure we rely on every day, such as roads and public schools, the legal and technical infrastructure behind CC licenses requires ongoing maintenance, updates, and support. Unlike most public infrastructure, however, CC licenses are not funded by taxes or user fees. As a public good, they depend on the support of the community that relies on them.\n\nHelp support the CC licenses infrastructure.\n\nUsed by leading platforms and institutions worldwide\n\nWhy Use a CC License\n\nWithout CC licenses, copyright offers only two extremes: “all rights reserved” or “no rights reserved.” That doesn’t reflect the many ways creators want their work to be shared.\n\nCreative Commons licenses offer a standardized, legally-sound way to grant permission in advance, so that creators can clearly communicate how their work may be used, without negotiating individual permissions every time. This enables access to knowledge by offering a “some rights reserved” option for content that would otherwise be closed off.\n\nMost creators share a basic belief: that knowledge and creativity grow through sharing, not locking it away.\n\nIn the age of AI, much of how content is used by AI systems falls outside what our licenses can govern, because this use often sits outside what copyright, and therefore any CC license, was built to address. We’ve published Guidance on CC Licensing in an AI ecosystem to explain exactly what our licenses can and can’t do in this environment. That gap is also part of why we’re building CC Signals, a framework to give licensors more granular control over how their work is used by machines.\n\nThe CC Licenses\n\nThere are six different license types, listed from most to least permissive here:\n\nCC BY This license enables reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long as attribution is given to the creator. The license allows for commercial use. CC BY includes the following elements: BY Credit must be given to you, the creator.\n\nCC BY-SA This license enables reusers to distribute, remix, adapt, and build upon the material in any medium or format, so long as attribution is given to the creator. The license allows for commercial use. If you remix, adapt, or build upon the material, you must license the modified material under the same or a compatible license. CC BY-SA includes the following elements: BY Credit must be given to you, the creator. SA Adaptations must be shared under the same terms.\n\nCC BY-ND This license enables reusers to copy and distribute the material in any medium or format in unadapted form only, and only so long as attribution is given to the creator. The license allows for commercial use. CC BY-ND includes the following elements: BY Credit must be given to you, the creator. ND No derivatives or adaptations of your work are permitted.\n\nCC BY-NC This license enables reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only, and only so long as attribution is given to the creator. CC BY-NC includes the following elements: BY Credit must be given to you, the creator. NC Only noncommercial use of your work is permitted. Noncommercial means not primarily intended for or directed towards commercial advantage or monetary compensation.\n\nCC BY-NC-SA This license enables reusers to distribute, remix, adapt, and build upon the material in any medium or format for noncommercial purposes only if attribution is given to the creator. If you remix, adapt, or build upon the material, you must license the modified material under the same or a compatible license. CC BY-NC-SA includes the following elements: BY Credit must be given to you, the creator. NC Only noncommercial use of your work is permitted. Noncommercial means not primarily intended for or directed towards commercial advantage or monetary compensation. SA Adaptations must be shared under the same terms.\n\nCC BY-NC-ND This license enables reusers to copy and distribute the material in any medium or format in unadapted form only, for noncommercial purposes only, and only if attribution is given to the creator. CC BY-NC-ND includes the following elements: BY Credit must be given to you, the creator. NC Only noncommercial use of your work is permitted. Noncommercial means not primarily intended for or directed towards commercial advantage or monetary compensation. ND No derivatives or adaptations of your work are permitted.\n\nMultilingual Support\n\nThe deeds and legal codes of the CC licenses are translated into over 45 languages.",
+      "rawContentHash": "6eb2d37d46090f080310531a3af188e64078f253b6c2f81b09390f2fbd67faaa",
+      "extractorVersion": "jsdom-block-text-v1"
+    }
+  ]
+}

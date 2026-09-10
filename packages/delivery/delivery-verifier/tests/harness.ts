@@ -335,6 +335,7 @@ export async function createVerifierFixture(
           baseCommit: BASE_COMMIT,
           targetCommit: TARGET_COMMIT,
           cwd: workspaceRoot,
+          assertUnchanged: async () => {},
           close,
           ...options.workspace,
         }

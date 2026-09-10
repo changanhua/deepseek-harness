@@ -1,0 +1,42 @@
+- form "完善推进条件（可选）":
+  - heading "完善推进条件（可选）" [level=2]
+  - text: 需求标题
+  - textbox "需求标题": 验证本地交付入口
+  - text: 期望结果
+  - textbox "期望结果": 创建一个具备可执行验证计划的本地工作包。
+  - text: 背景与约束
+  - textbox "背景与约束": 验证本地交付入口
+  - text: 允许范围（每行一个）
+  - textbox "允许范围（每行一个）": checks
+  - text: 验收条件（每行一个）
+  - textbox "验收条件（每行一个）": 验证计划绑定 master 的当前提交。
+  - text: 基础版本类型
+  - combobox "基础版本类型":
+    - option "分支或引用（ref-head）" [selected]
+    - option "固定提交（commit）"
+  - text: 分支或引用
+  - textbox "分支或引用": refs/heads/master
+  - text: 验证来源
+  - combobox "验证来源":
+    - option "仓库中的验证计划"
+    - option "直接配置检查" [selected]
+  - group "直接配置检查":
+    - text: 直接配置检查 检查名称
+    - textbox "检查名称": Node version
+    - text: 检查程序
+    - textbox "检查程序": node
+    - text: 检查参数（每行一个）
+    - textbox "检查参数（每行一个）": "--version"
+    - text: 检查目录
+    - textbox "检查目录": .
+    - text: 超时（毫秒）
+    - textbox "超时（毫秒）": "5000"
+    - text: 检查级别
+    - combobox "检查级别":
+      - option "必须通过" [selected]
+      - option "可选"
+    - text: 预期退出码
+    - textbox "预期退出码": "0"
+    - button "删除检查"
+    - button "添加检查"
+  - button "保存新修订"

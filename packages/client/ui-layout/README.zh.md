@@ -27,6 +27,8 @@ kind: "package-reference"
 
 在 root 槽位挂载本插件；它随即围绕占据侧栏、会话与详情栏的内容渲染应用框架。用户拖动不可见命中条带缩放侧栏、拖动浮动胶囊缩放详情面板；窗口变窄时只有详情栏收缩，随后自动关闭。关闭的侧栏保留 56px 控制栏；详情栏关闭到零宽度。框架还声明 `shell.view` 模块席位；Queue、Capability 或其他已注册模块占据中心列时，会话仍保持挂载，而选择 Session 会把活动模块切回 `conversation`。
 
+`ctx.layout.activateModule(id)` 幂等选择目标模块，侧栏的 `setActiveModule` 保留再次点击返回对话的行为。模块页面隐藏对话详情栏，但保留其已存宽度和挂载内容。
+
 ### 主题呈现
 
 呈现器消费解析后的主题快照，并投影到 document：`html { color-scheme }` 驱动原生 UA 控件，依据当前配色方案设置 `body[data-ds-dark-theme]`，把主题的别名 token 与 `--dsh-content-font-size` 设为 body 上的内联变量，并持有一个 `<meta name="theme-color">`，其内容随计算后的 body 背景色更新。释放呈现器时，它会连同其他全局写入一起移除自己的元数据节点。

@@ -1,10 +1,25 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { digestIntent, WorkId } from '@changanhua/dsh-task-queue'
 import type { ChangeSet, WorkKindDefinition } from '@changanhua/dsh-task-queue'
 import { WorkQueueStore } from '../src/v2-store.ts'
+
+const fsControl = vi.hoisted(() => ({ failNextSync: false }))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    open: async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args)
+      if (!fsControl.failNextSync) return handle
+      fsControl.failNextSync = false
+      vi.spyOn(handle, 'sync').mockRejectedValueOnce(new Error('injected sync failure'))
+      return handle
+    },
+  }
+})
 
 declare module '@changanhua/dsh-task-queue' {
   interface WorkKindMap {
@@ -21,6 +36,45 @@ function admitted(seq: number, id = WorkId('work-1')): ChangeSet {
 }
 
 describe('WorkQueueStore', () => {
+  it('publishes a ChangeSet only after its durable append settles', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-v2-'))
+    try {
+      const store = new WorkQueueStore(root)
+      await store.open()
+
+      const append = store.append(admitted(1))
+
+      expect(store.current().lastSeq).toBe(0)
+      await append
+      expect(store.current().lastSeq).toBe(1)
+      await store.close()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps the previous projection and faults future writes after sync fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-v2-'))
+    try {
+      const store = new WorkQueueStore(root)
+      await store.open()
+      fsControl.failNextSync = true
+
+      await expect(store.append(admitted(1))).rejects.toThrow('injected sync failure')
+      expect(store.current().lastSeq).toBe(0)
+      expect(store.isFaulted()).toBe(true)
+      await expect(store.append(admitted(1))).rejects.toThrow(/store is faulted/)
+      await store.close()
+
+      const reopened = new WorkQueueStore(root)
+      expect((await reopened.open()).lastSeq).toBe(1)
+      await reopened.close()
+    } finally {
+      fsControl.failNextSync = false
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('rejects the prior manifest schema before folding its log', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-work-queue-v2-'))
     try {

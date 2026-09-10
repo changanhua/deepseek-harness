@@ -185,13 +185,16 @@ async function initializeSecret(credentials: CredentialProvider): Promise<Buffer
 export class BrowserAuth {
   private readonly launchToken: string
   private readonly maxAgeMilliseconds: number
+  private readonly enabled: boolean
 
   private constructor(
     processOwner: object,
     private readonly secret: Buffer,
     maxAgeDays: number,
+    enabled: boolean,
   ) {
-    this.launchToken = processLaunchToken(processOwner)
+    this.enabled = enabled
+    this.launchToken = enabled ? processLaunchToken(processOwner) : ''
     this.maxAgeMilliseconds = maxAgeDays * DAY_MILLISECONDS
     if (!Number.isSafeInteger(this.maxAgeMilliseconds)
       || !Number.isSafeInteger(Date.now() + this.maxAgeMilliseconds)) {
@@ -205,14 +208,21 @@ export class BrowserAuth {
    * @param processOwner - root application context retaining one token across Connection reloads.
    * @param credentials - persistent credential provider for the Web profile.
    * @param maxAgeDays - positive absolute browser-cookie lifetime in days.
+   * @param enabled - whether the process token and browser session are required.
    * @returns initialized authentication owner with the process owner's launch token.
    */
   static async create(
     processOwner: object,
     credentials: CredentialProvider,
     maxAgeDays: number,
+    enabled = true,
   ): Promise<BrowserAuth> {
-    return new BrowserAuth(processOwner, await initializeSecret(credentials), maxAgeDays)
+    return new BrowserAuth(
+      processOwner,
+      enabled ? await initializeSecret(credentials) : Buffer.alloc(0),
+      maxAgeDays,
+      enabled,
+    )
   }
 
   /**
@@ -225,7 +235,7 @@ export class BrowserAuth {
     url.pathname = '/'
     url.search = ''
     url.hash = ''
-    url.searchParams.set(TOKEN_QUERY, this.launchToken)
+    if (this.enabled) url.searchParams.set(TOKEN_QUERY, this.launchToken)
     return url.href
   }
 
@@ -238,6 +248,7 @@ export class BrowserAuth {
    * @returns true only when the caller may serve index.html.
    */
   authorizeIndex(req: ConnectionIndexRequest, res: ConnectionIndexResponse): boolean {
+    if (!this.enabled) return true
     /* v8 ignore next -- node:http always supplies url on server requests. */
     const url = new URL(req.url ?? '/', 'http://dsh.invalid')
     const tokens = url.searchParams.getAll(TOKEN_QUERY)
@@ -287,6 +298,7 @@ export class BrowserAuth {
    * @returns true only for an unexpired cookie signed by this activation's loaded secret.
    */
   isAuthenticated(request: ConnectionTrustRequest): boolean {
+    if (!this.enabled) return true
     const authority = requestAuthority(request.headers)
     const rawCookie = header(request.headers, 'cookie')
     if (authority === undefined || rawCookie === undefined) return false

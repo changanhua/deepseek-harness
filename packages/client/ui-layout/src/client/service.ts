@@ -27,14 +27,13 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
-  /** Open a module without toggling; an initial request waits for root mounting. */
-  openModule(module: string): void
+  /** Select a module without toggling an already active destination off. */
+  activateModule(module: string): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
 export class LayoutController implements ILayout {
   #panels: PanelActions | undefined
-  #initialModule: string | undefined
 
   /**
    * Adopt the root entry's bound store actions. Called from the root
@@ -45,19 +44,6 @@ export class LayoutController implements ILayout {
    */
   attachPanels(actions: PanelActions): void {
     this.#panels = actions
-    if (this.#initialModule !== undefined) {
-      actions.openModule(this.#initialModule)
-      this.#initialModule = undefined
-    }
-  }
-
-  /**
-   * Open the requested module, retaining a boot-time deep link until the root mounts.
-   * @param module - Registered shell.view identity, or conversation.
-   */
-  openModule(module: string): void {
-    if (this.#panels === undefined) this.#initialModule = module
-    else this.#panels.openModule(module)
   }
 
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
@@ -73,6 +59,11 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  /** Navigate to a known module while preserving its idempotent selection. */
+  activateModule(module: string): void {
+    this.#require().activateModule(module)
   }
 
   #require(): PanelActions {

@@ -19,7 +19,10 @@ describe('fork Windows pull-request workflow', () => {
     }
 
     const buildCommands = commandText(build)
+    expect(workflowStep(build, step => step.uses === 'actions/checkout@v6').with).toMatchObject({ 'fetch-depth': 0 })
     expect(buildCommands).toContain('pnpm run build')
+    expect(buildCommands).toContain('pnpm run check:core-patches')
+    expect(buildCommands.indexOf('pnpm run check:core-patches')).toBeLessThan(buildCommands.indexOf('pnpm run build'))
     expect(buildCommands).not.toContain('check:ci:windows-blocking')
     expect(buildCommands).not.toContain('docs:build')
 
@@ -32,13 +35,21 @@ describe('fork Windows pull-request workflow', () => {
     const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }
     expect(manifest.scripts?.['check:ci:fork-c0-diff']).toBe('tsx scripts/run-fork-c0-diff.ts')
     expect(verdict.needs).toEqual(['windows-build', 'c0-diff'])
-    expect(verdict.if).toContain("always() && github.event_name == 'pull_request'")
+    expect(verdict.if).toBe('always()')
+    const verdictStep = workflowStep(verdict, step => step.name === 'Require every fork check')
+    expect(verdictStep.env).toMatchObject({
+      ACTOR: '${{ github.actor }}',
+      AUTHOR: '${{ github.event.pull_request.user.login }}',
+      HEAD_REPOSITORY: '${{ github.event.pull_request.head.repo.full_name }}',
+      REPOSITORY: '${{ github.repository }}',
+    })
     expect(commandText(verdict)).toContain("join(needs.*.result, ', ')")
+    expect(commandText(verdict)).toContain("$env:ACTOR -ne 'changanhua'")
   })
 
   it('restricts every hosted Windows job to owner-authored same-repository pull requests', () => {
     const workflow = loadWorkflow('.github/workflows/ci-fork-windows.yml')
-    for (const name of ['windows-build', 'c0-diff', 'fork-checks']) {
+    for (const name of ['windows-build', 'c0-diff']) {
       const condition = workflowJob(workflow, name).if
       expect(condition, `${name} must declare an authorization condition`).toEqual(expect.any(String))
       if (typeof condition !== 'string') continue

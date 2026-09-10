@@ -17,8 +17,9 @@ import type {
   WorkspaceView,
 } from '../types.ts'
 
-/** Complete generated `ctx.remote.workspace` namespace. */
-export type WorkspaceRemote = TypertClientRemote['workspace']
+/** Generated Workspace identity and membership operations consumed by this model. */
+export type WorkspaceRemote = Pick<TypertClientRemote['workspace'],
+  'create' | 'rename' | 'delete' | 'insertBefore' | 'insertSessionBefore' | 'archiveSession' | 'follow'>
 
 /** Monotone Workspace-list arrival lifecycle. */
 export type WorkspaceListPhase = 'pending' | 'ready'

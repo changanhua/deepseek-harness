@@ -12,9 +12,9 @@ Status: implemented
 
 仓库的 Actions 设置禁用 `.github/workflows/ci.yml` 和无关的自动工作流。`.github/workflows/ci-fork-windows.yml` 负责此 fork 的 PR 验证，并且只使用 GitHub 托管的 Windows Runner。
 
-阻塞构建作业运行仓库构建和客户端 typecheck，但不构建文档站点。独立的 C0 作业检测 Delivery 所属路径；存在这些路径时，该作业构建可信 base 和 head，在两个 checkout 中运行相同的 Static、Knip、文档、lint 和 duplication 定义，并拒绝 head 新增的诊断。C0 作业还运行定向 Delivery 测试，并执行逐文件 100% 覆盖率门槛。
+阻塞构建作业检出完整 fork 历史，验证 package identity 和私人 core patch 预算，然后运行仓库构建与客户端 typecheck，但不构建文档站点。独立的 C0 作业检测 Delivery 所属路径；存在这些路径时，该作业构建可信 base 和 head，在两个 checkout 中运行相同的 Static、Knip、文档、lint 和 duplication 定义，并拒绝 head 新增的诊断。C0 作业还运行定向 Delivery 测试，并执行逐文件 100% 覆盖率门槛。
 
-`fork checks passed` 作业汇总构建和 C0 结果。base 分支 ruleset 要求这个稳定检查名称，因此阻塞作业失败、取消或跳过都会阻止合并。
+`fork checks passed` 作业对每个 PR 运行，拒绝不属于 owner-controlled same-repository 边界的 actor、author 或 head repository，并汇总构建和 C0 结果。base 分支 ruleset 要求这个稳定检查名称，因此不受信身份或阻塞作业失败、取消、跳过都会阻止合并。
 
 ## Alternatives considered
 

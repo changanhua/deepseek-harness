@@ -27,6 +27,8 @@ This package provides the shell layout of the Web GUI: a three-column AppFrame w
 
 Mount this plugin at the root slot; it then renders the app frame around whatever occupies the sidebar, conversation, and details columns. Users resize the sidebar by dragging its invisible hit strip and the details panel by dragging its floating pill; when the window narrows, only details shrinks, then auto-closes. A closed sidebar retains a 56px control rail; details closes to zero width. The frame also declares the `shell.view` module seat. The conversation stays mounted while Queue, Capability, or another registered module view occupies the center column, and selecting a Session switches the active module back to `conversation`.
 
+`ctx.layout.activateModule(id)` selects a destination idempotently, while the sidebar's `setActiveModule` retains its second-click return to conversation. Module views suppress the conversation's details column without discarding its stored width or mounted contents.
+
 ### Theme presentation
 
 The presenter consumes resolved theme snapshots and projects them onto the document: `html { color-scheme }` for native UA chrome, `body[data-ds-dark-theme]` from the active color scheme, the theme's alias tokens and `--dsh-content-font-size` as inline variables on body, and one owned `<meta name="theme-color">` whose content follows the computed body background. Disposing the presenter removes its metadata node with its other global writes.

@@ -1,31 +1,35 @@
 ---
 name: dsh-feature-charter
-description: Use when proposing, restarting, or reframing a new DeepSeek Harness capability, Epic, module family, or multi-Issue roadmap and the final user outcome, architecture boundary, acceptance vertical, or top-level definition of done is still unclear. Freeze the product charter before reuse analysis, implementation planning, Issue slicing, or code changes—especially when a small kernel slice could be mistaken for the completed product. Do not use for an already-scoped mechanical edit, a known-owner bug, a reuse decision, or an implementation plan.
+description: Clarify materially undecided user outcomes and boundaries of a new or reframed DSH capability. Use a formal Charter when explicitly requested or when a substantial multi-stage capability needs shared scope and acceptance decisions. Do not use merely to begin implementation of a bounded outcome already clear from the conversation.
 ---
 
 # DSH Feature Charter
 
 Turn a capability idea into a closed DSH product boundary. The charter answers what users can actually do when the capability is finished, where its DSH roles belong, and what observed behavior closes the Epic. It prevents a package, schema, or unit-tested kernel from being reported as the whole feature.
 
+## Match the requested stage
+
+- **Explore or explain:** discuss concrete user scenarios, content-bearing objects, alternatives, and unresolved choices. Use the supplied conversation. Do not demand a receipt, template, repository audit, self-hosting identity, or written file merely to answer a product question.
+- **Draft a design:** produce the requested scenario/object/operation design. Separate accepted direction from proposed details and open facts. A local discussion draft is not implemented-product documentation; do not route it through package README, bilingual publication, build, or runtime gates unless its actual destination or claim requires them.
+- **Prepare implementation:** use accepted conversation decisions directly for a bounded change. Use a formal template only when requested or when a substantial multi-stage capability needs shared scope and acceptance decisions. Resolve only missing choices that could change the deliverable or authority; drafting alone does not authorize implementation.
+
+Keep the long-term outcome separate from the first acceptance slice. Do not turn an initial human-controlled relay into a permanent manual approval pipeline, or an eventual automation goal into current execution permission. Ask only about an unresolved choice that changes the next deliverable; otherwise continue the requested design.
+
 ## Scope and handoff
 
 This Skill owns the **why, final outcome, boundary, and top-level closure condition**. It does not decide whether an existing capability should be reused, write an implementation plan, create Issues, edit source, or repair a mechanical bug.
 
-After the charter is accepted:
-
-1. Use `dsh-reuse` to choose `direct reuse`, `adapt`, `bridge`, `vendor/fork`, or `build` from current evidence.
-2. Use `xia-pluginmaster` to discover the exact checkout contracts and turn the selected design into packages, composition, and verification.
-3. Only then use planning or Issue-slicing workflows to sequence the work.
+After the outcome is accepted, continue with the known owner. Use `dsh-reuse` only for an unresolved reuse choice, `xia-pluginmaster` for missing current plugin/composition facts, and Issue planning only for genuinely dependent delivery stages. These are conditional routes, not mandatory successors.
 
 Do not duplicate either Skill's repository search or package topology work. Record hypotheses here as decisions that need later confirmation.
 
 ## Inputs, reuse, and receipt
 
-Require a capability idea plus its current approval state. If an approved `FeatureCharterReceipt` already names the same actor, entry, observable result, authority, lifecycle, non-goals, and top-level closure condition, reuse it and stop; implementation or documentation changes alone do not invalidate the product outcome.
+Use the capability idea and its approval state from the current task. If the conversation, plan, or existing receipt already establishes the same outcome and boundaries, reuse it and stop. Do not demand a named receipt or another approval merely to restate accepted facts; implementation or documentation changes alone do not invalidate the outcome.
 
 Reopen only a changed Charter field. Changes to actor, supported entry, authority, durable semantics, required real vertical, non-goals, or closing condition invalidate the corresponding decision. Do not rerun repository discovery to refresh a Charter.
 
-Produce a compact `FeatureCharterReceipt` using the common envelope in [the handoff protocol](../dsh-feature-delivery/references/handoff-evidence.md). Include only frozen Charter decisions, open facts delegated downstream, and explicit invalidation conditions.
+At an actual handoff, provide only decisions, constraints, open facts, and the evidence locations the recipient needs. Use a structured `FeatureCharterReceipt` from [the handoff protocol](../dsh-feature-delivery/references/handoff-evidence.md) only when the recipient or requested deliverable requires it. Continuous work reuses current context.
 
 Charter approval is serial and remains with the primary agent and user. Subagents may answer distinct read-only factual questions, but they do not draft competing Charters or approve the outcome.
 
@@ -58,7 +62,7 @@ For controller, subject, and verifier separately record checkout/revision, build
 
 ## Freeze the capability boundary
 
-Fill [the charter template](references/charter-template.md). Keep one sentence for each decision that is known and mark uncertain facts as `to verify`, never as current DSH fact.
+When a formal Charter is needed, use [the charter template](references/charter-template.md). For a bounded outcome, a short description of result, relevant constraints, and acceptance is sufficient. Mark uncertain facts as `to verify`, never current DSH fact. Defer unresolved package selection to discovery using [checkout ownership](../dsh-reuse/references/checkout-ownership.md).
 
 For any replaceable or cross-domain behavior, name these roles even when two temporarily live in one package:
 
@@ -117,7 +121,7 @@ If any answer is unclear, narrow the outcome or add a decision record. Do not in
 
 ## Output
 
-Return the completed template. Lead with `Epic outcome` and end with `Top-level closure condition`. Distinguish:
+For exploration or design, return the requested scenarios, objects, operations, and alternatives. For a formal Charter, return the template once; a separate receipt is unnecessary when it would repeat the same facts. For bounded work, report only the outcome, relevant boundaries, acceptance, and unresolved choices. Where useful, distinguish:
 
 - **Frozen now** — user outcome, hard boundaries, non-goals, and required vertical.
 - **To verify next** — current-contract facts delegated to `dsh-reuse` or `xia-pluginmaster`.

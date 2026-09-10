@@ -34,6 +34,7 @@ afterEach(() => {
 function mountColumn(): { column: HTMLElement; quiet: () => boolean } {
   const view = render(
     <SidebarRoot
+      usePrimaryNavigation={select => select(false)}
       collapsed={false} width={300}
       activeModule="conversation" setActiveModule={vi.fn()}
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}

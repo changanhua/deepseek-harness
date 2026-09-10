@@ -29,6 +29,18 @@ export type WorkOutput<K extends WorkKind> = WorkKindMap[K] extends WorkKindDefi
 
 /** Durable WorkItem lifecycle states. */
 export type WorkStatus = 'queued' | 'starting' | 'running' | 'unknown' | 'succeeded' | 'failed' | 'canceled'
+/** Current host dispatch state; it is process-local rather than durable Work state. */
+export type QueueDispatchState = 'running' | 'paused' | 'faulted'
+/** Runtime reason why a durable queued WorkItem has not been claimed. */
+export type QueueWaitReason =
+  | { readonly kind: 'dispatch-paused' }
+  | { readonly kind: 'queue-faulted' }
+  | { readonly kind: 'handler-unavailable' }
+  | { readonly kind: 'retry-backoff'; readonly eligibleAt: string }
+  | { readonly kind: 'global-capacity'; readonly capacity: number }
+  | { readonly kind: 'batch-capacity'; readonly batchId: BatchId; readonly capacity: number }
+  | { readonly kind: 'resource-capacity'; readonly resource: string; readonly capacity: number; readonly used: number; readonly requested: number }
+  | { readonly kind: 'scheduler-turn' }
 /** Durable WorkAttempt lifecycle states. */
 export type AttemptStatus = 'starting' | 'running' | 'unknown' | 'succeeded' | 'failed' | 'canceled'
 /** Whether an attempt may have crossed its side-effect boundary. */
@@ -304,6 +316,10 @@ export interface OperatorWorkQueue {
   get(id: WorkId): WorkView
   cancel(id: WorkId): Promise<void>
   retry(id: WorkId): Promise<void>
+  /** Read the provider-owned state that controls new dispatch. */
+  dispatchState(): QueueDispatchState
+  /** Explain the current runtime wait for queued work; return null once it leaves queued state. */
+  waitReason(id: WorkId): QueueWaitReason | null
   pause(): void
   resume(): void
   resolveUnknown(workId: WorkId, resolution: UnknownResolution): Promise<void>

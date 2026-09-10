@@ -42,7 +42,12 @@ describe('ui-sidebar apply', () => {
     // Copy rides the standard locale seat, not the inject face.
     expect(b.slots.entries('sidebar')[0]!.locale).toBe('sidebar')
     const injected = (b.slots.entries('sidebar')[0]!.inject as () => SidebarRootInjected)()
-    expect(Object.keys(injected)).toEqual(['startSession', 'toggleSidebar'])
+    expect(Object.keys(injected)).toEqual(['hooks', 'startSession', 'toggleSidebar'])
+    expect(injected.hooks.primaryNavigation.getSnapshot()).toBe(false)
+    const removePrimary = b.slots.register({ name: 'sidebar.primary', id: 'workbench-navigation' }, () => null)
+    expect(injected.hooks.primaryNavigation.getSnapshot()).toBe(true)
+    removePrimary()
+    expect(injected.hooks.primaryNavigation.getSnapshot()).toBe(false)
     // Both arms delegate to the Workspace UI's shared New Session action.
     injected.startSession('workspace' as never)
     expect(b.uiWorkspace.startSession).toHaveBeenCalledWith('workspace')

@@ -113,6 +113,8 @@ root
 │  ├─ sidebar.brand.mark
 │  ├─ sidebar.brand.name
 │  ├─ sidebar.footer.action
+│  ├─ sidebar.primary
+│  ├─ sidebar.modules
 │  ├─ sidebar.workspaces
 │  │  └─ sidebar.workspaces.directoryFlow
 │  └─ sidebar.settings
@@ -128,6 +130,7 @@ root
 │        └─ settings.plugins.tab
 │           └─ settings.plugin.item
 ├─ conversation
+│  ├─ conversation.home
 │  ├─ conversation.session
 │  │  └─ conversation.view
 │  │     ├─ conversation.chat.node

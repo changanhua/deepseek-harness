@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-07-demand-driven-skill-delivery.md
+2026-09-07-demand-driven-skill-delivery.md: b78e791f12c48fdafc5dabaa9e9892aa368d8976
+2026-09-07-demand-driven-skill-delivery.zh.md: 66c85f8275d4ff4a224f46f1befee0f864ea694a

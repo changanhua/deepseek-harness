@@ -42,6 +42,12 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar: dictionaries')
 
   const injectProps = (): SidebarRootInjected => ({
+    hooks: {
+      primaryNavigation: {
+        getSnapshot: () => ctx.slots.entries('sidebar.primary').length > 0,
+        subscribe: listener => ctx.slots.subscribe('sidebar.primary', listener),
+      },
+    },
     // The shell's New Session button rides the Workspace UI's shared action
     // (current Session Workspace, then recent Workspace).
     startSession: (workspaceId) => { workspaceNavigation.startSession(workspaceId) },
@@ -59,6 +65,7 @@ export function apply(ctx: ClientContext): void {
         'sidebar.brand.name': { kind: 'single', scope: 'root' },
         'sidebar.workspaces': { kind: 'single', scope: 'root' },
         'sidebar.modules': { kind: 'list', scope: 'root' },
+        'sidebar.primary': { kind: 'list', scope: 'root' },
         'sidebar.settings': { kind: 'single', scope: 'root' },
         'sidebar.footer.action': { kind: 'list', scope: 'root' },
       },

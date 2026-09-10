@@ -141,10 +141,17 @@ export interface ChangeWorkspaceLease extends RepositoryWorkspaceLease {
   checkpoint(request: CreateCheckpointRequest): Promise<RepositoryCheckpoint>
 }
 
-/** Read/execute-only isolated checkout pinned to one verification target. */
+/** Isolated verification checkout; not an OS-level read-only sandbox. */
 export interface VerificationWorkspaceLease extends RepositoryWorkspaceLease {
   readonly baseCommit: GitCommitId
   readonly targetCommit: GitCommitId
+  /**
+   * Recheck repository identity, HEAD, index, and tracked inputs against the target.
+   * Call before and after each quiescent check. Untracked outputs are permitted.
+   * @param signal - Optional cancellation of the inspection.
+   * @returns after validation; rejects on drift, inspection failure, or a closing lease.
+   */
+  assertUnchanged(signal?: AbortSignal): Promise<void>
 }
 
 /** Provider-independent repository workspace failures. */
@@ -158,4 +165,5 @@ export type RepositoryWorkspaceErrorCode =
   | 'repository-mismatch'
   | 'owner-conflict'
   | 'checkpoint-failed'
+  | 'verification-drift'
   | 'cleanup-failed'

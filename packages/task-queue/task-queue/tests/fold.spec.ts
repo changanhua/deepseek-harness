@@ -17,6 +17,20 @@ const ownerNotification = (id: string, attemptId: AttemptId | null, resultId: st
 })
 
 describe('event-derived fold', () => {
+  it('rejects malformed automatic retry timing before publishing or hydrating it', () => {
+    const retry = (at: string) => ({ seq: 4, changeId: 'retry', at: LATER, events: [
+      { type: 'attempt/failed', attemptId: AttemptId('attempt-1'), failure: failure(), at: LATER },
+      { type: 'work/auto-retry-authorized', workId: WorkId('work-1'), at },
+    ] })
+    expect(() => foldChanges([admitted(), started(), running(), retry('invalid')])).toThrow(/invalid durable timing/)
+    const snapshot = snapshotFoldedQueue(foldChanges([admitted(), started(), running(), retry(LATER)]))
+    for (const invalid of [{ updatedAt: 'invalid' }, { attemptCount: 0 }]) {
+      const states = snapshot.states.map(state => ({ ...state, ...invalid }))
+      expect(() => hydrateFoldedQueue({ ...snapshot, states })).toThrow(/invalid durable timing/)
+    }
+    expect(hydrateFoldedQueue(snapshot).statesByWorkId.get(WorkId('work-1'))).toMatchObject({ status: 'queued', updatedAt: LATER })
+  })
+
   it('derives queued admission and rejects caller-supplied lifecycle snapshots', () => {
     const folded = foldChanges([admitted()])
     expect(folded.statesByWorkId.get(WorkId('work-1'))).toMatchObject({ status: 'queued', attemptCount: 0, activeAttemptId: null })

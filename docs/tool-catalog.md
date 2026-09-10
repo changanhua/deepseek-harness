@@ -40,6 +40,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message` | `ctx.tools`, `ctx.subagents`, `ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries). |
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`, `ctx.systemPrompt`, `a live continuable in-process child Agent` | `tool/call`, `tool/result`, `a user-role message in the direct parent session` | - | Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently. |
 | `@changanhua/dsh-tool-image-generation-task-queue` | `image_generate_enqueue`, `image_generate_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 image.generate@1 admission` | - | The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority; provider discovery and execution belong to the registered WorkHandler. |
+| `@changanhua/dsh-tool-knowledge-base` | `knowledge_base` | `ctx.tools`, `ctx.knowledgeBase`, `ctx.knowledgeQueue`, `ctx.taskQueue`, `ctx.subprocess` | `tool/call`, `tool/result`, `knowledge-base Domain records and managed content through explicit requests` | - | knowledge_base accepts only a closed business request. It keeps profile configuration, subprocess control, credentials, and direct storage access outside the tool; generation remains Queue-backed, unknown work never auto-retries, and publication stays explicit. |
 | `@changanhua/dsh-tool-operation-run-task-queue` | `operation_run_enqueue`, `operation_run_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 operation.run@1 admission` | - | The typed allowlisted-operation admission consumer. It admits only a host-configured `operationId`; executable, argv, cwd, environment, credentials, resources, and execution policy remain outside the tool schema. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
 | `@changanhua/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_kinds`, `task_queue_list`, `task_queue_result`, `task_queue_retry`, `task_queue_stats`, `task_queue_status` | `ctx.tools`, `ctx.taskQueue`, `ctx.sessions`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 owner-scoped controls`, `user/message from durable terminal Notifications` | - | The WorkKind-independent durable controller: `task_queue_*` inspection, result, cancellation, retry, and kind tools over the host `ctx.taskQueue` service, plus replay-safe owner Notification delivery through `ctx.sessions`. Work handlers, admission Consumers, and host resource capacity are composed separately. |
@@ -3319,6 +3320,33 @@ Atomically enqueue individually titled image-generation requests from completed 
 Source: [`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts)
 
 The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority; provider discovery and execution belong to the registered WorkHandler.
+
+<a id="changanhuadsh-tool-knowledge-base"></a>
+
+## `@changanhua/dsh-tool-knowledge-base`
+
+### `knowledge_base`
+
+创建、维护和发布带来源的知识库，可通过已配置的思源连接阅读和维护。request 是含 action 的 JSON：create 带 spec；source 带 projectId/sourceId/title/text；fetch 带 projectId/sourceId/title/url；refresh 带 projectId/sourceId；plan、map、status、check、build 带 projectId；confirm 再带 planHash；generate、review、adopt 再带 entryId；publish、export-draft、rollback 带 projectId/version；diff 带 projectId/from/to；work、cancel、retry、correct、resume 带 workId；stop-generation 和 resume-generation 无其它字段。每次任务的知识地图由规划自动构造，map 可查看当前地图；每次发布包含 map.md 和 map.json，思源同步自动生成该版本地图。先检查并确认规划，再 build；maxRevisions 为初次生成后的修订次数，0–3，默认2。build 不自动发布，unknown 不自动重发。retry 仅重试明确未启动的失败；correct 仅修正已返回但格式校验失败的响应；resume 仅接收已有可验证结果。全局停止会保留进度并等待活动调用结束；模型工具不能解除停止，只有人类命令或可信 Host 可 resume-generation。思源读操作：siyuan-status、siyuan-verify 带 projectId；siyuan-inspect 再带 entryId。siyuan-sync 带 projectId/version，siyuan-adopt 带 projectId/entryId/snapshotHash，二者只允许人类命令或可信 Host；更新会保留独立候选，不覆盖已有思源正文。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "request": {
+      "type": "string",
+      "description": "包含 action 与相应业务字段的 JSON 对象。"
+    }
+  },
+  "required": [
+    "request"
+  ]
+}
+```
+
+Source: [`packages/knowledge/tool-knowledge-base/src/index.ts`](../packages/knowledge/tool-knowledge-base/src/index.ts)
+
+knowledge_base accepts only a closed business request. It keeps profile configuration, subprocess control, credentials, and direct storage access outside the tool; generation remains Queue-backed, unknown work never auto-retries, and publication stays explicit.
 
 <a id="changanhuadsh-tool-operation-run-task-queue"></a>
 

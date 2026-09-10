@@ -13,6 +13,8 @@ import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { IWorkspaces, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: pulls the Controller service merges.
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -28,6 +30,11 @@ import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
+import { Workbench, WorkbenchNav } from './workbench/Workbench.tsx'
+import { createWorkbenchStore } from './workbench/store.ts'
+import { en as workbenchEn, zh as workbenchZh } from './workbench/locales.ts'
+import type { WorkbenchInjected } from './workbench/contract.ts'
+import { createResourcesRuntime } from './workbench/resources-runtime.ts'
 
 export type { UiWorkspace } from './navigation.ts'
 export type {
@@ -60,7 +67,7 @@ const NS = 'workspace'
  * declaration through `slots.inject()` instead of assuming order.
  */
 export const inject = [
-  'slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.directoryPicker',
+  'slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.directoryPicker', 'remote.workspace',
 ]
 
 /**
@@ -79,6 +86,52 @@ export function apply(ctx: Context): void {
   ctx.slots.provideRoot({ hooks: { workspaces: workspaces.list } })
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace: dictionaries')
 
+  const workbenchStore = createWorkbenchStore()
+  const resources = createResourcesRuntime(() => ctx.remote.workspace)
+  ctx.effect(() => () => { resources.dispose() }, 'ui-workspace: resources')
+  ctx.effect(() => ctx.locale.register('workbench', { zh: workbenchZh, en: workbenchEn }), 'ui-workspace: workbench dictionaries')
+  const modules = createSnapshotStore<readonly string[]>([])
+  ctx.effect(() => {
+    const update = (): void => {
+      const ids = ctx.slots.entries('shell.view').map(entry => entry.options.id).filter((id): id is string => id !== undefined)
+      const previous = modules.getSnapshot()
+      if (ids.length !== previous.length || ids.some((id, index) => id !== previous[index])) modules.set(ids)
+    }
+    const off = ctx.slots.subscribe('shell.view', update)
+    update()
+    return off
+  }, 'ui-workspace: available workbench modules')
+  ctx.slots.inject('conversation.home', () => ctx.slots.register({
+    name: 'conversation.home',
+    locale: 'workbench',
+    store: workbenchStore,
+    inject: (): WorkbenchInjected => ({
+      hooks: { modules, resources: resources.source },
+      resourceLoad: resources.load,
+      resourceAdd: resources.add,
+      resourceAct: resources.act,
+      resourceClosePreview: resources.closePreview,
+      openSession: (id) => {
+        sessions.open(id)
+        ctx.get('layout')?.activateModule('conversation')
+      },
+      startSession: (workspaceId) => {
+        ctx.get('layout')?.activateModule('conversation')
+        uiWorkspace.startSession(workspaceId)
+      },
+      prepareComposer: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
+      openModule: (id) => {
+        if (modules.getSnapshot().includes(id)) ctx.get('layout')?.activateModule(id)
+      },
+    }),
+  }, Workbench))
+  ctx.slots.inject('sidebar.primary', () => ctx.slots.register({
+    name: 'sidebar.primary',
+    id: 'workbench-navigation',
+    locale: 'workbench',
+    store: workbenchStore,
+  }, WorkbenchNav))
+
   const searchSessions: WorkspaceBrowserInjected['searchSessions'] = async (query, signal) => {
     const result = await sessions.search(query, signal)
     if (!result.ok) throw new Error(result.error.message)
@@ -96,8 +149,14 @@ export function apply(ctx: Context): void {
   const browserInjected = (): WorkspaceBrowserInjected => ({
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
-    startSession: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
-    open: (sessionId) => { sessions.open(sessionId) },
+    startSession: (workspaceId) => {
+      ctx.get('layout')?.activateModule('conversation')
+      uiWorkspace.startSession(workspaceId)
+    },
+    open: (sessionId) => {
+      sessions.open(sessionId)
+      ctx.get('layout')?.activateModule('conversation')
+    },
     searchSessions,
     searchResultLimit: sessions.searchResultLimit,
     renameSession: async (sessionId, title) => {
@@ -110,7 +169,10 @@ export function apply(ctx: Context): void {
     },
     forkSession: (sessionId) => {
       sessions.fork({ sessionId, increaseTitle: true })
-        .then((childId) => { sessions.open(childId) })
+        .then((childId) => {
+          sessions.open(childId)
+          ctx.get('layout')?.activateModule('conversation')
+        })
         .catch(() => {
           // Fork or child-rename failure keeps the current selection.
         })

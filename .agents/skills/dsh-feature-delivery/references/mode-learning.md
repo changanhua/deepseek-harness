@@ -2,6 +2,8 @@
 
 This protocol records how `native`, `adaptive`, and `governed` delivery perform in real DSH work. It is a small local feedback loop, not telemetry, a repository Registry, a receipt, completion evidence, or interruption recovery.
 
+Use it only for an explicitly requested mode comparison, an active project sampling assignment, or a learning run already started for this task. Ordinary delivery does not start measurements. Mode labels describe the work; they do not require extra planning, receipts, or subagents.
+
 ## Storage and ownership
 
 The primary agent owns one record per delivery task. The helper writes ignored local state under:
@@ -19,7 +21,7 @@ The active file exists only to retain the start timestamp until `finish`. It is 
 
 ## Start and finish
 
-From the repository root, start before the first delivery action:
+For an assigned measurement, start from the repository root before the first delivery action:
 
 ```text
 node .agents/skills/dsh-feature-delivery/scripts/mode-learning.mjs start --mode adaptive --task "Eval Queue bridge"
@@ -44,9 +46,9 @@ node .agents/skills/dsh-feature-delivery/scripts/mode-learning.mjs finish \
   --reused-evidence 4
 ```
 
-When `adaptive` escalates, add `--escalated-to governed --escalation-reason "introduced durable WorkKind"`. `finish` writes the complete terminal record to a private temporary file, creates one exclusive per-run claim from those complete bytes, then atomically promotes it to `completed/` and removes the active file. A retry recovers a matching claim or completed record; different terminal values fail instead of overwriting it. If an older helper left a partial claim while the intact active record remains, `finish` replaces that claim from the active record.
+When `adaptive` escalates, add `--escalated-to governed --escalation-reason "unresolved cross-owner recovery decisions"`. `finish` writes the complete terminal record to a private temporary file, creates one exclusive per-run claim from those complete bytes, then atomically promotes it to `completed/` and removes the active file. A retry recovers a matching claim or completed record; different terminal values fail instead of overwriting it. If an older helper left a partial claim while the intact active record remains, `finish` replaces that claim from the active record.
 
-Each `--agent` value is `role|actual-model|reasoning|changed-decision|findings`. Use the runtime-reported model when available, otherwise `unknown`; do not select future agents by copying a historical model string. `changed-decision` is `true` only when that agent changed a contract, implementation, verification scope, or completion conclusion. The helper derives the subagent count from these entries. If no agent was used, omit `--agent`; the OrchestrationReceipt still records why `agentPlan: none` was proportionate.
+Each `--agent` value is `role|actual-model|reasoning|changed-decision|findings`. Use the runtime-reported model when available, otherwise `unknown`; do not select future agents by copying a historical model string. `changed-decision` is `true` only when that agent changed a contract, implementation, verification scope, or completion conclusion. The helper derives the subagent count from these entries. If no agent was used, omit `--agent`; no separate justification record is needed.
 
 Allowed outcomes are `completed`, `partial`, `blocked`, and `abandoned`. Highest evidence is one of `not-run`, `implemented`, `source-contract`, `generated`, `composed`, `runtime-observed`, or `behavior-verified`.
 
@@ -70,7 +72,7 @@ node .agents/skills/dsh-feature-delivery/scripts/mode-learning.mjs list --limit 
 node .agents/skills/dsh-feature-delivery/scripts/mode-learning.mjs list --limit 8 --mode governed
 ```
 
-Use records as advisory evidence. Stable risk triggers still require `governed`; recent speed cannot waive security, durable-state, self-development, or acceptance boundaries. Do not scan the log on every obvious task, calculate a universal mode score, or automatically rewrite Skills from these records.
+Use records as advisory evidence. Recent speed cannot waive security, durable-state, self-development, or acceptance checks; select coordination depth from the actual unresolved decisions and dependencies. Do not scan the log on every obvious task, calculate a universal mode score, or automatically rewrite Skills from these records.
 
 ## Record shape
 

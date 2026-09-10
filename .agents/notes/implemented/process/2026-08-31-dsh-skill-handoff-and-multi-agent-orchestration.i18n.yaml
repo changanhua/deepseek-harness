@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-08-31-dsh-skill-handoff-and-multi-agent-orchestration.md
-2026-08-31-dsh-skill-handoff-and-multi-agent-orchestration.md: bae5290699055d5fbc8d36d8f941b1ddd4856218
-2026-08-31-dsh-skill-handoff-and-multi-agent-orchestration.zh.md: 7a49d12745d978c9e58b22e75390cba85952c4ee
+2026-08-31-dsh-skill-handoff-and-multi-agent-orchestration.md: ac3b92f0cf22b353da683388a021c03a70400711
+2026-08-31-dsh-skill-handoff-and-multi-agent-orchestration.zh.md: 9fdfd784556184cc995a9c7222243c34cc3d74c4

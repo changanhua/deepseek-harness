@@ -1,27 +1,27 @@
 ---
 name: dsh-issue-stack-planner
-description: Use after an approved DeepSeek Harness Feature Charter or explicitly approved final product outcome needs delivery through dependent Issues, PRs, or implementation slices. Convert it into an evidence-backed kernel/provider/bridge/composition/consumer/acceptance Issue DAG, maintain requirement-to-Issue-to-evidence traceability, and prevent a reusable kernel slice from being presented as top-level completion. Do not use to decide whether DSH should build a capability (use dsh-reuse), to invent architecture before a charter is approved, to create or update GitHub Issues without separate authorization, or to land a PR stack (use dsh-merging-stacked-prs).
+description: Plan an approved DSH outcome across genuinely dependent, independently deliverable stages or when the user explicitly requests an Issue or PR stack plan. Keep outcome-to-evidence traceability. Do not create a DAG merely because one change spans several files or packages, and do not mutate GitHub state without authorization.
 ---
 
 # DSH Issue Stack Planner
 
-Turn an approved DSH Feature Charter into the smallest delivery DAG that can prove its user outcome. This is planning and traceability only: do not create GitHub Issues, branches, PRs, or runtime configuration unless separately authorized.
+Turn an approved DSH outcome into the smallest useful delivery plan. If one bounded change can deliver and verify it, use a short implementation plan and stop here without Issue cards or a DAG. This Skill covers planning; creating GitHub objects or changing repository/runtime state requires authorization for that work.
 
 ## Preconditions and scope
 
-Require either an approved Feature Charter with final outcome, non-goals, entry path, acceptance evidence, and closing condition, or an explicitly approved equivalent whose missing detail cannot change package ownership, durable semantics, or authority.
+Take outcome, relevant constraints, entry, acceptance, and authority from the accepted conversation or plan; a formal Charter document is not a prerequisite. Resolve missing facts only when they would change ownership, dependencies, durable semantics, or authority.
 
-If the request is still a proposal, route first to `dsh-feature-charter` to freeze and obtain approval for the final outcome. Then use `dsh-reuse`; use `xia-pluginmaster` when current-checkout plugin/Definition/Provider/Consumer/Profile evidence is needed; return to this skill only after that sequence. Do not reconstruct a final goal from a convenient first implementation slice.
+If the outcome is undecided, clarify it; use `dsh-feature-charter` for a substantial product boundary. Use `dsh-reuse` or `xia-pluginmaster` only for missing reuse or current-contract facts. There is no mandatory sequence of predecessor Skills, and known decisions do not need reformatting or repeated approval. Do not reconstruct the final goal from a convenient first slice.
 
 Read root and applicable package `AGENTS.md`, the charter, and current repository state. Treat WIP, branch-only source, generated artifacts, and runtime observations as distinct evidence. Preserve unrelated WIP.
 
 ## Inputs, reuse, and receipt
 
-Consume a valid `FeatureCharterReceipt` and available reuse/current-contract receipts. Do not restate or rediscover their decisions. If identities or required fields do not match, reopen only the affected ownership or dependency question through its owning Skill.
+Consume accepted decisions and relevant evidence from the task, whether in conversation, a plan, or receipts. Reopen only facts whose relevant inputs changed or cannot be established; a missing receipt name does not invalidate available evidence.
 
 Each delivery card includes conditional documentation and derivative obligations when its changed surface reaches them: package README, subsystem owner, public JSDoc/Cordis catalog, config/persistence/module catalogs, bilingual pairing, and the owning Agent Note. Do not defer these until final verification, and do not add them to cards whose surface cannot affect them.
 
-Produce an `IssueStackReceipt` using [the handoff protocol](../dsh-feature-delivery/references/handoff-evidence.md). It records frozen shared contracts, requirement-to-Issue-to-evidence mapping, parallelizable implementation lanes, exclusive package/file ownership, integration checks, and the final acceptance dependency.
+The plan itself carries shared decisions, dependencies, ownership, and acceptance. Use a structured `IssueStackReceipt` from [the handoff protocol](../dsh-feature-delivery/references/handoff-evidence.md) only when the recipient needs it; do not also duplicate the plan in a receipt.
 
 The primary agent owns the DAG and shared-contract decisions. Read-only evidence questions may run concurrently when distinct. Implementation cards may be marked parallel only after their shared contracts are frozen and their file/package ownership is disjoint; final integration and acceptance remain serial.
 
@@ -75,7 +75,7 @@ A `kernel` Issue may be independently mergeable, but its close statement must sa
 5. Identify the first end-to-end path; it includes composition and a real consumer. Acceptance follows that path, not library coverage alone.
 6. Mark merge order only where required by the DAG. Logical dependency does not authorize GitHub stack creation or base changes.
 
-Use [issue-stack-template.md](references/issue-stack-template.md) for the report and Issue cards.
+For a genuine multi-stage plan, use [issue-stack-template.md](references/issue-stack-template.md) where its cards help assignment and acceptance. Do not split work merely to fill each role in the table.
 
 ## Evidence rules
 
@@ -93,11 +93,4 @@ Do not create, edit, label, close, assign, or comment on GitHub Issues. If separ
 
 ## Completion report
 
-Return the template with a dependency-ordered DAG, requirement → Issue → evidence traceability, charter status, earliest vertical slice, final acceptance Issue, risks, decisions, and non-goals.
-
-End with exactly one statement:
-
-- `Charter outcome is not yet complete; only the listed acceptance evidence can close it.`
-- `Charter outcome is complete only after the listed acceptance evidence is observed.`
-
-Use the latter only for an implementation plan whose acceptance work has not run. Never claim charter completion from the plan alone.
+For multi-stage work, return one dependency-ordered plan with outcome-to-evidence mapping, ownership, earliest vertical slice, and final acceptance. For bounded work, return a short implementation sequence and relevant checks. State plainly that planning does not prove implementation or acceptance; no prescribed closing phrase is needed.

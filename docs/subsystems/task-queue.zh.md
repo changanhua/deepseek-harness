@@ -14,11 +14,13 @@ host 平面的 typed work queue（`ctx.taskQueue`）。契约包是 [`dsh-task-q
 
 ## 持久 store
 
-schema-v3 root 包含 `manifest.json`、append-only `active.jsonl`、digest-checked `snapshot.json` 与独占 owner lock。Provider 会拒绝其他 schema 版本。启动时会在派发前把每个 stranded `starting` 或 `running` Attempt 记录为带 pending Attention 的 `unknown`。如果 handler 已启动而 running append 失败，Provider 会请求取消，在配置 bound 内同时等待 cancellation 与 live settlement，随后记录带 Attention 的 unknown；durability fault 后不会立即丢弃 live ownership。unknown persistence 会进行一次 best-effort retry，任何 post-start error 都不能进入 pre-start 自动重试路径。到达 deadline 时，Queue 会释放进程内 handle 和 scheduling claim，但保留持久不确定性；operator 在授权另一次 Attempt 前必须确认外部已 quiescent。关闭流程会在释放 root lock 前应用相同的有界 quiescence 规则。`ChangeSet` folding 是 fail-closed。Queue 持久化 typed JSON result；字节存储属于 `ctx.attachments` 等服务，而不是 Queue 本地路径写入器。
+schema-v3 root 包含 `manifest.json`、append-only `active.jsonl`、digest-checked `snapshot.json` 与独占 owner lock。Provider 会拒绝其他 schema 版本。候选 `ChangeSet` projection 在 JSONL append 完成同步前保持私有，因此 reader 无法观察未提交状态。启动时会在派发前把每个 stranded `starting` 或 `running` Attempt 记录为带 pending Attention 的 `unknown`。如果 handler 已启动而 running append 失败，Provider 会请求取消，在配置 bound 内同时等待 cancellation 与 live settlement，随后记录带 Attention 的 unknown；durability fault 后不会立即丢弃 live ownership。unknown persistence 会进行一次 best-effort retry，任何 post-start error 都不能进入 pre-start 自动重试路径。到达 deadline 时，Queue 会释放进程内 handle 和 scheduling claim，但保留持久不确定性；operator 在授权另一次 Attempt 前必须确认外部已 quiescent。关闭流程会在释放 root lock 前应用相同的有界 quiescence 规则。`ChangeSet` folding 是 fail-closed。Queue 持久化 typed JSON result；字节存储属于 `ctx.attachments` 等服务，而不是 Queue 本地路径写入器。
 
 ## 调度
 
-Handler 声明 `ResourceClaim`，准入会针对部署 `resourceCapacity` 校验并记录到每个 WorkItem。全局 `maxConcurrent`、持久化 claims 与 Batch `maxParallel` 限制派发。`pause()` 只影响新派发。shipped image handler 是 `image.generate@1`；`agent.run@1` 是受限 DSH worker handler；`operation.run@1` 占用 `operation-run` capacity。
+Handler 声明 `ResourceClaim`，准入会针对部署 `resourceCapacity` 校验并记录到每个 WorkItem。全局 `maxConcurrent`、持久化 claims 与 Batch `maxParallel` 限制派发。operator facade 暴露 running、paused 或 faulted 的 Provider dispatch state，并为每个 queued WorkItem 派生等待原因，而不增加另一种 durable status。store 同步失败时仍发布之前的 projection，并停止后续 mutation，直到重开和 recovery。`pause()` 只影响新派发。shipped image handler 是 `image.generate@1`；`agent.run@1` 是受限 DSH worker handler；`operation.run@1` 占用 `operation-run` capacity。
+
+自动重试的最早执行时间是推导的等待信息，通过 `QueueWaitReason { kind: 'retry-backoff', eligibleAt }` 和对应浏览器视图公开。Local provider 从持久化的重试事实重建有上限的指数退避，并拥有唤醒计时器；参见[本地调度](../../packages/task-queue/task-queue-local/README.zh.md#scheduling)。业务阶段恢复复用已有作用域内的幂等准入与结果读取；[接入契约](../../packages/task-queue/task-queue/README.zh.md#stage-recovery-integration)将业务进度留在 Queue 之外。
 
 ## Host operation
 

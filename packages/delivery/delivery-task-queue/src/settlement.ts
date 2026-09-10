@@ -153,6 +153,7 @@ export function settleVerification(
           ),
         }
       case 'workspace-boundary':
+      case 'workspace-integrity':
       case 'execution':
         return {
           status: 'failed',

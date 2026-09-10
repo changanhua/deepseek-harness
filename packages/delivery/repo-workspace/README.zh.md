@@ -33,7 +33,7 @@ const lease = await ctx.repoWorkspace.openChange({ ownerAttemptId, base: packetB
 
 Packet 持久化 exact `baseCommit` 后，change 与 verification execution 只需为该 commit 重新取得 `VerifiedRepositoryRevision`。打开 checkout 时刻意不再解析 Contract 原始的 `ref-head`：进程重启后，即使 ref 已移动，也不能把已准入工作重定向到另一 commit。
 
-executor 进程树静止后，change lease 可以创建一个受治理的 checkpoint。verification lease 固定到一个精确 target commit。每个 lease 都必须关闭并等待：已稳定完成的工作使用 `remove`，副作用仍不确定时使用 `preserve`。cleanup rejection 属于 Attempt outcome，不能被隐藏。
+executor 进程树静止后，change lease 可以创建一个受治理的 checkpoint。verification lease 提供 `assertUnchanged(signal)`，在每项已停稳检查的前后，重新核对仓库身份、HEAD、索引和已跟踪输入是否符合精确目标提交；允许未跟踪输出。漂移或检查故障会使断言拒绝，正在关闭或已关闭的 lease 不能再执行断言。每个 lease 都必须关闭并等待：已稳定完成的工作使用 `remove`，完整性或副作用仍不确定时使用 `preserve`。cleanup rejection 属于 Attempt outcome，不能被隐藏。
 
 ## 理解实现
 
@@ -65,3 +65,4 @@ executor 进程树静止后，change lease 可以创建一个受治理的 checkp
 
 - 此契约只定义本地 Git worktree；没有另一个 provider 与生命周期决策时，不支持远程 workspace 和多主机 lease。
 - 被保留的不确定 workspace 需要 operator 显式处理；此服务不会编造成功，也不会授权 Queue retry。
+- 完整性断言只证明观察时点，不是操作系统只读沙箱。检查在两次观察之间修改并恢复输入的情况，需要更强的部署隔离。

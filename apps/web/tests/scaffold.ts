@@ -206,7 +206,7 @@ export interface WebScaffold {
   mode: WebSnapshotMode
   /** Browser-facing origin for the bound test server. */
   baseUrl: string
-  /** Process-token URL that establishes this scaffold's browser session. */
+  /** Browser launch URL; carries a process token only when browser authentication is enabled. */
   authenticatedUrl: string
   /** Settled root context (the in-process readiness barrier; headless event subscription is its sanctioned use). */
   ctx: Context
@@ -735,14 +735,16 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     }
     baseUrl = `http://${browserHost}:${String(port)}`
     authenticatedUrl = ctx.connection.authenticatedUrl(baseUrl)
-    const login = await fetch(authenticatedUrl, { redirect: 'manual' })
-    const setCookie = login.headers.get('set-cookie')
-    if (login.status !== 303 || login.headers.get('location') !== '/' || setCookie === null) {
-      throw new Error('web e2e scaffold: browser token exchange did not return its session cookie')
-    }
-    cookieHeader = setCookie.split(';', 1)[0] ?? ''
-    if (cookieHeader.length === 0) {
-      throw new Error('web e2e scaffold: browser token exchange returned an empty session cookie')
+    if (new URL(authenticatedUrl).searchParams.has('token')) {
+      const login = await fetch(authenticatedUrl, { redirect: 'manual' })
+      const setCookie = login.headers.get('set-cookie')
+      if (login.status !== 303 || login.headers.get('location') !== '/' || setCookie === null) {
+        throw new Error('web e2e scaffold: browser token exchange did not return its session cookie')
+      }
+      cookieHeader = setCookie.split(';', 1)[0] ?? ''
+      if (cookieHeader.length === 0) {
+        throw new Error('web e2e scaffold: browser token exchange returned an empty session cookie')
+      }
     }
   } catch (error) {
     if (process.cwd() !== originalCwd) process.chdir(originalCwd)
@@ -767,7 +769,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     persistenceRoot,
     hostFetch(path: string, init: RequestInit = {}): Promise<Response> {
       const headers = new Headers(init.headers)
-      headers.set('cookie', cookieHeader)
+      if (cookieHeader !== '') headers.set('cookie', cookieHeader)
       return fetch(new URL(path, baseUrl), { ...init, headers })
     },
     // Barrier stack: the in-process turn/end identifies the session, its

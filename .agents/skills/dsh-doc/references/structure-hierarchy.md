@@ -66,6 +66,8 @@ Treat this as a target map, not permission for an opportunistic mass move. Move 
 
 `docs/scratch/` contains tracked, expiring discussion that must survive a handoff. Each scratch page names its owner, creation date, expiry, and promotion target. Local disposable notes remain ignored and uncommitted.
 
+Choose a local task artifact or maintained scratch according to the requested deliverable. Do not silently promote product discussion into the maintained corpus. Local design drafts may use the user's language and a scenario-oriented structure; maintained scratch follows applicable pairing and placement rules. Neither proves that a proposed feature exists.
+
 ## Small rule files
 
 Give an independently searchable rule, practice, example family, or decision one small file when it has its own owner, change cadence, inbound links, or validation. Group related files under a descriptive hierarchy such as `docs/developer/code-quality/`. Keep tightly coupled rules together when splitting would force readers to open several files to understand one obligation.

@@ -199,6 +199,55 @@ export interface Config {
 
 Source: [`packages/image/image-generation-task-queue/src/index.ts:11`](../packages/image/image-generation-task-queue/src/index.ts)
 
+<a id="changanhuadsh-knowledge-base"></a>
+
+## `@changanhua/dsh-knowledge-base`
+
+Requires: `storageDomain`
+
+```ts config-catalog
+/** 由可信 Profile 指定受管理内容根。 */
+export interface Config {
+  /** 绝对路径；模型不能通过业务工具覆盖此值。 */
+  root: string
+  /** 使用已配置的原生 MCP 服务；省略时保留文件模式。 */
+  siyuan?: false | {
+    /** 已由 MCP Client 注册的思源服务名称。 */
+    serverName: string
+    /** 保存知识正文的思源笔记本 ID。 */
+    notebook: string
+    /** 新建项目文档的绝对人类可读路径。 */
+    rootPath: string
+    /** 可选的项目 ID 到已有根文档 ID 映射，用于复用指定入口。 */
+    projectRoots?: Record<string, string>
+  }
+}
+```
+
+Source: [`packages/knowledge/knowledge-base/src/index.ts:26`](../packages/knowledge/knowledge-base/src/index.ts)
+
+<a id="changanhuadsh-knowledge-base-task-queue"></a>
+
+## `@changanhua/dsh-knowledge-base-task-queue`
+
+Requires: `knowledgeBase` · `taskQueue` · `subprocess`
+
+```ts config-catalog
+/** 可信 Profile 为知识阶段执行指定的非秘密配置。 */
+export interface Config {
+  /** 可选原生模型名称；省略时继承 Codex 自身配置。 */
+  readonly model?: string
+  /** Codex 原生权限模式，默认禁止交互批准。 */
+  readonly permissionMode?: CodexAppServerPermissionMode
+  /** 释放 Codex 子进程树时各终止阶段使用的宽限毫秒数。 */
+  readonly disposeGraceMs?: number
+}
+```
+
+Depends on: `CodexAppServerPermissionMode` (`@deepseek-ai/dsh-subagent-codex/app-server-run`)
+
+Source: [`packages/knowledge/knowledge-base-task-queue/src/index.ts:20`](../packages/knowledge/knowledge-base-task-queue/src/index.ts)
+
 <a id="changanhuadsh-operation-run-task-queue"></a>
 
 ## `@changanhua/dsh-operation-run-task-queue`
@@ -331,7 +380,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/task-queue/task-queue-local/src/index.ts:73`](../packages/task-queue/task-queue-local/src/index.ts)
+Source: [`packages/task-queue/task-queue-local/src/index.ts:83`](../packages/task-queue/task-queue-local/src/index.ts)
 
 <a id="changanhuadsh-task-queue-remote"></a>
 
@@ -701,6 +750,26 @@ export interface Config {
 
 Source: [`packages/api/settings-controller/src/index.ts:41`](../packages/api/settings-controller/src/index.ts)
 
+<a id="deepseek-aidsh-api-workspace-controller"></a>
+
+## `@deepseek-ai/dsh-api-workspace-controller`
+
+Requires: `typert` · `workspaceRegistry`
+
+```ts config-catalog
+/** Project resource storage, preview, output and shutdown bounds. */
+export interface Config {
+  /** Maximum bytes in a resource configuration or text preview. */
+  resourceMaxBytes?: number
+  /** Combined retained stdout and stderr bytes per service. */
+  resourceLogBytes?: number
+  /** Grace before process-tree termination escalates. */
+  resourceGraceMs?: number
+}
+```
+
+Source: [`packages/api/workspace-controller/src/index.ts:205`](../packages/api/workspace-controller/src/index.ts)
+
 <a id="deepseek-aidsh-attachment-local"></a>
 
 ## `@deepseek-ai/dsh-attachment-local`
@@ -803,6 +872,8 @@ export interface ConnectionConfig {
   trustedHosts?: string[]
   /** Absolute browser-session lifetime in days. Default: 30. */
   cookieMaxAgeDays?: number
+  /** Require the process launch token and signed browser cookie. Default: true. */
+  browserAuth?: boolean
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
 }
@@ -3817,11 +3888,11 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@changanhua/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))
 - `@changanhua/dsh-runtime-facts-host` — requires `runtimeFacts` ([`packages/context/runtime-facts-host/src/index.ts`](../packages/context/runtime-facts-host/src/index.ts))
 - `@changanhua/dsh-tool-image-generation-task-queue` — requires `tools` · `taskQueue` ([`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts))
+- `@changanhua/dsh-tool-knowledge-base` — requires `tools` · `knowledgeBase` · `knowledgeQueue` ([`packages/knowledge/tool-knowledge-base/src/index.ts`](../packages/knowledge/tool-knowledge-base/src/index.ts))
 - `@changanhua/dsh-tool-runtime-inspect` — requires `tools` · `runtimeFacts` · `subprocess` ([`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts))
 - `@deepseek-ai/dsh-acp-app` — requires `cmdlineArgs` ([`packages/bundle/acp-app/src/index.ts`](../packages/bundle/acp-app/src/index.ts))
 - `@deepseek-ai/dsh-agent` ([`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts))
 - `@deepseek-ai/dsh-api-remotes` — requires `typertGateway` ([`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts))
-- `@deepseek-ai/dsh-api-workspace-controller` — requires `typert` · `workspaceRegistry` ([`packages/api/workspace-controller/src/index.ts`](../packages/api/workspace-controller/src/index.ts))
 - `@deepseek-ai/dsh-authorization` — requires `credentials` ([`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts))
 - `@deepseek-ai/dsh-client-locale` ([`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts))
 - `@deepseek-ai/dsh-client-modules` — requires `webServer` · `loader` ([`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts))

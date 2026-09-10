@@ -20,7 +20,13 @@ Callers canonicalize and digest intent before external resolution. A matching id
 
 ## Authority
 
-The provider verifies initiator identity and passes an opaque `VerifiedAgentAuthority` or `VerifiedOperatorAuthority` to `forAgent()` or `forOperator()`. The Service Definition neither accepts a caller-supplied session id nor exposes a public operator facade. `OperatorWorkQueue.enqueue()` and `enqueueBatch()` are therefore host capabilities, not model or browser authority. Acknowledging an Attention record does not resolve unknown work.
+The provider verifies initiator identity and passes an opaque `VerifiedAgentAuthority` or `VerifiedOperatorAuthority` to `forAgent()` or `forOperator()`. The Service Definition neither accepts a caller-supplied session id nor exposes a public operator facade. `OperatorWorkQueue.enqueue()` and `enqueueBatch()` are therefore host capabilities, not model or browser authority. Its process-local `dispatchState()` reports running, paused, or faulted dispatch, while `waitReason()` explains one queued WorkItem without persisting another Work state. Acknowledging an Attention record does not resolve unknown work.
+
+## Stage recovery integration
+
+A trusted host caller can recover a stage binding by repeating `enqueue()` with the same WorkKind, canonical input, and idempotency key, then reading `get(workId)`. Receipt lookup precedes handler resolution, so a committed binding remains recoverable when its handler is unavailable. A changed input under the same key is a conflict. Include input and execution-recipe revisions in a stable business stage identity; revisions and review-driven corrections are distinct work, while attempts belong to Queue. Scope the key consistently: another Agent Session has another receipt namespace. An ownerless host integration must keep its authority on the trusted host.
+
+Business progress and Queue results are separate durable facts. A business caller that crashes after Queue admission or completion can rediscover the Work and consume its stored result; notifications are wake-up hints, not the only recovery source. Persist the result binding idempotently before scheduling the next stage. A successful review whose output requests revision is successful Queue execution. `unknown` blocks execution until the operator resolves it; resubmission does not authorize another attempt. Queue does not implement a stage graph, publication approval, or worker continuation.
 
 ## Model Experience
 

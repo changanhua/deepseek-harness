@@ -68,6 +68,8 @@
     "check:ci:windows-observational": "tsx scripts/run-gates.ts ci-windows-observational",
     "check:ci:fork-c0-diff": "tsx scripts/run-fork-c0-diff.ts",
     "check:package-identities": "tsx scripts/package-identities.ts",
+    "check:core-patches": "tsx scripts/check-core-patch-budget.ts",
+    "report:upstream-compatibility": "tsx scripts/generate-divergence-report.ts",
     "check:node-compat": "tsx scripts/run-gates.ts node-compat",
     "knip": "knip --treat-config-hints-as-errors",
     "publint": "tsx scripts/publint-all.ts",
@@ -161,6 +163,9 @@
     "postinstall": "node scripts/install-lefthook.mjs"
   },
   "devDependencies": {
+    "@changanhua/dsh-knowledge-base": "workspace:^",
+    "@changanhua/dsh-knowledge-base-task-queue": "workspace:^",
+    "@changanhua/dsh-tool-knowledge-base": "workspace:^",
     "@deepseek-ai/dsh-tool-session-query": "workspace:^",
     "@deepseek-ai/dsh-web-fetch-http": "workspace:^",
     "@stylistic/eslint-plugin": "^5.10.0",

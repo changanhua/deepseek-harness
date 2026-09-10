@@ -226,6 +226,9 @@
       name: '@deepseek-ai/dsh-client-connection'
       inject: [webRuntime]
       config:
+        # Local Web Profile trusts loopback plus this profile's Host/Origin fence;
+        # no launch token or browser cookie is required.
+        browserAuth: false
         # LAN literals derived from the active bind plus --trusted-host extras.
         # A deployment adding authorities keeps this expression and concatenates
         # its literals, for example: ['app.internal', ...ctx.webRuntime.trustedHosts].

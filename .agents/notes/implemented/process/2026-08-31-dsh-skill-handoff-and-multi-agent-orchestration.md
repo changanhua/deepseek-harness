@@ -10,6 +10,8 @@ DSH feature Skills make strong decisions in isolation, but a multi-stage run can
 
 ## Decision
 
+The [demand-driven delivery decision](2026-09-07-demand-driven-skill-delivery.md) supersedes this section's mandatory phase receipts, keyword-driven full-process escalation, default mode measurements, and mandatory agent plans. The evidence, ownership, integration, interruption, and measurement-finalization safeguards remain applicable.
+
 [`dsh-feature-delivery`](../../../skills/dsh-feature-delivery/SKILL.md) owns lightweight routing, task-scoped receipts, evidence freshness, parallel-work admission, and integration checkpoints. Receipts may live in a task artifact or DSH durable metadata; they are not a new repository Registry or required committed format. A Skill remains usable alone and performs minimum discovery when no valid receipt exists.
 
 Feature decisions stay serial: Charter, reuse/current-contract ownership, Issue DAG, integration, authority, and final acceptance. Distinct read-only evidence questions and implementation lanes may run concurrently after shared contracts are frozen. The primary agent owns integration and completion claims; workers own disjoint files/packages plus focused checks; an independent reviewer waits for a stable integrated candidate.

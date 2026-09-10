@@ -41,6 +41,7 @@ function queueHarness() {
       return id
     },
     enqueueBatch: async () => { throw new Error('unused') }, list: () => [...views.values()],
+    dispatchState: () => 'running', waitReason: () => null,
     get: (id) => { const view = views.get(id); if (!view) throw new Error('missing'); return view },
     cancel, retry: async () => { throw new Error('unused') }, pause: () => {}, resume: () => {},
     resolveUnknown, pendingAttentions: () => [],

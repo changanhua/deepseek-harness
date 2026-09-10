@@ -10,6 +10,7 @@ const t = (key: LocaleKeysOf<'taskQueue'>): string => en[key as TaskQueueKey] ??
 
 function stats(values: Partial<Record<QueueWorkStatus, number>> = {}, paused = false): QueueStatsView {
   return {
+    dispatchState: paused ? 'paused' : 'running',
     paused,
     byStatus: {
       queued: 0, starting: 0, running: 0, unknown: 0, succeeded: 0, failed: 0, canceled: 0,
@@ -44,7 +45,7 @@ describe('QueueNavEntry badgeFor', () => {
   })
 
   it('reports a paused empty Queue as plain status', () => {
-    expect(badgeFor(snapshot(stats({}, true)), t)).toEqual({ text: 'paused', kind: 'plain' })
+    expect(badgeFor(snapshot(stats({}, true)), t)).toEqual({ text: 'Paused', kind: 'plain' })
   })
 
   it('falls back to idle when no live or attention work exists', () => {

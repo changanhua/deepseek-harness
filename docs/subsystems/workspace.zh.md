@@ -18,6 +18,10 @@ type WorkspaceId = Branded<'WorkspaceId'>
 
 `WorkspaceId` 是[品牌化 id](core.zh.md#branded-ids)。路径标识与之分离：`realpathNormalize`（`fs.realpath`；尾部斜杠、`..` 与符号链接全部解析）是唯一的一套唯一性规范——工作区路径以规范化形式存储，唯一性即规范路径的字符串相等（指向已被拥有目录的符号链接会与之冲突），attach 时的会话 cwd 检查也走同一套规范。
 
+## 项目资源
+
+[Workspace Controller](../../packages/api/workspace-controller/README.zh.md#project-resources) 在 Workspace 导航之外提供人工操作的项目资源。`ResourceId` 标识一条保存的登记。`ResourceInput` 接收新资料、已有项目文件或本地服务命令。`ResourceView` 将保存的登记与当前 Host 所有进程的观察结果组合；`ResourceList` 返回这些行和项目配置路径。`ResourceFile` 是有界的纯文本预览。声明位于[控制器类型文件](../../packages/api/workspace-controller/src/types.ts)，存储与进程策略由该包维护。
+
 ## 工作区实体
 
 消费方只看到 `Workspace` 接口；实现保持包内私有。
@@ -190,6 +194,51 @@ Source: [`packages/api/workspace-controller/src/directory-picker.ts`](../../pack
 Host service backing the generated `ctx.remote.workspace` namespace.
 
 ```ts cordis-catalog
+/**
+ * Read project resource configuration and process observations.
+ * @param workspaceId - registered project.
+ * @returns saved resources and configuration path.
+ */
+@Remote('resourcesList') resourcesList(workspaceId: WorkspaceId): Promise<ResourceList>
+
+/**
+ * Add a Markdown note, file reference or manual service recipe.
+ * @param workspaceId - registered project.
+ * @param input - human-authored resource.
+ * @returns saved entry.
+ */
+@Remote('resourcesAdd') resourcesAdd(workspaceId: WorkspaceId, input: ResourceInput): Promise<ResourceView>
+
+/**
+ * Preview a bounded plain-text project file.
+ * @param workspaceId - registered project.
+ * @param id - resource identity.
+ * @returns resolved path and plain text.
+ */
+@Remote('resourcesRead') resourcesRead(workspaceId: WorkspaceId, id: ResourceId): Promise<ResourceFile>
+
+/**
+ * Remove an entry while retaining its files.
+ * @param workspaceId - registered project.
+ * @param id - stopped resource identity.
+ */
+@Remote('resourcesRemove') resourcesRemove(workspaceId: WorkspaceId, id: ResourceId): Promise<void>
+
+/**
+ * Start an owned local service without tying it to a Session.
+ * @param workspaceId - registered project.
+ * @param id - service identity.
+ * @returns process observation, not a health guarantee.
+ */
+@Remote('resourcesStart') resourcesStart(workspaceId: WorkspaceId, id: ResourceId): Promise<ResourceView>
+
+/**
+ * Stop an owned service and await its process tree.
+ * @param workspaceId - registered project.
+ * @param id - service identity.
+ */
+@Remote('resourcesStop') resourcesStop(workspaceId: WorkspaceId, id: ResourceId): Promise<void>
+
 /**
  * Create or idempotently resolve one Workspace over an existing directory.
  * @param request - directory path to register.

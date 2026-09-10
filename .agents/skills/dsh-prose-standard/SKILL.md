@@ -13,7 +13,7 @@ Comments describe non-obvious contracts or rationale that code cannot express; t
 
 ## Inputs and exclusions
 
-Require an explicit `scope`. If it is missing, report the required input and stop; do not infer a repository-wide scope or begin an interview.
+Resolve `scope` from the user's request, named artifact, or approved task. Ask only when the target remains materially ambiguous; do not demand another declaration for an evident local edit or infer a repository-wide audit. Conversational design advice does not request maintained repository prose.
 
 Accept `mode: automatic | interactive`; default to `automatic`. Enter interactive mode only when the user explicitly requests questions or calibration.
 
@@ -63,7 +63,7 @@ Preserve searchable mechanism names and meaningful modal, temporal, or negative 
 ## Workflow
 
 1. Confirm the scope, mode, current branch or PR base, and applicable `AGENTS.md` files. Do not inspect unrelated branches.
-2. Read [the documentation standard](../../../docs/AGENTS.md) and the owning code or document before judging a passage. For calibration or unfamiliar cases, read [the distilled examples](references/examples.md).
+2. For maintained prose, read applicable documentation instructions and the owning code or document. Resolve personal-package ownership in the intended checkout instead of applying old upstream examples. For local design scratch, check its proposed/current distinction and requested content without loading unrelated product contracts. Read [the distilled examples](references/examples.md) only for calibration or unresolved editorial cases.
 3. Inspect the requested scope, not only the largest files. Use searches and word counts to find candidates, then judge passages semantically.
 4. Classify each candidate as keep, add, trim, restore, restructure, or defer. Apply clear changes only when the task authorizes edits; do not manufacture edits to satisfy a deletion target.
 5. Update the owner before derivative artifacts. Re-check analogous passages after learning a new rule.

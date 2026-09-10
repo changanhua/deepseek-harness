@@ -1,6 +1,6 @@
 ---
 name: dsh-reuse
-description: Use when deciding whether DeepSeek Harness should gain a proposed feature, package, Service Definition, Provider, Consumer, Tool, WorkKind, workflow, state machine, scheduler, cache, dependency, or community Skill; when the user asks what DSH already has, whether a wheel is being reinvented, or how a new capability should reuse local and community work. Produce an evidence-backed direct-reuse, adapt, bridge, vendor/fork, or build decision before implementation planning. Do not use for an already-scoped mechanical edit or a bug whose owning implementation is known.
+description: Resolve an actual reuse or ownership question in DeepSeek Harness, including whether existing local or community work covers a requested capability. Use when that decision is uncertain or explicitly requested; a new technical component alone does not require a reuse audit when the owning implementation and approach are already established.
 ---
 
 # DeepSeek Harness Feature Reuse Audit
@@ -9,7 +9,7 @@ Decide whether a proposed DSH capability should be built and identify the smalle
 
 ## Outcome
 
-Finish with:
+For a bounded question, finish with the decision, decisive source evidence, and any remaining uncertainty. The fuller audit below applies when competing candidates or unresolved semantics need comparison:
 
 - the user outcome and non-negotiable semantics;
 - existing DSH capabilities that directly or partially cover it;
@@ -24,13 +24,15 @@ Do not call package presence, a matching name, a test fixture, or a community re
 
 ## Keep the workflow proportionate
 
-Use the fast path when the proposal is bounded and a local capability clearly owns it: read the owning definition, provider, consumer, one relevant decision record, and focused tests, then decide. Expand the audit when the proposal introduces persistence, authorization, external side effects, concurrency, a new public interface, or a new package family.
+When the question is bounded and a local owner is apparent, inspect only the contract or caller needed to answer it. Read a decision record when rationale matters and tests when behavior remains uncertain; they are not mandatory reading for every candidate. If current context already establishes the answer, reuse that evidence. Return the decision and stop without the capsule, audit tables, community search, dependency graph, or extra receipt.
+
+Expand only the unresolved part of the question. Persistence, authorization, external side effects, or concurrency require checking the corresponding semantics; they do not automatically require an ecosystem survey or all report sections. A new interface or package name alone is not an escalation reason.
 
 Stop community research once one candidate clearly wins or every plausible candidate fails the same required semantic. A reuse audit should reduce implementation cost, not become an open-ended ecosystem survey.
 
 ## 1. Write the need capsule
 
-State the need without naming the proposed mechanism:
+For an expanded audit, capture only missing requirements that distinguish candidates. Reuse the user's supplied facts; this optional outline is not a form to fill before every decision:
 
 ```text
 User outcome:
@@ -46,11 +48,13 @@ If the user has already supplied these facts, do not interview them again. Ask o
 
 ## 2. Search DSH by semantics
 
+Resolve [checkout and package ownership](references/checkout-ownership.md) before capability searches. The personal identity registry and manifests determine ownership even when paths still look upstream-owned. An old checkout's negative search, scope name, or command inventory is not evidence about the refactored personal target.
+
 Read the applicable `AGENTS.md` files and use the sources in [search-sources.md](references/search-sources.md). Search for both nouns and behavior: service keys, request/result types, events, tools, WorkKinds, lifecycle states, authorization, persistence, cancellation, retry, and output artifacts.
 
 Inspect the current branch and `git status` before treating source as shipped. Preserve all WIP. A candidate found only in an uncommitted diff is useful overlap evidence but remains `current-checkout WIP`; it is not a committed capability or runtime proof. Inspect another branch, pull request, or worktree only when the user names it or the current task explicitly requires that comparison.
 
-For every plausible internal candidate, establish:
+For plausible candidates in an expanded audit, establish the parts needed for the decision:
 
 1. **Definition** — what API and obligations it owns.
 2. **Provider** — whether a real implementation exists.
@@ -115,7 +119,7 @@ Read [decision-rubric.md](references/decision-rubric.md) for ambiguous cases.
 - **Vendor/Fork** — a community implementation or Skill contains valuable behavior, but DSH needs a pinned, reviewed, locally constrained copy.
 - **Build** — no candidate owns the essential semantics, and an adapter would relocate rather than remove the missing behavior.
 
-Prefer a Bridge over teaching either domain core about the other. Consumers depend on Service Definitions, never concrete Providers; Bundles select Providers and deployment defaults. A read-only capability index may aid development, but it must not become a second runtime service registry or a dependency of product plugins.
+Prefer a Bridge when two domains have independent semantics. Do not preserve an unsuitable core contract merely to minimize upstream divergence: a justified personal core change remains an option, with affected consumers and verification identified. Consumers depend on Service Definitions, never concrete Providers; Bundles select Providers and deployment defaults. A read-only capability index may aid development, but it must not become a second runtime service registry or a dependency of product plugins.
 
 ## 7. Define the minimum change
 
@@ -134,7 +138,7 @@ Separate required work from optional generalization. Do not propose a capability
 
 ## Report format
 
-Answer in the user's language using this structure. Omit empty rows rather than adding speculative filler.
+Answer in the user's language. Use this structure only for an expanded comparison that needs it; omit irrelevant sections. A bounded decision needs no table or graph when a short explanation and source location are sufficient.
 
 ```markdown
 # Feature reuse decision
@@ -167,7 +171,7 @@ Answer in the user's language using this structure. Omit empty rows rather than 
 <verified current code/runtime, community snapshot date, and remaining inference>
 ```
 
-When the audit will accompany an implementation plan or Agent Note, also emit the compact block in [reuse-audit-template.md](references/reuse-audit-template.md).
+At a real handoff, [reuse-audit-template.md](references/reuse-audit-template.md) is an optional representation of the same result; do not emit both formats or repeat the report merely because a plan or Agent Note follows.
 
 ## Guardrails
 

@@ -2,6 +2,8 @@
 
 Use this map selectively. Start with the owning subsystem and expand only when the evidence leaves a real ambiguity.
 
+Resolve [the target checkout and package owner](checkout-ownership.md) first. These paths are search hints, not a complete personal-package catalog. If present, `downstream/package-identities.json` and its checker own the personal identity map; follow its relevant record to the manifest and Bundle dependencies before using an upstream-named example.
+
 ## Standing architecture
 
 - `AGENTS.md` and the nearest subtree `AGENTS.md`
@@ -28,7 +30,7 @@ Generated catalogs prove declared current source only when freshness checks pass
 - `$DSH_HOME/profiles/<profile>/package.json`
 - `$DSH_HOME/profiles/<profile>/cordis.patch.yml`
 - `$DSH_HOME/cordis.patch.yml`
-- shipped Bundle patches under `packages/bundle/`
+- Bundle patches located through target package manifests, including personal Bundles selected by the Profile
 - Cordis runtime inspection when the target process is live
 - `ctx.skills.managementSnapshot()` for resolved Skill candidates and shadowing
 - `ctx.tools.schemas()` and MCP management projection for the viewing scope

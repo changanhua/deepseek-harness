@@ -46,7 +46,7 @@ The Session owns the first input and drives one internal pipeline: when necessar
 
 ### User flow
 
-On initial entry, the application waits until both the Workspace and Session baselines are ready. It restores a real Session selection that remains valid; otherwise, it enters New Session and selects the most recent Workspace exactly once. The most recent Workspace is determined by the maximum `updatedAt` of its member Sessions, falling back to `createdAt` for an empty Workspace. This derived value chooses only the default target: it does not alter the Host Workspace order or trigger another selection after later hydration.
+Initial entry opens the [personal workbench](2026-09-09-personal-workbench-navigation.md) without creating or selecting a Session. A previously selected real Session can remain restored behind that view. An explicit New Session action targets the current Session's Workspace, then the most recent Workspace, determined by the maximum member `updatedAt` and falling back to the Workspace's `createdAt`. This derived target does not alter Host Workspace order.
 
 When no Workspace exists, the page creates a frontend Workspace object named `workspace` and a frontend Session that targets it. Neither writes to the Host, and the composer always accepts input; the first send materializes the Workspace, attaches the Session, and sends the message in that order.
 

@@ -27,6 +27,8 @@ kind: "package-reference"
 
 侧边栏是导航外壳：用户看到品牌、启动新会话、折叠轨道、切换一级模块并到达 Settings。功能插件填充它的席位——ui-workspace 填充 `sidebar.workspaces`，Queue 与 Capability 入口注册进 `sidebar.modules`，ui-settings 在 `sidebar.settings` 注册触发行与设置面板。模块入口接收活动模块 id 与 `setActiveModule`；打开 Session 会把中心列切回 `conversation`。
 
+`sidebar.primary` 列表席位把主要工作导航放在项目浏览区上方。其条目接收与 `sidebar.modules` 相同的宽度和模块选择属性；贡献方释放时会移除对应导航。主要导航挂载期间，shell 会隐藏重复的 `sidebar.modules` 快捷入口并保留设置。新会话控件会显式返回对话，即使复用了当前选中的空白 Session。
+
 ### 品牌与 New Session
 
 展开的品牌行把 `sidebar.brand.mark` 与 `sidebar.brand.name` 渲染为两个独立的 single slot；收起轨道则渲染同一个 mark slot。没有占位者时，外壳使用鱼形标记和本地化的本地构建标签。完整构建会在标签下方显示代码徽标；该徽标使用 `DSH_CLIENT_VERSION`、可选的 7 位 `DSH_CLIENT_COMMIT_HASH` 与 `DSH_CLIENT_GIT_DIRTY=true` 组装成 `version[-commit][-dirty]`；缺少版本元数据时不显示徽标。New Session 优先使用作用域操作明确指定的 Workspace，否则使用当前 Session 所属 Workspace，再否则使用最近活跃 Workspace；一个 Workspace 都没有时则清空选择，进入空白 New Session 页面。

@@ -29,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Enable Developer Mode
         shell: pwsh
@@ -48,6 +49,9 @@ jobs:
       - name: Check package identities
         shell: pwsh
         run: pnpm run check:package-identities
+      - name: Check private core patch budget
+        shell: pwsh
+        run: pnpm run check:core-patches
       - name: Build repository
         shell: pwsh
         run: pnpm run build
@@ -162,19 +166,25 @@ jobs:
   fork-checks:
     name: fork checks passed
     needs: [windows-build, c0-diff]
-    if: >-
-      always()
-      && github.repository == 'changanhua/deepseek-harness'
-      && github.event_name == 'pull_request'
-      && github.actor == 'changanhua'
-      && github.event.pull_request.user.login == 'changanhua'
-      && github.event.pull_request.head.repo.full_name == github.repository
+    if: always()
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
       - name: Require every fork check
         shell: pwsh
+        env:
+          ACTOR: ${{ github.actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
         run: |
+          if ($env:REPOSITORY -ne 'changanhua/deepseek-harness'
+            -or $env:ACTOR -ne 'changanhua'
+            -or $env:AUTHOR -ne 'changanhua'
+            -or $env:HEAD_REPOSITORY -ne $env:REPOSITORY) {
+            Write-Error "Fork checks reject this pull request identity."
+            exit 1
+          }
           $results = "${{ join(needs.*.result, ', ') }}"
           if ($results -match 'failure|cancelled|skipped') {
             Write-Error "Fork check results: $results"

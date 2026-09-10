@@ -10,6 +10,8 @@ import {
   EvidenceId,
   QueueWorkIdRef,
   WorkPacketId,
+  contractReadiness,
+  contractVerificationSourceSchema,
 } from '@changanhua/dsh-delivery-protocol'
 import type {
   DeliveryCaseCard,
@@ -18,6 +20,7 @@ import type {
   DeliveryWorkbenchDispatch,
 } from '@changanhua/dsh-delivery-remote/types'
 import { apply, inject } from '../src/client/index.ts'
+import { zh } from '../src/client/locales.ts'
 import type {
   DeliveryNavEntryProps,
   DeliveryWorkspaceProps,
@@ -153,7 +156,7 @@ const copy: Record<string, string> = {
 }
 
 const t = (key: string, params?: Record<string, unknown>): string => {
-  const template = copy[key] ?? key
+  const template = copy[key] ?? (zh as Readonly<Record<string, string>>)[key] ?? key
   return template.replace(/\{(\w+)\}/g, (match, name: string) => {
     const value = params?.[name]
     if (value === undefined) return match
@@ -376,7 +379,7 @@ describe('Personal Delivery workbench', () => {
     const railButton = screen.getByRole('button', { name: '交付' })
     expect(railButton.getAttribute('aria-current')).toBe('page')
     expect(railButton.getAttribute('title')).toBe('交付')
-    expect(screen.getByText('nav.blocked')).not.toBeNull()
+    expect(screen.getByText('1 项阻塞')).not.toBeNull()
 
     rendered.rerender(<Navigation
       {...standardHooks}
@@ -428,6 +431,166 @@ describe('Personal Delivery workbench', () => {
 
     await waitFor(() => { expect(props.createCase).toHaveBeenCalledOnce() })
     expect(idea.value).toBe('Keep this idea after a failed write.')
+  })
+
+  it('preserves unedited contract authority and clause identities when changing a Case title', async () => {
+    const { Workspace } = await components()
+    const headRevision = contractRevisionFixture({
+      outcome: '  Preserve this outcome.  ',
+      context: '  Context with boundary whitespace.\n',
+      allowedScope: ['  Keep this scope entry.  ', 'One entry\nwith two lines'],
+      baseSelectionRule: { kind: 'ref-head', ref: 'refs/heads/master' },
+      verificationSource: { kind: 'git-blob', path: 'checks/plan.json' as never, format: 'delivery-verification-plan@1' },
+      forbiddenScope: ['private/**'],
+      openDecisions: [{ id: 'decision-security', question: 'Who can approve access?' }],
+      referenceLinks: [{ label: 'Design', url: 'https://example.test/design' }],
+    })
+    const props = workspaceProps(runtime({ cases: [caseCard({ headRevision })], contractsWithoutPacket: [], cards: [], publications: [] }))
+    render(<Workspace {...props} />)
+    fireEvent.click(screen.getByText('完善推进条件（可选）', { selector: 'summary' }))
+    const form = screen.getByRole('form', { name: '完善推进条件（可选）' })
+    fireEvent.change(within(form).getByRole('textbox', { name: '需求标题' }), { target: { value: 'Changed title only' } })
+    fireEvent.submit(form)
+    expect(props.reviseCase).toHaveBeenCalledOnce()
+    expect(props.reviseCase.mock.calls[0]?.[0].revision).toEqual({
+      outcome: headRevision.outcome,
+      context: headRevision.context,
+      allowedScope: headRevision.allowedScope,
+      forbiddenScope: headRevision.forbiddenScope,
+      acceptanceClauses: headRevision.acceptanceClauses,
+      openDecisions: headRevision.openDecisions,
+      baseSelectionRule: headRevision.baseSelectionRule,
+      verificationSource: headRevision.verificationSource,
+      referenceLinks: headRevision.referenceLinks,
+    })
+  })
+
+  it('shapes a draft into a ready revision using a selected branch and repository verification plan', async () => {
+    const { Workspace } = await components()
+    const headRevision = contractRevisionFixture({ baseSelectionRule: null, verificationSource: null })
+    const props = workspaceProps(runtime({ cases: [caseCard({ headRevision })], contractsWithoutPacket: [], cards: [], publications: [] }))
+    render(<Workspace {...props} />)
+    fireEvent.click(screen.getByText('完善推进条件（可选）', { selector: 'summary' }))
+    const form = screen.getByRole('form', { name: '完善推进条件（可选）' })
+    fireEvent.change(within(form).getByRole('combobox', { name: '基础版本类型' }), { target: { value: 'ref-head' } })
+    fireEvent.change(within(form).getByRole('textbox', { name: '分支或引用' }), { target: { value: 'refs/heads/master' } })
+    fireEvent.change(within(form).getByRole('combobox', { name: '验证来源' }), { target: { value: 'git-blob' } })
+    fireEvent.change(within(form).getByRole('textbox', { name: '验证计划路径' }), { target: { value: 'checks/local.json' } })
+    fireEvent.submit(form)
+    const submitted = props.reviseCase.mock.calls[0]?.[0].revision
+    expect(submitted?.baseSelectionRule).toEqual({ kind: 'ref-head', ref: 'refs/heads/master' })
+    expect(submitted?.verificationSource).toEqual({ kind: 'git-blob', path: 'checks/local.json', format: 'delivery-verification-plan@1' })
+    expect(contractVerificationSourceSchema.safeParse(submitted?.verificationSource).success).toBe(true)
+    expect(contractReadiness({ ...headRevision, ...submitted, origin: { kind: 'human', actorId: 'browser-test' } }).ready).toBe(true)
+  })
+
+  it('preserves every inline check and argument boundary when editing only the title', async () => {
+    const { Workspace } = await components()
+    const headRevision = contractRevisionFixture({ verificationSource: {
+      kind: 'contract-field',
+      checks: [
+        { id: 'check-one' as never, name: 'First', argv: ['node', '-e', 'process.exit(0)', '', 'two\nlines'], cwd: '.', timeoutMs: 4567, severity: 'required', expectedExitCodes: [0, 2] },
+        { id: 'check-two' as never, name: 'Second', argv: ['node', '--version'], cwd: 'scripts' as never, timeoutMs: 7654, severity: 'optional', expectedExitCodes: [1] },
+      ],
+    } })
+    const props = workspaceProps(runtime({ cases: [caseCard({ headRevision })], contractsWithoutPacket: [], cards: [], publications: [] }))
+    render(<Workspace {...props} />)
+    fireEvent.click(screen.getByText('完善推进条件（可选）', { selector: 'summary' }))
+    const form = screen.getByRole('form', { name: '完善推进条件（可选）' })
+    fireEvent.change(within(form).getByRole('textbox', { name: '需求标题' }), { target: { value: 'Only the title changes' } })
+    fireEvent.submit(form)
+    expect(props.reviseCase.mock.calls[0]?.[0].revision.verificationSource).toEqual(headRevision.verificationSource)
+    fireEvent.change(within(form).getAllByRole('textbox', { name: '检查名称' })[0]!, { target: { value: 'Renamed first check' } })
+    fireEvent.submit(form)
+    const edited = props.reviseCase.mock.calls[1]?.[0].revision.verificationSource
+    expect(edited).toEqual({
+      ...headRevision.verificationSource,
+      checks: [
+        { id: 'check-one', name: 'Renamed first check', argv: ['node', '-e', 'process.exit(0)', '', 'two\nlines'], cwd: '.', timeoutMs: 4567, severity: 'required', expectedExitCodes: [0, 2] },
+        { id: 'check-two', name: 'Second', argv: ['node', '--version'], cwd: 'scripts', timeoutMs: 7654, severity: 'optional', expectedExitCodes: [1] },
+      ],
+    })
+  })
+
+  it('authors a fixed-argument verification check and refuses an incomplete commit selection', async () => {
+    const { Workspace } = await components()
+    const headRevision = contractRevisionFixture({ baseSelectionRule: null, verificationSource: null })
+    const props = workspaceProps(runtime({ cases: [caseCard({ headRevision })], contractsWithoutPacket: [], cards: [], publications: [] }))
+    render(<Workspace {...props} />)
+    fireEvent.click(screen.getByText('完善推进条件（可选）', { selector: 'summary' }))
+    const form = screen.getByRole('form', { name: '完善推进条件（可选）' })
+    fireEvent.change(within(form).getByRole('combobox', { name: '基础版本类型' }), { target: { value: 'commit' } })
+    fireEvent.change(within(form).getByRole('textbox', { name: '完整提交 SHA' }), { target: { value: '1234' } })
+    fireEvent.change(within(form).getByRole('combobox', { name: '验证来源' }), { target: { value: 'contract-field' } })
+    fireEvent.click(within(form).getByRole('button', { name: '添加检查' }))
+    fireEvent.change(within(form).getByRole('textbox', { name: '检查名称' }), { target: { value: 'Node smoke' } })
+    fireEvent.change(within(form).getByRole('textbox', { name: '检查程序' }), { target: { value: 'node' } })
+    fireEvent.change(within(form).getByRole('textbox', { name: '检查参数（每行一个）' }), { target: { value: '-e\nprocess.exit(0)' } })
+    fireEvent.submit(form)
+    expect(props.reviseCase).not.toHaveBeenCalled()
+    const sha = 'a'.repeat(40)
+    fireEvent.change(within(form).getByRole('textbox', { name: '完整提交 SHA' }), { target: { value: sha } })
+    fireEvent.submit(form)
+    expect(props.reviseCase).toHaveBeenCalledOnce()
+    const submitted = props.reviseCase.mock.calls[0]?.[0].revision
+    expect(submitted?.baseSelectionRule).toEqual({ kind: 'commit', commit: sha })
+    expect(submitted?.verificationSource).toMatchObject({ kind: 'contract-field', checks: [{ name: 'Node smoke', argv: ['node', '-e', 'process.exit(0)'] }] })
+    expect(contractVerificationSourceSchema.safeParse(submitted?.verificationSource).success).toBe(true)
+  })
+
+  it('edits check settings without collapsing empty argument lines and assigns distinct replacement check identities', async () => {
+    const { Workspace } = await components()
+    const oldCheck = { id: 'check-2' as never, name: 'Original', argv: ['node', '--version'], cwd: '.' as const, timeoutMs: 5000, severity: 'required' as const, expectedExitCodes: [0] }
+    const headRevision = contractRevisionFixture({ verificationSource: { kind: 'contract-field', checks: [oldCheck, { ...oldCheck, id: 'check-3' as never, name: 'Keep second' }] } })
+    const props = workspaceProps(runtime({ cases: [caseCard({ headRevision })], contractsWithoutPacket: [], cards: [], publications: [] }))
+    render(<Workspace {...props} />)
+    fireEvent.click(screen.getByText('完善推进条件（可选）', { selector: 'summary' }))
+    const form = screen.getByRole('form', { name: '完善推进条件（可选）' })
+    const fillFirst = (name: string, value: string) => fireEvent.change(within(form).getAllByRole('textbox', { name })[0]!, { target: { value } })
+    fillFirst('检查名称', '')
+    fireEvent.submit(form)
+    expect(props.reviseCase).not.toHaveBeenCalled()
+    fillFirst('检查名称', 'Edited')
+    fillFirst('检查程序', 'node.exe')
+    fillFirst('检查参数（每行一个）', '--flag\n\n spaced argument ')
+    fillFirst('检查目录', 'scripts')
+    fillFirst('超时（毫秒）', '6000')
+    fillFirst('预期退出码', '0, 2')
+    fireEvent.change(within(form).getAllByRole('combobox', { name: '检查级别' })[0]!, { target: { value: 'optional' } })
+    fireEvent.submit(form)
+    const source = props.reviseCase.mock.calls[0]?.[0].revision.verificationSource
+    expect(source).toEqual({ kind: 'contract-field', checks: [
+      { id: 'check-2', name: 'Edited', argv: ['node.exe', '--flag', '', ' spaced argument '], cwd: 'scripts', timeoutMs: 6000, severity: 'optional', expectedExitCodes: [0, 2] },
+      { ...oldCheck, id: 'check-3', name: 'Keep second' },
+    ] })
+    fireEvent.click(within(form).getAllByRole('button', { name: '删除检查' })[0]!)
+    fireEvent.click(within(form).getByRole('button', { name: '添加检查' }))
+    fireEvent.change(within(form).getAllByRole('textbox', { name: '检查名称' })[1]!, { target: { value: 'Replacement' } })
+    fireEvent.change(within(form).getAllByRole('textbox', { name: '检查程序' })[1]!, { target: { value: 'node' } })
+    fireEvent.submit(form)
+    const replaced = props.reviseCase.mock.calls[1]?.[0].revision.verificationSource
+    expect(replaced).toMatchObject({ kind: 'contract-field', checks: [{ id: 'check-3', name: 'Keep second' }, { name: 'Replacement', argv: ['node'] }] })
+    if (replaced?.kind !== 'contract-field') throw new Error('missing checks')
+    expect(['check-2', 'check-3']).not.toContain(replaced.checks[1]?.id)
+    expect(contractVerificationSourceSchema.safeParse(replaced).success).toBe(true)
+  })
+
+  it('retains duplicate-text clause identities without reusing them for newly inserted clauses', async () => {
+    const { Workspace } = await components()
+    const headRevision = contractRevisionFixture({ acceptanceClauses: [
+      { id: 'acceptance-1' as never, text: 'Existing' },
+      { id: 'keep-second' as never, text: 'Existing' },
+    ] })
+    const props = workspaceProps(runtime({ cases: [caseCard({ headRevision })], contractsWithoutPacket: [], cards: [], publications: [] }))
+    render(<Workspace {...props} />)
+    fireEvent.click(screen.getByText('完善推进条件（可选）', { selector: 'summary' }))
+    const form = screen.getByRole('form', { name: '完善推进条件（可选）' })
+    fireEvent.change(within(form).getByRole('textbox', { name: '验收条件（每行一个）' }), { target: { value: 'New\nExisting\nExisting\nThird' } })
+    fireEvent.submit(form)
+    const clauses = props.reviseCase.mock.calls[0]?.[0].revision.acceptanceClauses
+    expect(clauses).toHaveLength(4)
+    expect(clauses?.slice(1, 3)).toEqual(headRevision.acceptanceClauses)
+    expect(new Set(clauses?.map(clause => clause.id)).size).toBe(4)
   })
 
   it('shapes, approves, and publishes an existing Case only after the user chooses to advance it', async () => {

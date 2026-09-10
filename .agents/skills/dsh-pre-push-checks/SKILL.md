@@ -1,6 +1,6 @@
 ---
 name: dsh-pre-push-checks
-description: Use before pushing, force-pushing, marking ready for review, or claiming checks pass on a deepseek-harness branch, and immediately after gh stack sync publishes rewritten branches, to select the smallest tests and checks that cover the outgoing or just-published diff without reflexively running the full repository suite.
+description: Select relevant local evidence for an explicitly requested DSH push, ready-for-review handoff, or post-stack-sync validation. Do not use merely to report a local draft or focused test result; verify that artifact without starting a publication workflow.
 ---
 
 # DSH Pre-Push Checks
@@ -8,6 +8,8 @@ description: Use before pushing, force-pushing, marking ready for review, or cla
 Use this skill to run relevant local evidence once before a `deepseek-harness` push. The sole ordering exception is `gh stack sync`, which may publish a cascading rebase before the rewritten layers can be validated; validate them immediately afterward and do not merge until the evidence passes. Git hooks are intentionally narrow: pre-commit fixes staged lint, checks staged whitespace, and guards vendored-source metadata; pre-push runs only the incremental repository typecheck. CI owns exhaustive coverage and the platform matrix.
 
 ## Inspect the outgoing change
+
+Resolve [checkout and package ownership](../dsh-reuse/references/checkout-ownership.md) before choosing scope or commands. Personal identity, shared-host ownership, and the integration diff determine evidence; the active Skill's directory is not a release target.
 
 1. Confirm the checkout and branch.
 
@@ -29,7 +31,7 @@ The command never guesses or fetches a base. Supply the ref verified from curren
 There is no universal local baseline beyond the hooks. Every behavior change needs the narrowest available test or purpose-built check that would fail for its regression; add broader checks only for surfaces the diff actually reaches.
 
 - **Package or script behavior:** run the owning Vitest file or focused test name. Add adjacent package tests when a shared contract changes; leave repository-wide coverage to CI unless the change is genuinely cross-cutting or the user requests it.
-- **Documentation, Agent Notes, catalogs, or doc-linked comments:** run `pnpm run doc-sync`; run full lint when the documentation workflow requires it.
+- **Documentation, Agent Notes, catalogs, or doc-linked comments:** run the target's required documentation integration checks, including `doc-sync` where applicable. Validate affected pairs and generated regions; use full lint only when the diff or an applicable integration rule requires it. Markdown outside the corpus does not acquire publication gates merely from its format.
 - **Model-, editor-, CLI-, or terminal-visible output:** run the focused keyless snapshot or real runnable-example scenario that owns the output.
 - **Expected-output placement:** a test whose recorded `session.jsonl` is replay input and expected persisted output belongs under top-level `snapshots/`, with `snapshot.yml` naming its shipped `dsh` profile and composition/header pin. ARIA, geometry, generator, CLI, and unit expectations without that session round trip stay beside their owning test under `tests/expected/`; do not place them in `snapshots/` or give them a `*.snapshot.ts` owner. Use the owning `test:expected`, `test:web`, or `test` lane.
 - **Profile and configuration placement:** cross-package behavior of a shipped `dsh` profile belongs under `apps/cli/tests/profiles/`; a package-specific Loader composition belongs under that package's `tests/fixtures/`. User-facing optional overlays live under `apps/cli/config/examples/` and pair with a guide under `docs/user/`.

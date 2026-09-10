@@ -3,9 +3,50 @@ import { describe, expect, it, vi } from 'vitest'
 import { TaskQueueRemoteService } from '../src/index.ts'
 
 describe('Queue v2 Remote', () => {
+  it('reads dispatch pause state from the Queue provider', () => {
+    const queue = { forOperator: () => ({
+      dispatchState: () => 'paused', list: () => [], get: vi.fn(), cancel: vi.fn(), retry: vi.fn(),
+      pause: vi.fn(), resume: vi.fn(), resolveUnknown: vi.fn(), acknowledgeAttention: vi.fn(),
+    }) }
+    const ctx = new Context()
+    ctx.provide('taskQueue', queue as never)
+    const service = new TaskQueueRemoteService(ctx)
+
+    expect(service.snapshot({}).stats.dispatchState).toBe('paused')
+  })
+
+  it('projects the provider wait reason for queued work', () => {
+    const view = {
+      work: {
+        id: 'work-1', kind: 'agent.run@1', title: 'inspect', policy: { maxAttempts: 3 },
+        batchId: null, ownerSessionId: null, createdAt: '2026-08-26T00:00:00.000Z',
+        intent: { prompt: 'inspect' }, intentDigest: 'digest', resolved: {}, resources: [], tags: [],
+      },
+      state: {
+        workId: 'work-1', status: 'queued', attemptCount: 0, activeAttemptId: null,
+        resultId: null, failure: null, cancelRequestedAt: null, updatedAt: '2026-08-26T00:00:00.000Z',
+      },
+      attempts: [], result: null,
+    }
+    const queue = { forOperator: () => ({
+      dispatchState: () => 'running', waitReason: () => ({
+        kind: 'resource-capacity', resource: 'agent-run', capacity: 1, used: 1, requested: 1,
+      }),
+      list: () => [view], get: vi.fn(), cancel: vi.fn(), retry: vi.fn(),
+      pause: vi.fn(), resume: vi.fn(), resolveUnknown: vi.fn(), acknowledgeAttention: vi.fn(),
+    }) }
+    const ctx = new Context()
+    ctx.provide('taskQueue', queue as never)
+    const service = new TaskQueueRemoteService(ctx)
+
+    expect(service.snapshot({}).rows[0]?.waitReason).toEqual({
+      kind: 'resource-capacity', resource: 'agent-run', capacity: 1, used: 1, requested: 1,
+    })
+  })
+
   it('returns an empty snapshot without requiring a positive limit', () => {
     const queue = { forOperator: () => ({
-      list: () => [], get: vi.fn(), cancel: vi.fn(), retry: vi.fn(),
+      dispatchState: () => 'running', list: () => [], get: vi.fn(), cancel: vi.fn(), retry: vi.fn(),
       pause: vi.fn(), resume: vi.fn(), resolveUnknown: vi.fn(), acknowledgeAttention: vi.fn(),
     }) }
     const ctx = new Context()
@@ -35,7 +76,7 @@ describe('Queue v2 Remote', () => {
       result: null,
     }])
     const queue = { forOperator: () => ({
-      list, get: vi.fn(), cancel: vi.fn(), retry: vi.fn(),
+      dispatchState: () => 'running', list, get: vi.fn(), cancel: vi.fn(), retry: vi.fn(),
       pause: vi.fn(), resume: vi.fn(), resolveUnknown: vi.fn(), acknowledgeAttention: vi.fn(),
     }) }
     const ctx = new Context()
@@ -57,7 +98,7 @@ describe('Queue v2 Remote', () => {
   it('forwards an operator-authorized unknown retry resolution', async () => {
     const resolveUnknown = vi.fn(async () => {})
     const queue = { forOperator: () => ({
-      list: () => [], get: vi.fn(), cancel: vi.fn(), retry: vi.fn(),
+      dispatchState: () => 'running', list: () => [], get: vi.fn(), cancel: vi.fn(), retry: vi.fn(),
       pause: vi.fn(), resume: vi.fn(), resolveUnknown, acknowledgeAttention: vi.fn(),
     }) }
     const ctx = new Context()
@@ -73,7 +114,7 @@ describe('Queue v2 Remote', () => {
   it('rejects legacy reconcile and unverified success inputs at the Remote boundary', async () => {
     const resolveUnknown = vi.fn(async () => {})
     const queue = { forOperator: () => ({
-      list: () => [], get: vi.fn(() => ({
+      dispatchState: () => 'running', list: () => [], get: vi.fn(() => ({
         work: { id: 'work-1', kind: 'agent.run@1' },
         state: { status: 'unknown', activeAttemptId: 'attempt-1' },
       })), cancel: vi.fn(), retry: vi.fn(), pause: vi.fn(), resume: vi.fn(),

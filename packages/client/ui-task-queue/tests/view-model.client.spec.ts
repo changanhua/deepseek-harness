@@ -18,6 +18,7 @@ function row(partial: Partial<QueueWorkSummaryView> & { id: string }): QueueWork
     ownerSessionId: null,
     createdAt: '2026-08-27T00:00:00.000Z',
     updatedAt: '2026-08-27T00:00:00.000Z',
+    waitReason: null,
     ...partial,
   }
 }
@@ -57,6 +58,15 @@ describe('projectQueueRows', () => {
   it('searches title and id case-insensitively', () => {
     expect(projectQueueRows(rows, 'all', 'REPORT').map(r => r.id)).toEqual(['done-new'])
     expect(projectQueueRows(rows, 'all', 'RUNNING-1').map(r => r.id)).toEqual(['running-1'])
+  })
+
+  it('limits rows to one selected Batch', () => {
+    const batched = [
+      row({ id: 'batch-one', batchId: 'batch-1' }),
+      row({ id: 'batch-two', batchId: 'batch-2' }),
+    ]
+
+    expect(projectQueueRows(batched, 'all', '', 'batch-1').map(r => r.id)).toEqual(['batch-one'])
   })
 
   it('does not mutate the Remote array', () => {

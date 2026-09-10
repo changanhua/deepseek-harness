@@ -9,7 +9,7 @@ import {
 import type {
   AgentWorkQueue, AttemptOutcome, BatchRequest, ChangeSet, EnqueueRequest, LiveAttempt, OperatorWorkQueue,
   PreparedWork, Receipt, ResourceClaim, UnknownResolution, VerifiedAgentAuthority, VerifiedOperatorAuthority,
-  WorkFailure, WorkHandler, ResolvedWork, WorkItem, WorkKind, WorkPolicy, WorkView,
+  WorkFailure, WorkHandler, ResolvedWork, WorkItem, WorkKind, WorkPolicy, WorkState, WorkView, QueueWaitReason,
 } from '@changanhua/dsh-task-queue'
 import { WorkQueueStore } from './v2-store.ts'
 
@@ -53,6 +53,16 @@ function firstWorkId(ids: readonly WorkId[]): WorkId {
 
 function isAborted(signal: AbortSignal): boolean { return signal.aborted }
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000
+const RETRY_INITIAL_DELAY_MS = 1_000
+const RETRY_MAX_DELAY_MS = 30_000
+
+/** Derive automatic retry eligibility from persisted authorization time and attempt count. */
+function retryEligibleAt(state: WorkState): number | null {
+  if (state.status !== 'queued' || state.failure === null || !canAutoRetry(state.failure)) return null
+  const authorizedAt = Date.parse(state.updatedAt)
+  const delay = Math.min(RETRY_MAX_DELAY_MS, RETRY_INITIAL_DELAY_MS * 2 ** Math.min(state.attemptCount - 1, 5))
+  return authorizedAt + delay
+}
 
 function admissionScope(authority: AdmissionAuthority): AdmissionScope {
   if (authority.kind === 'agent') {
@@ -104,6 +114,7 @@ export class LocalTaskQueue extends TaskQueue {
   private paused = false
   private closing = false
   private shutdownPromise: Promise<void> | undefined
+  private retryWake: ReturnType<typeof setTimeout> | undefined
 
   /** @param ctx - Cordis context. @param config - isolated v2 root. */
   constructor(ctx: Context, config: Config) {
@@ -147,8 +158,10 @@ export class LocalTaskQueue extends TaskQueue {
       get: id => this.view(id),
       cancel: id => this.cancel(id),
       retry: id => this.retry(id),
-      pause: () => { this.paused = true },
-      resume: () => { this.paused = false; void this.pump() },
+      dispatchState: () => this.dispatchState(),
+      waitReason: id => this.waitReason(id),
+      pause: () => { this.paused = true; this.clearRetryWake() },
+      resume: () => { this.paused = false; this.schedulePump() },
       resolveUnknown: (id, resolution) => this.resolveUnknown(id, resolution),
       pendingAttentions: () => this.pendingAttentions(),
     }
@@ -191,9 +204,9 @@ export class LocalTaskQueue extends TaskQueue {
         throw new Error(`task queue handler registration is already active for ${String(handler.kind)}`)
       }
       entry.active = true
-      void this.pump()
+      this.schedulePump()
     }
-    if (entry.active) void this.pump()
+    if (entry.active) this.schedulePump()
     return registration
   }
 
@@ -203,7 +216,8 @@ export class LocalTaskQueue extends TaskQueue {
   private async enqueue<K extends WorkKind>(authority: AdmissionAuthority, request: EnqueueRequest<K>): Promise<WorkId> {
     this.assertAccepting()
     const intentDigest = digestIntent(request.input)
-    return this.admitOnce(authority, request.idempotencyKey, intentDigest, () => this.admitSingle(authority, request, intentDigest))
+    const admissionDigest = digestIntent({ kind: request.kind, input: request.input })
+    return this.admitOnce(authority, request.idempotencyKey, admissionDigest, () => this.admitSingle(authority, request, intentDigest))
   }
 
   private async admitSingle<K extends WorkKind>(
@@ -212,17 +226,17 @@ export class LocalTaskQueue extends TaskQueue {
     intentDigest: string,
   ): Promise<WorkId> {
     await this.ready
-    const handler = this.requireHandler(request.kind)
     const scope = admissionScope(authority)
     const prior = lookupReceipt(this.store.current(), scope.owner, scope.source, request.idempotencyKey, intentDigest)
-    if (prior !== null) return firstWorkId(prior)
+    if (prior !== null) return this.singleReceiptId(prior, request.kind)
+    const handler = this.requireHandler(request.kind)
     const resolved = await handler.resolveAdmission(request.input, { signal: new AbortController().signal })
     const resources = this.resolveClaims(handler, resolved)
     const policy = this.resolvePolicy(handler, resolved)
     return this.store.transaction(async () => {
       this.assertAccepting()
       const committed = lookupReceipt(this.store.current(), scope.owner, scope.source, request.idempotencyKey, intentDigest)
-      if (committed !== null) return firstWorkId(committed)
+      if (committed !== null) return this.singleReceiptId(committed, request.kind)
       const now = new Date().toISOString()
       const id = WorkId(randomUUID())
       const work: WorkItem = {
@@ -242,7 +256,7 @@ export class LocalTaskQueue extends TaskQueue {
       ])
       await this.store.append(change)
       this.ctx.emit('task-queue/changed', { seq: change.seq, changeId: change.changeId })
-      void this.pump()
+      this.schedulePump()
       return id
     })
   }
@@ -269,7 +283,6 @@ export class LocalTaskQueue extends TaskQueue {
       || request.maxParallel < 1) {
       throw new Error('task queue Batch requires items and positive maxParallel')
     }
-    const handler = this.requireHandler(request.kind)
     const scope = admissionScope(authority)
     const prior = lookupReceipt(this.store.current(), scope.owner, scope.source, request.idempotencyKey, intentDigest)
     if (prior !== null) {
@@ -279,6 +292,7 @@ export class LocalTaskQueue extends TaskQueue {
       }
       return priorWork.batchId
     }
+    const handler = this.requireHandler(request.kind)
     const admitted = await Promise.all(request.items.map(async (item) => {
       const resolved = await handler.resolveAdmission(item.input, { signal: new AbortController().signal })
       return { item, resolved, resources: this.resolveClaims(handler, resolved), policy: this.resolvePolicy(handler, resolved) }
@@ -306,7 +320,7 @@ export class LocalTaskQueue extends TaskQueue {
       const change = this.change(events)
       await this.store.append(change)
       this.ctx.emit('task-queue/changed', { seq: change.seq, changeId: change.changeId })
-      void this.pump()
+      this.schedulePump()
       return batchId
     })
   }
@@ -400,7 +414,7 @@ export class LocalTaskQueue extends TaskQueue {
     const state = this.store.current().statesByWorkId.get(id)
     if (state?.status !== 'failed') throw new Error(`manual retry requires failed WorkItem ${id}`)
     await this.commit([{ type: 'work/manual-retry-authorized', workId: id, at: new Date().toISOString() }])
-    void this.pump()
+    this.schedulePump()
   }
 
   private async resolveUnknown(id: WorkId, resolution: UnknownResolution): Promise<void> {
@@ -416,7 +430,7 @@ export class LocalTaskQueue extends TaskQueue {
       events.push(this.notification(id, state.activeAttemptId, null, work.ownerSessionId, at))
     }
     await this.commit(events)
-    void this.pump()
+    this.schedulePump()
   }
 
   private async pump(): Promise<void> {
@@ -430,17 +444,56 @@ export class LocalTaskQueue extends TaskQueue {
         if (claimed === null) break
         const settled = this.execute(claimed).finally(() => {
           this.executing.delete(claimed.attemptId)
-          void this.pump()
+          this.schedulePump()
         })
         claimed.execution.settled = settled
         void settled.catch(() => undefined)
       }
     } finally {
       this.pumping = false
+      this.armRetryWake()
     }
   }
 
-  private dispatchIsPaused(): boolean { return this.paused || this.closing }
+  private clearRetryWake(): void {
+    clearTimeout(this.retryWake)
+    this.retryWake = undefined
+  }
+
+  /** Own one disposable wake-up; durable facts, not the timer, determine eligibility. */
+  private armRetryWake(): void {
+    this.clearRetryWake()
+    if (this.dispatchIsPaused() || this.executing.size >= this.maxConcurrent) return
+    const now = Date.now()
+    let earliest = Infinity
+    const works = this.store.current().worksById
+    for (const state of this.store.current().statesByWorkId.values()) {
+      const at = retryEligibleAt(state)
+      if (at !== null && at > now) earliest = Math.min(earliest, at)
+      else if (at !== null) {
+        const work = works.get(state.workId)
+        if (work !== undefined && this.canClaim(work)) earliest = Math.min(earliest, now)
+      }
+    }
+    if (!Number.isFinite(earliest)) return
+    this.retryWake = setTimeout(() => {
+      this.retryWake = undefined
+      this.schedulePump()
+    }, Math.min(earliest - now, 2_147_483_647))
+  }
+
+  private dispatchState(): import('@changanhua/dsh-task-queue').QueueDispatchState {
+    if (this.store.isFaulted()) return 'faulted'
+    return this.paused || this.closing ? 'paused' : 'running'
+  }
+
+  private dispatchIsPaused(): boolean { return this.dispatchState() !== 'running' }
+
+  private schedulePump(): void {
+    void this.pump().catch((error: unknown) => {
+      this.ctx.logger.error(`task queue dispatch stopped: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
 
   private async claimNext(): Promise<{
     readonly attemptId: AttemptId
@@ -726,6 +779,7 @@ export class LocalTaskQueue extends TaskQueue {
   }
 
   private shutdown(): Promise<void> {
+    this.clearRetryWake()
     if (this.shutdownPromise !== undefined) return this.shutdownPromise
     this.closing = true
     this.shutdownPromise = this.shutdownActiveExecutions()
@@ -822,21 +876,46 @@ export class LocalTaskQueue extends TaskQueue {
   }
 
   private canClaim(work: WorkItem): boolean {
+    return this.blockingReason(work) === null
+  }
+
+  private waitReason(id: WorkId): QueueWaitReason | null {
+    const folded = this.store.current()
+    const work = folded.worksById.get(id)
+    const state = folded.statesByWorkId.get(id)
+    if (work === undefined || state === undefined) throw new Error(`unknown WorkItem ${id}`)
+    if (state.status !== 'queued') return null
+    return this.blockingReason(work) ?? { kind: 'scheduler-turn' }
+  }
+
+  private blockingReason(work: WorkItem): QueueWaitReason | null {
+    const dispatchState = this.dispatchState()
+    if (dispatchState === 'faulted') return { kind: 'queue-faulted' }
+    if (dispatchState === 'paused') return { kind: 'dispatch-paused' }
+    if (this.handlers.get(work.kind)?.active !== true) return { kind: 'handler-unavailable' }
+    const state = this.store.current().statesByWorkId.get(work.id)
+    const eligibleAt = state === undefined ? null : retryEligibleAt(state)
+    if (eligibleAt !== null && eligibleAt > Date.now()) return { kind: 'retry-backoff', eligibleAt: new Date(eligibleAt).toISOString() }
+    if (this.executing.size >= this.maxConcurrent) return { kind: 'global-capacity', capacity: this.maxConcurrent }
     if (work.batchId !== null) {
       const batch = this.store.current().batchesById.get(work.batchId)
       if (batch === undefined) throw new Error(`task queue WorkItem ${work.id} references an unknown Batch`)
       const activeInBatch = [...this.executing.values()].filter(
         execution => this.store.current().worksById.get(execution.workId)?.batchId === batch.id,
       ).length
-      if (activeInBatch >= batch.maxParallel) return false
+      if (activeInBatch >= batch.maxParallel) return { kind: 'batch-capacity', batchId: batch.id, capacity: batch.maxParallel }
     }
-    return work.resources.every((claim) => {
+    for (const claim of work.resources) {
       const used = [...this.executing.values()].reduce((sum, execution) => {
         const matching = execution.claims.find(existing => existing.resource === claim.resource)
         return sum + (matching?.units ?? 0)
       }, 0)
-      return (this.resourceCapacity[claim.resource] ?? 0) >= claim.units + used
-    })
+      const capacity = this.resourceCapacity[claim.resource] ?? 0
+      if (capacity < claim.units + used) {
+        return { kind: 'resource-capacity', resource: claim.resource, capacity, used, requested: claim.units }
+      }
+    }
+    return null
   }
 
   private assertClaims(claims: readonly ResourceClaim[]): void {
@@ -865,6 +944,15 @@ export class LocalTaskQueue extends TaskQueue {
       throw new Error('task queue WorkHandler returned invalid maxAttempts')
     }
     return policy
+  }
+
+  private singleReceiptId(ids: readonly WorkId[], kind: WorkKind): WorkId {
+    const id = firstWorkId(ids)
+    const work = this.store.current().worksById.get(id)
+    if (ids.length !== 1 || work === undefined || String(work.kind) !== String(kind) || work.batchId !== null) {
+      throw new Error('idempotency conflict: receipt belongs to another WorkKind or a Batch')
+    }
+    return id
   }
 
   private admitOnce<T extends WorkId | BatchId>(

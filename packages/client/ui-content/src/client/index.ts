@@ -83,7 +83,7 @@ export function apply(ctx: ClientContext): void {
       browserConnection.close()
       const entryId = params.get('content-entry')
       if (entryId !== null && entryId.length > 0 && entryId.length <= 512) {
-        ctx.layout.openModule('content-library')
+        ctx.layout.activateModule('content-library')
         void store.openEntry(entryId)
       }
     }
