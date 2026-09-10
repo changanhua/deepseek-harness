@@ -36,6 +36,25 @@ describe('managed DSH Host lifecycle', () => {
     await host.stop()
     expect(child.killCount).toBe(1)
   })
+
+  it('preserves the source loader when the managed Host uses a TypeScript CLI entry', async () => {
+    const child = new FakeChild()
+    const spawn = vi.fn(() => child as never)
+    const host = await startManagedDshHost({
+      runId: 'run-source',
+      hostHome: 'C:/isolated-host',
+      hostPatch: 'C:/patch.yml',
+      executable: process.execPath,
+      cliEntry: 'C:/repo/apps/cli/src/bin.ts',
+      spawn,
+      startupTimeoutMs: 1000,
+    })
+    expect(spawn).toHaveBeenCalledWith(process.execPath, [
+      ...process.execArgv, 'C:/repo/apps/cli/src/bin.ts', '--profile', 'web', '--patch', 'C:/patch.yml',
+      '--no-open', '--port', '0',
+    ], expect.anything())
+    await host.stop()
+  })
 })
 
 class FakeChild extends EventEmitter {

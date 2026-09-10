@@ -43,6 +43,10 @@ export async function startManagedDshHost(options: ManagedHostOptions): Promise<
     throw new Error('cannot auto-start DSH Host: CLI entry is unavailable')
   }
   const patch = options.hostPatch ?? defaultHostPatch()
+  // `pnpm dsh` runs the source CLI through tsx. Preserve that loader when the
+  // managed child also uses the source entry; built CLI entries stay plain
+  // Node processes and do not inherit the parent test/runtime flags.
+  const nodeArgs = cliEntry.endsWith('.ts') ? process.execArgv : []
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...options.env,
@@ -51,7 +55,7 @@ export async function startManagedDshHost(options: ManagedHostOptions): Promise<
   }
   delete env.DSH_CONTROL_ORIGIN
   delete env.DSH_CONTROL_TOKEN
-  const child = (options.spawn ?? nodeSpawn)(executable, [
+  const child = (options.spawn ?? nodeSpawn)(executable, [...nodeArgs,
     cliEntry,
     '--profile', 'web',
     '--patch', patch,
