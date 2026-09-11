@@ -59,7 +59,7 @@ dsh --profile web --no-open --port 8080
 
 ### 按会话的 agent 设置
 
-每个浏览器会话都从随发行版交付的 preset（默认 `standard`）组合自己的 agent（智能体），而不是共享一套进程级工具集。你可以更改默认 preset，或在 `$DSH_HOME/.agent-presets` 下添加自己的 preset。
+每个浏览器会话都从随发行版交付的 preset（默认 `standard`）组合自己的 agent（智能体），而不是共享一套进程级工具集。标准 Web 会话可以通过 `subagent_codex` 让 Codex 处理一项自包含任务；Codex 使用该 Session 的工作区、自动审批评审和 workspace-write sandbox，然后把最终回答返回同一个 agent 轮次。你可以更改默认 preset，或在 `$DSH_HOME/.agent-presets` 下添加自己的 preset。
 
 -----
 

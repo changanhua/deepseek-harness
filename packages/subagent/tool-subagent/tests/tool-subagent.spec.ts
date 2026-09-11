@@ -95,13 +95,7 @@ describe('dsh-tool-subagent', () => {
     // Schema omission is advertising, not enforcement: the arg validator
     // allows undeclared keys, so the opt-out must also hold in execute().
     const ctx = await setup({ provider: 'mock', enableRunInBackground: false })
-    const parentId = SessionId('sess-off')
-    const parent = {
-      id: parentId,
-      inject: () => {},
-      options: {},
-      session: Session.create(parentId),
-    } as unknown as Agent
+    const parent = fakeAgent('sess-off')
 
     const forced = await callSubagent(ctx, { description: 'd', prompt: 'p', run_in_background: true }, { agent: parent })
     expect(forced.isError).toBe(true)

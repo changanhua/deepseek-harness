@@ -51,15 +51,16 @@ Removing the package withdraws the provider and its private runtime closure on t
 
 | `permissionMode` value | `thread/start` fields | Native behavior |
 |---|---|---|
+| `read-only` | `approvalPolicy: never`, `sandbox: read-only` | The thread receives Codex's read-only sandbox and never opens an approval request; attempted workspace writes are rejected by the native sandbox |
 | `never` | `approvalPolicy: never`; sandbox omitted | Never ask for approval; execution failures return to the model under the native sandbox |
 | `approve-for-me` | `approvalPolicy: on-request`, `approvalsReviewer: auto_review`, `sandbox: workspace-write` | Route permission requests through Codex automatic review without a human |
 | `dangerously-bypass-approvals-and-sandbox` | `approvalPolicy: never`, `sandbox: danger-full-access` | Skip approval and sandbox enforcement; this value must be selected explicitly |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-subagent-codex) is the exhaustive source for every accepted field and its JSDoc. A configured `model` passes unchanged on each ephemeral `thread/start`; omission leaves native model selection in force. The provider does not discover models, rewrite aliases, select `modelProvider` or `serviceTier`, or set a fallback. Credential-shaped ambient variables are removed before the explicit `env` overlay, so an API key intended for the child must be supplied there.
+The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-subagent-codex) is the exhaustive source for every accepted field and its JSDoc. A configured `model` passes unchanged on each ephemeral `thread/start`; omission leaves native model selection in force. The Host fixes `permissionMode` before the thread starts, and the model receives no parameter that can replace its approval or sandbox fields. The provider does not discover models, rewrite aliases, select `modelProvider` or `serviceTier`, or set a fallback. Credential-shaped ambient variables are removed before the explicit `env` overlay, so an API key intended for the child must be supplied there.
 
 ### Exposing the tool
 
-Each delegation tool row names one provider and needs its own `toolName`, so the model sees static tools rather than a dynamic provider selector. Full Agent Presets carry a matching default tool row with `disabled: true`; copy a preset and remove that field to expose `subagent_codex` only to agents composed from the copy.
+Each delegation tool row names one provider and needs its own `toolName`, so the model sees static tools rather than a dynamic provider selector. The Web `standard` preset exposes `subagent_codex` directly and its Web Host selects `approve-for-me`; other surfaces or custom presets expose the tool by composing the row below with their chosen Profile-level permission mode.
 
 ```yaml
 - id: jobs
@@ -209,7 +210,7 @@ These limits define when this provider is a poor fit or needs special operationa
 - **Authentication and account state remain native** — the Bundle supplies the CLI but does not create an account, log in, trust a project, or rewrite Codex settings; configuration and authentication failures surface with their lifecycle stage and the safe `unknown` fallback rather than a separate public taxonomy.
 - **The native platform payload is required at delegation time** — installs that omit optional dependencies, unsupported platforms, and missing or damaged payloads fail at the first run; there is no host-CLI fallback.
 - **Compatibility is pinned by development evidence** — upgrading from the verified 0.149.1 protocol baseline requires regenerating upstream schema evidence and rerunning handshake, answer-selection, approval, cancellation, keyless real-product, and credentialed DeepSeek nonce tests.
-- **No human approval path** — known unattended approval requests are denied and unknown server requests fail closed; the three Profile modes never create a DSH interaction channel or per-call allow policy.
+- **No human approval path** — known unattended approval requests are denied and unknown server requests fail closed; the four Profile modes never create a DSH interaction channel or per-call allow policy.
 - **Assistant payload is final text only** — a failed run may additionally expose the separate safe diagnostic; reasoning, commentary, intermediate messages, tool traffic, usage, raw stderr, and workspace diffs remain outside the parent Session, while generic Job ids, notices, and status come from the shared job runtime.
 - **No optional shared capabilities** — `agentOptions`, output schemas, child personas, tool filtering, and harness depth enforcement are rejected by the shared service for this provider.
 - **The parent-free subpath is trusted-Host-only** — it does not register a Cordis service, admit work, select a workspace, scrub an environment, or grant authority; the calling Host plugin must settle those policies before invoking it.

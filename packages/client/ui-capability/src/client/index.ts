@@ -8,6 +8,7 @@
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 // Type-only: pulls the generated Remote API and ctx.remote merge through the Client assembly boundary.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the `shell.view` SlotMap merge (ui-layout).
@@ -40,8 +41,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Dictionary namespace owned by this plugin. */
 const NS = 'capability'
 
-/** Required services: the two slot seats, the capabilityRegistry Remote, and copy. */
-export const inject = ['slots', 'remote', 'remote.capabilityRegistry', 'locale']
+/** Required services: slots, scoped capability data, session selection, and copy. */
+export const inject = ['slots', 'remote', 'remote.capabilityRegistry', 'locale', 'sessions']
 
 /**
  * Client plugin body: the shared store, the module entry, the workspace view,
@@ -59,9 +60,9 @@ export function apply(ctx: ClientContext): void {
   // session-scoped (skills resolve through the session's viewing scope).
   ctx.effect(() => {
     let lastSession: SessionId | undefined
-    const sessions = ctx.get('sessions')
+    const sessions = ctx.sessions
     const update = (): void => {
-      const current = sessions?.list.getSnapshot().current
+      const current = sessions.list.getSnapshot().current
       if (current === undefined) {
         store.reset()
         lastSession = undefined
@@ -73,9 +74,9 @@ export function apply(ctx: ClientContext): void {
       }
     }
     update()
-    const dispose = sessions?.list.subscribe(update)
+    const dispose = sessions.list.subscribe(update)
     return () => {
-      dispose?.()
+      dispose()
       store.dispose()
     }
   }, 'ui-capability: session load chain')

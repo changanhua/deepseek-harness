@@ -56,6 +56,9 @@
 - id: tool-runtime-inspect
   name: '@changanhua/dsh-tool-runtime-inspect'
 
+- id: tool-browser
+  name: '@changanhua/dsh-tool-browser'
+
 # ── filesystem ──────────────────────────────────────────────────────────────
 
 # Both register into the host `tools` registry and provide nothing, so
@@ -225,13 +228,11 @@
         toolName: subagent_fork
         backgroundMode: continuable
 
-    # Production dsh does not install these optional providers. Install the
-    # matching Bundle in this Profile and restart the Host, then copy this
-    # preset and remove `disabled` from the matching tool row. Host availability
-    # alone grants no tool.
+    # Web ships the Codex provider in the Host plane and exposes it here so an
+    # ordinary standard session can delegate a self-contained task naturally.
+    # Other surfaces without the provider leave this row pending and harmless.
     - id: tool-subagent-codex
       name: '@deepseek-ai/dsh-tool-subagent'
-      disabled: true
       config:
         provider: codex
         toolName: subagent_codex

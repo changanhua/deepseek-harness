@@ -36,6 +36,8 @@
     backend: json
     routes:
       content_library: content_sqlite
+      browser_monitors: content_sqlite
+      browser_activity: content_sqlite
 
 - id: tools
   config:
@@ -138,6 +140,15 @@
 
     - id: content-browser
       name: '@changanhua/dsh-content-browser'
+
+    - id: browser-extension
+      name: '@changanhua/dsh-browser-extension'
+
+    - id: browser-activity
+      name: '@changanhua/dsh-browser-activity'
+
+    - id: browser-monitor
+      name: '@changanhua/dsh-browser-monitor'
 
     # Session commands, cold reads, and live control over Typert Remote.
     - id: session-controller
@@ -475,6 +486,13 @@
 # registers under a globally unique name, so a per-session copy would both
 # starve that host row and collide on the second session. What a preset
 # chooses is which delegation TOOLS its agent sees, below.
+
+# The ordinary Web surface gives Codex the same workspace-write posture shown
+# by the browser permission selector. Codex still routes approval requests
+# through its automatic reviewer; the model cannot override this Host choice.
+- id: subagent-codex
+  config:
+    permissionMode: approve-for-me
 
 - id: tool-subagent-control
   disabled: true

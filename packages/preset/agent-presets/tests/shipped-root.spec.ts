@@ -109,4 +109,26 @@ describe('the shipped preset root', () => {
       expect(toolWeb.config.fetch, id).toBe(true)
     }
   })
+
+  it('routes external-page entry features through the mounted Browser service', async () => {
+    const skill = await readFile(join(
+      SHIPPED_PRESET_ROOT,
+      'cordis',
+      'skills',
+      'cordis-plugin-development',
+      'SKILL.md',
+    ), 'utf8')
+
+    expect(skill).toContain('external webpage')
+    expect(skill).toContain('entry_mount')
+    expect(skill).toContain('browser/entry-click')
+    expect(skill).toContain('sessionController.prompt')
+    expect(skill).toContain('browser assistant sidebar')
+    expect(skill).toContain('new AbortController()')
+    expect(skill).toContain('result.value.tabs')
+    expect(skill).toContain('snapshot.value.page')
+    expect(skill).toContain('value.mounted')
+    expect(skill).toContain('last successful mount')
+    expect(skill).toContain('Do not spawn another browser')
+  })
 })

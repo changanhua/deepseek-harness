@@ -3,6 +3,7 @@ import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
+import { Inbox } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
@@ -17,7 +18,9 @@ export const testToolSignal = new AbortController().signal
 /** Build the minimal parent Agent owned by the package-local scripted provider. */
 export function fakeAgent(id = 'parent-1'): Agent {
   const sessionId = SessionId(id)
-  return { id: sessionId, options: {}, session: Session.create(sessionId) } as unknown as Agent
+  const session = Session.create(sessionId)
+  const inbox = new Inbox(session, { inserted() {}, discarded() {}, claimed() {} })
+  return { id: sessionId, options: {}, session, inbox } as unknown as Agent
 }
 
 /** Mount the real tool and service stack around one scripted subagent provider. */

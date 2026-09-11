@@ -54,6 +54,59 @@ export const captureSelection = win => {
   return markdown ? { markdown, kind: 'selection' } : null
 }
 
+/** Self-contained for scripting.executeScript; captures only loaded, non-editable page prose. */
+export const capturePageBody = () => {
+  const maxChars = 48000, maxNodes = 10000
+  const root = document.querySelector('main, [role="main"]') ?? document.querySelector('article') ?? document.body
+  const skipped = new Set(['BUTTON', 'FORM', 'INPUT', 'TEXTAREA', 'SELECT', 'SCRIPT', 'STYLE', 'SVG', 'NOSCRIPT', 'NAV', 'ASIDE', 'FOOTER'])
+  const blocks = new Set(['P', 'DIV', 'SECTION', 'ARTICLE', 'LI', 'UL', 'OL', 'BLOCKQUOTE', 'PRE', 'TR', 'BR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'])
+  let text = '', visited = 0, textTruncated = false, incomplete = false
+  const result = () => ({ url: location.href, title: document.title.slice(0, 512), text: text.trim(), textTruncated, incomplete })
+  if (!root) return result()
+  const hidden = element => {
+    const style = getComputedStyle(element)
+    return element.hidden || element.getAttribute('aria-hidden') === 'true' || style.display === 'none'
+      || style.visibility === 'hidden' || style.visibility === 'collapse'
+  }
+  const excluded = element => {
+    const unfinished = element.matches('[data-is-streaming="true"], [data-message-finished="false"], [aria-busy="true"], .RichContent.is-collapsed, [data-dsh-collapsed="true"], details:not([open])')
+    if (unfinished) incomplete = true
+    return unfinished || skipped.has(element.tagName)
+      || element.hasAttribute('contenteditable') && element.getAttribute('contenteditable') !== 'false'
+      || hidden(element) || element.matches('.Comments-container, .ContentItem-actions, [data-testid="message-actions"], [data-dsh-actions]')
+  }
+  for (let ancestor = root.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    if (++visited >= maxNodes) { textTruncated = true; return result() }
+    if (excluded(ancestor)) return result()
+  }
+  const after = current => {
+    while (current && current !== root) {
+      if (current.nextSibling) return current.nextSibling
+      current = current.parentNode
+    }
+    return null
+  }
+  let node = root
+  while (node && visited < maxNodes && text.length < maxChars) {
+    visited += 1
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node
+      if (excluded(element)) {
+        node = after(node); continue
+      }
+      if (blocks.has(element.tagName) && text && !text.endsWith('\n')) text += '\n'
+    } else if (node.nodeType === Node.TEXT_NODE) {
+      const value = node.nodeValue ?? ''
+      const remaining = maxChars - text.length
+      if (value.length > remaining) textTruncated = true
+      text += value.slice(0, remaining).replace(/\s+/gu, ' ')
+    }
+    node = node.firstChild ?? after(node)
+  }
+  if (node) textTruncated = true
+  return result()
+}
+
 /** Converts one already-rendered ChatGPT assistant article without importing page HTML. */
 export const captureChatGptReply = target => {
   const reply = target.closest?.('[data-message-author-role="assistant"]')

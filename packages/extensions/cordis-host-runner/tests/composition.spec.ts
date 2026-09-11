@@ -141,6 +141,83 @@ describe('cross-package provide/inject', () => {
 })
 
 describe('stop reaches quiescence', () => {
+  it('lets an Agent-made tool use the bounded Browser facade with a fresh page identity', async () => {
+    const harness = await setup()
+    const browser = {
+      execute: vi.fn(async (operation: { sessionId: string; installationId: string; action: { kind: string } }) => ({
+        requestId: 'browser-request', sessionId: operation.sessionId, installationId: operation.installationId,
+        outcome: 'observed', delivery: 'sent', value: { mounted: 1, action: operation.action.kind },
+      })),
+    }
+    harness.ctx.provide('browser', browser)
+    const plugin = await mount(harness, `
+      return {
+        name: 'browser-entry-composer',
+        inject: ['browser', 'tools'],
+        apply(ctx) {
+          harness.registerTool(ctx, harness.defineTool({
+            name: 'page_entry_inspect',
+            description: 'Inspect one observed page region through Browser.',
+            parameters: {
+              installationId: { type: 'string', required: true },
+              regionSelector: { type: 'string', required: true },
+              selector: { type: 'string', required: true },
+            },
+            output: { schema: { type: 'json' }, render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }] } },
+            async execute(args) {
+              return harness.browser.inspect({
+                installationId: args.installationId,
+                page: { tabId: 7, frameId: 0, documentId: 'doc-1', url: 'https://example.test/feed' },
+                regionSelector: args.regionSelector, selector: args.selector, sampleLimit: 3,
+              })
+            },
+          }))
+        },
+      }
+    `)
+
+    expect(text(await call(harness.ctx, 'page_entry_inspect', {
+      installationId: 'install-1', regionSelector: 'main', selector: ':scope article',
+    }))).toContain('entry_inspect')
+    expect(browser.execute).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: AGENT_A.id,
+      installationId: 'install-1',
+      action: expect.objectContaining({
+        kind: 'entry_inspect', page: { tabId: 7, frameId: 0, documentId: 'doc-1', url: 'https://example.test/feed' },
+        regionSelector: 'main', selector: ':scope article', sampleLimit: 3,
+      }),
+    }), expect.any(AbortSignal))
+
+    await expect(harness.runner.stop(AGENT_A, plugin)).resolves.toEqual({ ok: true })
+    expect(harness.ctx.tools.get('page_entry_inspect')).toBeUndefined()
+  })
+
+  it('keeps a temporary Agent tool over the existing Browser service and retracts it on stop', async () => {
+    const harness = await setup()
+    const browser = { extract: vi.fn(async (args: { query?: string }) => ({ query: args.query ?? '', items: [{ index: 0, text: 'first item' }] })) }
+    harness.ctx.provide('browser', browser)
+    const plugin = await mount(harness, `
+      return {
+        name: 'browser-composer',
+        inject: ['browser', 'tools'],
+        apply(ctx) {
+          harness.registerTool(ctx, harness.defineTool({
+            name: 'page_items_extract',
+            description: 'Extract bounded page items through Browser.',
+            parameters: { query: { type: 'string' } },
+            output: { schema: { type: 'json' }, render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }] } },
+            async execute(args) { return ctx.browser.extract(args) },
+          }))
+        },
+      }
+    `)
+    expect(harness.ctx.tools.get('page_items_extract')).toBeDefined()
+    expect(text(await call(harness.ctx, 'page_items_extract', { query: 'feed' }))).toContain('first item')
+    expect(browser.extract).toHaveBeenCalledWith({ query: 'feed' })
+    await expect(harness.runner.stop(AGENT_A, plugin)).resolves.toEqual({ ok: true })
+    expect(harness.ctx.tools.get('page_items_extract')).toBeUndefined()
+  })
+
   it('the host half\'s listeners have stopped by the time stop returns', async () => {
     const harness = await setup()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})

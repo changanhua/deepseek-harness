@@ -172,6 +172,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         packages: new Map(),
         approvedClientPackages: new Set(),
         clientVersionUpdatesApproved: false,
+        state: new Map(),
+        pendingBrowserMounts: new Map(),
       }
       this.registry.add(plugin)
     } else {
@@ -457,17 +459,19 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     const plugin = this.owned(agent, pluginId)
     if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
     const pending = this.registry.pendingRequestFor(pluginId)
-    if (plugin.run === undefined && pending === undefined) {
+    if (plugin.run === undefined && pending === undefined && plugin.pendingBrowserMounts.size === 0) {
       return { ok: false, reason: 'not-running', message: `dynamic plugin "${pluginId}" is not running` }
     }
     if (pending !== undefined) this.cancelPending(pluginId, `dynamic plugin "${pluginId}" was stopped before approval`)
-    if (plugin.run !== undefined) await this.retract(plugin)
+    const cleanupPending = plugin.run === undefined
+      ? await this.cleanupPendingBrowserMounts(plugin)
+      : await this.retract(plugin)
     if (plugin.latestRun !== undefined) {
       plugin.latestRun.status = 'stopped'
       if (plugin.latestRun.host.status !== 'absent') plugin.latestRun.host = { status: 'stopped', waitingFor: [] }
       if (plugin.latestRun.client.status !== 'absent') plugin.latestRun.client = { status: 'stopped', waitingFor: [] }
     }
-    return { ok: true }
+    return { ok: true, ...(cleanupPending.length === 0 ? {} : { cleanupPending }) }
   }
 
   /**
@@ -847,6 +851,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       handlers: new Map(),
       handlerDisposers: [],
       reportedRuntimeErrors: new Set(),
+      ownedBrowserMounts: new Map(),
       ...requestId === undefined ? {} : { startedForRequest: requestId },
     }
     if (definition.hostCode !== undefined) {
@@ -895,7 +900,14 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       return dispose
     }
     try {
-      const sandbox = createSandbox(plugin.pluginId, { handle })
+      const sandbox = createSandbox(plugin.pluginId, {
+        handle,
+        sessionId: plugin.sessionId,
+        pluginId: plugin.pluginId,
+        pluginRunId: run.pluginRunId,
+        state: pluginStateFacade(plugin),
+        browser: this.browserEntryFacade(plugin, run),
+      })
       const evaluated = await evaluateHostCode(sandbox, hostCode, plugin.pluginId, this.resolved.vmTimeoutMs)
       if (!isPlugin(evaluated)) {
         throw new Error(evaluated === undefined
@@ -910,8 +922,110 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       return undefined
     } catch (error) {
       for (const dispose of run.handlerDisposers.splice(0)) dispose()
+      await this.cleanupBrowserMounts(plugin, run)
       return errorDetails(error)
     }
+  }
+
+  private browserEntryFacade(plugin: DynamicCordisPlugin, run: DynamicCordisRun): object {
+    const execute = async (input: Record<string, unknown>, action: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> => {
+      const browser = this.ctx.get('browser') as { execute?: (operation: unknown, signal: AbortSignal) => Promise<unknown> } | undefined
+      if (typeof browser?.execute !== 'function') throw new Error('harness.browser requires the Browser service')
+      const installationId = requiredText(input.installationId, 'installationId', 128)
+      const lifetime = signal ?? AbortSignal.timeout(15_000)
+      return browser.execute({ sessionId: plugin.sessionId, installationId, action }, lifetime)
+    }
+    const slot = (input: Record<string, unknown>): string => {
+      const value = requiredText(input.slot, 'slot', 32)
+      if (!/^[a-z][a-z0-9-]*$/u.test(value)) throw new Error('harness.browser slot must be lowercase ASCII with optional digits or hyphens')
+      return value
+    }
+    const page = (input: Record<string, unknown>): Record<string, unknown> => {
+      const value = input.page
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('harness.browser page is required')
+      return structuredClone(value as Record<string, unknown>)
+    }
+    return Object.freeze({
+      inspect: async (input: Record<string, unknown>, signal?: AbortSignal) => execute(input, {
+        kind: 'entry_inspect', page: page(input),
+        regionSelector: requiredText(input.regionSelector, 'regionSelector', 256),
+        selector: requiredText(input.selector, 'selector', 256),
+        ...optionalText(input, 'titleSelector', 256), ...optionalText(input, 'linkSelector', 256),
+        ...(input.sampleLimit === undefined ? {} : { sampleLimit: input.sampleLimit }),
+      }, signal),
+      mount: async (input: Record<string, unknown>, signal?: AbortSignal) => {
+        const ownedSlot = slot(input)
+        const mountId = `${plugin.pluginId}:${ownedSlot}`
+        const ownedPage = page(input)
+        run.ownedBrowserMounts.set(ownedSlot, { installationId: requiredText(input.installationId, 'installationId', 128),
+          page: ownedPage as { tabId: number; frameId: number; documentId: string; url: string }, mountId })
+        // Track before dispatch because an infrastructure failure can surface after delivery crossed the process boundary.
+        const result = await execute(input, {
+          kind: 'entry_mount', page: ownedPage, mountId,
+          regionSelector: requiredText(input.regionSelector, 'regionSelector', 256),
+          selector: requiredText(input.selector, 'selector', 256), label: requiredText(input.label, 'label', 64),
+          ...optionalText(input, 'titleSelector', 256), ...optionalText(input, 'linkSelector', 256),
+          ...(input.collected === undefined ? {} : { collected: structuredClone(input.collected) }),
+        }, signal) as { outcome?: unknown }
+        if (result?.outcome === 'refused') run.ownedBrowserMounts.delete(ownedSlot)
+        return result
+      },
+      unmount: async (input: Record<string, unknown>, signal?: AbortSignal) => {
+        const ownedSlot = slot(input)
+        const existing = run.ownedBrowserMounts.get(ownedSlot)
+        const mountId = `${plugin.pluginId}:${ownedSlot}`
+        const result = await execute(input, { kind: 'entry_unmount', page: page(input), mountId }, signal) as { outcome?: unknown }
+        if (result?.outcome === 'observed' && (existing === undefined || existing.mountId === mountId)) {
+          run.ownedBrowserMounts.delete(ownedSlot)
+        }
+        return result
+      },
+    })
+  }
+
+  private async cleanupBrowserMounts(plugin: DynamicCordisPlugin, run: DynamicCordisRun): Promise<string[]> {
+    const browser = this.ctx.get('browser') as { execute?: (operation: unknown, signal: AbortSignal) => Promise<{ outcome?: unknown }> } | undefined
+    if (typeof browser?.execute !== 'function') {
+      for (const mount of run.ownedBrowserMounts.values()) plugin.pendingBrowserMounts.set(mount.mountId, mount)
+      return [...run.ownedBrowserMounts.values()].map(mount => mount.mountId)
+    }
+    const pending: string[] = []
+    for (const [slot, mount] of [...run.ownedBrowserMounts]) {
+      try {
+        const result = await browser.execute({ sessionId: plugin.sessionId, installationId: mount.installationId,
+          action: { kind: 'entry_unmount', page: mount.page, mountId: mount.mountId } }, AbortSignal.timeout(5_000))
+        if (result?.outcome === 'observed') {
+          run.ownedBrowserMounts.delete(slot)
+          plugin.pendingBrowserMounts.delete(mount.mountId)
+        } else {
+          plugin.pendingBrowserMounts.set(mount.mountId, mount)
+          pending.push(mount.mountId)
+        }
+      } catch (error) {
+        plugin.pendingBrowserMounts.set(mount.mountId, mount)
+        pending.push(mount.mountId)
+        console.error(`[cordis:${plugin.pluginId}] failed to clean browser entry ${mount.mountId}`, error)
+      }
+    }
+    return pending
+  }
+
+  private async cleanupPendingBrowserMounts(plugin: DynamicCordisPlugin): Promise<string[]> {
+    const browser = this.ctx.get('browser') as { execute?: (operation: unknown, signal: AbortSignal) => Promise<{ outcome?: unknown }> } | undefined
+    if (typeof browser?.execute !== 'function') return [...plugin.pendingBrowserMounts.keys()]
+    const pending: string[] = []
+    for (const [mountId, mount] of [...plugin.pendingBrowserMounts]) {
+      try {
+        const result = await browser.execute({ sessionId: plugin.sessionId, installationId: mount.installationId,
+          action: { kind: 'entry_unmount', page: mount.page, mountId } }, AbortSignal.timeout(5_000))
+        if (result?.outcome === 'observed') plugin.pendingBrowserMounts.delete(mountId)
+        else pending.push(mountId)
+      } catch (error) {
+        pending.push(mountId)
+        console.error(`[cordis:${plugin.pluginId}] failed to reconcile browser entry ${mountId}`, error)
+      }
+    }
+    return pending
   }
 
   private async settleActivation(
@@ -1216,17 +1330,19 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     }
   }
 
-  private async retract(plugin: DynamicCordisPlugin): Promise<void> {
+  private async retract(plugin: DynamicCordisPlugin): Promise<string[]> {
     const run = plugin.run
-    if (run === undefined) return
+    if (run === undefined) return []
     delete plugin.run
     for (const dispose of run.handlerDisposers.splice(0)) dispose()
     if (run.fiber !== undefined) await run.fiber.dispose()
+    const cleanupPending = await this.cleanupBrowserMounts(plugin, run)
     this.ctx.emit('cordis/dynamic-retract', {
       pluginId: plugin.pluginId,
       packageId: run.packageId,
       pluginRunId: run.pluginRunId,
     })
+    return cleanupPending
   }
 
   private owned(agent: Agent, pluginId: CordisDynamicPluginId): DynamicCordisPlugin | undefined {
@@ -1242,6 +1358,54 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
 
 function missingFor(ctx: Context, run: DynamicCordisRun): string[] {
   return run.fiber === undefined ? [] : missingServices(ctx, run.fiber)
+}
+
+const MAX_PLUGIN_STATE_ENTRIES = 32
+const MAX_PLUGIN_STATE_BYTES = 64 * 1024
+
+function requiredText(value: unknown, name: string, maximum: number): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > maximum) {
+    throw new Error(`harness.browser ${name} must be a non-empty string of at most ${maximum} characters`)
+  }
+  return value
+}
+
+function optionalText(input: Record<string, unknown>, name: string, maximum: number): Record<string, string> {
+  const value = input[name]
+  return value === undefined ? {} : { [name]: requiredText(value, name, maximum) }
+}
+
+function pluginStateFacade(plugin: DynamicCordisPlugin): object {
+  const key = (value: unknown): string => {
+    if (typeof value !== 'string' || !/^[a-z][a-z0-9._-]{0,63}$/u.test(value)) {
+      throw new Error('harness.state key must start with lowercase ASCII and contain at most 64 lowercase letters, digits, dots, underscores, or hyphens')
+    }
+    return value
+  }
+  const cloneJson = (value: unknown): JsonValue => {
+    let encoded: string | undefined
+    try { encoded = JSON.stringify(value) } catch { /* handled below */ }
+    if (encoded === undefined) throw new Error('harness.state accepts JSON values only')
+    return JSON.parse(encoded) as JsonValue
+  }
+  const totalBytes = (next: Map<string, JsonValue>): number => Buffer.byteLength(JSON.stringify([...next]))
+  return Object.freeze({
+    get: (rawKey: unknown): JsonValue | undefined => {
+      const value = plugin.state.get(key(rawKey))
+      return value === undefined ? undefined : structuredClone(value)
+    },
+    set: (rawKey: unknown, rawValue: unknown): void => {
+      const stateKey = key(rawKey)
+      const value = cloneJson(rawValue)
+      const next = new Map(plugin.state)
+      next.set(stateKey, value)
+      if (next.size > MAX_PLUGIN_STATE_ENTRIES || totalBytes(next) > MAX_PLUGIN_STATE_BYTES) {
+        throw new Error(`harness.state exceeds ${MAX_PLUGIN_STATE_ENTRIES} entries or ${MAX_PLUGIN_STATE_BYTES} bytes`)
+      }
+      plugin.state.set(stateKey, value)
+    },
+    delete: (rawKey: unknown): boolean => plugin.state.delete(key(rawKey)),
+  })
 }
 
 function missingPluginMessage(id: CordisDynamicPluginId): string {

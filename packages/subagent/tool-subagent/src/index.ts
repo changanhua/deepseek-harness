@@ -33,6 +33,8 @@ import {
 } from './model-selection.ts'
 import type { DelegationModelRequest, ModelSelectionPolicy } from './model-selection.ts'
 import { registerListSubagentModels } from './list-models.ts'
+import { assertForegroundInputCurrent, captureForegroundInput } from './foreground-input.ts'
+export type * from './types.ts'
 import type {} from './model-selection-settings.ts'
 import {
   recordSubagentModelSelection,
@@ -205,25 +207,31 @@ type ForegroundToolResult = {
  * Collect and release one foreground run without letting disposal replace an
  * independent result failure.
  */
-async function settleForegroundRun(run: SubagentRun): Promise<ForegroundToolResult> {
-  const [execution] = await Promise.allSettled([
-    run.result.then((result): ForegroundToolResult => {
-      const error = stopReasonError(result)
-      if (error !== undefined) {
-        // The registry converts this throw to isError; partial output is not
-        // success, but the preserved partial answer still reaches the parent.
-        throw new Error(withDiagnosticAndPartialText(error, result))
-      }
-      return {
+async function settleForegroundRun(
+  run: SubagentRun,
+  validateInput: (result: SubagentResult | undefined) => void,
+): Promise<ForegroundToolResult> {
+  const [raw] = await Promise.allSettled([run.result])
+  const [disposal] = await Promise.allSettled([Promise.resolve().then(() => run.dispose())])
+  let execution: PromiseSettledResult<ForegroundToolResult>
+  try {
+    // Recheck after cleanup and before projecting any successful or partial text.
+    validateInput(raw.status === 'fulfilled' ? raw.value : undefined)
+    if (raw.status === 'rejected') throw raw.reason
+    const error = stopReasonError(raw.value)
+    if (error !== undefined) throw new Error(withDiagnosticAndPartialText(error, raw.value))
+    execution = {
+      status: 'fulfilled',
+      value: {
         kind: 'foreground',
         runId: run.id,
-        // Content blocks already cross durable JSON boundaries elsewhere;
-        // the registry performs the authoritative lossless snapshot here.
-        output: result.output as unknown as JsonValue[],
-      }
-    }),
-  ])
-  const [disposal] = await Promise.allSettled([Promise.resolve().then(() => run.dispose())])
+        // The registry performs the authoritative lossless snapshot here.
+        output: raw.value.output as unknown as JsonValue[],
+      },
+    }
+  } catch (reason: unknown) {
+    execution = { status: 'rejected', reason }
+  }
   if (execution.status === 'rejected') {
     if (disposal.status === 'rejected') {
       throw new AggregateError(
@@ -554,11 +562,18 @@ export function apply(ctx: Context, config: Config): void {
             return { kind: 'background' as const, jobId: id }
           }
 
+          const basis = captureForegroundInput(parent, exec.callId, config.provider, args.prompt)
           const run: SubagentRun = await runtimeCtx.subagents.start(config.provider, {
             ...request,
             signal: exec.signal,
           })
-          return settleForegroundRun(run)
+          return settleForegroundRun(run, (result) => {
+            assertForegroundInputCurrent(parent, basis, {
+              runId: run.id,
+              output: (result?.output ?? []) as unknown as JsonValue[],
+            })
+            if (result?.stopReason === 'completed') exec.signal.throwIfAborted()
+          })
         },
       }))
       mounted = { subagentProvider, disposeTool }

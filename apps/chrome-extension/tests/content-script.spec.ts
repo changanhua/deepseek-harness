@@ -87,6 +87,17 @@ describe('网页快捷收藏', () => {
     expect(second.textContent).toBe('收藏到 DSH')
   })
 
+  test('结果未知时锁定原回复并提示在侧栏确认，避免页面重复提交', async () => {
+    document.body.innerHTML = reply('msg-unknown')
+    let respond: ReplyCallback | undefined
+    await install((message, callback) => { if (message.type === 'dsh-quick-capture') respond = callback })
+    await flushMutations()
+    const button = document.querySelector<HTMLButtonElement>('[data-message-id="msg-unknown"] [data-dsh-quick-capture]')!
+    button.click(); respond?.({ ok: false, status: 'unknown', error: 'result_unknown' })
+    expect(button.textContent).toBe('结果待确认 · 请打开 DSH 侧栏')
+    expect(button.disabled).toBe(true)
+  })
+
   test('已保存按钮所在节点被复用为新内容时，旧回执失效', async () => {
     document.body.innerHTML = reply('msg-reused')
     let respond: ReplyCallback | undefined

@@ -13,6 +13,61 @@
   "vendorPathPrefix": "vendor/",
   "personalPackages": [
     {
+      "directory": "packages/browser/browser",
+      "legacyName": "@deepseek-ai/dsh-browser",
+      "sourceName": "@changanhua/dsh-browser",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/browser/browser-activity",
+      "legacyName": "@deepseek-ai/dsh-browser-activity",
+      "sourceName": "@changanhua/dsh-browser-activity",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/browser/browser-extension",
+      "legacyName": "@deepseek-ai/dsh-browser-extension",
+      "sourceName": "@changanhua/dsh-browser-extension",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/browser/browser-monitor",
+      "legacyName": "@deepseek-ai/dsh-browser-monitor",
+      "sourceName": "@changanhua/dsh-browser-monitor",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/browser/tool-browser",
+      "legacyName": "@deepseek-ai/dsh-tool-browser",
+      "sourceName": "@changanhua/dsh-tool-browser",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/bundle/personal-delivery",
       "legacyName": "@deepseek-ai/dsh-personal-delivery",
       "sourceName": "@changanhua/dsh-personal-delivery",

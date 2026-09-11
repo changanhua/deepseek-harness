@@ -1,6 +1,6 @@
 /** Session commands whose activation policy is explicit at each Remote method. */
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, ModelSelection as AgentModelSelection } from '@deepseek-ai/dsh-agent'
 import { PresetMountError, UnknownPresetError } from '@deepseek-ai/dsh-agent-presets'
@@ -276,11 +276,14 @@ export class SessionCommandController {
   }
 
   /**
-   * Admit one browser prompt after explicit Agent resume and image validation.
-   * @param request - Session identity, prompt content, source metadata, and delivery mode.
-   * @returns acknowledgement that the Agent accepted the prompt.
+   * Admit one immutable browser prompt once per Session/request identity.
+   * @param input - Session identity, prompt content, source metadata, and delivery mode.
+   * @param signal - Cancels preparation before the first inbox insertion; accepted facts still flush.
+   * @returns acknowledgement after the accepted message reaches the Session durability barrier.
    */
-  async prompt(request: SessionPromptRequest): Promise<SessionPromptValue> {
+  async prompt(input: SessionPromptRequest, signal?: AbortSignal): Promise<SessionPromptValue> {
+    signal?.throwIfAborted()
+    const request = structuredClone(input)
     const clientTimeZone = request.clientTimeZone === undefined
       ? undefined
       : canonicalClientTimeZone(request.clientTimeZone)
@@ -292,21 +295,35 @@ export class SessionCommandController {
       )
     }
     const agent = await this.resolveAgent(request.sessionId)
-    const selection = this.agents.selectionFor(agent).current
-    if (!routeServed(this.ctx, selection.provider)) {
-      reject(
-        'model-unavailable',
-        `no adapter serves provider "${selection.provider}"; select a model for this session`,
-        { provider: selection.provider, model: selection.model },
-      )
-    }
-    const source: MessageSource = {
-      kind: 'user',
-      rpcId: request.requestId,
-      ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
-    }
-    const hasImage = request.content.some(part => part.type === 'image')
-    const admit = async (): Promise<SessionPromptValue> => {
+    const rpcDigest = promptDigest(request, clientTimeZone)
+    return this.agents.serializeImageAdmission(agent, async () => {
+      signal?.throwIfAborted()
+      const existing = promptRequestState(agent.session.events, agent.session.header.seedLength, request.requestId, rpcDigest)
+      if (existing === 'conflict') {
+        reject('request-conflict', 'requestId was already used for a different prompt', {
+          sessionId: agent.session.id,
+          requestId: request.requestId,
+        })
+      }
+      if (existing === 'match') {
+        await this.ctx.sessions.flush(agent.session)
+        return { accepted: true }
+      }
+      const selection = this.agents.selectionFor(agent).current
+      if (!routeServed(this.ctx, selection.provider)) {
+        reject(
+          'model-unavailable',
+          `no adapter serves provider "${selection.provider}"; select a model for this session`,
+          { provider: selection.provider, model: selection.model },
+        )
+      }
+      const source: MessageSource = {
+        kind: 'user',
+        rpcId: request.requestId,
+        rpcDigest,
+        ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
+      }
+      const hasImage = request.content.some(part => part.type === 'image')
       try {
         if (hasImage) {
           const current = this.agents.selectionFor(agent).current
@@ -320,9 +337,11 @@ export class SessionCommandController {
           }
         }
         const content = await durablePromptContent(this.ctx, request.content)
+        signal?.throwIfAborted()
         const message: UserMessage = createUserMessage({ content, source })
         if (request.mode === 'steer') agent.steer(message)
         else agent.followup(message)
+        await this.ctx.sessions.flush(agent.session)
       } catch (error) {
         if (error instanceof TypertRemoteFailure) throw error
         if (error instanceof AttachmentError) {
@@ -331,8 +350,7 @@ export class SessionCommandController {
         reject('agent-busy', 'prompt rejected', { reason: String(error) })
       }
       return { accepted: true }
-    }
-    return hasImage ? this.agents.serializeImageAdmission(agent, admit) : admit()
+    })
   }
 
   /**
@@ -509,6 +527,47 @@ function rejectFailure(error: { readonly code: string; readonly message: string;
 
 function reject(code: string, message: string, details: object): never {
   throw new TypertRemoteFailure({ code, message, details })
+}
+
+/** Return the canonical request digest stored with a browser prompt correlation id. */
+function promptDigest(request: SessionPromptRequest, clientTimeZone: string | undefined): string {
+  const input = {
+    ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
+    content: request.content.map(part => part.type === 'text'
+      ? { text: part.text, type: part.type }
+      : {
+        data: part.data,
+        mediaType: part.mediaType,
+        ...(part.name === undefined ? {} : { name: part.name }),
+        type: part.type,
+      }),
+    mode: request.mode,
+  }
+  return createHash('sha256').update(JSON.stringify(input)).digest('hex')
+}
+
+/** Find a request id in non-seed durable messages and every durable inbox splice. */
+function promptRequestState(
+  events: readonly SessionEvent[],
+  seedLength: number | undefined,
+  requestId: SessionPromptRequest['requestId'],
+  rpcDigest: string,
+): 'none' | 'match' | 'conflict' {
+  let found = false
+  for (const event of events.slice(seedLength ?? 0)) {
+    const messages = event.type === 'user/message'
+      ? [event.data]
+      : event.type === 'agent/inbox/spliced'
+        ? event.data.inserted
+        : []
+    for (const message of messages) {
+      const source = message.source
+      if (source.kind !== 'user' || !('rpcId' in source) || source.rpcId !== requestId) continue
+      found = true
+      if (!('rpcDigest' in source) || source.rpcDigest !== rpcDigest) return 'conflict'
+    }
+  }
+  return found ? 'match' : 'none'
 }
 
 async function durablePromptContent(

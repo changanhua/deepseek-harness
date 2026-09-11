@@ -87,10 +87,11 @@
   const setButtonState = (button, state, entryId) => {
     const text = state === 'saving' ? '保存中…'
       : state === 'saved' ? '✓ 已收藏 · 查看'
+        : state === 'unknown' ? '结果待确认 · 请打开 DSH 侧栏'
         : state === 'failed' ? '保存未完成 · 请打开 DSH 侧栏'
           : '展开后收藏'
     if (button.dataset.dshStatus !== state) button.dataset.dshStatus = state
-    const disabled = state === 'saving' || state === 'unavailable'
+    const disabled = state === 'saving' || state === 'unavailable' || state === 'unknown'
     if (button.disabled !== disabled) button.disabled = disabled
     if (button.textContent !== text) button.textContent = text
     if (state === 'saved' && button.dataset.dshEntryId !== (entryId ?? '')) button.dataset.dshEntryId = entryId ?? ''
@@ -119,7 +120,10 @@
     setButtonState(button, 'saving')
     send({ type: 'dsh-quick-capture', payload }, (response, error) => {
       if (!target.isConnected || !button.isConnected) return
-      if (error || !response?.ok || response.status !== 'saved') { setButtonState(button, 'failed'); button.title = response?.error ?? error?.message ?? '请打开 DSH 侧栏处理这份待保存内容'; return }
+      if (error || !response?.ok || response.status !== 'saved') {
+        const status = response?.status === 'unknown' || response?.uncertain === true ? 'unknown' : 'failed'
+        setButtonState(button, status); button.title = response?.error ?? error?.message ?? '请打开 DSH 侧栏处理这份待保存内容'; return
+      }
       setButtonState(button, 'saved', response.entryId)
       button.dataset.dshSourceKey = sourceKey(target)
       button.dataset.dshContentSignature = contentSignature(target)

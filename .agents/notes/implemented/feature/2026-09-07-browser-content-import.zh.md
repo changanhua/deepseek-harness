@@ -10,6 +10,8 @@ Status: implemented
 
 ## 决策
 
+[浏览器执行授权](../architecture/2026-09-08-browser-execution-authority.zh.md)负责独立的浏览器操作授权与可跨重启保留的执行日志。本导入决策继续负责内容数据和 `content:import`，不授予页面操作权限。
+
 Chromium 扩展采集普通网页中的当前文本选区、ChatGPT 中的一条已结束助手回复，或知乎中一条已展开回答。它把文本、标题、URL、站点、采集时间、范围和可选的外部消息身份发送给 `@changanhua/dsh-content-browser` Host 桥。Content 在一次 `save-text` 操作中共同持久化正文与明确标记为未经验证的 `web-page` 来源。UUID 采集身份同时映射到 `web:<captureId>` 和 operation ID，因此响应丢失后可以重试而不产生重复条目。
 
 每个扩展安装使用保留的 verifier 和 SHA-256 challenge 创建独立连接请求。在已登录 Web 应用中打开请求只展示请求；用户必须显式批准。桥把 verifier 兑换为仅含 `content:import` 权限的 bearer capability，只在凭据 Provider 中保存严格版本化的令牌哈希，并且只向精确匹配的扩展 Origin 返回秘密。内容脚本和侧边栏都不会收到该 capability。撤销、替换、请求中止和服务 dispose 会在 Content 提交前再次使已经进入通道的导入失效。

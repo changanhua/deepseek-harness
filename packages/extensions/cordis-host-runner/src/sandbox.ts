@@ -30,6 +30,18 @@ export const HOST_BUILTIN_INSPECTION = [
     name: 'harness',
     description: 'Host helpers for Package-private Client RPC and model-visible dynamic Tools.',
     signatures: [
+      'harness.sessionId: SessionId',
+      'harness.pluginId: CordisDynamicPluginId',
+      'harness.pluginRunId: CordisDynamicPluginRunId',
+      'harness.state.get(key: string): JsonValue | undefined',
+      'harness.state.set(key: string, value: JsonValue): void',
+      'harness.state.delete(key: string): boolean',
+      'harness.browser.inspect(input: { installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string }; regionSelector: string; selector: string; titleSelector?: string; linkSelector?: string; sampleLimit?: number }, signal?: AbortSignal): Promise<BrowserActionResult>',
+      'harness.browser.mount(input: { installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string }; slot: string; regionSelector: string; selector: string; label: string; titleSelector?: string; linkSelector?: string; collected?: string[] }, signal?: AbortSignal): Promise<BrowserActionResult>',
+      'harness.browser.unmount(input: { installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string }; slot: string }, signal?: AbortSignal): Promise<BrowserActionResult>',
+      'BrowserActionResult = { requestId: string; sessionId: string; installationId: string; outcome: observed | failed | cancelled | unknown; delivery: not-sent | sent; reason?: string; value?: unknown }',
+      'entry_inspect value = { matched: number; valid: number; missingTitle: number; missingLink: number; duplicateLinks: number; truncated?: boolean; samples: Array<{ title: string; link: string }> }',
+      'entry_mount collected?: string[] is the absolute-link set rendered as "已加入" and disabled; keep it in harness.state and pass it again on Package updates',
       'harness.handle(method: string, handler: (args: JsonValue) => JsonValue | Promise<JsonValue>): () => void',
       'harness.defineTool(definition: ToolDefinition): ToolDefinition',
       'harness.registerTool(ctx: Context, tool: ToolDefinition): () => void',
@@ -40,6 +52,16 @@ export const HOST_BUILTIN_INSPECTION = [
   { name: 'atob', description: 'Decode base64 as UTF-8 text.', signatures: ['atob(value: string): string'] },
   { name: 'TextEncoder', description: 'Standard UTF-8 encoder constructor.', signatures: ['new TextEncoder()'] },
   { name: 'TextDecoder', description: 'Standard text decoder constructor.', signatures: ['new TextDecoder(label?: string)'] },
+  {
+    name: 'AbortController',
+    description: 'Standard cancellation controller for Service calls that require an AbortSignal.',
+    signatures: ['new AbortController()', 'controller.signal: AbortSignal', 'controller.abort(reason?: unknown): void'],
+  },
+  {
+    name: 'AbortSignal',
+    description: 'Standard cancellation signal constructor exposed for static helpers and identity checks.',
+    signatures: ['AbortSignal.abort(reason?: unknown): AbortSignal', 'AbortSignal.timeout(milliseconds: number): AbortSignal'],
+  },
 ] as const
 
 /**
@@ -78,7 +100,8 @@ const DUAL_REALM_INSTANCEOF_PRELUDE = `
 /** Run {@link DUAL_REALM_INSTANCEOF_PRELUDE} in a freshly created sandbox, handing it the host intrinsics to pair up. */
 function patchDualRealmInstanceof(sandbox: object): void {
   const patch = runInContext(DUAL_REALM_INSTANCEOF_PRELUDE, sandbox) as (intrinsics: Record<string, unknown>) => void
-  patch({ Object, Array, Function, Error, TypeError, RangeError, SyntaxError, Promise, RegExp, Date, Map, Set })
+  patch({ Object, Array, Function, Error, TypeError, RangeError, SyntaxError, Promise, RegExp, Date, Map, Set,
+    AbortController, AbortSignal })
 }
 
 const TIMER_REDIRECT
@@ -138,6 +161,8 @@ export function createSandbox(id: string, harnessExtras: Record<string, unknown>
     atob: (s: string) => Buffer.from(s, 'base64').toString('utf-8'),
     TextEncoder,
     TextDecoder,
+    AbortController,
+    AbortSignal,
   }
   createContext(sandbox)
   patchDualRealmInstanceof(sandbox)

@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
+  "include": ["src"],
+  "references": [
+    { "path": "../../llm/llm" }, { "path": "../../core/agent-default-model" },
+    { "path": "../browser-activity" },
+    { "path": "../browser-monitor" },
+    { "path": "../../api/session-controller/tsconfig.host.json" },
+    { "path": "../../../vendor/cordis" }, { "path": "../../../vendor/schemastery" },
+    { "path": "../browser" }, { "path": "../../credentials/credentials" },
+    { "path": "../../client/connection/tsconfig.host.json" }, { "path": "../../host/webserver" },
+    { "path": "../../core/session" }, { "path": "../../interaction/user-approval" }, { "path": "../../runtime-diagnostics/invariants" }
+  ]
+}

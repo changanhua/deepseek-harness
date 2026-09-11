@@ -23,6 +23,10 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+prompt 的 `(sessionId, requestId)` 标识一条不可变提交。Host 固定输入，对投递模式、规范化时区和有序内容计算摘要，并将准入与模型选择串行处理。摘要保存在已有的用户来源字段中。会话非 seed 日志中匹配的消息或任一次 inbox 插入均阻止第二次投递，包括队列项已经移除的情况；不同摘要返回 `request-conflict`。图片提升发生在查重之后。首次准入与相同请求的重试均等待 Session flush 持久化屏障后才返回 `accepted`，因此 flush 失败只重试持久化，不再次插入消息。继承的 fork seed 不占用子会话的请求 ID。
+
+仅当 Session 组合包含完成持久化的 listener 时，flush 屏障才确认持久化。没有连接 listener 时，`SessionStore.flush()` 返回 `false`；内存组合不承诺在 Host 重启后恢复。inbox 插入前，请求 signal 仍可在图片准备期间取消；准入之后，已接受的输入作为一条串行 Host 提交完成 flush。
+
 历史页与 follow opening snapshot 携带带判别字段的 `SessionHistoryRecord`。两个分支都使用 `{ type, event }`：`type: 'event'` 携带一个原始 `SessionWireEvent`，`type: 'chunks'` 则携带一个由连续且属于同一 block 的 `assistant/chunk` delta 组成的无损 `ChunkRowEvent`。两种内部值都公开 `type`、`seq`、`time` 与 `data`，因此 Client 无需逐 record 转换，就能把每条已接受 record 保留为一个 `SessionEventLikeEntry`。packed event 的 `seq` 与 `time` 表示首成员，`data` 保留 fragment 与 timestamp-gap 数组。实时 follow frame 继续携带单个 `event` record。工具参数、结果内容、失败信息和 `tool/result.data.meta` 原样通过；controller 不解析 Tool definition、不运行 presenter，也不附加 UI 数据。
 
 每个 endpoint 都声明自己的激活策略。列表、搜索、附件、历史页、日志跟随、skill 发现和工作区路径打开可以在不激活 Agent 的情况下检查 persistence；`canOpenWorkspacePath()` 无需指定 Session 即可报告原生打开能力。queue 变更与取消要求 live 状态；模型、重命名、prompt 和文件引用操作可以解析或恢复普通 Session。只有 create 与 fork 会直接创建新 Agent。skill 目录则优先使用已有 live Agent，否则使用所记录 preset 的常驻 scope，因此列表查询绝不会启动 Agent。
@@ -48,7 +52,7 @@ Session 对象还承载本地提交回显：`session.beginSubmission` 在调用�
 <a id="model-experience"></a>
 ## 模型体验
 
-无，因为被调用的 Agent 命令拥有任何模型可见效果。
+controller 不注册模型工具或提示词区段。其 `prompt` 操作将用户已确认输入投递给按地址指定的 Agent，后者拥有产生的模型请求及任何模型可见响应。
 
 #### KV Cache 影响
 

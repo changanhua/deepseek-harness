@@ -33,7 +33,14 @@ const importSchema = wire.object({
   }).strict(),
 }).strict()
 
-export interface ContentBrowserConfig { requestTTL?: number; pendingLimit?: number; maxRequestBodyBytes?: number }
+export interface ContentBrowserConfig {
+  /** Lifetime of a pending connection request, in milliseconds. */
+  requestTTL?: number
+  /** Maximum number of pending connection requests. */
+  pendingLimit?: number
+  /** Maximum accepted request body size, in bytes. */
+  maxRequestBodyBytes?: number
+}
 export const Config: z<ContentBrowserConfig> = z.object({
   requestTTL: z.natural().min(1).max(5 * 60 * 1000).default(5 * 60 * 1000), pendingLimit: z.natural().min(1).max(32).default(32),
   maxRequestBodyBytes: z.natural().min(1).max(1024 * 1024).default(1024 * 1024),

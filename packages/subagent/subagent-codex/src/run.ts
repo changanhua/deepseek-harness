@@ -53,12 +53,14 @@ const CODEX_PACKAGE_BIN = resolve(
 
 /** Profile-selectable non-interactive Codex permission mode. */
 export type CodexPermissionMode =
+  | 'read-only'
   | 'never'
   | 'approve-for-me'
   | 'dangerously-bypass-approvals-and-sandbox'
 
 /** Native non-interactive Codex modes mapped to official `thread/start` fields. */
 export const CODEX_PERMISSION_MODES = [
+  'read-only',
   'never',
   'approve-for-me',
   'dangerously-bypass-approvals-and-sandbox',

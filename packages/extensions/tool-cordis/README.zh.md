@@ -50,6 +50,10 @@ CLI 示例 [`apps/cli/config/examples/cordis/cordis.yml`](../../../apps/cli/conf
 - `cordis_stop`——停止当前运行并取消任何待审批请求，保留插件与全部包版本。
 - `cordis_undefine`——停止并彻底移除一个插件及其全部包。
 
+### 组合浏览器能力
+
+需要临时浏览器能力时，先检查实时 Browser 和 Tool 目录。优先复用已有的 `browser_snapshot`、`browser_extract`、`browser_action`、`browser_entry_mount` 和 `browser_entry_unmount` 工具。动态包可以用 `harness.defineTool(...)` 加 `harness.registerTool(ctx, tool)` 注册 Agent 作用域工具，调用现有 Browser 服务或有界的 `harness.browser` façade，并返回有界的页面身份、结构化条目、稳定元素引用和已观察结果。任务适配器可以根据当前页面的新鲜观察推导 selector，但不能使用未观察的 selector、复制站点私有传输或另造浏览器执行器。临时能力不再需要后停止或移除该包。
+
 ### 典型工作流
 
 先检查、再定义、后运行：`cordis_inspect_query` 读取包要用的服务或 slot 的精确约定，`cordis_define` 记录源码（会话里会出现一张 define 卡片，指向存放运行控件的面板），`cordis_run` 激活它。当用户输入 `@pluginId` 时，本包注入一条上下文消息，钉住所引用的插件、其基准包与更新路径。技术性失败之后，用 `cordis_inspect_self` 读取诊断，向同一插件追加修正版，再更新过去。

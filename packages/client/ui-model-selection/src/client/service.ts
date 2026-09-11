@@ -15,6 +15,7 @@
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { ModelCatalogDirectory } from './catalog.ts'
 import { ModelDirectory } from './directory.ts'
@@ -37,6 +38,8 @@ export class ModelDirectoryResolver extends Service {
 
   private readonly live: LiveState = { directories: new Map() }
   private readonly catalog: ModelCatalogDirectory
+  /** Capture the injected Remote namespace once; service methods are traceable and may run from a Session scope. */
+  private readonly sessionRemote: Pick<ClientRemote['session'], 'modelCatalog' | 'selectModel'>
 
   /** Localized composer-block copy; this plugin owns the string it raises. */
   private readonly blockReason: () => string
@@ -48,7 +51,8 @@ export class ModelDirectoryResolver extends Service {
   constructor(ctx: Context, config: { blockReason: () => string }) {
     super(ctx, 'modelDirectories')
     this.blockReason = config.blockReason
-    this.catalog = new ModelCatalogDirectory(ctx.remote.session)
+    this.sessionRemote = ctx.remote.session
+    this.catalog = new ModelCatalogDirectory(this.sessionRemote)
     void this.catalog.load().catch(() => { /* selectors expose the shared error */ })
     ctx.on('connection/reset', () => {
       this.catalog.resetGeneration()
@@ -75,7 +79,7 @@ export class ModelDirectoryResolver extends Service {
     const binding = sessions.binding(sessionId)
     if (binding === undefined) throw new Error(`ui-model-selection: session "${String(sessionId)}" resolved no binding`)
     const directory = new ModelDirectory(
-      this.ctx.remote.session,
+      this.sessionRemote,
       sessionId,
       () => sessions.subagentAddress(sessionId) === undefined,
       this.catalog,

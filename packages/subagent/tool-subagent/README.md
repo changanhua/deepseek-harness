@@ -27,6 +27,8 @@ English | [中文](README.zh.md)
 
 Mount one instance per delegation target, each with a distinct `toolName`. The tool exists exactly while its provider does, so sibling load order and provider reloads never strand it.
 
+For text-only Codex assistance, apply the opt-in [read-only Host patch](examples/codex-read-only.patch.yml) after the base Bundle. It exposes `subagent_codex_readonly` through a separately named provider, fixes the native sandbox to read-only, and waits for the result in the calling Session. Codex supplies its existing login and default model. This patch grants an additional tool to that Host; it does not change other Codex providers or enable a background callback.
+
 ### Minimal configuration
 
 Load the subagent service, an in-process or remote backend, and this tool; then name the provider. This composition exposes a `subagent` tool that delegates to the `spawn` backend:
@@ -85,6 +87,10 @@ One instance is one provider plus one tool name. The plugin mirrors provider lif
 ### Foreground settlement
 
 A foreground call awaits `run.result`, maps every non-completed stop reason to an error headline, appends the provider diagnostic and any preserved partial assistant text, and always awaits `run.dispose()` before returning; when result collection and disposal both reject, the errored result preserves both failures.
+
+Before dispatch, the tool records its native call identity, configured provider, exact prompt digest, and parent input revision. Pending parent input prevents a new foreground assignment. Input inserted during the run invalidates both successful and partial output, even if that input is subsequently removed. The obsolete output remains in a log-only Session event; the model receives an error asking it to reconsider the current request. Unrelated Session events do not invalidate the assignment. Cancellation is checked again after resource disposal before a completed result can return.
+
+This binding covers the live foreground call. It does not create an asynchronous external callback, replay a child after Host restart, or deduplicate separate tool calls that happen to contain the same prompt. The original tool call and result remain linked in the parent Session log.
 
 ### Background routes
 

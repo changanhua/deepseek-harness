@@ -1,0 +1,16 @@
+# Opt-in Host patch applied after the base Bundle. This grants one foreground
+# tool; the separately named provider keeps other Codex consumers unchanged.
+- insert:
+    - id: subagent-codex-readonly
+      name: '@deepseek-ai/dsh-subagent-codex'
+      config:
+        providerName: codex-readonly
+        permissionMode: read-only
+
+    - id: tool-subagent-codex-readonly
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: codex-readonly
+        toolName: subagent_codex_readonly
+        enableRunInBackground: false
+        maxDepth: provider-managed

@@ -30,6 +30,10 @@ export interface CodexWireFailureFacts {
 }
 
 const THREAD_PERMISSION_PARAMS: Readonly<Record<CodexPermissionMode, JsonObject>> = {
+  'read-only': {
+    approvalPolicy: 'never',
+    sandbox: 'read-only',
+  },
   never: { approvalPolicy: 'never' },
   'approve-for-me': {
     approvalPolicy: 'on-request',

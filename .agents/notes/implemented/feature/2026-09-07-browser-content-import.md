@@ -10,6 +10,8 @@ People need to preserve useful material from an open webpage in the existing Con
 
 ## Decision
 
+[Browser execution authority](../architecture/2026-09-08-browser-execution-authority.md) owns the separate browser-operation grant and restart-safe execution journal. This import decision remains the owner of Content data and `content:import`; it does not authorize page actions.
+
 The Chromium extension captures the current text selection on a generic page, one completed assistant reply on ChatGPT, or one expanded answer on Zhihu. It sends text, title, URL, site, capture time, scope, and an optional external message identity to the `@changanhua/dsh-content-browser` Host bridge. Content persists the body and an explicitly unverified `web-page` source in one `save-text` operation. A UUID capture identity maps to both `web:<captureId>` and the operation ID, so a lost response can be retried without creating a duplicate.
 
 Each extension installation creates its own connection request using a retained verifier and a SHA-256 challenge. Opening the request in the signed-in Web application only displays the request; the user must approve it. The bridge exchanges the verifier for a bearer capability scoped to `content:import`, stores only a strict versioned token hash in the credentials provider, and returns secrets only to the exact extension Origin. Content scripts and the side panel never receive the capability. Revocation, replacement, request abort, and service disposal invalidate admitted imports again before Content commits them.

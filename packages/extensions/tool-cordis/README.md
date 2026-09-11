@@ -50,6 +50,10 @@ The three inspect tools are read-only; the four lifecycle tools define and manag
 - `cordis_stop` — stop the current run and cancel any pending approval, keeping the plugin and every package version.
 - `cordis_undefine` — stop and permanently remove a plugin and all of its packages.
 
+### Compose browser capabilities
+
+When a temporary browser capability is needed, inspect the live Browser and Tool directories first. Prefer the existing `browser_snapshot`, `browser_extract`, `browser_action`, `browser_entry_mount`, and `browser_entry_unmount` tools. A dynamic package may register an Agent-scoped Tool that calls the existing Browser service and returns bounded page identities, structured items, stable element references, and observed outcomes. Keep this composition generic; do not duplicate the browser executor or encode one site's selectors. Stop or undefine the package after the temporary capability is no longer needed.
+
 ### A typical workflow
 
 Inspect before writing, then define, then run: `cordis_inspect_query` reads the exact contract of the service or slot the package will use, `cordis_define` records the source (and the conversation shows a define card pointing to the panel where the run control lives), and `cordis_run` activates it. When the user types `@pluginId`, this package injects a context message that pins the referenced plugin, its base package, and the update path. After a technical failure, read the diagnostics with `cordis_inspect_self`, append a corrected package to the same plugin, and update to it.

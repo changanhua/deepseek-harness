@@ -59,7 +59,7 @@ When you launch `dsh --profile web` over SSH, the URL line still prints but the 
 
 ### Per-session agent setup
 
-Each browser session composes its own agent from the shipped presets (the `standard` preset by default), instead of sharing one process-wide tool set. You can change the default preset or add your own presets under `$DSH_HOME/.agent-presets`.
+Each browser session composes its own agent from the shipped presets (the `standard` preset by default), instead of sharing one process-wide tool set. A standard Web session can ask Codex to handle a self-contained task through `subagent_codex`; Codex uses the Session workspace with automatic approval review and a workspace-write sandbox, then returns its final answer to the same agent turn. You can change the default preset or add your own presets under `$DSH_HOME/.agent-presets`.
 
 -----
 

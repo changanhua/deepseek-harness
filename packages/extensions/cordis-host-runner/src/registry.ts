@@ -5,6 +5,7 @@
 
 import type { Fiber } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 import type {
   ApprovalRequestId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId,
   CordisDynamicRunMode, DynamicCordisRenderFailure, DynamicCordisRunAttempt,
@@ -27,6 +28,12 @@ export interface DynamicCordisRun {
   handlerDisposers: (() => void)[]
   /** Runtime failures already sent to the owning Agent during this activation. */
   reportedRuntimeErrors: Set<string>
+  /** Browser entry mounts owned by this activation and removed during retraction. */
+  ownedBrowserMounts: Map<string, {
+    installationId: string
+    page: { tabId: number; frameId: number; documentId: string; url: string }
+    mountId: string
+  }>
   /** Last render failure observed for this version's current run. */
   renderFailure?: DynamicCordisRenderFailure
   /** Approval whose transition started this run, when model-driven. */
@@ -59,6 +66,14 @@ export interface DynamicCordisPlugin {
   approvedClientPackages: Set<CordisDynamicPackageId>
   /** Whether one user decision authorized future Package versions of this Plugin. */
   clientVersionUpdatesApproved: boolean
+  /** Bounded JSON state retained for this stable Plugin across Package versions and stops. */
+  state: Map<string, JsonValue>
+  /** Unmounts whose result was unknown, retained so a later stop can reconcile them. */
+  pendingBrowserMounts: Map<string, {
+    installationId: string
+    page: { tabId: number; frameId: number; documentId: string; url: string }
+    mountId: string
+  }>
   /** Last successfully activated version. */
   currentPackageId?: CordisDynamicPackageId
   /** Failed or in-progress target version. */

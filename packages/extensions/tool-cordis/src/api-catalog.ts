@@ -543,6 +543,128 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'browser',
+    summary: 'Shared browser capability; an installation connection never implies a shared action target.',
+    description: 'Shared browser capability; an installation connection never implies a shared action target.',
+    methods: [
+      {
+        signature: 'abstract instances(): Promise<readonly BrowserInstance[]>',
+        description: 'Return current authorized installations without exposing their credentials.',
+        parameters: [],
+        returns: 'Detached installation metadata and online state.',
+      },
+      {
+        signature: 'abstract isAuthorized(instance: BrowserInstance): boolean',
+        description: 'Recheck a captured installation\'s authority synchronously; offline alone does not revoke access.',
+        parameters: [{ name: 'instance', description: 'Previously returned installation metadata.' }],
+        returns: 'Whether its identity, epoch, scopes and sites still match the current authorization.',
+      },
+      {
+        signature: 'abstract observe(operation: BrowserObservation, signal: AbortSignal): Promise<BrowserActionResult>',
+        description: 'Read once for a background monitor under its fixed observation authorization.',
+        parameters: [{ name: 'operation', description: 'Session, installation, grant epoch and read-only action.' }, { name: 'signal', description: 'Stops this finite observation without scheduling further checks.' }],
+        returns: 'The observation outcome; an unavailable browser is never an unchanged result.',
+      },
+      {
+        signature: 'abstract execute(operation: BrowserOperation, signal: AbortSignal): Promise<BrowserActionResult>',
+        description: 'Execute against the explicit instance/page; lost results remain unknown and are not replayed.',
+        parameters: [{ name: 'operation', description: 'Caller Session, installation and domain action.' }, { name: 'signal', description: 'Requests cancellation without promising to undo an effect.' }],
+        returns: 'Observed outcome or an unresolved result with its request identity.',
+      },
+      {
+        signature: 'abstract prepare(operation: BrowserOperation, signal: AbortSignal): Promise<BrowserPreparedAction>',
+        description: 'Read facts for one page action and bind its immutable parameters before asking for approval.',
+        parameters: [{ name: 'operation', description: 'Caller Session, installation and action with an explicit page target.' }, { name: 'signal', description: 'Cancels preparation before a ticket can be used.' }],
+        returns: 'A bounded, expiring preparation; rejects when the target cannot be prepared.',
+      },
+      {
+        signature: 'abstract executePrepared(ticket: BrowserPreparedTicket, signal: AbortSignal): Promise<BrowserActionResult>',
+        description: 'Submit exactly the prepared action after rechecking authority and page facts.',
+        parameters: [{ name: 'ticket', description: 'Opaque preparation owned by this provider instance.' }, { name: 'signal', description: 'Requests cancellation without undoing an already issued action.' }],
+        returns: 'The retained outcome on repeated calls, without dispatching a second action.',
+      },
+    ],
+  },
+  {
+    key: 'browserActivity',
+    summary: 'Owns bounded raw browser activity independently of the Chrome buffer and curated knowledge.',
+    description: 'Owns bounded raw browser activity independently of the Chrome buffer and curated knowledge.',
+    methods: [
+      {
+        signature: 'status(): { phase: \'opening\' | \'ready\' | \'unavailable\' | \'closed\' }',
+        description: 'Inspect lifecycle readiness without exposing retained activity.',
+        parameters: [],
+        returns: 'The active dependency lifecycle phase.',
+      },
+      {
+        signature: 'configure(installationId: string, input: ConfigureActivity, authorize?: () => void): Promise<ActivityState>',
+        description: 'Persist an explicit collection policy or pause under a viewed revision.',
+        parameters: [{ name: 'installationId', description: 'Authenticated installation owning the policy.' }, { name: 'input', description: 'Stable request identity, viewed revision, and collection settings.' }, { name: 'authorize', description: 'Dynamic transport authority check repeated at commit.' }],
+        returns: 'The durable policy projection, including an identical prior receipt.',
+      },
+      {
+        signature: 'state(installationId: string, authorize?: () => void): Promise<ActivityState>',
+        description: 'Resolve policy and sequence before the extension starts collection or recovery.',
+        parameters: [{ name: 'installationId', description: 'Authenticated installation owning the policy.' }, { name: 'authorize', description: 'Dynamic transport authority check.' }],
+        returns: 'The current policy, or an explicit authorization-change state.',
+      },
+      {
+        signature: 'append(installationId: string, input: ActivityBatch, authorize?: () => void): Promise<ActivityReceipt>',
+        description: 'Accept a bounded consecutive activity batch under current observation authority.',
+        parameters: [{ name: 'installationId', description: 'Authenticated installation supplying the facts.' }, { name: 'input', description: 'Policy-bound batch with a stable retry identity.' }, { name: 'authorize', description: 'Dynamic transport authority check repeated at commit.' }],
+        returns: 'The durable last-batch receipt.',
+      },
+      {
+        signature: 'query(installationId: string, input: ActivityQuery, authorize?: () => void): Promise<ActivityRecord[\'events\']>',
+        description: 'Search retained raw facts within the current observation authority.',
+        parameters: [{ name: 'installationId', description: 'Authenticated installation owning the facts.' }, { name: 'input', description: 'Text, Session, time, and result-count bounds.' }, { name: 'authorize', description: 'Dynamic transport authority check.' }],
+        returns: 'Detached facts bounded by count and encoded bytes.',
+      },
+    ],
+  },
+  {
+    key: 'browserMonitor',
+    summary: 'Owns persistent plans, accepted comparisons and notification ids, independently of any visible UI.',
+    description: 'Owns persistent plans, accepted comparisons and notification ids, independently of any visible UI.',
+    methods: [
+      {
+        signature: 'status(): { readonly phase: \'opening\' | \'ready\' | \'unavailable\' | \'closed\' }',
+        description: 'Current lifecycle state; unavailable never means that the page was unchanged.',
+        parameters: [],
+        returns: 'The active dependency lifecycle phase.',
+      },
+      {
+        signature: 'create(input: CreateMonitor, authorize?: () => void): Promise<MonitorRecord>',
+        description: 'Persist an explicit plan under the installation\'s current observation grant.',
+        parameters: [{ name: 'input', description: 'Immutable plan intent with its stable creation request id.' }, { name: 'authorize', description: 'Transport permission check repeated at the commit boundary.' }],
+        returns: 'The detached durable record, including an identical prior creation.',
+      },
+      {
+        signature: 'list(installationId: string): MonitorRecord[]',
+        description: 'Return detached definitions and results for one installation; transport callers enforce read access.',
+        parameters: [{ name: 'installationId', description: 'The authorized browser installation.' }],
+        returns: 'Its persisted plans, accepted comparisons and pending notifications.',
+      },
+      {
+        signature: 'pause(id: string, installationId: string, revision?: string, authorize?: () => void): Promise<MonitorRecord>',
+        description: 'Stop a plan and invalidate its queued and running checks.',
+        parameters: [{ name: 'id', description: 'The persisted monitor id.' }, { name: 'installationId', description: 'The installation owning the plan.' }, { name: 'revision', description: 'The viewed revision, when supplied by an interactive caller.' }, { name: 'authorize', description: 'Transport permission check repeated before persistence.' }],
+        returns: 'The paused record after any known Queue cancellation request.',
+      },
+      {
+        signature: 'resume(id: string, installationId: string, revision?: string, authorize?: () => void): Promise<MonitorRecord>',
+        description: 'Bind an explicit resumption to current authority and start a fresh schedule.',
+        parameters: [{ name: 'id', description: 'The persisted monitor id.' }, { name: 'installationId', description: 'The installation owning the plan.' }, { name: 'revision', description: 'The viewed revision; stale controls cannot restart a new schedule.' }, { name: 'authorize', description: 'Transport permission check repeated before persistence.' }],
+        returns: 'The resumed record bound to the current observation grant.',
+      },
+      {
+        signature: 'acknowledge(id: string, installationId: string, noticeId: string, authorize?: () => void): Promise<void>',
+        description: 'Acknowledge one notification after the receiving surface accepts responsibility for its presentation.',
+        parameters: [{ name: 'id', description: 'The persisted monitor id.' }, { name: 'installationId', description: 'The installation owning the notification.' }, { name: 'noticeId', description: 'The stable notification id to remove from the outbox.' }, { name: 'authorize', description: 'Transport permission check repeated at the removal boundary.' }],
+      },
+    ],
+  },
+  {
     key: 'clientModules',
     summary: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows.',
     description: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows. Construction runs the activation scan synchronously — a malformed declaration or missing bundle among the already-loaded entries aggregates into one loud throw (FAILED fiber; the boot activation audit reports it).',
@@ -1693,8 +1815,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: '@Remote(\'prompt\') prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>',
         description: 'Admit one prompt after explicitly resuming its Session.',
-        parameters: [{ name: 'request', description: 'Session identity, prompt content, source metadata, and delivery mode.' }, { name: 'signal', description: 'caller cancellation before prompt admission begins.' }],
-        returns: 'acknowledgement that the Agent accepted the prompt.',
+        parameters: [{ name: 'request', description: 'Session identity, prompt content, source metadata, and delivery mode.' }, { name: 'signal', description: 'caller cancellation before the prepared prompt enters the inbox.' }],
+        returns: 'acknowledgement after the accepted prompt reaches the Session durability barrier.',
       },
       {
         signature: '@Remote(\'attachment\') attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue>',
@@ -3383,6 +3505,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'key', description: 'the credential record the finished attempt was authorizing.' }, { name: 'settlement', description: 'how it ended, including the `failed` case its caller sees as a thrown error.' }],
   },
   {
+    name: 'browser/entry-click',
+    mode: 'emit',
+    signature: '\'browser/entry-click\'(event: BrowserEntryEvent): void',
+    summary: 'A user clicked one entry mounted in an authorized external webpage.',
+    description: 'A user clicked one entry mounted in an authorized external webpage.',
+    parameters: [{ name: 'event', description: 'Verified mount, Session, page, title, and link identity for the click.' }],
+  },
+  {
     name: 'commands/change',
     mode: 'emit',
     signature: '\'commands/change\'(): void',
@@ -3775,6 +3905,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AcceptanceEvidenceResolver = (evidenceId: EvidenceId) => Promise<EvidenceRef | undefined>;',
   },
   {
+    name: 'ActivityBatch',
+    declaration: 'export type ActivityBatch = z.infer<typeof ActivityBatchSchema>;',
+  },
+  {
+    name: 'ActivityPolicy',
+    declaration: 'export type ActivityPolicy = z.infer<typeof ActivityPolicySchema>;',
+  },
+  {
+    name: 'ActivityQuery',
+    declaration: 'export type ActivityQuery = z.input<typeof ActivityQuerySchema>;',
+  },
+  {
+    name: 'ActivityReceipt',
+    declaration: 'export interface ActivityReceipt {\n    readonly sequence: number;\n    readonly accepted: number;\n}',
+  },
+  {
+    name: 'ActivityRecord',
+    declaration: 'export type ActivityRecord = z.infer<typeof ActivityRecordSchema>;',
+  },
+  {
+    name: 'ActivityState',
+    declaration: 'export interface ActivityState {\n    readonly revision: string | null;\n    readonly policy: ActivityPolicy | null;\n    readonly sequence: number;\n    readonly authorizationChanged: boolean;\n}',
+  },
+  {
     name: 'AdapterRegistrationHandle',
     declaration: 'export interface AdapterRegistrationHandle {\n    (): void;\n    replace(providers: string[]): void;\n}',
   },
@@ -4039,12 +4193,56 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
   },
   {
+    name: 'BrowserAction',
+    declaration: 'export type BrowserAction = {\n    readonly kind: \'tabs\';\n} | {\n    readonly kind: \'snapshot\';\n    readonly tabId: number;\n    readonly frameId: number;\n    readonly documentId?: string;\n    readonly query?: string;\n    readonly offset?: number;\n    readonly limit?: number;\n    readonly textLimit?: number;\n    readonly tree?: boolean;\n    readonly treeCursor?: string;\n    readonly treeLimit?: number;\n    readonly includeOptions?: boolean;\n} | {\n    readonly kind: \'entry_mount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly selector: string;\n    readonly label: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly collected?: readonly string[];\n} | {\n    readonly kind: \'entry_unmount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n} | {\n    readonly kind: \'navigate\';\n    readonly page: BrowserPage;\n    readonly url: string;\n} | {\n    readonly kind: \'click\';\n    readonly element: BrowserElementReference;\n    readonly intent: string;\n} | {\n    readonly kind: \'fill\';\n    readonly element: BrowserElementReference;\n    readonly value: string;\n    readonly intent: string;\n} | {\n    readonly kind: \'submit\';\n    readonly element: BrowserElementReference;\n    readonly intent: string;\n} | {\n    readonly kind: \'double_click\' | \'right_click\' | \'hover\';\n    readonly element: BrowserElementReference;\n    readonly intent: string;\n} | {\n    readonly kind: \'press\';\n    readonly element: BrowserElementReference; /* …truncated — full shape in source */',
+  },
+  {
+    name: 'BrowserActionDescription',
+    declaration: 'export interface BrowserActionDescription {\n    readonly kind: BrowserAction[\'kind\'];\n    readonly page: BrowserPage;\n    readonly title: string;\n    readonly target?: {\n        readonly tag: string;\n        readonly label: string;\n        readonly type: string;\n    };\n    readonly effect: \'local-disclosure\' | \'navigation\' | \'form-submit\' | \'input-change\' | \'unknown\' | \'scroll\' | \'wait\';\n    readonly destination?: string;\n    readonly valuePreview?: string;\n}',
+  },
+  {
+    name: 'BrowserActionResult',
+    declaration: 'export interface BrowserActionResult {\n    readonly requestId: string;\n    readonly sessionId: SessionId;\n    readonly installationId: string;\n    readonly outcome: \'observed\' | \'failed\' | \'cancelled\' | \'unknown\';\n    readonly delivery: \'not-sent\' | \'sent\';\n    readonly reason?: string;\n    readonly value?: JsonValue;\n}',
+  },
+  {
     name: 'BrowserConnectRequest',
     declaration: 'export interface BrowserConnectRequest {\n    readonly requestId: string;\n    readonly installationId: string;\n    readonly extensionId: string;\n    readonly expiresAt: string;\n    readonly status: \'pending\' | \'approved\' | \'rejected\';\n}',
   },
   {
+    name: 'BrowserElementReference',
+    declaration: 'export interface BrowserElementReference {\n    readonly page: BrowserPage;\n    readonly snapshotId: string;\n    readonly elementId: string;\n}',
+  },
+  {
+    name: 'BrowserEntryEvent',
+    declaration: 'export interface BrowserEntryEvent {\n    readonly installationId: string;\n    readonly sessionId: SessionId;\n    readonly mountId: string;\n    readonly entry: {\n        readonly title: string;\n        readonly link: string;\n    };\n    readonly url: string;\n    readonly at: number;\n}',
+  },
+  {
     name: 'BrowserGrantSummary',
     declaration: 'export interface BrowserGrantSummary {\n    readonly installationId: string;\n    readonly extensionId: string;\n    readonly createdAt: string;\n    readonly scope: \'content:import\';\n}',
+  },
+  {
+    name: 'BrowserInstance',
+    declaration: 'export interface BrowserInstance {\n    readonly installationId: string;\n    readonly extensionId: string;\n    readonly online: boolean;\n    readonly grantEpoch: number;\n    readonly origins: readonly string[];\n    readonly scopes: readonly string[];\n}',
+  },
+  {
+    name: 'BrowserObservation',
+    declaration: 'export interface BrowserObservation {\n    readonly sessionId: SessionId;\n    readonly installationId: string;\n    readonly grantEpoch: number;\n    readonly action: Extract<BrowserAction, {\n        readonly kind: \'tabs\' | \'snapshot\';\n    }>;\n}',
+  },
+  {
+    name: 'BrowserOperation',
+    declaration: 'export interface BrowserOperation {\n    readonly sessionId: SessionId;\n    readonly installationId: string;\n    readonly action: BrowserAction;\n}',
+  },
+  {
+    name: 'BrowserPage',
+    declaration: 'export interface BrowserPage {\n    readonly tabId: number;\n    readonly frameId: number;\n    readonly documentId: string;\n    readonly url: string;\n}',
+  },
+  {
+    name: 'BrowserPreparedAction',
+    declaration: 'export interface BrowserPreparedAction {\n    readonly ticket: BrowserPreparedTicket;\n    readonly expiresAt: number;\n    readonly description: BrowserActionDescription;\n}',
+  },
+  {
+    name: 'BrowserPreparedTicket',
+    declaration: 'export type BrowserPreparedTicket = Branded<\'BrowserPreparedTicket\'>;',
   },
   {
     name: 'ChangedPathFinding',
@@ -4161,6 +4359,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CompletionClaimId',
     declaration: 'export type CompletionClaimId = Branded<\'DeliveryCompletionClaimId\'>;',
+  },
+  {
+    name: 'ConfigureActivity',
+    declaration: 'export type ConfigureActivity = z.infer<typeof ConfigureActivitySchema>;',
   },
   {
     name: 'ConfinedArgv',
@@ -4313,6 +4515,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CreateGoalResult',
     declaration: 'export interface CreateGoalResult {\n    readonly ref: GoalRef;\n}',
+  },
+  {
+    name: 'CreateMonitor',
+    declaration: 'export type CreateMonitor = z.infer<typeof CreateMonitorSchema>;',
   },
   {
     name: 'CreateSessionOptions',
@@ -5115,6 +5321,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
   },
   {
+    name: 'MonitorRecord',
+    declaration: 'export type MonitorRecord = z.infer<typeof MonitorRecordSchema>;',
+  },
+  {
     name: 'Notification',
     declaration: 'export interface Notification {\n    readonly id: NotificationId;\n    readonly workId: WorkId;\n    readonly terminalSeq: number;\n    readonly attemptId: AttemptId | null;\n    readonly resultId: ResultId | null;\n    readonly ownerSessionId: string;\n    readonly messageId: string;\n    readonly status: \'pending\' | \'acknowledged\';\n    readonly createdAt: string;\n    readonly acknowledgedAt: string | null;\n}',
   },
@@ -5628,7 +5838,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionErrorDetailsMap',
-    declaration: 'export interface SessionErrorDetailsMap {\n    \'bad-request\': Record<never, never>;\n    cancelled: Record<never, never>;\n    \'session-not-found\': {\n        readonly sessionId: SessionId;\n    };\n    \'model-unavailable\': {\n        readonly provider: string;\n        readonly model: string;\n    };\n    \'session-conflict\': {\n        readonly sessionId: SessionId;\n        readonly requestedCwd: string;\n        readonly existingCwd?: string;\n    };\n    \'invalid-time-zone\': {\n        readonly value: string;\n    };\n    \'workspace-attach-failed\': {\n        readonly sessionId: SessionId;\n        readonly workspaceId: string;\n    };\n    \'workspace-not-found\': {\n        readonly workspaceId: string;\n    };\n    \'agent-preset-conflict\': {\n        readonly sessionId: SessionId;\n        readonly requestedPreset: string;\n        readonly existingPreset?: string;\n    };\n    \'agent-preset-not-found\': {\n        readonly agentPreset: string;\n        readonly available: readonly string[];\n    };\n    \'agent-preset-invalid\': {\n        readonly agentPreset: string;\n        readonly reason: string;\n    };\n    \'agent-busy\': {\n        readonly reason: string;\n    };\n    \'attachment-error\': {\n        readonly reason: string;\n    };\n    \'queue-item-not-found\': {\n        readonly itemId: MessageId;\n    };\n    \'steer-unavailable\': {\n        readonly itemId: MessageId;\n    };\n    \'title-invalid\': {\n        readonly sessionId: SessionId;\n    };\n    \'fork-unavailable\': {\n        readonly sessionId: SessionId;\n    /* …truncated — full shape in source */',
+    declaration: 'export interface SessionErrorDetailsMap {\n    \'bad-request\': Record<never, never>;\n    cancelled: Record<never, never>;\n    \'session-not-found\': {\n        readonly sessionId: SessionId;\n    };\n    \'model-unavailable\': {\n        readonly provider: string;\n        readonly model: string;\n    };\n    \'session-conflict\': {\n        readonly sessionId: SessionId;\n        readonly requestedCwd: string;\n        readonly existingCwd?: string;\n    };\n    \'invalid-time-zone\': {\n        readonly value: string;\n    };\n    \'workspace-attach-failed\': {\n        readonly sessionId: SessionId;\n        readonly workspaceId: string;\n    };\n    \'workspace-not-found\': {\n        readonly workspaceId: string;\n    };\n    \'agent-preset-conflict\': {\n        readonly sessionId: SessionId;\n        readonly requestedPreset: string;\n        readonly existingPreset?: string;\n    };\n    \'agent-preset-not-found\': {\n        readonly agentPreset: string;\n        readonly available: readonly string[];\n    };\n    \'agent-preset-invalid\': {\n        readonly agentPreset: string;\n        readonly reason: string;\n    };\n    \'agent-busy\': {\n        readonly reason: string;\n    };\n    \'request-conflict\': {\n        readonly sessionId: SessionId;\n        readonly requestId: SessionRequestId;\n    };\n    \'attachment-error\': {\n        readonly reason: string;\n    };\n    \'queue-item-not-found\': {\n        readonly itemId: MessageId;\n    };\n    \'steer-unavailable\': {\n        readonly itemId: MessageId;\n    };\n    \'title-invalid\' /* …truncated — full shape in source */',
   },
   {
     name: 'SessionEvent',

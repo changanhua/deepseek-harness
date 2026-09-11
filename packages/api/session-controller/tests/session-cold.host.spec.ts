@@ -739,7 +739,7 @@ describe('subagent ownership fence', () => {
     })
     await expect(remote.prompt(zonedRequest)).resolves.toMatchObject({ ok: true })
     expect(followup).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      source: { kind: 'user', rpcId: zonedRequest.requestId, clientTimeZone: canonical },
+      source: { kind: 'user', rpcId: zonedRequest.requestId, rpcDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) as unknown, clientTimeZone: canonical },
     }))
 
     const utcRequest = promptRequest({
@@ -750,7 +750,7 @@ describe('subagent ownership fence', () => {
     })
     await expect(remote.prompt(utcRequest)).resolves.toMatchObject({ ok: true })
     expect(followup).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      source: { kind: 'user', rpcId: utcRequest.requestId, clientTimeZone: 'UTC' },
+      source: { kind: 'user', rpcId: utcRequest.requestId, rpcDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) as unknown, clientTimeZone: 'UTC' },
     }))
 
     const unzonedRequest = promptRequest({
@@ -760,7 +760,7 @@ describe('subagent ownership fence', () => {
     })
     await expect(remote.prompt(unzonedRequest)).resolves.toMatchObject({ ok: true })
     expect(followup).toHaveBeenNthCalledWith(3, expect.objectContaining({
-      source: { kind: 'user', rpcId: unzonedRequest.requestId },
+      source: { kind: 'user', rpcId: unzonedRequest.requestId, rpcDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) as unknown },
     }))
 
     for (const clientTimeZone of ['', ' UTC', 'CST', 'Not/A_Real_Zone']) {

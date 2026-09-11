@@ -581,7 +581,7 @@ describe('task admission and package contracts', () => {
     await ctx.fiber.dispose()
   })
 
-  it('accepts an optional non-empty model and the three fixed permission modes', () => {
+  it('accepts an optional non-empty model and the four fixed permission modes', () => {
     expect(codex.Config({}).providerName).toBe('codex')
     expect(codex.Config({}).model).toBeUndefined()
     expect(codex.Config({ providerName: 'codex-safe' }).providerName)
@@ -629,6 +629,10 @@ describe('task admission and package contracts', () => {
   })
 
   it.each([
+    ['read-only', {
+      approvalPolicy: 'never',
+      sandbox: 'read-only',
+    }],
     ['never', { approvalPolicy: 'never' }],
     ['approve-for-me', {
       approvalPolicy: 'on-request',
@@ -670,7 +674,7 @@ describe('task admission and package contracts', () => {
     const wire = new CodexAppServerWire(
       child.handle.stdout!,
       child.handle.stdin!,
-      'never',
+      'read-only',
       'codex-explicit-model',
     )
     wire.start()
@@ -686,6 +690,7 @@ describe('task admission and package contracts', () => {
       ephemeral: true,
       model: 'codex-explicit-model',
       approvalPolicy: 'never',
+      sandbox: 'read-only',
     })
     child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
     await starting
@@ -1433,6 +1438,24 @@ describe('CodexAppServerWire', () => {
       agentMessage('answer', 'final_answer'),
       turnCompleted('completed'),
     )
+    await expect(result).resolves.toEqual({
+      output: [{ type: 'text', text: 'answer' }],
+      stopReason: 'completed',
+    })
+    wire.close()
+  })
+
+  it('settles one run once when Codex repeats its terminal notification', async () => {
+    const { child, wire } = await initializeWire()
+    const result = wire.runTurn(['task'], new AbortController().signal)
+    const turnStart = await child.peer.nextMethod('turn/start')
+    child.peer.respond(turnStart, { turn: { id: 'turn-1' } })
+    child.peer.send(
+      agentMessage('answer', 'final_answer'),
+      turnCompleted('completed'),
+      turnCompleted('failed'),
+    )
+
     await expect(result).resolves.toEqual({
       output: [{ type: 'text', text: 'answer' }],
       stopReason: 'completed',

@@ -54,6 +54,9 @@ export { REGION_BEGIN, REGION_END }
  * errors, so the partition can never silently drift from the service API.
  */
 export const SERVICE_PAGE: Record<string, string> = {
+  browser: 'browser.md',
+  browserMonitor: 'browser.md',
+  browserActivity: 'browser.md',
   agentLoop: 'core.md',
   agentDefaultModel: 'core.md',
   agentPresets: 'core.md',
@@ -200,6 +203,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'agent-preset': 'core.md',
   'api-session': 'session.md',
   'approval': 'approval.md',
+  'browser': 'browser.md',
   'commands': 'commands.md',
   'cordis': 'extensions.md',
   'authorization': 'credentials.md',
@@ -250,6 +254,22 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
  * appear on more than one page.
  */
 export const LINK_MAP: Readonly<Record<string, string>> = {
+  BrowserInstance: 'browser.md',
+  BrowserEntryEvent: 'browser.md',
+  BrowserOperation: 'browser.md',
+  BrowserObservation: 'browser.md',
+  CreateMonitor: 'browser.md',
+  MonitorRecord: 'browser.md',
+  ActivityState: 'browser.md',
+  ConfigureActivity: 'browser.md',
+  ActivityBatch: 'browser.md',
+  ActivityReceipt: 'browser.md',
+  ActivityQuery: 'browser.md',
+  ActivityRecord: 'browser.md',
+  BrowserPreparedTicket: 'browser.md',
+  BrowserActionDescription: 'browser.md',
+  BrowserPreparedAction: 'browser.md',
+  BrowserActionResult: 'browser.md',
   CaptureCommand: 'content.md',
   ContentAccess: 'content.md',
   ContentCommand: 'content.md',

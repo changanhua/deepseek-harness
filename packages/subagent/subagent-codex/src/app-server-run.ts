@@ -19,6 +19,7 @@ import {
 
 /** Native non-interactive permission modes accepted by the app-server boundary. */
 export const CODEX_APP_SERVER_PERMISSION_MODES = [
+  'read-only',
   'never',
   'approve-for-me',
   'dangerously-bypass-approvals-and-sandbox',

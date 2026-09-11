@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { sandboxDefineTool } from '../src/guard.ts'
-import { syntaxErrorContext } from '../src/sandbox.ts'
+import { HOST_BUILTIN_INSPECTION, syntaxErrorContext } from '../src/sandbox.ts'
 import { AGENT_A, call, CONTENT_OUTPUT_CODE, mount, setup, text, running } from './helpers.ts'
 
 /**
@@ -95,6 +95,29 @@ describe('sandbox isolation and Node-API traps', () => {
     expect(log).toHaveBeenCalledWith(`[cordis:${id}]`, 'warned')
     expect(log).toHaveBeenCalledWith(`[cordis:${id}]`, 'applied', 'function')
     expect(error).toHaveBeenCalledWith(`[cordis:${id}]`, 'errored')
+    vi.restoreAllMocks()
+  })
+
+  it('provides AbortController for cancellable Service calls and advertises it to Inspect', async () => {
+    const harness = await setup()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const id = await mount(harness, `
+      const controller = new AbortController()
+      controller.signal.throwIfAborted()
+      return { name: 'signal', apply(ctx) { console.log(controller.signal.aborted) } }
+    `)
+    expect(log).toHaveBeenCalledWith(`[cordis:${id}]`, false)
+    expect(HOST_BUILTIN_INSPECTION).toContainEqual(expect.objectContaining({ name: 'AbortController' }))
+    vi.restoreAllMocks()
+  })
+
+  it('exposes the owning Session identity through the harness builtin', async () => {
+    const harness = await setup()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const id = await mount(harness, `
+      return { name: 'owner', apply(ctx) { console.log(harness.sessionId) } }
+    `)
+    expect(log).toHaveBeenCalledWith(`[cordis:${id}]`, AGENT_A.id)
     vi.restoreAllMocks()
   })
 

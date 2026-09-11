@@ -1,0 +1,40 @@
+{
+  "name": "@changanhua/dsh-browser-extension",
+  "description": "Authenticated MV3 browser gateway and session-scoped browser service provider",
+  "version": "0.1.2-alpha.1",
+  "private": true,
+  "repository": { "type": "git", "url": "git+https://github.com/changanhua/deepseek-harness.git", "directory": "packages/browser/browser-extension" },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./types": { "types": "./lib/types/types.d.ts", "default": "./lib/types/types.js" },
+    "./invariant": { "types": "./lib/types/invariant.d.ts", "default": "./lib/invariant.js" },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib/index.js", "lib/invariant.js", "lib/types/**/*.js", "lib/types/**/*.d.ts"],
+  "license": "MIT",
+  "dependencies": { "@deepseek-ai/schemastery": "workspace:^", "ws": "^8.21.0", "zod": "^4.4.3" },
+  "peerDependencies": {
+    "@changanhua/dsh-browser-activity": "workspace:^",
+    "@changanhua/dsh-browser-monitor": "workspace:^",
+    "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^", "@deepseek-ai/dsh-agent-default-model": "workspace:^",
+    "@deepseek-ai/cordis": "workspace:^", "@changanhua/dsh-browser": "workspace:^",
+    "@deepseek-ai/dsh-client-connection": "workspace:^", "@deepseek-ai/dsh-credentials": "workspace:^",
+    "@deepseek-ai/dsh-host-webserver": "workspace:^", "@deepseek-ai/dsh-session": "workspace:^", "@deepseek-ai/dsh-user-approval": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^"
+  },
+  "devDependencies": {
+    "@changanhua/dsh-browser-activity": "workspace:^",
+    "@changanhua/dsh-browser-monitor": "workspace:^",
+    "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^", "@deepseek-ai/dsh-agent-default-model": "workspace:^",
+    "@deepseek-ai/cordis": "workspace:^", "@changanhua/dsh-browser": "workspace:^",
+    "@deepseek-ai/dsh-client-connection": "workspace:^", "@deepseek-ai/dsh-credentials": "workspace:^",
+    "@deepseek-ai/dsh-host-webserver": "workspace:^", "@deepseek-ai/dsh-session": "workspace:^", "@deepseek-ai/dsh-user-approval": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^", "@types/ws": "^8.18.1"
+  }
+}

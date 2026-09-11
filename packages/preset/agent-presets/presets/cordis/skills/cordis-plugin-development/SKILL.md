@@ -37,6 +37,7 @@ Do not wait in the same turn for user approval or asynchronous browser results. 
 | --- | --- | --- |
 | Files, commands, processes, or networking | Host | `fs`, `bash`, `subprocess`, `pty`, and `web` in `Service.listService` |
 | Agents, durable Session data, or Host lifecycle | Host | The relevant Service and `Event.listEvents` |
+| Add, update, or remove entries on an external webpage already connected through the browser assistant | Host | `browser` in `Service.listService` and `browser/entry-click` in `Event.listEvents` |
 | Register a dynamic Tool callable in the next model step | Host | `harness` in `Builtin.listBuiltins`, plus `Tool.listTools` |
 | Page theme, layout, or current page state | Client | `Theme.listTokens` and Client `Service.listService` |
 | Conversation Snapshot or session/workspace lists | Client | The target Slot's standard props and owner props |
@@ -44,6 +45,18 @@ Do not wait in the same turn for user approval or asynchronous browser results. 
 | Fetch on Host and display on Client | Both | Host Service + `harness.handle`; Client Slot + `host.call` |
 
 Prefer the capability closest to the data owner. If Slot props already provide the Conversation Snapshot, do not fetch it again through Host. If only the Package's own styles need to change, do not override the global theme. If only a small entry point is needed, do not replace an entire product UI region.
+
+When a request refers to the current or another external webpage, do not treat the Client platform as the only way to change a page. Query the Host `browser` Service, use its read-only tabs and snapshot observations to bind the explicit page identity, then use the bounded `harness.browser` facade for entry inspection and mounting. Listen to `browser/entry-click` on Host for entry results. Do not spawn another browser, scrape and rebuild the site inside DSH, or add a site-specific transport when the mounted Browser service supplies this route.
+
+When the preset provides `browser_instances`, `browser_tabs`, and `browser_snapshot`, use those read-only model Tools before defining the Plugin. Select the foreground or otherwise unambiguous authorized page, request a tree snapshot when its region and item relationships are not visible in the compact snapshot, and derive the region, item, title, and link selectors from that evidence. Do not ask the user for a URL or CSS selector when the connected browser can supply the page facts. Do not use shell or repository reads to rediscover a browser interface already exposed by these Tools and this Skill.
+
+The observed tabs result stores rows in `result.value.tabs`; use a selected tab to request a fresh snapshot with `{ installationId, tabId, frameId: 0, tree: true }`. `browser_snapshot.documentId` is optional for this observation; omit it when the tab may have navigated or refreshed. Then take the complete write identity from `snapshot.value.page`, including the current `documentId`. Read the snapshot's DOM tree, attributes, bounds, and viewport flags to identify a stable content region before choosing selectors. Call `harness.browser.inspect` for the read-only `entry_inspect` action with that `regionSelector`; require the item `selector` to start with `:scope`, and reject a binding with missing titles, missing links, duplicate links, or samples from the wrong region. Only then call `harness.browser.mount` with the same page, region, and selectors. It gives the Plugin a stable slot-owned mount id, watches later matching nodes in that region, and automatically unmounts owned entries on stop, update, failed activation, or removal. Treat activation and business success separately: require an observed mount result with `value.mounted > 0`, and retain the last successful mount details in `harness.state` when a later Package must continue the same collection. A direct Browser Service `execute` call still supports `entry_mount` and `entry_unmount`, but use it only when the bounded facade cannot represent the requested lifecycle.
+
+In this route, a request to show collected results in the browser assistant sidebar means the conversation for the Session already bound to that sidebar, unless the user explicitly asks to add new product UI. Query the Host `sessionController` Service, then call `sessionController.prompt` with `event.sessionId` so the result becomes a normal Session message. Do not create a Client Slot merely to mirror that conversation.
+
+`sessionController.prompt` requires a live `AbortSignal` as its second argument. Create one once inside `apply()`, pass `controller.signal` on every prompt, and register `ctx.effect(() => () => controller.abort())` so stopping or updating the Package cancels pending delivery. Calling `prompt(request)` without the signal can throw inside the Host RPC proxy and terminate the Host process.
+
+For collection updates, `harness.browser.mount`'s `collected` field is an array of absolute links. The extension renders a matching entry as `已加入` and disables its button. Keep this array in `harness.state`; after accepting a new click, update the array and remount the same slot with the same page and selectors plus the new `collected` array so the visible state refreshes. A Package update must read the old array before mounting, or it will lose the collected markers.
 
 ## Provider navigation
 
@@ -61,6 +74,10 @@ Provider names, methods, and inputs must come from the current list result. The 
 ## Execution environment
 
 Both `code.host` and `code.client` are plain JavaScript function bodies that return a Cordis Plugin. They are not compiled by TypeScript, JSX, or a bundler.
+
+`harness.sessionId` is the owning Session identity for the dynamic Plugin. `harness.pluginId` and `harness.pluginRunId` identify the stable Plugin and current activation. The runner binds those identities into `harness.browser.inspect`, `harness.browser.mount`, and `harness.browser.unmount`; do not accept them from model-generated data. `harness.state` stores a small JSON-only map under the stable Plugin identity so a Package update can keep collected results and the last successful mount without exposing process objects. It is process-local and bounded, not durable storage. For other Service methods that require an `AbortSignal`, create `const controller = new AbortController()`, pass `controller.signal`, and register a Plugin disposer that calls `controller.abort()` so stop or update cancels outstanding work. Inspect the Builtin directory before relying on these symbols.
+
+For a Host-only Package, omit `code.client` from `cordis_define`. An empty string is still a Client half and fails at activation because it returns no Plugin.
 
 Do not use:
 
@@ -268,7 +285,7 @@ Do not guess an `id`, `key`, selector, or props before querying the Slot protoco
 
 A full settings UI should usually register its own section through `settings.section` to obtain a complete content area. `settings.general.item` is only appropriate for one compact, general-purpose preference. Query the actual subtree, options, and props for both, then select the narrowest entry point that is still sufficient.
 
-Dynamic Plugins are temporary and process-local, so their settings UI does not need persistent storage. Do not add durable settings or another persistence mechanism for it. Register the UI in the appropriate settings Slot and keep any transient interaction state in memory for the lifetime of the Plugin.
+Dynamic Plugins are temporary and process-local, so their settings UI does not need durable storage. Register the UI in the appropriate settings Slot. Keep version-local interaction state in memory, and use the bounded `harness.state` JSON map only for values that must survive a Package update under the same Plugin.
 
 ### Session and page data
 

@@ -1,12 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "DSH 收藏",
-  "version": "0.2.0",
-  "description": "顺手收藏网页选区、ChatGPT 回复与知乎回答到 DSH 内容库。",
-  "action": { "default_title": "打开 DSH 收藏" },
+  "minimum_chrome_version": "116",
+  "name": "DSH 浏览器助手",
+  "version": "0.3.0",
+  "description": "在同一 DSH 会话中讨论网页、附上选区或截图，并连接已授权的浏览器操作。",
+  "action": { "default_title": "打开 DSH 浏览器助手" },
   "background": { "service_worker": "src/worker.js", "type": "module" },
   "side_panel": { "default_path": "sidebar.html" },
-  "permissions": ["activeTab", "scripting", "sidePanel", "storage", "contextMenus"],
-  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "content_scripts": [
+    { "matches": ["https://www.zhihu.com/*"], "js": ["src/zhihu-feed.js"], "run_at": "document_idle" },
+    { "matches": ["https://chatgpt.com/*", "https://www.zhihu.com/*", "https://zhuanlan.zhihu.com/*"], "js": ["src/content-script.js"], "run_at": "document_idle" }
+  ],
+  "commands": {
+    "open-assistant": { "suggested_key": { "default": "Alt+Shift+A" }, "description": "打开 DSH 浏览器助手" },
+    "open-assistant-window": { "suggested_key": { "default": "Ctrl+Shift+7" }, "description": "全局打开 DSH 助手窗口", "global": true }
+  },
+  "permissions": ["activeTab", "tabs", "scripting", "sidePanel", "storage", "contextMenus", "debugger", "webNavigation"],
   "optional_host_permissions": ["http://*/*", "https://*/*"]
 }

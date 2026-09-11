@@ -464,6 +464,35 @@ describe('real @openai/codex 0.149.1 product', () => {
     await expectQuiescent(harness.handles)
   }, 60_000)
 
+  it('rejects a write from the explicit read-only sandbox', async () => {
+    const command = process.platform === 'win32'
+      ? 'cmd /c type nul > read-only-side-effect'
+      : 'touch read-only-side-effect'
+    const commandCalls = [
+      { name: 'exec_command', arguments: { cmd: command } },
+      { name: 'shell_command', arguments: { command } },
+    ] as const
+    const { harness, fixture } = await realHarness([
+      { kind: 'advertisedFunctionCall', choices: commandCalls },
+      { kind: 'error', status: 400, message: 'fixture terminal failure after denied write' },
+    ], 'read-only')
+    const sideEffect = join(harness.workspace, 'read-only-side-effect')
+    const run = await harness.ctx.subagents.start('codex', {
+      prompt: [{ type: 'text', text: 'Attempt the fixture write.' }],
+      parent: harness.parent,
+      signal: new AbortController().signal,
+    })
+
+    await expect(run.result).resolves.toMatchObject({
+      output: [],
+      stopReason: 'error',
+    })
+    expect(existsSync(sideEffect)).toBe(false)
+    expect(fixture.requests).toHaveLength(2)
+    await run.dispose()
+    await expectQuiescent(harness.handles)
+  }, 60_000)
+
   it('reports a real service failure and an early app-server exit safely', async () => {
     {
       const { harness } = await realHarness([{
