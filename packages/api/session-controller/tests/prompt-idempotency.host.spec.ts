@@ -183,7 +183,7 @@ describe('Session prompt idempotency', () => {
     const seed = [...fixture.agent.session.events]
     const child = fixture.ctx.sessions.create(sid('child'), {
       seed,
-      meta: { cwd: '/workspace' }, inheritedEventCount: SessionLogOffset(seed.length),
+      meta: { cwd: '/workspace', isSeeded: true }, inheritedEventCount: SessionLogOffset(seed.length),
     })
     const childFollowup = vi.fn((message: UserMessage) => { child.append('user/message', message, { surfaceOp: 'append' }) })
     const childAgent = { id: child.id, session: child, inbox: new LegacyInbox(child, { inserted() {}, discarded() {}, claimed() {} }), status: 'idle', ctx: fixture.ctx, followup: childFollowup } as unknown as Agent
