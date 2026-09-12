@@ -66,6 +66,20 @@ export type {
   TypertSchema,
   TypertRegistryContract,
 } from './types.ts'
+/** Compatibility error wrapper for personal remote adapters during migration. */
+export class TypertRemoteFailure extends Error {
+  readonly failure: { readonly code: string; readonly message: string; readonly details: object }
+  readonly code: string
+  readonly details: object
+
+  constructor(failure: { readonly code: string; readonly message: string; readonly details: object }) {
+    super(failure.message)
+    this.name = 'TypertRemoteFailure'
+    this.failure = failure
+    this.code = failure.code
+    this.details = failure.details
+  }
+}
 
 /** Options for an explicit Service-to-Gateway binding. */
 export interface TypertGatewayBindingOptions {

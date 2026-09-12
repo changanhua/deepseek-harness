@@ -21,6 +21,7 @@ export type * from './projection.ts'
 export * from './consumed-work.ts'
 export * from './model-selection.ts'
 export { agentCarrier, agentEvents, assembleContextFor, emitAgentEvent } from './dispatch.ts'
+export { messageAccepted } from './inbox.ts'
 export type { AgentEventDispatch, AgentSubjectEvent } from './dispatch.ts'
 
 declare module '@deepseek-ai/cordis' {

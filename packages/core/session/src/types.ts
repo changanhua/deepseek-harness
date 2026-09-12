@@ -14,6 +14,7 @@ import type {
   UserMessage,
 } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+export type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 /** Identifies one session in the store (and its persistence artifacts). */
 export type SessionId = Branded<'SessionId'>
@@ -91,6 +92,8 @@ export const SESSION_FORMAT_VERSION = 3
  * Immutable validated storage metadata, kept outside the conversation event log.
  */
 export interface SessionHeader {
+  /** Legacy fork reader hint; retained while personal consumers migrate to inheritedEventCount. */
+  readonly seedLength?: SessionLogOffset
   /**
    * Current logical format version, stamped from {@link SESSION_FORMAT_VERSION}.
    * Historical physical headers are translated before entering this interface.

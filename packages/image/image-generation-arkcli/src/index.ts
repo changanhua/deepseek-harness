@@ -298,7 +298,7 @@ async function runArkcli(
     }
     if (settled.kind === 'error') {
       await awaitQuiescence(handle, config.quiescenceTimeoutMs, phase)
-      const sideEffect = phase === 'generation' && handle.pid !== -1 ? 'unknown' : 'not-started'
+      const sideEffect = phase === 'generation' ? 'unknown' : 'not-started'
       throw failure('ArkCLI process failed before producing an exit outcome', 'transport', sideEffect, true, settled.error)
     }
     outcome = settled.value

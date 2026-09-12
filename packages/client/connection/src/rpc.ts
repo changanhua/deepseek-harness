@@ -163,6 +163,10 @@ export interface HostConnectionRpc {
 
 /** Host `ctx.connection` shape consumed by transport-independent adapters. */
 export interface HostConnectionHandle {
+  /** Host/Origin-only rejection for extension-owned authentication paths. */
+  requestAuthorityRejection(request: ConnectionTrustRequest): 403 | undefined
+  /** Assert that a request signal belongs to an active authorized request. */
+  assertAuthorized(signal: AbortSignal): void
   /** Generic RPC channel registry. */
   readonly rpc: HostConnectionRpc
   /** Exact Fetch routes for streaming or browser-native responses. */
@@ -206,7 +210,7 @@ export interface ConnectionFetchHandler {
    * @param request - request method and URL available from node:http headers.
    * @returns the registered route's body handling mode.
    */
-  requestBodyMode(request: { readonly method: string; readonly url: URL }): ConnectionRequestBodyMode
+  requestBodyMode?(request: { readonly method: string; readonly url: URL }): ConnectionRequestBodyMode
 
   /**
    * Dispatch one already-authenticated request.

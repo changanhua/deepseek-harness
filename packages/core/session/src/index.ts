@@ -22,6 +22,8 @@ import { foldRequestHeader } from './request-header.ts'
 
 export * from './types.ts'
 export { SessionPreparation } from './preparation.ts'
+export type { JsonValue } from '@deepseek-ai/dsh-util-values'
+export { isJsonValue } from '@deepseek-ai/dsh-util-values'
 export type { SessionPreparationOptions } from './preparation.ts'
 export type { AssistantMessage, SystemMessage, ToolResultMessage, UserMessage } from '@deepseek-ai/dsh-llm'
 export { interruptedTurnClosers, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN } from './repair.ts'
@@ -495,6 +497,11 @@ export class Session {
    * holds an ordinary published write.
    */
   readonly firstLiveSeq: SessionLogOffset
+
+  /** Legacy read-only event view retained for personal extensions during migration. */
+  get events(): readonly SessionEvent[] {
+    return this.snapshotEvents()
+  }
 
   /**
    * Create a detached session by validating and snapshotting borrowed seed

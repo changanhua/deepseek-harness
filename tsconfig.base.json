@@ -282,6 +282,9 @@
       "@changanhua/dsh-client-ui-task-queue/invariant": ["./packages/client/ui-task-queue/src/invariant.ts"],
       "@deepseek-ai/dsh-subagent-codex/app-server-run": ["./packages/subagent/subagent-codex/src/app-server-run.ts"],
       "@deepseek-ai/dsh-util-crypto": ["./packages/util/crypto/src"],
+      "@deepseek-ai/dsh-deque": ["./packages/util/deque/src"],
+      "@deepseek-ai/dsh-util-values": ["./packages/util/values/src"],
+      "@deepseek-ai/dsh-http-proxy": ["./packages/util/http-proxy/src"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@changanhua/dsh-command-task-queue": ["./packages/task-queue/command-task-queue/src"],
       "@changanhua/dsh-command-task-queue/invariant": ["./packages/task-queue/command-task-queue/src/invariant.ts"],

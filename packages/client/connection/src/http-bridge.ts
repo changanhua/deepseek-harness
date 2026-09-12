@@ -42,7 +42,7 @@ export async function bridge(
   const headers = Object.fromEntries(
     Object.entries(req.headers).filter(([, value]) => typeof value === 'string') as [string, string][],
   )
-  const bodyMode = apiHandler.requestBodyMode({ method, url })
+  const bodyMode = apiHandler.requestBodyMode?.({ method, url }) ?? 'buffered'
   let request: Request
   if (bodyMode === 'buffered') {
     const declaredLength = req.headers['content-length']

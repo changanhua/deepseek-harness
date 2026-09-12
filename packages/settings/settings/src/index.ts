@@ -17,6 +17,11 @@ export { redactSecrets } from './redact.ts'
 export type { RedactedSecret, RedactedValue } from './redact.ts'
 export type { SettingsNamespace, SettingsUpdateSource } from './types.ts'
 
+/** Validate and brand a settings namespace for legacy consumer adapters. */
+export function settingsNamespace(value: string): SettingsNamespace {
+  return parseSettingsNamespace(value)
+}
+
 const NAMESPACE_PATTERN = /^[a-z][a-z0-9-]*$/
 type LowercaseLetter = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'
   | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z'
@@ -888,6 +893,19 @@ export interface SettingsSectionHooks<T> {
    * @param value - the resolved section, schema-valid by construction.
    */
   validate?: (value: T) => void
+}
+
+/** Compatibility facade for consumers written against the previous helper API. */
+export function installSettingsSection<const Namespace extends string, T>(
+  ctx: Context,
+  ns: Namespace & SettingsNamespaceInput<Namespace>,
+  schema: z<T>,
+  entry: T,
+  hooks: SettingsSectionHooks<T>,
+): void {
+  const provider = ctx.get('settings')
+  if (provider === undefined) throw new Error('settings provider is unavailable')
+  provider.installSection(ctx, ns as never, schema, entry, hooks)
 }
 
 export default SettingsProvider

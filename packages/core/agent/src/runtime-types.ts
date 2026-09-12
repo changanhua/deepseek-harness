@@ -46,6 +46,8 @@ export interface CancelOptions {
 
 /** Agent-owned access to pending work; concrete storage belongs to the driver. */
 export interface Inbox {
+  /** Whether either pending queue contains work. */
+  readonly hasPending: boolean
   /** Prompts awaiting individual turns. */
   readonly nextTurn: readonly UserMessage[]
   /** Input awaiting the next step boundary. */

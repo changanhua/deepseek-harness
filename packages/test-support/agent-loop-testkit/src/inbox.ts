@@ -23,6 +23,7 @@ export function createInboxStub(): Inbox {
   }
 
   return {
+    get hasPending() { return pending['next-turn'].length > 0 || pending['next-step'].length > 0 },
     get nextTurn() { return pending['next-turn'] },
     get nextStep() { return pending['next-step'] },
     clear() {
@@ -62,6 +63,7 @@ export function unsupportedInbox(): Inbox {
     throw new Error('this test Agent does not support Inbox mutations')
   }
   return {
+    hasPending: false,
     nextTurn: [],
     nextStep: [],
     clear: rejectMutation,
