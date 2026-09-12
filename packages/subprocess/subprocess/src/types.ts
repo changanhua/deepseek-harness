@@ -168,6 +168,8 @@ export interface SubprocessCollectedOutputs {
  * and observation limits.
  */
 export interface SubprocessHandle {
+  /** OS process id when the provider exposes one (legacy compatibility). */
+  readonly pid?: number
   /** The child's stdin, present iff spawned with `stdin: 'pipe'`. */
   readonly stdin: Writable | undefined
   /** The child's raw stdout, present iff spawned with `stdout: 'pipe'`. */

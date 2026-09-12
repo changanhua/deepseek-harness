@@ -75,7 +75,7 @@ async function bootAgent(): Promise<{ agent: Agent }> {
     ...BASE_URL === undefined ? {} : { baseURL: BASE_URL },
     model: MODEL,
   })
-  const agent = ctx.agentLoop.create(SessionId('ra-behavior'), { provider: PROVIDER, model: MODEL })
+  const agent = await ctx.agentLoop.create(SessionId('ra-behavior'), { provider: PROVIDER, model: MODEL })
   return { agent }
 }
 

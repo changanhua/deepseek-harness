@@ -34,10 +34,10 @@ describe('Connection exact Fetch routes', () => {
     const response = await shared.fetch(new Request(
       'http://host/api/session.export?sessionId=session-1',
     ))
-    expect(shared.requestBodyMode({
+    expect(shared.requestBodyMode?.({
       method: 'POST', url: new URL('http://host/api/session.export'),
     })).toBe('streaming')
-    expect(shared.requestBodyMode({
+    expect(shared.requestBodyMode?.({
       method: 'DELETE', url: new URL('http://host/api/session.export'),
     })).toBe('buffered')
     expect(response.status).toBe(200)

@@ -6,8 +6,6 @@ if (path === undefined) throw new Error('exclusive owner fixture requires a data
 const backend = new SqliteStorageBackend(new Config({
   path,
   journalMode: 'delete',
-  ownership: 'exclusive',
-  synchronous: 'extra',
 }))
 
 await backend.kv.open({ name: 'owner', version: 1, tables: ['records'], hasGlobal: false })

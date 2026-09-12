@@ -143,7 +143,7 @@ export async function runtimeAwarenessHarness(
   const provider = options.provider ?? 'huoshancoding'
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx, {
-    systemPrompt: { persona: options.persona ?? '' },
+    systemPrompt: { personaPrefix: options.persona ?? '' },
   })
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(LocalCredentialProvider, {})

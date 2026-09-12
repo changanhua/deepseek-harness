@@ -23,6 +23,7 @@ const owner: Agent = {
   options: {},
   session,
   inbox: {
+    hasPending: false,
     nextTurn: [],
     nextStep: [],
     clear: unsupportedInboxMutation,

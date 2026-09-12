@@ -13,6 +13,14 @@ type InboxState = Record<InboxTarget, UserMessage[]>
 
 type InboxProjection = Record<InboxTarget, UserMessage[]>
 
+interface LegacyInboxInternals {
+  readonly session: Session
+  readonly notifications: InboxNotifications
+  readonly state: InboxState
+}
+
+const legacyInternals = new WeakMap<LegacyInbox, LegacyInboxInternals>()
+
 /** Fold Session inbox splices into the messages still awaiting a claim. */
 function pendingInboxMessages(events: readonly SessionEvent[]): UserMessage[] {
   const inbox: InboxProjection = { 'next-turn': [], 'next-step': [] }
@@ -49,13 +57,18 @@ export interface InboxNotifications {
 }
 
 /** A replay-once projection that incrementally consumes later inbox splices. */
-export class Inbox {
-  private readonly state: InboxState = { 'next-turn': [], 'next-step': [] }
-
+/** Legacy concrete projection retained as a value export for downstream tests and adapters. */
+export class LegacyInbox {
   constructor(
-    private readonly session: Session,
-    private readonly notifications: InboxNotifications,
+    session: Session,
+    notifications: InboxNotifications,
   ) {
+    const internals: LegacyInboxInternals = {
+      session,
+      notifications,
+      state: { 'next-turn': [], 'next-step': [] },
+    }
+    legacyInternals.set(this, internals)
     for (const event of session.events.slice(session.header.seedLength ?? 0)) {
       if (event.type !== 'agent/inbox/spliced') continue
       try {
@@ -68,12 +81,12 @@ export class Inbox {
 
   /** Prompts awaiting individual turns. */
   get nextTurn(): readonly UserMessage[] {
-    return this.state['next-turn']
+    return this.internals.state['next-turn']
   }
 
   /** Input awaiting the next step boundary. */
   get nextStep(): readonly UserMessage[] {
-    return this.state['next-step']
+    return this.internals.state['next-step']
   }
 
   /** Whether either pending-message list contains work. */
@@ -100,7 +113,7 @@ export class Inbox {
     if (target === 'next-turn') {
       claimed.push(...this.mutate('next-turn', 0, 1, [], false))
     }
-    for (const message of claimed) this.notifications.claimed(message, turn)
+    for (const message of claimed) this.internals.notifications.claimed(message, turn)
     return claimed
   }
 
@@ -111,7 +124,7 @@ export class Inbox {
    * @throws if the message identity is already pending.
    */
   append(target: InboxTarget, message: UserMessage): void {
-    this.splice(target, this.state[target].length, 0, [message])
+    this.splice(target, this.internals.state[target].length, 0, [message])
   }
 
   /**
@@ -175,7 +188,7 @@ export class Inbox {
   /** Locate one pending identity across both owned lists. */
   private locate(messageId: MessageId): { target: InboxTarget; index: number } | undefined {
     for (const target of ['next-turn', 'next-step'] as const) {
-      const index = this.state[target].findIndex(message => message.id === messageId)
+      const index = this.internals.state[target].findIndex(message => message.id === messageId)
       if (index >= 0) return { target, index }
     }
     return undefined
@@ -189,7 +202,7 @@ export class Inbox {
     inserted: UserMessage[],
     discardRemoved: boolean,
   ): UserMessage[] {
-    const inbox = this.state[target]
+    const inbox = this.internals.state[target]
     const truncatedStart = Math.trunc(start)
     const offset = Number.isNaN(truncatedStart) ? 0 : truncatedStart
     const actualStart = offset < 0
@@ -210,25 +223,25 @@ export class Inbox {
       ...(outcome === undefined ? {} : { outcome }),
     }
     this.validate(splice)
-    const event = this.session.append('agent/inbox/spliced', splice)
+    const event = this.internals.session.append('agent/inbox/spliced', splice)
     const removed = inbox.splice(actualStart, actualDeleteCount, ...event.data.inserted)
     if (discardRemoved) {
-      for (const message of removed) this.notifications.discarded(message)
+      for (const message of removed) this.internals.notifications.discarded(message)
     }
-    for (const message of event.data.inserted) this.notifications.inserted(message)
+    for (const message of event.data.inserted) this.internals.notifications.inserted(message)
     return removed
   }
 
   /** Apply one normalized durable splice to the projection. */
   private apply(splice: SessionEventMap['agent/inbox/spliced']): UserMessage[] {
     this.validate(splice)
-    const inbox = this.state[splice.target]
+    const inbox = this.internals.state[splice.target]
     return inbox.splice(splice.start, splice.removedCount ?? 0, ...splice.inserted)
   }
 
   /** Validate one normalized splice against the current projection. */
   private validate(splice: SessionEventMap['agent/inbox/spliced']): void {
-    const inbox = this.state[splice.target]
+    const inbox = this.internals.state[splice.target]
     const removedCount = splice.removedCount ?? 0
     if (!Number.isSafeInteger(splice.start) || splice.start < 0 || splice.start > inbox.length
       || !Number.isSafeInteger(removedCount) || removedCount < 0
@@ -243,5 +256,11 @@ export class Inbox {
       if (ids.has(message.id)) throw new Error(`message "${message.id}" is already pending`)
       ids.add(message.id)
     }
+  }
+
+  private get internals(): LegacyInboxInternals {
+    const internals = legacyInternals.get(this)
+    if (internals === undefined) throw new Error('Inbox is not initialized')
+    return internals
   }
 }

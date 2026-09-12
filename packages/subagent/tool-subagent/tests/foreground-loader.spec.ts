@@ -77,7 +77,7 @@ describe('foreground relay through the real Loader and parent loop', () => {
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'start-input-v1' }], source: { kind: 'user' } }))
     await agent.whenIdle()
     await ctx.sessions.flush(agent.session)
-    const stored = await ctx.sessionPersistence.load(agent.session.id)
+    const stored = agent.session
     const calls = stored.events.filter(event => event.type === 'tool/call')
     const results = stored.events.filter(event => event.type === 'tool/result')
     expect(calls).toHaveLength(1)

@@ -57,6 +57,7 @@ function appendCompletedText(ctx: Context, sessionId: SessionId, text: string): 
     turn: 1,
     step: 1,
     message: assistant([{ type: 'text', text }]),
+    stream: [],
   }, { surfaceOp: 'append' }).seq
 }
 
@@ -138,7 +139,7 @@ describe('content-session capture source resolver', () => {
     session.append('step/start', { turn: 1, step: 1 })
     const content = 'content' in replacement ? replacement.content : [{ type: 'text', text: 'visible' }]
     const event = session.append('assistant/message', {
-      turn: 1, step: 1, message: assistant(content),
+      turn: 1, step: 1, message: assistant(content), stream: [],
       ...('interrupted' in replacement && replacement.interrupted) ? { interrupted: true as const } : {},
     }, { surfaceOp: 'append' })
 

@@ -7,6 +7,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-web'
 import { PerplexitySearchProvider, PERPLEXITY_DEFAULT_BASE_URL, PERPLEXITY_DEFAULT_MAX_TOKENS, PERPLEXITY_DEFAULT_MODEL } from './provider.ts'
@@ -25,6 +26,9 @@ export const name = 'web-search-perplexity'
 
 /** The web seam this provider registers into. */
 export const inject = ['web']
+
+/** Settings namespace for the Perplexity provider's persisted configuration. */
+export const WEB_SEARCH_PERPLEXITY_SETTINGS_NAMESPACE = settingsNamespace('web-search-perplexity')
 
 /** Plugin config (all optional — `apply` fills env-var and constant defaults). */
 export interface Config {

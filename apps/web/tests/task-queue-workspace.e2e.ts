@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import { Inbox } from '@deepseek-ai/dsh-agent'
+import { LegacyInbox as Inbox } from '@deepseek-ai/dsh-agent/inbox'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -342,7 +342,7 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
       }
     } finally {
       dispose()
-      if (handle !== undefined && processAlive(handle.pid)) {
+      if (handle?.pid !== undefined && processAlive(handle.pid)) {
         handle.terminate()
         await handle.waitForExit()
       }

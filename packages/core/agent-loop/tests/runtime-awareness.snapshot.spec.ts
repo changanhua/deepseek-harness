@@ -126,7 +126,7 @@ async function harness(adapter: MockAdapter): Promise<{ ctx: Context; agent: Age
   }))
   ctx.web.registerSearchProvider(mockSearchProvider('exa'))
   ctx.web.registerSearchProvider(mockSearchProvider('perplexity'))
-  const agent = ctx.agentLoop.create(SessionId('runtime-awareness-snapshot'), {
+  const agent = await ctx.agentLoop.create(SessionId('runtime-awareness-snapshot'), {
     provider: 'mock',
     model: 'mock',
   })

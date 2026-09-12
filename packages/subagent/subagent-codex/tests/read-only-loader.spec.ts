@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { Inbox } from '@deepseek-ai/dsh-agent'
+import { LegacyInbox as Inbox } from '@deepseek-ai/dsh-agent/inbox'
 import { boot, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
@@ -35,10 +35,11 @@ afterEach(async () => {
 function parent(workspace: string): Agent {
   const id = SessionId('read-only-loader-parent')
   const session = Session.create(id, undefined, {
-    version: 0,
+    version: 3,
     id,
     createdAt: Date.now(),
     cwd: workspace,
+    isSeeded: false,
   })
   const inbox = new Inbox(session, { inserted() {}, discarded() {}, claimed() {} })
   return { id: session.id, options: {}, session, inbox } as unknown as Agent

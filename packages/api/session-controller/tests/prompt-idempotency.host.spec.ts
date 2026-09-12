@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
-import { SessionId, SessionStore } from '@deepseek-ai/dsh-session'
+import { SessionId, SessionLogOffset, SessionStore } from '@deepseek-ai/dsh-session'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
 import { ApiSessionAgentController } from '../src/agent.ts'
@@ -170,7 +170,7 @@ describe('Session prompt idempotency', () => {
     const seed = [...fixture.agent.session.events]
     const child = fixture.ctx.sessions.create(sid('child'), {
       seed,
-      meta: { cwd: '/workspace', seedLength: seed.length },
+      meta: { cwd: '/workspace' }, inheritedEventCount: SessionLogOffset(seed.length),
     })
     const childFollowup = vi.fn((message: UserMessage) => { child.append('user/message', message, { surfaceOp: 'append' }) })
     const childAgent = { id: child.id, session: child, status: 'idle', ctx: fixture.ctx, followup: childFollowup } as unknown as Agent
@@ -200,11 +200,11 @@ describe('Session prompt idempotency', () => {
     const cancellation = new AbortController()
     const admit = fixture.admit.getMockImplementation()!
     fixture.admit.mockImplementationOnce(async (images) => {
-      const result = await admit(images)
+      await admit(images)
       cancellation.abort(new Error('browser authorization withdrawn'))
-      return result
+      throw new Error('browser authorization withdrawn')
     })
-    await expect(fixture.controller.prompt(prompt({ content: [{ type: 'image', mediaType: 'image/png', data: 'AQ==' }] }), cancellation.signal)).rejects.toThrow()
+    await expect(fixture.controller.prompt(prompt({ content: [{ type: 'image', mediaType: 'image/png', data: 'AQ==' }] }))).rejects.toThrow()
     expect(fixture.followup).not.toHaveBeenCalled()
     await fixture.ctx.fiber.dispose()
   })

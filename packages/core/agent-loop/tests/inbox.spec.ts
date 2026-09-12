@@ -12,6 +12,7 @@ function unsupportedInbox(): Agent['inbox'] {
     throw new Error('this test Agent does not support Inbox mutations')
   }
   return {
+    hasPending: false,
     nextTurn: [], nextStep: [], clear: rejectMutation, append: rejectMutation,
     prepend: rejectMutation, replace: rejectMutation, remove: rejectMutation, splice: rejectMutation,
   }

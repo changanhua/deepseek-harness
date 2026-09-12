@@ -7,6 +7,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-web'
 import {
@@ -30,6 +31,9 @@ export const name = 'web-search-exa'
 
 /** The web seam this provider registers into. */
 export const inject = ['web']
+
+/** Settings namespace for the Exa provider's persisted configuration. */
+export const WEB_SEARCH_EXA_SETTINGS_NAMESPACE = settingsNamespace('web-search-exa')
 
 /** Plugin config (all optional — `apply` fills env-var and constant defaults). */
 export interface Config {

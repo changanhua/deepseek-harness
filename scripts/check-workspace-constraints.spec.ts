@@ -145,8 +145,10 @@ describe('package payload constraints', () => {
   })
 
   it('keys personal payload exceptions by stable source directory', () => {
-    expect(expectedDshPackageFiles({ name: '@changanhua/dsh-task-queue-executor-dsh' },
-      'packages/task-queue/task-queue-executor-dsh')).toContain('worker.cordis.patch.yml')
+    expect(expectedDshPackageFiles({
+      name: '@changanhua/dsh-task-queue-executor-dsh',
+      dsh: { bundle: { patch: './worker.cordis.patch.yml' } },
+    })).toContain('worker.cordis.patch.yml')
   })
 
   it('keeps rescoped personal packages private while applying the DSH package shape', () => {
