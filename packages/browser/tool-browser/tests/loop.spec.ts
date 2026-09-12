@@ -37,7 +37,8 @@ describe('browser task loop', () => {
     ctx.llm.registerAdapter(['mock'], adapter)
     const provider = browser(), loop = new BrowserTaskLoop(provider)
     ctx.on('agent/turn-stopping', async ({ agent, signal }) => { await loop.turnStopping(agent, signal) })
-    const agent = await ctx.agentLoop.create(SessionId('native-continuation'), { provider: 'mock', model: 'mock' })
+    const handle = await ctx.agents.create({ sessionId: SessionId('native-continuation'), agentOptions: { provider: 'mock', model: 'mock' } })
+    const agent = handle.agent
     const executed: string[] = []
     ctx.tools.register(defineContentToolFixture({ name: 'browser_action', description: 'test browser action', parameters: { elementId: { type: 'string', required: true } }, execute: async ({ elementId }, exec) => {
       executed.push(elementId)

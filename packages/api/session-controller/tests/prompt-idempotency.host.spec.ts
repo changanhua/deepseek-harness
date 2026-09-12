@@ -3,6 +3,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import { SessionId, SessionLogOffset, SessionStore } from '@deepseek-ai/dsh-session'
+import { LegacyInbox } from '@deepseek-ai/dsh-agent/inbox'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import { describe, expect, it, vi } from 'vitest'
 import { ApiSessionAgentController } from '../src/agent.ts'
@@ -19,7 +20,7 @@ async function harness() {
   const session = ctx.sessions.create(sid('idempotent'), { meta: { cwd: '/workspace' } })
   const followup = vi.fn((message: UserMessage) => { session.append('user/message', message, { surfaceOp: 'append' }) })
   const steer = vi.fn((message: UserMessage) => { session.append('user/message', message, { surfaceOp: 'append' }) })
-  const agent = { id: session.id, session, status: 'idle', ctx, followup, steer } as unknown as Agent
+  const agent = { id: session.id, session, inbox: new LegacyInbox(session, { inserted() {}, discarded() {}, claimed() {} }), status: 'idle', ctx, followup, steer } as unknown as Agent
   ctx.agents.register(agent)
   ctx.provide('llm', {
     listProviders: () => [{ id: 'fixture', name: 'fixture' }],
@@ -29,7 +30,19 @@ async function harness() {
     attachmentId: AttachmentId(`image-${String(index)}`), mediaType: image.mediaType,
     bytes: 1, width: 1, height: 1, ...image.name === undefined ? {} : { name: image.name },
   }))))
-  ctx.provide('attachments', { saveImages: admit } as never)
+  ctx.provide('attachments', {
+    saveImages: admit,
+    admitPromptContent: async (content: readonly any[]) => Promise.all(content.map(async (part) => {
+      if (part.type !== 'image') return part
+      const [attachment] = await admit([{ mediaType: part.mediaType, ...(part.name === undefined ? {} : { name: part.name }) }])
+      return { type: 'image', attachment }
+    })),
+  } as never)
+  ctx.provide('fileUploads', {
+    resolve: () => undefined,
+    bindPrompt: () => ({ commit() {}, [Symbol.dispose]() {} }),
+    retirePrompt() {},
+  } as never)
   const selection: ModelSelectionRef = { current: { provider: 'fixture', model: 'fixture-model' }, assembled: undefined }
   let chain = Promise.resolve()
   const serializeImageAdmission = vi.fn(<Value>(_agent: Agent, operation: () => Promise<Value>) => {
@@ -152,7 +165,7 @@ describe('Session prompt idempotency', () => {
       target: 'next-turn', start: 0, inserted: [message],
     })
     const followup = vi.fn()
-    const agent = { id: restored.id, session: restored, status: 'idle', ctx: fixture.ctx, followup } as unknown as Agent
+    const agent = { id: restored.id, session: restored, inbox: new LegacyInbox(restored, { inserted() {}, discarded() {}, claimed() {} }), status: 'idle', ctx: fixture.ctx, followup } as unknown as Agent
     fixture.ctx.agents.register(agent)
     const controller = new SessionCommandController(fixture.ctx, {
       resolveAgent: () => Promise.resolve({ agent }),
@@ -173,7 +186,7 @@ describe('Session prompt idempotency', () => {
       meta: { cwd: '/workspace' }, inheritedEventCount: SessionLogOffset(seed.length),
     })
     const childFollowup = vi.fn((message: UserMessage) => { child.append('user/message', message, { surfaceOp: 'append' }) })
-    const childAgent = { id: child.id, session: child, status: 'idle', ctx: fixture.ctx, followup: childFollowup } as unknown as Agent
+    const childAgent = { id: child.id, session: child, inbox: new LegacyInbox(child, { inserted() {}, discarded() {}, claimed() {} }), status: 'idle', ctx: fixture.ctx, followup: childFollowup } as unknown as Agent
     fixture.ctx.agents.register(childAgent)
     const childController = new SessionCommandController(fixture.ctx, {
       resolveAgent: () => Promise.resolve({ agent: childAgent }),
