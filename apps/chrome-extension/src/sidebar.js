@@ -4,6 +4,10 @@ import { renderActivity } from './sidebar-activity.js'
 import { modelSummary } from './model-summary.js'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3080'
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const MAX_DRAFT_IMAGES = 4
+const MAX_DRAFT_IMAGE_BYTES = 2 * 1024 * 1024
+const MAX_DRAFT_IMAGE_TOTAL_BYTES = 3 * 1024 * 1024
 const byId = id => document.getElementById(id)
 const view = Object.fromEntries(['notice', 'connection-panel', 'connection-label', 'page-panel', 'capture-panel', 'session-menu', 'settings', 'base-url', 'conversation', 'contexts', 'composer', 'pending-actions'].map(id => [id.replaceAll('-', '_'), byId(id)]))
 let state = null
@@ -14,6 +18,7 @@ let nextRequest = 0
 let appliedRequest = 0
 let submittedText = null
 let submitting = false
+let draftImages = []
 const imageRequests = new Map()
 let approvalRenderKey = null
 let unresolvedRenderKey = null
@@ -39,6 +44,41 @@ const errorLabels = {
   executor_not_quiescent: '尚不能确认旧操作已停止，请先停止任务并检查目标页面。',
   acknowledgement_unconfirmed: '核对结果已保留在扩展中，等待与 DSH 同步。',
   target_unavailable: '该目标标签已不可用，请根据会话记录核对操作结果。',
+}
+const imageData = file => new Promise((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onerror = () => reject(new Error('image_read_failed'))
+  reader.onload = () => {
+    const result = typeof reader.result === 'string' ? reader.result : ''
+    const match = /^data:([^;]+);base64,([A-Za-z0-9+/]+={0,2})$/u.exec(result)
+    if (!match) { reject(new Error('image_read_failed')); return }
+    resolve({ type: 'image', mediaType: match[1], data: match[2], name: file.name || 'clipboard-image' })
+  }
+  reader.readAsDataURL(file)
+})
+const renderDraftImages = () => {
+  const rail = byId('draft-images')
+  rail.replaceChildren()
+  for (const [index, image] of draftImages.entries()) {
+    const item = document.createElement('div'); item.className = 'draft-image'
+    const preview = document.createElement('img'); preview.alt = image.name; preview.src = `data:${image.mediaType};base64,${image.data}`
+    const remove = button('×', () => { draftImages = draftImages.filter((_, candidate) => candidate !== index); renderDraftImages() })
+    remove.setAttribute('aria-label', `移除图片 ${image.name}`)
+    item.append(preview, remove); rail.append(item)
+  }
+}
+const addDraftImages = async files => {
+  const candidates = [...files].filter(file => file instanceof File)
+  if (!candidates.length) return
+  if (candidates.some(file => !IMAGE_TYPES.has(file.type))) { notice('仅支持 PNG、JPG、WebP、GIF 格式的图片'); return }
+  if (draftImages.length + candidates.length > MAX_DRAFT_IMAGES) { notice(`一次最多添加 ${MAX_DRAFT_IMAGES} 张图片`); return }
+  if (candidates.some(file => file.size > MAX_DRAFT_IMAGE_BYTES)
+    || draftImages.reduce((total, image) => total + Math.floor(image.data.length * 3 / 4), 0)
+      + candidates.reduce((total, file) => total + file.size, 0) > MAX_DRAFT_IMAGE_TOTAL_BYTES) {
+    notice('侧栏草稿图片总大小不能超过 3MB，请压缩后重试'); return
+  }
+  try { draftImages = [...draftImages, ...await Promise.all(candidates.map(imageData))]; renderDraftImages() }
+  catch (error) { notice(messageError(error)) }
 }
 const messageError = error => {
   const code = error?.code ?? error?.message ?? error
@@ -367,13 +407,16 @@ const configure = async () => {
 }
 const submit = async mode => {
   const text = view.composer.value.trim()
-  if (!text && !state?.contexts?.length || submitting || locked(state?.session?.pending) || state?.session?.pendingCreate) return
+  if ((!text && !state?.contexts?.length && !draftImages.length) || submitting || locked(state?.session?.pending) || state?.session?.pendingCreate) return
   if (state?.connection?.phase !== 'connected' || state?.session?.phase === 'foreign') { render(); return }
   submitting = true; render()
   try {
     submittedText = text
-    const result = await send({ type: 'dsh-assistant-session-submit', text, mode })
-    if (result?.ok && view.composer.value.trim() === text) { view.composer.value = ''; submittedText = null }
+    const result = await send({ type: 'dsh-assistant-session-submit', text, mode,
+      ...(draftImages.length ? { images: structuredClone(draftImages) } : {}) })
+    if (result?.ok && view.composer.value.trim() === text) {
+      view.composer.value = ''; submittedText = null; draftImages = []; renderDraftImages()
+    }
   } finally { submitting = false; render() }
 }
 
@@ -399,6 +442,13 @@ byId('base-url').addEventListener('input', () => { editingUrl = true })
 byId('capture-selection').addEventListener('click', () => { void send({ type: 'dsh-assistant-context-capture', kind: 'selection' }) })
 byId('capture-body').addEventListener('click', () => { void send({ type: 'dsh-assistant-context-capture', kind: 'page-body' }) })
 byId('capture-screenshot').addEventListener('click', () => { void send({ type: 'dsh-assistant-context-capture', kind: 'screenshot' }) })
+byId('composer').addEventListener('paste', event => {
+  const items = [...(event.clipboardData?.items ?? [])]
+  const files = items.filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean)
+  if (!files.length) return
+  event.preventDefault()
+  void addDraftImages(files)
+})
 byId('stop-session').addEventListener('click', () => { void send({ type: 'dsh-assistant-session-stop' }) })
 byId('send-queue').addEventListener('click', () => submit('queue'))
 byId('send-steer').addEventListener('click', () => submit('steer'))

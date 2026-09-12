@@ -201,6 +201,31 @@ describe('DSH 浏览器助手侧栏', () => {
     expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-session-submit', text: '继续检查这一页', mode: 'queue' })
   })
 
+  test('粘贴图片后显示草稿预览，并与文本一起发送', async () => {
+    class ClipboardReader {
+      result: string | null = null
+      onload: (() => void) | null = null
+      readAsDataURL(): void {
+        this.result = 'data:image/png;base64,AQ=='
+        this.onload?.()
+      }
+    }
+    vi.stubGlobal('FileReader', ClipboardReader)
+    const fixture = await load()
+    const composer = element('#composer') as HTMLTextAreaElement
+    composer.value = '识别这张图'
+    const image = new File([Uint8Array.of(1)], 'clipboard.png', { type: 'image/png' })
+    const paste = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(paste, 'clipboardData', { value: { items: [{ kind: 'file', getAsFile: () => image }] } })
+    composer.dispatchEvent(paste)
+    await vi.waitFor(() => { expect(element('#draft-images img').getAttribute('alt')).toBe('clipboard.png') })
+    element('#send-queue').click()
+    await vi.waitFor(() => { expect(fixture.messages).toContainEqual({
+      type: 'dsh-assistant-session-submit', text: '识别这张图', mode: 'queue',
+      images: [{ type: 'image', mediaType: 'image/png', data: 'AQ==', name: 'clipboard.png' }],
+    }) })
+  })
+
   test('连接后首次发送由后台创建会话，重复点击只提交一次', async () => {
     const initial = baseState({ session: { ...baseState().session, binding: null, phase: 'idle' } })
     let resolveCreate!: (value: unknown) => void
@@ -234,7 +259,7 @@ describe('DSH 浏览器助手侧栏', () => {
     const input = element('#composer') as HTMLTextAreaElement
     input.value = '保留这条草稿'
     element('#send-queue').click()
-    await vi.waitFor(() => expect(element('#notice').textContent).toContain('提交结果尚未确认'))
+    await vi.waitFor(() => { expect(element('#notice').textContent).toContain('提交结果尚未确认') })
     expect(input.value).toBe('保留这条草稿')
     expect(fixture.messages.filter(message => message.type === 'dsh-assistant-session-submit')).toHaveLength(1)
   })

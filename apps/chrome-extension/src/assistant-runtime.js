@@ -202,7 +202,14 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       case 'dsh-assistant-session-create': await sessions.create(message.cwd ? { cwd: message.cwd } : {}); break
       case 'dsh-assistant-session-submit': {
         if (typeof message.text !== 'string' || message.text.length > 65536) throw new Error('invalid_input')
+        const images = message.images ?? []
+        if (!Array.isArray(images) || images.length > 4 || images.some(image => !image || typeof image !== 'object' || image.type !== 'image'
+          || !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(image.mediaType)
+          || typeof image.data !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/u.test(image.data)
+          || image.data.length > 2_800_000 || image.name !== undefined && (typeof image.name !== 'string' || image.name.length > 256))
+          || images.reduce((total, image) => total + image.data.length, 0) > 4 * 1024 * 1024) throw new Error('invalid_input')
         const content = message.text.trim() ? [{ type: 'text', text: message.text }] : []
+        content.push(...images)
         const selected = structuredClone(contexts)
         for (const item of selected) {
           const kind = item.kind === 'selection' ? '选中文字' : item.kind === 'page-body' ? '已加载网页正文' : '当前可见区域截图'
