@@ -58,6 +58,25 @@ describe('defineDomain', () => {
     })).toThrow(/must not accept null/)
   })
 
+  it('validates compatibleVersions entries and projects them onto the descriptor', () => {
+    expect(() => defineDomain({ name: 'ok', version: 2, compatibleVersions: [1.5], tables: {} }))
+      .toThrow(/compatibleVersions/)
+    expect(() => defineDomain({ name: 'ok', version: 2, compatibleVersions: [2], tables: {} }))
+      .toThrow(/below version/)
+    expect(() => defineDomain({ name: 'ok', version: 2, compatibleVersions: [-1], tables: {} }))
+      .toThrow(/compatibleVersions/)
+    expect(descriptorOf(defineDomain({ name: 'ok', version: 2, compatibleVersions: [0, 1], tables: {} })))
+      .toMatchObject({ compatibleVersions: [0, 1] })
+    // An undeclared set is absent from the descriptor.
+    expect(descriptorOf(spec)).not.toHaveProperty('compatibleVersions')
+  })
+
+  it('rejects an unknown invalidRecords policy', () => {
+    expect(() => defineDomain({
+      name: 'ok', version: 1, invalidRecords: 'zap' as 'backup-and-skip', tables: {},
+    })).toThrow(/invalidRecords/)
+  })
+
   it('rejects an invalid layout and projects the declared one onto the descriptor', () => {
     // A spec built from config can carry any value; the union type is
     // compile-time only, so the runtime boundary check must reject it.
@@ -67,15 +86,6 @@ describe('defineDomain', () => {
       .toMatchObject({ name: 'per', layout: 'per-record' })
     // The default (single) layout is absent from the descriptor.
     expect(descriptorOf(spec)).not.toHaveProperty('layout')
-  })
-
-  it('rejects unknown backend guarantee requirements', () => {
-    expect(() => defineDomain({
-      name: 'guarded',
-      version: 1,
-      requires: ['magical' as 'single-writer'],
-      tables: {},
-    })).toThrow(/backend guarantee/)
   })
 })
 
@@ -103,46 +113,6 @@ describe('DomainFacility.open', () => {
     const { ctx, facility } = await harness({ config: { backend: 'nokv' } })
     ctx.storage.backend.register('nokv', { close: async () => {} })
     await expect(facility.open(spec)).rejects.toMatchObject({ code: 'facet-unsupported' })
-  })
-
-  it('rejects a backend missing a required guarantee before opening its medium', async () => {
-    const { ctx, facility } = await harness({ config: { backend: 'guarded' } })
-    const open = vi.fn()
-    ctx.storage.backend.register('guarded', {
-      guarantees: ['single-writer'],
-      kv: { open },
-      close: async () => {},
-    })
-    const guarded = defineDomain({
-      name: 'guarded',
-      version: 1,
-      requires: ['single-writer', 'commit-sync'] as const,
-      tables: {},
-    })
-
-    await expect(facility.open(guarded)).rejects.toMatchObject({
-      name: 'DomainError',
-      code: 'backend-requirement-unsatisfied',
-    })
-    expect(open).not.toHaveBeenCalled()
-  })
-
-  it('opens when the backend declares every required guarantee', async () => {
-    const { ctx, facility } = await harness({ config: { backend: 'guarded' } })
-    const backend = new MemoryStorageBackend()
-    ctx.storage.backend.register('guarded', {
-      guarantees: ['single-writer', 'commit-sync', 'private-root'],
-      kv: backend.kv,
-      close: () => backend.close(),
-    })
-    const guarded = defineDomain({
-      name: 'guarded',
-      version: 1,
-      requires: ['single-writer', 'commit-sync'] as const,
-      tables: {},
-    })
-
-    await expect(facility.open(guarded)).resolves.toBeDefined()
   })
 
   it('falls back to the default backend when no route table is configured', async () => {
@@ -183,6 +153,28 @@ describe('DomainFacility.open', () => {
     pool.media.get('demo')!.tables.get('items')!.set('bad', { label: 'x', count: 'NaN' })
     const { facility } = await harness({ pool })
     await expect(facility.open(spec)).rejects.toMatchObject({
+      code: 'invalid-record',
+      detail: { table: 'items', key: 'bad' },
+    })
+  })
+
+  it('keeps the rejecting default under backup-and-skip when the backend cannot move documents', async () => {
+    // The memory backend has no backupRecord, so the declared policy cannot
+    // apply and the open falls back to failing loud.
+    const salvageSpec = defineDomain({
+      name: 'salvage',
+      version: 1,
+      invalidRecords: 'backup-and-skip',
+      tables: { items: domainTable<string, Item>(itemSchema) },
+    })
+    const pool = new MemoryMediaPool()
+    {
+      const { facility } = await harness({ pool })
+      await (await facility.open(salvageSpec)).table('items').put('bad', { label: 'x', count: 2 })
+    }
+    pool.media.get('salvage')!.tables.get('items')!.set('bad', { label: 'x', count: 'NaN' })
+    const { facility } = await harness({ pool })
+    await expect(facility.open(salvageSpec)).rejects.toMatchObject({
       code: 'invalid-record',
       detail: { table: 'items', key: 'bad' },
     })

@@ -7,9 +7,9 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import * as yaml from 'js-yaml'
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {
   SubprocessHandle,
@@ -17,19 +17,13 @@ import type {
   SubprocessSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import {
-  CODEX_APP_SERVER_PERMISSION_MODES,
-  startCodexAppServerRun as startSupportedCodexAppServerRun,
-} from '../src/app-server-run.ts'
 import * as codex from '../src/index.ts'
-import * as invariant from '../src/invariant.ts'
 import {
   CODEX_PERMISSION_MODES,
   DEFAULT_CODEX_PERMISSION_MODE,
   codexAppServerArgv,
   DEFAULT_DISPOSE_GRACE_MS,
   disposeCodexChild,
-  startCodexAppServerRun,
   startCodexRun,
   textTask,
   type CodexRunSpec,
@@ -70,7 +64,7 @@ vi.mock('node:fs', async (importOriginal) => {
 
 type JsonObject = Record<string, unknown>
 
-const CODEX_VERSION = '0.149.1'
+const CODEX_VERSION = '0.153.4'
 const CODEX_PLATFORM_PACKAGES = [
   '@openai/codex-darwin-arm64',
   '@openai/codex-darwin-x64',
@@ -145,7 +139,6 @@ class ProtocolPeer {
 }
 
 interface FakeChildOptions {
-  readonly pid?: number
   readonly exitOnTerminate?: boolean
   readonly doneError?: Error
   readonly waitForExitError?: Error
@@ -217,7 +210,6 @@ function fakeChild(options: FakeChildOptions = {}): FakeChild {
     })
   })
   const handle: SubprocessHandle = {
-    pid: options.pid ?? 1234,
     stdin: toChild,
     stdout: fromChild,
     stderr,
@@ -271,7 +263,7 @@ async function initializeWire(): Promise<{
   wire.start()
   const initializing = wire.initialize(new AbortController().signal)
   const initialize = await child.peer.nextMethod('initialize')
-  child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+  child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
   await initializing
   expect(await child.peer.nextMethod('initialized')).toEqual({
     jsonrpc: '2.0',
@@ -291,7 +283,7 @@ async function publishRun(
 ) {
   const starting = startCodexRun(request(undefined, signal), runSpec(child, specOverrides))
   const initialize = await child.peer.nextMethod('initialize')
-  child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+  child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
   await child.peer.nextMethod('initialized')
   const threadStart = await child.peer.nextMethod('thread/start')
   child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
@@ -434,6 +426,7 @@ describe('task admission and package contracts', () => {
 
   it('registers the default descriptor, validates config, and unregisters on HMR', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const fiber = await ctx.plugin(codex, {})
@@ -463,6 +456,7 @@ describe('task admission and package contracts', () => {
 
   it('keeps named instances, runs, and HMR ownership isolated', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const safeChild = fakeChild()
@@ -510,7 +504,7 @@ describe('task admission and package contracts', () => {
       [bypassChild, 'codex-bypass-model'],
     ] as const) {
       const initialize = await child.peer.nextMethod('initialize')
-      child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+      child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
       await child.peer.nextMethod('initialized')
       const threadStart = await child.peer.nextMethod('thread/start')
       expect(threadStart.params).toMatchObject({ model })
@@ -565,6 +559,7 @@ describe('task admission and package contracts', () => {
 
   it('rejects duplicate provider names without replacing the first instance', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const firstFiber = await ctx.plugin(codex, {
@@ -581,7 +576,7 @@ describe('task admission and package contracts', () => {
     await ctx.fiber.dispose()
   })
 
-  it('accepts an optional non-empty model and the four fixed permission modes', () => {
+  it('accepts an optional non-empty model and the three fixed permission modes', () => {
     expect(codex.Config({}).providerName).toBe('codex')
     expect(codex.Config({}).model).toBeUndefined()
     expect(codex.Config({ providerName: 'codex-safe' }).providerName)
@@ -600,6 +595,7 @@ describe('task admission and package contracts', () => {
 
   it('resolves the safe permission default when apply is called directly', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const child = fakeChild()
@@ -608,7 +604,7 @@ describe('task admission and package contracts', () => {
     expect(ctx.subagents.getProvider('codex')).toBeDefined()
     const starting = ctx.subagents.start('codex', request())
     const initialize = await child.peer.nextMethod('initialize')
-    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
     await child.peer.nextMethod('initialized')
     const threadStart = await child.peer.nextMethod('thread/start')
     expect(threadStart.params).not.toHaveProperty('model')
@@ -629,10 +625,6 @@ describe('task admission and package contracts', () => {
   })
 
   it.each([
-    ['read-only', {
-      approvalPolicy: 'never',
-      sandbox: 'read-only',
-    }],
     ['never', { approvalPolicy: 'never' }],
     ['approve-for-me', {
       approvalPolicy: 'on-request',
@@ -653,7 +645,7 @@ describe('task admission and package contracts', () => {
     wire.start()
     const initializing = wire.initialize(new AbortController().signal)
     const initialize = await child.peer.nextMethod('initialize')
-    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
     await initializing
     await child.peer.nextMethod('initialized')
     const starting = wire.startThread('/workspace', new AbortController().signal)
@@ -674,13 +666,13 @@ describe('task admission and package contracts', () => {
     const wire = new CodexAppServerWire(
       child.handle.stdout!,
       child.handle.stdin!,
-      'read-only',
+      'never',
       'codex-explicit-model',
     )
     wire.start()
     const initializing = wire.initialize(new AbortController().signal)
     const initialize = await child.peer.nextMethod('initialize')
-    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
     await initializing
     await child.peer.nextMethod('initialized')
     const starting = wire.startThread('/workspace', new AbortController().signal)
@@ -690,7 +682,6 @@ describe('task admission and package contracts', () => {
       ephemeral: true,
       model: 'codex-explicit-model',
       approvalPolicy: 'never',
-      sandbox: 'read-only',
     })
     child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
     await starting
@@ -699,6 +690,7 @@ describe('task admission and package contracts', () => {
 
   it('requires a parent session cwd without suggesting unsupported config', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const spawn = vi.spyOn(ctx.subprocess, 'spawn')
@@ -718,28 +710,12 @@ describe('task admission and package contracts', () => {
     await ctx.fiber.dispose()
   })
 
-  it('keeps the namespace export shape and package-owned empty invariant', async () => {
+  it('keeps the namespace export shape', () => {
     expect('default' in codex).toBe(false)
     expect(codex.name).toBe('subagent-codex')
     expect(codex.inject).toEqual(['subagents', 'subprocess'])
     const loader = Object.create(Loader.prototype) as Loader
     expect(loader.unwrapExports(codex)).toBe(codex)
-
-    const dispose = vi.fn()
-    const register = vi.fn((
-      _packageName: string,
-      _installer: InvariantInstaller,
-    ) => dispose)
-    const ctx = { invariants: { register } } as unknown as Context
-    await expect(invariant.apply(ctx)).resolves.toBe(dispose)
-    expect(register).toHaveBeenCalledWith(
-      '@deepseek-ai/dsh-subagent-codex',
-      expect.any(Function),
-    )
-    const install = register.mock.calls[0]![1]
-    await install(new Context(), (message) => { throw new Error(message) })
-    expect(invariant.name).toBe('subagent-codex-invariant')
-    expect(invariant.inject).toEqual(['invariants'])
   })
 })
 
@@ -763,7 +739,7 @@ describe('CodexAppServerWire', () => {
         requestAttestation: false,
       },
     })
-    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
     await initializing
     await child.peer.nextMethod('initialized')
 
@@ -1445,24 +1421,6 @@ describe('CodexAppServerWire', () => {
     wire.close()
   })
 
-  it('settles one run once when Codex repeats its terminal notification', async () => {
-    const { child, wire } = await initializeWire()
-    const result = wire.runTurn(['task'], new AbortController().signal)
-    const turnStart = await child.peer.nextMethod('turn/start')
-    child.peer.respond(turnStart, { turn: { id: 'turn-1' } })
-    child.peer.send(
-      agentMessage('answer', 'final_answer'),
-      turnCompleted('completed'),
-      turnCompleted('failed'),
-    )
-
-    await expect(result).resolves.toEqual({
-      output: [{ type: 'text', text: 'answer' }],
-      stopReason: 'completed',
-    })
-    wire.close()
-  })
-
   it('rejects pending work on abort, EOF, and stream error', async () => {
     {
       const child = fakeChild()
@@ -1520,83 +1478,6 @@ describe('CodexAppServerWire', () => {
 })
 
 describe('run lifecycle and quiescence', () => {
-  it('publishes only result and disposal through the supported parent-free boundary', async () => {
-    const child = fakeChild()
-    const cwd = process.cwd()
-    const signal = new AbortController().signal
-    const spawn = vi.fn(() => child.handle)
-    const starting = startSupportedCodexAppServerRun({
-      prompt: [{ type: 'text', text: 'parent-free task' }],
-      signal,
-      cwd,
-      permissionMode: 'never',
-      env: {},
-      disposeGraceMs: DEFAULT_DISPOSE_GRACE_MS,
-      spawn,
-    })
-    const initialize = await child.peer.nextMethod('initialize')
-    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
-    await child.peer.nextMethod('initialized')
-    const threadStart = await child.peer.nextMethod('thread/start')
-    expect(threadStart.params).toMatchObject({ cwd })
-    child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
-    const run = await starting
-    expect(Object.keys(run).sort()).toEqual(['dispose', 'result'])
-    expect(CODEX_APP_SERVER_PERMISSION_MODES).toEqual(CODEX_PERMISSION_MODES)
-    const turnStart = await child.peer.nextMethod('turn/start')
-    expect(turnStart.params).toMatchObject({
-      input: [{ type: 'text', text: 'parent-free task', text_elements: [] }],
-    })
-    child.peer.send(
-      { id: turnStart.id, result: { turn: { id: 'turn-1' } } },
-      agentMessage('parent-free answer', 'final_answer'),
-      turnCompleted('completed'),
-    )
-    await expect(run.result).resolves.toEqual({
-      output: [{ type: 'text', text: 'parent-free answer' }],
-      stopReason: 'completed',
-    })
-    expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ cwd }))
-    await run.dispose()
-  })
-
-  it('cancels the parent-free driver and waits for process exit on disposal', async () => {
-    const controller = new AbortController()
-    const child = fakeChild({ exitOnTerminate: false })
-    const starting = startCodexAppServerRun({
-      prompt: [{ type: 'text', text: 'cancel parent-free task' }],
-      signal: controller.signal,
-    }, runSpec(child))
-    const initialize = await child.peer.nextMethod('initialize')
-    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
-    await child.peer.nextMethod('initialized')
-    const threadStart = await child.peer.nextMethod('thread/start')
-    child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
-    const run = await starting
-    const turnStart = await child.peer.nextMethod('turn/start')
-    child.peer.respond(turnStart, { turn: { id: 'turn-1' } })
-    await nextTask()
-
-    controller.abort(new Error('cancel parent-free task'))
-    await expect(run.result).resolves.toEqual({
-      output: [],
-      stopReason: 'aborted',
-    })
-    expect(await child.peer.nextMethod('turn/interrupt')).toMatchObject({
-      params: { threadId: 'thread-1', turnId: 'turn-1' },
-    })
-
-    let disposed = false
-    const disposal = run.dispose().then(() => { disposed = true })
-    await nextTask()
-    expect(child.terminate).toHaveBeenCalledOnce()
-    expect(disposed).toBe(false)
-    child.settle({ exitCode: null, signal: 'SIGTERM' })
-    await disposal
-    expect(child.waitForExit).toHaveBeenCalledOnce()
-    expect(disposed).toBe(true)
-  })
-
   it('spawns the fixed app-server, publishes after thread creation, and disposes once', async () => {
     const child = fakeChild()
     const spawn = vi.fn(() => child.handle)
@@ -1608,7 +1489,7 @@ describe('run lifecycle and quiescence', () => {
     void starting.then(() => { published = true })
     const initialize = await child.peer.nextMethod('initialize')
     expect(published).toBe(false)
-    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
     await child.peer.nextMethod('initialized')
     const threadStart = await child.peer.nextMethod('thread/start')
     expect(published).toBe(false)
@@ -1996,7 +1877,6 @@ describe('run lifecycle and quiescence', () => {
     await expect(spawnFailure).rejects.not.toThrow('SECRET_TOKEN')
 
     const asyncSpawnFailureChild = fakeChild({
-      pid: -1,
       doneError: new Error('SECRET_TOKEN async spawn failure'),
     })
     const asyncSpawnFailure = startCodexRun(
@@ -2006,7 +1886,8 @@ describe('run lifecycle and quiescence', () => {
     await expect(asyncSpawnFailure)
       .rejects.toThrow(expectedFailureDiagnostic('initialize', 'unknown'))
     await expect(asyncSpawnFailure).rejects.not.toThrow('SECRET_TOKEN')
-    expect(asyncSpawnFailureChild.terminate).not.toHaveBeenCalled()
+    expect(asyncSpawnFailureChild.terminate).toHaveBeenCalledOnce()
+    expect(asyncSpawnFailureChild.waitForExit).toHaveBeenCalledOnce()
 
     const child = fakeChild()
     const starting = startCodexRun(request(), runSpec(child))
@@ -2059,7 +1940,7 @@ describe('run lifecycle and quiescence', () => {
     const threadChild = fakeChild()
     const threadStarting = startCodexRun(request(), runSpec(threadChild))
     const threadInitialize = await threadChild.peer.nextMethod('initialize')
-    threadChild.peer.respond(threadInitialize, { userAgent: 'codex-cli 0.149.1' })
+    threadChild.peer.respond(threadInitialize, { userAgent: 'codex-cli 0.153.4' })
     await threadChild.peer.nextMethod('initialized')
     const invalidThread = await threadChild.peer.nextMethod('thread/start')
     threadChild.peer.respond(invalidThread, { thread: { id: '', ephemeral: true } })
@@ -2074,7 +1955,7 @@ describe('run lifecycle and quiescence', () => {
     )
     const exitedThreadInitialize = await exitedThreadChild.peer.nextMethod('initialize')
     exitedThreadChild.peer.respond(exitedThreadInitialize, {
-      userAgent: 'codex-cli 0.149.1',
+      userAgent: 'codex-cli 0.153.4',
     })
     await exitedThreadChild.peer.nextMethod('initialized')
     await exitedThreadChild.peer.nextMethod('thread/start')
@@ -2093,7 +1974,7 @@ describe('run lifecycle and quiescence', () => {
     const eofBeforeCloseInitialize = await eofBeforeCloseChild.peer
       .nextMethod('initialize')
     eofBeforeCloseChild.peer.respond(eofBeforeCloseInitialize, {
-      userAgent: 'codex-cli 0.149.1',
+      userAgent: 'codex-cli 0.153.4',
     })
     await eofBeforeCloseChild.peer.nextMethod('initialized')
     await eofBeforeCloseChild.peer.nextMethod('thread/start')
@@ -2111,7 +1992,7 @@ describe('run lifecycle and quiescence', () => {
     const stderrStarting = startCodexRun(request(), runSpec(stderrChild))
     const stderrInitialize = await stderrChild.peer.nextMethod('initialize')
     stderrChild.stderr.emit('error', new Error('startup stderr broke'))
-    stderrChild.peer.respond(stderrInitialize, { userAgent: 'codex-cli 0.149.1' })
+    stderrChild.peer.respond(stderrInitialize, { userAgent: 'codex-cli 0.153.4' })
     await stderrChild.peer.nextMethod('initialized')
     const stderrThreadStart = await stderrChild.peer.nextMethod('thread/start')
     stderrChild.peer.respond(stderrThreadStart, {
@@ -2137,7 +2018,7 @@ describe('run lifecycle and quiescence', () => {
       runSpec(child),
     )
     const initialize = await child.peer.nextMethod('initialize')
-    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
     await child.peer.nextMethod('initialized')
     const threadStart = await child.peer.nextMethod('thread/start')
     expect(threadStart.params).toEqual({
@@ -2236,6 +2117,7 @@ describe('run lifecycle and quiescence', () => {
 
   it('uses the registered provider config and logs flattened errors', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const child = fakeChild()
@@ -2292,7 +2174,7 @@ describe('run lifecycle and quiescence', () => {
       signal: new AbortController().signal,
     })
     const initialize = await child.peer.nextMethod('initialize')
-    child.peer.respond(initialize, { userAgent: 'codex-cli 0.149.1' })
+    child.peer.respond(initialize, { userAgent: 'codex-cli 0.153.4' })
     await child.peer.nextMethod('initialized')
     const threadStart = await child.peer.nextMethod('thread/start')
     expect(threadStart.params).toEqual({
@@ -2346,7 +2228,7 @@ describe('run lifecycle and quiescence', () => {
 })
 
 describe('disposeCodexChild', () => {
-  it('closes stdin, terminates, and waits for the managed tree', async () => {
+  it('closes stdin, terminates, and waits for the managed range', async () => {
     const child = fakeChild()
     const wire = defaultWire(child)
     const end = vi.spyOn(child.toChild, 'end')
@@ -2357,7 +2239,7 @@ describe('disposeCodexChild', () => {
     expect(child.waitForExit).toHaveBeenCalledWith()
   })
 
-  it('does not finish disposal before the managed tree exits', async () => {
+  it('does not finish disposal before the managed range is empty', async () => {
     const child = fakeChild({ exitOnTerminate: false })
     const wire = defaultWire(child)
     let disposed = false
@@ -2381,19 +2263,18 @@ describe('disposeCodexChild', () => {
       .resolves.toBeUndefined()
   })
 
-  it('handles a spawn-level failure with no process tree', async () => {
+  it('still runs idempotent cleanup when target startup rejects', async () => {
     const child = fakeChild({
-      pid: -1,
       doneError: new Error('spawn failed'),
     })
     const wire = defaultWire(child)
     await expect(disposeCodexChild(wire, child.handle))
       .resolves.toBeUndefined()
-    expect(child.terminate).not.toHaveBeenCalled()
-    expect(child.waitForExit).not.toHaveBeenCalled()
+    expect(child.terminate).toHaveBeenCalledOnce()
+    expect(child.waitForExit).toHaveBeenCalledOnce()
   })
 
-  it('reports tree-wait failure with safe teardown facts', async () => {
+  it('reports range-wait failure with safe teardown facts', async () => {
     const child = fakeChild({
       waitForExitError: new Error('SECRET_TOKEN wait failure'),
     })

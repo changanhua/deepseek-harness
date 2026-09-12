@@ -6,7 +6,6 @@
 /** Discriminant codes carried by every {@link DomainError}. */
 export type DomainErrorCode =
   | 'already-open'
-  | 'backend-requirement-unsatisfied'
   | 'facet-unsupported'
   | 'invalid-record'
   | 'missing-key'

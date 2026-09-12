@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-`dsh-subagent-codex` 注册由 Profile 命名、默认名称为 `codex` 的 Codex subagent 提供方，它在发起委派的会话工作区中通过官方 app-server 协议运行真实的 Codex 子 agent（智能体）。每次接受的运行以 `app-server --stdio` 启动包内 Codex wrapper，创建一个临时 Codex 线程，提交一个自包含文本任务，并通过共享的 subagent 结果约定返回选定的最终答案——或独立的安全失败诊断。该提供方作为可选的 Profile Bundle 发布：安装会带入官方 wrapper 与一个兼容的原生平台载荷，而注册的提供方在绑定工具调用前保持休眠。原生 Codex 配置与身份验证继续是权威来源，Profile 选择的 `permissionMode` 会映射进线程的 approval、reviewer 与 sandbox 字段。当子 agent 应该是与父 harness 完全隔离的真实 Codex 会话时，选择它。
+当委派工作需要在父会话工作区中的真实无人值守 Codex 会话内运行时，把 `@deepseek-ai/dsh-subagent-codex` 安装进 Profile。每次委派都会为一个自包含文本任务使用全新且隔离的 Codex 线程，并且只返回其最终答案或安全失败诊断。原生 Codex 配置和身份验证继续作为权威来源，而 `permissionMode` 选择非交互式审批和沙箱行为。Bundle 会提供兼容的原生 Codex 载荷，但只有配置委派工具后才会向模型公开相应能力。
 
 ## 目录
 
@@ -47,20 +47,19 @@ dsh --profile <name>
 | `model` | Codex 原生设置 | 为本提供方实例的每个线程固定的可选非空模型名称；省略时不发送 app-server 覆盖 |
 | `env` | `{}` | 叠加在已清理凭据的父环境之上的显式子进程环境 |
 | `permissionMode` | `never` | 为本提供方实例的每个线程固定的原生非交互审批与沙箱模式 |
-| `disposeGraceMs` | `3000` | 共享进程树责任方各终止层级之间的宽限 |
+| `disposeGraceMs` | `3000` | 共享 managed-range owner 各终止层级之间的宽限 |
 
 | `permissionMode` 值 | `thread/start` 字段 | 原生行为 |
 |---|---|---|
-| `read-only` | `approvalPolicy: never`、`sandbox: read-only` | 线程获得 Codex 的只读 sandbox，且不会发起审批请求；原生 sandbox 会拒绝尝试写入工作区的操作 |
-| `never` | `approvalPolicy: never`；省略 sandbox | 永不请求审批；执行失败会在原生 sandbox 下返回模型 |
+| `never` | `approvalPolicy: never`；省略 sandbox | 永不请求审批；在原生 sandbox 下发生的执行失败会返回给模型 |
 | `approve-for-me` | `approvalPolicy: on-request`、`approvalsReviewer: auto_review`、`sandbox: workspace-write` | 由 Codex 自动评审权限请求，不等待人工 |
 | `dangerously-bypass-approvals-and-sandbox` | `approvalPolicy: never`、`sandbox: danger-full-access` | 跳过审批与 sandbox；必须显式选择该值 |
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-subagent-codex)是每个受支持字段及其 JSDoc 的穷尽式真源。已配置的 `model` 会原样传给每个临时 `thread/start`；省略时保留原生模型选择。Host 会在启动线程前固定 `permissionMode`，模型没有能替换其 approval 或 sandbox 字段的参数。提供方不会发现模型、改写别名、选择 `modelProvider` 或 `serviceTier`，也不会设置 fallback。具有凭证特征的环境变量会在显式 `env` 覆盖生效前被移除，因此供子进程使用的 API 密钥必须在该配置中显式提供。
+生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-subagent-codex)是每个受支持字段及其 JSDoc 的穷尽式真源。已配置的 `model` 会原样传给每个临时 `thread/start`；省略时保留原生模型选择。提供方不会发现模型、改写别名、选择 `modelProvider` 或 `serviceTier`，也不会设置 fallback。具有凭证特征的环境变量会在显式 `env` 覆盖生效前被移除，因此供子进程使用的 API 密钥必须在该配置中显式提供。
 
 ### 暴露工具
 
-每个委派工具行指名一个提供方，并需要独立的 `toolName`，因此模型看到的是静态工具，而不是动态提供方选择器。Web 的 `standard` preset 直接公开 `subagent_codex`，其 Web Host 选择 `approve-for-me`；其他表层或自定义 preset 通过组合下方工具行并选择自己的 Profile 级权限模式来公开该工具。
+每个委派工具行指名一个提供方，并需要独立的 `toolName`，因此模型看到的是静态工具，而不是动态提供方选择器。完整 Agent Preset 携带对应的默认工具行并设置 `disabled: true`；复制一个 preset 后删除该字段，即可只向由该副本组装的 agent 暴露 `subagent_codex`。
 
 ```yaml
 - id: jobs
@@ -86,40 +85,6 @@ dsh --profile <name>
 
 省略 optional dependencies、当前平台不受支持或所选载荷缺失的安装会让提供方保持休眠，并在第一次委派时于 `initialize` 阶段以安全 `unknown` 类别和任何已观测进程结果失败；不存在宿主 CLI 回退。原始 wrapper 文本只保留在 Host stderr。被取消的运行以 `aborted` 结算。
 
-### 受信 Host 库边界
-
-已经负责准入、工作区选择与进程策略的受信 Host 插件可以导入 `@deepseek-ai/dsh-subagent-codex/app-server-run`。这是具体的库边界，而非 Cordis 服务或能力 seam。调用方必须在启动前提供确切任务、取消信号、cwd、权限模式、环境覆盖、终止宽限，以及共享子进程服务的 `spawn` 操作：
-
-```ts
-import { startCodexAppServerRun } from '@deepseek-ai/dsh-subagent-codex/app-server-run'
-
-declare const signal: AbortSignal
-declare const cwd: string
-declare const ctx: {
-  subprocess: {
-    spawn: Parameters<typeof startCodexAppServerRun>[0]['spawn']
-  }
-}
-
-const run = await startCodexAppServerRun({
-  prompt: [{ type: 'text', text: 'Implement the admitted work packet.' }],
-  signal,
-  cwd,
-  permissionMode: 'never',
-  env: {},
-  disposeGraceMs: 3_000,
-  spawn: spec => ctx.subprocess.spawn(spec),
-})
-try {
-  const result = await run.result
-  // Persist the result before accepting the delivery.
-} finally {
-  await run.dispose()
-}
-```
-
-返回的 handle 只公开 `result` 与 `dispose()`；它不会公开 Agent、Session、运行 id、提供方注册或内部 wire／进程 helper。包根入口刻意不重新导出该启动函数，因此消费者必须显式选择这个具名子路径。
-
 -----
 
 <a id="understand-the-implementation"></a>
@@ -141,14 +106,13 @@ try {
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：config schema、提供方注册 |
-| [`src/app-server-run.ts`](src/app-server-run.ts) | 面向受信 Host 插件的受支持 parent-free 边界 |
 | [`src/run.ts`](src/run.ts) | 运行生命周期、轮次执行、结果选择与诊断 |
 | [`src/wire.ts`](src/wire.ts) | 最小的 app-server JSON-RPC 协议实现 |
 | [`cordis.patch.yml`](cordis.patch.yml) | 注册休眠提供方的 Profile patch 层 |
 
 ### 运行流程
 
-一次启动只接受非空的文本块序列。提供方根据父 Session 确定子级 cwd；受信 Host 子路径则要求显式 cwd 与 signal，而不构造伪造父级。两条路径都经子进程 seam spawn 固定命令，完成 `initialize` → `initialized` 握手，把选择的权限模式与可选模型映射为官方 `thread/start` 字段并与 `{ cwd, ephemeral: true }` 一起发送，且仅在 Codex 返回有效的临时线程后发布运行。已发布的结果恰好启动一个轮次，只接受与此次运行的线程和轮次匹配的通知，并等待权威的 `turn/completed` 终态。以最后一条 `phase: "final_answer"` 的 `agentMessage` 为准；若 Codex 没有发出明确的最终阶段，则以最后一条 `phase: null` 的消息作为兼容性回退。成功完成的轮次若没有非空白答案，结果也会判为错误。失败轮次使用粗粒度类别 `limit`、`access-policy`、`service`、`transport`、`product-error`、`invalid-result` 或 `unknown`；app-server 提前退出使用 `process`，适用的连接与 stream 失败保留数值 `httpStatusCode`。
+一次启动只接受非空的文本块序列，并根据父会话确定子级 cwd。它经子进程 seam spawn 固定命令，完成 `initialize` → `initialized` 握手，把 Profile 选择的模式与可选模型映射为官方 `thread/start` 字段并与 `{ cwd, ephemeral: true }` 一起发送，且仅在 Codex 返回有效的临时线程后发布运行。已发布的结果恰好启动一个轮次，只接受与此次运行的线程和轮次匹配的通知，并等待权威的 `turn/completed` 终态。以最后一条 `phase: "final_answer"` 的 `agentMessage` 为准；若 Codex 没有发出明确的最终阶段，则以最后一条 `phase: null` 的消息作为兼容性回退。成功完成的轮次若没有非空白答案，结果也会判为错误。失败轮次使用粗粒度类别 `limit`、`access-policy`、`service`、`transport`、`product-error`、`invalid-result` 或 `unknown`；app-server 提前退出使用 `process`，适用的连接与 stream 失败保留数值 `httpStatusCode`。
 
 </details>
 
@@ -188,7 +152,7 @@ Codex 子级会在一个全新的临时线程中，以单个轮次接收这些�
 
 #### 模型看到什么
 
-通过 `dsh-tool-subagent`，前台调用会让父级模型看到选定的 Codex 最终答案；若结果未完成，错误中会包含终止原因和可选的安全诊断。该诊断可以区分粗粒度行动类别、协议阶段、适用的数值 HTTP status 和已观测的进程结果，而不复制产品正文或 stderr。后台调用会先返回 Job id；随后通用作业控制面会送达完成通知，通过 `job_output` 公开同一最终答案或失败状态 detail，并允许 `job_kill` 请求取消。Codex 的过程说明、推理（reasoning）、工具活动、原始 stderr、工作区差异、用量信息、产品标识符、命令、路径和协议载荷均不会复制到父会话。
+通过 `dsh-tool-subagent`，前台调用会让父级模型看到选定的 Codex 最终答案；若结果未完成，错误中会包含终止原因和可选的安全诊断。该诊断可以区分粗粒度行动类别、协议阶段、适用的数值 HTTP status 和已观测的进程结果，而不复制产品正文或 stderr。后台调用会先返回 Job id；随后通用作业控制面会送达完成通知，通过 `job_output` 公开同一最终答案或失败状态详情，并允许 `job_kill` 请求取消。Codex 的过程说明、推理（reasoning）、工具活动、原始 stderr、工作区差异、用量信息、产品标识符、命令、路径和协议载荷均不会复制到父会话。
 
 #### Token 影响
 
@@ -209,11 +173,10 @@ Codex 子级会在一个全新的临时线程中，以单个轮次接收这些�
 - **静态选择实例**——Profile 配置项固定提供方名称、可选模型与工具绑定；调用无法动态选择或修改提供方与模型，而且每个公开工具都需要唯一的 `toolName`。
 - **身份验证与账户状态仍由原生机制管理**——Bundle 会提供 CLI，但不会创建账户、登录、信任项目或改写 Codex 设置；配置与身份验证失败会公开其生命周期阶段与安全的 `unknown` 回退，而不会增加单独的公开分类体系。
 - **委派时必须存在原生平台载荷**——省略 optional dependencies 的安装、不受支持的平台以及缺失或损坏的载荷都会在第一次运行时失败；不会回退到宿主 CLI。
-- **兼容性由开发证据锁定**——若要从已验证的 0.149.1 协议基线升级，必须重新生成上游 schema 证据，并重新运行握手、答案选择、审批、取消、无密钥真实产品以及带密钥的 DeepSeek 随机数测试。
-- **没有人工审批路径**——已知的无人值守审批请求会被拒绝，未知服务器请求会以默认拒绝方式使运行失败；四种 Profile 模式都不会创建 DSH 交互通道或逐次调用 allow 策略。
+- **兼容性由开发证据锁定**——若要从已验证的 0.153.4 协议基线升级，必须重新生成上游 schema 证据，并重新运行握手、答案选择、审批、取消、无密钥真实产品以及带密钥的 DeepSeek 随机数测试。
+- **没有人工审批路径**——已知的无人值守审批请求会被拒绝，未知服务器请求会以默认拒绝方式使运行失败；三种 Profile 模式都不会创建 DSH 交互通道或逐次调用 allow 策略。
 - **assistant 载荷仅包含最终文本**——失败运行可以额外公开独立的安全诊断；推理、过程说明、中间消息、工具通信、用量信息、原始 stderr 和工作区差异不会进入父会话，通用 Job id、通知与状态来自共享作业运行时。
 - **没有可选的共享能力**——对于本提供方，共享服务会拒绝 `agentOptions`、输出 schema、子任务角色设定、工具筛选和 harness 深度强制约束。
-- **parent-free 子路径仅供受信 Host 使用**——它不会注册 Cordis 服务、准入工作、选择工作区、清理环境或授予权限；调用它的 Host 插件必须提前结算这些策略。
 - **没有按实际经过时间触发的超时或副作用回滚**——长时间运行的工作由调用方取消，且取消前已更改的文件或外部系统不会恢复原状。
 
 <a id="dev-note"></a>
@@ -225,6 +188,8 @@ Codex 子级会在一个全新的临时线程中，以单个轮次接收这些�
 本开发备注是维护者的工作上下文：开放问题与尚未决定的探索方向。它明确不具权威性——已交付的行为与限制以上文和包代码为准。
 
 - **载荷体积披露**——当前 darwin-arm64 平台载荷压缩后约 114 MB、解包后约 282 MB；这些是披露数字，不是安装阈值。
-- **版本锁定的协议**——运行时依赖锁定为 `@openai/codex@0.149.1`；升级需要重新生成上游 schema 证据并重新运行带凭证的随机数测试。
+- **版本锁定的协议**——运行时依赖锁定为 `@openai/codex@0.153.4`；升级需要重新生成上游 schema 证据并重新运行带凭证的随机数测试。
 
 </details>
+
+**运行时不变式：** 不发布伴生入口。生命周期配对属于共享 subagent service，受管范围的所有权属于 subprocess service。
