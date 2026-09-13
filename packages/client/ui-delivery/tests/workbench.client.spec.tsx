@@ -4,6 +4,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ComponentType } from 'react'
+import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DispatchBindingId,
@@ -208,6 +209,7 @@ async function components() {
 }
 
 const standardHooks = {
+  useResource: (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource'],
   useSessions: (() => { throw new Error('unused') }) as DeliveryWorkspaceProps['useSessions'],
   useSessionPendingInteraction: (() => { throw new Error('unused') }) as DeliveryWorkspaceProps['useSessionPendingInteraction'],
   useWorkspaces: (() => { throw new Error('unused') }) as DeliveryWorkspaceProps['useWorkspaces'],
