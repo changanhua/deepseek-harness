@@ -206,7 +206,10 @@ export interface SessionMaybeStandardProps {}
  * Declared empty here; each owning UI adapter merges the global selector hooks
  * that shared page composition consumes.
  */
-export interface GlobalStandardProps {}
+export interface GlobalStandardProps {
+  /** Optional global panel selector retained for downstream UI contracts. */
+  usePanelInfo?: <T>(selector: (info: { readonly activePanelId: string | null }) => T) => T
+}
 
 /**
  * The session id type as `ui-session`'s SessionStandardProps merge declares it
