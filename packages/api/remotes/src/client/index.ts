@@ -138,7 +138,7 @@ export type {
   LlmConfigurableProvider, LlmDiscoveredModel,
   LlmModelDiscoveryRequest, LlmProviderInfo,
 } from '@deepseek-ai/dsh-llm/types'
-export type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+export type { RemoteErrorCode, RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 // Reference-discovery result vocabulary for the fileReferences and
 // sessionReferenceResolver namespaces.
 export type { FileReferenceCandidate } from '@deepseek-ai/dsh-file-reference/types'
