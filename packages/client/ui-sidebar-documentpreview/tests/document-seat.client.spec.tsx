@@ -41,7 +41,7 @@ async function boot() {
   rt.ctx.provide('locale', locale)
   rt.slots.installLocale(locale)
   await rt.declare({
-    rightbar: { kind: 'single', scope: 'root' },
+    rightbar: { kind: 'single', scope: 'session-maybe' },
     'conversation.session.header.corner': { kind: 'single', scope: 'session' },
   })
   await rt.sessions.add({ id: SESSION })

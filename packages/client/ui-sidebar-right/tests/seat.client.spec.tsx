@@ -68,7 +68,7 @@ async function mountSeat(viewportWidth = 1440, canShow = true, entryCount = 0) {
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   await runtime.declare({
-    'rightbar': { kind: 'single', scope: 'root' },
+    'rightbar': { kind: 'single', scope: 'session-maybe' },
     'conversation.session.header.corner': { kind: 'single', scope: 'session' },
   })
   await runtime.sessions.add({ id: SESSION })
