@@ -29,6 +29,8 @@ export type PanelActions = BoundActions<ReturnType<typeof createLayoutStore>>
  * only).
  */
 export interface ILayout {
+  selectPanel(id: MainPanelId | null): void
+  beginNavigation(): AbortSignal
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
   toggleSidebar(): void
   /** Open the details panel (no-op when already open). */
@@ -47,6 +49,7 @@ export interface ILayout {
 export class LayoutController implements ILayout {
   #panels: PanelActions | undefined
   #initialModule: string | undefined
+  #navigation = new AbortController()
 
   /**
    * Adopt the root entry's bound store actions. Called from the root
@@ -70,6 +73,14 @@ export class LayoutController implements ILayout {
   openModule(module: string): void {
     if (this.#panels === undefined) this.#initialModule = module
     else this.#panels.openModule(module)
+  }
+
+  selectPanel(_id: MainPanelId | null): void {}
+
+  beginNavigation(): AbortSignal {
+    this.#navigation.abort()
+    this.#navigation = new AbortController()
+    return this.#navigation.signal
   }
 
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
