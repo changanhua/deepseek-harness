@@ -63,6 +63,23 @@ async function harness() {
   return { controller, ctx, root, storageDomain }
 }
 
+async function registryHarness() {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-workspace-controller-ready-')))
+  tempDirs.push(root)
+  const ctx = new Context()
+  roots.push(ctx)
+  await ctx.plugin(SessionStore)
+  await ctx.plugin(Storage)
+  ctx.storage.backend.register('memory', new MemoryStorageBackend())
+  const storageDomain = new DomainFacility(ctx, { backend: 'memory', routes: {} })
+  ctx.storage.mount('domain', storageDomain)
+  ctx.provide('storageDomain', storageDomain)
+  ctx.provide('sessionPersistence', { list: () => Promise.resolve([]) } as never)
+  await ctx.plugin(WorkspaceRegistry)
+  ctx.provide('typert', { lookups: { configure: () => () => {} }, contexts: { configureHost: () => () => {} } } as never)
+  return { ctx, root }
+}
+
 function stageDir(root: string, name: string): string {
   const path = join(root, name)
   mkdirSync(path, { recursive: true })
@@ -225,6 +242,26 @@ describe('WorkspaceController commands', () => {
 })
 
 describe('WorkspaceController follow', () => {
+  it('does not construct the feed before the Workspace registry is ready', async () => {
+    const { ctx } = await registryHarness()
+    const ready = deferred<undefined>()
+    vi.spyOn(ctx.workspaceRegistry, 'ready').mockReturnValue(ready.promise)
+    const list = vi.spyOn(ctx.workspaceRegistry, 'list').mockImplementation(() => {
+      throw new Error('workspace registry is not started yet')
+    })
+
+    const delayed = new WorkspaceController(ctx)
+    expect(list).not.toHaveBeenCalled()
+    ready.resolve(undefined)
+    list.mockRestore()
+    const abort = new AbortController()
+    await expect(nextFrame(delayed.follow(abort.signal)[Symbol.asyncIterator]())).resolves.toEqual({
+      type: 'baseline',
+      value: { items: [], archivedSessionIds: [] },
+    })
+    abort.abort()
+  })
+
   it('seeds a new feed from existing rows and rejects an inconsistent registry commit', async () => {
     const { ctx, root } = await harness()
     const existing = await ctx.workspaceRegistry.create(stageDir(root, 'existing'))

@@ -243,6 +243,25 @@ describe('plugin apply', () => {
     })
     await fiber.dispose()
   })
+
+  it('exposes the active domain facility to sibling consumers', async () => {
+    const ctx = new Context()
+    await ctx.plugin(Storage)
+    const DomainPlugin = await import('../src/index.ts')
+    const fiber = await ctx.plugin(DomainPlugin, { backend: 'memory' })
+    const backend = new MemoryStorageBackend()
+    ctx.storage.backend.register('memory', backend)
+    const disposeBackend = ctx.provide(storageBackendServiceKey('memory'), backend)
+    const seen: unknown[] = []
+    const consumer = ctx.inject(['storageDomain'], (consumerCtx) => {
+      seen.push(consumerCtx.storageDomain)
+    })
+    await vi.waitFor(() => { expect(seen).toHaveLength(1) })
+    expect(seen[0]).toBe(ctx.storageDomain)
+    disposeBackend()
+    await consumer.dispose()
+    await fiber.dispose()
+  })
 })
 
 describe('table and snapshot reads', () => {

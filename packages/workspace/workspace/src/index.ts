@@ -91,6 +91,10 @@ const compareHeaders = (left: SessionHeader, right: SessionHeader): number =>
 export class WorkspaceRegistry extends Service {
   static inject = ['storageDomain', 'sessionPersistence']
 
+  private readonly readyPromise: Promise<void>
+  private readyResolve!: () => void
+  private readyReject!: (reason: unknown) => void
+
   private table?: KvTable<WorkspaceId, WorkspaceRecord>
   private global?: DomainGlobal<WorkspaceDomainState>
   private state?: WorkspaceDomainState
@@ -112,30 +116,48 @@ export class WorkspaceRegistry extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'workspaceRegistry')
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve
+      this.readyReject = reject
+    })
+    // A failed startup is reported by the owning Fiber; keep the internal
+    // readiness rejection from becoming a process-level unhandled rejection.
+    void this.readyPromise.catch(() => {})
+  }
+
+  /** Resolve after the durable Workspace state and entity index are initialized. */
+  ready(): Promise<void> {
+    return this.readyPromise
   }
 
   /** Open the domain, finish bootstrap when required, and rebuild the ordered cache. */
   protected async [Service.init](): Promise<void> {
-    const domain = await this.ctx.storageDomain.open(workspaceDomainSpec)
-    this.ctx.effect(() => () => domain.close(), 'workspace.domainClose')
-    this.table = domain.table('workspaces')
-    this.global = domain.global
-    this.state = domain.global.get()
+    try {
+      const domain = await this.ctx.storageDomain.open(workspaceDomainSpec)
+      this.ctx.effect(() => () => domain.close(), 'workspace.domainClose')
+      this.table = domain.table('workspaces')
+      this.global = domain.global
+      this.state = domain.global.get()
 
-    await this.recoverPendingMutation()
-    this.validateStoredState(this.state)
-    if (!this.state.initialized) {
-      const headers = await this.listStoredHeaders()
-      await this.replaceHeaderIndex(headers)
-      await this.bootstrap(headers)
-    } else if (this.table.size > 0) {
-      await this.replaceHeaderIndex(await this.listStoredHeaders())
+      await this.recoverPendingMutation()
+      this.validateStoredState(this.state)
+      if (!this.state.initialized) {
+        const headers = await this.listStoredHeaders()
+        await this.replaceHeaderIndex(headers)
+        await this.bootstrap(headers)
+      } else if (this.table.size > 0) {
+        await this.replaceHeaderIndex(await this.listStoredHeaders())
+      }
+
+      await this.indexLiveSessions()
+      this.validateStoredState(this.requireState())
+      this.rebuildEntities()
+      this.reportFilteredCandidates()
+      this.readyResolve()
+    } catch (error) {
+      this.readyReject(error)
+      throw error
     }
-
-    await this.indexLiveSessions()
-    this.validateStoredState(this.requireState())
-    this.rebuildEntities()
-    this.reportFilteredCandidates()
   }
 
   /**

@@ -1,6 +1,6 @@
 /** Host Workspace Remote owner: explicit commands and reconnect-safe state. */
 
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { WorkspaceCommands } from './commands.ts'
 import { DirectoryPickerController } from './directory-picker.ts'
@@ -35,18 +35,26 @@ export class WorkspaceController extends TypertRemoteService {
   static inject = ['typert', 'workspaceRegistry']
 
   private readonly commands: WorkspaceCommands
-  private readonly feed: WorkspaceFeed
+  private readonly feedReady: Promise<void>
+  private feed!: WorkspaceFeed
 
   /** @param ctx - Host context containing the Workspace registry. */
   constructor(ctx: Context) {
     super(ctx, 'workspaceController', { namespace: 'workspace' })
     this.commands = new WorkspaceCommands(ctx)
-    this.feed = new WorkspaceFeed(ctx)
+    this.feedReady = ctx.workspaceRegistry.ready().then(() => {
+      this.feed = new WorkspaceFeed(ctx)
+    })
     // This package is the Loader entry for both Remote owners it hosts: the
     // directory-picking seam is abstract and never an entry itself. The child
     // stays pending until a picking backend is composed, so a host without one
     // registers no picking namespace instead of answering an unservable verb.
     ctx.plugin(DirectoryPickerController)
+  }
+
+  /** Wait until the registry has built its durable index before exposing Feed. */
+  protected async [Service.init](): Promise<void> {
+    await this.feedReady
   }
 
   /**
@@ -116,7 +124,12 @@ export class WorkspaceController extends TypertRemoteService {
    */
   @Remote({ mode: 'stream' })
   follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame> {
-    return this.feed.follow(signal)
+    return this.followWhenReady(signal)
+  }
+
+  private async *followWhenReady(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame> {
+    await this.feedReady
+    yield* this.feed.follow(signal)
   }
 }
 
