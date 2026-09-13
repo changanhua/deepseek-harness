@@ -27,7 +27,7 @@ async function fixture(cold?: ColdSession, queryFailure?: SessionQueryError) {
         inheritedEventCount: 0,
         access: 'read',
         read: async () => ({ eventState: 'detached', events: cold.events }),
-        close: async () => { cold.dispose() },
+        close: async () => { (cold.dispose as unknown as () => void)() },
       }),
     } as never)
   }
