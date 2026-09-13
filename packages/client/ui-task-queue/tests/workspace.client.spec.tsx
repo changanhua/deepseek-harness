@@ -5,6 +5,7 @@ import type { QueueWorkView, QueueWorkSummaryView } from '@changanhua/dsh-task-q
 import { QueueWorkspace } from '../src/client/QueueWorkspace.tsx'
 import { zh, type TaskQueueKey } from '../src/client/locales.ts'
 import type { QueueSnapshot, QueueStore } from '../src/client/store.ts'
+import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 
 afterEach(() => {
   cleanup()
@@ -22,6 +23,8 @@ const t = (key: string, params?: Record<string, unknown>): string => {
     return JSON.stringify(value)
   })
 }
+const usePanelInfo = (selector => selector({ activePanelId: null })) as GlobalStandardProps['usePanelInfo']
+const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
 
 /** One complete snapshot with fixed timestamps and per-case overrides. */
 function makeSnapshot(overrides: Partial<QueueSnapshot> = {}): QueueSnapshot {
@@ -92,6 +95,7 @@ function renderWorkspace(snapshot: QueueSnapshot, overrides: Parameters<typeof m
       useSessions={() => { throw new Error('unused') }}
       useSessionPendingInteraction={() => { throw new Error('unused') }}
       useWorkspaces={() => { throw new Error('unused') }}
+      usePanelInfo={usePanelInfo} useResource={useResource}
       t={t}
     />,
   )
