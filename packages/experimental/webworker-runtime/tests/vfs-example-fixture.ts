@@ -13,7 +13,7 @@ import {
 } from '@deepseek-ai/dsh-session'
 import {
   eventLines, generationLogFilename, projectKey, toHeaderLine,
-} from '@deepseek-ai/dsh-session-persistence-jsonl/src/format'
+} from '@deepseek-ai/dsh-session-persistence-jsonl/src/format.ts'
 import { projectionCacheDomainSpec } from '@deepseek-ai/dsh-session-projection-cache'
 import { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
 
