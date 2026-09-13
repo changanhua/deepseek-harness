@@ -13,11 +13,13 @@ import workObservatoryRemote from '@changanhua/dsh-host-work-observatory/remote'
 import contentRemote from '@changanhua/dsh-content-remote/remote'
 import contentBrowser from '@changanhua/dsh-content-browser/remote'
 import messageFeedbackRemote from '@deepseek-ai/dsh-message-feedback/remote'
+import sessionFeedbackRemote from '@deepseek-ai/dsh-command-feedback/remote'
 import sessionReferencesRemote from '@deepseek-ai/dsh-session-reference/remote'
 import subagentsRemote from '@deepseek-ai/dsh-subagent/remote'
 import taskQueueRemote from '@changanhua/dsh-task-queue-remote/remote'
 import sessionRemote from '@deepseek-ai/dsh-api-session-controller/remote'
 import workspaceRemote from '@deepseek-ai/dsh-api-workspace-controller/remote'
+import workspaceFilesRemote from '@deepseek-ai/dsh-api-workspace-files/remote'
 import type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 
 export type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
@@ -39,6 +41,7 @@ export type {} from '@changanhua/dsh-host-work-observatory/remote'
 export type {} from '@changanhua/dsh-content-remote/remote'
 export type {} from '@changanhua/dsh-content-browser/remote'
 export type {} from '@deepseek-ai/dsh-message-feedback/remote'
+export type {} from '@deepseek-ai/dsh-command-feedback/remote'
 export type {} from '@deepseek-ai/dsh-session-reference/remote'
 export type {} from '@deepseek-ai/dsh-subagent/remote'
 export type {} from '@changanhua/dsh-task-queue-remote/remote'
@@ -47,6 +50,8 @@ export type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 export type * from '@deepseek-ai/dsh-api-session-controller/types'
 export type {} from '@deepseek-ai/dsh-api-workspace-controller/remote'
 export type * from '@deepseek-ai/dsh-api-workspace-controller/types'
+export type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
+export type * from '@deepseek-ai/dsh-api-workspace-files/types'
 export type { SessionJob as JobView } from '@deepseek-ai/dsh-api-session-controller/types'
 // The forwarded-event allowlist's selection seat: without it in the consumer's
 // compilation face `TypertRemoteEvent` is `never` and every `$on` call fails.
@@ -72,10 +77,12 @@ export type {} from '@deepseek-ai/dsh-api-session-controller/types'
 export type {
   ConnectionHandle, ConnectionSinks, ContentBlock,
   MessageId,
-  RpcError, RpcId, RpcRequest, RpcResponse, RpcResult, SessionId,
+  ConnectionRpcFailure as RpcError,
+  RpcId, RpcRequest, RpcResponse, RpcResult, SessionId,
   StreamChunk,
 } from '@deepseek-ai/dsh-client-connection/client'
 export type {} from '@deepseek-ai/dsh-api-gateway/client'
+export type { RemoteHostFacts } from '@deepseek-ai/dsh-api-gateway/client'
 export type {} from '@deepseek-ai/dsh-cordis-host-runner/remote'
 
 // The payload vocabulary of the selected namespaces, re-exported so a Client
@@ -128,9 +135,10 @@ export type {
 } from '@deepseek-ai/dsh-settings/types'
 // Provider registry and discovery vocabulary for the llm namespace.
 export type {
-  LlmConfigurableProvider, LlmDiscoveredModel, LlmModelDiscoveryError,
+  LlmConfigurableProvider, LlmDiscoveredModel,
   LlmModelDiscoveryRequest, LlmProviderInfo,
 } from '@deepseek-ai/dsh-llm/types'
+export type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 // Reference-discovery result vocabulary for the fileReferences and
 // sessionReferenceResolver namespaces.
 export type { FileReferenceCandidate } from '@deepseek-ai/dsh-file-reference/types'
@@ -138,14 +146,7 @@ export type { SessionReferenceMentionCandidate } from '@deepseek-ai/dsh-session-
 
 /** Failure vocabulary exposed by the assembled Client data layer. */
 export type ClientFailure =
-  | import('@deepseek-ai/dsh-client-connection/client').RpcError
-  | import('@deepseek-ai/dsh-agent-presets/types').AgentPresetError
-  | import('@deepseek-ai/dsh-api-session-controller/types').SessionError
-  | import('@deepseek-ai/dsh-api-settings-controller/types').CredentialError
-  | import('@deepseek-ai/dsh-api-settings-controller/types').SettingsError
-  | import('@deepseek-ai/dsh-llm/types').LlmModelDiscoveryError
-  | import('@deepseek-ai/dsh-subagent/client').SubagentControlError
-  | import('@deepseek-ai/dsh-api-workspace-controller/types').WorkspaceError
+  import('@deepseek-ai/dsh-typert-protocol').RemoteFailure
 
 /** Success or failure returned by Client operations spanning both API families. */
 export type ClientResult<T> =
@@ -173,8 +174,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     for (const contribution of [
       agentPresetsRemote, commandsRemote, settingsControllerRemote, goalsRemote, llmRemote, dynamicRemote,
       pluginInventoryRemote, capabilityRegistryRemote, workObservatoryRemote, contentRemote, contentBrowser,
-      messageFeedbackRemote, sessionReferencesRemote,
-      subagentsRemote, taskQueueRemote, sessionRemote, workspaceRemote,
+      messageFeedbackRemote, sessionFeedbackRemote, sessionReferencesRemote,
+      subagentsRemote, taskQueueRemote, sessionRemote, workspaceRemote, workspaceFilesRemote,
     ]) {
       disposers.push(await ctx.remote.$mount(contribution))
     }

@@ -920,6 +920,12 @@ importers:
       '@deepseek-ai/dsh-api-workspace-controller':
         specifier: workspace:^
         version: link:../workspace-controller
+      '@deepseek-ai/dsh-api-workspace-files':
+        specifier: workspace:^
+        version: link:../workspace-files
+      '@deepseek-ai/dsh-command-feedback':
+        specifier: workspace:^
+        version: link:../../feedback/command-feedback
       '@deepseek-ai/dsh-commands':
         specifier: workspace:^
         version: link:../../interaction/commands
