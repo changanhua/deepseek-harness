@@ -184,6 +184,11 @@ const BASE_PATCH_PATH = join(REPO_ROOT, 'packages/bundle/base/cordis.patch.yml')
 const WEB_PATCH_PATH = join(REPO_ROOT, 'packages/bundle/web-app/cordis.patch.yml')
 /** The installation anchor whose dependency surface the profile module fallback mirrors. */
 const INSTALL_ANCHOR = join(REPO_ROOT, 'apps/cli/package.json')
+/** Bundle manifests whose patch layers are applied directly to this scaffold. */
+const BUNDLE_INSTALL_ANCHORS = [
+  join(REPO_ROOT, 'packages/bundle/base/package.json'),
+  join(REPO_ROOT, 'packages/bundle/web-app/package.json'),
+] as const
 
 // Replay publishes the provider catalog the gateway routes to (providers
 // mode, never catch-all: with llm-deepseek disabled no adapter exists, so a
@@ -686,7 +691,8 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   try {
     process.chdir(workspaceCwd)
     const profileDir = join(harnessHome, 'profiles', 'scaffold')
-    const extraLayers: Profile['layers'] = await Promise.all((options.extraInstallAnchors ?? []).map(async (anchor) => {
+    const installAnchors = [...BUNDLE_INSTALL_ANCHORS, ...(options.extraInstallAnchors ?? [])]
+    const extraLayers: Profile['layers'] = await Promise.all(installAnchors.map(async (anchor) => {
       const manifest = JSON.parse(await readFile(anchor, 'utf8')) as { name?: unknown }
       if (typeof manifest.name !== 'string' || manifest.name === '') {
         throw new Error(`web scaffold extra install anchor has no package name: ${anchor}`)
