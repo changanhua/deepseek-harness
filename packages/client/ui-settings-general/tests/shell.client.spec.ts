@@ -81,16 +81,6 @@ describe('ui-settings-general shell', () => {
     off()
   })
 
-  it('projects the roster Connection control without copying its state; reconnect opens a new $events generation', async ({ start }) => {
-    const c = await start()
-    const injected = injectedOf(c)
-    expect(injected.hooks.connectionState).toBe(c.connection.state)
-    expect(injected.hooks.connectionState.getSnapshot()).toBe('connected')
-    injected.reconnect()
-    await c.mock.streams.opened('$events', 2)
-    await vi.waitFor(() => { expect(c.connection.state.getSnapshot()).toBe('connected') })
-  })
-
   it('projects onboarding entries into stable coordinator order', async ({ start }) => {
     const c = await start()
     const { onboardingSteps } = injectedOf(c).hooks

@@ -1,4 +1,5 @@
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
+import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import { describe, expect, it, vi } from 'vitest'
 import { ModelCatalogDirectory } from '../src/client/catalog.ts'
@@ -10,7 +11,7 @@ const catalog = (model: string): ModelCatalog => ({
   failures: [],
 })
 
-function directory(models: () => Promise<unknown>): ModelCatalogDirectory {
+function directory(models: () => Promise<RemoteResult<ModelCatalog>>): ModelCatalogDirectory {
   // The providing remote face, scripted down to the one method it calls.
   return new ModelCatalogDirectory({ modelCatalog: models })
 }

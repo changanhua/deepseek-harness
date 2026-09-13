@@ -6,6 +6,7 @@ import type { SettingsRootComponentProps } from '../src/client/shell-contract.ts
 import { SettingsRoot } from '../src/client/SettingsRoot.tsx'
 import { SettingsNavigatorService } from '../src/client/settings-navigator.ts'
 import { Context } from '@deepseek-ai/cordis'
+import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 
 afterEach(cleanup)
 
@@ -23,6 +24,8 @@ const SEAT_CONTENT: Record<string, string> = {
 type AttentionSnapshot = Parameters<Parameters<SettingsRootComponentProps['useSessionPendingInteraction']>[0]>[0]
 const noAttention: AttentionSnapshot = new Map()
 const useSessionPendingInteraction: SettingsRootComponentProps['useSessionPendingInteraction'] = selector => selector(noAttention)
+const usePanelInfo = ((selector) => selector({ activePanelId: null })) as GlobalStandardProps['usePanelInfo']
+const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
 
 function mount({
   wide = true,
@@ -58,6 +61,7 @@ function mount({
   const unusedHook = (() => { throw new Error('unused by SettingsRoot') }) as never
   const props: SettingsRootComponentProps = {
     useSessions,
+    usePanelInfo, useResource,
     useSessionPendingInteraction,
     useWorkspaces: unusedHook,
     ...(navigator !== undefined ? { navigator } : {}),

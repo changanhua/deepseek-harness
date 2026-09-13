@@ -18,7 +18,7 @@ afterEach(async () => {
 })
 
 function SidebarFrame({ renderSlot }: PropsRenderSlots<'sidebar'>) {
-  return renderSlot('sidebar', { collapsed: false, width: 300 })
+  return renderSlot('sidebar', { collapsed: false, width: 300, activeModule: 'conversation', setActiveModule: () => {} })
 }
 
 async function bench() {

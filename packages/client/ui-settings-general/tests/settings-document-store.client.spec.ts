@@ -91,7 +91,7 @@ describe('SettingsDocumentStore', () => {
       },
     } as never
     const mirror = new SettingsDescribeMirror(ctx)
-    const caught = new SettingsDocumentStore(ctx.remote.settings, mirror)
+    const caught = new SettingsDocumentStore((ctx as { remote: { settings: object } }).remote.settings as never, mirror)
     await caught.load()
     expect(caught.store.getSnapshot()).toMatchObject({ status: 'unavailable', error: 'offline' })
     await mirror.load()

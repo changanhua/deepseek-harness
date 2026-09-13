@@ -209,6 +209,7 @@ async function components() {
 }
 
 const standardHooks = {
+  usePanelInfo: ((selector) => selector({ activePanelId: null })) as GlobalStandardProps['usePanelInfo'],
   useResource: (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource'],
   useSessions: (() => { throw new Error('unused') }) as DeliveryWorkspaceProps['useSessions'],
   useSessionPendingInteraction: (() => { throw new Error('unused') }) as DeliveryWorkspaceProps['useSessionPendingInteraction'],

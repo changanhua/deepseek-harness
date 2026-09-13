@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { isOrdinary, ordinarySessionsOf, resolveTarget } from '../src/client/controller.ts'
 import { createSkillsFeatureController } from '../src/client/skills-feature-store.ts'
@@ -86,7 +87,7 @@ describe('SkillsSnapshotController', () => {
   })
 
   it('keeps last-good snapshot and surfaces an error on a failed refresh', async () => {
-    const remote = { management: vi.fn(async () => ({ ok: false as const, error: { code: 'internal', message: 'boom', details: {} } })) } as SkillManagementRemoteFace
+    const remote = { management: vi.fn(async () => ({ ok: false as const, error: new RemoteError('gateway/internal', 'boom', {}) })) } as unknown as SkillManagementRemoteFace
     const controller = createSkillsSnapshotController(remote)
     controller.load(S1)
     await vi.waitFor(() => expect(controller.source.getSnapshot().status).toBe('error'))

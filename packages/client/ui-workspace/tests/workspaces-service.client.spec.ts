@@ -10,7 +10,7 @@ import type { ClientRemote, DirectoryListing } from '@deepseek-ai/dsh-api-remote
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
-import { LayoutController } from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { ILayout } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DirectoryBrowseError, UiWorkspaceService } from '../src/client/navigation.ts'
 
@@ -192,14 +192,13 @@ interface BenchOptions {
 
 function bench(options: BenchOptions = {}) {
   const ctx = new Context()
-  const layout = new LayoutController({
-    selectPanel: vi.fn(), retainMainPanels: vi.fn(),
-    setSidebar: vi.fn(), toggleSidebar: vi.fn(), setViewportWidth: vi.fn(),
-    setRightbar: vi.fn(), openRightbar: vi.fn(), closeRightbar: vi.fn(),
-  }, () => true)
+  const layout: ILayout = {
+    selectPanel: vi.fn(), beginNavigation: vi.fn(() => new AbortController().signal),
+    toggleSidebar: vi.fn(), openDetails: vi.fn(), closeDetails: vi.fn(),
+    openRightbar: vi.fn(), closeRightbar: vi.fn(), openModule: vi.fn(),
+  }
   const selectPanel = vi.spyOn(layout, 'selectPanel')
   ctx.provide('layout', layout)
-  ctx.effect(() => () => { layout.dispose() })
   const directoryPicker = new FakeDirectoryPicker()
   const workspaces = new FakeWorkspaces(options.workspaces ?? workspaceState([], [], 'pending'))
   const sessions = new FakeSessions(options.sessions ?? sessionState([], undefined, 'pending'))
