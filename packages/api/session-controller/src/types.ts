@@ -192,6 +192,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
       readonly existingCwd?: string
     }
     'session/agent-busy': { readonly reason: string }
+    'session/request-conflict': { readonly sessionId: SessionId; readonly requestId: SessionRequestId }
     'session/invalid-time-zone': { readonly value: string }
     'session/workspace-attach-failed': { readonly sessionId: SessionId; readonly workspaceId: string }
     'agent-preset/conflict': {
@@ -377,7 +378,7 @@ export type SessionRequestId = Branded<'session-request-id'>
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     /** Browser prompt correlation and optional Host-validated time zone. */
-    'user-rpc': { kind: 'user'; rpcId: SessionRequestId; clientTimeZone?: string }
+    'user-rpc': { kind: 'user'; rpcId: SessionRequestId; rpcDigest?: string; clientTimeZone?: string }
   }
 }
 

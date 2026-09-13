@@ -78,7 +78,7 @@ function prompt(overrides: Partial<SessionPromptRequest> = {}): SessionPromptReq
 }
 
 async function expectFailure(operation: Promise<unknown>, code: string): Promise<void> {
-  await expect(operation).rejects.toMatchObject({ failure: { code } })
+  await expect(operation).rejects.toMatchObject({ code: code.includes('/') ? code : `session/${code}` })
 }
 
 describe('Session prompt idempotency', () => {

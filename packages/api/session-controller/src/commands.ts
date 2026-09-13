@@ -1,6 +1,6 @@
 /** Session commands whose activation policy is explicit at each Remote method. */
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent, ModelSelection as AgentModelSelection } from '@deepseek-ai/dsh-agent'
@@ -299,7 +299,9 @@ export class SessionCommandController {
    * @param request - Session identity, prompt content, source metadata, and delivery mode.
    * @returns acknowledgement that the Agent accepted the prompt.
    */
-  async prompt(request: SessionPromptRequest): Promise<SessionPromptValue> {
+  async prompt(input: SessionPromptRequest, signal?: AbortSignal): Promise<SessionPromptValue> {
+    signal?.throwIfAborted()
+    const request = structuredClone(input)
     if (!hasPromptContent(request.content)) {
       throw new RemoteError(
         'gateway/bad-request',
@@ -318,22 +320,35 @@ export class SessionCommandController {
       )
     }
     const agent = await this.resolveAgent(request.sessionId)
-    if (hasPromptRequest(agent, request.requestId)) return { accepted: true }
-    const selection = this.agents.selectionFor(agent).current
-    if (!routeServed(this.ctx, selection.provider)) {
-      throw new RemoteError(
-        'session/model-unavailable',
-        `no adapter serves provider "${selection.provider}"; select a model for this session`,
-        { provider: selection.provider, model: selection.model },
-      )
-    }
-    const source: MessageSource = {
-      kind: 'user',
-      rpcId: request.requestId,
-      ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
-    }
-    const hasImage = request.content.some(part => part.type === 'image')
-    const admit = async (): Promise<SessionPromptValue> => {
+    const rpcDigest = promptDigest(request, clientTimeZone)
+    return this.agents.serializeImageAdmission(agent, async () => {
+      signal?.throwIfAborted()
+      const existing = promptRequestState(agent.session.snapshotEvents(), agent.session.inheritedEventCount, request.requestId, rpcDigest)
+      if (existing === 'conflict') {
+        throw new RemoteError('session/request-conflict', 'requestId was already used for a different prompt', {
+          sessionId: agent.session.id,
+          requestId: request.requestId,
+        })
+      }
+      if (existing === 'match') {
+        await this.ctx.sessions.flush(agent.session)
+        return { accepted: true }
+      }
+      const selection = this.agents.selectionFor(agent).current
+      if (!routeServed(this.ctx, selection.provider)) {
+        throw new RemoteError(
+          'session/model-unavailable',
+          `no adapter serves provider "${selection.provider}"; select a model for this session`,
+          { provider: selection.provider, model: selection.model },
+        )
+      }
+      const source: MessageSource = {
+        kind: 'user',
+        rpcId: request.requestId,
+        rpcDigest,
+        ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
+      }
+      const hasImage = request.content.some(part => part.type === 'image')
       try {
         if (hasImage) {
           const current = this.agents.selectionFor(agent).current
@@ -352,6 +367,7 @@ export class SessionCommandController {
         )
         const content = await this.ctx.attachments.admitPromptContent(admission.content)
         const message: UserMessage = createUserMessage({ content, source })
+        signal?.throwIfAborted()
         if (this.ctx.agents.get(agent.id) !== agent) {
           throw new RemoteError(
             'session/not-found',
@@ -363,6 +379,7 @@ export class SessionCommandController {
         if (request.mode === 'steer') agent.steer(message)
         else agent.followup(message)
         binding.commit()
+        await this.ctx.sessions.flush(agent.session)
       } catch (error) {
         if (remoteErrorOf(error) !== undefined) throw error
         if (error instanceof AttachmentError) {
@@ -371,8 +388,8 @@ export class SessionCommandController {
         throw new RemoteError('session/agent-busy', 'prompt rejected', { reason: String(error) })
       }
       return { accepted: true }
-    }
-    return hasImage ? this.agents.serializeImageAdmission(agent, admit) : admit()
+      return { accepted: true }
+    })
   }
 
   /**
@@ -582,19 +599,49 @@ function resolvePromptFileReceipts(
   return { content: resolved, receiptIds: [...receiptIds] }
 }
 
-function hasPromptRequest(agent: Agent, requestId: SessionRequestId): boolean {
-  const matches = (message: UserMessage): boolean => {
-    const source = message.source
-    return source.kind === 'user' && 'rpcId' in source && source.rpcId === requestId
+/** Compute a stable digest for one browser prompt request. */
+function promptDigest(request: SessionPromptRequest, clientTimeZone: string | undefined): string {
+  const input = {
+    ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
+    content: request.content.map(part => {
+      if (part.type === 'text') return { type: part.type, text: part.text }
+      if (part.type === 'file') return { type: part.type, receiptId: part.receiptId }
+      return {
+        type: part.type,
+        data: part.data,
+        mediaType: part.mediaType,
+        ...(part.name === undefined ? {} : { name: part.name }),
+      }
+    }),
+    mode: request.mode,
   }
-  if (agent.inbox.nextTurn.some(matches) || agent.inbox.nextStep.some(matches)) return true
-  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-  return agent.session.snapshotEvents().some((event) => {
-    if (event.type !== 'user/message') return false
-    const source = event.data.source
-    return source.kind === 'user' && 'rpcId' in source && source.rpcId === requestId
-  })
+  return createHash('sha256').update(JSON.stringify(input)).digest('hex')
 }
+
+/** Find a request id in non-seed durable messages and every durable inbox splice. */
+function promptRequestState(
+  events: readonly SessionEvent[],
+  inheritedEventCount: number,
+  requestId: SessionRequestId,
+  rpcDigest: string,
+): 'none' | 'match' | 'conflict' {
+  let found = false
+  for (const event of events.slice(inheritedEventCount)) {
+    const messages = event.type === 'user/message'
+      ? [event.data]
+      : event.type === 'agent/inbox/spliced'
+        ? event.data.inserted
+        : []
+    for (const message of messages) {
+      const source = message.source
+      if (source.kind !== 'user' || !('rpcId' in source) || source.rpcId !== requestId) continue
+      found = true
+      if (!('rpcDigest' in source) || source.rpcDigest !== rpcDigest) return 'conflict'
+    }
+  }
+  return found ? 'match' : 'none'
+}
+
 function imageBlockIn(
   content: unknown,
   match: (ref: ImageAttachmentRef) => boolean,
