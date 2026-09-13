@@ -88,6 +88,9 @@ const WEB_SEARCH_SELECTED_FACT = 'web.search-selected' as RuntimeFactKey
  * - No id configured, no usable provider → `WEB_PROVIDER_UNAVAILABLE`.
  */
 export class WebRuntime extends Service {
+  /** Settings must be ready before the constructor installs the Web section. */
+  static inject = ['settings']
+
   /**
    * Provider selection config. Operational env overrides feed the SAME fields:
    * `$DSH_WEB_SEARCH_PROVIDER` / `$DSH_WEB_FETCH_PROVIDER` are equivalent to

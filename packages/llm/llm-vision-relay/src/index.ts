@@ -26,7 +26,7 @@ import { CANONICAL_EVIDENCE, collectText } from './evidence.ts'
 import type { EvidenceDeriver, EvidenceEntry, EvidenceRequest } from './evidence.ts'
 
 export const name = 'llm-vision-relay'
-export const inject = ['llm']
+export const inject = ['llm', 'settings']
 
 const NS = settingsNamespace('llm-vision-relay')
 /** The one provider every composite route is served under. */

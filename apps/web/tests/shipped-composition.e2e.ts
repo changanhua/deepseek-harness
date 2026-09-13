@@ -35,7 +35,6 @@ const FILE_REFERENCE_PROMPT = fileURLToPath(new URL(
  */
 const EXPECTED_TOOLS = [
   'ask_user_question',
-  'bash',
   'create_goal',
   'edit',
   'exit_plan_mode',
@@ -45,7 +44,6 @@ const EXPECTED_TOOLS = [
   'job_list',
   'job_output',
   'list_agents',
-  'present',
   'ralph',
   'read',
   'read_image',
@@ -59,6 +57,19 @@ const EXPECTED_TOOLS = [
   'web_search',
   'workflow',
   'write',
+  'image_generate_enqueue',
+  'image_generate_enqueue_batch',
+  'runtime_inspect',
+  'subagent_codex',
+  'task_queue_cancel',
+  'task_queue_enqueue',
+  'task_queue_enqueue_batch',
+  'task_queue_kinds',
+  'task_queue_list',
+  'task_queue_result',
+  'task_queue_retry',
+  'task_queue_stats',
+  'task_queue_status',
 ]
 
 /**
@@ -142,19 +153,20 @@ it('assembles the shipped Web transport, catalog, guidance, and defaults', async
       "mode": "always",
     }
   `)
-  // The catalog belongs to an AGENT, not to the process: every model-facing row
-  // now lives in a preset mounted under one session's scope, so the global
-  // layer holds nothing and a caller must name the agent to see anything. This
-  // composes from the deployment default — what a session that names no preset
-  // gets — which is the shape this test has always been about.
-  expect(ctx.tools.schemas().map(schema => schema.name)).toEqual([])
+  // Image-generation admission tools are a base capability and therefore stay
+  // visible on the root catalog; the remaining model-facing tools are scoped
+  // to the mounted agent below.
+  expect(ctx.tools.schemas().map(schema => schema.name).sort()).toEqual([
+    'image_generate_enqueue',
+    'image_generate_enqueue_batch',
+  ])
   const handle = await ctx.agents.create({
     sessionId: SessionId('shipped-composition'),
     setup: agentCtx => ctx.agentPresets.mount(agentCtx).then(() => undefined),
   })
   try {
     const names = ctx.tools.schemas(handle.agent).map(schema => schema.name).sort()
-    expect(names.filter(name => !RIPGREP_TOOLS.includes(name))).toEqual(EXPECTED_TOOLS)
+    expect(names.filter(name => !RIPGREP_TOOLS.includes(name)).sort()).toEqual([...EXPECTED_TOOLS].sort())
     // The packaged ripgrep binary ships with the dependency, so the pair is a
     // fixed roster member on every host.
     expect(names.filter(name => RIPGREP_TOOLS.includes(name))).toEqual(RIPGREP_TOOLS)

@@ -880,12 +880,18 @@ importers:
 
   packages/api/remotes:
     dependencies:
+      '@deepseek-ai/dsh-deque':
+        specifier: workspace:^
+        version: link:../../util/deque
       '@deepseek-ai/dsh-scope':
         specifier: workspace:^
         version: link:../../core/scope
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
+      '@deepseek-ai/dsh-util-values':
+        specifier: workspace:^
+        version: link:../../util/values
     devDependencies:
       '@changanhua/dsh-content-browser':
         specifier: workspace:^
@@ -2099,12 +2105,18 @@ importers:
       '@deepseek-ai/dsh-api-workspace-controller':
         specifier: workspace:^
         version: link:../../api/workspace-controller
+      '@deepseek-ai/dsh-api-workspace-files':
+        specifier: workspace:^
+        version: link:../../api/workspace-files
       '@deepseek-ai/dsh-app-boot':
         specifier: workspace:^
         version: link:../../boot/app-boot
       '@deepseek-ai/dsh-client-connection':
         specifier: workspace:^
         version: link:../../client/connection
+      '@deepseek-ai/dsh-client-file-upload':
+        specifier: workspace:^
+        version: link:../../client/file-upload
       '@deepseek-ai/dsh-client-hmr':
         specifier: workspace:^
         version: link:../../client/hmr
@@ -2114,6 +2126,9 @@ importers:
       '@deepseek-ai/dsh-client-modules':
         specifier: workspace:^
         version: link:../../client/modules
+      '@deepseek-ai/dsh-client-resources':
+        specifier: workspace:^
+        version: link:../../client/resources
       '@deepseek-ai/dsh-client-ui-agent-preset':
         specifier: workspace:^
         version: link:../../client/ui-agent-preset
@@ -2165,6 +2180,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-model-selection':
         specifier: workspace:^
         version: link:../../client/ui-model-selection
+      '@deepseek-ai/dsh-client-ui-open-in-app':
+        specifier: workspace:^
+        version: link:../../client/ui-open-in-app
       '@deepseek-ai/dsh-client-ui-permission-presets':
         specifier: workspace:^
         version: link:../../client/ui-permission-presets
@@ -2177,6 +2195,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: workspace:^
         version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-schedule':
+        specifier: workspace:^
+        version: link:../../client/ui-schedule
       '@deepseek-ai/dsh-client-ui-session':
         specifier: workspace:^
         version: link:../../client/ui-session
@@ -2198,6 +2219,15 @@ importers:
       '@deepseek-ai/dsh-client-ui-sidebar':
         specifier: workspace:^
         version: link:../../client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-sidebar-documentpreview':
+        specifier: workspace:^
+        version: link:../../client/ui-sidebar-documentpreview
+      '@deepseek-ai/dsh-client-ui-sidebar-files':
+        specifier: workspace:^
+        version: link:../../client/ui-sidebar-files
+      '@deepseek-ai/dsh-client-ui-sidebar-right':
+        specifier: workspace:^
+        version: link:../../client/ui-sidebar-right
       '@deepseek-ai/dsh-client-ui-skill':
         specifier: workspace:^
         version: link:../../client/ui-skill
@@ -2252,6 +2282,9 @@ importers:
       '@deepseek-ai/dsh-host-frontend-static':
         specifier: workspace:^
         version: link:../../host/frontend-static
+      '@deepseek-ai/dsh-host-open-in-app':
+        specifier: workspace:^
+        version: link:../../host/open-in-app
       '@deepseek-ai/dsh-host-plugin-inventory':
         specifier: workspace:^
         version: link:../../host/plugin-inventory
@@ -2273,6 +2306,9 @@ importers:
       '@deepseek-ai/dsh-session-stats':
         specifier: workspace:^
         version: link:../../session/session-stats
+      '@deepseek-ai/dsh-session-turn-outline':
+        specifier: workspace:^
+        version: link:../../session/session-turn-outline
       '@deepseek-ai/dsh-storage-sqlite':
         specifier: workspace:^
         version: link:../../storage/storage-sqlite

@@ -550,6 +550,9 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
         includeUserRoot: false,
       },
     },
+    // The scaffold has no connected browser extension; keep the optional
+    // browser tool row dormant so standard preset mounting remains deterministic.
+    { id: 'tool-browser', disabled: true },
     { id: 'session-persistence-jsonl', config: { root: persistenceRoot } },
     // Content search is enabled here although the shipped bundles default it
     // off (`openAt: never`, pinned by apps/cli/tests/lazy-search-startup):
