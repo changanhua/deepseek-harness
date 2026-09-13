@@ -7,7 +7,7 @@ import { SettingsDocumentStore } from '../src/client/settings-document-store.ts'
 /** Store over a real mirror derived from the same scripted context. */
 function derivedDocumentStore(remote: object) {
   const ctx = { remote } as never
-  return new SettingsDocumentStore(ctx, new SettingsDescribeMirror(ctx))
+  return new SettingsDocumentStore((remote as { settings: object }).settings as never, new SettingsDescribeMirror(ctx))
 }
 
 function response(hasDocument = false) {
@@ -91,7 +91,7 @@ describe('SettingsDocumentStore', () => {
       },
     } as never
     const mirror = new SettingsDescribeMirror(ctx)
-    const caught = new SettingsDocumentStore(ctx, mirror)
+    const caught = new SettingsDocumentStore(ctx.remote.settings, mirror)
     await caught.load()
     expect(caught.store.getSnapshot()).toMatchObject({ status: 'unavailable', error: 'offline' })
     await mirror.load()

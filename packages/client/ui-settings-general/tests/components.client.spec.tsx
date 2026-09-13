@@ -18,7 +18,7 @@ const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({
 /** Store over a real mirror derived from the same scripted context. */
 function derivedDocumentStore(remote: object) {
   const ctx = { remote } as never
-  return new SettingsDocumentStore(ctx, new SettingsDescribeMirror(ctx))
+  return new SettingsDocumentStore((remote as { settings: object }).settings as never, new SettingsDescribeMirror(ctx))
 }
 import { en } from '../src/client/locales.ts'
 

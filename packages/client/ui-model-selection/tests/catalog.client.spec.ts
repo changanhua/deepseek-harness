@@ -11,8 +11,8 @@ const catalog = (model: string): ModelCatalog => ({
 })
 
 function directory(models: () => Promise<unknown>): ModelCatalogDirectory {
-  // The providing plugin's context, scripted down to the one method it calls.
-  return new ModelCatalogDirectory({ remote: { session: { modelCatalog: models } } } as never)
+  // The providing remote face, scripted down to the one method it calls.
+  return new ModelCatalogDirectory({ modelCatalog: models })
 }
 
 describe('ModelCatalogDirectory', () => {

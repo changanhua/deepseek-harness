@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noEmit": true,
+    "rootDir": "../..",
+    "types": ["node"]
+  },
+  "include": ["tests/**/*.ts", "tests/**/*.tsx"],
+  "exclude": [
+    "tests/**/*.expected.ts",
+    "tests/**/*.expected.e2e.ts"
+  ]
+}
