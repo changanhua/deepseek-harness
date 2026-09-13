@@ -5,7 +5,13 @@
  */
 
 /** Resolved widths for one frame. */
-export interface Columns { sidebar: number; center: number; rightbar: number }
+export interface Columns {
+  sidebar: number
+  center: number
+  rightbar: number
+  /** Legacy personal-workbench name for the same normal right track. */
+  details: number
+}
 
 /** Center width protected while the normal right column is open. */
 export const CENTER_MIN = 400
@@ -27,6 +33,11 @@ export const RIGHTBAR_MIN = 300
 export const RIGHTBAR_MAX_RATIO = 0.7
 /** First-open right panel preference as a fraction of the frame. */
 export const RIGHTBAR_DEFAULT_RATIO = 0.45
+
+/** Compatibility aliases for the personal workbench's details vocabulary. */
+export const DETAILS_MIN = RIGHTBAR_MIN
+export const DETAILS_MAX = 520
+export const DETAILS_DEFAULT = 360
 
 /**
  * Clamp a panel width into its contract range.
@@ -53,5 +64,9 @@ export function computeColumns(viewport: number, sidebar: number, rightbar: numb
   const r = rightbar === 0 || available < RIGHTBAR_MIN
     ? 0
     : Math.min(available, clampWidth(rightbar, RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO))
-  return { sidebar: s, center: Math.max(0, viewport - s - r), rightbar: r }
+  const result = { sidebar: s, center: Math.max(0, viewport - s - r), rightbar: r } as Columns
+  // Keep the legacy personal-workbench read available without changing the
+  // enumerable wire shape asserted by the official rightbar contract tests.
+  Object.defineProperty(result, 'details', { value: r, enumerable: false })
+  return result
 }

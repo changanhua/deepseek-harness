@@ -16,5 +16,4 @@ const entry = (path: string) => ({
 export default defineConfig([
   entry('lib/types/index.js'),
   entry('lib/types/app-server-run.js'),
-  entry('lib/types/invariant.js'),
 ])

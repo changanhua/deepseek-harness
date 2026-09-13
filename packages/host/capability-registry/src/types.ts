@@ -1,7 +1,16 @@
 /** Read-only payload types for the capability registry Remote projection. */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { JsonValue, SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+
+/** JSON-compatible value carried by the capability management Remote. */
+export type CapabilityJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly CapabilityJsonValue[]
+  | { readonly [key: string]: CapabilityJsonValue }
 
 /** Opaque identifier for one MCP server entry within a snapshot. */
 export type McpServerEntryId = Branded<'McpServerEntryId'>
@@ -81,7 +90,7 @@ export interface SkillManagementOrigin {
   readonly kind: string
   readonly provider: string
   readonly layerLabel: string
-  readonly details?: Readonly<Record<string, JsonValue>>
+  readonly details?: Readonly<Record<string, CapabilityJsonValue>>
 }
 
 /** Read-only operation flags; this Remote exposes no mutation methods. */
@@ -110,7 +119,7 @@ export interface SkillDiagnostic {
   readonly provider?: string
   readonly rootId?: SkillRootId
   readonly location?: string
-  readonly details?: Readonly<Record<string, JsonValue>>
+  readonly details?: Readonly<Record<string, CapabilityJsonValue>>
 }
 
 /** Complete read-only management snapshot for one viewing session. */
