@@ -61,7 +61,7 @@ if (import.meta.main) {
   const files = cordisConfigFiles(root)
 
   for (const file of files) {
-    const document = loadCordisYaml(readFileSync(resolve(root, file), 'utf8'))
+    const document = loadConfigDocument(file)
     if (!isUnknownArray(document)) {
       errors.push(`${file}: root must be a Loader entry array`)
       continue
@@ -162,8 +162,17 @@ function validatePresetPlaneSeparation(): string[] {
 
 /** Every entry of one config file, or an empty list when it is not an entry array. */
 function loadEntries(file: string): unknown[] {
-  const document = loadCordisYaml(readFileSync(resolve(root, file), 'utf8'))
+  const document = loadConfigDocument(file)
   return isUnknownArray(document) ? document : []
+}
+
+/** Load one config, following the compact relative-path fixture form used by profile tests. */
+function loadConfigDocument(file: string): unknown {
+  const absolute = resolve(root, file)
+  const document = loadCordisYaml(readFileSync(absolute, 'utf8'))
+  if (typeof document !== 'string' || document.trim() === '') return document
+  const target = resolve(dirname(absolute), document.trim())
+  return loadCordisYaml(readFileSync(target, 'utf8'))
 }
 
 /**
