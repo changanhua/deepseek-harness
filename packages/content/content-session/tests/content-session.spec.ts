@@ -20,12 +20,14 @@ async function fixture(cold?: ColdSession, queryFailure?: SessionQueryError) {
   await ctx.plugin(SessionStore)
   if (cold !== undefined) {
     ctx.provide('sessionPersistence', {
-      borrowSession: async () => ({
-        source: 'prepared',
-        inspection: { meta: cold.header, events: cold.events },
-        revision: 'test',
-        preparedSession: {},
-        [Symbol.dispose]: cold.dispose,
+      stat: async () => ({ header: cold.header, revision: 'test' }),
+      open: async () => ({
+        id: (cold.header as { id: SessionId }).id,
+        header: cold.header,
+        inheritedEventCount: 0,
+        access: 'read',
+        read: async () => ({ eventState: 'detached', events: cold.events }),
+        close: async () => { cold.dispose() },
       }),
     } as never)
   }
@@ -82,16 +84,16 @@ describe('content-session capture source resolver', () => {
     const dispose = vi.fn()
     const message = assistant([{ type: 'text', text: 'cold body' }])
     const { ctx, resolver } = await fixture({
-      header: { version: 0, id: SessionId('cold'), createdAt: 0, cwd: '/project', title: 'Stored title' },
+      header: { version: 3, id: SessionId('cold'), createdAt: 0, isSeeded: false, cwd: '/project' },
       events: [{
-        type: 'assistant/message', seq: 7, time: 0, surfaceOp: 'append',
-        data: { turn: 1, step: 1, message },
+        type: 'assistant/message', seq: 0, time: 0, surfaceOp: 'append',
+        data: { turn: 1, step: 1, message, stream: [] },
       }],
       dispose,
     })
 
-    await expect(resolver.resolve({ operationId: 'capture', sessionId: 'cold', messageId: '7' }, allow, new AbortController().signal))
-      .resolves.toMatchObject({ title: 'Stored title', body: 'cold body' })
+    await expect(resolver.resolve({ operationId: 'capture', sessionId: 'cold', messageId: '0' }, allow, new AbortController().signal))
+      .resolves.toMatchObject({ body: 'cold body' })
     expect(dispose).toHaveBeenCalledOnce()
     await ctx.fiber.dispose()
   })
