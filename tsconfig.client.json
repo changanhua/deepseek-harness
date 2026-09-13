@@ -71,6 +71,7 @@
     { "path": "./packages/client/ui-chat" },
     { "path": "./packages/client/ui-conversation" },
     { "path": "./packages/client/ui-tool" },
+    { "path": "./packages/code-runtime/code-runtime-worker-thread/tsconfig.json" },
     { "path": "./packages/client/ui-deliverables/tsconfig.client.json" },
     { "path": "./packages/client/ui-delivery" },
     { "path": "./packages/client/ui-workflow-run" },
