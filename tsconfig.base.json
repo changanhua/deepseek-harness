@@ -299,7 +299,9 @@
       "@deepseek-ai/dsh-util-time": ["./packages/util/time/src"],
       "@deepseek-ai/dsh-http-proxy": ["./packages/util/http-proxy/src"],
       "@deepseek-ai/dsh-command-feedback/types": ["./packages/feedback/command-feedback/src/types.ts"],
+      "@deepseek-ai/dsh-message-feedback/types": ["./packages/feedback/message-feedback/src/types.ts"],
       "@deepseek-ai/dsh-api-workspace-files/types": ["./packages/api/workspace-files/src/types.ts"],
+      "@deepseek-ai/dsh-tool-present/types": ["./packages/fs/tool-present/src/types.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@changanhua/dsh-command-task-queue": ["./packages/task-queue/command-task-queue/src"],
       "@changanhua/dsh-command-task-queue/invariant": ["./packages/task-queue/command-task-queue/src/invariant.ts"],

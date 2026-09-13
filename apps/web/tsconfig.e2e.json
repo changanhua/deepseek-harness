@@ -9,7 +9,7 @@
     "rootDir": "../..",
     "types": ["node"]
   },
-  "include": ["tests/**/*.ts", "tests/**/*.tsx"],
+  "include": ["tests/**/*.ts", "tests/**/*.tsx", "tests/**/*.d.ts"],
   "exclude": [
     "tests/**/*.expected.ts",
     "tests/**/*.expected.e2e.ts"
