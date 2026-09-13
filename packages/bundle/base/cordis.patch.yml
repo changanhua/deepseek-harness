@@ -575,3 +575,9 @@
     # choice.
     - id: llm-deepseek
       name: '@deepseek-ai/dsh-llm-deepseek'
+
+    # Composite routes that accept images by deriving visual evidence through a
+    # vision model first, then dispatch the text-only request to the target route.
+    # Mounted dormant until a `llm-vision-relay:` settings section supplies routes.
+    - id: llm-vision-relay
+      name: '@deepseek-ai/dsh-llm-vision-relay'
