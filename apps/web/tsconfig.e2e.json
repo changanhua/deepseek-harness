@@ -9,7 +9,12 @@
     "rootDir": "../..",
     "types": ["node"]
   },
-  "include": ["tests/**/*.ts", "tests/**/*.tsx", "tests/**/*.d.ts"],
+  "include": [
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "tests/**/*.d.ts",
+    "../../packages/client/*/src/css-modules.d.ts"
+  ],
   "exclude": [
     "tests/**/*.expected.ts",
     "tests/**/*.expected.e2e.ts"
