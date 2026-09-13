@@ -150,6 +150,7 @@ export function apply(ctx: ClientContext): void {
       yield ctx.slots.register({
         name: 'rightbar',
         children: { 'rightbar.session': { kind: 'single', scope: 'session' } },
+        inject: () => ({ width: 0, viewportWidth: 0, canShow: false }),
       }, RightbarRoot)
       yield ctx.slots.register({
         name: 'rightbar.session',

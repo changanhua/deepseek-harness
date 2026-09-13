@@ -1,5 +1,6 @@
 /** Root-scoped controller for the right Sidebar's Session content. */
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { UsePanelInfo } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '../contract/slots.ts'
 
 /**
@@ -9,8 +10,8 @@ import type {} from '../contract/slots.ts'
  */
 export function RightbarRoot({
   usePanelInfo, SessionProvider, renderSlot, width, viewportWidth, canShow,
-}: PropsRuntime<'rightbar'> & PropsRenderSlots<'rightbar.session'>) {
-  const visible = usePanelInfo(info => info.activePanelId === null)
+}: PropsRuntime<'rightbar'> & PropsRenderSlots<'rightbar.session'> & { usePanelInfo?: UsePanelInfo }) {
+  const visible = (usePanelInfo ?? (selector => selector({ activePanelId: null })))(info => info.activePanelId === null)
   if (!visible) return null
   return (
     <SessionProvider>

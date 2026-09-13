@@ -1,9 +1,10 @@
 /** Browser title selection follows the active main panel without subscribing the frame. */
 import { useEffect } from 'react'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { UseSessions } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { UsePanelInfo } from './service.ts'
 
 /** Props for the browser title projection. */
-export type DocumentTitleProps = Pick<PropsRuntime<'root'>, 'useSessions' | 'usePanelInfo'> & {
+export type DocumentTitleProps = { useSessions?: UseSessions; usePanelInfo?: UsePanelInfo } & {
   /** Build-configured or localized product title. */
   productTitle: string
 }
@@ -15,8 +16,8 @@ export type DocumentTitleProps = Pick<PropsRuntime<'root'>, 'useSessions' | 'use
  * @returns No rendered content.
  */
 export function DocumentTitle({ useSessions, usePanelInfo, productTitle }: DocumentTitleProps): null {
-  const showSessionTitle = usePanelInfo(info => info.activePanelId === null)
-  const title = useSessions((state) => {
+  const showSessionTitle = usePanelInfo?.(info => info.activePanelId === null) ?? false
+  const title = useSessions?.((state) => {
     const current = state.current
     return !showSessionTitle || current === undefined ? undefined : state.byId[current]?.title
   })

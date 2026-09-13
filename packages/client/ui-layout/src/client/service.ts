@@ -10,6 +10,14 @@
  */
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type { createLayoutStore } from './stores.ts'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+
+/** Stable panel identity exposed to global UI slots. */
+export type MainPanelId = string
+/** Global panel selection snapshot. */
+export interface PanelInfo { readonly activePanelId: MainPanelId | null }
+/** Selector hook over the global panel selection. */
+export type UsePanelInfo = SnapshotSelectorHook<PanelInfo>
 
 /** The layout store's bound action set (framework-baked, draft params peeled). */
 export type PanelActions = BoundActions<ReturnType<typeof createLayoutStore>>
@@ -27,6 +35,10 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Compatibility alias used by the downstream rightbar package. */
+  openRightbar(track?: boolean, fullscreen?: boolean): void
+  /** Compatibility alias used by the downstream rightbar package. */
+  closeRightbar(): void
   /** Open a module without toggling; an initial request waits for root mounting. */
   openModule(module: string): void
 }
@@ -73,6 +85,14 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  openRightbar(_track?: boolean, _fullscreen?: boolean): void {
+    this.openDetails()
+  }
+
+  closeRightbar(): void {
+    this.closeDetails()
   }
 
   #require(): PanelActions {

@@ -26,7 +26,7 @@ import { ThemePresenter } from './theme-presenter.ts'
 // OwnerShare contracts below are the render-side halves registrants compose
 // against; the frame components and the store factory are package-internal.
 export { LayoutController } from './service.ts'
-export type { ILayout } from './service.ts'
+export type { ILayout, MainPanelId, PanelInfo, UsePanelInfo } from './service.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -75,6 +75,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * `session` scope, and `ctx.layout` owns whether the column is open.
      */
     'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
+    /** Downstream rightbar name retained as a wire-compatible alias. */
+    'rightbar': { kind: 'single'; scope: 'session-maybe'; owner: RightbarOwnerProps }
     /**
      * Frame-wide floating layer, above every column and outside their scroll
      * containers. Deliberately generic and unowned by any feature: a badge, a
@@ -123,6 +125,13 @@ export interface ConvOwnerProps {}
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
 
+/** Rightbar owner share retained for the personal downstream package. */
+export interface RightbarOwnerProps {
+  width: number
+  viewportWidth: number
+  canShow: boolean
+}
+
 /** Module-view owner share: entries render only while active (ring dispatch via `only`). */
 export interface ShellViewOwnerProps {}
 
@@ -146,6 +155,7 @@ export function apply(ctx: ClientContext): void {
         'sidebar': { kind: 'single', scope: 'root' },
         'conversation': { kind: 'single', scope: 'session-maybe' },
         'details': { kind: 'single', scope: 'session' },
+        'rightbar': { kind: 'single', scope: 'session-maybe' },
         'shell.overlay': { kind: 'list', scope: 'root' },
         'shell.view': { kind: 'list', scope: 'root' },
       },

@@ -24,7 +24,7 @@ import css from './AppFrame.module.css'
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay' | 'shell.view'>
+  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'rightbar' | 'shell.overlay' | 'shell.view'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
   & PropsLocale<'common'>
 
@@ -227,6 +227,7 @@ export function AppFrame({
         </CenterColumn>
         <DetailsColumn>
           <SessionProvider>{renderSlot('details', {})}</SessionProvider>
+          <SessionProvider>{renderSlot('rightbar', { width: cols.details, viewportWidth: viewport, canShow: cols.details > 0 })}</SessionProvider>
         </DetailsColumn>
       </>
       <div className={css.overlayLayer} data-shell-overlay>
