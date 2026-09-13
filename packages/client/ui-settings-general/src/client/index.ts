@@ -74,7 +74,7 @@ export function apply(ctx: ClientContext): void {
   const connection = ctx.get('connection') as ConnectionHandle
   // The shared SettingsScope mirror updates after document commits and reconnects.
   const documentController = connection.isLoopback
-    ? new SettingsDocumentStore(ctx.remote, ctx.settingsScope.describe())
+    ? new SettingsDocumentStore(ctx.remote as unknown as ClientContext, ctx.settingsScope.describe())
     : undefined
   const documentInjected = documentController === undefined
     ? undefined

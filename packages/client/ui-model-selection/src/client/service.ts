@@ -52,7 +52,7 @@ export class ModelDirectoryResolver extends Service {
     super(ctx, 'modelDirectories')
     this.blockReason = config.blockReason
     this.sessionRemote = ctx.remote.session
-    this.catalog = new ModelCatalogDirectory(this.sessionRemote)
+    this.catalog = new ModelCatalogDirectory(this.sessionRemote as unknown as Context)
     void this.catalog.load().catch(() => { /* selectors expose the shared error */ })
     ctx.on('connection/reset', () => {
       this.catalog.resetGeneration()
