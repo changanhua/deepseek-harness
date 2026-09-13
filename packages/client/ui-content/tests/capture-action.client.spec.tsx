@@ -12,6 +12,7 @@ import type { AssistantMessageNode, ChatSnapshot } from '@deepseek-ai/dsh-client
 import type { ContentReceipt } from '@changanhua/dsh-content/types'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { bindSnapshotSelector, chatSnapshot, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
@@ -26,6 +27,7 @@ const MESSAGE_ID = 'm-1' as MessageId
 const NODE_MESSAGE_ID = 'm-1' as MessageId
 const SESSION = 's1' as SessionId
 const t = makeTranslate(zh, commonZh)
+const remoteFailure = (code: string, message: string) => new RemoteError(code as never, message, {} as never)
 
 /** One finalized assistant node over the given blocks. */
 function node(overrides: Partial<AssistantMessageNode> = {}): AssistantMessageNode {
@@ -159,7 +161,7 @@ describe('CaptureAction', () => {
     const { face } = remote({
       capture: () => Promise.resolve({
         ok: false as const,
-        error: { code: 'forbidden', message: 'Content operation failed: forbidden', details: {} },
+        error: remoteFailure('forbidden', 'Content operation failed: forbidden'),
       }),
     })
     const { ui, store } = mount({ remote: face })

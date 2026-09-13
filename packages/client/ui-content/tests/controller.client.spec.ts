@@ -8,12 +8,14 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ContentDraft, ContentEntry, ContentReceipt, ContentStatus } from '@changanhua/dsh-content/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { ContentLibraryRemote } from '../src/client/controller.ts'
 import { ContentLibraryStore } from '../src/client/controller.ts'
 import type { CaptureTarget } from '../src/client/capture-target.ts'
 
 const TARGET: CaptureTarget = { seq: 34, messageId: 'm-1' }
 const SESSION = 's1' as SessionId
+const remoteFailure = (code: string, message: string) => new RemoteError(code as never, message, {} as never)
 
 it('opens a freshly imported entry from the current Host snapshot', async () => {
   const { remote: face } = remote({ snapshot: async () => ({ ok: true, value: { formatVersion: 1, entries: [entry('web:one')] } }) })
@@ -155,7 +157,7 @@ describe('ContentLibraryStore load lane', () => {
 
   it('settles carrier failures into a retryable error state', async () => {
     const { remote: face } = remote({
-      status: () => Promise.resolve({ ok: false as const, error: { code: 'forbidden', message: 'Content operation failed: forbidden', details: {} } }),
+      status: () => Promise.resolve({ ok: false as const, error: remoteFailure('forbidden', 'Content operation failed: forbidden') }),
     })
     const store = new ContentLibraryStore(face)
 
@@ -253,7 +255,7 @@ describe('ContentLibraryStore capture', () => {
       capture: () => {
         flip = !flip
         return flip
-          ? Promise.resolve({ ok: false as const, error: { code: 'unavailable', message: 'down', details: {} } })
+          ? Promise.resolve({ ok: false as const, error: remoteFailure('unavailable', 'down') })
           : Promise.resolve({ ok: true as const, value: receipt() })
       },
     })
@@ -430,7 +432,7 @@ describe('ContentLibraryStore editor and edit commands', () => {
         const command = input as { type: string }
         if (command.type === 'save-draft' && conflict) {
           conflict = false
-          return Promise.resolve({ ok: false as const, error: { code: 'revision_conflict', message: 'stale', details: {} } })
+          return Promise.resolve({ ok: false as const, error: remoteFailure('revision_conflict', 'stale') })
         }
         return Promise.resolve({
           ok: true as const,
@@ -462,7 +464,7 @@ describe('ContentLibraryStore editor and edit commands', () => {
       snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [draftedEntry()] } }),
       get: () => Promise.resolve({ ok: true as const, value: draftedEntry('idea_x') }),
       execute: () => conflict
-        ? Promise.resolve({ ok: false as const, error: { code: 'revision_conflict', message: 'stale', details: {} } })
+        ? Promise.resolve({ ok: false as const, error: remoteFailure('revision_conflict', 'stale') })
         : Promise.resolve({ ok: true as const, value: receipt({ draftRevision: 2 }) }),
     })
     const store = new ContentLibraryStore(face)
@@ -519,7 +521,7 @@ describe('ContentLibraryStore editor and edit commands', () => {
       execute: (input) => {
         if (conflict) {
           conflict = false
-          return Promise.resolve({ ok: false as const, error: { code: 'revision_conflict', message: 'stale', details: {} } })
+          return Promise.resolve({ ok: false as const, error: remoteFailure('revision_conflict', 'stale') })
         }
         return Promise.resolve({
           ok: true as const,
@@ -585,7 +587,7 @@ describe('ContentLibraryStore editor and edit commands', () => {
     let reads = 0
     const { remote: face } = remote({ snapshot: () => ++reads === 1
       ? Promise.resolve({ ok: true, value: { formatVersion: 1, entries: [draftedEntry()] } })
-      : Promise.resolve({ ok: false, error: { code: 'closed', message: 'closed', details: {} } }),
+      : Promise.resolve({ ok: false, error: remoteFailure('closed', 'closed') }),
     })
     const store = new ContentLibraryStore(face)
     await store.refresh()

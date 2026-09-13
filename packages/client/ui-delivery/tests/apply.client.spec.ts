@@ -4,6 +4,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply as applyHost } from '../src/index.ts'
 import * as DeliveryInvariant from '../src/invariant.ts'
@@ -248,7 +249,7 @@ describe('ui-delivery client composition', () => {
         operationSignal.addEventListener('abort', () => {
           resolve({
             ok: false,
-            error: { code: 'cancelled', message: 'cancelled', details: {} },
+            error: new RemoteError('cancelled' as never, 'cancelled', {} as never),
           })
         }, { once: true })
       })
