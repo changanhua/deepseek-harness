@@ -33,6 +33,10 @@
 # this restatement replaces the base row's whole config, so the JSON backend
 # stays the default for every other domain.
 - id: storage-domain
+  isolate:
+    storage.backend.json: web-storage
+    storage.backend.content_sqlite: web-storage
+    storageDomain: web-host
   config:
     backend: json
     routes:
@@ -93,6 +97,9 @@
 
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'
+      isolate:
+        storageDomain: web-host
+        workspaceRegistry: web-host
 
     - id: session-reference
       name: '@deepseek-ai/dsh-session-reference'
@@ -127,6 +134,8 @@
     # Host-authoritative human activity and Session-step wall-clock evidence.
     - id: work-observatory
       name: '@changanhua/dsh-host-work-observatory'
+      isolate:
+        storageDomain: web-host
       config:
         retentionDays: 90
         maxClients: 128
@@ -138,6 +147,8 @@
     # onto the new backend.
     - id: content-sqlite
       name: '@deepseek-ai/dsh-storage-sqlite'
+      isolate:
+        storage.backend.content_sqlite: web-storage
       config:
         backendName: content_sqlite
         path: 'content/main/content.sqlite'
@@ -150,6 +161,8 @@
 
     - id: content-domain
       name: '@changanhua/dsh-content-domain'
+      isolate:
+        storageDomain: web-host
 
     - id: content-session
       name: '@changanhua/dsh-content-session'
@@ -162,16 +175,25 @@
 
     - id: browser-extension
       name: '@changanhua/dsh-browser-extension'
+      isolate:
+        sessionController: web-host
 
     - id: browser-activity
       name: '@changanhua/dsh-browser-activity'
+      isolate:
+        storageDomain: web-host
 
     - id: browser-monitor
       name: '@changanhua/dsh-browser-monitor'
+      isolate:
+        storageDomain: web-host
 
     # Session commands, cold reads, and live control over Typert Remote.
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
+      isolate:
+        workspaceRegistry: web-host
+        sessionController: web-host
 
     # Workspace file service: bounded read, directory listing, and the
     # agent-write change feed inside the session workspace root.
@@ -186,6 +208,8 @@
     # Workspace commands and reconnect-safe projection over Typert Remote.
     - id: workspace-controller
       name: '@deepseek-ai/dsh-api-workspace-controller'
+      isolate:
+        workspaceRegistry: web-host
 
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
@@ -349,6 +373,8 @@
     # Remove this entry to turn the surface off; the tail hole renders empty.
     - id: ui-deliverables
       name: '@deepseek-ai/dsh-client-ui-deliverables'
+      isolate:
+        sessionController: web-host
 
 
     - id: ui-workspace

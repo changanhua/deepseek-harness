@@ -57,7 +57,7 @@ import {
   type NormalizeContext,
 } from '@deepseek-ai/dsh-session-snapshot'
 import {
-  assertEntriesLoaded,
+  assertEntriesActivated,
   composeEntries,
   healProfilesModuleFallback,
   loadOverlayPatches,
@@ -550,9 +550,6 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
         includeUserRoot: false,
       },
     },
-    // The scaffold has no connected browser extension; keep the optional
-    // browser tool row dormant so standard preset mounting remains deterministic.
-    { id: 'tool-browser', disabled: true },
     { id: 'session-persistence-jsonl', config: { root: persistenceRoot } },
     // Content search is enabled here although the shipped bundles default it
     // off (`openAt: never`, pinned by apps/cli/tests/lazy-search-startup):
@@ -751,7 +748,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       config: { path: pathToFileURL(rootConfig).href, patches },
     })
     await ctx.loader.await()
-    assertEntriesLoaded(ctx, 'web e2e scaffold')
+    await assertEntriesActivated(ctx, 'web e2e scaffold')
     if (options.welcomeNoticePending !== true) {
       await ctx.settings.mutate(WELCOME_NOTICE_SETTINGS_NAMESPACE, [{
         op: 'set', path: [WELCOME_NOTICE_ACK_FIELD], value: WELCOME_NOTICE_VERSION,

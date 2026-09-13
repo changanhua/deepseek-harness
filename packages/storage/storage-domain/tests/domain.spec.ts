@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, FiberState } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import { apply, defineDomain, descriptorOf, DomainFacility, domainTable } from '../src/index.ts'
@@ -203,6 +203,29 @@ describe('DomainFacility.open', () => {
 })
 
 describe('plugin apply', () => {
+  it('publishes storageDomain before the outer fiber becomes active and exposes it to siblings', async () => {
+    const ctx = new Context()
+    await ctx.plugin(Storage)
+    const backend = new MemoryStorageBackend()
+    ctx.storage.backend.register('memory', backend)
+    const disposeBackend = ctx.provide(storageBackendServiceKey('memory'), backend)
+    const DomainPlugin = await import('../src/index.ts')
+    const fiber = await ctx.plugin(DomainPlugin, { backend: 'memory' })
+
+    expect(fiber.state).toBe(FiberState.ACTIVE)
+    expect(ctx.get('storageDomain')).toBeInstanceOf(DomainFacility)
+    const seen: unknown[] = []
+    const consumer = ctx.inject(['storageDomain'], (consumerCtx) => {
+      seen.push(consumerCtx.storageDomain)
+    })
+    await consumer
+    expect(seen).toEqual([ctx.storageDomain])
+
+    await consumer.dispose()
+    await fiber.dispose()
+    disposeBackend()
+  })
+
   it('uses only the default backend when routes are omitted', async () => {
     const ctx = new Context()
     await ctx.plugin(Storage)
@@ -226,7 +249,7 @@ describe('plugin apply', () => {
     const ctx = new Context()
     await ctx.plugin(Storage)
     const DomainPlugin = await import('../src/index.ts')
-    const fiber = await ctx.plugin(DomainPlugin, { backend: 'memory' })
+    const fiber = ctx.plugin(DomainPlugin, { backend: 'memory' })
     expect(ctx.get('storageDomain')).toBeUndefined()
     expect(() => ctx.storage.form('domain')).toThrow(/not mounted/)
 
@@ -248,7 +271,7 @@ describe('plugin apply', () => {
     const ctx = new Context()
     await ctx.plugin(Storage)
     const DomainPlugin = await import('../src/index.ts')
-    const fiber = await ctx.plugin(DomainPlugin, { backend: 'memory' })
+    const fiber = ctx.plugin(DomainPlugin, { backend: 'memory' })
     const backend = new MemoryStorageBackend()
     ctx.storage.backend.register('memory', backend)
     const disposeBackend = ctx.provide(storageBackendServiceKey('memory'), backend)
@@ -267,7 +290,7 @@ describe('plugin apply', () => {
     const ctx = new Context()
     await ctx.plugin(Storage)
     const DomainPlugin = await import('../src/index.ts')
-    const fiber = await ctx.plugin(DomainPlugin, { backend: 'memory' })
+    const fiber = ctx.plugin(DomainPlugin, { backend: 'memory' })
     const backend = new MemoryStorageBackend()
     ctx.storage.backend.register('memory', backend)
     const disposeBackend = ctx.provide(storageBackendServiceKey('memory'), backend)

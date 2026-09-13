@@ -222,20 +222,32 @@ export function apply(ctx: Context, config: Config): Promise<void> {
     ...Object.values(config.routes ?? {}),
   ])].map(storageBackendServiceKey)
 
-  const fiber = ctx.inject(backendServices, (domainCtx) => {
-    const facility = new DomainFacility(domainCtx, config)
-    const hostCtx = ctx.fiber.parent ?? ctx
-    const unprovide = hostCtx.provide('storageDomain', facility)
-    domainCtx.effect(() => {
-      const unmount = domainCtx.storage.mount('domain', facility)
-      return async () => {
-        // Close leftovers before unmounting: draining writes still emit
-        // domain/changed, whose invariant resolves the facility through the hub.
-        await facility.closeAll()
-        unmount()
-        unprovide()
-      }
-    })
+  let resolveReady!: () => void
+  let rejectReady!: (reason: unknown) => void
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve
+    rejectReady = reject
   })
-  return Promise.resolve(fiber).then(() => {})
+  void ready.catch(() => {})
+  ctx.inject(backendServices, (domainCtx) => {
+    try {
+      const facility = new DomainFacility(domainCtx, config)
+      const unprovide = domainCtx.provide('storageDomain', facility)
+      domainCtx.effect(() => {
+        const unmount = domainCtx.storage.mount('domain', facility)
+        return async () => {
+          // Close leftovers before unmounting: draining writes still emit
+          // domain/changed, whose invariant resolves the facility through the hub.
+          await facility.closeAll()
+          unmount()
+          unprovide()
+        }
+      })
+      resolveReady()
+    } catch (error) {
+      rejectReady(error)
+      throw error
+    }
+  })
+  return ready
 }
