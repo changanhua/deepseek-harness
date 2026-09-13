@@ -13,6 +13,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 // Type-only: pulls ui-layout's SlotMap merge (the 'sidebar' entry) into every
 // program that sees this contract, so PropsRuntime<'sidebar'> resolves.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { UsePanelInfo } from '@deepseek-ai/dsh-client-ui-layout/client'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -72,6 +73,8 @@ export interface SidebarBrandNameOwnerProps {
  * boundary. Business data and actions arrive through the region's own inject.
  */
 export interface SidebarSectionOwnerProps {
+  /** Optional global panel selector retained for downstream workspace consumers. */
+  usePanelInfo?: UsePanelInfo
   /** Shell fold-state output: wide renders the full browser, rail the icon column. */
   wide: boolean
   /** Rail icons request expansion; the browser rides the wide flip for focus. */

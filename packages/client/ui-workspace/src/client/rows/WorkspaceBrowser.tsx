@@ -21,6 +21,7 @@ import type {
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
+import type { UsePanelInfo } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { SessionNode, SessionOrderBy } from '../tree.ts'
 import {
   deriveFlat, deriveGroups, deriveSearchResults, owningGroupKey, UNGROUPED_KEY,
@@ -29,6 +30,8 @@ import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
+
+const defaultPanelInfo: UsePanelInfo = selector => selector({ activePanelId: null })
 
 /**
  * Column slide length (--ds-transition-duration-slow): rail-search focus waits it out —
@@ -282,7 +285,7 @@ function SessionTree({
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t,
   revealSessionId, onSessionRevealed,
 }: SessionTreeProps) {
-  const panelActive = usePanelInfo(info => info.activePanelId !== null)
+  const panelActive = (usePanelInfo ?? defaultPanelInfo)(info => info.activePanelId !== null)
   const list = useSessions(s => s)
   const pendingInteractions = useSessionPendingInteraction(s => s)
   const current = panelActive ? undefined : list.current
@@ -642,7 +645,7 @@ function FlatList({
   | 'onSessionRevealed'
   | 't'
 >) {
-  const panelActive = usePanelInfo(info => info.activePanelId !== null)
+  const panelActive = (usePanelInfo ?? defaultPanelInfo)(info => info.activePanelId !== null)
   const list = useSessions(s => s)
   const pendingInteractions = useSessionPendingInteraction(s => s)
   const baseRows = useMemo(
@@ -774,7 +777,7 @@ function SearchResults({
   remote: RemoteSearchState
   resultLimit: number
 }) {
-  const panelActive = usePanelInfo(info => info.activePanelId !== null)
+  const panelActive = (usePanelInfo ?? defaultPanelInfo)(info => info.activePanelId !== null)
   const list = useSessions(s => s)
   const pendingInteractions = useSessionPendingInteraction(s => s)
   const currentRemote = remote.query === query
@@ -862,6 +865,7 @@ export function WorkspaceBrowser({
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
+  const panelInfo: UsePanelInfo = usePanelInfo ?? (selector => selector({ activePanelId: null }))
   const home = useHostInfo(info => info.home)
   const workspaces = useWorkspaces(state => state.items)
   const workspacePhase = useWorkspaces(state => state.phase)
@@ -1257,7 +1261,7 @@ export function WorkspaceBrowser({
         {wide && (normalizedQuery !== ''
           ? (
             <SearchResults
-              usePanelInfo={usePanelInfo}
+              usePanelInfo={panelInfo}
               useSessions={useSessions}
               useSessionPendingInteraction={useSessionPendingInteraction}
               open={openSearchResult}
@@ -1272,7 +1276,7 @@ export function WorkspaceBrowser({
           : groupBy === 'flat'
             ? (
               <FlatList
-                usePanelInfo={usePanelInfo}
+                usePanelInfo={panelInfo}
                 useSessions={useSessions} useSessionPendingInteraction={useSessionPendingInteraction}
                 open={open} forkSession={forkSession}
                 onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
@@ -1289,7 +1293,7 @@ export function WorkspaceBrowser({
             )
             : (
               <SessionTree
-                usePanelInfo={usePanelInfo}
+                usePanelInfo={panelInfo}
                 useSessions={useSessions}
                 useSessionPendingInteraction={useSessionPendingInteraction}
                 onSessionRename={onSessionRename}
