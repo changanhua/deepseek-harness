@@ -41,6 +41,8 @@ function chatWith(finalNode: AssistantMessageNode | undefined): ChatSnapshot {
   return chatSnapshot({
     nodes: {
       get: () => undefined,
+      source: () => ({ getSnapshot: () => undefined, subscribe: () => () => {} }),
+      processSource: () => ({ getSnapshot: () => undefined, subscribe: () => () => {} }),
       values: () => finalNode === undefined ? [] : [{
         key: 'assistant-step:1', kind: 'assistant-step', id: '1', target: 'chat',
         data: { status: 'settled', finalNode },
