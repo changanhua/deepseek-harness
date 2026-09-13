@@ -41,13 +41,13 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 })
 
-type AppRootProps = PropsRenderSlots<'main'>
+type AppRootProps = PropsRenderSlots<'conversation'>
 function AppRoot({ renderSlot }: AppRootProps) {
-  return <>{renderSlot('main', {}, { entryKey: 'conversation' })}</>
+  return <>{renderSlot('conversation', {})}</>
 }
 
 const LAYOUT_CHILDREN = {
-  'main': { kind: 'keyed', scope: 'root' },
+  'conversation': { kind: 'single', scope: 'session-maybe' },
 } as const
 
 function WorkspaceProbe({ open }: EmptyWorkspaceOwnerProps) {

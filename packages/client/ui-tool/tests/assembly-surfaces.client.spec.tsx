@@ -60,13 +60,13 @@ const bashResult = (seq: number, callId: string, over?: Partial<ToolResultNode>)
 })
 
 /** Test-owned AppFrame role: declares and renders the resident conversation area. */
-type AppRootProps = PropsRenderSlots<'main'>
+type AppRootProps = PropsRenderSlots<'conversation'>
 function AppRoot({ renderSlot }: AppRootProps) {
-  return <>{renderSlot('main', {}, { entryKey: 'conversation' })}</>
+  return <>{renderSlot('conversation', {})}</>
 }
 
 const LAYOUT_CHILDREN = {
-  'main': { kind: 'keyed', scope: 'root' },
+  'conversation': { kind: 'single', scope: 'session-maybe' },
 } as const
 
 async function bench(nodes: ToolResultNode[]) {
