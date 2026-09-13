@@ -208,7 +208,7 @@ export interface SessionMaybeStandardProps {}
  */
 export interface GlobalStandardProps {
   /** Optional global panel selector retained for downstream UI contracts. */
-  usePanelInfo?: <T>(selector: (info: { readonly activePanelId: string | null }) => T) => T
+  usePanelInfo: <T>(selector: (info: { readonly activePanelId: string | null }) => T) => T
 }
 
 /**
