@@ -408,10 +408,9 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     },
   }, InputBar)
 
-  slots.inject('main', function* () {
+  slots.inject('conversation', function* () {
     yield slots.register({
-      name: 'main',
-      key: 'conversation',
+      name: 'conversation',
       children: { 'main.conversation': { kind: 'single', scope: 'session-maybe' } },
     }, ConversationPanel)
     yield registerConversationRoot()
