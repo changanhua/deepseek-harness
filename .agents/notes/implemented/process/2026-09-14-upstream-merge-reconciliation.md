@@ -12,6 +12,8 @@ The fork had a completed upstream merge commit, but the merged tree still needed
 
 The fork keeps merge commit `70a90814cb` and records `c291e7961a515f6d7af9304e7fd1d257929aef26` as the supported upstream base. Reconciliation restores the upstream `present` row in the standard preset, preserves the fork's connection-recovery indicator, isolates the settings scaffold queues, and makes the minimal preset use the current single persistent-shell composition on Windows and POSIX. Cordis and tool catalogs now enumerate the merged personal services and task-queue tools; client and persistence catalogs are regenerated from source. Web replay expectations are refreshed only where the current runtime contract changed, with Windows-specific shell and path handling kept in the owned tests.
 
+The minimal shell assertion compares the persisted path and normalizes the optional PTY completion marker so platform transport noise cannot change the contract.
+
 The full documentation gate is treated as a baseline report rather than a waiver: targeted generated-catalog checks, typecheck, build, and owned Web scenarios are evidence for this merge, while pre-existing documentation debt remains separately listed for future cleanup.
 
 ## Alternatives considered

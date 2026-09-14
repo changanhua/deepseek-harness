@@ -12,6 +12,8 @@ Status: implemented
 
 分叉保留合并提交 `70a90814cb`，并把 `c291e7961a515f6d7af9304e7fd1d257929aef26` 记录为受支持的 upstream 基线。本次收敛恢复 standard preset 中 upstream 的 `present` 行，保留分叉的连接恢复指示器，隔离设置脚手架 Queue，并让 minimal preset 在 Windows 与 POSIX 使用当前单一持久 shell 组合。Cordis 与 tool catalog 现在枚举合并后的个人服务和 task-queue 工具；client 与 persistence catalog 也已从源代码重新生成。Web 回放预期只在当前运行时契约确实变化处刷新，Windows 专属的 shell 与路径处理保留在其所属测试中。
 
+minimal shell 断言只比较持久化路径，并正规化可选的 PTY 完成标记，避免平台传输噪声改变契约。
+
 完整文档门槛被当作基线报告，而不是豁免：生成 catalog 的定向检查、类型检查、构建以及所属 Web 场景是本次合并的证据；既有文档债务单独列出，留待后续清理。
 
 ## 考虑过的替代方案
