@@ -136,7 +136,7 @@ describe('web e2e: settings modal and General preferences', () => {
     const instanceRows = [
       ['tool-subagent', '已启用'],
       ['tool-subagent-fork', '已启用'],
-      ['tool-subagent-codex', '已停用'],
+      ['tool-subagent-codex', '已启用'],
       ['tool-subagent-claude-code', '已停用'],
     ] as const
     for (const [entryId, status] of instanceRows) {
@@ -372,7 +372,10 @@ describe('web e2e: settings modal and General preferences', () => {
     // A second live Host binds another ephemeral port but shares the same
     // user-settings home. Its fresh origin has no theme localStorage and still
     // converges to dark before the settings dialog opens.
-    const second = await launchWebScaffold({ harnessHome: scaffold.harnessHome })
+    const second = await launchWebScaffold({
+      harnessHome: scaffold.harnessHome,
+      taskQueueRoot: join(scaffold.workspaceCwd, 'second-task-queue'),
+    })
     const secondPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
     const secondTripwire = watchConsole(secondPage)
     try {
@@ -537,7 +540,10 @@ describe('web e2e: settings modal and General preferences', () => {
     const reloaded = page.getByRole('dialog', { name: '设置' })
     await reloaded.getByRole('button', { name: '插话发送' }).waitFor({ timeout: 10_000 })
 
-    const second = await launchWebScaffold({ harnessHome: scaffold.harnessHome })
+    const second = await launchWebScaffold({
+      harnessHome: scaffold.harnessHome,
+      taskQueueRoot: join(scaffold.workspaceCwd, 'second-task-queue'),
+    })
     const secondPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
     const secondTripwire = watchConsole(secondPage)
     try {
@@ -603,7 +609,10 @@ describe('web e2e: settings modal and General preferences', () => {
 
     // A Chinese browser on another port still receives the explicit English
     // preference from the shared Host settings document.
-    const second = await launchWebScaffold({ harnessHome: scaffold.harnessHome })
+    const second = await launchWebScaffold({
+      harnessHome: scaffold.harnessHome,
+      taskQueueRoot: join(scaffold.workspaceCwd, 'second-task-queue'),
+    })
     const secondPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
     const secondTripwire = watchConsole(secondPage)
     try {

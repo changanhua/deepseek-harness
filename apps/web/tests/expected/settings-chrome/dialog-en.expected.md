@@ -7,6 +7,9 @@
     - button "Models":
       - img
       - text: Models
+    - button "Skills":
+      - img
+      - text: Skills
     - button "Plugins":
       - img
       - text: Plugins

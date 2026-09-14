@@ -411,6 +411,8 @@ export interface LaunchOptions {
   remoteAuthority?: string
   /** Reuse an existing harness home so a second Host can verify user settings across origins. */
   harnessHome?: string
+  /** Override the durable Queue root when two scaffolds share a settings home in one process. */
+  taskQueueRoot?: string
 }
 
 /** Dispose the booted tree and remove both owned temp roots, reporting every independent cleanup failure. */
@@ -634,6 +636,21 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       : [{ id: 'connection', config: { trustedHosts: [options.remoteAuthority] } }],
     { id: 'settings', config: { dshHome: harnessHome } },
     { id: 'credentials', config: { dshHome: harnessHome } },
+    ...options.taskQueueRoot === undefined
+      ? []
+      : [{
+        id: 'task-queue',
+        config: {
+          queueRoot: options.taskQueueRoot,
+          maxConcurrent: 3,
+          shutdownTimeoutMs: 5_000,
+          resourceCapacity: {
+            'image-generation': 3,
+            'agent-run': 1,
+            'operation-run': 1,
+          },
+        },
+      }],
     // The shipped directory-picker row is the -auto chooser, which resolves
     // the interaction from the RUNNING host (display, SSH launch, bind). The
     // lane's goldens are interaction-specific (workspace-management drives
