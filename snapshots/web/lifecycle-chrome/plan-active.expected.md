@@ -17,6 +17,21 @@
     - img
     - text: workspace
   - treeitem "New Session" [selected]
+- button "Capabilities":
+  - img
+  - text: Capabilities 50
+- button "Work Observatory":
+  - img
+  - text: Work Observatory
+- button "Architecture":
+  - img
+  - text: Architecture 288
+- button "Content Library":
+  - img
+  - text: Content Library
+- button "Queue":
+  - img
+  - text: Queue idle
 - button "Settings":
   - img
   - text: Settings
