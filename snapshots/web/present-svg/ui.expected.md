@@ -50,7 +50,7 @@
     - text: ：CPU 与内存间的地址总线，以及 CPU 与 I/O 设备间的数据/控制线，箭头标明数据流向
 - paragraph: 下方附一行核心思想说明：指令与数据以二进制统一存储在存储器中。用浏览器打开该 SVG 文件即可查看。
 - text: 本轮文件改动
-- button "打开 {{cwd}}/workspace/von-neumann.svg": von-neumann.svg
+- button "打开 von-neumann.svg": von-neumann.svg
 - text: 此主机没有可用的桌面，无法打开文件或文件夹
 - button "在侧边栏预览 von-neumann.svg"
 - text: von-neumann.svg 冯诺依曼架构示意图 SVG
@@ -62,6 +62,8 @@
 - button "好的回答":
   - img
 - button "有问题的回答":
+  - img
+- button "捕获到内容库":
   - img
 - button "在新对话中分支":
   - img

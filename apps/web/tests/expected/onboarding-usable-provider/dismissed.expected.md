@@ -7,6 +7,9 @@
     - button "模型":
       - img
       - text: 模型
+    - button "技能":
+      - img
+      - text: 技能
     - button "插件":
       - img
       - text: 插件
@@ -24,6 +27,11 @@
       - text: DeepSeek
       - img "API 密钥缺失"
       - button "编辑 DeepSeek (deepseek-official)": 编辑
+    - listitem:
+      - text: Vision Relay vision-relay
+      - paragraph: 其余字段在 settings.yaml 中，请直接编辑对应段。 (llm-vision-relay)
+      - button "取消"
+      - button "保存" [disabled]
   - text: 提供方
   - combobox "提供方":
     - option "amazon-bedrock"

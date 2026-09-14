@@ -6,9 +6,9 @@
  * `.agents/notes/archived/process/2026-07-02-tool-schema-catalog.md`.
  */
 
-import { globSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, globSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -25,6 +25,7 @@ import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
 import { PwshLocalExecutor } from '@deepseek-ai/dsh-pwsh-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
+import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
 import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentLimits, ImageAttachmentRef, SaveImageAttachment, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import UserQuestionService from '@deepseek-ai/dsh-user-questions'
@@ -49,6 +50,17 @@ import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 import * as ToolPresent from '@deepseek-ai/dsh-tool-present'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
+import RuntimeFacts from '@changanhua/dsh-runtime-facts'
+import { Browser } from '@changanhua/dsh-browser'
+import BrowserActivity from '@changanhua/dsh-browser-activity'
+import * as ToolBrowser from '@changanhua/dsh-tool-browser'
+import * as ToolRuntimeInspect from '@changanhua/dsh-tool-runtime-inspect'
+import ApprovalService from '@deepseek-ai/dsh-user-approval'
+import LocalTaskQueue from '@changanhua/dsh-task-queue-local'
+import * as ToolAgentRunTaskQueue from '@changanhua/dsh-tool-agent-run-task-queue'
+import * as ToolImageGenerationTaskQueue from '@changanhua/dsh-tool-image-generation-task-queue'
+import * as ToolOperationRunTaskQueue from '@changanhua/dsh-tool-operation-run-task-queue'
+import * as ToolTaskQueue from '@changanhua/dsh-tool-task-queue'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
@@ -92,6 +104,21 @@ class CatalogAttachmentStore extends AttachmentStore {
   override readImage(_ref: ImageAttachmentRef): Promise<StoredImageAttachment> {
     return Promise.reject(new Error('gen-tool-catalog: attachment reads are unreachable during schema harvest'))
   }
+}
+
+/** Browser capability stub used only to harvest model-facing browser schemas. */
+class CatalogBrowser extends Browser {
+  isAuthorized(): boolean { return false }
+  instances(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+  observe(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+  execute(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+  prepare(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+  executePrepared(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+}
+
+/** Activates browser activity schemas without opening a storage backend. */
+class CatalogBrowserActivity extends BrowserActivity {
+  protected override [Service.init](): void {}
 }
 
 const root = resolve(import.meta.dirname, '..')
@@ -162,7 +189,7 @@ export interface ToolPackage {
   shippedNames?: string[]
   /** Plug the injected seams + the tool plugin onto a context that already
    * carries `systemPrompt` + `tools`. */
-  mount: (ctx: Context) => Promise<void>
+  mount: (ctx: Context, scratchRoot?: string) => Promise<void>
   /** Agent-like scope key whose tool view is catalogued instead of the global view. */
   scope?: (ctx: Context) => Agent
   /**
@@ -188,6 +215,43 @@ export interface ToolPackage {
  * guard proves it is exhaustive against the on-disk glob.
  */
 const TOOL_PACKAGES: ToolPackage[] = [
+  {
+    pkg: '@changanhua/dsh-tool-browser',
+    dir: 'tool-browser',
+    source: {
+      browser_instances: 'packages/browser/tool-browser/src/index.ts',
+      browser_tabs: 'packages/browser/tool-browser/src/index.ts',
+      browser_snapshot: 'packages/browser/tool-browser/src/index.ts',
+      browser_extract: 'packages/browser/tool-browser/src/index.ts',
+      browser_action: 'packages/browser/tool-browser/src/index.ts',
+      browser_entry_mount: 'packages/browser/tool-browser/src/index.ts',
+      browser_entry_unmount: 'packages/browser/tool-browser/src/index.ts',
+      browser_task_start: 'packages/browser/tool-browser/src/index.ts',
+      browser_task_verify: 'packages/browser/tool-browser/src/index.ts',
+      browser_activity_search: 'packages/browser/tool-browser/src/activity.ts',
+    },
+    requires: ['ctx.browser', 'ctx.tools', 'ctx.approval', 'ctx.browserActivity for historical activity search', 'an initiating Agent session'],
+    writes: ['tool/call', 'tool/result', 'approved page actions through Browser'],
+    async mount(ctx) {
+      await ctx.plugin(CatalogBrowser)
+      await ctx.plugin(CatalogBrowserActivity)
+      await ctx.plugin(ApprovalService)
+      await ctx.plugin(ToolBrowser)
+    },
+    note: 'Activity search is present only when browserActivity is composed. It reads the initiating Session under current Host grants, including while Chrome is offline.',
+  },
+  {
+    pkg: '@changanhua/dsh-tool-agent-run-task-queue',
+    dir: 'tool-agent-run-task-queue',
+    source: 'packages/task-queue/tool-agent-run-task-queue/src/index.ts',
+    requires: ['ctx.tools', 'ctx.taskQueue', 'a live Agent session at execution time'],
+    writes: ['tool/call', 'tool/result', 'Queue v2 agent.run@1 admission'],
+    async mount(ctx) {
+      await ctx.plugin(LocalTaskQueue, { queueRoot: resolve(root, '.tmp/tool-catalog/agent-run-task-queue') })
+      await ctx.plugin(ToolAgentRunTaskQueue)
+    },
+    note: 'The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields.',
+  },
   {
     pkg: '@deepseek-ai/dsh-tool-ask-user',
     dir: 'tool-ask-user',
@@ -508,6 +572,43 @@ const TOOL_PACKAGES: ToolPackage[] = [
       'The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries).',
   },
   {
+    pkg: '@changanhua/dsh-tool-image-generation-task-queue',
+    dir: 'tool-image-generation-task-queue',
+    source: 'packages/image/tool-image-generation-task-queue/src/index.ts',
+    requires: ['ctx.tools', 'ctx.taskQueue', 'a live Agent session at execution time'],
+    writes: ['tool/call', 'tool/result', 'Queue v2 image.generate@1 admission'],
+    async mount(ctx) {
+      await ctx.plugin(LocalTaskQueue, { queueRoot: resolve(root, '.tmp/tool-catalog/image-generation-task-queue') })
+      await ctx.plugin(ToolImageGenerationTaskQueue)
+    },
+    note: 'The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority.',
+  },
+  {
+    pkg: '@changanhua/dsh-tool-operation-run-task-queue',
+    dir: 'tool-operation-run-task-queue',
+    source: 'packages/task-queue/tool-operation-run-task-queue/src/index.ts',
+    requires: ['ctx.tools', 'ctx.taskQueue', 'a live Agent session at execution time'],
+    writes: ['tool/call', 'tool/result', 'Queue v2 operation.run@1 admission'],
+    async mount(ctx) {
+      await ctx.plugin(LocalTaskQueue, { queueRoot: resolve(root, '.tmp/tool-catalog/operation-run-task-queue') })
+      await ctx.plugin(ToolOperationRunTaskQueue)
+    },
+    note: 'The typed allowlisted-operation admission consumer. It admits only a host-configured `operationId`; execution policy remains outside the tool schema.',
+  },
+  {
+    pkg: '@changanhua/dsh-tool-task-queue',
+    dir: 'tool-task-queue',
+    source: 'packages/task-queue/tool-task-queue/src/index.ts',
+    requires: ['ctx.tools', 'ctx.taskQueue', 'ctx.sessions', 'a live Agent session at execution time'],
+    writes: ['tool/call', 'tool/result', 'Queue v2 owner-scoped controls', 'user/message from durable terminal Notifications'],
+    async mount(ctx) {
+      await ctx.plugin(LocalTaskQueue, { queueRoot: resolve(root, '.tmp/tool-catalog/task-queue') })
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(ToolTaskQueue, { maxNotificationsPerStep: 1 })
+    },
+    note: 'The durable Queue controller: `task_queue_*` inspection, result, cancellation, retry, and kind tools over the host `ctx.taskQueue` service.',
+  },
+  {
     pkg: '@deepseek-ai/dsh-tool-jobs',
     dir: 'tool-jobs',
     source: 'packages/jobs/tool-jobs/src/index.ts',
@@ -571,6 +672,19 @@ const TOOL_PACKAGES: ToolPackage[] = [
       'todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task.',
   },
   {
+    pkg: '@changanhua/dsh-tool-runtime-inspect',
+    dir: 'tool-runtime-inspect',
+    source: 'packages/extensions/tool-runtime-inspect/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.runtimeFacts', 'ctx.subprocess'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(RuntimeFacts)
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(ToolRuntimeInspect)
+    },
+    note: 'Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider.',
+  },
+  {
     pkg: '@deepseek-ai/dsh-tool-workflow',
     dir: 'tool-workflow',
     source: 'packages/workflow/tool-workflow/src/index.ts',
@@ -595,6 +709,10 @@ const TOOL_PACKAGES: ToolPackage[] = [
     async mount(ctx) {
       // Mount search and fetch providers so both tools register. Their schemas
       // do not depend on provider identity or availability.
+      await ctx.plugin(FileSettingsProvider, {
+        path: resolve(root, '.tmp/tool-catalog/web-settings.yaml'),
+        watch: false,
+      })
       await ctx.plugin(WebRuntime)
       await ctx.plugin(WebSearchExa)
       await ctx.plugin(WebFetchLocal)
@@ -631,7 +749,9 @@ export type ToolCatalog = CatalogPackage[]
  * `scanRoot` defaults to the repo root; a test may point it at a fixture tree.
  */
 export function assertManifestComplete(packages: ToolPackage[] = TOOL_PACKAGES, scanRoot: string = root): void {
-  const onDisk = globSync('packages/*/tool-*', { cwd: scanRoot }).map(p => basename(p)).sort()
+  const onDisk = globSync('packages/*/tool-*', { cwd: scanRoot })
+    .filter(path => existsSync(resolve(scanRoot, path, 'package.json')))
+    .map(p => basename(p)).sort()
   const listed = new Set(packages.map(p => p.dir))
   const missing = onDisk.filter(dir => !listed.has(dir))
   if (missing.length > 0) {

@@ -7,6 +7,9 @@
     - button "模型":
       - img
       - text: 模型
+    - button "技能":
+      - img
+      - text: 技能
     - button "插件":
       - img
       - text: 插件
@@ -20,6 +23,9 @@
   - heading "模型" [level=2]
   - paragraph: 填入各提供方的 API 密钥即可使用其模型。
   - list:
+    - listitem:
+      - text: Vision Relay 自定义
+      - button "编辑 Vision Relay (vision-relay)": 编辑
     - listitem:
       - text: openrouter
       - button "编辑 openrouter": 编辑

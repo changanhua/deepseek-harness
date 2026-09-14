@@ -1,6 +1,9 @@
 - banner:
   - navigation "Session hierarchy":
     - button "CJK strong emphasis" [disabled]
+  - button "Skills":
+    - img
+    - text: Skills
   - button "More actions":
     - img
   - button "Open right sidebar":
@@ -42,6 +45,8 @@
 - button "Good response":
   - img
 - button "Bad response":
+  - img
+- button "Capture to library":
   - img
 - button "Branch into a new conversation":
   - img

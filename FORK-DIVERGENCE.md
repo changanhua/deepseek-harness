@@ -4,8 +4,8 @@ A human-readable record of deliberate differences between this fork and the offi
 
 ## Identity
 
-- Supported upstream base: `cd5ef8148158c3a752a658978873241fdf8e2bbc` (`dsh-v0.1.2-alpha.1`).
-- Observed upstream tip on 2026-09-04: `76fda729799fe9b3848dbe2c211d4b231032b81e`.
+- Supported upstream base: `c291e7961a515f6d7af9304e7fd1d257929aef26` (`dsh-v0.1.2-alpha.1`).
+- Observed upstream tip on 2026-09-14: `c291e7961a515f6d7af9304e7fd1d257929aef26`.
 - Official upstream: `https://github.com/deepseek-ai/deepseek-harness.git`
 - This fork: `https://github.com/changanhua/deepseek-harness.git`
 - Official packages retain `@deepseek-ai/*`; repository publication tooling permits them only from a GitHub Actions run for `deepseek-ai/deepseek-harness`. Personal source packages use `@changanhua/*`, stay private, have no release family, and remain blocked until their publication policy is promoted from `blocked-until-release-verified` to `personal`. npm credentials and trusted-publisher policy remain the external authority.

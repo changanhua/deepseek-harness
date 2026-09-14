@@ -33,7 +33,14 @@ describe('web e2e: requested SVG is explicitly delivered', () => {
     if (MODE !== 'record') {
       replayRoot = await mkdtemp(join(tmpdir(), 'dsh-present-svg-replay-'))
       replayOverride = join(replayRoot, 'replay.override.json')
-      const script = deriveReplayScript(parseSessionLog(await readFile(FIXTURE, 'utf8')))
+      // A Windows absolute path cannot be inserted into the recorded JSON
+      // argument stream without escaping its backslashes. Use the same
+      // workspace-relative path the tool accepts on that platform; POSIX
+      // keeps the original absolute-path replay and compare contract.
+      const source = process.platform === 'win32'
+        ? (await readFile(FIXTURE, 'utf8')).replaceAll('{{cwd}}/von-neumann.svg', 'von-neumann.svg')
+        : await readFile(FIXTURE, 'utf8')
+      const script = deriveReplayScript(parseSessionLog(source))
       // Recorded absolute paths must follow each isolated Session's working directory.
       const cwdToken = '{{fromRequest:Your working directory is ([^\\n]+)\\.}}'
       await writeFile(replayOverride, JSON.stringify(script).replaceAll('{{cwd}}', JSON.stringify(cwdToken).slice(1, -1)))

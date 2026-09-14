@@ -328,6 +328,9 @@ Source: [`packages/api/workspace-files/src/index.ts`](../../packages/api/workspa
 Durable workspace registry. Startup waits for `sessionPersistence`, builds one canonical-cwd header index, and completes the one-time history bootstrap before the service becomes active. The persistence dependency is mandatory so an unavailable peer can never be mistaken for an empty history and commit the initialized marker.
 
 ```ts cordis-catalog
+/** Resolve after the durable Workspace state and entity index are initialized. */
+ready(): Promise<void>
+
 /**
  * Create or reuse a workspace for an existing directory. The fully qualified
  * path is canonicalized through `fs.realpath`; a relative, nonexistent, or

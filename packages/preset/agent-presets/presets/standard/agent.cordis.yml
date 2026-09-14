@@ -282,3 +282,8 @@
   config:
     fetch: true
     searchTimeoutMs: 60000
+
+# Files explicitly requested as final deliverables are declared through the
+# Session-owned `present` tool after they have been written.
+- id: present
+  name: '@deepseek-ai/dsh-tool-present'

@@ -1,8 +1,126 @@
 {
   "initial": [
     {
+      "name": "image_generate_enqueue",
+      "description": "Durably enqueue one image-generation request. Supply the finished visual prompt and requested output settings; the host resolves the ArkCLI Agent Plan model before generation begins.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Complete visual prompt."
+          },
+          "size": {
+            "type": "string",
+            "description": "Requested provider-supported size, for example 1920x1920."
+          },
+          "outputFormat": {
+            "type": "string",
+            "description": "Image container.",
+            "enum": [
+              "png",
+              "jpeg"
+            ]
+          },
+          "watermark": {
+            "type": "boolean",
+            "description": "Whether the output contains a watermark."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Explicit provider id. Omit only when exactly one image provider is configured."
+          },
+          "model": {
+            "type": "string",
+            "description": "Optional provider model selector."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Stable dedupe key for this logical image request."
+          }
+        },
+        "required": [
+          "prompt",
+          "size",
+          "outputFormat",
+          "watermark",
+          "idempotencyKey"
+        ]
+      }
+    },
+    {
+      "name": "image_generate_enqueue_batch",
+      "description": "Atomically enqueue individually titled image-generation requests from completed prompts.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "description": "Title for this WorkItem."
+                },
+                "prompt": {
+                  "type": "string",
+                  "description": "Complete visual prompt."
+                },
+                "size": {
+                  "type": "string",
+                  "description": "Requested provider-supported size, for example 1920x1920."
+                },
+                "outputFormat": {
+                  "type": "string",
+                  "description": "Image container.",
+                  "enum": [
+                    "png",
+                    "jpeg"
+                  ]
+                },
+                "watermark": {
+                  "type": "boolean",
+                  "description": "Whether the output contains a watermark."
+                },
+                "provider": {
+                  "type": "string",
+                  "description": "Explicit provider id. Omit only when exactly one image provider is configured."
+                },
+                "model": {
+                  "type": "string",
+                  "description": "Optional provider model selector."
+                }
+              },
+              "required": [
+                "title",
+                "prompt",
+                "size",
+                "outputFormat",
+                "watermark"
+              ]
+            }
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Stable dedupe key for this logical image Batch."
+          },
+          "maxParallel": {
+            "type": "integer",
+            "description": "Positive Batch concurrency bound."
+          }
+        },
+        "required": [
+          "items",
+          "idempotencyKey",
+          "maxParallel"
+        ]
+      }
+    },
+    {
       "name": "bash",
-      "description": "Run commands in a bash shell\n* When invoking this tool, the contents of the \"command\" parameter does NOT need to be XML-escaped.\n* Network access depends on the task environment. Prefer configured mirrors/proxies when they are available.\n* State is persistent across command calls and discussions with the user.\n* To inspect a particular line range of a file, e.g. lines 10-25, try 'sed -n 10,25p /path/to/the/file'.\n* Please avoid commands that may produce a very large amount of output.\n* Please run long lived commands in the background, e.g. 'sleep 10 &' or start a server in the background.",
+      "description": "Run commands in a bash shell\n* When invoking this tool, the contents of the \"command\" parameter does NOT need to be XML-escaped.\n* Network access depends on the task environment. Prefer configured mirrors/proxies when they are available.\n* State is persistent across command calls and discussions with the user.\n* To inspect a particular line range of a file, e.g. lines 10-25, try 'sed -n 10,25p /path/to/the/file'.\n* Please avoid commands that may produce a very large amount of output.\n* Please run long lived commands in the background, e.g. 'sleep 10 &' or start a server in the background.'",
       "parameters": {
         "type": "object",
         "properties": {
