@@ -32,6 +32,18 @@ describe('LayoutController', () => {
     expect(panels.setDetails).not.toHaveBeenCalled()
   })
 
+  it('maps the official panel selection face onto the module ring', () => {
+    const service = new LayoutController()
+    const panels = fakePanels()
+    service.attachPanels(panels)
+
+    service.selectPanel(null)
+    service.selectPanel('queue')
+
+    expect(panels.openModule).toHaveBeenNthCalledWith(1, 'conversation')
+    expect(panels.openModule).toHaveBeenNthCalledWith(2, 'queue')
+  })
+
   it('fails loud before the root entry wired its actions', () => {
     const service = new LayoutController()
     expect(() => { service.toggleSidebar() }).toThrow(/panel actions not wired/)

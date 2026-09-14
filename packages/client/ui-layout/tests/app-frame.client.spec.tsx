@@ -30,7 +30,7 @@ const workspacesReady = { current: true }
 type AttentionSnapshot = Parameters<Parameters<AppFrameProps['useSessionPendingInteraction']>[0]>[0]
 const noAttention: AttentionSnapshot = new Map()
 const useSessionPendingInteraction: AppFrameProps['useSessionPendingInteraction'] = selector => selector(noAttention)
-const usePanelInfo = ((selector) => selector({ activePanelId: null })) as GlobalStandardProps['usePanelInfo']
+const usePanelInfo = (selector => selector({ activePanelId: null })) as GlobalStandardProps['usePanelInfo']
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
 
 // Provider contract stub fed through the standard seat prop (the renderer
@@ -296,6 +296,9 @@ describe('AppFrame', () => {
     expect(tracks(frame)).toEqual([280, 0])
     expect(getByTestId('details-content')).toBeTruthy()
     expect(frame.hasAttribute('data-details-collapsed')).toBe(true)
+    const rightbar = frame.querySelector('[data-rightbar-col]')
+    expect(rightbar).toBeTruthy()
+    expect(frame.getAttribute('data-rightbar-collapsed')).toBe('true')
   })
 
   it('closed sidebar keeps its compact rail with mounted slot content and collapsed owner props', () => {

@@ -75,7 +75,10 @@ export class LayoutController implements ILayout {
     else this.#panels.openModule(module)
   }
 
-  selectPanel(_id: MainPanelId | null): void {}
+  /** Map the upstream main-panel face onto the retained module ring. */
+  selectPanel(id: MainPanelId | null): void {
+    this.openModule(id ?? 'conversation')
+  }
 
   beginNavigation(): AbortSignal {
     this.#navigation.abort()
