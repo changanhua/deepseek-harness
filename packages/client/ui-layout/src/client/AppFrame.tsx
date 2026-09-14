@@ -15,6 +15,7 @@ import type { ReactNode } from 'react'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
+import type { UsePanelInfo } from './service.ts'
 import { computeColumns, DETAILS_DEFAULT, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
@@ -99,9 +100,18 @@ export function AppFrame({
 }: AppFrameProps) {
   const panels = useStore(s => s)
   const activeModule = useStore(s => s.activeModule)
+  // Compatibility face for official panel consumers (notably ui-sidebar-right):
+  // the retained module ring exposes conversation as the upstream null panel.
+  const useModulePanelInfo: UsePanelInfo = useCallback(
+    selector => selector({ activePanelId: activeModule === DEFAULT_MODULE ? null : activeModule }),
+    [activeModule],
+  )
   const detailsSession = useSessions((s) => {
     const current = s.current
-    return current !== undefined && s.byId[current]?.blank === false ? current : undefined
+    // Older/session-light projections may omit `blank`; only an explicit blank
+    // marker suppresses the rightbar track. This keeps the upstream rightbar
+    // contract usable while retaining the no-surface behavior for blank rows.
+    return current !== undefined && s.byId[current]?.blank !== true ? current : undefined
   })
   const documentTitle = useSessions((s) => {
     const current = s.current
@@ -235,7 +245,12 @@ export function AppFrame({
         </CenterColumn>
         <DetailsColumn>
           <SessionProvider>{renderSlot('details', {})}</SessionProvider>
-          <SessionProvider>{renderSlot('rightbar', { width: cols.details, viewportWidth: viewport, canShow: canShowRightbar })}</SessionProvider>
+          {renderSlot('rightbar', {
+            width: cols.details,
+            viewportWidth: viewport,
+            canShow: canShowRightbar,
+            usePanelInfo: useModulePanelInfo,
+          })}
         </DetailsColumn>
       </>
       <div className={css.overlayLayer} data-shell-overlay>
