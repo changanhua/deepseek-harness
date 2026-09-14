@@ -56,6 +56,7 @@ export function SidebarRoot({
   width,
   activeModule,
   setActiveModule,
+  usePanelInfo,
   startSession,
   toggleSidebar,
   t,
@@ -210,6 +211,7 @@ export function SidebarRoot({
           wide,
           expandSidebar: () => { if (collapsed) toggleSidebar() },
           setActiveModule,
+          usePanelInfo,
         })}
       </div>
 

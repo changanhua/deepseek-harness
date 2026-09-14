@@ -27,7 +27,7 @@ async function bench(options: { declareConversation?: boolean } = {}) {
   runtime.slots.installLocale(locale)
   if (options.declareConversation !== false) {
     await runtime.root.declare({
-      'conversation': { kind: 'single', scope: 'session-maybe' },
+      'main': { kind: 'keyed', scope: 'root' },
       'settings.general.item': { kind: 'list', scope: 'root' },
     }, (_props: { renderSlot?: unknown }) => null)
   }
@@ -45,15 +45,15 @@ function entry(
 describe('target-neutral Conversation apply wiring', () => {
   it('waits for the layout-owned conversation declaration before registering its subtree', async () => {
     const b = await bench({ declareConversation: false })
-    expect(b.runtime.slots.entries('conversation')).toHaveLength(0)
+    expect(b.runtime.slots.entries('main')).toHaveLength(0)
     expect(b.runtime.slots.entries('main.conversation')).toHaveLength(0)
 
     await b.runtime.root.declare({
-      'conversation': { kind: 'single', scope: 'session-maybe' },
+      'main': { kind: 'keyed', scope: 'root' },
       'settings.general.item': { kind: 'list', scope: 'root' },
     }, (_props: { renderSlot?: unknown }) => null)
 
-    expect(b.runtime.slots.entries('conversation')).toHaveLength(1)
+    expect(b.runtime.slots.entries('main')).toHaveLength(1)
     expect(b.runtime.slots.entries('main.conversation')).toHaveLength(1)
     expect(b.runtime.slots.spec('main.conversation'))
       .toEqual({ kind: 'single', scope: 'session-maybe' })
@@ -120,7 +120,7 @@ describe('target-neutral Conversation apply wiring', () => {
     await b.feature.dispose()
     expect(b.runtime.ctx.get('conversation')).toBeUndefined()
     expect(b.runtime.ctx.get('uiConversation')).toBeUndefined()
-    expect(b.runtime.slots.entries('conversation')).toHaveLength(0)
+    expect(b.runtime.slots.entries('main')).toHaveLength(0)
     expect(b.runtime.slots.entries('main.conversation')).toHaveLength(0)
     expect(b.runtime.slots.spec('main.conversation')).toBeUndefined()
     expect(b.runtime.slots.spec('conversation.view')).toBeUndefined()

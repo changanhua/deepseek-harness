@@ -73,8 +73,8 @@ export interface SidebarBrandNameOwnerProps {
  * boundary. Business data and actions arrive through the region's own inject.
  */
 export interface SidebarSectionOwnerProps {
-  /** Optional global panel selector retained for downstream workspace consumers. */
-  usePanelInfo?: UsePanelInfo
+  /** Global panel selector adapted from the layout module ring. */
+  usePanelInfo: UsePanelInfo
   /** Shell fold-state output: wide renders the full browser, rail the icon column. */
   wide: boolean
   /** Rail icons request expansion; the browser rides the wide flip for focus. */

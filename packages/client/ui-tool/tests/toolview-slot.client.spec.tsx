@@ -43,13 +43,13 @@ const toolResult = (seq: number, callId: string, name: string, args = '{"command
 })
 
 /** Test-owned AppFrame role: declares and renders the resident conversation area. */
-type AppRootProps = PropsRenderSlots<'conversation'>
+type AppRootProps = PropsRenderSlots<'main'>
 function AppRoot({ renderSlot }: AppRootProps) {
-  return <>{renderSlot('conversation', {})}</>
+  return <>{renderSlot('main', {}, { entryKey: 'conversation' })}</>
 }
 
 const LAYOUT_CHILDREN = {
-  'conversation': { kind: 'single', scope: 'session-maybe' },
+  'main': { kind: 'keyed', scope: 'root' },
 } as const
 
 /**

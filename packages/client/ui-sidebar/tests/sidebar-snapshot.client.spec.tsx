@@ -54,6 +54,7 @@ async function bench(options: { locale?: 'en' } = {}) {
 /** The frame's owner share shape: geometry plus the module-ring state. */
 const owner = (collapsed: boolean, width: number) => ({
   collapsed, width, activeModule: 'conversation', setActiveModule: vi.fn(),
+  usePanelInfo: <T,>(selector: (info: { readonly activePanelId: string | null }) => T) => selector({ activePanelId: null }),
 })
 
 describe('sidebar shell snapshots', () => {

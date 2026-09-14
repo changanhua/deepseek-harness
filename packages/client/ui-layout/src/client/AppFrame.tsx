@@ -25,7 +25,7 @@ import css from './AppFrame.module.css'
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'rightbar' | 'shell.overlay' | 'shell.view'>
+  & PropsRenderSlots<'sidebar' | 'main' | 'details' | 'rightbar' | 'shell.overlay' | 'shell.view'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
   & PropsLocale<'common'>
 
@@ -227,6 +227,7 @@ export function AppFrame({
           width: cols.sidebar,
           activeModule,
           setActiveModule: actions.setActiveModule,
+          usePanelInfo: useModulePanelInfo,
         })}
       </div>
       <>
@@ -237,7 +238,7 @@ export function AppFrame({
             entry while no session is current. */}
         <CenterColumn>
           <div className={css.modulePane} hidden={activeModule !== DEFAULT_MODULE}>
-            {renderSlot('conversation', {})}
+            {renderSlot('main', {}, { entryKey: 'conversation' })}
           </div>
           {activeModule !== DEFAULT_MODULE && (
             <div className={css.modulePane}>{renderSlot('shell.view', {}, { only: activeModule })}</div>

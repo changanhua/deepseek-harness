@@ -58,7 +58,7 @@ async function bench() {
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
   await runtime.root.declare({
-    'conversation': { kind: 'single', scope: 'session-maybe' },
+    'main': { kind: 'keyed', scope: 'root' },
     'conversation.approval.detail': { kind: 'single', scope: 'session' },
     'settings.general.item': { kind: 'list', scope: 'root' },
   }, (_props: { renderSlot?: unknown }) => null)
@@ -125,7 +125,7 @@ describe('Chat apply wiring', () => {
     await b.chat.dispose()
     expect(b.runtime.slots.entries('conversation.view')).toHaveLength(0)
     expect(b.runtime.slots.spec('conversation.chat.node')).toBeUndefined()
-    expect(b.runtime.slots.entries('conversation')).toHaveLength(1)
+    expect(b.runtime.slots.entries('main')).toHaveLength(1)
     expect(b.runtime.slots.entries('main.conversation')).toHaveLength(1)
     expect(b.runtime.ctx.get('uiConversation')).toBeDefined()
     await b.runtime.dispose()

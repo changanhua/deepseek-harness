@@ -61,10 +61,10 @@ function mountFrame() {
   window.innerWidth = frameWidth // first-render viewport source before the observer fires
   const instance = createLayoutStore().create()
   const slotCalls: { key: string; props: unknown }[] = []
-  const renderSlot = ((key: string, owner: object) => {
+  const renderSlot = ((key: string, owner: object, options?: { entryKey?: string }) => {
     slotCalls.push({ key, props: owner })
     if (key === 'sidebar') return <div data-testid="sidebar-content" />
-    if (key === 'conversation') return <div data-testid="center-content" />
+    if (key === 'main' && options?.entryKey === 'conversation') return <div data-testid="center-content" />
     if (key === 'details') return <div data-testid="details-content" />
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
@@ -187,10 +187,10 @@ describe('AppFrame', () => {
     expect(getByTestId('center-content')).toBeTruthy()
     expect(getByTestId('details-content')).toBeTruthy()
     const keys = slotCalls.map(c => c.key)
-    expect(keys).toContain('conversation')
+    expect(keys).toContain('main')
     expect(keys).toContain('details')
     expect(keys).not.toContain('conversation.empty')
-    expect(slotCalls.find(c => c.key === 'conversation')!.props).toEqual({})
+    expect(slotCalls.find(c => c.key === 'main')!.props).toEqual({})
     expect(slotCalls.find(c => c.key === 'details')!.props).toEqual({})
   })
 
@@ -200,7 +200,7 @@ describe('AppFrame', () => {
     selectedSession.current = undefined
     const { slotCalls, getByTestId, queryByTestId } = mountFrame()
     expect(getByTestId('center-content')).toBeTruthy()
-    expect(slotCalls.map(c => c.key)).toContain('conversation')
+    expect(slotCalls.map(c => c.key)).toContain('main')
     expect(queryByTestId('details-content')).toBeNull()
     expect(slotCalls.map(c => c.key)).toContain('details')
   })
@@ -210,7 +210,7 @@ describe('AppFrame', () => {
     // pending rendering — both occupants mount from first paint.
     workspacesReady.current = false
     const { slotCalls } = mountFrame()
-    expect(slotCalls.map(c => c.key)).toContain('conversation')
+    expect(slotCalls.map(c => c.key)).toContain('main')
     expect(slotCalls.map(c => c.key)).toContain('details')
   })
 
@@ -263,6 +263,7 @@ describe('AppFrame', () => {
       width: 280,
       activeModule: 'conversation',
       setActiveModule: expect.any(Function),
+      usePanelInfo: expect.any(Function),
     })
   })
 
@@ -313,6 +314,7 @@ describe('AppFrame', () => {
       width: SIDEBAR_COLLAPSED,
       activeModule: 'conversation',
       setActiveModule: expect.any(Function),
+      usePanelInfo: expect.any(Function),
     })
   })
 
@@ -350,6 +352,7 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
       width: SIDEBAR_COLLAPSED,
       activeModule: 'conversation',
       setActiveModule: expect.any(Function),
+      usePanelInfo: expect.any(Function),
     })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
   })

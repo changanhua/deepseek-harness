@@ -64,7 +64,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * switch. It receives no owner props; session facts arrive through the
      * framework hooks of the `session-maybe` scope.
      */
-    'conversation': { kind: 'single'; scope: 'session-maybe'; owner: ConvOwnerProps }
+    'main': { kind: 'keyed'; scope: 'root'; owner: ConvOwnerProps }
     /**
      * The right details column, shown when the layout opens it. OCCUPIED by
      * ui-conversation's DetailsPanel, which declares the tool-details seat
@@ -117,6 +117,8 @@ export interface SidebarOwnerProps {
   activeModule: string
   /** Switch the center column to another module view (see `shell.view`). */
   setActiveModule: (module: string) => void
+  /** Official panel-selection view adapted from the retained module ring. */
+  usePanelInfo: import('./service.ts').UsePanelInfo
 }
 
 /** Conversation owner share: business state and actions belong to the registrant. */
@@ -155,7 +157,7 @@ export function apply(ctx: ClientContext): void {
       locale: 'common',
       children: {
         'sidebar': { kind: 'single', scope: 'root' },
-        'conversation': { kind: 'single', scope: 'session-maybe' },
+        'main': { kind: 'keyed', scope: 'root' },
         'details': { kind: 'single', scope: 'session' },
         'rightbar': { kind: 'single', scope: 'session-maybe' },
         'shell.overlay': { kind: 'list', scope: 'root' },

@@ -22,7 +22,10 @@ beforeEach(() => { localStorage.clear() })
 /** Test-owned sidebar shell role: declares and renders the browsing region. */
 type FrameProps = PropsRenderSlots<'sidebar.workspaces'>
 function SidebarFrame({ renderSlot }: FrameProps) {
-  return <>{renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {}, setActiveModule: () => {} })}</>
+  return <>{renderSlot('sidebar.workspaces', {
+    wide: true, expandSidebar: () => {}, setActiveModule: () => {},
+    usePanelInfo: selector => selector({ activePanelId: null }),
+  })}</>
 }
 
 /** The assembled sidebar over one Workspace inside the POSIX home the Host reports. */

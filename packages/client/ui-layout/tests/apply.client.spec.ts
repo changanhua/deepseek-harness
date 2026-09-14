@@ -42,7 +42,7 @@ describe('ui-layout client apply', () => {
     expect(slots.entries('root')).toHaveLength(1)
     // …and declared the child slots in the ledger.
     expect(slots.spec('sidebar')).toEqual({ kind: 'single', scope: 'root' })
-    expect(slots.spec('conversation')).toEqual({ kind: 'single', scope: 'session-maybe' })
+    expect(slots.spec('main')).toEqual({ kind: 'keyed', scope: 'root' })
     expect(slots.spec('details')).toEqual({ kind: 'single', scope: 'session' })
     expect(slots.spec('shell.overlay')).toEqual({ kind: 'list', scope: 'root' })
     expect(slots.spec('shell.view')).toEqual({ kind: 'list', scope: 'root' })
