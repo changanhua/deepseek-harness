@@ -1,6 +1,9 @@
 - banner:
   - navigation "Session hierarchy":
     - button "Load the editing-cordis-compositions ski" [disabled]
+  - button "Skills":
+    - img
+    - text: Skills
   - button "More actions":
     - img
   - button "Open right sidebar":

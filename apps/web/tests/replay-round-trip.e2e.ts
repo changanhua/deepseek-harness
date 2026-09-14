@@ -1,5 +1,5 @@
 // Web e2e scenario: fresh round trip. A real chromium types a prompt into the
-// real composer; the wire, Remote gateway, agent loop, and the REAL bash tool (echo
+// real composer; the wire, Remote gateway, agent loop, and the real shell tool (echo
 // in the temp workspace) all run; the model adapter is dsh-llm-replay (keyless)
 // or the live adapter (record). Drive steps run in every mode and wait only
 // on generic completion (whenTurnSettled — never model-content selectors, so
@@ -34,6 +34,9 @@ const UI_EXPANDED_EXPECTED = fileURLToPath(
 )
 const WEB_CONTEXT_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/fresh-round-trip/web-context.expected.md', import.meta.url))
 const MODE = webSnapshotMode()
+const WEB_URL_PROBE = process.platform === 'win32'
+  ? { tool: 'pwsh', command: 'Write-Output $env:DSH_WEB_URL' }
+  : { tool: 'bash', command: 'printf \'%s\\n\' "$DSH_WEB_URL"' }
 
 // The scenario's one drive prompt. Record sends it; replay asserts the
 // committed fixture recorded exactly it, so drive script and fixture cannot
@@ -113,10 +116,14 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     if (agent === undefined) throw new Error(`the settled Web agent ${settledSessionId} is no longer live`)
     const system = systemPromptText(agent.session)
     if (system === undefined) throw new Error('the settled Web request has no system prompt')
-    const paragraphs = system.split('\n\n')
-    expect(paragraphs.slice(0, 2)).toEqual([
+    const paragraphs = system
+      .split(join(scaffold.workspaceCwd, 'workspace')).join('{{cwd}}')
+      .split(scaffold.workspaceCwd).join('{{cwd}}')
+      .split('\n\n')
+    expect(paragraphs.slice(0, 3)).toEqual([
       'You are an AI agent powered by DeepSeek Harness.',
-      'You are a coding agent powered by the deepseek-v4-flash model.',
+      '始终使用简体中文思考和回复。除非用户明确切换语言，否则一切思考过程与对外回复都必须用中文；代码、compact、命令、文件路径、专有名词、报错信息、API 名等原文可保留英文，其余全部中文。',
+      'You are a coding agent powered by the deepseek-v4-flash model. Your working directory is {{cwd}}.',
     ])
     const suffix = paragraphs.slice(-3).join('\n\n')
       .split(REPO_ROOT).join('{{sourceRoot}}')
@@ -125,23 +132,24 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     await compareOrRefreshGolden(WEB_CONTEXT_EXPECTED, suffix, MODE)
   })
 
-  it('exposes the assembled Web URL to the real bash tool', async () => {
+  it('exposes the assembled Web URL to the real shell tool', async () => {
     if (settledSessionId === undefined) throw new Error('the drive turn did not publish a session id')
     const agent = scaffold.ctx.agents.get(settledSessionId)
     if (agent === undefined) throw new Error(`the settled Web agent ${settledSessionId} is no longer live`)
     const result = await scaffold.ctx.tools.execute({
       signal: AbortSignal.timeout(5_000),
       callId: ToolCallId('web-url-probe'),
-      name: 'bash',
+      name: WEB_URL_PROBE.tool,
       arguments: {
-        command: 'printf \'%s\\n\' "$DSH_WEB_URL"',
+        command: WEB_URL_PROBE.command,
         description: 'Print current Web runtime',
       },
       agent,
     })
     expect(result.isError).toBe(false)
-    expect(result.content.filter(block => block.type === 'text').map(block => block.text).join(''))
-      .toBe(`${scaffold.baseUrl}\n`)
+    const output = result.content.filter(block => block.type === 'text').map(block => block.text).join('')
+      .replaceAll('\r\n', '\n')
+    expect(output).toBe(scaffold.baseUrl + '\n')
   })
 
   it.skipIf(MODE === 'record')('rendered the settled turn: markdown, tool row, composer restore', async () => {
@@ -160,8 +168,9 @@ describe('web e2e: fresh round trip through the real assembly', () => {
       event.type === 'tool/result' && event.data.message.source.callId === bashCall.data.callId)
     if (bashResult?.type !== 'tool/result') throw new Error('the bash tool call produced no durable result')
     expect(bashResult.data.message.content[0].isError).toBe(false)
-    expect(bashResult.data.message.content[0].content.filter(block => block.type === 'text').map(block => block.text).join(''))
-      .toBe('WEB_E2E_OK\n')
+    const output = bashResult.data.message.content[0].content.filter(block => block.type === 'text')
+      .map(block => block.text).join('').replaceAll('\r\n', '\n')
+    expect(output).toBe('WEB_E2E_OK\n')
     const turnEnds = sessionEvents.filter(e => e.type === 'turn/end')
     expect(turnEnds.length).toBe(1)
     expect((turnEnds[0] as SessionEvent & { data: { reason: { kind: string } } }).data.reason.kind).toBe('completed')

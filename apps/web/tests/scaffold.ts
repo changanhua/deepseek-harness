@@ -1457,8 +1457,20 @@ function normalizeAria(snapshot: string, workspaceCwd: string, age: boolean): st
   // The session heading renders the workspace's basename, not the full
   // path, so both spellings must collapse to the token.
   const base = workspaceCwd.split(/[\\/]/u).pop()!
-  return (age ? snapshot.replace(ARIA_AGE, '{{age}}') : snapshot)
-    .split(workspaceCwd).join('{{cwd}}')
+  let normalized = age ? snapshot.replace(ARIA_AGE, '{{age}}') : snapshot
+  normalized = normalized.split(workspaceCwd).join('{{cwd}}')
+  // Skill resources can arrive with a temp workspace basename that is still
+  // concrete at this point; collapse that segment when it owns a .dsh/skills
+  // path before the generic basename tokenization below.
+  normalized = normalized.replace(
+    /(?:[A-Z]:(?:\\|\/)+)[^<>"']*?(?:\\|\/)+Temp(?:\\|\/)+[^<>"']+?(?=(?:\\|\/)+\.dsh(?:\\|\/)+skills)/giu,
+    '{{cwd}}',
+  )
+  normalized = normalized.replace(
+    /(?:\/tmp|\/var\/tmp)(?:\\|\/)+[^<>"']+?(?=(?:\\|\/)+\.dsh(?:\\|\/)+skills)/gu,
+    '{{cwd}}',
+  )
+  return normalized
     .split(base).join('{{workspace}}')
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '{{uuid}}')
     // The optional space in `\d+m ?\d+s` covers both minute spellings: the
