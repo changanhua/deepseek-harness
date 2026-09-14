@@ -1,86 +1,108 @@
-/**
- * The root entry's transient layout store: panel geometry as plain widths in
- * px (0 = closed). Module level exports the factory only — a module-level
- * handle would pin the store's identity in the module
- * cache (a de-facto singleton surviving plugin reloads). register() receives
- * the factory (exclusive use: the framework instantiates per entry), AppFrame
- * derives its PropsStore share from the return type, and the service face
- * receives the bound actions through the registration's inject hook.
- */
+/** Root-owned frame geometry plus the downstream centre-module selection. */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
+import type { MainPanelId } from './service.ts'
 import {
-  clampWidth, DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
-  SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
+  clampWidth, RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_MAX_RATIO, RIGHTBAR_MIN,
+  SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from './columns.ts'
-
-/**
- * Layout store state: panel width preferences in px (0 = closed), the
- * narrow-viewport pair — `narrow` mirrors AppFrame's breakpoint reading
- * (viewport < SIDEBAR_AUTO_COLLAPSE) so toggleSidebar can pick semantics, and
- * `narrowExpanded` is the manual override that re-expands the auto-collapsed
- * sidebar over the squeezed center without rewriting the width preference —
- * and `activeModule`, the center column's active module-view id. The
- * conversation is not a `shell.view` entry; its dedicated slot stays mounted
- * (hidden while another module is active) so chat state survives a switch.
- */
-type LayoutState = { sidebar: number; details: number; narrow: boolean; narrowExpanded: boolean; activeModule: string }
 
 /** Default center module: the conversation surface. */
 export const DEFAULT_MODULE = 'conversation'
 
-/**
- * Annotation twin of the actions literal below (the export needs a declared
- * return type); drift fails assignability at the defineStore call.
- */
+type LayoutInfo = {
+  sidebar: number
+  viewportWidth: number
+  narrowExpanded: boolean
+  rightbar: number | null
+  rightbarShown: boolean
+  rightbarTrack: boolean
+  rightbarFullscreen: boolean
+  rightbarInstant: boolean
+}
+
+type LayoutState = {
+  /** Fork extension: the active centre module, mapped to the official panel face. */
+  activeModule: string
+  /** Official frame and rightbar presentation state. */
+  layoutInfo: LayoutInfo
+}
+
 type LayoutActions = {
+  selectPanel: (draft: LayoutState, panelId: MainPanelId | null) => void
   setSidebar: (draft: LayoutState, px: number) => void
-  setDetails: (draft: LayoutState, px: number) => void
   toggleSidebar: (draft: LayoutState) => void
-  setNarrow: (draft: LayoutState, narrow: boolean) => void
-  openDetails: (draft: LayoutState) => void
-  closeDetails: (draft: LayoutState) => void
+  setViewportWidth: (draft: LayoutState, width: number) => void
+  setRightbar: (draft: LayoutState, px: number) => void
+  openRightbar: (draft: LayoutState, track: boolean, fullscreen: boolean) => void
+  closeRightbar: (draft: LayoutState) => void
   setActiveModule: (draft: LayoutState, module: string) => void
   openModule: (draft: LayoutState, module: string) => void
 }
 
-/**
- * Create the layout panel store handle. The preference IS the width, so
- * closing a panel forgets its drag width — reopening restores the contract
- * default. Actions are the complete write set: drag writes clamp
- * into the panel's contract range and never cross the open/closed line;
- * open/close transitions write 0 / the default explicitly. Below the
- * auto-collapse breakpoint (AppFrame feeds setNarrow) the sidebar toggle
- * flips the narrowExpanded override instead of the preference.
- * @returns the store handle (spec + type + identity + factory in one).
- */
-export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
-  const handle = defineStore({
-    init: (): LayoutState => ({ sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, activeModule: DEFAULT_MODULE }),
+/** Create one root-entry layout store. */
+export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions> {
+  return defineStore({
+    init: (): LayoutState => ({
+      activeModule: DEFAULT_MODULE,
+      layoutInfo: {
+        sidebar: SIDEBAR_DEFAULT,
+        viewportWidth: window.innerWidth,
+        narrowExpanded: false,
+        rightbar: null,
+        rightbarShown: false,
+        rightbarTrack: false,
+        rightbarFullscreen: false,
+        rightbarInstant: false,
+      },
+    }),
     actions: {
-      setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
-      setDetails: (d, px: number) => { d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX) },
-      // Narrow toggles flip only the override: the width preference survives
-      // untouched, so re-widening restores the pre-squeeze layout.
+      selectPanel: (d, panelId: MainPanelId | null) => { d.activeModule = panelId ?? DEFAULT_MODULE },
+      setSidebar: (d, px: number) => {
+        d.layoutInfo.rightbarInstant = false
+        d.layoutInfo.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX)
+      },
       toggleSidebar: (d) => {
-        if (d.narrow) d.narrowExpanded = !d.narrowExpanded
-        else d.sidebar = d.sidebar === 0 ? SIDEBAR_DEFAULT : 0
+        d.layoutInfo.rightbarInstant = false
+        if (d.layoutInfo.viewportWidth < SIDEBAR_AUTO_COLLAPSE) {
+          d.layoutInfo.narrowExpanded = !d.layoutInfo.narrowExpanded
+        } else {
+          d.layoutInfo.sidebar = d.layoutInfo.sidebar === 0 ? SIDEBAR_DEFAULT : 0
+        }
       },
-      // Crossing the breakpoint in either direction drops the override: the
-      // narrow default is auto-collapsed, the wide state is the preference.
-      setNarrow: (d, narrow: boolean) => {
-        if (d.narrow === narrow) return
-        d.narrow = narrow
-        d.narrowExpanded = false
+      setViewportWidth: (d, width: number) => {
+        if (d.layoutInfo.viewportWidth === width) return
+        d.layoutInfo.rightbarInstant = false
+        if ((d.layoutInfo.viewportWidth < SIDEBAR_AUTO_COLLAPSE) !== (width < SIDEBAR_AUTO_COLLAPSE)) {
+          d.layoutInfo.narrowExpanded = false
+        }
+        d.layoutInfo.viewportWidth = width
       },
-      openDetails: (d) => { if (d.details === 0) d.details = DETAILS_DEFAULT },
-      closeDetails: (d) => { d.details = 0 },
-      // Activate a module view; picking the one already active returns to the
-      // default conversation view (the sidebar nav entries' second click exit).
+      setRightbar: (d, px: number) => {
+        d.layoutInfo.rightbarInstant = false
+        d.layoutInfo.rightbar = clampWidth(px, RIGHTBAR_MIN, Math.max(RIGHTBAR_MIN, d.layoutInfo.viewportWidth * RIGHTBAR_MAX_RATIO))
+      },
+      openRightbar: (d, track: boolean, fullscreen: boolean) => {
+        const info = d.layoutInfo
+        if (!info.rightbarShown || info.rightbarTrack !== track || info.rightbarFullscreen !== fullscreen) {
+          info.rightbarInstant = info.rightbarFullscreen && !fullscreen
+        }
+        if (!info.rightbarShown && info.viewportWidth < SIDEBAR_AUTO_COLLAPSE) info.narrowExpanded = false
+        info.rightbar ??= Math.max(RIGHTBAR_MIN, Math.round(info.viewportWidth * RIGHTBAR_DEFAULT_RATIO))
+        info.rightbarShown = true
+        info.rightbarTrack = track
+        info.rightbarFullscreen = fullscreen
+      },
+      closeRightbar: (d) => {
+        const info = d.layoutInfo
+        if (info.rightbarShown) info.rightbarInstant = info.rightbarFullscreen
+        info.rightbarShown = false
+        info.rightbarTrack = false
+        info.rightbarFullscreen = false
+      },
       setActiveModule: (d, module: string) => {
         d.activeModule = d.activeModule === module ? DEFAULT_MODULE : module
       },
       openModule: (d, module: string) => { d.activeModule = module },
     },
   })
-  return handle
 }

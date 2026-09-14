@@ -192,8 +192,14 @@ interface BenchOptions {
 
 function bench(options: BenchOptions = {}) {
   const ctx = new Context()
+  let navigation = new AbortController()
   const layout: ILayout = {
-    selectPanel: vi.fn(), beginNavigation: vi.fn(() => new AbortController().signal),
+    selectPanel: vi.fn(() => { navigation.abort() }),
+    beginNavigation: vi.fn(() => {
+      navigation.abort()
+      navigation = new AbortController()
+      return navigation.signal
+    }),
     toggleSidebar: vi.fn(), openDetails: vi.fn(), closeDetails: vi.fn(),
     openRightbar: vi.fn(), closeRightbar: vi.fn(), openModule: vi.fn(),
   }

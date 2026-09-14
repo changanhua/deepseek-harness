@@ -60,6 +60,14 @@
   border-left: 1px solid var(--dsw-alias-border-l2);
 }
 
+/* Official rightbar geometry: the surface anchors to the frame edge and may
+   hang over the centre while its grid track is hidden. */
+.rightbarCol {
+  position: relative;
+  min-width: 0;
+  overflow: visible;
+}
+
 /* The details subtree stays mounted at zero width, so its border must not paint
    a 1px seam. The collapsed sidebar instead retains a bordered compact rail. */
 .frame[data-details-collapsed] .detailsCol {
@@ -76,7 +84,7 @@
   width: 8px;
   margin-left: -4px;
   cursor: col-resize;
-  z-index: 2;
+  z-index: 11;
   touch-action: none;
   /* Rides the same curve as the tracks so the pill stays on the moving
      border during collapse/expand; paused while dragging (frame rule). */
@@ -84,6 +92,13 @@
 }
 
 .frame[data-dragging] .handle {
+  transition: none;
+}
+
+.frame[data-rightbar-fullscreen],
+.frame[data-rightbar-fullscreen] .handle,
+.frame[data-rightbar-instant],
+.frame[data-rightbar-instant] .handle {
   transition: none;
 }
 

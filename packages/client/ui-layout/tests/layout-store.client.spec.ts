@@ -1,130 +1,97 @@
 // @vitest-environment jsdom
-/**
- * createLayoutStore unit account: init shape, the action write set (clamp
- * inside actions), and the absence of browser persistence. Uses the
- * test-sanctioned path: factory self-call + .create() gives the
- * real engine instance (same create path as production).
- */
-import { beforeEach, describe, expect, it } from 'vitest'
-import { createLayoutStore, DEFAULT_MODULE } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
-import {
-  DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
-  SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
-} from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 
-const PERSIST_KEY = 'dsh.layout.panels'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createLayoutStore, DEFAULT_MODULE } from '../src/client/stores.ts'
 
-beforeEach(() => { localStorage.clear() })
+beforeEach(() => { vi.stubGlobal('innerWidth', 1920) })
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('createLayoutStore', () => {
-  it('initializes the sidebar at its default width, details closed, wide viewport and conversation module assumed', () => {
+  it('starts with official frame state and the conversation module', () => {
     const { store } = createLayoutStore().create()
     expect(store.getSnapshot()).toEqual({
-      sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, activeModule: DEFAULT_MODULE,
+      activeModule: DEFAULT_MODULE,
+      layoutInfo: {
+        sidebar: 280,
+        viewportWidth: 1920,
+        narrowExpanded: false,
+        rightbar: null,
+        rightbarShown: false,
+        rightbarTrack: false,
+        rightbarFullscreen: false,
+        rightbarInstant: false,
+      },
     })
   })
 
-  it('each create() is an independent instance (factory is not a singleton)', () => {
+  it('creates independent instances without browser persistence', () => {
+    const write = vi.spyOn(Storage.prototype, 'setItem')
     const a = createLayoutStore().create()
     const b = createLayoutStore().create()
     a.actions.setSidebar(400)
-    expect(b.store.getSnapshot().sidebar).toBe(SIDEBAR_DEFAULT)
+    a.actions.openRightbar(true, false)
+    expect(b.store.getSnapshot().layoutInfo.sidebar).toBe(280)
+    expect(b.store.getSnapshot().layoutInfo.rightbar).toBeNull()
+    expect(write).not.toHaveBeenCalled()
   })
 
-  it('setSidebar/setDetails clamp into the contract ranges', () => {
+  it('uses official sidebar and viewport rules', () => {
     const { store, actions } = createLayoutStore().create()
-    actions.setSidebar(1)
-    expect(store.getSnapshot().sidebar).toBe(SIDEBAR_MIN)
     actions.setSidebar(9999)
-    expect(store.getSnapshot().sidebar).toBe(SIDEBAR_MAX)
-    actions.setDetails(1)
-    expect(store.getSnapshot().details).toBe(DETAILS_MIN)
-    actions.setDetails(9999)
-    expect(store.getSnapshot().details).toBe(DETAILS_MAX)
-  })
-
-  it('toggleSidebar flips closed <-> contract default (drag width forgotten)', () => {
-    const { store, actions } = createLayoutStore().create()
-    actions.setSidebar(400)
+    expect(store.getSnapshot().layoutInfo.sidebar).toBe(420)
     actions.toggleSidebar()
-    expect(store.getSnapshot().sidebar).toBe(0)
+    expect(store.getSnapshot().layoutInfo.sidebar).toBe(0)
+    actions.setViewportWidth(980)
     actions.toggleSidebar()
-    expect(store.getSnapshot().sidebar).toBe(SIDEBAR_DEFAULT)
+    expect(store.getSnapshot().layoutInfo.narrowExpanded).toBe(true)
+    actions.setViewportWidth(1024)
+    expect(store.getSnapshot().layoutInfo.narrowExpanded).toBe(false)
   })
 
-  it('narrow toggleSidebar flips only the re-expand override; the width preference survives', () => {
+  it('initializes rightbar at 45% and keeps presentation reports independent', () => {
     const { store, actions } = createLayoutStore().create()
-    actions.setSidebar(400)
-    actions.setNarrow(true)
-    actions.toggleSidebar()
-    expect(store.getSnapshot()).toEqual({ sidebar: 400, details: 0, narrow: true, narrowExpanded: true, activeModule: DEFAULT_MODULE })
-    actions.toggleSidebar()
-    expect(store.getSnapshot().narrowExpanded).toBe(false)
-    expect(store.getSnapshot().sidebar).toBe(400)
-  })
-
-  it('crossing the breakpoint drops the override; a same-value setNarrow keeps it', () => {
-    const { store, actions } = createLayoutStore().create()
-    actions.setNarrow(true)
-    actions.toggleSidebar()
-    expect(store.getSnapshot().narrowExpanded).toBe(true)
-    actions.setNarrow(true)
-    expect(store.getSnapshot().narrowExpanded).toBe(true)
-    actions.setNarrow(false)
-    expect(store.getSnapshot()).toMatchObject({ narrow: false, narrowExpanded: false })
-    actions.setNarrow(true)
-    expect(store.getSnapshot().narrowExpanded).toBe(false)
-  })
-
-  it('openDetails uses the contract default, preserves an open width, and closeDetails zeroes', () => {
-    const { store, actions } = createLayoutStore().create()
-    actions.openDetails()
-    expect(store.getSnapshot().details).toBe(DETAILS_DEFAULT)
-    actions.setDetails(500)
-    actions.openDetails()
-    expect(store.getSnapshot().details).toBe(500)
-    actions.closeDetails()
-    expect(store.getSnapshot().details).toBe(0)
-  })
-
-  it('setActiveModule switches the center module view id', () => {
-    const { store, actions } = createLayoutStore().create()
-    expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
-    actions.setActiveModule('queue')
-    expect(store.getSnapshot().activeModule).toBe('queue')
-    actions.setActiveModule(DEFAULT_MODULE)
-    expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
-  })
-
-  it('setActiveModule exits a module on a second click of its own nav entry', () => {
-    const { store, actions } = createLayoutStore().create()
-    actions.setActiveModule('capability')
-    expect(store.getSnapshot().activeModule).toBe('capability')
-    // Re-picking the already-active module returns to the conversation default.
-    actions.setActiveModule('capability')
-    expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
-    // Picking the conversation module while already there keeps it a no-op.
-    actions.setActiveModule('queue')
-    actions.setActiveModule(DEFAULT_MODULE)
-    expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
-    actions.setActiveModule(DEFAULT_MODULE)
-    expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
-  })
-
-  it('does not persist panel geometry', () => {
-    const first = createLayoutStore().create()
-    first.actions.setSidebar(400)
-    first.actions.openDetails()
-    first.actions.setDetails(500)
-    expect(localStorage.getItem(PERSIST_KEY)).toBeNull()
-
-    const second = createLayoutStore().create()
-    expect(second.store.getSnapshot()).toEqual({
-      sidebar: SIDEBAR_DEFAULT,
-      details: 0,
-      narrow: false,
-      narrowExpanded: false,
-      activeModule: DEFAULT_MODULE,
+    actions.setViewportWidth(1000)
+    actions.openRightbar(true, false)
+    expect(store.getSnapshot().layoutInfo).toMatchObject({
+      rightbar: 450, rightbarShown: true, rightbarTrack: true, rightbarFullscreen: false,
     })
+    actions.openRightbar(false, true)
+    expect(store.getSnapshot().layoutInfo).toMatchObject({
+      rightbar: 450, rightbarShown: true, rightbarTrack: false, rightbarFullscreen: true,
+    })
+    actions.closeRightbar()
+    expect(store.getSnapshot().layoutInfo).toMatchObject({
+      rightbar: 450, rightbarShown: false, rightbarTrack: false, rightbarFullscreen: false,
+    })
+  })
+
+  it('clamps rightbar drag width to 300px and 70% of the frame', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setViewportWidth(1000)
+    actions.setRightbar(1)
+    expect(store.getSnapshot().layoutInfo.rightbar).toBe(300)
+    actions.setRightbar(9999)
+    expect(store.getSnapshot().layoutInfo.rightbar).toBe(700)
+  })
+
+  it('preserves fullscreen exit geometry until a fresh geometry action', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.openRightbar(true, true)
+    actions.closeRightbar()
+    expect(store.getSnapshot().layoutInfo.rightbarInstant).toBe(true)
+    actions.setSidebar(350)
+    expect(store.getSnapshot().layoutInfo.rightbarInstant).toBe(false)
+  })
+
+  it('maps panel selection onto the retained module ring', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.selectPanel('queue')
+    expect(store.getSnapshot().activeModule).toBe('queue')
+    actions.selectPanel(null)
+    expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
+    actions.setActiveModule('content')
+    expect(store.getSnapshot().activeModule).toBe('content')
+    actions.setActiveModule('content')
+    expect(store.getSnapshot().activeModule).toBe(DEFAULT_MODULE)
   })
 })

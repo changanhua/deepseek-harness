@@ -77,7 +77,9 @@ export class LayoutController implements ILayout {
 
   /** Map the upstream main-panel face onto the retained module ring. */
   selectPanel(id: MainPanelId | null): void {
-    this.openModule(id ?? 'conversation')
+    this.#navigation.abort()
+    if (this.#panels === undefined) this.#initialModule = id ?? 'conversation'
+    else this.#panels.selectPanel(id)
   }
 
   beginNavigation(): AbortSignal {
@@ -93,20 +95,20 @@ export class LayoutController implements ILayout {
 
   /** Open the details panel (no-op when already open). */
   openDetails(): void {
-    this.#require().openDetails()
+    this.#require().openRightbar(true, false)
   }
 
   /** Close the details panel. */
   closeDetails(): void {
-    this.#require().closeDetails()
+    this.#require().closeRightbar()
   }
 
-  openRightbar(_track?: boolean, _fullscreen?: boolean): void {
-    this.openDetails()
+  openRightbar(track = false, fullscreen = false): void {
+    this.#require().openRightbar(track, fullscreen)
   }
 
   closeRightbar(): void {
-    this.closeDetails()
+    this.#require().closeRightbar()
   }
 
   #require(): PanelActions {
