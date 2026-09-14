@@ -131,7 +131,7 @@ export interface RightbarOwnerProps {
   viewportWidth: number
   canShow: boolean
   /** Module-ring adapter for upstream rightbar visibility semantics. */
-  usePanelInfo: import('./service.ts').UsePanelInfo
+  usePanelInfo?: import('./service.ts').UsePanelInfo
 }
 
 /** Module-view owner share: entries render only while active (ring dispatch via `only`). */
