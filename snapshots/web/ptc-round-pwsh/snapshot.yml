@@ -1,0 +1,9 @@
+version: 1
+scenario: ptc-round-pwsh
+profile: web
+platform: pwsh
+composition: web-ptc
+recording: live
+header:
+  class: web-ptc
+  pin: true
