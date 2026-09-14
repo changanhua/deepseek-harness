@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-storage-sqlite` 是一个存储后端：把每个已路由单元托管在同一个 SQLite 数据库文件中，每条记录按行存储一份 JSON 文档，注册为后端 `sqlite`。单条记录更新恰好触碰一行，这正是它适合高频定点写入的原因。当领域数据变动频繁、或部署偏好单一可查询数据库时选择它；当数据需要以纯文本文件形式可读时选择 JSON 后端。本后端只面向宿主侧：它不贡献提示词、工具或 schema，因此模型与 agent loop（智能体循环）永远不会看到它。
+`dsh-storage-sqlite` 把已路由单元托管在一个 SQLite 数据库文件中，每条记录按行保存一份 JSON 文档。组合可以挂载多个命名实例，并要求实例在打开领域前证明独占所有权、提交同步和私有文件系统根目录。它适合频繁的定点写入或本地可查询数据库；需要让人直接阅读纯文件时选择 JSON 后端。本后端只面向宿主侧：它不贡献提示词、工具或 schema，因此模型与 agent loop（智能体循环）永远不会看到它。
 
 ## 目录
 
@@ -33,7 +33,7 @@ kind: "package-reference"
 
 ### 配置
 
-两个字段：数据库路径与 journal mode。`:memory:` 打开一个进程内数据库，其内容随进程消失。
+默认实例与已有配置保持兼容。只有要求相应保证的领域才需要显式设置所有权、同步、身份与目录控制。`:memory:` 打开一个进程内数据库，其内容随进程消失。
 
 ```yaml
 - name: '@deepseek-ai/dsh-storage'
@@ -47,14 +47,20 @@ kind: "package-reference"
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
+| `backendName` | `sqlite` | 在存储枢纽中的注册名称 |
 | `path` | 必填 | SQLite 数据库文件路径，或 `:memory:` |
 | `journalMode` | `wal` | Journal mode：`wal`、`delete`、`truncate` 或 `persist` |
+| `pathBase` | `cwd` | 相对路径基于进程 cwd 或 `dsh-home` 解析 |
+| `ownership` | `shared` | 共享锁，或文件数据库的 `exclusive` 连接 |
+| `synchronous` | SQLite 默认值 | `normal`、`full` 或 `extra`；`full` 和 `extra` 声明 `commit-sync` |
+| `applicationId` | 未设置 | 仅文件库可用的非零身份；外来或未版本化数据库会被拒绝 |
+| `privateDirectory` | `false` | 打开前创建或核对仅所有者可访问的本地目录 |
 
-`wal` 适合本地磁盘；回滚日志模式（`delete`／`truncate`／`persist`）适合 WAL 共享内存文件不可用的文件系统，例如网络挂载。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-storage-sqlite)是每个受支持字段及其 JSDoc 的穷尽式真源。
+`exclusive` 要求文件数据库和 `delete` journal，并持有连接锁直至关闭；第二个所有者会立即失败。`applicationId` 也要求文件库，因为内存数据库无法在重新打开后保留身份。`privateDirectory` 在 Windows NTFS 上逐层创建并复验受保护 DACL，并拒绝不安全的既有 ACL、reparse point、硬链接别名、UNC 路径和非 NTFS 卷。它不能隔离以同一 Windows 用户运行的另一个进程。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-storage-sqlite)是每个受支持字段及其 JSDoc 的穷尽式真源。
 
 ### 可观察行为
 
-缺失的目录与数据库文件会以仅所有者可访问的权限创建（`0o700`／`0o600`）；已有数据库保持其既有模式。已存格式版本与描述符不同的单元拒绝 `version-mismatch`，盖有非当前物理布局版本的数据库会直接拒绝——不做迁移，预发布立场。失败携带稳定的 `StorageError` 代码，写入操作完成后即已持久化。
+在支持 POSIX mode 的平台上，缺失目录和数据库文件使用仅所有者可访问的 mode。启用 `privateDirectory` 时，后端会在 SQLite 打开前核对真实目录和文件权限。显式 `applicationId` 防止系统认领看似为空的外来数据库；不兼容的物理版本或单元版本会被拒绝而不是迁移。写入在配置的 SQLite 保证下 resolve 后即已持久。
 
 -----
 
@@ -75,14 +81,15 @@ kind: "package-reference"
 
 ### 打开顺序
 
-打开数据库时会以 `0o700` 创建父目录、以 `0o600` 独占创建缺失文件、应用 `PRAGMA foreign_keys = ON` 与 journal mode、检查 `user_version`、创建 `units` 与 `unit_globals` 元数据表，并在最后给全新数据库盖戳，让失败留下未盖戳的介质。
+打开数据库时会禁用扩展加载、应用连接安全设置、核对可选私有路径、取得所需锁，并在事务中检查 journal mode、应用身份与物理版本后才发布 ready。全新元数据以事务物化；每个单元的记录表在后端 ready 后再确保，因此失败的单元不会被发布为可用单元。
 
 ### 源码地图
 
 | 文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 插件入口：后端注册、`path`／`journalMode` 配置、单元表 |
+| [`src/index.ts`](src/index.ts) | 插件入口：命名注册、配置、保证与单元表 |
 | [`src/schema.ts`](src/schema.ts) | 打开顺序、物理布局版本、元数据表、记录表命名 |
+| [`src/private-directory.ts`](src/private-directory.ts) | 私有路径创建与原生权限核对 |
 | [`src/unit.ts`](src/unit.ts) | 一个已打开单元：预处理语句、JSON 值解析、关闭 |
 | — | 不发布运行时不变式伴生入口；schema 版本与单元版本的一致性在打开时检查，不一致时会在单元创建前拒绝打开；持久性需要由共享 KV 符合性测试套件中的后端往返测试验证；本包不暴露可持续观察的进程内关系。 |
 
