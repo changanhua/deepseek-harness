@@ -15,7 +15,7 @@ import type { ReactNode } from 'react'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import { computeColumns, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
+import { computeColumns, DETAILS_DEFAULT, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT } from './columns.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
 import { DEFAULT_MODULE } from './stores.ts'
@@ -162,6 +162,11 @@ export function AppFrame({
   const sidebarPreference = sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
+  // Eligibility is independent of the currently reported track.  The rightbar
+  // seat uses this to decide whether an expanded surface may stay open; tying
+  // it to `cols.details` creates a zero-width feedback loop where opening from
+  // the collapsed state is immediately rejected.
+  const canShowRightbar = computeColumns(viewport, sidebarPreference, DETAILS_DEFAULT).details > 0
   const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
   const colsRef = useRef(cols)
   colsRef.current = cols
@@ -230,7 +235,7 @@ export function AppFrame({
         </CenterColumn>
         <DetailsColumn>
           <SessionProvider>{renderSlot('details', {})}</SessionProvider>
-          <SessionProvider>{renderSlot('rightbar', { width: cols.details, viewportWidth: viewport, canShow: cols.details > 0 })}</SessionProvider>
+          <SessionProvider>{renderSlot('rightbar', { width: cols.details, viewportWidth: viewport, canShow: canShowRightbar })}</SessionProvider>
         </DetailsColumn>
       </>
       <div className={css.overlayLayer} data-shell-overlay>
