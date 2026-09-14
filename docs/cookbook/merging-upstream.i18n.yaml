@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/cookbook/merging-upstream.md
-merging-upstream.md: 25de173c957fb1a1c494e6381278d358ce48851b
-merging-upstream.zh.md: d696086e81438ada8c0d8da88552172d5b692f08
+merging-upstream.md: 9844dbff44d9ef08eed08003ae76366209123c05
+merging-upstream.zh.md: a973762bb2bacaa9881754fe1b809fadc7e58cf9

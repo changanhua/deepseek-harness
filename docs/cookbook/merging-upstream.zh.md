@@ -83,6 +83,8 @@ pnpm run verify-cordis-config
 pnpm run verify-client-packages
 ```
 
+有些生成器会在 `.tmp` 下创建临时文件；提交前检查 `git status`，只删除生成器明确创建的准确路径，绝不要用宽泛的 clean 命令。
+
 生成文档依赖源代码中的 JSDoc 和类型声明。如果新鲜度或文档门槛暴露的是既有缺失 prose、失效链接或类型等价漂移，记录精确输出并与合并前候选对照；不要削弱生成器，也不要手改输出隐藏失败。
 
 ## 6. 从定向证据到广泛证据进行验证

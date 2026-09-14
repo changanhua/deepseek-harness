@@ -83,6 +83,8 @@ pnpm run verify-cordis-config
 pnpm run verify-client-packages
 ```
 
+Some generators create scratch files under `.tmp`; inspect `git status` and remove only the exact generator-owned path before committing, never with a broad clean command.
+
 Generated documentation is downstream of source JSDoc and type declarations. If a freshness or documentation gate exposes pre-existing missing prose, stale links, or type-equivalence drift, capture the exact output and compare it with the pre-merge candidate; do not weaken the generator or hide the failure by editing its output manually.
 
 ## 6. Validate from narrow evidence to broad evidence
