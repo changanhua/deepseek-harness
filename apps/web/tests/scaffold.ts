@@ -1472,6 +1472,10 @@ function normalizeAria(snapshot: string, workspaceCwd: string, age: boolean): st
   )
   return normalized
     .split(base).join('{{workspace}}')
+    // The workspace token is platform-neutral in committed ARIA goldens;
+    // collapse a native Windows separator only when it directly follows the
+    // token, leaving command payloads and other native paths untouched.
+    .replaceAll('{{cwd}}\\', '{{cwd}}/')
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '{{uuid}}')
     // The optional space in `\d+m ?\d+s` covers both minute spellings: the
     // stats line's compact `2m42s` and the message-chrome template's `2m 42s`.
