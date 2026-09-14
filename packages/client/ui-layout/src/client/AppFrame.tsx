@@ -108,10 +108,9 @@ export function AppFrame({
   )
   const detailsSession = useSessions((s) => {
     const current = s.current
-    // Older/session-light projections may omit `blank`; only an explicit blank
-    // marker suppresses the rightbar track. This keeps the upstream rightbar
-    // contract usable while retaining the no-surface behavior for blank rows.
-    return current !== undefined && s.byId[current]?.blank !== true ? current : undefined
+    // The official rightbar contract follows the current Session scope. Blank
+    // sessions still own a valid surface; their content decides what renders.
+    return current
   })
   const documentTitle = useSessions((s) => {
     const current = s.current
@@ -244,13 +243,15 @@ export function AppFrame({
           )}
         </CenterColumn>
         <DetailsColumn>
-          <SessionProvider>{renderSlot('details', {})}</SessionProvider>
-          {renderSlot('rightbar', {
-            width: cols.details,
-            viewportWidth: viewport,
-            canShow: canShowRightbar,
-            usePanelInfo: useModulePanelInfo,
-          })}
+          <SessionProvider>
+            {renderSlot('details', {})}
+            {renderSlot('rightbar', {
+              width: cols.details,
+              viewportWidth: viewport,
+              canShow: canShowRightbar,
+              usePanelInfo: useModulePanelInfo,
+            })}
+          </SessionProvider>
         </DetailsColumn>
       </>
       <div className={css.overlayLayer} data-shell-overlay>
