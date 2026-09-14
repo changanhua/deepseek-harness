@@ -7,6 +7,9 @@
     - button "模型":
       - img
       - text: 模型
+    - button "技能":
+      - img
+      - text: 技能
     - button "插件":
       - img
       - text: 插件

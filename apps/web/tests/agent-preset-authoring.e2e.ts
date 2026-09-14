@@ -146,7 +146,7 @@ describe('web e2e: agent-preset authoring is a host-side copy', () => {
       replacements: [[userRoot, '{{presetRoot}}']],
     })
     await compareOrRefreshGolden(CREATED_EXPECTED, snapshot, MODE)
-    expect(snapshot).toContain('{{presetRoot}}/my-agent')
+    expect(snapshot).toMatch(/\{\{presetRoot\}\}[\\/]my-agent/)
 
     // The host copied the whole directory and rewrote only the display
     // metadata: the composition is byte-identical to the shipped source, the

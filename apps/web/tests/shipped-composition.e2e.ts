@@ -217,6 +217,26 @@ it('assembles the shipped Web transport, catalog, guidance, and defaults', async
   }
 }, 120_000)
 
+it('routes Session Remote calls through the shared Host realm', async () => {
+  scaffold = await launchWebScaffold({ deepSeekMissingCredential: true })
+  const response = await scaffold.hostFetch('/api/session/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      type: 'client-request',
+      rpcId: 'shipped-session-create',
+      method: 'session/create',
+      payload: { args: { request: {} } },
+    }),
+  })
+  const body = await response.json() as {
+    result?: { ok?: boolean; value?: { sessionId?: unknown } }
+  }
+  expect(response.status).toBe(200)
+  expect(body.result?.ok).toBe(true)
+  expect(typeof body.result?.value?.sessionId).toBe('string')
+})
+
 it('ships PTC with run_code but without the general workflow SDK binding', async () => {
   scaffold = await launchWebScaffold({ deepSeekMissingCredential: true })
   const ctx = scaffold.ctx
