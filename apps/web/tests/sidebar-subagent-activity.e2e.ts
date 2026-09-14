@@ -114,7 +114,7 @@ describe('web e2e: sidebar subagent activity', () => {
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
-    const workspace = await scaffold.ctx.workspaceRegistry.resolveByPath(cwd)
+    const workspace = await scaffold.hostCtx.workspaceRegistry.resolveByPath(cwd)
     if (workspace === undefined) throw new Error('connected Web workspace was not registered')
     await workspace.attachSession(parentHandle.agent.session.id)
   }, 60_000)

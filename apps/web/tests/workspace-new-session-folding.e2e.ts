@@ -41,7 +41,7 @@ describe('web e2e: blank New Session folding quota', () => {
         `workspace-new-session-folding-${String(index).padStart(2, '0')}`,
       ))
     }
-    const workspace = await scaffold.ctx.workspaceRegistry.create(scaffold.workspaceCwd)
+    const workspace = await scaffold.hostCtx.workspaceRegistry.create(scaffold.workspaceCwd)
     for (const sessionId of sessionIds) await workspace.attachSession(sessionId)
 
     browser = await chromium.launch()

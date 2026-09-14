@@ -41,7 +41,7 @@ describe.skipIf(webSnapshotMode() === 'record')('historical preset restoration t
       }
       await expect(readFile(successor)).rejects.toMatchObject({ code: 'ENOENT' })
 
-      const resolved = await scaffold.ctx.sessionController.resolveAgent(id)
+      const resolved = await scaffold.hostCtx.sessionController.resolveAgent(id)
       if ('error' in resolved) throw resolved.error
       expect(scaffold.ctx.agentPresets.composedPreset(resolved.agent.ctx)).toBe('ptc')
       expect(resolved.agent.session.header.agentPreset).toBe('ptc')

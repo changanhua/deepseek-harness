@@ -236,7 +236,7 @@ describe('web e2e: seeded history renders through cold resume', () => {
     // the web), while fixture-level suites stay green. Assert through the
     // production Session Controller against the booted real host.
     const controller = new AbortController()
-    const stream = scaffold.ctx.sessionController.follow({
+    const stream = scaffold.hostCtx.sessionController.follow({
       address: { kind: 'session', sessionId: SessionId(SEED_ID) },
     }, controller.signal)[Symbol.asyncIterator]()
     const first = await stream.next()

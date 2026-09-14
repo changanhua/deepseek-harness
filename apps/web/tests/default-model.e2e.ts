@@ -38,7 +38,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
 
   /** Create one session and its agent through the same wire face the browser uses. */
   const createSession = async (sessionId: string): Promise<string> => {
-    const response = await scaffold.ctx.sessionController.create({
+    const response = await scaffold.hostCtx.sessionController.create({
       sessionId: SessionId(sessionId),
       cwd: scaffold.workspaceCwd,
     })
@@ -142,7 +142,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
 
     // The block is an affordance; the refusal is the Host's. A client that
     // never disabled anything still cannot start a turn on a dead route.
-    await expect(scaffold.ctx.sessionController.prompt({
+    await expect(scaffold.hostCtx.sessionController.prompt({
       requestId: 'default-model-refused' as never,
       sessionId: SessionId(await createSession('default-model-refusal')),
       mode: 'queue',

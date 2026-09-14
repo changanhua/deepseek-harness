@@ -149,8 +149,8 @@ describe.skipIf(MODE === 'record')('web e2e: GitHub ready-for-review', () => {
     })
     const entered = Promise.withResolvers<undefined>()
     const release = Promise.withResolvers<undefined>()
-    const createWorkspace = scaffold.ctx.workspaceRegistry.create.bind(scaffold.ctx.workspaceRegistry)
-    const create = vi.spyOn(scaffold.ctx.workspaceRegistry, 'create').mockImplementationOnce(async (...args) => {
+    const createWorkspace = scaffold.hostCtx.workspaceRegistry.create.bind(scaffold.hostCtx.workspaceRegistry)
+    const create = vi.spyOn(scaffold.hostCtx.workspaceRegistry, 'create').mockImplementationOnce(async (...args) => {
       entered.resolve(undefined)
       await release.promise
       return await createWorkspace(...args)
@@ -177,7 +177,7 @@ describe.skipIf(MODE === 'record')('web e2e: GitHub ready-for-review', () => {
 
     const agent = scaffold.ctx.agents.list().find(candidate => candidate.session.header.cwd === scaffold.workspaceCwd)
     expect(agent).toBeDefined()
-    const workspace = await scaffold.ctx.workspaceRegistry.resolveByPath(scaffold.workspaceCwd)
+    const workspace = await scaffold.hostCtx.workspaceRegistry.resolveByPath(scaffold.workspaceCwd)
     expect(workspace?.sessionIds).toContain(agent?.id)
     const webhookMessage = adapter.requests[0]?.messages.find(message => message.source.kind === 'webhook')
     expect(webhookMessage?.content).toHaveLength(1)

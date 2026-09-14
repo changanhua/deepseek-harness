@@ -294,7 +294,7 @@ describe.skipIf(MODE === 'record')('web e2e: conversational reminders', () => {
       .toBe(AT_BROWSER_ZONE)
 
     const cwd = join(scaffold.workspaceCwd, 'workspace')
-    const workspace = await scaffold.ctx.workspaceRegistry.resolveByPath(cwd)
+    const workspace = await scaffold.hostCtx.workspaceRegistry.resolveByPath(cwd)
     if (workspace === undefined) throw new Error('connected Web workspace was not registered')
 
     afterHandle = await scaffold.ctx.agents.create({
@@ -609,7 +609,7 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
       extraOverlayPath: OVERLAY,
     })
     await seedSession(scaffold, fixture, CATALOG_SESSION_ID, 'standard')
-    const workspace = await scaffold.ctx.workspaceRegistry.create(scaffold.workspaceCwd)
+    const workspace = await scaffold.hostCtx.workspaceRegistry.create(scaffold.workspaceCwd)
     await workspace.attachSession(CATALOG_SESSION_ID)
 
     // Seed the zero-I/O list view before the Session is opened.

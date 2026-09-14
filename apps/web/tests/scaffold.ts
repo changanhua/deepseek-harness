@@ -270,6 +270,8 @@ export interface WebScaffold {
   authenticatedUrl: string
   /** Settled root context (the in-process readiness barrier; headless event subscription is its sanctioned use). */
   ctx: Context
+  /** Settled Context carrying the shipped shared Host realm for host-only assertions. */
+  hostCtx: Context
   /** Temp project directory sessions run in (shell/fs tool cwd). */
   workspaceCwd: string
   /** Temp persistence root (seeded sessions land here through the real API). */
@@ -688,6 +690,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   let authenticatedUrl = ''
   let cookieHeader = ''
   let replayHandle: ReplayHandle | undefined
+  let hostCtx: Context | undefined
   try {
     process.chdir(workspaceCwd)
     const profileDir = join(harnessHome, 'profiles', 'scaffold')
@@ -749,6 +752,24 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     })
     await ctx.loader.await()
     await assertEntriesActivated(ctx, 'web e2e scaffold')
+    // Locate an active loader entry that carries the shared Host realm. An
+    // ordinary root `ctx.inject()` cannot see realm-scoped services: doing so
+    // would create a new root-scope child and turn this test helper into the
+    // very scope leak the profile is meant to prevent.
+    const hostRealmCtx = [...ctx.loader.entries()]
+      .map(entry => entry.ctx)
+      .find(candidate => candidate.get('workspaceRegistry', false) !== undefined
+        && candidate.get('sessionController', false) !== undefined)
+    if (hostRealmCtx === undefined) throw new Error('web e2e scaffold: shared Host realm is unavailable')
+    // Context property reads normally require the owning Fiber's declared
+    // inject list. The test handle intentionally shadows just these three
+    // already-published values, so host assertions can use the public service
+    // shape without changing the production realm or adding a new provider.
+    hostCtx = hostRealmCtx.extend({
+      storageDomain: hostRealmCtx.get('storageDomain', false),
+      workspaceRegistry: hostRealmCtx.get('workspaceRegistry', false),
+      sessionController: hostRealmCtx.get('sessionController', false),
+    })
     if (options.welcomeNoticePending !== true) {
       await ctx.settings.mutate(WELCOME_NOTICE_SETTINGS_NAMESPACE, [{
         op: 'set', path: [WELCOME_NOTICE_ACK_FIELD], value: WELCOME_NOTICE_VERSION,
@@ -840,6 +861,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   } finally {
     if (process.cwd() !== originalCwd) process.chdir(originalCwd)
   }
+  if (hostCtx === undefined) throw new Error('web e2e scaffold: shared Host realm is unavailable')
 
   return {
     harnessHome,
@@ -847,6 +869,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     baseUrl,
     authenticatedUrl,
     ctx,
+    hostCtx,
     workspaceCwd,
     persistenceRoot,
     hostFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -1433,7 +1456,7 @@ const ARIA_AGE =
 function normalizeAria(snapshot: string, workspaceCwd: string, age: boolean): string {
   // The session heading renders the workspace's basename, not the full
   // path, so both spellings must collapse to the token.
-  const base = workspaceCwd.split('/').pop()!
+  const base = workspaceCwd.split(/[\\/]/u).pop()!
   return (age ? snapshot.replace(ARIA_AGE, '{{age}}') : snapshot)
     .split(workspaceCwd).join('{{cwd}}')
     .split(base).join('{{workspace}}')

@@ -77,7 +77,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await dialog.getByRole('button', { name: 'Open', exact: true }).click()
     await dialog.waitFor({ state: 'hidden', timeout: 10_000 })
     await expect.poll(
-      () => scaffold.ctx.workspaceRegistry.resolveByPath(join(parent, name)),
+      () => scaffold.hostCtx.workspaceRegistry.resolveByPath(join(parent, name)),
       { timeout: 10_000 },
     ).not.toBeUndefined()
     // Adoption also opens a blank Session. Its selected row must reach the
@@ -97,7 +97,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await dialog.getByRole('button', { name: 'Open', exact: true }).click()
     await dialog.waitFor({ state: 'hidden', timeout: 10_000 })
     await expect.poll(
-      () => scaffold.ctx.workspaceRegistry.resolveByPath(path),
+      () => scaffold.hostCtx.workspaceRegistry.resolveByPath(path),
       { timeout: 10_000 },
     ).not.toBeUndefined()
     // First adoption births a blank Session+Agent whose workspace attach must
@@ -178,7 +178,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await add('beta-ws')
     // Durable on the host: both registered, newest first (create prepends),
     // each titled after the folder the dialog made.
-    const titles = scaffold.ctx.workspaceRegistry.list().map(workspace => workspace.title)
+    const titles = scaffold.hostCtx.workspaceRegistry.list().map(workspace => workspace.title)
     expect(titles.slice(0, 2)).toEqual(['beta-ws', 'alpha-ws'])
     expect(tripwire.pageErrors).toEqual([])
   }, 90_000)
@@ -204,7 +204,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await expect.poll(() => page.getByText('gamma-ws', { exact: true }).count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(1)
     expect(await page.getByText('alpha-ws', { exact: true }).count()).toBe(0)
     // Host durability, then reload: the projection is rebuilt from the wire.
-    expect(scaffold.ctx.workspaceRegistry.list().map(workspace => workspace.title)).toContain('gamma-ws')
+    expect(scaffold.hostCtx.workspaceRegistry.list().map(workspace => workspace.title)).toContain('gamma-ws')
     const warningStart = tripwire.warnings.length
     await page.reload({ waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -246,7 +246,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     })
     // Register the scaffold's existing project directory through the real UI.
     await adoptDirectory(scaffold.workspaceCwd, { waitForAgent: true })
-    const workspace = await scaffold.ctx.workspaceRegistry.resolveByPath(scaffold.workspaceCwd)
+    const workspace = await scaffold.hostCtx.workspaceRegistry.resolveByPath(scaffold.workspaceCwd)
     if (workspace === undefined) throw new Error('GUI did not register the existing project directory')
     holdAttachment = true
     await workspace.attachSession(SessionId(SEED_ID))
@@ -290,7 +290,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await dialog.getByRole('button', { name: 'Delete workspace' }).click()
     await expect.poll(() => dialog.count(), { timeout: 10_000 }).toBe(0)
 
-    expect(scaffold.ctx.workspaceRegistry.get(workspace.id)).toBeUndefined()
+    expect(scaffold.hostCtx.workspaceRegistry.get(workspace.id)).toBeUndefined()
     await expect.poll(
       () => page.getByRole('button', { name: `Workspace actions for ${workspace.title}` }).count(),
       { timeout: 10_000 },
@@ -312,10 +312,10 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     // (no cwd-based blank reuse exists, so the account is never empty).
     await adoptDirectory(scaffold.workspaceCwd)
     await expect.poll(
-      () => scaffold.ctx.workspaceRegistry.resolveByPath(scaffold.workspaceCwd),
+      () => scaffold.hostCtx.workspaceRegistry.resolveByPath(scaffold.workspaceCwd),
       { timeout: 10_000 },
     ).not.toBeUndefined()
-    const reregistered = await scaffold.ctx.workspaceRegistry.resolveByPath(scaffold.workspaceCwd)
+    const reregistered = await scaffold.hostCtx.workspaceRegistry.resolveByPath(scaffold.workspaceCwd)
     expect(reregistered?.id).toBeDefined()
     expect(reregistered?.id).not.toBe(workspace.id)
     await expect.poll(
@@ -331,7 +331,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     // Restore the deleted-registry state so reload still verifies deletion
     // persistence independently of the successful re-registration above.
     if (reregistered === undefined) throw new Error('same-path re-registration did not materialize')
-    await scaffold.ctx.workspaceRegistry.delete(reregistered.id)
+    await scaffold.hostCtx.workspaceRegistry.delete(reregistered.id)
     await expect.poll(
       () => page.getByRole('button', { name: `Workspace actions for ${reregistered.title}` }).count(),
       { timeout: 10_000 },
@@ -347,7 +347,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
       () => page.locator('[role="treeitem"][aria-selected="true"]').count(),
       { timeout: 15_000 },
     ).toBe(1)
-    expect(scaffold.ctx.workspaceRegistry.get(workspace.id)).toBeUndefined()
+    expect(scaffold.hostCtx.workspaceRegistry.get(workspace.id)).toBeUndefined()
     expect(await readFile(join(scaffold.workspaceCwd, 'workspace', 'a.txt'), 'utf8')).toBe('alpha\n')
     await stat(seededLogPath)
     expect((await readPersistedEvents(scaffold, SessionId(SEED_ID))).length).toBeGreaterThan(0)
@@ -386,10 +386,10 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
 
     await adoptDirectory(oldPath)
     await expect.poll(
-      () => scaffold.ctx.workspaceRegistry.resolveByPath(oldPath),
+      () => scaffold.hostCtx.workspaceRegistry.resolveByPath(oldPath),
       { timeout: 10_000 },
     ).not.toBeUndefined()
-    const oldWorkspace = await scaffold.ctx.workspaceRegistry.resolveByPath(oldPath)
+    const oldWorkspace = await scaffold.hostCtx.workspaceRegistry.resolveByPath(oldPath)
     if (oldWorkspace === undefined) throw new Error('old same-name Workspace was not registered')
 
     const oldRow = page.locator('[role="treeitem"]').filter({ hasText: title }).first()
@@ -397,10 +397,10 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await page.getByRole('menuitem', { name: 'Delete workspace' }).click()
     await page.getByRole('dialog', { name: 'Delete workspace' })
       .getByRole('button', { name: 'Delete workspace' }).click()
-    await expect.poll(() => scaffold.ctx.workspaceRegistry.get(oldWorkspace.id), { timeout: 10_000 }).toBeUndefined()
+    await expect.poll(() => scaffold.hostCtx.workspaceRegistry.get(oldWorkspace.id), { timeout: 10_000 }).toBeUndefined()
 
     await addNewFolderWorkspace(scaffold.workspaceCwd, title)
-    const fresh = scaffold.ctx.workspaceRegistry.list().find(workspace => workspace.title === title)
+    const fresh = scaffold.hostCtx.workspaceRegistry.list().find(workspace => workspace.title === title)
     expect(fresh?.id).toBeDefined()
     expect(fresh?.id).not.toBe(oldWorkspace.id)
     expect(fresh?.path).toBe(join(scaffold.workspaceCwd, title))
@@ -597,7 +597,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     // Selecting the seed hides any blank stray left by Workspace deletion,
     // so archiving this last visible Ungrouped Session must remove the bucket.
     await initialRow.click()
-    const { title } = await scaffold.ctx.sessionController.rename({
+    const { title } = await scaffold.hostCtx.sessionController.rename({
       sessionId: SessionId(SEED_ID), title: `Archive target ${SEED_ID}`,
     })
     // A user-owned title binds the locator to this seed across restoration.
@@ -618,7 +618,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await expect.poll(() => page.getByText('Ungrouped', { exact: true }).count(), { timeout: 10_000 }).toBe(0)
     // Durable on the host: the registry-global set carries the id while the
     // session log itself stays in persistence untouched.
-    expect([...scaffold.ctx.workspaceRegistry.archivedSessionIds]).toEqual([SessionId(SEED_ID)])
+    expect([...scaffold.hostCtx.workspaceRegistry.archivedSessionIds]).toEqual([SessionId(SEED_ID)])
     expect((await scaffold.ctx.sessionPersistence.list()).map(snapshot => snapshot.header.id)).toContain(SessionId(SEED_ID))
     // Reload: the hidden state is rebuilt from the workspace.list baseline.
     const warningStart = tripwire.warnings.length
@@ -651,7 +651,7 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await adoptDirectory(firstPath, { waitForAgent: true })
     await adoptDirectory(secondPath, { waitForAgent: true })
 
-    const matchingWorkspaces = scaffold.ctx.workspaceRegistry.list()
+    const matchingWorkspaces = scaffold.hostCtx.workspaceRegistry.list()
       .filter(workspace => workspace.title === 'xx')
     expect(matchingWorkspaces.map(workspace => workspace.path).sort())
       .toEqual([firstPath, secondPath].sort())
