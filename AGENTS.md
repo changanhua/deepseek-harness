@@ -4,6 +4,8 @@
 
 DeepSeek Harness is a plugin-based agent harness on vendored Cordis: **everything is a plugin**. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
 
+Before repository-wide or cross-package analysis of this downstream fork, read [downstream/PROJECT-CONTEXT.md](downstream/PROJECT-CONTEXT.md). Reuse its still-valid reviewed conclusions; when the target ref differs, compare from the recorded review boundaries and re-read only semantically affected owners and dependencies instead of rediscovering the whole repository.
+
 ## Pre-release stance
 
 Compatibility and format-version rules are owned by the [Session package](packages/core/session/README.md) and [storage subsystem](docs/subsystems/storage.md); current formats may reject older data instead of shipping compatibility shims.

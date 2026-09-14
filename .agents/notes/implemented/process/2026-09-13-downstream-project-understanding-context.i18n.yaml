@@ -1,0 +1,5 @@
+# This file records the content hashes of the two language sides as of the last confirmed-consistent state.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-13-downstream-project-understanding-context.md
+2026-09-13-downstream-project-understanding-context.md: 0e57fe7da3674ef7bf1b0231e3d8ca1583407322
+2026-09-13-downstream-project-understanding-context.zh.md: f0f77c0a2d138c69e65e0e78e5bb81d2a724a151
