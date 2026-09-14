@@ -53,7 +53,10 @@ describe('minimal agent preset', () => {
   let tripwire: ReturnType<typeof watchConsole> | undefined
 
   beforeAll(async () => {
-    scaffold = await launchWebScaffold({ replayFixture: FIXTURE, compareReplaySession: true, paceMs: 10 })
+    // Keep the committed replay session POSIX/Bash-shaped. Windows exercises
+    // its pwsh contract through the direct assertion below; comparing the
+    // canonical Bash session there would report a platform-only tool mismatch.
+    scaffold = await launchWebScaffold({ replayFixture: FIXTURE, compareReplaySession: process.platform !== 'win32', paceMs: 10 })
     disposeInjectedPrompt = scaffold.ctx.systemPrompt.section({
       name: 'test:injected-prompt',
       order: 999,
@@ -126,6 +129,7 @@ describe('minimal agent preset', () => {
       // detail to the public result contract before asserting the shell state.
       .replace(/^\s+/, '')
       .replace(/__DSH_PERSISTENT_PWSH_END_[^\s:]+:0/g, '[Command finished with exit code 0]')
+      .replace(/\n\[Command finished with exit code 0\]\s*$/, '')
       .trimEnd()
 
     expect({
@@ -135,8 +139,7 @@ describe('minimal agent preset', () => {
       bash: text(shell),
     }).toMatchInlineSnapshot(`
       {
-        "bash": "${process.platform === 'win32' ? '{{cwd}}\\persistent-state' : 'PERSISTED:{{cwd}}/persistent-state'}
-      [Command finished with exit code 0]",
+        "bash": "${process.platform === 'win32' ? '{{cwd}}\\persistent-state' : 'PERSISTED:{{cwd}}/persistent-state'}",
         "goalCommand": false,
         "prompt": "You are a helpful software engineer assistant.",
         "tools": [
