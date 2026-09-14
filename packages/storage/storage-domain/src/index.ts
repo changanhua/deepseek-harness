@@ -229,7 +229,8 @@ export function apply(ctx: Context, config: Config): Promise<void> {
     rejectReady = reject
   })
   void ready.catch(() => {})
-  ctx.inject(backendServices, (domainCtx) => {
+  let stopSetupCancellation = (): void => {}
+  const injected = ctx.inject(backendServices, (domainCtx) => {
     try {
       const facility = new DomainFacility(domainCtx, config)
       const unprovide = domainCtx.provide('storageDomain', facility)
@@ -249,5 +250,18 @@ export function apply(ctx: Context, config: Config): Promise<void> {
       throw error
     }
   })
+  stopSetupCancellation = ctx.on('internal/plugin', (fiber) => {
+    if (fiber === ctx.fiber && fiber.uid === null) {
+      rejectReady(new Error('storage-domain setup disposed'))
+      stopSetupCancellation()
+    }
+  })
+  void injected.then(
+    () => { stopSetupCancellation() },
+    (error: unknown) => {
+      rejectReady(error)
+      stopSetupCancellation()
+    },
+  )
   return ready
 }
