@@ -7,7 +7,7 @@
  */
 
 import { existsSync, globSync, readFileSync, writeFileSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
@@ -61,6 +61,12 @@ import * as ToolAgentRunTaskQueue from '@changanhua/dsh-tool-agent-run-task-queu
 import * as ToolImageGenerationTaskQueue from '@changanhua/dsh-tool-image-generation-task-queue'
 import * as ToolOperationRunTaskQueue from '@changanhua/dsh-tool-operation-run-task-queue'
 import * as ToolTaskQueue from '@changanhua/dsh-tool-task-queue'
+import Storage from '@deepseek-ai/dsh-storage'
+import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
+import * as StorageJson from '@deepseek-ai/dsh-storage-json'
+import KnowledgeBaseService from '@changanhua/dsh-knowledge-base'
+import KnowledgeQueueService from '@changanhua/dsh-knowledge-base-task-queue'
+import * as ToolKnowledgeBase from '@changanhua/dsh-tool-knowledge-base'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
@@ -609,6 +615,28 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolImageGenerationTaskQueue)
     },
     note: 'The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority.',
+  },
+  {
+    pkg: '@changanhua/dsh-tool-knowledge-base',
+    dir: 'tool-knowledge-base',
+    source: 'packages/knowledge/tool-knowledge-base/src/index.ts',
+    requires: ['ctx.tools', 'ctx.knowledgeBase', 'ctx.knowledgeQueue', 'ctx.taskQueue', 'ctx.subprocess'],
+    writes: ['tool/call', 'tool/result', 'knowledge-base Domain records and managed content through explicit requests'],
+    async mount(ctx) {
+      const scratchRoot = resolve(root, '.tmp/tool-catalog/tool-knowledge-base')
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: join(scratchRoot, 'storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(KnowledgeBaseService, { root: join(scratchRoot, 'content') })
+      await ctx.plugin(LocalTaskQueue, {
+        queueRoot: join(scratchRoot, 'queue'),
+        resourceCapacity: { 'knowledge-base': 1, codex: 1 },
+      })
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(KnowledgeQueueService)
+      await ctx.plugin(ToolKnowledgeBase)
+    },
+    note: 'knowledge_base accepts only a closed business request. It keeps profile configuration, subprocess control, credentials, and direct storage access outside the tool; generation remains Queue-backed, unknown work never auto-retries, and publication stays explicit.',
   },
   {
     pkg: '@changanhua/dsh-tool-operation-run-task-queue',

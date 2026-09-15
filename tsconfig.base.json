@@ -317,6 +317,8 @@
       "@changanhua/dsh-content-remote/invariant": ["./packages/content/content-remote/src/invariant.ts"],
       "@changanhua/dsh-content-session": ["./packages/content/content-session/src"],
       "@changanhua/dsh-content-session/invariant": ["./packages/content/content-session/src/invariant.ts"],
+      "@changanhua/dsh-control-mcp": ["./packages/mcp/control-mcp/src"],
+      "@changanhua/dsh-control-mcp/invariant": ["./packages/mcp/control-mcp/src/invariant.ts"],
       "@changanhua/dsh-delivery": ["./packages/delivery/delivery/src"],
       "@changanhua/dsh-delivery/invariant": ["./packages/delivery/delivery/src/invariant.ts"],
       "@changanhua/dsh-delivery-evidence": ["./packages/delivery/delivery-evidence/src"],
