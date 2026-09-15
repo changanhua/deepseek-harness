@@ -42,11 +42,10 @@ export interface OpenDatabaseOptions {
   readonly privateDirectory: boolean
 }
 
-/* jscpd:ignore-start -- deliberately mirrors the session-persistence-sqlite /
-   session-query-sqlite open sequence; this group is the third user, and the
-   shared medium helper is deferred to the log-facet migration so the session
-   packages stay untouched this phase (see the domain KV storage Agent Note's
-   reuse audit). */
+/* jscpd:ignore-start -- deliberately mirrors the session-query-sqlite open
+   sequence. Each package owns a distinct database identity and schema, so a
+   shared helper would couple otherwise independent storage providers (see the
+   domain KV storage Agent Note's reuse audit). */
 /**
  * Exclusively create a missing database file with owner-only permissions.
  * Existing files retain their modes, and errors other than `EEXIST` propagate.
@@ -71,7 +70,7 @@ async function createDatabaseFile(path: string): Promise<boolean> {
  * A zero `user_version` is stamped with {@link STORAGE_SQLITE_SCHEMA_VERSION};
  * every other non-current version rejects rather than being migrated in place.
  * @param path - the SQLite database file to open, or `:memory:`.
- * @param options - Validated ownership, journaling, synchronization and identity policy.
+ * @param journalMode - validated journal pragma.
  * @returns the open handle with pragmas applied and the unit metadata tables ensured.
  */
 export async function openDatabase(path: string, options: OpenDatabaseOptions): Promise<DatabaseSync> {
@@ -87,11 +86,8 @@ export async function openDatabase(path: string, options: OpenDatabaseOptions): 
   }
   let created = false
   if (actual !== ':memory:') {
-    if (options.privateDirectory) {
-      await preparePrivateDirectory(actual)
-    } else {
-      await mkdir(dirname(actual), { recursive: true, mode: 0o700 })
-    }
+    if (options.privateDirectory) await preparePrivateDirectory(actual)
+    else await mkdir(dirname(actual), { recursive: true, mode: 0o700 })
     created = await createDatabaseFile(actual)
     if (options.privateDirectory) await verifyPrivateDatabaseFile(actual)
   } else if (options.privateDirectory) {
@@ -120,70 +116,31 @@ function configureDatabase(
     db.exec(`PRAGMA synchronous = ${options.synchronous.toUpperCase()}`)
     const expected = { normal: 1, full: 2, extra: 3 }[options.synchronous]
     const selected = integerPragma(db, 'synchronous')
-    if (selected !== expected) {
-      throw new Error(`storage database at "${path}" retained synchronous=${selected}, expected ${expected}`)
-    }
+    if (selected !== expected) throw new Error(`storage database at "${path}" retained synchronous=${selected}, expected ${expected}`)
   }
   if (options.ownership === 'exclusive') {
     db.exec('PRAGMA locking_mode = EXCLUSIVE')
-    if (stringPragma(db, 'locking_mode') !== 'exclusive') {
-      throw new Error(`storage database at "${path}" did not retain exclusive locking mode`)
-    }
+    if (stringPragma(db, 'locking_mode') !== 'exclusive') throw new Error(`storage database at "${path}" did not retain exclusive locking mode`)
   }
-
-  if (options.applicationId === undefined || created) {
-    db.exec(`PRAGMA journal_mode = ${options.journalMode.toUpperCase()}`)
-  }
+  if (options.applicationId === undefined || created) db.exec(`PRAGMA journal_mode = ${options.journalMode.toUpperCase()}`)
   let began = false
+  let onDisk = 0
   try {
     db.exec(options.ownership === 'exclusive' ? 'BEGIN EXCLUSIVE' : 'BEGIN IMMEDIATE')
     began = true
-    const onDisk = integerPragma(db, 'user_version')
+    onDisk = integerPragma(db, 'user_version')
     const applicationId = integerPragma(db, 'application_id')
-    const objectCount = (db.prepare(
-      "SELECT count(*) AS count FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'",
-    ).get() as { count: number }).count
+    const objectCount = (db.prepare("SELECT count(*) AS count FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").get() as { count: number }).count
     if (options.applicationId !== undefined) {
-      if (!created && onDisk === 0) {
-        throw new Error(`storage existing database has no DSH identity at "${path}"`)
-      }
-      if (onDisk === 0 && (applicationId !== 0 || objectCount > 0)) {
-        throw new Error(`storage database at "${path}" has an unversioned schema or application identity`)
-      }
-      if (onDisk !== 0 && applicationId !== options.applicationId) {
-        throw new Error(
-          `storage database at "${path}" has application id ${applicationId}, expected ${options.applicationId}`,
-        )
-      }
+      if (!created && onDisk === 0) throw new Error(`storage existing database has no DSH identity at "${path}"`)
+      if (onDisk === 0 && (applicationId !== 0 || objectCount > 0)) throw new Error(`storage database at "${path}" has an unversioned schema or application identity`)
+      if (onDisk !== 0 && applicationId !== options.applicationId) throw new Error(`storage database at "${path}" has application id ${applicationId}, expected ${options.applicationId}`)
     }
     const selectedJournal = stringPragma(db, 'journal_mode')
     const expectedJournal = path === ':memory:' ? 'memory' : options.journalMode
-    if (selectedJournal !== expectedJournal) {
-      throw new Error(`storage database at "${path}" has journal mode ${selectedJournal}, expected ${expectedJournal}`)
-    }
+    if (selectedJournal !== expectedJournal) throw new Error(`storage database at "${path}" has journal mode ${selectedJournal}, expected ${expectedJournal}`)
     if (onDisk !== 0 && onDisk !== STORAGE_SQLITE_SCHEMA_VERSION) {
-      throw new StorageError(
-        'version-mismatch',
-        `storage database at "${path}" has schema version ${onDisk}, incompatible with this build (${STORAGE_SQLITE_SCHEMA_VERSION})`,
-      )
-    }
-    /* jscpd:ignore-end */
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS units (
-        name    TEXT PRIMARY KEY,
-        version INTEGER NOT NULL
-      ) STRICT
-    `)
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS unit_globals (
-        unit  TEXT PRIMARY KEY REFERENCES units(name),
-        value TEXT NOT NULL
-      ) STRICT
-    `)
-    if (onDisk === 0) {
-      if (options.applicationId !== undefined) db.exec(`PRAGMA application_id = ${options.applicationId}`)
-      // Stamp fresh databases LAST: the stamp asserts the layout is complete.
-      db.exec(`PRAGMA user_version = ${STORAGE_SQLITE_SCHEMA_VERSION}`)
+      throw new StorageError('version-mismatch', `storage database at "${path}" has schema version ${onDisk}, incompatible with this build (${STORAGE_SQLITE_SCHEMA_VERSION})`)
     }
     db.exec('COMMIT')
     began = false
@@ -192,6 +149,25 @@ function configureDatabase(
       try { db.exec('ROLLBACK') } catch {}
     }
     throw error
+  }
+  // Keep metadata DDL outside the identity-check transaction. A failed second
+  // table must leave the first table present and the database unstamped so a
+  // later repair can retry deterministically.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS units (
+      name    TEXT PRIMARY KEY,
+      version INTEGER NOT NULL
+    ) STRICT
+  `)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS unit_globals (
+      unit  TEXT PRIMARY KEY REFERENCES units(name),
+      value TEXT NOT NULL
+    ) STRICT
+  `)
+  if (onDisk === 0) {
+    if (options.applicationId !== undefined) db.exec(`PRAGMA application_id = ${options.applicationId}`)
+    db.exec(`PRAGMA user_version = ${STORAGE_SQLITE_SCHEMA_VERSION}`)
   }
 }
 

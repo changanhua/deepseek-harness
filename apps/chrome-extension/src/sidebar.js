@@ -4,8 +4,12 @@ import { renderActivity } from './sidebar-activity.js'
 import { modelSummary } from './model-summary.js'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3080'
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const MAX_DRAFT_IMAGES = 4
+const MAX_DRAFT_IMAGE_BYTES = 2 * 1024 * 1024
+const MAX_DRAFT_IMAGE_TOTAL_BYTES = 3 * 1024 * 1024
 const byId = id => document.getElementById(id)
-const view = Object.fromEntries(['notice', 'connection-panel', 'connection-label', 'session-menu', 'settings', 'base-url', 'conversation', 'contexts', 'composer', 'pending-actions'].map(id => [id.replaceAll('-', '_'), byId(id)]))
+const view = Object.fromEntries(['notice', 'connection-panel', 'connection-label', 'page-panel', 'capture-panel', 'session-menu', 'settings', 'base-url', 'conversation', 'contexts', 'composer', 'pending-actions'].map(id => [id.replaceAll('-', '_'), byId(id)]))
 let state = null
 let renderGeneration = 0
 let editingUrl = false
@@ -13,6 +17,8 @@ let pendingPoll = null
 let nextRequest = 0
 let appliedRequest = 0
 let submittedText = null
+let submitting = false
+let draftImages = []
 const imageRequests = new Map()
 let approvalRenderKey = null
 let unresolvedRenderKey = null
@@ -30,7 +36,7 @@ const errorLabels = {
   offline: '连接已中断，恢复连接后可继续。', target_changed: '这条请求属于另一台 DSH，请恢复原连接后确认结果。',
   result_unknown: '提交结果尚未确认，请重试原请求，不要重新发送。', pending_locked: '上次请求尚未确认，请先恢复原连接并确认结果。',
   pending_exists: '请先处理当前待确认的输入。', empty_selection: '请先在网页中选中文字。', empty_body: '当前页面没有可采集的已展开正文。', unsupported_page: '请选择普通网页，再采集上下文。',
-  page_permission_required: '请先点击工具栏中的助手图标，允许读取当前网页。', screenshot_permission_required: '请先点击工具栏中的助手图标，允许读取当前标签后再截图。',
+  page_permission_required: '请先点击工具栏中的助手图标，允许读取当前网页。', screenshot_permission_required: '请先点击工具栏中的助手图标，允许读取当前标签后再截图。', screenshot_requires_active_tab: '请先聚焦要理解的目标标签，再重新截图。',
   capture_target_changed: '采集期间页面发生变化，请重新采集。', screenshot_too_large: '截图过大，请缩小浏览器窗口后重试。', context_limit: '上下文已达到上限，请移除部分内容再继续。',
   'model-unavailable': '请先在 DSH Web 中选择可用模型。', 'session-not-found': '找不到这个会话，请重新选择。',
   storage_invalid: '本地会话记录无法读取，请保留数据并检查连接设置。', storage_failed: '本地记录保存失败，本次操作未能确认。',
@@ -38,6 +44,41 @@ const errorLabels = {
   executor_not_quiescent: '尚不能确认旧操作已停止，请先停止任务并检查目标页面。',
   acknowledgement_unconfirmed: '核对结果已保留在扩展中，等待与 DSH 同步。',
   target_unavailable: '该目标标签已不可用，请根据会话记录核对操作结果。',
+}
+const imageData = file => new Promise((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onerror = () => reject(new Error('image_read_failed'))
+  reader.onload = () => {
+    const result = typeof reader.result === 'string' ? reader.result : ''
+    const match = /^data:([^;]+);base64,([A-Za-z0-9+/]+={0,2})$/u.exec(result)
+    if (!match) { reject(new Error('image_read_failed')); return }
+    resolve({ type: 'image', mediaType: match[1], data: match[2], name: file.name || 'clipboard-image' })
+  }
+  reader.readAsDataURL(file)
+})
+const renderDraftImages = () => {
+  const rail = byId('draft-images')
+  rail.replaceChildren()
+  for (const [index, image] of draftImages.entries()) {
+    const item = document.createElement('div'); item.className = 'draft-image'
+    const preview = document.createElement('img'); preview.alt = image.name; preview.src = `data:${image.mediaType};base64,${image.data}`
+    const remove = button('×', () => { draftImages = draftImages.filter((_, candidate) => candidate !== index); renderDraftImages() })
+    remove.setAttribute('aria-label', `移除图片 ${image.name}`)
+    item.append(preview, remove); rail.append(item)
+  }
+}
+const addDraftImages = async files => {
+  const candidates = [...files].filter(file => file instanceof File)
+  if (!candidates.length) return
+  if (candidates.some(file => !IMAGE_TYPES.has(file.type))) { notice('仅支持 PNG、JPG、WebP、GIF 格式的图片'); return }
+  if (draftImages.length + candidates.length > MAX_DRAFT_IMAGES) { notice(`一次最多添加 ${MAX_DRAFT_IMAGES} 张图片`); return }
+  if (candidates.some(file => file.size > MAX_DRAFT_IMAGE_BYTES)
+    || draftImages.reduce((total, image) => total + Math.floor(image.data.length * 3 / 4), 0)
+      + candidates.reduce((total, file) => total + file.size, 0) > MAX_DRAFT_IMAGE_TOTAL_BYTES) {
+    notice('侧栏草稿图片总大小不能超过 3MB，请压缩后重试'); return
+  }
+  try { draftImages = [...draftImages, ...await Promise.all(candidates.map(imageData))]; renderDraftImages() }
+  catch (error) { notice(messageError(error)) }
 }
 const messageError = error => {
   const code = error?.code ?? error?.message ?? error
@@ -55,6 +96,10 @@ const send = async message => {
   try {
     const result = await chrome.runtime.sendMessage(message)
     if (!result?.ok) throw new Error(result?.error ?? '操作未完成')
+    if (result.capture || result.captureConnection) {
+      state = { ...state, ...(result.capture ? { capture: result.capture } : {}), ...(result.captureConnection ? { captureConnection: result.captureConnection } : {}) }
+      renderCapture()
+    }
     if (result.state && request >= appliedRequest) { appliedRequest = request; applyState(result.state) }
     return result
   } catch (error) { notice(messageError(error)); return null }
@@ -85,11 +130,50 @@ const renderConnection = () => {
   } else clearTimeout(pendingPoll)
 }
 
+const captureLabel = status => ({ draft: '待导入', saving: '正在导入', saved: '已导入内容库', failed: '导入失败', unknown: '结果待确认' })[status] ?? '采集状态未知'
+const renderPage = () => {
+  const page = state?.page
+  view.page_panel.replaceChildren(); view.page_panel.hidden = !page
+  if (!page) return
+  const heading = document.createElement('strong'); heading.textContent = page.title || '当前页面'
+  const url = document.createElement('small'); url.textContent = page.url
+  const hint = document.createElement('span'); hint.textContent = page.url ? '可从当前标签页选择、提取或执行已授权动作' : '当前标签页不可用'
+  view.page_panel.append(heading, url, hint)
+}
+const renderCapture = () => {
+  const capture = state?.capture
+  view.capture_panel.replaceChildren()
+  view.capture_panel.hidden = !capture
+  if (!capture) return
+  const heading = document.createElement('strong'); heading.textContent = captureLabel(capture.status)
+  const title = document.createElement('span'); title.textContent = capture.title ?? '网页内容'
+  const source = document.createElement('small'); source.textContent = capture.source?.url ?? ''
+  const summary = document.createElement('p'); summary.append(heading, '　', title, source)
+  view.capture_panel.append(summary)
+  const contentConnection = state?.captureConnection ?? { phase: 'configured' }
+  const connectionNote = document.createElement('small')
+  connectionNote.textContent = contentConnection.phase === 'connected' ? '内容库已连接' : contentConnection.phase === 'pending' ? '内容库等待批准' : '内容库尚未连接'
+  view.capture_panel.append(connectionNote)
+  if (capture.error) { const error = document.createElement('small'); error.textContent = messageError(capture.error); view.capture_panel.append(error) }
+  const actions = document.createElement('div'); actions.className = 'capture-actions'
+  if (capture.status === 'saved' && capture.entryId) {
+    const open = button('在 DSH 中打开', () => send({ type: 'dsh-capture-open-entry', entryId: capture.entryId }), 'primary'); open.id = 'capture-open-entry'; actions.append(open)
+  } else if (capture.captureId && ['draft', 'failed', 'unknown'].includes(capture.status)) {
+    const save = button(capture.status === 'draft' ? '导入内容库' : capture.status === 'unknown' ? '确认并重试原请求' : '重试原请求', () => send({ type: 'dsh-capture-save', captureId: capture.captureId }), 'primary'); save.id = 'capture-save'; actions.append(save)
+  }
+  if (contentConnection.phase !== 'connected' && contentConnection.phase !== 'pending') {
+    const connect = button('连接内容库', () => send({ type: 'dsh-capture-connect' }), 'primary'); connect.id = 'capture-connect'; actions.append(connect)
+  }
+  if (capture.source?.url) actions.append(button('打开来源', () => send({ type: 'dsh-capture-open-source', url: capture.source.url })) )
+  view.capture_panel.append(actions)
+}
+
 const renderSettings = () => {
   byId('browser-engine').value = state?.browserEngine ?? 'puppeteer'
   if (!editingUrl) view.base_url.value = state?.connection?.baseUrl ?? DEFAULT_BASE_URL
   byId('model-summary').textContent = modelSummary(state?.session)
-  byId('configure-model').disabled = state?.connection?.phase !== 'connected'
+  const configureModel = byId('configure-model')
+  if (configureModel) configureModel.disabled = state?.connection?.phase !== 'connected'
 }
 
 const renderSiteAccess = () => {
@@ -252,14 +336,22 @@ const renderUnresolved = () => {
 
 const render = () => {
   const session = state?.session
-  renderConnection(); renderSettings(); renderSiteAccess(); renderPending(); renderConversation(); renderContexts(); renderApprovals(); renderUnresolved()
+  renderConnection(); renderPage(); renderCapture(); renderSettings(); renderSiteAccess(); renderPending(); renderConversation(); renderContexts(); renderApprovals(); renderUnresolved()
   const offline = state?.connection?.phase !== 'connected' || session?.phase === 'foreign'
   const block = locked(session?.pending) || Boolean(session?.pendingCreate)
   view.composer.disabled = block
-  byId('send-queue').disabled = block || offline || !session?.binding
-  byId('send-steer').disabled = block || offline || !session?.binding
+  byId('send-queue').disabled = block || offline || submitting
+  byId('send-steer').disabled = block || offline || submitting
   byId('stop-session').disabled = offline || !session?.binding
-  byId('session-picker').disabled = block || offline
+  byId('session-picker').disabled = block || offline || submitting
+  const status = session?.phase === 'foreign' ? '当前会话属于另一台 DSH，请恢复原连接。'
+    : offline ? '请先连接 DSH，草稿会留在输入框中。'
+      : session?.pendingCreate ? '正在确认会话创建结果，请使用上方“继续确认创建”。'
+        : locked(session?.pending) ? '上次提交尚未确认，请使用上方“重试原请求”。'
+          : submitting ? '正在发送…'
+            : !session?.binding ? '首次发送将按 DSH 默认模式新建会话。' : ''
+  byId('send-status').textContent = status
+  byId('send-status').hidden = !status
   byId('session-picker').title = session?.binding?.sessionId ?? '选择会话'
   byId('session-picker').textContent = session?.binding ? '会话 · ' + session.binding.sessionId.slice(-8) : '会话'
   if (session?.error) notice(messageError(session.error))
@@ -313,13 +405,19 @@ const configure = async () => {
   if (!await send({ type: 'dsh-assistant-configure', baseUrl })) return
   await send({ type: 'dsh-assistant-connect', scopes: ['session:interact', 'browser:read', 'browser:write', 'browser:observe'], origins: ['*'] })
 }
-const submit = mode => {
+const submit = async mode => {
   const text = view.composer.value.trim()
-  if (!text && !state?.contexts?.length || locked(state?.session?.pending)) return
-  submittedText = text
-  void send({ type: 'dsh-assistant-session-submit', text, mode }).then(result => {
-    if (result?.ok && view.composer.value.trim() === text) { view.composer.value = ''; submittedText = null }
-  })
+  if ((!text && !state?.contexts?.length && !draftImages.length) || submitting || locked(state?.session?.pending) || state?.session?.pendingCreate) return
+  if (state?.connection?.phase !== 'connected' || state?.session?.phase === 'foreign') { render(); return }
+  submitting = true; render()
+  try {
+    submittedText = text
+    const result = await send({ type: 'dsh-assistant-session-submit', text, mode,
+      ...(draftImages.length ? { images: structuredClone(draftImages) } : {}) })
+    if (result?.ok && view.composer.value.trim() === text) {
+      view.composer.value = ''; submittedText = null; draftImages = []; renderDraftImages()
+    }
+  } finally { submitting = false; render() }
 }
 
 byId('session-picker').addEventListener('click', () => { void openSessionMenu() })
@@ -344,6 +442,13 @@ byId('base-url').addEventListener('input', () => { editingUrl = true })
 byId('capture-selection').addEventListener('click', () => { void send({ type: 'dsh-assistant-context-capture', kind: 'selection' }) })
 byId('capture-body').addEventListener('click', () => { void send({ type: 'dsh-assistant-context-capture', kind: 'page-body' }) })
 byId('capture-screenshot').addEventListener('click', () => { void send({ type: 'dsh-assistant-context-capture', kind: 'screenshot' }) })
+byId('composer').addEventListener('paste', event => {
+  const items = [...(event.clipboardData?.items ?? [])]
+  const files = items.filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean)
+  if (!files.length) return
+  event.preventDefault()
+  void addDraftImages(files)
+})
 byId('stop-session').addEventListener('click', () => { void send({ type: 'dsh-assistant-session-stop' }) })
 byId('send-queue').addEventListener('click', () => submit('queue'))
 byId('send-steer').addEventListener('click', () => submit('steer'))

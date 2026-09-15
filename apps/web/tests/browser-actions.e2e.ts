@@ -39,6 +39,7 @@ it('runs the extended action set through the loaded extension and checks browser
       <form onsubmit="event.preventDefault();this.dataset.done='yes'"><button id="submit">Submit</button></form>
       <div id="drag" draggable="true" tabindex="0" ondragstart="event.dataTransfer.setData('text/plain','fixture')">Drag</div>
       <div id="drop" tabindex="0" ondragover="event.preventDefault()" ondrop="event.preventDefault();this.dataset.done=event.dataTransfer.getData('text/plain')">Drop</div>
+      <section id="feed"><article class="item"><a href="/entry-one">Entry one</a></article></section>
       <div style="height:2000px">Space</div>`)
   })
   await new Promise<void>(done => server.listen(0, '127.0.0.1', done))

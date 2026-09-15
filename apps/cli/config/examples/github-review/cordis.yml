@@ -4,6 +4,11 @@
 - insert:
     - id: webhook-runtime
       name: '@deepseek-ai/dsh-webhook'
+      # The webhook runtime creates Sessions through the shared Web Host
+      # Workspace registry. Keep the opt-in overlay in that realm instead of
+      # depending on a process-global service.
+      isolate:
+        workspaceRegistry: web-host
 
     - id: github-ready-review-rule
       name: './github-ready-review-rule.mjs'

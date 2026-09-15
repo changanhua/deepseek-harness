@@ -28,7 +28,6 @@ class StubSubprocessRuntime extends SubprocessRuntime {
       ? { stdout: { readFrom: () => read } }
       : {}
     return {
-      pid: spec.argv.length,
       stdin: undefined,
       stdout: undefined,
       stderr: undefined,
@@ -63,7 +62,7 @@ describe('SubprocessRuntime seam', () => {
       stdio: { stdin: 'ignore', stdout: { maxBytes: 1 }, stderr: 'inherit' },
       graceMs: 1,
     })
-    expect(handle.pid).toBe(1)
+    expect(Object.hasOwn(handle, 'pid')).toBe(false)
     expect(handle.collected.stdout!.readFrom(0)).toEqual({ text: '', nextOffset: 0, lossy: false })
     handle.terminate()
     await expect(handle.waitForExit()).resolves.toBe(true)

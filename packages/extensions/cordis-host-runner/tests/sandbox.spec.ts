@@ -111,31 +111,6 @@ describe('sandbox isolation and Node-API traps', () => {
     vi.restoreAllMocks()
   })
 
-  it('advertises the concrete browser entry input and result shapes to dynamic packages', () => {
-    const browser = HOST_BUILTIN_INSPECTION.find(item => item.name === 'harness')
-    expect(browser?.signatures).toEqual(expect.arrayContaining([
-      expect.stringContaining('regionSelector: string'),
-      expect.stringContaining('selector: string'),
-      expect.stringContaining('sampleLimit?: number'),
-      expect.stringContaining('outcome: observed | failed | cancelled | unknown'),
-    ]))
-  })
-
-  it('contains rejected async event handlers instead of letting them escape the Host', async () => {
-    const harness = await setup()
-    await mount(harness, `
-      return {
-        name: 'async-event-failure',
-        apply(ctx) {
-          ctx.on('probe/event', async () => { throw new Error('event boom') })
-        },
-      }
-    `)
-    const emit = harness.ctx.emit as unknown as (...args: unknown[]) => unknown
-    expect(() => { emit('probe/event', {}) }).not.toThrow()
-    await new Promise(resolve => setTimeout(resolve, 0))
-  })
-
   it('exposes the owning Session identity through the harness builtin', async () => {
     const harness = await setup()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})

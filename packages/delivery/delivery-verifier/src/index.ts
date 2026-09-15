@@ -59,7 +59,6 @@ export type DeliveryVerifierErrorCode =
   | 'configuration'
   | 'invalid-request'
   | 'workspace-boundary'
-  | 'workspace-integrity'
   | 'execution'
   | 'canceled'
   | 'cleanup'
@@ -116,7 +115,7 @@ export interface DeliveryVerificationRunRequest {
   readonly verificationQueueAttemptId: QueueAttemptIdRef
   /** Independently derive ancestry and complete changed-path facts. */
   readonly inspectRange: (signal: AbortSignal) => Promise<RepositoryRangeFacts>
-  /** Open the isolated Attempt checkout only when verification starts. */
+  /** Open the read/execute-only Attempt checkout only when verification starts. */
   readonly openWorkspace: (signal: AbortSignal) => Promise<VerificationWorkspaceLease>
   /** Bind evidence provenance to the exact planned verification check. */
   readonly evidenceFor: (checkId: VerificationCheckId) => BoundDeliveryEvidenceWriter
@@ -715,18 +714,6 @@ async function executeVerification(
   const outputFindings: EvidenceIntegrityFinding[] = []
   const evidenceIds = new Set(request.completionClaim.evidenceIds)
   const live: LiveProcessState = { handle: undefined, quiescent: true }
-  const integrity = { uncertain: false }
-  const assertUnchanged = async () => {
-    integrity.uncertain = true
-    try {
-      await workspace.assertUnchanged(signal)
-      throwIfCanceled(signal)
-      integrity.uncertain = false
-    } catch (error) {
-      throwIfCanceled(signal)
-      throw verifierFailure('workspace-integrity', 'verification workspace no longer proves the target commit; checkout preserved', error)
-    }
-  }
   let verdict!: VerificationVerdict
   let failure: Error | undefined
   try {
@@ -751,7 +738,6 @@ async function executeVerification(
     }
     for (const { check, cwd } of runnableChecks) {
       throwIfCanceled(signal)
-      await assertUnchanged()
       const completed = await runCheck(
         dependencies,
         request,
@@ -760,7 +746,6 @@ async function executeVerification(
         signal,
         live,
       )
-      await assertUnchanged()
       if (evidenceIds.has(completed.outputReference.id)) {
         throw verifierFailure(
           'execution',
@@ -843,7 +828,7 @@ async function executeVerification(
       : verifierFailure('execution', 'verification failed with a non-Error rejection', error)
   }
   try {
-    await workspace.close(live.quiescent && !integrity.uncertain ? 'remove' : 'preserve')
+    await workspace.close(live.quiescent ? 'remove' : 'preserve')
   } catch (cleanupError) {
     const canceled = signal.aborted
       && !(failure instanceof DeliveryVerifierError && failure.code === 'canceled')

@@ -3,8 +3,12 @@
     - button "Use web_search once with queries" [disabled]
   - img
   - text: Standard mode
-  - button "Session log":
-    - text: Session log
+  - button "Skills":
+    - img
+    - text: Skills
+  - button "More actions":
+    - img
+  - button "Open right sidebar":
     - img
   - tablist:
     - tab "Chat" [selected]
@@ -34,11 +38,16 @@
   - img
 - button "Bad response":
   - img
+- button "Capture to library":
+  - img
 - button "Branch into a new conversation":
   - img
-- text: {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s
-- textbox "Message or run a task... / commands, @ files or sessions"
-- button "Commands":
+- button "Ran for {{duration}}":
+  - img
+  - text: Ran for {{duration}}
+- text: {{clock}}
+- textbox "Message or run a task, / commands, @ files or sessions"
+- button "Add files or run commands":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
 - button "Select model, current DeepSeek-V4-Flash":
@@ -46,4 +55,9 @@
   - img
 - button "0% of context used"
 - button "Send message" [disabled]
-- text: 1 turns · 2 steps LLM {{duration}} · Tool call {{duration}} TTFT avg {{duration}} · {{throughput}} tok/s Cache hit 0% Input 22 tok · Output 7 tok
+- button "1 turns 2 steps · {{throughput}} tok/s":
+  - img
+  - text: 1 turns 2 steps{{throughput}} tok/s
+- button "29 tok · Cache hit 0%":
+  - img
+  - text: 29 tokCache hit 0%

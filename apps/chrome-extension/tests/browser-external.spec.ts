@@ -67,6 +67,18 @@ test('unchanged page after trusted click is reported honestly', async () => {
   api.startExternal(request); api.issueExternal(request)
   expect(api.completeExternal(request)).toMatchObject({ outcome: 'unknown', reason: 'effect_unverified', quiescent: true })
 })
+test('page-level screenshot reserves and issues without reading a null DOM node', async () => {
+  document.body.innerHTML = '<main>Visual page</main>'
+  const api = install()
+  const page = { url: location.href }
+  const action = { kind: 'screenshot', page }
+  const prepared = await api.prepare({ ...identity(), payload: { kind: 'prepare', action } })
+  const request = { ...identity(), payload: { kind: 'commit', action, preparationId: prepared.value.preparationId } }
+  expect(api.startExternal(request)).toEqual({ ready: true })
+  expect(api.issueExternal(request)).toEqual({ ready: true })
+  expect(api.completeExternal(request, { result: { screenshot: { data: 'AQ==', mimeType: 'image/jpeg' } } }))
+    .toMatchObject({ outcome: 'observed', value: { screenshot: { data: 'AQ==', mimeType: 'image/jpeg' } } })
+})
 test('open shadow-root controls join snapshots and hidden hosts stay excluded', () => {
   document.body.innerHTML = '<div id="host"></div>'
   const host = document.querySelector('#host')!

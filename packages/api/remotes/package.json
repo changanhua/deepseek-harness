@@ -55,8 +55,10 @@
     "lib/types/**/*.d.ts"
   ],
   "dependencies": {
+    "@deepseek-ai/dsh-deque": "workspace:^",
     "@deepseek-ai/dsh-scope": "workspace:^",
-    "@deepseek-ai/dsh-typert-protocol": "workspace:^"
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "@deepseek-ai/dsh-util-values": "workspace:^"
   },
   "peerDependencies": {
     "@changanhua/dsh-content-remote": "workspace:^",
@@ -69,6 +71,8 @@
     "@deepseek-ai/dsh-api-session-controller": "workspace:^",
     "@deepseek-ai/dsh-api-settings-controller": "workspace:^",
     "@deepseek-ai/dsh-api-workspace-controller": "workspace:^",
+    "@deepseek-ai/dsh-api-workspace-files": "workspace:^",
+    "@deepseek-ai/dsh-command-feedback": "workspace:^",
     "@deepseek-ai/dsh-commands": "workspace:^",
     "@deepseek-ai/dsh-cordis-host-runner": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
@@ -97,6 +101,8 @@
     "@deepseek-ai/dsh-api-session-controller": "workspace:^",
     "@deepseek-ai/dsh-api-settings-controller": "workspace:^",
     "@deepseek-ai/dsh-api-workspace-controller": "workspace:^",
+    "@deepseek-ai/dsh-api-workspace-files": "workspace:^",
+    "@deepseek-ai/dsh-command-feedback": "workspace:^",
     "@deepseek-ai/dsh-commands": "workspace:^",
     "@deepseek-ai/dsh-cordis-host-runner": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",

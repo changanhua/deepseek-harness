@@ -4,14 +4,15 @@ import type { PanelActions } from '@deepseek-ai/dsh-client-ui-layout/src/client/
 
 function fakePanels(): PanelActions {
   return {
+    selectPanel: vi.fn(),
     setSidebar: vi.fn(),
-    setDetails: vi.fn(),
     toggleSidebar: vi.fn(),
-    setNarrow: vi.fn(),
-    openDetails: vi.fn(),
-    closeDetails: vi.fn(),
+    setViewportWidth: vi.fn(),
+    setRightbar: vi.fn(),
+    openRightbar: vi.fn(),
+    closeRightbar: vi.fn(),
     setActiveModule: vi.fn(),
-    activateModule: vi.fn(),
+    openModule: vi.fn(),
   }
 }
 
@@ -26,10 +27,22 @@ describe('LayoutController', () => {
     service.closeDetails()
 
     expect(panels.toggleSidebar).toHaveBeenCalledTimes(1)
-    expect(panels.openDetails).toHaveBeenCalledTimes(1)
-    expect(panels.closeDetails).toHaveBeenCalledTimes(1)
+    expect(panels.openRightbar).toHaveBeenCalledExactlyOnceWith(true, false)
+    expect(panels.closeRightbar).toHaveBeenCalledTimes(1)
     expect(panels.setSidebar).not.toHaveBeenCalled()
-    expect(panels.setDetails).not.toHaveBeenCalled()
+    expect(panels.setRightbar).not.toHaveBeenCalled()
+  })
+
+  it('maps the official panel selection face onto the module ring', () => {
+    const service = new LayoutController()
+    const panels = fakePanels()
+    service.attachPanels(panels)
+
+    service.selectPanel(null)
+    service.selectPanel('queue')
+
+    expect(panels.selectPanel).toHaveBeenNthCalledWith(1, null)
+    expect(panels.selectPanel).toHaveBeenNthCalledWith(2, 'queue')
   })
 
   it('fails loud before the root entry wired its actions', () => {

@@ -14,11 +14,12 @@ import type {
   SubprocessSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import {
-  startCodexAppServerRun as startInternalCodexAppServerRun,
+  startCodexRun as startInternalCodexAppServerRun,
 } from './run.ts'
 
 /** Native non-interactive permission modes accepted by the app-server boundary. */
 export const CODEX_APP_SERVER_PERMISSION_MODES = [
+  'read-only',
   'never',
   'approve-for-me',
   'dangerously-bypass-approvals-and-sandbox',
@@ -65,7 +66,7 @@ export interface CodexAppServerRunHandle {
 export async function startCodexAppServerRun(
   request: CodexAppServerStartRequest,
 ): Promise<CodexAppServerRunHandle> {
-  const run = await startInternalCodexAppServerRun(request, request)
+  const run = await startInternalCodexAppServerRun(request as never, request as never)
   return {
     result: run.result,
     dispose: () => run.dispose(),

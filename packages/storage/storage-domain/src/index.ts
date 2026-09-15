@@ -84,13 +84,14 @@ export class DomainFacility {
   /**
    * Open one declared domain. Steps, each failing the whole call: reject a
    * name that is already open (`already-open`); resolve the backend route
-   * (`backend-not-found` passes through from the hub); require every backend
-   * guarantee declared by the spec (`backend-requirement-unsatisfied`), then
-   * require its `kv` facet (`facet-unsupported`); open the unit projected from
-   * the spec (backend
+   * (`backend-not-found` passes through from the hub); require its `kv` facet
+   * (`facet-unsupported`); open the unit projected from the spec (backend
    * `version-mismatch`/`malformed-medium` pass through); load and validate
    * every stored record against the spec's zod schemas (`invalid-record`
-   * with the offending table and key); construct the domain.
+   * with the offending table and key — unless the spec declares
+   * `invalidRecords: 'backup-and-skip'` and the unit can move documents aside, in
+   * which case the failing record is backed up, logged, and skipped);
+   * construct the domain.
    *
    * Lifecycle: the CALLER owns the returned handle and closes it via
    * `Domain.close()` (typically as its own `ctx.effect` disposer) — the
@@ -107,14 +108,6 @@ export class DomainFacility {
     try {
       const backendName = this.config.routes?.[spec.name] ?? this.config.backend
       const backend = this.ctx.storage.backend.get(backendName)
-      const available = new Set(backend.guarantees ?? [])
-      const missing = (spec.requires ?? []).filter(guarantee => !available.has(guarantee))
-      if (missing.length > 0) {
-        throw new DomainError(
-          'backend-requirement-unsatisfied',
-          `backend '${backendName}' routed for domain '${spec.name}' does not provide: ${missing.join(', ')}`,
-        )
-      }
       if (!backend.kv) {
         throw new DomainError(
           'facet-unsupported',
@@ -128,7 +121,23 @@ export class DomainFacility {
         for (const [table, tableSpec] of Object.entries(spec.tables)) {
           const records = new Map<string, unknown>()
           for (const [key, raw] of Object.entries(snapshot.tables[table] ?? {})) {
-            records.set(key, parseRecord(spec.name, table, key, () => tableSpec.valueSchema.parse(raw)))
+            let parsed: unknown
+            try {
+              parsed = parseRecord(spec.name, table, key, () => tableSpec.valueSchema.parse(raw))
+            } catch (error) {
+              // Backup-and-skip policy (disposable derived data): move the record's
+              // document aside, log the concrete failure, and open without the
+              // record. Backends that cannot move a document keep the loud path.
+              if (spec.invalidRecords !== 'backup-and-skip' || unit.backupRecord === undefined) throw error
+              const moved = await unit.backupRecord(table, key)
+              // parseRecord always wraps the zod failure as the cause.
+              this.ctx.logger.error(
+                `domain '${spec.name}': stored record '${key}' in table '${table}' failed schema validation; `
+                + `moved to '${moved}' and treated as absent. Cause: ${String((error as DomainError).cause)}`,
+              )
+              continue
+            }
+            records.set(key, parsed)
           }
           tables.set(table, records)
         }
@@ -213,18 +222,46 @@ export function apply(ctx: Context, config: Config): Promise<void> {
     ...Object.values(config.routes ?? {}),
   ])].map(storageBackendServiceKey)
 
-  const fiber = ctx.inject(backendServices, (domainCtx) => {
-    const facility = new DomainFacility(domainCtx, config)
-    domainCtx.effect(() => {
-      const unmount = domainCtx.storage.mount('domain', facility)
-      return async () => {
-        // Close leftovers before unmounting: draining writes still emit
-        // domain/changed, whose invariant resolves the facility through the hub.
-        await facility.closeAll()
-        unmount()
-      }
-    })
-    domainCtx.provide('storageDomain', facility)
+  let resolveReady!: () => void
+  let rejectReady!: (reason: unknown) => void
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve
+    rejectReady = reject
   })
-  return Promise.resolve(fiber).then(() => {})
+  void ready.catch(() => {})
+  let stopSetupCancellation = (): void => {}
+  const injected = ctx.inject(backendServices, (domainCtx) => {
+    try {
+      const facility = new DomainFacility(domainCtx, config)
+      const unprovide = domainCtx.provide('storageDomain', facility)
+      domainCtx.effect(() => {
+        const unmount = domainCtx.storage.mount('domain', facility)
+        return async () => {
+          // Close leftovers before unmounting: draining writes still emit
+          // domain/changed, whose invariant resolves the facility through the hub.
+          await facility.closeAll()
+          unmount()
+          unprovide()
+        }
+      })
+      resolveReady()
+    } catch (error) {
+      rejectReady(error)
+      throw error
+    }
+  })
+  stopSetupCancellation = ctx.on('internal/plugin', (fiber) => {
+    if (fiber === ctx.fiber && fiber.uid === null) {
+      rejectReady(new Error('storage-domain setup disposed'))
+      stopSetupCancellation()
+    }
+  })
+  void injected.then(
+    () => { stopSetupCancellation() },
+    (error: unknown) => {
+      rejectReady(error)
+      stopSetupCancellation()
+    },
+  )
+  return ready
 }

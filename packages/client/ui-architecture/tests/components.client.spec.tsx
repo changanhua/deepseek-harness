@@ -6,6 +6,7 @@ import { ArchitectureWorkspace } from '../src/client/ArchitectureWorkspace.tsx'
 import type { ArchitectureCatalog } from '../src/client/catalog.ts'
 import type { ArchitectureWorkspaceProps } from '../src/client/contract.ts'
 import type { ArchitectureRuntimeState } from '../src/client/runtime-controller.ts'
+import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 
 const catalog: ArchitectureCatalog = {
   schemaVersion: 2,
@@ -75,6 +76,8 @@ const copy: Record<string, string> = {
 const t = (key: string): string => copy[key] ?? key
 const useRuntime = <T,>(selector: (state: ArchitectureRuntimeState) => T): T => selector(runtime)
 const unusedStandardHooks = {
+  usePanelInfo: (selector => selector({ activePanelId: null })) as GlobalStandardProps['usePanelInfo'],
+  useResource: (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource'],
   useSessions: (() => { throw new Error('useSessions is not used by Architecture components') }) as ArchitectureWorkspaceProps['useSessions'],
   useSessionPendingInteraction: (() => { throw new Error('useSessionPendingInteraction is not used by Architecture components') }) as ArchitectureWorkspaceProps['useSessionPendingInteraction'],
   useWorkspaces: (() => { throw new Error('useWorkspaces is not used by Architecture components') }) as ArchitectureWorkspaceProps['useWorkspaces'],

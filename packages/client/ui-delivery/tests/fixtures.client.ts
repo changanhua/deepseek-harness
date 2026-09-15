@@ -44,10 +44,7 @@ export function contractRevisionFixture(
     }],
     openDecisions: [],
     baseSelectionRule: { kind: 'commit', commit: BASE },
-    verificationSource: {
-      kind: 'contract-field',
-      checks: [{ id: 'node-smoke', name: 'Node smoke', argv: ['node', '--version'], cwd: '.', timeoutMs: 5000, severity: 'required', expectedExitCodes: [0] }],
-    },
+    verificationSource: { kind: 'contract-field', checks: [] },
     referenceLinks: [],
     createdAt: TIME,
     ...overrides,

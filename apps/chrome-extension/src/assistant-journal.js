@@ -48,7 +48,7 @@ async function verifyInvocation(request, maxRequestBytes) {
  */
 export const createAssistantJournal = ({ storage, execute, inspect = async () => ({ outcome: 'unknown', quiescent: false }),
   permit = () => false, changed = () => {}, canBootstrap = async () => false, now = Date.now, capacity = 64, maxRequestBytes = 65536,
-  maxResultBytes = 524288, maxStorageBytes = 8 * 1024 * 1024, maxDurationMs = 30000, retentionMs = 60000 }) => {
+  maxResultBytes = 2 * 1024 * 1024, maxStorageBytes = 8 * 1024 * 1024, maxDurationMs = 30000, retentionMs = 60000 }) => {
   if ([capacity, maxRequestBytes, maxResultBytes, maxStorageBytes, maxDurationMs, retentionMs]
     .some(value => !Number.isSafeInteger(value) || value <= 0)) throw error('invalid_journal_limits')
   let entries = []

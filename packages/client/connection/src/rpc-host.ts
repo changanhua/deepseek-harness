@@ -8,8 +8,8 @@ import {
   type RpcId as RpcIdType,
 } from './rpc.ts'
 import { clientRequestSchema } from './rpc-schema.ts'
-import { bridge, type FetchHandler } from './http-bridge.ts'
-import { isTrustedApiAuthority, isTrustedApiRequest } from './api-request-trust.ts'
+import { bridge } from './http-bridge.ts'
+import { isTrustedApiRequest } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
 import type { BrowserAuth } from './browser-auth.ts'
 import type {
@@ -34,11 +34,12 @@ const ENDPOINT_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/
 
 interface ConnectionRpcInterceptor {
   readonly matches: ConnectionRpcEndpointMatcher
-  readonly fetchHandler: FetchHandler
+  readonly fetchHandler: ConnectionFetchHandler
 }
 
 interface RegisteredFetchRoute {
   readonly methods: ReadonlySet<string>
+  readonly requestBody: ConnectionFetchRoute['requestBody']
   readonly fetch: ConnectionFetchRoute['fetch']
 }
 
@@ -99,24 +100,23 @@ export class HostConnectionService extends Service implements HostConnectionHand
     }
   }
 
+  requestAuthorityRejection(request: ConnectionTrustRequest): 403 | undefined {
+    return isTrustedApiRequest(request, this.trustedHosts) ? undefined : 403
+  }
+
+  assertAuthorized(signal: AbortSignal): void {
+    const request = this.authorizedRequests.get(signal)
+    if (this.disposed || !this.activeRequestSignals.has(signal) || signal.aborted || request === undefined) {
+      throw new Error('connection: request is not authorized')
+    }
+    const rejected = this.requestRejection(request)
+    if (rejected !== undefined) throw new Error('connection: request is not authorized')
+  }
+
   /** Apply the configured Host/Origin fence, then browser authentication. */
   requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection {
     if (!isTrustedApiRequest(request, this.trustedHosts)) return 403
     return this.browserAuth.isAuthenticated(request) ? undefined : 401
-  }
-
-  /** Apply the Host authority fence for a bridge that owns its own authentication. */
-  requestAuthorityRejection(request: ConnectionTrustRequest): 403 | undefined {
-    return isTrustedApiAuthority(request, this.trustedHosts) ? undefined : 403
-  }
-
-  /** Assert that a signal was issued by this service for an active authorized request. */
-  assertAuthorized(signal: AbortSignal): void {
-    const request = this.authorizedRequests.get(signal)
-    const rejected = request === undefined ? 'unbound' : this.requestRejection(request)
-    if (this.disposed || !this.activeRequestSignals.has(signal) || signal.aborted || rejected !== undefined) {
-      throw new Error('connection: request is not authorized')
-    }
   }
 
   /** Authenticate an index request through the process-token exchange or cookie. */
@@ -138,7 +138,11 @@ export class HostConnectionService extends Service implements HostConnectionHand
     channel: '/api',
   ): ConnectionFetchHandler {
     return {
-      fetch: request => this.withAuthorizedRequest(request, () => {
+      requestBodyMode: ({ method, url }) => {
+        const route = this.fetchRoutes.get(url.pathname)
+        return route?.methods.has(method) === true ? route.requestBody : 'buffered'
+      },
+      fetch: (request) => this.withAuthorizedRequest(request, async () => {
         const pathname = new URL(request.url).pathname
         const route = this.fetchRoutes.get(pathname)
         if (route?.methods.has(request.method) === true) return route.fetch(request)
@@ -152,6 +156,18 @@ export class HostConnectionService extends Service implements HostConnectionHand
     }
   }
 
+  private async withAuthorizedRequest<T>(request: Request, operation: () => Promise<T>): Promise<T> {
+    if (this.disposed) throw new Error('connection: request is not authorized')
+    this.authorizedRequests.set(request.signal, { headers: new Headers(request.headers) })
+    this.activeRequestSignals.add(request.signal)
+    try {
+      return await operation()
+    } finally {
+      this.authorizedRequests.delete(request.signal)
+      this.activeRequestSignals.delete(request.signal)
+    }
+  }
+
   private registerFetchRoute(
     owner: Context,
     route: ConnectionFetchRoute,
@@ -159,6 +175,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
     assertFetchRoute(route)
     const registered: RegisteredFetchRoute = {
       methods: new Set(route.methods),
+      requestBody: route.requestBody,
       fetch: route.fetch,
     }
     return owner.effect(() => {
@@ -187,9 +204,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
           res.end(rejection === 401 ? 'unauthorized' : 'forbidden')
           return
         }
-        await bridge(req, res, {
-          fetch: request => this.withAuthorizedRequest(request, () => fetchHandler.fetch(request)),
-        })
+        await bridge(req, res, fetchHandler)
       },
     }
     return owner.effect(
@@ -221,28 +236,14 @@ export class HostConnectionService extends Service implements HostConnectionHand
       }
     }, `client-connection: ${channel} rpc interceptor`)
   }
-
-  private async withAuthorizedRequest<T>(
-    request: Request,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    if (this.disposed) throw new Error('connection: request is not authorized')
-    this.authorizedRequests.set(request.signal, { headers: new Headers(request.headers) })
-    this.activeRequestSignals.add(request.signal)
-    try {
-      return await operation()
-    } finally {
-      this.authorizedRequests.delete(request.signal)
-      this.activeRequestSignals.delete(request.signal)
-    }
-  }
 }
 
 function rpcFetchHandler(
   channel: string,
   handler: ConnectionRpcHandler,
-): FetchHandler {
+): ConnectionFetchHandler {
   return {
+    requestBodyMode: () => 'buffered',
     async fetch(request: Request): Promise<Response> {
       const endpoint = endpointFromPath(channel, new URL(request.url).pathname)
       if (request.method !== 'POST' || endpoint === undefined) {
@@ -268,7 +269,7 @@ function rpcFetchHandler(
       const message: ClientRequest = envelope.data
       if (message.method !== endpoint) {
         return errorResponse(message.rpcId, {
-          code: 'bad-request',
+          code: 'gateway/bad-request',
           message: `method ${JSON.stringify(message.method)} does not match endpoint ${JSON.stringify(endpoint)}`,
           details: { issues: [] },
         })
@@ -288,7 +289,7 @@ function invalidEnvelopeResponse(body: unknown, issues: readonly object[]): Resp
   const rawId = (body as { rpcId?: unknown } | null)?.rpcId
   const rpcId = typeof rawId === 'string' ? RpcId(rawId) : INVALID_REQUEST_RPC_ID
   return errorResponse(rpcId, {
-    code: 'bad-request',
+    code: 'gateway/bad-request',
     message: 'invalid client-request message',
     details: { issues },
   })

@@ -18,8 +18,9 @@ import type { ModelModality, RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-fs'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
-import { deepEqualJson, installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import {
   DEFAULT_CONTEXT_WINDOW,
@@ -83,7 +84,7 @@ export type * from './types.ts'
 export const name = 'llm-deepseek'
 export const inject = ['llm']
 
-const NS = settingsNamespace('llm-deepseek')
+const NS = 'llm-deepseek'
 const DEFAULT_API_KEY_ENV = 'DEEPSEEK_API_KEY'
 /** The single provider route this plugin owns. */
 const PROVIDER = 'deepseek-official'
@@ -96,6 +97,7 @@ const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
     inputModalities: ['text', 'image'],
     imagePixelBudget: DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
     imageMaxBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
+    systemPromptUpdate: 'in-history',
   },
   {
     id: 'deepseek-v4-flash',
@@ -142,7 +144,7 @@ export interface Config {
   maxTokens?: number
   /** Positive context capacity used when the selected model has no exact value (default 1,000,000). */
   defaultContextWindow?: number
-  /** Advisory models shown by discovery consumers; defaults to V4.1 Flash, V4 Flash, V4 Pro, and V4 Flash Vision Exp. */
+  /** Advisory models shown by discovery consumers; defaults to V41 Flash, V4 Flash, V4 Pro, and V4 Flash Vision Exp. */
   models?: DeepSeekCatalogModel[]
   /** Maximum provider idle time while one stream read is outstanding (default five minutes). */
   streamIdleTimeoutMs?: number
@@ -179,6 +181,7 @@ const catalogModel: z<DeepSeekCatalogModel> = z.object({
   inputModalities: z.array(z.union(MODEL_MODALITIES)).min(1).default(['text']),
   imagePixelBudget: z.union([z.number().step(1).min(1), 'low']),
   imageMaxBytes: z.number().step(1).min(1),
+  systemPromptUpdate: z.const('in-history'),
 })
 
 export const Config: z<Config> = z.object({
@@ -265,6 +268,11 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
       && (!Number.isSafeInteger(model.imageMaxBytes) || model.imageMaxBytes <= 0)) {
       throw new Error(`llm-deepseek: catalog model "${model.id}" imageMaxBytes must be a positive safe integer`)
     }
+    // Widened: a dynamic config update reaches this check without schema validation.
+    const systemPromptUpdate: string | undefined = model.systemPromptUpdate
+    if (systemPromptUpdate !== undefined && systemPromptUpdate !== 'in-history') {
+      throw new Error(`llm-deepseek: catalog model "${model.id}" systemPromptUpdate must be "in-history" when present`)
+    }
     if (seen.has(model.id)) throw new Error(`llm-deepseek: duplicate catalog model "${model.id}"`)
     seen.add(model.id)
     return {
@@ -273,6 +281,7 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
       ...model.description === undefined ? {} : { description: model.description },
       ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
       ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
+      ...model.systemPromptUpdate === undefined ? {} : { systemPromptUpdate: model.systemPromptUpdate },
       inputModalities: [...inputModalities],
       ...hasImage
         ? {
@@ -494,10 +503,12 @@ export function apply(ctx: Context, config: Config): void {
     registeredPolicy = policy
   }
 
-  installSettingsSection(ctx, NS, Config, config, {
-    setSource: (source) => {
-      current = source
-    },
-    onChange: ensureRegistrationFacts,
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.installSection(ctx, NS, Config, config, {
+      setSource: (source) => {
+        current = source
+      },
+      onChange: ensureRegistrationFacts,
+    })
   })
 }

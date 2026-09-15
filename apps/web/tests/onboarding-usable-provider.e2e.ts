@@ -89,7 +89,9 @@ describe.skipIf(MODE === 'record')('web e2e: another usable provider ends first-
     onTestFailed(() => saveFailureShot(page, 'web-e2e-onboarding-other-provider'))
     const settings = page.getByRole('dialog', { name: '设置' })
     await settings.getByRole('textbox', { name: 'API 密钥', exact: true }).fill('sk-e2e-minimax')
-    await settings.getByRole('button', { name: '保存', exact: true }).click()
+    // The dismissed DeepSeek setup card remains on the page as a disabled
+    // Save action while the independent minimax draft owns the enabled one.
+    await settings.locator('button:not([disabled])', { hasText: '保存' }).click()
     await settings.getByText('已保存 minimax-cn。', { exact: true }).waitFor({ timeout: 15_000 })
 
     // Only minimax-cn is reachable; DeepSeek still holds no credential.

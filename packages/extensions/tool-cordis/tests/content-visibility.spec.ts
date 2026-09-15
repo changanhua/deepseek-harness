@@ -33,31 +33,20 @@ describe('inspect query tool schema', () => {
     const input = (tool?.parameters.properties as Record<string, unknown> | undefined)?.input
     expect(input).toMatchObject({ type: 'object', additionalProperties: true })
   })
-
-  it('reports browser entry cleanup that could not be observed', async () => {
-    type RegisteredTool = { name: string
-      execute: (args: { pluginId: string }, exec: { agent: Record<string, unknown> }) => Promise<unknown>
-      output: { render: (args: Record<string, unknown>, value: unknown) => Array<{ text: string }> } }
-    const registered: RegisteredTool[] = []
+  it('teaches dynamic packages to reuse generic browser capabilities before site logic', () => {
+    const section = vi.fn()
     const ctx = {
-      systemPrompt: { section: vi.fn() },
+      systemPrompt: { section },
       cordisInspect: { register: vi.fn(() => () => {}) },
       effect: (setup: () => unknown) => setup(),
-      tools: { register: (tool: RegisteredTool) => {
-        registered.push(tool)
-        return () => {}
-      } },
+      tools: { register: vi.fn(() => () => {}) },
       on: vi.fn(),
-      dynamicCordisRunner: {
-        stop: vi.fn(async () => ({ ok: true, cleanupPending: ['plugin-1:feed'] })),
-      },
+      dynamicCordisRunner: {},
     } as unknown as Context
-
     apply(ctx)
-
-    const tool = registered.find(candidate => candidate.name === 'cordis_stop')
-    const result = await tool?.execute({ pluginId: 'plugin-1' }, { agent: {} })
-    expect(result).toEqual({ pluginId: 'plugin-1', cleanupPending: ['plugin-1:feed'] })
-    expect(tool?.output.render({}, result)[0]?.text).toContain('plugin-1:feed')
+    const text = section.mock.calls[0]?.[0]?.text as string
+    expect(text).toContain('browser_extract')
+    expect(text).toContain('do not create a site-specific workflow')
+    expect(text).toContain('stable element references')
   })
 })

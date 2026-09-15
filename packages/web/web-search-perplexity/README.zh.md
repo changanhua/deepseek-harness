@@ -58,7 +58,7 @@ kind: "package-reference"
 
 ### 失败与恢复
 
-提供方失败——HTTP 错误、网络失败、响应体无法解析或结构不符——以 `WebError` `WEB_PROVIDER_ERROR` 呈现；中止请求以 `WEB_ABORTED` 呈现。HTTP 重定向会在访问 `Location` 指向的目标之前被拒绝，并以 `WEB_PROVIDER_ERROR` 呈现。调用方按 code 路由；面向模型的 `web_search` 工具会在自己的错误包装层内把失败呈现给模型。
+提供方失败——HTTP 错误、网络失败、响应体无法解析或结构不符——以 `WebError` `WEB_PROVIDER_ERROR` 呈现；中止请求以 `WEB_ABORTED` 呈现。HTTP 重定向会在访问 `Location` 指向的目标之前被拒绝，并以 `WEB_PROVIDER_ERROR` 呈现。调用方根据错误码进行路由；面向模型的 `web_search` 工具会在自己的错误包装层内把失败呈现给模型。
 
 -----
 
@@ -74,7 +74,7 @@ kind: "package-reference"
 
 该提供方是 Perplexity chat-completions 端点之上的薄适配器，遵循两条刻意的规则：
 
-- **生成答案作为 `content` 受到信任。** 与其他搜索后端不同，Perplexity 返回模型生成的答案，本提供方将其作为规范化 `content` 字段透传。
+- **生成答案直接用作 `content`。** 与其他搜索后端不同，Perplexity 返回模型生成的答案，本提供方将其作为规范化 `content` 字段透传。
 - **结构化来源优先；只含 URL 的引用是回退。** `search_results[]` 携带可移植字段；`citations[]` 只携带 URL，服务词汇把这些字段设为可选，正是为了这种情况。
 
 ### 源码地图
@@ -84,7 +84,7 @@ kind: "package-reference"
 | [`src/index.ts`](src/index.ts) | 插件入口：配置 schema、环境变量回退、提供方注册 |
 | [`src/provider.ts`](src/provider.ts) | `PerplexitySearchProvider`：请求分发、中止分类、答案与来源映射 |
 | [`src/types.ts`](src/types.ts) | chat-completions 响应的 Perplexity 协议类型 |
-| [`src/invariant.ts`](src/invariant.ts) | 不变式伴生插件（无运行时不变式；约定在服务处强制执行） |
+| — | 不发布运行时不变量配套入口；除所属 seam 强制执行的约定外，本包不公开独立的事件序列或可变数据关系。 |
 
 ### 请求与映射流程
 
@@ -147,7 +147,6 @@ kind: "package-reference"
 这些限制说明提供方在哪些情况下不合适。它们是当前包约束。
 
 - **引用回退来源只含 URL**——Perplexity 省略结构化 `search_results[]` 时，来源不含 `title`／`snippet`／`publishedAt`，因此工具只渲染纯主机名标签。
-- **动态凭据可用性在操作内解析**——同步 `available()` 检查只能确认 resolver 存在，不能查询异步凭据存储。选中的无密钥提供方因此以 `WEB_PROVIDER_CREDENTIAL_MISSING` 失败；稳定搜索 schema 仍保持注册。
 - **超量返回的来源仍会增加 token 消耗与延迟**——协议没有结果数量控制，`maxResults` 只能由服务在事后截断。
 - **只公开 `model`／`maxTokens`／`searchRecency`**——Perplexity 的其他搜索控制项（域名过滤条件、`web_search_options` 上下文大小、图片）等待提供方无关的服务字段（见 [seam Agent Note](../../../.agents/notes/implemented/architecture/2026-06-24-web-capability-seam.zh.md)）。
 - **按错误形状分类中止**——只有名为 `AbortError` 的 `DOMException` 才映射为 `WEB_ABORTED`；携带自定义原因的中止（例如 `dsh-timeout` 的 `TimeoutReason`）呈现为 `WEB_PROVIDER_ERROR`。

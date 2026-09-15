@@ -115,6 +115,29 @@ const snapshot = (session: AssistantSession, records: SessionRecord[] = [], curs
 const message = (rpcId: string, seq = 0): SessionRecord => ({ type: 'event', event: { type: 'user/message', seq, time: 1, data: { role: 'user', id: 'message-1', source: { kind: 'user', rpcId }, content: input() } } })
 
 describe('assistant Session binding and unconfirmed submissions', () => {
+  test('first submission creates a Session before sending and keeps the same binding', async () => {
+    const h = harness()
+    await h.session.submit({ content: input() })
+    const created = callParams(h.call, 'session.create')!
+    expect(created.sessionId).toBe(binding(h.session).sessionId)
+    expect(promptCalls(h.call)).toHaveLength(1)
+    expect(promptCalls(h.call)[0][1].sessionId).toBe(created.sessionId)
+    const methods = calls(h.call).map(([method]) => method)
+    expect(methods.indexOf('session.create')).toBeLessThan(methods.indexOf('session.prompt'))
+  })
+
+  test('unknown first creation does not dispatch input and retry retains the original Session identity', async () => {
+    const h = harness()
+    h.call.mockImplementationOnce(async () => { throw lost() })
+    await expect(h.session.submit({ content: input() })).rejects.toThrow('lost reply')
+    const original = pendingCreate(h.session).sessionId
+    expect(promptCalls(h.call)).toHaveLength(0)
+    await h.session.create()
+    await h.session.submit({ content: input() })
+    expect(binding(h.session).sessionId).toBe(original)
+    expect(promptCalls(h.call)).toHaveLength(1)
+  })
+
   test('persists before sending and keeps a failed persistence attempt out of the network', async () => {
     const h = harness()
     await h.session.bind('session-1')

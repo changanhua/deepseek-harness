@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-workspace` is the shared Workspace browser and picker of the dsh web client: users browse grouped or flat Session rows in the sidebar, pick a Workspace for a new session from the Session Intent hero, and manage Workspaces and Sessions with add, rename, reorder, search, fork, and archive actions; the same Workspace menu and add flow serve both surfaces. Pending user interactions surface as amber warning dots, and the shared sidebar projection hides subagent-origin sessions. Distinct canonical paths remain separate id-keyed Workspaces, and adding a folder goes through a directory-flow child hole that a composed picker package's client half fills.
+This package lets users browse grouped or flat Session lists, choose a Workspace for a new Session, and manage Workspaces and Sessions through add, rename, reorder, search, fork, archive, and Workspace deletion. Pending interactions appear as warning dots, active scheduled tasks as alarm markers, and subagent-origin Sessions remain hidden. Canonically distinct folder paths remain separate Workspaces. Adding a Workspace requires a composed directory picker; without one, the add action is unavailable.
 
 ## Table of Contents
 
@@ -27,19 +27,13 @@ English | [中文](README.zh.md)
 
 Use the sidebar to browse Workspaces and their Sessions, reorder them, and start new ones; use the picker in the Session Intent hero to choose a Workspace for a new session. An open Workspace shows five non-blank Sessions by default and keeps the selected blank **New Session** as one provisional extra row until its first prompt. **Show more** reveals the hidden remainder; closing and reopening the Workspace restores this folded projection.
 
-### Workbench overview
-
-Each project page has a **Project resources** section. Use **Add resource** to write a Markdown note, register an existing project file, or save a foreground service command. **Open content** displays bounded plain text; edit the original file with normal file tools. Service rows show the command, process state, recent logs, and manual start/stop actions. **Refresh status** reads current observations; the displayed state is not a continuous health monitor. **Remove reference** keeps the original file and requires a running service to be stopped first. The storage-location disclosure gives the Agent-readable configuration path. [Workspace Controller](../../api/workspace-controller/README.md#project-resources) owns persistence and service lifetimes.
-
-The workbench opens on **Overview** and provides **Needs you**, **In progress**, **Recent work**, project summaries, and **Capabilities & tools**. These views read the existing Workspace, Session, and pending-interaction projections. Overview and project pages embed the existing Conversation composer, including Workspace, preset, attachment, permission, and model controls; they prepare a reusable blank Session through the normal New Session flow. The first message opens the conversation without a second input screen. Blank, archived, and subagent-origin Sessions are excluded from the work list, while running descendants remain visible through their parent. **New result** means a Session ended while unread, not that its output passed verification or acceptance. Opening work returns to its existing conversation; tool cards open only modules registered in the current composition.
-
 ### Reordering and view options
 
 View options combine grouping with one browser-persisted Session order per account: **Manual** and **Last updated** apply in either presentation. Entering Last updated performs a complete recency sort and later user prompts or steers promote their Session once; entering Manual preserves every current position and disables later promotion. Dragging edits the current order in either mode; Manual-mode drags for real Workspaces also update the Host Session account, while Ungrouped and flat-list orders remain browser-local. In a collapsed group, drag boundaries follow rendered rows and place the source before intervening hidden rows, so a drag cannot hide its source. Workspace drag order is Host-durable in either Session order mode.
 
 ### Search
 
-Collapsed search is one header action beside the view and add actions: activating it expands the field across the header. A non-blank query replaces either browsing mode with one flat result list — case-insensitive title and Workspace substring matches appear immediately, while a 250 ms debounced Host request adds ranked current-conversation content matches and snippets. Each new query aborts the preceding request; a failed content search leaves metadata matches visible with a warning. The list is capped at 20 and opens the selected Session without clearing the query.
+Collapsed search is one header action beside the view and add actions: activating it expands the field across the header. A non-blank query replaces either browsing mode with one flat result list — case-insensitive title and Workspace substring matches appear immediately, while a 250 ms debounced Host request adds ranked current-conversation content matches and snippets. Each new query aborts the preceding request; a failed content search leaves metadata matches visible with a warning. The list is capped at 20. Choosing a result clears and collapses search, opens the Session, and scrolls its row into view in the configured browsing mode; grouped browsing also expands its Workspace and the full Session list when required.
 
 ### Managing sessions
 
@@ -49,7 +43,15 @@ The Session row's Rename action opens a dialog prefilled with the row's display 
 
 Session rows render the runtime's live `pendingInteraction` classification: approvals report **Waiting for approval**, plan reviews report **Plan awaiting review**, and ordinary questions report **Waiting for answer**. Every pending interaction uses an amber warning dot that takes precedence over the running indicator.
 
+### Active Schedule markers
+
+Grouped and flat Session rows, plus search results, show an outline alarm when `SessionSummary.projectionValues.schedule` is a non-empty array. The marker sits after the title; an ordinary row keeps its update time after the marker, while a search result has no update time. It is not a button, has no independent pointer action or tab stop, and clicking its area still opens the row. The localized tooltip and matching screen-reader label say **Has active scheduled task**.
+
+The value is intentionally best effort for cold Sessions. An identity-matching usable projection-cache row can prewarm the alarm without opening the Session; a missing or stale cache may briefly omit or retain it. The marker means only that the current list value contains an undispatched or undeleted Schedule record. It does not report whether a Schedule runtime is live or able to wake the Session.
+
 -----
+
+`ctx.uiWorkspace.openSession(id)` selects the Session and returns the main area to the Conversation as one UI navigation action, including when that Session was already current. `openWorkspace(id, beforeOpen?)` and `forkSession(id)` open their result only if no later navigation has superseded the request; New Session uses `openWorkspace`. The optional synchronous preparation callback runs only for a current Workspace request, so superseded requests do not move composer drafts. Navigation or owner disposal suppresses the late UI commit, not the underlying Session creation. Selection failure leaves a global panel visible. Session rows read `usePanelInfo` to suppress their selected appearance while a global panel is active; search and directory-picker focus alone do not leave that panel.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
@@ -65,7 +67,7 @@ Each registration declares a **directory-flow child hole** (`single` kind: `conv
 
 ### View state
 
-Once the Workspace list baseline is ready, browser-persisted expansion and Session-order records retain only current Workspace ids plus Ungrouped and the flat-list account. Real Workspaces initialize from `WorkspaceView.sessionIds`, while Ungrouped and the cross-Workspace flat list initialize from recency. The shared sidebar projection hides rows whose durable Session summary has `origin: 'subagent'`, and each visible ordinary row inherits the blue activity indicator while any descendant reached through uninterrupted subagent-origin lineage is running.
+Once the Workspace list baseline is ready, browser-persisted expansion and Session-order records retain only current Workspace ids plus Ungrouped and the flat-list account. Real Workspaces initialize from `WorkspaceView.sessionIds`, while Ungrouped and the cross-Workspace flat list initialize from recency. The shared sidebar projection hides rows whose durable Session summary has `origin: 'subagent'`, and each visible ordinary row inherits the blue activity indicator while any descendant reached through uninterrupted subagent-origin lineage is running. The same pure derivation reads the Schedule key from list projection values for grouped, flat, and search nodes; the package uses only the type-only `@deepseek-ai/dsh-schedule/client` dependency and does not import the Schedule runtime or `ui-schedule`.
 
 ### Hover cards
 
@@ -117,3 +119,5 @@ These limits define the search depth, the archive surface, and the picking carri
 None.
 
 </details>
+
+**Runtime invariant:** No companion is published. This is a pure-consumer plugin that registers presentational components into two host-declared slots and registers its locale dictionaries; its inject face consists of stateless RPC wrappers plus a create-and-open call. It emits no Cordis events and owns no cross-plugin mutable state.

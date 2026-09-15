@@ -130,10 +130,9 @@ it('shares captured context across assistant surfaces, restores the Session, and
     await approval.getByRole('button', { name: '允许所选权限', exact: true }).click()
     await connected(panel)
     await approval.close()
-    await panel.getByRole('button', { name: '会话', exact: true }).click()
-    await panel.getByRole('button', { name: '新建会话', exact: true }).click()
-    await expect.poll(async () => (await state(panel!)).session.phase).toBe('live')
-    const bound = await state(panel), sessionId = bound.session.binding!.sessionId
+    const bound = await state(panel)
+    expect(bound.session.binding).toBeNull()
+    expect(await panel.locator('#send-queue').isEnabled()).toBe(true)
     const installationId = bound.connection.grant!.installationId
     const source = await context.newPage()
     await source.route('https://example.com/assistant-fixture', route => route.fulfill({
@@ -165,6 +164,7 @@ it('shares captured context across assistant surfaces, restores the Session, and
     await panel.locator('#composer').fill('Explain this captured page.')
     await panel.getByRole('button', { name: '发送', exact: true }).click()
     await panel.getByText(resultText, { exact: true }).waitFor({ timeout: 30_000 })
+    const sessionId = (await state(panel)).session.binding!.sessionId
     const submitted = (await state(panel)).session.records.find(record => record.event?.type === 'user/message'
       && record.event.data.source?.kind === 'user')
     expect(submitted?.event?.data.content?.filter(part => part.type === 'text').map(part => part.text).join('\n'))
@@ -204,7 +204,12 @@ it('shares captured context across assistant surfaces, restores the Session, and
     await previousCapture(await restarted.newPage(), base)
   } catch (error) {
     console.error('Assistant Host:', host?.diagnostic?.())
-    if (panel && !panel.isClosed()) await saveFailureShot(panel, 'browser-assistant')
+    if (panel && !panel.isClosed()) {
+      const current = await state(panel).catch(() => undefined)
+      console.error('Assistant state:', { connection: current?.connection.phase, session: current?.session.phase,
+        binding: current?.session.binding?.sessionId, notice: await panel.locator('#notice').textContent() })
+      await saveFailureShot(panel, 'browser-assistant')
+    }
     throw error
   } finally {
     await context?.close()

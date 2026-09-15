@@ -7,6 +7,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import { subagentModelSelectionPolicy } from './model-selection-state.ts'
+import type {} from './types.ts'
 
 const PACKAGE_NAME = '@deepseek-ai/dsh-tool-subagent'
 
@@ -17,6 +18,15 @@ export const inject = ['invariants']
 
 /** Assert that model-selectable definitions are complete and reconstructable. */
 const install: InvariantInstaller = Object.assign((ctx: Context, fail: InvariantFailure) => {
+  ctx.on('session/event', (session, event) => {
+    if (event.type !== 'subagent/foreground-stale') return
+    const basis = session.events.find(candidate => candidate.seq === event.data.basisSeq)
+    if (basis?.type !== 'subagent/foreground-input'
+      || basis.data.callId !== event.data.callId
+      || basis.seq >= event.seq) {
+      fail('obsolete foreground output requires its earlier input binding in the same Session')
+    }
+  })
   ctx.on('agent/pre-step', async ({ agent }, next) => {
     const schemas = ctx.tools.schemas(agent)
     const selectable = schemas.some((schema) => {
@@ -28,13 +38,17 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     const discoverable = schemas.some(schema => schema.name === 'list_subagent_models')
     if (
       (selectable || discoverable)
-      && (subagentModelSelectionPolicy(agent.session) === undefined || !selectable || !discoverable)
+      && (
+        subagentModelSelectionPolicy(ctx.sessionProjections, agent.session) === undefined
+        || !selectable
+        || !discoverable
+      )
     ) {
       fail('model-selectable subagent definitions require a durable policy, route fields, and list_subagent_models')
     }
     return next()
   }, { global: true })
-}, { inject: ['tools'] })
+}, { inject: ['tools', 'sessionProjections'] })
 
 /**
  * Register this package's invariant companion.

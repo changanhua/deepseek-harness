@@ -36,25 +36,6 @@
     readOnly: node.readOnly === true || node.getAttribute('aria-readonly') === 'true',
     text: ['a', 'button', 'summary'].includes(node.localName) ? cleanText(node.textContent).slice(0, 500) : null,
   })
-  const attributesOf = node => {
-    const allowed = new Set(['id', 'class', 'name', 'type', 'role', 'aria-label', 'aria-labelledby', 'href', 'src',
-      'title', 'data-testid', 'data-test', 'data-id', 'data-rank'])
-    const entries = []
-    for (const attribute of node.attributes) {
-      if (entries.length >= 16) break
-      if (!allowed.has(attribute.name)) continue
-      const value = cleanText(attribute.value).slice(0, 512)
-      if (value) entries.push([attribute.name, value])
-    }
-    return Object.fromEntries(entries)
-  }
-  const geometryOf = node => {
-    const rect = node.getBoundingClientRect()
-    if (![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)) return {}
-    const bounds = { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
-    return { bounds, inViewport: rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0
-      && rect.top < globalThis.innerHeight && rect.left < globalThis.innerWidth }
-  }
   const prune = () => {
     const now = Date.now()
     for (const [snapshotId, snapshot] of snapshots) if (snapshot.expiresAt <= now) snapshots.delete(snapshotId)
@@ -74,7 +55,6 @@
       entry = { index, parentIndex, kind: 'element', tag, hidden: hidden || undefined,
         role: hidden ? undefined : node.getAttribute('role') || undefined,
         label: hidden ? undefined : (tag === 'iframe' ? node.getAttribute('src') : node.getAttribute('aria-label')) || undefined,
-        attributes: attributesOf(node), ...geometryOf(node),
         elementId: `element-${snapshotId}-${index}` }
       nodes.set(entry.elementId, { node, critical: critical(node) })
     } else {
@@ -123,7 +103,9 @@
     const snapshotId = cursor.slice(0, separator)
     const offset = Number(cursor.slice(separator + 1))
     const snapshot = snapshots.get(snapshotId)
-    if (!snapshot || !Number.isSafeInteger(offset) || offset < 0 || offset > snapshot.tree.length) throw new Error('DOM tree cursor is expired or invalid')
+    if (!snapshot || !Number.isSafeInteger(offset) || offset < 0 || offset > snapshot.tree.length) {
+      throw Object.assign(new Error('DOM tree cursor is expired or invalid'), { code: 'dom_tree_cursor_invalid' })
+    }
     return { snapshot, offset }
   }
 

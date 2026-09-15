@@ -5,6 +5,7 @@ import type {
   DeliverySnapshotView,
 } from '@changanhua/dsh-delivery-remote/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { DeliveryRuntimeRemoteFace } from '../src/client/runtime-controller.ts'
 import { createDeliveryRuntimeController } from '../src/client/runtime-controller.ts'
 
@@ -25,6 +26,7 @@ const EVIDENCE: DeliveryEvidenceView = {
   contentBase64: 'eA==',
 }
 const ok = <T>(value: T) => Promise.resolve({ ok: true as const, value })
+const remoteFailure = (code: string, message: string) => new RemoteError(code as never, message, {} as never)
 
 function remote(overrides: Partial<DeliveryRuntimeRemoteFace> = {}): DeliveryRuntimeRemoteFace {
   return {
@@ -53,7 +55,7 @@ describe('Delivery Runtime controller', () => {
         if (reads === 1) return ok(EMPTY)
         if (reads === 2) return Promise.resolve({
           ok: false as const,
-          error: { code: 'offline', message: 'not connected', details: {} },
+          error: remoteFailure('offline', 'not connected'),
         })
         return Promise.reject(new Error('carrier closed'))
       }),

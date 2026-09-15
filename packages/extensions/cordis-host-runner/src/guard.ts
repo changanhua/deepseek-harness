@@ -19,7 +19,7 @@ import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { assertSupportedJsonSchema, defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 const DYNAMIC_TOOL = Symbol('cordis-host-runner.dynamic-tool')
 const SCHEMA_TYPES = new Set<unknown>(['string', 'number', 'integer', 'boolean', 'null', 'object', 'array', 'json'])
@@ -718,22 +718,6 @@ function declaredInjects(ctx: Context): Set<string> {
 function sandboxContext(ctx: Context, reportFailure: (error: Error) => void): Context {
   const tools = sandboxTools(ctx)
   const declared = declaredInjects(ctx)
-  const reportEventFailure = (error: unknown): void => {
-    reportFailure(error instanceof Error ? error : new Error(String(error)))
-  }
-  const on = (name: string, listener: (...args: unknown[]) => unknown): (() => void) => {
-    const guarded = (...args: unknown[]): void => {
-      try {
-        const result = listener(...args)
-        if (result !== null && typeof result === 'object' && typeof (result as { then?: unknown }).then === 'function') {
-          void Promise.resolve(result).catch(reportEventFailure)
-        }
-      } catch (error) {
-        reportEventFailure(error)
-      }
-    }
-    return ctx.on(name as never, guarded as never)
-  }
   // A framework member or an undeclared service — distinguish the two so the
   // error teaches the right fix (declare it in inject vs it is withheld).
   const denyRead = (prop: string): never => {
@@ -770,7 +754,6 @@ function sandboxContext(ctx: Context, reportFailure: (error: Error) => void): Co
     get(_target, prop) {
       if (prop === 'tools') return tools
       if (prop === 'get') return get
-      if (prop === 'on') return on
       if (typeof prop !== 'string') return undefined
       // Lazy verb forwarder — reads `ctx[verb]` only when called. Timer mixins
       // additionally require the Service declaration before Cordis resolves them.

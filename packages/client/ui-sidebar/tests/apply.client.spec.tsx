@@ -1,30 +1,58 @@
 /** Sidebar shell slot registration and its Session/layout callbacks. */
-import { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it, vi } from 'vitest'
+import { Context, type Fiber } from '@deepseek-ai/cordis'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { SidebarRootInjected } from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import { apply as hostApply } from '../src/index.ts'
 
-async function bench(declare = true) {
-  const ctx = new Context()
+const owners = new Set<Fiber>()
+afterEach(async () => {
+  try {
+    for (const owner of owners) await owner.dispose()
+  } finally {
+    owners.clear()
+  }
+})
+
+function SidebarFrame({ renderSlot }: PropsRenderSlots<'sidebar'>) {
+  return renderSlot('sidebar', {
+    collapsed: false, width: 300, activeModule: 'conversation', setActiveModule: () => {},
+    usePanelInfo: selector => selector({ activePanelId: null }),
+  })
+}
+
+async function bench() {
+  const root = new Context()
+  let ctx: Context | undefined
+  const owner = root.plugin((owned: Context) => { ctx = owned })
+  owners.add(owner)
+  await owner.await()
+  if (ctx === undefined) throw new Error('the sidebar fixture owner did not activate')
   await ctx.plugin(SlotRegistry).await()
-  const layout = { toggleSidebar: vi.fn() }
+  const layout = {
+    toggleSidebar: vi.fn(), selectPanel: vi.fn(), beginNavigation: vi.fn(() => new AbortController().signal),
+    openDetails: vi.fn(), closeDetails: vi.fn(), openRightbar: vi.fn(), closeRightbar: vi.fn(), openModule: vi.fn(),
+  }
   const uiWorkspace = { startSession: vi.fn() }
   ctx.provide('layout', layout)
   ctx.provide('uiWorkspace', uiWorkspace as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
   const slots = ctx.get('slots') as SlotRegistry
-  if (declare) {
-    slots.register(
-      { name: 'root', children: { 'sidebar': { kind: 'single', scope: 'root' } } } as never,
-      () => null,
-    )
-  }
+  slots.register(
+    { name: 'root', children: { 'sidebar': { kind: 'single', scope: 'root' } } },
+    SidebarFrame,
+  )
   return { ctx, slots, layout, uiWorkspace }
 }
 
 describe('ui-sidebar apply', () => {
+  it('keeps the host Loader entry inert', () => {
+    expect(hostApply).not.toThrow()
+  })
+
   it('declares only the services it uses', () => {
     expect(inject).toEqual(['slots', 'layout', 'uiWorkspace', 'locale'])
   })
@@ -42,12 +70,7 @@ describe('ui-sidebar apply', () => {
     // Copy rides the standard locale seat, not the inject face.
     expect(b.slots.entries('sidebar')[0]!.locale).toBe('sidebar')
     const injected = (b.slots.entries('sidebar')[0]!.inject as () => SidebarRootInjected)()
-    expect(Object.keys(injected)).toEqual(['hooks', 'startSession', 'toggleSidebar'])
-    expect(injected.hooks.primaryNavigation.getSnapshot()).toBe(false)
-    const removePrimary = b.slots.register({ name: 'sidebar.primary', id: 'workbench-navigation' }, () => null)
-    expect(injected.hooks.primaryNavigation.getSnapshot()).toBe(true)
-    removePrimary()
-    expect(injected.hooks.primaryNavigation.getSnapshot()).toBe(false)
+    expect(Object.keys(injected)).toEqual(['startSession', 'toggleSidebar'])
     // Both arms delegate to the Workspace UI's shared New Session action.
     injected.startSession('workspace' as never)
     expect(b.uiWorkspace.startSession).toHaveBeenCalledWith('workspace')
@@ -55,11 +78,6 @@ describe('ui-sidebar apply', () => {
     expect(b.uiWorkspace.startSession).toHaveBeenLastCalledWith(undefined)
     injected.toggleSidebar()
     expect(b.layout.toggleSidebar).toHaveBeenCalledOnce()
-  })
-
-  it('fails when no live owner declared the sidebar slot', async () => {
-    const b = await bench(false)
-    await expect(b.ctx.plugin({ inject: [...inject], apply })).rejects.toThrow(/not declared/)
   })
 
   it('removes the entry and child declaration on teardown', async () => {
@@ -73,5 +91,6 @@ describe('ui-sidebar apply', () => {
     expect(b.slots.spec('sidebar.workspaces')).toBeUndefined()
     expect(b.slots.spec('sidebar.modules')).toBeUndefined()
     expect(b.slots.spec('sidebar.footer.action')).toBeUndefined()
+    expect(b.slots.entries('sidebar.modules')).toHaveLength(0)
   })
 })

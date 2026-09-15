@@ -39,6 +39,9 @@
       "path": "../../feedback/message-feedback"
     },
     {
+      "path": "../../feedback/command-feedback"
+    },
+    {
       "path": "../../host/plugin-inventory"
     },
     {
@@ -76,6 +79,9 @@
     },
     {
       "path": "../workspace-controller/tsconfig.client.json"
+    },
+    {
+      "path": "../workspace-files/tsconfig.client.json"
     },
     {
       "path": "../../typert/protocol"

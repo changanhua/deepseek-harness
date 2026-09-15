@@ -16,8 +16,8 @@ function harness() {
     windows: { getLastFocused: vi.fn(async () => ({ id: 2, focused: state.focused })) },
     tabs: { query: vi.fn(async () => [state.tab]), get: vi.fn(async () => state.tab) },
     permissions: { contains: vi.fn(async () => state.granted) },
-    scripting: { executeScript: vi.fn(async () => [{ frameId: 0, result: { url: state.tab.url,
-      title: 'Page', documentId: 'document', changed: state.changed, text: 'Visible text' } }]) },
+    scripting: { executeScript: vi.fn(async () => [{ documentId: 'chrome-document', frameId: 0, result: { url: state.tab.url,
+      title: 'Page', documentId: 'page-script-document', changed: state.changed, text: 'Visible text' } }]) },
   }
   const enqueue = vi.fn<(events: ActivityEvent[]) => void>(), flush = vi.fn(async () => {})
   const raw: unknown = createBrowserActivity({ chromeApi, getPolicy: () => current, enqueue, flush, now: () => state.now })
@@ -41,6 +41,10 @@ describe('activity page collection', () => {
     expect(h.flush).toHaveBeenCalledTimes(3)
     h.state.now += 1000; await h.collector.tick(); expect(h.enqueue).toHaveBeenCalledTimes(3)
   })
+  it('uses Chrome document identity for activity events instead of a page-generated id', async () => {
+    const h = harness(); await h.collector.tick()
+    expect(h.enqueue.mock.calls[0]?.[0]).toMatchObject([{ kind: 'visit', documentId: 'chrome-document' }])
+  })
   it('rejects an old document result after navigation during capture', async () => {
     const h = harness()
     h.chromeApi.tabs.get.mockImplementationOnce(async () => ({ ...h.state.tab, url: 'https://page.test/other' }))
@@ -55,7 +59,7 @@ describe('activity page collection', () => {
     const h = harness()
     h.chromeApi.scripting.executeScript.mockImplementationOnce(async () => {
       h.pause()
-      return [{ frameId: 0, result: { url: h.state.tab.url, title: 'Page', documentId: 'document', changed: true, text: 'late' } }]
+      return [{ documentId: 'chrome-document', frameId: 0, result: { url: h.state.tab.url, title: 'Page', documentId: 'page-script-document', changed: true, text: 'late' } }]
     })
     await h.collector.tick(); expect(h.enqueue).not.toHaveBeenCalled(); expect(h.flush).not.toHaveBeenCalled()
     await h.collector.policyChanged()

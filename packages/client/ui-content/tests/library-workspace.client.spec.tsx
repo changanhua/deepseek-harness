@@ -11,6 +11,7 @@ import type {
   ContentEntry, ContentReceipt, ContentSnapshot, ContentStatus,
 } from '@changanhua/dsh-content/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { ContentLibraryStore, type ContentLibraryRemote } from '../src/client/controller.ts'
@@ -19,6 +20,7 @@ import type { LibraryWorkspaceProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 
 const t = makeTranslate(zh, commonZh)
+const remoteFailure = (code: string, message: string) => new RemoteError(code as never, message, {} as never)
 
 const READY_STATUS = {
   ok: true as const,
@@ -189,7 +191,7 @@ describe('ContentLibraryWorkspace', () => {
     const { store } = mount({
       remote: remote({
         status: () => failing
-          ? Promise.resolve({ ok: false as const, error: { code: 'forbidden', message: 'denied', details: {} } })
+          ? Promise.resolve({ ok: false as const, error: remoteFailure('forbidden', 'denied') })
           : Promise.resolve(READY_STATUS),
       }),
     })
@@ -361,7 +363,7 @@ describe('ContentLibraryWorkspace editing', () => {
         snapshot: () => Promise.resolve({ ok: true as const, value: { formatVersion: 1, entries: [drafted()] } }),
         get: () => Promise.resolve({ ok: true as const, value: reloaded }),
         execute: input => conflict
-          ? Promise.resolve({ ok: false as const, error: { code: 'revision_conflict', message: 'stale', details: {} } })
+          ? Promise.resolve({ ok: false as const, error: remoteFailure('revision_conflict', 'stale') })
           : Promise.resolve({
             ok: true as const,
             value: {
@@ -399,7 +401,7 @@ describe('ContentLibraryWorkspace editing', () => {
     'shows a localized metadata failure for %s without leaking server details', async (code) => {
       const { store } = mount({ remote: remote({
         snapshot: () => Promise.resolve({ ok: true, value: { formatVersion: 1, entries: [drafted()] } }),
-        execute: () => Promise.resolve({ ok: false, error: { code, message: 'PRIVATE /secret/path', details: {} } }),
+        execute: () => Promise.resolve({ ok: false, error: remoteFailure(code, 'PRIVATE /secret/path') }),
       }) })
       fireEvent.click(await screen.findByText('Drafted'))
       fireEvent.click(screen.getByRole('button', { name: zh['action.favorite'] }))

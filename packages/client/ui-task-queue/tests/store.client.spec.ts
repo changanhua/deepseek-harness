@@ -7,7 +7,6 @@ function remoteFace() {
     ok: true as const,
     value: {
       stats: {
-        dispatchState: 'running' as const,
         paused: false,
         byStatus: {
           queued: 0, starting: 0, running: 0, unknown: 0,
@@ -20,16 +19,15 @@ function remoteFace() {
     },
   }))
   const resolveUnknown = vi.fn(async () => ({ ok: true as const, value: undefined }))
-  const cancel = vi.fn(async () => ({ ok: true as const, value: undefined }))
   const remote: QueueRemoteFace = {
     snapshot,
-    cancel,
+    cancel: vi.fn(async () => ({ ok: true as const, value: undefined })),
     retry: vi.fn(async () => ({ ok: true as const, value: undefined })),
     resolveUnknown,
     pause: vi.fn(async () => ({ ok: true as const, value: undefined })),
     resume: vi.fn(async () => ({ ok: true as const, value: undefined })),
   }
-  return { remote, snapshot, resolveUnknown, cancel }
+  return { remote, snapshot, resolveUnknown }
 }
 
 describe('QueueStore', () => {
@@ -46,7 +44,6 @@ describe('QueueStore', () => {
           ok: true as const,
           value: {
             stats: {
-              dispatchState: 'running',
               paused: false,
               byStatus: { queued: 1, starting: 0, running: 0, unknown: 0, succeeded: 0, failed: 0, canceled: 0 },
               byKind: {},
@@ -59,7 +56,6 @@ describe('QueueStore', () => {
         ok: true as const,
         value: {
           stats: {
-            dispatchState: 'running',
             paused: false,
             byStatus: { queued: 0, starting: 0, running: 1, unknown: 0, succeeded: 0, failed: 0, canceled: 0 },
             byKind: {},
@@ -105,7 +101,6 @@ describe('QueueStore', () => {
         ok: true as const,
         value: {
           stats: {
-            dispatchState: 'running',
             paused: false,
             byStatus: { queued: 1, starting: 0, running: 0, unknown: 0, succeeded: 0, failed: 0, canceled: 0 },
             byKind: {},
@@ -114,7 +109,6 @@ describe('QueueStore', () => {
             id: 'work-1', kind: 'agent.run@1', title: 'Work one', status: 'queued', state: 'queued', outcome: null,
             attemptCount: 0, maxAttempts: 3, batchId: null, ownerSessionId: null,
             createdAt: '2026-08-27T09:00:00.000Z', updatedAt: '2026-08-27T09:00:00.000Z',
-            waitReason: null,
           }],
           detail: null,
         },
@@ -135,21 +129,5 @@ describe('QueueStore', () => {
       refreshing: false,
       error: 'offline',
     })
-  })
-
-  it('reports a partial batch failure with the failed Work ID and refreshes once', async () => {
-    const { remote, snapshot, cancel } = remoteFace()
-    cancel
-      .mockResolvedValueOnce({ ok: true, value: undefined })
-      .mockResolvedValueOnce({ ok: false, error: { message: 'already terminal' } } as never)
-    const store = new QueueStore(remote)
-
-    await expect(store.cancelMany(['work-1', 'work-2'])).resolves.toEqual({
-      ok: false,
-      message: 'work-2: already terminal',
-    })
-    expect(cancel).toHaveBeenNthCalledWith(1, 'work-1')
-    expect(cancel).toHaveBeenNthCalledWith(2, 'work-2')
-    expect(snapshot).toHaveBeenCalledOnce()
   })
 })

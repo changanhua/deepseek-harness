@@ -10,11 +10,10 @@ import {
 } from '@deepseek-ai/dsh-cordis-host-runner'
 import type { DynamicCordisReference } from '@deepseek-ai/dsh-cordis-host-runner'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt'
 import { missingServices, providedServices } from './inspect.ts'
 import {
   presentDefineCall, presentInspectListCall, presentInspectQueryCall, presentInspectSelfCall, presentRunCall,
@@ -35,7 +34,7 @@ function requireAgent(exec: ToolExecution): Agent {
 export function apply(ctx: Context): void {
   ctx.systemPrompt.section({
     name: 'tool:cordis',
-    order: FIRST_PARTY_SECTION_ORDER.TOOL_CORDIS,
+    order: ctx.systemPrompt.getSectionOrder('TOOL_CORDIS'),
     text: CORDIS_SYSTEM_PROMPT,
   })
   for (const provider of hostInspectProviders(ctx)) {
@@ -340,26 +339,18 @@ export function apply(ctx: Context): void {
       'Stop the current Run of a dynamic Plugin and cancel unfinished approval or activation requests. Retain the '
       + 'Plugin, every immutable Package, grants, currentPackageId, and nextPackageId so it can later run or update '
       + 'directly. Stopping an already stopped Plugin succeeds idempotently. Use this Tool to disable effects '
-      + 'temporarily; use cordis_undefine for permanent removal. cleanupPending lists browser entry mounts whose '
-      + 'removal was requested but could not be observed, so do not claim their page effects are gone.',
+      + 'temporarily; use cordis_undefine for permanent removal.',
     parameters: {
       pluginId: { type: 'string', required: true, description: 'Stable dynamic Plugin ID to stop.' },
     },
     output: {
-      schema: { type: 'object', additionalProperties: false, properties: {
-        pluginId: { type: 'string', required: true },
-        cleanupPending: { type: 'array', items: { type: 'string' } },
-      } },
-      render: (_args, value) => [{ type: 'text', text: value.cleanupPending === undefined
-        ? `Dynamic Plugin ${value.pluginId} is stopped; its definition and versions remain.`
-        : `Dynamic Plugin ${value.pluginId} is stopped, but browser cleanup remains unobserved for: ${value.cleanupPending.join(', ')}.` }],
+      schema: { type: 'object', additionalProperties: false, properties: { pluginId: { type: 'string', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: `Dynamic Plugin ${value.pluginId} is stopped; its definition and versions remain.` }],
     },
     async execute(args, exec) {
       const receipt = await ctx.dynamicCordisRunner.stop(requireAgent(exec), CordisDynamicPluginId(args.pluginId))
       if (!receipt.ok && receipt.reason !== 'not-running') throw new Error(receipt.message)
-      return { pluginId: args.pluginId, ...receipt.ok && receipt.cleanupPending !== undefined
-        ? { cleanupPending: [...receipt.cleanupPending] }
-        : {} }
+      return { pluginId: args.pluginId }
     },
     presentCall: presentStopCall,
   }))

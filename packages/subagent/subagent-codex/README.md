@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-subagent-codex` registers a Profile-named Codex subagent provider (default `codex`) that runs a real Codex child through the official app-server protocol in the delegating session's workspace. Each accepted run starts the package-local Codex wrapper with `app-server --stdio`, creates one ephemeral Codex thread, submits one self-contained text task, and returns the selected final answer — or a separate safe failure diagnostic — through the shared subagent result contract. The provider ships as an optional Profile Bundle: installing it brings the official wrapper and one compatible native platform payload, while the registered provider stays dormant until a bound tool calls it. Native Codex configuration and authentication remain authoritative, and the Profile-selected `permissionMode` maps into the thread's approval, reviewer, and sandbox fields. Choose it when the child should be a genuine Codex session, fully isolated from the parent harness.
+Install `@deepseek-ai/dsh-subagent-codex` into a Profile when delegated work should run in a genuine, unattended Codex session in the parent Session's workspace. Each delegation uses a fresh isolated Codex thread for one self-contained text task and returns only its final answer or a safe failure diagnostic. Native Codex configuration and authentication remain authoritative, while `permissionMode` selects the non-interactive approval and sandbox behavior. The Bundle supplies a compatible native Codex payload, but it exposes no model capability until a delegation tool is configured.
 
 ## Table of Contents
 
@@ -47,7 +47,7 @@ Removing the package withdraws the provider and its private runtime closure on t
 | `model` | native Codex settings | Optional non-empty model name fixed for every thread from this provider instance; omission sends no app-server override |
 | `env` | `{}` | Explicit child environment layered over the credential-scrubbed parent environment |
 | `permissionMode` | `never` | Native non-interactive approval and sandbox mode fixed for every thread from this provider instance |
-| `disposeGraceMs` | `3000` | Grace between the shared process-tree owner's termination tiers |
+| `disposeGraceMs` | `3000` | Grace between the shared managed-range owner's termination tiers |
 
 | `permissionMode` value | `thread/start` fields | Native behavior |
 |---|---|---|
@@ -85,40 +85,6 @@ A foreground call gives the model the selected final Codex answer, or an error w
 
 An install that omits optional dependencies, uses an unsupported platform, or loses the selected payload leaves the provider dormant and fails the first delegation at `initialize` with a safe `unknown` category and any observed process outcome; there is no host-CLI fallback. Raw wrapper text stays on Host stderr. A cancelled run settles as `aborted`.
 
-### Trusted Host library boundary
-
-Trusted Host plugins that already own admission, workspace selection, and process policy can import `@deepseek-ai/dsh-subagent-codex/app-server-run`. This is a concrete library boundary, not a Cordis service or capability seam. The caller supplies the exact task, cancellation signal, cwd, permission mode, environment overlay, disposal grace, and the shared subprocess service's `spawn` operation before startup:
-
-```ts
-import { startCodexAppServerRun } from '@deepseek-ai/dsh-subagent-codex/app-server-run'
-
-declare const signal: AbortSignal
-declare const cwd: string
-declare const ctx: {
-  subprocess: {
-    spawn: Parameters<typeof startCodexAppServerRun>[0]['spawn']
-  }
-}
-
-const run = await startCodexAppServerRun({
-  prompt: [{ type: 'text', text: 'Implement the admitted work packet.' }],
-  signal,
-  cwd,
-  permissionMode: 'never',
-  env: {},
-  disposeGraceMs: 3_000,
-  spawn: spec => ctx.subprocess.spawn(spec),
-})
-try {
-  const result = await run.result
-  // Persist the result before accepting the delivery.
-} finally {
-  await run.dispose()
-}
-```
-
-The returned handle exposes only `result` and `dispose()`; it does not publish an Agent, Session, run id, provider registration, or internal wire/process helpers. The package root deliberately does not re-export this start function, so a consumer must opt into the named subpath.
-
 -----
 
 <a id="understand-the-implementation"></a>
@@ -140,14 +106,13 @@ This section explains how the provider drives a real Codex app-server and where 
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: config schema, provider registration |
-| [`src/app-server-run.ts`](src/app-server-run.ts) | Supported parent-free boundary for trusted Host plugins |
 | [`src/run.ts`](src/run.ts) | The run lifecycle, turn execution, result selection, and diagnostics |
 | [`src/wire.ts`](src/wire.ts) | The minimal app-server JSON-RPC wire implementation |
 | [`cordis.patch.yml`](cordis.patch.yml) | The Profile patch layer that registers the dormant provider |
 
 ### Run flow
 
-A start accepts only a non-empty sequence of text blocks. The provider derives the child cwd from its parent Session; the trusted Host subpath instead requires an explicit cwd and signal without constructing a fake parent. Both paths spawn the fixed command through the subprocess seam, perform the `initialize` → `initialized` handshake, map the selected permission mode and optional model into official `thread/start` fields beside `{ cwd, ephemeral: true }`, and publish the run only after Codex returns a valid ephemeral thread. The published result starts exactly one turn, accepts only notifications for that run's thread and turn, and waits for the authoritative `turn/completed` terminal. The latest `agentMessage` with `phase: "final_answer"` wins; when Codex emits no explicit final phase, the latest message with `phase: null` is the compatibility fallback. A successful turn with no nonblank answer settles as an error. Failed turns use the coarse categories `limit`, `access-policy`, `service`, `transport`, `product-error`, `invalid-result`, or `unknown`; an early app-server exit uses `process`, and applicable connection and stream failures retain a numeric `httpStatusCode`.
+A start accepts only a non-empty sequence of text blocks and derives the child cwd from the parent session. It spawns the fixed command through the subprocess seam, performs the `initialize` → `initialized` handshake, maps the Profile-selected mode and optional model into official `thread/start` fields beside `{ cwd, ephemeral: true }`, and publishes the run only after Codex returns a valid ephemeral thread. The published result starts exactly one turn, accepts only notifications for that run's thread and turn, and waits for the authoritative `turn/completed` terminal. The latest `agentMessage` with `phase: "final_answer"` wins; when Codex emits no explicit final phase, the latest message with `phase: null` is the compatibility fallback. A successful turn with no nonblank answer settles as an error. Failed turns use the coarse categories `limit`, `access-policy`, `service`, `transport`, `product-error`, `invalid-result`, or `unknown`; an early app-server exit uses `process`, and applicable connection and stream failures retain a numeric `httpStatusCode`.
 
 </details>
 
@@ -208,11 +173,10 @@ These limits define when this provider is a poor fit or needs special operationa
 - **Static instance selection** — Profile rows fix provider names, optional models, and tool bindings; calls cannot choose or change either a provider or model dynamically, and every exposed tool needs a unique `toolName`.
 - **Authentication and account state remain native** — the Bundle supplies the CLI but does not create an account, log in, trust a project, or rewrite Codex settings; configuration and authentication failures surface with their lifecycle stage and the safe `unknown` fallback rather than a separate public taxonomy.
 - **The native platform payload is required at delegation time** — installs that omit optional dependencies, unsupported platforms, and missing or damaged payloads fail at the first run; there is no host-CLI fallback.
-- **Compatibility is pinned by development evidence** — upgrading from the verified 0.149.1 protocol baseline requires regenerating upstream schema evidence and rerunning handshake, answer-selection, approval, cancellation, keyless real-product, and credentialed DeepSeek nonce tests.
+- **Compatibility is pinned by development evidence** — upgrading from the verified 0.153.4 protocol baseline requires regenerating upstream schema evidence and rerunning handshake, answer-selection, approval, cancellation, keyless real-product, and credentialed DeepSeek nonce tests.
 - **No human approval path** — known unattended approval requests are denied and unknown server requests fail closed; the three Profile modes never create a DSH interaction channel or per-call allow policy.
 - **Assistant payload is final text only** — a failed run may additionally expose the separate safe diagnostic; reasoning, commentary, intermediate messages, tool traffic, usage, raw stderr, and workspace diffs remain outside the parent Session, while generic Job ids, notices, and status come from the shared job runtime.
 - **No optional shared capabilities** — `agentOptions`, output schemas, child personas, tool filtering, and harness depth enforcement are rejected by the shared service for this provider.
-- **The parent-free subpath is trusted-Host-only** — it does not register a Cordis service, admit work, select a workspace, scrub an environment, or grant authority; the calling Host plugin must settle those policies before invoking it.
 - **No wall-clock timeout or side-effect rollback** — the caller cancels long work, and files or external systems changed before cancellation are not restored.
 
 <a id="dev-note"></a>
@@ -224,6 +188,8 @@ These limits define when this provider is a poor fit or needs special operationa
 This Dev Note is working context for maintainers: open questions and undecided directions. It is explicitly non-authoritative — shipped behavior and limits live in the sections above and in the package code.
 
 - **Payload size disclosure** — the current darwin-arm64 platform payload packs to about 114 MB and unpacks to about 282 MB; these are disclosure numbers, not installation thresholds.
-- **Version-pinned protocol** — the runtime dependency is pinned to `@openai/codex@0.149.1`; upgrading requires regenerating the upstream schema evidence and rerunning the credentialed nonce tests.
+- **Version-pinned protocol** — the runtime dependency is pinned to `@openai/codex@0.153.4`; upgrading requires regenerating the upstream schema evidence and rerunning the credentialed nonce tests.
 
 </details>
+
+**Runtime invariant:** No companion is published. Lifecycle pairing belongs to the shared subagent service, and managed-range ownership belongs to the subprocess service.

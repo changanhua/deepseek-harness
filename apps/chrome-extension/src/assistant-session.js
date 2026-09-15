@@ -194,6 +194,8 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
   const submit = async input => {
     const request = clone(input)
     if (!contentValid(request.content) || !['queue', 'steer'].includes(request.mode ?? 'queue')) throw failure('invalid_content')
+    const needsSession = await transaction(() => { ready(); return durable.binding === null })
+    if (needsSession) await create()
     const prepared = await transaction(async () => {
       ready()
       if (!durable.binding) throw failure('no_session')

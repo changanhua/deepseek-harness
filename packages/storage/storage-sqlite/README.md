@@ -81,7 +81,7 @@ The backend is a document-per-row layout over one `node:sqlite` connection, desi
 
 ### Open sequence
 
-Open disables extension loading, applies connection security settings, verifies the optional private path, acquires the requested lock, and checks journal mode, application identity, and physical version in a transaction before publishing readiness. Fresh metadata and each unit's tables materialize transactionally, so failed initialization leaves neither a version stamp nor a partial unit registration.
+Opening disables extension loading, applies connection security settings, verifies the optional private path, acquires the requested lock, and checks journal mode, application identity, and physical version in a transaction before publishing readiness. Fresh metadata materializes transactionally; each unit's record tables are ensured after the backend is ready, so a failed unit does not publish a usable unit.
 
 ### Source map
 
@@ -91,7 +91,7 @@ Open disables extension loading, applies connection security settings, verifies 
 | [`src/schema.ts`](src/schema.ts) | Open sequence, physical layout version, metadata tables, record table naming |
 | [`src/private-directory.ts`](src/private-directory.ts) | Private path creation and native permission verification |
 | [`src/unit.ts`](src/unit.ts) | One opened unit: prepared statements, JSON value parse, close |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion (no runtime invariant: versions are open-time checks) |
+| — | No runtime invariant companion is published; schema-version and unit-version consistency are open-time checks that reject before a unit exists, and durability needs the backend round-trip tests in the shared KV conformance suite; this package exposes no continuously observable in-process relation. |
 
 </details>
 
@@ -134,10 +134,9 @@ None — the backend never touches live request prefixes.
 These limits define when this backend is a poor fit or needs special operational care. They are current package constraints, not a task backlog.
 
 - **Synchronous driver blocks the event loop** — each write is a synchronous `DatabaseSync` call; the block lasts a single statement, which is acceptable at domain-data scale.
-- **No busy-wait or lock stealing** — a competing connection rejects immediately; exclusive ownership never waits for, terminates, or recovers another process.
-- **Windows ACLs do not isolate the same user** — another process with the same user token can read the database file; capability discovery and Agent authorization require a separate policy layer.
+- **No busy-wait or retry policy** — a competing connection holding a write lock rejects the operation immediately instead of waiting; the domain layer's write chain serializes writes within one process, and cross-process coordination is out of scope.
 - **Only the current physical layout version opens** — any other stamped `user_version` is rejected rather than migrated (pre-release stance).
-- **Open sequence duplicated from the session packages** — `openDatabase` mirrors the session-persistence SQLite open sequence; extraction into a shared medium layer is deferred to the planned session-backend migration.
+- **Open sequence duplicated with the query provider** — `openDatabase` and `session-query-sqlite` both enforce SQLite file ownership, but each package owns a distinct application identity and schema; no shared medium helper couples them.
 
 <a id="dev-note"></a>
 ### Dev Note

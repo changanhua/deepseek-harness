@@ -1,10 +1,12 @@
 const failure = code => Object.assign(new Error(code), { code })
 const clone = value => structuredClone(value)
-const mutating = kind => !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(kind)
+const MAX_SCREENSHOT_BASE64 = 1_500_000
+const SCREENSHOT_QUALITIES = [55, 45, 35, 25, 15]
+const mutating = kind => !['tabs', 'snapshot', 'wait', 'screenshot'].includes(kind)
 const kinds = new Set(['tabs', 'snapshot', 'navigate', 'click', 'fill', 'submit', 'scroll', 'wait',
   'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload',
   'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot',
-  'entry_inspect', 'entry_mount', 'entry_unmount'])
+  'entry_mount', 'entry_unmount'])
 const siteOf = raw => {
   const url = new URL(raw)
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw failure('unsupported_page')
@@ -45,7 +47,7 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
       func: (method, value, options) => globalThis.__dshBrowserAssistant[method](value, options),
       args: [method, value ?? null, options] })
     const result = results.find(row => row.documentId === page.documentId && row.frameId === page.frameId)
-    if (!result || result.result === undefined) throw failure('executor_reply_lost')
+    if (!result || result.result == null) throw failure('executor_reply_lost')
     return result.result
   }
   const inspect = async (entry, { cancel = false } = {}) => {
@@ -114,7 +116,32 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
       if (['navigate', 'tab_open'].includes(action.kind)) await checkSite(request, signal, action.url)
       const target = expected ? targetOf(expected) : action.documentId
         ? { tabId: action.tabId, documentIds: [action.documentId] } : { tabId: action.tabId, frameIds: [action.frameId] }
-      const page = await probe(target)
+      let page
+      try {
+        page = await probe(target)
+      } catch (cause) {
+        if (expected) {
+          let current
+          try { current = await probe({ tabId: expected.tabId, frameIds: [expected.frameId] }) } catch { current = null }
+          if (current && (current.documentId !== expected.documentId || current.url !== expected.url)) throw failure('stale_document')
+          if (!current) {
+            try {
+              const frames = await chromeApi.webNavigation?.getAllFrames?.({ tabId: expected.tabId })
+              const frame = frames?.find(candidate => candidate.frameId === expected.frameId)
+              if (frame?.documentId && frame.documentId !== expected.documentId) throw failure('stale_document')
+            } catch (replacement) {
+              if (replacement?.code === 'stale_document') throw replacement
+            }
+            try {
+              const tab = await chromeApi.tabs.get(expected.tabId)
+              if (typeof tab?.url === 'string' && tab.url !== expected.url) throw failure('stale_document')
+            } catch (replacement) {
+              if (replacement?.code === 'stale_document') throw replacement
+            }
+          }
+        }
+        throw cause
+      }
       preparedPage = page
       if (expected && (page.documentId !== expected.documentId || page.frameId !== expected.frameId || page.url !== expected.url)
         || action.documentId && page.documentId !== action.documentId) throw failure('stale_document')
@@ -130,8 +157,9 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
         const snapshot = await invoke(page, 'snapshot', observing ? { references: false } : {
           query: action.query ?? '', offset: action.offset ?? 0, limit: action.limit ?? 128, textLimit: action.textLimit ?? 50000,
           tree: action.tree ?? false, ...(action.treeCursor === undefined ? {} : { treeCursor: action.treeCursor }), treeLimit: action.treeLimit ?? 256,
-          includeOptions: action.includeOptions ?? false,
+          includeOptions: action.includeOptions ?? false, structure: action.structure ?? true,
         })
+        if (snapshot?.error?.code) return { outcome: 'failed', quiescent: true, reason: snapshot.error.code, detail: snapshot.error.message }
         const frames = []
         if (chromeApi.webNavigation && !observing) {
           for (const frame of await chromeApi.webNavigation.getAllFrames({ tabId: page.tabId }) ?? []) {
@@ -145,11 +173,58 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
         if (snapshot.url !== page.url) throw failure('stale_document')
         return { outcome: 'observed', quiescent: true, value: { ...snapshot, page, ...(frames.length ? { frames } : {}) } }
       }
-      if (action.kind === 'entry_inspect' || action.kind === 'entry_mount' || action.kind === 'entry_unmount') {
-        const method = action.kind === 'entry_inspect' ? 'entryInspect' : action.kind === 'entry_mount' ? 'entryMount' : 'entryUnmount'
-        const result = await invoke(page, method, clone(request))
+      if (action.kind === 'entry_mount' || action.kind === 'entry_unmount') {
+        if (action.kind === 'entry_mount') {
+          const inspected = await invoke(page, 'entryInspect', clone(request))
+          grantFor(request, signal)
+          if (inspected.outcome !== 'observed') return inspected
+        }
+        const result = await invoke(page, action.kind === 'entry_mount' ? 'entryMount' : 'entryUnmount', clone(request))
         grantFor(request, signal)
         return result
+      }
+      // Waiting does not need a CDP session. Keep it on the page runtime so a
+      // transient debugger attach failure cannot turn a read into an error.
+      if (action.kind === 'wait') {
+        issued = true
+        return await invoke(page, 'execute', clone(request))
+      }
+      // Focusing a tab is a browser-level operation; it must not depend on
+      // adopting a DOM node through Puppeteer.
+      if (action.kind === 'tab_focus') {
+        await chromeApi.tabs.update(page.tabId, { active: true })
+        grantFor(request, signal)
+        return { outcome: 'observed', quiescent: true, value: { focused: true } }
+      }
+      // The extension already owns a permission-safe screenshot path. It only
+      // captures the visible tab, so reject a stale/non-foreground target
+      // rather than returning pixels from a different page.
+      if (action.kind === 'screenshot') {
+        let active
+        try { active = await chromeApi.tabs.get?.(page.tabId) } catch { active = undefined }
+        if (!active) active = (await chromeApi.tabs.query({ active: true, lastFocusedWindow: true }))[0]
+        // A model may address a tab in another window. Activate that exact
+        // tab before using captureVisibleTab, otherwise Chrome captures the
+        // DSH window that currently has focus.
+        if (active?.id !== page.tabId && chromeApi.tabs.update) {
+          await chromeApi.tabs.update(page.tabId, { active: true })
+          try { active = await chromeApi.tabs.get?.(page.tabId) } catch { /* use the prior tab facts */ }
+        }
+        if (active?.id === page.tabId && active.active !== false && Number.isInteger(active.windowId)) {
+          let dataUrl
+          for (const quality of SCREENSHOT_QUALITIES) {
+            try {
+              dataUrl = await chromeApi.tabs.captureVisibleTab(active.windowId, { format: 'jpeg', quality })
+              if (typeof dataUrl === 'string' && dataUrl.match(/^data:image\/jpeg;base64,/u)?.[0] && dataUrl.length <= MAX_SCREENSHOT_BASE64) break
+            } catch { dataUrl = undefined }
+          }
+          if (dataUrl !== undefined) {
+            const match = /^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/u.exec(dataUrl)
+            if (!match || match[1].length > MAX_SCREENSHOT_BASE64) throw failure('screenshot_too_large')
+            grantFor(request, signal)
+            return { outcome: 'observed', quiescent: true, value: { screenshot: { data: match[1], mimeType: 'image/jpeg' } } }
+          }
+        } else if (!puppeteer || getEngine() !== 'puppeteer') throw failure('screenshot_requires_active_tab')
       }
       cancel = () => { void inspect({ target: page, identity: request }, { cancel: true }) }
       signal?.addEventListener('abort', cancel, { once: true })

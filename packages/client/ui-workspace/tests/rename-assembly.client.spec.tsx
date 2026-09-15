@@ -15,9 +15,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import type { ISession } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { SessionSeq, type SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
-import { SlotTestRuntime, TestRemote, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
+import { RemoteError, SlotTestRuntime, TestRemote, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-workspace/client'
 
@@ -33,16 +33,13 @@ beforeEach(() => { localStorage.clear() })
 /** Runtime with the locale face installed (the browser entry declares `locale:` — zh default backs the t seat). */
 async function createRuntime(): Promise<SlotTestRuntime> {
   const runtime = await SlotTestRuntime.create()
+  runtime.ctx.provide('layout', { selectPanel: vi.fn() })
   runtime.releaseWorkspaceSource()
-  runtime.ctx.provide('connection', {
-    generation: { getSnapshot: () => undefined, subscribe: () => () => {} },
-  })
   // The rename flow never picks a directory; the namespace only has to be there
   // for ui-workspace's inject to settle.
   const directoryPicker = {}
   Object.assign(new TestRemote(runtime.ctx), { directoryPicker })
   runtime.ctx.provide('remote.directoryPicker', directoryPicker as never)
-  runtime.ctx.provide('remote.workspace', {} as never)
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
@@ -52,14 +49,17 @@ async function createRuntime(): Promise<SlotTestRuntime> {
 /** Test-owned sidebar shell role: declares and renders the browsing region. */
 type FrameProps = PropsRenderSlots<'sidebar.workspaces'>
 function SidebarFrame({ renderSlot }: FrameProps) {
-  return <>{renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {}, setActiveModule: () => {} })}</>
+  return <>{renderSlot('sidebar.workspaces', {
+    wide: true, expandSidebar: () => {}, setActiveModule: () => {},
+    usePanelInfo: selector => selector({ activePanelId: null }),
+  })}</>
 }
 
 describe('session rename through the assembled browser', () => {
   it('renames via the row menu: binding.session.rename fires, the dialog closes, the row re-labels from the list', async () => {
     const runtime = await createRuntime()
     const rename = vi.fn<ISession['rename']>(async title => ({
-      ok: true, value: { title: title.trim().replace(/\s+/g, ' '), seq: 7 },
+      ok: true, value: { title: title.trim().replace(/\s+/g, ' '), seq: SessionSeq(7) },
     }))
     await runtime.sessions.add({
       id: SID,
@@ -106,7 +106,7 @@ describe('session rename through the assembled browser', () => {
   it('a rejected rename keeps the dialog open with the error surfaced', async () => {
     const runtime = await createRuntime()
     const rename = vi.fn<ISession['rename']>(async () => ({
-      ok: false, error: { code: 'internal', message: 'title write failed', details: {} },
+      ok: false, error: new RemoteError('gateway/internal', 'title write failed', {}),
     }))
     await runtime.sessions.add({
       id: SID,

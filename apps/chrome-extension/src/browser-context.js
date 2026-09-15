@@ -1,6 +1,8 @@
 import { capturePageBody } from './capture.js'
 
 const failure = code => Object.assign(new Error(code), { code })
+const MAX_CONTEXT_SCREENSHOT_BASE64 = 4 * 1024 * 1024
+const CONTEXT_SCREENSHOT_QUALITIES = [85, 70, 55, 40, 25]
 const pageUrl = value => {
   const url = new URL(value)
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw failure('unsupported_page')
@@ -70,13 +72,17 @@ export const createBrowserContext = ({ chromeApi }) => {
       const before = await activeTab()
       if (before.id !== tab.id || before.windowId !== tab.windowId) throw failure('capture_target_changed')
       let dataUrl
-      try { dataUrl = await chromeApi.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 85 }) }
-      catch { throw failure('screenshot_permission_required') }
+      try {
+        for (const quality of CONTEXT_SCREENSHOT_QUALITIES) {
+          dataUrl = await chromeApi.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality })
+          if (typeof dataUrl === 'string' && dataUrl.length <= `data:image/jpeg;base64,`.length + MAX_CONTEXT_SCREENSHOT_BASE64) break
+        }
+      } catch { throw failure('screenshot_permission_required') }
       const after = await activeTab()
       const verified = await readDocument(tab, captured.page.documentId)
       if (changed || after.id !== tab.id || after.windowId !== tab.windowId || verified.page.url !== captured.page.url) throw failure('capture_target_changed')
       const match = /^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/u.exec(dataUrl)
-      if (!match || match[1].length > 4 * 1024 * 1024) throw failure('screenshot_too_large')
+      if (!match || match[1].length > MAX_CONTEXT_SCREENSHOT_BASE64) throw failure('screenshot_too_large')
       return { ...metadata, mediaType: 'image/jpeg', data: match[1] }
     } finally {
       chromeApi.tabs.onActivated.removeListener(activated)

@@ -35,8 +35,8 @@
     for (const [key, prepared] of preparations) if (prepared.expiresAt <= now) preparations.delete(key)
   }
   const formOf = node => node instanceof HTMLFormElement ? node : node?.form ?? node?.closest('form')
-  const disabledControl = node => Boolean(node.disabled || node.matches(':disabled') || node.closest('[inert]') || node.getAttribute('aria-disabled') === 'true')
-  const readOnlyControl = node => Boolean(node.readOnly || node.getAttribute('aria-readonly') === 'true')
+  const disabledControl = node => Boolean(node && (node.disabled || node.matches(':disabled') || node.closest('[inert]') || node.getAttribute('aria-disabled') === 'true'))
+  const readOnlyControl = node => Boolean(node && (node.readOnly || node.getAttribute('aria-readonly') === 'true'))
   const visible = node => {
     if (!node?.isConnected) return false
     let depth = 0
@@ -100,16 +100,19 @@
     return ({ A: 'link', BUTTON: 'button', SUMMARY: 'button', TEXTAREA: 'textbox', SELECT: 'combobox' })[node.tagName]
       ?? (containsInputValue(node) ? 'textbox' : 'generic')
   }
-  const stateOf = node => ({
+  const stateOf = node => node ? ({
     disabled: disabledControl(node),
     readOnly: readOnlyControl(node),
     required: Boolean(node.required || node.getAttribute('aria-required') === 'true'),
+    pressed: ['true', 'false'].includes(node.getAttribute('aria-pressed')) ? node.getAttribute('aria-pressed') === 'true' : null,
+    selected: ['true', 'false'].includes(node.getAttribute('aria-selected')) ? node.getAttribute('aria-selected') === 'true' : null,
+    busy: node.getAttribute('aria-busy') === 'true',
     checked: ['checkbox', 'radio'].includes(node.type) ? Boolean(node.checked)
       : node.getAttribute('aria-checked') === 'mixed' ? 'mixed'
         : ['true', 'false'].includes(node.getAttribute('aria-checked')) ? node.getAttribute('aria-checked') === 'true' : null,
     expanded: node.tagName === 'SUMMARY' && node.parentElement?.tagName === 'DETAILS' ? node.parentElement.open
       : ['true', 'false'].includes(node.getAttribute('aria-expanded')) ? node.getAttribute('aria-expanded') === 'true' : null,
-  })
+  }) : null
   const visibleBodyText = (limit = MAX_TEXT) => {
     const pieces = []
     let visited = 0, length = 0
@@ -137,10 +140,36 @@
     label: text(option.label).slice(0, 128), value: option.value.slice(0, 256), disabled: disabledControl(option),
   })) : undefined
   const bounded = (value, fallback, minimum, maximum) => Number.isSafeInteger(value) ? Math.min(maximum, Math.max(minimum, value)) : fallback
+  const structuralSummary = (elements = [], nodes = new Map()) => {
+    const regions = [], collections = []
+    const regionNodes = [...document.querySelectorAll('main,nav,header,aside,footer,[role="main"],[role="navigation"],[role="region"]')]
+    for (const node of regionNodes.slice(0, 24)) {
+      if (!visible(node)) continue
+      const heading = node.querySelector(':scope > h1,:scope > h2,:scope > h3,:scope > [role="heading"]')
+      regions.push({ kind: roleOf(node) === 'generic' ? node.tagName.toLowerCase() : roleOf(node), label: text(heading?.textContent ?? '').slice(0, 160), text: elementText(node, 240) })
+    }
+    const collectionNodes = [...document.querySelectorAll('[role="feed"],[role="list"],[role="grid"],ul,ol')]
+    for (const node of collectionNodes.slice(0, 16)) {
+      if (!visible(node)) continue
+      const kind = node.getAttribute('role') ?? node.tagName.toLowerCase()
+      const itemNodes = [...node.querySelectorAll(':scope > [role="listitem"],:scope > [role="gridcell"],:scope > li,:scope > article,:scope > [role="row"]')]
+      const items = itemNodes.slice(0, 16).filter(item => visible(item)).map((item, index) => {
+        const controls = elements.filter(element => {
+          const record = nodes.get(element.elementId)
+          return record?.node && record.node !== item && item.contains(record.node)
+        }).slice(0, 24).map(element => ({ elementId: element.elementId, role: element.role, label: element.label, state: element.state }))
+        return { index, text: elementText(item, 180), controls, ...(controls.length >= 24 ? { controlsTruncated: true } : {}) }
+      })
+      collections.push({ kind, itemCount: Math.min(itemNodes.length, 128), items, itemsTruncated: itemNodes.length > items.length })
+    }
+    return { regions, collections }
+  }
   const snapshot = options => {
     prune()
     if (options?.tree) {
-      const tree = globalThis.__dshBrowserDomTree.snapshot(options)
+      let tree
+      try { tree = globalThis.__dshBrowserDomTree.snapshot(options) }
+      catch (cause) { return { error: { code: cause?.code ?? 'dom_tree_cursor_invalid', message: cause?.message ?? 'DOM tree cursor is invalid' } } }
       const saved = snapshots.get(tree.snapshotId) ?? { url: location.href, nodes: new Map(), expiresAt: 0 }
       for (const item of tree.tree) {
         if (!item.elementId) continue
@@ -188,6 +217,7 @@
     }
     return { snapshotId, url: window.location.href, title: document.title,
       ...visibleBodyText(bounded(options?.textLimit, MAX_TEXT, 0, MAX_TEXT)), elements,
+      ...(options?.structure === false ? {} : { structure: structuralSummary(elements, nodes) }),
       offset, nextOffset: hasMore ? offset + elements.length : null, elementsTruncated: hasMore,
       scanTruncated: examined >= 10000 }
   }
@@ -296,7 +326,7 @@
     } catch { return reject('preparation_too_large') }
   }
 
-  const effectState = node => JSON.stringify({ url: location.href, title: document.title, text: visibleBodyText().text, node: fieldState(node) })
+  const effectState = node => JSON.stringify({ url: location.href, title: document.title, text: visibleBodyText().text, node: fieldState(node), controlState: stateOf(node) })
   const run = (node, action) => {
     if (node && (disabledControl(node) || !visible(node))) return { rejected: 'target_unavailable' }
     if (action.kind === 'click') {
@@ -415,73 +445,26 @@
     entryMounts.delete(mountId)
     for (const button of document.querySelectorAll(`[data-dsh-entry-mount-id="${mountId}"]`)) button.remove()
   }
-  const validEntryBinding = action => typeof action.regionSelector === 'string' && action.regionSelector.length > 0
-    && typeof action.selector === 'string' && action.selector.length > 0 && action.selector.length <= 256
-    && (action.titleSelector === undefined || typeof action.titleSelector === 'string' && action.titleSelector.length <= 256)
-    && (action.linkSelector === undefined || typeof action.linkSelector === 'string' && action.linkSelector.length <= 256)
-    && (action.sampleLimit === undefined || Number.isSafeInteger(action.sampleLimit) && action.sampleLimit >= 1 && action.sampleLimit <= 12)
   const entryInspect = request => {
     prune()
-    if (!validIdentity(request) || request.payload?.kind !== 'entry_inspect' || !validEntryBinding(request.payload)) {
+    if (!validIdentity(request) || request.payload?.kind !== 'entry_mount'
+      || typeof request.payload.mountId !== 'string' || !request.payload.mountId
+      || typeof request.payload.selector !== 'string' || !request.payload.selector
+      || typeof request.payload.label !== 'string' || !request.payload.label) {
       return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true })
     }
-    const action = request.payload
-    const page = actionPage(action)
+    const page = actionPage(request.payload)
     if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'stale_document', quiescent: true })
-    let regions, matches
     try {
-      regions = [...document.querySelectorAll(action.regionSelector)]
-      if (regions.length !== 1) return receipt(request, 'failed', { reason: 'ambiguous_region', quiescent: true })
-      if (!action.selector.startsWith(':scope')) {
-        return receipt(request, 'failed', { reason: 'binding_outside_region', quiescent: true })
-      }
-      matches = [...regions[0].querySelectorAll(action.selector)].slice(0, MAX_ENTRY_ITEMS)
-    } catch {
-      return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true })
-    }
-    if (matches.some(item => !regions[0].contains(item))) {
-      return receipt(request, 'failed', { reason: 'binding_outside_region', quiescent: true })
-    }
-    const limit = action.sampleLimit ?? 6
-    const links = new Map()
-    let valid = 0, missingTitle = 0, missingLink = 0
-    const records = matches.map((item, index) => {
-      const titleNode = action.titleSelector ? item.querySelector(action.titleSelector) : item.querySelector('a')
-      const linkNode = action.linkSelector ? item.querySelector(action.linkSelector) : item.querySelector('a[href]')
-      const title = text((titleNode ?? item).textContent).slice(0, 200)
-      const link = linkNode?.href ?? ''
-      const hasTitle = action.titleSelector ? titleNode !== null && title !== '' : title !== ''
-      const hasLink = link !== ''
-      if (!hasTitle) missingTitle++
-      if (!hasLink) missingLink++
-      if (hasTitle && hasLink) valid++
-      if (hasLink) links.set(link, (links.get(link) ?? 0) + 1)
-      return { index, title, link, valid: hasTitle && hasLink }
-    })
-    const sampleIndexes = new Set()
-    for (const index of [0, Math.floor((records.length - 1) / 2), records.length - 1]) {
-      if (index >= 0 && sampleIndexes.size < limit) sampleIndexes.add(index)
-    }
-    for (const record of records) {
-      if (!record.valid && sampleIndexes.size < limit) sampleIndexes.add(record.index)
-    }
-    for (const record of records) {
-      if (sampleIndexes.size >= limit) break
-      sampleIndexes.add(record.index)
-    }
-    return receipt(request, 'observed', { quiescent: true, value: {
-      matched: matches.length, valid, missingTitle, missingLink,
-      duplicateLinks: [...links.values()].filter(count => count > 1).reduce((sum, count) => sum + count - 1, 0),
-      truncated: matches.length >= MAX_ENTRY_ITEMS,
-      samples: [...sampleIndexes].sort((left, right) => left - right).map(index => records[index]),
-    } })
+      const matches = document.querySelectorAll(request.payload.selector).length
+      return receipt(request, 'observed', { quiescent: true, value: { matches: Math.min(matches, MAX_ENTRY_ITEMS) } })
+    } catch { return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true }) }
   }
   const entryMount = request => {
     prune()
     if (!validIdentity(request) || request.payload?.kind !== 'entry_mount'
       || typeof request.payload.mountId !== 'string' || !request.payload.mountId
       || typeof request.payload.selector !== 'string' || !request.payload.selector
-      || request.payload.regionSelector !== undefined && (typeof request.payload.regionSelector !== 'string' || !request.payload.regionSelector)
       || typeof request.payload.label !== 'string' || !request.payload.label
       || request.payload.titleSelector !== undefined && typeof request.payload.titleSelector !== 'string'
       || request.payload.linkSelector !== undefined && typeof request.payload.linkSelector !== 'string'
@@ -516,25 +499,12 @@
       item.appendChild(button)
       mounted++
     }
-    let root = document, matches
-    try {
-      if (action.regionSelector !== undefined) {
-        const regions = [...document.querySelectorAll(action.regionSelector)]
-        if (regions.length !== 1 || !action.selector.startsWith(':scope')) {
-          return receipt(request, 'failed', { reason: regions.length !== 1 ? 'ambiguous_region' : 'binding_outside_region', quiescent: true })
-        }
-        root = regions[0]
-      }
-      matches = [...root.querySelectorAll(action.selector)].slice(0, MAX_ENTRY_ITEMS)
-    }
+    let matches
+    try { matches = [...document.querySelectorAll(action.selector)].slice(0, MAX_ENTRY_ITEMS) }
     catch { return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true }) }
     for (const item of matches) attach(item)
     const observer = new MutationObserver(mutations => {
       if (!entryMounts.has(action.mountId)) return
-      if (action.regionSelector !== undefined) {
-        for (const match of root.querySelectorAll(action.selector)) attach(match)
-        return
-      }
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType !== Node.ELEMENT_NODE) continue
@@ -543,7 +513,7 @@
         }
       }
     })
-    observer.observe(root, { childList: true, subtree: true })
+    observer.observe(document.documentElement, { childList: true, subtree: true })
     entryMounts.set(action.mountId, { observer })
     return receipt(request, 'observed', { quiescent: true, value: { mounted, collected: [...collected] } })
   }

@@ -1,5 +1,8 @@
 import { createAssistantRuntime } from './assistant-runtime.js'
 import { createAssistantSurfaces } from './assistant-surfaces.js'
+import { createExtensionController } from './controller.js'
+import { createContentBrowserTransport } from './transport.js'
+import { createCaptureBridge } from './capture-bridge.js'
 
 let broadcastTimer
 const broadcast = () => {
@@ -11,14 +14,22 @@ const broadcast = () => {
 }
 const assistant = createAssistantRuntime({ chromeApi: chrome, changed: broadcast })
 const surfaces = createAssistantSurfaces({ chromeApi: chrome })
+const hasPermission = baseUrl => chrome.permissions.contains({ origins: [`${new URL(baseUrl).origin}/*`] })
+const contentTransport = createContentBrowserTransport({ openApproval: url => chrome.tabs.create({ url }) })
+const captureController = createExtensionController({ storage: chrome.storage.local, hasPermission, changed: broadcast,
+  transport: { ...contentTransport, begin: args => contentTransport.begin({ ...args, extensionId: chrome.runtime.id }) },
+})
+const captureBridge = createCaptureBridge({ controller: captureController, extensionId: chrome.runtime.id, openTab: url => chrome.tabs.create({ url }) })
 let readerRevision = 0
 const isSidebar = sender => sender.id === chrome.runtime.id && sender.url === chrome.runtime.getURL('sidebar.html')
-const retiredScriptIds = ['dsh-chatgpt', 'dsh-zhihu', 'dsh-zhihu-article']
+const scripts = [
+  { id: 'dsh-chatgpt', matches: ['https://chatgpt.com/*'] },
+  { id: 'dsh-zhihu', matches: ['https://www.zhihu.com/*'] },
+  { id: 'dsh-zhihu-article', matches: ['https://zhuanlan.zhihu.com/*'] },
+]
 let setupLane = Promise.resolve()
 const setup = () => {
   const task = setupLane.then(async () => {
-    const retired = (await chrome.scripting.getRegisteredContentScripts()).filter(script => retiredScriptIds.includes(script.id))
-    if (retired.length) await chrome.scripting.unregisterContentScripts({ ids: retired.map(script => script.id) })
     await chrome.contextMenus.removeAll()
     chrome.contextMenus.create({ id: 'dsh-assistant-selection', title: '用 DSH 讨论选中文字', contexts: ['selection'], documentUrlPatterns: ['http://*/*', 'https://*/*'] })
     await chrome.action.setTitle({ title: '打开 DSH 浏览器助手' })
@@ -26,18 +37,37 @@ const setup = () => {
   setupLane = task.catch(() => {})
   return task
 }
+let scriptLane = Promise.resolve()
+const syncScripts = () => {
+  const work = scriptLane.then(async () => {
+    const registered = await chrome.scripting.getRegisteredContentScripts()
+    for (const site of scripts) {
+      const allowed = await chrome.permissions.contains({ origins: site.matches })
+      const exists = registered.some(item => item.id === site.id)
+      if (allowed && !exists) await chrome.scripting.registerContentScripts([{ ...site, js: ['src/content-script.js'], persistAcrossSessions: true, runAt: 'document_idle' }])
+      if (!allowed && exists) await chrome.scripting.unregisterContentScripts({ ids: [site.id] })
+    }
+  })
+  scriptLane = work.catch(() => {})
+  return work
+}
 const ready = (async () => {
   await chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })
   await setup()
+  await syncScripts().catch(() => {})
   await assistant.start()
 })()
 void ready.catch(() => broadcast())
 
-chrome.runtime.onInstalled.addListener(() => { void ready.then(setup).catch(() => broadcast()) })
+chrome.runtime.onInstalled.addListener(() => { void ready.then(() => Promise.all([setup(), syncScripts()])).catch(() => broadcast()) })
+chrome.permissions.onAdded.addListener(() => { void syncScripts().catch(() => broadcast()) })
 chrome.action.onClicked.addListener(tab => {
   if (tab.windowId === undefined) return
   // Opening remains in the original Chrome user gesture.
   void chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {})
+  if (Number.isInteger(tab.id) && typeof tab.url === 'string' && /^https?:/u.test(tab.url)) {
+    void chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['src/content-script.js'] }).catch(() => {})
+  }
 })
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command === 'open-assistant-window') { void surfaces.openWindow().catch(() => broadcast()); return }
@@ -68,6 +98,50 @@ chrome.runtime.onConnect.addListener(port => {
   port.onDisconnect.addListener(() => { closed = true; void ready.then(() => assistant.viewChanged(id, false)).catch(() => {}) })
 })
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type === 'dsh-quick-capture') {
+    void ready.then(() => captureBridge.quickCapture(message.payload, sender)).then(respond,
+      error => {
+        const code = error.code ?? error.message
+        const uncertain = ['network_error', 'request_timeout', 'invalid_receipt', 'result_unknown'].includes(code)
+        respond({ ok: false, status: uncertain ? 'unknown' : 'failed', uncertain, error: code })
+      })
+    return true
+  }
+  if (message?.type === 'dsh-open-captured') {
+    void ready.then(() => captureBridge.openCaptured(message.entryId, sender)).then(respond,
+      error => respond({ ok: false, error: error.code ?? error.message }))
+    return true
+  }
+  if (message?.type === 'dsh-capture-save') {
+    void ready.then(async () => {
+      const capture = await captureController.save(message.captureId, true)
+      return { ok: true, capture }
+    }).then(respond, error => respond({ ok: false, error: error.code ?? error.message }))
+    return true
+  }
+  if (message?.type === 'dsh-capture-connect') {
+    void ready.then(async () => { await captureController.connect(); return { ok: true, captureConnection: (await captureController.read()).connection } })
+      .then(respond, error => respond({ ok: false, error: error.code ?? error.message }))
+    return true
+  }
+  if (message?.type === 'dsh-capture-open-entry') {
+    void ready.then(async () => {
+      const receipt = await captureController.receipt(message.entryId)
+      if (!receipt?.baseUrl || receipt.entryId !== message.entryId) throw new Error('receipt_missing')
+      await chrome.tabs.create({ url: `${new URL(receipt.baseUrl).origin}/#content-entry=${encodeURIComponent(receipt.entryId)}` })
+      return { ok: true }
+    }).then(respond, error => respond({ ok: false, error: error.code ?? error.message }))
+    return true
+  }
+  if (message?.type === 'dsh-capture-open-source') {
+    void ready.then(async () => {
+      const url = new URL(message.url)
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('unsupported_page')
+      await chrome.tabs.create({ url: url.href })
+      return { ok: true }
+    }).then(respond, error => respond({ ok: false, error: error.code ?? error.message }))
+    return true
+  }
   if (sender.id === chrome.runtime.id && sender.url === chrome.runtime.getURL('reader.html')
     && ['dsh-assistant-state', 'dsh-assistant-open-model-settings', 'dsh-assistant-reading-models',
       'dsh-assistant-configure', 'dsh-assistant-connect', 'dsh-assistant-poll', 'dsh-assistant-open-approval', 'dsh-assistant-cancel',
@@ -118,7 +192,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     void surfaces.openWindow().then(value => respond({ ok: true, value }), () => respond({ ok: false, error: 'assistant_window_unavailable' }))
     return true
   }
-  void ready.then(() => assistant.handle(message)).then(result => respond(result.state
-    ? { ...result, state: { ...result.state, readerRevision } } : result), error => respond({ ok: false, error: error.code ?? error.message }))
+  void ready.then(() => assistant.handle(message)).then(async result => {
+    if (!result.state) return respond(result)
+    const captureState = await captureController.read()
+    return respond({ ...result, state: { ...result.state, readerRevision, capture: captureState.capture, captureConnection: captureState.connection } })
+  }, error => respond({ ok: false, error: error.code ?? error.message }))
   return true
 })

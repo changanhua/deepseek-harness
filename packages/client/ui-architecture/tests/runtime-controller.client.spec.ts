@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
 import type { PluginInventorySnapshot } from '@deepseek-ai/dsh-host-plugin-inventory/types'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import {
   createArchitectureRuntimeController,
   type ArchitectureRuntimeRemoteFace,
@@ -14,6 +15,7 @@ const ACTIVE: PluginInventorySnapshot = {
     fiberPhase: 'active',
   }],
 }
+const remoteFailure = (code: string, message: string) => new RemoteError(code as never, message, {} as never)
 
 describe('Architecture runtime controller', () => {
   it('publishes loading and then the current Loader snapshot', async () => {
@@ -38,7 +40,7 @@ describe('Architecture runtime controller', () => {
         calls += 1
         return calls === 1
           ? { ok: true, value: ACTIVE }
-          : { ok: false, error: { code: 'transport', message: 'offline', details: {} } }
+          : { ok: false, error: remoteFailure('transport', 'offline') }
       },
     }
     const controller = createArchitectureRuntimeController(remote)

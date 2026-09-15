@@ -114,7 +114,6 @@ function scenarioRequest(root, check, closes, savedOutputs) {
         baseCommit: packet.baseCommit,
         targetCommit: completionClaim.checkpointCommit,
         cwd: root,
-        assertUnchanged: async () => {},
         close: async (disposition) => { closes.push(disposition) },
       }
     },

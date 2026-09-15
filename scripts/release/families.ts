@@ -15,7 +15,7 @@ import {
   officialClientBuildEnvironment,
   readClientBuildRecord,
 } from '../client-build-environment.ts'
-import { checkPackageIdentities, loadPackageIdentities } from '../package-identities.ts'
+import { PUBLIC_EXPERIMENTAL_PACKAGE_DIRECTORIES } from '../experimental-package-policy.ts'
 import { validateTarballPayload } from '../publication-payload.ts'
 
 /**
@@ -108,14 +108,6 @@ export abstract class ReleaseFamily {
   /** Git tag prefix this family publishes from. */
   abstract readonly tagPrefix: string
 
-  /** Matched directories deliberately owned by another release boundary. */
-  protected excludedDirectories(_root: string): ReadonlySet<string> {
-    return new Set()
-  }
-
-  /** Reject runtime edges that escape this family's publishable closure. */
-  protected validateDependencyClosure(_members: readonly ReleaseMember[]): void {}
-
   /**
    * Assert that built artifacts match this release family's required profile.
    * Families without environment-selected artifacts accept every build tree.
@@ -126,7 +118,7 @@ export abstract class ReleaseFamily {
   /**
    * Discover this family's members.
    * @param root - repository root.
-   * @returns Members sorted by directory, with names validated and deduplicated.
+   * @returns Publishable members sorted by directory, with names validated and deduplicated.
    */
   members(root: string): ReleaseMember[] {
     const manifestPaths = globSync([...this.patterns], { cwd: root }).sort()
@@ -134,12 +126,10 @@ export abstract class ReleaseFamily {
 
     const members: ReleaseMember[] = []
     const seen = new Set<string>()
-    const excludedDirectories = this.excludedDirectories(root)
     for (const manifestPath of manifestPaths) {
       const normalized = manifestPath.replaceAll('\\', '/')
-      const directory = normalized.slice(0, normalized.length - '/package.json'.length)
-      if (excludedDirectories.has(directory)) continue
       const manifest = readManifest(resolve(root, manifestPath))
+      if (manifest.private === true) continue
       const name = requireString(manifest, 'name', normalized)
       const version = requireString(manifest, 'version', normalized)
       if (name === WORKSPACE_ROOT_PACKAGE) throw new Error(`${normalized} selected the workspace root`)
@@ -147,7 +137,7 @@ export abstract class ReleaseFamily {
       if (seen.has(name)) throw new Error(`${name} appears twice in release family ${this.id}`)
       seen.add(name)
       members.push({
-        directory,
+        directory: normalized.slice(0, normalized.length - '/package.json'.length),
         name,
         version,
         manifest,
@@ -173,7 +163,6 @@ export abstract class ReleaseFamily {
    * @returns The order, ties broken by name for determinism, and the peer edges it left unordered.
    */
   publishOrder(members: readonly ReleaseMember[]): PublishPlan {
-    this.validateDependencyClosure(members)
     const byName = new Map(members.map(member => [member.name, member]))
     const byNameSorted = [...members].sort((left, right) => left.name.localeCompare(right.name))
     const edges = (member: ReleaseMember, sections: readonly string[]): ReleaseMember[] =>
@@ -299,6 +288,15 @@ export abstract class ReleaseFamily {
   abstract tagPrefixFor(member: ReleaseMember): string
 
   /**
+   * The npm dist-tag assigned while publishing a version.
+   * @param version - package version from the packed manifest.
+   * @returns `next` for a prerelease, or undefined so npm uses `latest`.
+   */
+  distTagForVersion(version: string): string | undefined {
+    return version.includes('-') ? 'next' : undefined
+  }
+
+  /**
    * The tag a member publishes from.
    * @param member - the member being published.
    * @returns The full tag name, without `refs/tags/`.
@@ -324,34 +322,12 @@ export abstract class ReleaseFamily {
 /** Release packages and apps: one shared version across the whole family. */
 class DshFamily extends ReleaseFamily {
   readonly id = 'dsh'
-  readonly patterns = ['packages/!(experimental)/*/package.json', 'apps/*/package.json'] as const
+  readonly patterns = [
+    'packages/!(experimental)/*/package.json',
+    'apps/*/package.json',
+    ...PUBLIC_EXPERIMENTAL_PACKAGE_DIRECTORIES.map(directory => `${directory}/package.json`),
+  ] as const
   readonly tagPrefix = 'dsh-v'
-  private readonly personalScope = loadPackageIdentities().personalScope
-
-  /** Personal downstream packages are never members of the official release. */
-  protected override excludedDirectories(root: string): ReadonlySet<string> {
-    const errors = checkPackageIdentities(root)
-    if (errors.length > 0) {
-      throw new Error(`release family ${this.id}: invalid personal package identities:\n${errors.join('\n')}`)
-    }
-    return new Set(loadPackageIdentities(root).personalPackages.map(entry => entry.directory))
-  }
-
-  /** The official family cannot publish an unresolved dependency on source-only downstream packages. */
-  protected override validateDependencyClosure(members: readonly ReleaseMember[]): void {
-    for (const member of members) {
-      for (const section of [...INSTALL_SECTIONS, ...PEER_SECTIONS]) {
-        const dependencies = member.manifest[section]
-        if (dependencies === null || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue
-        for (const dependency of Object.keys(dependencies)) {
-          if (!dependency.startsWith(`${this.personalScope}/`)) continue
-          throw new Error(
-            `official release member ${member.name} ${section} reaches personal package ${dependency}, which is source-only`,
-          )
-        }
-      }
-    }
-  }
 
   /** Require current artifacts from a complete official client build. */
   override verifyBuildArtifacts(root: string): void {
@@ -376,6 +352,14 @@ class DshFamily extends ReleaseFamily {
    */
   tagPrefixFor(): string {
     return this.tagPrefix
+  }
+
+  override distTagForVersion(version: string): string | undefined {
+    const separator = version.indexOf('-')
+    if (separator === -1) return undefined
+    const [channel] = version.slice(separator + 1).split('.')
+    if (channel === 'alpha' || channel === 'canary') return channel
+    return 'next'
   }
 
   /**

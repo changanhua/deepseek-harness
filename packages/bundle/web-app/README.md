@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Run `dsh --profile web` and the interface opens in your default browser, ready for interactive chat with the agent. You get the conversation view, model and settings management, and session history, backed by the same model access, tools, and safety defaults as every other surface. The shipped local Web profile opens its clean loopback URL without a startup token. You can change the port, suppress the browser handoff, and allow extra hosts from the command line; binding all network interfaces is intentionally not supported. Choose it for interactive work in the browser; `dsh-headless` is the one-shot command-line sibling.
+Run `dsh --profile web` to open an interactive browser GUI with chat, model and settings management, and session history. It uses the same model access, tools, and safety defaults as other dsh surfaces. Startup prints an authenticated URL and normally opens it in the default browser; SSH sessions and `--no-open` leave the URL for manual opening. You can change the port and allow extra hosts, but cannot bind all network interfaces. Choose this package for interactive browser work; use `dsh-headless` for one-shot command-line tasks.
 
 ## Table of Contents
 
@@ -34,7 +34,7 @@ dsh --profile web
 dsh --profile web --no-open --port 8080
 ```
 
-After startup you see a `dsh web:` line with the clean local root URL. Unless `--no-open` or an SSH session suppresses it, the default browser opens that URL. You know it worked when the page loads and you can chat with the agent. Two failures to expect: if the frontend is not built, startup stops with a build hint (`pnpm run build` in a checkout); if the browser cannot be opened, a diagnostic prints to stderr while the server keeps running — open the printed startup URL yourself.
+After startup you see a `dsh web:` line whose root URL carries a fresh process token. Unless `--no-open` or an SSH session suppresses it, the default browser opens that URL, receives a signed cookie, and redirects to the clean root page. You know it worked when the page loads and you can chat with the agent. Two failures to expect: if the frontend is not built, startup stops with a build hint (`pnpm run build` in a checkout); if the browser cannot be opened, a credential-free diagnostic prints to stderr while the server keeps running — open the printed startup URL yourself.
 
 ### Configuration
 
@@ -51,7 +51,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### LAN access and trusted hosts
 
-By default the GUI accepts connections from this machine only. A deployment that binds all network interfaces also allows browsers from the LAN, and the printed URL then includes a LAN address; `--trusted-host` adds extra hosts in either case. Host and Origin checks control reachability. The shipped profile does not require a browser token, so do not expose it beyond a network you trust. The LAN addresses are sampled once at startup, so a network change later is not picked up — restart the GUI to re-advertise.
+By default the GUI accepts connections from this machine only. A deployment that binds all network interfaces also allows browsers from the LAN, and the printed URL then includes a LAN address; `--trusted-host` adds extra hosts in either case. Host and Origin checks control reachability, while the token exchange authenticates every Host API method and WebSocket stream. The LAN addresses are sampled once at startup, so a network change later is not picked up — restart the GUI to re-advertise.
 
 ### Running over SSH
 
@@ -59,7 +59,7 @@ When you launch `dsh --profile web` over SSH, the URL line still prints but the 
 
 ### Per-session agent setup
 
-Each browser session composes its own agent from the shipped presets (the `standard` preset by default), instead of sharing one process-wide tool set. You can change the default preset or add your own presets under `$DSH_HOME/.agent-presets`.
+Each browser session composes its own agent from the shipped presets (the `standard` preset by default), instead of sharing one process-wide tool set. A standard Web session can ask Codex to handle a self-contained task through `subagent_codex`; Codex uses the Session workspace with automatic approval review and a workspace-write sandbox, then returns its final answer to the same agent turn. You can change the default preset or add your own presets under `$DSH_HOME/.agent-presets`.
 
 -----
 
@@ -73,7 +73,7 @@ The bundle is one patch plus one runtime glue plugin. The storage stack and proj
 
 ### Patch semantics
 
-A patch replaces the targeted row's whole `config`, so each web row restates every key it owns: the persona, the `DSH_TOOLS_MODE` PTC mode opt-in, and the `session-query-sqlite` values on the base rows, then `insert` adds the web host rows, transport, and browser roster. The per-agent tool rows the base mounts process-wide are disabled here and the preset roster takes over; the reasoning for each host-plane versus preset-plane decision is inline in the patch.
+A patch replaces the targeted row's whole `config`, so each web row restates every key it owns: the persona prefix and suffix templates, the `DSH_TOOLS_MODE` PTC mode opt-in, and the `session-query-sqlite` values on the base rows, then `insert` adds the web host rows, transport, and browser roster. The per-agent tool rows the base mounts process-wide are disabled here and the preset roster takes over; the reasoning for each host-plane versus preset-plane decision is inline in the patch.
 
 ### Readiness
 
@@ -90,7 +90,7 @@ The URL line and browser handoff are readiness signals: supervisors RPC as soon 
 | [`src/index.ts`](src/index.ts) | The `web-app` glue plugin: dist resolution, LAN trust sampling, prompt sections, bash variable, URL line, browser handoff |
 | [`src/startup.ts`](src/startup.ts) | The `web-startup` provider: `--host`, `--port`, `--trusted-host`, `--no-open`, `--help` |
 | [`cordis.patch.yml`](cordis.patch.yml) | The web patch: restated base values, web host rows, browser roster, agent plane behind presets |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion: no runtime invariant; every contribution is registry-disposed |
+| — | No runtime invariant companion is published; every contribution (frontend-static child plugin, prompt section, bashEnv registration) is registry-disposed with the fiber, and each owning registry's package carries that relation's invariant; the package holds no mutable state of its own to audit. |
 | [`tests/web-app.spec.ts`](tests/web-app.spec.ts) | Dist resolution, fallback seat, prompt sections, readiness |
 | [`tests/startup.spec.ts`](tests/startup.spec.ts) | Command-line parsing over a real Loader tree |
 | [`tests/trusted-hosts.spec.ts`](tests/trusted-hosts.spec.ts) | LAN-trust sampling |
@@ -98,7 +98,7 @@ The URL line and browser handoff are readiness signals: supervisors RPC as soon 
 
 ### Invariant ownership
 
-The invariant companion registers an empty installer because every contribution — the frontend-static child plugin, the prompt sections, and the bash variable registration — is registry-disposed with the fiber, and each owning registry's package carries that relation's invariant.
+No invariant companion is published because every contribution — the frontend-static child plugin, the prompt sections, and the bash variable registration — is registry-disposed with the fiber, and each owning registry package carries that relation's invariant.
 
 </details>
 
@@ -124,7 +124,7 @@ Read these pages when you want to go deeper into the shared core, the browser re
 
 #### What the model sees
 
-When `surfaceContext` is true, the `harness:source` section identifies the on-disk Harness implementation without claiming it is the working directory, and the `app:web-surface` global section (first-party order −800) orients the model to the GUI: the canonical local URL, the "this page" referent, the update contract (the reload receiver is always on; no-refresh reloads additionally need the `pnpm run dev:web` watcher), and the instruction not to start replacement servers. `DSH_WEB_URL` additionally appears in the managed bash environment with its description, resolved per invocation from the live server. When it is false, neither section nor the variable is registered.
+When `surfaceContext` is true, the `harness:source` section identifies the on-disk Harness implementation without claiming it is the working directory, and the `app:web-surface` global section (first-party order 10100, after reusable instructions) orients the model to the GUI: the canonical local URL, the "this page" referent, the update contract (the reload receiver is always on; no-refresh reloads additionally need the `pnpm run dev:web` watcher), and the instruction not to start replacement servers. `DSH_WEB_URL` additionally appears in the managed bash environment with its description, resolved per invocation from the live server. When it is false, neither section nor the variable is registered.
 
 #### Token effect
 
@@ -132,7 +132,7 @@ One source line and one prompt paragraph per session plus two managed-environmen
 
 #### KV Cache effect
 
-The prompt section sits near the system prompt's head and is stable for the life of the process (the port is a boot fact), so it does not invalidate the cache across turns.
+Source and Web sections follow first-party reusable instructions. Different checkout paths or local ports leave that preceding prefix unchanged when tools and configuration match; provider cache reuse is not guaranteed.
 
 ## Known Limitations and Deferred Work
 

@@ -94,13 +94,14 @@ export const createBrowserActivity = ({ chromeApi, getPolicy, enqueue, flush, ch
     const responses = await chromeApi.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, world: 'ISOLATED',
       func: observeActivityPage, args: [{ revision, maxTextChars: policy.maxTextChars, leaseMs: policy.minIntervalMs + 5000 }] })
     if (!still(fixed)) return
-    const result = responses.find(item => item.frameId === 0)?.result
+    const response = responses.find(item => item.frameId === 0)
+    const result = response?.result
     const current = await chromeApi.tabs.get(tab.id)
     if (!still(fixed) || !result || result.url !== tab.url || current.url !== tab.url
-      || typeof result.documentId !== 'string' || typeof result.title !== 'string' || typeof result.text !== 'string'
+      || typeof response?.documentId !== 'string' || typeof result.title !== 'string' || typeof result.text !== 'string'
       || !await chromeApi.permissions.contains({ origins: [origin + '/*'] })) return
     if (!still(fixed)) return
-    const page = { tabId: tab.id, documentId: result.documentId, url: result.url, title: result.title }
+    const page = { tabId: tab.id, frameId: response.frameId, documentId: response.documentId, url: result.url, title: result.title }
     const events = []
     const samePage = last?.tabId === page.tabId && last.documentId === page.documentId && last.url === page.url
     if (last && policy.kinds.includes('dwell')) events.push(event(last, 'dwell', timestamp,

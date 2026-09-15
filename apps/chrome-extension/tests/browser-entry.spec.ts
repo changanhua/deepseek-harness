@@ -22,12 +22,10 @@ interface BrowserRequest extends BrowserIdentity {
     page?: { tabId: number; frameId: number; documentId: string; url: string }
     mountId?: string
     selector?: string
-    regionSelector?: string
     label?: string
     titleSelector?: string
     linkSelector?: string
     collected?: string[]
-    sampleLimit?: number
   }
 }
 
@@ -39,7 +37,6 @@ interface BrowserReceipt {
 }
 
 type BrowserPageGlobal = typeof globalThis & { __dshBrowserAssistant?: {
-  entryInspect(request: BrowserRequest): BrowserReceipt
   entryMount(request: BrowserRequest): BrowserReceipt
   entryUnmount(request: BrowserRequest): BrowserReceipt
 } }
@@ -88,39 +85,6 @@ afterEach(() => {
 })
 
 describe('持久化页面条目挂载', () => {
-  test('entryInspect 在挂载前返回匹配质量和结构异形样本且不修改页面', () => {
-    document.body.innerHTML = '<main id="feed">'
-      + '<div class="item"><a class="title" href="/a">标题 A</a></div>'
-      + '<div class="item"><span>缺少链接</span></div>'
-      + '<aside><div class="item"><a class="title" href="/outside">区域外条目</a></div></aside>'
-      + '</main>'
-    const assistant = install()
-    const receipt = assistant.entryInspect({ ...identity('inspect'), target,
-      payload: { kind: 'entry_inspect', page, regionSelector: 'main#feed', selector: ':scope > .item',
-        titleSelector: '.title', linkSelector: 'a[href]', sampleLimit: 4 } } as BrowserRequest)
-
-    expect(receipt).toMatchObject({ outcome: 'observed', quiescent: true, value: {
-      matched: 2, valid: 1, missingTitle: 1, missingLink: 1, duplicateLinks: 0,
-      samples: [
-        { index: 0, title: '标题 A', link: 'https://example.test/a', valid: true },
-        { index: 1, title: '缺少链接', link: '', valid: false },
-      ],
-    } })
-    expect(document.querySelectorAll('[data-dsh-entry-mount]')).toHaveLength(0)
-  })
-
-  test('entryInspect 拒绝无效或越过目标区域的绑定', () => {
-    document.body.innerHTML = '<main><div class="item"><a href="/a">标题 A</a></div></main>'
-    const assistant = install()
-    const invalid = assistant.entryInspect({ ...identity('invalid-inspect'), target,
-      payload: { kind: 'entry_inspect', page, regionSelector: 'main[', selector: '.item' } } as BrowserRequest)
-    const outside = assistant.entryInspect({ ...identity('outside-inspect'), target,
-      payload: { kind: 'entry_inspect', page, regionSelector: 'main', selector: 'body .item' } } as BrowserRequest)
-
-    expect(invalid).toMatchObject({ outcome: 'failed', reason: 'invalid_action', quiescent: true })
-    expect(outside).toMatchObject({ outcome: 'failed', reason: 'binding_outside_region', quiescent: true })
-  })
-
   test('entryMount 为每个匹配项插入按钮并报告挂载数', () => {
     document.body.innerHTML = '<div class="item"><a href="https://example.test/a">标题 A</a></div>'
       + '<div class="item"><a href="https://example.test/b">标题 B</a></div>'
@@ -130,19 +94,6 @@ describe('持久化页面条目挂载', () => {
     const buttons = document.querySelectorAll('[data-dsh-entry-mount]')
     expect(buttons).toHaveLength(2)
     expect(buttons[0].textContent).toBe('收集标题')
-  })
-
-  test('entryMount 把相对条目规则限制在预检过的单一区域', () => {
-    document.body.innerHTML = '<main id="feed"><div class="item"><a href="/a">标题 A</a></div></main>'
-      + '<aside><div class="item"><a href="/outside">区域外条目</a></div></aside>'
-    const assistant = install()
-    const receipt = assistant.entryMount(mountRequest('scoped', {
-      regionSelector: 'main#feed', selector: ':scope > .item',
-    }))
-
-    expect(receipt).toMatchObject({ outcome: 'observed', value: { mounted: 1 } })
-    expect(document.querySelectorAll('main [data-dsh-entry-mount]')).toHaveLength(1)
-    expect(document.querySelectorAll('aside [data-dsh-entry-mount]')).toHaveLength(0)
   })
 
   test('点击按钮把标题与链接回传给 assistant', async () => {

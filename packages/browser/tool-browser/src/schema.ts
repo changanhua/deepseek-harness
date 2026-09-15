@@ -10,6 +10,15 @@ const element = { type: 'object', additionalProperties: false, properties: {
 const intent = { type: 'string', required: true, description: 'User-requested purpose. This does not grant permission or change approval policy.' } as const
 const elementProperties = { element: { ...element, required: true }, intent } as const
 
+export const entryMountActionSchema = { type: 'object', additionalProperties: false, properties: {
+  kind: { type: 'string', const: 'entry_mount', required: true }, page: { ...page, required: true },
+  mountId: { type: 'string', required: true }, selector: { type: 'string', required: true }, label: { type: 'string', required: true },
+  titleSelector: { type: 'string' }, linkSelector: { type: 'string' }, collected: { type: 'array', items: { type: 'string' } },
+} } as const satisfies ValueSchemaSpec
+export const entryUnmountActionSchema = { type: 'object', additionalProperties: false, properties: {
+  kind: { type: 'string', const: 'entry_unmount', required: true }, page: { ...page, required: true }, mountId: { type: 'string', required: true },
+} } as const satisfies ValueSchemaSpec
+
 /** The model receives the actual closed action shapes, including immutable snapshot references. */
 export const pageActionSchema = { oneOf: [
   { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', const: 'navigate', required: true }, page: { ...page, required: true }, url: { type: 'string', required: true } } },

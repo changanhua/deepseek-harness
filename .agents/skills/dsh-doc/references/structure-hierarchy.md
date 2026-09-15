@@ -21,7 +21,7 @@ Use this order for authored human-facing pages when the format owner permits it.
 1. YAML metadata.
 2. H1 title.
 3. Language switcher for a bilingual page.
-4. `## Summary`: three to five explanatory sentences stating what the subject is, why a reader would care, the main operating model, and the most important boundary.
+4. `## Summary`: three to five explanatory sentences stating what the reader can do or observe, why a reader would care, the main operating model, and the most important boundary. English package README Summaries stay within the gate-owned 100-word limit.
 5. `## Table of Contents`: links to the page's H2 sections; keep it navigational rather than descriptive.
 6. Stable content, ordered from user-facing use to developer-facing design and operational detail.
 7. Optional `## Further Exploration` for newcomer-oriented links to adjacent subjects.
@@ -65,8 +65,6 @@ docs/
 Treat this as a target map, not permission for an opportunistic mass move. Move one coherent topic at a time, repair every inbound link and website mapping atomically, preserve public routes or aliases, and keep `subsystems/` flat because its pages are logically parallel.
 
 `docs/scratch/` contains tracked, expiring discussion that must survive a handoff. Each scratch page names its owner, creation date, expiry, and promotion target. Local disposable notes remain ignored and uncommitted.
-
-Choose a local task artifact or maintained scratch according to the requested deliverable. Do not silently promote product discussion into the maintained corpus. Local design drafts may use the user's language and a scenario-oriented structure; maintained scratch follows applicable pairing and placement rules. Neither proves that a proposed feature exists.
 
 ## Small rule files
 

@@ -17,7 +17,6 @@ import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { launchWebScaffold, watchConsole, type WebScaffold } from './scaffold.ts'
 import { ZH_BROWSER_LOCALE, connectFreshWorkspaceZh, saveFailureShot } from './support.ts'
 
@@ -39,7 +38,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
 
   /** Create one session and its agent through the same wire face the browser uses. */
   const createSession = async (sessionId: string): Promise<string> => {
-    const response = await scaffold.ctx.sessionController.create({
+    const response = await scaffold.hostCtx.sessionController.create({
       sessionId: SessionId(sessionId),
       cwd: scaffold.workspaceCwd,
     })
@@ -62,7 +61,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
     // Declared through the settings seam rather than the Models page: this
     // scenario is about the composer, and the declaring flow is covered by
     // models-settings.e2e.
-    await scaffold.ctx.settings.update(settingsNamespace('llm-pi-ai'), {
+    await scaffold.ctx.settings.update('llm-pi-ai', {
       providers: {
         [START_ROUTE]: {
           displayName: 'Origin Gateway',
@@ -136,19 +135,19 @@ describe('web e2e: the composer model switch is the default for later sessions',
     // default still names the route, and nothing serves it any more.
     // `replace`, not `update`: a merge patch of `{providers: {}}` leaves every
     // stored profile in place.
-    await scaffold.ctx.settings.replace(settingsNamespace('llm-pi-ai'), { providers: {} })
+    await scaffold.ctx.settings.replace('llm-pi-ai', { providers: {} })
 
     await expect.poll(async () => box.isEnabled(), { timeout: 15_000 }).toBe(false)
     expect(await box.getAttribute('data-placeholder')).toBe('当前模型不可用，请先选择模型')
 
     // The block is an affordance; the refusal is the Host's. A client that
     // never disabled anything still cannot start a turn on a dead route.
-    await expect(scaffold.ctx.sessionController.prompt({
+    await expect(scaffold.hostCtx.sessionController.prompt({
       requestId: 'default-model-refused' as never,
       sessionId: SessionId(await createSession('default-model-refusal')),
       mode: 'queue',
       content: [{ type: 'text', text: 'hi' }],
-    }, new AbortController().signal)).rejects.toMatchObject({ failure: { code: 'model-unavailable' } })
+    }, new AbortController().signal)).rejects.toMatchObject({ code: 'session/model-unavailable' })
 
     // The way out stays open. Locking the model seat with everything else
     // would leave the composer asking for the one thing it prevents.

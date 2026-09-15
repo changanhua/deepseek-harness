@@ -1,6 +1,7 @@
 /** One Host-generation model catalog shared by every Session selector. */
 
-import type { ClientRemote, ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 
 /** Observable lifecycle of the shared model catalog. */
@@ -9,6 +10,9 @@ export interface ModelCatalogState {
   status: 'idle' | 'loading' | 'ready' | 'error'
   error: string | null
 }
+
+/** The narrow remote face required to load the shared model catalog. */
+export type ModelCatalogRemote = Pick<ClientRemote['session'], 'modelCatalog'>
 
 /** Loads at most one model catalog for the current Host generation. */
 export class ModelCatalogDirectory {
@@ -22,8 +26,11 @@ export class ModelCatalogDirectory {
   private generation = 0
   private inflight: Promise<ModelCatalog> | undefined
 
-  /** @param session - Session Remote namespace carrying the Host-generation catalog. */
-  constructor(private readonly session: Pick<ClientRemote['session'], 'modelCatalog'>) {}
+  /**
+   * @param remote - the providing plugin's `remote.session` face carrying the
+   * Host-generation catalog.
+   */
+  constructor(private readonly remote: ModelCatalogRemote) {}
 
   /**
    * Return the current generation's catalog, sharing its one in-flight load.
@@ -38,7 +45,7 @@ export class ModelCatalogDirectory {
       draft.status = 'loading'
       draft.error = null
     })
-    const operation = this.session.modelCatalog().then((response) => {
+    const operation = this.remote.modelCatalog().then((response) => {
       if (!response.ok) {
         throw new Error(`${response.error.code}: ${response.error.message}`)
       }

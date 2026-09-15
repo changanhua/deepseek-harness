@@ -1,21 +1,21 @@
-/**
- * Generate `docs/module-graph.md` from in-repo `peerDependencies`, the canonical
- * runtime edges. The deterministic output groups packages by directory and
- * renders both Mermaid and a dependency table; `--check` verifies freshness.
- */
+/** Generate the paired shared-instance package graph from workspace peer dependencies. */
 
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { readFileSync, writeFileSync } from 'node:fs'
 import {
   collectPackageGraph,
   escapeMermaidLabel as escLabel,
   graphNodeId as nodeId,
   type PackageGraphNode,
 } from './package-graph.ts'
+import { gitBlobHash, storeGitBlob } from './translation-pairing-git.ts'
+import { renderTranslationPairingRecord, translationPairPaths } from './translation-pairing-record.ts'
 
 const root = resolve(import.meta.dirname, '..')
-const OUT = 'docs/module-graph.md'
+const SOURCE = 'docs/module-graph.md'
+const PATHS = translationPairPaths(SOURCE)
 type Pkg = PackageGraphNode
+type Locale = 'en' | 'zh'
 
 const GROUP_ORDER = [
   'util',
@@ -27,7 +27,6 @@ const GROUP_ORDER = [
   'skill',
   'compact',
   'subagent',
-  'delivery',
   'web',
   'spill',
   'timeout',
@@ -43,58 +42,59 @@ const GROUP_ORDER = [
   'ui',
 ]
 
-function packageLabel(pkg: Pkg, shortCounts: ReadonlyMap<string, number>): string {
-  return shortCounts.get(pkg.short) === 1 ? pkg.short : pkg.name
+function packageLink(pkg: Pkg): string {
+  return `[\`${pkg.short}\`](../${pkg.rel})`
 }
 
-function packageLink(pkg: Pkg, shortCounts: ReadonlyMap<string, number>): string {
-  return `[\`${packageLabel(pkg, shortCounts)}\`](../${pkg.rel})`
-}
-
-/** Render the full docs/module-graph.md content (pure, deterministic). */
-function render(pkgs: Pkg[]): string {
-  const byName = new Map(pkgs.map(pkg => [pkg.name, pkg]))
-  const shortCounts = new Map<string, number>()
-  for (const pkg of pkgs) shortCounts.set(pkg.short, (shortCounts.get(pkg.short) ?? 0) + 1)
-  const nodeKey = (pkg: Pkg): string => shortCounts.get(pkg.short) === 1 ? pkg.short : pkg.name
+/**
+ * Render one locale of the complete deterministic package graph.
+ * @param pkgs - Dependency-first package nodes.
+ * @param locale - Output document language.
+ * @returns Complete generated Markdown.
+ */
+export function renderModuleGraph(pkgs: readonly Pkg[], locale: Locale): string {
   const edges: string[] = []
-  for (const p of pkgs) {
-    for (const dependencyName of p.deps) {
-      const dependency = byName.get(dependencyName)
-      if (dependency === undefined) throw new Error(`gen-module-graph: missing graph dependency ${dependencyName}`)
-      edges.push(`  ${nodeId('pkg', nodeKey(p))} --> ${nodeId('pkg', nodeKey(dependency))}`)
-    }
+  for (const pkg of pkgs) {
+    for (const dependency of pkg.deps) edges.push(`  ${nodeId('pkg', pkg.short)} --> ${nodeId('pkg', dependency)}`)
   }
-  const groups = [...new Set(pkgs.map(pkg => pkg.group))].sort((a, b) => {
-    const ia = GROUP_ORDER.indexOf(a)
-    const ib = GROUP_ORDER.indexOf(b)
-    const na = ia === -1 ? Number.MAX_SAFE_INTEGER : ia
-    const nb = ib === -1 ? Number.MAX_SAFE_INTEGER : ib
-    return na - nb || a.localeCompare(b)
+  const byShort = new Map(pkgs.map(pkg => [pkg.short, pkg]))
+  const groups = [...new Set(pkgs.map(pkg => pkg.group))].sort((left, right) => {
+    const leftIndex = GROUP_ORDER.indexOf(left)
+    const rightIndex = GROUP_ORDER.indexOf(right)
+    const normalizedLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex
+    const normalizedRight = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex
+    return normalizedLeft - normalizedRight || left.localeCompare(right)
   })
   const groupBlocks: string[] = []
   for (const group of groups) {
     groupBlocks.push(`  subgraph ${nodeId('group', group)}["packages/${escLabel(group)}"]`)
-    for (const pkg of pkgs.filter(p => p.group === group)
-      .sort((a, b) => a.short.localeCompare(b.short) || a.name.localeCompare(b.name))) {
-      groupBlocks.push(`    ${nodeId('pkg', nodeKey(pkg))}["${escLabel(packageLabel(pkg, shortCounts))}"]`)
+    for (const pkg of pkgs.filter(candidate => candidate.group === group)
+      .sort((left, right) => left.short.localeCompare(right.short))) {
+      groupBlocks.push(`    ${nodeId('pkg', pkg.short)}["${escLabel(pkg.short)}"]`)
     }
     groupBlocks.push('  end')
   }
-  const rows = pkgs.map((p) => {
-    const deps = p.deps.length ? p.deps.map((dependencyName) => {
-      const dependency = byName.get(dependencyName)
-      return dependency ? packageLink(dependency, shortCounts) : `\`${dependencyName}\``
-    }).join(', ') : '—'
-    return `| ${packageLink(p, shortCounts)} | \`${p.group}\` | ${deps} |`
+  const rows = pkgs.map((pkg) => {
+    const dependencies = pkg.deps.length > 0
+      ? pkg.deps.map((dependency) => {
+        const target = byShort.get(dependency)
+        return target ? packageLink(target) : `\`${dependency}\``
+      }).join(', ')
+      : '—'
+    return `| ${packageLink(pkg)} | \`${pkg.group}\` | ${dependencies} |`
   })
+  const chinese = locale === 'zh'
   return [
-    '<!-- Generated by scripts/gen-module-graph.ts — do not edit by hand.',
-    '     Run `pnpm run gen-module-graph` to regenerate. -->',
+    chinese
+      ? '<!-- 由 scripts/gen-module-graph.ts 生成——请勿手工编辑。\n     运行 `pnpm run gen-module-graph` 重新生成。 -->'
+      : '<!-- Generated by scripts/gen-module-graph.ts — do not edit by hand.\n     Run `pnpm run gen-module-graph` to regenerate. -->',
     '',
-    '# Module dependency graph',
+    chinese ? '# 共享实例依赖关系图' : '# Shared-instance dependency graph',
     '',
-    'Inter-package dependencies among the `@deepseek-ai/dsh-*` upstream and `@changanhua/dsh-*` personal source packages, derived from each package\'s `peerDependencies` (the canonical runtime-dependency signal) and grouped by the `packages/<group>/<pkg>` hierarchy. An edge `a --> b` means package `a` depends on package `b`. Names have their npm scope and `dsh-` prefix stripped.',
+    ...(chinese ? ['[English](module-graph.md) | 中文', ''] : []),
+    chinese
+      ? '`@deepseek-ai/dsh-*` harness 包之间的 peer 依赖关系。peer 表示消费端需要提供共享实例，不包括普通运行时 dependency 或仅开发期关系。该图按 `packages/<group>/<pkg>` 层级分组；边 `a --> b` 表示包 `a` peer 依赖包 `b`。名称中的 `@deepseek-ai/dsh-` 前缀已移除。'
+      : 'Peer dependencies among the `@deepseek-ai/dsh-*` harness packages. A peer means the consumer requires a shared instance; ordinary runtime dependencies and development-only relationships are not shown. The graph is grouped by the `packages/<group>/<pkg>` hierarchy. An edge `a --> b` means package `a` has package `b` as a peer. Names omit the `@deepseek-ai/dsh-` prefix.',
     '',
     '```mermaid',
     'flowchart TD',
@@ -102,31 +102,76 @@ function render(pkgs: Pkg[]): string {
     ...edges,
     '```',
     '',
-    '| Package | Group | Depends on |',
+    chinese ? '| 包 | 分组 | Peer 依赖 |' : '| Package | Group | Peer dependencies |',
     '| --- | --- | --- |',
     ...rows,
     '',
   ].join('\n')
 }
 
-const content = render(collectPackageGraph(root, GROUP_ORDER, 'gen-module-graph'))
-
-if (process.argv.includes('--check')) {
-  let committed: string | null = null
-  try {
-    committed = readFileSync(resolve(root, OUT), 'utf8')
-  } catch {
-    // A missing artifact is the expected read failure. Any read failure has the
-    // same remedy here—regenerate—so it is reported as stale below.
-    committed = null
-  }
-  if (committed === content) {
-    console.log(`gen-module-graph: ${OUT} is up to date.`)
-    process.exit(0)
-  }
-  console.error(`gen-module-graph: ${OUT} is stale. Run \`pnpm run gen-module-graph\` and commit ${OUT}.`)
-  process.exit(1)
+/**
+ * Compute both localized graph documents from the current workspace manifests.
+ * @param scanRoot - Repository root containing packages and documentation.
+ * @returns Repository-relative output paths and exact generated content.
+ */
+export function computeModuleGraphOutputs(scanRoot: string = root): ReadonlyMap<string, string> {
+  const packages = collectPackageGraph(scanRoot, GROUP_ORDER, 'gen-module-graph')
+  return new Map([
+    [PATHS.source, renderModuleGraph(packages, 'en')],
+    [PATHS.zh, renderModuleGraph(packages, 'zh')],
+  ])
 }
 
-writeFileSync(resolve(root, OUT), content)
-console.log(`gen-module-graph: wrote ${OUT}.`)
+/**
+ * Write both graph documents and their recovery record.
+ * @param scanRoot - Repository root containing packages and documentation.
+ * @returns Repository-relative paths whose content changed.
+ */
+export function writeModuleGraph(scanRoot: string = root): string[] {
+  const outputs = computeModuleGraphOutputs(scanRoot)
+  const changed: string[] = []
+  for (const [path, content] of outputs) {
+    const destination = resolve(scanRoot, path)
+    if (existsSync(destination) && readFileSync(destination, 'utf8') === content) continue
+    writeFileSync(destination, content)
+    changed.push(path)
+  }
+  const source = Buffer.from(outputs.get(PATHS.source) ?? '')
+  const zh = Buffer.from(outputs.get(PATHS.zh) ?? '')
+  const record = renderTranslationPairingRecord(PATHS, {
+    sourceHash: storeGitBlob(scanRoot, source),
+    zhHash: storeGitBlob(scanRoot, zh),
+  })
+  const recordPath = resolve(scanRoot, PATHS.meta)
+  if (!existsSync(recordPath) || readFileSync(recordPath, 'utf8') !== record) {
+    writeFileSync(recordPath, record)
+    changed.push(PATHS.meta)
+  }
+  return changed.sort()
+}
+
+/** CLI entry: regenerate by default, or verify all paired outputs with `--check`. @returns Nothing. */
+export function main(): void {
+  const outputs = computeModuleGraphOutputs(root)
+  const record = renderTranslationPairingRecord(PATHS, {
+    sourceHash: gitBlobHash(Buffer.from(outputs.get(PATHS.source) ?? '')),
+    zhHash: gitBlobHash(Buffer.from(outputs.get(PATHS.zh) ?? '')),
+  })
+  const expected = new Map([...outputs, [PATHS.meta, record]])
+  if (process.argv.includes('--check')) {
+    const stale = [...expected].filter(([path, content]) => (
+      !existsSync(resolve(root, path)) || readFileSync(resolve(root, path), 'utf8') !== content
+    )).map(([path]) => path)
+    if (stale.length === 0) {
+      console.log(`gen-module-graph: ${expected.size} artifact(s) are up to date.`)
+      return
+    }
+    console.error(`gen-module-graph: stale — ${stale.join(', ')}. Run \`pnpm run gen-module-graph\` and commit the result.`)
+    process.exitCode = 1
+    return
+  }
+  const changed = writeModuleGraph(root)
+  console.log(`gen-module-graph: ${expected.size} artifact(s) computed, ${String(changed.length)} written.`)
+}
+
+if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) main()

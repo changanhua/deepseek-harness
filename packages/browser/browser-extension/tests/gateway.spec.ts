@@ -108,24 +108,6 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     await pending
     expect(issued.payload).toEqual(action)
   })
-  it('dispatches entry binding inspection under browser read authority', async () => {
-    const test = await mounted(); const identity = await test.pair(['browser:read']); const extension = await peer(test.base, identity)
-    const page = { tabId: 12, frameId: 0, documentId: 'document-1', url: 'https://example.test/page' }
-    const action = { kind: 'entry_inspect' as const, page, regionSelector: 'main', selector: ':scope > article',
-      titleSelector: 'h2', linkSelector: 'a[href]', sampleLimit: 4 }
-    const pending = test.ctx.browser.execute({ sessionId: SessionId('test-session'), installationId: identity.installationId, action }, new AbortController().signal)
-    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'entry_inspect'))).toBe(true)
-    const issued = execute(extension.frames)
-    expect(issued.mutates).toBe(false)
-    expect(issued.payload).toEqual(action)
-    extension.socket.send(JSON.stringify({ type: 'result', receipt: {
-      protocolVersion: issued.protocolVersion, grantEpoch: issued.grantEpoch, requestId: issued.requestId,
-      sessionId: issued.sessionId, installationId: issued.installationId, deadline: issued.deadline,
-      fingerprint: issued.fingerprint, outcome: 'observed', quiescent: true,
-      value: { matched: 2, valid: 2, missingTitle: 0, missingLink: 0, duplicateLinks: 0, samples: [] },
-    } }))
-    await expect(pending).resolves.toMatchObject({ outcome: 'observed', value: { matched: 2, valid: 2 } })
-  })
   it('binds a finite background observation to its separate scope and exact grant epoch', async () => {
     const test = await mounted(); const ordinary = await test.pair(); const first = await peer(test.base, ordinary)
     const ordinaryGrant = (await test.ctx.browser.instances()).find(item => item.installationId === ordinary.installationId)

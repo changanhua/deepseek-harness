@@ -1,4 +1,6 @@
 const failure = code => Object.assign(new Error(code), { code })
+const MAX_SCREENSHOT_BASE64 = 1_500_000
+const SCREENSHOT_QUALITIES = [55, 45, 35, 25, 15]
 
 /** Execute one already-reserved action. Returned facts acknowledge the primitive, not the user's whole task. */
 export const performPuppeteerAction = async ({ action, handle, frame, page, chromeApi, targetPage, check, resolveDrop, authorizeUrl }) => {
@@ -71,8 +73,12 @@ export const performPuppeteerAction = async ({ action, handle, frame, page, chro
   }
   if (action.kind === 'screenshot') {
     if (targetPage.frameId !== 0) throw failure('main_frame_required')
-    const data = await page.screenshot({ type: 'jpeg', quality: 55, encoding: 'base64' })
-    if (data.length > 400000) throw failure('screenshot_too_large')
+    let data
+    for (const quality of SCREENSHOT_QUALITIES) {
+      data = await page.screenshot({ type: 'jpeg', quality, encoding: 'base64' })
+      if (data.length <= MAX_SCREENSHOT_BASE64) break
+    }
+    if (data.length > MAX_SCREENSHOT_BASE64) throw failure('screenshot_too_large')
     return { screenshot: { data, mimeType: 'image/jpeg' } }
   }
   if (action.kind === 'navigate') {

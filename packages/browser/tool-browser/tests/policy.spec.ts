@@ -117,6 +117,31 @@ describe('browser tool approval policy', () => {
     await expect(tool.execute({ installationId: 'installation', action: { kind: 'click', selector: '#buy' } }, exec)).rejects.toThrow()
     expect(h.browser.prepare).toHaveBeenCalledOnce()
   })
+  it('exposes persistent entry mounts to the preset Agent without routing them through one-shot preparation', async () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const mount = { kind: 'entry_mount', page, mountId: 'feed', selector: '.card', label: '保存条目' }
+    await registered.get('browser_entry_mount')!.execute({ installationId: 'installation', action: mount }, { agent, signal: h.controller.signal } as ToolRunContext)
+    expect(h.browser.execute).toHaveBeenCalledWith({ sessionId, installationId: 'installation', action: mount }, h.controller.signal)
+    expect(h.browser.prepare).not.toHaveBeenCalled()
+    await registered.get('browser_entry_unmount')!.execute({ installationId: 'installation', action: { kind: 'entry_unmount', page, mountId: 'feed' } }, { agent, signal: h.controller.signal } as ToolRunContext)
+    expect(h.browser.execute).toHaveBeenCalledTimes(2)
+  })
+  it('extracts bounded collection items from a fresh snapshot while preserving stable control references', async () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    h.browser.execute.mockResolvedValue({ ...observed, value: { page, snapshotId: 'snapshot-1', structure: { regions: [], collections: [
+      { kind: 'feed', itemCount: 2, items: [
+        { index: 0, text: '目标条目', controls: [{ elementId: 'element-1', role: 'link', label: '打开' }] },
+        { index: 1, text: '其他条目', controls: [] },
+      ] },
+    ] } } })
+    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const result = await registered.get('browser_extract')!.execute({ installationId: 'installation', tabId: 1, frameId: 0, query: '目标', limit: 1 }, { agent, signal: h.controller.signal } as ToolRunContext) as BrowserActionResult
+    expect(result).toMatchObject({ outcome: 'observed', value: { snapshotId: 'snapshot-1', items: [{ index: 0, text: '目标条目', controls: [{ elementId: 'element-1' }] }] } })
+    expect(h.browser.execute).toHaveBeenCalledWith(expect.objectContaining({ action: expect.objectContaining({ kind: 'snapshot', structure: true, textLimit: 8000 }) }), h.controller.signal)
+  })
   it('requires upload paths in a current user message before browser preparation', async () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
     apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },

@@ -68,6 +68,29 @@ describe('DSH 浏览器助手侧栏', () => {
     expect(element('#contexts').textContent).toContain('正文达到采集上限，已截断')
     expect(element('#contexts').textContent).toContain('未采集折叠或仍在更新的内容')
   })
+  test('当前采集区展示内容状态，并能打开已导入内容', async () => {
+    const fixture = await load(baseState({ capture: {
+      captureId: '123e4567-e89b-42d3-a456-426614174000', title: '当前页面', markdown: '正文',
+      source: { url: 'https://example.test/article', pageTitle: '来源页' }, status: 'saved', entryId: 'web:123e4567-e89b-42d3-a456-426614174000',
+    } }))
+    expect(element('#capture-panel').textContent).toContain('已导入内容库')
+    element('#capture-open-entry').click(); await Promise.resolve()
+    expect(fixture.messages).toContainEqual({ type: 'dsh-capture-open-entry', entryId: 'web:123e4567-e89b-42d3-a456-426614174000' })
+  })
+  test('当前采集区显示内容库连接状态，并提供单独连接动作', async () => {
+    const fixture = await load(baseState({ captureConnection: { phase: 'configured' }, capture: {
+      captureId: '123e4567-e89b-42d3-a456-426614174000', title: '当前页面', markdown: '正文',
+      source: { url: 'https://example.test/article', pageTitle: '来源页' }, status: 'draft',
+    } }))
+    expect(element('#capture-panel').textContent).toContain('内容库尚未连接')
+    element('#capture-connect').click(); await Promise.resolve()
+    expect(fixture.messages).toContainEqual({ type: 'dsh-capture-connect' })
+  })
+  test('当前页面区显示页面身份，提醒用户采集动作作用于哪个标签页', async () => {
+    await load(baseState({ page: { tabId: 7, windowId: 1, url: 'https://example.test/article', title: '当前文章' } }))
+    expect(element('#page-panel').textContent).toContain('当前文章')
+    expect(element('#page-panel').textContent).toContain('https://example.test/article')
+  })
   test('未知动作显示原会话与目标，查看和人工核对都只针对原请求', async () => {
     const identity = { requestId: 'old-write', sessionId: 'session-1', installationId: 'install', grantEpoch: 1 }
     const fixture = await load(baseState({ unresolved: [{ identity, target: { tabId: 7 }, outcome: 'unknown' }] }))
@@ -176,6 +199,76 @@ describe('DSH 浏览器助手侧栏', () => {
     await Promise.resolve()
     expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-session-create' })
     expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-session-submit', text: '继续检查这一页', mode: 'queue' })
+  })
+
+  test('粘贴图片后显示草稿预览，并与文本一起发送', async () => {
+    class ClipboardReader {
+      result: string | null = null
+      onload: (() => void) | null = null
+      readAsDataURL(): void {
+        this.result = 'data:image/png;base64,AQ=='
+        this.onload?.()
+      }
+    }
+    vi.stubGlobal('FileReader', ClipboardReader)
+    const fixture = await load()
+    const composer = element('#composer') as HTMLTextAreaElement
+    composer.value = '识别这张图'
+    const image = new File([Uint8Array.of(1)], 'clipboard.png', { type: 'image/png' })
+    const paste = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(paste, 'clipboardData', { value: { items: [{ kind: 'file', getAsFile: () => image }] } })
+    composer.dispatchEvent(paste)
+    await vi.waitFor(() => { expect(element('#draft-images img').getAttribute('alt')).toBe('clipboard.png') })
+    element('#send-queue').click()
+    await vi.waitFor(() => { expect(fixture.messages).toContainEqual({
+      type: 'dsh-assistant-session-submit', text: '识别这张图', mode: 'queue',
+      images: [{ type: 'image', mediaType: 'image/png', data: 'AQ==', name: 'clipboard.png' }],
+    }) })
+  })
+
+  test('连接后首次发送由后台创建会话，重复点击只提交一次', async () => {
+    const initial = baseState({ session: { ...baseState().session, binding: null, phase: 'idle' } })
+    let resolveCreate!: (value: unknown) => void
+    const creation = new Promise((done) => { resolveCreate = done })
+    const fixture = await load(initial, (message) => {
+      if (message.type === 'dsh-assistant-session-submit') return creation
+      return { ok: true, state: initial }
+    })
+    const input = element('#composer') as HTMLTextAreaElement
+    const send = element('#send-queue') as HTMLButtonElement
+    input.value = '看看当前页面'
+    expect(send.disabled).toBe(false)
+    send.click(); send.click()
+    expect(fixture.messages.filter(message => message.type === 'dsh-assistant-session-create')).toHaveLength(0)
+    expect(fixture.messages.filter(message => message.type === 'dsh-assistant-session-submit')).toHaveLength(1)
+    resolveCreate({ ok: true, state: baseState() })
+    await vi.waitFor(() => {
+      expect(fixture.messages.filter(message => message.type === 'dsh-assistant-session-submit')).toEqual([
+        { type: 'dsh-assistant-session-submit', text: '看看当前页面', mode: 'queue' },
+      ])
+      expect(input.value).toBe('')
+      expect(send.disabled).toBe(false)
+    })
+  })
+
+  test('首次创建未确认时保留输入，不向未知会话发送文字', async () => {
+    const initial = baseState({ session: { ...baseState().session, binding: null, phase: 'idle' } })
+    const fixture = await load(initial, message => message.type === 'dsh-assistant-session-submit'
+      ? { ok: false, error: 'result_unknown' }
+      : { ok: true, state: initial })
+    const input = element('#composer') as HTMLTextAreaElement
+    input.value = '保留这条草稿'
+    element('#send-queue').click()
+    await vi.waitFor(() => { expect(element('#notice').textContent).toContain('提交结果尚未确认') })
+    expect(input.value).toBe('保留这条草稿')
+    expect(fixture.messages.filter(message => message.type === 'dsh-assistant-session-submit')).toHaveLength(1)
+  })
+
+  test('离线时解释为什么不能发送，并保留可编辑草稿', async () => {
+    await load(baseState({ connection: { phase: 'offline' } }))
+    expect((element('#send-queue') as HTMLButtonElement).disabled).toBe(true)
+    expect((element('#composer') as HTMLTextAreaElement).disabled).toBe(false)
+    expect(element('#send-status').textContent).toContain('连接')
   })
 
   test('unknown 请求只能重试原请求，不会再提交新的 prompt', async () => {

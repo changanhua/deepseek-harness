@@ -12,13 +12,16 @@ type ScriptOptions = { args?: unknown[]; target: { tabId: number; documentIds: s
 type ScriptResult = { documentId: string; frameId: number; result: unknown }
 const operation = (payload: BrowserInvocation['payload'] & { kind: string }) => sealBrowserInvocation({ protocolVersion: 1,
   installationId: grant.installationId, sessionId: 'session:test', grantEpoch: 1, requestId: randomUUID(),
-  deadline: Date.now() + 30000, mutates: !['tabs', 'snapshot', 'wait'].includes(payload.kind), payload,
+  deadline: Date.now() + 30000, mutates: !['tabs', 'snapshot', 'wait', 'screenshot'].includes(payload.kind), payload,
   ...(['tabs', 'snapshot'].includes(payload.kind) ? {} : { target: { tabId: page.tabId, frameId: page.frameId, documentId: page.documentId } }),
 })
 function harness() {
   const chromeApi = {
     permissions: { contains: vi.fn(async () => true) },
-    tabs: { query: vi.fn(async () => [{ id: 7, windowId: 1, url: page.url, title: 'Allowed' }, { id: 8, url: 'https://private.test', title: 'Hidden' }]) },
+    tabs: { query: vi.fn(async () => [{ id: 7, windowId: 1, url: page.url, title: 'Allowed', active: true }, { id: 8, url: 'https://private.test', title: 'Hidden' }]),
+      get: vi.fn(async () => ({ id: 7, windowId: 1, url: page.url, title: 'Allowed', active: true })),
+      update: vi.fn(async () => ({ id: 7, windowId: 1, url: page.url })),
+      captureVisibleTab: vi.fn(async () => 'data:image/jpeg;base64,AQ==') },
     scripting: { executeScript: vi.fn(async (options: ScriptOptions): Promise<ScriptResult[]> => [{ documentId: page.documentId, frameId: 0,
       result: options.args?.[0] === 'execute' ? { outcome: 'observed', quiescent: true, value: { clicked: true } }
         : options.args?.[0] === 'snapshot' ? { url: page.url, snapshotId: 'snapshot', text: 'Account', elements: [] }
@@ -85,6 +88,34 @@ describe('Chrome document-bound browser executor', () => {
     expect(result).toMatchObject({ value: { tabs: [{ tabId: 7 }] } })
     expect(JSON.stringify(result)).not.toContain('private.test')
   })
+  test('wait bypasses Puppeteer and screenshot returns a base64 image for the active tab', async () => {
+    const h = harness()
+    const puppeteer = { execute: vi.fn(async () => { throw new Error('must not attach') }) }
+    const executor = createBrowserExecutor({ chromeApi: h.chromeApi, getGrant: h.getGrant, puppeteer })
+    const wait = await executor.execute(operation({ kind: 'wait', page, milliseconds: 0 }), new AbortController().signal)
+    expect(wait).toMatchObject({ outcome: 'observed' })
+    expect(puppeteer.execute).not.toHaveBeenCalled()
+    const screenshot = await executor.execute(operation({ kind: 'screenshot', page }), new AbortController().signal)
+    expect(screenshot).toMatchObject({ outcome: 'observed', value: { screenshot: { data: 'AQ==', mimeType: 'image/jpeg' } } })
+    expect(h.chromeApi.tabs.captureVisibleTab).toHaveBeenCalledWith(1, { format: 'jpeg', quality: 55 })
+    expect(puppeteer.execute).not.toHaveBeenCalled()
+  })
+  test('tab focus is a direct Chrome operation', async () => {
+    const h = harness()
+    const executor = createBrowserExecutor({ chromeApi: h.chromeApi, getGrant: h.getGrant,
+      puppeteer: { execute: vi.fn(async () => { throw new Error('must not attach') }) } })
+    expect(await executor.execute(operation({ kind: 'tab_focus', page }), new AbortController().signal))
+      .toMatchObject({ outcome: 'observed', value: { focused: true } })
+    expect(h.chromeApi.tabs.update).toHaveBeenCalledWith(7, { active: true })
+  })
+  test('large active screenshots step down JPEG quality before refusing', async () => {
+    const h = harness()
+    h.chromeApi.tabs.captureVisibleTab.mockImplementation(async (_windowId, options) =>
+      options.quality === 55 ? `data:image/jpeg;base64,${'A'.repeat(1_500_001)}` : 'data:image/jpeg;base64,AQ==')
+    const result = await h.executor.execute(operation({ kind: 'screenshot', page }), new AbortController().signal)
+    expect(result).toMatchObject({ outcome: 'observed', value: { screenshot: { data: 'AQ==' } } })
+    expect(h.chromeApi.tabs.captureVisibleTab.mock.calls.map(([, options]) => options.quality)).toEqual([55, 45])
+  })
   test('navigation and every element action use the requested document, never the current tab', async () => {
     const h = harness()
     const action = { kind: 'click', element: { page, snapshotId: 'snapshot', elementId: 'button' }, intent: 'Open details' }
@@ -143,34 +174,31 @@ describe('Chrome document-bound browser executor', () => {
     })
     expect(await h.executor.inspect(row)).toMatchObject({ outcome: 'unknown', quiescent: true, reason: 'document_replaced' })
   })
+  test('a missing bound document is reported as stale when the tab now exposes a new document', async () => {
+    const h = harness()
+    h.chromeApi.scripting.executeScript.mockImplementation(async (options) => {
+      if (options.target.documentIds) throw new Error('No such document')
+      return [{ documentId: 'doc-2', frameId: 0, result: { url: 'https://example.test/next' } }]
+    })
+    const result = await h.executor.execute(operation({ kind: 'navigate', page, url: 'https://example.test/next' }), new AbortController().signal)
+    expect(result).toMatchObject({ outcome: 'failed', reason: 'stale_document' })
+  })
   test('entry mount and unmount are issued through the page runtime and return their receipts', async () => {
     const h = harness()
     h.chromeApi.scripting.executeScript.mockImplementation(async (options) => {
+      if (options.args?.[0] === 'entryInspect') return [{ documentId: page.documentId, frameId: 0, result: { outcome: 'observed', quiescent: true, value: { matches: 2 } } }]
       if (options.args?.[0] === 'entryMount') return [{ documentId: page.documentId, frameId: 0, result: { outcome: 'observed', quiescent: true, value: { mounted: 2 } } }]
       if (options.args?.[0] === 'entryUnmount') return [{ documentId: page.documentId, frameId: 0, result: { outcome: 'observed', quiescent: true, value: { unmounted: true } } }]
       return [{ documentId: page.documentId, frameId: 0, result: { url: page.url } }]
     })
     const mount = operation({ kind: 'entry_mount', page, mountId: 'collect', selector: '.item', label: '收集标题' } as never)
     expect(await h.executor.execute(mount, new AbortController().signal)).toMatchObject({ outcome: 'observed', value: { mounted: 2 } })
+    expect(h.chromeApi.scripting.executeScript.mock.calls.map(call => call[0].args?.[0])).toContain('entryInspect')
+    expect(h.chromeApi.scripting.executeScript.mock.calls.findIndex(call => call[0].args?.[0] === 'entryInspect'))
+      .toBeLessThan(h.chromeApi.scripting.executeScript.mock.calls.findIndex(call => call[0].args?.[0] === 'entryMount'))
     expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args?.[0]).toBe('entryMount')
     const unmount = operation({ kind: 'entry_unmount', page, mountId: 'collect' } as never)
     expect(await h.executor.execute(unmount, new AbortController().signal)).toMatchObject({ outcome: 'observed', value: { unmounted: true } })
     expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args?.[0]).toBe('entryUnmount')
-  })
-
-  test('entry inspection is a read-only page operation routed to the binding checker', async () => {
-    const h = harness()
-    h.chromeApi.scripting.executeScript.mockImplementation(async (options) => {
-      if (options.args?.[0] === 'entryInspect') return [{ documentId: page.documentId, frameId: 0,
-        result: { outcome: 'observed', quiescent: true, value: { matched: 2, valid: 2, samples: [] } } }]
-      return [{ documentId: page.documentId, frameId: 0, result: { url: page.url, title: 'Allowed' } }]
-    })
-    const inspect = operation({ kind: 'entry_inspect', page, regionSelector: 'main', selector: ':scope > .item', sampleLimit: 3 } as never)
-    inspect.mutates = false
-
-    expect(await h.executor.execute(inspect, new AbortController().signal)).toMatchObject({
-      outcome: 'observed', value: { matched: 2, valid: 2 },
-    })
-    expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args?.[0]).toBe('entryInspect')
   })
 })

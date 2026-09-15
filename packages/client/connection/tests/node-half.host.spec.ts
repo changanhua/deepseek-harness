@@ -7,8 +7,8 @@ import { describe, expect, it } from 'vitest'
 import type { AddressInfo } from 'node:net'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
-import type { WebServer, WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
-import { API_PATH, RpcId, apply, inject, type ClientRequest, type HostConnectionHandle } from '../src/index.ts'
+import type { IndexInjection, WebServer, WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
+import { API_PATH, RpcId, apply, inject, type ClientRequest, type ConnectionConfig, type HostConnectionHandle } from '../src/index.ts'
 import { DEFAULT_MAX_REQUEST_BODY_BYTES } from '../src/http-bridge.ts'
 import { provideBrowserCredentials } from './browser-credentials.ts'
 
@@ -81,7 +81,8 @@ function fakeResponse(): {
   return { response, state }
 }
 
-async function mounted(config?: { trustedHosts?: string[] }): Promise<{
+async function mounted(config?: ConnectionConfig): Promise<{
+  ctx: Context
   routes: WebRoute[]
   upgrades: WebUpgradeRoute[]
   connection: HostConnectionHandle
@@ -95,6 +96,7 @@ async function mounted(config?: { trustedHosts?: string[] }): Promise<{
   const fiber = ctx.plugin({ inject: [...inject], apply }, config)
   await fiber.await()
   return {
+    ctx,
     routes,
     upgrades,
     connection: ctx.get('connection') as HostConnectionHandle,
@@ -116,6 +118,44 @@ function browserCookie(connection: HostConnectionHandle, authority: string): str
 }
 
 describe('connection node half', () => {
+  it('provides the carrier-neutral service without a Web server', async () => {
+    const ctx = new Context()
+    provideBrowserCredentials(ctx)
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    expect(ctx.get('connection')).toBeInstanceOf(Object)
+    await fiber.dispose()
+  })
+
+  it('injects validated browser recovery timing and withdraws it on disposal', async () => {
+    const { ctx, dispose } = await mounted({ recovery: { generationReadyTimeoutMs: 25_000 } })
+    try {
+      const rows: IndexInjection[] = []
+      ctx.emit('webserver/index-inject', rows)
+      expect(rows).toEqual([{
+        kind: 'global', name: '__DSH_CONNECTION_RECOVERY__', value: {
+          backoffBaseMs: 500, backoffFactor: 2, backoffMaxMs: 10_000,
+          generationReadyWarnMs: 3_000, generationReadyTimeoutMs: 25_000,
+        },
+      }])
+      await dispose()
+      const after: IndexInjection[] = []
+      ctx.emit('webserver/index-inject', after)
+      expect(after).toEqual([])
+    } finally {
+      await dispose()
+    }
+  })
+
+  it.each([
+    { recovery: { backoffBaseMs: 0 }, error: /backoffBaseMs/ },
+    { recovery: { backoffFactor: NaN }, error: /backoffFactor.*finite/ },
+  ])('rejects invalid recovery timing before acquiring Host resources: $recovery', async ({ recovery, error }) => {
+    const ctx = new Context()
+    await expect(apply(ctx, { recovery })).rejects.toThrow(error)
+    expect(ctx.get('connection')).toBeUndefined()
+  })
+
   it('reserves enough default carrier capacity for the 200 MiB image batch', () => {
     expect(DEFAULT_MAX_REQUEST_BODY_BYTES).toBe(300 * 1024 * 1024)
     expect(DEFAULT_MAX_REQUEST_BODY_BYTES).toBeGreaterThan(Math.ceil(200 * 1024 * 1024 * 4 / 3) + 1024 * 1024)
@@ -235,86 +275,6 @@ describe('connection node half', () => {
       host: 'harness.example',
       cookie: browserCookie(connection, 'harness.example'),
     }))).toBeUndefined()
-    await dispose()
-  })
-
-  it('offers the authority fence to bearer-authenticated sibling bridges without a browser cookie', async () => {
-    const { connection, dispose } = await mounted({ trustedHosts: ['harness.example'] })
-    expect(connection.requestAuthorityRejection(fakeRequest({ host: 'harness.example' }))).toBeUndefined()
-    expect(connection.requestAuthorityRejection(fakeRequest({
-      host: 'harness.example', origin: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
-      'sec-fetch-site': 'none',
-    }))).toBeUndefined()
-    expect(connection.requestAuthorityRejection(fakeRequest({ host: 'other.example' }))).toBe(403)
-    await dispose()
-  })
-
-  it('keeps normal /api cross-site and foreign-Origin requests forbidden after cookie authentication', async () => {
-    const { routes, connection, dispose } = await mounted({ trustedHosts: ['harness.example'] })
-    const cookie = browserCookie(connection, 'harness.example')
-    for (const headers of [
-      { host: 'harness.example', cookie, origin: 'http://other.example' },
-      { host: 'harness.example', cookie, origin: 'http://harness.example', 'sec-fetch-site': 'cross-site' },
-    ]) {
-      const attempted = fakeResponse()
-      await routes[0]!.handler(fakeRequest(headers), attempted.response)
-      expect(attempted.state).toMatchObject({ status: 403, body: 'forbidden' })
-    }
-    await dispose()
-  })
-
-  it('binds authorization only for active shared and dedicated RPC bridge signals', async () => {
-    const { routes, connection, dispose } = await mounted()
-    const observed: AbortSignal[] = []
-    const assertSignal = async (_endpoint: string, _payload: unknown, signal: AbortSignal) => {
-      connection.assertAuthorized(signal)
-      expect(() => { connection.assertAuthorized(new AbortController().signal) }).toThrow('request is not authorized')
-      observed.push(signal)
-      return { ok: true as const, value: null }
-    }
-    const removeShared = connection.rpc.intercept('/api', () => true, assertSignal)
-    const removeDedicated = connection.rpc.handle('/rpc', assertSignal)
-    const cookie = browserCookie(connection, '127.0.0.1:3080')
-    const request = (rpcId: string): ClientRequest => ({
-      type: 'client-request',
-      rpcId: RpcId(rpcId),
-      method: 'goals/create',
-      payload: {},
-    })
-    for (const [path, rpcId] of [[API_PATH, 'shared'], ['/rpc', 'dedicated']] as const) {
-      const response = fakeResponse()
-      const route = routes.find(candidate => candidate.path === path)
-      if (route === undefined) throw new Error(`missing ${path} route`)
-      await route.handler(fakePost({ host: '127.0.0.1:3080', cookie }, `${path}/goals/create`, request(rpcId)), response.response)
-      expect(response.state.status).toBe(200)
-    }
-    expect(observed).toHaveLength(2)
-    for (const signal of observed) {
-      expect(() => { connection.assertAuthorized(signal) }).toThrow('request is not authorized')
-    }
-
-    await removeDedicated()
-    await removeShared()
-    await dispose()
-  })
-
-  it('rejects a shared RPC signal when its bridge response closes', async () => {
-    const { routes, connection, dispose } = await mounted()
-    const { response, state } = fakeResponse()
-    const remove = connection.rpc.intercept('/api', () => true, async (_endpoint, _payload, signal) => {
-      response.emit('close')
-      expect(() => { connection.assertAuthorized(signal) }).toThrow('request is not authorized')
-      return { ok: true, value: null }
-    })
-    const cookie = browserCookie(connection, '127.0.0.1:3080')
-    const route = routes.find(candidate => candidate.path === API_PATH)
-    if (route === undefined) throw new Error('missing /api route')
-    await route.handler(fakePost({ host: '127.0.0.1:3080', cookie }, '/api/goals/create', {
-      type: 'client-request', rpcId: RpcId('cancelled'), method: 'goals/create', payload: {},
-    }), response)
-    expect(state.status).toBe(200)
-
-    await remove()
     await dispose()
   })
 
@@ -483,7 +443,7 @@ describe('connection node half', () => {
     }), methodMismatch.response)
     expect(JSON.parse(String(methodMismatch.state.body))).toMatchObject({
       rpcId: 'rpc-bad',
-      result: { ok: false, error: { code: 'bad-request' } },
+      result: { ok: false, error: { code: 'gateway/bad-request' } },
     })
 
     for (const [request, status] of [
@@ -508,7 +468,7 @@ describe('connection node half', () => {
       await route.handler(fakePost(harnessHeaders, '/rpc/goals/create', body), response.response)
       expect(JSON.parse(String(response.state.body))).toMatchObject({
         rpcId,
-        result: { ok: false, error: { code: 'bad-request' } },
+        result: { ok: false, error: { code: 'gateway/bad-request' } },
       })
     }
 

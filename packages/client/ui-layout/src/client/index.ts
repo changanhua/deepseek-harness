@@ -26,7 +26,7 @@ import { ThemePresenter } from './theme-presenter.ts'
 // OwnerShare contracts below are the render-side halves registrants compose
 // against; the frame components and the store factory are package-internal.
 export { LayoutController } from './service.ts'
-export type { ILayout } from './service.ts'
+export type { ILayout, MainPanelId, PanelInfo, UsePanelInfo } from './service.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -64,7 +64,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * switch. It receives no owner props; session facts arrive through the
      * framework hooks of the `session-maybe` scope.
      */
-    'conversation': { kind: 'single'; scope: 'session-maybe'; owner: ConvOwnerProps }
+    'main': { kind: 'keyed'; scope: 'root'; owner: ConvOwnerProps }
     /**
      * The right details column, shown when the layout opens it. OCCUPIED by
      * ui-conversation's DetailsPanel, which declares the tool-details seat
@@ -75,6 +75,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * `session` scope, and `ctx.layout` owns whether the column is open.
      */
     'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
+    /** Downstream rightbar name retained as a wire-compatible alias. */
+    'rightbar': { kind: 'single'; scope: 'session-maybe'; owner: RightbarOwnerProps }
     /**
      * Frame-wide floating layer, above every column and outside their scroll
      * containers. Deliberately generic and unowned by any feature: a badge, a
@@ -115,18 +117,24 @@ export interface SidebarOwnerProps {
   activeModule: string
   /** Switch the center column to another module view (see `shell.view`). */
   setActiveModule: (module: string) => void
+  /** Official panel-selection view adapted from the retained module ring. */
+  usePanelInfo: import('./service.ts').UsePanelInfo
 }
 
 /** Conversation owner share: business state and actions belong to the registrant. */
-export interface ConvOwnerProps {
-  /** Render the home contribution around the resident composer. */
-  home?: boolean
-  /** Leave home after its blank Session receives its first message. */
-  onOpenConversation?: () => void
-}
+export interface ConvOwnerProps {}
 
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
+
+/** Rightbar owner share retained for the personal downstream package. */
+export interface RightbarOwnerProps {
+  width: number
+  viewportWidth: number
+  canShow: boolean
+  /** Module-ring adapter for upstream rightbar visibility semantics. */
+  usePanelInfo?: import('./service.ts').UsePanelInfo
+}
 
 /** Module-view owner share: entries render only while active (ring dispatch via `only`). */
 export interface ShellViewOwnerProps {}
@@ -149,8 +157,9 @@ export function apply(ctx: ClientContext): void {
       locale: 'common',
       children: {
         'sidebar': { kind: 'single', scope: 'root' },
-        'conversation': { kind: 'single', scope: 'session-maybe' },
+        'main': { kind: 'keyed', scope: 'root' },
         'details': { kind: 'single', scope: 'session' },
+        'rightbar': { kind: 'single', scope: 'session-maybe' },
         'shell.overlay': { kind: 'list', scope: 'root' },
         'shell.view': { kind: 'list', scope: 'root' },
       },

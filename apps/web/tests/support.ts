@@ -22,13 +22,14 @@ export const ZH_BROWSER_LOCALE = 'zh-CN'
  * This keeps role locators and goldens deterministic while leaving the Host
  * settings document free to override the provisional browser-derived locale;
  * scenarios asserting the Chinese surface advertise
- * {@link ZH_BROWSER_LOCALE} instead.
+ * {@link ZH_BROWSER_LOCALE} instead. The context uses Asia/Shanghai to preserve
+ * the recorded Web user-source timezone independently of the host timezone.
  * @param browser - Playwright browser owning the page.
  * @param height - Viewport height; width is fixed to the lane baseline.
  * @returns the initialized page.
  */
 export async function newEnglishPage(browser: Browser, height = 1000): Promise<Page> {
-  return await browser.newPage({ viewport: { width: 1680, height }, locale: 'en-US' })
+  return await browser.newPage({ viewport: { width: 1680, height }, locale: 'en-US', timezoneId: 'Asia/Shanghai' })
 }
 
 /**
@@ -85,10 +86,10 @@ export function probeFreePort(): Promise<number> {
 
 /**
  * Drive the hero's workspace picker through the composed directory dialog
- * until the live composer unlocks. A fresh world opens the workbench without
- * a Workspace; this helper explicitly enters the new-session composer first.
- * Every scenario that types into the composer must connect a Workspace.
- * With nothing to list, activating the composer surface raises the dialog directly —
+ * until the live composer unlocks. A fresh world has no Workspace, so the boot
+ * lands in the Workspace-trigger view state (startup auto-selection has nothing to
+ * select); every scenario that types into the composer must connect one
+ * first. With nothing to list, activating the composer surface raises the dialog directly —
  * adding a workspace is the picker's only entry. The directory is staged here
  * and adopted through the path editor, which is idempotent across the repeated
  * connects a scenario may make; creating a folder from inside the dialog (the
@@ -102,9 +103,6 @@ export function probeFreePort(): Promise<number> {
  */
 export async function connectFreshWorkspace(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
-  if (!await page.getByRole('textbox', { name: 'Choose workspace' }).isVisible()) {
-    await page.getByRole('button', { name: 'New session', exact: true }).last().click()
-  }
   await page.getByRole('textbox', { name: 'Choose workspace' }).click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
   await dialog.waitFor({ timeout: 10_000 })
@@ -115,7 +113,7 @@ export async function connectFreshWorkspace(page: Page, root: string, name = 'wo
   await dialog.getByRole('button', { name: 'Open', exact: true }).click()
   // The pick connected the workspace: the blank session's live composer
   // replaces the locked placeholder and enables.
-  await page.locator('[data-composer-input][contenteditable="true"][data-placeholder="Describe what you want to build... / commands, @ files or sessions"]')
+  await page.locator('[data-composer-input][contenteditable="true"][data-placeholder="Describe what you want to build, / commands, @ files or sessions"]')
     .waitFor({ timeout: 15_000 })
 }
 
@@ -130,9 +128,6 @@ export async function connectFreshWorkspace(page: Page, root: string, name = 'wo
  */
 export async function connectFreshWorkspaceZh(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
-  if (!await page.getByRole('textbox', { name: '选择工作区' }).isVisible()) {
-    await page.getByRole('button', { name: '新建会话', exact: true }).last().click()
-  }
   await page.getByRole('textbox', { name: '选择工作区' }).click()
   const dialog = page.getByRole('dialog', { name: '选择工作区目录' })
   await dialog.waitFor({ timeout: 10_000 })
@@ -141,7 +136,7 @@ export async function connectFreshWorkspaceZh(page: Page, root: string, name = '
   await pathInput.fill(join(root, name))
   await pathInput.press('Enter')
   await dialog.getByRole('button', { name: '打开', exact: true }).click()
-  await page.locator('[data-composer-input][contenteditable="true"][data-placeholder="描述你想要构建的内容… / 调用指令 @ 文件或对话"]')
+  await page.locator('[data-composer-input][contenteditable="true"][data-placeholder="描述你想要构建的内容, / 调用指令, @ 文件或对话"]')
     .waitFor({ timeout: 15_000 })
 }
 

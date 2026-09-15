@@ -53,6 +53,7 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
       check()
       chromeApi.debugger?.onEvent.addListener(event)
       chromeApi.debugger?.onDetach.addListener(detachEvent)
+      stage = 'connect'
       transport = await ExtensionTransport.connectTab(page.tabId)
       attached = true
       const close = transport.close.bind(transport)
@@ -103,10 +104,12 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
         }
         send(message)
       }
+      stage = 'browser_connect'
       browser = await connect({ transport, defaultViewport: null, protocol: 'cdp', protocolTimeout: actionTimeoutMs })
-      stage = 'resolve'
+      stage = 'document_token'
       check()
       const token = await invoke(page, 'documentToken')
+      stage = 'pages'
       const pages = await browser.pages()
       if (pages.length !== 1) throw error('puppeteer_page_unavailable')
       const puppeteerPage = pages[0]
@@ -115,6 +118,7 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
       let match
       // Chrome's documentId and CDP's frameId are different namespaces. Match
       // the random token in this extension's isolated context, never by URL.
+      stage = 'context_match'
       for (const frame of puppeteerPage.frames()) {
         for (const context of contexts.values()) {
           if (context.origin.replace(/\/$/u, '') !== `chrome-extension://${chromeApi.runtime.id}`
@@ -125,20 +129,25 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
         }
       }
       if (!match) throw error('puppeteer_document_unavailable')
+      stage = 'start_external'
       check()
       const reservation = await invoke(page, 'startExternal', request)
       if (!reservation.ready) return reservation
       reserved = true
       const { frame, context } = match
+      stage = 'external_node'
       const remote = await frame.client.send('Runtime.evaluate', { contextId: context.id,
         expression: `globalThis.__dshBrowserAssistant.externalNode(${JSON.stringify(request)})` })
       if (!remote.result?.objectId || remote.result.subtype !== 'node') throw error('stale_element')
       try {
+        stage = 'describe_node'
         const { node } = await frame.client.send('DOM.describeNode', { objectId: remote.result.objectId })
+        stage = 'adopt_backend_node'
         handle = (await frame.isolatedRealm().adoptBackendNode(node.backendNodeId)).asElement()
       } finally { await frame.client.send('Runtime.releaseObject', { objectId: remote.result.objectId }) }
       if (!handle) throw error('stale_element')
       const until = Math.min(request.deadline, Date.now() + actionTimeoutMs)
+      stage = 'ancestors'
       for (let current = frame; current.parentFrame(); current = current.parentFrame()) {
         const ancestor = await current.frameElement()
         if (!ancestor) throw error('stale_document')
@@ -168,10 +177,12 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
         if (destination) await authorizeUrl(destination.url)
         check()
       }
+      stage = 'issue_external'
       const permission = await invoke(page, 'issueExternal', request)
-      if (!permission.ready) return permission
+      if (!permission || !permission.ready) return permission ?? { outcome: 'failed', reason: 'executor_reply_lost', quiescent: true }
       issued = true
       check()
+      stage = 'action'
       const result = await performPuppeteerAction({ action, handle, frame, page: puppeteerPage, chromeApi, targetPage: page, check, authorizeUrl,
         resolveDrop: async () => {
           const remote = await frame.client.send('Runtime.evaluate', { contextId: context.id,
@@ -196,11 +207,14 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
       return await invoke(page, 'completeExternal', request, result ? { result } : {})
     } catch (cause) {
       await releaseInputs()
-      const reason = cause.code ?? (stage === 'attach' ? 'debugger_unavailable' : 'puppeteer_action_failed')
+      const baseReason = stage === 'connect' ? 'debugger_unavailable' : 'puppeteer_action_failed'
+      const rawDetail = [stage, cause?.name, cause?.message].filter(value => typeof value === 'string' && value).join(':')
+      const reason = cause.code ?? (stage === 'connect' ? baseReason : `${baseReason}@${rawDetail}`.slice(0, 1024))
+      const detail = { stage, name: cause?.name, message: cause?.message, stack: cause?.stack }
       if (reserved) {
-        try { return await invoke(page, 'completeExternal', request, { reason }) } catch { /* old document or lost driver result */ }
+        try { return { ...(await invoke(page, 'completeExternal', request, { reason })), detail } } catch { /* old document or lost driver result */ }
       }
-      return { outcome: issued ? 'unknown' : reason === 'cancelled' ? 'cancelled' : 'failed', reason, quiescent: !issued }
+      return { outcome: issued ? 'unknown' : reason === 'cancelled' ? 'cancelled' : 'failed', reason, detail, quiescent: !issued }
     } finally {
       await releaseInputs()
       closing = true

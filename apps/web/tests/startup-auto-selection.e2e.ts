@@ -1,4 +1,4 @@
-/** Web acceptance that explicit Session opening preserves the resident Hero tree. */
+/** Web acceptance that startup Session opening preserves the resident Hero tree. */
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed, vi } from 'vitest'
@@ -18,7 +18,7 @@ function recordedPhases(page: Page): Promise<string[]> {
   return page.evaluate(() => (window as unknown as { __conversationPhases: string[] }).__conversationPhases)
 }
 
-describe('web e2e: explicit session opening from the workbench', () => {
+describe('web e2e: startup auto-selection', () => {
   let scaffold: WebScaffold
   let browser: Browser
   let page: Page
@@ -40,11 +40,11 @@ describe('web e2e: explicit session opening from the workbench', () => {
 
   it('keeps the resident Hero and composer nodes when the first Workspace session appears', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-first-workspace-stable-tree'))
-    await page.getByRole('heading', { name: 'Pick up where you left off' }).waitFor()
-    await page.getByRole('button', { name: 'New session', exact: true }).last().click()
     await page.locator(`${ROOT_PHASE}[data-phase="hero"]`).waitFor({ timeout: 15_000 })
     const headline = page.getByText('Into the Unknown', { exact: true })
-    const fishHitbox = headline.locator('xpath=preceding-sibling::span[1]')
+    // The headline text sits in its own span inside the title group; the fish
+    // hitbox precedes the group, not the text span.
+    const fishHitbox = headline.locator('xpath=../preceding-sibling::span[1]')
     const fish = fishHitbox.locator('svg')
     expect(await fish.evaluate(node => getComputedStyle(node).color))
       .toBe(await headline.evaluate(node => getComputedStyle(node).color))
@@ -121,8 +121,6 @@ describe('web e2e: explicit session opening from the workbench', () => {
     const warningsBefore = tripwire.warnings.length
     try {
       await page.reload({ waitUntil: 'commit' })
-      await page.getByRole('heading', { name: 'Pick up where you left off' }).waitFor()
-      await page.getByRole('button', { name: 'New session', exact: true }).last().click()
       await openingInFlight
 
       // The frame a user sees while the session is still opening: hero phase, the
@@ -134,7 +132,7 @@ describe('web e2e: explicit session opening from the workbench', () => {
       expect(await page.locator('[data-composer-input]').first().isVisible()).toBe(true)
 
       releaseOpening()
-      await page.locator('[data-composer-input][contenteditable="true"][data-placeholder="Describe what you want to build... / commands, @ files or sessions"]')
+      await page.locator('[data-composer-input][contenteditable="true"][data-placeholder="Describe what you want to build, / commands, @ files or sessions"]')
         .waitFor({ timeout: 15_000 })
       acknowledgeReloadConnectionLoss(tripwire, warningsBefore)
 

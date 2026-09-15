@@ -21,6 +21,13 @@ Dynamic Cordis plugins temporarily extend the current DSH process. A Plugin uses
 
 ## Recommended workflow and Tools
 
+## Compose browser capabilities before writing site logic
+
+- When a request needs temporary browser power, first inspect the live Browser and Tool directories. Prefer the existing \`browser_snapshot\`, \`browser_extract\`, \`browser_action\`, \`browser_entry_mount\`, and \`browser_entry_unmount\` capabilities; do not create a site-specific workflow merely because a page is unfamiliar.
+- If those capabilities need a task-specific combination, define a temporary Agent-scoped Tool with \`harness.defineTool(...)\` and \`harness.registerTool(ctx, tool)\`. It may call the existing Browser service or the bounded \`harness.browser\` facade and should return page identities, structured items, stable element references, and observed outcomes. The dynamic Tool should make the Agent's next decision easier; it must not silently choose targets or repeat writes.
+- Keep the executor generic, but allow a task adapter to derive selectors from a fresh \`browser_snapshot\` or \`harness.browser.inspect\` result for the current page. Do not use an unobserved selector, hard-code a site's private transport, or build a second browser executor inside a dynamic Plugin.
+- A dynamic browser half is appropriate only when a reusable temporary page capability or UI is needed. Stop or undefine it after the task; promote repeated capabilities to a maintained Plugin or preset only after they recur across tasks.
+
 Before creating, modifying, or repairing a Plugin, load the cordis-plugin-development Skill. The Skill provides requirement navigation, capability composition, complete examples, and troubleshooting. Treat Inspect Provider results as the source of truth for exact APIs.
 
 1. cordis_inspect_list: discover the current Host and Client Providers and their read-only query methods.

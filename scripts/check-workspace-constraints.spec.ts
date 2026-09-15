@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  checkDshFamilyVersion,
   checkExperimentalDependencyIsolation,
   checkExperimentalManifest,
   checkWorkspaceManifest,
@@ -12,6 +13,14 @@ import {
 const experimental: WorkspaceManifest = {
   dir: 'packages/experimental/prototype',
   manifest: { name: '@deepseek-ai/dsh-experimental-prototype', private: true },
+}
+
+const publicExperimental: WorkspaceManifest = {
+  dir: 'packages/experimental/agent-team',
+  manifest: {
+    name: '@deepseek-ai/dsh-experimental-agent-team',
+    publishConfig: { access: 'public' },
+  },
 }
 
 describe('experimental workspace constraints', () => {
@@ -32,6 +41,20 @@ describe('experimental workspace constraints', () => {
     })).toEqual([
       '@deepseek-ai/dsh-experimental-prototype: experimental package must set "private": true',
       '@deepseek-ai/dsh-experimental-prototype: experimental package must omit publishConfig',
+    ])
+  })
+
+  it('requires public metadata only for the Agent Teams exceptions', () => {
+    expect(checkExperimentalManifest(publicExperimental)).toEqual([])
+    expect(checkExperimentalManifest({
+      ...publicExperimental,
+      manifest: {
+        name: '@deepseek-ai/dsh-experimental-agent-team',
+        private: true,
+      },
+    })).toEqual([
+      '@deepseek-ai/dsh-experimental-agent-team: public experimental package must not set "private": true',
+      '@deepseek-ai/dsh-experimental-agent-team: public experimental package must set publishConfig.access to "public"',
     ])
   })
 
@@ -77,6 +100,38 @@ describe('experimental workspace constraints', () => {
   })
 })
 
+describe('dsh family version coherence', () => {
+  it('rejects a package carrying a stale shared version', () => {
+    expect(checkDshFamilyVersion(
+      { name: '@deepseek-ai/dsh-http-proxy', version: '0.1.2-alpha.5' },
+      '0.1.2-rc.1',
+    )).toBe('@deepseek-ai/dsh-http-proxy: package.json version must match root version 0.1.2-rc.1')
+  })
+
+  it('rejects the root-named CLI app on a stale shared version', () => {
+    expect(checkDshFamilyVersion(
+      { name: '@deepseek-ai/dsh', version: '0.1.2-alpha.5' },
+      '0.1.2-rc.1',
+    )).toBe('@deepseek-ai/dsh: package.json version must match root version 0.1.2-rc.1')
+  })
+
+  it('accepts a manifest carrying the shared version', () => {
+    expect(checkDshFamilyVersion(
+      { name: '@deepseek-ai/dsh-http-proxy', version: '0.1.2-rc.1' },
+      '0.1.2-rc.1',
+    )).toBeUndefined()
+  })
+
+  it('leaves other sequences to their own version lines', () => {
+    expect(checkDshFamilyVersion({ name: '@deepseek-ai/cordis', version: '4.0.1' }, '0.1.2-rc.1')).toBeUndefined()
+    expect(checkDshFamilyVersion(
+      { name: '@deepseek-ai/node-addon-system', version: '0.1.1' },
+      '0.1.2-rc.1',
+    )).toBeUndefined()
+    expect(checkDshFamilyVersion({ version: '0.1.2-alpha.5' }, '0.1.2-rc.1')).toBeUndefined()
+  })
+})
+
 describe('package payload constraints', () => {
   it('includes a declared profile patch without a package-name allowlist', () => {
     expect(expectedDshPackageFiles({
@@ -84,34 +139,16 @@ describe('package payload constraints', () => {
       dsh: { bundle: { patch: './cordis.patch.yml' } },
     })).toEqual([
       'lib/index.js',
-      'lib/invariant.js',
       'cordis.patch.yml',
       'lib/types/**/*.d.ts',
     ])
   })
 
   it('keys personal payload exceptions by stable source directory', () => {
-    expect(expectedDshPackageFiles({ name: '@changanhua/dsh-task-queue-executor-dsh' },
-      'packages/task-queue/task-queue-executor-dsh')).toContain('worker.cordis.patch.yml')
-  })
-
-  it('publishes every loader entry and the opt-in Host patch for control MCP', () => {
     expect(expectedDshPackageFiles({
-      name: '@changanhua/dsh-control-mcp',
-      dsh: { bundle: { patch: './cordis.patch.yml' } },
-      exports: {
-        './startup': { default: './lib/startup.js' },
-        './host': { default: './lib/types/host.js' },
-      },
-    }, 'packages/mcp/control-mcp')).toEqual([
-      'lib/index.js',
-      'lib/invariant.js',
-      'lib/startup.js',
-      'cordis.patch.yml',
-      'host.cordis.patch.yml',
-      'lib/types/**/*.js',
-      'lib/types/**/*.d.ts',
-    ])
+      name: '@changanhua/dsh-task-queue-executor-dsh',
+      dsh: { bundle: { patch: './worker.cordis.patch.yml' } },
+    })).toContain('worker.cordis.patch.yml')
   })
 
   it('keeps rescoped personal packages private while applying the DSH package shape', () => {

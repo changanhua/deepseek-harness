@@ -7,7 +7,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import { approvalNeeded, approvalReason } from './policy.ts'
-import { actionResultSchema, instancesSchema, pageActionSchema } from './schema.ts'
+import { actionResultSchema, entryMountActionSchema, entryUnmountActionSchema, instancesSchema, pageActionSchema } from './schema.ts'
 import { createActivitySearchTool } from './activity.ts'
 import { BrowserTaskLoop, type BrowserTaskStart } from './loop.ts'
 import { uploadPathsChosenByUser } from './upload.ts'
@@ -15,7 +15,7 @@ import { uploadPathsChosenByUser } from './upload.ts'
 export const name = 'tool-browser'
 export const inject = ['browser', 'tools', 'approval']
 
-type SnapshotArguments = Omit<Extract<BrowserOperation['action'], { kind: 'snapshot' }>, 'kind'> & { installationId: string }
+type SnapshotArguments = Omit<Extract<BrowserOperation['action'], { kind: 'snapshot' }>, 'kind'> & { installationId: string; structure?: boolean }
 
 function owner(exec: { agent?: { session: { id: BrowserOperation['sessionId'] } } }): BrowserOperation['sessionId'] {
   if (exec.agent === undefined) throw new Error('browser tools require an initiating agent')
@@ -151,23 +151,75 @@ export function apply(ctx: Context): void {
       limit: { type: 'integer', description: 'Controls per snapshot, 1–128; default 64.' },
       textLimit: { type: 'integer', description: 'Body character budget, 0–50000; default 8000. Use 0 for controls only.' },
       tree: { type: 'boolean', description: 'Include the bounded DOM tree; default false.' },
+      structure: { type: 'boolean', description: 'Include bounded page regions and collection items; default true.' },
       includeOptions: { type: 'boolean', description: 'Read native select choices (labels and values) before selecting; default false.' },
       treeCursor: { type: 'string', description: 'Continue tree traversal from the returned cursor.' },
       treeLimit: { type: 'integer', description: 'Tree-node budget; use the returned treeCursor for the next page.' } },
     output,
     async execute(args: SnapshotArguments, exec) {
-      return ctx.browser.execute({ sessionId: owner(exec), installationId: args.installationId, action: { kind: 'snapshot', tabId: args.tabId, frameId: args.frameId,
+      const snapshotAction = { kind: 'snapshot', tabId: args.tabId, frameId: args.frameId,
         ...(args.documentId === undefined ? {} : { documentId: args.documentId }),
         ...(args.query === undefined ? {} : { query: args.query }),
         ...(args.offset === undefined ? {} : { offset: args.offset }),
         limit: args.limit ?? 64, textLimit: args.textLimit ?? 8000,
-        tree: args.tree ?? false,
+        tree: args.tree ?? false, structure: args.structure ?? true,
         ...(args.includeOptions === undefined ? {} : { includeOptions: args.includeOptions }),
         ...(args.treeCursor === undefined ? {} : { treeCursor: args.treeCursor }),
         ...(args.treeLimit === undefined ? {} : { treeLimit: args.treeLimit }),
-      } }, exec.signal)
+      } as unknown as BrowserOperation['action']
+      return ctx.browser.execute({ sessionId: owner(exec), installationId: args.installationId, action: snapshotAction }, exec.signal)
     },
   }))
+  ctx.tools.register(defineTool({
+    name: 'browser_extract', description: 'Extract bounded, structured items from a fresh page observation. Returns collection items with their order, text, and contained control references; it never executes an action or selects a replacement target.',
+    parameters: { installationId: { type: 'string', required: true }, tabId: { type: 'integer', required: true }, frameId: { type: 'integer', required: true }, documentId: { type: 'string' },
+      collectionKind: { type: 'string', description: 'Optional collection role or tag, such as feed, list, grid, ul, or ol.' },
+      query: { type: 'string', description: 'Optional case-insensitive text filter applied to item summaries.' },
+      limit: { type: 'integer', description: 'Maximum extracted items, 1–64; default 16.' },
+      textLimit: { type: 'integer', description: 'Bounded page text budget, 0–50000; default 8000.' } }, output,
+    async execute(args: {
+      installationId: string
+      tabId: number
+      frameId: number
+      documentId?: string
+      collectionKind?: string
+      query?: string
+      limit?: number
+      textLimit?: number
+    }, exec) {
+      const action = { kind: 'snapshot', tabId: args.tabId, frameId: args.frameId,
+        ...(args.documentId === undefined ? {} : { documentId: args.documentId }), structure: true,
+        textLimit: args.textLimit ?? 8000, limit: 1, tree: false } as unknown as BrowserOperation['action']
+      const result = await ctx.browser.execute({ sessionId: owner(exec), installationId: args.installationId, action }, exec.signal)
+      if (result.outcome !== 'observed' || result.value === undefined) return result
+      const value = object(result.value), structure = object(value?.structure)
+      const collections = Array.isArray(structure?.collections) ? structure.collections : []
+      const kind = args.collectionKind?.toLocaleLowerCase()
+      const query = args.query?.trim().toLocaleLowerCase()
+      const selected = collections.filter((collection) => {
+        const item = object(collection)
+        return item !== undefined && (kind === undefined || String(item.kind).toLocaleLowerCase() === kind)
+      }).flatMap(collection => Array.isArray(collection.items) ? collection.items : [])
+        .filter(item => query === undefined || String(object(item)?.text ?? '').toLocaleLowerCase().includes(query))
+      const limit = Math.min(64, Math.max(1, args.limit ?? 16))
+      const items = selected.slice(0, limit)
+      const extracted = { page: value?.page ?? null, snapshotId: value?.snapshotId ?? null, items,
+        itemCount: selected.length, itemsTruncated: selected.length > items.length } as unknown as JsonValue
+      return { ...result, value: extracted }
+    },
+  }))
+  for (const [name, actionSchema] of [['browser_entry_mount', entryMountActionSchema], ['browser_entry_unmount', entryUnmountActionSchema]] as const) {
+    ctx.tools.register(defineTool({
+      name, description: name === 'browser_entry_mount'
+        ? 'Mount a bounded action reference on matching page entries. The page identity is fixed; dynamic additions are handled by the extension. This changes the page UI but does not choose or execute any entry action.'
+        : 'Remove a previously mounted page-entry reference from the exact document.',
+      parameters: { installationId: { type: 'string', required: true }, action: { ...actionSchema, required: true } }, output,
+      async execute(args: { installationId: string; action: BrowserOperation['action'] }, exec) {
+        if (exec.agent === undefined) throw new Error('browser tools require an initiating agent')
+        return ctx.browser.execute({ sessionId: owner(exec), installationId: args.installationId, action: args.action }, exec.signal)
+      },
+    }))
+  }
   ctx.tools.register(defineTool({
     name: 'browser_task_start',
     description: 'Start a bounded browser task. Supply a natural-language goal plus at least one machine-checkable success condition. The task observes the page, then the Agent loop continues only while it remains unverified.',

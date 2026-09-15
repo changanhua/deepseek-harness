@@ -13,9 +13,6 @@ interface TreeNode {
   label?: string
   hidden?: boolean
   elementId?: string
-  attributes?: Record<string, string>
-  bounds?: { x: number; y: number; width: number; height: number }
-  inViewport?: boolean
 }
 
 interface TreeSnapshot {
@@ -102,22 +99,5 @@ describe('可分页 DOM 树', () => {
     const old = snapshot.tree.find(node => node.tag === 'button')!
     document.getElementById('target')!.textContent = 'Delete account'
     expect(domTree.getNode(snapshot.snapshotId, old.elementId!)).toBeNull()
-  })
-
-  test('列表结构保留定位所需属性和视口几何事实', () => {
-    document.body.innerHTML = '<main id="feed"><table class="items"><tbody><tr class="athing" data-rank="1"><td><a class="titleline" href="/item/1">标题 A</a></td></tr></tbody></table></main>'
-    const row = document.querySelector('tr')!
-    row.getBoundingClientRect = () => ({ x: 12, y: 34, width: 500, height: 28, top: 34, right: 512, bottom: 62, left: 12, toJSON() {} })
-
-    const snapshot = install().snapshot({ treeLimit: 1_000 })
-    const main = snapshot.tree.find(node => node.tag === 'main')!
-    const item = snapshot.tree.find(node => node.tag === 'tr')!
-    const link = snapshot.tree.find(node => node.tag === 'a')!
-
-    expect(main.attributes).toEqual({ id: 'feed' })
-    expect(item.attributes).toEqual({ class: 'athing', 'data-rank': '1' })
-    expect(item.bounds).toEqual({ x: 12, y: 34, width: 500, height: 28 })
-    expect(item.inViewport).toBe(true)
-    expect(link.attributes).toEqual({ class: 'titleline', href: '/item/1' })
   })
 })

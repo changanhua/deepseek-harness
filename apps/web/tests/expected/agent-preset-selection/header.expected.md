@@ -6,6 +6,10 @@
     - img
 - img
 - text: Minimal mode
-- button "Session log":
-  - text: Session log
+- button "Skills":
+  - img
+  - text: Skills
+- button "More actions":
+  - img
+- button "Open right sidebar":
   - img

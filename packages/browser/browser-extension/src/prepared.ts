@@ -123,7 +123,7 @@ export class BrowserPreparations {
 function targetOf(action: BrowserAction): BrowserActionDescription['page'] | undefined {
   return 'element' in action ? action.element.page : 'page' in action ? action.page : undefined
 }
-function mutates(action: BrowserAction): boolean { return !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(action.kind) }
+function mutates(action: BrowserAction): boolean { return !['tabs', 'snapshot', 'wait', 'screenshot'].includes(action.kind) }
 function samePage(left: BrowserActionDescription['page'], right: BrowserActionDescription['page']): boolean {
   return left.tabId === right.tabId && left.frameId === right.frameId && left.documentId === right.documentId && left.url === right.url
 }

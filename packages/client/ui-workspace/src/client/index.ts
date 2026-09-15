@@ -9,12 +9,10 @@
  * packages/client/AGENTS.md.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { IWorkspaces, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: pulls the Controller service merges.
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -22,6 +20,7 @@ import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: pulls the Session root standard-hook merge.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from './contract/slots.ts'
@@ -30,11 +29,6 @@ import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
-import { Workbench, WorkbenchNav } from './workbench/Workbench.tsx'
-import { createWorkbenchStore } from './workbench/store.ts'
-import { en as workbenchEn, zh as workbenchZh } from './workbench/locales.ts'
-import type { WorkbenchInjected } from './workbench/contract.ts'
-import { createResourcesRuntime } from './workbench/resources-runtime.ts'
 
 export type { UiWorkspace } from './navigation.ts'
 export type {
@@ -67,7 +61,7 @@ const NS = 'workspace'
  * declaration through `slots.inject()` instead of assuming order.
  */
 export const inject = [
-  'slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.directoryPicker', 'remote.workspace',
+  'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout',
 ]
 
 /**
@@ -77,60 +71,12 @@ export const inject = [
  * @param ctx - client root context.
  */
 export function apply(ctx: Context): void {
-  const connection = ctx.get('connection') as ConnectionHandle
   const sessions = ctx.get('sessions') as ISessions
   const workspaces = ctx.get('workspaces') as IWorkspaces
-  const connectionGeneration = connection.generation
   const uiWorkspace = new UiWorkspaceService(
     ctx, ctx.remote.directoryPicker, workspaces, sessions)
   ctx.slots.provideRoot({ hooks: { workspaces: workspaces.list } })
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace: dictionaries')
-
-  const workbenchStore = createWorkbenchStore()
-  const resources = createResourcesRuntime(() => ctx.remote.workspace)
-  ctx.effect(() => () => { resources.dispose() }, 'ui-workspace: resources')
-  ctx.effect(() => ctx.locale.register('workbench', { zh: workbenchZh, en: workbenchEn }), 'ui-workspace: workbench dictionaries')
-  const modules = createSnapshotStore<readonly string[]>([])
-  ctx.effect(() => {
-    const update = (): void => {
-      const ids = ctx.slots.entries('shell.view').map(entry => entry.options.id).filter((id): id is string => id !== undefined)
-      const previous = modules.getSnapshot()
-      if (ids.length !== previous.length || ids.some((id, index) => id !== previous[index])) modules.set(ids)
-    }
-    const off = ctx.slots.subscribe('shell.view', update)
-    update()
-    return off
-  }, 'ui-workspace: available workbench modules')
-  ctx.slots.inject('conversation.home', () => ctx.slots.register({
-    name: 'conversation.home',
-    locale: 'workbench',
-    store: workbenchStore,
-    inject: (): WorkbenchInjected => ({
-      hooks: { modules, resources: resources.source },
-      resourceLoad: resources.load,
-      resourceAdd: resources.add,
-      resourceAct: resources.act,
-      resourceClosePreview: resources.closePreview,
-      openSession: (id) => {
-        sessions.open(id)
-        ctx.get('layout')?.activateModule('conversation')
-      },
-      startSession: (workspaceId) => {
-        ctx.get('layout')?.activateModule('conversation')
-        uiWorkspace.startSession(workspaceId)
-      },
-      prepareComposer: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
-      openModule: (id) => {
-        if (modules.getSnapshot().includes(id)) ctx.get('layout')?.activateModule(id)
-      },
-    }),
-  }, Workbench))
-  ctx.slots.inject('sidebar.primary', () => ctx.slots.register({
-    name: 'sidebar.primary',
-    id: 'workbench-navigation',
-    locale: 'workbench',
-    store: workbenchStore,
-  }, WorkbenchNav))
 
   const searchSessions: WorkspaceBrowserInjected['searchSessions'] = async (query, signal) => {
     const result = await sessions.search(query, signal)
@@ -145,18 +91,19 @@ export function apply(ctx: Context): void {
     subscribe: listener => ctx.slots.subscribe(hole, listener),
   })
   const browserFlowSource = flowSource('sidebar.workspaces.directoryFlow')
+  const hostInfo: HostObservable<RemoteHostFacts> = {
+    getSnapshot: () => ctx.remote.$host,
+    subscribe: listener => ctx.on('connection/reset', listener),
+  }
   const pickerFlowSource = flowSource('conversation.hero.workspace.directoryFlow')
+  const openSession: WorkspaceBrowserInjected['open'] = (sessionId) => {
+    uiWorkspace.openSession(sessionId)
+  }
   const browserInjected = (): WorkspaceBrowserInjected => ({
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
-    startSession: (workspaceId) => {
-      ctx.get('layout')?.activateModule('conversation')
-      uiWorkspace.startSession(workspaceId)
-    },
-    open: (sessionId) => {
-      sessions.open(sessionId)
-      ctx.get('layout')?.activateModule('conversation')
-    },
+    startSession: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
+    open: openSession,
     searchSessions,
     searchResultLimit: sessions.searchResultLimit,
     renameSession: async (sessionId, title) => {
@@ -168,11 +115,7 @@ export function apply(ctx: Context): void {
       if (!result.ok) throw new Error(result.error.message)
     },
     forkSession: (sessionId) => {
-      sessions.fork({ sessionId, increaseTitle: true })
-        .then((childId) => {
-          sessions.open(childId)
-          ctx.get('layout')?.activateModule('conversation')
-        })
+      uiWorkspace.forkSession(sessionId)
         .catch(() => {
           // Fork or child-rename failure keeps the current selection.
         })
@@ -187,7 +130,7 @@ export function apply(ctx: Context): void {
       await workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     },
     createWorkspace: input => workspaces.create(input),
-    hooks: { directoryFlow: browserFlowSource, connectionGeneration },
+    hooks: { directoryFlow: browserFlowSource, hostInfo },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
     createWorkspace: input => workspaces.create(input),

@@ -61,7 +61,7 @@ if (import.meta.main) {
   const files = cordisConfigFiles(root)
 
   for (const file of files) {
-    const document = loadCordisYaml(readFileSync(resolve(root, file), 'utf8'))
+    const document = loadConfigDocument(file)
     if (!isUnknownArray(document)) {
       errors.push(`${file}: root must be a Loader entry array`)
       continue
@@ -126,11 +126,12 @@ function validateClientHalvesDeclared(): string[] {
  * contributor to that service reaches nobody; a row that registers into a host
  * singleton registers once per live session, so the second one collides.
  *
- * Both have happened. `shell-env` in a preset realm left `DSH_WEB_URL` reaching
- * no shell, and `tool-subagent-report` handed every child `report` once per live
- * session until the second registration threw. Neither changes a tool catalog,
- * so no catalog assertion can see them — and the shipped presets are near-copies
- * of each other, so a fix applied to three of four is the normal failure.
+ * Both failure modes have occurred. A preset-local provider once shadowed the
+ * host route that its consumer needed, and a host-registry contribution once
+ * registered again for every live session until the second registration threw.
+ * Neither changes a tool catalog, so no catalog assertion can see them — and the
+ * shipped presets are near-copies of each other, so a fix applied to three of
+ * four is the normal failure.
  * @returns one diagnostic per preset row that is also active on the host plane.
  */
 function validatePresetPlaneSeparation(): string[] {
@@ -161,8 +162,17 @@ function validatePresetPlaneSeparation(): string[] {
 
 /** Every entry of one config file, or an empty list when it is not an entry array. */
 function loadEntries(file: string): unknown[] {
-  const document = loadCordisYaml(readFileSync(resolve(root, file), 'utf8'))
+  const document = loadConfigDocument(file)
   return isUnknownArray(document) ? document : []
+}
+
+/** Load one config, following the compact relative-path fixture form used by profile tests. */
+function loadConfigDocument(file: string): unknown {
+  const absolute = resolve(root, file)
+  const document = loadCordisYaml(readFileSync(absolute, 'utf8'))
+  if (typeof document !== 'string' || document.trim() === '') return document
+  const target = resolve(dirname(absolute), document.trim())
+  return loadCordisYaml(readFileSync(target, 'utf8'))
 }
 
 /**

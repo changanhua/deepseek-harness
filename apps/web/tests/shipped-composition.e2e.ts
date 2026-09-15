@@ -10,9 +10,8 @@ import { afterEach, expect, it } from 'vitest'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { canonicalPath, writableRoots } from '@deepseek-ai/dsh-sandbox'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
-// Empty type imports carry the tools/sandboxPolicy/approval Context merges.
-import type {} from '@deepseek-ai/dsh-tools'
+// These imports carry the tools/sandboxPolicy/approval Context merges.
+import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-permission-presets'
@@ -37,6 +36,16 @@ const FILE_REFERENCE_PROMPT = fileURLToPath(new URL(
 const EXPECTED_TOOLS = [
   'ask_user_question',
   'bash',
+  'browser_action',
+  'browser_activity_search',
+  'browser_entry_mount',
+  'browser_entry_unmount',
+  'browser_extract',
+  'browser_instances',
+  'browser_snapshot',
+  'browser_tabs',
+  'browser_task_start',
+  'browser_task_verify',
   'create_goal',
   'edit',
   'exit_plan_mode',
@@ -46,6 +55,7 @@ const EXPECTED_TOOLS = [
   'job_list',
   'job_output',
   'list_agents',
+  'pwsh',
   'ralph',
   'read',
   'read_image',
@@ -59,6 +69,19 @@ const EXPECTED_TOOLS = [
   'web_search',
   'workflow',
   'write',
+  'image_generate_enqueue',
+  'image_generate_enqueue_batch',
+  'runtime_inspect',
+  'subagent_codex',
+  'task_queue_cancel',
+  'task_queue_enqueue',
+  'task_queue_enqueue_batch',
+  'task_queue_kinds',
+  'task_queue_list',
+  'task_queue_result',
+  'task_queue_retry',
+  'task_queue_stats',
+  'task_queue_status',
 ]
 
 /**
@@ -101,7 +124,7 @@ it('assembles the shipped Web transport, catalog, guidance, and defaults', async
       ],
     }
   `)
-  await ctx.settings.update(settingsNamespace('llm-deepseek'), {
+  await ctx.settings.update('llm-deepseek', {
     retryPolicy: { mode: 'always', maxRetries: 5 },
   })
   expect(ctx.llm.providerRetryPolicy('deepseek-official')).toMatchInlineSnapshot(`
@@ -112,7 +135,7 @@ it('assembles the shipped Web transport, catalog, guidance, and defaults', async
       "mode": "always",
     }
   `)
-  await ctx.settings.update(settingsNamespace('llm-pi-ai'), {
+  await ctx.settings.update('llm-pi-ai', {
     providers: {
       openai: {},
       anthropic: { retryPolicy: { mode: 'always' } },
@@ -142,19 +165,20 @@ it('assembles the shipped Web transport, catalog, guidance, and defaults', async
       "mode": "always",
     }
   `)
-  // The catalog belongs to an AGENT, not to the process: every model-facing row
-  // now lives in a preset mounted under one session's scope, so the global
-  // layer holds nothing and a caller must name the agent to see anything. This
-  // composes from the deployment default — what a session that names no preset
-  // gets — which is the shape this test has always been about.
-  expect(ctx.tools.schemas().map(schema => schema.name)).toEqual([])
+  // Image-generation admission tools are a base capability and therefore stay
+  // visible on the root catalog; the remaining model-facing tools are scoped
+  // to the mounted agent below.
+  expect(ctx.tools.schemas().map(schema => schema.name).sort()).toEqual([
+    'image_generate_enqueue',
+    'image_generate_enqueue_batch',
+  ])
   const handle = await ctx.agents.create({
     sessionId: SessionId('shipped-composition'),
     setup: agentCtx => ctx.agentPresets.mount(agentCtx).then(() => undefined),
   })
   try {
     const names = ctx.tools.schemas(handle.agent).map(schema => schema.name).sort()
-    expect(names.filter(name => !RIPGREP_TOOLS.includes(name))).toEqual(EXPECTED_TOOLS)
+    expect(names.filter(name => !RIPGREP_TOOLS.includes(name)).sort()).toEqual([...EXPECTED_TOOLS].sort())
     // The packaged ripgrep binary ships with the dependency, so the pair is a
     // fixed roster member on every host.
     expect(names.filter(name => RIPGREP_TOOLS.includes(name))).toEqual(RIPGREP_TOOLS)
@@ -183,8 +207,9 @@ it('assembles the shipped Web transport, catalog, guidance, and defaults', async
   })
   try {
     expect(scaffold.ctx.commands.list(commandHandle.agent)).toContainEqual({
+      definitionId: '@deepseek-ai/dsh-command-feedback',
       name: 'feedback',
-      description: 'record feedback about this session',
+      description: 'Record feedback about this session',
       input: { hint: '<text>' },
     })
   } finally {
@@ -192,9 +217,50 @@ it('assembles the shipped Web transport, catalog, guidance, and defaults', async
   }
 }, 120_000)
 
+it('routes Session Remote calls through the shared Host realm', async () => {
+  scaffold = await launchWebScaffold({ deepSeekMissingCredential: true })
+  const response = await scaffold.hostFetch('/api/session/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      type: 'client-request',
+      rpcId: 'shipped-session-create',
+      method: 'session/create',
+      payload: { args: { request: {} } },
+    }),
+  })
+  const body = await response.json() as {
+    result?: { ok?: boolean; value?: { sessionId?: unknown } }
+  }
+  expect(response.status).toBe(200)
+  expect(body.result?.ok).toBe(true)
+  expect(typeof body.result?.value?.sessionId).toBe('string')
+})
+
+it('ships PTC with run_code but without the general workflow SDK binding', async () => {
+  scaffold = await launchWebScaffold({ deepSeekMissingCredential: true })
+  const ctx = scaffold.ctx
+  const handle = await ctx.agents.create({
+    sessionId: SessionId('shipped-ptc-composition'),
+    setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'ptc').then(() => undefined),
+  })
+  try {
+    const assembly = await ctx.systemPrompt.assemble({ scope: handle.agent })
+    expect(assembly.tools.map(tool => tool.name)).toEqual([RUN_CODE_NAME])
+    const sdk = assembly.sections.find(section => section.name === 'tools:sdk')?.text ?? ''
+    expect(sdk).toContain('  ralph: {')
+    expect(sdk).not.toContain('  workflow: {')
+  } finally {
+    await handle.dispose()
+  }
+}, 120_000)
+
 it('lets a preset producer reach the background-job registry', async () => {
   scaffold = await launchWebScaffold()
   const ctx = scaffold.ctx
+  const producer = process.platform === 'win32'
+    ? { name: 'pwsh', command: 'Write-Output SHIPPED_BACKGROUND_OK' }
+    : { name: 'bash', command: 'printf SHIPPED_BACKGROUND_OK' }
   const handle = await ctx.agents.create({
     sessionId: SessionId('shipped-background-job'),
     meta: { cwd: scaffold.workspaceCwd },
@@ -202,15 +268,15 @@ it('lets a preset producer reach the background-job registry', async () => {
   })
   try {
     const signal = new AbortController().signal
-    // `tool-bash` is a preset row and `tasks` is a host registry; the producer
+    // The shell producer is a preset row and `tasks` is a host registry; the producer
     // resolves it with `ctx.get`, so a registry hidden behind a preset realm
     // fails here — with every task control still listed in the catalog above.
     const started = await ctx.tools.execute({
       signal,
       callId: ToolCallId('shipped-bash-background'),
-      name: 'bash',
+      name: producer.name,
       arguments: {
-        command: 'printf SHIPPED_BACKGROUND_OK',
+        command: producer.command,
         description: 'shipped background probe',
         run_in_background: true,
       },
@@ -218,7 +284,7 @@ it('lets a preset producer reach the background-job registry', async () => {
     })
     expect({ isError: started.isError, content: started.content }).toEqual({
       isError: false,
-      content: [{ type: 'text', text: 'started background job bash-1' }],
+      content: [{ type: 'text', text: `started background job ${producer.name}-1` }],
     })
 
     // The controller reads what the producer started: same registry, one
@@ -232,7 +298,7 @@ it('lets a preset producer reach the background-job registry', async () => {
     })
     expect(listed.isError).toBe(false)
     expect(listed.content).toEqual([
-      { type: 'text', text: expect.stringContaining('bash-1 [bash]') as unknown as string },
+      { type: 'text', text: expect.stringContaining(`${producer.name}-1 [${producer.name}]`) as unknown as string },
     ])
 
     // The full round trip: the output a host-plane producer wrote is collected
@@ -241,7 +307,7 @@ it('lets a preset producer reach the background-job registry', async () => {
       signal,
       callId: ToolCallId('shipped-task-output'),
       name: 'job_output',
-      arguments: { job_id: 'bash-1', wait: true },
+      arguments: { job_id: `${producer.name}-1`, wait: true },
       agent: handle.agent,
     })
     expect(collected.isError).toBe(false)

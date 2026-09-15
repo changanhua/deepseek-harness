@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-cordis` gives the model seven tools over the live Cordis runtime of the current DSH process: inspect what is loaded and what a dynamic package may use, define a package with a host half, a browser half, or both, run it, stop it, and remove it. Packages are versioned — a plugin holds immutable package versions, and the model can append a corrected package and update to it after a failure. Definitions live only in process memory and vanish on DSH restart; nothing here writes repository files, installs packages, or changes `cordis.yml`. It also adds a system-prompt section that teaches the workflow; compose it with `@deepseek-ai/dsh-cordis-host-runner`, the package that runs the sandbox and the run round trip.
+`dsh-tool-cordis` lets a model inspect the live Cordis runtime and create, run, stop, update, or remove temporary dynamic packages with host code, browser code, or both. Package versions are immutable, so a failed package can be corrected by adding a new version and updating the active one. Definitions exist only in process memory and disappear when DSH restarts; the package does not write repository files, install dependencies, or change `cordis.yml`. It also teaches the model this workflow. Compose it with `@deepseek-ai/dsh-cordis-host-runner`, which provides the sandbox and run round trip.
 
 ## Table of Contents
 
@@ -49,6 +49,10 @@ The three inspect tools are read-only; the four lifecycle tools define and manag
 - `cordis_run` — activate one package (`mode: "run"` for the first activation or restart, `mode: "update"` to switch versions). A package with a browser half may return `awaiting-approval` until a person allows it; the tool never waits for the final outcome.
 - `cordis_stop` — stop the current run and cancel any pending approval, keeping the plugin and every package version.
 - `cordis_undefine` — stop and permanently remove a plugin and all of its packages.
+
+### Compose browser capabilities
+
+When a temporary browser capability is needed, inspect the live Browser and Tool directories first. Prefer the existing `browser_snapshot`, `browser_extract`, `browser_action`, `browser_entry_mount`, and `browser_entry_unmount` tools. A dynamic package may register an Agent-scoped Tool that calls the existing Browser service and returns bounded page identities, structured items, stable element references, and observed outcomes. Keep this composition generic; do not duplicate the browser executor or encode one site's selectors. Stop or undefine the package after the temporary capability is no longer needed.
 
 ### A typical workflow
 
@@ -156,7 +160,7 @@ Inspect output and submitted package code are data-dependent and resent until co
 
 #### KV Cache effect
 
-Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV-cache entries.
+Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV Cache entries.
 
 ### Later requests after cordis_run
 
@@ -192,3 +196,5 @@ These limits define when the toolset is a poor fit or needs special care. They a
 None.
 
 </details>
+
+**Runtime invariant:** No companion is published. This model-facing adapter has no independent lifecycle stream; execution relations are owned by the capability seam it calls.

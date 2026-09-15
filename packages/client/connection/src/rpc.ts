@@ -1,7 +1,6 @@
 /** Generic unary RPC contracts shared by the Host and Client Connection halves. */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 /** Correlation id minted by a caller and echoed by the Connection response. */
 export type RpcId = Branded<'rpc-id'>
@@ -27,32 +26,6 @@ export type ConnectionRpcResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: ConnectionRpcFailure }
 
-/** Typed failure details used by Client Session adapters. */
-export interface RpcErrorDetailsMap {
-  'bad-request': { issues: object[] }
-  'cancelled': {}
-  'session-not-found': { sessionId: SessionId }
-  'invalid-time-zone': { value: string }
-  'agent-preset-read-only': { agentPreset: string; reason: string }
-  'agent-preset-locked': { sessionId: SessionId; agentPreset: string }
-  'agent-preset-not-found': { agentPreset: string; available: readonly string[] }
-  'agent-preset-invalid': { agentPreset: string; reason: string }
-  'agent-busy': { reason: string }
-  'internal': {}
-}
-
-/** Error codes used by Client Session adapters. */
-export type RpcErrorCode = keyof RpcErrorDetailsMap
-
-/** Typed failure used by Client Session adapters. */
-export type RpcError = {
-  [Code in RpcErrorCode]: {
-    readonly code: Code
-    readonly message: string
-    readonly details: RpcErrorDetailsMap[Code]
-  }
-}[RpcErrorCode]
-
 /** Historical short name for a generic Connection result. */
 export type RpcResult<T> = ConnectionRpcResult<T>
 
@@ -65,7 +38,7 @@ export function transportError<T>(error: unknown): RpcResult<T> {
   return {
     ok: false,
     error: {
-      code: 'internal',
+      code: 'gateway/internal',
       message: error instanceof Error ? error.message : String(error),
       details: {},
     },
@@ -134,7 +107,10 @@ export type ConnectionRpcHandler = (
 export type ConnectionRpcEndpointMatcher = (endpoint: string) => boolean
 
 /** HTTP methods supported by exact Fetch routes on the shared API channel. */
-export type ConnectionFetchMethod = 'GET' | 'HEAD'
+export type ConnectionFetchMethod = 'GET' | 'HEAD' | 'POST'
+
+/** How the node:http bridge presents one request body to its Fetch route. */
+export type ConnectionRequestBodyMode = 'buffered' | 'streaming'
 
 /** One exact, transport-independent Fetch route owned by a Host feature. */
 export interface ConnectionFetchRoute {
@@ -142,6 +118,8 @@ export interface ConnectionFetchRoute {
   readonly path: string
   /** Methods this route owns. Other methods continue through normal shared-channel dispatch. */
   readonly methods: readonly ConnectionFetchMethod[]
+  /** Buffered requests obey the configured JSON cap; streaming requests arrive with backpressure and no aggregate cap. */
+  readonly requestBody: ConnectionRequestBodyMode
   /** Handle one request after the physical carrier has applied its trust and authentication policy. */
   readonly fetch: (request: Request) => Promise<Response>
 }
@@ -185,17 +163,14 @@ export interface HostConnectionRpc {
 
 /** Host `ctx.connection` shape consumed by transport-independent adapters. */
 export interface HostConnectionHandle {
+  /** Host/Origin-only rejection for extension-owned authentication paths. */
+  requestAuthorityRejection(request: ConnectionTrustRequest): 403 | undefined
+  /** Assert that a request signal belongs to an active authorized request. */
+  assertAuthorized(signal: AbortSignal): void
   /** Generic RPC channel registry. */
   readonly rpc: HostConnectionRpc
   /** Exact Fetch routes for streaming or browser-native responses. */
   readonly fetch: HostConnectionFetch
-
-  /**
-   * Assert that one handler signal belongs to a currently authorized HTTP request.
-   * @param signal - signal received from the current Connection HTTP handler.
-   * @throws when the signal was not issued for an active authorized request.
-   */
-  assertAuthorized(signal: AbortSignal): void
 
   /**
    * Compose exact Fetch routes and the shared-channel RPC interceptor.
@@ -211,15 +186,6 @@ export interface HostConnectionHandle {
    * @returns rejection status, or undefined when the route may accept the request.
    */
   requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection
-
-  /**
-   * Apply only Connection's Host authority fence. Dedicated bridges that
-   * authenticate with their own bearer grant use this instead of browser
-   * cookie authentication.
-   * @param request - request headers from the HTTP or upgrade request.
-   * @returns 403 when the request authority is not trusted, otherwise undefined.
-   */
-  requestAuthorityRejection(request: ConnectionTrustRequest): 403 | undefined
 
   /**
    * Authenticate one frontend index request, owning a token redirect or 401.
@@ -239,6 +205,13 @@ export interface HostConnectionHandle {
 
 /** Transport-independent Fetch handler used by HTTP and worker carriers. */
 export interface ConnectionFetchHandler {
+  /**
+   * Resolve body handling before the bridge reads any request bytes.
+   * @param request - request method and URL available from node:http headers.
+   * @returns the registered route's body handling mode.
+   */
+  requestBodyMode?(request: { readonly method: string; readonly url: URL }): ConnectionRequestBodyMode
+
   /**
    * Dispatch one already-authenticated request.
    * @param request - Fetch request below the shared channel.

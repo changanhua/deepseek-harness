@@ -28,6 +28,7 @@ interface BrowserElement {
   tag: string
   text: string
   attributes: Record<string, string | null>
+  state?: Record<string, unknown>
   page?: BrowserPage
 }
 
@@ -50,6 +51,18 @@ interface BrowserSnapshot {
   text: string
   textTruncated: boolean
   elements: BrowserElement[]
+  structure?: {
+    regions: Array<{ kind: string; label: string; text: string }>
+    collections: Array<{
+      kind: string
+      itemCount: number
+      items: Array<{
+        index: number
+        text: string
+        controls: Array<{ elementId: string; role: string; label: string; state?: Record<string, unknown> }>
+      }>
+    }>
+  }
 }
 
 interface BrowserDescription {
@@ -117,6 +130,35 @@ describe('页面内浏览器助手', () => {
     ])
     expect(assistant.snapshot({ query: '空气炸锅' }).elements).toMatchObject([{ context: '空气炸锅' }])
     expect(assistant.snapshot({ query: '空气炸锅' }).elements).toHaveLength(1)
+  })
+  test('快照提供有界的通用区域和列表条目结构，供 Agent 定位而不绑定站点选择器', () => {
+    document.body.innerHTML = '<main><h1>问题流</h1><section role="feed">'
+      + '<article><h2>第一个问题</h2><a href="/q1">打开问题</a><button aria-pressed="true">点赞</button></article>'
+      + '<article><h2>第二个问题</h2><a href="/q2">打开问题</a></article>'
+      + '</section></main>'
+    const structure = install().snapshot().structure
+    expect(structure?.regions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'main', label: '问题流' })]))
+    expect(structure?.collections).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'feed', itemCount: 2,
+      items: expect.arrayContaining([expect.objectContaining({ index: 0, text: expect.stringContaining('第一个问题'),
+        controls: expect.arrayContaining([expect.objectContaining({ role: 'link', label: '打开问题' }), expect.objectContaining({ role: 'button', label: '点赞', state: expect.objectContaining({ pressed: true }) })]) })]) })]))
+  })
+  test('控件快照暴露通用选择、忙碌和展开状态，供 Agent 核验动作结果', () => {
+    document.body.innerHTML = '<button id="like" aria-pressed="true">点赞</button><button id="save" aria-selected="false">保存</button>'
+      + '<button id="comment" aria-busy="true">发送</button><details><summary>展开</summary></details>'
+    const elements = install().snapshot().elements
+    expect(elements.find(element => element.attributes.id === 'like')?.state).toMatchObject({ pressed: true, busy: false })
+    expect(elements.find(element => element.attributes.id === 'save')?.state).toMatchObject({ selected: false })
+    expect(elements.find(element => element.attributes.id === 'comment')?.state).toMatchObject({ busy: true })
+    expect(elements.find(element => element.label === '展开')?.state).toMatchObject({ expanded: false })
+  })
+  test('点击改变 aria-pressed 时返回已观察结果，而不是笼统 unknown', async () => {
+    document.body.innerHTML = '<button id="like" aria-pressed="false">点赞</button>'
+    document.querySelector('#like')?.addEventListener('click', (event) => {
+      const node = event.currentTarget as HTMLElement
+      node.setAttribute('aria-pressed', 'true')
+    })
+    const assistant = install(); const element = assistant.snapshot().elements[0]
+    await expect(assistant.execute({ ...identity('like'), payload: { kind: 'click', element } })).resolves.toMatchObject({ outcome: 'observed' })
   })
   test('可分页并搜索第 128 个之后的控件，正文预算不读取输入值', () => {
     document.body.innerHTML = Array.from({ length: 140 }, (_, i) => `<button>按钮${i}</button>`).join('')

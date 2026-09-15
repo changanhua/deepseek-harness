@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, FiberState } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import { apply, defineDomain, descriptorOf, DomainFacility, domainTable } from '../src/index.ts'
@@ -58,6 +58,25 @@ describe('defineDomain', () => {
     })).toThrow(/must not accept null/)
   })
 
+  it('validates compatibleVersions entries and projects them onto the descriptor', () => {
+    expect(() => defineDomain({ name: 'ok', version: 2, compatibleVersions: [1.5], tables: {} }))
+      .toThrow(/compatibleVersions/)
+    expect(() => defineDomain({ name: 'ok', version: 2, compatibleVersions: [2], tables: {} }))
+      .toThrow(/below version/)
+    expect(() => defineDomain({ name: 'ok', version: 2, compatibleVersions: [-1], tables: {} }))
+      .toThrow(/compatibleVersions/)
+    expect(descriptorOf(defineDomain({ name: 'ok', version: 2, compatibleVersions: [0, 1], tables: {} })))
+      .toMatchObject({ compatibleVersions: [0, 1] })
+    // An undeclared set is absent from the descriptor.
+    expect(descriptorOf(spec)).not.toHaveProperty('compatibleVersions')
+  })
+
+  it('rejects an unknown invalidRecords policy', () => {
+    expect(() => defineDomain({
+      name: 'ok', version: 1, invalidRecords: 'zap' as 'backup-and-skip', tables: {},
+    })).toThrow(/invalidRecords/)
+  })
+
   it('rejects an invalid layout and projects the declared one onto the descriptor', () => {
     // A spec built from config can carry any value; the union type is
     // compile-time only, so the runtime boundary check must reject it.
@@ -67,15 +86,6 @@ describe('defineDomain', () => {
       .toMatchObject({ name: 'per', layout: 'per-record' })
     // The default (single) layout is absent from the descriptor.
     expect(descriptorOf(spec)).not.toHaveProperty('layout')
-  })
-
-  it('rejects unknown backend guarantee requirements', () => {
-    expect(() => defineDomain({
-      name: 'guarded',
-      version: 1,
-      requires: ['magical' as 'single-writer'],
-      tables: {},
-    })).toThrow(/backend guarantee/)
   })
 })
 
@@ -103,46 +113,6 @@ describe('DomainFacility.open', () => {
     const { ctx, facility } = await harness({ config: { backend: 'nokv' } })
     ctx.storage.backend.register('nokv', { close: async () => {} })
     await expect(facility.open(spec)).rejects.toMatchObject({ code: 'facet-unsupported' })
-  })
-
-  it('rejects a backend missing a required guarantee before opening its medium', async () => {
-    const { ctx, facility } = await harness({ config: { backend: 'guarded' } })
-    const open = vi.fn()
-    ctx.storage.backend.register('guarded', {
-      guarantees: ['single-writer'],
-      kv: { open },
-      close: async () => {},
-    })
-    const guarded = defineDomain({
-      name: 'guarded',
-      version: 1,
-      requires: ['single-writer', 'commit-sync'] as const,
-      tables: {},
-    })
-
-    await expect(facility.open(guarded)).rejects.toMatchObject({
-      name: 'DomainError',
-      code: 'backend-requirement-unsatisfied',
-    })
-    expect(open).not.toHaveBeenCalled()
-  })
-
-  it('opens when the backend declares every required guarantee', async () => {
-    const { ctx, facility } = await harness({ config: { backend: 'guarded' } })
-    const backend = new MemoryStorageBackend()
-    ctx.storage.backend.register('guarded', {
-      guarantees: ['single-writer', 'commit-sync', 'private-root'],
-      kv: backend.kv,
-      close: () => backend.close(),
-    })
-    const guarded = defineDomain({
-      name: 'guarded',
-      version: 1,
-      requires: ['single-writer', 'commit-sync'] as const,
-      tables: {},
-    })
-
-    await expect(facility.open(guarded)).resolves.toBeDefined()
   })
 
   it('falls back to the default backend when no route table is configured', async () => {
@@ -188,6 +158,28 @@ describe('DomainFacility.open', () => {
     })
   })
 
+  it('keeps the rejecting default under backup-and-skip when the backend cannot move documents', async () => {
+    // The memory backend has no backupRecord, so the declared policy cannot
+    // apply and the open falls back to failing loud.
+    const salvageSpec = defineDomain({
+      name: 'salvage',
+      version: 1,
+      invalidRecords: 'backup-and-skip',
+      tables: { items: domainTable<string, Item>(itemSchema) },
+    })
+    const pool = new MemoryMediaPool()
+    {
+      const { facility } = await harness({ pool })
+      await (await facility.open(salvageSpec)).table('items').put('bad', { label: 'x', count: 2 })
+    }
+    pool.media.get('salvage')!.tables.get('items')!.set('bad', { label: 'x', count: 'NaN' })
+    const { facility } = await harness({ pool })
+    await expect(facility.open(salvageSpec)).rejects.toMatchObject({
+      code: 'invalid-record',
+      detail: { table: 'items', key: 'bad' },
+    })
+  })
+
   it('rejects a stored global that fails its schema with the global marker', async () => {
     const pool = new MemoryMediaPool()
     pool.versions.set('demo', 1)
@@ -211,6 +203,29 @@ describe('DomainFacility.open', () => {
 })
 
 describe('plugin apply', () => {
+  it('publishes storageDomain before the outer fiber becomes active and exposes it to siblings', async () => {
+    const ctx = new Context()
+    await ctx.plugin(Storage)
+    const backend = new MemoryStorageBackend()
+    ctx.storage.backend.register('memory', backend)
+    const disposeBackend = ctx.provide(storageBackendServiceKey('memory'), backend)
+    const DomainPlugin = await import('../src/index.ts')
+    const fiber = await ctx.plugin(DomainPlugin, { backend: 'memory' })
+
+    expect(fiber.state).toBe(FiberState.ACTIVE)
+    expect(ctx.get('storageDomain')).toBeInstanceOf(DomainFacility)
+    const seen: unknown[] = []
+    const consumer = ctx.inject(['storageDomain'], (consumerCtx) => {
+      seen.push(consumerCtx.storageDomain)
+    })
+    await consumer
+    expect(seen).toEqual([ctx.storageDomain])
+
+    await consumer.dispose()
+    await fiber.dispose()
+    disposeBackend()
+  })
+
   it('uses only the default backend when routes are omitted', async () => {
     const ctx = new Context()
     await ctx.plugin(Storage)
@@ -234,7 +249,7 @@ describe('plugin apply', () => {
     const ctx = new Context()
     await ctx.plugin(Storage)
     const DomainPlugin = await import('../src/index.ts')
-    const fiber = await ctx.plugin(DomainPlugin, { backend: 'memory' })
+    const fiber = ctx.plugin(DomainPlugin, { backend: 'memory' })
     expect(ctx.get('storageDomain')).toBeUndefined()
     expect(() => ctx.storage.form('domain')).toThrow(/not mounted/)
 
@@ -249,6 +264,44 @@ describe('plugin apply', () => {
       expect(ctx.get('storageDomain')).toBeUndefined()
       expect(() => ctx.storage.form('domain')).toThrow(/not mounted/)
     })
+    await fiber.dispose()
+  })
+
+  it('makes the active domain facility visible to sibling consumers', async () => {
+    const ctx = new Context()
+    await ctx.plugin(Storage)
+    const DomainPlugin = await import('../src/index.ts')
+    const fiber = ctx.plugin(DomainPlugin, { backend: 'memory' })
+    const backend = new MemoryStorageBackend()
+    ctx.storage.backend.register('memory', backend)
+    const disposeBackend = ctx.provide(storageBackendServiceKey('memory'), backend)
+    const seen: unknown[] = []
+    const consumer = ctx.inject(['storageDomain'], (consumerCtx) => {
+      seen.push(consumerCtx.storageDomain)
+    })
+    await vi.waitFor(() => { expect(seen).toHaveLength(1) })
+    expect(seen[0]).toBe(ctx.storageDomain)
+    disposeBackend()
+    await consumer.dispose()
+    await fiber.dispose()
+  })
+
+  it('exposes the active domain facility to sibling consumers', async () => {
+    const ctx = new Context()
+    await ctx.plugin(Storage)
+    const DomainPlugin = await import('../src/index.ts')
+    const fiber = ctx.plugin(DomainPlugin, { backend: 'memory' })
+    const backend = new MemoryStorageBackend()
+    ctx.storage.backend.register('memory', backend)
+    const disposeBackend = ctx.provide(storageBackendServiceKey('memory'), backend)
+    const seen: unknown[] = []
+    const consumer = ctx.inject(['storageDomain'], (consumerCtx) => {
+      seen.push(consumerCtx.storageDomain)
+    })
+    await vi.waitFor(() => { expect(seen).toHaveLength(1) })
+    expect(seen[0]).toBe(ctx.storageDomain)
+    disposeBackend()
+    await consumer.dispose()
     await fiber.dispose()
   })
 })

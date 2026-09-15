@@ -39,8 +39,6 @@ The provider accepts only actions implemented by its protocol. Puppeteer is the 
 
 Interactive snapshots include visible elements' local references, DOM roles, readable labels, and disabled, read-only, required, checked, and expanded states. A tree snapshot pages a stable full Document, element, text, and open Shadow Root hierarchy; nodes retain their indexes and parent indexes across cursors, and iframe elements only mark their source boundary. Native labels and `aria-labelledby` are resolved without reading editable values. Hidden, editable, script, and style text is absent from tree output; text fields, select controls, and editable bodies are excluded from snapshot prose and element labels. Preparation retains values only in the document's bounded memory for comparison. Hidden or disabled controls cannot execute, and changes to visibility or effective disabled/read-only state invalidate prepared actions. Screenshots require the main frame and are limited to 400,000 base64 characters. Upload accepts only absolute paths that the current user message explicitly names; that check runs before model-tool execution without a separate approval dialog.
 
-Tree element nodes also expose an allowlisted set of identity attributes, bounds, and viewport membership so consumers can locate a content region without receiving arbitrary page data. The read-only `entry_inspect` action requires exactly one `regionSelector` match and a `selector` that starts with `:scope`; it returns binding quality and bounded samples before any page mutation. Region-scoped `entry_mount` uses the same boundary for initial items and later mutations, so matching elements elsewhere in the document never receive the mounted control.
-
 -----
 
 <a id="understand-the-implementation"></a>

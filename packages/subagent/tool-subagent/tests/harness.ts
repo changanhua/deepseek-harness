@@ -3,10 +3,12 @@ import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
+import { LegacyInbox as Inbox } from '@deepseek-ai/dsh-agent/inbox'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import * as mock from './scripted-provider.ts'
 import * as tool from '../src/index.ts'
 import SubagentModelSelectionConfig from '../src/model-selection-settings.ts'
@@ -17,7 +19,9 @@ export const testToolSignal = new AbortController().signal
 /** Build the minimal parent Agent owned by the package-local scripted provider. */
 export function fakeAgent(id = 'parent-1'): Agent {
   const sessionId = SessionId(id)
-  return { id: sessionId, options: {}, session: Session.create(sessionId) } as unknown as Agent
+  const session = Session.create(sessionId)
+  const inbox = new Inbox(session, { inserted() {}, discarded() {}, claimed() {} })
+  return { id: sessionId, options: {}, session, inbox } as unknown as Agent
 }
 
 /** Mount the real tool and service stack around one scripted subagent provider. */
@@ -56,8 +60,11 @@ export async function setup(toolConfig: SetupConfig, mockConfig: Partial<mock.Co
     const handle = await ctx.agents.create({
       sessionId: SessionId(`model-selection-setup-${++setupAgentCounter}`),
       ...parentAgentOptions !== undefined ? { agentOptions: parentAgentOptions } : {},
-      setup: async (agentCtx) => {
-        await agentCtx.plugin(tool, { ...config, modelSelectionSettings: true })
+      setup: async (agentCtx, agent) => {
+        const fiber = agentCtx.inject(tool.inject, (runtimeCtx) => {
+          tool.apply(runtimeCtx, { ...config, modelSelectionSettings: true }, agent.session)
+        })
+        await fiber.await()
       },
     })
     setupAgents.set(ctx, handle.agent)
@@ -67,6 +74,7 @@ export async function setup(toolConfig: SetupConfig, mockConfig: Partial<mock.Co
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SubagentRuntime)
+  await ctx.plugin(SessionProjectionRegistry)
   const provider = await mock.mountScriptedProvider(ctx, { name: 'mock', ...mockConfig })
   setupProviders.set(ctx, provider)
   await ctx.plugin(tool, config)

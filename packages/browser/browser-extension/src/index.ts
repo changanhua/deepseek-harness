@@ -77,7 +77,7 @@ export class BrowserExtension extends Browser {
     requestTimeoutMs: z.natural().min(1).max(120000).default(30000),
     requestCapacity: z.natural().min(1).max(256).default(128),
     maxRequestBytes: z.natural().min(1024).max(1048576).default(65536),
-    maxResultBytes: z.natural().min(1024).max(1048576).default(524288),
+    maxResultBytes: z.natural().min(1024).max(4 * 1024 * 1024).default(2 * 1024 * 1024),
     maxFrameBytes: z.natural().min(1024).max(16777216).default(16777216),
     handshakeTimeoutMs: z.natural().min(1).max(10000).default(5000),
     heartbeatIntervalMs: z.natural().min(1000).max(25000).default(20000),
@@ -180,7 +180,7 @@ export class BrowserExtension extends Browser {
     const parsed = browserActionSchema.safeParse(fixed.action)
     if (!parsed.success) return this.failure(fixed, signal, 'invalid_action')
     const action = normalizeAction(parsed.data)
-    const mutates = !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(action.kind)
+    const mutates = !['tabs', 'snapshot', 'wait', 'screenshot'].includes(action.kind)
     if (action.kind === 'entry_mount' && this.mounts.size >= this.config.maxMounts
       && !this.mounts.has(`${fixed.installationId}\u0000${action.mountId}`)) {
       return this.failure(fixed, signal, 'mount_capacity')
@@ -205,10 +205,10 @@ export class BrowserExtension extends Browser {
     const fixed = structuredClone(operation)
     const parsed = browserActionSchema.safeParse(fixed.action)
     // Persistent mounts have no one-shot preparation or approval card.
-    if (!parsed.success || ['entry_inspect', 'entry_mount', 'entry_unmount'].includes(parsed.data.kind)) throw Object.assign(new Error('invalid_action'), { code: 'invalid_action' })
+    if (!parsed.success || parsed.data.kind === 'entry_mount' || parsed.data.kind === 'entry_unmount') throw Object.assign(new Error('invalid_action'), { code: 'invalid_action' })
     const action = normalizeAction(parsed.data)
     const grant = (await this.grants.list()).find(candidate => candidate.installationId === fixed.installationId)
-    const mutates = !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(action.kind)
+    const mutates = !['tabs', 'snapshot', 'wait', 'screenshot'].includes(action.kind)
     if (grant === undefined || !this.grants.permit(grant) || !grant.scopes.includes(mutates ? 'browser:write' : 'browser:read')) throw Object.assign(new Error('unauthorized'), { code: 'unauthorized' })
     return this.preparations.prepare({ ...fixed, action }, signal, grant.grantEpoch)
   }
@@ -518,15 +518,8 @@ function allows(grant: GrantSummary, url: string): boolean {
   try { const parsed = new URL(url); return ['http:', 'https:'].includes(parsed.protocol) && (grant.origins.includes('*') || grant.origins.includes(parsed.origin)) } catch { return false }
 }
 function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): BrowserAction {
-  if (action.kind === 'entry_inspect') {
-    return { kind: action.kind, page: action.page, regionSelector: action.regionSelector, selector: action.selector,
-      ...(action.titleSelector === undefined ? {} : { titleSelector: action.titleSelector }),
-      ...(action.linkSelector === undefined ? {} : { linkSelector: action.linkSelector }),
-      ...(action.sampleLimit === undefined ? {} : { sampleLimit: action.sampleLimit }) }
-  }
   if (action.kind === 'entry_mount') {
     return { kind: action.kind, page: action.page, mountId: action.mountId, selector: action.selector, label: action.label,
-      ...(action.regionSelector === undefined ? {} : { regionSelector: action.regionSelector }),
       ...(action.titleSelector === undefined ? {} : { titleSelector: action.titleSelector }),
       ...(action.linkSelector === undefined ? {} : { linkSelector: action.linkSelector }),
       ...(action.collected === undefined ? {} : { collected: action.collected }) }
@@ -541,7 +534,8 @@ function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): 
       ...(action.tree === undefined ? {} : { tree: action.tree }),
       ...(action.treeCursor === undefined ? {} : { treeCursor: action.treeCursor }),
       ...(action.treeLimit === undefined ? {} : { treeLimit: action.treeLimit }),
-      ...(action.includeOptions === undefined ? {} : { includeOptions: action.includeOptions }) }
+      ...(action.includeOptions === undefined ? {} : { includeOptions: action.includeOptions }),
+      ...(action.structure === undefined ? {} : { structure: action.structure }) }
     : action
 }
 function response(status: number, body: object, origin?: string): Response {

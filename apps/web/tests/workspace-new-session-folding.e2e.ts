@@ -20,7 +20,7 @@ import { newEnglishPage, saveFailureShot } from './support.ts'
 
 const EXPECTED_DIR = fileURLToPath(new URL('./expected/workspace-new-session-folding', import.meta.url))
 const SIDEBAR_EXPECTED = join(EXPECTED_DIR, 'sidebar.expected.md')
-const SEED = fileURLToPath(new URL('../../../snapshots/web/message-feedback-protocol/session.jsonl', import.meta.url))
+const SEED = fileURLToPath(new URL('../../../snapshots/web/message-feedback-protocol/session.v3.jsonl', import.meta.url))
 const MODE = webSnapshotMode()
 const EXISTING_SESSION_COUNT = 6
 
@@ -41,7 +41,7 @@ describe('web e2e: blank New Session folding quota', () => {
         `workspace-new-session-folding-${String(index).padStart(2, '0')}`,
       ))
     }
-    const workspace = await scaffold.ctx.workspaceRegistry.create(scaffold.workspaceCwd)
+    const workspace = await scaffold.hostCtx.workspaceRegistry.create(scaffold.workspaceCwd)
     for (const sessionId of sessionIds) await workspace.attachSession(sessionId)
 
     browser = await chromium.launch()

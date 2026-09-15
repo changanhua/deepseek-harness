@@ -10,6 +10,14 @@
  */
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import type { createLayoutStore } from './stores.ts'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+
+/** Stable panel identity exposed to global UI slots. */
+export type MainPanelId = string
+/** Global panel selection snapshot. */
+export interface PanelInfo { readonly activePanelId: MainPanelId | null }
+/** Selector hook over the global panel selection. */
+export type UsePanelInfo = SnapshotSelectorHook<PanelInfo>
 
 /** The layout store's bound action set (framework-baked, draft params peeled). */
 export type PanelActions = BoundActions<ReturnType<typeof createLayoutStore>>
@@ -21,19 +29,27 @@ export type PanelActions = BoundActions<ReturnType<typeof createLayoutStore>>
  * only).
  */
 export interface ILayout {
+  selectPanel(id: MainPanelId | null): void
+  beginNavigation(): AbortSignal
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
   toggleSidebar(): void
   /** Open the details panel (no-op when already open). */
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
-  /** Select a module without toggling an already active destination off. */
-  activateModule(module: string): void
+  /** Compatibility alias used by the downstream rightbar package. */
+  openRightbar(track?: boolean, fullscreen?: boolean): void
+  /** Compatibility alias used by the downstream rightbar package. */
+  closeRightbar(): void
+  /** Open a module without toggling; an initial request waits for root mounting. */
+  openModule(module: string): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
 export class LayoutController implements ILayout {
   #panels: PanelActions | undefined
+  #initialModule: string | undefined
+  #navigation = new AbortController()
 
   /**
    * Adopt the root entry's bound store actions. Called from the root
@@ -44,6 +60,32 @@ export class LayoutController implements ILayout {
    */
   attachPanels(actions: PanelActions): void {
     this.#panels = actions
+    if (this.#initialModule !== undefined) {
+      actions.openModule(this.#initialModule)
+      this.#initialModule = undefined
+    }
+  }
+
+  /**
+   * Open the requested module, retaining a boot-time deep link until the root mounts.
+   * @param module - Registered shell.view identity, or conversation.
+   */
+  openModule(module: string): void {
+    if (this.#panels === undefined) this.#initialModule = module
+    else this.#panels.openModule(module)
+  }
+
+  /** Map the upstream main-panel face onto the retained module ring. */
+  selectPanel(id: MainPanelId | null): void {
+    this.#navigation.abort()
+    if (this.#panels === undefined) this.#initialModule = id ?? 'conversation'
+    else this.#panels.selectPanel(id)
+  }
+
+  beginNavigation(): AbortSignal {
+    this.#navigation.abort()
+    this.#navigation = new AbortController()
+    return this.#navigation.signal
   }
 
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
@@ -53,17 +95,20 @@ export class LayoutController implements ILayout {
 
   /** Open the details panel (no-op when already open). */
   openDetails(): void {
-    this.#require().openDetails()
+    this.#require().openRightbar(true, false)
   }
 
   /** Close the details panel. */
   closeDetails(): void {
-    this.#require().closeDetails()
+    this.#require().closeRightbar()
   }
 
-  /** Navigate to a known module while preserving its idempotent selection. */
-  activateModule(module: string): void {
-    this.#require().activateModule(module)
+  openRightbar(track = false, fullscreen = false): void {
+    this.#require().openRightbar(track, fullscreen)
+  }
+
+  closeRightbar(): void {
+    this.#require().closeRightbar()
   }
 
   #require(): PanelActions {

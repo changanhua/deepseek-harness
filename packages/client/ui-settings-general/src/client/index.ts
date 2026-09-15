@@ -74,7 +74,7 @@ export function apply(ctx: ClientContext): void {
   const connection = ctx.get('connection') as ConnectionHandle
   // The shared SettingsScope mirror updates after document commits and reconnects.
   const documentController = connection.isLoopback
-    ? new SettingsDocumentStore(ctx.remote, ctx.settingsScope.describe())
+    ? new SettingsDocumentStore(ctx.remote.settings, ctx.settingsScope.describe())
     : undefined
   const documentInjected = documentController === undefined
     ? undefined
@@ -98,8 +98,10 @@ export function apply(ctx: ClientContext): void {
   const navigator = new SettingsNavigatorService(ctx)
   ctx.effect(() => installSettingsDeepLink(navigator, window), 'ui-settings-general: browser deep links')
   const shellInjected = (): SettingsRootInjected => ({
+    reconnect: () => { connection.reconnect() },
     navigator,
     hooks: {
+      connectionState: connection.state,
       sections: {
         getSnapshot: () => {
           const version = ctx.slots.getVersion('settings.section')
@@ -148,6 +150,7 @@ export function apply(ctx: ClientContext): void {
   })
   ctx.slots.inject('sidebar.settings', () => ctx.slots.register({
     name: 'sidebar.settings',
+    locale: NS,
     children: {
       'settings.trigger': { kind: 'single', scope: 'root' },
       'settings.header': { kind: 'single', scope: 'root' },

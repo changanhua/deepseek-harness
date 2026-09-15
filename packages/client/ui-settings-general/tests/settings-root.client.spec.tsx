@@ -2,12 +2,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useEffect, useState } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SettingsRootComponentProps } from '../src/client/shell-contract.ts'
 import { SettingsRoot } from '../src/client/SettingsRoot.tsx'
 import { SettingsNavigatorService } from '../src/client/settings-navigator.ts'
 import { Context } from '@deepseek-ai/cordis'
+import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
+import { en } from '../src/client/locales.ts'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 type Row = { id: string; order: number; label: string }
 type Step = { id: string; order: number }
@@ -21,11 +27,15 @@ const SEAT_CONTENT: Record<string, string> = {
 }
 
 type AttentionSnapshot = Parameters<Parameters<SettingsRootComponentProps['useSessionPendingInteraction']>[0]>[0]
+type ConnectionSnapshot = Parameters<Parameters<SettingsRootComponentProps['useConnectionState']>[0]>[0]
 const noAttention: AttentionSnapshot = new Map()
 const useSessionPendingInteraction: SettingsRootComponentProps['useSessionPendingInteraction'] = selector => selector(noAttention)
+const usePanelInfo = (selector => selector({ activePanelId: null })) as GlobalStandardProps['usePanelInfo']
+const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
 
 function mount({
   wide = true,
+  connectionState = 'connected',
   onboardingActive = true,
   navigator,
   rows = [
@@ -37,11 +47,21 @@ function mount({
     { id: 'welcome', order: -100 },
     { id: 'credential', order: 0 },
   ],
-}: { wide?: boolean; onboardingActive?: boolean; navigator?: SettingsNavigatorService; rows?: Row[]; steps?: Step[] } = {}) {
+}: {
+  wide?: boolean
+  connectionState?: ConnectionSnapshot
+  onboardingActive?: boolean
+  navigator?: SettingsNavigatorService
+  rows?: Row[]
+  steps?: Step[]
+} = {}) {
   // Mutable row source standing in for the bound useSections hook; bump()
   // plays a ledger change through the same observable contract.
   let current = rows
+  let currentConnectionState = connectionState
   const listeners = new Set<() => void>()
+  const connectionListeners = new Set<() => void>()
+  const reconnect = vi.fn()
   const renderSlot = vi.fn(
     ((key: string, _owner: unknown, opts?: { only?: string }) => {
       if (key === 'settings.section') return <div data-testid={`section-${opts?.only ?? 'all'}`} />
@@ -58,10 +78,22 @@ function mount({
   const unusedHook = (() => { throw new Error('unused by SettingsRoot') }) as never
   const props: SettingsRootComponentProps = {
     useSessions,
+    usePanelInfo, useResource,
     useSessionPendingInteraction,
     useWorkspaces: unusedHook,
     ...(navigator !== undefined ? { navigator } : {}),
     wide,
+    reconnect,
+    t: makeTranslate(en),
+    useConnectionState: (select) => {
+      const [, force] = useState(0)
+      useEffect(() => {
+        const listener = () => { force(n => n + 1) }
+        connectionListeners.add(listener)
+        return () => { connectionListeners.delete(listener) }
+      }, [])
+      return select(currentConnectionState)
+    },
     useOnboardingSteps: select => select(steps),
     useSections: (select) => {
       const [, force] = useState(0)
@@ -81,7 +113,13 @@ function mount({
       for (const fn of [...listeners]) fn()
     })
   }
-  return { view, renderSlot, bump, listeners }
+  const setConnectionState = (next: typeof currentConnectionState) => {
+    act(() => {
+      currentConnectionState = next
+      for (const fn of [...connectionListeners]) fn()
+    })
+  }
+  return { view, renderSlot, bump, listeners, reconnect, setConnectionState }
 }
 
 function openPanel() {
@@ -103,6 +141,36 @@ describe('SettingsRoot trigger', () => {
   it('hands the rail state to the trigger seat', () => {
     const { renderSlot } = mount({ wide: false })
     expect(renderSlot).toHaveBeenCalledWith('settings.trigger', { wide: false })
+  })
+
+  it('shows outage, retry progress, and a two-second recovery confirmation', () => {
+    vi.useFakeTimers()
+    const mounted = mount()
+    expect(screen.queryByRole('button', { name: 'Disconnected, reconnect now' })).toBeNull()
+
+    mounted.setConnectionState('disconnected')
+    const indicator = screen.getByRole('button', { name: 'Disconnected, reconnect now' })
+    expect(indicator.textContent).toContain('Disconnected')
+    expect(indicator.hasAttribute('title')).toBe(false)
+    expect(indicator.querySelector('svg')).toBeTruthy()
+    fireEvent.click(indicator)
+    expect(mounted.reconnect).toHaveBeenCalledOnce()
+
+    mounted.setConnectionState('connecting')
+    expect(screen.getByRole('button', { name: 'Reconnecting automatically, reconnect now' }).textContent)
+      .toContain('Reconnecting...')
+
+    mounted.setConnectionState('connected')
+    expect(screen.getByRole('status', { name: 'Connected' })).toBeTruthy()
+    act(() => { vi.advanceTimersByTime(1_999) })
+    expect(screen.getByRole('status', { name: 'Connected' })).toBeTruthy()
+    act(() => { vi.advanceTimersByTime(1) })
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('keeps the reconnect indicator out of the collapsed rail', () => {
+    mount({ wide: false, connectionState: 'disconnected' })
+    expect(screen.queryByRole('button', { name: 'Disconnected, reconnect now' })).toBeNull()
   })
 })
 

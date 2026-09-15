@@ -19,7 +19,6 @@
     { "path": "../../core/session" },
     { "path": "../../host/directory-picker" },
     { "path": "../../typert/protocol" },
-    { "path": "../../workspace/workspace" },
-    { "path": "../../util/brand" }
+    { "path": "../../workspace/workspace" }
   ]
 }

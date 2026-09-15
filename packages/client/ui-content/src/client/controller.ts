@@ -500,7 +500,7 @@ export class ContentLibraryStore implements HostObservable<ContentLibraryView> {
       const carried = await this.remote.execute(input, this.editAbort.signal)
       if (this.disposed) return DISPOSED_EDIT
       if (!carried.ok) {
-        if (carried.error.code === 'revision_conflict') {
+        if ((carried.error.code as string) === 'revision_conflict') {
           await this.reloadEntry(entryId)
           if (!this.editAbort.signal.aborted && this.view.editor?.entryId === entryId) {
             this.publish({ ...this.view, editConflict: true })

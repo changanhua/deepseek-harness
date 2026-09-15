@@ -84,7 +84,7 @@ The provider is a thin adapter over Perplexity's chat-completions endpoint with 
 | [`src/index.ts`](src/index.ts) | Plugin entry: config schema, environment fallback, provider registration |
 | [`src/provider.ts`](src/provider.ts) | The `PerplexitySearchProvider`: request dispatch, abort classification, answer and source mapping |
 | [`src/types.ts`](src/types.ts) | Perplexity wire types for the chat-completions response |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion (no runtime invariant; contracts are enforced at the service) |
+| — | No runtime invariant companion is published; this package exposes no independent event sequence or mutable data relation beyond contracts enforced at its owning seam. |
 
 ### Request and mapping flow
 
@@ -147,7 +147,6 @@ Append-only; newly visible content follows the reusable request prefix and does 
 These limits define when the provider is a poor fit. They are current package constraints.
 
 - **Citation-fallback sources are URL-only** — when Perplexity omits structured `search_results[]`, sources carry no `title`/`snippet`/`publishedAt`, so the tool renders bare hostname labels.
-- **Dynamic credential availability resolves inside the operation** — the synchronous `available()` check can establish that a resolver exists but cannot query an asynchronous credential store. A selected keyless provider therefore fails with `WEB_PROVIDER_CREDENTIAL_MISSING`; the stable search schema remains registered.
 - **Over-returned sources still cost tokens and latency** — with no result-count control on the wire, `maxResults` is enforced only post-hoc by service truncation.
 - **Only `model`/`maxTokens`/`searchRecency` are exposed** — Perplexity's other search controls (domain filters, `web_search_options` context size, images) wait on provider-neutral service fields ([seam Agent Note](../../../.agents/notes/implemented/architecture/2026-06-24-web-capability-seam.md)).
 - **Abort classification is error-shape-based** — only a `DOMException` named `AbortError` maps to `WEB_ABORTED`; an abort carrying a custom reason (such as `dsh-timeout`'s `TimeoutReason`) surfaces as `WEB_PROVIDER_ERROR`.

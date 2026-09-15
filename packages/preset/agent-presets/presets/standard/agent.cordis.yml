@@ -24,7 +24,7 @@
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: |-
+    prefix: |-
       始终使用简体中文思考和回复。除非用户明确切换语言，否则一切思考过程与对外回复都必须用中文；代码、compact、命令、文件路径、专有名词、报错信息、API 名等原文可保留英文，其余全部中文。
 
       You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
@@ -45,11 +45,13 @@
 # host-plane too.
 - id: tool-bash
   name: '@deepseek-ai/dsh-tool-bash'
-  disabled: !!js process.platform === 'win32'
+  disabled: !!js ctx.get('browser') === undefined
+
 
 - id: tool-pwsh
   name: '@deepseek-ai/dsh-tool-pwsh'
-  disabled: !!js process.platform !== 'win32'
+  disabled: !!js ctx.get('browser') === undefined
+
 
 # Runtime facts stay on the host; this preset opts its agents into explicit
 # fact and executable inspection without making the tool global.
@@ -58,6 +60,7 @@
 
 - id: tool-browser
   name: '@changanhua/dsh-tool-browser'
+  disabled: !!js ctx.get('browser') === undefined
 
 # ── filesystem ──────────────────────────────────────────────────────────────
 
@@ -228,13 +231,11 @@
         toolName: subagent_fork
         backgroundMode: continuable
 
-    # Production dsh does not install these optional providers. Install the
-    # matching Bundle in this Profile and restart the Host, then copy this
-    # preset and remove `disabled` from the matching tool row. Host availability
-    # alone grants no tool.
+    # Web ships the Codex provider in the Host plane and exposes it here so an
+    # ordinary standard session can delegate a self-contained task naturally.
+    # Other surfaces without the provider leave this row pending and harmless.
     - id: tool-subagent-codex
       name: '@deepseek-ai/dsh-tool-subagent'
-      disabled: true
       config:
         provider: codex
         toolName: subagent_codex
@@ -281,3 +282,8 @@
   config:
     fetch: true
     searchTimeoutMs: 60000
+
+# Files explicitly requested as final deliverables are declared through the
+# Session-owned `present` tool after they have been written.
+- id: present
+  name: '@deepseek-ai/dsh-tool-present'

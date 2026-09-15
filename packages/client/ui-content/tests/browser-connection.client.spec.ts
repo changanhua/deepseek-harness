@@ -1,10 +1,12 @@
 import { expect, it, vi } from 'vitest'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { BrowserConnectionStore } from '../src/client/browser-connection.ts'
 
 const request = {
   requestId: 'request-one', installationId: 'installation-one', extensionId: 'a'.repeat(32),
   expiresAt: '2026-09-07T23:00:00.000Z', status: 'pending' as const,
 }
+const remoteFailure = (code: string) => new RemoteError(code as never, '', {} as never)
 
 function remote() {
   return {
@@ -45,7 +47,7 @@ it('a closed or disposed approval surface cannot be reopened by a stale reply', 
 })
 
 it('does not claim approval when the Remote returns an authorization failure', async () => {
-  const face = { ...remote(), approve: vi.fn(async () => ({ ok: false as const, error: { code: 'forbidden', message: '', details: {} } })) }
+  const face = { ...remote(), approve: vi.fn(async () => ({ ok: false as const, error: remoteFailure('forbidden') })) }
   const store = new BrowserConnectionStore(face)
   await store.open(request.requestId)
   await store.approve()

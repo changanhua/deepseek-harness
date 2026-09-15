@@ -1,5 +1,7 @@
 /** State owner for the optional local settings-document action. */
 
+// Type-only: pulls the ctx.remote merge into this program.
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SettingsDescribeFace } from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -14,9 +16,8 @@ export interface SettingsDocumentState {
   error: string | null
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
+/** The narrow loopback remote face required by the document action. */
+export type SettingsDocumentRemote = Pick<ClientRemote['settings'], 'openSettingsDocument'>
 
 /** Derives local-document availability from the shared mirror and invokes the pathless Host-owned open operation. */
 export class SettingsDocumentStore {
@@ -28,11 +29,12 @@ export class SettingsDocumentStore {
   private following: (() => void) | undefined
 
   /**
-   * @param api - loopback settings wire face that opens the provider document.
+   * @param remote - the plugin's loopback `remote.settings` face that opens
+   * the provider document.
    * @param describeFace - the shared mirror's describe face (`hasDocument` source).
    */
   constructor(
-    private readonly remote: Pick<ClientRemote, 'settings'>,
+    private readonly remote: SettingsDocumentRemote,
     private readonly describeFace: SettingsDescribeFace,
   ) {}
 
@@ -63,10 +65,11 @@ export class SettingsDocumentStore {
       state.error = null
     })
     try {
-      const result = await this.remote.settings.openSettingsDocument()
-      if (!result.ok) throw new Error(result.error.message)
-    } catch (error) {
-      this.store.update((state) => { state.error = messageOf(error) })
+      const result = await this.remote.openSettingsDocument()
+      if (!result.ok) {
+        const { message } = result.error
+        this.store.update((state) => { state.error = message })
+      }
     } finally {
       this.store.update((state) => { state.opening = false })
     }

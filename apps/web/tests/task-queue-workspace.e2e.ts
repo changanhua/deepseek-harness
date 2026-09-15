@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import { Inbox } from '@deepseek-ai/dsh-agent'
+import { LegacyInbox as Inbox } from '@deepseek-ai/dsh-agent/inbox'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -53,14 +53,6 @@ function processAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true } catch (error) {
     return !((error as NodeJS.ErrnoException).code === 'ESRCH')
   }
-}
-
-function unexpectedLifecycleRequestFailures(requests: readonly string[], baseUrl: string): string[] {
-  const expected = new Set([
-    `GET ${new URL('/plugins/events', baseUrl).href}`,
-    `POST ${new URL('/api/workObservatory/observeClient', baseUrl).href}`,
-  ])
-  return requests.filter(request => !expected.has(request))
 }
 
 describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () => {
@@ -112,13 +104,8 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
     page.on('requestfailed', (request) => { failedRequests.push(`${request.method()} ${request.url()}`) })
-    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
-    try {
-      await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
-    } catch (error) {
-      const body = (await page.textContent('body'))?.slice(0, 2_000) ?? ''
-      throw new Error(`Queue workspace shell did not render; pageErrors=${JSON.stringify(tripwire.pageErrors)} warnings=${JSON.stringify(tripwire.warnings)} failedRequests=${JSON.stringify(failedRequests)} body=${JSON.stringify(body)}`, { cause: error })
-    }
+    await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
+    await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     agent = operationAgent(scaffold)
   }, 120_000)
 
@@ -224,8 +211,9 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
     expect(await page.getByRole('alert').count()).toBe(0)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
-    expect(unexpectedLifecycleRequestFailures(failedRequests, scaffold.baseUrl)).toEqual([])
-    expect(failedRequests.length).toBeLessThanOrEqual(2)
+    const expectedReloadDisconnect = `GET ${new URL('/plugins/events', scaffold.baseUrl).href}`
+    expect(failedRequests.filter(request => request !== expectedReloadDisconnect)).toEqual([])
+    expect(failedRequests.length).toBeLessThanOrEqual(1)
 
     const evidenceRoot = process.env.DSH_OPERATION_RUN_EVIDENCE_ROOT
     if (evidenceRoot !== undefined && evidenceRoot.length > 0) {
@@ -246,7 +234,7 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
         freshWebBuild: true,
         pageErrors: tripwire.pageErrors.length,
         consoleWarnings: tripwire.warnings.length,
-        unexpectedFailedRequests: unexpectedLifecycleRequestFailures(failedRequests, scaffold.baseUrl).length,
+        unexpectedFailedRequests: failedRequests.filter(request => request !== expectedReloadDisconnect).length,
       }, null, 2)}\n`, 'utf8')
     }
     failedRequests.length = 0
@@ -333,7 +321,7 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
       ).toContain('Canceled')
       expect(tripwire.pageErrors).toEqual([])
       expect(tripwire.warnings).toEqual([])
-      expect(unexpectedLifecycleRequestFailures(failedRequests, scaffold.baseUrl)).toEqual([])
+      expect(failedRequests).toEqual([])
       const evidenceRoot = process.env.DSH_OPERATION_RUN_EVIDENCE_ROOT
       if (evidenceRoot !== undefined && evidenceRoot.length > 0) {
         await mkdir(evidenceRoot, { recursive: true })
@@ -354,70 +342,10 @@ describe.skipIf(MODE === 'record')('web e2e: Queue operation cancellation', () =
       }
     } finally {
       dispose()
-      if (handle !== undefined && processAlive(handle.pid)) {
+      if (handle?.pid !== undefined && processAlive(handle.pid)) {
         handle.terminate()
         await handle.waitForExit()
       }
-    }
-  }, 90_000)
-
-  it('explains a staged handler wait and cancels its Batch from the workbench', async () => {
-    onTestFailed(() => saveFailureShot(page, 'web-e2e-queue-batch-wait'))
-    const registration = scaffold.ctx.taskQueue.registerHandler({
-      kind: 'operation.batch-wait-e2e@1' as never,
-      async resolveAdmission(input) { return input },
-      resources() { return [] },
-      policy() { return { maxAttempts: 1 } },
-      async prepare(resolved) { return resolved },
-      start() { return { done: new Promise(() => {}), async cancel() {} } },
-    }, { activation: 'staged' })
-    try {
-      const loaderRuntime = scaffold.ctx.loader.internal
-      if (loaderRuntime === undefined) throw new Error('Loader runtime is unavailable')
-      if (scaffold.ctx.baseUrl === undefined) throw new Error('Loader base URL is unavailable')
-      const taskQueueModule = await loaderRuntime.import('@changanhua/dsh-task-queue', scaffold.ctx.baseUrl, {}) as {
-        createVerifiedOperatorAuthority(): unknown
-      }
-      const operator = scaffold.ctx.taskQueue.forOperator(taskQueueModule.createVerifiedOperatorAuthority() as never)
-      const batchId = await operator.enqueueBatch({
-        kind: 'operation.batch-wait-e2e@1',
-        items: [
-          { title: 'Batch wait one', input: { value: 1 } },
-          { title: 'Batch wait two', input: { value: 2 } },
-        ],
-        sharedPayload: {},
-        idempotencyKey: 'operation-batch-wait-e2e-v1',
-        maxParallel: 1,
-      } as never)
-      const workIds = operator.list()
-        .filter(view => view.work.batchId === batchId)
-        .map(view => view.work.id)
-      expect(workIds).toHaveLength(2)
-
-      await page.reload({ waitUntil: 'load' })
-      await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
-      await page.getByRole('button', { name: 'Queue' }).click()
-      const workspace = page.locator('section[aria-label="Task Queue"]')
-      await workspace.getByRole('button', { name: 'Refresh' }).click()
-      const first = workspace.locator('section[aria-label="Task list"] li').filter({ hasText: 'Batch wait one' })
-      await expect.poll(() => first.textContent(), { timeout: 15_000 }).toContain('Waiting for the handler to become available')
-      await first.getByRole('button').first().click()
-      await workspace.getByRole('button', { name: `View batch ${batchId}` }).click()
-      const batchRows = workspace.locator('section[aria-label="Task list"] li')
-      await expect.poll(() => batchRows.count(), { timeout: 15_000 }).toBe(2)
-
-      await workspace.getByRole('button', { name: 'Cancel unfinished work' }).click()
-      const dialog = page.getByRole('dialog', { name: 'Cancel unfinished batch work' })
-      await dialog.getByRole('checkbox').check()
-      await dialog.getByRole('button', { name: 'Confirm' }).click()
-      await waitFor(
-        () => workIds.every(id => operator.get(id).state.status === 'canceled'),
-        'Batch cancellation',
-      )
-      expect(tripwire.pageErrors).toEqual([])
-      expect(tripwire.warnings).toEqual([])
-    } finally {
-      registration()
     }
   }, 90_000)
 })

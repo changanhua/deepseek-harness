@@ -5,7 +5,7 @@
 
 Every model-facing tool a shipped plugin contributes to `ctx.tools`: the `name`, `description`, and JSON-Schema `parameters` the model receives via the system-prompt assembly. It complements the [subsystem pages](subsystems/core.md) (the types plus each page's generated Cordis API region) — this page is the *tools* the agent is offered.
 
-This file is GENERATED and verified fresh by `pnpm run verify-tool-catalog` (part of `doc-sync`) — do not edit it by hand. Unlike the cordis catalog (a pure source-AST pass), this generator BOOTS each tool plugin on a real context and reads `ctx.tools.schemas()`, because a tool schema is not statically knowable (runtime-spread enums, concatenated descriptions, config-driven names, raw-JSON-Schema MCP tools). A completeness guard globs `packages/*/tool-*` and fails if any package is missing from the generator's boot manifest, so a new tool cannot be silently undocumented. See [the tool-schema-catalog Agent Note](../.agents/notes/implemented/process/2026-07-02-tool-schema-catalog.md).
+This file is GENERATED and verified fresh by `pnpm run verify-tool-catalog` (part of `doc-sync`) — do not edit it by hand. Unlike the cordis catalog (a pure source-AST pass), this generator BOOTS each tool plugin on a real context and reads `ctx.tools.schemas()`, because a tool schema is not statically knowable (runtime-spread enums, concatenated descriptions, config-driven names, raw-JSON-Schema MCP tools). A completeness guard globs `packages/*/tool-*` and fails if any package is missing from the generator's boot manifest, so a new tool cannot be silently undocumented.
 
 Scope: shipped product tools under `packages/*/tool-*`, each booted with its DEFAULT config, except where a Config field is REQUIRED with no default — there the generator must choose, and the per-package note records which branch this page shows. The registered tool NAME can be a load-time config (e.g. `tool-subagent`'s `toolName`), so a deployment may expose a package under a different or additional name — a per-package note records those shipped aliases where they exist. The `examples/` demo tools (e.g. `echo`) are excluded, matching the cordis catalog's packages-only scope.
 
@@ -15,12 +15,13 @@ This table connects model-visible tool names to the plugin package and service s
 
 | Tool package | Model-visible names | Requires | Writes / affects | Shipped aliases | Deployment note |
 | --- | --- | --- | --- | --- | --- |
-| `@changanhua/dsh-tool-browser` | `browser_action`, `browser_activity_search`, `browser_instances`, `browser_snapshot`, `browser_tabs`, `browser_task_start`, `browser_task_verify` | `ctx.browser`, `ctx.tools`, `ctx.approval`, `ctx.browserActivity for historical activity search`, `an initiating Agent session` | `tool/call`, `tool/result`, `approved page actions through Browser` | - | Activity search is present only when browserActivity is composed. It reads the initiating Session under current Host grants, including while Chrome is offline. |
+| `@changanhua/dsh-tool-browser` | `browser_action`, `browser_activity_search`, `browser_entry_mount`, `browser_entry_unmount`, `browser_extract`, `browser_instances`, `browser_snapshot`, `browser_tabs`, `browser_task_start`, `browser_task_verify` | `ctx.browser`, `ctx.tools`, `ctx.approval`, `ctx.browserActivity for historical activity search`, `an initiating Agent session` | `tool/call`, `tool/result`, `approved page actions through Browser` | - | Activity search is present only when browserActivity is composed. It reads the initiating Session under current Host grants, including while Chrome is offline. |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`, `task_queue_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 agent.run@1 admission` | - | The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields. |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`, `ctx.userQuestions` | `tool/call`, `tool/result after a UI/provider answers the question` | - | ask_user_question pauses the tool call until the active UI provider returns a human answer. |
-| `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`, `ctx.codeRuntime (execution time)`, `ctx.systemPrompt` | `tool/call`, `one tool/code-dispatch-start + tool/code-dispatch pair per bridged sub-call`, `tool/result` | - | Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: ptc` / `mode: both` (see the PTC mode Agent Note). Under `ptc` it is the registry's only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime's language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result. |
+| `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`, `ctx.codeRuntime (execution time)`, `ctx.systemPrompt` | `tool/call`, `one tool/ptc-dispatch-start + tool/ptc-dispatch pair per bridged sub-call`, `tool/result` | - | Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: ptc` / `mode: both` (see the PTC mode Agent Note). Under `ptc` it is the registry's only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime's language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result. |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`, `ctx.systemPrompt`, `ctx.userQuestions (execution time, opportunistic)` | `tool/call`, `plan/mode inactive on an approved review`, `tool/result` | - | exit_plan_mode stays in the model-facing schema while planning is inactive so transitions add no tool-catalog churn on top of the plan-policy change. Its execute path rejects calls outside plan mode; in plan mode it presents the plan over the user-questions seam (approve / keep planning with feedback), and approval logs plan mode inactive at the step boundary. |
 | `@deepseek-ai/dsh-tool-bash` | `bash` | `ctx.tools`, `ctx.shell`, `ctx.systemPrompt`, `ctx.shellEnv`, `ctx.jobs at call time for run_in_background` | `tool/call`, `tool/result` | - | The bash tool is the model-facing consumer of the bash executor seam. A `run_in_background` run registers with the generic `ctx.jobs` runtime and is collected/stopped through the `job_*` tools from `@deepseek-ai/dsh-tool-jobs`; the `enableRunInBackground` config (default true) removes the parameter entirely when disabled. |
+| `@deepseek-ai/dsh-tool-present` | `present` | `ctx.tools`, `ctx.fs`, `ctx.sessionProjections` | `tool/call`, `deliverables/presented after a successful final result`, `tool/result` | - | Deliveries belong to the calling Session; Web ui-deliverables supplies source-file opening and cards. |
 | `@deepseek-ai/dsh-tool-pwsh` | `pwsh` | `ctx.tools`, `ctx.shell`, `ctx.systemPrompt`, `ctx.shellEnv`, `ctx.jobs at call time for run_in_background` | `tool/call`, `tool/result` | - | The pwsh tool is the PowerShell-dialect consumer of the bash executor seam for Windows compositions (a PowerShell executor such as `@deepseek-ai/dsh-pwsh-local` backs `ctx.shell`); it mirrors the bash tool call-for-call minus sandbox controls — `run_in_background` runs register with the generic `ctx.jobs` runtime and are collected/stopped through the `job_*` tools, and the managed `DSH_*` environment comes from `@deepseek-ai/dsh-shell-env`. Each call runs in a fresh process (no persistent PTY session), with native `C:\...` paths and `$env:NAME` variables. |
 | `@deepseek-ai/dsh-tool-cordis` | `cordis_define`, `cordis_inspect_list`, `cordis_inspect_query`, `cordis_inspect_self`, `cordis_run`, `cordis_stop`, `cordis_undefine` | `ctx.tools`, `ctx.dynamicCordisRunner` | `tool/call`, `tool/result`, `process-local dynamic package lifecycle` | - | Not in any shipped tree (a deliberate opt-in — dynamic package code reaches the real runtime, see .agents/notes/implemented/feature/2026-07-08-self-referential-cordis-toolset.md). The toolset injects `ctx.dynamicCordisRunner` from `@deepseek-ai/dsh-cordis-host-runner`, which owns the definition registry and the vm sandbox; a composition missing it never activates the tools. A running package may register ADDITIONAL model-visible tools until it is stopped, undefined, or DSH restarts; a full changed request header logs those tool-set changes. |
 | `@deepseek-ai/dsh-tool-bash-persistent` | `bash` | `ctx.tools`, `ctx.terminals`, `an owning Agent at execution time` | `tool/call`, `PTY shell state`, `tool/result` | - | One owner-isolated persistent bash tool; deployment composition supplies the PTY backend and may override the model-facing environment description. |
@@ -33,19 +34,17 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-schedule` | `schedule_create`, `schedule_delete`, `schedule_list` | `ctx.tools`, `ctx.sessions`, `Session persistence`, `a future live root Agent` | `tool/call`, `schedule/change create or delete`, `tool/result` | - | Registered only inside live root Agent scopes created after the opt-in Schedule plugin loads. Version 1 accepts after_seconds, explicit absolute at, and bounded fixed-rate every_seconds, and discloses session-local delivery; management reads and mutations require the shared Session persistence barrier. |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`, `ctx.lsp`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The lsp tool keeps provider selection and language-server subprocesses behind ctx.lsp, so its model-visible schema stays stable across providers. Requires a registered provider (e.g. `@deepseek-ai/dsh-lsp-stdio`) at runtime; without one, a query returns the structured `LSP_UNAVAILABLE` error rather than changing the schema. |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
-| `@changanhua/dsh-tool-runtime-inspect` | `runtime_inspect` | `ctx.tools`, `ctx.systemPrompt`, `ctx.runtimeFacts`, `ctx.subprocess` | `tool/call`, `tool/result` | - | Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider; command inspection reports that provider's execution world without probing through a separate host path. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
-| `@deepseek-ai/dsh-tool-subagent` | `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered tool name is the load-time `toolName` config (default `subagent`); the schema above is that default. The shipped compositions load this package once per subagent backend, so the model additionally sees `subagent_fork` bound to the fork backend. Each instance's description, `run_in_background` parameter, and system-prompt policy follow its own `backgroundMode` and `enableRunInBackground`, so the two shipped schemas are not identical: `subagent` is `continuable` and defaults omitted calls to background with automatic settlement delivery, while `subagent_fork` stays `one-shot` and defaults them to foreground — see `packages/bundle/base/cordis.patch.yml` and `examples/acp-agent/cordis.yml`. |
+| `@deepseek-ai/dsh-tool-subagent` | `list_subagent_models`, `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt`, `ctx.llm for model discovery and selected-route validation` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered delegation name is the load-time `toolName` config (default `subagent`); the default schema above has model selection off, while the discovery schema is shown as the fixed companion available in an enabled Session. Web presets sample the Plugins preference for each new top-level Session and preserve that decision for its child Sessions; `subagent_fork` remains fixed-route. Each instance independently controls whether it reads model-selection settings and its background behavior through `modelSelectionSettings`, `backgroundMode`, and `enableRunInBackground`. |
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message` | `ctx.tools`, `ctx.subagents`, `ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries). |
-| `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`, `ctx.systemPrompt`, `a live continuable in-process child Agent` | `tool/call`, `tool/result`, `a user-role message in the direct parent session` | - | Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently. |
-| `@changanhua/dsh-tool-image-generation-task-queue` | `image_generate_enqueue`, `image_generate_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 image.generate@1 admission` | - | The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority; provider discovery and execution belong to the registered WorkHandler. |
-| `@changanhua/dsh-tool-knowledge-base` | `knowledge_base` | `ctx.tools`, `ctx.knowledgeBase`, `ctx.knowledgeQueue`, `ctx.taskQueue`, `ctx.subprocess` | `tool/call`, `tool/result`, `knowledge-base Domain records and managed content through explicit requests` | - | knowledge_base accepts only a closed business request. It keeps profile configuration, subprocess control, credentials, and direct storage access outside the tool; generation remains Queue-backed, unknown work never auto-retries, and publication stays explicit. |
-| `@changanhua/dsh-tool-operation-run-task-queue` | `operation_run_enqueue`, `operation_run_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 operation.run@1 admission` | - | The typed allowlisted-operation admission consumer. It admits only a host-configured `operationId`; executable, argv, cwd, environment, credentials, resources, and execution policy remain outside the tool schema. |
+| `@changanhua/dsh-tool-image-generation-task-queue` | `image_generate_enqueue`, `image_generate_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 image.generate@1 admission` | - | The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority. |
+| `@changanhua/dsh-tool-operation-run-task-queue` | `operation_run_enqueue`, `operation_run_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 operation.run@1 admission` | - | The typed allowlisted-operation admission consumer. It admits only a host-configured `operationId`; execution policy remains outside the tool schema. |
+| `@changanhua/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_kinds`, `task_queue_list`, `task_queue_result`, `task_queue_retry`, `task_queue_stats`, `task_queue_status` | `ctx.tools`, `ctx.taskQueue`, `ctx.sessions`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 owner-scoped controls`, `user/message from durable terminal Notifications` | - | The durable Queue controller: `task_queue_*` inspection, result, cancellation, retry, and kind tools over the host `ctx.taskQueue` service. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
-| `@changanhua/dsh-tool-task-queue` | `task_queue_cancel`, `task_queue_kinds`, `task_queue_list`, `task_queue_result`, `task_queue_retry`, `task_queue_stats`, `task_queue_status` | `ctx.tools`, `ctx.taskQueue`, `ctx.sessions`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 owner-scoped controls`, `user/message from durable terminal Notifications` | - | The WorkKind-independent durable controller: `task_queue_*` inspection, result, cancellation, retry, and kind tools over the host `ctx.taskQueue` service, plus replay-safe owner Notification delivery through `ctx.sessions`. Work handlers, admission Consumers, and host resource capacity are composed separately. |
-| `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`, `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
+| `@deepseek-ai/dsh-experimental-tool-agent-team` | `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All nine tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
+| `@changanhua/dsh-tool-runtime-inspect` | `runtime_inspect` | `ctx.tools`, `ctx.systemPrompt`, `ctx.runtimeFacts`, `ctx.subprocess` | `tool/call`, `tool/result` | - | Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
 
@@ -1244,6 +1243,199 @@ Search retained browser activity for this Agent session and one authorized insta
 
 Source: [`packages/browser/tool-browser/src/activity.ts`](../packages/browser/tool-browser/src/activity.ts)
 
+### `browser_entry_mount`
+
+Mount a bounded action reference on matching page entries. The page identity is fixed; dynamic additions are handled by the extension. This changes the page UI but does not choose or execute any entry action.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "installationId": {
+      "type": "string"
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "entry_mount"
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tabId": {
+              "type": "integer"
+            },
+            "frameId": {
+              "type": "integer"
+            },
+            "documentId": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tabId",
+            "frameId",
+            "documentId",
+            "url"
+          ]
+        },
+        "mountId": {
+          "type": "string"
+        },
+        "selector": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "titleSelector": {
+          "type": "string"
+        },
+        "linkSelector": {
+          "type": "string"
+        },
+        "collected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "page",
+        "mountId",
+        "selector",
+        "label"
+      ]
+    }
+  },
+  "required": [
+    "installationId",
+    "action"
+  ]
+}
+```
+
+Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
+
+### `browser_entry_unmount`
+
+Remove a previously mounted page-entry reference from the exact document.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "installationId": {
+      "type": "string"
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "entry_unmount"
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tabId": {
+              "type": "integer"
+            },
+            "frameId": {
+              "type": "integer"
+            },
+            "documentId": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tabId",
+            "frameId",
+            "documentId",
+            "url"
+          ]
+        },
+        "mountId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "page",
+        "mountId"
+      ]
+    }
+  },
+  "required": [
+    "installationId",
+    "action"
+  ]
+}
+```
+
+Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
+
+### `browser_extract`
+
+Extract bounded, structured items from a fresh page observation. Returns collection items with their order, text, and contained control references; it never executes an action or selects a replacement target.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "installationId": {
+      "type": "string"
+    },
+    "tabId": {
+      "type": "integer"
+    },
+    "frameId": {
+      "type": "integer"
+    },
+    "documentId": {
+      "type": "string"
+    },
+    "collectionKind": {
+      "type": "string",
+      "description": "Optional collection role or tag, such as feed, list, grid, ul, or ol."
+    },
+    "query": {
+      "type": "string",
+      "description": "Optional case-insensitive text filter applied to item summaries."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum extracted items, 1–64; default 16."
+    },
+    "textLimit": {
+      "type": "integer",
+      "description": "Bounded page text budget, 0–50000; default 8000."
+    }
+  },
+  "required": [
+    "installationId",
+    "tabId",
+    "frameId"
+  ]
+}
+```
+
+Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
+
 ### `browser_instances`
 
 List authorized browser installations and whether each is online.
@@ -1296,6 +1488,10 @@ Inspect a frame with semantic roles, labels, card/section context and fresh elem
     "tree": {
       "type": "boolean",
       "description": "Include the bounded DOM tree; default false."
+    },
+    "structure": {
+      "type": "boolean",
+      "description": "Include bounded page regions and collection items; default true."
     },
     "includeOptions": {
       "type": "boolean",
@@ -1690,6 +1886,49 @@ Source: [`packages/shell/tool-bash/src/index.ts`](../packages/shell/tool-bash/sr
 
 The bash tool is the model-facing consumer of the bash executor seam. A `run_in_background` run registers with the generic `ctx.jobs` runtime and is collected/stopped through the `job_*` tools from `@deepseek-ai/dsh-tool-jobs`; the `enableRunInBackground` config (default true) removes the parameter entirely when disabled.
 
+<a id="deepseek-aidsh-tool-present"></a>
+
+## `@deepseek-ai/dsh-tool-present`
+
+### `present`
+
+Declare existing files accessible through the Session filesystem as final deliverables. When a file you create or update is an output the user asked to receive, you must call present after writing it and before your final response, including files created through Bash or code execution. Mentioning its path in your reply does not replace this call. The files must already exist. The user opens the current source files; their contents are not copied or preserved.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path of an existing regular file. Relative paths use the Session working directory."
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description for the user."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    }
+  },
+  "required": [
+    "files"
+  ]
+}
+```
+
+Source: [`packages/fs/tool-present/src/index.ts`](../packages/fs/tool-present/src/index.ts)
+
+Deliveries belong to the calling Session; Web ui-deliverables supplies source-file opening and cards.
+
 <a id="deepseek-aidsh-tool-pwsh"></a>
 
 ## `@deepseek-ai/dsh-tool-pwsh`
@@ -1932,7 +2171,7 @@ Source: [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/
 
 ### `cordis_stop`
 
-Stop the current Run of a dynamic Plugin and cancel unfinished approval or activation requests. Retain the Plugin, every immutable Package, grants, currentPackageId, and nextPackageId so it can later run or update directly. Stopping an already stopped Plugin succeeds idempotently. Use this Tool to disable effects temporarily; use cordis_undefine for permanent removal. cleanupPending lists browser entry mounts whose removal was requested but could not be observed, so do not claim their page effects are gone.
+Stop the current Run of a dynamic Plugin and cancel unfinished approval or activation requests. Retain the Plugin, every immutable Package, grants, currentPackageId, and nextPackageId so it can later run or update directly. Stopping an already stopped Plugin succeeds idempotently. Use this Tool to disable effects temporarily; use cordis_undefine for permanent removal.
 
 ```json
 {
@@ -2204,7 +2443,7 @@ Source: [`packages/fs/tool-fs/src/index.ts`](../packages/fs/tool-fs/src/index.ts
 
 ### `read_image`
 
-Read a PNG/JPEG/WebP/GIF file and return the image itself. Harness validates and downscales large supported images before the next model request, so use this tool directly instead of installing image libraries or creating thumbnails merely to inspect an image. Independent files may be read concurrently in small batches. Requires the current model to accept image input.
+Read a PNG/JPEG/WebP/GIF file and return the image itself. A path without a file extension is accepted; the format is detected from the file content, so normalized attachment paths can be passed directly without copying or renaming. Harness validates and downscales large supported images before the next model request, so use this tool directly instead of installing image libraries or creating thumbnails merely to inspect an image. Independent files may be read concurrently in small batches. Requires the current model to accept image input.
 
 ```json
 {
@@ -2746,49 +2985,6 @@ Source: [`packages/workflow/tool-ralph/src/index.ts`](../packages/workflow/tool-
 
 A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap.
 
-<a id="changanhuadsh-tool-runtime-inspect"></a>
-
-## `@changanhua/dsh-tool-runtime-inspect`
-
-### `runtime_inspect`
-
-Inspect authoritative DSH runtime state when a task depends on an unproven fact or executable. kind="facts" returns selected registered runtime facts; omit keys to inspect every registered fact, including async inspect-only facts. kind="command" resolves one executable through the active subprocess provider and reports its execution world. Resolution proves only that the command is discoverable, not that it starts, is authenticated, or succeeds. This tool never probes commands independently and does not expose credential values.
-
-```json
-{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "kind": {
-      "type": "string",
-      "enum": [
-        "facts",
-        "command"
-      ],
-      "description": "Inspect registered runtime facts, or resolve one executable through the active subprocess provider."
-    },
-    "keys": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Runtime fact keys to inspect. Omit to inspect every currently registered fact."
-    },
-    "command": {
-      "type": "string",
-      "description": "Absolute executable path or bare command name to resolve in the active execution world."
-    }
-  },
-  "required": [
-    "kind"
-  ]
-}
-```
-
-Source: [`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts)
-
-Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider; command inspection reports that provider's execution world without probing through a separate host path.
-
 <a id="deepseek-aidsh-tool-skill"></a>
 
 ## `@deepseek-ai/dsh-tool-skill`
@@ -3053,6 +3249,28 @@ The five read-only tools hide provider cursors and authorize every result from t
 
 ## `@deepseek-ai/dsh-tool-subagent`
 
+### `list_subagent_models`
+
+Discover LLM routes for subagents without changing the current Agent. Call with no arguments to list registered providers, with `provider` to list its advertised models, or with `provider` and `model` to inspect that exact model and its reasoning efforts. Catalog membership is advisory: an adapter may accept an unlisted model id. Use the returned ids with a delegation tool's `provider`, `model`, and `reasoning_effort` fields.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string",
+      "description": "Registered LLM provider id. Omit to list providers."
+    },
+    "model": {
+      "type": "string",
+      "description": "Exact model id to inspect. Requires provider; omit to list that provider's advertised models."
+    }
+  }
+}
+```
+
+Source: [`packages/subagent/tool-subagent/src/list-models.ts`](../packages/subagent/tool-subagent/src/list-models.ts)
+
 ### `subagent`
 
 Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. Give it a complete, standalone prompt: it does not see this conversation. This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.
@@ -3083,7 +3301,7 @@ Delegate a self-contained task to a subagent (a separate agent that works in its
 
 Source: [`packages/subagent/tool-subagent/src/index.ts`](../packages/subagent/tool-subagent/src/index.ts)
 
-The registered tool name is the load-time `toolName` config (default `subagent`); the schema above is that default. The shipped compositions load this package once per subagent backend, so the model additionally sees `subagent_fork` bound to the fork backend. Each instance's description, `run_in_background` parameter, and system-prompt policy follow its own `backgroundMode` and `enableRunInBackground`, so the two shipped schemas are not identical: `subagent` is `continuable` and defaults omitted calls to background with automatic settlement delivery, while `subagent_fork` stays `one-shot` and defaults them to foreground — see `packages/bundle/base/cordis.patch.yml` and `examples/acp-agent/cordis.yml`.
+The registered delegation name is the load-time `toolName` config (default `subagent`); the default schema above has model selection off, while the discovery schema is shown as the fixed companion available in an enabled Session. Web presets sample the Plugins preference for each new top-level Session and preserve that decision for its child Sessions; `subagent_fork` remains fixed-route. Each instance independently controls whether it reads model-selection settings and its background behavior through `modelSelectionSettings`, `backgroundMode`, and `enableRunInBackground`.
 
 <a id="deepseek-aidsh-tool-subagent-control"></a>
 
@@ -3112,7 +3330,7 @@ Source: [`packages/subagent/tool-subagent-control/src/index.ts`](../packages/sub
 
 ### `list_agents`
 
-List your continuable background subagents by durable id and label. Use it to recall which ones you started, not to poll for completion — you are told when one finishes. Status comes from the live registry: running means the agent is working right now, idle means it is loaded but between turns (it may be waiting on agents it started), and ready means it exists only in storage — resumable, not terminal, and not a result waiting to be collected; a `send_message` starts a new turn on the same conversation, and a direct child remains a `send_message` candidate in every status. The snapshot is not a delivery promise — `send_message` performs the authoritative check and may still fail. Children that could not be read are reported as diagnostics instead of being silently dropped. Scope `descendants` walks the whole tree below you in stable pre-order, annotating each entry with its durable direct-parent session id and depth. You may use `send_message` only for depth-1 entries; deeper entries are candidates for `interrupt_agent` only.
+List your continuable background subagents by durable id and label. Use it to recall which ones you started, not to poll for completion — you are told when one finishes. Status comes from the live registry: running means the agent is working right now, idle means it is loaded but between turns (it may be waiting on agents it started), and ready means it exists only in storage — resumable, not terminal, and not a result waiting to be collected; a `send_message` steers a running child at its nearest step boundary or starts a turn for an idle or ready child, and a direct child remains a `send_message` candidate in every status. The snapshot is not a delivery promise — `send_message` performs the authoritative check and may still fail. Children that could not be read are reported as diagnostics instead of being silently dropped. Scope `descendants` walks the whole tree below you in stable pre-order, annotating each entry with its durable direct-parent session id and depth. You may use `send_message` only for depth-1 entries; deeper entries are candidates for `interrupt_agent` only.
 
 ```json
 {
@@ -3134,23 +3352,23 @@ Source: [`packages/subagent/tool-subagent-control/src/list-agents.ts`](../packag
 
 ### `send_message`
 
-Send a message to a background subagent by its subagent id, continuing the same conversation. It becomes the subagent's next turn: if it is still working, the message waits until its current turn finishes, so it cannot redirect work already underway. This call returns no answer from the subagent — only confirmation that the message was delivered — so use it to give it more work. A failure means the message was NOT delivered.
+Send a message to a direct continuable child by its agent id. If you are a resident continuable child, you may also target your direct parent. If the target is still working, the message steers its nearest step; if it is idle, the message starts a turn. This call returns no answer from the agent — only confirmation that the message was delivered. A failure means the message was NOT delivered.
 
 ```json
 {
   "type": "object",
   "properties": {
-    "subagent_id": {
+    "agent_id": {
       "type": "string",
-      "description": "The subagent id returned when the background subagent was started."
+      "description": "The agent id of your direct continuable child, or your direct parent when you are a resident continuable child."
     },
     "message": {
       "type": "string",
-      "description": "The message to deliver to the subagent."
+      "description": "The message to deliver to the agent."
     }
   },
   "required": [
-    "subagent_id",
+    "agent_id",
     "message"
   ]
 }
@@ -3159,33 +3377,6 @@ Send a message to a background subagent by its subagent id, continuing the same 
 Source: [`packages/subagent/tool-subagent-control/src/index.ts`](../packages/subagent/tool-subagent-control/src/index.ts)
 
 The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries).
-
-<a id="deepseek-aidsh-tool-subagent-report"></a>
-
-## `@deepseek-ai/dsh-tool-subagent-report`
-
-### `report`
-
-Report selected content to the agent that started you. Call this once before you finish, with a self-contained final result, and earlier for progress or findings that change what that agent does next. That agent shares your workspace but does not automatically receive your transcript, tool output, or reasoning, so finishing your work is not itself a result. Reporting does not end your turn or finish your work, and only your direct parent receives it. A failed call may still have arrived, so do not blindly repeat it.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "output": {
-      "type": "string",
-      "description": "Actionable content for your parent; summarize conclusions and reference relevant shared paths."
-    }
-  },
-  "required": [
-    "output"
-  ]
-}
-```
-
-Source: [`packages/subagent/tool-subagent-report/src/index.ts`](../packages/subagent/tool-subagent-report/src/index.ts)
-
-Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently.
 
 <a id="changanhuadsh-tool-image-generation-task-queue"></a>
 
@@ -3319,34 +3510,7 @@ Atomically enqueue individually titled image-generation requests from completed 
 
 Source: [`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts)
 
-The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority; provider discovery and execution belong to the registered WorkHandler.
-
-<a id="changanhuadsh-tool-knowledge-base"></a>
-
-## `@changanhua/dsh-tool-knowledge-base`
-
-### `knowledge_base`
-
-创建、维护和发布带来源的知识库，可通过已配置的思源连接阅读和维护。request 是含 action 的 JSON：create 带 spec；source 带 projectId/sourceId/title/text；fetch 带 projectId/sourceId/title/url；refresh 带 projectId/sourceId；plan、map、status、check、build 带 projectId；confirm 再带 planHash；generate、review、adopt 再带 entryId；publish、export-draft、rollback 带 projectId/version；diff 带 projectId/from/to；work、cancel、retry、correct、resume 带 workId；stop-generation 和 resume-generation 无其它字段。每次任务的知识地图由规划自动构造，map 可查看当前地图；每次发布包含 map.md 和 map.json，思源同步自动生成该版本地图。先检查并确认规划，再 build；maxRevisions 为初次生成后的修订次数，0–3，默认2。build 不自动发布，unknown 不自动重发。retry 仅重试明确未启动的失败；correct 仅修正已返回但格式校验失败的响应；resume 仅接收已有可验证结果。全局停止会保留进度并等待活动调用结束；模型工具不能解除停止，只有人类命令或可信 Host 可 resume-generation。思源读操作：siyuan-status、siyuan-verify 带 projectId；siyuan-inspect 再带 entryId。siyuan-sync 带 projectId/version，siyuan-adopt 带 projectId/entryId/snapshotHash，二者只允许人类命令或可信 Host；更新会保留独立候选，不覆盖已有思源正文。
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "request": {
-      "type": "string",
-      "description": "包含 action 与相应业务字段的 JSON 对象。"
-    }
-  },
-  "required": [
-    "request"
-  ]
-}
-```
-
-Source: [`packages/knowledge/tool-knowledge-base/src/index.ts`](../packages/knowledge/tool-knowledge-base/src/index.ts)
-
-knowledge_base accepts only a closed business request. It keeps profile configuration, subprocess control, credentials, and direct storage access outside the tool; generation remains Queue-backed, unknown work never auto-retries, and publication stays explicit.
+The typed image admission consumer. `image_generate_enqueue` records an `image.generate@1` intent through the active Agent authority.
 
 <a id="changanhuadsh-tool-operation-run-task-queue"></a>
 
@@ -3433,80 +3597,7 @@ Atomically enqueue individually titled host-configured operations.
 
 Source: [`packages/task-queue/tool-operation-run-task-queue/src/index.ts`](../packages/task-queue/tool-operation-run-task-queue/src/index.ts)
 
-The typed allowlisted-operation admission consumer. It admits only a host-configured `operationId`; executable, argv, cwd, environment, credentials, resources, and execution policy remain outside the tool schema.
-
-<a id="deepseek-aidsh-tool-jobs"></a>
-
-## `@deepseek-ai/dsh-tool-jobs`
-
-### `job_kill`
-
-Request cancellation of a running background job by job id. Returns immediately; the job settles as killed once its work actually stops.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "job_id": {
-      "type": "string",
-      "description": "Job id returned by the tool that started the background work."
-    },
-    "reason": {
-      "type": "string",
-      "description": "Optional short reason, recorded in the log and forwarded to the job."
-    }
-  },
-  "required": [
-    "job_id"
-  ]
-}
-```
-
-Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/index.ts)
-
-### `job_list`
-
-List your background jobs (running and finished) with their ids, kinds, and statuses.
-
-```json
-{
-  "type": "object",
-  "properties": {}
-}
-```
-
-Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/index.ts)
-
-### `job_output`
-
-Read a background job. Stream jobs return only output since the previous read; final-output jobs return their result after settlement. Every response ends with `[status: ...]`. Reads are non-blocking unless `wait: true`, which waits up to the configured cap.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "job_id": {
-      "type": "string",
-      "description": "Job id returned by the tool that started the background work."
-    },
-    "wait": {
-      "type": "boolean",
-      "description": "Block until the job reaches a terminal status or the timeout expires. A timed-out wait returns [status: running] and leaves the job alive."
-    },
-    "timeout_ms": {
-      "type": "number",
-      "description": "Max wait in milliseconds (only meaningful with wait: true). Defaults to the configured wait timeout; capped by the configured maximum."
-    }
-  },
-  "required": [
-    "job_id"
-  ]
-}
-```
-
-Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/index.ts)
-
-The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`.
+The typed allowlisted-operation admission consumer. It admits only a host-configured `operationId`; execution policy remains outside the tool schema.
 
 <a id="changanhuadsh-tool-task-queue"></a>
 
@@ -3631,37 +3722,84 @@ Read one WorkItem owned by this Agent session.
 
 Source: [`packages/task-queue/tool-task-queue/src/index.ts`](../packages/task-queue/tool-task-queue/src/index.ts)
 
-The WorkKind-independent durable controller: `task_queue_*` inspection, result, cancellation, retry, and kind tools over the host `ctx.taskQueue` service, plus replay-safe owner Notification delivery through `ctx.sessions`. Work handlers, admission Consumers, and host resource capacity are composed separately.
+The durable Queue controller: `task_queue_*` inspection, result, cancellation, retry, and kind tools over the host `ctx.taskQueue` service.
 
-<a id="deepseek-aidsh-experimental-tool-agent-team"></a>
+<a id="deepseek-aidsh-tool-jobs"></a>
 
-## `@deepseek-ai/dsh-experimental-tool-agent-team`
+## `@deepseek-ai/dsh-tool-jobs`
 
-### `followup_task`
+### `job_kill`
 
-Send a durable follow-up task to another Team member and start a turn when needed.
+Request cancellation of a running background job by job id. Returns immediately; the job settles as killed once its work actually stops.
 
 ```json
 {
   "type": "object",
   "properties": {
-    "target": {
+    "job_id": {
       "type": "string",
-      "description": "Team member name, or lead."
+      "description": "Job id returned by the tool that started the background work."
     },
-    "message": {
+    "reason": {
       "type": "string",
-      "description": "Self-contained message for the target."
+      "description": "Optional short reason, recorded in the log and forwarded to the job."
     }
   },
   "required": [
-    "target",
-    "message"
+    "job_id"
   ]
 }
 ```
 
-Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/experimental/tool-agent-team/src/index.ts)
+Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/index.ts)
+
+### `job_list`
+
+List your background jobs (running and finished) with their ids, kinds, and statuses.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/index.ts)
+
+### `job_output`
+
+Read a background job. Stream jobs return only output since the previous read; final-output jobs return their result after settlement. Every response ends with `[status: ...]`. Reads are non-blocking unless `wait: true`, which waits up to the configured cap.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "description": "Job id returned by the tool that started the background work."
+    },
+    "wait": {
+      "type": "boolean",
+      "description": "Block until the job reaches a terminal status or the timeout expires. A timed-out wait returns [status: running] and leaves the job alive."
+    },
+    "timeout_ms": {
+      "type": "number",
+      "description": "Max wait in milliseconds (only meaningful with wait: true). Defaults to the configured wait timeout; capped by the configured maximum."
+    }
+  },
+  "required": [
+    "job_id"
+  ]
+}
+```
+
+Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/index.ts)
+
+The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`.
+
+<a id="deepseek-aidsh-experimental-tool-agent-team"></a>
+
+## `@deepseek-ai/dsh-experimental-tool-agent-team`
 
 ### `interrupt_agent`
 
@@ -3699,7 +3837,7 @@ Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/exper
 
 ### `send_message`
 
-Send durable information to another Team member without starting an idle member.
+Send one durable message to another Team member. A running target receives it at the nearest step boundary; an idle target starts a turn; an inactive teammate cold-resumes.
 
 ```json
 {
@@ -3947,7 +4085,7 @@ Wait for the next teammate status, mailbox, or shared-task change after this cal
 
 Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/experimental/tool-agent-team/src/index.ts)
 
-All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names.
+All nine tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names.
 
 <a id="deepseek-aidsh-tool-todo"></a>
 
@@ -3998,6 +4136,49 @@ Record and update a structured task list for the current work. Send the ENTIRE l
 Source: [`packages/todo/tool-todo/src/index.ts`](../packages/todo/tool-todo/src/index.ts)
 
 todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task.
+
+<a id="changanhuadsh-tool-runtime-inspect"></a>
+
+## `@changanhua/dsh-tool-runtime-inspect`
+
+### `runtime_inspect`
+
+Inspect authoritative DSH runtime state when a task depends on an unproven fact or executable. kind="facts" returns selected registered runtime facts; omit keys to inspect every registered fact, including async inspect-only facts. kind="command" resolves one executable through the active subprocess provider and reports its execution world. Resolution proves only that the command is discoverable, not that it starts, is authenticated, or succeeds. This tool never probes commands independently and does not expose credential values.
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "facts",
+        "command"
+      ],
+      "description": "Inspect registered runtime facts, or resolve one executable through the active subprocess provider."
+    },
+    "keys": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Runtime fact keys to inspect. Omit to inspect every currently registered fact."
+    },
+    "command": {
+      "type": "string",
+      "description": "Absolute executable path or bare command name to resolve in the active execution world."
+    }
+  },
+  "required": [
+    "kind"
+  ]
+}
+```
+
+Source: [`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts)
+
+Read-only inspection of registered runtime facts and executable resolution through the active subprocess provider.
 
 <a id="deepseek-aidsh-tool-workflow"></a>
 

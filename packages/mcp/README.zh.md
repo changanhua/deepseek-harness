@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-`mcp/` 组把 harness 连接到 Model Context Protocol（MCP）生态。一个包把外部工具服务器挂载给 DSH 模型；另一个包让外部 Codex 客户端以运行绑定方式观察隔离 DSH Host。两个方向都通过显式 profile 组合启用，也都不暴露 MCP resources 或 prompts。本页映射该组；各包 README 负责自己的约定。
+`mcp/` 组把 harness 连接到 Model Context Protocol（MCP）工具服务器生态。本组的唯一一个包挂载外部服务器——文件系统、GitHub、数据库或记忆服务器——使该服务器的工具以稳定的服务器限定名称提供给模型，并可作为原生工具调用。每个服务器对应一个配置项；默认不启用任何服务器，因此按需逐个启用。只桥接 Tools 能力：MCP resources 与 prompts 不受支持。本页提供该组的索引；具体包的约定由其 README 说明。
 
 ## 目录
 
@@ -22,11 +22,10 @@ kind: "package-group"
 <a id="packages"></a>
 ## 包
 
-本组包含两个包；各自的 README 拥有细节。
+本组只包含一个包；详细信息以该包的 README 和下方链接为准。
 
 | 包 | 提供的能力 |
 |---|---|
-| [`control-mcp/`](control-mcp/README.zh.md) | 通过有界的本地 stdio MCP server 观察并驱动一次隔离 DSH 验证运行 |
 | [`mcp-client/`](mcp-client/README.zh.md) | 挂载一台外部 MCP 服务器，让模型可以把它的工具当作原生工具调用 |
 
 -----
@@ -37,9 +36,6 @@ kind: "package-group"
 先用可运行的示例配置体验插件，再阅读 Agent Note 了解其背后的行为决策。
 
 - [MCP 客户端插件 Agent Note](../../.agents/notes/implemented/feature/2026-07-07-mcp-client-plugin.zh.md)——桥接的设计：服务器限定命名、发现、执行与环境清洗。
-- [MCP 客户端自动重连 Agent Note](../../.agents/notes/implemented/feature/2026-08-06-mcp-client-auto-reconnect.zh.md)——重连策略、单次中断的尝试预算与退出开关。
-- [运行绑定 DSH 控制 MCP Agent Note](../../.agents/notes/implemented/feature/2026-09-10-run-bound-dsh-control-mcp.zh.md)——本地 verifier 边界、身份 fence 与被拒绝的通用 server 替代方案。
-- [第三方记忆 MCP 示例 Agent Note](../../.agents/notes/implemented/feature/2026-07-31-third-party-memory-mcp-examples.zh.md)——作为参考配置交付的三个默认关闭的记忆服务器 overlay。
 - [第三方记忆 MCP 指南](../../docs/user/guide/mcp-memory.zh.md)——可运行的 overlay 配置行与设置说明。
 - [工具子系统参考](../../docs/subsystems/tools.zh.md)——接收已注册工具的 `ToolRuntime`。
 

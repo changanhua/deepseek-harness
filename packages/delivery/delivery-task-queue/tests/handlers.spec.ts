@@ -1264,7 +1264,6 @@ describe('Delivery Queue WorkHandlers', () => {
     ['configuration', 'failed', 'not-started'],
     ['invalid-request', 'failed', 'not-started'],
     ['workspace-boundary', 'failed', 'started'],
-    ['workspace-integrity', 'failed', 'started'],
     ['execution', 'failed', 'started'],
     ['cleanup', 'unknown', 'unknown'],
   ] as const)('maps verifier %s failures truthfully', async (code, status, sideEffect) => {

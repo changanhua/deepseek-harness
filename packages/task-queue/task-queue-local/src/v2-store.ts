@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, open, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { applyChange, canonicalJson, foldChanges, hydrateFoldedQueue, projectChange, snapshotFoldedQueue } from '@changanhua/dsh-task-queue'
+import { applyChange, canonicalJson, foldChanges, hydrateFoldedQueue, snapshotFoldedQueue } from '@changanhua/dsh-task-queue'
 import type { ChangeSet, QueueFoldSnapshot } from '@changanhua/dsh-task-queue'
 import type { FoldedQueue } from '@changanhua/dsh-task-queue'
 import { acquireQueueOwnership } from './lock.ts'
@@ -21,7 +21,6 @@ export class WorkQueueStore {
   private projection: FoldedQueue = foldChanges([])
   private tail: Promise<void> = Promise.resolve()
   private ownership: QueueOwnership | undefined
-  private fault: Error | undefined
 
   /** @param root - Dedicated Queue v2 root. */
   constructor(readonly root: string) {
@@ -46,7 +45,6 @@ export class WorkQueueStore {
     }
     try {
       this.projection = await this.recover()
-      this.fault = undefined
       return this.projection
     } catch (error) {
       await this.close()
@@ -67,12 +65,6 @@ export class WorkQueueStore {
    * @returns Current in-memory projection.
    */
   current(): FoldedQueue { return this.projection }
-
-  /**
-   * Report whether an append failure has stopped this store from accepting mutations.
-   * @returns Whether the store rejects further mutations until it is reopened.
-   */
-  isFaulted(): boolean { return this.fault !== undefined }
 
   /**
    * Serialize one durable mutation while callers prepare work outside the FIFO.
@@ -100,15 +92,13 @@ export class WorkQueueStore {
    * @returns Updated folded Queue projection.
    */
   async append(change: ChangeSet): Promise<FoldedQueue> {
-    this.assertWritable()
-    const next = projectChange(this.projection, change)
+    applyChange(this.projection, change)
     const handle = await open(this.logPath, 'a')
     try {
       await handle.writeFile(`${canonicalJson(change)}\n`, 'utf8')
       await handle.sync()
-      this.projection = next
     } catch (error) {
-      this.fault = error instanceof Error ? error : new Error(String(error))
+      this.projection = await this.recover()
       throw error
     } finally {
       await handle.close()
@@ -118,7 +108,6 @@ export class WorkQueueStore {
 
   /** Atomically cache the projection; JSONL remains authoritative. */
   async writeSnapshot(): Promise<void> {
-    this.assertWritable()
     const projection = snapshotFoldedQueue(this.projection)
     const value: SnapshotFile = { schemaVersion: MANIFEST_VERSION, projection, digest: digest(projection) }
     const temporary = `${this.snapshotPath}.tmp`
@@ -151,10 +140,6 @@ export class WorkQueueStore {
       const value = JSON.parse(await readFile(this.snapshotPath, 'utf8')) as SnapshotFile
       return value.schemaVersion === MANIFEST_VERSION && digest(value.projection) === value.digest ? value.projection : null
     } catch { return null }
-  }
-
-  private assertWritable(): void {
-    if (this.fault !== undefined) throw new Error(`task queue store is faulted: ${this.fault.message}`, { cause: this.fault })
   }
 }
 

@@ -17,6 +17,21 @@
     - img
     - text: workspace
   - treeitem "New Session" [selected]
+- button "Capabilities":
+  - img
+  - text: Capabilities 50
+- button "Work Observatory":
+  - img
+  - text: Work Observatory
+- button "Architecture":
+  - img
+  - text: Architecture 288
+- button "Content Library":
+  - img
+  - text: Content Library
+- button "Queue":
+  - img
+  - text: Queue idle
 - button "Settings":
   - img
   - text: Settings
@@ -29,8 +44,8 @@
   - img
   - text: Standard mode
   - img
-- textbox "Describe what you want to build... / commands, @ files or sessions"
-- button "Commands":
+- textbox "Describe what you want to build, / commands, @ files or sessions"
+- button "Add files or run commands":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
 - button "Plan mode on, press to turn off": Plan
@@ -38,6 +53,3 @@
   - text: DeepSeek-V4-Flash
   - img
 - button "Send message" [disabled]
-- text: Details
-- button "Close details"
-- text: Click a tool row in the message flow to view its details

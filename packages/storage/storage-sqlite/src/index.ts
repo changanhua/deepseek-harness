@@ -11,13 +11,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { isAbsolute, resolve } from 'node:path'
 import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
-import type {
-  KvFacet,
-  KvUnit,
-  KvUnitDescriptor,
-  StorageBackend,
-  StorageBackendGuarantee,
-} from '@deepseek-ai/dsh-storage'
+import type { KvFacet, KvUnit, KvUnitDescriptor, StorageBackend, StorageBackendGuarantee } from '@deepseek-ai/dsh-storage'
 import { openDatabase, recordTableName, type JournalMode } from './schema.ts'
 import { SqliteKvUnit } from './unit.ts'
 
@@ -38,7 +32,7 @@ export const inject = ['storage']
 
 /** Plugin configuration. */
 export interface Config {
-  /** Storage hub registration name. Existing configurations default to `sqlite`. */
+  /** Storage hub registration name; defaults to `sqlite` for compatibility. */
   backendName?: string
   /**
    * Filesystem path to the SQLite database file. The special value `:memory:`
@@ -81,13 +75,7 @@ export const Config: z<Config> = z.object({
   privateDirectory: z.boolean().default(false),
 })
 
-/**
- * Resolve a configured database path without changing legacy relative-path behavior.
- * @param path - Database file path or the in-memory sentinel.
- * @param pathBase - Base selected by the configuration.
- * @param env - Environment used by the public Harness-home resolver.
- * @returns Absolute file path, or the unchanged in-memory sentinel.
- */
+/** Resolve a configured database path while preserving explicit absolute paths. */
 export function resolveStoragePath(
   path: string,
   pathBase: StoragePathBase,
@@ -125,9 +113,7 @@ export class SqliteStorageBackend implements StorageBackend {
     }
     this.guarantees = Object.freeze([
       ...(resolved.ownership === 'exclusive' ? ['single-writer' as const] : []),
-      ...(resolved.synchronous === 'full' || resolved.synchronous === 'extra'
-        ? ['commit-sync' as const]
-        : []),
+      ...(resolved.synchronous === 'full' || resolved.synchronous === 'extra' ? ['commit-sync' as const] : []),
       ...(resolved.privateDirectory ? ['private-root' as const] : []),
     ])
     this.ready = openDatabase(resolveStoragePath(resolved.path, resolved.pathBase), {
@@ -168,32 +154,25 @@ export class SqliteStorageBackend implements StorageBackend {
 
   private async materializeUnit(descriptor: KvUnitDescriptor): Promise<SqliteKvUnit> {
     const db = await this.ready
-    db.exec('BEGIN IMMEDIATE')
-    try {
-      const row = db.prepare('SELECT version FROM units WHERE name = ?').get(descriptor.name) as
-        | { version: number }
-        | undefined
-      if (row === undefined) {
-        db.prepare('INSERT INTO units (name, version) VALUES (?, ?)').run(descriptor.name, descriptor.version)
-      } else if (row.version !== descriptor.version) {
-        throw new StorageError(
-          'version-mismatch',
-          `kv unit '${descriptor.name}' is stamped version ${row.version} on the medium, incompatible with descriptor version ${descriptor.version}`,
-        )
-      }
-      for (const table of descriptor.tables) {
-        // Both segments passed UNIT_NAME_RE, so the identifier is safe in DDL.
-        db.exec(`
-          CREATE TABLE IF NOT EXISTS "${recordTableName(descriptor.name, table)}" (
-            key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-          ) STRICT
-        `)
-      }
-      db.exec('COMMIT')
-    } catch (error) {
-      try { db.exec('ROLLBACK') } catch {}
-      throw error
+    const row = db.prepare('SELECT version FROM units WHERE name = ?').get(descriptor.name) as
+      | { version: number }
+      | undefined
+    if (row === undefined) {
+      db.prepare('INSERT INTO units (name, version) VALUES (?, ?)').run(descriptor.name, descriptor.version)
+    } else if (row.version !== descriptor.version) {
+      throw new StorageError(
+        'version-mismatch',
+        `kv unit '${descriptor.name}' is stamped version ${row.version} on the medium, incompatible with descriptor version ${descriptor.version}`,
+      )
+    }
+    for (const table of descriptor.tables) {
+      // Both segments passed UNIT_NAME_RE, so the identifier is safe in DDL.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS "${recordTableName(descriptor.name, table)}" (
+          key   TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        ) STRICT
+      `)
     }
     return new SqliteKvUnit(db, descriptor, () => {
       this.units.delete(descriptor.name)

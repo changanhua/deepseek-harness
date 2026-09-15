@@ -62,7 +62,7 @@ class TestAttachments extends AttachmentStore {
 
 /** Loader-mounted capability fixture for Queue's host-plane composition. */
 async function applyQueueTestSupport(ctx: Context): Promise<void> {
-  await ctx.plugin(SystemPrompt, { persona: '' })
+  await ctx.plugin(SystemPrompt, { personaPrefix: '' })
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(TestSubprocess)

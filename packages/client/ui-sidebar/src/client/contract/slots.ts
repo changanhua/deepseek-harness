@@ -8,11 +8,12 @@
  * above the foot, and the foot is the `sidebar.settings` registrant's
  * (ui-settings), followed by optional footer actions in `sidebar.footer.action`.
  */
-import type { HostObservable, PropsHooks, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 // Type-only: pulls ui-layout's SlotMap merge (the 'sidebar' entry) into every
 // program that sees this contract, so PropsRuntime<'sidebar'> resolves.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { UsePanelInfo } from '@deepseek-ai/dsh-client-ui-layout/client'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -41,8 +42,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * module-ring state it can switch (`setActiveModule`).
      */
     'sidebar.modules': { kind: 'list'; scope: 'root'; owner: SidebarModuleOwnerProps }
-    /** Primary work navigation, before the project browser. */
-    'sidebar.primary': { kind: 'list'; scope: 'root'; owner: SidebarModuleOwnerProps }
     /**
      * The settings seat at the sidebar foot. Declared by this package's
      * 'sidebar' entry; ui-settings registers its trigger row + modal panel.
@@ -74,6 +73,8 @@ export interface SidebarBrandNameOwnerProps {
  * boundary. Business data and actions arrive through the region's own inject.
  */
 export interface SidebarSectionOwnerProps {
+  /** Global panel selector adapted from the layout module ring. */
+  usePanelInfo: UsePanelInfo
   /** Shell fold-state output: wide renders the full browser, rail the icon column. */
   wide: boolean
   /** Rail icons request expansion; the browser rides the wide flip for focus. */
@@ -118,8 +119,6 @@ export interface SidebarFooterActionOwnerProps {
  * the New Session button and toggling the column.
  */
 export type SidebarRootInjected = {
-  /** Primary navigation replaces the legacy module shortcuts when mounted. */
-  hooks: { primaryNavigation: HostObservable<boolean> }
   /**
    * Start a New Session: with a workspace, reuse-or-create its blank session
    * and open it; without one, inherit the current Session Workspace, then the
@@ -142,8 +141,7 @@ export type SidebarRootComponentProps =
     | 'sidebar.brand.name'
     | 'sidebar.workspaces'
     | 'sidebar.modules'
-    | 'sidebar.primary'
     | 'sidebar.settings'
     | 'sidebar.footer.action'
   >
-  & Omit<SidebarRootInjected, 'hooks'> & PropsHooks<SidebarRootInjected['hooks']> & PropsLocale<'sidebar'>
+  & SidebarRootInjected & PropsLocale<'sidebar'>
