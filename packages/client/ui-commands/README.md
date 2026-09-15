@@ -49,6 +49,8 @@ When the composer submits with images or generic files, only a host command decl
 
 `src/client/contract.ts` defines contribution and decoration registration. `CommandDirectory` owns the per-session wire cache and resolves typed commands through `resolution.ts`; that module owns first-party identity matching and localized input spellings. `matchSpace` reads the ready cache synchronously, while `matchEnter` waits for readiness and rejects on warmup failure or cancellation. Forwarded catalog and connection events invalidate the cache. After a matched Host execution, this browser emits `command/executed`; other clients observe only the durable command events. `PopupSelectController` owns popup state, and `PopupSelectView` occupies the input overlay. `presentation.ts` owns row labels, icons, and sections; its helpers and the resolution helpers stay internal to the plugin.
 
+Catalog-change notifications coalesce while a pull is active. A successful pull performs one follow-up when invalidated; a failed pull publishes its error without retrying from catalog-change notifications. Explicit warmup, submission, preset changes, and reconnection can retry failed entries. This prevents failed Agent setup and rollback notifications from recursively requesting the same catalog.
+
 </details>
 
 -----

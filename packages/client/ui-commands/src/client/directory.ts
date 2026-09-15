@@ -2,7 +2,7 @@
  * Command-directory cache keyed by session: one entry per served catalog —
  * every session is agent-backed, so `command.list({sessionId})` is the only
  * request fields. Each entry keeps the single-flight / soft-hard invalidation
- * / epoch-guard behavior of the original global cache; the session-key axis
+ * / latest-pull-guard behavior of the original global cache; the session-key axis
  * is the only extra dimension.
  */
 import type { CommandDescriptor } from '@deepseek-ai/dsh-commands/types'
@@ -25,8 +25,8 @@ export type FetchCommands = (sessionId: SessionId) => Promise<readonly CommandDe
 class Entry {
   state: DirectoryStatus = 'cold'
   commands: readonly CommandDescriptor[] = []
-  /** Bumped at each pull start; only the latest pull may publish its outcome. */
-  epoch = 0
+  /** Only the latest pull publishes; soft invalidations coalesce until it succeeds. */
+  pull: { invalidated: boolean } | undefined
   lastError: unknown
   waiters: Array<() => void> = []
 }
@@ -58,9 +58,12 @@ export class CommandDirectory {
     return resolveCommand(name, entry.commands)
   }
 
-  /** Soft invalidation (commands-changed): background repull on every touched key; ready snapshots keep serving. */
+  /** Soft invalidation: coalesce active pulls and refresh ready snapshots; failed keys require an explicit retry. */
   invalidateAll(): void {
-    for (const key of this.entries.keys()) void this.refresh(key)
+    for (const [key, entry] of this.entries) {
+      if (entry.pull !== undefined) entry.pull.invalidated = true
+      else if (entry.state === 'ready') void this.refresh(key)
+    }
   }
 
   /**
@@ -99,28 +102,33 @@ export class CommandDirectory {
 
   /**
    * Start one pull for one session. Publishes ready/failed only while it is
-   * still the key's latest pull (epoch guard); a ready snapshot is not
+   * still the key's latest pull; a ready snapshot is not
    * demoted while the pull flies.
    * @param sessionId - session key.
    * @returns settled when this pull's outcome is published or discarded.
    */
   async refresh(sessionId: SessionId): Promise<void> {
     const entry = this.entry(sessionId)
-    const epoch = ++entry.epoch
+    const pull = { invalidated: false }
+    entry.pull = pull
     if (entry.state !== 'ready') entry.state = 'pending'
     try {
       const commands = await this.fetchCommands(sessionId)
-      if (epoch !== entry.epoch) return
+      if (pull !== entry.pull) return
       entry.commands = commands
       entry.state = 'ready'
       entry.lastError = undefined
     } catch (error) {
-      if (epoch !== entry.epoch) return
+      if (pull !== entry.pull) return
       entry.commands = []
       entry.state = 'failed'
       entry.lastError = error
     } finally {
-      if (epoch === entry.epoch) notifyWaiters(entry)
+      if (pull === entry.pull) {
+        entry.pull = undefined
+        notifyWaiters(entry)
+        if (entry.state === 'ready' && pull.invalidated) void this.refresh(sessionId)
+      }
     }
   }
 

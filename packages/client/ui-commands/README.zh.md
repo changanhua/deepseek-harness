@@ -49,6 +49,8 @@ composer 携带图片或通用文件提交时，只有声明了 `input.attachmen
 
 `src/client/contract.ts` 定义贡献项和装饰的注册接口。`CommandDirectory` 负责会话级协议缓存，并通过 `resolution.ts` 解析输入命令；该模块负责内置命令标识匹配和本地化输入写法。`matchSpace` 同步读取就绪缓存，`matchEnter` 等待缓存就绪，预热失败或取消时拒绝。转发的目录和连接事件使缓存失效。宿主执行匹配的命令后，本浏览器发布 `command/executed`，其他客户端只观察持久命令事件。`PopupSelectController` 负责弹窗状态，`PopupSelectView` 占据输入浮层。`presentation.ts` 负责行标题、图标和分节，展示与解析辅助函数均留在插件内部。
 
+拉取期间的目录变更通知会合并。拉取成功后，如期间收到失效通知，则补拉一次；拉取失败则发布错误，不因目录变更通知自动重试。显式预热、提交、预设切换和重连可以重试失败项。这可防止 Agent 初始化失败及回滚通知递归请求同一目录。
+
 </details>
 
 -----

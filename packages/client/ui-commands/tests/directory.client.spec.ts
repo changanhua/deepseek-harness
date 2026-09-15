@@ -155,6 +155,38 @@ describe('epoch guard (per key)', () => {
 })
 
 describe('invalidateAll (commands-changed soft)', () => {
+  it('does not turn failed Agent setup and rollback notifications into automatic retries', async () => {
+    const { dir, pull, countOf } = bench()
+    const first = dir.refresh(S1)
+    const waiting = dir.ensureReady(S1, new AbortController().signal)
+    const rejected = expect(waiting).rejects.toThrow('preset failed')
+    dir.invalidateAll()
+    dir.invalidateAll()
+    pull(S1, 0).reject(new Error('preset failed'))
+    await first
+    expect(countOf(S1)).toBe(1)
+    await rejected
+    dir.invalidateAll()
+    expect(countOf(S1)).toBe(1)
+    dir.warm(S1)
+    expect(countOf(S1)).toBe(2)
+    pull(S1, 1).resolve(CMDS)
+  })
+
+  it('coalesces changes during a successful pull into one follow-up', async () => {
+    const { dir, pull, countOf } = bench()
+    const first = dir.refresh(S1)
+    dir.invalidateAll()
+    dir.invalidateAll()
+    expect(countOf(S1)).toBe(1)
+    pull(S1, 0).resolve(CMDS)
+    await first
+    expect(countOf(S1)).toBe(2)
+    pull(S1, 1).resolve(S2_CMDS)
+    await Promise.resolve()
+    expect(dir.resolve(S1, 'attach')).toBeDefined()
+  })
+
   it('repulls every touched key in the background while ready snapshots keep serving', async () => {
     const { dir, pull, countOf } = bench()
     const a = dir.refresh(S1)
