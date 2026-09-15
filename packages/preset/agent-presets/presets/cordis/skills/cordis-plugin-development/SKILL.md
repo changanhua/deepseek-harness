@@ -56,7 +56,7 @@ In this route, a request to show collected results in the browser assistant side
 
 `sessionController.prompt` requires a live `AbortSignal` as its second argument. Create one once inside `apply()`, pass `controller.signal` on every prompt, and register `ctx.effect(() => () => controller.abort())` so stopping or updating the Package cancels pending delivery. Calling `prompt(request)` without the signal can throw inside the Host RPC proxy and terminate the Host process.
 
-For collection updates, `harness.browser.mount`'s `collected` field is an array of absolute links. The extension renders a matching entry as `已加入` and disables its button. Keep this array in `harness.state`; after accepting a new click, update the array and remount the same slot with the same page and selectors plus the new `collected` array so the visible state refreshes. A Package update must read the old array before mounting, or it will lose the collected markers.
+For collection updates, `harness.browser.mount`'s `collected` field is an array of absolute links. The extension renders a matching entry as `已加入` and disables its button. Keep business results in `harness.state`; after accepting a new click, update the array and remount the same slot with the same page and selectors plus the new `collected` array so the visible state refreshes. Omission preserves the last confirmed set for the same owner and document; `[]` explicitly clears it. An unmount invalidates the old inspect receipt, so inspect again before restoring the slot. Follow the `browser-page-model` Skill for stale bindings, virtual lists and confirmed cleanup.
 
 ## Provider navigation
 

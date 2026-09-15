@@ -250,7 +250,7 @@ export interface DynamicCordisInventoryRow {
 /** Answer to removing a plugin and all of its package versions. */
 export type DynamicCordisUndefineReceipt =
   | { ok: true; wasRunning: boolean }
-  | { ok: false; reason: 'plugin-missing'; message: string }
+  | { ok: false; reason: 'plugin-missing' | 'cleanup-pending'; message: string }
 
 /** One render failure observed after a Client half loaded. */
 export interface DynamicCordisRenderFailure {

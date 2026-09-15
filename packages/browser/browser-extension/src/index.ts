@@ -57,6 +57,7 @@ interface Peer {
 
 /** One live page entry mount; late clicks from another document are rejected against it. */
 interface MountRegistration {
+  acceptingClicks: boolean
   readonly installationId: string
   readonly sessionId: string
   readonly grantEpoch: number
@@ -180,7 +181,11 @@ export class BrowserExtension extends Browser {
     const parsed = browserActionSchema.safeParse(fixed.action)
     if (!parsed.success) return this.failure(fixed, signal, 'invalid_action')
     const action = normalizeAction(parsed.data)
-    const mutates = !['tabs', 'snapshot', 'wait', 'screenshot'].includes(action.kind)
+    if (action.kind === 'entry_mount' || action.kind === 'entry_unmount') {
+      const mount = this.mounts.get(`${fixed.installationId}\u0000${action.mountId}`)
+      if (mount !== undefined && mount.sessionId !== fixed.sessionId) return this.failure(fixed, signal, 'mount_owner_mismatch')
+    }
+    const mutates = !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(action.kind)
     if (action.kind === 'entry_mount' && this.mounts.size >= this.config.maxMounts
       && !this.mounts.has(`${fixed.installationId}\u0000${action.mountId}`)) {
       return this.failure(fixed, signal, 'mount_capacity')
@@ -205,10 +210,10 @@ export class BrowserExtension extends Browser {
     const fixed = structuredClone(operation)
     const parsed = browserActionSchema.safeParse(fixed.action)
     // Persistent mounts have no one-shot preparation or approval card.
-    if (!parsed.success || parsed.data.kind === 'entry_mount' || parsed.data.kind === 'entry_unmount') throw Object.assign(new Error('invalid_action'), { code: 'invalid_action' })
+    if (!parsed.success || ['entry_inspect', 'entry_mount', 'entry_unmount'].includes(parsed.data.kind)) throw Object.assign(new Error('invalid_action'), { code: 'invalid_action' })
     const action = normalizeAction(parsed.data)
     const grant = (await this.grants.list()).find(candidate => candidate.installationId === fixed.installationId)
-    const mutates = !['tabs', 'snapshot', 'wait', 'screenshot'].includes(action.kind)
+    const mutates = !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(action.kind)
     if (grant === undefined || !this.grants.permit(grant) || !grant.scopes.includes(mutates ? 'browser:write' : 'browser:read')) throw Object.assign(new Error('unauthorized'), { code: 'unauthorized' })
     return this.preparations.prepare({ ...fixed, action }, signal, grant.grantEpoch)
   }
@@ -246,19 +251,26 @@ export class BrowserExtension extends Browser {
       mutates, payload: jsonValueSchema.parse(payload),
       ...(target === undefined ? {} : { target: { tabId: target.tabId, frameId: target.frameId, documentId: target.documentId } }),
     })
+    const unmount = action.kind === 'entry_unmount' ? this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) : undefined
+    if (unmount) unmount.acceptingClicks = false
     const result = await this.requests.execute(request, signal)
     // Register or clear the page mount inside the dispatch that owns the grant
     // epoch, so late clicks are checked against the authorization that mounted them.
     if (action.kind === 'entry_mount') {
       if (result.outcome === 'observed') {
         this.mounts.set(`${operation.installationId}\u0000${action.mountId}`, {
+          acceptingClicks: true,
           installationId: operation.installationId, sessionId: operation.sessionId, grantEpoch: grant.grantEpoch,
           tabId: action.page.tabId, frameId: action.page.frameId, documentId: action.page.documentId,
           url: action.page.url, mountId: action.mountId,
         })
       }
     } else if (action.kind === 'entry_unmount') {
-      this.mounts.delete(`${operation.installationId}\u0000${action.mountId}`)
+      const value = result.value as { unmounted?: unknown; remaining?: unknown } | undefined
+      if (result.outcome === 'observed' && value?.unmounted === true && value.remaining === 0
+        && this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) === unmount) {
+        this.mounts.delete(`${operation.installationId}\u0000${action.mountId}`)
+      }
     }
     return {
       requestId: result.requestId,
@@ -484,7 +496,7 @@ export class BrowserExtension extends Browser {
     if (grant === undefined) throw Object.assign(new Error('authentication required'), { code: 'authentication required' })
     const key = `${grant.installationId}\u0000${input.mountId}`
     const mount = this.mounts.get(key)
-    if (mount === undefined) return { accepted: false }
+    if (mount === undefined || !mount.acceptingClicks) return { accepted: false }
     if (mount.grantEpoch !== grant.grantEpoch || !this.grants.permit(grant) || !grant.scopes.includes('browser:write')
       || mount.tabId !== input.tabId || mount.frameId !== input.frameId
       || mount.documentId !== input.documentId || mount.url !== input.url) {
@@ -518,8 +530,17 @@ function allows(grant: GrantSummary, url: string): boolean {
   try { const parsed = new URL(url); return ['http:', 'https:'].includes(parsed.protocol) && (grant.origins.includes('*') || grant.origins.includes(parsed.origin)) } catch { return false }
 }
 function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): BrowserAction {
+  if (action.kind === 'entry_unmount') return { kind: action.kind, page: action.page, mountId: action.mountId,
+    ...(action.forgetCollected === undefined ? {} : { forgetCollected: action.forgetCollected }) }
+  if (action.kind === 'entry_inspect') {
+    return { kind: action.kind, page: action.page, regionSelector: action.regionSelector, selector: action.selector,
+      ...(action.titleSelector === undefined ? {} : { titleSelector: action.titleSelector }),
+      ...(action.linkSelector === undefined ? {} : { linkSelector: action.linkSelector }),
+      ...(action.sampleLimit === undefined ? {} : { sampleLimit: action.sampleLimit }) }
+  }
   if (action.kind === 'entry_mount') {
     return { kind: action.kind, page: action.page, mountId: action.mountId, selector: action.selector, label: action.label,
+      ...(action.regionSelector === undefined ? {} : { regionSelector: action.regionSelector }),
       ...(action.titleSelector === undefined ? {} : { titleSelector: action.titleSelector }),
       ...(action.linkSelector === undefined ? {} : { linkSelector: action.linkSelector }),
       ...(action.collected === undefined ? {} : { collected: action.collected }) }

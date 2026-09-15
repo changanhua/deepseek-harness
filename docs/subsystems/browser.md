@@ -32,6 +32,9 @@ interface BrowserElementReference {
 type BrowserAction =
   | { readonly kind: 'tabs' }
   | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean }
+  | { readonly kind: 'entry_inspect'; readonly page: BrowserPage; readonly regionSelector: string; readonly selector: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly sampleLimit?: number }
+  | { readonly kind: 'entry_mount'; readonly page: BrowserPage; readonly mountId: string; readonly regionSelector?: string; readonly selector: string; readonly label: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly collected?: readonly string[] }
+  | { readonly kind: 'entry_unmount'; readonly page: BrowserPage; readonly mountId: string; readonly forgetCollected?: boolean }
   | { readonly kind: 'navigate'; readonly page: BrowserPage; readonly url: string }
   | { readonly kind: 'click'; readonly element: BrowserElementReference; readonly intent: string }
   | { readonly kind: 'fill'; readonly element: BrowserElementReference; readonly value: string; readonly intent: string }
@@ -83,6 +86,12 @@ interface BrowserActionResult {
   readonly value?: JsonValue
 }
 ```
+
+## Page entries and site adaptation
+
+Entry inspection and mounting follow the [Browser entry contract](../../packages/browser/browser/README.md). Their evidence is tied to current region and field nodes, including same-document replacement, rather than an ordinary prepared-action ticket. The document runtime retains at most 128 inspection records and 128 collection records; collection keys and values together fit in 65,536 UTF-8 bytes, with at most 512 links per collection. Capacity refusal preserves an existing collection.
+
+The manifest-declared `zhihu-feed.js` content script owns the separate reading-feed adaptation. Its site selectors are not page-model defaults or evidence of page-model generalization. Model callers use the Cordis preset's page-model Skill and the runner facade; `browser_action` does not expose entry operations.
 
 ## Prepared actions
 

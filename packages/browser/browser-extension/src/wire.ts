@@ -29,6 +29,9 @@ export const browserActionSchema = z.discriminatedUnion('kind', [
     tree: z.boolean().optional(), treeCursor: z.string().min(1).max(256).optional(),
     treeLimit: z.number().int().min(1).max(1000).optional(), includeOptions: z.boolean().optional(),
     structure: z.boolean().optional() }).strict(),
+  z.object({ kind: z.literal('entry_inspect'), page, regionSelector: z.string().min(1).max(256),
+    selector: z.string().min(1).max(256), titleSelector: z.string().max(256).optional(),
+    linkSelector: z.string().max(256).optional(), sampleLimit: z.number().int().min(1).max(12).optional() }).strict(),
   z.object({ kind: z.literal('navigate'), page, url: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)) }).strict(),
   z.object({ kind: z.literal('click'), element, intent: z.string().min(1).max(1024) }).strict(),
   z.object({ kind: z.literal('fill'), element, intent: z.string().min(1).max(1024), value: z.string().max(16384) }).strict(),
@@ -43,11 +46,11 @@ export const browserActionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('tab_open'), page, url: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)) }).strict(),
   z.object({ kind: z.literal('scroll'), page, x: z.number().int().min(-100000).max(100000), y: z.number().int().min(-100000).max(100000) }).strict(),
   z.object({ kind: z.literal('wait'), page, milliseconds: z.number().int().min(0).max(15000) }).strict(),
-  z.object({ kind: z.literal('entry_mount'), page, mountId: id, selector: z.string().min(1).max(256),
+  z.object({ kind: z.literal('entry_mount'), page, mountId: id, regionSelector: z.string().min(1).max(256).optional(), selector: z.string().min(1).max(256),
     label: z.string().min(1).max(64), titleSelector: z.string().max(256).optional(),
     linkSelector: z.string().max(256).optional(),
     collected: z.array(z.string().max(8192)).max(512).optional() }).strict(),
-  z.object({ kind: z.literal('entry_unmount'), page, mountId: id }).strict(),
+  z.object({ kind: z.literal('entry_unmount'), page, mountId: id, forgetCollected: z.boolean().optional() }).strict(),
 ])
 const identity = z.object({
   protocolVersion: z.literal(1), grantEpoch: z.number().int().positive(), requestId: z.uuid({ version: 'v4' }),

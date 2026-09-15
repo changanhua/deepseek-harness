@@ -9,7 +9,7 @@ import {
 } from './rpc.ts'
 import { clientRequestSchema } from './rpc-schema.ts'
 import { bridge } from './http-bridge.ts'
-import { isTrustedApiRequest } from './api-request-trust.ts'
+import { isTrustedApiAuthority, isTrustedApiRequest } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
 import type { BrowserAuth } from './browser-auth.ts'
 import type {
@@ -101,7 +101,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
   }
 
   requestAuthorityRejection(request: ConnectionTrustRequest): 403 | undefined {
-    return isTrustedApiRequest(request, this.trustedHosts) ? undefined : 403
+    return isTrustedApiAuthority(request, this.trustedHosts) ? undefined : 403
   }
 
   assertAuthorized(signal: AbortSignal): void {
@@ -142,7 +142,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
         const route = this.fetchRoutes.get(url.pathname)
         return route?.methods.has(method) === true ? route.requestBody : 'buffered'
       },
-      fetch: (request) => this.withAuthorizedRequest(request, async () => {
+      fetch: request => this.withAuthorizedRequest(request, async () => {
         const pathname = new URL(request.url).pathname
         const route = this.fetchRoutes.get(pathname)
         if (route?.methods.has(request.method) === true) return route.fetch(request)

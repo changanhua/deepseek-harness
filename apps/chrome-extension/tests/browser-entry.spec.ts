@@ -22,10 +22,13 @@ interface BrowserRequest extends BrowserIdentity {
     page?: { tabId: number; frameId: number; documentId: string; url: string }
     mountId?: string
     selector?: string
+    regionSelector?: string
     label?: string
     titleSelector?: string
     linkSelector?: string
     collected?: string[]
+    sampleLimit?: number
+    forgetCollected?: boolean
   }
 }
 
@@ -37,8 +40,10 @@ interface BrowserReceipt {
 }
 
 type BrowserPageGlobal = typeof globalThis & { __dshBrowserAssistant?: {
+  entryInspect(request: BrowserRequest): BrowserReceipt
   entryMount(request: BrowserRequest): BrowserReceipt
   entryUnmount(request: BrowserRequest): BrowserReceipt
+  releaseEntries(installationId?: string, sessionId?: string): void
 } }
 
 const identity = (requestId: string, extra: Partial<BrowserIdentity> = {}): BrowserIdentity => ({
@@ -60,8 +65,13 @@ const install = (): BrowserPageGlobal['__dshBrowserAssistant'] => {
 const mountRequest = (mountId: string, extra: Partial<BrowserRequest['payload']> = {}): BrowserRequest => ({
   ...identity(`mount-${mountId}`, { requestId: `mount-${mountId}` }),
   target,
-  payload: { kind: 'entry_mount', page, mountId, selector: '.item', label: '收集标题', ...extra },
+  payload: { kind: 'entry_mount', page, mountId, regionSelector: 'body', selector: ':scope .item', label: '收集标题', ...extra },
 })
+
+const inspectedMount = (assistant: NonNullable<BrowserPageGlobal['__dshBrowserAssistant']>, request: BrowserRequest) => {
+  expect(assistant.entryInspect({ ...request, payload: { ...request.payload, kind: 'entry_inspect' } }).outcome).toBe('observed')
+  return assistant.entryMount(request)
+}
 
 const flushObservers = async () => {
   await Promise.resolve()
@@ -70,6 +80,7 @@ const flushObservers = async () => {
 
 afterEach(() => {
   const assistant = (globalThis as BrowserPageGlobal).__dshBrowserAssistant
+  assistant?.releaseEntries()
   if (assistant?.entryUnmount) {
     const ids = [...document.querySelectorAll<HTMLElement>('[data-dsh-entry-mount-id]')]
       .map(button => button.getAttribute('data-dsh-entry-mount-id')).filter((value): value is string => Boolean(value))
@@ -85,15 +96,149 @@ afterEach(() => {
 })
 
 describe('持久化页面条目挂载', () => {
+  test('预检是强制前置，字段变化使回执失效且不拆除有效旧挂载', () => {
+    document.body.innerHTML = '<div class="item"><a href="/a">A</a></div>'
+    const assistant = install()
+    const request = mountRequest('guard')
+    expect(assistant.entryMount(request)).toMatchObject({ reason: 'inspect_required' })
+    inspectedMount(assistant, request)
+    const original = document.querySelector('button')
+    expect(assistant.entryMount({ ...request, payload: { ...request.payload, selector: ':scope .missing' } }))
+      .toMatchObject({ reason: 'inspect_required' })
+    expect(document.querySelector('button')).toBe(original)
+    document.querySelector('a')!.setAttribute('href', '/changed')
+    expect(assistant.entryMount(request)).toMatchObject({ reason: 'stale_binding' })
+  })
+
+  test('同文档替换区域使旧预检失效，重新预检可绑定新节点', () => {
+    document.body.innerHTML = '<main><div class="item"><a href="/a">A</a></div></main>'
+    const assistant = install()
+    const request = mountRequest('replace', { regionSelector: 'main' })
+    assistant.entryInspect({ ...request, payload: { ...request.payload, kind: 'entry_inspect' } })
+    document.querySelector('main')!.outerHTML = '<main><div class="item"><a href="/a">A</a></div></main>'
+    expect(assistant.entryMount(request)).toMatchObject({ reason: 'stale_binding' })
+    expect(inspectedMount(assistant, request)).toMatchObject({ outcome: 'observed' })
+  })
+
+  test('卸载后重挂保留确认集合，显式数组及永久释放清除集合', () => {
+    document.body.innerHTML = '<div class="item"><a href="/a">A</a></div>'
+    const assistant = install()
+    const request = mountRequest('cache')
+    inspectedMount(assistant, { ...request, payload: { ...request.payload, collected: ['https://example.test/a'] } })
+    const unmount = { ...request, payload: { ...request.payload, kind: 'entry_unmount' } }
+    expect(assistant.entryUnmount(unmount)).toMatchObject({ value: { unmounted: true, remaining: 0 } })
+    expect(assistant.entryMount(request)).toMatchObject({ reason: 'inspect_required' })
+    inspectedMount(assistant, request)
+    expect(document.querySelector('button')!.disabled).toBe(true)
+    expect(assistant.entryMount({ ...request, payload: { ...request.payload, collected: [] } }).outcome).toBe('observed')
+    expect(document.querySelector('button')!.disabled).toBe(false)
+    assistant.entryMount({ ...request, payload: { ...request.payload, collected: ['https://example.test/a'] } })
+    assistant.entryUnmount({ ...unmount, payload: { ...unmount.payload, forgetCollected: true } })
+    inspectedMount(assistant, request)
+    expect(document.querySelector('button')!.disabled).toBe(false)
+  })
+
+  test('拒绝其他所有者卸载或继承同挂载的状态', () => {
+    document.body.innerHTML = '<div class="item"><a href="/a">A</a></div>'
+    const assistant = install()
+    const request = mountRequest('owner')
+    inspectedMount(assistant, { ...request, payload: { ...request.payload, collected: ['https://example.test/a'] } })
+    expect(assistant.entryUnmount({ ...request, sessionId: 'other', payload: { ...request.payload, kind: 'entry_unmount' } }))
+      .toMatchObject({ reason: 'mount_owner_mismatch' })
+    expect(assistant.entryMount({ ...request, sessionId: 'other' })).toMatchObject({ reason: 'mount_owner_mismatch' })
+    assistant.entryUnmount({ ...request, payload: { ...request.payload, kind: 'entry_unmount' } })
+    inspectedMount(assistant, { ...request, sessionId: 'other' })
+    expect(document.querySelector('button')!.disabled).toBe(false)
+    assistant.entryUnmount({ ...request, sessionId: 'other', payload: { ...request.payload, kind: 'entry_unmount' } })
+  })
+
+  test.each(['href', 'text', 'node'])('节点复用改变%s时同步阻止旧点击', async (change) => {
+    const sendMessage = vi.fn(async () => {})
+    ;(globalThis as typeof globalThis & { chrome: unknown }).chrome = { runtime: { sendMessage } }
+    document.body.innerHTML = '<div class="item"><a href="/a">A</a></div>'
+    const assistant = install()
+    const request = mountRequest('virtual')
+    inspectedMount(assistant, request)
+    const button = document.querySelector('button')!
+    const link = document.querySelector('a')!
+    if (change === 'href') link.href = '/b'
+    else if (change === 'text') link.textContent = 'B'
+    else link.outerHTML = '<a href="/b">B</a>'
+    button.click()
+    expect(sendMessage).not.toHaveBeenCalled()
+    await flushObservers()
+    expect(document.querySelectorAll('button')).toHaveLength(0)
+    inspectedMount(assistant, request)
+    document.querySelector('button')!.click()
+    expect(sendMessage).toHaveBeenCalledOnce()
+  })
+
+  test('没有链接不挂按钮，缓存字节超限不破坏旧挂载', () => {
+    document.body.innerHTML = '<div class="item"><span>A</span></div><div class="item"><a href="/a">A</a></div>'
+    const assistant = install()
+    const request = mountRequest('bounded')
+    expect(inspectedMount(assistant, request)).toMatchObject({ value: { mounted: 1 } })
+    const original = document.querySelector('button')
+    expect(assistant.entryMount({ ...request, payload: { ...request.payload, collected: ['x'.repeat(65_536)] } }))
+      .toMatchObject({ reason: 'collection_capacity' })
+    expect(document.querySelector('button')).toBe(original)
+  })
+
+  test('entryInspect 在挂载前返回匹配质量和结构异形样本且不修改页面', () => {
+    document.body.innerHTML = '<main id="feed">'
+      + '<div class="item"><a class="title" href="/a">标题 A</a></div>'
+      + '<div class="item"><span>缺少链接</span></div>'
+      + '<aside><div class="item"><a class="title" href="/outside">区域外条目</a></div></aside>'
+      + '</main>'
+    const assistant = install()
+    const receipt = assistant.entryInspect({ ...identity('inspect'), target,
+      payload: { kind: 'entry_inspect', page, regionSelector: 'main#feed', selector: ':scope > .item',
+        titleSelector: '.title', linkSelector: 'a[href]', sampleLimit: 4 } } as BrowserRequest)
+
+    expect(receipt).toMatchObject({ outcome: 'observed', quiescent: true, value: {
+      matched: 2, valid: 1, missingTitle: 1, missingLink: 1, duplicateLinks: 0,
+      samples: [
+        { index: 0, title: '标题 A', link: 'https://example.test/a', valid: true },
+        { index: 1, title: '缺少链接', link: '', valid: false },
+      ],
+    } })
+    expect(document.querySelectorAll('[data-dsh-entry-mount]')).toHaveLength(0)
+  })
+
+  test('entryInspect 拒绝无效或越过目标区域的绑定', () => {
+    document.body.innerHTML = '<main><div class="item"><a href="/a">标题 A</a></div></main>'
+    const assistant = install()
+    const invalid = assistant.entryInspect({ ...identity('invalid-inspect'), target,
+      payload: { kind: 'entry_inspect', page, regionSelector: 'main[', selector: '.item' } } as BrowserRequest)
+    const outside = assistant.entryInspect({ ...identity('outside-inspect'), target,
+      payload: { kind: 'entry_inspect', page, regionSelector: 'main', selector: 'body .item' } } as BrowserRequest)
+
+    expect(invalid).toMatchObject({ outcome: 'failed', reason: 'invalid_action', quiescent: true })
+    expect(outside).toMatchObject({ outcome: 'failed', reason: 'binding_outside_region', quiescent: true })
+  })
+
   test('entryMount 为每个匹配项插入按钮并报告挂载数', () => {
     document.body.innerHTML = '<div class="item"><a href="https://example.test/a">标题 A</a></div>'
       + '<div class="item"><a href="https://example.test/b">标题 B</a></div>'
     const assistant = install()
-    const receipt = assistant.entryMount(mountRequest('collect'))
+    const receipt = inspectedMount(assistant, mountRequest('collect'))
     expect(receipt).toMatchObject({ outcome: 'observed', quiescent: true, value: { mounted: 2 } })
     const buttons = document.querySelectorAll('[data-dsh-entry-mount]')
     expect(buttons).toHaveLength(2)
     expect(buttons[0].textContent).toBe('收集标题')
+  })
+
+  test('entryMount 把相对条目规则限制在预检过的单一区域', () => {
+    document.body.innerHTML = '<main id="feed"><div class="item"><a href="/a">标题 A</a></div></main>'
+      + '<aside><div class="item"><a href="/outside">区域外条目</a></div></aside>'
+    const assistant = install()
+    const receipt = inspectedMount(assistant, mountRequest('scoped', {
+      regionSelector: 'main#feed', selector: ':scope > .item',
+    }))
+
+    expect(receipt).toMatchObject({ outcome: 'observed', value: { mounted: 1 } })
+    expect(document.querySelectorAll('main [data-dsh-entry-mount]')).toHaveLength(1)
+    expect(document.querySelectorAll('aside [data-dsh-entry-mount]')).toHaveLength(0)
   })
 
   test('点击按钮把标题与链接回传给 assistant', async () => {
@@ -101,7 +246,7 @@ describe('持久化页面条目挂载', () => {
     ;(globalThis as typeof globalThis & { chrome: unknown }).chrome = { runtime: { sendMessage } }
     document.body.innerHTML = '<div class="item"><a href="https://example.test/a">标题 A</a></div>'
     const assistant = install()
-    assistant.entryMount(mountRequest('collect'))
+    inspectedMount(assistant, mountRequest('collect'))
     ;(document.querySelector('[data-dsh-entry-mount]') as HTMLButtonElement).click()
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: 'dsh-entry-click', mountId: 'collect', documentId: 'doc-feed', url: 'https://example.test/feed',
@@ -112,7 +257,7 @@ describe('持久化页面条目挂载', () => {
   test('同 mountId 重复挂载先移除旧按钮再重建，不产生重复项', () => {
     document.body.innerHTML = '<div class="item"><a href="https://example.test/a">标题 A</a></div>'
     const assistant = install()
-    assistant.entryMount(mountRequest('collect'))
+    inspectedMount(assistant, mountRequest('collect'))
     const first = document.querySelectorAll('[data-dsh-entry-mount]')
     expect(first).toHaveLength(1)
     const rebuilt = assistant.entryMount(mountRequest('collect'))
@@ -125,7 +270,7 @@ describe('持久化页面条目挂载', () => {
     document.body.innerHTML = '<div class="item"><a href="https://example.test/a">标题 A</a></div>'
       + '<div class="item"><a href="https://example.test/b">标题 B</a></div>'
     const assistant = install()
-    assistant.entryMount(mountRequest('collect', { collected: ['https://example.test/a'] }))
+    inspectedMount(assistant, mountRequest('collect', { collected: ['https://example.test/a'] }))
     const buttons = [...document.querySelectorAll<HTMLButtonElement>('[data-dsh-entry-mount]')]
     expect(buttons[0].textContent).toContain('已加入')
     expect(buttons[0].disabled).toBe(true)
@@ -136,7 +281,7 @@ describe('持久化页面条目挂载', () => {
   test('新插入的匹配项会被 MutationObserver 补挂', async () => {
     document.body.innerHTML = '<div class="item"><a href="https://example.test/a">标题 A</a></div>'
     const assistant = install()
-    assistant.entryMount(mountRequest('collect'))
+    inspectedMount(assistant, mountRequest('collect'))
     expect(document.querySelectorAll('[data-dsh-entry-mount]')).toHaveLength(1)
     const item = document.createElement('div')
     item.className = 'item'
@@ -149,7 +294,7 @@ describe('持久化页面条目挂载', () => {
   test('entryUnmount 移除按钮与观察者', async () => {
     document.body.innerHTML = '<div class="item"><a href="https://example.test/a">标题 A</a></div>'
     const assistant = install()
-    assistant.entryMount(mountRequest('collect'))
+    inspectedMount(assistant, mountRequest('collect'))
     expect(document.querySelectorAll('[data-dsh-entry-mount]')).toHaveLength(1)
     const receipt = assistant.entryUnmount({ ...identity('unmount', { requestId: 'unmount' }), target,
       payload: { kind: 'entry_unmount', page, mountId: 'collect' } })

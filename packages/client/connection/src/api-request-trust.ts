@@ -116,3 +116,11 @@ export function isTrustedApiRequest(request: ConnectionTrustRequest, trustedHost
     return false
   }
 }
+
+/** Decide whether the Host header names this deployment, without browser-origin policy. */
+export function isTrustedApiAuthority(request: ConnectionTrustRequest, trustedHosts: readonly string[]): boolean {
+  const host = header(request.headers, 'host')
+  if (host === undefined) return false
+  const hostUrl = parseAuthority(host)
+  return hostUrl !== undefined && (isLoopbackHostname(hostUrl.hostname) || isTrustedAuthority(hostUrl, trustedHosts))
+}

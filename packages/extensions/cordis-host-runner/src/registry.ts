@@ -28,6 +28,10 @@ export interface DynamicCordisRun {
   handlerDisposers: (() => void)[]
   /** Runtime failures already sent to the owning Agent during this activation. */
   reportedRuntimeErrors: Set<string>
+  /** Stops new browser operations and bounds quiescence during retraction. */
+  browserLifetime: AbortController
+  /** Browser operations that may have crossed the page boundary. */
+  browserWork: Set<Promise<unknown>>
   /** Browser entry mounts owned by this activation and removed during retraction. */
   ownedBrowserMounts: Map<string, {
     installationId: string
@@ -68,6 +72,10 @@ export interface DynamicCordisPlugin {
   clientVersionUpdatesApproved: boolean
   /** Bounded JSON state retained for this stable Plugin across Package versions and stops. */
   state: Map<string, JsonValue>
+  /** Document-local collected caches retained after ordinary stop/unmount. */
+  retainedBrowserMounts: DynamicCordisRun['ownedBrowserMounts']
+  /** Operations from retracted runs that have not reached quiescence. */
+  pendingBrowserWork: Set<Promise<unknown>>
   /** Unmounts whose result was unknown, retained so a later stop can reconcile them. */
   pendingBrowserMounts: Map<string, {
     installationId: string
@@ -136,6 +144,8 @@ export interface DynamicCordisReference {
 
 /** Source-free Plugin summary returned by layered self inspection. */
 export interface DynamicCordisPluginInspection extends DynamicCordisReference {
+  /** Detached bounded Plugin state, retained across ordinary stops. */
+  state: Record<string, JsonValue>
   /** Immutable Package summaries in define order. */
   packages: Array<{
     packageId: CordisDynamicPackageId
