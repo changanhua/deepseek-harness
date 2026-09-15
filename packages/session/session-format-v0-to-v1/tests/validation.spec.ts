@@ -400,7 +400,7 @@ describe('released event and payload inventory', () => {
 
   it('accepts every released nested union variant and optional member', () => {
     const sources: SessionFormatJsonValue[] = [
-      { kind: 'user', rpcId: 'rpc-1', clientTimeZone: 'Asia/Shanghai' },
+      { kind: 'user', rpcId: 'rpc-1', rpcDigest: 'ab'.repeat(32), clientTimeZone: 'Asia/Shanghai' },
       { kind: 'plugin', plugin: 'plain' },
       { kind: 'plugin', plugin: 'instructions', form: 'instructions' },
       { kind: 'plugin', plugin: 'catalog', form: 'catalog' },
@@ -551,6 +551,27 @@ describe('released event and payload inventory', () => {
     for (const [type, data] of remaining) {
       expect(() => { assertPayload(type, data) }, type).not.toThrow()
     }
+  })
+
+  it('accepts prompt idempotency metadata in a spliced user message', () => {
+    const data = {
+      target: 'next-turn',
+      start: 0,
+      inserted: [{
+        ...userMessage,
+        source: {
+          kind: 'user',
+          rpcId: 'rpc-1',
+          rpcDigest: 'ab'.repeat(32),
+          clientTimeZone: 'Asia/Shanghai',
+        },
+      }],
+    } as const
+    expect(() => { assertPayload('agent/inbox/spliced', data) }).not.toThrow()
+    expect(() => { assertPayload('agent/inbox/spliced', {
+      ...data,
+      inserted: [{ ...data.inserted[0], source: { ...data.inserted[0].source, rpcDigest: '' } }],
+    }) }).toThrow(/rpcDigest/)
   })
 
   it('validates legacy round-zero goal mutation messages', () => {

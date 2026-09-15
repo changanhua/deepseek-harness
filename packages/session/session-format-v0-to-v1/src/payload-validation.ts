@@ -547,8 +547,9 @@ function messageSourceValue(
   if (expected === 'tool' && source['kind'] !== 'tool') throw new SessionFormatError(`${label} must be tool source`)
   switch (source['kind']) {
     case 'user':
-      assertReleasedV0Keys(source, ['kind'], ['rpcId', 'clientTimeZone'], label)
+      assertReleasedV0Keys(source, ['kind'], ['rpcId', 'rpcDigest', 'clientTimeZone'], label)
       if (source['rpcId'] !== undefined) nonEmptyString(source['rpcId'], `${label} rpcId`)
+      if (source['rpcDigest'] !== undefined) nonEmptyString(source['rpcDigest'], `${label} rpcDigest`)
       if (source['clientTimeZone'] !== undefined) nonEmptyString(source['clientTimeZone'], `${label} clientTimeZone`)
       return
     case 'plugin':
