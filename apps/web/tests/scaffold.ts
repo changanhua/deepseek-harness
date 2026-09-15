@@ -276,6 +276,8 @@ export interface WebScaffold {
   workspaceCwd: string
   /** Temp persistence root (seeded sessions land here through the real API). */
   persistenceRoot: string
+  /** Actual Storage JSON root, exposed for independent persisted-state assertions. */
+  storageRoot: string
   /** Isolated harness home the settings/credentials rows write ($DSH_HOME double). */
   harnessHome: string
   /** Send a browser-equivalent Host request with this scaffold's authenticated cookie. */
@@ -572,7 +574,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     // storage-json's yml root is anchored to the real $DSH_HOME; pin the row
     // to an absolute temp root (removed with the workspace at close) so tests
     // never write the user's harness home.
-    { id: 'storage-json', config: { root: join(workspaceCwd, '.dsh-storages') } },
+    { id: 'storage-json', config: { root: options.storageRoot ?? join(workspaceCwd, '.dsh-storages') } },
     // Keep the real owner-private guarantee. The path is rooted below
     // LocalAppData on Windows because the ACL audit rejects shared %TEMP%
     // ancestors; the directory is unique to this scaffold and removed at
@@ -898,6 +900,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     hostCtx,
     workspaceCwd,
     persistenceRoot,
+    storageRoot: options.storageRoot ?? join(workspaceCwd, '.dsh-storages'),
     hostFetch(path: string, init: RequestInit = {}): Promise<Response> {
       const headers = new Headers(init.headers)
       headers.set('cookie', cookieHeader)
