@@ -31,4 +31,4 @@ export type WorkObservatoryWorkspaceProps =
   & PropsLocale<typeof NS>
 
 /** Props consumed by the Work Observatory sidebar entry. */
-export type WorkObservatoryNavProps = PropsRuntime<'sidebar.modules'> & PropsLocale<typeof NS>
+export type WorkObservatoryNavProps = PropsRuntime<'sidebar.modules.group'> & PropsLocale<typeof NS>

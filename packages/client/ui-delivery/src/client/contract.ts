@@ -71,7 +71,7 @@ export type DeliveryWorkspaceProps =
 
 /** Sidebar module entry props. */
 export type DeliveryNavEntryProps =
-  PropsRuntime<'sidebar.modules'>
+  PropsRuntime<'sidebar.modules.group'>
   & DeliveryNavHooks
   & PropsLocale<typeof NS>
 

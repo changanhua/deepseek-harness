@@ -7,8 +7,9 @@
  * same top-down order) on one fade that ends with the slide. The bottom-pinned
  * settings control only fades. The workspace/session browsing region between
  * the New Session button and the foot is the `sidebar.workspaces` registrant's,
- * first-level module entries stack in `sidebar.modules` above the foot, and
- * the foot holds `sidebar.settings` plus `sidebar.footer.action`; the shell
+ * non-queue module entries render in a collapsed `sidebar.modules.group`
+ * disclosure while Queue stays in `sidebar.modules` above the foot, and the
+ * foot holds `sidebar.settings` plus `sidebar.footer.action`; the shell
  * hands them the wide flag (plus an expand request callback for the browser)
  * and forwards the frame's module-ring state to the module entries.
  *
@@ -20,7 +21,8 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  FishLogo, IconNewChatOutline16, IconPanelLeftOutline16, Tooltip,
+  FishLogo, IconChevronDownOutline14, IconEllipsisOutline16, IconNewChatOutline16,
+  IconPanelLeftOutline16, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SidebarRootComponentProps } from './contract/slots.ts'
 import css from './SidebarRoot.module.css'
@@ -71,6 +73,14 @@ export function SidebarRoot({
     return () => { window.clearTimeout(timer) }
   }, [collapsed])
   const wide = !collapsed || !settled
+
+  // Non-queue module entries stay behind a compact disclosure. The group is
+  // closed on a fresh sidebar and opens when the user asks for it; navigating
+  // to a grouped module from another surface reveals the active entry.
+  const [moduleGroupOpen, setModuleGroupOpen] = useState(false)
+  useEffect(() => {
+    if (activeModule !== 'conversation' && activeModule !== 'queue') setModuleGroupOpen(true)
+  }, [activeModule])
 
   // Freeze the content at its expanded width while it fades out (collapsed
   // && wide): the sliding column then clips it instead of reflowing it. The
@@ -127,6 +137,11 @@ export function SidebarRoot({
   }, [pointerInside])
 
   const buildVersion = localBuildVersion()
+  const groupedModules = renderSlot('sidebar.modules.group', {
+    wide,
+    activeModule,
+    setActiveModule,
+  })
 
   return (
     <div
@@ -215,8 +230,38 @@ export function SidebarRoot({
         })}
       </div>
 
-      {/* First-level module entries (Queue and future module workspaces) stack
-          above the foot; the frame's module-ring state rides straight through. */}
+      {/* Non-queue module entries live behind one disclosure so Queue remains
+          a first-level action. The slot is evaluated while closed but its
+          entries are mounted only after the user expands the group. */}
+      <div
+        className={css.moduleGroup}
+        data-sidebar-module-group
+        data-open={moduleGroupOpen || undefined}
+      >
+        <button
+          type="button"
+          className={css.moduleGroupToggle}
+          aria-label={t('moduleGroup')}
+          aria-expanded={moduleGroupOpen}
+          aria-controls="sidebar-module-group-content"
+          title={wide ? undefined : t('moduleGroup')}
+          onClick={() => { setModuleGroupOpen(open => !open) }}
+        >
+          <IconEllipsisOutline16 size={wide ? 16 : 18} />
+          {wide && <span className={css.moduleGroupLabel}>{t('moduleGroup')}</span>}
+          <IconChevronDownOutline14
+            className={css.moduleGroupChevron}
+            aria-hidden="true"
+          />
+        </button>
+        {moduleGroupOpen && (
+          <div id="sidebar-module-group-content" className={css.moduleGroupContent}>
+            {groupedModules}
+          </div>
+        )}
+      </div>
+
+      {/* Queue remains outside the group and keeps its own first-level row. */}
       <div className={css.modulesArea}>
         {renderSlot('sidebar.modules', { wide, activeModule, setActiveModule })}
       </div>

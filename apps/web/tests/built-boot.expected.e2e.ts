@@ -61,7 +61,13 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
 
   // The sidebar renders from the boot graph: every inject layer activated.
   const tree = await screen.findByRole('tree', { name: 'Sessions' }, { timeout: 10_000 })
+  const more = screen.getByRole('button', { name: 'More', exact: true })
+  expect(more.getAttribute('aria-expanded')).toBe('false')
+  fireEvent.click(more)
+  expect(more.getAttribute('aria-expanded')).toBe('true')
   const architectureEntry = screen.getByRole('button', { name: 'Architecture' })
+  expect(architectureEntry.closest('[data-sidebar-module-group]')).not.toBeNull()
+  expect(screen.getByRole('button', { name: 'Queue', exact: true }).closest('[data-sidebar-module-group]')).toBeNull()
   fireEvent.click(architectureEntry)
   await screen.findByRole('heading', { name: 'Architecture Explorer' })
   expect(Number(screen.getByTestId('architecture-package-total').textContent)).toBeGreaterThan(250)

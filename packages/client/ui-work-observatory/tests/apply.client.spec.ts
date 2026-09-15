@@ -51,7 +51,7 @@ async function bench() {
     name: 'root',
     children: {
       'shell.view': { kind: 'list', scope: 'root' },
-      'sidebar.modules': { kind: 'list', scope: 'root' },
+      'sidebar.modules.group': { kind: 'list', scope: 'root' },
     },
   } as never, () => null)
   return { ctx, slots, registerLocale, observeClient, readRange, open, sessionId }
@@ -72,7 +72,7 @@ describe('ui-work-observatory client apply', () => {
     expect(b.observeClient).toHaveBeenCalledWith(expect.objectContaining({ sessionId: b.sessionId }))
     expect(b.registerLocale).toHaveBeenCalledWith('workObservatory', expect.any(Object))
     expect(b.slots.entries('shell.view')[0]!.options.id).toBe('work-observatory')
-    expect(b.slots.entries('sidebar.modules')[0]!.options).toMatchObject({
+    expect(b.slots.entries('sidebar.modules.group')[0]!.options).toMatchObject({
       id: 'work-observatory-module', order: 6,
     })
     const face = (b.slots.entries('shell.view')[0]!.inject as unknown as () => WorkObservatoryWorkspaceInjected)()
@@ -81,7 +81,7 @@ describe('ui-work-observatory client apply', () => {
 
     await fiber.dispose()
     expect(b.slots.entries('shell.view')).toHaveLength(0)
-    expect(b.slots.entries('sidebar.modules')).toHaveLength(0)
+    expect(b.slots.entries('sidebar.modules.group')).toHaveLength(0)
     expect(vi.getTimerCount()).toBe(0)
   })
 })

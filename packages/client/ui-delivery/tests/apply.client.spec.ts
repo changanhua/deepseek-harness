@@ -55,7 +55,7 @@ async function bench(snapshot = { contractsWithoutPacket: [], cards: [] }) {
     name: 'root',
     children: {
       'shell.view': { kind: 'list', scope: 'root' },
-      'sidebar.modules': { kind: 'list', scope: 'root' },
+      'sidebar.modules.group': { kind: 'list', scope: 'root' },
     },
   } as never, () => null)
   return { ctx, slots, snapshotCall, registerLocale, remote }
@@ -101,7 +101,7 @@ describe('ui-delivery client composition', () => {
     await fiber.await()
 
     const workspace = b.slots.entries('shell.view')
-    const navigation = b.slots.entries('sidebar.modules')
+    const navigation = b.slots.entries('sidebar.modules.group')
     expect(workspace).toHaveLength(1)
     expect(workspace[0]!.options.id).toBe('delivery')
     expect(navigation).toHaveLength(1)
@@ -123,7 +123,7 @@ describe('ui-delivery client composition', () => {
 
     await fiber.dispose()
     expect(b.slots.entries('shell.view')).toHaveLength(0)
-    expect(b.slots.entries('sidebar.modules')).toHaveLength(0)
+    expect(b.slots.entries('sidebar.modules.group')).toHaveLength(0)
   })
 
   it('aborts the active snapshot read when the plugin is disposed', async () => {
@@ -206,7 +206,7 @@ describe('ui-delivery client composition', () => {
       readEvidence(input: unknown): Promise<boolean>
       recordDecision(input: unknown): Promise<boolean>
     })()
-    const navigation = (b.slots.entries('sidebar.modules')[0]!.inject as unknown as () => {
+    const navigation = (b.slots.entries('sidebar.modules.group')[0]!.inject as unknown as () => {
       hooks: { delivery: unknown }
     })()
 

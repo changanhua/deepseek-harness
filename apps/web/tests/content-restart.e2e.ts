@@ -61,6 +61,8 @@ async function start(home: string, patch: string, port: number, seed: boolean): 
 }
 
 async function openLibrary(page: Page): Promise<void> {
+  const more = page.getByRole('button', { name: 'More', exact: true })
+  if (await more.getAttribute('aria-expanded') !== 'true') await more.click()
   await page.getByRole('button', { name: 'Content Library', exact: true }).first().click()
   const row = page.getByRole('button', { name: /Session capture/u })
   await row.waitFor({ timeout: 30_000 })

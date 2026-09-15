@@ -13,7 +13,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the `shell.view` SlotMap merge (ui-layout).
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-// Type-only: pulls the `sidebar.modules` SlotMap merge (ui-sidebar).
+// Type-only: pulls the `sidebar.modules.group` SlotMap merge (ui-sidebar).
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: supplies the renderer-owned ctx.slots service.
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -88,11 +88,11 @@ export function apply(ctx: ClientContext): void {
     inject: (): CapabilityWorkspaceInjected => ({ capability: store }),
   }, CapabilityWorkspace))
 
-  ctx.slots.inject('sidebar.modules', () => ctx.slots.register({
-    name: 'sidebar.modules',
+  ctx.slots.inject('sidebar.modules.group', () => ctx.slots.register({
+    name: 'sidebar.modules.group',
     id: 'capability-module',
-    // Order below the Queue module (order 10) so the Capability entry sits
-    // directly above Queue in the sidebar module stack.
+    // Order within the More group; Queue remains in the separate first-level
+    // sidebar module slot.
     order: 5,
     locale: NS,
     inject: (): CapabilityNavEntryInjected => ({ capability: store }),

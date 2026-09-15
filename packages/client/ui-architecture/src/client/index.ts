@@ -60,8 +60,8 @@ export function apply(ctx: ClientContext): void {
     inject: workspaceInjected,
   }, ArchitectureWorkspace))
 
-  ctx.slots.inject('sidebar.modules', () => ctx.slots.register({
-    name: 'sidebar.modules',
+  ctx.slots.inject('sidebar.modules.group', () => ctx.slots.register({
+    name: 'sidebar.modules.group',
     id: 'architecture-module',
     order: 7,
     locale: NS,

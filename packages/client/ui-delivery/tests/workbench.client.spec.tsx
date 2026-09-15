@@ -195,21 +195,21 @@ async function components() {
     name: 'root',
     children: {
       'shell.view': { kind: 'list', scope: 'root' },
-      'sidebar.modules': { kind: 'list', scope: 'root' },
+      'sidebar.modules.group': { kind: 'list', scope: 'root' },
     },
   } as never, () => null)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
   return {
     Workspace: slots.entries('shell.view')[0]!.component as ComponentType<DeliveryWorkspaceProps>,
-    Navigation: slots.entries('sidebar.modules')[0]!.component as ComponentType<DeliveryNavEntryProps & {
+    Navigation: slots.entries('sidebar.modules.group')[0]!.component as ComponentType<DeliveryNavEntryProps & {
       useDelivery: DeliveryWorkspaceProps['useDelivery']
     }>,
   }
 }
 
 const standardHooks = {
-  usePanelInfo: ((selector) => selector({ activePanelId: null })) as GlobalStandardProps['usePanelInfo'],
+  usePanelInfo: (selector => selector({ activePanelId: null })) as GlobalStandardProps['usePanelInfo'],
   useResource: (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource'],
   useSessions: (() => { throw new Error('unused') }) as DeliveryWorkspaceProps['useSessions'],
   useSessionPendingInteraction: (() => { throw new Error('unused') }) as DeliveryWorkspaceProps['useSessionPendingInteraction'],

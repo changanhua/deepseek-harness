@@ -67,7 +67,7 @@ async function bench() {
     children: {
       'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       'shell.view': { kind: 'list', scope: 'root' },
-      'sidebar.modules': { kind: 'list', scope: 'root' },
+      'sidebar.modules.group': { kind: 'list', scope: 'root' },
       'shell.overlay': { kind: 'list', scope: 'root' },
     },
   } as never, (() => null) as never)
@@ -77,7 +77,7 @@ async function bench() {
     ctx,
     fiber,
     calls,
-    entryOf: (name: 'conversation.chat.assistant-actions' | 'shell.view' | 'sidebar.modules') => {
+    entryOf: (name: 'conversation.chat.assistant-actions' | 'shell.view' | 'sidebar.modules.group') => {
       const entry = ctx.slots.entries(name)[0]!
       return {
         options: entry.options,
@@ -98,8 +98,8 @@ describe('ui-content browser plugin', () => {
     expect(b.entryOf('conversation.chat.assistant-actions').locale).toBe('content')
     expect(b.entryOf('shell.view').options).toMatchObject({ id: 'content-library' })
     expect(b.entryOf('shell.view').locale).toBe('content')
-    expect(b.entryOf('sidebar.modules').options).toMatchObject({ id: 'content-library-module' })
-    expect(b.entryOf('sidebar.modules').locale).toBe('content')
+    expect(b.entryOf('sidebar.modules.group').options).toMatchObject({ id: 'content-library-module' })
+    expect(b.entryOf('sidebar.modules.group').locale).toBe('content')
   })
 
   it('binds every entry to one shared store', async () => {
@@ -156,7 +156,7 @@ describe('ui-content browser plugin', () => {
 
     expect(b.ctx.slots.entries('conversation.chat.assistant-actions')).toHaveLength(0)
     expect(b.ctx.slots.entries('shell.view')).toHaveLength(0)
-    expect(b.ctx.slots.entries('sidebar.modules')).toHaveLength(0)
+    expect(b.ctx.slots.entries('sidebar.modules.group')).toHaveLength(0)
     // The disposed store refuses further work, so no request outlives the fiber.
     const before = b.calls.length
     await expect(face.capture({ seq: 34, messageId: 'm-1' })).resolves.toMatchObject({

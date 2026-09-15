@@ -385,6 +385,88 @@
   padding-left: 0;
 }
 
+/* Non-queue modules share one disclosure row so the Queue entry can remain a
+   first-level action. The header follows the same 36px rhythm as module rows;
+   its content keeps the registrants' own row styles. */
+.moduleGroup {
+  flex: none;
+  min-width: 0;
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.moduleGroupToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.moduleGroupToggle:hover {
+  background: var(--dsw-specific-sidebar-nav-item-hover);
+}
+
+.moduleGroupToggle:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-primary);
+  outline-offset: -2px;
+}
+
+.moduleGroupLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moduleGroupChevron {
+  flex: none;
+  transition: transform 150ms var(--ds-ease-in-out);
+}
+
+.moduleGroup[data-open] .moduleGroupChevron {
+  transform: rotate(180deg);
+}
+
+.moduleGroupContent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 0 0;
+}
+
+.collapsed .moduleGroup {
+  align-self: center;
+  width: auto;
+}
+
+.collapsed .moduleGroupToggle {
+  width: 36px;
+  min-height: 36px;
+  justify-content: center;
+  padding: 0;
+}
+
+.collapsed .moduleGroupToggle svg:last-child {
+  display: none;
+}
+
+.collapsed .moduleGroupContent {
+  align-items: center;
+  gap: 4px;
+}
+
 /* Module seat: additive first-level entries (Queue workspace and future
    modules) stacked above the foot. Each occupant owns its row geometry. */
 .modulesArea {

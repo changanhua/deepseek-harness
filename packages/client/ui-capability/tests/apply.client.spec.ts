@@ -2,7 +2,7 @@
 /**
  * Client apply wiring: the Capability module registers exactly two slot
  * entries — the center-column `shell.view` seat (id `capability`) and the
- * sidebar `sidebar.modules` seat (id `capability-module`, order 5) — both
+ * sidebar `sidebar.modules.group` seat (id `capability-module`, order 5) — both
  * carrying the shared store as their inject face, plus the locale
  * dictionary. Teardown removes both entries and disposes the store.
  */
@@ -65,7 +65,7 @@ async function bench(withSessions = true) {
     name: 'root',
     children: {
       'shell.view': { kind: 'list', scope: 'root' },
-      'sidebar.modules': { kind: 'list', scope: 'root' },
+      'sidebar.modules.group': { kind: 'list', scope: 'root' },
     },
   } as never, () => null)
   return { ctx, slots, remote, registerLocale, provideSessions, selectSession, listeners }
@@ -132,7 +132,7 @@ describe('ui-capability client apply', () => {
     const b = await bench()
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
-    const entries = b.slots.entries('sidebar.modules')
+    const entries = b.slots.entries('sidebar.modules.group')
     expect(entries).toHaveLength(1)
     expect(entries[0]!.options.id).toBe('capability-module')
     // The Capability module order (5) is below the Queue module order (10),
@@ -141,7 +141,7 @@ describe('ui-capability client apply', () => {
     const face = (entries[0]!.inject as unknown as () => CapabilityNavEntryInjected)()
     expect(face.capability).toBeDefined()
     await fiber.dispose()
-    expect(b.slots.entries('sidebar.modules')).toHaveLength(0)
+    expect(b.slots.entries('sidebar.modules.group')).toHaveLength(0)
   })
 
   it('registers the capability locale dictionary', async () => {
@@ -157,7 +157,7 @@ describe('ui-capability client apply', () => {
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     const viewFace = (b.slots.entries('shell.view')[0]!.inject as unknown as () => CapabilityWorkspaceInjected)()
-    const navFace = (b.slots.entries('sidebar.modules')[0]!.inject as unknown as () => CapabilityNavEntryInjected)()
+    const navFace = (b.slots.entries('sidebar.modules.group')[0]!.inject as unknown as () => CapabilityNavEntryInjected)()
     expect(navFace.capability).toBe(viewFace.capability)
     await fiber.dispose()
   })

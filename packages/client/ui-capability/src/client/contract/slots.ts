@@ -8,7 +8,7 @@
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the `shell.view` SlotMap merge from the frame.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-// Type-only: pulls the `sidebar.modules` SlotMap merge from the sidebar shell.
+// Type-only: pulls the `sidebar.modules.group` SlotMap merge from the sidebar shell.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { CapabilityStore } from '../store.ts'
 
@@ -30,6 +30,6 @@ export type CapabilityWorkspaceProps =
 
 /** Full composed props of the sidebar Capability module entry. */
 export type CapabilityNavEntryProps =
-  PropsRuntime<'sidebar.modules'>
+  PropsRuntime<'sidebar.modules.group'>
   & CapabilityNavEntryInjected
   & PropsLocale<'capability'>

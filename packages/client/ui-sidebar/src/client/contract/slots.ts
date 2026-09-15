@@ -3,9 +3,9 @@
  * layout-owned `sidebar` slot, plus the holes this shell declares. The shell
  * owns column geometry (fold state machine, brand row, New Session);
  * everything between the section header and the list bottom is the
- * `sidebar.workspaces` registrant's (ui-workspace), first-level module
- * entries (Queue and future module workspaces) stack in `sidebar.modules`
- * above the foot, and the foot is the `sidebar.settings` registrant's
+ * `sidebar.workspaces` registrant's (ui-workspace), non-queue module entries
+ * render inside `sidebar.modules.group` while Queue remains in
+ * `sidebar.modules` above the foot, and the foot is the `sidebar.settings` registrant's
  * (ui-settings), followed by optional footer actions in `sidebar.footer.action`.
  */
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -36,12 +36,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'sidebar.workspaces': { kind: 'single'; scope: 'root'; owner: SidebarSectionOwnerProps }
     /**
-     * First-level module entries between the session browsing region and the
-     * foot (the Queue workspace lives here). Declared by this package's
-     * 'sidebar' entry; each entry receives the column state plus the center
-     * module-ring state it can switch (`setActiveModule`).
+     * The first-level Queue entry between the session browsing region and the
+     * foot. Declared by this package's 'sidebar' entry; each entry receives
+     * the column state plus the center module-ring state it can switch.
      */
     'sidebar.modules': { kind: 'list'; scope: 'root'; owner: SidebarModuleOwnerProps }
+    /** Non-queue module entries shown inside the sidebar's collapsed More group. */
+    'sidebar.modules.group': { kind: 'list'; scope: 'root'; owner: SidebarModuleOwnerProps }
     /**
      * The settings seat at the sidebar foot. Declared by this package's
      * 'sidebar' entry; ui-settings registers its trigger row + modal panel.
@@ -141,6 +142,7 @@ export type SidebarRootComponentProps =
     | 'sidebar.brand.name'
     | 'sidebar.workspaces'
     | 'sidebar.modules'
+    | 'sidebar.modules.group'
     | 'sidebar.settings'
     | 'sidebar.footer.action'
   >

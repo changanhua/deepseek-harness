@@ -69,6 +69,37 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
       />
     </div>
     <div
+      class="moduleGroup"
+      data-sidebar-module-group="true"
+    >
+      <button
+        aria-controls="sidebar-module-group-content"
+        aria-expanded="false"
+        aria-label="More"
+        class="moduleGroupToggle"
+        title="More"
+        type="button"
+      >
+        <svg
+          data-content="97beeac2"
+          fill="none"
+          height="18"
+          viewBox="0 0 16 16"
+          width="18"
+          xmlns="http://www.w3.org/2000/svg"
+        />
+        <svg
+          class="moduleGroupChevron"
+          data-content="6506c885"
+          fill="none"
+          height="14"
+          viewBox="0 0 14 14"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        />
+      </button>
+    </div>
+    <div
       class="modulesArea"
     >
       <div
@@ -207,6 +238,41 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
       />
     </div>
     <div
+      class="moduleGroup"
+      data-sidebar-module-group="true"
+    >
+      <button
+        aria-controls="sidebar-module-group-content"
+        aria-expanded="false"
+        aria-label="More"
+        class="moduleGroupToggle"
+        type="button"
+      >
+        <svg
+          data-content="97beeac2"
+          fill="none"
+          height="16"
+          viewBox="0 0 16 16"
+          width="16"
+          xmlns="http://www.w3.org/2000/svg"
+        />
+        <span
+          class="moduleGroupLabel"
+        >
+          More
+        </span>
+        <svg
+          class="moduleGroupChevron"
+          data-content="6506c885"
+          fill="none"
+          height="14"
+          viewBox="0 0 14 14"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        />
+      </button>
+    </div>
+    <div
       class="modulesArea"
     >
       <div
@@ -343,6 +409,41 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
         data-slot="sidebar.workspaces"
         style="display: contents;"
       />
+    </div>
+    <div
+      class="moduleGroup"
+      data-sidebar-module-group="true"
+    >
+      <button
+        aria-controls="sidebar-module-group-content"
+        aria-expanded="false"
+        aria-label="更多"
+        class="moduleGroupToggle"
+        type="button"
+      >
+        <svg
+          data-content="97beeac2"
+          fill="none"
+          height="16"
+          viewBox="0 0 16 16"
+          width="16"
+          xmlns="http://www.w3.org/2000/svg"
+        />
+        <span
+          class="moduleGroupLabel"
+        >
+          更多
+        </span>
+        <svg
+          class="moduleGroupChevron"
+          data-content="6506c885"
+          fill="none"
+          height="14"
+          viewBox="0 0 14 14"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        />
+      </button>
     </div>
     <div
       class="modulesArea"

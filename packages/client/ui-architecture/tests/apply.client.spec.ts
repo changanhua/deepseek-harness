@@ -30,7 +30,7 @@ async function bench() {
     name: 'root',
     children: {
       'shell.view': { kind: 'list', scope: 'root' },
-      'sidebar.modules': { kind: 'list', scope: 'root' },
+      'sidebar.modules.group': { kind: 'list', scope: 'root' },
     },
   } as never, () => null)
   return { ctx, slots, list, registerLocale }
@@ -47,7 +47,7 @@ describe('ui-architecture client apply', () => {
     await fiber.await()
 
     const workspace = b.slots.entries('shell.view')
-    const navigation = b.slots.entries('sidebar.modules')
+    const navigation = b.slots.entries('sidebar.modules.group')
     expect(workspace).toHaveLength(1)
     expect(workspace[0]!.options.id).toBe('architecture')
     expect(navigation).toHaveLength(1)
@@ -63,6 +63,6 @@ describe('ui-architecture client apply', () => {
 
     await fiber.dispose()
     expect(b.slots.entries('shell.view')).toHaveLength(0)
-    expect(b.slots.entries('sidebar.modules')).toHaveLength(0)
+    expect(b.slots.entries('sidebar.modules.group')).toHaveLength(0)
   })
 })

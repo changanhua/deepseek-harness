@@ -34,7 +34,7 @@ export interface ArchitectureWorkspaceHooks {
 
 /** Sidebar module props derived from the owner and locale shares. */
 export type ArchitectureNavEntryProps =
-  PropsRuntime<'sidebar.modules'>
+  PropsRuntime<'sidebar.modules.group'>
   & ArchitectureNavInjected
   & PropsLocale<typeof NS>
 

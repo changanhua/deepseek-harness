@@ -89,4 +89,4 @@ export type CaptureActionProps =
   & PropsLocale<typeof NS>
 
 /** Props of the persistent sidebar entry. */
-export type ContentNavProps = PropsRuntime<'sidebar.modules'> & PropsLocale<typeof NS>
+export type ContentNavProps = PropsRuntime<'sidebar.modules.group'> & PropsLocale<typeof NS>

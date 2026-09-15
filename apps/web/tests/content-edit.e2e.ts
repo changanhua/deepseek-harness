@@ -37,6 +37,8 @@ describe('web e2e: content library editing', () => {
   async function openLibrary(target: Page): Promise<void> {
     const heading = target.getByRole('heading', { name: 'Content Library' })
     if ((await heading.count()) === 0) {
+      const more = target.getByRole('button', { name: 'More', exact: true })
+      if (await more.getAttribute('aria-expanded') !== 'true') await more.click()
       await target.getByRole('button', { name: 'Content Library' }).first().click()
     }
     await heading.waitFor({ timeout: 30_000 })

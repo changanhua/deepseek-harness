@@ -21,7 +21,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls the shell.view SlotMap entry.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-// Type-only: pulls the sidebar.modules SlotMap entry.
+// Type-only: pulls the sidebar.modules.group SlotMap entry.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls the generated contentRemote namespace merge.
 import type {} from '@changanhua/dsh-content-remote/remote'
@@ -130,8 +130,8 @@ export function apply(ctx: ClientContext): void {
     }),
   }, ContentLibraryWorkspace))
 
-  ctx.slots.inject('sidebar.modules', () => ctx.slots.register({
-    name: 'sidebar.modules',
+  ctx.slots.inject('sidebar.modules.group', () => ctx.slots.register({
+    name: 'sidebar.modules.group',
     id: 'content-library-module',
     order: 7,
     locale: NS,

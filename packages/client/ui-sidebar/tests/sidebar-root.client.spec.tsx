@@ -67,6 +67,9 @@ function mountShell({ collapsed = false, width = 300 }: { collapsed?: boolean; w
           modulesOwner = owner as SidebarModuleOwnerProps
           return <div data-testid="modules-seat" data-wide={owner.wide} />
         }
+        if (key === 'sidebar.modules.group') {
+          return <div data-testid="module-group-content"><button type="button">能力</button></div>
+        }
         regionOwner = owner as SidebarSectionOwnerProps
         return <div data-testid="region" data-wide={owner.wide} />
       }) as SidebarRootComponentProps['renderSlot']}
@@ -182,6 +185,22 @@ describe('SidebarRoot shell', () => {
     // A live frame update flows straight through on re-render.
     b.rerender({ activeModule: 'queue' })
     expect(b.modulesOwner().activeModule).toBe('queue')
+    expect(b.modulesOwner().wide).toBe(true)
+  })
+
+  it('keeps non-queue modules behind a collapsed More disclosure', () => {
+    const b = mountShell()
+    const group = screen.getByRole('button', { name: 'More' })
+    expect(group.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByTestId('module-group-content')).toBeNull()
+    expect(screen.getByTestId('modules-seat').closest('[data-sidebar-module-group]')).toBeNull()
+
+    fireEvent.click(group)
+    expect(group.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByTestId('module-group-content')).toBeTruthy()
+    expect(screen.getByTestId('modules-seat')).toBeTruthy()
+    // Queue remains a sibling of the disclosure, so it stays visible and prominent.
+    expect(screen.getByTestId('modules-seat').closest('[data-sidebar-module-group]')).toBeNull()
     expect(b.modulesOwner().wide).toBe(true)
   })
 

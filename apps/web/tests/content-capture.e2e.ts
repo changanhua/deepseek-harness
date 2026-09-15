@@ -63,6 +63,12 @@ describe('web e2e: content library capture', () => {
     await sessionRow.click()
   }
 
+  /** Reveal the non-queue module group before selecting Content Library. */
+  async function openModuleGroup(): Promise<void> {
+    const more = page.getByRole('button', { name: 'More', exact: true })
+    if (await more.getAttribute('aria-expanded') !== 'true') await more.click()
+  }
+
   it.skipIf(MODE === 'record')('captures the pure-text reply and reads it back after a reload', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-content-capture'))
     await openSeededSession()
@@ -89,6 +95,7 @@ describe('web e2e: content library capture', () => {
     // contract (pinned in content-session.spec.ts) yields '' — so the row is
     // located by its capture badge, and the committed body renders in the
     // detail the row click expands.
+    await openModuleGroup()
     await page.getByRole('button', { name: 'Content Library' }).first().click()
     const entryRow = page.getByRole('button', { name: /Session capture/u })
     await entryRow.waitFor({ timeout: 30_000 })
@@ -101,6 +108,7 @@ describe('web e2e: content library capture', () => {
     // A full page reload reads the same committed entry back from the Host.
     await page.reload({ waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+    await openModuleGroup()
     await page.getByRole('button', { name: 'Content Library' }).first().click()
     const reloadedRow = page.getByRole('button', { name: /Session capture/u })
     await reloadedRow.waitFor({ timeout: 30_000 })

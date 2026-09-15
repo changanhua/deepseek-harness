@@ -17,7 +17,7 @@ export const inject = ['invariants']
 /**
  * No runtime invariant: the Capability workspace only projects the
  * capabilityRegistry Remote through declared slots, and the slot registry
- * already enforces entry identity for `shell.view` / `sidebar.modules`.
+ * already enforces entry identity for `shell.view` / `sidebar.modules.group`.
  */
 const install: InvariantInstaller = () => {}
 
