@@ -214,6 +214,8 @@ export interface WebScaffold {
   workspaceCwd: string
   /** Temp persistence root (seeded sessions land here through the real API). */
   persistenceRoot: string
+  /** Actual Storage JSON root, exposed for independent persisted-state assertions. */
+  storageRoot: string
   /** Isolated harness home the settings/credentials rows write ($DSH_HOME double). */
   harnessHome: string
   /** Send a browser-equivalent Host request with this scaffold's authenticated cookie. */
@@ -345,6 +347,15 @@ export interface LaunchOptions {
   remoteAuthority?: string
   /** Reuse an existing harness home so a second Host can verify user settings across origins. */
   harnessHome?: string
+  /** Caller-owned storage root retained across Host restarts; omitted roots remain scaffold-owned. */
+  storageRoot?: string
+  /** Explicit live subscription route; its credential is supplied only through the named environment reference. */
+  liveModel?: {
+    provider: string
+    model: string
+    apiKeyEnv: string
+    profile: import('@deepseek-ai/dsh-llm-pi-ai').PiAiProviderProfile
+  }
 }
 
 /** Dispose the booted tree and remove both owned temp roots, reporting every independent cleanup failure. */
@@ -375,8 +386,9 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   if (mode === 'record') {
     // Both owning vitest configs (web unconditionally, snapshot in record
     // mode) load the repo-root .env before this file runs.
-    if (process.env.DEEPSEEK_API_KEY === undefined || process.env.DEEPSEEK_API_KEY.length === 0) {
-      throw new Error('web e2e record mode needs DEEPSEEK_API_KEY (env or repo-root .env)')
+    const credentialRef = options.liveModel?.apiKeyEnv ?? 'DEEPSEEK_API_KEY'
+    if (!process.env[credentialRef]) {
+      throw new Error('web e2e record mode needs the selected provider credential: ' + credentialRef)
     }
   }
   if (mode === 'record' && options.deepSeekMissingCredential === true) {
@@ -483,9 +495,9 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     // runs are the assembled coverage for the opt-in search path.
     { id: 'session-query-sqlite', config: { path: ':memory:', openAt: 'first-search' } },
     // storage-json's yml root is anchored to the real $DSH_HOME; pin the row
-    // to an absolute temp root (removed with the workspace at close) so tests
-    // never write the user's harness home.
-    { id: 'storage-json', config: { root: join(workspaceCwd, '.dsh-storages') } },
+    // to an absolute temp root (or the caller-owned restart fixture root).
+    // Only the default root is removed with the workspace at close.
+    { id: 'storage-json', config: { root: options.storageRoot ?? join(workspaceCwd, '.dsh-storages') } },
     // Keep the real owner-private guarantee. The path is rooted below
     // LocalAppData on Windows because the ACL audit rejects shared %TEMP%
     // ancestors; the directory is unique to this scaffold and removed at
@@ -588,9 +600,13 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
           baseURL: options.deepSeekSearch.baseURL,
         },
       }],
-    ...mode === 'record' || options.deepSeekMissingCredential === true
+    ...options.liveModel === undefined && (mode === 'record' || options.deepSeekMissingCredential === true)
       ? []
       : [{ id: 'llm-deepseek', disabled: true }],
+    ...options.liveModel === undefined ? [] : [
+      { id: 'llm-pi-ai', config: { providers: { [options.liveModel.provider]: options.liveModel.profile } } },
+      { id: 'agent-default-model', config: { provider: options.liveModel.provider, model: options.liveModel.model } },
+    ],
   ]
 
   // Sessions inherit the gateway's process.cwd() default; run the boot from
@@ -767,6 +783,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     ctx,
     workspaceCwd,
     persistenceRoot,
+    storageRoot: options.storageRoot ?? join(workspaceCwd, '.dsh-storages'),
     hostFetch(path: string, init: RequestInit = {}): Promise<Response> {
       const headers = new Headers(init.headers)
       if (cookieHeader !== '') headers.set('cookie', cookieHeader)

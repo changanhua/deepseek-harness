@@ -142,6 +142,7 @@ flowchart TD
     pkg_base["base"]
     pkg_headless["headless"]
     pkg_personal_delivery["personal-delivery"]
+    pkg_personal_memory["personal-memory"]
     pkg_sdk_app["sdk-app"]
     pkg_sdk_minimal["sdk-minimal"]
     pkg_web_app["web-app"]
@@ -309,6 +310,12 @@ flowchart TD
   subgraph group_mcp["packages/mcp"]
     pkg_mcp_client["mcp-client"]
   end
+  subgraph group_memory["packages/memory"]
+    pkg_command_memory["command-memory"]
+    pkg_memory["memory"]
+    pkg_memory_local["memory-local"]
+    pkg_tool_memory["tool-memory"]
+  end
   subgraph group_preset["packages/preset"]
     pkg_agent_presets["agent-presets"]
     pkg_persona["persona"]
@@ -431,6 +438,7 @@ flowchart TD
   pkg_acp_app --> pkg_invariants
   pkg_base --> pkg_invariants
   pkg_personal_delivery --> pkg_invariants
+  pkg_personal_memory --> pkg_invariants
   pkg_sdk_app --> pkg_invariants
   pkg_sdk_minimal --> pkg_invariants
   pkg_client_store --> pkg_invariants
@@ -697,6 +705,8 @@ flowchart TD
   pkg_jobs --> pkg_brand
   pkg_jobs --> pkg_invariants
   pkg_jobs --> pkg_session
+  pkg_memory --> pkg_agent
+  pkg_memory --> pkg_invariants
   pkg_sandbox_local --> pkg_invariants
   pkg_sandbox_local --> pkg_llm
   pkg_sandbox_local --> pkg_sandbox
@@ -873,6 +883,10 @@ flowchart TD
   pkg_lsp_stdio --> pkg_lsp
   pkg_lsp_stdio --> pkg_subprocess
   pkg_lsp_stdio --> pkg_timeout
+  pkg_command_memory --> pkg_agent
+  pkg_command_memory --> pkg_commands
+  pkg_command_memory --> pkg_invariants
+  pkg_command_memory --> pkg_memory
   pkg_session_title_llm --> pkg_invariants
   pkg_session_title_llm --> pkg_llm
   pkg_session_title_llm --> pkg_session
@@ -1059,6 +1073,12 @@ flowchart TD
   pkg_mcp_client --> pkg_subprocess
   pkg_mcp_client --> pkg_timeout
   pkg_mcp_client --> pkg_tools
+  pkg_tool_memory --> pkg_agent
+  pkg_tool_memory --> pkg_invariants
+  pkg_tool_memory --> pkg_llm
+  pkg_tool_memory --> pkg_memory
+  pkg_tool_memory --> pkg_system_prompt
+  pkg_tool_memory --> pkg_tools
   pkg_agent_presets --> pkg_agent
   pkg_agent_presets --> pkg_atomic_write
   pkg_agent_presets --> pkg_home_paths
@@ -1377,6 +1397,16 @@ flowchart TD
   pkg_host_frontend_static --> pkg_client_connection
   pkg_host_frontend_static --> pkg_host_webserver
   pkg_host_frontend_static --> pkg_invariants
+  pkg_memory_local --> pkg_agent
+  pkg_memory_local --> pkg_commands
+  pkg_memory_local --> pkg_fs
+  pkg_memory_local --> pkg_invariants
+  pkg_memory_local --> pkg_memory
+  pkg_memory_local --> pkg_session
+  pkg_memory_local --> pkg_session_persistence
+  pkg_memory_local --> pkg_session_query
+  pkg_memory_local --> pkg_storage_domain
+  pkg_memory_local --> pkg_workspace
   pkg_webhook_github --> pkg_credentials
   pkg_webhook_github --> pkg_host_webserver
   pkg_webhook_github --> pkg_invariants

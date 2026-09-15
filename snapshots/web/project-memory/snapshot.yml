@@ -1,0 +1,8 @@
+version: 1
+scenario: project-memory
+profile: web
+composition: web-project-memory
+recording: live
+header:
+  class: web-project-memory
+  pin: true

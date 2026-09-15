@@ -1,0 +1,11 @@
+# The real CLI smoke uses ACP to control a live Agent without a model call.
+# Workspace is normally supplied by dsh-web-app; this test supplies that owner.
+- insert:
+    - id: memory-test-workspace
+      name: '@deepseek-ai/dsh-workspace'
+
+    - id: memory-loader-probe
+      name: ./loader-probe.mjs
+
+- id: session-title-llm
+  disabled: true
