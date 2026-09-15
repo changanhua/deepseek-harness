@@ -104,7 +104,7 @@ describe('DSH 浏览器助手侧栏', () => {
     await Promise.resolve(); await Promise.resolve()
     expect(fixture.chromeApi.permissions.request).toHaveBeenCalledExactlyOnceWith({ origins: ['http://*/*', 'https://*/*'] })
     expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-connect',
-      scopes: ['session:interact', 'browser:read', 'browser:write'], origins: ['*'] })
+      scopes: ['session:interact', 'browser:read', 'browser:write', 'browser:observe'], origins: ['*'] })
   })
   test('Chrome 拒绝全站权限后不向 DSH 申请授权', async () => {
     const fixture = await load()
@@ -148,7 +148,7 @@ describe('DSH 浏览器助手侧栏', () => {
     await Promise.resolve(); await Promise.resolve()
     expect(fixture.chromeApi.permissions.request).toHaveBeenCalledExactlyOnceWith({ origins: ['http://*/*', 'https://*/*'] })
     expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-connect',
-      scopes: ['session:interact', 'browser:read', 'browser:write'], origins: ['*'] })
+      scopes: ['session:interact', 'browser:read', 'browser:write', 'browser:observe'], origins: ['*'] })
     expect(fixture.messages).not.toContainEqual(expect.objectContaining({ type: 'dsh-assistant-configure' }))
   })
 
