@@ -14,6 +14,8 @@ Web 组合包把 `@deepseek-ai/dsh-client-ui-architecture` 作为一级侧边栏
 
 构建目录和运行时叠加保持为不同证据层。`scripts/gen-architecture-catalog.ts` 从正式 `packages/*/*/package.json` manifest 确定性派生提交的 Client 目录。它记录 manifest 描述、目录领域、显式浏览器/组合包/Remote/工具声明面和仓库内 `peerDependencies`；`verify-architecture-catalog` 拒绝漂移。
 
+目录现在也记录 `packages/boot/app-boot/src/profile.ts` 中的随附 Profile 模板以及每个 Bundle 的 manifest 直接依赖。系统地图以 `Profile → Bundle → Package` 展示这层构建期组合；它不声称某个自定义 Profile 或 patch layer 引入了某个生效 Loader 行。
+
 运行时层复用 `pluginInventory/list`。它直接读取当前 Loader，并提供启用状态和 Fiber 阶段，不添加第二份生命周期缓存。只有当精确 module specifier 等于生成的包名时，Client 才会把运行时行连接到目录方块。UI 把未连接的包标为未观察到，而不是推断当前 Profile 排除或无法加载它们。
 
 获取状态属于 apply 私有 snapshot controller。组件把目录作为不可变注入数据接收，通过 Slot renderer 的 `hooks` compartment 接收运行时状态，并把搜索、领域和所选包状态保留在本地。
@@ -32,4 +34,4 @@ Web 组合包把 `@deepseek-ai/dsh-client-ui-architecture` 作为一级侧边栏
 
 架构入口始终可用于随附的 Web 工作区，并且不需要新的 Host service。生成的 Client 产物会随正式包目录增长，每次 manifest 变化都必须通过新鲜度检查。依赖链接有意覆盖 `peerDependencies`，不覆盖任意 import 或 Cordis injection。
 
-运行时状态是时间点信息，并且因为插件清单不提供 stream 而手动刷新。外部 Loader module 在独立的已安装包目录拥有权威来源之前，只通过运行时汇总计数显示。Profile 对比、组合包来源、行为验证和流程播放保持在这个证据层之外，不会显示为猜测事实。
+运行时状态是时间点信息，并且因为插件清单不提供 stream 而手动刷新。外部 Loader module 在独立的已安装包目录拥有权威来源之前，只通过运行时汇总计数显示。生效 Profile 对比、patch layer 来源、行为验证和流程播放保持在这个证据层之外，不会显示为猜测事实。

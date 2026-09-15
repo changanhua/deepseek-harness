@@ -21,9 +21,15 @@ function packageMatches(pkg: ArchitecturePackage, query: string): boolean {
 
 export function ArchitectureWorkspace({ catalog, useRuntime, refresh, t }: ArchitectureWorkspaceProps) {
   const runtime = useRuntime(state => state)
+  const [viewMode, setViewMode] = useState<'map' | 'directory'>('map')
   const [group, setGroup] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [selectedName, setSelectedName] = useState(catalog.packages[0]?.name ?? '')
+  const defaultProfile = catalog.profiles.find(profile => profile.name === 'web') ?? catalog.profiles[0]
+  const defaultBundleName = defaultProfile?.bundles[0]
+  const defaultBundle = catalog.bundles.find(bundle => bundle.name === defaultBundleName)
+  const [selectedName, setSelectedName] = useState(defaultBundle?.packages[0] ?? catalog.packages[0]?.name ?? '')
+  const [selectedProfileName, setSelectedProfileName] = useState(defaultProfile?.name ?? '')
+  const [expandedBundleName, setExpandedBundleName] = useState<string | null>(null)
   const groups = useMemo(() => {
     const counts = new Map<string, number>()
     for (const pkg of catalog.packages) counts.set(pkg.group, (counts.get(pkg.group) ?? 0) + 1)
@@ -34,6 +40,19 @@ export function ArchitectureWorkspace({ catalog, useRuntime, refresh, t }: Archi
     () => new Map(catalog.packages.map(pkg => [pkg.name, pkg])),
     [catalog],
   )
+  const bundlesByName = useMemo(
+    () => new Map(catalog.bundles.map(bundle => [bundle.name, bundle])),
+    [catalog],
+  )
+  const selectedProfile = catalog.profiles.find(profile => profile.name === selectedProfileName) ?? defaultProfile
+  const selectedProfileBundles = selectedProfile?.bundles
+    .map(name => bundlesByName.get(name))
+    .filter((bundle): bundle is NonNullable<typeof bundle> => bundle !== undefined) ?? []
+  const expandedBundle = expandedBundleName === null ? undefined : bundlesByName.get(expandedBundleName)
+  const compositionPackages = expandedBundle?.packages
+    .map(name => packagesByName.get(name))
+    .filter((pkg): pkg is ArchitecturePackage => pkg !== undefined)
+    .filter(pkg => packageMatches(pkg, normalizedQuery)) ?? []
   const visible = useMemo(
     () => catalog.packages.filter(pkg => (group === null || pkg.group === group) && packageMatches(pkg, normalizedQuery)),
     [catalog, group, normalizedQuery],
@@ -55,6 +74,21 @@ export function ArchitectureWorkspace({ catalog, useRuntime, refresh, t }: Archi
     : selectedRuntime.fiberPhase === null
       ? t('runtime.unobserved')
       : t(PHASE_COPY[selectedRuntime.fiberPhase])
+  const selectedPackageBundles = selected === undefined
+    ? []
+    : catalog.bundles.filter(bundle => bundle.packages.includes(selected.name))
+
+  function selectProfile(name: string): void {
+    setSelectedProfileName(name)
+    setExpandedBundleName(null)
+  }
+
+  function focusBundle(name: string): void {
+    const profile = catalog.profiles.find(candidate => candidate.bundles.includes(name))
+    if (profile !== undefined) setSelectedProfileName(profile.name)
+    setExpandedBundleName(name)
+    setViewMode('map')
+  }
 
   return (
     <section className={css.root} aria-label={t('nav.architecture')}>
@@ -82,7 +116,141 @@ export function ArchitectureWorkspace({ catalog, useRuntime, refresh, t }: Archi
 
       {runtime.status === 'error' && <div className={css.runtimeError} role="alert">{t('runtime.error')}: {runtime.error}</div>}
 
-      <div className={css.explorer}>
+      <div className={css.viewTabs} role="tablist" aria-label={t('view.title')}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewMode === 'map'}
+          className={clsx(viewMode === 'map' && css.viewTabActive)}
+          onClick={() => { setViewMode('map') }}
+        >
+          {t('view.map')}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewMode === 'directory'}
+          className={clsx(viewMode === 'directory' && css.viewTabActive)}
+          onClick={() => { setViewMode('directory') }}
+        >
+          {t('view.directory')}
+        </button>
+      </div>
+
+      {viewMode === 'map' ? (
+        <div className={css.systemMap} data-testid="architecture-system-map">
+          <aside className={css.profileRail} aria-label={t('map.profiles')}>
+            <div className={css.mapSectionTitle}>{t('map.profiles')}</div>
+            {catalog.profiles.map(profile => (
+              <button
+                type="button"
+                key={profile.name}
+                className={clsx(css.profileButton, selectedProfile?.name === profile.name && css.profileButtonActive)}
+                aria-label={profile.name}
+                onClick={() => { selectProfile(profile.name) }}
+              >
+                <strong>{profile.name}</strong>
+                <span>{profile.bundles.length} {t('map.bundles')}</span>
+              </button>
+            ))}
+            {selectedProfile !== undefined && <code className={css.mapSource}>{selectedProfile.source}</code>}
+          </aside>
+
+          <div className={css.mapBody}>
+            <div className={css.mapHeader}>
+              <div>
+                <span className={css.mapEyebrow}>{t('map.bundles')}</span>
+                <strong>{selectedProfile?.name ?? t('detail.none')}</strong>
+              </div>
+              <div className={css.mapLegend} aria-label={t('map.legend')}>
+                <span>{t('map.buildIncluded')}</span>
+                <span>{t('map.runtimeObserved')}</span>
+                <span>{t('map.activeDetail')}</span>
+              </div>
+              <label className={css.search}>
+                <IconSearchOutline16 aria-hidden="true" />
+                <span className={css.visuallyHidden}>{t('search.label')}</span>
+                <input
+                  type="search"
+                  aria-label={t('search.label')}
+                  placeholder={t('search.placeholder')}
+                  value={query}
+                  onChange={(event) => { setQuery(event.currentTarget.value) }}
+                />
+              </label>
+            </div>
+            <div className={css.bundleStack}>
+              {selectedProfileBundles.map((bundle) => {
+                const observed = bundle.packages.filter(name => runtimePackages.has(name)).length
+                const expanded = expandedBundleName === bundle.name
+                return (
+                  <section className={clsx(css.bundleRegion, expanded && css.bundleRegionExpanded)} key={bundle.name}>
+                    <button
+                      type="button"
+                      className={css.bundleHeader}
+                      aria-expanded={expanded}
+                      aria-label={`${bundle.short} — ${bundle.description}`}
+                      onClick={() => { setExpandedBundleName(expanded ? null : bundle.name) }}
+                    >
+                      <span>
+                        <strong>{bundle.short}</strong>
+                        <small>{bundle.description}</small>
+                      </span>
+                      <span className={css.bundleMetrics}>
+                        <span>{bundle.packages.length} {t('map.packages')}</span>
+                        <span>{observed}/{bundle.packages.length} {t('map.runtimeObserved')}</span>
+                      </span>
+                    </button>
+                    {expanded && (
+                      <div className={css.compositionField}>
+                        {compositionPackages.length === 0
+                          ? <p className={css.empty}>{t('empty')}</p>
+                          : compositionPackages.map(pkg => (
+                            <button
+                              type="button"
+                              key={pkg.name}
+                              data-testid={`architecture-composition-package-${pkg.short}`}
+                              className={clsx(css.packageTile, selected?.name === pkg.name && css.packageSelected)}
+                              data-runtime={runtimePackages.has(pkg.name) ? 'observed' : undefined}
+                              aria-label={`${pkg.short} — ${pkg.description}`}
+                              onClick={() => { setSelectedName(pkg.name) }}
+                            >
+                              <span className={css.packageName}>{pkg.short}</span>
+                              <span className={css.packageGroup}>{pkg.group}</span>
+                              {runtimePackages.has(pkg.name) && <span className={css.runtimeDot} aria-hidden="true" />}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                    <code className={css.bundleSource}>{bundle.source}</code>
+                  </section>
+                )
+              })}
+              {selectedProfileBundles.length === 0 && <p className={css.empty}>{t('empty')}</p>}
+            </div>
+          </div>
+          <aside className={css.detail} data-testid="architecture-package-detail">
+            {selected !== undefined && (
+              <>
+                <div className={css.detailGroup}>{selected.group}</div>
+                <h2>{selected.short}</h2>
+                <p className={css.description}>{selected.description}</p>
+                <span className={clsx(css.runtimeStatus, selectedRuntime?.fiberPhase === 'active' && css.runtimeActive)}>
+                  {runtimeLabel}
+                </span>
+                <dl>
+                  <div><dt>{t('detail.path')}</dt><dd><code>{selected.path}</code></dd></div>
+                  <div><dt>{t('detail.source')}</dt><dd><code>{selected.source}</code></dd></div>
+                  <div><dt>{t('detail.faces')}</dt><dd className={css.tags}>{selected.faces.map(face => <span key={face}>{face}</span>)}</dd></div>
+                  <div><dt>{t('detail.bundles')}</dt><dd className={css.links}>{selectedPackageBundles.length === 0 ? t('detail.none') : selectedPackageBundles.map(bundle => <button type="button" key={bundle.name} onClick={() => { focusBundle(bundle.name) }}>{bundle.short}</button>)}</dd></div>
+                  <div><dt>{t('detail.dependencies')}</dt><dd className={css.links}>{selected.dependencies.length === 0 ? t('detail.none') : selected.dependencies.map(dep => <button type="button" key={dep} onClick={() => { setSelectedName(dep) }}>{packagesByName.get(dep)?.short ?? dep}</button>)}</dd></div>
+                  <div><dt>{t('detail.consumers')}</dt><dd className={css.links}>{consumers.length === 0 ? t('detail.none') : consumers.map(pkg => <button type="button" key={pkg.name} onClick={() => { setSelectedName(pkg.name) }}>{pkg.short}</button>)}</dd></div>
+                </dl>
+              </>
+            )}
+          </aside>
+        </div>
+      ) : <div className={css.explorer}>
         <nav className={css.groups} aria-label={t('summary.groups')}>
           <button className={clsx(group === null && css.groupActive)} type="button" onClick={() => { setGroup(null) }}>
             {t('group.all')} ({catalog.packages.length})
@@ -143,14 +311,16 @@ export function ArchitectureWorkspace({ catalog, useRuntime, refresh, t }: Archi
               </span>
               <dl>
                 <div><dt>{t('detail.path')}</dt><dd><code>{selected.path}</code></dd></div>
+                <div><dt>{t('detail.source')}</dt><dd><code>{selected.source}</code></dd></div>
                 <div><dt>{t('detail.faces')}</dt><dd className={css.tags}>{selected.faces.map(face => <span key={face}>{face}</span>)}</dd></div>
+                <div><dt>{t('detail.bundles')}</dt><dd className={css.links}>{selectedPackageBundles.length === 0 ? t('detail.none') : selectedPackageBundles.map(bundle => <button type="button" key={bundle.name} onClick={() => { focusBundle(bundle.name) }}>{bundle.short}</button>)}</dd></div>
                 <div><dt>{t('detail.dependencies')}</dt><dd className={css.links}>{selected.dependencies.length === 0 ? t('detail.none') : selected.dependencies.map(dep => <button type="button" key={dep} onClick={() => { setSelectedName(dep) }}>{packagesByName.get(dep)?.short ?? dep}</button>)}</dd></div>
                 <div><dt>{t('detail.consumers')}</dt><dd className={css.links}>{consumers.length === 0 ? t('detail.none') : consumers.map(pkg => <button type="button" key={pkg.name} onClick={() => { setSelectedName(pkg.name) }}>{pkg.short}</button>)}</dd></div>
               </dl>
             </>
           )}
         </aside>
-      </div>
+      </div>}
     </section>
   )
 }

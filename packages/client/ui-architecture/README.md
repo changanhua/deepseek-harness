@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The Architecture workspace lets developers browse every formal DSH workspace package without treating source presence as runtime activation. It separates the generated build catalog from the current Loader snapshot, then joins exact package names to show which catalog packages are composed. Search, group filters, dependency links, reverse consumers, and package descriptions keep the complete catalog usable on one page.
+The Architecture workspace lets developers understand how a DSH deployment is composed without treating source presence as runtime activation. The System map follows the shipped `Profile → Bundle → Package` composition, expands one Bundle into its manifest-carried packages, and keeps the package directory as an exact lookup mode. It separates the generated build catalog from the current Loader snapshot, then joins exact package names to show which catalog packages are observed.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ The Architecture workspace lets developers browse every formal DSH workspace pac
 
 The shipped Web bundle mounts the package as the Architecture entry in the first-level sidebar module list. Opening the entry keeps the ordinary conversation mounted underneath while the center column displays the full workspace.
 
-The committed catalog is generated from `packages/*/*/package.json`; `pnpm run verify-architecture-catalog` rejects a stale result. The Runtime refresh calls `pluginInventory/list` and displays only the point-in-time Loader state that the Host confirms.
+The committed catalog is generated from `packages/*/*/package.json` plus the shipped Profile templates in `packages/boot/app-boot/src/profile.ts`; `pnpm run verify-architecture-catalog` rejects a stale result. Bundle membership uses direct manifest `dependencies`, while package dependency links use in-repo `peerDependencies`. The Runtime refresh calls `pluginInventory/list` and displays only the point-in-time Loader state that the Host confirms.
 
 -----
 
@@ -41,7 +41,7 @@ The generator records package descriptions, groups, explicit browser/bundle/Remo
 
 | File | Role |
 | --- | --- |
-| [`src/client/ArchitectureWorkspace.tsx`](src/client/ArchitectureWorkspace.tsx) | Full-page package field, filters, dependency navigation, and evidence detail |
+| [`src/client/ArchitectureWorkspace.tsx`](src/client/ArchitectureWorkspace.tsx) | System map, package directory, dependency navigation, and evidence detail |
 | [`src/client/runtime-controller.ts`](src/client/runtime-controller.ts) | Point-in-time `pluginInventory/list` load and stale-response rejection |
 | [`src/client/catalog.generated.ts`](src/client/catalog.generated.ts) | Deterministic build catalog; generated, never edited by hand |
 | [`../../../scripts/gen-architecture-catalog.ts`](../../../scripts/gen-architecture-catalog.ts) | Catalog writer and freshness check |
@@ -77,7 +77,8 @@ None; catalog generation happens during development and Runtime refresh reads a 
 The view states only what its two evidence owners can prove.
 
 - **Build identity, not live source** — the catalog represents the checkout used to build `lib/client.js`; editing manifests without regenerating and rebuilding cannot change an already running page.
-- **Runtime snapshot, not provenance** — Loader entries show enablement and Fiber phase but do not identify which Profile, bundle, or patch layer introduced them.
+- **Template composition, not active-profile provenance** — the map shows shipped Profile templates and their ordered Bundles; Loader entries still do not identify which custom Profile, bundle, or patch layer introduced a live row.
+- **Direct Bundle membership** — Bundle regions show direct manifest dependencies only; they do not claim to enumerate transitive installation closure or Cordis service injection.
 - **Manifest dependency graph** — dependency and consumer links use in-repo `peerDependencies`; they do not claim to enumerate source imports or Cordis service injection.
 - **Manual Runtime refresh** — the Host exposes no plugin-inventory subscription, so an open page refreshes only on user request or plugin reload.
 - **Workspace packages only** — external plugins can contribute Loader entries but have no generated package tile unless they are part of the build checkout.

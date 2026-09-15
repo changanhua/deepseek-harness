@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-架构工作区让开发者浏览所有正式 DSH 工作区包，同时不会把源码存在误当成运行时激活。页面分开呈现生成的构建目录与当前 Loader 快照，再按精确包名连接两者，显示哪些目录包已进入组合。搜索、领域筛选、依赖链接、反向消费者和包描述让完整目录可以在一个页面中使用。
+架构工作区让开发者理解 DSH 部署如何组合，同时不会把源码存在误当成运行时激活。系统地图沿着随附的 `Profile → Bundle → Package` 组合展开一个 Bundle 直接携带的包，并保留包目录作为精确查找模式。页面分开呈现生成的构建目录与当前 Loader 快照，再按精确包名连接两者，显示哪些目录包已被观察到。
 
 ## 目录
 
@@ -27,7 +27,7 @@ kind: "package-reference"
 
 随附的 Web 组合包把该包挂载为一级侧边栏模块列表中的“架构”入口。打开入口时，普通会话仍挂载在底层，中央列显示完整工作区。
 
-提交的目录由 `packages/*/*/package.json` 生成；`pnpm run verify-architecture-catalog` 会拒绝过期结果。运行时刷新调用 `pluginInventory/list`，并且只显示 Host 确认的时间点 Loader 状态。
+提交的目录由 `packages/*/*/package.json` 和 `packages/boot/app-boot/src/profile.ts` 中的随附 Profile 模板生成；`pnpm run verify-architecture-catalog` 会拒绝过期结果。Bundle 归属使用 manifest 的直接 `dependencies`，包依赖链接使用仓库内 `peerDependencies`。运行时刷新调用 `pluginInventory/list`，并且只显示 Host 确认的时间点 Loader 状态。
 
 -----
 
@@ -41,7 +41,7 @@ kind: "package-reference"
 
 | 文件 | 作用 |
 | --- | --- |
-| [`src/client/ArchitectureWorkspace.tsx`](src/client/ArchitectureWorkspace.tsx) | 全页包字段、筛选、依赖导航和证据详情 |
+| [`src/client/ArchitectureWorkspace.tsx`](src/client/ArchitectureWorkspace.tsx) | 系统地图、包目录、依赖导航和证据详情 |
 | [`src/client/runtime-controller.ts`](src/client/runtime-controller.ts) | 时间点 `pluginInventory/list` 加载和过期响应拒绝 |
 | [`src/client/catalog.generated.ts`](src/client/catalog.generated.ts) | 确定性构建目录；由生成器维护，禁止手工编辑 |
 | [`../../../scripts/gen-architecture-catalog.ts`](../../../scripts/gen-architecture-catalog.ts) | 目录写入器和新鲜度检查 |
@@ -77,7 +77,8 @@ kind: "package-reference"
 这个视图只陈述两个证据所有者能够证明的事实。
 
 - **构建身份，而不是实时源码** — 目录代表用于构建 `lib/client.js` 的 checkout；只编辑 manifest 而不重新生成和构建，无法改变已经运行的页面。
-- **运行时快照，而不是来源链** — Loader 条目显示启用状态和 Fiber 阶段，但不识别由哪个 Profile、组合包或 patch layer 引入。
+- **模板组合，而不是生效 Profile 来源链** — 地图显示随附的 Profile 模板及其有序 Bundle；Loader 条目仍不识别某个自定义 Profile、组合包或 patch layer 引入了哪一行。
+- **Bundle 直接归属** — Bundle 区域只显示 manifest 的直接依赖，不声称列出传递安装闭包或 Cordis service injection。
 - **Manifest 依赖图** — 依赖和消费者链接使用仓库内 `peerDependencies`；它们不声称枚举源码导入或 Cordis service injection。
 - **手动运行时刷新** — Host 不提供插件清单订阅，因此打开的页面只在用户请求或插件重载时刷新。
 - **仅限工作区包** — 外部插件可以贡献 Loader 条目，但只有构建 checkout 中的包才有生成的包方块。

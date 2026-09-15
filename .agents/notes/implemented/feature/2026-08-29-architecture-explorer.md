@@ -14,6 +14,8 @@ The Web bundle includes `@deepseek-ai/dsh-client-ui-architecture` as a first-lev
 
 The build catalog and Runtime overlay remain separate evidence layers. `scripts/gen-architecture-catalog.ts` deterministically derives the committed Client catalog from formal `packages/*/*/package.json` manifests. It records manifest descriptions, directory groups, explicit browser/bundle/Remote/tool faces, and in-repo `peerDependencies`; `verify-architecture-catalog` rejects drift.
 
+The catalog also records the shipped Profile templates from `packages/boot/app-boot/src/profile.ts` and each Bundle's direct manifest dependencies. The System map presents this as `Profile → Bundle → Package`; it is a build-time composition projection, not a claim about which custom Profile or patch layer introduced a live Loader row.
+
 The Runtime layer reuses `pluginInventory/list`. It reads the current Loader directly and supplies enablement plus Fiber phase without another lifecycle cache. The Client joins a Runtime row to a catalog tile only when the exact module specifier equals the generated package name. The UI labels unjoined packages as unobserved instead of inferring that the current Profile excludes or cannot load them.
 
 Fetch state belongs to an apply-private snapshot controller. Components receive the catalog as immutable injected data, receive Runtime state through the Slot renderer's `hooks` compartment, and keep search, group, and selected-package state locally.
@@ -32,4 +34,4 @@ Fetch state belongs to an apply-private snapshot controller. Components receive 
 
 The Architecture entry is always available in the shipped Web workspace and requires no new Host service. Its generated Client artifact grows with the formal package catalog, and every manifest change must satisfy the freshness check. Dependency links intentionally cover `peerDependencies`, not arbitrary imports or Cordis injection.
 
-Runtime state is point-in-time and refreshes manually because plugin inventory exposes no stream. External Loader modules remain visible only through aggregate Runtime counts until a separate installed-package catalog has an authority. Profile comparison, bundle provenance, behavior verification, and flow playback remain outside this evidence layer instead of appearing as guessed facts.
+Runtime state is point-in-time and refreshes manually because plugin inventory exposes no stream. External Loader modules remain visible only through aggregate Runtime counts until a separate installed-package catalog has an authority. Active Profile comparison, patch-layer provenance, behavior verification, and flow playback remain outside this evidence layer instead of appearing as guessed facts.

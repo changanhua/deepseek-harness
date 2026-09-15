@@ -17,19 +17,59 @@ export interface ArchitecturePackage {
   readonly short: string
   readonly group: string
   readonly path: string
+  readonly source: string
   readonly description: string
   /** Full npm identities of in-repo peer dependencies. */
   readonly dependencies: readonly string[]
   readonly faces: readonly ArchitectureFace[]
 }
 
+export interface ArchitectureProfile {
+  readonly name: string
+  readonly bundles: readonly string[]
+  readonly source: string
+}
+
+export interface ArchitectureBundle {
+  readonly name: string
+  readonly short: string
+  readonly path: string
+  readonly description: string
+  readonly packages: readonly string[]
+  readonly source: string
+}
+
 export interface ArchitectureCatalog {
-  readonly schemaVersion: 2
+  readonly schemaVersion: 3
+  readonly profiles: readonly ArchitectureProfile[]
+  readonly bundles: readonly ArchitectureBundle[]
   readonly packages: readonly ArchitecturePackage[]
+}
+
+/** Read the shipped Profile templates from the boot source of this checkout. */
+function collectArchitectureProfiles(root: string): ArchitectureProfile[] {
+  const source = 'packages/boot/app-boot/src/profile.ts'
+  const file = readFileSync(resolve(root, source), 'utf8')
+  const marker = file.indexOf('export const PROFILE_TEMPLATES')
+  if (marker < 0) throw new Error(`architecture-catalog: ${source} has no PROFILE_TEMPLATES export`)
+  const section = file.slice(marker, file.indexOf('\n}\n', marker) + 3)
+  const profiles: ArchitectureProfile[] = []
+  const profilePattern = /\n\s{2}(?:'([^']+)'|([A-Za-z0-9-]+)):\s*\{\s*bundles:\s*\[([\s\S]*?)\]/g
+  for (const match of section.matchAll(profilePattern)) {
+    const name = match[1] ?? match[2]
+    const bundles = [...(match[3] ?? '').matchAll(/'([^']+)'/g)]
+      .map(item => item[1])
+      .filter((value): value is string => value !== undefined)
+    if (name === undefined || bundles.length === 0) throw new Error(`architecture-catalog: invalid Profile template in ${source}`)
+    profiles.push({ name, bundles, source })
+  }
+  if (profiles.length === 0) throw new Error(`architecture-catalog: no Profile templates found in ${source}`)
+  return profiles
 }
 
 /** Collect the current checkout's formal `packages/<group>/<leaf>` manifests. */
 export function collectArchitectureCatalog(root: string): ArchitectureCatalog {
+  const bundleDependencies = new Map<string, readonly string[]>()
   const packages = globSync('packages/*/*/package.json', { cwd: root })
     .map(path => path.split(sep).join('/'))
     .sort()
@@ -38,6 +78,7 @@ export function collectArchitectureCatalog(root: string): ArchitectureCatalog {
         name?: string
         description?: string
         peerDependencies?: Record<string, string>
+        dependencies?: Record<string, string>
         exports?: Record<string, unknown>
         dsh?: { bundle?: unknown; client?: unknown }
       }
@@ -62,6 +103,7 @@ export function collectArchitectureCatalog(root: string): ArchitectureCatalog {
         short,
         group,
         path: dirname(manifestPath).split(sep).join('/'),
+        source: manifestPath,
         description: manifest.description,
         dependencies: Object.keys(manifest.peerDependencies ?? {})
           .filter(name => packageShort(name) !== undefined)
@@ -70,6 +112,16 @@ export function collectArchitectureCatalog(root: string): ArchitectureCatalog {
       }]
     })
   const packageNames = new Set(packages.map(pkg => pkg.name))
+  for (const manifestPath of globSync('packages/*/*/package.json', { cwd: root }).map(path => path.split(sep).join('/')).sort()) {
+    const manifest = JSON.parse(readFileSync(resolve(root, manifestPath), 'utf8')) as {
+      name?: string
+      description?: string
+      dependencies?: Record<string, string>
+      dsh?: { bundle?: unknown }
+    }
+    if (manifest.name === undefined || manifest.dsh?.bundle === undefined) continue
+    bundleDependencies.set(manifest.name, Object.keys(manifest.dependencies ?? {}).filter(name => packageNames.has(name)).sort())
+  }
   for (const pkg of packages) {
     for (const dependency of pkg.dependencies) {
       if (!packageNames.has(dependency)) {
@@ -77,7 +129,26 @@ export function collectArchitectureCatalog(root: string): ArchitectureCatalog {
       }
     }
   }
-  return { schemaVersion: 2, packages }
+  const bundles: ArchitectureBundle[] = packages
+    .filter(pkg => pkg.faces.includes('bundle'))
+    .map(pkg => ({
+      name: pkg.name,
+      short: pkg.short,
+      path: pkg.path,
+      description: pkg.description,
+      packages: bundleDependencies.get(pkg.name) ?? [],
+      source: pkg.source,
+    }))
+  const bundleNames = new Set(bundles.map(bundle => bundle.name))
+  const profiles = collectArchitectureProfiles(root)
+  for (const profile of profiles) {
+    for (const bundle of profile.bundles) {
+      if (!bundleNames.has(bundle)) {
+        throw new Error(`architecture-catalog: Profile ${profile.name} references missing Bundle ${bundle}`)
+      }
+    }
+  }
+  return { schemaVersion: 3, profiles, bundles, packages }
 }
 
 /** Render the deterministic browser module committed beside the feature. */
@@ -93,9 +164,42 @@ export function renderArchitectureCatalogModule(catalog: ArchitectureCatalog): s
     '',
     '/** Package declarations from the checkout that built this Client artifact. */',
     'export const architectureCatalog: ArchitectureCatalog = {',
-    '  schemaVersion: 2,',
-    '  packages: [',
+    '  schemaVersion: 3,',
+    '  profiles: [',
   ]
+  for (const profile of catalog.profiles) {
+    lines.push(
+      '    {',
+      `      name: ${quote(profile.name)},`,
+      '      bundles: [',
+      ...profile.bundles.map(bundle => `        ${quote(bundle)},`),
+      '      ],',
+      `      source: ${quote(profile.source)},`,
+      '    },',
+    )
+  }
+  lines.push(
+    '  ],',
+    '  bundles: [',
+  )
+  for (const bundle of catalog.bundles) {
+    lines.push(
+      '    {',
+      `      name: ${quote(bundle.name)},`,
+      `      short: ${quote(bundle.short)},`,
+      `      path: ${quote(bundle.path)},`,
+      `      description: ${quote(bundle.description)},`,
+      '      packages: [',
+      ...bundle.packages.map(pkg => `        ${quote(pkg)},`),
+      '      ],',
+      `      source: ${quote(bundle.source)},`,
+      '    },',
+    )
+  }
+  lines.push(
+    '  ],',
+    '  packages: [',
+  )
   for (const pkg of catalog.packages) {
     lines.push(
       '    {',
@@ -103,6 +207,7 @@ export function renderArchitectureCatalogModule(catalog: ArchitectureCatalog): s
       `      short: ${quote(pkg.short)},`,
       `      group: ${quote(pkg.group)},`,
       `      path: ${quote(pkg.path)},`,
+      `      source: ${quote(pkg.source)},`,
       `      description: ${quote(pkg.description)},`,
       '      dependencies: [',
       ...pkg.dependencies.map(dependency => `        ${quote(dependency)},`),
