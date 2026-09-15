@@ -1,0 +1,62 @@
+{
+  "name": "@changanhua/dsh-personal-memory",
+  "description": "Explicit project-memory bundle with proposal tools and human review commands",
+  "version": "0.1.2-alpha.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/bundle/personal-memory"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@changanhua/dsh-memory": "workspace:^",
+    "@changanhua/dsh-memory-local": "workspace:^",
+    "@changanhua/dsh-tool-memory": "workspace:^",
+    "@changanhua/dsh-command-memory": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/cordis-plugin-include": "workspace:^",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-session-snapshot": "workspace:^",
+    "@deepseek-ai/dsh-commands": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
+    "@deepseek-ai/dsh-credentials-local": "workspace:^",
+    "@deepseek-ai/dsh-llm-pi-ai": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "js-yaml": "^4.2.0"
+  },
+  "private": true
+}

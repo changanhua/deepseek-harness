@@ -1741,6 +1741,43 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'projectMemory',
+    summary: 'Providers own durable records and reauthorize every call against the Agent\'s Workspace.',
+    description: 'Providers own durable records and reauthorize every call against the Agent\'s Workspace.',
+    methods: [
+      {
+        signature: 'abstract search(agent: Agent, request: MemorySearchRequest, signal?: AbortSignal): Promise<MemorySearchResult>',
+        description: 'Search accepted claims after source, deadline and conflict checks.',
+        parameters: [{ name: 'agent', description: 'Real initiating Agent; never a caller-provided workspace id.' }, { name: 'request', description: 'Bounded lexical query.' }, { name: 'signal', description: 'Cooperative cancellation.' }],
+        returns: 'usable claims and withheld counts within this project only.',
+      },
+      {
+        signature: 'abstract read(agent: Agent, id: string, signal?: AbortSignal): Promise<MemoryReadResult>',
+        description: 'Read one currently usable revision; unavailable bodies remain withheld.',
+        parameters: [{ name: 'agent', description: 'Initiating Agent.' }, { name: 'id', description: 'Memory id in the caller\'s project.' }, { name: 'signal', description: 'Cooperative cancellation.' }],
+        returns: 'a checked revision or an unavailable result; inaccessible ids reject identically to unknown ids.',
+      },
+      {
+        signature: 'abstract propose(agent: Agent, input: MemoryProposal, signal?: AbortSignal): Promise<MemoryMutation>',
+        description: 'Persist a candidate and its receipt together, without activating it.',
+        parameters: [{ name: 'agent', description: 'Initiating Agent and provenance owner.' }, { name: 'input', description: 'Candidate input; all fields are runtime validated.' }, { name: 'signal', description: 'Cancellation before commit prevents admission; committed retries use the same key.' }],
+        returns: 'the durable mutation identity; changed input under one key rejects.',
+      },
+      {
+        signature: 'abstract decide(agent: Agent, request: MemoryDecisionRequest, signal?: AbortSignal): Promise<MemoryMutation>',
+        description: 'Apply a human command to an exact revision under a record-version fence.',
+        parameters: [{ name: 'agent', description: 'Agent whose session contains the authenticated command invocation.' }, { name: 'request', description: 'Command evidence and exact decision target.' }, { name: 'signal', description: 'Cooperative cancellation before the commit boundary.' }],
+        returns: 'the durable decision receipt; fabricated commands, stale versions and invalid sources reject.',
+      },
+      {
+        signature: 'abstract inspect(agent: Agent, request: MemoryInspectionRequest, signal?: AbortSignal): Promise<readonly MemoryInspectedRecord[]>',
+        description: 'Inspect candidate and historical content through a current human command.',
+        parameters: [{ name: 'agent', description: 'Receiving Agent.' }, { name: 'request', description: 'Exact logged list/show command or decision target identity.' }, { name: 'signal', description: 'Cooperative cancellation.' }],
+        returns: 'detached records authorized for human inspection, never a model approval capability.',
+      },
+    ],
+  },
+  {
     key: 'repoWorkspace',
     summary: 'Configured repository resolver and Attempt-owned isolated checkout factory.',
     description: 'Configured repository resolver and Attempt-owned isolated checkout factory. Inspection performs no checkout or process side effect. Opened leases expose an operation-local absolute cwd and retain ownership until awaited close.',
@@ -5464,6 +5501,62 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ManualCompactAgentContext',
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
+  },
+  {
+    name: 'MemoryDecision',
+    declaration: 'export type MemoryDecision = z.infer<typeof memoryDecisionSchema>;',
+  },
+  {
+    name: 'MemoryDecisionRequest',
+    declaration: 'export interface MemoryDecisionRequest {\n    readonly id: string;\n    readonly revision: number;\n    readonly expectedVersion: number;\n    readonly action: MemoryDecision[\'action\'];\n    readonly commandId: string;\n    readonly reviewAfter?: string;\n}',
+  },
+  {
+    name: 'MemoryEligibility',
+    declaration: 'export type MemoryEligibility = \'usable\' | \'source-changed\' | \'source-unavailable\' | \'review-due\' | \'conflicted\' | \'withdrawn\';',
+  },
+  {
+    name: 'MemoryInspectedRecord',
+    declaration: 'export type MemoryInspectedRecord = MemoryRecord & {\n    readonly sourceChecks: ReadonlyArray<{\n        readonly revision: number;\n        readonly checkedAt: string;\n        readonly observations: readonly MemorySourceObservation[];\n    }>;\n};',
+  },
+  {
+    name: 'MemoryInspectionRequest',
+    declaration: 'export interface MemoryInspectionRequest {\n    readonly commandId: string;\n    readonly id?: string;\n    readonly revision?: number;\n}',
+  },
+  {
+    name: 'MemoryMutation',
+    declaration: 'export type MemoryMutation = z.infer<typeof memoryMutationSchema>;',
+  },
+  {
+    name: 'MemoryProposal',
+    declaration: 'export type MemoryProposal = z.infer<typeof memoryProposalSchema>;',
+  },
+  {
+    name: 'MemoryReadResult',
+    declaration: 'export interface MemoryReadResult {\n    readonly id: string;\n    readonly recordVersion: number;\n    readonly revision: number | null;\n    readonly eligibility: MemoryEligibility;\n    readonly checkedAt: string;\n    readonly reviewAfter?: string;\n    readonly sources: readonly MemorySourceObservation[];\n    readonly memory?: MemoryRevision;\n}',
+  },
+  {
+    name: 'MemoryRecord',
+    declaration: 'export type MemoryRecord = z.infer<typeof memoryRecordSchema>;',
+  },
+  {
+    name: 'MemoryRevision',
+    declaration: 'export type MemoryRevision = z.infer<typeof memoryRevisionSchema>;',
+  },
+  {
+    name: 'MemorySearchRequest',
+    declaration: 'export interface MemorySearchRequest {\n    readonly query: string;\n    readonly tags?: readonly string[];\n    readonly limit?: number;\n}',
+  },
+  {
+    name: 'MemorySearchResult',
+    declaration: 'export interface MemorySearchResult {\n    readonly items: readonly MemoryReadResult[];\n    readonly excluded: Readonly<Partial<Record<MemoryEligibility, number>>>;\n}',
+  },
+  {
+    name: 'MemorySource',
+    declaration: 'export type MemorySource = z.infer<typeof memorySourceSchema>;',
+  },
+  {
+    name: 'MemorySourceObservation',
+    declaration: 'export interface MemorySourceObservation {\n    readonly source: MemorySource;\n    readonly status: \'current\' | \'changed\' | \'unavailable\' | \'not-checked\';\n    readonly preview?: string;\n}',
   },
   {
     name: 'Message',

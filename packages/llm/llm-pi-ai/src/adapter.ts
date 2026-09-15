@@ -27,6 +27,7 @@
  */
 
 import { createModels, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
+import { randomUUID } from 'node:crypto'
 import type {
   Api,
   AuthContext,
@@ -201,9 +202,12 @@ function reasoningInfo(
   }
 }
 
-/** Merge deployment headers while removing case-insensitive attribution collisions. */
-function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
-  const attribution = attributionHeaders()
+/** Keep OpenCode Go routing stable per conversation; unscoped calls get their own routing identity. */
+function requestHeaders(headers: Readonly<Record<string, string>> | undefined, options: GenerateOptions): Record<string, string> {
+  const attribution = {
+    ...attributionHeaders(),
+    ...options.provider === 'opencode-go' ? { 'x-opencode-session': options.sessionId ?? randomUUID() } : {},
+  }
   const reserved = new Set(Object.keys(attribution).map(name => name.toLowerCase()))
   return {
     ...Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !reserved.has(name.toLowerCase()))),
@@ -383,9 +387,8 @@ export class PiAiAdapter extends LlmAdapter {
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
         signal: watchdog.signal,
-        // Profile headers are deployment-owned; attribution names are
-        // Harness-owned and therefore win collisions.
-        headers: requestHeaders(profile.headers),
+        // Harness attribution and conversation routing win profile collisions.
+        headers: requestHeaders(profile.headers, options),
       })
       const iterator = toStreamChunks(events, model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]()
       let exhausted = false

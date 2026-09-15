@@ -29,6 +29,7 @@ kind: "package-group"
 | [`sdk-app`](sdk-app/README.zh.md) | 基于 base 的 SDK JSON-RPC stdio 应用 | 挂载 SDK 服务器 |
 | [`sdk-minimal`](sdk-minimal/README.zh.md) | 不使用 base 或 Web 的独立极简 SDK 应用 | —（完整 patch 树） |
 | [`personal-delivery`](personal-delivery/README.zh.md) | 叠加在 base Web profile 上的本地 Windows Personal Delivery layer | `delivery`、`deliveryEvidence`、`repoWorkspace`、`remote.delivery` |
+| [`personal-memory`](personal-memory/README.zh.md) | 显式叠加在支持 Workspace 的 Profile 上的本地项目记忆层 | `projectMemory`、模型工具、人工 `/memory` 命令 |
 
 内置组合包从 dsh 安装目录解析；树外（out-of-tree）组合包通过 `dsh plugin --profile <name> add <package>` 安装进 profile。
 

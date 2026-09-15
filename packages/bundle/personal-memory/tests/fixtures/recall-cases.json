@@ -1,0 +1,322 @@
+[
+  {
+    "id": "validation",
+    "state": "usable",
+    "kind": "method",
+    "topicKey": "check.command",
+    "title": "项目代码检查",
+    "statement": "修改代码后运行 pnpm verify:project，完成本项目的改动检查。",
+    "tags": [
+      "验证"
+    ],
+    "query": "改动完成后本项目用什么命令做检查",
+    "expected": {
+      "eligibility": "usable",
+      "recall": true
+    }
+  },
+  {
+    "id": "dependencies",
+    "state": "usable",
+    "kind": "method",
+    "topicKey": "deps.install",
+    "title": "安装依赖",
+    "statement": "本项目安装依赖使用 pnpm install --frozen-lockfile。",
+    "tags": [
+      "依赖"
+    ],
+    "query": "依赖安装应该使用哪种工具",
+    "expected": {
+      "eligibility": "usable",
+      "recall": true
+    }
+  },
+  {
+    "id": "logging",
+    "state": "usable",
+    "kind": "fact",
+    "topicKey": "observability.fields",
+    "title": "日志字段与请求定位",
+    "statement": "日志记录 requestId、taskId 和 error.code，便于定位请求与任务失败。",
+    "tags": [
+      "日志"
+    ],
+    "query": "日志需要记录哪些字段才方便定位问题",
+    "expected": {
+      "eligibility": "usable",
+      "recall": true
+    }
+  },
+  {
+    "id": "retry",
+    "state": "usable",
+    "kind": "method",
+    "topicKey": "jobs.retry",
+    "title": "后台任务重试",
+    "statement": "后台任务遇到暂时性故障可以重试；重试必须保留原 idempotency key。",
+    "tags": [
+      "幂等"
+    ],
+    "query": "失败的后台任务该如何重试",
+    "expected": {
+      "eligibility": "usable",
+      "recall": true
+    }
+  },
+  {
+    "id": "temporary",
+    "state": "usable",
+    "kind": "method",
+    "topicKey": "test.isolation",
+    "title": "测试目录隔离",
+    "statement": "测试用临时目录放在系统临时目录下的独立测试根，结束后只清理该测试根。",
+    "tags": [
+      "测试"
+    ],
+    "query": "测试用临时目录需要放在哪儿",
+    "expected": {
+      "eligibility": "usable",
+      "recall": true
+    }
+  },
+  {
+    "id": "docs",
+    "state": "usable",
+    "kind": "method",
+    "topicKey": "docs.pairing",
+    "title": "文档双语配对",
+    "statement": "英文和中文文档需要一起更新，更新后核对双语配对记录。",
+    "tags": [
+      "文档"
+    ],
+    "query": "英文和中文文档更新如何保持一致",
+    "expected": {
+      "eligibility": "usable",
+      "recall": true
+    }
+  },
+  {
+    "id": "shell",
+    "state": "usable",
+    "kind": "fact",
+    "topicKey": "host.shell",
+    "title": "Windows 命令执行",
+    "statement": "Windows 宿主的本地命令使用 pwsh 执行，避免把 Bash 语法直接交给 PowerShell。",
+    "tags": [
+      "Windows"
+    ],
+    "query": "什么时候使用 PowerShell 执行本地命令",
+    "expected": {
+      "eligibility": "usable",
+      "recall": true
+    }
+  },
+  {
+    "id": "timeout",
+    "state": "usable",
+    "kind": "fact",
+    "topicKey": "http.deadline",
+    "title": "HTTP 请求超时",
+    "statement": "发出 HTTP 请求时设置 15 秒超时，并把 AbortSignal 传给调用链。",
+    "tags": [
+      "HTTP"
+    ],
+    "query": "发出请求时要怎样设置超时",
+    "expected": {
+      "eligibility": "usable",
+      "recall": true
+    }
+  },
+  {
+    "id": "encoding",
+    "state": "usable",
+    "kind": "fact",
+    "topicKey": "export.encoding",
+    "title": "数据导出编码",
+    "statement": "导出的数据文件采用 UTF-8 编码，不添加 BOM。",
+    "tags": [
+      "导出"
+    ],
+    "query": "导出的数据文件采用哪种编码",
+    "expected": {
+      "eligibility": "usable",
+      "recall": true
+    }
+  },
+  {
+    "id": "backup",
+    "state": "usable",
+    "kind": "method",
+    "topicKey": "release.backup",
+    "title": "发布前的数据备份",
+    "statement": "产生新版本之前先备份项目数据和配置，并保留备份的 SHA-256 摘要。",
+    "tags": [
+      "发布"
+    ],
+    "query": "产生新版本之前需要保留什么",
+    "expected": {
+      "eligibility": "usable",
+      "recall": true
+    }
+  },
+  {
+    "id": "changed-command",
+    "state": "changed",
+    "kind": "method",
+    "topicKey": "legacy.command",
+    "title": "旧的检查命令",
+    "statement": "旧检查命令是 pnpm legacy:check。",
+    "tags": [
+      "旧规则"
+    ],
+    "query": "旧的检查命令",
+    "expected": {
+      "eligibility": "source-changed",
+      "recall": false
+    }
+  },
+  {
+    "id": "changed-endpoint",
+    "state": "changed",
+    "kind": "fact",
+    "topicKey": "legacy.endpoint",
+    "title": "旧的服务端口",
+    "statement": "旧服务端口为 43111。",
+    "tags": [
+      "旧规则"
+    ],
+    "query": "旧的服务端口",
+    "expected": {
+      "eligibility": "source-changed",
+      "recall": false
+    }
+  },
+  {
+    "id": "expired-permission",
+    "state": "expired",
+    "kind": "fact",
+    "topicKey": "permission.review",
+    "title": "临时目录权限约定",
+    "statement": "临时目录权限约定需要在复核期限前重新确认。",
+    "tags": [
+      "复核"
+    ],
+    "query": "临时目录权限约定",
+    "expected": {
+      "eligibility": "review-due",
+      "recall": false
+    }
+  },
+  {
+    "id": "expired-release",
+    "state": "expired",
+    "kind": "method",
+    "topicKey": "release.review",
+    "title": "临时发布步骤",
+    "statement": "临时发布步骤要求运行 pnpm release:preview。",
+    "tags": [
+      "复核"
+    ],
+    "query": "临时发布步骤",
+    "expected": {
+      "eligibility": "review-due",
+      "recall": false
+    }
+  },
+  {
+    "id": "conflict-json",
+    "state": "conflicted",
+    "kind": "fact",
+    "topicKey": "export.conflicting-format",
+    "title": "配置导出格式",
+    "statement": "配置导出格式必须使用 JSON。",
+    "tags": [
+      "格式"
+    ],
+    "query": "配置导出格式",
+    "expected": {
+      "eligibility": "conflicted",
+      "recall": false
+    }
+  },
+  {
+    "id": "conflict-yaml",
+    "state": "conflicted",
+    "kind": "fact",
+    "topicKey": "export.conflicting-format",
+    "title": "配置导出格式",
+    "statement": "配置导出格式必须使用 YAML。",
+    "tags": [
+      "格式"
+    ],
+    "query": "配置导出格式",
+    "expected": {
+      "eligibility": "conflicted",
+      "recall": false
+    }
+  },
+  {
+    "id": "withdrawn",
+    "state": "withdrawn",
+    "kind": "method",
+    "topicKey": "retired.procedure",
+    "title": "撤回的迁移步骤",
+    "statement": "旧迁移步骤要求先运行 pnpm migrate:old。",
+    "tags": [
+      "迁移"
+    ],
+    "query": "撤回的迁移步骤",
+    "expected": {
+      "eligibility": "withdrawn",
+      "recall": false
+    }
+  },
+  {
+    "id": "foreign-memory",
+    "state": "foreign",
+    "kind": "method",
+    "topicKey": "beta.build",
+    "title": "项目乙构建步骤",
+    "statement": "项目乙构建步骤使用 pnpm build:beta。",
+    "tags": [
+      "项目乙"
+    ],
+    "query": "项目乙构建步骤",
+    "expected": {
+      "error": "not-found",
+      "recall": false
+    }
+  },
+  {
+    "id": "foreign-session",
+    "state": "foreign-session",
+    "kind": "method",
+    "topicKey": "beta.session",
+    "title": "项目乙会话方法",
+    "statement": "项目乙会话方法要求运行 pnpm session:beta。",
+    "tags": [
+      "项目乙"
+    ],
+    "query": "项目乙会话方法",
+    "expected": {
+      "error": "source-unavailable",
+      "recall": false
+    }
+  },
+  {
+    "id": "escaping-file",
+    "state": "escape",
+    "kind": "fact",
+    "topicKey": "outside.rule",
+    "title": "项目外规则",
+    "statement": "项目外规则不能作为本项目来源自动导入。",
+    "tags": [
+      "边界"
+    ],
+    "query": "项目外规则",
+    "expected": {
+      "error": "invalid-input",
+      "recall": false
+    }
+  }
+]

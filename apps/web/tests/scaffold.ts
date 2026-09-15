@@ -413,6 +413,15 @@ export interface LaunchOptions {
   harnessHome?: string
   /** Override the durable Queue root when two scaffolds share a settings home in one process. */
   taskQueueRoot?: string
+  /** Caller-owned storage root retained across Host restarts; omitted roots remain scaffold-owned. */
+  storageRoot?: string
+  /** Explicit live subscription route; its credential is supplied only through the named environment reference. */
+  liveModel?: {
+    provider: string
+    model: string
+    apiKeyEnv: string
+    profile: import('@deepseek-ai/dsh-llm-pi-ai').PiAiProviderProfile
+  }
 }
 
 /** Dispose the booted tree and remove both owned temp roots, reporting every independent cleanup failure. */

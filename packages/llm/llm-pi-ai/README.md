@@ -35,6 +35,8 @@ Choose this adapter when the same composition serves several providers, when a r
 
 Each profile may set a `retryPolicy`; omission uses normal mode with five retries. `apiKeyEnv` is a credential reference resolved per request through the harness credential seam, so no secret enters the configuration file; a reference that resolves to nothing fails the request with `MISSING_CREDENTIAL`. Omitting it leaves the route configured-but-keyless, which for an installed catalog route defers to pi-ai's provider-native ambient discovery.
 
+The `opencode-go` route sends the Harness Session ID in `x-opencode-session`, as required by [OpenCode Go routing](https://opencode.ai/docs/go/#where-can-i-use-it). This value stays stable throughout a conversation and overrides case-insensitive profile header collisions. Calls without a Session receive a fresh routing ID; other providers receive no added OpenCode header.
+
 ```yaml
 - name: '@deepseek-ai/dsh-llm-pi-ai'
   config:

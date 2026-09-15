@@ -1,0 +1,19 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../../vendor/schemastery" },
+    { "path": "../../boot/cmdline" },
+    { "path": "../../core/agent" },
+    { "path": "../../api/session-controller/tsconfig.host.json" },
+    { "path": "../../client/connection/tsconfig.host.json" },
+    { "path": "../../interaction/user-questions/tsconfig.json" },
+    { "path": "../../util/home-paths" },
+    { "path": "../../runtime-diagnostics/invariants" }
+  ]
+}

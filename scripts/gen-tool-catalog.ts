@@ -70,6 +70,8 @@ import Lsp from '@deepseek-ai/dsh-lsp'
 import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
+import ProjectMemory from '@changanhua/dsh-memory'
+import * as ToolMemory from '@changanhua/dsh-tool-memory'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import type TeamService from '@deepseek-ai/dsh-experimental-agent-team'
 import * as ToolTeam from '@deepseek-ai/dsh-experimental-tool-agent-team'
@@ -103,6 +105,19 @@ class CatalogAttachmentStore extends AttachmentStore {
 
   override readImage(_ref: ImageAttachmentRef): Promise<StoredImageAttachment> {
     return Promise.reject(new Error('gen-tool-catalog: attachment reads are unreachable during schema harvest'))
+  }
+}
+
+/** Fail-closed Definition implementation used only to harvest registered schemas. */
+class CatalogProjectMemory extends ProjectMemory {
+  override search(): Promise<never> { return this.unreachable() }
+  override read(): Promise<never> { return this.unreachable() }
+  override propose(): Promise<never> { return this.unreachable() }
+  override decide(): Promise<never> { return this.unreachable() }
+  override inspect(): Promise<never> { return this.unreachable() }
+
+  private unreachable(): Promise<never> {
+    return Promise.reject(new Error('gen-tool-catalog: memory operations are unreachable during schema harvest'))
   }
 }
 
@@ -251,6 +266,18 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolAgentRunTaskQueue)
     },
     note: 'The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields.',
+  },
+  {
+    pkg: '@changanhua/dsh-tool-memory',
+    dir: 'tool-memory',
+    source: 'packages/memory/tool-memory/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.projectMemory', 'a live Agent in a registered Workspace'],
+    writes: ['tool/call', 'tool/result', 'candidate revisions and proposal receipts in the project_memory domain'],
+    async mount(ctx) {
+      await ctx.plugin(CatalogProjectMemory)
+      await ctx.plugin(ToolMemory)
+    },
+    note: 'Explicit opt-in project memory. Models can search, read checked claims, and propose candidates; human acceptance, rejection, and withdrawal are separate command operations.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-ask-user',

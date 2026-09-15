@@ -89,6 +89,7 @@ const GROUP_ORDER = [
   'hooks',
   'session-persistence',
   'session-query',
+  'memory',
   'session-title',
   'telemetry',
   'storage',
@@ -99,6 +100,15 @@ const GROUP_ORDER = [
 ]
 
 const SERVICE_ROLES: ServiceRole[] = [
+  {
+    key: 'projectMemory',
+    pkg: 'memory',
+    title: 'Source-backed Workspace memory',
+    mode: 'seam',
+    implementations: ['memory-local'],
+    consumers: ['tool-memory', 'command-memory'],
+    note: 'The provider stores candidates and human decisions within one Workspace, and checks current source eligibility before recall.',
+  },
   {
     key: 'attachments',
     pkg: 'attachment',

@@ -1,0 +1,13 @@
+# Explicit add-on after the base and Web layers. Storage routing remains owned
+# by Storage Domain; every profile sharing it uses the same ownership root.
+- insert:
+    - id: project-memory-local
+      name: '@changanhua/dsh-memory-local'
+      config:
+        ownershipRoot: !!js dshHomePath('storages', 'project-memory-ownership')
+
+    - id: tool-project-memory
+      name: '@changanhua/dsh-tool-memory'
+
+    - id: command-project-memory
+      name: '@changanhua/dsh-command-memory'
