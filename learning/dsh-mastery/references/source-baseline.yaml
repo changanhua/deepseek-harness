@@ -1,0 +1,38 @@
+version: 1
+repository: changanhua/deepseek-harness
+commit: 894fa35e5a3defe51c5615103e993efaa67680f8
+recorded_at: 2026-08-27
+purpose: >-
+  Pin the DSH source revision used by the first request-trace lab. PR #9 changes
+  only learning artifacts at this point, so the runtime source is inherited from
+  this base commit.
+
+request_trace_anchors:
+  - path: packages/core/agent-loop/src/agent.ts
+    symbols:
+      - ReactLoopAgent.send
+      - ReactLoopAgent.followup
+      - ReactLoopAgent.preStep
+      - ReactLoopAgent.turn
+      - ReactLoopAgent.step
+      - ReactLoopAgent.buildRequest
+    why: Owns the concrete turn/step driver, request assembly, model dispatch, and assistant-message commit.
+
+  - path: packages/core/agent-loop/src/tool-calls.ts
+    symbols:
+      - executeToolCalls
+      - appendToolCall
+      - appendToolResult
+    why: Executes model tool calls and commits call/result events in model order.
+
+  - path: packages/core/session/src/index.ts
+    symbols:
+      - Session.append
+      - Session.deriveMessages
+    why: Session is the append-only interaction truth; model message history is derived from its surface projection.
+
+  - path: packages/core/agent-loop/README.zh.md
+    why: Human-facing contract for the concrete driver and its session/request lifecycle.
+
+  - path: packages/core/session/README.zh.md
+    why: Human-facing contract for append-only session truth and derived model history.

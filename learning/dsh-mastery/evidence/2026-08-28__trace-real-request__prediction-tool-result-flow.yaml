@@ -1,0 +1,51 @@
+version: 1
+unit: trace-real-request
+capabilities:
+  - request_tracing
+  - runtime_mental_model
+recorded_at: "2026-08-28T13:19:46+08:00"
+
+attempt:
+  prompt_or_task: |
+    Prediction-only check before source reveal for the Tool Call -> Tool Result -> next model step flow.
+    Four multiple-choice questions were used without answer-format leakage.
+  prediction_before_reveal: |
+    1B 2B 3B 4C
+    4: loop负责调度
+
+observations:
+  - claim: Learner predicts that a model-emitted Tool Call becomes a runtime-traceable tool-call fact/event.
+    evidence: Selected B for question 1.
+  - claim: Learner predicts that the next model input is reconstructed from current session/runtime state rather than by mutating the previous request object.
+    evidence: Selected B for question 2.
+  - claim: Learner predicts that Tool Result survives UI closure because it belongs to session/runtime facts rather than browser-only state.
+    evidence: Selected B for question 3.
+  - claim: Learner predicts that the Agent Loop/driver owns the control decision to continue to the next model step after Tool execution.
+    evidence: Selected C for question 4 and explicitly wrote that the loop is responsible for scheduling/orchestration.
+
+verification:
+  method: pre-reveal prediction capture; source verification pending in the same lab
+  result: partial
+
+evidence_items:
+  prediction_vs_actual_diff: partial
+
+assessment:
+  strengths:
+    - Correct high-level prediction of Session/runtime truth versus request-local projection.
+    - Correctly separates browser UI from runtime/session facts.
+    - Correctly assigns orchestration to the Agent Loop rather than Tool or Storage.
+  misconceptions: []
+  demonstrated:
+    runtime_mental_model: pass
+    request_tracing: partial
+  routing:
+    ready_for:
+      - trace-real-request-source-reveal
+    revisit: []
+
+artifacts:
+  commits: []
+  files: []
+  prs:
+    - "#9"
