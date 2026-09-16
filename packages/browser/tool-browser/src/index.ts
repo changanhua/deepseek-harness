@@ -8,7 +8,7 @@ import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attach
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-user-approval'
-import { approvalNeeded, approvalReason } from './policy.ts'
+import { actionMutates, approvalNeeded, approvalReason } from './policy.ts'
 import { actionResultSchema, entryMountActionSchema, entryUnmountActionSchema, instancesSchema, pageActionSchema,
   regionClearActionSchema, regionRenderActionSchema, requestStatusSchema } from './schema.ts'
 import { createActivitySearchTool } from './activity.ts'
@@ -272,7 +272,7 @@ export function apply(ctx: Context): void {
           planned: (index) => {
             const current = operations[index]
             if (current === undefined) throw new Error('browser action sequence operation is missing')
-            browserTasks.planned(agent, current)
+            browserTasks.planned(agent, current, actionMutates(current.action.kind))
           },
           prepared: (index) => {
             const current = operations[index]
@@ -491,7 +491,7 @@ export function apply(ctx: Context): void {
   }))
   ctx.tools.register(defineTool({
     name: 'browser_task_verify',
-    description: 'Re-observe the browser task page and evaluate its declared machine success condition. Only status verified proves completion; unverified continues the bounded Agent loop.',
+    description: 'Re-observe the browser task page and evaluate its declared machine success condition. Only status verified proves completion. Status stalled means no new action or recovery fact occurred since the last check: make one meaningful next action or clean up instead of repeating verification.',
     parameters: {}, output: taskOutput,
     async execute(_args, exec) {
       if (exec.agent === undefined) throw new Error('browser tasks require an initiating agent')
@@ -517,7 +517,7 @@ export function apply(ctx: Context): void {
         throw new Error('user request must specify the exact upload paths')
       }
       const browserOperation = operation(owner(exec), args.installationId, action, exec.callId)
-      browserTasks.planned(agent, browserOperation)
+      browserTasks.planned(agent, browserOperation, actionMutates(action.kind))
       let result
       try {
         result = await dispatchWithFeedback({

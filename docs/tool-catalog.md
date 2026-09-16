@@ -3137,7 +3137,7 @@ Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-
 
 ### `browser_task_verify`
 
-Re-observe the browser task page and evaluate its declared machine success condition. Only status verified proves completion; unverified continues the bounded Agent loop.
+Re-observe the browser task page and evaluate its declared machine success condition. Only status verified proves completion. Status stalled means no new action or recovery fact occurred since the last check: make one meaningful next action or clean up instead of repeating verification.
 
 ```json
 {

@@ -1,5 +1,14 @@
 import type { BrowserAction, BrowserActionDescription } from '@changanhua/dsh-browser'
 
+const readActions = new Set<BrowserAction['kind']>([
+  'tabs', 'snapshot', 'page_map', 'entry_inspect', 'wait', 'screenshot',
+])
+
+/** Match the provider authorization boundary when persisting unknown-action risk. */
+export function actionMutates(kind: BrowserAction['kind']): boolean {
+  return !readActions.has(kind)
+}
+
 /** Personal deployment uses standing browser consent; mismatched preparations still require review. */
 export function approvalNeeded(kind: BrowserAction['kind'], description: Pick<BrowserActionDescription, 'kind' | 'effect'>): boolean {
   return description.kind !== kind

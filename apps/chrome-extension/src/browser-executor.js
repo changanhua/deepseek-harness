@@ -163,6 +163,11 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
           query: action.query ?? '', offset: action.offset ?? 0, limit: action.limit ?? 128, textLimit: action.textLimit ?? 50000,
           tree: action.tree ?? false, ...(action.treeCursor === undefined ? {} : { treeCursor: action.treeCursor }), treeLimit: action.treeLimit ?? 256,
           includeOptions: action.includeOptions ?? false, structure: action.structure ?? true,
+          ...(action.presentationQueries === undefined ? {} : {
+            presentationQueries: action.presentationQueries,
+            presentationOwner: { sessionId: request.sessionId, installationId: request.installationId,
+              grantEpoch: request.grantEpoch, page },
+          }),
         })
         if (snapshot?.error?.code) return { outcome: 'failed', quiescent: true, reason: snapshot.error.code, detail: snapshot.error.message }
         const frames = []
@@ -218,13 +223,9 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
         let active
         try { active = await chromeApi.tabs.get?.(page.tabId) } catch { active = undefined }
         if (!active) active = (await chromeApi.tabs.query({ active: true, lastFocusedWindow: true }))[0]
-        // A model may address a tab in another window. Activate that exact
-        // tab before using captureVisibleTab, otherwise Chrome captures the
-        // DSH window that currently has focus.
-        if (active?.id !== page.tabId && chromeApi.tabs.update) {
-          await chromeApi.tabs.update(page.tabId, { active: true })
-          try { active = await chromeApi.tabs.get?.(page.tabId) } catch { /* use the prior tab facts */ }
-        }
+        // captureVisibleTab is safe only when Chrome already reports this exact
+        // target as foreground. Never change user focus merely to obtain a read;
+        // a background target falls through to Puppeteer's focus-free CDP path.
         if (active?.id === page.tabId && active.active !== false && Number.isInteger(active.windowId)) {
           let dataUrl
           for (const quality of SCREENSHOT_QUALITIES) {

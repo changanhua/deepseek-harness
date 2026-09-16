@@ -30,7 +30,7 @@ manifest 请求所有 HTTP(S) 网站访问权限、`activeTab`、`debugger`、`w
 
 扩展打包 Puppeteer 浏览器侧公开实验性 `ExtensionTransport`，并通过 `chrome.debugger` 连接当前已登录的 Chrome 标签页。传输方式参考 [Nanobrowser](https://github.com/nanobrowser/nanobrowser)，但不引入它的 Agent 循环、模型接入或界面。Puppeteer 是默认引擎，执行全部已实现动作：`click`、`fill`、`submit`、`double_click`、`right_click`、`hover`、`press`、`select`、`check`、`drag`、`upload`、`navigate`、`back`、`forward`、`reload`、`tab_open`、`tab_close`、`tab_focus`、`scroll`、`wait` 和 `screenshot`。DOM 兼容模式只保留早期的 `click`、`fill`、`submit`、`navigate`、`scroll` 和 `wait`；新动作请求会明确失败。首个鼠标或按键 press 发出后，停止会允许对应的 release 完成、报告 `unknown`，绝不承诺撤销在途操作。
 
-快照包含每个控件的标签、角色、可视区状态及附近卡片或区块标题。`tree` 快照从一份稳定缓存分页返回完整的 Document、元素、文本和开放 Shadow Root 层次；每个节点保留稳定的 index 和 parent index，返回的 cursor 读取下一页而不重新匹配节点。iframe 元素标出 source 边界，iframe 文档仍通过独立 frame 读取。树会排除隐藏、可编辑、script 和 style 文本，并保留隐藏结构而不暴露其标签或文本。[浏览器工具](../../packages/browser/tool-browser/README.zh.md)负责模型可见的预算与操作后的新反馈。截图仅支持主 frame，base64 上限为 400,000 字符。上传最多接受 16 个绝对路径，且当前用户消息必须逐一写出准确路径；工具会在执行前检查该来源，不额外显示批准框。
+快照包含每个控件的标签、角色、可视区状态及附近卡片或区块标题。`tree` 快照从一份稳定缓存分页返回完整的 Document、元素、文本和开放 Shadow Root 层次；每个节点保留稳定的 index 和 parent index，返回的 cursor 读取下一页而不重新匹配节点。iframe 元素标出 source 边界，iframe 文档仍通过独立 frame 读取。树会排除隐藏、可编辑、script 和 style 文本，并保留隐藏结构而不暴露其标签或文本。受信任的任务快照还会把有界 mount／文本展示查询经执行器传给隔离页面运行时；每项回答都绑定精确 Session、installation、grant epoch、页面和仍连接的真实面板实例，不会匹配页面任意位置的同文或伪造 mount 属性。[浏览器工具](../../packages/browser/tool-browser/README.zh.md)负责模型可见的预算与操作后的新反馈。截图仅支持主 frame，base64 上限为 400,000 字符；后台目标会使用不切换焦点的 Puppeteer 路径，否则明确失败，不会激活用户标签页。上传最多接受 16 个绝对路径，且当前用户消息必须逐一写出准确路径；工具会在执行前检查该来源，不额外显示批准框。
 
 ## 后台监控
 

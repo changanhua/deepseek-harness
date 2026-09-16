@@ -220,7 +220,8 @@
         || new TextEncoder().encode(query.text).byteLength > 512) return []
       const expected = text(query.text)
       const mounted = regionMounts.get(query.mountId)
-      const panels = mounted?.url === location.href ? regionPanels(query.mountId).filter(panel => panel.isConnected) : []
+      const panels = mounted?.url === location.href && mounted.presentationOwner === presentationOwner(options?.presentationOwner)
+        ? [...mounted.panels].filter(panel => panel.isConnected) : []
       return [{ mountId: query.mountId, text: expected, present: panels.some(panel => text(panel.textContent).includes(expected)) }]
     }) : []
     return { snapshotId, url: window.location.href, title: document.title,
@@ -718,9 +719,22 @@
   }
   const regionOwner = request => JSON.stringify([request.sessionId, request.installationId, request.grantEpoch,
     request.payload.page?.tabId, request.payload.page?.frameId, request.payload.page?.documentId])
+  const presentationOwner = value => {
+    const page = value?.page
+    if (!value || typeof value.sessionId !== 'string' || typeof value.installationId !== 'string'
+      || !Number.isSafeInteger(value.grantEpoch) || !page || !Number.isSafeInteger(page.tabId)
+      || !Number.isSafeInteger(page.frameId) || typeof page.documentId !== 'string' || typeof page.url !== 'string') return null
+    return JSON.stringify([value.sessionId, value.installationId, value.grantEpoch,
+      page.tabId, page.frameId, page.documentId, page.url])
+  }
+  const renderedPresentationOwner = request => presentationOwner({
+    sessionId: request.sessionId, installationId: request.installationId, grantEpoch: request.grantEpoch,
+    page: request.payload.page,
+  })
   const regionPanels = mountId => [...document.querySelectorAll('[data-dsh-region-mount-id]')]
     .filter(node => node.dataset.dshRegionMountId === mountId)
-  const containerHasRegionPanel = (container, mountId) => regionPanels(mountId).some(panel => container.contains(panel))
+  const containerHasRegionPanel = (container, mounted) => [...(mounted?.panels ?? [])]
+    .some(panel => panel.isConnected && container.contains(panel))
   const regionPanelStyle = 'all:initial;display:block;box-sizing:border-box;margin:0 0 12px;padding:12px 14px;border:1px solid rgba(127,127,127,.28);border-radius:12px;background:#fff;color:#1a1a1a;font:13px/1.7 system-ui,-apple-system,"Segoe UI",sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.06)'
   const safeHref = value => {
     try {
@@ -801,17 +815,16 @@
     for (const block of action.blocks.slice(0, MAX_REGION_BLOCKS)) panel.append(regionBlockNode(block))
     return panel
   }
-  const restoreReplacedNodes = (mountId, replaced) => {
+  const restoreReplacedNodes = existing => {
     let restored = 0
-    for (const saved of replaced ?? []) {
+    for (const saved of existing?.replaced ?? []) {
       if (!saved.container?.isConnected) continue
       // A route renderer may have populated this still-connected container
       // before our observer runs.  Restoring the pre-render nodes then would
       // overwrite that new route.  A restore is safe only while this exact
       // mount still owns every child of the container.
       const children = [...saved.container.childNodes]
-      const whollyOwned = children.length > 0 && children.every(node => node.nodeType === Node.ELEMENT_NODE
-        && node.dataset?.dshRegionMountId === mountId)
+      const whollyOwned = children.length > 0 && children.every(node => existing.panels.has(node))
       if (whollyOwned) { saved.container.replaceChildren(...saved.nodes); restored++ }
     }
     return restored
@@ -819,9 +832,9 @@
   const regionClearById = mountId => {
     const existing = regionMounts.get(mountId)
     existing?.observer.disconnect()
-    const restored = restoreReplacedNodes(mountId, existing?.replaced)
+    const restored = restoreReplacedNodes(existing)
     regionMounts.delete(mountId)
-    const panels = regionPanels(mountId)
+    const panels = existing === undefined ? regionPanels(mountId) : [...existing.panels]
     // A reloaded runtime can remove its panel, but cannot prove what a
     // replace-mode container held before the lost registry. Keep its Host
     // lease unresolved instead of claiming a restoration we did not perform.
@@ -838,7 +851,7 @@
     const existing = regionMounts.get(mountId)
     existing?.observer.disconnect()
     regionMounts.delete(mountId)
-    for (const node of regionPanels(mountId)) node.remove()
+    for (const node of existing === undefined ? regionPanels(mountId) : existing.panels) node.remove()
   }
   const regionContainers = selector => {
     try { return [...document.querySelectorAll(selector)].slice(0, MAX_REGION_CONTAINERS) }
@@ -868,15 +881,17 @@
     regionClearById(action.mountId)
     const placement = action.placement === 'append' ? 'append' : 'prepend'
     const mode = action.mode === 'replace' ? 'replace' : 'append'
-    const candidate = regionPanel(action.mountId, action)
+    const panels = new Set()
     const replaced = []
     let rendered = 0
     for (const container of containers) {
       if (!container?.isConnected || typeof container[placement] !== 'function') continue
+      const panel = regionPanel(action.mountId, action)
       if (mode === 'replace') {
         replaced.push({ container, nodes: [...container.childNodes] })
-        container.replaceChildren(candidate.cloneNode(true))
-      } else container[placement](candidate.cloneNode(true))
+        container.replaceChildren(panel)
+      } else container[placement](panel)
+      panels.add(panel)
       rendered++
     }
     if (rendered === 0) return receipt(request, 'failed', { reason: 'region_target_not_found', quiescent: true })
@@ -897,17 +912,20 @@
       if (live === null || live.length !== 1) return
       for (const container of live) {
         if (!container?.isConnected || typeof container[placement] !== 'function') continue
-        if (containerHasRegionPanel(container, action.mountId)) continue
+        if (containerHasRegionPanel(container, mounted)) continue
+        const panel = regionPanel(action.mountId, action)
         if (mode === 'replace') {
           mounted.replaced.push({ container, nodes: [...container.childNodes] })
-          container.replaceChildren(regionPanel(action.mountId, action))
-        } else container[placement](regionPanel(action.mountId, action))
+          container.replaceChildren(panel)
+        } else container[placement](panel)
+        mounted.panels.add(panel)
         reattached++
         rendered++
       }
     })
     observer.observe(document.documentElement, { childList: true, subtree: true })
-    regionMounts.set(action.mountId, { observer, url: location.href, replaced, owner })
+    regionMounts.set(action.mountId, { observer, url: location.href, replaced, owner,
+      presentationOwner: renderedPresentationOwner(request), panels })
     return receipt(request, 'observed', { quiescent: true, value: mode === 'replace'
       ? { rendered, containers: containers.length, replaced: rendered }
       : { rendered, containers: containers.length } })

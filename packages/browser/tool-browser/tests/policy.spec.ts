@@ -4,7 +4,7 @@ import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { BrowserPreparedTicket } from '@changanhua/dsh-browser/types'
 import type { BrowserAction, BrowserActionDescription, BrowserActionResult, BrowserOperation } from '@changanhua/dsh-browser'
-import { approvalNeeded, approvalReason } from '../src/policy.ts'
+import { actionMutates, approvalNeeded, approvalReason } from '../src/policy.ts'
 import { apply, dispatchPrepared, dispatchSequence, dispatchWithFeedback } from '../src/index.ts'
 import { requestStatusSchema } from '../src/schema.ts'
 
@@ -120,6 +120,14 @@ describe('browser tool approval policy', () => {
     expect(approvalNeeded('wait', { kind: 'wait', effect: 'wait' })).toBe(false)
     expect(approvalNeeded('fill', { kind: 'fill', effect: 'local-disclosure' })).toBe(false)
     expect(approvalNeeded('submit', { kind: 'click', effect: 'local-disclosure' })).toBe(true)
+  })
+  it('classifies provider read actions so an interrupted wait is not retained as an unknown write', () => {
+    for (const kind of ['tabs', 'snapshot', 'page_map', 'entry_inspect', 'wait', 'screenshot'] as const) {
+      expect(actionMutates(kind)).toBe(false)
+    }
+    for (const kind of ['click', 'fill', 'submit', 'region_render', 'region_clear'] as const) {
+      expect(actionMutates(kind)).toBe(true)
+    }
   })
   it.each(['rejected', 'cancelled', 'unavailable'])('does not commit a mismatched preparation when review is %s', async (outcome) => {
     const h = harness('form-submit', 'click', 'fill'); h.approval.mockResolvedValue(outcome)

@@ -69,6 +69,10 @@ const clearRequest = (mountId: string): BrowserRequest => ({
   ...identity(`clear-${mountId}`), target, payload: { kind: 'region_clear', page, mountId },
 })
 
+const presentationOwner = (extra: Partial<BrowserIdentity & { page: typeof page }> = {}) => ({
+  sessionId: 'session-1', installationId: 'installation-1', grantEpoch: 7, page, ...extra,
+})
+
 const panelOf = (mountId: string): HTMLElement | null => document.querySelector<HTMLElement>(`[data-dsh-region-mount-id="${mountId}"]`)
 
 const flushObservers = async () => {
@@ -145,17 +149,43 @@ describe('区域内容面板挂载', () => {
     expect(panel?.textContent).toContain('回答')
   })
 
-  test('snapshot 只把仍由 regionMounts 持有的实际面板报告为展示证据', () => {
+  test('snapshot 只把可信 owner 持有且仍连接的实际面板报告为展示证据', () => {
     document.body.innerHTML = '<p>证据分歧</p><div id="side"></div>'
     const assistant = install()
     const query = { presentationQueries: [{ mountId: 'analysis-panel', text: '证据分歧' }] }
-    expect(assistant.snapshot(query)).toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据分歧', present: false }] })
+    const snapshot = (owner = presentationOwner()) => assistant.snapshot({ ...query, presentationOwner: owner })
+    expect(snapshot()).toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据分歧', present: false }] })
     assistant.regionRender(renderRequest('analysis-panel', { blocks: [{ type: 'text', text: '证据分歧' }] }))
-    expect(assistant.snapshot(query)).toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据分歧', present: true }] })
-    panelOf('analysis-panel')?.remove()
-    expect(assistant.snapshot(query)).toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据分歧', present: false }] })
+    expect(snapshot()).toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据分歧', present: true }] })
+    const realPanel = panelOf('analysis-panel')
+    realPanel?.remove()
+    const forgedPanel = document.createElement('div')
+    forgedPanel.dataset.dshRegionMountId = 'analysis-panel'
+    forgedPanel.textContent = '证据分歧'
+    document.querySelector('#side')?.append(forgedPanel)
+    expect(snapshot()).toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据分歧', present: false }] })
+  })
+
+  test('snapshot 仅接受与真实面板完全匹配的 session、installation 与页面 owner', () => {
+    document.body.innerHTML = '<div id="side"></div>'
+    const assistant = install()
+    assistant.regionRender(renderRequest('analysis-panel', { blocks: [{ type: 'text', text: '证据分歧' }] }))
+    const query = { presentationQueries: [{ mountId: 'analysis-panel', text: '证据分歧' }] }
+    const snapshot = (owner: ReturnType<typeof presentationOwner>) => assistant.snapshot({ ...query, presentationOwner: owner })
+    expect(snapshot(presentationOwner({ sessionId: 'session-2' }))).toMatchObject({ presentations: [{ present: false }] })
+    expect(snapshot(presentationOwner({ installationId: 'installation-2' }))).toMatchObject({ presentations: [{ present: false }] })
+    expect(snapshot(presentationOwner({ grantEpoch: 8 }))).toMatchObject({ presentations: [{ present: false }] })
+    expect(snapshot(presentationOwner({ page: { ...page, documentId: 'doc-other' } }))).toMatchObject({ presentations: [{ present: false }] })
+    expect(snapshot(presentationOwner({ page: { ...page, url: 'https://example.test/other' } }))).toMatchObject({ presentations: [{ present: false }] })
+    expect(snapshot(presentationOwner())).toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据分歧', present: true }] })
+  })
+
+  test('snapshot 在可信 owner 内规范化展示查询空白', () => {
+    document.body.innerHTML = '<div id="side"></div>'
+    const assistant = install()
     assistant.regionRender(renderRequest('analysis-panel', { blocks: [{ type: 'text', text: '证据 分歧' }] }))
-    expect(assistant.snapshot({ presentationQueries: [{ mountId: 'analysis-panel', text: '证据\n  分歧' }] }))
+    expect(assistant.snapshot({ presentationOwner: presentationOwner(),
+      presentationQueries: [{ mountId: 'analysis-panel', text: '证据\n  分歧' }] }))
       .toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据 分歧', present: true }] })
   })
 
@@ -340,6 +370,21 @@ describe('区域内容面板挂载', () => {
     document.body.innerHTML = '<div id="side"></div>'
     await flushObservers()
     expect(document.querySelectorAll('[data-dsh-region-mount-id="panel"]')).toHaveLength(0)
+  })
+
+  test('regionClear 只移除登记的真实面板并保留页面伪造的同名 sibling', () => {
+    document.body.innerHTML = '<div id="side"></div>'
+    const assistant = install()
+    assistant.regionRender(renderRequest('panel'))
+    const real = panelOf('panel')
+    const forged = document.createElement('div')
+    forged.dataset.dshRegionMountId = 'panel'
+    forged.textContent = '页面节点'
+    document.querySelector('#side')?.append(forged)
+    expect(assistant.regionClear(clearRequest('panel'))).toMatchObject({ outcome: 'observed', value: { cleared: true } })
+    expect(real?.isConnected).toBe(false)
+    expect(forged.isConnected).toBe(true)
+    expect(forged.textContent).toBe('页面节点')
   })
 
   test('regionClear 在页面端挂载登记丢失后移除同 mountId 面板，但把替换内容保留为未解决', () => {

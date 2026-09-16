@@ -11,6 +11,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { BrowserActionResult, BrowserOperation } from '@changanhua/dsh-browser'
 import { executeObserved } from '../src/index.ts'
 import { BrowserTaskLoop, MAX_ACTIONS, MAX_STEPS } from '../src/loop.ts'
+import { actionMutates } from '../src/policy.ts'
 
 const page = { tabId: 4, frameId: 0, documentId: 'first', url: 'https://example.test/first' }
 type PresentationObservation = { mountId:string;text:string;present:boolean }
@@ -24,10 +25,12 @@ async function harness() {
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(BrowserTaskService)
   const session = ctx.sessions.create(SessionId(`loop-${Math.random()}`)); session.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '完成页面任务' }] }), { surfaceOp: 'append' })
-  const agent = { id: session.id, options: {}, session, ctx, status: 'idle', inbox: { append() {}, remove() { return false }, nextStep: [] }, send() {}, followup() {}, steer() {}, inject: vi.fn(), cancel() {}, runMaintenance(fn: (signal: AbortSignal) => unknown) { return fn(new AbortController().signal) }, whenIdle() { return Promise.resolve() } } as unknown as Agent
+  const inject = vi.fn()
+  const agent = { id: session.id, options: {}, session, ctx, status: 'idle', inbox: { append() {}, remove() { return false }, nextStep: [] }, send() {}, followup() {}, steer() {}, inject, cancel() {}, runMaintenance(fn: (signal: AbortSignal) => unknown) { return fn(new AbortController().signal) }, whenIdle() { return Promise.resolve() } } as unknown as Agent
   ctx.agents.register(agent)
-  const browser = { instances: vi.fn(async () => [instance]), execute: vi.fn(async (operation: BrowserOperation): Promise<BrowserActionResult> => ({ requestId: operation.requestId, sessionId: operation.sessionId, installationId: operation.installationId, outcome: 'observed', delivery: 'sent', value: { page, text: 'Done', elements: [] } })) }
-  return { ctx, agent, browser, loop: new BrowserTaskLoop(browser, ctx.browserTasks) }
+  const browser = { instances: vi.fn(async () => [instance]), execute: vi.fn(async (operation: BrowserOperation): Promise<BrowserActionResult> => ({ requestId: operation.requestId, sessionId: operation.sessionId, installationId: operation.installationId, outcome: 'observed', delivery: 'sent', value: { page, text: 'Done', elements: [], presentations: operation.action.kind === 'snapshot'
+    ? (operation.action.presentationQueries ?? []).map(query => ({ ...query, present: false })) : [] } })) }
+  return { ctx, agent, browser, inject, loop: new BrowserTaskLoop(browser, ctx.browserTasks) }
 }
 
 describe('BrowserTaskLoop durable bridge', () => {
@@ -40,8 +43,49 @@ describe('BrowserTaskLoop durable bridge', () => {
     ])
     await h.ctx.fiber.dispose()
   })
+  it('stops continuation when a provider omits requested presentation observations and recovers after refresh', async () => {
+    const h = await harness(); let forwardsPresentationQueries = false
+    h.browser.execute.mockImplementation(async (operation: BrowserOperation) => ({ requestId: operation.requestId,
+      sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed' as const, delivery: 'sent' as const,
+      value: { page, text: '原页面', elements: [], presentations: operation.action.kind === 'snapshot' && forwardsPresentationQueries
+        ? (operation.action.presentationQueries ?? []).map(query => ({ ...query, present: false })) : [] } }))
+    const started = await h.loop.start(h.agent, { installationId: 'extension', page, goal: '展示分析',
+      success: { region: { mountId: 'analysis-panel', text: '证据分歧' } } }, new AbortController().signal)
+    expect(started).toMatchObject({ status: 'waiting', blockers: ['capability-drift'],
+      diagnostic: { code: 'presentation-observation-missing', queries: [{ mountId: 'analysis-panel', text: '证据分歧' }] } })
+    expect(h.ctx.browserTasks.get(h.agent)).toMatchObject({ phase: 'waiting', blockers: ['capability-drift'] })
+    forwardsPresentationQueries = true
+    const retried = await h.loop.verify(h.agent, new AbortController().signal)
+    expect(retried).toMatchObject({ status: 'verifying', blockers: [] })
+    expect(h.ctx.browserTasks.get(h.agent)?.blockers).toEqual([])
+    await h.ctx.fiber.dispose()
+  })
+  it('allows only the exact registered cleanup while presentation capability is degraded', async () => {
+    const h = await harness(); let presentations: PresentationObservation[] = [{ mountId: 'analysis-panel', text: '证据分歧', present: false }]
+    h.browser.execute.mockImplementation(async (operation: BrowserOperation) => ({ requestId: operation.requestId,
+      sessionId: h.agent.session.id, installationId: operation.installationId, outcome: 'observed' as const, delivery: 'sent' as const,
+      value: { page, text: '原页面', elements: [], presentations } }))
+    await h.loop.start(h.agent, { installationId: 'extension', page, goal: '展示分析',
+      success: { region: { mountId: 'analysis-panel', text: '证据分歧' } } }, new AbortController().signal)
+    const render = { kind: 'region_render' as const, page, mountId: 'analysis-panel', selector: '#sidebar',
+      blocks: [{ type: 'text' as const, text: '证据分歧' }] }
+    h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'render-drift', action: render })
+    h.loop.reserveResource(h.agent, 'analysis-panel'); h.loop.dispatched(h.agent, 'render-drift')
+    const rendered = { requestId: 'render-drift', sessionId: h.agent.session.id, installationId: 'extension',
+      outcome: 'observed' as const, delivery: 'sent' as const, value: { rendered: 1 } }
+    const renderedSettlement = h.loop.settle(h.agent, rendered, render)!
+    h.loop.settleResource(h.agent, 'analysis-panel', rendered, render, renderedSettlement.receipt)
+    presentations = []
+    expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({ blockers: ['capability-drift'] })
+    const clear = { kind: 'region_clear' as const, page, mountId: 'analysis-panel' }
+    h.loop.releasePending(h.agent, 'analysis-panel')
+    expect(() => h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'other', requestId: 'wrong-owner', action: clear })).toThrow('target mismatch')
+    expect(() => h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'exact-cleanup', action: clear })).not.toThrow()
+    expect(() => h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'other-write', action: { kind: 'reload', page } })).toThrow()
+    await h.ctx.fiber.dispose()
+  })
   it('verifies rendered region content before cleanup and retains that proof through restore', async () => {
-    const h = await harness(); let visibleText='原页面'; let presentations:PresentationObservation[]=[]
+    const h = await harness(); let visibleText='原页面'; let presentations:PresentationObservation[]=[{ mountId:'analysis-panel',text:'证据分歧',present:false }]
     h.browser.execute.mockImplementation(async(operation:BrowserOperation)=>({ requestId:operation.requestId,sessionId:h.agent.session.id,
       installationId:'extension',outcome:'observed' as const,delivery:'sent' as const,value:{ page,text:visibleText,elements:[],presentations } }))
     await h.loop.start(h.agent,{ installationId:'extension',page,goal:'展示分析',
@@ -61,13 +105,13 @@ describe('BrowserTaskLoop durable bridge', () => {
     const cleared={ requestId:'clear',sessionId:h.agent.session.id,installationId:'extension',outcome:'observed' as const,delivery:'sent' as const,value:{ cleared:true } }
     const clearSettlement=h.loop.settle(h.agent,cleared,clear)!
     h.loop.settleResource(h.agent,'analysis-panel',cleared,clear,clearSettlement.receipt)
-    visibleText='原页面';presentations=[]
+    visibleText='原页面';presentations=[{ mountId:'analysis-panel',text:'证据分歧',present:false }]
     const verified=await h.loop.verify(h.agent,new AbortController().signal)
     expect({ verified,task:h.ctx.browserTasks.get(h.agent) }).toMatchObject({ verified:{ status:'verified' } })
     await h.ctx.fiber.dispose()
   })
   it('signs the bounded requested region text even when it appears after the old preview boundary', async () => {
-    const h = await harness(); const prefix = '前'.repeat(160); const expected = '后部证据'; let visibleText = '原页面'; let presentations:PresentationObservation[]=[]
+    const h = await harness(); const prefix = '前'.repeat(160); const expected = '后部证据'; let visibleText = '原页面'; let presentations:PresentationObservation[]=[{ mountId:'analysis-panel',text:expected,present:false }]
     h.browser.execute.mockImplementation(async (operation: BrowserOperation) => ({ requestId: operation.requestId,
       sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed' as const, delivery: 'sent' as const,
       value: { page, text: visibleText, elements: [], presentations } }))
@@ -103,7 +147,7 @@ describe('BrowserTaskLoop durable bridge', () => {
     await h.ctx.fiber.dispose()
   })
   it('recovers an unknown region render from request status without repeating it, then verifies and clears its proof', async () => {
-    const h = await harness(); let visibleText = '原页面'; let presentations:PresentationObservation[]=[]
+    const h = await harness(); let visibleText = '原页面'; let presentations:PresentationObservation[]=[{ mountId:'analysis-panel',text:'恢复后的证据',present:false }]
     h.browser.execute.mockImplementation(async (operation: BrowserOperation) => ({ requestId: operation.requestId,
       sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed' as const, delivery: 'sent' as const,
       value: { page, text: visibleText, elements: [], presentations } }))
@@ -126,13 +170,13 @@ describe('BrowserTaskLoop durable bridge', () => {
     const cleared = { requestId: 'clear-recovered', sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed' as const, delivery: 'sent' as const, value: { cleared: true } }
     const clearSettlement = h.loop.settle(h.agent, cleared, clear)!
     h.loop.settleResource(h.agent, 'analysis-panel', cleared, clear, clearSettlement.receipt)
-    visibleText = '原页面';presentations=[]
+    visibleText = '原页面';presentations=[{ mountId:'analysis-panel',text:'恢复后的证据',present:false }]
     expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({ status: 'verified' })
     expect(h.browser.execute.mock.calls.filter(([operation]) => operation.action.kind === 'region_render')).toHaveLength(0)
     await h.ctx.fiber.dispose()
   })
   it('does not verify region content from identical text outside the mounted DSH panel',async()=>{
-    const h=await harness();let presentations:PresentationObservation[]=[]
+    const h=await harness();let presentations:PresentationObservation[]=[{ mountId:'analysis-panel',text:'证据分歧',present:false }]
     h.browser.execute.mockImplementation(async(operation:BrowserOperation)=>({ requestId:operation.requestId,
       sessionId:h.agent.session.id,installationId:'extension',outcome:'observed' as const,delivery:'sent' as const,
       value:{ page,text:'原页面已经包含证据分歧',elements:[],presentations } }))
@@ -147,6 +191,10 @@ describe('BrowserTaskLoop durable bridge', () => {
     await h.loop.verify(h.agent,new AbortController().signal)
     expect(h.ctx.browserTasks.get(h.agent)?.evaluations).toMatchObject([{ clauseId:'region',satisfied:false }])
     presentations=[{ mountId:'analysis-panel',text:'证据分歧',present:true }]
+    const wait = { kind:'wait' as const,page,milliseconds:50 }
+    h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'wait-presentation',action:wait },false)
+    h.loop.dispatched(h.agent,'wait-presentation')
+    h.loop.settle(h.agent,{ requestId:'wait-presentation',sessionId:h.agent.session.id,installationId:'extension',outcome:'observed',delivery:'sent' },wait)
     await h.loop.verify(h.agent,new AbortController().signal)
     expect(h.ctx.browserTasks.get(h.agent)?.evaluations).toMatchObject([{ clauseId:'region',satisfied:true }])
     await h.ctx.fiber.dispose()
@@ -244,6 +292,16 @@ describe('BrowserTaskLoop durable bridge', () => {
     const requestId = 'lost'; const action = { kind: 'click' as const, element: { page, snapshotId: 's', elementId: 'go' }, intent: 'go' }; h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId, action }); h.loop.dispatched(h.agent, requestId); h.loop.settle(h.agent, { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'unknown', delivery: 'sent' }, action)
     expect(h.ctx.browserTasks.get(h.agent)!.blockers).toContain('unknown-attempt')
     expect(h.loop.allowsAction(h.agent, action)).toBe(false)
+    await h.ctx.fiber.dispose()
+  })
+  it('does not turn an interrupted provider read into an unknown write blocker', async () => {
+    const h = await harness(); await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Never' } }, new AbortController().signal)
+    const requestId = 'lost-wait'; const action = { kind: 'wait' as const, page, milliseconds: 50 }
+    h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId, action }, actionMutates(action.kind))
+    h.loop.dispatched(h.agent, requestId)
+    h.loop.settle(h.agent, { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'unknown', delivery: 'sent' }, action)
+    expect(h.ctx.browserTasks.get(h.agent)!.attempts.find(item => item.requestId === requestId)).toMatchObject({ write: false, outcome: 'unknown' })
+    expect(h.ctx.browserTasks.get(h.agent)!.blockers).not.toContain('unknown-attempt')
     await h.ctx.fiber.dispose()
   })
   it('reconciles an unknown request only from a quiescent recovery receipt', async () => {
@@ -515,9 +573,75 @@ describe('BrowserTaskLoop durable bridge', () => {
     const clear = { kind: 'region_clear' as const, page, mountId: 'result-panel' }
     expect(h.loop.allowsAction(h.agent, clear)).toBe(true)
     expect(h.loop.allowsAction(h.agent, { kind: 'click', element: { page, snapshotId: 's', elementId: 'go' }, intent: 'go' })).toBe(false)
+    await h.loop.turnStopping(h.agent, new AbortController().signal)
+    expect(h.ctx.browserTasks.get(h.agent)?.phase).not.toBe('terminal')
     const before = h.ctx.browserTasks.get(h.agent)!.budget.actionsUsed
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'cleanup-after-budget', action: clear })
     expect(h.ctx.browserTasks.get(h.agent)!.budget.actionsUsed).toBe(before)
+    h.loop.dispatched(h.agent, 'cleanup-after-budget')
+    const cleared = { requestId: 'cleanup-after-budget', sessionId: h.agent.session.id, installationId: 'extension',
+      outcome: 'observed' as const, delivery: 'sent' as const, value: { cleared: true } }
+    const settlement = h.loop.settle(h.agent, cleared, clear)!
+    h.loop.settleResource(h.agent, 'result-panel', cleared, clear, settlement.receipt)
+    await h.loop.turnStopping(h.agent, new AbortController().signal)
+    expect(h.ctx.browserTasks.get(h.agent)).toMatchObject({ phase: 'terminal', outcome: 'budget-exhausted' })
+    await h.ctx.fiber.dispose()
+  })
+  it('dispatches exact owned cleanup when the action budget ends with an active resource', async () => {
+    const h = await harness()
+    h.browser.execute.mockImplementation(async (operation: BrowserOperation) => ({ requestId: operation.requestId,
+      sessionId: h.agent.session.id, installationId: operation.installationId, outcome: 'observed' as const, delivery: 'sent' as const,
+      value: operation.action.kind === 'region_clear' ? { cleared: true } : { page, text: 'Never', elements: [],
+        presentations: operation.action.kind === 'snapshot'
+          ? (operation.action.presentationQueries ?? []).map(query => ({ ...query, present: false })) : [] } }))
+    await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Done' } }, new AbortController().signal)
+    const render = { kind: 'region_render' as const, page, mountId: 'budget-panel', selector: '#sidebar',
+      blocks: [{ type: 'text' as const, text: '结果' }] }
+    h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'budget-render', action: render })
+    h.loop.reserveResource(h.agent, 'budget-panel'); h.loop.dispatched(h.agent, 'budget-render')
+    const rendered = { requestId: 'budget-render', sessionId: h.agent.session.id, installationId: 'extension',
+      outcome: 'observed' as const, delivery: 'sent' as const, value: { rendered: 1 } }
+    const renderedSettlement = h.loop.settle(h.agent, rendered, render)!
+    h.loop.settleResource(h.agent, 'budget-panel', rendered, render, renderedSettlement.receipt)
+    for (let index = h.ctx.browserTasks.get(h.agent)!.budget.actionsUsed; index < MAX_ACTIONS; index += 1) {
+      h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: `budget-read-${index}`,
+        action: { kind: 'snapshot', tabId: page.tabId, frameId: page.frameId, documentId: page.documentId, limit: 1, textLimit: 0 } }, false)
+    }
+    await h.loop.turnStopping(h.agent, new AbortController().signal)
+    const cleanup = h.browser.execute.mock.calls.find(([operation]) => operation.action.kind === 'region_clear')?.[0]
+    expect(cleanup).toMatchObject({ installationId: 'extension', action: { kind: 'region_clear', page, mountId: 'budget-panel' } })
+    expect(h.ctx.browserTasks.get(h.agent)).toMatchObject({ phase: 'terminal', outcome: 'budget-exhausted',
+      resources: [{ id: 'budget-panel', state: 'released', disposition: 'clear-observed' }] })
+    await h.ctx.fiber.dispose()
+  })
+  it('still cleans an exact active resource when the final observation reports capability drift', async () => {
+    const h = await harness(); let presentationContract = true
+    h.browser.execute.mockImplementation(async (operation: BrowserOperation) => ({ requestId: operation.requestId,
+      sessionId: h.agent.session.id, installationId: operation.installationId, outcome: 'observed' as const, delivery: 'sent' as const,
+      value: operation.action.kind === 'region_clear' ? { cleared: true } : { page, text: 'Never', elements: [],
+        presentations: operation.action.kind === 'snapshot' && presentationContract
+          ? (operation.action.presentationQueries ?? []).map(query => ({ ...query, present: false })) : [] } }))
+    await h.loop.start(h.agent, { installationId: 'extension', page, goal: '展示',
+      success: { region: { mountId: 'drift-panel', text: '结果' } } }, new AbortController().signal)
+    const render = { kind: 'region_render' as const, page, mountId: 'drift-panel', selector: '#sidebar',
+      blocks: [{ type: 'text' as const, text: '结果' }] }
+    h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'drift-render', action: render })
+    h.loop.reserveResource(h.agent, 'drift-panel'); h.loop.dispatched(h.agent, 'drift-render')
+    const rendered = { requestId: 'drift-render', sessionId: h.agent.session.id, installationId: 'extension',
+      outcome: 'observed' as const, delivery: 'sent' as const, value: { rendered: 1 } }
+    const renderedSettlement = h.loop.settle(h.agent, rendered, render)!
+    h.loop.settleResource(h.agent, 'drift-panel', rendered, render, renderedSettlement.receipt)
+    for (let index = h.ctx.browserTasks.get(h.agent)!.budget.actionsUsed; index < MAX_ACTIONS - 1; index += 1) {
+      h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: `drift-read-${index}`,
+        action: { kind: 'snapshot', tabId: page.tabId, frameId: page.frameId, documentId: page.documentId, limit: 1, textLimit: 0 } }, false)
+    }
+    presentationContract = false
+    expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({ blockers: ['capability-drift'] })
+    expect(h.ctx.browserTasks.get(h.agent)?.budget.actionsUsed).toBe(MAX_ACTIONS)
+    await h.loop.turnStopping(h.agent, new AbortController().signal)
+    expect(h.browser.execute.mock.calls.some(([operation]) => operation.action.kind === 'region_clear')).toBe(true)
+    expect(h.ctx.browserTasks.get(h.agent)).toMatchObject({ phase: 'terminal', outcome: 'budget-exhausted',
+      resources: [{ id: 'drift-panel', state: 'released' }] })
     await h.ctx.fiber.dispose()
   })
   it('uses the requested bounded budgets and completes only through current evidence', async () => {
@@ -525,6 +649,19 @@ describe('BrowserTaskLoop durable bridge', () => {
     expect(started).toMatchObject({ budget: { maxSteps: MAX_STEPS, maxActions: MAX_ACTIONS } })
     expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({ status: 'verified' })
     expect(h.ctx.browserTasks.get(h.agent)!.outcome).toBe('completed')
+    await h.ctx.fiber.dispose()
+  })
+  it('stops a repeated verify with no intervening progress instead of appending another snapshot', async () => {
+    const h = await harness()
+    await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Never' } }, new AbortController().signal)
+    expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({ status: 'verifying' })
+    const calls = h.browser.execute.mock.calls.length
+    expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({
+      status: 'stalled', nextStep: 'make-progress-or-cleanup',
+    })
+    expect(h.browser.execute).toHaveBeenCalledTimes(calls)
+    await h.loop.turnStopping(h.agent, new AbortController().signal)
+    expect(h.inject).not.toHaveBeenCalled()
     await h.ctx.fiber.dispose()
   })
   it('omits a missing start observation instead of returning an undefined tool field', async () => {

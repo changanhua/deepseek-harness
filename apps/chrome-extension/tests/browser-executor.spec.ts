@@ -85,6 +85,16 @@ describe('Chrome document-bound browser executor', () => {
     expect(h.chromeApi.tabs.query).not.toHaveBeenCalled()
     expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].target).toEqual({ tabId: 7, documentIds: ['doc-1'] })
   })
+  test('snapshot forwards wire-bounded presentation queries unchanged to the page runtime', async () => {
+    const h = harness()
+    const presentationQueries = [{ mountId: 'analysis-panel', text: '证据分歧' }, { mountId: 'summary-panel', text: '摘要已展示' }]
+    await h.executor.execute(operation({ kind: 'snapshot', tabId: 7, frameId: 0, presentationQueries }), new AbortController().signal)
+    expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args).toEqual(['snapshot', {
+      query: '', offset: 0, limit: 128, textLimit: 50000, tree: false, treeLimit: 256,
+      includeOptions: false, structure: true, presentationQueries,
+      presentationOwner: { sessionId: 'session:test', installationId: grant.installationId, grantEpoch: 1, page },
+    }, {}])
+  })
   test('only authorized sites appear in a tabs result', async () => {
     const h = harness()
     const result: unknown = await h.executor.execute(operation({ kind: 'tabs' }), new AbortController().signal)
@@ -108,6 +118,15 @@ describe('Chrome document-bound browser executor', () => {
     expect(screenshot).toMatchObject({ outcome: 'observed', value: { screenshot: { data: 'AQ==', mimeType: 'image/jpeg' } } })
     expect(h.chromeApi.tabs.captureVisibleTab).toHaveBeenCalledWith(1, { format: 'jpeg', quality: 55 })
     expect(puppeteer.execute).not.toHaveBeenCalled()
+  })
+  test('screenshot never changes the active tab when the target cannot be proven foreground', async () => {
+    const h = harness()
+    h.chromeApi.tabs.get.mockRejectedValue(new Error('tab facts unavailable'))
+    h.chromeApi.tabs.query.mockResolvedValue([{ id: 8, windowId: 1, url: 'https://example.test/other', active: true }])
+    const result: unknown = await h.executor.execute(operation({ kind: 'screenshot', page }), new AbortController().signal)
+    expect(result).toMatchObject({ outcome: 'failed', reason: 'screenshot_requires_active_tab' })
+    expect(h.chromeApi.tabs.update).not.toHaveBeenCalled()
+    expect(h.chromeApi.tabs.captureVisibleTab).not.toHaveBeenCalled()
   })
   test('tab focus is a direct Chrome operation', async () => {
     const h = harness()
