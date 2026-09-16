@@ -83,7 +83,7 @@ tsdown --env.DSH_BUILD_FACE client
 pnpm run build:web
 ```
 
-两次 tsdown 都使用同一组完整 workspace 匹配，不扫描构建产物来发现 Client 包，也不维护 Host/Client 包过滤表。包内 tsdown 配置根据 `DSH_BUILD_FACE` 决定当前阶段的入口：普通 Client 插件在 Client 阶段同时生成 Node loader 与 browser bundle；`api-remotes` 通过 `hostPhase: true` 提前生成 Host 入口，再在 Client 阶段只生成 browser bundle。tsdown 只消费 `lib/types` 中由前置 tsc 发射的 JavaScript。
+两次 tsdown 都使用同一组完整 workspace 匹配，不扫描构建产物来发现 Client 包，也不维护 Host/Client 包过滤表。在 Host 阶段，没有本地覆盖的包使用根 `lib/types/{index,invariant,startup}.js` 入口集合。包内 tsdown 配置根据 `DSH_BUILD_FACE` 决定其他入口：普通 Client 插件在 Client 阶段同时生成 Node loader 与 browser bundle；`api-remotes` 通过 `hostPhase: true` 提前生成 Host 入口，再在 Client 阶段只生成 browser bundle。tsdown 只消费 `lib/types` 中由前置 tsc 发射的 JavaScript。
 
 Typert 只在 Host tsdown 中以 `tsconfig.host.json` 为种子运行。它分析 Host 类型并生成 Host 反射产物及 Host-for-Client Remote 投影；Client tsdown 不启动 Typert。`pnpm run typecheck` 因此先执行完整 Host lib 阶段，再运行 Client tsc；`pnpm run build` 继续执行 Client tsdown 和 Web 构建。
 
@@ -181,3 +181,57 @@ pnpm run demo:ptc -- "summarize this workspace"
 ```
 
 `pnpm run verify-type-equiv`（`doc-sync` 的一环）随后通过 TypeScript 解析器从源码提取该符号的声明及其附带的 JSDoc，并断言代码块同时匹配两者。对于不应把实现体写进目录的类，请使用 ` ```ts public-api ` 并设置 `"projection": "public-api"`；门禁检查的投影会保留公共字段、构造函数、访问器、方法以及类和成员的原始 JSDoc，同时省略实现体和私有或受保护成员。比对会忽略空白和非 JSDoc 注释，但要求保留每条原始 JSDoc（包括成员文档），让读者同时看到源码约定和确切类型定义。该门禁按文档、符号和投影，在主块与 manifest 条目之间强制 1:1 对应；只有当配对 `.zh.md` 块的完整受跟踪围栏序列与其无后缀兄弟文件按字节一致且顺序相同时，才会复用后者的条目。`doc-typecheck` 对可编译围栏应用同一派生规则，同时跳过两种源码等价围栏的编译，并将其排除在 opt-out 比例的计算之外。当你改动一个已记录的类型声明或其 JSDoc 时，门禁会失败直到你更新粘贴内容；当你增删一个主块时，请在同一个变更里更新 manifest。
+
+## 代码约定
+
+### 包命名与模块格式
+
+每个 npm 包都命名为 `@deepseek-ai/dsh-<name>`；vendor 包会被重新限定作用域（[映射](rescope.zh.md)）并设为 `private: true`。每个 harness 包都把 `@deepseek-ai/cordis` 声明为 peerDependency（并同时作为 devDependency）。
+
+全仓使用 ESM（`"type": "module"`）。跨包导入使用包名，本地相对导入使用 `.ts` 后缀。配置子进程通过普通 Node 运行构建后的 `lib/`；源码回归测试使用其声明的启动器。`dsh` CLI 的源码启动使用 tsx 的纯 ESM hook（`node --import tsx/esm`）；其可达模块必须保持 ESM，不得只导出 CJS——受支持引擎范围无法使用 Node 原生 TypeScript 模式（[源码启动约定](../.agents/notes/implemented/architecture/2026-07-29-dsh-source-launch-tsx-esm.zh.md)）。Raw/Web `cordis.yml` 中的裸插件必须出现在解析方 manifest 的 `dependencies` 中；`verify-cordis-config` 会强制检查。
+
+### 类型化事件
+
+类型化事件使用 declaration merging 与可合并扩展的 map。事件 JSDoc 必须包含 `@mode`，载荷使用 `@param`；载荷中没有的作用域键必须标注 `@dshScopeScan unsupported`。公共服务方法应记录参数及非 void 返回值。`SessionEventMap` 成员默认要求读取方认识其类型；不认识该类型的构建会拒绝日志，除非事件信封带有 `ignorable: true`。只有结构性格式变化才提升 `SESSION_FORMAT_VERSION`（[机制](../.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.zh.md)）。
+
+### 可辨识联合
+
+按判别标签执行 switch。封闭联合以 `assertNever` 收尾；可合并扩展的联合使用有说明的 default 分支。
+
+### 依赖
+
+当依赖确实能删除自有代码与测试时，优先采用仍在维护的依赖，而不是手写实现（[策略](../.agents/notes/implemented/process/2026-07-26-dependencies-over-hand-rolling.zh.md)）。
+
+### 跨边界 ID
+
+跨边界的不透明 ID 使用品牌类型（来自 `dsh-brand` 的 `Branded<B>`），不得使用裸 `string`。
+
+### 不得硬编码可调参数
+
+随部署变化的行为必须通过所属插件在 `cordis.yml` 中经过校验的 `Config` 调整，不得硬编码在插件里。`DEFAULT_*` 常量或测试 hook 不等于可配置。协议常量、外部规范与安全不变量保持固定——界线在于部署是否可能合理调整该值（超时、上限、功能开关、路径选择），还是由约定固定该常量（wire format、安全不变量、协议字面值）。
+
+### 同进程边界上的 TypeScript
+
+在有类型的同进程边界信任 TypeScript。不要只为静态接口已要求的值增加运行时校验、回退行为或恶意输入测试；校验应放在解析器／配置、队列、模型／工具 JSON、持久化／文件、worker、进程与 wire 边界。
+
+### 编译器切面
+
+明确保持各编译器切面。除 `api/remotes` 外，每个包使用一个 aggregate；全仓程序以某个切面配置为入口，不使用根 solution（[布局](#typescript-project-layout)）。
+
+### 空 catch
+
+空 `catch` 必须说明吞掉什么以及为何不可能出现其他错误；`try` 中只保留一条语句。
+
+### 注释
+
+不要注释代码已经显而易见的事实。并列值应保持对称；无法解释的不对称通常意味着遗漏了抽取。
+
+### PR 历史
+
+拆分相互独立的变更；在传播前修复引入问题的 PR。独立 PR 和官方 stack 可在评审后 merge-forward 或 rebase。改写历史使用 `--force-with-lease`，远端移动时中止，绝不使用裸 `--force`；进行中的 merge-forward 在接入更新的 base 前保留检查点（[理由](../.agents/notes/implemented/process/2026-08-02-native-github-stacks-and-optional-rebases.zh.md)）。
+
+**标签：** 每个 PR 一个 `kind/*`、所有实质性 `area/*`，并设置原生 Issue Type（[分类](../.agents/notes/implemented/process/2026-08-08-unified-github-label-taxonomy.zh.md)）。
+
+### 文件
+
+文件末尾恰好保留一个换行；pre-commit 使用 `git diff --cached --check` 强制检查。

@@ -24,7 +24,7 @@
 // assertConsumed for the teardown fixture-consumption check).
 import { existsSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -736,6 +736,14 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
         patches: [],
       }
     }))
+    // A real profile install already projects each selected bundle root into
+    // its node_modules. Extra workspace anchors bypass that install step, so
+    // reproduce the same root links before healing their dependency closures.
+    for (const layer of extraLayers.slice(BUNDLE_INSTALL_ANCHORS.length)) {
+      const link = join(profileDir, 'node_modules', layer.packageName)
+      await mkdir(dirname(link), { recursive: true })
+      if (!existsSync(link)) await symlink(layer.packageDir, link, process.platform === 'win32' ? 'junction' : 'dir')
+    }
     // Mirror the production launcher: the shared installation closure keeps
     // its carrier-specific fallback, while private bundle dependencies stay
     // isolated to this synthetic scaffold profile.

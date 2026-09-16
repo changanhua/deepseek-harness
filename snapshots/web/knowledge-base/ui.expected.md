@@ -1,0 +1,58 @@
+- banner:
+  - navigation "Session hierarchy":
+    - button "Call knowledge_base exactly once with" [disabled]
+  - img
+  - text: Standard mode
+  - button "Skills":
+    - img
+    - text: Skills
+  - button "More actions":
+    - img
+  - button "Open right sidebar":
+    - img
+  - tablist:
+    - tab "Chat" [selected]
+    - tab "Trajectory"
+- button "System prompt":
+  - img
+  - img
+  - text: System prompt
+- text: "Call knowledge_base exactly once with this request JSON string: {\"action\":\"create\",\"spec\":{\"id\":\"snapshot-knowledge\",\"title\":\"Snapshot Knowledge\",\"readerTask\":\"Explain the validation rule\",\"language\":\"en\",\"seeds\":[]}}. Do not call another tool or change files. After the tool succeeds, reply exactly KNOWLEDGE_PROJECT_READY and stop. {{clock}}"
+- button "Copy":
+  - img
+- button "1 tool call":
+  - text: 1 tool call
+  - img
+- paragraph: KNOWLEDGE_PROJECT_READY
+- button "Copy":
+  - img
+- button "Good response":
+  - img
+- button "Bad response":
+  - img
+- button "Capture to library":
+  - img
+- button "Branch into a new conversation":
+  - img
+- button "Usage 35K tok":
+  - img
+  - text: Usage 35K tok
+- button "Ran for {{duration}}":
+  - img
+  - text: Ran for {{duration}}
+- text: {{clock}}
+- textbox "Message or run a task, / commands, @ files or sessions"
+- button "Add files or run commands":
+  - img
+- 'button "Access mode, current: Workspace Write"': Workspace Write
+- button "Select model, current DeepSeek-V4-Flash":
+  - text: DeepSeek-V4-Flash
+  - img
+- button "14% of context used"
+- button "Send message" [disabled]
+- button "1 turns 2 steps · {{throughput}} tok/s":
+  - img
+  - text: 1 turns 2 steps{{throughput}} tok/s
+- button "35K tok · Cache hit 50%":
+  - img
+  - text: 35K tokCache hit 50%

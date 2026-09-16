@@ -36,6 +36,8 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@changanhua/dsh-knowledge-base": "workspace:^",
+    "@changanhua/dsh-knowledge-base-task-queue": "workspace:^",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
@@ -43,9 +45,7 @@
     "@deepseek-ai/dsh-tools": "workspace:^",
     "@deepseek-ai/dsh-commands": "workspace:^",
     "@deepseek-ai/dsh-web": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@changanhua/dsh-knowledge-base": "workspace:^",
-    "@changanhua/dsh-knowledge-base-task-queue": "workspace:^"
+    "@deepseek-ai/dsh-invariants": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",

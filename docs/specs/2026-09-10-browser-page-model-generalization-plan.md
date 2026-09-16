@@ -37,10 +37,10 @@
 | 护栏 | 现状 | 缺口 |
 | --- | --- | --- |
 | ① `documentId` 必须来自新快照 | ✅ 已机制化（失效拒绝 + 重选提示） | 无 |
-| ② prompt 必须传 `AbortSignal` | tool-browser 已传 `exec.signal` | 动态插件异步工作还需绑定运行实例的 disposer；清理使用独立有界信号 → WP1.2 |
-| ③ 入口挂载前必须 `inspect` | ❌ 无强制 | `entry_mount` 不校验是否先成功 `entry_inspect`，纯靠约定 → WP1.1 |
-| ④ 更新要保留 `collected` | ⚠️ 机制支持但靠模型自觉 | `entry_mount` 幂等替换时若调用方不回传 `collected`，已收集状态丢失 → WP1.3 |
-| ⑤ 停止必须核对清理结果 | runner 已有卸载与待清理记录 | 核对回执、取消收尾及失败后保留证据仍需补齐 → WP1.2 |
+| ② prompt 必须传 `AbortSignal` | ✅ runner 将浏览器工作绑定到运行生命周期，并在清理时等待结算 | 无 |
+| ③ 入口挂载前必须 `inspect` | ✅ `entry_mount` 要求同一 owner、文档与 binding 的当前 `entry_inspect` 证据 | 无 |
+| ④ 更新要保留 `collected` | ✅ 同一 owner、文档与 slot 省略字段时保留；`[]` 显式清空 | 无 |
+| ⑤ 停止必须核对清理结果 | ✅ runner 跟踪 owned mounts，停止、更新和失败激活均执行清理 | 模型实验仍需独立核对页面零残留与业务结果保留 |
 
 ### 1.3 站点事实分布现状（已核实）
 
@@ -81,12 +81,12 @@
 | --- | --- | --- |
 | WP0 基线固定 | — | 落基线提交、推送本分支（已完成） |
 | WP1.0 实验入口与计量 | — | 接通 subject 工具路径、Host 计数与运行日志 |
-| WP1.1 挂载前置强制 | `browser-page.js` 预检记录、`stale_binding`/`inspect_required`、类型与错误说明、runner facade 及 README | 运行扩展单测与 e2e；`browser-entry.spec.ts` 用例的实际执行结果 |
-| WP1.2 停止清理核对 | runner 收尾与回执核对、controller 终止路径代码、扩展残留计数 | 真实 Host、取消/离线/在途挂载的 e2e |
-| WP1.3 collected 默认保留 | 缓存键与所有者释放路径代码 | 卸载→重新 inspect→重挂保留态的 e2e |
-| WP1.4 站点事实审计 | grep 审计与 `docs/subsystems/browser.md` 边界小节 | 审计在本地基线复核 |
-| WP1.5 证据拒绝防线 | `entry_mount` 无链接条目处理 | 单测执行 |
-| WP1.6 节点复用 | 观察器与点击前核对代码 | 节点复用 e2e |
+| WP1.1 挂载前置强制（已实现） | `browser-page.js` 预检记录、`stale_binding`/`inspect_required`、类型与错误说明、runner facade 及 README | 扩展单测与真实 MV3 entry lifecycle e2e |
+| WP1.2 停止清理核对（机制已实现） | runner 收尾、owned mount 跟踪及失败激活清理 | 正式模型实验仍需核对取消/离线/在途清理证据 |
+| WP1.3 collected 默认保留（已实现） | 缓存键与 owner/document/slot 释放路径 | 卸载→重新 inspect→省略字段重挂的真实 MV3 e2e |
+| WP1.4 站点事实审计（已实现） | `docs/subsystems/browser.md` 记录页面模型与显式站点适配边界 | 正式实验前复核生产路径无站点默认值 |
+| WP1.5 证据拒绝防线（已实现） | `entry_mount` 不为无链接条目生成可点击按钮 | 扩展单测 |
+| WP1.6 节点复用（已实现） | 观察器与点击前核对当前字段身份和值 | 节点复用真实 MV3 e2e |
 | WP1.7 业务结果核验 | checker 与只读状态读取代码 | 真实 Host 上的 collection 核对 |
 | WP2 Skill 沉淀 | 全部文本（含 `cordis-plugin-development` 更正） | `pnpm vitest run packages/preset/agent-presets` |
 | WP3 开发集 fixture | 静态页面、期望数据、fixture server 用例 | 真实浏览器加载扩展跑通 |
@@ -130,7 +130,7 @@ WP1.3 将 `collected` 缓存与活动 observer 分开，键为 `(sessionId, inst
 
 每个子项按实际修改运行所属测试：页面条目重点是 `apps/chrome-extension/tests/browser-entry.spec.ts`，页面身份另测 `browser-page.spec.ts`；runner、BrowserExtension、tool-browser 与 control-mcp 使用各自测试目录。命令从仓库 `docs/testing.md` 的矩阵选择；WP4 使用既有真实 Host + MV3 扩展 e2e 入口，不以页面单测代替。
 
-### WP2 Skill 沉淀（通用护栏 → Skill）
+### WP2 Skill 沉淀（通用护栏 → Skill，已实现）
 
 - 在拓展 worktree 的 Cordis preset skills 下新增 `browser-page-model` Skill，内容 = 第 2.1 节护栏、WP1 的实际工具路径与错误码应对表（含 `inspect_required/stale_binding/ambiguous_region/binding_outside_region/stale_document`）。既有 `cordis-plugin-development` Skill 同步更正更新时的 collected 规则并指向该 Skill，避免两处指引冲突。WP1.7 的 collection 字段及结果结构作为统一实验输出协议提供给两个模型，不含任何样本答案。
 - 站点事实只允许出现在「示例」小节，每个示例必须带显式声明：「示例选择器来自该站点的现场观察，仅证明流程；换站点必须重新 `entry_inspect`」。

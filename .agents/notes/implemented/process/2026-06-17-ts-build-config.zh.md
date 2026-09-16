@@ -32,7 +32,7 @@ Status: implemented
 
 `pnpm run build` 依次执行 Host lib、Client lib 和 Web；每个 lib 阶段都保持 tsc 先发射、tsdown 后打包：
 
-- Host tsc 对 `tsconfig.host.json` 执行 `tsc -b`，把逐模块 `.js`、`.d.ts`、`.js.map` 与 `.d.ts.map` 输出到 Host 图各包的 `lib/types`；Host tsdown 随后读取这些 JS，生成发布入口并运行 Host Typert。
+- Host tsc 对 `tsconfig.host.json` 执行 `tsc -b`，把逐模块 `.js`、`.d.ts`、`.js.map` 与 `.d.ts.map` 输出到 Host 图各包的 `lib/types`；Host tsdown 随后读取这些 JS，生成发布入口并运行 Host Typert。没有本地 tsdown 覆盖的包使用根 Host 入口集合 `lib/types/{index,invariant,startup}.js`。
 - Client tsc 在 Host Typert 已生成 Remote Client 声明后对 `tsconfig.client.json` 执行 `tsc -b`；Client tsdown 再读取 Client 图发射的 JS，生成 Client 包的 Node loader 入口与 browser bundle。
 - Web build 只在两个 lib 阶段完成后启动。
 

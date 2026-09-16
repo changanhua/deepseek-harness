@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this service after the knowledge repository, local Queue, and subprocess provider; its configuration selects the native Codex run model, permission mode, and disposal grace period.
+Mount this service after the knowledge repository, local Queue, and subprocess provider; its configuration selects the native Codex run model, disposal grace period, and one of `never`, `read-only`, `approve-for-me`, or `dangerously-bypass-approvals-and-sandbox` as the permission mode. The default is `never`.
 
 ### Failure recovery
 

@@ -20,7 +20,7 @@ The local domain has one Host writer, protected by an exclusive ownership file. 
 
 ## Alternatives considered
 
-Session history alone cannot express accepted knowledge or current source eligibility. External memory servers remain independently useful through the [generic MCP examples](2026-07-31-third-party-memory-mcp-examples.md), but their vendor contracts do not own DSH Workspace authorization and native human command decisions. The two capabilities retain separate state ownership.
+Session history alone cannot express accepted knowledge or current source eligibility. External memory servers remain independently useful through the [generic MCP examples](../../archived/feature/2026-07-31-third-party-memory-mcp-examples.md), but their vendor contracts do not own DSH Workspace authorization and native human command decisions. The two capabilities retain separate state ownership.
 
 A vector database or automatic consolidation does not close the source-validity or authority boundary. Lexical ranking and explicit topic conflicts provide a measurable baseline without introducing another durable truth store.
 

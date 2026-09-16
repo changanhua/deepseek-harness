@@ -8,6 +8,7 @@
     "rewriteRelativeImportExtensions": false
   },
   "include": [
+    "tsdown.config.ts",
     "apps/web/tests/scaffold.ts",
     "apps/web/tests/personal-workbench.e2e.ts",
     "apps/web/tests/project-resources.e2e.ts",
@@ -21,6 +22,7 @@
     "apps/web/tests/startup-rpc-budget.e2e.ts",
     "apps/web/tests/minimal-preset.snapshot.ts",
     "apps/web/tests/project-memory.snapshot.ts",
+    "apps/web/tests/knowledge-base.snapshot.ts",
     "apps/web/tests/message-feedback-protocol.snapshot.ts",
     "apps/web/tests/live-interactions.e2e.ts",
     "apps/web/tests/question-composer.e2e.ts",

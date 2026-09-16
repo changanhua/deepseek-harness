@@ -25,7 +25,7 @@ kind: "package-reference"
 
 - Node entry 保持 inert，只提供 package invariant companion。
 - Browser entry 消费 `slots`、`locale` 与 `remote`，挂载生成的 Delivery Remote contribution，然后在需要 `remote.delivery` 的嵌套 context 中注册 UI。
-- `shell.view/delivery` 渲染 workbench；`sidebar.modules/delivery-module` 打开它并显示派生的 blocked count。
+- `shell.view/delivery` 渲染 workbench；`sidebar.modules.group/delivery-module` 在默认收起的“更多”分组中公开它，并显示派生的 blocked count。
 - 一个共享 observable controller 同时供两个 entry 使用，因此 navigation 与 workbench 不会各自保存互相竞争的 Delivery facts browser copy。
 
 Remote contribution、slot registration 与 locale dictionary 会在 plugin dispose 时一同消失；UI registration 失败时也会卸载 Remote contribution。

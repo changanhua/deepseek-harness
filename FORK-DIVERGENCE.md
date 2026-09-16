@@ -4,8 +4,8 @@ A human-readable record of deliberate differences between this fork and the offi
 
 ## Identity
 
-- Supported upstream base: `c291e7961a515f6d7af9304e7fd1d257929aef26` (`dsh-v0.1.2-alpha.1`).
-- Observed upstream tip on 2026-09-14: `c291e7961a515f6d7af9304e7fd1d257929aef26`.
+- Supported upstream base: `cd5ef8148158c3a752a658978873241fdf8e2bbc`.
+- Observed upstream tip on 2026-09-15: `0d1f50007f9bca3f52b06e1c3074fa14d5fb0720`.
 - Official upstream: `https://github.com/deepseek-ai/deepseek-harness.git`
 - This fork: `https://github.com/changanhua/deepseek-harness.git`
 - Official packages retain `@deepseek-ai/*`; repository publication tooling permits them only from a GitHub Actions run for `deepseek-ai/deepseek-harness`. Personal source packages use `@changanhua/*`, stay private, have no release family, and remain blocked until their publication policy is promoted from `blocked-until-release-verified` to `personal`. npm credentials and trusted-publisher policy remain the external authority.
@@ -30,8 +30,14 @@ A human-readable record of deliberate differences between this fork and the offi
 | 14 | `docs/specs/` | Fork-only design-spec documents (research baseline, task-queue design, UI prototypes). |
 | 15 | `packages/context/runtime-facts*`, `packages/extensions/tool-runtime-inspect` | Fork-only owned runtime-fact registry, Host fact projection, and read-only inspection tool. |
 | 16 | `packages/host/capability-registry`, `packages/client/ui-capability`, `packages/client/ui-settings-skills` | Fork-only read-only capability and Skills-management projection over the `capabilityRegistry` Remote. |
-| 17 | `packages/client/ui-layout`, `packages/client/ui-sidebar` | Fork keeps the `shell.view`/`sidebar.modules` module ring so Queue and Capability views can replace the center view without unmounting conversation state. |
-| 18 | `downstream/package-identities.json`, 41 personal package directories, publication scripts and workflows | Personal source packages use `@changanhua/*`, personal repository metadata, and `private: true`; imports, Loader rows, TypeScript paths, catalogs, and the lockfile use the same identities. Existing package versions remain unchanged and no Personal release family exists. The official DSH release closure validates registered exclusions and rejects every source or packed-manifest runtime edge to these source-only packages. Official DSH rehearsal, npm/docs publication, and public Python publication remain official-repository-only; personal-repository CI builds the source and boots the personal bundle through the built CLI. |
+| 17 | `packages/client/ui-layout`, `packages/client/ui-sidebar` | Fork keeps the `shell.view` module ring. Queue remains in first-level `sidebar.modules`; Capability, Content, Delivery, Work Observatory, and Architecture entries use the collapsed `sidebar.modules.group`, while changing the center view never unmounts conversation state. |
+| 18 | `downstream/package-identities.json`, 58 personal package directories, publication scripts and workflows | Personal source packages use `@changanhua/*`, personal repository metadata, and `private: true`; imports, Loader rows, TypeScript paths, catalogs, and the lockfile use the same identities. Existing package versions remain unchanged and no Personal release family exists. The official DSH release closure validates registered exclusions and rejects every source or packed-manifest runtime edge to these source-only packages. Official DSH rehearsal, npm/docs publication, and public Python publication remain official-repository-only; personal-repository CI builds the source and boots the personal bundle through the built CLI. |
+| 19 | `packages/memory/*`, `packages/bundle/personal-memory` | Fork adds source-backed Workspace project memory with explicit human acceptance, local persistence, model tools, a `/memory` command, and a Web recorded-session acceptance path. |
+| 20 | `packages/knowledge/*` | Fork adds source-grounded editable knowledge libraries, durable native-Codex Queue execution, explicit recovery, immutable releases, and optional SiYuan projection. |
+| 21 | `packages/browser/*`, `apps/chrome-extension`, Cordis preset page-model Skill | Fork requires current region and field evidence before page-entry mounts, retains collection state within the owner/document boundary, and gives dynamic Cordis packages lifecycle-owned browser mounts. |
+| 22 | `packages/client/ui-architecture` | Fork adds a Web Architecture Explorer that separates generated Profile/Bundle/package composition from the point-in-time Loader inventory. |
+| 23 | `.agents/skills/claude-creativity` | Fork carries an explicitly invoked creativity workflow; it is user-invocable but never selected implicitly by the model. |
+| 24 | `AGENTS.md` protected local scope | Fork requires explicit per-session user authorization before agents inspect or change `packages/mcp/control-mcp`, preserving local tracked and untracked work in that directory. |
 
 ## Non-divergence workspace residue
 

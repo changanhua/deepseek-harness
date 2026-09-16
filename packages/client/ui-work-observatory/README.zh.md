@@ -39,7 +39,7 @@ kind: "package-reference"
 
 本包没有浏览器配置。它的 `dsh.client.inject` 声明需要 Remotes、Session Controller、locale、layout、renderer、sidebar 和 Host 工作观测包。
 
-从常驻侧边栏打开**工作观测**，选择日期，需要时刷新，然后选择 Session 记录返回对应对话。
+打开侧边栏的**更多**分组并选择**工作观测**，选择日期，需要时刷新，然后选择 Session 记录返回对应对话。
 
 -----
 

@@ -1,7 +1,7 @@
 # Client UI Capability
 
-The Capability module's browser surface: the sidebar's first-level Capability
-navigation entry (directly above the Queue entry) with a count badge, and the
+The Capability module's browser surface: the Capability navigation entry inside
+the sidebar's collapsed More group with a count badge, and the
 center-column read-only Capability workspace over the `capabilityRegistry`
 Remote.
 
@@ -13,9 +13,9 @@ summary cards, and a per-row detail drawer.
 
 ## Shell contracts
 
-- `sidebar.modules` — the navigation entry (`id: capability-module`, `order: 5`),
-  registered into the sidebar shell's module seat directly above the Queue
-  module (`order: 10`). The badge (`nav.badge`) shows the combined count
+- `sidebar.modules.group` — the navigation entry (`id: capability-module`, `order: 5`),
+  registered in the sidebar shell's collapsed More group while Queue remains
+  first-level. The badge (`nav.badge`) shows the combined count
   (`N skills + M tools`) or `0` while loading/failed.
 - `shell.view` — the center-column module view (`id: capability`), rendered by
   the frame's module ring while the `capability` module is active. The

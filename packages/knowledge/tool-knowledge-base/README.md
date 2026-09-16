@@ -27,7 +27,7 @@ English | [中文](README.zh.md)
 
 Install the bundle into a custom profile whose bundle order places it after `@deepseek-ai/dsh-base`, then launch the profile through `dsh --profile <name>`.
 
-In a built source checkout with a configured Web profile, the supported add-on launch is `pnpm dsh --profile web --patch packages/knowledge/tool-knowledge-base/cordis.patch.yml`. The patch belongs to this launch; it does not edit the saved profile. Use the repository's normal Host build before selecting built artifacts.
+In a built source checkout with a configured Web profile, the supported add-on launch is `pnpm dsh --profile web --patch packages/knowledge/tool-knowledge-base/cordis.patch.yml`. The patch belongs to this launch; it does not edit the saved profile. It isolates the knowledge Domain into the existing `web-host` storage realm so the repository and Queue bridge share the Web Host's storage owner. A profile-local replacement must preserve that realm selection. Use the repository's normal Host build before selecting built artifacts.
 
 ### Minimal workflow
 

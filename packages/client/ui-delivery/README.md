@@ -25,7 +25,7 @@ The primary Case list exposes Shaping, Ready, Running, Review, Blocked, and Acce
 
 - The node entry remains inert and contributes only its package invariant companion.
 - The browser entry consumes `slots`, `locale`, and `remote`, mounts the generated Delivery Remote contribution, then registers its UI in a nested context that requires `remote.delivery`.
-- `shell.view/delivery` renders the workbench; `sidebar.modules/delivery-module` opens it and reports the derived blocked count.
+- `shell.view/delivery` renders the workbench; `sidebar.modules.group/delivery-module` exposes it inside the collapsed More group and reports the derived blocked count.
 - One shared observable controller feeds both entries, so navigation and workbench never keep competing browser copies of Delivery facts.
 
 The Remote contribution, slot registrations, and locale dictionaries disappear together when the plugin is disposed. A failed UI registration also unmounts the Remote contribution.

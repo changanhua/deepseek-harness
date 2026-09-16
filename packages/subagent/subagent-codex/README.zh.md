@@ -57,6 +57,10 @@ dsh --profile <name>
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-subagent-codex)是每个受支持字段及其 JSDoc 的穷尽式真源。已配置的 `model` 会原样传给每个临时 `thread/start`；省略时保留原生模型选择。提供方不会发现模型、改写别名、选择 `modelProvider` 或 `serviceTier`，也不会设置 fallback。具有凭证特征的环境变量会在显式 `env` 覆盖生效前被移除，因此供子进程使用的 API 密钥必须在该配置中显式提供。
 
+### 无父级 Host 集成
+
+可信 Host 插件若需在不创建父 Agent 的情况下运行一次原生 Codex，应从 `@deepseek-ai/dsh-subagent-codex/app-server-run` 导入 `startCodexAppServerRun` 与 `CODEX_APP_SERVER_PERMISSION_MODES`。这个公开子路径是受支持的窄边界；包根仍是提供方插件，而进程、wire、任务转换与清理 helper 保持私有。
+
 ### 暴露工具
 
 每个委派工具行指名一个提供方，并需要独立的 `toolName`，因此模型看到的是静态工具，而不是动态提供方选择器。完整 Agent Preset 携带对应的默认工具行并设置 `disabled: true`；复制一个 preset 后删除该字段，即可只向由该副本组装的 agent 暴露 `subagent_codex`。

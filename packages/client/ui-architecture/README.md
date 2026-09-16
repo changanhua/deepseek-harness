@@ -25,7 +25,7 @@ The Architecture workspace lets developers understand how a DSH deployment is co
 <a id="use-this-package"></a>
 ## Use this package
 
-The shipped Web bundle mounts the package as the Architecture entry in the first-level sidebar module list. Opening the entry keeps the ordinary conversation mounted underneath while the center column displays the full workspace.
+The shipped Web bundle mounts the package as the Architecture entry inside the sidebar's collapsed **More** group. Opening the group and then the entry keeps the ordinary conversation mounted underneath while the center column displays the full workspace.
 
 The committed catalog is generated from `packages/*/*/package.json` plus the shipped Profile templates in `packages/boot/app-boot/src/profile.ts`; `pnpm run verify-architecture-catalog` rejects a stale result. Bundle membership uses direct manifest `dependencies`, while package dependency links use in-repo `peerDependencies`. The Runtime refresh calls `pluginInventory/list` and displays only the point-in-time Loader state that the Host confirms.
 
@@ -37,7 +37,7 @@ The committed catalog is generated from `packages/*/*/package.json` plus the shi
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The generator records package descriptions, groups, explicit browser/bundle/Remote/tool faces, and canonical in-repo `peerDependencies`. The Client plugin registers one `sidebar.modules` entry and one `shell.view` entry. An apply-private controller keeps the Loader response outside React; the Slot renderer binds its observable through the injected `useRuntime` selector hook.
+The generator records package descriptions, groups, explicit browser/bundle/Remote/tool faces, and canonical in-repo `peerDependencies`. The Client plugin registers one `sidebar.modules.group` entry and one `shell.view` entry. An apply-private controller keeps the Loader response outside React; the Slot renderer binds its observable through the injected `useRuntime` selector hook.
 
 | File | Role |
 | --- | --- |

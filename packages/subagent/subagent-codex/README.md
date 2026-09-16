@@ -57,6 +57,10 @@ Removing the package withdraws the provider and its private runtime closure on t
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-subagent-codex) is the exhaustive source for every accepted field and its JSDoc. A configured `model` passes unchanged on each ephemeral `thread/start`; omission leaves native model selection in force. The provider does not discover models, rewrite aliases, select `modelProvider` or `serviceTier`, or set a fallback. Credential-shaped ambient variables are removed before the explicit `env` overlay, so an API key intended for the child must be supplied there.
 
+### Parent-free Host integration
+
+Trusted Host plugins that need one native Codex run without a parent Agent import `startCodexAppServerRun` and `CODEX_APP_SERVER_PERMISSION_MODES` from `@deepseek-ai/dsh-subagent-codex/app-server-run`. This public subpath is the supported narrow boundary; the package root remains the provider plugin, and process, wire, task-conversion, and cleanup helpers stay private.
+
 ### Exposing the tool
 
 Each delegation tool row names one provider and needs its own `toolName`, so the model sees static tools rather than a dynamic provider selector. Full Agent Presets carry a matching default tool row with `disabled: true`; copy a preset and remove that field to expose `subagent_codex` only to agents composed from the copy.

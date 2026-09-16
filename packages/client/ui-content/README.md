@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package gives the Web application the content-library surface over the personal Content Host stack: a per-message capture entry in the assistant-action strip, a persistent sidebar entry, and a library workspace with editing. A user captures a completed, pure-text assistant reply or creates a manual entry; the entry lands in the library, where it can be edited as a draft, committed as an immutable version, favorited, and archived. The Host owns idempotency, source verification, and revisions, so repeated captures and reconnects cannot produce duplicates or lost updates on this surface.
+This package gives the Web application the content-library surface over the personal Content Host stack: a per-message capture entry in the assistant-action strip, a Content Library entry inside the sidebar's collapsed More group, and a library workspace with editing. A user captures a completed, pure-text assistant reply or creates a manual entry; the entry lands in the library, where it can be edited as a draft, committed as an immutable version, favorited, and archived. The Host owns idempotency, source verification, and revisions, so repeated captures and reconnects cannot produce duplicates or lost updates on this surface.
 
 ## Table of Contents
 
@@ -41,7 +41,7 @@ The package has no browser configuration. Its `dsh.client.inject` declaration re
 
 Browser imports show their website title, link and unverified provenance. The extension opens `/#content-entry=<entryId>` to refresh and select the saved entry. `/#extension-connect=<requestId>` opens an explicit approval dialog; visiting the URL does not grant access. **Browser connections** lists installations and permits revocation. [The browser bridge](../../content/content-browser/README.md) owns the authorization protocol.
 
-Open **Content Library** from the persistent sidebar to read committed entries; click **Capture to library** in an assistant reply's action strip to capture that message. A captured message shows a pressed state with its entry id; clicking again replays the original creation receipt instead of duplicating the entry.
+Open the sidebar's **More** group and choose **Content Library** to read committed entries; click **Capture to library** in an assistant reply's action strip to capture that message. A captured message shows a pressed state with its entry id; clicking again replays the original creation receipt instead of duplicating the entry.
 
 **New entry** creates a manual entry whose text lives in a first draft. **Edit** opens an entry in the editor: **Save draft** writes the working text, and **Commit version** folds the draft into a new immutable version. **Favorite** and **Archive** toggle the entry's metadata. When a save or commit arrives on a stale revision — another window edited the same entry — the editor re-reads the entry and shows both sides; **Keep my edit** retries the next save on the fresh base, and **Use library content** resets the editor to the re-read text.
 

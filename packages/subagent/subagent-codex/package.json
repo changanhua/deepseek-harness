@@ -18,11 +18,16 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./app-server-run": {
+      "types": "./lib/types/app-server-run.d.ts",
+      "default": "./lib/app-server-run.js"
+    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
+    "lib/app-server-run.js",
     "cordis.patch.yml",
     "lib/types/**/*.d.ts"
   ],

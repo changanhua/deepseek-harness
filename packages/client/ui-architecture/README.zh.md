@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用这个包
 
-随附的 Web 组合包把该包挂载为一级侧边栏模块列表中的“架构”入口。打开入口时，普通会话仍挂载在底层，中央列显示完整工作区。
+随附的 Web 组合包把该包挂载为侧边栏默认收起的**更多**分组中的“架构”入口。先打开分组再打开入口时，普通会话仍挂载在底层，中央列显示完整工作区。
 
 提交的目录由 `packages/*/*/package.json` 和 `packages/boot/app-boot/src/profile.ts` 中的随附 Profile 模板生成；`pnpm run verify-architecture-catalog` 会拒绝过期结果。Bundle 归属使用 manifest 的直接 `dependencies`，包依赖链接使用仓库内 `peerDependencies`。运行时刷新调用 `pluginInventory/list`，并且只显示 Host 确认的时间点 Loader 状态。
 
@@ -37,7 +37,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部细节——点击展开</summary>
 
-生成器记录包描述、领域、显式浏览器/组合包/Remote/工具声明面，以及规范的仓库内 `peerDependencies`。Client 插件注册一个 `sidebar.modules` 条目和一个 `shell.view` 条目。apply 私有控制器把 Loader 响应保留在 React 之外；Slot renderer 通过注入的 `useRuntime` selector hook 绑定其 observable。
+生成器记录包描述、领域、显式浏览器/组合包/Remote/工具声明面，以及规范的仓库内 `peerDependencies`。Client 插件注册一个 `sidebar.modules.group` 条目和一个 `shell.view` 条目。apply 私有控制器把 Loader 响应保留在 React 之外；Slot renderer 通过注入的 `useRuntime` selector hook 绑定其 observable。
 
 | 文件 | 作用 |
 | --- | --- |

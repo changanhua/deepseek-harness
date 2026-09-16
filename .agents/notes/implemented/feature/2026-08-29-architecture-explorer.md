@@ -10,7 +10,7 @@ The repository contains hundreds of formal workspace packages, while one running
 
 ## Decision
 
-The Web bundle includes `@deepseek-ai/dsh-client-ui-architecture` as a first-level sidebar module and a full `shell.view` workspace. The package keeps the ordinary conversation mounted while developers browse the package field, filters, dependency direction, reverse consumers, and one package's evidence detail.
+The Web bundle includes `@deepseek-ai/dsh-client-ui-architecture` inside the sidebar's collapsed More group and as a full `shell.view` workspace. Queue remains the only first-level module entry. The package keeps the ordinary conversation mounted while developers browse the package field, filters, dependency direction, reverse consumers, and one package's evidence detail.
 
 The build catalog and Runtime overlay remain separate evidence layers. `scripts/gen-architecture-catalog.ts` deterministically derives the committed Client catalog from formal `packages/*/*/package.json` manifests. It records manifest descriptions, directory groups, explicit browser/bundle/Remote/tool faces, and in-repo `peerDependencies`; `verify-architecture-catalog` rejects drift.
 

@@ -111,7 +111,7 @@ describe('the shipped preset root', () => {
   })
 
   it('routes external-page entry features through the mounted Browser service', async () => {
-    const skill = await readFile(join(
+    const developmentSkill = await readFile(join(
       SHIPPED_PRESET_ROOT,
       'cordis',
       'skills',
@@ -119,16 +119,30 @@ describe('the shipped preset root', () => {
       'SKILL.md',
     ), 'utf8')
 
-    expect(skill).toContain('external webpage')
-    expect(skill).toContain('entry_mount')
-    expect(skill).toContain('browser/entry-click')
-    expect(skill).toContain('sessionController.prompt')
-    expect(skill).toContain('browser assistant sidebar')
-    expect(skill).toContain('new AbortController()')
-    expect(skill).toContain('result.value.tabs')
-    expect(skill).toContain('snapshot.value.page')
-    expect(skill).toContain('value.mounted')
-    expect(skill).toContain('last successful mount')
-    expect(skill).toContain('Do not spawn another browser')
+    expect(developmentSkill).toContain('external webpage')
+    expect(developmentSkill).toContain('entry_mount')
+    expect(developmentSkill).toContain('browser/entry-click')
+    expect(developmentSkill).toContain('sessionController.prompt')
+    expect(developmentSkill).toContain('browser assistant sidebar')
+    expect(developmentSkill).toContain('new AbortController()')
+    expect(developmentSkill).toContain('result.value.tabs')
+    expect(developmentSkill).toContain('snapshot.value.page')
+    expect(developmentSkill).toContain('value.mounted')
+    expect(developmentSkill).toContain('last successful mount')
+    expect(developmentSkill).toContain('Do not spawn another browser')
+    expect(developmentSkill).toContain('browser-page-model')
+
+    const pageModelSkill = await readFile(join(
+      SHIPPED_PRESET_ROOT,
+      'cordis',
+      'skills',
+      'browser-page-model',
+      'SKILL.md',
+    ), 'utf8')
+    expect(pageModelSkill).toContain('name: browser-page-model')
+    expect(pageModelSkill).toContain('harness.browser.inspect')
+    expect(pageModelSkill).toContain('inspect_required')
+    expect(pageModelSkill).toContain('stale_binding')
+    expect(pageModelSkill).toContain('value.remaining: 0')
   })
 })

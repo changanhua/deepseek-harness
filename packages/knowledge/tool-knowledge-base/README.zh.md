@@ -27,7 +27,7 @@ kind: "package-bundle"
 
 将 bundle 安装到自定义 Profile，其 bundle 顺序置于 `@deepseek-ai/dsh-base` 之后，然后通过 `dsh --profile <name>` 启动 Profile。
 
-在已构建源码检出且已配置 Web Profile 时，可用 `pnpm dsh --profile web --patch packages/knowledge/tool-knowledge-base/cordis.patch.yml` 启动附加功能。补丁只用于本次启动，不修改保存的 Profile；选择构建产物前先运行仓库正常的 Host 构建。
+在已构建源码检出且已配置 Web Profile 时，可用 `pnpm dsh --profile web --patch packages/knowledge/tool-knowledge-base/cordis.patch.yml` 启动附加功能。补丁只用于本次启动，不修改保存的 Profile；它把知识 Domain 隔离到既有 `web-host` 存储 realm，使仓库与 Queue 桥接共享 Web Host 的存储 owner。Profile 本地替换必须保留该 realm 选择；选择构建产物前先运行仓库正常的 Host 构建。
 
 ### Minimal workflow
 

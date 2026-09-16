@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-Web 组合包把 `@deepseek-ai/dsh-client-ui-architecture` 作为一级侧边栏模块和完整 `shell.view` 工作区。开发者浏览包字段、筛选、依赖方向、反向消费者和单包证据详情时，普通会话仍保持挂载。
+Web 组合包把 `@deepseek-ai/dsh-client-ui-architecture` 放进侧边栏默认收起的“更多”分组，并注册为完整 `shell.view` 工作区。Queue 保持为唯一一级模块入口。开发者浏览包字段、筛选、依赖方向、反向消费者和单包证据详情时，普通会话仍保持挂载。
 
 构建目录和运行时叠加保持为不同证据层。`scripts/gen-architecture-catalog.ts` 从正式 `packages/*/*/package.json` manifest 确定性派生提交的 Client 目录。它记录 manifest 描述、目录领域、显式浏览器/组合包/Remote/工具声明面和仓库内 `peerDependencies`；`verify-architecture-catalog` 拒绝漂移。
 

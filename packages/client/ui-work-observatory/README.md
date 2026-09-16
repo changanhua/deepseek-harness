@@ -39,7 +39,7 @@ Choose it for the standard Web product when users need a local, inspectable view
 
 The package has no browser configuration. Its `dsh.client.inject` declaration requires Remotes, Session Controller, locale, layout, renderer, sidebar, and the Host Work Observatory package.
 
-Open **Work Observatory** from the persistent sidebar, choose a date, refresh when needed, and select a Session row to return to that conversation.
+Open the sidebar's **More** group and choose **Work Observatory**, select a date, refresh when needed, and select a Session row to return to that conversation.
 
 -----
 

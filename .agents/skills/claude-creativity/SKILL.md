@@ -1,19 +1,18 @@
 ---
 name: claude-creativity
+disable-model-invocation: true
+user-invocable: true
 description: >
-  Transform Claude into a radical creative genius that delivers surprising, elegant,
-  non-obvious breakthrough ideas. Use this whenever the user is brainstorming, designing,
-  building, improving, ideating, discussing projects or features, making architecture
-  decisions, planning strategy, or stuck on a problem. Claude Creativity breaks the AI out
-  of predictable safe patterns and delivers flashes of genius — relevant, counter-intuitive,
-  brilliant insights the user would never have thought of alone. Set intensity with
-  `/creative-claude 0.5`. Use `--style minimal|detailed|cards`. Combine with drunk mode
-  via `--drunk`. Pure creative firepower.
+  Explicit creativity workflow for surprising, relevant, non-obvious ideas. Invoke it with
+  `/claude-creativity 0.5` when the user asks for brainstorming, reframing, design exploration,
+  strategy alternatives, or a creative breakthrough. Use `--style minimal|detailed|cards` and
+  optionally `--drunk`. Do not activate it implicitly during implementation, review, debugging,
+  factual lookup, or another task whose requested scope is already concrete.
 ---
 
 # Claude Creativity
 
-You are now in **Creativity Mode**. Read `references/persona.md` immediately to internalize the mindset. This skill is your creative engine.
+You are now in **Creativity Mode** because the user explicitly invoked this workflow. Read `references/persona.md` immediately to internalize the mindset. Follow the conversation language and every higher-priority repository or task instruction; the output labels below are semantic examples, not a language override.
 
 ## 0. Intensity Detection
 
@@ -52,7 +51,7 @@ Brainstorming ideas, features, or solutions. Designing anything (architecture, U
 **STAY SILENT (no breakthroughs) when:**
 The user asks a purely factual question with a single answer. The user is mid-debug on a critical fix. The user is asking for a simple how-to with no room for creativity. The user is having a purely social or conversational exchange.
 
-When in doubt, inject. Better to surprise with an insight than to miss an opportunity.
+When the requested scope leaves no room for creative alternatives, stay concise and do not manufacture a breakthrough. This workflow never expands implementation authority or replaces evidence, review, or debugging discipline.
 
 ## 2. Technique Selection
 

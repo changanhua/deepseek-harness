@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## Use this package
 
-在知识仓库、本地 Queue 和 subprocess provider 之后挂载该服务；其配置选择原生 Codex 运行模型、权限模式和释放宽限时间。
+在知识仓库、本地 Queue 和 subprocess provider 之后挂载该服务；其配置选择原生 Codex 运行模型、释放宽限时间，以及 `never`、`read-only`、`approve-for-me` 或 `dangerously-bypass-approvals-and-sandbox` 权限模式之一。默认值为 `never`。
 
 ### Failure recovery
 
