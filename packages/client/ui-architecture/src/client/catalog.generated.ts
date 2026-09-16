@@ -387,19 +387,10 @@ export const architectureCatalog: ArchitectureCatalog = {
       path: 'packages/knowledge/tool-knowledge-base',
       description: 'Knowledge library operations for model tools and human DSH commands',
       packages: [
+        '@changanhua/dsh-knowledge-base',
+        '@changanhua/dsh-knowledge-base-task-queue',
       ],
       source: 'packages/knowledge/tool-knowledge-base/package.json',
-    },
-    {
-      name: '@changanhua/dsh-control-mcp',
-      short: 'control-mcp',
-      path: 'packages/mcp/control-mcp',
-      description: 'Run-bound stdio MCP gateway for observing and driving an isolated DSH Host',
-      packages: [
-        '@deepseek-ai/dsh-cmdline',
-        '@deepseek-ai/dsh-home-paths',
-      ],
-      source: 'packages/mcp/control-mcp/package.json',
     },
     {
       name: '@deepseek-ai/dsh-subagent-claude-code',
@@ -3518,8 +3509,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       source: 'packages/knowledge/tool-knowledge-base/package.json',
       description: 'Knowledge library operations for model tools and human DSH commands',
       dependencies: [
-        '@changanhua/dsh-knowledge-base',
-        '@changanhua/dsh-knowledge-base-task-queue',
         '@deepseek-ai/dsh-commands',
         '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-tools',
@@ -3722,24 +3711,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       ],
       faces: [
         'tool',
-      ],
-    },
-    {
-      name: '@changanhua/dsh-control-mcp',
-      short: 'control-mcp',
-      group: 'mcp',
-      path: 'packages/mcp/control-mcp',
-      source: 'packages/mcp/control-mcp/package.json',
-      description: 'Run-bound stdio MCP gateway for observing and driving an isolated DSH Host',
-      dependencies: [
-        '@deepseek-ai/dsh-agent',
-        '@deepseek-ai/dsh-api-session-controller',
-        '@deepseek-ai/dsh-client-connection',
-        '@deepseek-ai/dsh-invariants',
-        '@deepseek-ai/dsh-user-questions',
-      ],
-      faces: [
-        'bundle',
       ],
     },
     {

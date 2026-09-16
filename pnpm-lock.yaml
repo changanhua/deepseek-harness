@@ -141,9 +141,6 @@ importers:
 
   apps/cli:
     dependencies:
-      '@changanhua/dsh-control-mcp':
-        specifier: workspace:^
-        version: link:../../packages/mcp/control-mcp
       '@changanhua/dsh-knowledge-base':
         specifier: workspace:^
         version: link:../../packages/knowledge/knowledge-base
@@ -8300,52 +8297,6 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
-
-  packages/mcp/control-mcp:
-    dependencies:
-      '@deepseek-ai/dsh-cmdline':
-        specifier: workspace:^
-        version: link:../../boot/cmdline
-      '@deepseek-ai/dsh-home-paths':
-        specifier: workspace:^
-        version: link:../../util/home-paths
-      '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
-        version: link:../../../vendor/schemastery
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.29.0
-        version: 1.29.0(zod@4.4.3)
-      commander:
-        specifier: ^15.0.0
-        version: 15.0.0
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-agent':
-        specifier: workspace:^
-        version: link:../../core/agent
-      '@deepseek-ai/dsh-api-session-controller':
-        specifier: workspace:^
-        version: link:../../api/session-controller
-      '@deepseek-ai/dsh-client-connection':
-        specifier: workspace:^
-        version: link:../../client/connection
-      '@deepseek-ai/dsh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-llm-mock-server':
-        specifier: workspace:^
-        version: link:../../test-support/llm-mock-server
-      '@deepseek-ai/dsh-user-questions':
-        specifier: workspace:^
-        version: link:../../interaction/user-questions
-      playwright:
-        specifier: ^1.49.0
-        version: 1.61.1
 
   packages/mcp/mcp-client:
     dependencies:

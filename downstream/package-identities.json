@@ -512,18 +512,6 @@
       ]
     },
     {
-      "directory": "packages/mcp/control-mcp",
-      "legacyName": "@deepseek-ai/dsh-control-mcp",
-      "sourceName": "@changanhua/dsh-control-mcp",
-      "sourceIdentity": "personal",
-      "publicationPolicy": "blocked-until-release-verified",
-      "releaseFamily": null,
-      "blockers": [
-        "release-family-absent",
-        "upstream-private-api-dependency"
-      ]
-    },
-    {
       "directory": "packages/memory/command-memory",
       "legacyName": "@deepseek-ai/dsh-command-memory",
       "sourceName": "@changanhua/dsh-command-memory",

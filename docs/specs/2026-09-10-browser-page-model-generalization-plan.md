@@ -26,7 +26,7 @@
 | 失效重选 | `packages/browser/tool-browser/src/index.ts` `dispatchWithFeedback` | `stale_element/stale_document/stale_preparation/target_unavailable` 转为提示「从新引用重新选择」并附带新快照 |
 | 有界任务环 | `packages/browser/tool-browser/src/loop.ts` | `MAX_STEPS=12`、`MAX_SAME_FAILURES=3`、verified/unknown/cancelled/budget_exhausted/repeated_failure 状态机；turn 边界注入续轮消息 |
 | AbortSignal | `tool-browser/src/index.ts` | 全链路传 `exec.signal` |
-| e2e 模式 | `apps/web/tests/browser-*.e2e.ts`、`packages/mcp/control-mcp/tests/browser-extension.e2e.ts` | 本地 fixture server（`127.0.0.1`）+ Playwright 加载真实 MV3 扩展 + 真实 Host |
+| e2e 模式 | `apps/web/tests/browser-*.e2e.ts` | 本地 fixture server（`127.0.0.1`）+ Playwright 加载真实 MV3 扩展 + 真实 Host |
 | 模型入口 | `tool-browser/src/schema.ts`、`packages/extensions/cordis-host-runner/src/index.ts` `browserEntryFacade` | `browser_action` 不开放 entry 操作；动态插件通过 `harness.browser.inspect/mount/unmount` 调用页面模型 |
 | 挂载所有权 | `cordis-host-runner/src/index.ts` `cleanupBrowserMounts`、`packages/browser/browser-extension/src/index.ts` | runner 保存运行实例拥有的挂载与待清理挂载；BrowserExtension 保存授权及点击路由记录。现有 runner 在 stop/update/失败等路径卸载，清理回执与失败保留需要 WP1.2 补强 |
 
@@ -99,7 +99,7 @@
 
 ### WP0 基线固定（已完成，本地执行）
 
-1. （已批准）160 项 WIP 已按主题落为基线提交，位于 `964fd9d5b4` 之上：忽略本地运行时数据的 `.gitignore`、浏览器包族、扩展与 Web e2e、MCP control-mcp 接线、Cordis 扩展与 session 控制器、文档与 preset。本地运行时数据（`.dsh-page-model-verify/`，含凭证）与 `.codex/` 已排除且不入库。
+1. （已批准）160 项 WIP 已按主题落为基线提交，位于 `964fd9d5b4` 之上：忽略本地运行时数据的 `.gitignore`、浏览器包族、扩展与 Web e2e、Cordis 扩展与 session 控制器、文档与 preset。本地运行时数据（`.dsh-page-model-verify/`，含凭证）与 `.codex/` 已排除且不入库。
 2. 记录起点：`git rev-parse HEAD`、`git status` 快照存入实验记录目录（见 6.2）。
 3. 确认 Windows 执行环境：Playwright 用 `C:\Users\xbh\node_modules\playwright`（1.58.2，chromium 已下载），不使用系统 Chrome/Edge `--headless`；脚本与截图放 `.playwright-mcp/`（gitignored）。
 
@@ -119,7 +119,7 @@ WP1.3 将 `collected` 缓存与活动 observer 分开，键为 `(sessionId, inst
 
 | 子项 | 内容 | 落点 | 验证 |
 | --- | --- | --- | --- |
-| 1.0 实验入口与计量 | 接通上述 subject 工具路径，在 controller 的模型调用和 Host Browser 执行边界分别计数；同一规则用于两模型 | 既有 `packages/mcp/control-mcp` 实验入口、测试 harness 与运行日志 | 工具清单确认可达 inspect/mount/unmount；插件内部 Browser 操作可计数；不得用 mock 结果替代正式模型验收 |
+| 1.0 实验入口与计量 | 接通上述 subject 工具路径，在 controller 的模型调用和 Host Browser 执行边界分别计数；同一规则用于两模型 | controller 外部实验入口、测试 harness 与运行日志 | 工具清单确认可达 inspect/mount/unmount；插件内部 Browser 操作可计数；不得用 mock 结果替代正式模型验收 |
 | 1.1 挂载前置强制 | 实现上述预检记录及同文档失效规则 | `apps/chrome-extension/src/browser-page.js`；Browser 类型、错误说明、runner facade 与对应 README | 未 inspect、同页替换、字段改值、刷新均拒绝；重新 inspect 后成功；失败重挂保留旧有效挂载 |
 | 1.2 停止清理核对 | 实现上述 runner 收尾与回执核对，补齐 controller 的实际任务终止收尾 | `packages/extensions/cordis-host-runner/src/index.ts`、`packages/browser/browser-extension/src/index.ts`、扩展及实验 harness | 正常停止、取消但 agent 存活、错误、销毁、在途挂载与离线卸载；同一页面的非目标插件不受影响；任务结束零残留或明确清理失败 |
 | 1.3 collected 默认保留 | 实现独立缓存与所有者释放，覆盖更新及卸载后重挂 | `browser-page.js`、runner/browser-extension 的所有者释放路径 | 收集确认→卸载→重新 inspect→省略 collected 重挂仍保留；`[]` 清空；跨 Session/文档不恢复；超限有明确失败 |
@@ -128,7 +128,7 @@ WP1.3 将 `collected` 缓存与活动 observer 分开，键为 `(sessionId, inst
 | 1.6 节点复用 | 观察子树、属性和文本变化；按条目当前字段重新判定，变化时移除旧按钮，重新有效绑定前不可点击；点击时再次核对字段身份和值，禁止闭包回传旧内容 | `browser-page.js` attach/observer，复用 WP1.1 的字段读取与身份比较 | 同节点改 href、改文本、替换字段节点、跨行内容变化均不回传旧条目；新绑定按新绝对链接重算 collected；DSH 按钮变更不触发循环 |
 | 1.7 业务结果核验 | 插件以 `harness.state` 的 `collection` 数组保存去重后的 `{title, link}`；独立 checker 读取结果并与 Host 接收的条目事件和 fixture 期望值核对 | 实验 harness 的只读状态读取与 checker，复用现有 runner 状态，不新增产品存储 | 数量不足、标题/链接错配、重复项、只有按钮但无结果均失败；正常结果在 stop 前后相同 |
 
-每个子项按实际修改运行所属测试：页面条目重点是 `apps/chrome-extension/tests/browser-entry.spec.ts`，页面身份另测 `browser-page.spec.ts`；runner、BrowserExtension、tool-browser 与 control-mcp 使用各自测试目录。命令从仓库 `docs/testing.md` 的矩阵选择；WP4 使用既有真实 Host + MV3 扩展 e2e 入口，不以页面单测代替。
+每个子项按实际修改运行所属测试：页面条目重点是 `apps/chrome-extension/tests/browser-entry.spec.ts`，页面身份另测 `browser-page.spec.ts`；runner、BrowserExtension 与 tool-browser 使用各自测试目录。命令从仓库 `docs/testing.md` 的矩阵选择；WP4 使用既有真实 Host + MV3 扩展 e2e 入口，不以页面单测代替。
 
 ### WP2 Skill 沉淀（通用护栏 → Skill，已实现）
 
