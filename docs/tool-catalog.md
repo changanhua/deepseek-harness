@@ -15,7 +15,7 @@ This table connects model-visible tool names to the plugin package and service s
 
 | Tool package | Model-visible names | Requires | Writes / affects | Shipped aliases | Deployment note |
 | --- | --- | --- | --- | --- | --- |
-| `@changanhua/dsh-tool-browser` | `browser_action`, `browser_action_sequence`, `browser_activity_search`, `browser_entry_mount`, `browser_entry_unmount`, `browser_extract`, `browser_instances`, `browser_page_map`, `browser_region_clear`, `browser_region_render`, `browser_request_status`, `browser_snapshot`, `browser_tabs`, `browser_task_start`, `browser_task_verify` | `ctx.browser`, `ctx.browserTasks`, `ctx.tools`, `ctx.approval`, `ctx.browserActivity for historical activity search`, `an initiating Agent session` | `tool/call`, `tool/result`, `browser-task/change`, `browser-task/receipt`, `browser-task/check`, `approved page actions through Browser` | - | Activity search is present only when browserActivity is composed. It reads the initiating Session under current Host grants, including while Chrome is offline. |
+| `@changanhua/dsh-tool-browser` | `browser_action`, `browser_action_sequence`, `browser_activity_search`, `browser_entry_mount`, `browser_entry_unmount`, `browser_extract`, `browser_instances`, `browser_page_map`, `browser_region_clear`, `browser_region_render`, `browser_request_status`, `browser_snapshot`, `browser_tabs`, `browser_task_cancel`, `browser_task_start`, `browser_task_verify` | `ctx.browser`, `ctx.browserTasks`, `ctx.tools`, `ctx.approval`, `ctx.browserActivity for historical activity search`, `an initiating Agent session` | `tool/call`, `tool/result`, `browser-task/change`, `browser-task/receipt`, `browser-task/check`, `browser-task/delegation`, `approved page actions through Browser` | - | Activity search is present only when browserActivity is composed. It reads the initiating Session under current Host grants, including while Chrome is offline. |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`, `task_queue_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 agent.run@1 admission` | - | The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields. |
 | `@changanhua/dsh-tool-memory` | `memory_propose`, `memory_read`, `memory_search` | `ctx.tools`, `ctx.systemPrompt`, `ctx.projectMemory`, `a live Agent in a registered Workspace` | `tool/call`, `tool/result`, `candidate revisions and proposal receipts in the project_memory domain` | - | Explicit opt-in project memory. Models can search, read checked claims, and propose candidates; human acceptance, rejection, and withdrawal are separate command operations. |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`, `ctx.userQuestions` | `tool/call`, `tool/result after a UI/provider answers the question` | - | ask_user_question pauses the tool call until the active UI provider returns a human answer. |
@@ -3026,6 +3026,19 @@ List browser tabs for one authorized installation.
 
 Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
 
+### `browser_task_cancel`
+
+End the current browser task only after asking the user to send the exact marker [browser-task:cancel] or [browser-task:accept-unknown] in their latest direct message. This records that decision fact, preserves unknown attempts, and refuses while any page resource is not released or confirmed gone. It never converts unknown into observed.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
+
 ### `browser_task_start`
 
 Start a bounded browser task. Supply a natural-language goal plus at least one machine-checkable success condition. The task observes the page, then the Agent loop continues only while it remains unverified.
@@ -3091,6 +3104,22 @@ Start a bounded browser task. Supply a natural-language goal plus at least one m
               "type": "boolean"
             }
           }
+        },
+        "region": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mountId": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mountId",
+            "text"
+          ]
         }
       }
     }

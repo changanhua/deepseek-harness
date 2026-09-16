@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
+import { evaluate } from '@deepseek-ai/cordis-plugin-loader/src/config/utils.ts'
 import Include, { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import * as yaml from 'js-yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -108,6 +109,31 @@ describe('the shipped preset root', () => {
       }
       expect(toolWeb.config.fetch, id).toBe(true)
     }
+  })
+
+  it('fails closed instead of silently dropping standard browser task tools', async () => {
+    const source = await readFile(join(SHIPPED_PRESET_ROOT, 'standard', 'agent.cordis.yml'), 'utf8')
+    const entries: unknown = yaml.load(source, { schema: entryListSchema })
+    if (!Array.isArray(entries)) throw new TypeError('standard preset must contain a Cordis entry list')
+    const toolBrowser: unknown = entries.find((entry: unknown) =>
+      typeof entry === 'object' && entry !== null && 'id' in entry && entry.id === 'tool-browser')
+    if (typeof toolBrowser !== 'object' || toolBrowser === null || !('disabled' in toolBrowser)
+      || typeof toolBrowser.disabled !== 'object' || toolBrowser.disabled === null
+      || !('__jsExpr' in toolBrowser.disabled) || typeof toolBrowser.disabled.__jsExpr !== 'string') {
+      throw new TypeError('standard tool-browser must carry one fail-closed disabled expression')
+    }
+    expect(toolBrowser.disabled.__jsExpr).toContain("ctx.get('browser')")
+    expect(toolBrowser.disabled.__jsExpr).toContain("ctx.get('browserTasks')")
+    expect(toolBrowser.disabled.__jsExpr).toContain('throw new Error')
+    expect(toolBrowser.disabled.__jsExpr).toContain('return false')
+
+    const expression = toolBrowser.disabled.__jsExpr
+    const evaluateWith = (browser: object | undefined, browserTasks: object | undefined): unknown => evaluate({
+      ctx: { get: (name: string) => name === 'browser' ? browser : name === 'browserTasks' ? browserTasks : undefined },
+    }, expression)
+    expect(evaluateWith({}, {})).toBe(false)
+    expect(() => evaluateWith(undefined, {})).toThrow('browser=missing and browserTasks=available')
+    expect(() => evaluateWith({}, undefined)).toThrow('browser=available and browserTasks=missing')
   })
 
   it('routes external-page entry features through the mounted Browser service', async () => {

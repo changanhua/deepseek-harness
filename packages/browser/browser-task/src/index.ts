@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { z as zod } from 'zod'
@@ -6,6 +6,7 @@ import type { ZodType } from 'zod'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
+import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { BrowserTaskError, BrowserTaskId } from './runtime.ts'
 import {
   applyBrowserTaskChange,
@@ -25,6 +26,7 @@ import type {
   BrowserPageResource,
   BrowserTargetBinding,
   BrowserTaskBlocker,
+  BrowserTaskDelegation,
   BrowserTaskProjectionState,
   BrowserTaskReceipt,
   BrowserTaskRef,
@@ -45,7 +47,9 @@ declare module '@deepseek-ai/cordis' {
 
 const clone = <T>(value: T): T => structuredClone(value)
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
-const terminalWork = new Set(['completed', 'failed', 'cancelled'])
+const delegationPending = (work: Pick<DelegatedWorkRef, 'kind' | 'status'>): boolean => work.kind === 'cordis'
+  ? ['starting', 'awaiting-approval', 'waiting', 'client-pending'].includes(work.status)
+  : ['running', 'stopping', 'starting', 'awaiting-approval', 'waiting'].includes(work.status)
 
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -105,10 +109,11 @@ const taskSchema: ZodType<BrowserTaskSnapshot> = zod.unknown().superRefine((valu
 const viewSchema: ZodType<BrowserTaskSnapshot | null> = zod.union([taskSchema, zod.null()])
 
 const sourceFactSchema = zod.object({
-  kind: zod.enum(['user', 'message', 'tool-call', 'tool-result', 'browser-task-receipt', 'browser-task-check']),
+  kind: zod.enum(['user', 'message', 'tool-call', 'tool-result', 'browser-task-receipt', 'browser-task-check', 'browser-task-delegation']),
   sessionSeq: zod.number().int().nonnegative(),
   callId: zod.string().min(1).optional(),
   name: zod.string().min(1).optional(),
+  decision: zod.enum(['cancel', 'accept-unknown']).optional(),
   taskId: zod.string().min(1).optional(),
   requestId: zod.string().min(1).optional(),
   actionKind: zod.string().min(1).optional(),
@@ -119,12 +124,14 @@ const sourceFactSchema = zod.object({
   grantEpoch: zod.number().int().nonnegative().optional(),
   resourceId: zod.string().min(1).optional(),
   reason: zod.string().max(BROWSER_TASK_LIMITS.text).optional(),
+  presentation: zod.unknown().optional(),
   checkerId: zod.string().min(1).optional(),
   evaluations: zod.array(zod.object({
     clauseId: zod.string().min(1),
     satisfied: zod.boolean(),
     evidenceIds: zod.array(zod.string().min(1)).max(BROWSER_TASK_LIMITS.evidenceRefs),
   }).strict()).max(BROWSER_TASK_LIMITS.evaluations).optional(),
+  work: zod.unknown().optional(),
 }).strict()
 
 const stateSchema: ZodType<BrowserTaskProjectionState> = zod.object({
@@ -144,6 +151,8 @@ const stateSchema: ZodType<BrowserTaskProjectionState> = zod.object({
       previous = fact.sessionSeq
       if ((fact.kind === 'tool-call' || fact.kind === 'tool-result') && fact.callId === undefined) context.addIssue({ code: 'custom', message: 'tool fact needs callId' })
       if (fact.kind !== 'tool-call' && fact.kind !== 'tool-result' && fact.callId !== undefined) context.addIssue({ code: 'custom', message: 'non-tool fact cannot have callId' })
+      if (fact.decision !== undefined && fact.kind !== 'user') context.addIssue({ code: 'custom', message: 'only user facts carry decisions' })
+      if ((fact.kind === 'browser-task-delegation') !== (fact.work !== undefined)) context.addIssue({ code: 'custom', message: 'delegation fact needs work only on its own kind' })
     }
   } catch (error) {
     context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) })
@@ -163,7 +172,7 @@ export const browserTaskProjectionDefinition = {
   }),
   apply: applyBrowserTaskProjection,
   wire: { viewSchema, view: (state: BrowserTaskProjectionState) => state.current === null ? null : clone(state.current) },
-  stateVersion: 4,
+  stateVersion: 5,
 } satisfies ProjectionDefinition<'browserTask', BrowserTaskProjectionState>
 
 function target(task: BrowserTaskSnapshot, value: BrowserTargetBinding): void {
@@ -174,24 +183,87 @@ function unique(values: readonly string[], field: string): void {
   if (values.some(value => value.length === 0) || new Set(values).size !== values.length) throw new BrowserTaskError(`${field} must be unique non-empty ids`, 'BROWSER_TASK_INVALID_INPUT')
 }
 
-function delegatedName(name: string): 'job' | 'subagent' | 'cordis' | undefined {
-  if (/^subagent/i.test(name)) return 'subagent'
-  if (/^cordis_/i.test(name)) return 'cordis'
-  if (/^(job|jobs)[_./-]/i.test(name)) return 'job'
+const object = (value: unknown): Record<string, unknown> | undefined => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+const nonEmpty = (value: unknown): string | undefined => typeof value === 'string' && value.length > 0 ? value : undefined
+const outputDigest = (value: unknown): string => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`
+type CapturedDelegation =
+  | { readonly type: 'work'; readonly work: Omit<DelegatedWorkRef, 'source'> }
+  | { readonly type: 'job-result'; readonly jobId: string; readonly status: string; readonly outputDigest?: string }
+  | { readonly type: 'cordis-inspect'; readonly pluginId: string; readonly packageId: string; readonly pluginRunId?: string; readonly status: string }
+interface PendingDelegation {
+  readonly result: CapturedDelegation
+  readonly expires: ReturnType<typeof setTimeout>
+}
+const captured = (work: Omit<DelegatedWorkRef, 'source'>): CapturedDelegation => ({ type: 'work', work })
+
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).length === keys.length && keys.every(key => key in value)
+}
+
+function canonicalDelegation(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): CapturedDelegation | undefined {
+  const value = result.isError ? undefined : object(result.value)
+  if (value === undefined) return undefined
+  const callId = String(exec.callId)
+  // Subagent tools are configurable, so recognize only their closed result variants.
+  if (value.kind === 'foreground' && exactKeys(value, ['kind', 'runId', 'output']) && typeof value.runId === 'string' && Array.isArray(value.output)) {
+    return captured({ callId, kind: 'subagent', status: 'completed', identity: { mode: 'foreground', runId: value.runId }, outputDigest: outputDigest(value.output), evidenceIds: [] })
+  }
+  if (value.kind === 'background' && exactKeys(value, ['kind', 'jobId']) && typeof value.jobId === 'string') {
+    return captured({ callId, kind: 'job', status: 'running', identity: { mode: 'background', jobId: value.jobId }, evidenceIds: [] })
+  }
+  if (value.kind === 'continuable' && exactKeys(value, ['kind', 'subagentId']) && typeof value.subagentId === 'string') {
+    return captured({ callId, kind: 'subagent', status: 'running', identity: { mode: 'continuable', subagentId: value.subagentId }, evidenceIds: [] })
+  }
+  if (exec.name === 'cordis_run') {
+    const pluginId = nonEmpty(value.pluginId); const packageId = nonEmpty(value.packageId)
+    const pluginRunId = nonEmpty(value.pluginRunId); const status = nonEmpty(value.status)
+    if (pluginId !== undefined && packageId !== undefined && pluginRunId !== undefined && status !== undefined) {
+      return captured({ callId, kind: 'cordis', status, identity: { mode: 'cordis', pluginId, packageId, pluginRunId }, evidenceIds: [] })
+    }
+  }
+  if (exec.name === 'job_output') {
+    const job = object(value.job); const jobId = nonEmpty(job?.id); const status = nonEmpty(job?.status)
+    if (jobId !== undefined && status !== undefined) return { type: 'job-result', jobId, status,
+      ...(typeof value.text === 'string' ? { outputDigest: outputDigest(value.text) } : {}) }
+  }
+  if (exec.name === 'cordis_inspect_self') {
+    const plugin = value.mode === 'package' ? object(value.plugin) : value
+    const activeRun = object(plugin?.activeRun)
+    const pluginId = nonEmpty(plugin?.pluginId)
+    const packageId = value.mode === 'package' ? nonEmpty(value.packageId) : nonEmpty(activeRun?.packageId)
+    const pluginRunId = nonEmpty(activeRun?.pluginRunId)
+    const status = value.mode === 'package' ? nonEmpty(object(value.runtime)?.state) : nonEmpty(value.state)
+    if (pluginId !== undefined && packageId !== undefined && status !== undefined) {
+      return { type: 'cordis-inspect', pluginId, packageId, ...(pluginRunId === undefined ? {} : { pluginRunId }), status }
+    }
+  }
   return undefined
 }
 
 /** Session-log authority for one current browser task; no process-local task state exists. */
 export class BrowserTaskService extends Service {
-  static inject = ['agents', 'sessionProjections']
+  static inject = ['agents', 'sessionProjections', 'tools']
   static Config = z.object({})
   private readonly capturing = new Set<string>()
+  private readonly toolResults = new Map<string, PendingDelegation>()
 
   constructor(ctx: Context) {
     super(ctx, 'browserTasks')
     ctx.sessionProjections.register(browserTaskProjectionDefinition)
+    ctx.on('tools/result', (exec, result) => {
+      if (exec.agent === undefined || exec.parent !== undefined) return
+      const resultFact = canonicalDelegation(exec, result)
+      if (resultFact !== undefined) this.rememberDelegation(`${exec.agent.id}\u0000${exec.callId}`, resultFact)
+    })
+    ctx.on('agent/disposed', ({ agent }) => {
+      for (const key of this.toolResults.keys()) if (key.startsWith(`${agent.id}\u0000`)) this.dropDelegation(key)
+    })
     ctx.on('session/event', (session, event) => {
-      queueMicrotask(() =>{  this.captureDelegation(session, event) })
+      queueMicrotask(() => {
+        // Projection failure is authoritative; a best-effort observer must never leak it
+        // into Cordis's microtask queue or contaminate the originating Session append.
+        try { this.captureDelegation(session, event) } catch { /* observer is best effort */ }
+      })
     })
   }
 
@@ -445,9 +517,9 @@ export class BrowserTaskService extends Service {
    */
   linkDelegatedWork(agent: Agent, ref: BrowserTaskRef, work: DelegatedWorkRef): BrowserTaskSnapshot {
     return this.mutate(agent, ref, 'delegation', (task) => {
-      const delegated = [...task.delegated.filter(item => item.id !== work.id), clone(work)]
+      const delegated = [...task.delegated.filter(item => item.callId !== work.callId), clone(work)]
       const blockers = new Set(task.blockers)
-      if (delegated.some(item => !terminalWork.has(item.status))) blockers.add('delegated-work')
+      if (delegated.some(delegationPending)) blockers.add('delegated-work')
       else blockers.delete('delegated-work')
       return { ...task, delegated, blockers: [...blockers] }
     })
@@ -560,6 +632,30 @@ export class BrowserTaskService extends Service {
     })
   }
 
+  /**
+   * End an uncertain task only from a newer direct user message. This records a
+   * decision boundary; it never changes any unknown action or resource outcome.
+   * @param agent - Exact live Agent that owns the task.
+   * @param ref - Current compare-and-set task revision.
+   * @param sourceSeq - Latest direct user message that explicitly requests cancellation.
+   * @returns The terminal cancelled task revision.
+   */
+  cancelByOwner(agent: Agent, ref: BrowserTaskRef, sourceSeq: number): BrowserTaskSnapshot {
+    return this.mutate(agent, ref, 'owner-cancel', (task) => {
+      const latestUserSource = this.latestUserSource(agent)
+      const decision = this.projection(agent.session).sourceFacts.find(fact => fact.kind === 'user' && fact.sessionSeq === sourceSeq)?.decision
+      if (!Number.isSafeInteger(sourceSeq) || sourceSeq <= task.sourceSeq || sourceSeq !== latestUserSource
+        || decision === undefined) {
+        throw new BrowserTaskError('owner cancellation must cite a newer direct user message', 'BROWSER_TASK_INVALID_INPUT')
+      }
+      if (task.resources.some(resource => resource.state !== 'released' && resource.state !== 'vanished')) {
+        throw new BrowserTaskError('owner cancellation requires every page resource to be disposed', 'BROWSER_TASK_INVALID_TRANSITION')
+      }
+      return { ...task, phase: 'terminal' as const, outcome: 'cancelled' as const,
+        terminationSource: { kind: 'user', sessionSeq: sourceSeq } }
+    })
+  }
+
   private consume(agent: Agent, ref: BrowserTaskRef, steps: number, actions: number): BrowserTaskSnapshot {
     return this.mutate(agent, ref, 'consume-budget', (task) => {
       if (!Number.isSafeInteger(steps) || !Number.isSafeInteger(actions) || steps < 0 || actions < 0 || steps + actions === 0 || task.budget.stepsUsed + steps > task.budget.maxSteps || task.budget.actionsUsed + actions > task.budget.maxActions) throw new BrowserTaskError('budget exhausted or invalid', 'BROWSER_TASK_BUDGET')
@@ -619,33 +715,73 @@ export class BrowserTaskService extends Service {
   }
 
   private captureDelegation(session: Session, event: SessionEvent): void {
-    if (event.type !== 'tool/call' && event.type !== 'tool/result') return
+    const settlement = event.type === 'user/message' && (event.data as { source?: { kind?: unknown; senderSessionId?: unknown } }).source?.kind === 'subagent-settled'
+      ? nonEmpty((event.data as { source?: { senderSessionId?: unknown } }).source?.senderSessionId)
+      : undefined
+    if (event.type !== 'tool/result' && settlement === undefined) return
+    const callId = event.type === 'tool/result' ? String(event.data.message.source.callId) : undefined
+    const key = callId === undefined ? undefined : `${session.id}\u0000${callId}`
     const agent = this.ctx.agents.get(session.id)
     if (agent === undefined || this.capturing.has(String(session.id))) return
     const current = this.projection(session).current
-    if (current === null || current.phase === 'terminal') return
-    const call = event.type === 'tool/call' ? event.data : undefined
-    const result = event.type === 'tool/result' ? event.data : undefined
-    const callId = String(call?.callId ?? result?.message.source.callId)
-    const existing = current.delegated.find(item => item.id === callId)
-    const kind = call === undefined ? existing?.kind : delegatedName(call.name)
-    if (kind === undefined) return
+    if (current === null || current.phase === 'terminal') { if (key !== undefined) this.dropDelegation(key); return }
+    const pending = key === undefined ? undefined : this.toolResults.get(key)
+    if (settlement === undefined && pending === undefined) return
+    const resultFact = pending?.result
     this.capturing.add(String(session.id))
     try {
       const ref: BrowserTaskRef = { id: current.id, revision: current.revision }
-      const source: BrowserTaskSourceRef = event.type === 'tool/call'
-        ? { kind: 'tool-call', callId }
-        : { kind: 'tool-result', callId, sessionSeq: event.seq }
-      const status = event.type === 'tool/call' ? 'running' : result?.message.content[0].isError ? 'failed' : 'completed'
-      const expectedOutput = call === undefined
-        ? existing?.expectedOutput ?? 'delegated'
-        : call.name.slice(0, BROWSER_TASK_LIMITS.text)
-      this.linkDelegatedWork(agent, ref, { id: callId, kind, status, expectedOutput, evidenceIds: existing?.evidenceIds ?? [], source })
+      const work = settlement !== undefined
+        ? (() => {
+          const existing = current.delegated.find(item => item.kind === 'subagent' && item.identity.mode === 'continuable'
+              && item.identity.subagentId === settlement)
+          return existing === undefined ? undefined : {
+            callId: existing.callId, kind: existing.kind, status: 'settled', identity: existing.identity,
+            evidenceIds: existing.evidenceIds,
+          }
+        })()
+        : resultFact?.type === 'work'
+          ? resultFact.work
+          : resultFact?.type === 'job-result' ? (() => {
+            const existing = current.delegated.find(item => item.kind === 'job' && item.identity.mode === 'background' && item.identity.jobId === resultFact.jobId)
+            return existing === undefined ? undefined : {
+              callId: existing.callId, kind: existing.kind, status: resultFact.status, identity: existing.identity,
+              ...(resultFact.outputDigest === undefined ? {} : { outputDigest: resultFact.outputDigest }),
+              evidenceIds: existing.evidenceIds,
+            }
+          })() : resultFact?.type === 'cordis-inspect' ? (() => {
+            const existing = current.delegated.find(item => item.kind === 'cordis' && item.identity.mode === 'cordis'
+              && item.identity.pluginId === resultFact.pluginId && item.identity.packageId === resultFact.packageId
+              && (resultFact.pluginRunId === undefined || item.identity.pluginRunId === resultFact.pluginRunId))
+            return existing === undefined ? undefined : {
+              callId: existing.callId, kind: existing.kind, status: resultFact.status, identity: existing.identity,
+              evidenceIds: existing.evidenceIds,
+            }
+          })() : undefined
+      if (work === undefined) return
+      const fact: BrowserTaskDelegation = { kind: 'browser-task/delegation', version: 1, taskId: current.id, work: clone(work) }
+      const appended = session.append('browser-task/delegation', fact)
+      this.linkDelegatedWork(agent, ref, { ...work, source: { kind: 'browser-task-delegation', sessionSeq: appended.seq } })
     } catch {
       // Capture must not contaminate the Session append that triggered it.
     } finally {
+      if (key !== undefined) this.dropDelegation(key)
       this.capturing.delete(String(session.id))
     }
+  }
+
+  private rememberDelegation(key: string, result: CapturedDelegation): void {
+    this.dropDelegation(key)
+    const expires = setTimeout(() => { this.dropDelegation(key) }, 30_000)
+    expires.unref()
+    this.toolResults.set(key, { result, expires })
+  }
+
+  private dropDelegation(key: string): void {
+    const pending = this.toolResults.get(key)
+    if (pending === undefined) return
+    clearTimeout(pending.expires)
+    this.toolResults.delete(key)
   }
 }
 

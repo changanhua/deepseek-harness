@@ -20,6 +20,7 @@ import type {
   BrowserTaskSourceRef,
   BrowserTargetBinding,
 } from '@changanhua/dsh-browser-task'
+import { BROWSER_TASK_LIMITS } from '@changanhua/dsh-browser-task'
 
 export const MAX_STEPS = 12
 export const MAX_ACTIONS = 40
@@ -33,6 +34,7 @@ export interface BrowserTaskSuccess {
     readonly checked?: boolean
     readonly expanded?: boolean
   }
+  readonly region?: { readonly mountId: string; readonly text: string }
 }
 
 export interface BrowserTaskStart {
@@ -47,7 +49,7 @@ type BrowserTaskAuthority = Pick<
   | 'get' | 'latestUserSource' | 'create' | 'recordReceipt' | 'recordCheck'
   | 'recordCapability' | 'recordEvidence' | 'recordAttempt' | 'advanceAttempt'
   | 'reconcileAttempt' | 'upsertResource' | 'reconcileResource' | 'evaluate' | 'transition' | 'rebind'
-  | 'acknowledgeTargetLoss' | 'consumeContinuation' | 'consumeAction' | 'terminate'
+  | 'acknowledgeTargetLoss' | 'consumeContinuation' | 'consumeAction' | 'terminate' | 'cancelByOwner'
 >
 type BrowserProvider = Pick<import('@deepseek-ai/cordis').Context['browser'], 'execute' | 'instances'>
 
@@ -57,6 +59,7 @@ const object = (value: unknown): Record<string, unknown> | undefined => (
     : undefined
 )
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : []
+const presentationText = (value: string): string => value.replace(/\s+/gu, ' ').trim()
 const targetOf = (installationId: string, page: BrowserPage): BrowserTargetBinding => ({ installationId, page })
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const ref = (task: BrowserTaskSnapshot): BrowserTaskRef => ({ id: task.id, revision: task.revision })
@@ -104,17 +107,50 @@ function confirmsRelease(actionKind: BrowserAction['kind'], result: Pick<Browser
   return actionKind === 'entry_unmount' && value.unmounted === true && value.remaining === 0
 }
 
+/** The page runtime may prove an exact mounted region is already absent. */
+function confirmsAbsent(actionKind: BrowserAction['kind'], result: Pick<BrowserRequestStatus, 'outcome' | 'value'>): boolean {
+  if (result.outcome !== 'observed' || (actionKind !== 'region_clear' && actionKind !== 'entry_unmount')) return false
+  return object(result.value)?.disposition === 'absent'
+}
+
 function provisionalResource(resource: BrowserPageResource, state: BrowserPageResource['state']): BrowserPageResource {
   return { id: resource.id, state, target: resource.target,
-    ...(resource.owner === undefined ? {} : { owner: resource.owner }) }
+    ...(resource.owner === undefined ? {} : { owner: resource.owner }),
+    ...(resource.presentation === undefined ? {} : { presentation: resource.presentation }) }
 }
 
 function reconciledResource(resource: BrowserPageResource,
   state: Extract<BrowserPageResource['state'], 'active' | 'released' | 'vanished'>,
-  disposition: 'reconcile-active' | 'reconcile-observed' | 'document-replaced' | 'clear-observed' | 'not-sent',
+  disposition: 'reconcile-active' | 'reconcile-observed' | 'document-replaced' | 'absent' | 'clear-observed' | 'not-sent',
   source: BrowserTaskSourceRef): BrowserPageResource {
   return { id: resource.id, state, target: resource.target,
-    ...(resource.owner === undefined ? {} : { owner: resource.owner }), disposition, dispositionSource: source }
+    ...(resource.owner === undefined ? {} : { owner: resource.owner }),
+    ...(resource.presentation === undefined ? {} : { presentation: resource.presentation }), disposition, dispositionSource: source }
+}
+
+function regionPresentation(action: BrowserAction, expected?: string): { contentDigest: string; excerpt: string } | undefined {
+  if (action.kind !== 'region_render') return undefined
+  const visible = presentationText([action.title ?? '', ...action.blocks.flatMap((block) => {
+    if (block.type === 'heading' || block.type === 'text' || block.type === 'link') return [block.text]
+    if (block.type === 'item') return [block.title, block.meta ?? '']
+    return [block.label, block.value]
+  })].filter(Boolean).join('\n'))
+  if (!visible) return undefined
+  const normalizedExpected = expected === undefined ? undefined : presentationText(expected)
+  if (normalizedExpected !== undefined && !visible.includes(normalizedExpected)) return undefined
+  return { contentDigest: `sha256:${digest({ title: action.title ?? '', blocks: action.blocks })}`,
+    excerpt: normalizedExpected ?? Array.from(visible).slice(0, 128).join('') }
+}
+
+function regionExpectation(task: BrowserTaskSnapshot, action: BrowserAction): string | undefined {
+  if (action.kind !== 'region_render') return undefined
+  return task.acceptance.find((clause): clause is Extract<AcceptanceClause, { kind: 'region-content' }> =>
+    clause.kind === 'region-content' && clause.resourceId === action.mountId)?.text
+}
+
+function confirmsPresentation(result: Pick<BrowserRequestStatus, 'outcome' | 'delivery' | 'value'>): boolean {
+  const value = object(result.value)
+  return result.outcome === 'observed' && result.delivery === 'sent' && typeof value?.rendered === 'number' && value.rendered > 0
 }
 
 function clauses(success: BrowserTaskSuccess): AcceptanceClause[] {
@@ -126,17 +162,31 @@ function clauses(success: BrowserTaskSuccess): AcceptanceClause[] {
     result.push({ id: 'control', kind: 'control-state', control: `${control.role ?? ''}:${control.label ?? ''}`,
       state: JSON.stringify({ checked: control.checked, expanded: control.expanded }) })
   }
+  if (success.region?.mountId.trim() && success.region.text.trim()) {
+    const expected = presentationText(success.region.text)
+    if (Buffer.byteLength(expected) > BROWSER_TASK_LIMITS.presentationExcerpt) {
+      throw new Error(`browser task region success text must fit ${BROWSER_TASK_LIMITS.presentationExcerpt} bytes`)
+    }
+    result.push({ id: 'region', kind: 'region-content', resourceId: success.region.mountId, text: expected })
+  }
   return result
 }
 
-function evaluate(snapshot: unknown, acceptance: readonly AcceptanceClause[]) {
+function evaluate(snapshot: unknown, task: BrowserTaskSnapshot) {
   const facts = object(snapshot)
   const page = snapshotPage(snapshot)
   const elements = [...array(facts?.elements), ...array(facts?.tree)]
-  return acceptance.map((clause) => {
+  return task.acceptance.map((clause) => {
     if (clause.kind === 'url-equals') return { clauseId: clause.id, satisfied: page?.url === clause.url }
     if (clause.kind === 'text-contains') {
       return { clauseId: clause.id, satisfied: typeof facts?.text === 'string' && facts.text.includes(clause.text) }
+    }
+    if (clause.kind === 'region-content') {
+      const presentation = task.resources.find(resource => resource.id === clause.resourceId)?.presentation
+      const evidenceId = presentation?.evidenceId
+      const satisfied = presentation !== undefined && evidenceId !== undefined && presentation.excerpt.includes(clause.text)
+        && task.evidence.some(evidence => evidence.id === evidenceId && evidence.state === 'current')
+      return { clauseId: clause.id, satisfied, evidenceIds: satisfied ? [evidenceId] : [] }
     }
     const [role, label] = clause.control.split(':')
     const desired = JSON.parse(clause.state) as { checked?: boolean; expanded?: boolean }
@@ -171,8 +221,10 @@ export class BrowserTaskLoop {
   private attempt(task: BrowserTaskSnapshot, requestId: string, action: BrowserAction, write: boolean): BrowserActionAttempt {
     if (task.target === undefined) throw new Error('browser task has no bound target')
     const resourceId = 'mountId' in action ? action.mountId : undefined
+    const presentationIntent = regionPresentation(action, regionExpectation(task, action))
     return { attemptId: requestId, requestId, actionKind: action.kind, grantEpoch: task.capability?.grantEpoch ?? 0,
-      stage: 'planned', write, target: task.target, ...(resourceId === undefined ? {} : { resourceId }) }
+      stage: 'planned', write, target: task.target, ...(resourceId === undefined ? {} : { resourceId }),
+      ...(presentationIntent === undefined ? {} : { presentationIntent }) }
   }
 
   private async capability(agent: Agent, task: BrowserTaskSnapshot, installationId: string): Promise<BrowserTaskSnapshot> {
@@ -203,13 +255,33 @@ export class BrowserTaskLoop {
   }
 
   private receipt(agent: Agent, task: BrowserTaskSnapshot, attempt: BrowserActionAttempt,
-    result: Pick<BrowserActionResult, 'requestId' | 'outcome' | 'delivery' | 'reason'>,
+    result: Pick<BrowserActionResult, 'requestId' | 'outcome' | 'delivery' | 'reason' | 'value'>,
+    action?: BrowserAction,
     quiescent = result.outcome !== 'unknown'): BrowserTaskSourceRef {
+    const presentation = !confirmsPresentation(result) ? undefined
+      : action === undefined ? attempt.presentationIntent : regionPresentation(action, regionExpectation(task, action))
     return this.authority().recordReceipt(agent, ref(task), { requestId: result.requestId,
       actionKind: attempt.actionKind, target: attempt.target, outcome: result.outcome,
       delivery: result.delivery, quiescent, grantEpoch: attempt.grantEpoch,
       ...(attempt.resourceId === undefined ? {} : { resourceId: attempt.resourceId }),
-      ...(result.reason === undefined ? {} : { reason: result.reason }) })
+      ...(result.reason === undefined ? {} : { reason: result.reason }),
+      ...(presentation === undefined ? {} : { presentation }) })
+  }
+
+  private confirmPresentations(agent: Agent, task: BrowserTaskSnapshot, snapshot: unknown, evidenceId: string): BrowserTaskSnapshot {
+    const presentations = array(object(snapshot)?.presentations)
+    let current = task
+    for (const resource of task.resources) {
+      const presentation = resource.presentation
+      const observed = presentations.some((item) => {
+        const candidate = object(item)
+        return candidate?.mountId === resource.id && candidate.text === presentation?.excerpt && candidate.present === true
+      })
+      if (presentation === undefined || presentation.evidenceId !== undefined || !observed) continue
+      current = this.authority().upsertResource(agent, ref(current), { ...resource,
+        presentation: { ...presentation, evidenceId } })
+    }
+    return current
   }
 
   private async observe(agent: Agent, task: BrowserTaskSnapshot, signal: AbortSignal): Promise<{
@@ -220,8 +292,11 @@ export class BrowserTaskLoop {
     if (task.target === undefined || task.capability?.state !== 'observed') return { task }
     const requestId = randomUUID()
     const { installationId, page } = task.target
+    const presentationQueries = task.acceptance.flatMap(clause => clause.kind === 'region-content'
+      ? [{ mountId: clause.resourceId, text: clause.text }] : [])
     const action: BrowserAction = { kind: 'snapshot', tabId: page.tabId, frameId: page.frameId,
-      documentId: page.documentId, limit: 128, textLimit: 50000 }
+      documentId: page.documentId, limit: 128, textLimit: 50000,
+      ...(presentationQueries.length === 0 ? {} : { presentationQueries }) }
     const operation = { sessionId: agent.session.id, installationId, requestId, action }
     let next = this.planned(agent, operation, false)
     if (next === undefined) throw new Error('browser task observation was not planned')
@@ -237,8 +312,10 @@ export class BrowserTaskLoop {
     if (snapshot === undefined || observedPage === undefined) return { task: next, receipt: settled.receipt }
     if (!samePage(observedPage, next.target?.page)) return { task: this.targetLost(agent, next), receipt: settled.receipt }
     if (next.target === undefined || next.capability === undefined) return { task: next, receipt: settled.receipt }
-    next = this.authority().recordEvidence(agent, ref(next), { id: `evidence-${requestId}`, state: 'current',
+    const evidenceId = `evidence-${requestId}`
+    next = this.authority().recordEvidence(agent, ref(next), { id: evidenceId, state: 'current',
       source: settled.receipt, digest: digest(snapshot), target: next.target, grantEpoch: next.capability.grantEpoch })
+    next = this.confirmPresentations(agent, next, snapshot, evidenceId)
     return { task: next, snapshot, receipt: settled.receipt }
   }
 
@@ -256,6 +333,20 @@ export class BrowserTaskLoop {
     const observed = await this.observe(agent, task, signal)
     return { status: observed.task.phase, blockers: observed.task.blockers, taskId: observed.task.id,
       ...(observed.snapshot === undefined ? {} : { observation: observed.snapshot }), budget: observed.task.budget }
+  }
+
+  /**
+   * Record a direct user's explicit cancellation decision. The request result
+   * stays unknown; this only frees the Session task after every page lease has
+   * an observed final disposition.
+   */
+  cancel(agent: Agent): object {
+    const task = this.current(agent)
+    if (task === undefined) throw new Error('no active browser task')
+    const sourceSeq = this.authority().latestUserSource(agent)
+    if (sourceSeq === undefined) throw new Error('browser task cancellation requires a direct user message')
+    const next = this.authority().cancelByOwner(agent, ref(task), sourceSeq)
+    return { status: next.phase, outcome: next.outcome, taskId: next.id, terminationSource: next.terminationSource }
   }
 
   allowsAction(agent: Agent, action?: BrowserAction): boolean {
@@ -315,7 +406,11 @@ export class BrowserTaskLoop {
       attempt = task.attempts.find(item => item.requestId === result.requestId)
       if (attempt === undefined) throw new Error('browser task attempt disappeared before settlement')
     }
-    const receipt = this.receipt(agent, task, attempt, result)
+    // `absent` is a provider-declared cleanup disposition, not a generic
+    // observed acknowledgement. Preserve it in the receipt the resource fold cites.
+    const receipt = this.receipt(agent, task, attempt, isClear(action) && confirmsAbsent(action.kind, result)
+      ? { ...result, reason: 'absent' }
+      : result, action)
     task = this.authority().advanceAttempt(agent, ref(task), { ...attempt, stage: 'settled',
       outcome: result.outcome, quiescent: result.outcome !== 'unknown', settledBy: receipt })
     const feedback = object(result.value)
@@ -340,9 +435,10 @@ export class BrowserTaskLoop {
     const page = snapshotPage(result.value)
     if (page === undefined) return task
     if (!samePage(page, task.target.page)) return this.targetLost(agent, task)
-    task = this.authority().recordEvidence(agent, ref(task), { id: `evidence-${result.requestId}`, state: 'current',
+    const evidenceId = `evidence-${result.requestId}`
+    task = this.authority().recordEvidence(agent, ref(task), { id: evidenceId, state: 'current',
       source: settled.receipt, digest: digest(result.value), target: task.target, grantEpoch: task.capability.grantEpoch })
-    return task
+    return this.confirmPresentations(agent, task, result.value, evidenceId)
   }
 
   reserveResource(agent: Agent, id: string): void {
@@ -367,7 +463,7 @@ export class BrowserTaskLoop {
     if (task === undefined || prior === undefined) return
     const clear = isClear(action)
     const createdWithoutDispatch = prior.state === 'reserved' && isMount(action)
-    const documentReplaced = (clear || isMount(action)) && result.reason === 'document_replaced'
+    const documentReplaced = result.delivery === 'sent' && (clear || isMount(action)) && result.reason === 'document_replaced'
     const reconcile = (state: Extract<BrowserPageResource['state'], 'active' | 'released' | 'vanished'>,
       disposition: 'reconcile-active' | 'reconcile-observed' | 'document-replaced') => {
       this.authority().reconcileResource(agent, ref(task), reconciledResource(prior, state, disposition, source))
@@ -388,6 +484,7 @@ export class BrowserTaskLoop {
     let state: BrowserPageResource['state']
     if (result.outcome === 'unknown' || result.reason === 'target_url_stale') state = 'unresolved'
     else if (clear && result.reason === 'document_replaced') state = 'vanished'
+    else if (clear && confirmsAbsent(action.kind, result)) state = 'vanished'
     else if (clear && confirmsRelease(action.kind, result)) state = 'released'
     else if (clear && result.outcome === 'observed') state = prior.state
     else if (!clear && result.outcome === 'observed') state = 'active'
@@ -396,11 +493,15 @@ export class BrowserTaskLoop {
     else state = 'unresolved'
     const disposition = state === 'released' && result.delivery === 'not-sent' ? 'not-sent'
       : state === 'released' ? 'clear-observed'
-        : state === 'vanished' ? 'document-replaced' : undefined
-    const next = disposition === undefined
+        : state === 'vanished' ? (result.reason === 'document_replaced' ? 'document-replaced' : 'absent') : undefined
+    let next = disposition === undefined
       ? provisionalResource(prior, state)
       : reconciledResource(prior, state as Extract<BrowserPageResource['state'], 'released' | 'vanished'>,
         disposition, source)
+    if (action.kind === 'region_render' && confirmsPresentation(result)) {
+      const presentation = regionPresentation(action, regionExpectation(task, action))
+      if (presentation !== undefined && source.kind === 'browser-task-receipt') next = { ...next, presentation: { ...presentation, renderReceipt: source } }
+    }
     this.authority().upsertResource(agent, ref(task), next)
   }
 
@@ -416,25 +517,26 @@ export class BrowserTaskLoop {
       const unknownResult: BrowserActionResult = { requestId: result.requestId, sessionId: result.sessionId,
         installationId: result.installationId, outcome: 'unknown', delivery: result.delivery,
         reason: result.reason }
-      const receipt = this.receipt(agent, current, attempt, unknownResult, true)
+      const receipt = this.receipt(agent, current, attempt, unknownResult, undefined, true)
       return this.reconcileResources(agent, current, attempt, result, receipt)
     }
     const recovered: BrowserActionResult = { requestId: result.requestId, sessionId: result.sessionId,
       installationId: result.installationId, outcome: result.outcome, delivery: result.delivery,
-      ...(result.reason === undefined ? {} : { reason: result.reason }) }
+      ...(result.reason === undefined ? {} : { reason: result.reason }),
+      ...(result.value === undefined ? {} : { value: result.value }) }
     if (attempt.stage !== 'settled') {
       if (recovered.delivery === 'sent') {
         current = this.authority().advanceAttempt(agent, ref(current), { ...attempt, stage: 'dispatched' })
         attempt = current.attempts.find(item => item.requestId === requestId)
         if (attempt === undefined) throw new Error('browser task attempt disappeared during request recovery')
       }
-      const receipt = this.receipt(agent, current, attempt, recovered, true)
+      const receipt = this.receipt(agent, current, attempt, recovered, undefined, true)
       current = this.authority().advanceAttempt(agent, ref(current), { ...attempt, stage: 'settled',
         outcome: recovered.outcome, quiescent: true, settledBy: receipt })
       return this.reconcileResources(agent, current, attempt, result, receipt)
     }
     if (attempt.outcome !== 'unknown') return current
-    const receipt = this.receipt(agent, current, attempt, recovered, true)
+    const receipt = this.receipt(agent, current, attempt, recovered, undefined, true)
     current = this.authority().reconcileAttempt(agent, ref(current), { ...attempt, stage: 'settled',
       outcome: recovered.outcome, quiescent: true, settledBy: receipt, reconciledBy: receipt })
     return this.reconcileResources(agent, current, attempt, result, receipt)
@@ -449,11 +551,13 @@ export class BrowserTaskLoop {
     const recovery = result.reason === 'document_replaced'
       && (result.outcome === 'failed' || result.outcome === 'unknown') && (isResourceClear || isResourceMount)
       ? { state: 'vanished' as const, disposition: 'document-replaced' as const }
-      : result.outcome === 'observed' && isResourceMount
-        ? { state: 'active' as const, disposition: 'reconcile-active' as const }
-        : result.outcome === 'observed' && isResourceClear && confirmsRelease(attempt.actionKind, result)
-          ? { state: 'released' as const, disposition: 'reconcile-observed' as const }
-          : undefined
+      : result.outcome === 'observed' && isResourceClear && confirmsAbsent(attempt.actionKind, result)
+        ? { state: 'vanished' as const, disposition: 'absent' as const }
+        : result.outcome === 'observed' && isResourceMount
+          ? { state: 'active' as const, disposition: 'reconcile-active' as const }
+          : result.outcome === 'observed' && isResourceClear && confirmsRelease(attempt.actionKind, result)
+            ? { state: 'released' as const, disposition: 'reconcile-observed' as const }
+            : undefined
     if (recovery === undefined) return task
     let current = task
     for (const resource of task.resources) {
@@ -462,7 +566,11 @@ export class BrowserTaskLoop {
         || !samePage(resource.target.page, attempt.target.page)
         || resource.target.installationId !== attempt.target.installationId) continue
       current = this.authority().reconcileResource(agent, ref(current), reconciledResource(
-        resource, recovery.state, recovery.disposition, receipt,
+        recovery.state === 'active' && attempt.presentationIntent !== undefined && confirmsPresentation(result)
+          && receipt.kind === 'browser-task-receipt'
+          ? { ...resource, presentation: { ...attempt.presentationIntent, renderReceipt: receipt } }
+          : resource,
+        recovery.state, recovery.disposition, receipt,
       ))
     }
     return current
@@ -471,7 +579,8 @@ export class BrowserTaskLoop {
   async verify(agent: Agent, signal: AbortSignal): Promise<object> {
     let task = this.current(agent)
     if (task === undefined) throw new Error('no active browser task')
-    if (task.phase === 'terminal' || task.blockers.length > 0) return { status: task.phase, blockers: task.blockers, budget: task.budget }
+    const blocking = task.blockers.filter(blocker => blocker !== 'cleanup')
+    if (task.phase === 'terminal' || blocking.length > 0) return { status: task.phase, blockers: task.blockers, budget: task.budget }
     const observed = await this.observe(agent, task, signal)
     task = observed.task
     if (observed.snapshot === undefined || task.blockers.length > 0) {
@@ -481,13 +590,14 @@ export class BrowserTaskLoop {
     if (evidence === undefined || task.target === undefined || task.capability === undefined) {
       return { status: task.phase, blockers: task.blockers, budget: task.budget }
     }
-    const evaluated = evaluate(observed.snapshot, task.acceptance).map(item => ({ ...item,
-      evidenceIds: item.satisfied ? [evidence.id] : [] }))
+    const evaluated = evaluate(observed.snapshot, task).map(item => ({ ...item,
+      evidenceIds: item.satisfied ? ('evidenceIds' in item ? item.evidenceIds : [evidence.id]) : [] }))
     const checkerRef = this.authority().recordCheck(agent, ref(task), { checkerId: randomUUID(), target: task.target,
       grantEpoch: task.capability.grantEpoch, evaluations: evaluated })
     const checks = evaluated.map(item => ({ ...item, checkerRef }))
     task = this.authority().evaluate(agent, ref(task), checks)
-    if (checks.every(item => item.satisfied)) task = this.authority().terminate(agent, ref(task), 'completed')
+    const resourcesDisposed = task.resources.every(resource => resource.state === 'released' || resource.state === 'vanished')
+    if (checks.every(item => item.satisfied) && task.blockers.length === 0 && resourcesDisposed) task = this.authority().terminate(agent, ref(task), 'completed')
     return { status: task.outcome === 'completed' ? 'verified' : task.phase, blockers: task.blockers, budget: task.budget }
   }
 

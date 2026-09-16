@@ -991,7 +991,17 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     const page = (input: Record<string, unknown>): Record<string, unknown> => {
       const value = input.page
       if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('harness.browser page is required')
-      return structuredClone(value as Record<string, unknown>)
+      const cloned = structuredClone(value as Record<string, unknown>)
+      const fields = Object.keys(cloned)
+      if (fields.length !== 4 || !['tabId', 'frameId', 'documentId', 'url'].every(field => fields.includes(field))) {
+        throw new Error('harness.browser page must contain only tabId, frameId, documentId, and url')
+      }
+      return {
+        tabId: requiredNonnegativeInteger(cloned.tabId, 'page tabId'),
+        frameId: requiredNonnegativeInteger(cloned.frameId, 'page frameId'),
+        documentId: requiredText(cloned.documentId, 'page documentId', 128),
+        url: httpUrl(cloned.url, 'page url'),
+      }
     }
     return Object.freeze({
       inspect: async (input: Record<string, unknown>, signal?: AbortSignal) => execute(input, {
@@ -1036,7 +1046,9 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         const existing = run.ownedBrowserMounts.get(ownedSlot)
         const mountId = `${plugin.pluginId}:${ownedSlot}`
         const result = await execute(input, { kind: 'entry_unmount', page: page(input), mountId }, signal) as { outcome?: unknown }
-        if (confirmedUnmount(result) && (existing === undefined || existing.mountId === mountId)) {
+        // An earlier unmount may finish after a same-slot mount.  The mount id is
+        // stable per slot, so it cannot distinguish those two registrations.
+        if (confirmedUnmount(result) && existing !== undefined && run.ownedBrowserMounts.get(ownedSlot) === existing) {
           run.ownedBrowserMounts.delete(ownedSlot)
         }
         return result
@@ -1046,27 +1058,35 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         const ownedSlot = slot(input)
         const mountId = `${plugin.pluginId}:${ownedSlot}`
         const ownedPage = page(input)
+        // Complete all local validation before reserving a cleanup obligation.
+        // A synchronous validation/clone failure has not crossed the page
+        // boundary and must not look like an uncertain rendered region.
+        const selector = requiredText(input.selector, 'selector', 256)
+        const placement = optionalEnum(input, 'placement', ['prepend', 'append'] as const)
+        const mode = optionalEnum(input, 'mode', ['append', 'replace'] as const)
+        const title = optionalText(input, 'title', 128)
+        const blocks = cloneRegionBlocks(input.blocks)
+        const installationId = requiredText(input.installationId, 'installationId', 128)
         const previous = run.ownedBrowserRegions.get(ownedSlot)
-        if (previous !== undefined && (previous.installationId !== input.installationId
+        if (previous !== undefined && (previous.installationId !== installationId
           || previous.page.tabId !== ownedPage.tabId || previous.page.frameId !== ownedPage.frameId
           || previous.page.documentId !== ownedPage.documentId || previous.page.url !== ownedPage.url)) {
           throw new Error('browser region slot is bound to another page; restore it before rebinding')
         }
-        const owned = { installationId: requiredText(input.installationId, 'installationId', 128),
+        const owned = { installationId,
           page: ownedPage as { tabId: number; frameId: number; documentId: string; url: string }, mountId }
         // Track before dispatch because an infrastructure failure can surface after delivery crossed the process boundary.
         run.ownedBrowserRegions.set(ownedSlot, owned)
         const result = await execute(input, {
           kind: 'region_render', page: ownedPage, mountId,
-          selector: requiredText(input.selector, 'selector', 256),
-          ...(input.placement === undefined ? {} : { placement: input.placement }),
-          ...(input.mode === undefined ? {} : { mode: input.mode }),
-          ...optionalText(input, 'title', 128),
-          blocks: structuredClone(input.blocks),
+          selector, ...placement, ...mode, ...title, blocks,
         }, signal) as { outcome?: unknown }
         if (result.outcome !== 'observed' && result.outcome !== 'unknown') {
-          if (previous === undefined) run.ownedBrowserRegions.delete(ownedSlot)
-          else run.ownedBrowserRegions.set(ownedSlot, previous)
+          // Do not roll a newer same-slot render back when this dispatch settles late.
+          if (run.ownedBrowserRegions.get(ownedSlot) === owned) {
+            if (previous === undefined) run.ownedBrowserRegions.delete(ownedSlot)
+            else run.ownedBrowserRegions.set(ownedSlot, previous)
+          }
         }
         return result
       },
@@ -1075,9 +1095,10 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         const existing = run.ownedBrowserRegions.get(ownedSlot)
         const mountId = `${plugin.pluginId}:${ownedSlot}`
         const result = await execute(input, { kind: 'region_clear', page: page(input), mountId }, signal) as { outcome?: unknown; value?: unknown }
-        if (confirmedRegionClear(result) && (existing === undefined || existing.mountId === mountId)) {
+        // See unmount: mount ids name slots rather than an individual dispatch.
+        if (confirmedRegionClear(result) && existing !== undefined && run.ownedBrowserRegions.get(ownedSlot) === existing) {
           run.ownedBrowserRegions.delete(ownedSlot)
-          plugin.pendingBrowserRegions.delete(mountId)
+          if (plugin.pendingBrowserRegions.get(mountId) === existing) plugin.pendingBrowserRegions.delete(mountId)
         }
         return result
       },
@@ -1109,8 +1130,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         const result = await browser.execute({ sessionId: plugin.sessionId, installationId: mount.installationId, requestId: randomUUID(),
           action: { kind: 'entry_unmount', page: mount.page, mountId: mount.mountId } }, AbortSignal.timeout(5_000))
         if (confirmedUnmount(result)) {
-          run.ownedBrowserMounts.delete(slot)
-          plugin.pendingBrowserMounts.delete(mount.mountId)
+          if (run.ownedBrowserMounts.get(slot) === mount) run.ownedBrowserMounts.delete(slot)
+          if (plugin.pendingBrowserMounts.get(mount.mountId) === mount) plugin.pendingBrowserMounts.delete(mount.mountId)
         } else {
           plugin.pendingBrowserMounts.set(mount.mountId, mount)
           pending.push(mount.mountId)
@@ -1126,8 +1147,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         const result = await browser.execute({ sessionId: plugin.sessionId, installationId: region.installationId, requestId: randomUUID(),
           action: { kind: 'region_clear', page: region.page, mountId: region.mountId } }, AbortSignal.timeout(5_000))
         if (confirmedRegionClear(result)) {
-          run.ownedBrowserRegions.delete(slot)
-          plugin.pendingBrowserRegions.delete(region.mountId)
+          if (run.ownedBrowserRegions.get(slot) === region) run.ownedBrowserRegions.delete(slot)
+          if (plugin.pendingBrowserRegions.get(region.mountId) === region) plugin.pendingBrowserRegions.delete(region.mountId)
         } else {
           plugin.pendingBrowserRegions.set(region.mountId, region)
           pending.push(region.mountId)
@@ -1152,8 +1173,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         const result = await browser.execute({ sessionId: plugin.sessionId, installationId: mount.installationId, requestId: randomUUID(),
           action: { kind: 'entry_unmount', page: mount.page, mountId, ...(forgetCollected ? { forgetCollected: true } : {}) } }, AbortSignal.timeout(5_000))
         if (confirmedUnmount(result)) {
-          plugin.pendingBrowserMounts.delete(mountId)
-          if (forgetCollected) plugin.retainedBrowserMounts.delete(mountId)
+          if (plugin.pendingBrowserMounts.get(mountId) === mount) plugin.pendingBrowserMounts.delete(mountId)
+          if (forgetCollected && plugin.retainedBrowserMounts.get(mountId) === mount) plugin.retainedBrowserMounts.delete(mountId)
         }
         else pending.push(mountId)
       } catch (error) {
@@ -1165,7 +1186,9 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       try {
         const result = await browser.execute({ sessionId: plugin.sessionId, installationId: region.installationId, requestId: randomUUID(),
           action: { kind: 'region_clear', page: region.page, mountId } }, AbortSignal.timeout(5_000))
-        if (confirmedRegionClear(result)) plugin.pendingBrowserRegions.delete(mountId)
+        if (confirmedRegionClear(result) && plugin.pendingBrowserRegions.get(mountId) === region) {
+          plugin.pendingBrowserRegions.delete(mountId)
+        }
         else pending.push(mountId)
       } catch (error) {
         pending.push(mountId)
@@ -1523,8 +1546,14 @@ function confirmedUnmount(result: unknown): boolean {
 
 function confirmedRegionClear(result: unknown): boolean {
   if (result === null || typeof result !== 'object') return false
-  const receipt = result as { outcome?: unknown; delivery?: unknown; reason?: unknown; value?: { cleared?: unknown } }
-  return receipt.outcome === 'observed' && receipt.delivery === 'sent' && receipt.value?.cleared === true
+  const receipt = result as {
+    outcome?: unknown
+    delivery?: unknown
+    reason?: unknown
+    value?: { cleared?: unknown; disposition?: unknown }
+  }
+  return receipt.outcome === 'observed' && receipt.delivery === 'sent'
+      && (receipt.value?.cleared === true || receipt.value?.disposition === 'absent')
     || receipt.outcome === 'failed' && receipt.delivery === 'sent' && receipt.reason === 'document_replaced'
 }
 
@@ -1541,6 +1570,77 @@ function requiredText(value: unknown, name: string, maximum: number): string {
 function optionalText(input: Record<string, unknown>, name: string, maximum: number): Record<string, string> {
   const value = input[name]
   return value === undefined ? {} : { [name]: requiredText(value, name, maximum) }
+}
+
+function optionalEnum<const T extends readonly string[]>(
+  input: Record<string, unknown>, name: string, values: T,
+): Record<string, T[number]> {
+  const value = input[name]
+  if (value === undefined) return {}
+  if (typeof value !== 'string' || !values.includes(value)) {
+    throw new Error(`harness.browser ${name} must be one of: ${values.join(', ')}`)
+  }
+  return { [name]: value }
+}
+
+function cloneRegionBlocks(value: unknown): unknown[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 200) {
+    throw new Error('harness.browser blocks must contain 1 to 200 region blocks')
+  }
+  const blocks = structuredClone(value)
+  for (const block of blocks) validateRegionBlock(block)
+  return blocks
+}
+
+function validateRegionBlock(value: unknown): void {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('harness.browser block must be an object')
+  const block = value as Record<string, unknown>
+  const exactKeys = (...keys: string[]) => {
+    if (Object.keys(block).some(key => !keys.includes(key))) throw new Error('harness.browser block has unsupported fields')
+  }
+  switch (block.type) {
+    case 'heading': case 'text':
+      exactKeys('type', 'text'); boundedText(block.text, 'block text', block.type === 'heading' ? 512 : 4096); return
+    case 'item':
+      exactKeys('type', 'title', 'meta', 'link'); boundedText(block.title, 'block title', 512)
+      if (block.meta !== undefined) boundedText(block.meta, 'block meta', 512)
+      if (block.link !== undefined) validateHttpUrl(block.link, 'block link')
+      return
+    case 'keyvalue':
+      exactKeys('type', 'label', 'value'); boundedText(block.label, 'block label', 256); boundedText(block.value, 'block value', 1024); return
+    case 'link':
+      exactKeys('type', 'text', 'href'); boundedText(block.text, 'block text', 512); validateHttpUrl(block.href, 'block href'); return
+    default: throw new Error('harness.browser block type is invalid')
+  }
+}
+
+function validateHttpUrl(value: unknown, name: string): void {
+  const text = boundedText(value, name, 8192)
+  let url: URL
+  try { url = new URL(text) } catch { throw new Error(`harness.browser ${name} must be an http or https URL`) }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error(`harness.browser ${name} must be an http or https URL`)
+}
+
+function boundedText(value: unknown, name: string, maximum: number): string {
+  if (typeof value !== 'string' || value.length > maximum) {
+    throw new Error(`harness.browser ${name} must be a string of at most ${maximum} characters`)
+  }
+  return value
+}
+
+function requiredNonnegativeInteger(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`harness.browser ${name} must be a non-negative integer`)
+  }
+  return value
+}
+
+function httpUrl(value: unknown, name: string): string {
+  const text = boundedText(value, name, 8192)
+  let url: URL
+  try { url = new URL(text) } catch { throw new Error(`harness.browser ${name} must be an http or https URL`) }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error(`harness.browser ${name} must be an http or https URL`)
+  return text
 }
 
 function pluginStateFacade(plugin: DynamicCordisPlugin): object {

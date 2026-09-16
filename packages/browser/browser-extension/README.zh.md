@@ -35,7 +35,7 @@ kind: "package-reference"
 
 调用方在任何派发前提供请求 ID，Host 会在 worker 接收 action 前记录它。相同 ID 返回其保留回执；`requestStatus()` 要求 read authority，返回脱离内部状态的 value，绝不重放请求。`in-flight` 或 `unknown` 响应仍是恢复事实，不构成重试许可。授权 epoch 轮换可以查询状态或清理旧 epoch 所属区域，但不能针对那份旧所有权执行新的写入。
 
-`page_map` 会记录按 Session、安装、epoch 和精确页面身份索引的短时页面证据。`region_render` 必须使用该证据。Append 会创建扩展自有面板；replace 只接受已映射、disposable 且非 protected 的区域。Host 在派发前预留区域容量，并在 unknown 结果时保留该预留，因此并发调用不能超量占用页面。只有 worker 观察到 clear 时，`region_clear` 才能确认释放；`document_replaced` 记录消失资源，`target_url_stale` 则保持未解决。worker 的页面运行时跟踪挂载，不将 mount ID 放入 CSS selector；文档变化绝不悄然把挂载绑定到新 URL。
+`page_map` 会记录按 Session、安装、epoch 和精确页面身份索引的短时页面证据。`region_render` 必须使用该证据。Append 会创建扩展自有面板；replace 只接受已映射、disposable 且非 protected 的区域。Host 在派发前预留区域容量，并在 unknown 结果时保留该预留，因此并发调用不能超量占用页面。只有 worker 观察到 `cleared:true`，或证明精确挂载已经不存在时，`region_clear` 才能确认释放；已发送的 `document_replaced` 记录消失资源，`target_url_stale` 则保持未解决。每次 render 或 mount 都会推进 Host registration generation，因此保留的晚到回执不能删除后来复用同一 ID 的资源；如果新操作确定失败，较早已观察到的清理仍保持权威。worker 的页面运行时跟踪挂载，不将 mount ID 放入 CSS selector；文档变化绝不悄然把挂载绑定到新 URL。内部快照展示查询只有在匹配的运行时自有面板仍真实存在时才返回肯定事实，不会把页面其他位置的同文当作证据。
 
 具有 `session:interact` 时，经认证 peer 会获得严格的 `SessionController` facade，用于列出、创建、提示、取消、读取页面和附件，以及一个受控 follow stream。它校验每个 RPC 请求，串行替换 follow，将并发 Session 请求限制为 `maxSessionRequests`（默认 `4`，范围 `1`–`8`），并保留既有 16 MiB WebSocket frame 上限。提供方将 `sessionController` 作为注入的 peer dependency。
 

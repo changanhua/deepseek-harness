@@ -12,6 +12,7 @@ import { bridge } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { BrowserGrants, type GrantSummary } from './grants.ts'
 import { BrowserRequests, sealBrowserInvocation } from './requests.ts'
+import type { BrowserRequestStatusView } from './types.ts'
 import { approvalHtml, approvalScript } from './approval-ui.ts'
 import { BrowserSessions } from './sessions.ts'
 import { BrowserPreparations } from './prepared.ts'
@@ -75,6 +76,9 @@ interface Peer {
 interface MountRegistration {
   acceptingClicks: boolean
   state: 'reserved' | 'mounted'
+  generation: number
+  /** Highest generation for which an older clear/unmount later proved removal. */
+  releasedThroughGeneration?: number
   readonly installationId: string
   readonly sessionId: string
   readonly grantEpoch: number
@@ -100,6 +104,20 @@ interface PageMapEvidence {
   readonly url: string
   readonly expiresAt: number
   readonly regions: ReadonlyMap<string, { readonly disposable: boolean; readonly protected: boolean }>
+}
+
+/** The exact resource invocation retained while a sent request is uncertain. */
+interface PendingResourceSettlement {
+  readonly operation: BrowserOperation
+  readonly action: Extract<BrowserAction, { readonly kind: 'entry_mount' | 'entry_unmount' | 'region_render' | 'region_clear' }>
+  readonly mount: MountRegistration | undefined
+  readonly region: RegionRegistration | undefined
+  readonly mountCreated: boolean
+  readonly regionCreated: boolean
+  readonly mountGeneration?: number
+  readonly regionGeneration?: number
+  readonly mountPreviousGeneration?: number
+  readonly regionPreviousGeneration?: number
 }
 
 /** Authenticated browser provider over the existing Host web server. */
@@ -132,6 +150,7 @@ export class BrowserExtension extends Browser {
   private readonly mounts = new Map<string, MountRegistration>()
   private readonly regions = new Map<string, RegionRegistration>()
   private readonly pageMaps = new Map<string, PageMapEvidence>()
+  private readonly pendingResourceSettlements = new Map<string, PendingResourceSettlement>()
   private closed = false
 
   constructor(ctx: Context, config: Config) {
@@ -165,6 +184,7 @@ export class BrowserExtension extends Browser {
       this.mounts.clear()
       this.regions.clear()
       this.pageMaps.clear()
+      this.pendingResourceSettlements.clear()
       for (const peer of this.peers) peer.socket.terminate()
       await Promise.all([this.grants.dispose(), ...[...this.peers].map(peer => peer.done)])
       await new Promise<void>((resolve) => { this.sockets.close(() => { resolve() }) })
@@ -247,8 +267,10 @@ export class BrowserExtension extends Browser {
     }
     let regionReservation: RegionRegistration | undefined
     let regionReservationCreated = false
+    let regionPreviousGeneration: number | undefined
     let mountReservation: MountRegistration | undefined
     let mountReservationCreated = false
+    let mountPreviousGeneration: number | undefined
     if (action.kind === 'region_render') {
       if (grant === undefined || !this.grants.permit(grant) || !grant.scopes.includes('browser:write')) return this.failure(fixed, signal, 'unauthorized')
       const evidence = this.pageMapFor(fixed, action.page, grant.grantEpoch)
@@ -269,9 +291,12 @@ export class BrowserExtension extends Browser {
         if (grant === undefined) return this.failure(fixed, signal, 'unauthorized')
         regionReservation = { installationId: fixed.installationId, sessionId: fixed.sessionId, grantEpoch: grant.grantEpoch,
           tabId: action.page.tabId, frameId: action.page.frameId, documentId: action.page.documentId, url: action.page.url,
-          mountId: action.mountId, state: 'reserved' }
+          mountId: action.mountId, state: 'reserved', generation: 1 }
         this.regions.set(key, regionReservation)
         regionReservationCreated = true
+      } else {
+        regionPreviousGeneration=regionReservation.generation
+        regionReservation.generation+=1
       }
     } else if (action.kind === 'entry_mount') {
       const key = `${fixed.installationId}\u0000${action.mountId}`
@@ -282,23 +307,32 @@ export class BrowserExtension extends Browser {
           acceptingClicks: false, installationId: fixed.installationId, sessionId: fixed.sessionId,
           grantEpoch: grant.grantEpoch,
           tabId: action.page.tabId, frameId: action.page.frameId, documentId: action.page.documentId, url: action.page.url,
-          mountId: action.mountId, state: 'reserved' }
+          mountId: action.mountId, state: 'reserved', generation: 1 }
         this.mounts.set(key, mountReservation)
         mountReservationCreated = true
+      } else {
+        mountPreviousGeneration=mountReservation.generation
+        mountReservation.generation+=1
       }
     }
+    const resourceAction = action.kind === 'entry_mount' || action.kind === 'entry_unmount'
+      || action.kind === 'region_render' || action.kind === 'region_clear' ? action : undefined
+    const unmount = resourceAction?.kind === 'entry_unmount' ? mount : undefined
+    const pendingMount = resourceAction?.kind === 'entry_mount' ? mountReservation : unmount
+    const pendingRegion = resourceAction?.kind === 'region_render' ? regionReservation
+      : resourceAction?.kind === 'region_clear' ? region : undefined
+    const mountGeneration = pendingMount?.generation
+    const regionGeneration = pendingRegion?.generation
+    if (unmount !== undefined) unmount.acceptingClicks = false
     const result = await this.dispatch(fixed, action, jsonValueSchema.parse(action), mutates,
       'element' in action ? action.element.page : 'page' in action ? action.page : undefined, Date.now() + this.config.requestTimeoutMs, signal)
-    if (action.kind === 'region_render' && regionReservation !== undefined) {
-      this.settleRegionRender(regionReservation, result, regionReservationCreated)
-    }
-    if (action.kind === 'entry_mount' && mountReservation !== undefined) {
-      this.settleMount(mountReservation, result, mountReservationCreated)
-    }
-    if (result.outcome === 'failed' && result.delivery === 'sent' && result.reason === 'document_replaced') {
-      const target = 'element' in action ? action.element.page : 'page' in action ? action.page : undefined
-      if (target !== undefined) this.releaseReplacedDocument(fixed.installationId, target)
-    }
+    if (resourceAction !== undefined) this.settleResourceAction({ operation: fixed, action: resourceAction,
+      mount: pendingMount, region: pendingRegion,
+      mountCreated: mountReservationCreated, regionCreated: regionReservationCreated,
+      ...(mountGeneration === undefined ? {} : { mountGeneration }),
+      ...(regionGeneration === undefined ? {} : { regionGeneration }),
+      ...(mountPreviousGeneration === undefined ? {} : { mountPreviousGeneration }),
+      ...(regionPreviousGeneration === undefined ? {} : { regionPreviousGeneration }) }, result)
     return result
   }
 
@@ -314,9 +348,13 @@ export class BrowserExtension extends Browser {
     }
     const status = this.requests.statusFor(query.requestId, query.sessionId, query.installationId)
     if (status !== undefined) {
+      this.reconcileResourceSettlement(query, status)
       if (status.outcome === 'unknown' && status.quiescent === true && status.reason === 'document_replaced') {
         const target = this.requests.releaseDocumentReplaced(query.requestId, query.sessionId, query.installationId)
         if (target !== undefined) this.releaseReplacedDocument(query.installationId, target)
+        // The retained request has supplied the exact quiescence proof. Its
+        // resource settlement must not survive after that document is gone.
+        this.pendingResourceSettlements.delete(resourceSettlementKey(query.sessionId, query.installationId, query.requestId))
       }
       return { ...status, sessionId: query.sessionId }
     }
@@ -388,34 +426,7 @@ export class BrowserExtension extends Browser {
       mutates, payload: jsonValueSchema.parse(payload),
       ...(target === undefined ? {} : { target: { tabId: target.tabId, frameId: target.frameId, documentId: target.documentId } }),
     })
-    const unmount = action.kind === 'entry_unmount' ? this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) : undefined
-    const regionClear = action.kind === 'region_clear' ? this.regions.get(`${operation.installationId}\u0000${action.mountId}`) : undefined
-    if (unmount) unmount.acceptingClicks = false
     const result = await this.requests.execute(request, signal)
-    // Register or clear the page mount inside the dispatch that owns the grant
-    // epoch, so late clicks are checked against the authorization that mounted them.
-    if (action.kind === 'entry_mount') {
-      if (result.outcome === 'observed') {
-        const mount = this.mounts.get(`${operation.installationId}\u0000${action.mountId}`)
-        if (mount !== undefined && sameMountOwner(mount, operation, action.page, grant.grantEpoch)) {
-          mount.acceptingClicks = true
-          mount.state = 'mounted'
-        }
-      }
-    } else if (action.kind === 'entry_unmount') {
-      const value = result.value as { unmounted?: unknown; remaining?: unknown } | undefined
-      if (result.outcome === 'observed' && value?.unmounted === true && value.remaining === 0
-        && this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) === unmount) {
-        this.mounts.delete(`${operation.installationId}\u0000${action.mountId}`)
-      }
-    } else if (action.kind === 'region_clear') {
-      const cleared = object(result.value)?.cleared
-      if (result.delivery === 'sent' && (result.outcome === 'observed' && cleared === true
-        || result.outcome === 'failed' && result.reason === 'document_replaced')) {
-        const key = `${operation.installationId}\u0000${action.mountId}`
-        if (this.regions.get(key) === regionClear) this.regions.delete(key)
-      }
-    }
     if (action.kind === 'page_map') this.rememberPageMap(operation, grant, result)
     return {
       requestId: result.requestId,
@@ -472,17 +483,92 @@ export class BrowserExtension extends Browser {
     reservation: RegionRegistration,
     result: BrowserActionResult,
     created: boolean,
+    generation: number | undefined,
+    previousGeneration: number | undefined,
   ): void {
     const key = `${reservation.installationId}\u0000${reservation.mountId}`
-    if (this.regions.get(key) !== reservation) return
+    if (this.regions.get(key) !== reservation || reservation.generation !== generation) return
     if (result.outcome === 'observed') reservation.state = 'mounted'
     else if (created && result.outcome !== 'unknown') this.regions.delete(key)
+    else if (result.outcome !== 'unknown' && previousGeneration !== undefined) {
+      if ((reservation.releasedThroughGeneration ?? 0) >= previousGeneration) this.regions.delete(key)
+      else reservation.generation=previousGeneration
+    }
   }
 
-  private settleMount(reservation: MountRegistration, result: BrowserActionResult, created: boolean): void {
-    const key = `${reservation.installationId}\u0000${reservation.mountId}`
-    if (this.mounts.get(key) !== reservation) return
-    if (created && result.outcome !== 'unknown' && result.outcome !== 'observed') this.mounts.delete(key)
+  /**
+   * Apply a resource result only to the registration captured for this exact
+   * invocation.  A later route may reuse a mount id; it must never be removed
+   * by an old retained receipt.
+   */
+  private settleResourceAction(pending: PendingResourceSettlement, result: Pick<BrowserActionResult,
+    'requestId' | 'outcome' | 'delivery' | 'reason' | 'value'>): void {
+    const { operation, action } = pending
+    if (action.kind === 'entry_mount' && pending.mount !== undefined) {
+      if (result.outcome === 'observed' && this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) === pending.mount
+        && pending.mount.generation === pending.mountGeneration
+        && sameMountOwner(pending.mount, operation, action.page, pending.mount.grantEpoch)) {
+        pending.mount.acceptingClicks = true
+        pending.mount.state = 'mounted'
+      } else if (pending.mountCreated && result.outcome !== 'unknown'
+        && this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) === pending.mount
+        && pending.mount.generation === pending.mountGeneration) this.mounts.delete(`${operation.installationId}\u0000${action.mountId}`)
+      else if (result.outcome !== 'unknown' && pending.mountPreviousGeneration !== undefined
+        && this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) === pending.mount
+        && pending.mount.generation === pending.mountGeneration) {
+        if ((pending.mount.releasedThroughGeneration ?? 0) >= pending.mountPreviousGeneration) {
+          this.mounts.delete(`${operation.installationId}\u0000${action.mountId}`)
+        } else pending.mount.generation=pending.mountPreviousGeneration
+      }
+    } else if (action.kind === 'entry_unmount' && pending.mount !== undefined) {
+      const value = object(result.value)
+      const key = `${operation.installationId}\u0000${action.mountId}`
+      if (result.outcome === 'observed' && value?.unmounted === true && value.remaining === 0
+        && this.mounts.get(key) === pending.mount && pending.mount.generation === pending.mountGeneration) {
+        this.mounts.delete(key)
+      } else if (result.outcome === 'observed' && value?.unmounted === true && value.remaining === 0
+        && pending.mountGeneration !== undefined) {
+        pending.mount.releasedThroughGeneration=Math.max(pending.mount.releasedThroughGeneration ?? 0,pending.mountGeneration)
+      } else if (result.outcome !== 'unknown' && this.mounts.get(key) === pending.mount
+        && pending.mount.generation === pending.mountGeneration && pending.mount.state === 'mounted') {
+        // not-sent, failed and cancelled unmounts never prove the old control disappeared.
+        pending.mount.acceptingClicks = true
+      }
+    } else if (action.kind === 'region_render' && pending.region !== undefined) {
+      this.settleRegionRender(pending.region,result as BrowserActionResult,pending.regionCreated,pending.regionGeneration,
+        pending.regionPreviousGeneration)
+    } else if (action.kind === 'region_clear' && pending.region !== undefined) {
+      const key = `${operation.installationId}\u0000${action.mountId}`
+      const value = object(result.value)
+      const cleared = value?.cleared
+      const absent = value?.disposition === 'absent'
+      if (result.delivery === 'sent' && (result.outcome === 'observed' && (cleared === true || absent)
+        || result.outcome === 'failed' && result.reason === 'document_replaced') && this.regions.get(key) === pending.region
+        && pending.region.generation === pending.regionGeneration) {
+        this.regions.delete(key)
+      } else if (result.delivery === 'sent' && (result.outcome === 'observed' && (cleared === true || absent)
+        || result.outcome === 'failed' && result.reason === 'document_replaced') && pending.regionGeneration !== undefined) {
+        pending.region.releasedThroughGeneration=Math.max(pending.region.releasedThroughGeneration ?? 0,pending.regionGeneration)
+      }
+    }
+    // A direct failed receipt is terminal. An unknown document-replaced
+    // report still requires the retained status's explicit quiescence proof.
+    if (result.delivery === 'sent' && result.outcome === 'failed' && result.reason === 'document_replaced') {
+      this.releaseReplacedDocument(operation.installationId, action.page)
+    }
+    const key = resourceSettlementKey(operation.sessionId, operation.installationId, result.requestId)
+    if (result.outcome === 'unknown') this.pendingResourceSettlements.set(key, pending)
+    else this.pendingResourceSettlements.delete(key)
+  }
+
+  /** Settle a reconnected request against its original action instead of today's mount lookup. */
+  private reconcileResourceSettlement(query: BrowserRequestStatusQuery, result: BrowserRequestStatusView): void {
+    if (result.outcome === 'in-flight') return
+    const pending = this.pendingResourceSettlements.get(resourceSettlementKey(query.sessionId, query.installationId, query.requestId))
+    if (pending === undefined || pending.operation.sessionId !== query.sessionId
+      || pending.operation.installationId !== query.installationId) return
+    this.settleResourceAction(pending, { requestId: result.requestId, outcome: result.outcome, delivery: result.delivery,
+      ...(result.reason === undefined ? {} : { reason: result.reason }), ...(result.value === undefined ? {} : { value: result.value }) })
   }
 
   /** A confirmed document replacement makes leases for that exact discarded document unreachable. */
@@ -797,7 +883,8 @@ function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): 
       ...(action.treeCursor === undefined ? {} : { treeCursor: action.treeCursor }),
       ...(action.treeLimit === undefined ? {} : { treeLimit: action.treeLimit }),
       ...(action.includeOptions === undefined ? {} : { includeOptions: action.includeOptions }),
-      ...(action.structure === undefined ? {} : { structure: action.structure }) }
+      ...(action.structure === undefined ? {} : { structure: action.structure }),
+      ...(action.presentationQueries === undefined ? {} : { presentationQueries: action.presentationQueries }) }
     : action
 }
 
@@ -857,6 +944,11 @@ function samePageValue(value: Record<string, unknown> | undefined, page: PageIde
 
 function pageMapKey(installationId: string, sessionId: string, page: PageIdentity): string {
   return `${installationId}\u0000${sessionId}\u0000${page.tabId}\u0000${page.frameId}\u0000${page.documentId}\u0000${page.url}`
+}
+
+/** A caller-owned request id is unique only inside its Session and installation scope. */
+function resourceSettlementKey(sessionId: string, installationId: string, requestId: string): string {
+  return `${sessionId}\u0000${installationId}\u0000${requestId}`
 }
 
 function response(status: number, body: object, origin?: string): Response {

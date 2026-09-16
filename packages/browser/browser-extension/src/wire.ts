@@ -46,7 +46,10 @@ export const browserActionSchema = z.discriminatedUnion('kind', [
     limit: z.number().int().min(1).max(128).optional(), textLimit: z.number().int().min(0).max(50000).optional(),
     tree: z.boolean().optional(), treeCursor: z.string().min(1).max(256).optional(),
     treeLimit: z.number().int().min(1).max(1000).optional(), includeOptions: z.boolean().optional(),
-    structure: z.boolean().optional() }).strict(),
+    structure: z.boolean().optional(), presentationQueries: z.array(z.object({ mountId: id,
+      text: z.string().min(1).max(512)
+        .refine(value => new TextEncoder().encode(value).byteLength <= 512) }).strict()).max(32).optional(),
+  }).strict(),
   z.object({ kind: z.literal('page_map'), page }).strict(),
   z.object({ kind: z.literal('entry_inspect'), page, regionSelector: z.string().min(1).max(256),
     selector: z.string().min(1).max(256), titleSelector: z.string().max(256).optional(),

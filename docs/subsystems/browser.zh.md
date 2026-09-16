@@ -64,7 +64,7 @@ type BrowserAction =
   | { readonly kind: 'wait'; readonly page: BrowserPage; readonly milliseconds: number }
 ```
 
-`page_map` 为精确文档返回有界区域，包含唯一 selector、几何信息、重要性以及可占用/保护提示。区域渲染会拒绝含糊 selector，并要求同一 Session、安装、grant epoch 和精确页面的短时 Host 页面地图证据。Append 模式添加扩展自有节点；replace 模式还要求区域已映射、可占用且未受保护，并把其原始子节点移到一边，直到 `region_clear` 将其恢复。页面运行时只把纯数据块渲染为文本节点，把挂载绑定到 Session、安装、grant epoch 和页面身份，绝不将旧挂载悄然绑定到新 URL。只有已观察到 clear 或 `document_replaced` 才能结算清理；`target_url_stale` 会使资源保持未解决。
+`page_map` 为精确文档返回有界区域，包含唯一 selector、几何信息、重要性以及可占用/保护提示。必须先调用它再 `region_render`：区域渲染会拒绝含糊 selector，并要求同一 Session、安装、grant epoch 和精确页面的短时 Host 页面地图证据。Append 模式添加扩展自有节点；replace 模式还要求区域已映射、可占用且未受保护，并把其原始子节点移到一边，直到 `region_clear` 将其恢复。页面运行时只把纯数据块渲染为文本节点，把挂载绑定到 Session、安装、grant epoch 和页面身份，绝不将旧挂载悄然绑定到新 URL。只有已观察到的 `cleared:true`、已观察到的精确 `disposition:'absent'` 或 sent 的 `document_replaced` 才能结算清理；`target_url_stale` 会使资源保持未解决。
 
 `tree` 快照从同一份稳定缓存分页返回层次。Document、元素、文本和开放 Shadow Root 节点会跨 `treeCursor` 读取保留 index 和 parent index，不会重新匹配节点。iframe 元素标出 source 边界，frame 文档仍需独立读取。隐藏、可编辑、script 和 style 文本会被排除，隐藏结构仍保留 hidden 标记。
 
@@ -172,7 +172,7 @@ interface BrowserPreparedAction {
 
 取消只请求停止。回执丢失或超时产生 `unknown`，直到执行器证据确定结果。`requestStatus()` 在不重放请求、不暴露权限指纹的前提下读取调用者作用域内的保留状态。未解决的写操作持续持锁，直到观察到终态，或执行器确认不会继续执行后由用户显式确认。超时或站点权限丢失均不能证明旧文档已经停止执行。
 
-`@changanhua/dsh-browser-task` 是自然语言现场任务的 Session 持久权威。其 projection 分离不可变页面 evidence 和目标绑定、planned/prepared/dispatched/settled attempt 与 receipt、页面资源 lease、capability 快照、委派事实和验收检查。由 checker 支持的验收条款不同于已观察到的页面 action 或已完成的委派 run。终态完成要求每个条款都引用当前 evidence、没有 blocker 或未解决 write、预算未耗尽，并且每个资源都已释放、消失或明确交给 Session/用户保留。工具消费方只继续该 projection；它不是进程内任务权威。
+`@changanhua/dsh-browser-task` 是自然语言现场任务的 Session 持久权威。其 projection 分离不可变页面 evidence 和目标绑定、planned/prepared/dispatched/settled attempt 与 receipt、页面资源 lease、capability 快照、规范 Subagent/Job/Cordis 身份和验收检查。由 checker 支持的验收条款不同于已观察到的页面 action 或已完成的委派 run。区域展示条款在清理前同时引用 observed render 与后续的新页面 evidence。终态完成要求每个条款都引用当前 evidence、没有 blocker 或未解决 write、预算未耗尽，并且每个资源都已释放或确认消失。扩展侧接受 unknown 只会释放传输锁，绝不完成 Session 任务；此后只有新的直接用户消息才能显式取消任务，且必须先让每项页面资源都有回执支持的终态，unknown attempt 仍保留在日志中。工具消费方只继续该 projection；它不是进程内任务权威。
 
 Puppeteer 执行全部已实现动作。DOM 兼容执行器仅支持 `click`、`fill`、`submit`、`navigate`、`scroll` 和 `wait`，并拒绝新动作类型。截图要求主 frame，base64 上限为 400,000 字符。[网关 README](../../packages/browser/browser-extension/README.zh.md)负责传输边界与配置。[会话控制器](../../packages/api/session-controller/README.zh.md)负责对话历史；该服务不建立第二套消息存储。
 
@@ -570,6 +570,16 @@ consumeAction(agent: Agent, ref: BrowserTaskRef, actions: number = 1): BrowserTa
  * @returns The terminal task revision.
  */
 terminate(agent: Agent, ref: BrowserTaskRef, outcome: BrowserTaskSnapshot['outcome'] & string): BrowserTaskSnapshot
+
+/**
+ * End an uncertain task only from a newer direct user message. This records a
+ * decision boundary; it never changes any unknown action or resource outcome.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param sourceSeq - Latest direct user message that explicitly requests cancellation.
+ * @returns The terminal cancelled task revision.
+ */
+cancelByOwner(agent: Agent, ref: BrowserTaskRef, sourceSeq: number): BrowserTaskSnapshot
 ```
 
 Types: [Agent](core.zh.md)

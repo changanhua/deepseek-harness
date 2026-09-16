@@ -64,7 +64,7 @@ type BrowserAction =
   | { readonly kind: 'wait'; readonly page: BrowserPage; readonly milliseconds: number }
 ```
 
-`page_map` returns bounded regions for the exact document with unique selectors, geometry, importance, and disposable/protected hints. A region render refuses an ambiguous selector and requires short-lived Host page-map evidence for the same Session, installation, grant epoch, and exact page. Append mode adds extension-owned nodes; replace mode additionally requires a mapped disposable, non-protected region and moves its original children aside until `region_clear` restores them. The page runtime renders only plain-data blocks as text nodes, binds the mount to its Session, installation, grant epoch, and page identity, and does not silently bind an old mount to a new URL. A clear is settled only by an observed clear or `document_replaced`; `target_url_stale` leaves the resource unresolved.
+`page_map` returns bounded regions for the exact document with unique selectors, geometry, importance, and disposable/protected hints. Call it before `region_render`: a render refuses an ambiguous selector and requires short-lived Host page-map evidence for the same Session, installation, grant epoch, and exact page. Append mode adds extension-owned nodes; replace mode additionally requires a mapped disposable, non-protected region and moves its original children aside until `region_clear` restores them. The page runtime renders only plain-data blocks as text nodes, binds the mount to its Session, installation, grant epoch, and page identity, and does not silently bind an old mount to a new URL. A clear is settled only by an observed `cleared:true`, an observed exact `disposition:'absent'`, or a sent `document_replaced`; `target_url_stale` leaves the resource unresolved.
 
 A `tree` snapshot returns one stable cached hierarchy in pages. Its Document, element, text, and open Shadow Root nodes retain indexes and parent indexes across `treeCursor` reads; it does not rematch nodes. Iframe elements mark their source boundary, while frame documents require their own read. Hidden, editable, script, and style text is omitted, although hidden structure remains available with a hidden marker.
 
@@ -172,7 +172,7 @@ The caller mints every request id before dispatch. Each invocation binds that id
 
 Cancellation requests a stop. A lost receipt or deadline produces `unknown` until executor evidence resolves it. `requestStatus()` reads the caller-scoped retained state without replaying the request or disclosing its authority fingerprint. An unresolved write remains locked until an observed terminal result or explicit acknowledgement after executor quiescence. Neither a timeout nor loss of site permission proves that an old document stopped executing.
 
-`@changanhua/dsh-browser-task` is the Session-persistent authority for a natural-language field task. Its projection separates immutable page evidence and target binding, planned/prepared/dispatched/settled attempts and receipts, page-resource leases, capability snapshots, delegation facts, and acceptance checks. A checker-backed acceptance clause is distinct from an observed page action or a completed delegated run. Terminal completion requires every clause to cite current evidence, no blocker or unresolved write, an unexhausted budget, and every resource released, vanished, or explicitly retained by the Session/user. The tool consumer only continues this projection; it is not a process-local task authority.
+`@changanhua/dsh-browser-task` is the Session-persistent authority for a natural-language field task. Its projection separates immutable page evidence and target binding, planned/prepared/dispatched/settled attempts and receipts, page-resource leases, capability snapshots, canonical Subagent/Job/Cordis identities, and acceptance checks. A checker-backed acceptance clause is distinct from an observed page action or a completed delegated run. A region presentation clause cites both the observed render and the later fresh page evidence before cleanup. Terminal completion requires every clause to cite current evidence, no blocker or unresolved write, an unexhausted budget, and every resource released or confirmed vanished. If the extension accepts an unknown request, it releases only its transport lock; it does not finish the Session task. A later direct user message may explicitly cancel that task only after every page resource has a receipt-backed final disposition, while the unknown attempt remains in the log. The tool consumer only continues this projection; it is not a process-local task authority.
 
 The Puppeteer executor performs every implemented action. The DOM compatibility executor supports only `click`, `fill`, `submit`, `navigate`, `scroll`, and `wait`, and rejects newer action kinds. Screenshots require the main frame and are limited to 400,000 base64 characters. The [gateway README](../../packages/browser/browser-extension/README.md) owns transport bounds and configuration. The [Session Controller](../../packages/api/session-controller/README.md) owns conversation history; this service does not create a second message store.
 
@@ -570,6 +570,16 @@ consumeAction(agent: Agent, ref: BrowserTaskRef, actions: number = 1): BrowserTa
  * @returns The terminal task revision.
  */
 terminate(agent: Agent, ref: BrowserTaskRef, outcome: BrowserTaskSnapshot['outcome'] & string): BrowserTaskSnapshot
+
+/**
+ * End an uncertain task only from a newer direct user message. This records a
+ * decision boundary; it never changes any unknown action or resource outcome.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param sourceSeq - Latest direct user message that explicitly requests cancellation.
+ * @returns The terminal cancelled task revision.
+ */
+cancelByOwner(agent: Agent, ref: BrowserTaskRef, sourceSeq: number): BrowserTaskSnapshot
 ```
 
 Types: [Agent](core.md)

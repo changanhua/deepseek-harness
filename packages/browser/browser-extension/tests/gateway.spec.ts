@@ -167,7 +167,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       .resolves.toMatchObject({ delivery: 'not-sent', reason: 'mount_capacity' })
   })
 
-  it('只有确认 cleared 的 region_clear 才释放 Host 预留容量', async () => {
+  it('region_clear 只在 cleared 或精确 absent 证明后释放 Host 预留容量', async () => {
     const test = await mounted({ maxMounts: 1 }); const identity = await test.pair(); const extension = await peer(test.base, identity)
     const page = { tabId: 12, frameId: 0, documentId: 'document-1', url: 'https://example.test/page' }
     const mapped = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
@@ -205,6 +205,25 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     await expect(test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
       action: { kind: 'region_render', page, mountId: 'two', selector: '#two', blocks: [{ type: 'text', text: '二' }] } }, new AbortController().signal))
       .resolves.toMatchObject({ delivery: 'not-sent', reason: 'mount_capacity' })
+    const absent = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
+      action: { kind: 'region_clear', page, mountId: 'one' } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.filter(frame => actionKind(frame, 'region_clear'))).toHaveLength(2)
+    const absentClear = execute(extension.frames, request => request.requestId !== clear.requestId && object(request.payload).kind === 'region_clear')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: absentClear.protocolVersion, grantEpoch: absentClear.grantEpoch,
+      installationId: absentClear.installationId, sessionId: absentClear.sessionId, requestId: absentClear.requestId,
+      deadline: absentClear.deadline, fingerprint: absentClear.fingerprint,
+      outcome: 'observed', quiescent: true, value: { cleared: false, restored: 0, disposition: 'absent' },
+    } }))
+    await expect(absent).resolves.toMatchObject({ outcome: 'observed', value: { disposition: 'absent' } })
+    const replacement = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
+      action: { kind: 'region_render', page, mountId: 'two', selector: '#two', blocks: [{ type: 'text', text: '二' }] } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.filter(frame => actionKind(frame, 'region_render')).length).toBe(2)
+    const rerender = execute(extension.frames, request => request.requestId !== render.requestId && object(request.payload).kind === 'region_render')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: rerender.protocolVersion, grantEpoch: rerender.grantEpoch,
+      installationId: rerender.installationId, sessionId: rerender.sessionId, requestId: rerender.requestId,
+      deadline: rerender.deadline, fingerprint: rerender.fingerprint, outcome: 'observed', quiescent: true, value: { rendered: 1 },
+    } }))
+    await expect(replacement).resolves.toMatchObject({ outcome: 'observed' })
   })
 
   it('更新已挂载 region 失败时保留旧 lease，而非把它当作新 reservation 回收', async () => {
@@ -469,6 +488,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       action: { kind: 'region_clear', page, mountId: 'region' } }, new AbortController().signal))
       .resolves.toMatchObject({ delivery: 'not-sent', reason: 'document_replaced' })
     expect(gateway.mounts).toHaveLength(1)
+    expect(gateway.mounts.get(`${identity.installationId}\u0000entry`)).toMatchObject({ acceptingClicks: true })
     expect(gateway.regions).toHaveLength(1)
     expect(gateway.pageMaps).toHaveLength(1)
     await expect(test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
@@ -505,6 +525,95 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     await expect(test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
       action: { kind: 'entry_mount', page: newPage, mountId: 'other', regionSelector: 'body', selector: ':scope .row', label: '收集' } }, new AbortController().signal))
       .resolves.toMatchObject({ delivery: 'not-sent', reason: 'mount_capacity' })
+  })
+
+  it('同页 region_clear 的旧 unknown 状态不会删除后来重渲染的同 mountId registration', async () => {
+    const test=await mounted({ maxMounts:1 });const identity=await test.pair();const extension=await peer(test.base,identity)
+    const gateway=test.ctx.browser as unknown as { readonly regions:Map<string,object> }
+    const sessionId=SessionId('test-session');const page={ tabId:12,frameId:0,documentId:'document-1',url:'https://example.test/page' }
+    const mapped=test.ctx.browser.execute({ requestId:randomUUID(),sessionId,installationId:identity.installationId,
+      action:{ kind:'page_map',page } },new AbortController().signal)
+    await expect.poll(()=>extension.frames.some(frame=>actionKind(frame,'page_map'))).toBe(true)
+    const mapRequest=execute(extension.frames,request=>object(request.payload).kind==='page_map')
+    extension.socket.send(JSON.stringify({ type:'result',receipt:{ protocolVersion:mapRequest.protocolVersion,grantEpoch:mapRequest.grantEpoch,
+      installationId:mapRequest.installationId,sessionId:mapRequest.sessionId,requestId:mapRequest.requestId,deadline:mapRequest.deadline,
+      fingerprint:mapRequest.fingerprint,outcome:'observed',quiescent:true,value:{ page,regions:[{ selector:'#side',disposable:true,protected:false }] } } }))
+    await mapped
+    const render=(requestId:string)=>test.ctx.browser.execute({ requestId,sessionId,installationId:identity.installationId,
+      action:{ kind:'region_render',page,mountId:'panel',selector:'#side',blocks:[{ type:'text',text:'证据' }] } },new AbortController().signal)
+    const firstId=randomUUID();const first=render(firstId)
+    await expect.poll(()=>extension.frames.some(frame=>actionKind(frame,'region_render'))).toBe(true)
+    const firstRequest=execute(extension.frames,request=>request.requestId===firstId)
+    extension.socket.send(JSON.stringify({ type:'result',receipt:{ protocolVersion:firstRequest.protocolVersion,grantEpoch:firstRequest.grantEpoch,
+      installationId:firstRequest.installationId,sessionId:firstRequest.sessionId,requestId:firstRequest.requestId,
+      deadline:firstRequest.deadline,
+      fingerprint:firstRequest.fingerprint,outcome:'observed',quiescent:true,value:{ rendered:1 } } }))
+    await first
+    const clearId=randomUUID();const clearing=test.ctx.browser.execute({ requestId:clearId,sessionId,installationId:identity.installationId,
+      action:{ kind:'region_clear',page,mountId:'panel' } },new AbortController().signal)
+    await expect.poll(()=>extension.frames.some(frame=>frame.type==='execute'&&frame.request?.requestId===clearId)).toBe(true)
+    const clearRequest=execute(extension.frames,request=>request.requestId===clearId)
+    extension.socket.terminate();await expect(clearing).resolves.toMatchObject({ outcome:'unknown',delivery:'sent' })
+    const replacement=await peer(test.base,identity)
+    await expect.poll(()=>replacement.frames.some(frame=>frame.type==='status')).toBe(true)
+    replacement.socket.send(JSON.stringify({ type:'result',receipt:{ protocolVersion:clearRequest.protocolVersion,grantEpoch:clearRequest.grantEpoch,
+      installationId:clearRequest.installationId,sessionId:clearRequest.sessionId,requestId:clearRequest.requestId,
+      deadline:clearRequest.deadline,
+      fingerprint:clearRequest.fingerprint,outcome:'unknown',quiescent:true,reason:'clear_unknown' } }))
+    await expect.poll(async()=>test.ctx.browser.requestStatus({ requestId:clearId,sessionId,installationId:identity.installationId }))
+      .toMatchObject({ outcome:'unknown',quiescent:true })
+    const acknowledgementId=randomUUID()
+    replacement.socket.send(JSON.stringify({ type:'request',requestId:acknowledgementId,method:'browser.acknowledge',params:{ receipt:{
+      protocolVersion:clearRequest.protocolVersion,grantEpoch:clearRequest.grantEpoch,installationId:clearRequest.installationId,
+      sessionId:clearRequest.sessionId,requestId:clearRequest.requestId,deadline:clearRequest.deadline,fingerprint:clearRequest.fingerprint,
+      outcome:'unknown',quiescent:true } } }))
+    await expect.poll(()=>replacement.frames.find(frame=>frame.type==='response'&&frame.requestId===acknowledgementId)?.result)
+      .toEqual({ ok:true,value:{ acknowledged:true } })
+    const secondId=randomUUID();const second=render(secondId)
+    await expect.poll(()=>replacement.frames.some(frame=>frame.type==='execute'&&frame.request?.requestId===secondId)).toBe(true)
+    const secondRequest=execute(replacement.frames,request=>request.requestId===secondId)
+    replacement.socket.send(JSON.stringify({ type:'result',receipt:{ protocolVersion:secondRequest.protocolVersion,grantEpoch:secondRequest.grantEpoch,
+      installationId:secondRequest.installationId,sessionId:secondRequest.sessionId,requestId:secondRequest.requestId,
+      deadline:secondRequest.deadline,
+      fingerprint:secondRequest.fingerprint,outcome:'observed',quiescent:true,value:{ rendered:1 } } }))
+    await second
+    replacement.socket.send(JSON.stringify({ type:'result',receipt:{ protocolVersion:clearRequest.protocolVersion,grantEpoch:clearRequest.grantEpoch,
+      installationId:clearRequest.installationId,sessionId:clearRequest.sessionId,requestId:clearRequest.requestId,
+      deadline:clearRequest.deadline,
+      fingerprint:clearRequest.fingerprint,outcome:'observed',quiescent:true,value:{ cleared:true,restored:0 } } }))
+    await expect.poll(async()=>test.ctx.browser.requestStatus({ requestId:clearId,sessionId,installationId:identity.installationId }))
+      .toMatchObject({ outcome:'observed',value:{ cleared:true } })
+    expect(gateway.regions.has(`${identity.installationId}\u0000panel`)).toBe(true)
+  })
+
+  it('新一代同 mountId 渲染确定失败时不会遗忘上一代已经晚到的清理证明', async()=>{
+    const test=await mounted();const identity=await test.pair();const sessionId=SessionId('test-session')
+    const page={ tabId:12,frameId:0,documentId:'document-1',url:'https://example.test/page' }
+    const gateway=test.ctx.browser as unknown as {
+      readonly mounts:Map<string,object>
+      readonly regions:Map<string,object>
+      settleResourceAction(pending:unknown,result:unknown):void }
+    const key=`${identity.installationId}\u0000panel`
+    const region={ installationId:identity.installationId,sessionId,grantEpoch:1,...page,mountId:'panel',state:'mounted',generation:2 }
+    gateway.regions.set(key,region)
+    const operation={ requestId:'clear-old',sessionId,installationId:identity.installationId,action:{ kind:'region_clear',page,mountId:'panel' } }
+    gateway.settleResourceAction({ operation,action:operation.action,mount:undefined,region,mountCreated:false,regionCreated:false,
+      regionGeneration:1 },{ requestId:'clear-old',outcome:'observed',delivery:'sent',value:{ cleared:true } })
+    expect(gateway.regions.has(key)).toBe(true)
+    const render={ ...operation,requestId:'render-new',action:{ kind:'region_render',page,mountId:'panel',selector:'#side',blocks:[{ type:'text',text:'证据' }] } }
+    gateway.settleResourceAction({ operation:render,action:render.action,mount:undefined,region,mountCreated:false,regionCreated:false,
+      regionGeneration:2,regionPreviousGeneration:1 },{ requestId:'render-new',outcome:'failed',delivery:'not-sent',reason:'offline' })
+    expect(gateway.regions.has(key)).toBe(false)
+    const mountKey=`${identity.installationId}\u0000entry`
+    const mount={ ...region,mountId:'entry',acceptingClicks:false,generation:2 }
+    gateway.mounts.set(mountKey,mount)
+    const unmount={ ...operation,requestId:'unmount-old',action:{ kind:'entry_unmount',page,mountId:'entry' } }
+    gateway.settleResourceAction({ operation:unmount,action:unmount.action,mount,region:undefined,mountCreated:false,regionCreated:false,
+      mountGeneration:1 },{ requestId:'unmount-old',outcome:'observed',delivery:'sent',value:{ unmounted:true,remaining:0 } })
+    const remount={ ...operation,requestId:'mount-new',action:{ kind:'entry_mount',page,mountId:'entry',selector:'.row',label:'收集' } }
+    gateway.settleResourceAction({ operation:remount,action:remount.action,mount,region:undefined,mountCreated:false,regionCreated:false,
+      mountGeneration:2,mountPreviousGeneration:1 },{ requestId:'mount-new',outcome:'failed',delivery:'not-sent',reason:'offline' })
+    expect(gateway.mounts.has(mountKey)).toBe(false)
   })
 
   it('重连 status 以未知 document_replaced 确认旧目标消失后释放其 mount 容量', async () => {
@@ -544,6 +653,103 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       deadline: replacementRequest.deadline, fingerprint: replacementRequest.fingerprint, outcome: 'observed', quiescent: true, value: { mounted: 1 },
     } }))
     await expect(replacementMount).resolves.toMatchObject({ outcome: 'observed' })
+  })
+
+  it('重连的终态 entry_mount 回执按原调用重新打开点击门', async () => {
+    const test = await mounted({ maxMounts: 1 }); const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const page = { tabId: 12, frameId: 0, documentId: 'document-1', url: 'https://example.test/page' }
+    const mounting = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
+      action: { kind: 'entry_mount', page, mountId: 'retained', regionSelector: 'body', selector: ':scope .row', label: '收集' } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'entry_mount'))).toBe(true)
+    const issued = execute(extension.frames, request => object(request.payload).kind === 'entry_mount')
+    extension.socket.terminate()
+    await expect(mounting).resolves.toMatchObject({ outcome: 'unknown', delivery: 'sent' })
+    const replacement = await peer(test.base, identity)
+    await expect.poll(() => replacement.frames.some(frame => frame.type === 'status')).toBe(true)
+    replacement.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: issued.protocolVersion, grantEpoch: issued.grantEpoch,
+      installationId: issued.installationId, sessionId: issued.sessionId, requestId: issued.requestId, deadline: issued.deadline,
+      fingerprint: issued.fingerprint, outcome: 'observed', quiescent: true, value: { mounted: 1 },
+    } }))
+    await expect.poll(async () => test.ctx.browser.requestStatus({
+      requestId: issued.requestId, sessionId: SessionId(issued.sessionId), installationId: issued.installationId,
+    }))
+      .toMatchObject({ outcome: 'observed', quiescent: true })
+    const eventId = randomUUID()
+    replacement.socket.send(JSON.stringify({ type: 'request', requestId: eventId, method: 'browser.entryEvent', params: {
+      mountId: 'retained', tabId: page.tabId, frameId: page.frameId, documentId: page.documentId, url: page.url, title: '标题', link: 'https://example.test/item',
+    } }))
+    await expect.poll(() => replacement.frames.find(frame => frame.type === 'response' && frame.requestId === eventId)?.result)
+      .toEqual({ ok: true, value: { accepted: true } })
+  })
+
+  it('待结算资源以 session、安装和 requestId 共同隔离', async () => {
+    const test = await mounted(); const identity = await test.pair()
+    const gateway = test.ctx.browser as unknown as {
+      readonly pendingResourceSettlements: Map<string, unknown>
+      settleResourceAction: (pending: unknown, result: unknown) => void
+    }
+    const page = { tabId: 12, frameId: 0, documentId: 'document-1', url: 'https://example.test/page' }
+    for (const sessionId of ['session-one', 'session-two']) {
+      gateway.settleResourceAction({ operation: { requestId: 'shared-request', sessionId, installationId: identity.installationId },
+        action: { kind: 'entry_mount', page, mountId: `mount-${sessionId}` }, mount: undefined, region: undefined,
+        mountCreated: false, regionCreated: false }, { requestId: 'shared-request', outcome: 'unknown', delivery: 'sent' })
+    }
+    expect(gateway.pendingResourceSettlements).toHaveLength(2)
+  })
+
+  it('quiescent document_replaced status 会清掉对应资源的待结算记录', async () => {
+    const test = await mounted({ maxMounts: 1 }); const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const gateway = test.ctx.browser as unknown as { readonly pendingResourceSettlements: Map<string, unknown> }
+    const page = { tabId: 12, frameId: 0, documentId: 'document-1', url: 'https://example.test/page' }
+    const mounting = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
+      action: { kind: 'entry_mount', page, mountId: 'gone', regionSelector: 'body', selector: ':scope .row', label: '收集' } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'entry_mount'))).toBe(true)
+    const issued = execute(extension.frames, request => object(request.payload).kind === 'entry_mount')
+    extension.socket.terminate()
+    await expect(mounting).resolves.toMatchObject({ outcome: 'unknown', delivery: 'sent' })
+    expect(gateway.pendingResourceSettlements).toHaveLength(1)
+    const replacement = await peer(test.base, identity)
+    await expect.poll(() => replacement.frames.some(frame => frame.type === 'status')).toBe(true)
+    replacement.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: issued.protocolVersion, grantEpoch: issued.grantEpoch,
+      installationId: issued.installationId, sessionId: issued.sessionId, requestId: issued.requestId, deadline: issued.deadline,
+      fingerprint: issued.fingerprint, outcome: 'unknown', quiescent: true, reason: 'document_replaced',
+    } }))
+    await expect.poll(async () => test.ctx.browser.requestStatus({
+      requestId: issued.requestId, sessionId: SessionId(issued.sessionId), installationId: issued.installationId,
+    })).toMatchObject({ outcome: 'unknown', quiescent: true, reason: 'document_replaced' })
+    expect(gateway.pendingResourceSettlements).toHaveLength(0)
+  })
+
+  it('未发出的 entry_unmount 不会把仍在页面上的按钮永久关门', async () => {
+    const test = await mounted({ maxMounts: 2 }); const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const page = { tabId: 12, frameId: 0, documentId: 'document-1', url: 'https://example.test/page' }
+    const mounting = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
+      action: { kind: 'entry_mount', page, mountId: 'still-live', regionSelector: 'body',
+        selector: ':scope .row', label: '收集' } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'entry_mount'))).toBe(true)
+    const mountRequest = execute(extension.frames, request => object(request.payload).kind === 'entry_mount')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: {
+      protocolVersion: mountRequest.protocolVersion, grantEpoch: mountRequest.grantEpoch,
+      installationId: mountRequest.installationId, sessionId: mountRequest.sessionId,
+      requestId: mountRequest.requestId, deadline: mountRequest.deadline,
+      fingerprint: mountRequest.fingerprint, outcome: 'observed', quiescent: true, value: { mounted: 1 },
+    } }))
+    await mounting
+    const busy = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
+      action: { kind: 'click', intent: '打开', element: { page, snapshotId: 'snapshot', elementId: 'button' } } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'click'))).toBe(true)
+    extension.socket.terminate()
+    await expect(busy).resolves.toMatchObject({ outcome: 'unknown', delivery: 'sent' })
+    const replacement = await peer(test.base, identity)
+    await expect(test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
+      action: { kind: 'entry_unmount', page, mountId: 'still-live' } }, new AbortController().signal))
+      .resolves.toMatchObject({ delivery: 'not-sent', reason: 'target_busy' })
+    const eventId = randomUUID()
+    replacement.socket.send(JSON.stringify({ type: 'request', requestId: eventId, method: 'browser.entryEvent', params: {
+      mountId: 'still-live', tabId: page.tabId, frameId: page.frameId, documentId: page.documentId, url: page.url, title: '标题', link: 'https://example.test/item',
+    } }))
+    await expect.poll(() => replacement.frames.find(frame => frame.type === 'response' && frame.requestId === eventId)?.result)
+      .toEqual({ ok: true, value: { accepted: true } })
   })
 
   it('只接受页面运行时的精确 route discard，并把其 tombstone 交给后续 release', async () => {
@@ -609,9 +815,10 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       .resolves.toMatchObject({ delivery: 'not-sent', reason: 'unauthorized' })
   })
 
-  it('preserves semantic query, pagination and text budgets on the actual extension wire', async () => {
+  it('preserves semantic query, pagination, text budgets, and presentation evidence queries on the actual extension wire', async () => {
     const test = await mounted(), identity = await test.pair(), extension = await peer(test.base, identity)
-    const action = { kind: 'snapshot' as const, tabId: 12, frameId: 0, query: '空气炸锅', offset: 128, limit: 4, textLimit: 0 }
+    const action = { kind: 'snapshot' as const, tabId: 12, frameId: 0, query: '空气炸锅', offset: 128, limit: 4, textLimit: 0,
+      presentationQueries: [{ mountId: 'analysis-panel', text: '证据分歧' }] }
     const pending = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId, action }, new AbortController().signal)
     await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'snapshot'))).toBe(true)
     const issued = execute(extension.frames)

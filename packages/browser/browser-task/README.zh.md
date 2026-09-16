@@ -11,7 +11,7 @@ kind: "package-reference"
 
 `@changanhua/dsh-browser-task` 是单个浏览器任务的 Session 持久领域权威。每次闭合操作修改都写入完整的 `browser-task/change` 后置状态，因此 Host 重启后可回放，不能以进程内 Map 作为任务事实。前一个任务终态后才可创建下一任务；持久 source sequence 防止同一输入在重启后被当成新任务。
 
-它分离页面证据、精确目标绑定、动作回执、资源归宿、授权快照、委派和验收。证据绑定真实 Session 事实或 Browser 回执、页面目标和授权 epoch。资源在派发前先预留；`delivery:not-sent` 可释放预留而不能伪装页面已经清理。观察到动作或委派任务完成，都不等于浏览器任务完成；完成必须为每项条件提供检查器支持的当前证据、没有未决写入/阻塞、预算从未超限，并且所有页面资源已释放或确认随文档消失。在存在专用 owner-decision 事实前，保留资源仍保持 fail-closed。
+它分离页面证据、精确目标绑定、动作回执、资源归宿、授权快照、委派和验收。证据绑定真实 Session 事实或 Browser 回执、页面目标和授权 epoch。委派事实保留规范的 Subagent run、后台 Job 或 Cordis package/run 身份与有界输出摘要；委派成功本身绝不满足验收。`region-content` 条件要求匹配的渲染回执和渲染文本的新页面观察，而完成仍等待该区域的最终清理归宿。资源在派发前先预留；`delivery:not-sent` 可释放预留而不能伪装页面已经清理。完成必须为每项条件提供检查器支持的当前证据、没有未决写入/阻塞、预算从未超限，并且所有页面资源已释放或确认随文档消失。扩展侧接受 unknown 只释放传输锁；只有新的直接用户消息才能显式取消 Session 任务，且必须先让所有资源拥有回执支持的终态，unknown attempt 继续作为历史事实保留。
 
 ## 目录
 
@@ -38,7 +38,7 @@ kind: "package-reference"
 ## 已知限制与后续工作
 
 - 标准 Web 组合和 `tool-browser` 已使用本服务，但通用 Session 投影还没有专门的任务状态 UI。
-- V1 不接受用户保留的页面资源作为最终归宿；必须释放或确认原文档已消失。
+- owner cancel 只接受资源清理完成后最新直接用户消息中的明确标记 `[browser-task:cancel]` 或 `[browser-task:accept-unknown]`。Agent 遇到 unknown 浏览器效果需要用户决定时必须请求该标记，不能从普通自然语言推断同意，也不能断言效果发生或未发生。
 - 真实 DeepSeek-v4.1-flash 扩展验收依赖已配置部署，与包级测试分开记录。
 
 <a id="dev-note"></a>

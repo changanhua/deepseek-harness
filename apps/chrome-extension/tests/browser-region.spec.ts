@@ -37,6 +37,7 @@ interface BrowserReceipt {
 }
 
 type BrowserPageGlobal = typeof globalThis & { __dshBrowserAssistant?: {
+  snapshot(options?: object): unknown
   regionRender(request: BrowserRequest): BrowserReceipt
   regionClear(request: BrowserRequest): BrowserReceipt
   pageMap?(request: BrowserRequest): BrowserReceipt
@@ -142,6 +143,20 @@ describe('区域内容面板挂载', () => {
     expect(panel).not.toBeNull()
     expect(panel?.getAttribute('aria-label')).toBe('前 5 条回答')
     expect(panel?.textContent).toContain('回答')
+  })
+
+  test('snapshot 只把仍由 regionMounts 持有的实际面板报告为展示证据', () => {
+    document.body.innerHTML = '<p>证据分歧</p><div id="side"></div>'
+    const assistant = install()
+    const query = { presentationQueries: [{ mountId: 'analysis-panel', text: '证据分歧' }] }
+    expect(assistant.snapshot(query)).toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据分歧', present: false }] })
+    assistant.regionRender(renderRequest('analysis-panel', { blocks: [{ type: 'text', text: '证据分歧' }] }))
+    expect(assistant.snapshot(query)).toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据分歧', present: true }] })
+    panelOf('analysis-panel')?.remove()
+    expect(assistant.snapshot(query)).toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据分歧', present: false }] })
+    assistant.regionRender(renderRequest('analysis-panel', { blocks: [{ type: 'text', text: '证据 分歧' }] }))
+    expect(assistant.snapshot({ presentationQueries: [{ mountId: 'analysis-panel', text: '证据\n  分歧' }] }))
+      .toMatchObject({ presentations: [{ mountId: 'analysis-panel', text: '证据 分歧', present: true }] })
   })
 
   test('块内容只作为文本节点渲染，不被解释为标记', () => {
@@ -338,6 +353,29 @@ describe('区域内容面板挂载', () => {
     expect(document.querySelector('#keep')).toBeNull()
   })
 
+  test('regionClear 在精确证明没有登记也没有面板时明确报告 absent', () => {
+    document.body.innerHTML = '<aside id="side"><p>页面原有内容</p></aside>'
+    const receipt = install().regionClear(clearRequest('never-mounted'))
+    expect(receipt).toMatchObject({
+      outcome: 'observed', quiescent: true,
+      value: { cleared: true, restored: 0, disposition: 'absent' },
+    })
+    expect(document.querySelector('#side')?.textContent).toBe('页面原有内容')
+  })
+
+  test('replace 面板在 SPA 新路由已写入内容后清理不会恢复旧节点', () => {
+    document.body.innerHTML = '<aside id="side"><p id="old">旧路由</p></aside>'
+    const assistant = install()
+    assistant.regionRender(renderRequest('panel', { mode: 'replace' }))
+    history.pushState({}, '', '/next')
+    document.querySelector('#side')!.innerHTML = '<p id="new">新路由</p>'
+    const receipt = assistant.regionClear(clearRequest('panel'))
+    expect(receipt).toMatchObject({ outcome: 'observed', value: { disposition: 'route_discarded' } })
+    expect(document.querySelector('#new')?.textContent).toBe('新路由')
+    expect(document.querySelector('#old')).toBeNull()
+    history.pushState({}, '', '/feed')
+  })
+
   test('替换模式在同文档 URL 漂移后只移除 DSH 面板，绝不恢复旧路由内容覆盖新路由', async () => {
     document.body.innerHTML = '<aside id="side"><p id="old">旧路由</p></aside>'
     const assistant = install()
@@ -348,6 +386,21 @@ describe('区域内容面板挂载', () => {
     expect(document.querySelector('#new')?.textContent).toBe('新路由')
     expect(document.querySelector('#old')).toBeNull()
     expect(panelOf('panel')).toBeNull()
+  })
+
+  test('路由漂移后先发生无关 mutation、框架稍后渲染时绝不恢复旧 replace 节点', async () => {
+    document.body.innerHTML = '<aside id="side"><p id="old">旧路由</p></aside>'
+    const assistant = install()
+    assistant.regionRender(renderRequest('panel', { mode: 'replace' }))
+    history.pushState({}, '', '/next')
+    document.body.append(document.createElement('i'))
+    await flushObservers()
+    expect(document.querySelector('#old')).toBeNull()
+    expect(panelOf('panel')).toBeNull()
+    document.querySelector('#side')!.innerHTML = '<p id="new">新路由</p>'
+    expect(document.querySelector('#new')?.textContent).toBe('新路由')
+    expect(document.querySelector('#old')).toBeNull()
+    history.pushState({}, '', '/feed')
   })
 
   test('非法载荷被拒绝且不改变页面', () => {

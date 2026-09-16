@@ -29,6 +29,7 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'assistant/message',
   'browser-task/change',
   'browser-task/check',
+  'browser-task/delegation',
   'browser-task/receipt',
   'command/done',
   'command/run',

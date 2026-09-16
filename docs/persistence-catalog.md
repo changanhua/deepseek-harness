@@ -266,6 +266,17 @@ Source: [`packages/browser/browser-task/src/domain.ts:8`](../packages/browser/br
 
 Source: [`packages/browser/browser-task/src/domain.ts:12`](../packages/browser/browser-task/src/domain.ts)
 
+<a id="browser-taskdelegation--log-only"></a>
+
+#### `browser-task/delegation` — log-only
+
+```ts persistence-catalog
+/** Canonical Job, Subagent, or Cordis identity captured from one settled Tool execution. */
+'browser-task/delegation': BrowserTaskDelegation
+```
+
+Source: [`packages/browser/browser-task/src/domain.ts:14`](../packages/browser/browser-task/src/domain.ts)
+
 <a id="browser-taskreceipt--log-only"></a>
 
 #### `browser-task/receipt` — log-only

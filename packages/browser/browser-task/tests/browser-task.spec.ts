@@ -3,8 +3,10 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
-import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
+import { createToolResultMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import BrowserTaskService, {
   BROWSER_TASK_LIMITS,
   BrowserTaskError,
@@ -12,7 +14,7 @@ import BrowserTaskService, {
   foldBrowserTask,
 } from '../src/index.ts'
 const target={ installationId:'chrome-a',page:{ tabId:1,frameId:0,documentId:'doc-a',url:'https://example.test/a' } } as const
-async function h(){const ctx=new Context();await ctx.plugin(SessionStore);await ctx.plugin(SessionProjectionRegistry);await ctx.plugin(AgentRegistry);await ctx.plugin(BrowserTaskService);const session=ctx.sessions.create(SessionId(`bt-${Math.random()}`));session.append('user/message',createUserMessage({ content:[{ type:'text',text:'prove task' }],source:{ kind:'user' } }),{ surfaceOp:'append' });const agent={ id:session.id,options:{},session,ctx,status:'idle',inbox:{ append(){},remove(){return false},nextStep:[] },send(){},followup(){},steer(){},inject(){},cancel(){},runMaintenance(fn:(s:AbortSignal)=>unknown){return fn(new AbortController().signal)},whenIdle(){return Promise.resolve()} } as unknown as Agent;ctx.agents.register(agent);return{ ctx,agent,session }}
+async function h(){const ctx=new Context();await ctx.plugin(SessionStore);await ctx.plugin(SessionProjectionRegistry);await ctx.plugin(AgentRegistry);await ctx.plugin(SystemPrompt);await ctx.plugin(ToolRuntime);await ctx.plugin(BrowserTaskService);const session=ctx.sessions.create(SessionId(`bt-${Math.random()}`));session.append('user/message',createUserMessage({ content:[{ type:'text',text:'prove task' }],source:{ kind:'user' } }),{ surfaceOp:'append' });const agent={ id:session.id,options:{},session,ctx,status:'idle',inbox:{ append(){},remove(){return false},nextStep:[] },send(){},followup(){},steer(){},inject(){},cancel(){},runMaintenance(fn:(s:AbortSignal)=>unknown){return fn(new AbortController().signal)},whenIdle(){return Promise.resolve()} } as unknown as Agent;ctx.agents.register(agent);return{ ctx,agent,session }}
 const create=(ctx:Context,a:Agent,seq=0)=>ctx.browserTasks.create(a,{ objective:'prove task',sourceSeq:seq,target,acceptance:[{ id:'url',kind:'url-equals',url:target.page.url }],maxSteps:3,maxActions:2 })
 const cap={ installationId:'chrome-a',state:'observed' as const,grantEpoch:1,scopes:['browser:read'],actions:['snapshot'],protocol:'v1' }
 const evidence={ id:'e1',state:'current' as const,source:{ kind:'user' as const,sessionSeq:0 },digest:'sha256:e1',target,grantEpoch:1 }
@@ -20,6 +22,70 @@ const attempt=(value:Record<string,unknown>)=>({ actionKind:'resourceId'in value
 describe('browser task kernel',()=>{
   it('replays strict complete snapshots and wire state is detached',async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap);expect(t.blockers).not.toContain('capability-drift');t=ctx.browserTasks.recordEvidence(agent,t,evidence);const check=ctx.browserTasks.recordCheck(agent,t,{ checkerId:'check-1',target,grantEpoch:1,evaluations:[{ clauseId:'url',satisfied:true,evidenceIds:['e1'] }] });t=ctx.browserTasks.evaluate(agent,t,[{ clauseId:'url',satisfied:true,evidenceIds:['e1'],checkerRef:check }]);const view=ctx.sessionProjections.stateOf(session,'browserTask')!.current!;const wire=browserTaskProjectionDefinition.wire.view({ current:view,recentTaskIds:[view.id],lastSourceSeq:1,lastTaskSourceSeq:0,sourceFacts:[{ kind:'user',sessionSeq:0 }],failure:null });if(wire!==null)Reflect.set(wire,'objective','mutated');expect(ctx.browserTasks.get(agent)!.objective).toBe('prove task');expect(foldBrowserTask(session.snapshotEvents())?.revision).toBe(t.revision)})
   it('rejects CAS, duplicate source sequence, and invalid command before append',async()=>{const{ ctx,agent,session }=await h();const t=create(ctx,agent);const before=session.snapshotEvents().length;expect(()=>ctx.browserTasks.recordEvidence(agent,t,{ ...evidence,grantEpoch:9 })).toThrow(BrowserTaskError);expect(session.snapshotEvents()).toHaveLength(before);ctx.browserTasks.terminate(agent,t,'failed');expect(()=>create(ctx,agent,1)).toThrow(BrowserTaskError);expect(()=>ctx.browserTasks.transition(agent,t,'waiting')).toThrow(BrowserTaskError)})
+  it('contains delegation observer reads after the projection has failed', async()=>{
+    const { ctx, agent, session } = await h()
+    session.append('browser-task/change', { kind:'browser-task/change', version:2, operation:'create', task:{} } as never)
+    expect(ctx.sessionProjections.stateOf(session, 'browserTask')?.failure).not.toBeNull()
+    ctx.tools.register(defineTool({ name:'subagent_observer_failure',description:'delegate',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'done' }] },execute:async()=>({ kind:'foreground',runId:'run',output:[] }) }))
+    const callId=ToolCallId('observer-failure')
+    const result=await ctx.tools.execute({ signal:new AbortController().signal,callId,name:'subagent_observer_failure',arguments:{},agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId,content:result.content,isError:result.isError }) },{ surfaceOp:'append' })
+    await Promise.resolve()
+  })
+  it('cancels an unknown task only from a newer direct user fact after cleanup',async()=>{
+    const { ctx, agent, session } = await h(); let t=create(ctx,agent)
+    t=ctx.browserTasks.recordAttempt(agent,t,attempt({ attemptId:'unknown',requestId:'unknown',stage:'planned',write:true,target }) as never)
+    t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:'unknown',requestId:'unknown',stage:'dispatched',write:true,target }) as never)
+    const receipt=ctx.browserTasks.recordReceipt(agent,t,{ requestId:'unknown',actionKind:'click',target,outcome:'unknown',delivery:'sent',quiescent:false,grantEpoch:1 })
+    t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:'unknown',requestId:'unknown',stage:'settled',outcome:'unknown',quiescent:false,settledBy:receipt,write:true,target }) as never)
+    const source=session.append('user/message',createUserMessage({ content:[{ type:'text',text:'接受未知 [browser-task:accept-unknown]' }],source:{ kind:'user' } }),{ surfaceOp:'append' })
+    const cancelled=ctx.browserTasks.cancelByOwner(agent,t,source.seq)
+    expect(cancelled).toMatchObject({ phase:'terminal',outcome:'cancelled',terminationSource:{ kind:'user',sessionSeq:source.seq } })
+    expect(cancelled.attempts[0]).toMatchObject({ outcome:'unknown',settledBy:receipt })
+  })
+  it('refuses owner cancellation while a page resource still needs cleanup',async()=>{
+    const { ctx, agent, session } = await h(); let t=create(ctx,agent)
+    t=ctx.browserTasks.upsertResource(agent,t,{ id:'panel',state:'reserved',target })
+    const source=session.append('user/message',createUserMessage({ content:[{ type:'text',text:'取消' }],source:{ kind:'user' } }),{ surfaceOp:'append' })
+    expect(()=>ctx.browserTasks.cancelByOwner(agent,t,source.seq)).toThrow(BrowserTaskError)
+  })
+  it('rejects an otherwise latest direct user message without an explicit cancellation marker',async()=>{
+    const { ctx,agent,session }=await h();const t=create(ctx,agent)
+    const source=session.append('user/message',createUserMessage({ content:[{ type:'text',text:'请取消' }],source:{ kind:'user' } }),{ surfaceOp:'append' })
+    expect(()=>ctx.browserTasks.cancelByOwner(agent,t,source.seq)).toThrow(BrowserTaskError)
+  })
+  it('does not let owner cancellation reuse an earlier direct user message',async()=>{
+    const { ctx, agent, session } = await h(); const t=create(ctx,agent)
+    const oldSource=session.append('user/message',createUserMessage({ content:[{ type:'text',text:'取消' }],source:{ kind:'user' } }),{ surfaceOp:'append' })
+    session.append('user/message',createUserMessage({ content:[{ type:'text',text:'继续' }],source:{ kind:'user' } }),{ surfaceOp:'append' })
+    expect(()=>ctx.browserTasks.cancelByOwner(agent,t,oldSource.seq)).toThrow(BrowserTaskError)
+  })
+  it('rejects a replayed owner cancellation that cites a non-latest direct user fact',async()=>{
+    const{ ctx,agent,session }=await h();const t=create(ctx,agent)
+    const old=session.append('user/message',createUserMessage({ content:[{ type:'text',text:'旧取消 [browser-task:cancel]' }],source:{ kind:'user' } }),{ surfaceOp:'append' })
+    session.append('user/message',createUserMessage({ content:[{ type:'text',text:'新输入' }],source:{ kind:'user' } }),{ surfaceOp:'append' })
+    session.append('browser-task/change',{ kind:'browser-task/change',version:2,operation:'owner-cancel',task:{ ...t,revision:t.revision+1,updatedAt:t.updatedAt+1,phase:'terminal',outcome:'cancelled',terminationSource:{ kind:'user',sessionSeq:old.seq } } } as never)
+    expect(()=>ctx.browserTasks.get(agent)).toThrow('browser task replay failed')
+  })
+  it('retains a terminal owner-cancel source through bounded source-fact compaction',async()=>{
+    const{ ctx,agent,session }=await h();let t=create(ctx,agent)
+    const cancellation=session.append('user/message',createUserMessage({ content:[{ type:'text',text:'取消 [browser-task:cancel]' }],source:{ kind:'user' } }),{ surfaceOp:'append' })
+    t=ctx.browserTasks.cancelByOwner(agent,t,cancellation.seq)
+    for(let index=0;index<270;index+=1) session.append('assistant/message',{ content:[{ type:'text',text:String(index) }],source:{ kind:'agent' } } as never,{ surfaceOp:'append' })
+    expect(ctx.browserTasks.get(agent)).toMatchObject({ outcome:'cancelled',terminationSource:{ kind:'user',sessionSeq:cancellation.seq } })
+    expect(foldBrowserTask(session.snapshotEvents())).toMatchObject({ outcome:'cancelled',terminationSource:{ kind:'user',sessionSeq:cancellation.seq } })
+  })
+  it('accepts an explicit page-region presentation clause',async()=>{
+    const{ ctx,agent }=await h()
+    const task=ctx.browserTasks.create(agent,{ objective:'show the analysis',sourceSeq:0,target,
+      acceptance:[{ id:'panel',kind:'region-content',resourceId:'analysis-panel',text:'证据分歧' }] as never })
+    expect(task.acceptance).toEqual([{ id:'panel',kind:'region-content',resourceId:'analysis-panel',text:'证据分歧' }])
+  })
+  it('rejects region acceptance text that cannot fit a bounded presentation excerpt',async()=>{
+    const{ ctx,agent }=await h()
+    expect(()=>ctx.browserTasks.create(agent,{ objective:'show the analysis',sourceSeq:0,target,
+      acceptance:[{ id:'panel',kind:'region-content',resourceId:'analysis-panel',text:'字'.repeat(171) }] as never })).toThrow(BrowserTaskError)
+  })
   it('does not allow evidence payload change, unknown overwrite, or resource release bypass',async()=>{
     const{ ctx,agent }=await h();let t=create(ctx,agent)
     t=ctx.browserTasks.recordCapability(agent,t,cap)
@@ -48,8 +114,164 @@ describe('browser task kernel',()=>{
     async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.consumeContinuation(agent,t);session.append('browser-task/change',{ kind:'browser-task/change',version:2,operation:'consume-budget',task:{ ...t,revision:t.revision+1,updatedAt:t.updatedAt+1,budget:{ ...t.budget,maxSteps:t.budget.maxSteps+1,stepsUsed:0 } } } as never);expect(()=>ctx.browserTasks.get(agent)).toThrow('browser task replay failed')},
     async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap);session.append('browser-task/change',{ kind:'browser-task/change',version:2,operation:'evidence',task:{ ...t,revision:t.revision+1,updatedAt:t.updatedAt+1,evidence:[{ ...evidence,source:{ kind:'user',sessionSeq:999 },injected:'raw-page-payload' }] } } as never);expect(()=>ctx.browserTasks.get(agent)).toThrow('browser task replay failed')},
   ] as const;for(const run of cases)await run()})
-  it('records a bounded receipt before it is cited and captures subagent causality',async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordAttempt(agent,t,attempt({ attemptId:'a',requestId:'r',stage:'planned',write:true,target }) as never);t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:'a',requestId:'r',stage:'dispatched',write:true,target }) as never);const receipt=ctx.browserTasks.recordReceipt(agent,t,{ requestId:'r',actionKind:'click',target,outcome:'unknown',delivery:'sent',quiescent:false,grantEpoch:1,reason:'timeout' });expect(receipt.kind).toBe('browser-task-receipt');session.append('tool/call',{ turn:1,step:1,callId:ToolCallId('sub-1'),name:'subagent_codex',arguments:'{}' });await Promise.resolve();expect(ctx.browserTasks.get(agent)?.delegated).toMatchObject([{ id:'sub-1',kind:'subagent',status:'running',expectedOutput:'subagent_codex' }]);session.append('tool/result',{ turn:1,step:1,message:{ role:'user',id:'result' as never,source:{ kind:'tool',callId:ToolCallId('sub-1') },content:[{ type:'tool-result',toolCallId:ToolCallId('sub-1'),content:[],isError:false }] } } as never,{ surfaceOp:'append' });await Promise.resolve();expect(ctx.browserTasks.get(agent)?.delegated[0]?.status).toBe('completed')})
+  it('captures the canonical subagent run identity and bounded output digest',async()=>{
+    const{ ctx,agent,session }=await h();create(ctx,agent)
+    ctx.tools.register(defineTool({
+      name:'subagent_codex',description:'delegate',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'done' }] },
+      execute:async()=>({ kind:'foreground',runId:'real-run-7',output:[{ type:'text',text:'reviewed result' }] }),
+    }))
+    const call=session.append('tool/call',{ turn:1,step:1,callId:ToolCallId('sub-call'),name:'subagent_codex',arguments:'{}' })
+    const result=await ctx.tools.execute({ signal:new AbortController().signal,callId:ToolCallId('sub-call'),name:'subagent_codex',arguments:{},agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId:ToolCallId('sub-call'),content:result.content,isError:result.isError }),...(result.meta===undefined?{}:{ meta:result.meta }) },{ surfaceOp:'append',sourceEventSeqs:[call.seq] })
+    await Promise.resolve()
+    expect(ctx.browserTasks.get(agent)?.delegated as unknown).toMatchObject([{
+      callId:'sub-call',kind:'subagent',status:'completed',identity:{ mode:'foreground',runId:'real-run-7' },
+      source:{ kind:'browser-task-delegation' },
+    }])
+    expect(ctx.browserTasks.get(agent)?.delegated[0]?.outputDigest).toMatch(/^sha256:[a-f0-9]{64}$/u)
+  })
+  it('does not invent delegated work from a tool name before a canonical result exists',async()=>{
+    const{ ctx,agent,session }=await h();create(ctx,agent)
+    session.append('tool/call',{ turn:1,step:1,callId:ToolCallId('name-only'),name:'subagent_codex',arguments:'{}' })
+    await Promise.resolve()
+    expect(ctx.browserTasks.get(agent)?.delegated).toEqual([])
+  })
+  it('does not treat lookalike ordinary tool output as delegated work',async()=>{
+    const{ ctx,agent,session }=await h();create(ctx,agent)
+    ctx.tools.register(defineTool({ name:'ordinary_lookup',description:'ordinary',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'done' }] },
+      execute:async()=>({ kind:'background',jobId:'not-a-job',extra:true }) }))
+    const callId=ToolCallId('lookalike-call')
+    session.append('tool/call',{ turn:1,step:1,callId,name:'ordinary_lookup',arguments:'{}' })
+    const result=await ctx.tools.execute({ signal:new AbortController().signal,callId,name:'ordinary_lookup',arguments:{},agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId,content:result.content,isError:result.isError }) },{ surfaceOp:'append' })
+    await Promise.resolve()
+    expect(ctx.browserTasks.get(agent)?.delegated).toEqual([])
+  })
+  it('rejects replay that swaps a pending delegation call identity to clear its blocker',async()=>{
+    const { ctx,agent,session }=await h();let t=create(ctx,agent)
+    const work={ callId:'pending-call',kind:'job' as const,status:'running',identity:{ mode:'background' as const,jobId:'job-9' },evidenceIds:[] }
+    const event=session.append('browser-task/delegation',{ kind:'browser-task/delegation',version:1,taskId:t.id,work })
+    t=ctx.browserTasks.linkDelegatedWork(agent,t,{ ...work,source:{ kind:'browser-task-delegation',sessionSeq:event.seq } })
+    session.append('browser-task/change',{ kind:'browser-task/change',version:2,operation:'delegation',task:{ ...t,revision:t.revision+1,updatedAt:t.updatedAt+1,blockers:[],delegated:[{ ...t.delegated[0]!,callId:'forged-call' }] } } as never)
+    expect(()=>ctx.browserTasks.get(agent)).toThrow('browser task replay failed')
+  })
+  it('rejects a delegation fact owned by another browser task',async()=>{
+    const { ctx,agent,session }=await h();const t=create(ctx,agent)
+    const work={ callId:'foreign-call',kind:'job' as const,status:'running',identity:{ mode:'background' as const,jobId:'foreign-job' },evidenceIds:[] }
+    const fact=session.append('browser-task/delegation',{ kind:'browser-task/delegation',version:1,taskId:'other-task' as never,work })
+    session.append('browser-task/change',{ kind:'browser-task/change',version:2,operation:'delegation',task:{ ...t,
+      revision:t.revision+1,updatedAt:t.updatedAt+1,blockers:['delegated-work'],
+      delegated:[{ ...work,source:{ kind:'browser-task-delegation',sessionSeq:fact.seq } }],
+    } } as never)
+    expect(()=>ctx.browserTasks.get(agent)).toThrow('browser task replay failed')
+  })
+  it('captures continuation and background identities from result shape, then backfills the matching job terminal result',async()=>{
+    const{ ctx,agent,session }=await h();create(ctx,agent)
+    ctx.tools.register(defineTool({ name:'opaque_delegate',description:'opaque',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'done' }] },
+      execute:async()=>({ kind:'continuable',subagentId:'child-7' }) }))
+    const continuation=ToolCallId('continuation-call')
+    session.append('tool/call',{ turn:1,step:1,callId:continuation,name:'opaque_delegate',arguments:'{}' })
+    const continued=await ctx.tools.execute({ signal:new AbortController().signal,callId:continuation,name:'opaque_delegate',arguments:{},agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId:continuation,content:continued.content,isError:continued.isError }) },{ surfaceOp:'append' })
+    await Promise.resolve()
+    expect(ctx.browserTasks.get(agent)?.delegated).toMatchObject([{ callId:'continuation-call',kind:'subagent',status:'running',identity:{ mode:'continuable',subagentId:'child-7' } }])
+    session.append('user/message',createUserMessage({ content:[{ type:'text',text:'child settled' }],source:{ kind:'subagent-settled',form:'notice',summary:'child settled',senderSessionId:'child-7' } } as never),{ surfaceOp:'append' })
+    await Promise.resolve()
+    expect(ctx.browserTasks.get(agent)?.delegated).toMatchObject([{ callId:'continuation-call',kind:'subagent',status:'settled',identity:{ mode:'continuable',subagentId:'child-7' } }])
+
+    ctx.tools.register(defineTool({ name:'opaque_background',description:'opaque',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'done' }] },
+      execute:async()=>({ kind:'background',jobId:'job-7' }) }))
+    const background=ToolCallId('background-shape-call')
+    session.append('tool/call',{ turn:1,step:1,callId:background,name:'opaque_background',arguments:'{}' })
+    const started=await ctx.tools.execute({ signal:new AbortController().signal,callId:background,name:'opaque_background',arguments:{},agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId:background,content:started.content,isError:started.isError }) },{ surfaceOp:'append' })
+    await Promise.resolve()
+    expect(ctx.browserTasks.get(agent)?.delegated).toContainEqual(expect.objectContaining({ callId:'background-shape-call',kind:'job',status:'running',identity:{ mode:'background',jobId:'job-7' } }))
+
+    ctx.tools.register(defineTool({ name:'job_output',description:'opaque',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'done' }] },
+      execute:async()=>({ text:'done',job:{ id:'job-7',status:'completed' } }) }))
+    const collection=ToolCallId('collection-shape-call')
+    session.append('tool/call',{ turn:1,step:1,callId:collection,name:'job_output',arguments:'{}' })
+    const collected=await ctx.tools.execute({ signal:new AbortController().signal,callId:collection,name:'job_output',arguments:{},agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId:collection,content:collected.content,isError:collected.isError }) },{ surfaceOp:'append' })
+    await Promise.resolve()
+    const completed = ctx.browserTasks.get(agent)?.delegated.find(item => item.callId==='background-shape-call')
+    expect(completed).toMatchObject({ kind:'job',status:'completed',identity:{ mode:'background',jobId:'job-7' } })
+    expect(completed?.outputDigest).toMatch(/^sha256:/u)
+  })
+  it('keeps the real background job id pending until its terminal result is collected',async()=>{
+    const{ ctx,agent,session }=await h();create(ctx,agent)
+    ctx.tools.register(defineTool({
+      name:'subagent_background',description:'delegate in background',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'started' }] },
+      execute:async()=>({ kind:'background',jobId:'subagent-42' }),
+    }))
+    const call=session.append('tool/call',{ turn:1,step:1,callId:ToolCallId('background-call'),name:'subagent_background',arguments:'{}' })
+    const result=await ctx.tools.execute({ signal:new AbortController().signal,callId:ToolCallId('background-call'),name:'subagent_background',arguments:{},agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId:ToolCallId('background-call'),content:result.content,isError:result.isError }) },{ surfaceOp:'append',sourceEventSeqs:[call.seq] })
+    await Promise.resolve()
+    expect(ctx.browserTasks.get(agent) as unknown).toMatchObject({
+      blockers:['delegated-work'],delegated:[{ callId:'background-call',kind:'job',status:'running',identity:{ mode:'background',jobId:'subagent-42' } }],
+    })
+    ctx.tools.register(defineTool({
+      name:'job_output',description:'collect background output',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'collected' }] },
+      execute:async()=>({ text:'review complete',job:{ id:'subagent-42',kind:'subagent',label:'review',status:'completed',startedAt:1,finishedAt:2 } }),
+    }))
+    const collect=session.append('tool/call',{ turn:1,step:1,callId:ToolCallId('job-output-call'),name:'job_output',arguments:'{}' })
+    const collected=await ctx.tools.execute({ signal:new AbortController().signal,callId:ToolCallId('job-output-call'),name:'job_output',arguments:{ job_id:'subagent-42' },agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId:ToolCallId('job-output-call'),content:collected.content,isError:collected.isError }) },{ surfaceOp:'append',sourceEventSeqs:[collect.seq] })
+    await Promise.resolve()
+    const completed = ctx.browserTasks.get(agent)
+    expect(completed).toMatchObject({ blockers:[] })
+    const background = completed?.delegated.find(item => item.callId==='background-call')
+    expect(background).toMatchObject({ status:'completed',identity:{ mode:'background',jobId:'subagent-42' } })
+    expect(background?.outputDigest).toMatch(/^sha256:/u)
+  })
+  it('records exact Cordis package and run identities instead of the tool name',async()=>{
+    const{ ctx,agent,session }=await h();create(ctx,agent)
+    ctx.tools.register(defineTool({
+      name:'cordis_run',description:'run package',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'starting' }] },
+      execute:async()=>({ status:'starting',pluginId:'plugin-a',packageId:'package-v2',pluginRunId:'run-9' }),
+    }))
+    const call=session.append('tool/call',{ turn:1,step:1,callId:ToolCallId('cordis-call'),name:'cordis_run',arguments:'{}' })
+    const result=await ctx.tools.execute({ signal:new AbortController().signal,callId:ToolCallId('cordis-call'),name:'cordis_run',arguments:{},agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId:ToolCallId('cordis-call'),content:result.content,isError:result.isError }) },{ surfaceOp:'append',sourceEventSeqs:[call.seq] })
+    await Promise.resolve()
+    expect(ctx.browserTasks.get(agent)).toMatchObject({
+      blockers:['delegated-work'],delegated:[{ callId:'cordis-call',kind:'cordis',status:'starting',identity:{ mode:'cordis',pluginId:'plugin-a',packageId:'package-v2',pluginRunId:'run-9' } }],
+    })
+  })
+  it('treats a running Cordis activation as terminal and resolves a pending one from canonical inspection',async()=>{
+    const{ ctx,agent,session }=await h();create(ctx,agent)
+    ctx.tools.register(defineTool({ name:'cordis_run',description:'run',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'done' }] },
+      execute:async()=>({ status:'starting',pluginId:'plugin-a',packageId:'package-v2',pluginRunId:'run-9' }) }))
+    const run=ToolCallId('cordis-pending')
+    session.append('tool/call',{ turn:1,step:1,callId:run,name:'cordis_run',arguments:'{}' })
+    const started=await ctx.tools.execute({ signal:new AbortController().signal,callId:run,name:'cordis_run',arguments:{},agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId:run,content:started.content,isError:started.isError }) },{ surfaceOp:'append' })
+    await Promise.resolve(); expect(ctx.browserTasks.get(agent)?.blockers).toContain('delegated-work')
+    ctx.tools.register(defineTool({ name:'cordis_inspect_self',description:'inspect',parameters:{},output:{ schema:{ type:'json' },render:()=>[{ type:'text',text:'done' }] },
+      execute:async()=>({ mode:'plugin',pluginId:'plugin-a',state:'running',activeRun:{ pluginRunId:'run-9',packageId:'package-v2' } }) }))
+    const inspect=ToolCallId('cordis-inspect')
+    session.append('tool/call',{ turn:1,step:1,callId:inspect,name:'cordis_inspect_self',arguments:'{}' })
+    const inspected=await ctx.tools.execute({ signal:new AbortController().signal,callId:inspect,name:'cordis_inspect_self',arguments:{},agent })
+    session.append('tool/result',{ turn:1,step:1,message:createToolResultMessage({ callId:inspect,content:inspected.content,isError:inspected.isError }) },{ surfaceOp:'append' })
+    await Promise.resolve()
+    expect(ctx.browserTasks.get(agent)).toMatchObject({ blockers:[],delegated:[{ callId:'cordis-pending',kind:'cordis',status:'running',identity:{ mode:'cordis',pluginId:'plugin-a',packageId:'package-v2',pluginRunId:'run-9' } }] })
+  })
   it('rejects a forged receipt from another browser task before an evidence change cites it',async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap);const receipt=session.append('browser-task/receipt',{ kind:'browser-task/receipt',version:1,taskId:'other-task' as never,requestId:'r',actionKind:'snapshot',target,outcome:'observed',delivery:'sent',quiescent:true,grantEpoch:1 });session.append('browser-task/change',{ kind:'browser-task/change',version:2,operation:'evidence',task:{ ...t,revision:t.revision+1,updatedAt:t.updatedAt+1,evidence:[{ ...evidence,source:{ kind:'browser-task-receipt',sessionSeq:receipt.seq } }] } } as never);expect(()=>ctx.browserTasks.get(agent)).toThrow('browser task replay failed')})
+  it('rejects presentation proof owned by another browser task',async()=>{
+    const { ctx,agent,session }=await h();let t=create(ctx,agent)
+    t=ctx.browserTasks.upsertResource(agent,t,{ id:'panel',state:'reserved',target })
+    const presentation={ contentDigest:`sha256:${'a'.repeat(64)}`,excerpt:'证据' }
+    const receipt=session.append('browser-task/receipt',{ kind:'browser-task/receipt',version:1,taskId:'other-task' as never,
+      requestId:'foreign-render',actionKind:'region_render',target,outcome:'observed',delivery:'sent',quiescent:true,
+      grantEpoch:1,resourceId:'panel',presentation })
+    session.append('browser-task/change',{ kind:'browser-task/change',version:2,operation:'resource',task:{ ...t,
+      revision:t.revision+1,updatedAt:t.updatedAt+1,resources:[{ id:'panel',state:'active',target,
+        presentation:{ ...presentation,renderReceipt:{ kind:'browser-task-receipt',sessionSeq:receipt.seq } } }],
+    } } as never)
+    expect(()=>ctx.browserTasks.get(agent)).toThrow('browser task replay failed')
+  })
   it('stales evidence for human interaction and rejects a generic acknowledgement',async()=>{const{ ctx,agent }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap);t=ctx.browserTasks.recordEvidence(agent,t,evidence);t=ctx.browserTasks.transition(agent,t,'waiting',['human-interaction']);expect(t.evidence[0]?.state).toBe('stale');expect(()=>ctx.browserTasks.transition(agent,t,'running',[])).toThrow(expect.objectContaining({ code:'BROWSER_TASK_INVALID_TRANSITION' }));expect(()=>ctx.browserTasks.acknowledgeHumanInteraction(agent,t)).toThrow(expect.objectContaining({ code:'BROWSER_TASK_INVALID_TRANSITION' }))})
   it('reconciles one unknown attempt while retaining an observed receipt',async()=>{const{ ctx,agent }=await h();let t=create(ctx,agent);for(const id of ['a','b']){t=ctx.browserTasks.recordAttempt(agent,t,attempt({ attemptId:id,requestId:id,stage:'planned',write:true,target }) as never);t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:id,requestId:id,stage:'dispatched',write:true,target }) as never)}const observed=ctx.browserTasks.recordReceipt(agent,t,{ requestId:'a',actionKind:'click',target,outcome:'observed',delivery:'sent',quiescent:true,grantEpoch:1 });t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:'a',requestId:'a',stage:'settled',outcome:'observed',quiescent:true,settledBy:observed,write:true,target }) as never);const unknown=ctx.browserTasks.recordReceipt(agent,t,{ requestId:'b',actionKind:'click',target,outcome:'unknown',delivery:'sent',quiescent:false,grantEpoch:1 });t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:'b',requestId:'b',stage:'settled',outcome:'unknown',quiescent:false,settledBy:unknown,write:true,target }) as never);const receipt=ctx.browserTasks.recordReceipt(agent,t,{ requestId:'b',actionKind:'click',target,outcome:'observed',delivery:'sent',quiescent:true,grantEpoch:1 });t=ctx.browserTasks.reconcileAttempt(agent,t,attempt({ attemptId:'b',requestId:'b',stage:'settled',outcome:'observed',quiescent:true,settledBy:receipt,write:true,target,reconciledBy:receipt }) as never);expect(t.attempts.map(item=>item.outcome)).toEqual(['observed','observed'])})
   it('rejects malformed receipt and check before they change the Session log',async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordAttempt(agent,t,attempt({ attemptId:'a',requestId:'a',stage:'planned',write:true,target }) as never);t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:'a',requestId:'a',stage:'dispatched',write:true,target }) as never);const count=session.snapshotEvents().length;expect(()=>ctx.browserTasks.recordReceipt(agent,t,{ requestId:'a',actionKind:'click',target,outcome:'observed',delivery:'sent',quiescent:false,grantEpoch:1 })).toThrow();expect(session.snapshotEvents()).toHaveLength(count);expect(()=>ctx.browserTasks.recordCheck(agent,t,{ checkerId:'',target,grantEpoch:1,evaluations:[] })).toThrow();expect(session.snapshotEvents()).toHaveLength(count)})

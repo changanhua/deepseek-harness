@@ -1,5 +1,5 @@
-import type { BrowserTaskCheck, BrowserTaskReceipt, BrowserTaskSnapshot } from './types.ts'
-export type BrowserTaskOperation = 'create' | 'evidence' | 'attempt' | 'reconcile-attempt' | 'resource' | 'reconcile-resource' | 'capability' | 'delegation' | 'evaluate' | 'transition' | 'rebind' | 'acknowledge-target-loss' | 'acknowledge-human-interaction' | 'consume-budget' | 'terminate'
+import type { BrowserTaskCheck, BrowserTaskDelegation, BrowserTaskReceipt, BrowserTaskSnapshot } from './types.ts'
+export type BrowserTaskOperation = 'create' | 'evidence' | 'attempt' | 'reconcile-attempt' | 'resource' | 'reconcile-resource' | 'capability' | 'delegation' | 'evaluate' | 'transition' | 'rebind' | 'acknowledge-target-loss' | 'acknowledge-human-interaction' | 'consume-budget' | 'terminate' | 'owner-cancel'
 /** A closed operation plus full post-state enables strict replay without transient authority. */
 export interface BrowserTaskChangeMeta { readonly kind: 'browser-task/change'; readonly version: 2; readonly operation: BrowserTaskOperation; readonly task: BrowserTaskSnapshot }
 declare module '@deepseek-ai/dsh-session/types' {
@@ -10,5 +10,7 @@ declare module '@deepseek-ai/dsh-session/types' {
     'browser-task/receipt': BrowserTaskReceipt
     /** Deterministic acceptance-check result over current evidence and the exact bound page. */
     'browser-task/check': BrowserTaskCheck
+    /** Canonical Job, Subagent, or Cordis identity captured from one settled Tool execution. */
+    'browser-task/delegation': BrowserTaskDelegation
   }
 }

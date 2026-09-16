@@ -256,10 +256,11 @@ const TOOL_PACKAGES: ToolPackage[] = [
       browser_region_clear: 'packages/browser/tool-browser/src/index.ts',
       browser_task_start: 'packages/browser/tool-browser/src/index.ts',
       browser_task_verify: 'packages/browser/tool-browser/src/index.ts',
+      browser_task_cancel: 'packages/browser/tool-browser/src/index.ts',
       browser_activity_search: 'packages/browser/tool-browser/src/activity.ts',
     },
     requires: ['ctx.browser', 'ctx.browserTasks', 'ctx.tools', 'ctx.approval', 'ctx.browserActivity for historical activity search', 'an initiating Agent session'],
-    writes: ['tool/call', 'tool/result', 'browser-task/change', 'browser-task/receipt', 'browser-task/check', 'approved page actions through Browser'],
+    writes: ['tool/call', 'tool/result', 'browser-task/change', 'browser-task/receipt', 'browser-task/check', 'browser-task/delegation', 'approved page actions through Browser'],
     async mount(ctx) {
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(CatalogBrowser)

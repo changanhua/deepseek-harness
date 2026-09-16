@@ -14,7 +14,7 @@ Browser service 负责显式请求身份、执行器能力声明、精确页面�
 
 区域内容是有界的纯数据联合，并以文本节点渲染；链接仅接受 HTTP(S)。页面运行时拒绝含糊 selector，并把每个挂载绑定到 Session、安装、grant epoch 和页面身份。Replace 模式会移开所选区域的子节点，而不是销毁它们，Host 仅接受已映射、可占用且未受保护的区域。Host 在派发前预留共享区域容量，动态 Cordis runner 则拥有一次激活创建的所有区域，并在停止、更新、启动失败和 undefine 时尝试恢复。结果不确定的渲染或清理会留在待处理清理集合中，而不会被当作页面无效果的证明。`document_replaced` 记录消失资源；`target_url_stale` 不会。
 
-`@changanhua/dsh-browser-task` 拥有 Session 持久的现场任务 projection。它分离不可变 evidence 与目标绑定、action attempt 与 receipt、页面资源 lease、capability 快照、委派事实和验收检查。其完成规则不接受单独的 observed action、委派 run 或渲染面板：每个条款都需要 checker 支持的当前 evidence，不能存在 blocker 或未解决 write，预算仍须可用，并且每个资源都要凭匹配回执已释放或确证消失。V1 拒绝 retained 资源；显式转交给 Session/用户属于延期能力。tool-browser loop 是该 projection 的无状态 continuation 与 checker facade；它绝不成为第二套任务权威。
+`@changanhua/dsh-browser-task` 拥有 Session 持久的现场任务 projection。它分离不可变 evidence 与目标绑定、action attempt 与 receipt、页面资源 lease、capability 快照、规范 Subagent/Job/Cordis 身份和验收检查。委派输出只以有界摘要进入，绝不会单独算作验收。区域展示条款要求精确的 observed render 回执与之后命中其文本的新页面观察，随后完成还要等待该区域有回执支持的清理归宿。其他条款也必须拥有 checker 支持的当前 evidence，不能留下 blocker 或未解决 write，预算始终有界。V1 拒绝 retained 资源；显式转交给 Session/用户属于延期能力。tool-browser loop 是该 projection 的无状态 continuation 与 checker facade；它绝不成为第二套任务权威。
 
 五个模型工具为 `browser_request_status`、`browser_action_sequence`、`browser_page_map`、`browser_region_render` 和 `browser_region_clear`。动态 Plugin facade 通过 `harness.browser.pageMap`、`render` 和 `restore` 暴露同一页面工作区流程；它不会创建第二套页面协议。
 

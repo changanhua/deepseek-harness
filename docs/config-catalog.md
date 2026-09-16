@@ -65,7 +65,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/browser/browser-extension/src/index.ts:28`](../packages/browser/browser-extension/src/index.ts)
+Source: [`packages/browser/browser-extension/src/index.ts:29`](../packages/browser/browser-extension/src/index.ts)
 
 <a id="changanhuadsh-browser-monitor"></a>
 
@@ -4061,7 +4061,7 @@ Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
 
-- `@changanhua/dsh-browser-task` — requires `agents` · `sessionProjections` ([`packages/browser/browser-task/src/index.ts`](../packages/browser/browser-task/src/index.ts))
+- `@changanhua/dsh-browser-task` — requires `agents` · `sessionProjections` · `tools` ([`packages/browser/browser-task/src/index.ts`](../packages/browser/browser-task/src/index.ts))
 - `@changanhua/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
 - `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
 - `@changanhua/dsh-client-ui-content` ([`packages/client/ui-content/src/index.ts`](../packages/client/ui-content/src/index.ts))

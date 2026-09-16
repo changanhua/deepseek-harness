@@ -215,8 +215,17 @@
       snapshots.set(snapshotId, { url: window.location.href, nodes, expiresAt: Date.now() + RETENTION_MS })
       while (snapshots.size > MAX_SNAPSHOTS) snapshots.delete(snapshots.keys().next().value)
     }
+    const presentations = Array.isArray(options?.presentationQueries) ? options.presentationQueries.slice(0, 32).flatMap(query => {
+      if (!query || typeof query.mountId !== 'string' || !query.mountId || typeof query.text !== 'string' || !query.text
+        || new TextEncoder().encode(query.text).byteLength > 512) return []
+      const expected = text(query.text)
+      const mounted = regionMounts.get(query.mountId)
+      const panels = mounted?.url === location.href ? regionPanels(query.mountId).filter(panel => panel.isConnected) : []
+      return [{ mountId: query.mountId, text: expected, present: panels.some(panel => text(panel.textContent).includes(expected)) }]
+    }) : []
     return { snapshotId, url: window.location.href, title: document.title,
       ...visibleBodyText(bounded(options?.textLimit, MAX_TEXT, 0, MAX_TEXT)), elements,
+      presentations,
       ...(options?.structure === false ? {} : { structure: structuralSummary(elements, nodes) }),
       offset, nextOffset: hasMore ? offset + elements.length : null, elementsTruncated: hasMore,
       scanTruncated: examined >= 10000 }
@@ -792,13 +801,25 @@
     for (const block of action.blocks.slice(0, MAX_REGION_BLOCKS)) panel.append(regionBlockNode(block))
     return panel
   }
+  const restoreReplacedNodes = (mountId, replaced) => {
+    let restored = 0
+    for (const saved of replaced ?? []) {
+      if (!saved.container?.isConnected) continue
+      // A route renderer may have populated this still-connected container
+      // before our observer runs.  Restoring the pre-render nodes then would
+      // overwrite that new route.  A restore is safe only while this exact
+      // mount still owns every child of the container.
+      const children = [...saved.container.childNodes]
+      const whollyOwned = children.length > 0 && children.every(node => node.nodeType === Node.ELEMENT_NODE
+        && node.dataset?.dshRegionMountId === mountId)
+      if (whollyOwned) { saved.container.replaceChildren(...saved.nodes); restored++ }
+    }
+    return restored
+  }
   const regionClearById = mountId => {
     const existing = regionMounts.get(mountId)
     existing?.observer.disconnect()
-    for (const saved of existing?.replaced ?? []) {
-      if (!saved.container?.isConnected) continue
-      saved.container.replaceChildren(...saved.nodes)
-    }
+    const restored = restoreReplacedNodes(mountId, existing?.replaced)
     regionMounts.delete(mountId)
     const panels = regionPanels(mountId)
     // A reloaded runtime can remove its panel, but cannot prove what a
@@ -806,7 +827,10 @@
     // lease unresolved instead of claiming a restoration we did not perform.
     const unverifiedReplacement = existing === undefined && panels.some(panel => panel.dataset.dshRegionMode === 'replace')
     for (const node of panels) node.remove()
-    return { cleared: !unverifiedReplacement && (existing !== undefined || panels.length > 0), restored: existing?.replaced?.length ?? 0 }
+    if (existing === undefined && panels.length === 0) {
+      return { cleared: true, restored: 0, disposition: 'absent' }
+    }
+    return { cleared: !unverifiedReplacement && (existing !== undefined || panels.length > 0), restored }
   }
   // Same-document URL drift is not document destruction. For replace mode we
   // must not restore nodes captured from the prior route into the new route.

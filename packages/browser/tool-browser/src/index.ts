@@ -481,7 +481,8 @@ export function apply(ctx: Context): void {
     parameters: { installationId: { type: 'string', required: true }, goal: { type: 'string', required: true },
       page: { type: 'object', required: true, additionalProperties: false, properties: { tabId: { type: 'integer', required: true }, frameId: { type: 'integer', required: true }, documentId: { type: 'string', required: true }, url: { type: 'string', required: true } } },
       success: { type: 'object', required: true, additionalProperties: false, properties: { text: { type: 'string' }, url: { type: 'string' },
-        control: { type: 'object', additionalProperties: false, properties: { role: { type: 'string' }, label: { type: 'string' }, checked: { type: 'boolean' }, expanded: { type: 'boolean' } } } } } },
+        control: { type: 'object', additionalProperties: false, properties: { role: { type: 'string' }, label: { type: 'string' }, checked: { type: 'boolean' }, expanded: { type: 'boolean' } } },
+        region: { type: 'object', additionalProperties: false, properties: { mountId: { type: 'string', required: true }, text: { type: 'string', required: true } } } } } },
     output: taskOutput,
     async execute(args: BrowserTaskStart, exec) {
       if (exec.agent === undefined) throw new Error('browser tasks require an initiating agent')
@@ -496,6 +497,12 @@ export function apply(ctx: Context): void {
       if (exec.agent === undefined) throw new Error('browser tasks require an initiating agent')
       return browserTasks.verify(exec.agent, exec.signal) as Promise<JsonValue>
     },
+  }))
+  ctx.tools.register(defineTool({
+    name: 'browser_task_cancel',
+    description: 'End the current browser task only after asking the user to send the exact marker [browser-task:cancel] or [browser-task:accept-unknown] in their latest direct message. This records that decision fact, preserves unknown attempts, and refuses while any page resource is not released or confirmed gone. It never converts unknown into observed.',
+    parameters: {}, output: taskOutput,
+    execute(_args, exec) { return Promise.resolve(browserTasks.cancel(agentOf(exec)) as JsonValue) },
   }))
   ctx.tools.register(defineTool({
     name: 'browser_action', description: 'Perform one page action under standing personal authorization, then return a fresh snapshot in value.feedback. For a natural-language multi-step task, first call browser_task_start with a machine success condition, then call browser_task_verify after each action; direct browser_action remains for one-off actions. Check feedback against the goal before choosing the next step. On stale references, re-select the intended target using new page + snapshotId + elementId. Never automatically retry an unknown outcome. An acknowledgement alone does not prove success.',

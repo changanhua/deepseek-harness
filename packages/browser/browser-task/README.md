@@ -11,7 +11,7 @@ English | [中文](README.zh.md)
 
 `@changanhua/dsh-browser-task` is the Session-backed domain authority for one browser task. Every closed-operation mutation writes a complete `browser-task/change` post-state; the projection can therefore replay after a Host restart without a process-local task map. A Session may start the next task only after the former task is terminal, and a durable source sequence prevents replaying the same input as a new task.
 
-It deliberately separates page evidence, exact target binding, action receipts, resource disposition, authority snapshots, delegation and acceptance. Evidence binds a real Session fact or Browser receipt, page target and capability epoch. A resource is reserved before dispatch; `delivery:not-sent` may release that reservation without pretending a page clear occurred. An observed action or completed delegated job is not task completion. Completion requires checker-backed current evidence for every clause, no unresolved writes or blockers, budgets that were never exceeded, and every page resource released or confirmed vanished. Retained ownership remains fail-closed until a dedicated owner-decision fact exists.
+It deliberately separates page evidence, exact target binding, action receipts, resource disposition, authority snapshots, delegation and acceptance. Evidence binds a real Session fact or Browser receipt, page target and capability epoch. Delegation facts retain canonical Subagent run, background Job, or Cordis package/run identities plus bounded output digests; a successful delegation never satisfies acceptance by itself. A `region-content` clause requires the matching render receipt and a fresh page observation of the rendered text, while completion still waits for the region's final cleanup disposition. A resource is reserved before dispatch; `delivery:not-sent` may release that reservation without pretending a page clear occurred. Completion requires checker-backed current evidence for every clause, no unresolved writes or blockers, budgets that were never exceeded, and every page resource released or confirmed vanished. An extension-side acknowledgement of an unknown request releases only its transport lock. A newer direct user message may explicitly cancel the Session task only after every resource has a receipt-backed final disposition; the unknown attempt remains historical fact.
 
 ## Table of Contents
 
@@ -38,7 +38,7 @@ Stable task schema and consumer composition preserve the reusable prefix. Change
 ## Known Limitations and Deferred Work
 
 - The standard Web composition and `tool-browser` consumer use this service, but no dedicated task-status UI renders its generic Session projection yet.
-- User-retained page resources are not accepted as final in V1; release or confirmed document replacement is required.
+- An owner cancellation is available only after cleanup and an explicit latest direct-user marker: `[browser-task:cancel]` or `[browser-task:accept-unknown]`. The Agent must ask for that marker when an unknown browser effect needs an owner decision; it cannot infer consent from ordinary prose or assert what the effect did.
 - Real DeepSeek-v4.1-flash extension acceptance depends on the configured deployment and is tracked separately from package tests.
 
 <a id="dev-note"></a>

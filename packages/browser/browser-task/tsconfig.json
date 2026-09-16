@@ -9,6 +9,7 @@
     { "path": "../../util/brand" },
     { "path": "../../core/session" },
     { "path": "../../core/agent" },
+    { "path": "../../core/tools" },
     { "path": "../../session/session-projection" },
     { "path": "../browser" }
   ]

@@ -60,7 +60,8 @@
 
 - id: tool-browser
   name: '@changanhua/dsh-tool-browser'
-  disabled: !!js ctx.get('browser') === undefined
+  disabled: !!js >-
+    (() => { const browser = ctx.get('browser'); const browserTasks = ctx.get('browserTasks'); if (browser === undefined || browserTasks === undefined) throw new Error(`standard browser tools require browser=${browser === undefined ? 'missing' : 'available'} and browserTasks=${browserTasks === undefined ? 'missing' : 'available'}`); return false })()
 
 # ── filesystem ──────────────────────────────────────────────────────────────
 

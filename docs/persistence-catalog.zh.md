@@ -244,6 +244,52 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 来源：[`packages/core/session/src/types.ts:321`](../packages/core/session/src/types.ts)
 
+### `browser-task/*`
+
+<a id="browser-taskchange--log-only"></a>
+
+#### `browser-task/change` — 仅日志
+
+```ts persistence-catalog
+/** Complete post-mutation BrowserTask state for strict replay and client projection. */
+'browser-task/change': BrowserTaskChangeMeta
+```
+
+来源：[`packages/browser/browser-task/src/domain.ts:8`](../packages/browser/browser-task/src/domain.ts)
+
+<a id="browser-taskcheck--log-only"></a>
+
+#### `browser-task/check` — 仅日志
+
+```ts persistence-catalog
+/** Deterministic acceptance-check result over current evidence and the exact bound page. */
+'browser-task/check': BrowserTaskCheck
+```
+
+来源：[`packages/browser/browser-task/src/domain.ts:12`](../packages/browser/browser-task/src/domain.ts)
+
+<a id="browser-taskdelegation--log-only"></a>
+
+#### `browser-task/delegation` — 仅日志
+
+```ts persistence-catalog
+/** Canonical Job, Subagent, or Cordis identity captured from one settled Tool execution. */
+'browser-task/delegation': BrowserTaskDelegation
+```
+
+来源：[`packages/browser/browser-task/src/domain.ts:14`](../packages/browser/browser-task/src/domain.ts)
+
+<a id="browser-taskreceipt--log-only"></a>
+
+#### `browser-task/receipt` — 仅日志
+
+```ts persistence-catalog
+/** Bounded Browser execution receipt cited by an attempt, evidence record, or resource disposition. */
+'browser-task/receipt': BrowserTaskReceipt
+```
+
+来源：[`packages/browser/browser-task/src/domain.ts:10`](../packages/browser/browser-task/src/domain.ts)
+
 ### `command/*`
 
 <a id="commanddone--log-only"></a>

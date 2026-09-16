@@ -16,6 +16,7 @@ export type BrowserTaskSourceRef =
   | { readonly kind: 'tool-result'; readonly callId: string; readonly sessionSeq: number }
   | { readonly kind: 'browser-task-receipt'; readonly sessionSeq: number }
   | { readonly kind: 'browser-task-check'; readonly sessionSeq: number }
+  | { readonly kind: 'browser-task-delegation'; readonly sessionSeq: number }
 
 export type EvidenceState = 'current' | 'stale' | 'superseded'
 export interface BrowserTaskEvidence {
@@ -31,6 +32,7 @@ export type AcceptanceClause =
   | { readonly id: string; readonly kind: 'text-contains'; readonly text: string }
   | { readonly id: string; readonly kind: 'url-equals'; readonly url: string }
   | { readonly id: string; readonly kind: 'control-state'; readonly control: string; readonly state: string }
+  | { readonly id: string; readonly kind: 'region-content'; readonly resourceId: string; readonly text: string }
 export interface AcceptanceEvaluation {
   readonly clauseId: string
   readonly satisfied: boolean
@@ -51,11 +53,19 @@ export interface BrowserActionAttempt {
   readonly target: BrowserTargetBinding
   /** Exact page-resource lease for a region or mount action, when applicable. */
   readonly resourceId?: string
+  /** Bounded render intent retained before dispatch so a recovered receipt can prove presentation. */
+  readonly presentationIntent?: { readonly contentDigest: string; readonly excerpt: string }
   readonly settledBy?: BrowserTaskSourceRef
   readonly reconciledBy?: BrowserTaskSourceRef
 }
 export type PageResourceState = 'reserved' | 'active' | 'release-pending' | 'released' | 'vanished' | 'unresolved' | 'retained'
-export type ResourceDisposition = 'clear-observed' | 'document-replaced' | 'owner-transfer' | 'reconcile-active' | 'reconcile-observed' | 'not-sent'
+export type ResourceDisposition = 'clear-observed' | 'document-replaced' | 'absent' | 'owner-transfer' | 'reconcile-active' | 'reconcile-observed' | 'not-sent'
+export interface BrowserPagePresentation {
+  readonly contentDigest: string
+  readonly excerpt: string
+  readonly renderReceipt: Extract<BrowserTaskSourceRef, { kind: 'browser-task-receipt' }>
+  readonly evidenceId?: string
+}
 export interface BrowserPageResource {
   readonly id: string
   readonly state: PageResourceState
@@ -63,6 +73,7 @@ export interface BrowserPageResource {
   readonly target: BrowserTargetBinding
   readonly disposition?: ResourceDisposition
   readonly dispositionSource?: BrowserTaskSourceRef
+  readonly presentation?: BrowserPagePresentation
 }
 export type CapabilityState = 'observed' | 'degraded' | 'unavailable'
 export interface BrowserCapability {
@@ -73,7 +84,21 @@ export interface BrowserCapability {
   readonly actions: readonly string[]
   readonly protocol: string
 }
-export interface DelegatedWorkRef { readonly id: string; readonly kind: 'job' | 'subagent' | 'cordis'; readonly status: string; readonly expectedOutput: string; readonly evidenceIds: readonly string[]; readonly source: BrowserTaskSourceRef }
+export type DelegatedWorkIdentity =
+  | { readonly mode: 'foreground'; readonly runId: string }
+  | { readonly mode: 'background'; readonly jobId: string }
+  | { readonly mode: 'continuable'; readonly subagentId: string }
+  | { readonly mode: 'cordis'; readonly pluginId: string; readonly packageId: string; readonly pluginRunId: string }
+  | { readonly mode: 'tool-call' }
+export interface DelegatedWorkRef {
+  readonly callId: string
+  readonly kind: 'job' | 'subagent' | 'cordis'
+  readonly status: string
+  readonly identity: DelegatedWorkIdentity
+  readonly outputDigest?: string
+  readonly evidenceIds: readonly string[]
+  readonly source: BrowserTaskSourceRef
+}
 export interface BrowserTaskBudget {
   readonly maxSteps: number
   readonly maxActions: number
@@ -85,6 +110,8 @@ export interface BrowserTaskSnapshot extends BrowserTaskRef {
   readonly sourceSeq: number
   readonly phase: BrowserTaskPhase
   readonly outcome?: BrowserTaskOutcome
+  /** Direct user Session fact that explicitly ended an uncertain task. */
+  readonly terminationSource?: { readonly kind: 'user'; readonly sessionSeq: number }
   readonly blockers: readonly BrowserTaskBlocker[]
   readonly target?: BrowserTargetBinding
   readonly targetLossAcknowledged: boolean
@@ -114,14 +141,24 @@ export interface BrowserTaskReceipt {
   /** Exact resource lease affected by this receipt, when the action is resource-scoped. */
   readonly resourceId?: string
   readonly reason?: string
+  readonly presentation?: { readonly contentDigest: string; readonly excerpt: string }
 }
 export interface BrowserTaskCheck { readonly kind: 'browser-task/check'; readonly version: 1; readonly taskId: BrowserTaskId; readonly checkerId: string; readonly target: BrowserTargetBinding; readonly grantEpoch: number; readonly evaluations: readonly { readonly clauseId: string; readonly satisfied: boolean; readonly evidenceIds: readonly string[] }[] }
+/** Canonical bounded delegation fact captured from the Tool runtime before the task cites it. */
+export interface BrowserTaskDelegation {
+  readonly kind: 'browser-task/delegation'
+  readonly version: 1
+  readonly taskId: BrowserTaskId
+  readonly work: Omit<DelegatedWorkRef, 'source'>
+}
 /** Host-only replay index. It never crosses the projection wire. */
 export interface BrowserTaskSourceFact {
   readonly kind: BrowserTaskSourceRef['kind']
   readonly sessionSeq: number
   readonly callId?: string
   readonly name?: string
+  /** Explicit user decision marker derived from content; raw content is never retained here. */
+  readonly decision?: 'cancel' | 'accept-unknown'
   readonly taskId?: BrowserTaskId
   readonly requestId?: string
   readonly actionKind?: string
@@ -132,12 +169,14 @@ export interface BrowserTaskSourceFact {
   readonly grantEpoch?: number
   readonly resourceId?: string
   readonly reason?: string
+  readonly presentation?: { readonly contentDigest: string; readonly excerpt: string }
   readonly checkerId?: string
   readonly evaluations?: readonly {
     readonly clauseId: string
     readonly satisfied: boolean
     readonly evidenceIds: readonly string[]
   }[]
+  readonly work?: Omit<DelegatedWorkRef, 'source'>
 }
 export interface BrowserTaskProjectionState {
   readonly current: BrowserTaskSnapshot | null
