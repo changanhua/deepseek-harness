@@ -9,13 +9,14 @@
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import { LocalSandboxProvider } from '@deepseek-ai/dsh-sandbox-local'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import { SandboxPwshExecutor } from '../src/index.ts'
@@ -33,12 +34,16 @@ describe.skipIf(!isWin32 || !pwshAvailable())('pwsh-sandbox real ACL confinement
   let secretFile!: string
   let escapeFile!: string
   let executor!: SandboxPwshExecutor
+  let ctx: Context | undefined
 
   beforeAll(async () => {
     // The workspace escape sits under the profile. A separate directory under
     // the ambient temp root proves that the root itself is not granted: the
     // runner creates its own private child and rewrites TMP/TEMP to it.
-    scratchRoot = mkdtempSync(join(homedir(), 'dsh-pwsh-sandbox-e2e-'))
+    // Keep the workspace outside the ambient temp root without putting test
+    // state directly in the user's profile. The sandbox must distinguish this
+    // parent from `outsideTempDir`, which remains inside the platform temp root.
+    scratchRoot = mkdtempSync(join(tmpdir(), '..', 'dsh-pwsh-sandbox-e2e-'))
     writableDir = join(scratchRoot, 'writable')
     mkdirSync(writableDir)
     outsideTempDir = mkdtempSync(join(tmpdir(), 'dsh-pwsh-sandbox-e2e-outside-temp-'))
@@ -46,7 +51,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('pwsh-sandbox real ACL confinement
     writeFileSync(secretFile, 'top secret - must stay readable to prove the read boundary')
     escapeFile = join(scratchRoot, 'escaped.txt')
 
-    const ctx = new Context()
+    ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(LocalSandboxProvider, {})
     await ctx.plugin(SandboxPolicyService, { mode: 'workspace-write', workspaceRoot: writableDir })
     await ctx.plugin(LocalSubprocessRuntime)
@@ -54,7 +60,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('pwsh-sandbox real ACL confinement
     executor = ctx.shell as SandboxPwshExecutor
   })
 
-  afterAll(() => {
+  afterAll(async () => {
+    await ctx?.fiber.dispose()
     rmSync(scratchRoot, { recursive: true, force: true })
     rmSync(outsideTempDir, { recursive: true, force: true })
   })
