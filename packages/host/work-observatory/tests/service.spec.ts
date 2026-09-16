@@ -124,13 +124,30 @@ describe('WorkObservatory', () => {
     expect(result.summary.pageVisibleMs).toBe(5)
   })
 
-  it('bounds concurrent client identities instead of growing state without limit', async () => {
+  it('admits a new client at capacity without counting an evicted active gap', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(10)
     const { observatory } = await harness()
-    await observatory.observeClient({ clientId: 'browser-1', seq: 0, visible: true, active: false })
-    await observatory.observeClient({ clientId: 'browser-2', seq: 0, visible: true, active: false })
+    await observatory.observeClient({ clientId: 'browser-1', seq: 0, visible: true, active: true })
+    vi.setSystemTime(20)
+    await observatory.observeClient({ clientId: 'browser-1', seq: 1, visible: true, active: true })
+    vi.setSystemTime(30)
+    await observatory.observeClient({ clientId: 'browser-2', seq: 0, visible: false, active: false })
+
+    vi.setSystemTime(40)
     await expect(observatory.observeClient({
-      clientId: 'browser-3', seq: 0, visible: true, active: false,
-    })).rejects.toThrow(/client limit/i)
+      clientId: 'browser-3', seq: 0, visible: false, active: false,
+    })).resolves.toEqual({ accepted: true })
+    vi.setSystemTime(50)
+    await expect(observatory.observeClient({
+      clientId: 'browser-1', seq: 2, visible: true, active: true,
+    })).resolves.toEqual({ accepted: true })
+    vi.setSystemTime(60)
+    await observatory.observeClient({ clientId: 'browser-1', seq: 3, visible: true, active: true })
+
+    const result = await observatory.readRange({ from: 0, to: 70 })
+    expect(result.summary.humanActiveMs).toBe(20)
+    expect(result.summary.pageVisibleMs).toBe(20)
   })
 
   it('compacts unchanged heartbeats into the current client state', async () => {

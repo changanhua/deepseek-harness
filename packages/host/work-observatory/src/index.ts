@@ -163,9 +163,7 @@ export class WorkObservatory extends TypertRemoteService {
       if (previous !== undefined && observation.seq <= previous.lastSeq) return { accepted: false }
       if (previous === undefined && clients.size >= this.maxClients) {
         await this.prune(now)
-        if (clients.size >= this.maxClients) {
-          throw new Error(`work-observatory: client limit ${this.maxClients} reached`)
-        }
+        if (clients.size >= this.maxClients) await this.evictOldestClient()
       }
       const session = observation.sessionId === undefined
         ? undefined
@@ -369,6 +367,32 @@ export class WorkObservatory extends TypertRemoteService {
     for (const [clientId, state] of this.requireClients().entries()) {
       if (state.lastObservedAt < cutoff) await this.requireClients().delete(clientId)
     }
+  }
+
+  private async evictOldestClient(): Promise<void> {
+    const clients = this.requireClients()
+    let oldest: [string, WorkObservatoryClientState] | undefined
+    for (const entry of clients.entries()) {
+      if (oldest === undefined
+        || entry[1].lastObservedAt < oldest[1].lastObservedAt
+        || (entry[1].lastObservedAt === oldest[1].lastObservedAt && entry[0].localeCompare(oldest[0]) < 0)) {
+        oldest = entry
+      }
+    }
+    if (oldest === undefined) throw new Error('work-observatory: client capacity invariant failed')
+    const [clientId, state] = oldest
+    if (state.visible) {
+      await this.requireSamples().put(sampleKey(clientId, state.lastSeq), {
+        clientId,
+        seq: state.lastSeq,
+        observedAt: state.lastObservedAt,
+        visible: false,
+        active: false,
+        ...(state.sessionId === undefined ? {} : { sessionId: state.sessionId }),
+        ...(state.projectPath === undefined ? {} : { projectPath: state.projectPath }),
+      })
+    }
+    await clients.delete(clientId)
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
