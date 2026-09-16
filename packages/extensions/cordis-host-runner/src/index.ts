@@ -4,6 +4,7 @@
  * @module @deepseek-ai/dsh-cordis-host-runner
  */
 
+import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -141,12 +142,18 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     this.rootCtx = ctx
     this.resolved = config as ResolvedConfig
     this.inspectRegistry = new CordisInspectRegistryService(ctx)
-    ctx.on('agent/disposed', async ({ agent }) => {
-      for (const plugin of this.registry.ofSession(agent.id)) {
-        const result = await this.undefine(agent, plugin.pluginId)
-        if (!result.ok) console.error(`[cordis:${plugin.pluginId}] owner disposal: ${result.message}`)
-      }
+    ctx.on('agent/disposed', ({ agent }) => {
+      void this.disposeOwned(agent).catch((error: unknown) => {
+        console.error(`[cordis:${agent.id}] owner disposal failed`, error)
+      })
     })
+  }
+
+  private async disposeOwned(agent: Agent): Promise<void> {
+    for (const plugin of this.registry.ofSession(agent.id)) {
+      const result = await this.undefine(agent, plugin.pluginId)
+      if (!result.ok) console.error(`[cordis:${plugin.pluginId}] owner disposal: ${result.message}`)
+    }
   }
 
   /**
@@ -182,6 +189,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         retainedBrowserMounts: new Map(),
         pendingBrowserWork: new Set(),
         pendingBrowserMounts: new Map(),
+        pendingBrowserRegions: new Map(),
       }
       this.registry.add(plugin)
     } else {
@@ -225,7 +233,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     if (plugin.run !== undefined) await this.retract(plugin)
     for (const mount of plugin.retainedBrowserMounts.values()) plugin.pendingBrowserMounts.set(mount.mountId, mount)
     const remaining = await this.cleanupPendingBrowserMounts(plugin, true)
-    if (remaining.length) return { ok: false, reason: 'cleanup-pending', message: `browser entries remain unresolved: ${remaining.join(', ')}` }
+    if (remaining.length) return { ok: false, reason: 'cleanup-pending', message: `browser page cleanup remains unresolved: ${remaining.join(', ')}` }
     this.registry.delete(pluginId)
     return { ok: true, wasRunning }
   }
@@ -470,19 +478,27 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     const plugin = this.owned(agent, pluginId)
     if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
     const pending = this.registry.pendingRequestFor(pluginId)
-    if (plugin.run === undefined && pending === undefined && plugin.pendingBrowserMounts.size === 0) {
+    if (plugin.run === undefined && pending === undefined
+      && plugin.pendingBrowserMounts.size === 0 && plugin.pendingBrowserRegions.size === 0) {
       return { ok: false, reason: 'not-running', message: `dynamic plugin "${pluginId}" is not running` }
     }
     if (pending !== undefined) this.cancelPending(pluginId, `dynamic plugin "${pluginId}" was stopped before approval`)
-    const cleanupPending = plugin.run === undefined
-      ? await this.cleanupPendingBrowserMounts(plugin)
-      : await this.retract(plugin)
+    if (plugin.run !== undefined) await this.retract(plugin)
+    const cleanupPending = await this.cleanupPendingBrowserMounts(plugin)
     if (plugin.latestRun !== undefined) {
       plugin.latestRun.status = 'stopped'
       if (plugin.latestRun.host.status !== 'absent') plugin.latestRun.host = { status: 'stopped', waitingFor: [] }
       if (plugin.latestRun.client.status !== 'absent') plugin.latestRun.client = { status: 'stopped', waitingFor: [] }
     }
-    return { ok: true, ...(cleanupPending.length === 0 ? {} : { cleanupPending }) }
+    if (cleanupPending.length > 0) {
+      return {
+        ok: false,
+        reason: 'cleanup-pending',
+        message: `dynamic plugin stopped, but browser page cleanup remains unresolved: ${cleanupPending.join(', ')}`,
+        cleanupPending,
+      }
+    }
+    return { ok: true }
   }
 
   /**
@@ -856,7 +872,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       }
     }
     if (plugin.run !== undefined) await this.retract(plugin)
-    if (plugin.pendingBrowserMounts.size > 0 && (await this.cleanupPendingBrowserMounts(plugin)).length > 0) {
+    if ((plugin.pendingBrowserMounts.size > 0 || plugin.pendingBrowserRegions.size > 0)
+      && (await this.cleanupPendingBrowserMounts(plugin)).length > 0) {
       return { ok: false, message: 'browser cleanup must settle before starting another Plugin version' }
     }
     if (mode === 'update' || plugin.currentPackageId === undefined) plugin.nextPackageId = definition.packageId
@@ -867,6 +884,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       handlerDisposers: [],
       reportedRuntimeErrors: new Set(),
       ownedBrowserMounts: new Map(),
+      ownedBrowserRegions: new Map(),
       browserLifetime: new AbortController(),
       browserWork: new Set(),
       ...requestId === undefined ? {} : { startedForRequest: requestId },
@@ -960,7 +978,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       if (typeof browser?.execute !== 'function') throw new Error('harness.browser requires the Browser service')
       const installationId = requiredText(input.installationId, 'installationId', 128)
       const lifetime = AbortSignal.any([run.browserLifetime.signal, signal ?? AbortSignal.timeout(15_000)])
-      const work = browser.execute({ sessionId: plugin.sessionId, installationId, action }, lifetime)
+      const work = browser.execute({ sessionId: plugin.sessionId, installationId, requestId: randomUUID(), action }, lifetime)
       run.browserWork.add(work)
       plugin.pendingBrowserWork.add(work)
       try { return await work } finally { run.browserWork.delete(work); plugin.pendingBrowserWork.delete(work) }
@@ -982,6 +1000,9 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         selector: requiredText(input.selector, 'selector', 256),
         ...optionalText(input, 'titleSelector', 256), ...optionalText(input, 'linkSelector', 256),
         ...(input.sampleLimit === undefined ? {} : { sampleLimit: input.sampleLimit }),
+      }, signal),
+      pageMap: async (input: Record<string, unknown>, signal?: AbortSignal) => execute(input, {
+        kind: 'page_map', page: page(input),
       }, signal),
       mount: async (input: Record<string, unknown>, signal?: AbortSignal) => {
         run.browserLifetime.signal.throwIfAborted()
@@ -1020,6 +1041,46 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         }
         return result
       },
+      render: async (input: Record<string, unknown>, signal?: AbortSignal) => {
+        run.browserLifetime.signal.throwIfAborted()
+        const ownedSlot = slot(input)
+        const mountId = `${plugin.pluginId}:${ownedSlot}`
+        const ownedPage = page(input)
+        const previous = run.ownedBrowserRegions.get(ownedSlot)
+        if (previous !== undefined && (previous.installationId !== input.installationId
+          || previous.page.tabId !== ownedPage.tabId || previous.page.frameId !== ownedPage.frameId
+          || previous.page.documentId !== ownedPage.documentId || previous.page.url !== ownedPage.url)) {
+          throw new Error('browser region slot is bound to another page; restore it before rebinding')
+        }
+        const owned = { installationId: requiredText(input.installationId, 'installationId', 128),
+          page: ownedPage as { tabId: number; frameId: number; documentId: string; url: string }, mountId }
+        // Track before dispatch because an infrastructure failure can surface after delivery crossed the process boundary.
+        run.ownedBrowserRegions.set(ownedSlot, owned)
+        const result = await execute(input, {
+          kind: 'region_render', page: ownedPage, mountId,
+          selector: requiredText(input.selector, 'selector', 256),
+          ...(input.placement === undefined ? {} : { placement: input.placement }),
+          ...(input.mode === undefined ? {} : { mode: input.mode }),
+          ...optionalText(input, 'title', 128),
+          blocks: structuredClone(input.blocks),
+        }, signal) as { outcome?: unknown }
+        if (result.outcome !== 'observed' && result.outcome !== 'unknown') {
+          if (previous === undefined) run.ownedBrowserRegions.delete(ownedSlot)
+          else run.ownedBrowserRegions.set(ownedSlot, previous)
+        }
+        return result
+      },
+      restore: async (input: Record<string, unknown>, signal?: AbortSignal) => {
+        const ownedSlot = slot(input)
+        const existing = run.ownedBrowserRegions.get(ownedSlot)
+        const mountId = `${plugin.pluginId}:${ownedSlot}`
+        const result = await execute(input, { kind: 'region_clear', page: page(input), mountId }, signal) as { outcome?: unknown; value?: unknown }
+        if (confirmedRegionClear(result) && (existing === undefined || existing.mountId === mountId)) {
+          run.ownedBrowserRegions.delete(ownedSlot)
+          plugin.pendingBrowserRegions.delete(mountId)
+        }
+        return result
+      },
     })
   }
 
@@ -1028,22 +1089,24 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     const outstanding = Promise.allSettled([...run.browserWork])
     let timer: ReturnType<typeof setTimeout> | undefined
     const settled = await Promise.race([outstanding.then(() => true), new Promise<boolean>((resolve) => {
-      timer = setTimeout(() => resolve(false), 5_000)
+      timer = setTimeout(() =>{  resolve(false) }, 5_000)
     })])
     clearTimeout(timer)
     if (!settled) {
       for (const mount of run.ownedBrowserMounts.values()) plugin.pendingBrowserMounts.set(mount.mountId, mount)
-      return [...run.ownedBrowserMounts.values()].map(mount => mount.mountId)
+      for (const region of run.ownedBrowserRegions.values()) plugin.pendingBrowserRegions.set(region.mountId, region)
+      return [...run.ownedBrowserMounts.values(), ...run.ownedBrowserRegions.values()].map(mount => mount.mountId)
     }
-    const browser = this.ctx.get('browser') as { execute?: (operation: unknown, signal: AbortSignal) => Promise<{ outcome?: unknown }> } | undefined
+    const browser = this.ctx.get('browser') as { execute?: (operation: unknown, signal: AbortSignal) => Promise<{ outcome?: unknown; value?: unknown }> } | undefined
     if (typeof browser?.execute !== 'function') {
       for (const mount of run.ownedBrowserMounts.values()) plugin.pendingBrowserMounts.set(mount.mountId, mount)
-      return [...run.ownedBrowserMounts.values()].map(mount => mount.mountId)
+      for (const region of run.ownedBrowserRegions.values()) plugin.pendingBrowserRegions.set(region.mountId, region)
+      return [...run.ownedBrowserMounts.values(), ...run.ownedBrowserRegions.values()].map(mount => mount.mountId)
     }
     const pending: string[] = []
     for (const [slot, mount] of [...run.ownedBrowserMounts]) {
       try {
-        const result = await browser.execute({ sessionId: plugin.sessionId, installationId: mount.installationId,
+        const result = await browser.execute({ sessionId: plugin.sessionId, installationId: mount.installationId, requestId: randomUUID(),
           action: { kind: 'entry_unmount', page: mount.page, mountId: mount.mountId } }, AbortSignal.timeout(5_000))
         if (confirmedUnmount(result)) {
           run.ownedBrowserMounts.delete(slot)
@@ -1058,17 +1121,35 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         console.error(`[cordis:${plugin.pluginId}] failed to clean browser entry ${mount.mountId}`, error)
       }
     }
+    for (const [slot, region] of [...run.ownedBrowserRegions]) {
+      try {
+        const result = await browser.execute({ sessionId: plugin.sessionId, installationId: region.installationId, requestId: randomUUID(),
+          action: { kind: 'region_clear', page: region.page, mountId: region.mountId } }, AbortSignal.timeout(5_000))
+        if (confirmedRegionClear(result)) {
+          run.ownedBrowserRegions.delete(slot)
+          plugin.pendingBrowserRegions.delete(region.mountId)
+        } else {
+          plugin.pendingBrowserRegions.set(region.mountId, region)
+          pending.push(region.mountId)
+        }
+      } catch (error) {
+        plugin.pendingBrowserRegions.set(region.mountId, region)
+        pending.push(region.mountId)
+        console.error(`[cordis:${plugin.pluginId}] failed to restore browser region ${region.mountId}`, error)
+      }
+    }
     return pending
   }
 
   private async cleanupPendingBrowserMounts(plugin: DynamicCordisPlugin, forgetCollected = false): Promise<string[]> {
-    if (plugin.pendingBrowserWork.size > 0) return [...plugin.pendingBrowserMounts.keys()]
-    const browser = this.ctx.get('browser') as { execute?: (operation: unknown, signal: AbortSignal) => Promise<{ outcome?: unknown }> } | undefined
-    if (typeof browser?.execute !== 'function') return [...plugin.pendingBrowserMounts.keys()]
+    const unresolved = () => [...plugin.pendingBrowserMounts.keys(), ...plugin.pendingBrowserRegions.keys()]
+    if (plugin.pendingBrowserWork.size > 0) return unresolved()
+    const browser = this.ctx.get('browser') as { execute?: (operation: unknown, signal: AbortSignal) => Promise<{ outcome?: unknown; value?: unknown }> } | undefined
+    if (typeof browser?.execute !== 'function') return unresolved()
     const pending: string[] = []
     for (const [mountId, mount] of [...plugin.pendingBrowserMounts]) {
       try {
-        const result = await browser.execute({ sessionId: plugin.sessionId, installationId: mount.installationId,
+        const result = await browser.execute({ sessionId: plugin.sessionId, installationId: mount.installationId, requestId: randomUUID(),
           action: { kind: 'entry_unmount', page: mount.page, mountId, ...(forgetCollected ? { forgetCollected: true } : {}) } }, AbortSignal.timeout(5_000))
         if (confirmedUnmount(result)) {
           plugin.pendingBrowserMounts.delete(mountId)
@@ -1078,6 +1159,17 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       } catch (error) {
         pending.push(mountId)
         console.error(`[cordis:${plugin.pluginId}] failed to reconcile browser entry ${mountId}`, error)
+      }
+    }
+    for (const [mountId, region] of [...plugin.pendingBrowserRegions]) {
+      try {
+        const result = await browser.execute({ sessionId: plugin.sessionId, installationId: region.installationId, requestId: randomUUID(),
+          action: { kind: 'region_clear', page: region.page, mountId } }, AbortSignal.timeout(5_000))
+        if (confirmedRegionClear(result)) plugin.pendingBrowserRegions.delete(mountId)
+        else pending.push(mountId)
+      } catch (error) {
+        pending.push(mountId)
+        console.error(`[cordis:${plugin.pluginId}] failed to reconcile browser region ${mountId}`, error)
       }
     }
     return pending
@@ -1418,8 +1510,22 @@ function missingFor(ctx: Context, run: DynamicCordisRun): string[] {
 
 function confirmedUnmount(result: unknown): boolean {
   if (result === null || typeof result !== 'object') return false
-  const receipt = result as { outcome?: unknown; value?: { unmounted?: unknown; remaining?: unknown } }
-  return receipt.outcome === 'observed' && receipt.value?.unmounted === true && receipt.value.remaining === 0
+  const receipt = result as {
+    outcome?: unknown
+    delivery?: unknown
+    reason?: unknown
+    value?: { unmounted?: unknown; remaining?: unknown }
+  }
+  return receipt.outcome === 'observed' && receipt.delivery === 'sent'
+      && receipt.value?.unmounted === true && receipt.value.remaining === 0
+    || receipt.outcome === 'failed' && receipt.delivery === 'sent' && receipt.reason === 'document_replaced'
+}
+
+function confirmedRegionClear(result: unknown): boolean {
+  if (result === null || typeof result !== 'object') return false
+  const receipt = result as { outcome?: unknown; delivery?: unknown; reason?: unknown; value?: { cleared?: unknown } }
+  return receipt.outcome === 'observed' && receipt.delivery === 'sent' && receipt.value?.cleared === true
+    || receipt.outcome === 'failed' && receipt.delivery === 'sent' && receipt.reason === 'document_replaced'
 }
 
 const MAX_PLUGIN_STATE_ENTRIES = 32

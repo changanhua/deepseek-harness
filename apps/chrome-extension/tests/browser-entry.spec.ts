@@ -90,6 +90,7 @@ afterEach(() => {
     })
   }
   document.body.innerHTML = ''
+  history.replaceState({}, '', '/feed')
   delete (globalThis as typeof globalThis & { __dshBrowserAssistant?: unknown }).__dshBrowserAssistant
   delete (globalThis as typeof globalThis & { chrome?: unknown }).chrome
   vi.useRealTimers()
@@ -193,7 +194,7 @@ describe('持久化页面条目挂载', () => {
     const assistant = install()
     const receipt = assistant.entryInspect({ ...identity('inspect'), target,
       payload: { kind: 'entry_inspect', page, regionSelector: 'main#feed', selector: ':scope > .item',
-        titleSelector: '.title', linkSelector: 'a[href]', sampleLimit: 4 } } as BrowserRequest)
+        titleSelector: '.title', linkSelector: 'a[href]', sampleLimit: 4 } })
 
     expect(receipt).toMatchObject({ outcome: 'observed', quiescent: true, value: {
       matched: 2, valid: 1, missingTitle: 1, missingLink: 1, duplicateLinks: 0,
@@ -209,9 +210,9 @@ describe('持久化页面条目挂载', () => {
     document.body.innerHTML = '<main><div class="item"><a href="/a">标题 A</a></div></main>'
     const assistant = install()
     const invalid = assistant.entryInspect({ ...identity('invalid-inspect'), target,
-      payload: { kind: 'entry_inspect', page, regionSelector: 'main[', selector: '.item' } } as BrowserRequest)
+      payload: { kind: 'entry_inspect', page, regionSelector: 'main[', selector: '.item' } })
     const outside = assistant.entryInspect({ ...identity('outside-inspect'), target,
-      payload: { kind: 'entry_inspect', page, regionSelector: 'main', selector: 'body .item' } } as BrowserRequest)
+      payload: { kind: 'entry_inspect', page, regionSelector: 'main', selector: 'body .item' } })
 
     expect(invalid).toMatchObject({ outcome: 'failed', reason: 'invalid_action', quiescent: true })
     expect(outside).toMatchObject({ outcome: 'failed', reason: 'binding_outside_region', quiescent: true })
@@ -291,6 +292,70 @@ describe('持久化页面条目挂载', () => {
     expect(document.querySelectorAll('[data-dsh-entry-mount]')).toHaveLength(2)
   })
 
+  test('同文档跨路由时观察者卸载旧按钮，不会给新路由的复用根节点继续挂载', async () => {
+    document.body.innerHTML = '<main><div class="item"><a href="/a">A</a></div></main>'
+    const sendMessage = vi.fn(async () => {})
+    ;(globalThis as typeof globalThis & { chrome: unknown }).chrome = { runtime: { sendMessage } }
+    const assistant = install()
+    const request = mountRequest('route', { regionSelector: 'main' })
+    inspectedMount(assistant, request)
+    expect(document.querySelectorAll('[data-dsh-entry-mount]')).toHaveLength(1)
+    history.pushState({}, '', '/next')
+    document.querySelector('main')!.innerHTML = '<div class="item"><a href="/b">B</a></div>'
+    await flushObservers()
+    expect(document.querySelectorAll('[data-dsh-entry-mount]')).toHaveLength(0)
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'dsh-route-discarded', resource: 'entry', mountId: 'route', sessionId: 'session-1',
+      installationId: 'installation-1', grantEpoch: 7,
+      page: { tabId: 1, frameId: 0, documentId: 'doc-feed', url: 'https://example.test/feed' },
+      currentUrl: 'https://example.test/next',
+    }))
+    expect(assistant.entryUnmount({ ...request, payload: { ...request.payload, kind: 'entry_unmount' } }))
+      .toMatchObject({ outcome: 'observed', quiescent: true, value: { unmounted: true, remaining: 0, disposition: 'route_discarded' } })
+    const extra = document.createElement('div')
+    extra.className = 'item'
+    extra.innerHTML = '<a href="/c">C</a>'
+    document.querySelector('main')!.append(extra)
+    await flushObservers()
+    expect(document.querySelectorAll('[data-dsh-entry-mount]')).toHaveLength(0)
+    history.replaceState({}, '', '/feed')
+  })
+
+  test('route-discard 的 forgetCollected 清理旧检查与收集缓存', async () => {
+    document.body.innerHTML = '<main><div class="item"><a href="/a">A</a></div></main>'
+    ;(globalThis as typeof globalThis & { chrome: unknown }).chrome = { runtime: { sendMessage: vi.fn(async () => {}) } }
+    const assistant = install()
+    const request = mountRequest('route-forget', { regionSelector: 'main', collected: ['https://example.test/a'] })
+    inspectedMount(assistant, request)
+    expect((document.querySelector('[data-dsh-entry-mount]') as HTMLButtonElement).disabled).toBe(true)
+    history.pushState({}, '', '/next')
+    document.querySelector('main')!.innerHTML = '<div class="item"><a href="/b">B</a></div>'
+    await flushObservers()
+    expect(assistant.entryUnmount({ ...request, payload: { ...request.payload, kind: 'entry_unmount', forgetCollected: true } }))
+      .toMatchObject({ outcome: 'observed', value: { disposition: 'route_discarded' } })
+    history.replaceState({}, '', '/feed')
+    document.querySelector('main')!.innerHTML = '<div class="item"><a href="/a">A</a></div>'
+    const restarted = { ...request, payload: { ...request.payload, collected: undefined } }
+    expect(assistant.entryMount(restarted)).toMatchObject({ outcome: 'failed', reason: 'inspect_required' })
+    inspectedMount(assistant, restarted)
+    expect((document.querySelector('[data-dsh-entry-mount]') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  test('pushState 尚未触发 DOM mutation 时，精确旧 entry_unmount 仍立即生成 route-discard 回执', () => {
+    document.body.innerHTML = '<main><div class="item"><a href="/a">A</a></div></main>'
+    const sendMessage = vi.fn(async () => {})
+    ;(globalThis as typeof globalThis & { chrome: unknown }).chrome = { runtime: { sendMessage } }
+    const assistant = install()
+    const request = mountRequest('immediate', { regionSelector: 'main' })
+    inspectedMount(assistant, request)
+    history.pushState({}, '', '/without-dom-mutation')
+    expect(assistant.entryUnmount({ ...request, payload: { ...request.payload, kind: 'entry_unmount' } })).toMatchObject({
+      outcome: 'observed', quiescent: true, value: { unmounted: true, disposition: 'route_discarded' },
+    })
+    expect(document.querySelectorAll('[data-dsh-entry-mount]')).toHaveLength(0)
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'dsh-route-discarded', resource: 'entry', mountId: 'immediate' }))
+  })
+
   test('entryUnmount 移除按钮与观察者', async () => {
     document.body.innerHTML = '<div class="item"><a href="https://example.test/a">标题 A</a></div>'
     const assistant = install()
@@ -321,7 +386,7 @@ describe('持久化页面条目挂载', () => {
     const assistant = install()
     const receipt = assistant.entryMount({ ...identity('stale', { requestId: 'stale' }), target,
       payload: { kind: 'entry_mount', page: { ...page, url: 'https://example.test/other' }, mountId: 'collect', selector: '.item', label: 'x' } })
-    expect(receipt).toMatchObject({ outcome: 'failed', reason: 'stale_document', quiescent: true })
+    expect(receipt).toMatchObject({ outcome: 'failed', reason: 'target_url_stale', quiescent: true })
     expect(document.querySelectorAll('[data-dsh-entry-mount]')).toHaveLength(0)
   })
 })

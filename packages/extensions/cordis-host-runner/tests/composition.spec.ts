@@ -182,6 +182,7 @@ describe('stop reaches quiescence', () => {
     expect(browser.execute).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: AGENT_A.id,
       installationId: 'install-1',
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- Vitest asymmetric matcher is intentionally untyped
       action: expect.objectContaining({
         kind: 'entry_inspect', page: { tabId: 7, frameId: 0, documentId: 'doc-1', url: 'https://example.test/feed' },
         regionSelector: 'main', selector: ':scope article', sampleLimit: 3,
@@ -190,6 +191,44 @@ describe('stop reaches quiescence', () => {
 
     await expect(harness.runner.stop(AGENT_A, plugin)).resolves.toEqual({ ok: true })
     expect(harness.ctx.tools.get('page_entry_inspect')).toBeUndefined()
+  })
+
+  it('maps, renders, and restores an Agent-owned page workspace on stop', async () => {
+    const harness = await setup()
+    const browser = {
+      execute: vi.fn(async (operation: { sessionId: string; installationId: string; action: { kind: string } }) => ({
+        requestId: `browser-${operation.action.kind}`, sessionId: operation.sessionId, installationId: operation.installationId,
+        outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'region_clear'
+          ? { cleared: true, restored: 1 } : { kind: operation.action.kind },
+      })),
+    }
+    harness.ctx.provide('browser', browser)
+    const plugin = await mount(harness, `
+      return {
+        name: 'page-workspace',
+        inject: ['browser', 'tools'],
+        apply(ctx) {
+          harness.registerTool(ctx, harness.defineTool({
+            name: 'page_workspace', description: 'Map and render a page workspace.', parameters: {},
+            output: { schema: { type: 'json' }, render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }] } },
+            async execute() {
+              const page = { tabId: 7, frameId: 0, documentId: 'doc-1', url: 'https://example.test/feed' }
+              const map = await harness.browser.pageMap({ installationId: 'install-1', page })
+              const panel = await harness.browser.render({ installationId: 'install-1', page, slot: 'analysis', selector: '#side', mode: 'replace', blocks: [{ type: 'text', text: '结果' }] })
+              return { map, panel }
+            },
+          }))
+        },
+      }
+    `)
+    expect(text(await call(harness.ctx, 'page_workspace', {}))).toContain('page_map')
+    // oxlint-disable-next-line typescript/no-unsafe-assignment -- Vitest asymmetric matcher is intentionally untyped
+    expect(browser.execute).toHaveBeenCalledWith(expect.objectContaining({ action: expect.objectContaining({ kind: 'page_map' }) }), expect.any(AbortSignal))
+    // oxlint-disable-next-line typescript/no-unsafe-assignment -- Vitest asymmetric matcher is intentionally untyped
+    expect(browser.execute).toHaveBeenCalledWith(expect.objectContaining({ action: expect.objectContaining({ kind: 'region_render', mode: 'replace', mountId: `${plugin}:analysis` }) }), expect.any(AbortSignal))
+    await expect(harness.runner.stop(AGENT_A, plugin)).resolves.toEqual({ ok: true })
+    // oxlint-disable-next-line typescript/no-unsafe-assignment -- Vitest asymmetric matcher is intentionally untyped
+    expect(browser.execute).toHaveBeenCalledWith(expect.objectContaining({ action: expect.objectContaining({ kind: 'region_clear', mountId: `${plugin}:analysis` }) }), expect.any(AbortSignal))
   })
 
   it('keeps a temporary Agent tool over the existing Browser service and retracts it on stop', async () => {

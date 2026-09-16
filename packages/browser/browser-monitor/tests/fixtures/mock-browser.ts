@@ -1,5 +1,6 @@
 import { Browser } from '@changanhua/dsh-browser'
-import type { BrowserActionResult, BrowserInstance, BrowserObservation, BrowserOperation, BrowserPreparedAction, BrowserPreparedTicket } from '@changanhua/dsh-browser'
+import type { BrowserActionResult, BrowserInstance, BrowserObservation, BrowserOperation, BrowserPreparedAction, BrowserPreparedTicket,
+  BrowserRequestStatusQuery, BrowserRequestStatus } from '@changanhua/dsh-browser'
 
 /** Test-only external boundary: every observation reads one deterministic visible document. */
 export default class MockBrowser extends Browser {
@@ -12,6 +13,7 @@ export default class MockBrowser extends Browser {
     return { requestId: 'observe', sessionId: operation.sessionId, installationId: operation.installationId, outcome: 'observed', delivery: 'sent', value }
   }
   execute(_operation: BrowserOperation): Promise<BrowserActionResult> { throw new Error('not used') }
+  requestStatus(query: BrowserRequestStatusQuery): Promise<BrowserRequestStatus> { return Promise.resolve({ ...query, outcome: 'unknown', delivery: 'sent', reason: 'not_used' }) }
   prepare(): Promise<BrowserPreparedAction> { throw new Error('not used') }
   executePrepared(_ticket: BrowserPreparedTicket): Promise<BrowserActionResult> { throw new Error('not used') }
 }

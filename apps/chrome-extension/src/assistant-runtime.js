@@ -197,6 +197,14 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
           mountId: payload.mountId, tabId: payload.tabId, frameId: payload.frameId,
           documentId: payload.documentId, url: payload.url, title: payload.entry.title, link: payload.entry.link }) }
       }
+      case 'dsh-route-discarded': {
+        const payload = message.payload
+        if (!payload || !['entry', 'region'].includes(payload.resource) || typeof payload.mountId !== 'string' || !payload.mountId
+          || typeof payload.sessionId !== 'string' || typeof payload.installationId !== 'string' || !Number.isSafeInteger(payload.grantEpoch)
+          || !payload.page || !Number.isInteger(payload.page.tabId) || !Number.isInteger(payload.page.frameId)
+          || typeof payload.page.documentId !== 'string' || typeof payload.page.url !== 'string' || typeof payload.currentUrl !== 'string') throw new Error('invalid_input')
+        return { ok: true, value: await connection.call('browser.routeDiscard', payload) }
+      }
       case 'dsh-assistant-session-list': return { ok: true, value: await connection.call('session.list', {}) }
       case 'dsh-assistant-session-bind': await sessions.bind(message.sessionId); break
       case 'dsh-assistant-session-create': await sessions.create(message.cwd ? { cwd: message.cwd } : {}); break

@@ -434,11 +434,41 @@
   const entryMounts = new Map()
   const entryInspections = new Map()
   const entryCollections = new Map()
+  const routeDiscards = new Map()
   // Protocol retention bounds for one injected document, including owner keys.
   const MAX_ENTRY_RECORDS = 128
   const MAX_COLLECTION_BYTES = 65_536
+  const MAX_ROUTE_DISCARDS = 128
   const entryOwner = request => JSON.stringify([request.sessionId, request.installationId, request.grantEpoch,
     request.payload.page?.tabId, request.payload.page?.frameId, request.payload.page?.documentId])
+  const routeDiscardKey = (resource, mountId) => `${resource}\u0000${mountId}`
+  const pruneRouteDiscards = () => {
+    while (routeDiscards.size > MAX_ROUTE_DISCARDS) routeDiscards.delete(routeDiscards.keys().next().value)
+  }
+  const rememberRouteDiscard = (resource, mountId, request, page, owner) => {
+    if (!page || location.href === page.url) return
+    routeDiscards.set(routeDiscardKey(resource, mountId), { owner, page: { ...page } })
+    pruneRouteDiscards()
+  }
+  const routeDiscarded = (resource, mountId, request, page, owner) => {
+    pruneRouteDiscards()
+    const tombstone = routeDiscards.get(routeDiscardKey(resource, mountId))
+    return tombstone !== undefined && tombstone.owner === owner && tombstone.page.tabId === page?.tabId
+      && tombstone.page.frameId === page?.frameId && tombstone.page.documentId === page?.documentId
+      && tombstone.page.url === page?.url && location.href !== page?.url
+  }
+  // A renewed grant may release its own earlier page decoration, but it can
+  // never render/update it. This prevents orphaned controls after a grant
+  // rollover without turning a cleanup request into ownership takeover.
+  const renewedOwnerCanRelease = (existingOwner, request) => {
+    try {
+      const [sessionId, installationId, epoch, tabId, frameId, documentId] = JSON.parse(existingOwner)
+      const page = request.payload.page
+      return sessionId === request.sessionId && installationId === request.installationId
+        && Number.isSafeInteger(epoch) && request.grantEpoch > epoch
+        && tabId === page?.tabId && frameId === page?.frameId && documentId === page?.documentId
+    } catch { return false }
+  }
   const bindingKey = request => JSON.stringify([entryOwner(request), request.payload.regionSelector, request.payload.selector,
     request.payload.titleSelector ?? null, request.payload.linkSelector ?? null])
   const buttonsFor = mountId => [...document.querySelectorAll('[data-dsh-entry-mount-id]')]
@@ -475,6 +505,11 @@
     entryMounts.delete(mountId)
     for (const button of buttonsFor(mountId)) button.remove()
   }
+  const releaseEntryState = (owner, mountId, forgetCollected) => {
+    for (const [key, inspection] of entryInspections) if (inspection.owner === owner) entryInspections.delete(key)
+    entryUnmountById(mountId)
+    if (forgetCollected) entryCollections.delete(JSON.stringify([owner, mountId]))
+  }
   const validEntryBinding = action => typeof action.regionSelector === 'string' && action.regionSelector.length > 0
     && typeof action.selector === 'string' && action.selector.length > 0 && action.selector.length <= 256
     && (action.titleSelector === undefined || typeof action.titleSelector === 'string' && action.titleSelector.length <= 256)
@@ -487,7 +522,7 @@
     }
     const action = request.payload
     const page = actionPage(action)
-    if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'stale_document', quiescent: true })
+    if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'target_url_stale', quiescent: true })
     const key = bindingKey(request)
     entryInspections.delete(key)
     let facts
@@ -541,7 +576,7 @@
       return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true })
     const action = request.payload
     const page = actionPage(action)
-    if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'stale_document', quiescent: true })
+    if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'target_url_stale', quiescent: true })
     const fail = reason => receipt(request, 'failed', { reason, quiescent: true })
     const owner = entryOwner(request)
     const existing = entryMounts.get(action.mountId)
@@ -597,6 +632,14 @@
     for (const row of facts.rows) attach(row.item)
     const observer = new MutationObserver(() => {
       if (!entryMounts.has(action.mountId)) return
+      // pushState keeps the document alive. Do not let an old binding decorate
+      // a newly routed page merely because its root element was reused.
+      if (location.href !== page?.url) {
+        entryUnmountById(action.mountId)
+        rememberRouteDiscard('entry', action.mountId, request, page, owner)
+        reportRouteDiscard('entry', action.mountId, request, page)
+        return
+      }
       for (const [item, record] of attached) {
         if (!root.isConnected || !item.isConnected || !root.contains(item) || !sameFields(record.fields, fieldsOf(item, action))) {
           record.button.remove(); invalidated.add(item); attached.delete(item); mounted--
@@ -615,13 +658,24 @@
       || request.payload.forgetCollected !== undefined && typeof request.payload.forgetCollected !== 'boolean')
       return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true })
     const page = actionPage(request.payload)
-    if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'stale_document', quiescent: true })
     const owner = entryOwner(request)
     const existing = entryMounts.get(request.payload.mountId)
-    if (existing && existing.owner !== owner) return receipt(request, 'failed', { reason: 'mount_owner_mismatch', quiescent: true })
-    for (const [key, inspection] of entryInspections) if (inspection.owner === owner) entryInspections.delete(key)
-    entryUnmountById(request.payload.mountId)
-    if (request.payload.forgetCollected) entryCollections.delete(JSON.stringify([owner, request.payload.mountId]))
+    if (page && page.url !== location.href) {
+      const heldByExactOwner = existing?.owner === owner
+      if (heldByExactOwner) {
+        entryUnmountById(request.payload.mountId)
+        rememberRouteDiscard('entry', request.payload.mountId, request, page, owner)
+        reportRouteDiscard('entry', request.payload.mountId, request, page)
+      }
+      if (heldByExactOwner || routeDiscarded('entry', request.payload.mountId, request, page, owner)) {
+        releaseEntryState(owner, request.payload.mountId, request.payload.forgetCollected === true)
+        return receipt(request, 'observed', { quiescent: true, value: { unmounted: true, remaining: 0, disposition: 'route_discarded' } })
+      }
+      return receipt(request, 'failed', { reason: 'target_url_stale', quiescent: true })
+    }
+    if (existing && existing.owner !== owner && !renewedOwnerCanRelease(existing.owner, request)) return receipt(request, 'failed', { reason: 'mount_owner_mismatch', quiescent: true })
+    const releasedOwner = existing?.owner ?? owner
+    releaseEntryState(releasedOwner, request.payload.mountId, request.payload.forgetCollected || releasedOwner !== owner)
     return receipt(request, 'observed', { quiescent: true, value: { unmounted: true, remaining: buttonsFor(request.payload.mountId).length } })
   }
   const releaseEntries = (installationId, sessionId) => {
@@ -633,6 +687,279 @@
     for (const [key, inspection] of entryInspections) if (matches(inspection.owner)) entryInspections.delete(key)
     for (const key of entryCollections.keys()) if (matches(JSON.parse(key)[0])) entryCollections.delete(key)
   }
+
+  // Persistent region mounts: render a bounded, Host-supplied content panel inside
+  // one page region. Idempotent by mountId. Every field becomes a DOM text node, so
+  // a page is never handed markup to interpret. Append mode adds nodes; replace mode
+  // moves original child nodes aside and restores them when the mount is cleared.
+  const MAX_REGION_BLOCKS = 200
+  const MAX_REGION_CONTAINERS = 2
+  const MAX_REGION_REATTACH = 200
+  const regionMounts = new Map()
+  // This message is emitted only after this isolated page runtime removed its
+  // own registry and DOM mount on a same-document route change. It is not a
+  // generic URL-stale hint and therefore carries the exact signed mount owner.
+  const reportRouteDiscard = (resource, mountId, request, page) => {
+    if (!page || location.href === page.url) return
+    const sendMessage = globalThis.chrome?.runtime?.sendMessage
+    if (typeof sendMessage !== 'function') return
+    void sendMessage({ type: 'dsh-route-discarded', resource, mountId,
+      sessionId: request.sessionId, installationId: request.installationId, grantEpoch: request.grantEpoch,
+      page: { tabId: page.tabId, frameId: page.frameId, documentId: page.documentId, url: page.url }, currentUrl: location.href })
+  }
+  const regionOwner = request => JSON.stringify([request.sessionId, request.installationId, request.grantEpoch,
+    request.payload.page?.tabId, request.payload.page?.frameId, request.payload.page?.documentId])
+  const regionPanels = mountId => [...document.querySelectorAll('[data-dsh-region-mount-id]')]
+    .filter(node => node.dataset.dshRegionMountId === mountId)
+  const containerHasRegionPanel = (container, mountId) => regionPanels(mountId).some(panel => container.contains(panel))
+  const regionPanelStyle = 'all:initial;display:block;box-sizing:border-box;margin:0 0 12px;padding:12px 14px;border:1px solid rgba(127,127,127,.28);border-radius:12px;background:#fff;color:#1a1a1a;font:13px/1.7 system-ui,-apple-system,"Segoe UI",sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.06)'
+  const safeHref = value => {
+    try {
+      const url = new URL(String(value ?? ''), location.href)
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null
+      return url.href
+    } catch { return null }
+  }
+  const regionLink = (href, labelText) => {
+    const resolved = safeHref(href)
+    if (!resolved) return null
+    const anchor = document.createElement('a')
+    anchor.href = resolved
+    anchor.target = '_blank'
+    anchor.rel = 'noopener noreferrer'
+    anchor.setAttribute('style', 'color:#1772f6;text-decoration:none')
+    anchor.textContent = text(labelText).slice(0, 512) || resolved
+    return anchor
+  }
+  const regionBlockNode = block => {
+    const row = document.createElement('div')
+    row.setAttribute('style', 'margin:0 0 6px')
+    if (block?.type === 'heading') {
+      row.setAttribute('style', 'font-weight:600;margin:8px 0 4px')
+      row.textContent = text(block.text).slice(0, 512)
+      return row
+    }
+    if (block?.type === 'text') {
+      row.textContent = text(block.text).slice(0, 4096)
+      return row
+    }
+    if (block?.type === 'keyvalue') {
+      const label = document.createElement('span')
+      label.setAttribute('style', 'color:#666;margin-right:6px')
+      label.textContent = text(block.label).slice(0, 256)
+      const value = document.createElement('span')
+      value.textContent = text(block.value).slice(0, 1024)
+      row.append(label, value)
+      return row
+    }
+    if (block?.type === 'item') {
+      const title = document.createElement('div')
+      title.setAttribute('style', 'font-weight:500')
+      title.textContent = text(block.title).slice(0, 512)
+      row.append(title)
+      if (typeof block.meta === 'string' && block.meta) {
+        const meta = document.createElement('div')
+        meta.setAttribute('style', 'color:#888;font-size:12px')
+        meta.textContent = text(block.meta).slice(0, 512)
+        row.append(meta)
+      }
+      const anchor = regionLink(block.link, '查看')
+      if (anchor) row.append(anchor)
+      return row
+    }
+    if (block?.type === 'link') {
+      const anchor = regionLink(block.href, block.text)
+      if (anchor) row.append(anchor)
+      else row.textContent = text(block.text).slice(0, 512)
+      return row
+    }
+    return row
+  }
+  const regionPanel = (mountId, action) => {
+    const panel = document.createElement('div')
+    panel.dataset.dshRegionMount = 'true'
+    panel.dataset.dshRegionMountId = mountId
+    panel.dataset.dshRegionMode = action.mode === 'replace' ? 'replace' : 'append'
+    panel.setAttribute('style', regionPanelStyle)
+    panel.setAttribute('role', 'region')
+    panel.setAttribute('aria-label', typeof action.title === 'string' && action.title ? action.title : 'DSH 面板')
+    if (typeof action.title === 'string' && action.title) {
+      const heading = document.createElement('div')
+      heading.setAttribute('style', 'font-weight:600;margin:0 0 8px')
+      heading.textContent = action.title
+      panel.append(heading)
+    }
+    for (const block of action.blocks.slice(0, MAX_REGION_BLOCKS)) panel.append(regionBlockNode(block))
+    return panel
+  }
+  const regionClearById = mountId => {
+    const existing = regionMounts.get(mountId)
+    existing?.observer.disconnect()
+    for (const saved of existing?.replaced ?? []) {
+      if (!saved.container?.isConnected) continue
+      saved.container.replaceChildren(...saved.nodes)
+    }
+    regionMounts.delete(mountId)
+    const panels = regionPanels(mountId)
+    // A reloaded runtime can remove its panel, but cannot prove what a
+    // replace-mode container held before the lost registry. Keep its Host
+    // lease unresolved instead of claiming a restoration we did not perform.
+    const unverifiedReplacement = existing === undefined && panels.some(panel => panel.dataset.dshRegionMode === 'replace')
+    for (const node of panels) node.remove()
+    return { cleared: !unverifiedReplacement && (existing !== undefined || panels.length > 0), restored: existing?.replaced?.length ?? 0 }
+  }
+  // Same-document URL drift is not document destruction. For replace mode we
+  // must not restore nodes captured from the prior route into the new route.
+  const discardRegionById = mountId => {
+    const existing = regionMounts.get(mountId)
+    existing?.observer.disconnect()
+    regionMounts.delete(mountId)
+    for (const node of regionPanels(mountId)) node.remove()
+  }
+  const regionContainers = selector => {
+    try { return [...document.querySelectorAll(selector)].slice(0, MAX_REGION_CONTAINERS) }
+    catch { return null }
+  }
+  const regionRender = request => {
+    prune()
+    if (!validIdentity(request) || request.payload?.kind !== 'region_render'
+      || typeof request.payload.mountId !== 'string' || !request.payload.mountId
+      || typeof request.payload.selector !== 'string' || !request.payload.selector
+      || !Array.isArray(request.payload.blocks) || request.payload.blocks.length < 1
+      || request.payload.blocks.length > MAX_REGION_BLOCKS
+      || request.payload.title !== undefined && typeof request.payload.title !== 'string'
+      || request.payload.placement !== undefined && !['prepend', 'append'].includes(request.payload.placement)
+      || request.payload.mode !== undefined && !['append', 'replace'].includes(request.payload.mode))
+      return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true })
+    const action = request.payload
+    const page = actionPage(action)
+    if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'target_url_stale', quiescent: true })
+    const owner = regionOwner(request)
+    const current = regionMounts.get(action.mountId)
+    if (current && current.owner !== owner) return receipt(request, 'failed', { reason: 'region_mount_owner_mismatch', quiescent: true })
+    const containers = regionContainers(action.selector)
+    if (containers === null) return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true })
+    if (containers.length === 0) return receipt(request, 'failed', { reason: 'region_target_not_found', quiescent: true })
+    if (containers.length > 1) return receipt(request, 'failed', { reason: 'ambiguous_region', quiescent: true })
+    regionClearById(action.mountId)
+    const placement = action.placement === 'append' ? 'append' : 'prepend'
+    const mode = action.mode === 'replace' ? 'replace' : 'append'
+    const candidate = regionPanel(action.mountId, action)
+    const replaced = []
+    let rendered = 0
+    for (const container of containers) {
+      if (!container?.isConnected || typeof container[placement] !== 'function') continue
+      if (mode === 'replace') {
+        replaced.push({ container, nodes: [...container.childNodes] })
+        container.replaceChildren(candidate.cloneNode(true))
+      } else container[placement](candidate.cloneNode(true))
+      rendered++
+    }
+    if (rendered === 0) return receipt(request, 'failed', { reason: 'region_target_not_found', quiescent: true })
+    // A SPA may replace the matched container later. Re-attach the same panel when
+    // the container comes back, bounded so a hostile re-render loop cannot spin.
+    let reattached = 0
+    const observer = new MutationObserver(() => {
+      const mounted = regionMounts.get(action.mountId)
+      if (!mounted || mounted.url !== location.href || reattached >= MAX_REGION_REATTACH) {
+        if (mounted && mounted.url !== location.href) {
+          discardRegionById(action.mountId)
+          rememberRouteDiscard('region', action.mountId, request, page, owner)
+          reportRouteDiscard('region', action.mountId, request, page)
+        }
+        return
+      }
+      const live = regionContainers(action.selector)
+      if (live === null || live.length !== 1) return
+      for (const container of live) {
+        if (!container?.isConnected || typeof container[placement] !== 'function') continue
+        if (containerHasRegionPanel(container, action.mountId)) continue
+        if (mode === 'replace') {
+          mounted.replaced.push({ container, nodes: [...container.childNodes] })
+          container.replaceChildren(regionPanel(action.mountId, action))
+        } else container[placement](regionPanel(action.mountId, action))
+        reattached++
+        rendered++
+      }
+    })
+    observer.observe(document.documentElement, { childList: true, subtree: true })
+    regionMounts.set(action.mountId, { observer, url: location.href, replaced, owner })
+    return receipt(request, 'observed', { quiescent: true, value: mode === 'replace'
+      ? { rendered, containers: containers.length, replaced: rendered }
+      : { rendered, containers: containers.length } })
+  }
+  const regionClear = request => {
+    prune()
+    if (!validIdentity(request) || request.payload?.kind !== 'region_clear'
+      || typeof request.payload.mountId !== 'string' || !request.payload.mountId)
+      return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true })
+    const page = actionPage(request.payload)
+    const owner = regionOwner(request)
+    const existing = regionMounts.get(request.payload.mountId)
+    if (page && page.url !== location.href) {
+      const heldByExactOwner = existing?.owner === owner && existing.url === page.url
+      if (heldByExactOwner) {
+        discardRegionById(request.payload.mountId)
+        rememberRouteDiscard('region', request.payload.mountId, request, page, owner)
+        reportRouteDiscard('region', request.payload.mountId, request, page)
+      }
+      if (heldByExactOwner || routeDiscarded('region', request.payload.mountId, request, page, owner)) {
+        return receipt(request, 'observed', { quiescent: true, value: { cleared: true, restored: 0, disposition: 'route_discarded' } })
+      }
+      return receipt(request, 'failed', { reason: 'target_url_stale', quiescent: true })
+    }
+    if (existing && existing.owner !== owner && !renewedOwnerCanRelease(existing.owner, request)) {
+      return receipt(request, 'failed', { reason: 'region_mount_owner_mismatch', quiescent: true })
+    }
+    const cleared = regionClearById(request.payload.mountId)
+    return receipt(request, 'observed', { quiescent: true, value: cleared })
+  }
+
+  const pageMap = request => {
+    prune()
+    if (!validIdentity(request) || request.payload?.kind !== 'page_map') return receipt(request, 'failed', { reason: 'invalid_action', quiescent: true })
+    const page = actionPage(request.payload)
+    if (page && page.url !== location.href) return receipt(request, 'failed', { reason: 'target_url_stale', quiescent: true })
+    const nodes = [...document.querySelectorAll('header,nav,main,aside,footer,section,[role="main"],[role="navigation"],[role="complementary"],[role="region"]')]
+      .filter(visible).slice(0, 32)
+    const selectorOf = node => {
+      const escape = value => globalThis.CSS?.escape ? globalThis.CSS.escape(value) : value.replace(/[^a-zA-Z0-9_-]/gu, '\\$&')
+      if (node.id) {
+        const candidate = `#${escape(node.id)}`
+        if (document.querySelectorAll(candidate).length === 1) return candidate
+      }
+      const parts = []
+      let cursor = node
+      while (cursor?.nodeType === Node.ELEMENT_NODE && parts.length < 8) {
+        const tag = cursor.tagName.toLowerCase()
+        const siblings = cursor.parentElement ? [...cursor.parentElement.children].filter(sibling => sibling.tagName === cursor.tagName) : []
+        const suffix = siblings.length > 1 ? `:nth-of-type(${siblings.indexOf(cursor) + 1})` : ''
+        parts.unshift(`${tag}${suffix}`)
+        const candidate = parts.join(' > ')
+        if (document.querySelectorAll(candidate).length === 1) return candidate
+        cursor = cursor.parentElement
+      }
+      return parts.join(' > ')
+    }
+    const roleOfRegion = node => {
+      const explicit = node.getAttribute('role')
+      if (explicit === 'main' || explicit === 'navigation' || explicit === 'complementary' || explicit === 'region') return explicit
+      return ({ HEADER: 'banner', NAV: 'navigation', MAIN: 'main', ASIDE: 'complementary', FOOTER: 'contentinfo' })[node.tagName] ?? 'region'
+    }
+    const regions = nodes.map((node, index) => {
+      const role = roleOfRegion(node)
+      const regionText = elementText(node, 320)
+      const controls = node.querySelectorAll('input,textarea,select,button,[contenteditable="true"]').length
+      const hasPrimary = role === 'main' || node.querySelector('article,h1,h2') !== null
+      const adLike = /广告|推广|赞助|ad[-_ ]?container|banner/iu.test(`${node.id} ${node.className} ${regionText.slice(0, 120)}`)
+      const importance = hasPrimary ? 'high' : adLike ? 'low' : role === 'complementary' ? 'medium' : 'normal'
+      return { regionId: `region-${index + 1}`, role, selector: selectorOf(node), label: text(node.getAttribute('aria-label') ?? node.querySelector(':scope > h1,:scope > h2,:scope > h3')?.textContent ?? '').slice(0, 160),
+        text: regionText, importance, disposable: importance === 'low' || (role === 'complementary' && controls === 0), protected: controls > 0 || hasPrimary,
+        stability: node.id || node.getAttribute('role') ? 'medium' : 'low', bounds: (() => { const rect = node.getBoundingClientRect(); return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) } })() }
+    })
+    return receipt(request, 'observed', { quiescent: true, value: { page: { tabId: page?.tabId, frameId: page?.frameId, documentId: page?.documentId, url: location.href }, regions } })
+  }
+
 
   const inspect = (identity, { cancel = false } = {}) => {
     prune()
@@ -720,7 +1047,7 @@
   }
 
   globalThis.__dshBrowserAssistant = Object.freeze({ snapshot, prepare, execute, inspect,
-    entryInspect, entryMount, entryUnmount, releaseEntries,
+    entryInspect, entryMount, entryUnmount, releaseEntries, pageMap, regionRender, regionClear,
     documentToken: () => documentToken, startExternal, externalNode, issueExternal, completeExternal,
     guardExternal: request => {
       const record = externalRecord(request)

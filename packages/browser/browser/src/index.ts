@@ -1,5 +1,6 @@
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { BrowserActionResult, BrowserEntryEvent, BrowserInstance, BrowserObservation, BrowserOperation,
+import type { BrowserActionResult, BrowserEntryEvent, BrowserInstance, BrowserObservation, BrowserOperation, BrowserRequestStatus,
+  BrowserRequestStatusQuery,
   BrowserPreparedAction, BrowserPreparedTicket } from './types.ts'
 
 export type * from './types.ts'
@@ -45,6 +46,12 @@ export abstract class Browser extends Service {
    * @returns Observed outcome or an unresolved result with its request identity.
    */
   abstract execute(operation: BrowserOperation, signal: AbortSignal): Promise<BrowserActionResult>
+  /**
+   * Read one caller-scoped retained request without replaying it.
+   * @param query - Session, installation, and request id returned by an earlier action.
+   * @returns The current outcome and quiescence when known; authority fingerprints remain private.
+   */
+  abstract requestStatus(query: BrowserRequestStatusQuery): Promise<BrowserRequestStatus>
   /**
    * Read facts for one page action and bind its immutable parameters before asking for approval.
    * @param operation - Caller Session, installation and action with an explicit page target.

@@ -6,7 +6,7 @@ import z from '@deepseek-ai/schemastery'
 import WebSocket, { WebSocketServer, type RawData } from 'ws'
 import Browser from '@changanhua/dsh-browser'
 import type { BrowserOperation, BrowserObservation, BrowserAction, BrowserActionResult, BrowserInstance,
-  BrowserEntryEvent, BrowserPreparedAction, BrowserPreparedTicket } from '@changanhua/dsh-browser'
+  BrowserEntryEvent, BrowserExecutorCapabilities, BrowserPreparedAction, BrowserPreparedTicket, BrowserRequestStatusQuery, BrowserRequestStatus } from '@changanhua/dsh-browser'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { bridge } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -22,29 +22,45 @@ import { BrowserReadings } from './readings.ts'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import { BROWSER_EXTENSION_PATH as API, approveSchema, browserActionSchema, connectSchema,
-  exchangeSchema, extensionFrameSchema, extensionIdSchema, entryEventSchema, EntryEventInput, jsonValueSchema, requestSchema, revokeSchema, approvalPresenceSchema, approvalDecideSchema, browserAcknowledgeSchema } from './wire.ts'
+  exchangeSchema, extensionFrameSchema, extensionIdSchema, entryEventSchema, EntryEventInput, jsonValueSchema, requestSchema, revokeSchema, approvalPresenceSchema, approvalDecideSchema, browserAcknowledgeSchema, routeDiscardSchema, RouteDiscardInput } from './wire.ts'
 
 /** Bounds for the Host connection, handshake, and retained operation receipts. */
 export interface Config {
+  /** Lifetime of one prepared action ticket in milliseconds. */
   requestTTL?: number
+  /** Maximum pending owner pairing requests. */
   pendingLimit?: number
+  /** Maximum retained installation grants. */
   maxGrants?: number
+  /** Deadline for one extension execution request in milliseconds. */
   requestTimeoutMs?: number
+  /** Maximum concurrent browser requests. */
   requestCapacity?: number
+  /** Maximum encoded invocation size in bytes. */
   maxRequestBytes?: number
+  /** Maximum encoded receipt size in bytes. */
   maxResultBytes?: number
+  /** Maximum WebSocket frame size in bytes. */
   maxFrameBytes?: number
+  /** Time allowed for the authenticated WebSocket hello in milliseconds. */
   handshakeTimeoutMs?: number
+  /** Extension heartbeat cadence in milliseconds. */
   heartbeatIntervalMs?: number
+  /** Retention window for settled request receipts in milliseconds. */
   receiptRetentionMs?: number
+  /** Maximum concurrent Session RPC requests per extension connection. */
   maxSessionRequests?: number
+  /** Shared capacity for entry and region page mounts. */
   maxMounts?: number
+  /** Lifetime of exact-document page-map evidence in milliseconds. */
+  pageEvidenceTTL?: number
 }
 interface Peer {
   readonly socket: WebSocket
   readonly extensionId: string
   readonly done: Promise<void>
   grant?: GrantSummary
+  capabilities?: BrowserExecutorCapabilities
   binding?: ReturnType<BrowserRequests['connect']>
   chain: Promise<void>
   queuedBytes: number
@@ -58,6 +74,7 @@ interface Peer {
 /** One live page entry mount; late clicks from another document are rejected against it. */
 interface MountRegistration {
   acceptingClicks: boolean
+  state: 'reserved' | 'mounted'
   readonly installationId: string
   readonly sessionId: string
   readonly grantEpoch: number
@@ -66,6 +83,23 @@ interface MountRegistration {
   readonly documentId: string
   readonly url: string
   readonly mountId: string
+}
+
+/** One Host-owned page region bound to an exact Session, grant epoch, and document. */
+interface RegionRegistration extends Omit<MountRegistration, 'acceptingClicks'> {
+  state: 'reserved' | 'mounted'
+}
+
+interface PageMapEvidence {
+  readonly installationId: string
+  readonly sessionId: string
+  readonly grantEpoch: number
+  readonly tabId: number
+  readonly frameId: number
+  readonly documentId: string
+  readonly url: string
+  readonly expiresAt: number
+  readonly regions: ReadonlyMap<string, { readonly disposable: boolean; readonly protected: boolean }>
 }
 
 /** Authenticated browser provider over the existing Host web server. */
@@ -85,6 +119,7 @@ export class BrowserExtension extends Browser {
     receiptRetentionMs: z.natural().min(1000).max(300000).default(60000),
     maxSessionRequests: z.natural().min(1).max(8).default(4),
     maxMounts: z.natural().min(1).max(16).default(8),
+    pageEvidenceTTL: z.natural().min(1000).max(60000).default(30000),
   })
   private readonly config: Required<Config>
   private readonly grants: BrowserGrants
@@ -95,6 +130,8 @@ export class BrowserExtension extends Browser {
   private readonly peers = new Set<Peer>()
   private readonly installed = new Map<string, Peer>()
   private readonly mounts = new Map<string, MountRegistration>()
+  private readonly regions = new Map<string, RegionRegistration>()
+  private readonly pageMaps = new Map<string, PageMapEvidence>()
   private closed = false
 
   constructor(ctx: Context, config: Config) {
@@ -106,7 +143,7 @@ export class BrowserExtension extends Browser {
     this.preparations = new BrowserPreparations({ capacity: this.config.requestCapacity, requestTTL: this.config.requestTTL,
       requestDeadlineMs: this.config.requestTimeoutMs, permit: (operation, epoch) => {
         const grant = this.installed.get(operation.installationId)?.grant
-        const scope = ['tabs', 'snapshot', 'wait', 'screenshot'].includes(operation.action.kind) ? 'browser:read' : 'browser:write'
+        const scope = ['tabs', 'snapshot', 'page_map', 'entry_inspect', 'wait', 'screenshot'].includes(operation.action.kind) ? 'browser:read' : 'browser:write'
         return !this.closed && grant !== undefined && grant.grantEpoch === epoch
           && grant.scopes.includes(scope) && this.grants.permit(grant)
       },
@@ -126,6 +163,8 @@ export class BrowserExtension extends Browser {
       this.approvals.dispose()
       this.closed = true
       this.mounts.clear()
+      this.regions.clear()
+      this.pageMaps.clear()
       for (const peer of this.peers) peer.socket.terminate()
       await Promise.all([this.grants.dispose(), ...[...this.peers].map(peer => peer.done)])
       await new Promise<void>((resolve) => { this.sockets.close(() => { resolve() }) })
@@ -166,10 +205,15 @@ export class BrowserExtension extends Browser {
 
   override async instances(): Promise<readonly BrowserInstance[]> {
     if (this.closed) return []
-    return (await this.grants.list()).filter(grant => this.grants.permit(grant)).map(grant => ({
-      installationId: grant.installationId, extensionId: grant.extensionId,
-      grantEpoch: grant.grantEpoch, origins: [...grant.origins], scopes: [...grant.scopes],
-      online: this.installed.has(grant.installationId) }))
+    return (await this.grants.list()).filter(grant => this.grants.permit(grant)).map((grant) => {
+      const capabilities = this.installed.get(grant.installationId)?.capabilities
+      return {
+        installationId: grant.installationId, extensionId: grant.extensionId,
+        grantEpoch: grant.grantEpoch, origins: [...grant.origins], scopes: [...grant.scopes],
+        online: this.installed.has(grant.installationId),
+        ...(capabilities === undefined ? {} : { capabilities: structuredClone(capabilities) }),
+      }
+    })
   }
 
   override isAuthorized(instance: BrowserInstance): boolean {
@@ -178,26 +222,112 @@ export class BrowserExtension extends Browser {
 
   override async execute(operation: BrowserOperation, signal: AbortSignal): Promise<BrowserActionResult> {
     const fixed = structuredClone(operation)
+    if (!validRequestId(fixed.requestId)) return this.failure(fixed, signal, 'invalid_request_id')
     const parsed = browserActionSchema.safeParse(fixed.action)
     if (!parsed.success) return this.failure(fixed, signal, 'invalid_action')
     const action = normalizeAction(parsed.data)
-    if (action.kind === 'entry_mount' || action.kind === 'entry_unmount') {
-      const mount = this.mounts.get(`${fixed.installationId}\u0000${action.mountId}`)
-      if (mount !== undefined && mount.sessionId !== fixed.sessionId) return this.failure(fixed, signal, 'mount_owner_mismatch')
+    const grant = (await this.grants.list()).find(candidate => candidate.installationId === fixed.installationId)
+    const mountKey = 'mountId' in action ? `${fixed.installationId}\u0000${action.mountId}` : undefined
+    const mount = mountKey === undefined ? undefined : this.mounts.get(mountKey)
+    const region = mountKey === undefined ? undefined : this.regions.get(mountKey)
+    if (action.kind === 'entry_mount' && mount !== undefined && !sameMountOwner(mount, fixed, action.page, grant?.grantEpoch)) {
+      return this.failure(fixed, signal, 'mount_owner_mismatch')
     }
-    const mutates = !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(action.kind)
-    if (action.kind === 'entry_mount' && this.mounts.size >= this.config.maxMounts
-      && !this.mounts.has(`${fixed.installationId}\u0000${action.mountId}`)) {
+    if (action.kind === 'entry_unmount' && mount !== undefined && !canReleaseMount(mount, fixed, action.page, grant?.grantEpoch)) {
+      return this.failure(fixed, signal, 'mount_owner_mismatch')
+    }
+    if (action.kind === 'region_render' || action.kind === 'region_clear') {
+      if (region !== undefined && !(action.kind === 'region_clear'
+        ? canReleaseMount(region, fixed, action.page, grant?.grantEpoch)
+        : sameMountOwner(region, fixed, action.page, grant?.grantEpoch))) return this.failure(fixed, signal, 'region_mount_owner_mismatch')
+    }
+    const mutates = !['tabs', 'snapshot', 'page_map', 'entry_inspect', 'wait', 'screenshot'].includes(action.kind)
+    if (action.kind === 'entry_mount' && region !== undefined || action.kind === 'region_render' && mount !== undefined) {
+      return this.failure(fixed, signal, 'mount_kind_conflict')
+    }
+    let regionReservation: RegionRegistration | undefined
+    let regionReservationCreated = false
+    let mountReservation: MountRegistration | undefined
+    let mountReservationCreated = false
+    if (action.kind === 'region_render') {
+      if (grant === undefined || !this.grants.permit(grant) || !grant.scopes.includes('browser:write')) return this.failure(fixed, signal, 'unauthorized')
+      const evidence = this.pageMapFor(fixed, action.page, grant.grantEpoch)
+      if (evidence === undefined) return this.failure(fixed, signal, 'page_map_evidence_required')
+      const mapped = evidence.regions.get(action.selector)
+      if (mapped === undefined) return this.failure(fixed, signal, 'region_selector_not_mapped')
+      if (action.mode === 'replace' && (!mapped.disposable || mapped.protected)) return this.failure(fixed, signal, 'region_replace_not_permitted')
+    }
+    if ((action.kind === 'entry_mount' || action.kind === 'region_render')
+      && this.mounts.size + this.regions.size >= this.config.maxMounts
+      && !(action.kind === 'entry_mount' && mount !== undefined || action.kind === 'region_render' && region !== undefined)) {
       return this.failure(fixed, signal, 'mount_capacity')
     }
-    return this.dispatch(fixed, action, jsonValueSchema.parse(action), mutates,
+    if (action.kind === 'region_render') {
+      const key = `${fixed.installationId}\u0000${action.mountId}`
+      regionReservation = this.regions.get(key)
+      if (regionReservation === undefined) {
+        if (grant === undefined) return this.failure(fixed, signal, 'unauthorized')
+        regionReservation = { installationId: fixed.installationId, sessionId: fixed.sessionId, grantEpoch: grant.grantEpoch,
+          tabId: action.page.tabId, frameId: action.page.frameId, documentId: action.page.documentId, url: action.page.url,
+          mountId: action.mountId, state: 'reserved' }
+        this.regions.set(key, regionReservation)
+        regionReservationCreated = true
+      }
+    } else if (action.kind === 'entry_mount') {
+      const key = `${fixed.installationId}\u0000${action.mountId}`
+      mountReservation = this.mounts.get(key)
+      if (mountReservation === undefined) {
+        if (grant === undefined) return this.failure(fixed, signal, 'unauthorized')
+        mountReservation = {
+          acceptingClicks: false, installationId: fixed.installationId, sessionId: fixed.sessionId,
+          grantEpoch: grant.grantEpoch,
+          tabId: action.page.tabId, frameId: action.page.frameId, documentId: action.page.documentId, url: action.page.url,
+          mountId: action.mountId, state: 'reserved' }
+        this.mounts.set(key, mountReservation)
+        mountReservationCreated = true
+      }
+    }
+    const result = await this.dispatch(fixed, action, jsonValueSchema.parse(action), mutates,
       'element' in action ? action.element.page : 'page' in action ? action.page : undefined, Date.now() + this.config.requestTimeoutMs, signal)
+    if (action.kind === 'region_render' && regionReservation !== undefined) {
+      this.settleRegionRender(regionReservation, result, regionReservationCreated)
+    }
+    if (action.kind === 'entry_mount' && mountReservation !== undefined) {
+      this.settleMount(mountReservation, result, mountReservationCreated)
+    }
+    if (result.outcome === 'failed' && result.delivery === 'sent' && result.reason === 'document_replaced') {
+      const target = 'element' in action ? action.element.page : 'page' in action ? action.page : undefined
+      if (target !== undefined) this.releaseReplacedDocument(fixed.installationId, target)
+    }
+    return result
+  }
+
+  override async requestStatus(query: BrowserRequestStatusQuery): Promise<BrowserRequestStatus> {
+    if (this.closed) {
+      return { requestId: query.requestId, sessionId: query.sessionId, installationId: query.installationId,
+        outcome: 'unknown', delivery: 'not-sent', reason: 'closed' }
+    }
+    const grant = (await this.grants.list()).find(candidate => candidate.installationId === query.installationId)
+    if (grant === undefined || !this.grants.permit(grant) || !grant.scopes.includes('browser:read')) {
+      return { requestId: query.requestId, sessionId: query.sessionId, installationId: query.installationId,
+        outcome: 'unknown', delivery: 'not-sent', reason: 'unauthorized' }
+    }
+    const status = this.requests.statusFor(query.requestId, query.sessionId, query.installationId)
+    if (status !== undefined) {
+      if (status.outcome === 'unknown' && status.quiescent === true && status.reason === 'document_replaced') {
+        const target = this.requests.releaseDocumentReplaced(query.requestId, query.sessionId, query.installationId)
+        if (target !== undefined) this.releaseReplacedDocument(query.installationId, target)
+      }
+      return { ...status, sessionId: query.sessionId }
+    }
+    return { requestId: query.requestId, sessionId: query.sessionId, installationId: query.installationId,
+      outcome: 'unknown', delivery: 'sent', reason: 'receipt_unavailable' }
   }
 
   override observe(operation: BrowserObservation, signal: AbortSignal): Promise<BrowserActionResult> {
-    const fixed = structuredClone(operation)
+    const fixed: BrowserOperation & { readonly grantEpoch: number } = { ...structuredClone(operation), requestId: randomUUID() }
     const parsed = browserActionSchema.safeParse(fixed.action)
-    if (!parsed.success || !['tabs', 'snapshot'].includes(parsed.data.kind)
+    if (!parsed.success || !['tabs', 'snapshot', 'page_map'].includes(parsed.data.kind)
       || !Number.isSafeInteger(fixed.grantEpoch) || fixed.grantEpoch < 1) {
       return Promise.resolve(this.failure(fixed, signal, 'invalid_observation'))
     }
@@ -208,12 +338,13 @@ export class BrowserExtension extends Browser {
 
   override async prepare(operation: BrowserOperation, signal: AbortSignal): Promise<BrowserPreparedAction> {
     const fixed = structuredClone(operation)
+    if (!validRequestId(fixed.requestId)) throw Object.assign(new Error('invalid_request_id'), { code: 'invalid_request_id' })
     const parsed = browserActionSchema.safeParse(fixed.action)
     // Persistent mounts have no one-shot preparation or approval card.
-    if (!parsed.success || ['entry_inspect', 'entry_mount', 'entry_unmount'].includes(parsed.data.kind)) throw Object.assign(new Error('invalid_action'), { code: 'invalid_action' })
+    if (!parsed.success || ['page_map', 'entry_inspect', 'entry_mount', 'entry_unmount', 'region_render', 'region_clear'].includes(parsed.data.kind)) throw Object.assign(new Error('invalid_action'), { code: 'invalid_action' })
     const action = normalizeAction(parsed.data)
     const grant = (await this.grants.list()).find(candidate => candidate.installationId === fixed.installationId)
-    const mutates = !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(action.kind)
+    const mutates = !['tabs', 'snapshot', 'page_map', 'entry_inspect', 'wait', 'screenshot'].includes(action.kind)
     if (grant === undefined || !this.grants.permit(grant) || !grant.scopes.includes(mutates ? 'browser:write' : 'browser:read')) throw Object.assign(new Error('unauthorized'), { code: 'unauthorized' })
     return this.preparations.prepare({ ...fixed, action }, signal, grant.grantEpoch)
   }
@@ -235,10 +366,16 @@ export class BrowserExtension extends Browser {
   ): Promise<BrowserActionResult> {
     const unavailable = this.unavailable(signal)
     if (unavailable !== undefined) return this.failure(operation, signal, unavailable)
-    const requestId = randomUUID()
+    const requestId = observation && !validRequestId(operation.requestId)
+      ? randomUUID()
+      : operation.requestId
+    if (!validRequestId(requestId)) return this.failure(operation, signal, 'invalid_request_id')
     const grant = (await this.grants.list()).find(grant => grant.installationId === operation.installationId)
     if (grant === undefined || expectedEpoch !== undefined && grant.grantEpoch !== expectedEpoch || !this.grants.permit(grant) || !grant.scopes.includes(mutates ? 'browser:write' : 'browser:read')) return this.failure(operation, signal, 'unauthorized')
     if (observation && !grant.scopes.includes('browser:observe')) return this.failure(operation, signal, 'observation_not_authorized')
+    const peer = this.installed.get(operation.installationId)
+    if (peer !== undefined && (peer.grant?.grantEpoch !== grant.grantEpoch || peer.capabilities === undefined
+      || !peer.capabilities.actionKinds.includes(action.kind))) return this.failure(operation, signal, 'capability_unavailable')
     if (target !== undefined && !allows(grant, target.url) || (action.kind === 'navigate' || action.kind === 'tab_open') && !allows(grant, action.url)) return this.failure(operation, signal, 'site_not_authorized')
     // `list()` may await a credential refresh. Fence its captured epoch immediately before dispatch.
     const finalUnavailable = this.unavailable(signal)
@@ -252,18 +389,18 @@ export class BrowserExtension extends Browser {
       ...(target === undefined ? {} : { target: { tabId: target.tabId, frameId: target.frameId, documentId: target.documentId } }),
     })
     const unmount = action.kind === 'entry_unmount' ? this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) : undefined
+    const regionClear = action.kind === 'region_clear' ? this.regions.get(`${operation.installationId}\u0000${action.mountId}`) : undefined
     if (unmount) unmount.acceptingClicks = false
     const result = await this.requests.execute(request, signal)
     // Register or clear the page mount inside the dispatch that owns the grant
     // epoch, so late clicks are checked against the authorization that mounted them.
     if (action.kind === 'entry_mount') {
       if (result.outcome === 'observed') {
-        this.mounts.set(`${operation.installationId}\u0000${action.mountId}`, {
-          acceptingClicks: true,
-          installationId: operation.installationId, sessionId: operation.sessionId, grantEpoch: grant.grantEpoch,
-          tabId: action.page.tabId, frameId: action.page.frameId, documentId: action.page.documentId,
-          url: action.page.url, mountId: action.mountId,
-        })
+        const mount = this.mounts.get(`${operation.installationId}\u0000${action.mountId}`)
+        if (mount !== undefined && sameMountOwner(mount, operation, action.page, grant.grantEpoch)) {
+          mount.acceptingClicks = true
+          mount.state = 'mounted'
+        }
       }
     } else if (action.kind === 'entry_unmount') {
       const value = result.value as { unmounted?: unknown; remaining?: unknown } | undefined
@@ -271,7 +408,15 @@ export class BrowserExtension extends Browser {
         && this.mounts.get(`${operation.installationId}\u0000${action.mountId}`) === unmount) {
         this.mounts.delete(`${operation.installationId}\u0000${action.mountId}`)
       }
+    } else if (action.kind === 'region_clear') {
+      const cleared = object(result.value)?.cleared
+      if (result.delivery === 'sent' && (result.outcome === 'observed' && cleared === true
+        || result.outcome === 'failed' && result.reason === 'document_replaced')) {
+        const key = `${operation.installationId}\u0000${action.mountId}`
+        if (this.regions.get(key) === regionClear) this.regions.delete(key)
+      }
     }
+    if (action.kind === 'page_map') this.rememberPageMap(operation, grant, result)
     return {
       requestId: result.requestId,
       sessionId: operation.sessionId,
@@ -284,13 +429,83 @@ export class BrowserExtension extends Browser {
   }
 
   private failure(operation: BrowserOperation, signal: AbortSignal, reason: string): BrowserActionResult {
-    return { requestId: randomUUID(), sessionId: operation.sessionId, installationId: operation.installationId,
+    return { requestId: operation.requestId, sessionId: operation.sessionId, installationId: operation.installationId,
       outcome: signal.aborted ? 'cancelled' : 'failed', delivery: 'not-sent', reason }
   }
 
   private unavailable(signal: AbortSignal): 'closed' | 'cancelled' | undefined {
     return this.closed ? 'closed' : signal.aborted ? 'cancelled' : undefined
   }
+
+  private pageMapFor(
+    operation: BrowserOperation,
+    page: PageIdentity,
+    grantEpoch: number,
+  ): PageMapEvidence | undefined {
+    this.prunePageMaps()
+    const evidence = this.pageMaps.get(pageMapKey(operation.installationId, operation.sessionId, page))
+    return evidence !== undefined && evidence.grantEpoch === grantEpoch ? evidence : undefined
+  }
+
+  private rememberPageMap(operation: BrowserOperation, grant: GrantSummary, result: Pick<BrowserActionResult, 'outcome' | 'value'>): void {
+    if (result.outcome !== 'observed') return
+    const action = operation.action
+    if (action.kind !== 'page_map') return
+    const value = object(result.value)
+    const page = object(value?.page)
+    const regions = Array.isArray(value?.regions) ? value.regions : undefined
+    if (!samePageValue(page, action.page) || regions === undefined) return
+    const mapped = new Map<string, { readonly disposable: boolean; readonly protected: boolean }>()
+    for (const region of regions) {
+      const record = object(region)
+      if (typeof record?.selector !== 'string' || typeof record.disposable !== 'boolean' || typeof record.protected !== 'boolean') continue
+      mapped.set(record.selector, { disposable: record.disposable, protected: record.protected })
+    }
+    this.prunePageMaps()
+    this.pageMaps.set(pageMapKey(operation.installationId, operation.sessionId, action.page), {
+      installationId: operation.installationId, sessionId: operation.sessionId, grantEpoch: grant.grantEpoch,
+      ...action.page, expiresAt: Date.now() + this.config.pageEvidenceTTL, regions: mapped,
+    })
+  }
+
+  private settleRegionRender(
+    reservation: RegionRegistration,
+    result: BrowserActionResult,
+    created: boolean,
+  ): void {
+    const key = `${reservation.installationId}\u0000${reservation.mountId}`
+    if (this.regions.get(key) !== reservation) return
+    if (result.outcome === 'observed') reservation.state = 'mounted'
+    else if (created && result.outcome !== 'unknown') this.regions.delete(key)
+  }
+
+  private settleMount(reservation: MountRegistration, result: BrowserActionResult, created: boolean): void {
+    const key = `${reservation.installationId}\u0000${reservation.mountId}`
+    if (this.mounts.get(key) !== reservation) return
+    if (created && result.outcome !== 'unknown' && result.outcome !== 'observed') this.mounts.delete(key)
+  }
+
+  /** A confirmed document replacement makes leases for that exact discarded document unreachable. */
+  private releaseReplacedDocument(
+    installationId: string,
+    page: Pick<PageIdentity, 'tabId' | 'frameId' | 'documentId'>,
+  ): void {
+    for (const [key, mount] of this.mounts) {
+      if (mount.installationId === installationId && sameDocument(mount, page)) this.mounts.delete(key)
+    }
+    for (const [key, region] of this.regions) {
+      if (region.installationId === installationId && sameDocument(region, page)) this.regions.delete(key)
+    }
+    for (const [key, evidence] of this.pageMaps) {
+      if (evidence.installationId === installationId && sameDocument(evidence, page)) this.pageMaps.delete(key)
+    }
+  }
+
+  private prunePageMaps(): void {
+    const now = Date.now()
+    for (const [key, evidence] of this.pageMaps) if (evidence.expiresAt <= now) this.pageMaps.delete(key)
+  }
+
 
   private peerOpen(peer: Peer): boolean { return !this.closed && peer.socket.readyState === WebSocket.OPEN }
 
@@ -391,6 +606,7 @@ export class BrowserExtension extends Browser {
       if (!this.peerOpen(peer)) return
       this.disconnect(grant.installationId)
       peer.grant = grant
+      peer.capabilities = structuredClone(frame.capabilities)
       this.installed.set(grant.installationId, peer)
       peer.sessions = new BrowserSessions(this.ctx.sessionController, {
         permit: () => !this.closed && peer.socket.readyState === WebSocket.OPEN
@@ -399,7 +615,7 @@ export class BrowserExtension extends Browser {
       })
       peer.readings = new BrowserReadings(this.ctx,
         () => this.peerOpen(peer) && this.grants.permit(grant) && grant.scopes.includes('session:interact'),
-        frame => this.sendPeer(peer, frame))
+        (frame) =>{  this.sendPeer(peer, frame) })
       peer.approval = { id: randomUUID(), permit: () => !this.closed && peer.socket.readyState === WebSocket.OPEN
         && this.grants.permit(grant) && grant.scopes.includes('session:interact'), send: (frame) => { this.sendPeer(peer, frame) } }
       peer.socket.send(JSON.stringify({ type: 'ready', protocolVersion: 1, grant, heartbeatIntervalMs: this.config.heartbeatIntervalMs }))
@@ -448,6 +664,8 @@ export class BrowserExtension extends Browser {
         value = this.acknowledge(peer, browserAcknowledgeSchema.parse(frame.params ?? {}).receipt)
       } else if (frame.method === 'browser.entryEvent') {
         value = this.entryEvent(peer, entryEventSchema.parse(frame.params ?? {}))
+      } else if (frame.method === 'browser.routeDiscard') {
+        value = this.routeDiscard(peer, routeDiscardSchema.parse(frame.params ?? {}))
       } else if (frame.method === 'instances') {
         value = (await this.instances()).filter(instance => instance.installationId === grant.installationId)
       } else if (frame.method.startsWith('activity.')) {
@@ -510,6 +728,22 @@ export class BrowserExtension extends Browser {
     return { accepted: true }
   }
 
+  /** Release only an exact route lease when the page runtime reports that it removed that mount itself. */
+  private routeDiscard(peer: Peer, input: RouteDiscardInput): { released: boolean; reason?: 'route_discarded' } {
+    const grant = peer.grant
+    if (grant === undefined || !this.grants.permit(grant) || !grant.scopes.includes('browser:write')
+      || input.installationId !== grant.installationId || input.grantEpoch > grant.grantEpoch
+      || input.currentUrl === input.page.url) return { released: false }
+    const registrations = input.resource === 'entry' ? this.mounts : this.regions
+    const key = `${input.installationId}\u0000${input.mountId}`
+    const registration = registrations.get(key)
+    if (registration === undefined || registration.sessionId !== input.sessionId || registration.grantEpoch !== input.grantEpoch
+      || !samePage(registration, input.page)) return { released: false }
+    registrations.delete(key)
+    this.pageMaps.delete(pageMapKey(input.installationId, input.sessionId, input.page))
+    return { released: true, reason: 'route_discarded' }
+  }
+
   private sendPeer(peer: Peer, frame: unknown): void {
     if (this.closed || peer.grant === undefined || !this.grants.permit(peer.grant) || peer.socket.readyState !== WebSocket.OPEN) throw new Error('send permit withdrawn')
     const text = JSON.stringify(frame)
@@ -545,6 +779,13 @@ function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): 
       ...(action.linkSelector === undefined ? {} : { linkSelector: action.linkSelector }),
       ...(action.collected === undefined ? {} : { collected: action.collected }) }
   }
+  if (action.kind === 'region_render') {
+    return { kind: action.kind, page: action.page, mountId: action.mountId, selector: action.selector,
+      ...(action.placement === undefined ? {} : { placement: action.placement }),
+      ...(action.mode === undefined ? {} : { mode: action.mode }),
+      ...(action.title === undefined ? {} : { title: action.title }),
+      blocks: action.blocks }
+  }
   return action.kind === 'snapshot'
     ? { kind: action.kind, tabId: action.tabId, frameId: action.frameId,
       ...(action.documentId === undefined ? {} : { documentId: action.documentId }),
@@ -559,9 +800,69 @@ function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): 
       ...(action.structure === undefined ? {} : { structure: action.structure }) }
     : action
 }
+
+function object(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+}
+
+type PageIdentity = {
+  readonly tabId: number
+  readonly frameId: number
+  readonly documentId: string
+  readonly url: string
+}
+
+function samePage(left: PageIdentity, right: PageIdentity): boolean {
+  return left.tabId === right.tabId && left.frameId === right.frameId && left.documentId === right.documentId && left.url === right.url
+}
+
+function sameDocument(
+  left: Pick<PageIdentity, 'tabId' | 'frameId' | 'documentId'>,
+  right: Pick<PageIdentity, 'tabId' | 'frameId' | 'documentId'>,
+): boolean {
+  return left.tabId === right.tabId && left.frameId === right.frameId && left.documentId === right.documentId
+}
+
+function sameMountOwner(
+  mount: Omit<MountRegistration, 'acceptingClicks' | 'state'>,
+  operation: Pick<BrowserOperation, 'sessionId' | 'installationId'>,
+  page: PageIdentity,
+  grantEpoch: number | undefined,
+): boolean {
+  return mount.sessionId === operation.sessionId && mount.installationId === operation.installationId
+    && grantEpoch !== undefined && mount.grantEpoch === grantEpoch && samePage(mount, page)
+}
+
+function canReleaseMount(
+  mount: Omit<MountRegistration, 'acceptingClicks' | 'state'>,
+  operation: Pick<BrowserOperation, 'sessionId' | 'installationId'>,
+  page: PageIdentity,
+  grantEpoch: number | undefined,
+): boolean {
+  return sameMountOwner(mount, operation, page, grantEpoch)
+    || mount.sessionId === operation.sessionId
+      && mount.installationId === operation.installationId
+      && grantEpoch !== undefined
+      && grantEpoch > mount.grantEpoch
+      && samePage(mount, page)
+}
+
+function validRequestId(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value)
+}
+
+function samePageValue(value: Record<string, unknown> | undefined, page: PageIdentity): boolean {
+  return value?.tabId === page.tabId && value.frameId === page.frameId && value.documentId === page.documentId && value.url === page.url
+}
+
+function pageMapKey(installationId: string, sessionId: string, page: PageIdentity): string {
+  return `${installationId}\u0000${sessionId}\u0000${page.tabId}\u0000${page.frameId}\u0000${page.documentId}\u0000${page.url}`
+}
+
 function response(status: number, body: object, origin?: string): Response {
   return Response.json(body, { status, headers: { 'Cache-Control': 'no-store', ...(origin === undefined ? {} : {
-    'Access-Control-Allow-Origin': origin, Vary: 'Origin', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Origin': origin, Vary: 'Origin', 'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   }) } })
 }
 export default BrowserExtension

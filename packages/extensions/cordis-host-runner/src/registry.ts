@@ -38,6 +38,12 @@ export interface DynamicCordisRun {
     page: { tabId: number; frameId: number; documentId: string; url: string }
     mountId: string
   }>
+  /** Page workspace regions owned by this activation and restored during retraction. */
+  ownedBrowserRegions: Map<string, {
+    installationId: string
+    page: { tabId: number; frameId: number; documentId: string; url: string }
+    mountId: string
+  }>
   /** Last render failure observed for this version's current run. */
   renderFailure?: DynamicCordisRenderFailure
   /** Approval whose transition started this run, when model-driven. */
@@ -78,6 +84,12 @@ export interface DynamicCordisPlugin {
   pendingBrowserWork: Set<Promise<unknown>>
   /** Unmounts whose result was unknown, retained so a later stop can reconcile them. */
   pendingBrowserMounts: Map<string, {
+    installationId: string
+    page: { tabId: number; frameId: number; documentId: string; url: string }
+    mountId: string
+  }>
+  /** Region restores whose result is unresolved and must be reconciled before another run. */
+  pendingBrowserRegions: Map<string, {
     installationId: string
     page: { tabId: number; frameId: number; documentId: string; url: string }
     mountId: string

@@ -187,6 +187,19 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     })).then(respond, error => respond({ ok: false, error: error.code ?? error.message }))
     return true
   }
+  if (message?.type === 'dsh-route-discarded') {
+    if (sender.id !== chrome.runtime.id || !Number.isInteger(sender.tab?.id)
+      || !['entry', 'region'].includes(message.resource) || typeof message.mountId !== 'string' || !message.mountId
+      || typeof message.sessionId !== 'string' || typeof message.installationId !== 'string' || !Number.isSafeInteger(message.grantEpoch)
+      || !message.page || message.page.tabId !== sender.tab.id || !Number.isInteger(message.page.frameId)
+      || typeof message.page.documentId !== 'string' || typeof message.page.url !== 'string' || typeof message.currentUrl !== 'string') return
+    void ready.then(() => assistant.handle({
+      type: 'dsh-route-discarded',
+      payload: { resource: message.resource, mountId: message.mountId, sessionId: message.sessionId,
+        installationId: message.installationId, grantEpoch: message.grantEpoch, page: message.page, currentUrl: message.currentUrl },
+    })).then(respond, error => respond({ ok: false, error: error.code ?? error.message }))
+    return true
+  }
   if (!isSidebar(sender) || typeof message?.type !== 'string' || !message.type.startsWith('dsh-assistant-')) return
   if (message.type === 'dsh-assistant-open-window') {
     void surfaces.openWindow().then(value => respond({ ok: true, value }), () => respond({ ok: false, error: 'assistant_window_unavailable' }))

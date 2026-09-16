@@ -4,6 +4,13 @@ export const BROWSER_EXTENSION_PATH = '/api/browser-extension/v1'
 export const extensionIdSchema = z.string().regex(/^[a-p]{32}$/u)
 export const jsonValueSchema = z.json()
 const id = z.string().min(1).max(128)
+const browserActionKinds = ['tabs', 'snapshot', 'page_map', 'entry_inspect', 'entry_mount', 'entry_unmount', 'region_render', 'region_clear',
+  'navigate', 'click', 'fill', 'submit', 'scroll', 'wait', 'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload',
+  'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot'] as const
+const executorCapabilities = z.object({
+  protocolVersion: z.literal(1), actionKinds: z.array(z.enum(browserActionKinds)).min(1).max(browserActionKinds.length)
+    .refine(value => new Set(value).size === value.length), requestRecovery: z.literal(true),
+}).strict()
 const page = z.object({ tabId: z.number().int().nonnegative(), frameId: z.number().int().nonnegative(),
   documentId: id, url: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)) }).strict()
 const element = z.object({ page, snapshotId: id, elementId: id }).strict()
@@ -20,6 +27,17 @@ export const browserPreparationSchema = z.object({
   preparationId: z.uuid({ version: 'v4' }), expiresAt: z.number().int().positive(), description: browserActionDescriptionSchema,
 }).strict()
 
+/** One plain-data content block. The page half renders each field as a DOM text node, never as markup. */
+const regionBlockSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('heading'), text: z.string().max(512) }).strict(),
+  z.object({ type: z.literal('text'), text: z.string().max(4096) }).strict(),
+  z.object({ type: z.literal('item'), title: z.string().max(512), meta: z.string().max(512).optional(),
+    link: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)).optional() }).strict(),
+  z.object({ type: z.literal('keyvalue'), label: z.string().max(256), value: z.string().max(1024) }).strict(),
+  z.object({ type: z.literal('link'), text: z.string().max(512),
+    href: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)) }).strict(),
+])
+
 /** Domain actions accepted by every entry into the provider, including direct callers. */
 export const browserActionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('tabs') }).strict(),
@@ -29,6 +47,7 @@ export const browserActionSchema = z.discriminatedUnion('kind', [
     tree: z.boolean().optional(), treeCursor: z.string().min(1).max(256).optional(),
     treeLimit: z.number().int().min(1).max(1000).optional(), includeOptions: z.boolean().optional(),
     structure: z.boolean().optional() }).strict(),
+  z.object({ kind: z.literal('page_map'), page }).strict(),
   z.object({ kind: z.literal('entry_inspect'), page, regionSelector: z.string().min(1).max(256),
     selector: z.string().min(1).max(256), titleSelector: z.string().max(256).optional(),
     linkSelector: z.string().max(256).optional(), sampleLimit: z.number().int().min(1).max(12).optional() }).strict(),
@@ -51,6 +70,10 @@ export const browserActionSchema = z.discriminatedUnion('kind', [
     linkSelector: z.string().max(256).optional(),
     collected: z.array(z.string().max(8192)).max(512).optional() }).strict(),
   z.object({ kind: z.literal('entry_unmount'), page, mountId: id, forgetCollected: z.boolean().optional() }).strict(),
+  z.object({ kind: z.literal('region_render'), page, mountId: id, selector: z.string().min(1).max(256),
+    placement: z.enum(['prepend', 'append']).optional(), mode: z.enum(['append', 'replace']).optional(), title: z.string().max(128).optional(),
+    blocks: z.array(regionBlockSchema).min(1).max(200) }).strict(),
+  z.object({ kind: z.literal('region_clear'), page, mountId: id }).strict(),
 ])
 const identity = z.object({
   protocolVersion: z.literal(1), grantEpoch: z.number().int().positive(), requestId: z.uuid({ version: 'v4' }),
@@ -63,13 +86,13 @@ const receipt = identity.extend({
 }).strict()
 /** Authentication is a bounded first frame, never a credential in the URL. */
 export const extensionFrameSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('hello'), protocolVersion: z.literal(1), installationId: z.uuid({ version: 'v4' }), token: z.string().regex(/^[A-Za-z0-9_-]{43}$/u) }).strict(),
+  z.object({ type: z.literal('hello'), protocolVersion: z.literal(1), installationId: z.uuid({ version: 'v4' }), token: z.string().regex(/^[A-Za-z0-9_-]{43}$/u), capabilities: executorCapabilities }).strict(),
   z.object({ type: z.literal('result'), receipt }).strict(),
   z.object({ type: z.literal('pong') }).strict(),
   z.object({ type: z.literal('request'), requestId: z.uuid({ version: 'v4' }), method: z.enum(['instances',
     'reading.models', 'reading.model', 'reading.generate', 'reading.stop',
     'session.list', 'session.create', 'session.prompt', 'session.cancel', 'session.follow', 'session.unfollow', 'session.page', 'session.attachment',
-    'approval.presence', 'approval.decide', 'browser.acknowledge', 'browser.entryEvent', 'monitor.list', 'monitor.create', 'monitor.pause', 'monitor.resume',
+    'approval.presence', 'approval.decide', 'browser.acknowledge', 'browser.entryEvent', 'browser.routeDiscard', 'monitor.list', 'monitor.create', 'monitor.pause', 'monitor.resume',
     'monitor.acknowledge', 'activity.state', 'activity.configure', 'activity.append', 'activity.query']), params: z.json().optional() }).strict(),
 ])
 export const connectSchema = z.object({
@@ -92,3 +115,10 @@ export const entryEventSchema = z.object({
   documentId: id, url: z.url().max(8192), title: z.string().max(512), link: z.string().max(8192),
 }).strict()
 export type EntryEventInput = z.infer<typeof entryEventSchema>
+
+/** A page runtime can release only the exact mount it has already discarded after same-document route drift. */
+export const routeDiscardSchema = z.object({
+  resource: z.enum(['entry', 'region']), mountId: id, sessionId: id, installationId: z.uuid({ version: 'v4' }), grantEpoch: z.number().int().positive(),
+  page, currentUrl: z.url().max(8192),
+}).strict()
+export type RouteDiscardInput = z.infer<typeof routeDiscardSchema>

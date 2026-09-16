@@ -46,6 +46,18 @@ export type BrowserRequestStatus = BrowserRequestResult | (BrowserRequestIdentit
   readonly delivery: 'sent'
 })
 
+/** Host projection for an owner that already holds a request id; authority fingerprints stay private. */
+export type BrowserRequestStatusView = {
+  readonly requestId: string
+  readonly sessionId: string
+  readonly installationId: string
+  readonly outcome: BrowserRequestResult['outcome'] | 'in-flight'
+  readonly delivery: BrowserRequestResult['delivery']
+  readonly reason?: string
+  readonly value?: JsonValue
+  readonly quiescent?: boolean
+}
+
 /** Bounds are supplied by the owning gateway configuration. */
 export interface BrowserRequestLimits {
   readonly capacity: number

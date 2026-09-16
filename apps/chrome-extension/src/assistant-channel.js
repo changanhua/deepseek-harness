@@ -3,6 +3,16 @@ import { normalizeBaseUrl } from './pending.js'
 const MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 const messageBytes = value => new TextEncoder().encode(value).byteLength
 
+// This is deliberately declared by the installed executor, rather than inferred
+// by the Host from its own tool registry. A missing declaration fails closed.
+const executorCapabilities = Object.freeze({
+  protocolVersion: 1,
+  actionKinds: Object.freeze(['tabs', 'snapshot', 'page_map', 'entry_inspect', 'entry_mount', 'entry_unmount', 'region_render', 'region_clear',
+    'navigate', 'click', 'fill', 'submit', 'scroll', 'wait', 'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload',
+    'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot']),
+  requestRecovery: true,
+})
+
 const channelError = (code, reason) => Object.assign(new Error(code), { code, ...(reason === undefined ? {} : { reason }) })
 const clone = value => structuredClone(value)
 
@@ -99,7 +109,8 @@ export const createAssistantChannel = ({
     next.onopen = () => {
       if (socket !== next || stopped) return
       try {
-        next.send(JSON.stringify({ type: 'hello', protocolVersion: 1, installationId: channelCredentials.installationId, token: channelCredentials.token }))
+        next.send(JSON.stringify({ type: 'hello', protocolVersion: 1, installationId: channelCredentials.installationId, token: channelCredentials.token,
+          capabilities: executorCapabilities }))
       } catch {
         closeCurrent()
       }

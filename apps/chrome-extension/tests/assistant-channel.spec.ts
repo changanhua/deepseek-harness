@@ -8,6 +8,7 @@ type BrowserFrame = {
   requestId?: string
   token?: string
   receipt?: Record<string, unknown>
+  capabilities?: Record<string, unknown>
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -21,12 +22,20 @@ const parseFrame = (value: string): BrowserFrame => {
     ...(typeof parsed.requestId === 'string' ? { requestId: parsed.requestId } : {}),
     ...(typeof parsed.token === 'string' ? { token: parsed.token } : {}),
     ...(isRecord(parsed.receipt) ? { receipt: parsed.receipt } : {}),
+    ...(isRecord(parsed.capabilities) ? { capabilities: parsed.capabilities } : {}),
   }
 }
 
 const credentials = {
   baseUrl: 'https://dsh.example.test/', installationId: 'installation-1', token: 'secret-token',
   grant: { installationId: 'installation-1', extensionId: 'extension-1', grantEpoch: 7, scopes: ['browser:read'], origins: ['https://example.test'], createdAt: '2026-09-08T00:00:00.000Z' },
+}
+const executorCapabilities = {
+  protocolVersion: 1,
+  actionKinds: ['tabs', 'snapshot', 'page_map', 'entry_inspect', 'entry_mount', 'entry_unmount', 'region_render', 'region_clear',
+    'navigate', 'click', 'fill', 'submit', 'scroll', 'wait', 'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload',
+    'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot'],
+  requestRecovery: true,
 }
 
 class FakeSocket {
@@ -101,7 +110,7 @@ describe('浏览器助手 WebSocket 通道', () => {
     const socket = FakeSocket.instances[0]
     expect(socket.url).toBe('wss://dsh.example.test/api/browser-extension/v1/ws')
     socket.open()
-    expect(sent(socket)).toEqual([{ type: 'hello', protocolVersion: 1, installationId: 'installation-1', token: 'secret-token' }])
+    expect(sent(socket)).toEqual([{ type: 'hello', protocolVersion: 1, installationId: 'installation-1', token: 'secret-token', capabilities: executorCapabilities }])
     ready(socket)
     const invocation = request('job-1')
     socket.message({ type: 'execute', request: invocation })

@@ -138,9 +138,13 @@ describe('页面内浏览器助手', () => {
       + '</section></main>'
     const structure = install().snapshot().structure
     expect(structure?.regions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'main', label: '问题流' })]))
-    expect(structure?.collections).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'feed', itemCount: 2,
-      items: expect.arrayContaining([expect.objectContaining({ index: 0, text: expect.stringContaining('第一个问题'),
-        controls: expect.arrayContaining([expect.objectContaining({ role: 'link', label: '打开问题' }), expect.objectContaining({ role: 'button', label: '点赞', state: expect.objectContaining({ pressed: true }) })]) })]) })]))
+    const feed = structure?.collections.find(collection => collection.kind === 'feed')
+    expect(feed?.itemCount).toBe(2)
+    const first = feed?.items.find(item => item.index === 0)
+    expect(first?.text).toContain('第一个问题')
+    expect(first?.controls.find(control => control.role === 'link')?.label).toBe('打开问题')
+    const like = first?.controls.find(control => control.role === 'button' && control.label === '点赞')
+    expect(like?.state?.pressed).toBe(true)
   })
   test('控件快照暴露通用选择、忙碌和展开状态，供 Agent 核验动作结果', () => {
     document.body.innerHTML = '<button id="like" aria-pressed="true">点赞</button><button id="save" aria-selected="false">保存</button>'

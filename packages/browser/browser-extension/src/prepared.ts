@@ -55,7 +55,10 @@ export class BrowserPreparations {
     const expiresAt = now + this.options.requestTTL
     const deadline = now + (this.options.requestDeadlineMs ?? this.options.requestTTL)
     try {
-      const result = await this.options.dispatch({ operation: fixed, action: fixed.action,
+      // Preparation is a read-only observation, so it must not consume the
+      // caller-owned identity reserved for the subsequent irreversible commit.
+      const preparationOperation = { ...fixed, requestId: randomUUID() }
+      const result = await this.options.dispatch({ operation: preparationOperation, action: fixed.action,
         payload: { kind: 'prepare', action: fixed.action, expiresAt }, mutates: false, deadline, target, signal,
         ...(grantEpoch === undefined ? {} : { grantEpoch }) })
       this.checkLifetime(signal)
@@ -123,7 +126,7 @@ export class BrowserPreparations {
 function targetOf(action: BrowserAction): BrowserActionDescription['page'] | undefined {
   return 'element' in action ? action.element.page : 'page' in action ? action.page : undefined
 }
-function mutates(action: BrowserAction): boolean { return !['tabs', 'snapshot', 'wait', 'screenshot'].includes(action.kind) }
+function mutates(action: BrowserAction): boolean { return !['tabs', 'snapshot', 'page_map', 'wait', 'screenshot'].includes(action.kind) }
 function samePage(left: BrowserActionDescription['page'], right: BrowserActionDescription['page']): boolean {
   return left.tabId === right.tabId && left.frameId === right.frameId && left.documentId === right.documentId && left.url === right.url
 }
@@ -135,5 +138,12 @@ function descriptionOf(value: ReturnType<typeof browserPreparationSchema.parse>[
 }
 function failure(code: string): Error { return Object.assign(new Error(code), { code }) }
 function resultFor(entry: Entry, outcome: BrowserActionResult['outcome'], reason: string): BrowserActionResult {
-  return { requestId: String(entry.ticket), sessionId: entry.operation.sessionId, installationId: entry.operation.installationId, outcome, delivery: 'not-sent', reason }
+  return {
+    requestId: entry.operation.requestId,
+    sessionId: entry.operation.sessionId,
+    installationId: entry.operation.installationId,
+    outcome,
+    delivery: 'not-sent',
+    reason,
+  }
 }

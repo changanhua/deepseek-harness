@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 import type {
   BrowserDispatchFrame, BrowserInvocation, BrowserReceipt, BrowserRequestIdentity,
-  BrowserRequestLimits, BrowserRequestResult, BrowserRequestStatus,
+  BrowserRequestLimits, BrowserRequestResult, BrowserRequestStatus, BrowserRequestStatusView,
 } from './types.ts'
 
 /** Capture a detached invocation and digest every authority, target, action and deadline field. */
@@ -153,6 +153,30 @@ export class BrowserRequests {
       : structuredClone(entry.result)
   }
 
+  /** Return a scoped status view without exposing the authority fingerprint or deadline. */
+  statusFor(requestId: string, sessionId: string, installationId: string): BrowserRequestStatusView | undefined {
+    this.prune()
+    const entry = this.entries.get(requestId)
+    if (entry === undefined || entry.request.sessionId !== sessionId || entry.request.installationId !== installationId) return undefined
+    if (entry.result === undefined) return { requestId, sessionId, installationId, outcome: 'in-flight', delivery: 'sent' }
+    return structuredClone({ requestId, sessionId, installationId, outcome: entry.result.outcome, delivery: entry.result.delivery,
+      ...(entry.result.reason === undefined ? {} : { reason: entry.result.reason }),
+      ...(entry.result.value === undefined ? {} : { value: entry.result.value }),
+      quiescent: entry.result.outcome === 'unknown' ? entry.quiescent : true,
+    })
+  }
+
+  /** A quiescent document-replaced result proves this exact sent request cannot continue on its old target. */
+  releaseDocumentReplaced(requestId: string, sessionId: string, installationId: string): BrowserInvocation['target'] | undefined {
+    this.prune()
+    const entry = this.entries.get(requestId)
+    if (entry === undefined || entry.request.sessionId !== sessionId || entry.request.installationId !== installationId
+      || entry.result?.delivery !== 'sent' || entry.result.outcome !== 'unknown' || !entry.quiescent
+      || entry.result.reason !== 'document_replaced') return undefined
+    entry.released = true
+    return entry.request.target === undefined ? undefined : structuredClone(entry.request.target)
+  }
+
   /**
    * Release an uncertain write only after executor quiescence and an explicit owner decision.
    * The gateway must authenticate that decision; this never changes the observed outcome.
@@ -215,7 +239,7 @@ export class BrowserRequests {
     if (entry.result !== undefined && entry.result.outcome !== 'unknown') return
     entry.cleanup()
     entry.result = result
-    entry.quiescent = quiescent
+    entry.quiescent = result.outcome === 'unknown' ? quiescent : true
     entry.resolve(structuredClone(result))
   }
 

@@ -37,8 +37,11 @@ export const HOST_BUILTIN_INSPECTION = [
       'harness.state.set(key: string, value: JsonValue): void',
       'harness.state.delete(key: string): boolean',
       'harness.browser.inspect(input: { installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string }; regionSelector: string; selector: string; titleSelector?: string; linkSelector?: string; sampleLimit?: number }, signal?: AbortSignal): Promise<BrowserActionResult>',
+      'harness.browser.pageMap(input: { installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string } }, signal?: AbortSignal): Promise<BrowserActionResult>',
       'harness.browser.mount(input: { installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string }; slot: string; regionSelector: string; selector: string; label: string; titleSelector?: string; linkSelector?: string; collected?: string[] }, signal?: AbortSignal): Promise<BrowserActionResult>',
       'harness.browser.unmount(input: { installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string }; slot: string }, signal?: AbortSignal): Promise<BrowserActionResult>',
+      'harness.browser.render(input: { installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string }; slot: string; selector: string; mode?: append | replace; placement?: prepend | append; title?: string; blocks: BrowserRegionBlock[] }, signal?: AbortSignal): Promise<BrowserActionResult>',
+      'harness.browser.restore(input: { installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string }; slot: string }, signal?: AbortSignal): Promise<BrowserActionResult>',
       'BrowserActionResult = { requestId: string; sessionId: string; installationId: string; outcome: observed | failed | cancelled | unknown; delivery: not-sent | sent; reason?: string; value?: unknown }',
       'entry_inspect value = { matched: number; valid: number; missingTitle: number; missingLink: number; duplicateLinks: number; truncated?: boolean; samples: Array<{ title: string; link: string }> }',
       'entry_mount collected?: string[] is the absolute-link set rendered as "已加入" and disabled; keep it in harness.state and pass it again on Package updates',
@@ -239,7 +242,7 @@ export function precheckCode(code: string, half: 'code.host' | 'code.client'): v
   try {
     // Compile-only: constructing the function parses the source and runs nothing.
     // oxlint-disable-next-line typescript/no-implied-eval -- parse gate over model-written code; nothing is invoked
-    new Function(wrapped)
+    void new Function(wrapped)
   } catch (error) {
     if (!isSyntaxError(error)) throw error
     throw new Error(parseErrorMessage(half, prettyParseContext(wrapped, half, error)))

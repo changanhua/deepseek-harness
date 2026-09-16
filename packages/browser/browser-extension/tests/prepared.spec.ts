@@ -6,7 +6,7 @@ import type { BrowserAction, BrowserActionResult } from '@changanhua/dsh-browser
 
 type PreparedDispatch = Parameters<ConstructorParameters<typeof BrowserPreparations>[0]['dispatch']>[0]
 
-const operation = () => ({ sessionId: SessionId('session-1'), installationId: randomUUID(), action: {
+const operation = () => ({ requestId: randomUUID(), sessionId: SessionId('session-1'), installationId: randomUUID(), action: {
   kind: 'click' as const,
   element: { page: { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/a' }, snapshotId: 'snapshot-1', elementId: 'button-1' },
   intent: '打开详细信息',

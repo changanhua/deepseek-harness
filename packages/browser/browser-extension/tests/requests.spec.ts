@@ -69,6 +69,47 @@ describe('Host browser request ownership', () => {
     next.receive({ ...read, outcome: 'observed' }); expect((await reading).outcome).toBe('observed')
   })
 
+  it('projects a request status without exposing its authority fingerprint', async () => {
+    const connection = requests.connect('i1', () => {})
+    const request = invocation()
+    const pending = requests.execute(request, liveSignal())
+    connection.receive({ ...request, outcome: 'unknown', quiescent: true, reason: 'effect_unverified' })
+    await pending
+    expect(requests.statusFor(request.requestId, request.sessionId, request.installationId)).toMatchObject({
+      requestId: request.requestId, sessionId: request.sessionId, installationId: request.installationId,
+      outcome: 'unknown', reason: 'effect_unverified', quiescent: true,
+    })
+    expect(requests.statusFor(request.requestId, 'other-session', request.installationId)).toBeUndefined()
+  })
+
+  it('marks every terminal request status quiescent while preserving unknown uncertainty', async () => {
+    const connection = requests.connect('i1', () => {})
+    for (const outcome of ['observed', 'failed', 'cancelled'] as const) {
+      const request = invocation(`terminal-${outcome}`, 11 + outcome.length)
+      const pending = requests.execute(request, liveSignal())
+      connection.receive({ ...request, outcome })
+      await pending
+      expect(requests.statusFor(request.requestId, request.sessionId, request.installationId)).toMatchObject({
+        outcome, quiescent: true,
+      })
+    }
+  })
+
+  it('returns an isolated retained status value to each caller', async () => {
+    const connection = requests.connect('i1', () => {})
+    const request = invocation()
+    const pending = requests.execute(request, liveSignal())
+    connection.receive({ ...request, outcome: 'observed', value: { nested: { safe: true } } })
+    await pending
+    const first = requests.statusFor(request.requestId, request.sessionId, request.installationId)
+    const value = first?.value as { nested?: { safe?: boolean } }
+    if (value.nested === undefined) throw new Error('missing retained value')
+    value.nested.safe = false
+    expect(requests.statusFor(request.requestId, request.sessionId, request.installationId)).toMatchObject({
+      value: { nested: { safe: true } },
+    })
+  })
+
   it('never sends after a pre-admission stop or an expired deadline', async () => {
     const frames: BrowserDispatchFrame[] = []
     requests.connect('i1', (frame) => { frames.push(frame) })

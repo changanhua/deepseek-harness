@@ -15,7 +15,14 @@ export { hasNotificationCapacity } from './records.ts'
 declare module '@deepseek-ai/cordis' { interface Context { browserMonitor: BrowserMonitor } }
 
 /** Host scan interval and capacity; each Queue attempt has a separate finite read timeout. */
-export interface Config { pollIntervalMs?: number; maxMonitors?: number; checkTimeoutMs?: number }
+export interface Config {
+  /** Cadence for scanning due monitor plans in milliseconds. */
+  pollIntervalMs?: number
+  /** Maximum persisted monitor plans. */
+  maxMonitors?: number
+  /** Timeout for one finite browser observation in milliseconds. */
+  checkTimeoutMs?: number
+}
 
 /** Owns persistent plans, accepted comparisons and notification ids, independently of any visible UI. */
 export class BrowserMonitor extends Service {

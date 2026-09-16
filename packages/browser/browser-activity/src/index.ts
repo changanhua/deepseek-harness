@@ -13,7 +13,12 @@ export { activityDomainSpec } from './spec.ts'
 declare module '@deepseek-ai/cordis' { interface Context { browserActivity: BrowserActivity } }
 
 /** Host retention cadence and installation capacity. Collection is opt-in per installation. */
-export interface Config { pruneIntervalMs?: number; maxInstallations?: number }
+export interface Config {
+  /** Cadence for retention pruning and policy refresh in milliseconds. */
+  pruneIntervalMs?: number
+  /** Maximum installations with retained activity state. */
+  maxInstallations?: number
+}
 
 /** Owns bounded raw browser activity independently of the Chrome buffer and curated knowledge. */
 export class BrowserActivity extends Service {

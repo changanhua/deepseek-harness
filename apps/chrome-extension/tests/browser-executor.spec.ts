@@ -21,7 +21,10 @@ function harness() {
     tabs: { query: vi.fn(async () => [{ id: 7, windowId: 1, url: page.url, title: 'Allowed', active: true }, { id: 8, url: 'https://private.test', title: 'Hidden' }]),
       get: vi.fn(async () => ({ id: 7, windowId: 1, url: page.url, title: 'Allowed', active: true })),
       update: vi.fn(async () => ({ id: 7, windowId: 1, url: page.url })),
-      captureVisibleTab: vi.fn(async () => 'data:image/jpeg;base64,AQ==') },
+      captureVisibleTab: vi.fn(async (
+        _windowId: number,
+        _options: { readonly format: 'jpeg'; readonly quality: number },
+      ) => 'data:image/jpeg;base64,AQ==') },
     scripting: { executeScript: vi.fn(async (options: ScriptOptions): Promise<ScriptResult[]> => [{ documentId: page.documentId, frameId: 0,
       result: options.args?.[0] === 'execute' ? { outcome: 'observed', quiescent: true, value: { clicked: true } }
         : options.args?.[0] === 'snapshot' ? { url: page.url, snapshotId: 'snapshot', text: 'Account', elements: [] }
@@ -92,10 +95,16 @@ describe('Chrome document-bound browser executor', () => {
     const h = harness()
     const puppeteer = { execute: vi.fn(async () => { throw new Error('must not attach') }) }
     const executor = createBrowserExecutor({ chromeApi: h.chromeApi, getGrant: h.getGrant, puppeteer })
-    const wait = await executor.execute(operation({ kind: 'wait', page, milliseconds: 0 }), new AbortController().signal)
+    const wait: unknown = await (executor.execute(
+      operation({ kind: 'wait', page, milliseconds: 0 }),
+      new AbortController().signal,
+    ) as Promise<unknown>)
     expect(wait).toMatchObject({ outcome: 'observed' })
     expect(puppeteer.execute).not.toHaveBeenCalled()
-    const screenshot = await executor.execute(operation({ kind: 'screenshot', page }), new AbortController().signal)
+    const screenshot: unknown = await (executor.execute(
+      operation({ kind: 'screenshot', page }),
+      new AbortController().signal,
+    ) as Promise<unknown>)
     expect(screenshot).toMatchObject({ outcome: 'observed', value: { screenshot: { data: 'AQ==', mimeType: 'image/jpeg' } } })
     expect(h.chromeApi.tabs.captureVisibleTab).toHaveBeenCalledWith(1, { format: 'jpeg', quality: 55 })
     expect(puppeteer.execute).not.toHaveBeenCalled()
@@ -112,7 +121,10 @@ describe('Chrome document-bound browser executor', () => {
     const h = harness()
     h.chromeApi.tabs.captureVisibleTab.mockImplementation(async (_windowId, options) =>
       options.quality === 55 ? `data:image/jpeg;base64,${'A'.repeat(1_500_001)}` : 'data:image/jpeg;base64,AQ==')
-    const result = await h.executor.execute(operation({ kind: 'screenshot', page }), new AbortController().signal)
+    const result: unknown = await (h.executor.execute(
+      operation({ kind: 'screenshot', page }),
+      new AbortController().signal,
+    ) as Promise<unknown>)
     expect(result).toMatchObject({ outcome: 'observed', value: { screenshot: { data: 'AQ==' } } })
     expect(h.chromeApi.tabs.captureVisibleTab.mock.calls.map(([, options]) => options.quality)).toEqual([55, 45])
   })
@@ -123,11 +135,36 @@ describe('Chrome document-bound browser executor', () => {
     for (const [options] of h.chromeApi.scripting.executeScript.mock.calls) expect(options.target).toEqual({ tabId: 7, documentIds: ['doc-1'] })
     expect(h.chromeApi.tabs.query).not.toHaveBeenCalled()
   })
-  test('a changed document or URL refuses to issue the action', async () => {
+  test('a replaced document refuses to issue the action with a recoverable cause', async () => {
     const h = harness()
     h.chromeApi.scripting.executeScript.mockResolvedValueOnce([{ documentId: 'doc-2', frameId: 0, result: { url: page.url } }])
-    expect(await h.executor.execute(operation({ kind: 'navigate', page, url: page.url }), new AbortController().signal)).toMatchObject({ reason: 'stale_document' })
+    expect(await h.executor.execute(operation({ kind: 'navigate', page, url: page.url }), new AbortController().signal)).toMatchObject({ reason: 'document_replaced' })
     expect(h.chromeApi.scripting.executeScript).toHaveBeenCalledTimes(1)
+  })
+  test('a same-document URL change refuses to issue the action without claiming DOM replacement', async () => {
+    const h = harness()
+    h.chromeApi.scripting.executeScript.mockResolvedValueOnce([{ documentId: page.documentId, frameId: 0, result: { url: 'https://example.test/account?tab=security' } }])
+    expect(await h.executor.execute(operation({ kind: 'navigate', page, url: page.url }), new AbortController().signal))
+      .toMatchObject({ outcome: 'failed', quiescent: true, reason: 'target_url_stale' })
+    expect(h.chromeApi.scripting.executeScript).toHaveBeenCalledTimes(1)
+  })
+  test('同文档 URL 漂移仅允许精确的 route-discard 清理调用旧页面 runtime', async () => {
+    const h = harness()
+    h.chromeApi.scripting.executeScript.mockImplementation(async (options) => {
+      if (options.args?.[0] === 'entryUnmount') {
+        return [{ documentId: page.documentId, frameId: 0, result: {
+          outcome: 'observed', quiescent: true, value: { unmounted: true, remaining: 0, disposition: 'route_discarded' },
+        } }]
+      }
+      if (options.files) return []
+      return [{ documentId: page.documentId, frameId: 0, result: { url: 'https://example.test/account?tab=security' } }]
+    })
+    const result: unknown = await (h.executor.execute(
+      operation({ kind: 'entry_unmount', page, mountId: 'old-entry' }),
+      new AbortController().signal,
+    ) as Promise<unknown>)
+    expect(result).toMatchObject({ outcome: 'observed', quiescent: true, value: { disposition: 'route_discarded' } })
+    expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].target).toEqual({ tabId: 7, documentIds: ['doc-1'] })
   })
   test('checks destination and actual origin against grant and Chrome permission', async () => {
     const h = harness()
@@ -174,14 +211,17 @@ describe('Chrome document-bound browser executor', () => {
     })
     expect(await h.executor.inspect(row)).toMatchObject({ outcome: 'unknown', quiescent: true, reason: 'document_replaced' })
   })
-  test('a missing bound document is reported as stale when the tab now exposes a new document', async () => {
+  test('a missing bound document reports document replacement when the tab exposes a new document', async () => {
     const h = harness()
     h.chromeApi.scripting.executeScript.mockImplementation(async (options) => {
       if (options.target.documentIds) throw new Error('No such document')
       return [{ documentId: 'doc-2', frameId: 0, result: { url: 'https://example.test/next' } }]
     })
-    const result = await h.executor.execute(operation({ kind: 'navigate', page, url: 'https://example.test/next' }), new AbortController().signal)
-    expect(result).toMatchObject({ outcome: 'failed', reason: 'stale_document' })
+    const result: unknown = await (h.executor.execute(
+      operation({ kind: 'navigate', page, url: 'https://example.test/next' }),
+      new AbortController().signal,
+    ) as Promise<unknown>)
+    expect(result).toMatchObject({ outcome: 'failed', quiescent: true, reason: 'document_replaced' })
   })
   test('entry mount and unmount are issued through the page runtime and return their receipts', async () => {
     const h = harness()
@@ -191,10 +231,10 @@ describe('Chrome document-bound browser executor', () => {
       if (options.args?.[0] === 'entryUnmount') return [{ documentId: page.documentId, frameId: 0, result: { outcome: 'observed', quiescent: true, value: { unmounted: true } } }]
       return [{ documentId: page.documentId, frameId: 0, result: { url: page.url } }]
     })
-    const mount = operation({ kind: 'entry_mount', page, mountId: 'collect', selector: '.item', label: '收集标题' } as never)
+    const mount = operation({ kind: 'entry_mount', page, mountId: 'collect', selector: '.item', label: '收集标题' })
     expect(await h.executor.execute(mount, new AbortController().signal)).toMatchObject({ outcome: 'observed', value: { mounted: 2 } })
     expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args?.[0]).toBe('entryMount')
-    const unmount = operation({ kind: 'entry_unmount', page, mountId: 'collect' } as never)
+    const unmount = operation({ kind: 'entry_unmount', page, mountId: 'collect' })
     expect(await h.executor.execute(unmount, new AbortController().signal)).toMatchObject({ outcome: 'observed', value: { unmounted: true } })
     expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args?.[0]).toBe('entryUnmount')
   })

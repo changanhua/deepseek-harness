@@ -2,11 +2,11 @@ const failure = code => Object.assign(new Error(code), { code })
 const clone = value => structuredClone(value)
 const MAX_SCREENSHOT_BASE64 = 1_500_000
 const SCREENSHOT_QUALITIES = [55, 45, 35, 25, 15]
-const mutating = kind => !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(kind)
-const kinds = new Set(['tabs', 'snapshot', 'navigate', 'click', 'fill', 'submit', 'scroll', 'wait',
+const mutating = kind => !['tabs', 'snapshot', 'page_map', 'entry_inspect', 'wait', 'screenshot'].includes(kind)
+const kinds = new Set(['tabs', 'snapshot', 'page_map', 'navigate', 'click', 'fill', 'submit', 'scroll', 'wait',
   'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload',
   'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot',
-  'entry_inspect', 'entry_mount', 'entry_unmount'])
+  'entry_inspect', 'entry_mount', 'entry_unmount', 'region_render', 'region_clear'])
 const siteOf = raw => {
   const url = new URL(raw)
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw failure('unsupported_page')
@@ -18,6 +18,9 @@ const allowed = (grant, raw) => {
 }
 const targetOf = page => ({ tabId: page.tabId, documentIds: [page.documentId] })
 const pageOf = action => action.element?.page ?? action.page
+const staleTarget = (expected, current) => current?.documentId !== expected.documentId || current?.frameId !== expected.frameId
+  ? 'document_replaced'
+  : current?.url !== expected.url ? 'target_url_stale' : 'stale_document'
 const actionOf = request => ['prepare', 'commit', 'observe'].includes(request.payload?.kind) ? request.payload.action : request.payload
 
 /** All page work is pinned to Chrome's documentId, never foreground state. */
@@ -90,9 +93,9 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
       const committing = request.payload?.kind === 'commit'
       const observing = request.payload?.kind === 'observe'
       if (!action || !kinds.has(action.kind) || (preparing ? false : mutating(action.kind)) !== request.mutates
-        || (preparing || committing) && ['tabs', 'snapshot'].includes(action.kind)
+        || (preparing || committing) && ['tabs', 'snapshot', 'page_map'].includes(action.kind)
         || committing && typeof request.payload.preparationId !== 'string'
-        || observing && !['tabs', 'snapshot'].includes(action.kind)) throw failure('invalid_action')
+        || observing && !['tabs', 'snapshot', 'page_map'].includes(action.kind)) throw failure('invalid_action')
       const grant = grantFor(request, signal)
       if (action.kind === 'tabs') {
         const tabs = []
@@ -123,28 +126,30 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
         if (expected) {
           let current
           try { current = await probe({ tabId: expected.tabId, frameIds: [expected.frameId] }) } catch { current = null }
-          if (current && (current.documentId !== expected.documentId || current.url !== expected.url)) throw failure('stale_document')
+          if (current && (current.documentId !== expected.documentId || current.url !== expected.url)) throw failure(staleTarget(expected, current))
           if (!current) {
             try {
               const frames = await chromeApi.webNavigation?.getAllFrames?.({ tabId: expected.tabId })
               const frame = frames?.find(candidate => candidate.frameId === expected.frameId)
-              if (frame?.documentId && frame.documentId !== expected.documentId) throw failure('stale_document')
+              if (frame?.documentId && frame.documentId !== expected.documentId) throw failure('document_replaced')
             } catch (replacement) {
-              if (replacement?.code === 'stale_document') throw replacement
+              if (['document_replaced', 'target_url_stale'].includes(replacement?.code)) throw replacement
             }
             try {
               const tab = await chromeApi.tabs.get(expected.tabId)
-              if (typeof tab?.url === 'string' && tab.url !== expected.url) throw failure('stale_document')
+              if (typeof tab?.url === 'string' && tab.url !== expected.url) throw failure('target_url_stale')
             } catch (replacement) {
-              if (replacement?.code === 'stale_document') throw replacement
+              if (['document_replaced', 'target_url_stale'].includes(replacement?.code)) throw replacement
             }
           }
         }
         throw cause
       }
       preparedPage = page
-      if (expected && (page.documentId !== expected.documentId || page.frameId !== expected.frameId || page.url !== expected.url)
-        || action.documentId && page.documentId !== action.documentId) throw failure('stale_document')
+      const routeRelease = ['entry_unmount', 'region_clear'].includes(action.kind)
+        && expected && page.documentId === expected.documentId && page.frameId === expected.frameId && page.url !== expected.url
+      if (expected && !routeRelease && (page.documentId !== expected.documentId || page.frameId !== expected.frameId || page.url !== expected.url)
+        || action.documentId && page.documentId !== action.documentId) throw failure(expected && staleTarget(expected, page) || 'document_replaced')
       await checkSite(request, signal, page.url)
       await chromeApi.scripting.executeScript({ target: targetOf(page), world: 'ISOLATED', files: ['src/browser-dom-tree.js', 'src/browser-page.js'] })
       grantFor(request, signal)
@@ -170,8 +175,13 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
           }
         }
         grantFor(request, signal)
-        if (snapshot.url !== page.url) throw failure('stale_document')
+        if (snapshot.url !== page.url) throw failure('target_url_stale')
         return { outcome: 'observed', quiescent: true, value: { ...snapshot, page, ...(frames.length ? { frames } : {}) } }
+      }
+      if (action.kind === 'page_map') {
+        const result = await invoke(page, 'pageMap', clone(request))
+        grantFor(request, signal)
+        return result
       }
       if (action.kind === 'entry_inspect') {
         const result = await invoke(page, 'entryInspect', clone(request))
@@ -180,6 +190,11 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
       }
       if (action.kind === 'entry_mount' || action.kind === 'entry_unmount') {
         const result = await invoke(page, action.kind === 'entry_mount' ? 'entryMount' : 'entryUnmount', clone(request))
+        grantFor(request, signal)
+        return result
+      }
+      if (action.kind === 'region_render' || action.kind === 'region_clear') {
+        const result = await invoke(page, action.kind === 'region_render' ? 'regionRender' : 'regionClear', clone(request))
         grantFor(request, signal)
         return result
       }

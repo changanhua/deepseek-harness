@@ -16,13 +16,24 @@ export interface BrowserElementReference {
   readonly elementId: string
 }
 
+/** One bounded plain-data block rendered by an extension-owned page region. */
+export type BrowserRegionBlock =
+  | { readonly type: 'heading'; readonly text: string }
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'item'; readonly title: string; readonly meta?: string | undefined; readonly link?: string | undefined }
+  | { readonly type: 'keyvalue'; readonly label: string; readonly value: string }
+  | { readonly type: 'link'; readonly text: string; readonly href: string }
+
 /** Current consumers: interactive tools, explicit page intake, and finite monitor checks. */
 export type BrowserAction =
   | { readonly kind: 'tabs' }
   | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean }
+  | { readonly kind: 'page_map'; readonly page: BrowserPage }
   | { readonly kind: 'entry_inspect'; readonly page: BrowserPage; readonly regionSelector: string; readonly selector: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly sampleLimit?: number }
   | { readonly kind: 'entry_mount'; readonly page: BrowserPage; readonly mountId: string; readonly regionSelector?: string; readonly selector: string; readonly label: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly collected?: readonly string[] }
   | { readonly kind: 'entry_unmount'; readonly page: BrowserPage; readonly mountId: string; readonly forgetCollected?: boolean }
+  | { readonly kind: 'region_render'; readonly page: BrowserPage; readonly mountId: string; readonly selector: string; readonly placement?: 'prepend' | 'append'; readonly mode?: 'append' | 'replace'; readonly title?: string; readonly blocks: readonly BrowserRegionBlock[] }
+  | { readonly kind: 'region_clear'; readonly page: BrowserPage; readonly mountId: string }
   | { readonly kind: 'navigate'; readonly page: BrowserPage; readonly url: string }
   | { readonly kind: 'click'; readonly element: BrowserElementReference; readonly intent: string }
   | { readonly kind: 'fill'; readonly element: BrowserElementReference; readonly value: string; readonly intent: string }
@@ -38,6 +49,14 @@ export type BrowserAction =
   | { readonly kind: 'scroll'; readonly page: BrowserPage; readonly x: number; readonly y: number }
   | { readonly kind: 'wait'; readonly page: BrowserPage; readonly milliseconds: number }
 
+/** Executor-declared protocol surface captured when an installation connects. */
+export interface BrowserExecutorCapabilities {
+  readonly protocolVersion: 1
+  readonly actionKinds: readonly BrowserAction['kind'][]
+  /** The executor can reconcile sent requests without replaying their action. */
+  readonly requestRecovery: true
+}
+
 /** One separately authorized installation; no credential material is exposed. */
 export interface BrowserInstance {
   readonly installationId: string
@@ -46,12 +65,16 @@ export interface BrowserInstance {
   readonly grantEpoch: number
   readonly origins: readonly string[]
   readonly scopes: readonly string[]
+  /** Detached handshake snapshot; absent only while the authorized installation is offline. */
+  readonly capabilities?: BrowserExecutorCapabilities
 }
 
 /** One caller-owned operation; providers enforce the instance's current grant. */
 export interface BrowserOperation {
   readonly sessionId: SessionId
   readonly installationId: string
+  /** Minted by the caller before dispatch; repeated identities are journaled idempotently. */
+  readonly requestId: string
   readonly action: BrowserAction
 }
 
@@ -60,7 +83,7 @@ export interface BrowserObservation {
   readonly sessionId: SessionId
   readonly installationId: string
   readonly grantEpoch: number
-  readonly action: Extract<BrowserAction, { readonly kind: 'tabs' | 'snapshot' }>
+  readonly action: Extract<BrowserAction, { readonly kind: 'tabs' | 'snapshot' | 'page_map' }>
 }
 
 /** Provider-owned, one-action approval binding; callers cannot replace its parameters. */
@@ -94,6 +117,19 @@ export interface BrowserActionResult {
   readonly delivery: 'not-sent' | 'sent'
   readonly reason?: string
   readonly value?: JsonValue
+}
+
+/** Caller-scoped lookup of one retained request; querying never replays its action. */
+export interface BrowserRequestStatusQuery {
+  readonly requestId: string
+  readonly sessionId: SessionId
+  readonly installationId: string
+}
+
+/** Current retained state of one Browser request. */
+export type BrowserRequestStatus = Omit<BrowserActionResult, 'outcome'> & {
+  readonly outcome: BrowserActionResult['outcome'] | 'in-flight'
+  readonly quiescent?: boolean
 }
 
 /** One click on a page entry mounted by an `entry_mount` action, gated by the Host mount table. */
