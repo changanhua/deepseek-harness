@@ -19,6 +19,33 @@ export const entryUnmountActionSchema = { type: 'object', additionalProperties: 
   kind: { type: 'string', const: 'entry_unmount', required: true }, page: { ...page, required: true }, mountId: { type: 'string', required: true },
 } } as const satisfies ValueSchemaSpec
 
+/** One plain-data block. The page half renders each field as a DOM text node, never as markup. */
+const regionBlock = { oneOf: [
+  { type: 'object', additionalProperties: false, properties: {
+    type: { type: 'string', const: 'heading', required: true }, text: { type: 'string', required: true } } },
+  { type: 'object', additionalProperties: false, properties: {
+    type: { type: 'string', const: 'text', required: true }, text: { type: 'string', required: true } } },
+  { type: 'object', additionalProperties: false, properties: {
+    type: { type: 'string', const: 'item', required: true }, title: { type: 'string', required: true },
+    meta: { type: 'string' }, link: { type: 'string' } } },
+  { type: 'object', additionalProperties: false, properties: {
+    type: { type: 'string', const: 'keyvalue', required: true }, label: { type: 'string', required: true }, value: { type: 'string', required: true } } },
+  { type: 'object', additionalProperties: false, properties: {
+    type: { type: 'string', const: 'link', required: true }, text: { type: 'string', required: true }, href: { type: 'string', required: true } } },
+] } as const satisfies ValueSchemaSpec
+
+export const regionRenderActionSchema = { type: 'object', additionalProperties: false, properties: {
+  kind: { type: 'string', const: 'region_render', required: true }, page: { ...page, required: true },
+  mountId: { type: 'string', required: true, description: 'Idempotent panel id; re-rendering the same id replaces the panel.' },
+  selector: { type: 'string', required: true, description: 'Container selector from browser_page_map for this exact document.' },
+  placement: { type: 'string', enum: ['prepend', 'append'], description: 'Where inside the container the panel goes; defaults to prepend.' },
+  mode: { type: 'string', enum: ['append', 'replace'], description: 'Append a panel or temporarily replace the region while preserving it for restore.' },
+  title: { type: 'string' }, blocks: { type: 'array', required: true, items: regionBlock },
+} } as const satisfies ValueSchemaSpec
+export const regionClearActionSchema = { type: 'object', additionalProperties: false, properties: {
+  kind: { type: 'string', const: 'region_clear', required: true }, page: { ...page, required: true }, mountId: { type: 'string', required: true },
+} } as const satisfies ValueSchemaSpec
+
 /** The model receives the actual closed action shapes, including immutable snapshot references. */
 export const pageActionSchema = { oneOf: [
   { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', const: 'navigate', required: true }, page: { ...page, required: true }, url: { type: 'string', required: true } } },
@@ -51,9 +78,22 @@ export const actionResultSchema = { type: 'object', additionalProperties: false,
   delivery: { type: 'string', required: true, enum: ['not-sent', 'sent'] }, reason: { type: 'string' }, value: { type: 'json' },
 } } as const satisfies ValueSchemaSpec
 
+export const requestStatusSchema = { type: 'object', additionalProperties: false, properties: {
+  requestId: { type: 'string', required: true }, sessionId: { type: 'string', required: true }, installationId: { type: 'string', required: true },
+  outcome: { type: 'string', required: true, enum: ['in-flight', 'observed', 'failed', 'cancelled', 'unknown'] },
+  delivery: { type: 'string', required: true, enum: ['not-sent', 'sent'] }, reason: { type: 'string' }, value: { type: 'json' },
+  quiescent: { type: 'boolean' }, nextStep: { type: 'string', required: true,
+    enum: ['wait', 'continue-reading', 'owner-decision', 'new-request'] },
+} } as const satisfies ValueSchemaSpec
+
 export const instancesSchema = { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
   installationId: { type: 'string', required: true }, extensionId: { type: 'string', required: true },
   online: { type: 'boolean', required: true }, grantEpoch: { type: 'integer', required: true },
   origins: { type: 'array', required: true, items: { type: 'string' } },
   scopes: { type: 'array', required: true, items: { type: 'string' } },
+  capabilities: { type: 'object', additionalProperties: false, properties: {
+    protocolVersion: { type: 'integer', required: true },
+    actionKinds: { type: 'array', required: true, items: { type: 'string' } },
+    requestRecovery: { type: 'boolean', required: true },
+  } },
 } } } as const satisfies ValueSchemaSpec

@@ -1116,6 +1116,34 @@ importers:
         specifier: workspace:^
         version: link:../../storage/storage-domain
 
+  packages/browser/browser-task:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@changanhua/dsh-browser':
+        specifier: workspace:^
+        version: link:../browser
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:^
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:^
+        version: link:../../util/brand
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../core/session
+      '@deepseek-ai/dsh-session-projection':
+        specifier: workspace:^
+        version: link:../../session/session-projection
+
   packages/browser/browser-extension:
     dependencies:
       '@deepseek-ai/schemastery':
@@ -1207,6 +1235,9 @@ importers:
       '@changanhua/dsh-browser-activity':
         specifier: workspace:^
         version: link:../browser-activity
+      '@changanhua/dsh-browser-task':
+        specifier: workspace:^
+        version: link:../browser-task
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -1256,6 +1287,9 @@ importers:
 
   packages/bundle/base:
     dependencies:
+      '@changanhua/dsh-browser-task':
+        specifier: workspace:^
+        version: link:../../browser/browser-task
       '@changanhua/dsh-command-task-queue':
         specifier: workspace:^
         version: link:../../task-queue/command-task-queue

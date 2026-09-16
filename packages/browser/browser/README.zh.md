@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 摘要
 
-当浏览器工作必须标识会话及其准确的安装、页面或元素目标时，请使用本包。消费方可以列出已授权实例，并通过 `ctx.browser` 提交操作；提供方决定如何执行该操作。不可用或丢失的结果保持为 `unknown`，因此消费方必须协调该结果而不是重放操作。该定义本身不挂载提供方或路由；扩展提供方连接 Chrome worker。
+当浏览器工作必须标识会话及其准确的安装、页面或元素目标时，请使用本包。消费方在派发前生成请求 ID，列出已授权实例，并通过 `ctx.browser` 提交操作；提供方决定如何执行该操作。不可用或丢失的结果保持为 `unknown`，因此消费方必须协调该结果而不是重放操作。该定义本身不挂载提供方或路由；扩展提供方连接 Chrome worker。
 
 ## 目录
 
@@ -41,6 +41,10 @@ kind: "package-reference"
 
 `instances()` 报告已授权的浏览器安装，不暴露凭据。`execute()` 接受显式会话、安装和操作目标；`prepare()` 返回绑定到该提供方、epoch、Session 和操作且会过期的 ticket，`executePrepared()` 只能提交该 ticket。结果区分已观察到的本地操作、失败、取消和 `unknown` outcome。`unknown` 结果不构成重试许可，因为提供方无法证明浏览器没有执行变更性操作。
 
+每个 `BrowserOperation` 都携带调用方在派发前生成的请求 ID。提供方会在派发前记录该身份，因此完全相同的重复调用只读取同一份保留回执，不会再次执行页面操作。在线实例携带执行器握手：协议版本、已实现 action 种类和请求恢复支持。消费方必须把缺失 capability 快照或变化的授权 epoch 视为不可用 authority，而不是猜测 worker 的能力。
+
+`page_map` 为 `region_render` 建立短时、精确文档证据。只有该证据仍命名所选区域时，提供方才可以追加扩展自有区域；替换还要求其 disposable 提示，并拒绝 protected 或未知区域。只有已观察到 clear 或 `document_replaced` 才能确认清理；`target_url_stale` 表示资源仍未解决，必须重新观察或作出恢复决定。
+
 `observe()` 只在显式 observation grant epoch 以及 `browser:read` 和 `browser:observe` 两项 scope 下执行有限的 `tabs` 或 `snapshot` 读取。观察快照不会在交互元素缓存中分配或保留元素引用；浏览器不可用绝不报告为未变化的观察结果。
 
 本包没有配置，也没有独立挂载路径。请与 [`@changanhua/dsh-browser-extension`](../browser-extension/README.zh.md) 等连接 Chrome worker 的提供方组合，并由消费方记录其需要保留的任何会话结果。
@@ -53,7 +57,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部机制 — 点击展开</summary>
 
-`Browser` 是 `ctx.browser` 的服务定义。其 API 携带会话、安装、页面和元素的不可变引用，而不是发现隐式活动浏览器目标。提供方实现实例发现、准备和执行；消费方拥有其会话写入及恢复策略。[源代码](src/index.ts) 和[操作类型](src/types.ts)定义准确的公开形状。
+`Browser` 是 `ctx.browser` 的服务定义。其 API 携带会话、安装、页面和元素的不可变引用及调用方生成的请求身份，而不是发现隐式活动浏览器目标。提供方实现实例发现、能力声明、准备和执行；消费方拥有其会话写入及恢复策略。[源代码](src/index.ts) 和[操作类型](src/types.ts)定义准确的公开形状。
 
 </details>
 
@@ -71,17 +75,25 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-无。本定义不注册模型工具、提示词区段或模型上下文，也不发起模型请求。消费方决定操作结果是否及如何成为会话事件；本定义不将结果写入会话。
+### 浏览器消费方
 
-#### KV Cache 影响
+#### 模型可见内容
 
-无。浏览器引用和操作结果不会通过本包进入模型上下文。
+此定义不注册直接工具或提示词区段。组合的消费方可以暴露 `ctx.browser` 操作，但该定义本身不会把页面数据或操作结果加入模型上下文。
 
-<a id="known-limitations-and-deferred-work"></a>
+#### Token 影响
+
+本包单独使用时没有影响；任何工具 schema 与结果成本属于组合的消费方。
+
+#### KV Cache effect
+
+本包单独使用时没有影响；消费方组合决定是否存在可缓存的模型前缀。
+
 ## 已知限制与后续工作
 
 - 本包仅定义抽象；它不提供浏览器执行器、持久化、模型工具或面向用户的路由。
 - `unknown` outcome 保持未解决，直至负责的消费方完成协调；该定义绝不将其转换为自动重试。
+- 会话持久的任务验收、证据、回执和页面资源处置属于 [`@changanhua/dsh-browser-task`](../browser-task/README.zh.md)，而非此服务定义。
 
 <a id="dev-note"></a>
 ### 开发备注

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package when browser work must identify the session and its exact installation, page, or element target. Consumers can list authorized instances and submit an operation through `ctx.browser`; a provider decides how to carry it out. An unavailable or lost result remains `unknown`, so a consumer must reconcile it instead of replaying the operation. This definition does not mount a provider or route by itself; the extension provider connects the Chrome worker.
+Use this package when browser work must identify the session and its exact installation, page, or element target. Consumers mint a request id before dispatch, list authorized instances and submit an operation through `ctx.browser`; a provider decides how to carry it out. An unavailable or lost result remains `unknown`, so a consumer must reconcile it instead of replaying the operation. This definition does not mount a provider or route by itself; the extension provider connects the Chrome worker.
 
 ## Table of Contents
 
@@ -41,6 +41,10 @@ The action type also covers prepared mouse, keyboard, form, selection, drag, upl
 
 `instances()` reports authorized browser installations without exposing credentials. `execute()` accepts an explicit session, installation, and action target; `prepare()` returns an expiring ticket bound to that provider, epoch, Session, and action, and `executePrepared()` can submit only that ticket. Results distinguish an observed local action, failure, cancellation, and `unknown` outcome. An `unknown` result is not permission to retry because the provider cannot prove that the browser did not perform a mutating action.
 
+Every `BrowserOperation` carries the caller-minted request id. The provider journals that identity before dispatch, so an exact repeat reads the same retained receipt rather than issuing another page action. An online instance carries the executor handshake: protocol version, implemented action kinds, and request-recovery support. A consumer must treat a missing capability snapshot or a changed grant epoch as unavailable authority, not as permission to guess what the worker can do.
+
+`page_map` establishes short-lived, exact-document evidence for `region_render`. A provider can append an extension-owned region only when that evidence still names the selected region; replace additionally requires its disposable hint and rejects protected or unknown regions. A clear is confirmed only by an observed clear or `document_replaced`; `target_url_stale` means the resource remains unresolved and requires a fresh observation or recovery decision.
+
 `observe()` performs only a finite `tabs` or `snapshot` read under an explicit observation grant epoch and both `browser:read` and `browser:observe` scopes. An observer snapshot does not allocate or retain element references in the interactive element cache; an unavailable browser is never reported as an unchanged observation.
 
 The package has no configuration and no standalone mount path. Compose it with a provider such as [`@changanhua/dsh-browser-extension`](../browser-extension/README.md), which connects a Chrome worker, and let the consumer record any session result that it needs to retain.
@@ -53,7 +57,7 @@ The package has no configuration and no standalone mount path. Compose it with a
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`Browser` is the service definition for `ctx.browser`. Its API carries immutable references for a session, installation, page, and element instead of discovering an implicit active browser target. Providers implement instance discovery, preparation, and execution; consumers own their session writes and recovery policy. The [source](src/index.ts) and [operation types](src/types.ts) define the exact public shape.
+`Browser` is the service definition for `ctx.browser`. Its API carries immutable references and caller-minted request identities for a session, installation, page, and element instead of discovering an implicit active browser target. Providers implement instance discovery, capability declaration, preparation, and execution; consumers own their session writes and recovery policy. The [source](src/index.ts) and [operation types](src/types.ts) define the exact public shape.
 
 </details>
 
@@ -71,17 +75,25 @@ The package has no configuration and no standalone mount path. Compose it with a
 <a id="model-experience"></a>
 ## Model Experience
 
-None. This definition registers no model tools, prompt sections, or model context, and it does not make model requests. A consumer decides whether and how an operation result becomes a session event; the definition does not write results into a session.
+### Browser consumers
 
-#### KV Cache Impact
+#### What the model sees
 
-None. Browser references and operation results do not enter model context through this package.
+This definition registers no direct tool or prompt section. A composed consumer may expose `ctx.browser` operations, but the definition does not add page data or operation results to model context itself.
 
-<a id="known-limitations-and-deferred-work"></a>
+#### Token effect
+
+None from this package alone; any tool schema and result cost belongs to the composed consumer.
+
+#### KV Cache effect
+
+None from this package alone; consumer composition determines any cacheable model prefix.
+
 ## Known Limitations and Deferred Work
 
 - The package defines an abstraction only; it provides no browser executor, persistence, model tool, or user-facing route.
 - An `unknown` outcome remains unresolved until the responsible consumer reconciles it; the definition never converts it into an automatic retry.
+- Session-persistent task acceptance, evidence, receipts, and page-resource disposition belong to [`@changanhua/dsh-browser-task`](../browser-task/README.md), not to this service definition.
 
 <a id="dev-note"></a>
 ### Dev Note

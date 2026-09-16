@@ -16,7 +16,7 @@ This service owns raw browser activity after upload. Each installation starts wi
 - [Use this package](#use-this-package)
 - [Storage and recovery](#storage-and-recovery)
 - [Model Experience](#model-experience)
-- [Known Limitations](#known-limitations)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
 <a id="use-this-package"></a>
@@ -38,12 +38,24 @@ Each policy retains at most 2,000 events, 4,000 text characters per event, and 3
 <a id="model-experience"></a>
 ## Model Experience
 
-None. This package registers no model tool or prompt contribution and performs no model requests. Consumers must treat captured page text as source material, not instructions.
+### Activity search consumer
 
-<a id="known-limitations"></a>
-## Known Limitations
+#### What the model sees
 
-This owner does not collect Chrome events, upload images, or write to SiYuan. Its Loader test verifies SQLite recovery with an external Browser fixture; it does not establish Chrome collection or the complete knowledge workflow.
+This package registers no direct tool or prompt contribution. When `tool-browser` composes it, the model can receive bounded historical activity search results, which remain source material rather than instructions.
+
+#### Token effect
+
+The package adds no definition cost by itself. A composed search result is bounded by the consumer's text, count, and encoded-byte limits.
+
+#### KV Cache effect
+
+No direct effect from this package. A composed search result appends after the reusable request prefix.
+
+## Known Limitations and Deferred Work
+
+- This owner does not collect Chrome events, upload images, or write to SiYuan.
+- Its Loader test verifies SQLite recovery with an external Browser fixture; it does not establish Chrome collection or the complete knowledge workflow.
 
 <a id="dev-note"></a>
 ### Dev Note

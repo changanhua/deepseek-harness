@@ -5,20 +5,26 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { BrowserPreparedTicket } from '@changanhua/dsh-browser/types'
 import type { BrowserAction, BrowserActionDescription, BrowserActionResult, BrowserOperation } from '@changanhua/dsh-browser'
 import { approvalNeeded, approvalReason } from '../src/policy.ts'
-import { apply, dispatchPrepared, dispatchWithFeedback } from '../src/index.ts'
+import { apply, dispatchPrepared, dispatchSequence, dispatchWithFeedback } from '../src/index.ts'
+import { requestStatusSchema } from '../src/schema.ts'
 
 const page = { tabId: 1, frameId: 0, documentId: 'document', url: 'https://example.test/' }
 const element = { page, snapshotId: 'snapshot', elementId: 'element' }
 const sessionId = SessionId('session-test')
 const action: BrowserAction = { kind: 'click', element, intent: '检查目标' }
-const operation: BrowserOperation = { sessionId, installationId: 'installation', action }
+const operation: BrowserOperation = { requestId: '00000000-0000-4000-8000-000000000001', sessionId, installationId: 'installation', action }
 const agent = { session: { id: sessionId } } as Parameters<Context['approval']['request']>[0]['agent']
 const observed: BrowserActionResult = { requestId: 'request', sessionId, installationId: 'installation', outcome: 'observed', delivery: 'sent' }
+function uuidMatcher(): string {
+  const matcher: unknown = expect.stringMatching(/^[0-9a-f]{8}-/u)
+  return matcher as string
+}
 const harness = (effect: BrowserActionDescription['effect'], kind: BrowserAction['kind'] = 'click', describedKind = kind) => {
   const description: BrowserActionDescription = { kind: describedKind, page, effect, title: '网页标题', target: { tag: 'button', label: '目标', type: 'button' } }
   const browser = { prepare: vi.fn(async (_operation: BrowserOperation, _signal: AbortSignal) => ({ ticket: BrowserPreparedTicket('ticket'), expiresAt: Date.now() + 300000, description })),
     executePrepared: vi.fn(async () => structuredClone(observed)),
     execute: vi.fn(async () => structuredClone(observed)),
+    requestStatus: vi.fn(async () => ({ ...observed, outcome: 'unknown' as const, reason: 'effect_unverified', quiescent: true })),
     instances: vi.fn(async () => []),
   }
   const approval = vi.fn(async () => 'allowed-once')
@@ -28,14 +34,26 @@ const harness = (effect: BrowserActionDescription['effect'], kind: BrowserAction
 }
 
 describe('browser tool approval policy', () => {
+  it('declares the online executor capability handshake in browser_instances output', () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    expect(JSON.stringify(registered.get('browser_instances')!.output.schema)).toContain('"capabilities"')
+    expect(JSON.stringify(registered.get('browser_instances')!.output.schema)).toContain('"requestRecovery"')
+  })
+  it('declares retained request values in the status result schema', () => {
+    expect(requestStatusSchema.properties.value).toEqual({ type: 'json' })
+  })
+
   it('returns fresh page evidence after an action without repeating the write', async () => {
     const h = harness('local-disclosure')
     h.browser.execute.mockResolvedValue({ ...observed, value: { page, text: '已展开内容', elements: [] } })
     const result = await dispatchWithFeedback(h.input)
     expect(result).toMatchObject({ outcome: 'observed', value: { feedback: { snapshot: { text: '已展开内容' } } } })
     expect(h.browser.executePrepared).toHaveBeenCalledOnce()
-    expect(h.browser.execute).toHaveBeenCalledExactlyOnceWith({ sessionId, installationId: 'installation',
-      action: { kind: 'snapshot', tabId: 1, frameId: 0, limit: 64, textLimit: 4000 } }, h.controller.signal)
+    expect(h.browser.execute).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ sessionId,
+      installationId: 'installation', requestId: uuidMatcher(),
+      action: { kind: 'snapshot', tabId: 1, frameId: 0, limit: 64, textLimit: 4000 } }), h.controller.signal)
   })
   it('returns fresh references when preparation is stale but does not choose or click a replacement', async () => {
     const h = harness('unknown')
@@ -53,11 +71,48 @@ describe('browser tool approval policy', () => {
       value: { feedback: { status: 'unavailable' } } })
     expect(h.browser.executePrepared).toHaveBeenCalledOnce()
   })
+  it('executes a bounded prepared sequence and stops at the first uncertain result', async () => {
+    const h = harness('unknown')
+    h.browser.executePrepared
+      .mockResolvedValueOnce({ ...observed, requestId: 'first' })
+      .mockResolvedValueOnce({ ...observed, requestId: 'second', outcome: 'unknown', reason: 'effect_unverified' })
+    const second: BrowserOperation = { ...operation, requestId: '00000000-0000-4000-8000-000000000002', action: { kind: 'click', element, intent: '第二步' } }
+    const result = await dispatchSequence({ browser: h.browser, operations: [operation, second], agent, callId: undefined,
+      signal: h.controller.signal, approval: h.input.approval })
+    expect(result.results.map(item => item.requestId)).toEqual(['first', 'second'])
+    expect(result.stoppedAt).toBe(1)
+    expect(h.browser.prepare).toHaveBeenCalledTimes(2)
+    const requestIds = h.browser.prepare.mock.calls.map(([operation]) => (operation).requestId)
+    expect(requestIds).toHaveLength(2)
+    expect(new Set(requestIds).size).toBe(2)
+    expect(requestIds.every(requestId => typeof requestId === 'string' && /^[0-9a-f]{8}-/u.test(requestId))).toBe(true)
+    expect(h.browser.executePrepared).toHaveBeenCalledTimes(2)
+  })
+  it('applies the approval policy to every prepared sequence step', async () => {
+    const h = harness('local-disclosure')
+    h.browser.prepare
+      .mockResolvedValueOnce({ ticket: BrowserPreparedTicket('first'), expiresAt: Date.now() + 300000,
+        description: { ...h.description, kind: 'click', effect: 'local-disclosure' } })
+      .mockResolvedValueOnce({ ticket: BrowserPreparedTicket('second'), expiresAt: Date.now() + 300000,
+        description: { ...h.description, kind: 'fill', effect: 'input-change' } })
+    const second: BrowserOperation = { ...operation, requestId: '00000000-0000-4000-8000-000000000002', action: { kind: 'click', element, intent: '第二步' } }
+    await dispatchSequence({ browser: h.browser, operations: [operation, second], agent, callId: undefined,
+      signal: h.controller.signal, approval: h.input.approval })
+    expect(h.approval).toHaveBeenCalledOnce()
+    expect(h.browser.executePrepared).toHaveBeenNthCalledWith(1, BrowserPreparedTicket('first'), h.controller.signal)
+    expect(h.browser.executePrepared).toHaveBeenNthCalledWith(2, BrowserPreparedTicket('second'), h.controller.signal)
+  })
   it('does not inspect pages after cancelled or unauthorized preparation', async () => {
     const h = harness('unknown')
     h.browser.prepare.mockRejectedValue(new Error('unauthorized'))
     await expect(dispatchWithFeedback(h.input)).rejects.toThrow('unauthorized')
     expect(h.browser.execute).not.toHaveBeenCalled()
+  })
+  it('rejects duplicate caller-minted identities before preparing a sequence', async () => {
+    const h = harness('local-disclosure')
+    await expect(dispatchSequence({ browser: h.browser, operations: [operation, { ...operation }], agent, callId: undefined,
+      signal: h.controller.signal, approval: h.input.approval })).rejects.toThrow('unique caller-minted requestId')
+    expect(h.browser.prepare).not.toHaveBeenCalled()
   })
   it('uses standing personal consent for matching prepared actions and reviews mismatches', () => {
     expect(approvalNeeded('click', { kind: 'click', effect: 'local-disclosure' })).toBe(false)
@@ -112,7 +167,7 @@ describe('browser tool approval policy', () => {
     const exec = { agent, signal: h.controller.signal } as ToolRunContext
     const tool = registered.get('browser_action')!
     await tool.execute({ installationId: 'installation', sessionId: 'foreign', action }, exec)
-    expect(h.browser.prepare.mock.calls[0]?.[0]).toEqual(operation)
+    expect(h.browser.prepare.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ ...operation, requestId: uuidMatcher() }))
     expect(JSON.stringify(tool.parameters)).toContain('snapshotId')
     await expect(tool.execute({ installationId: 'installation', action: { kind: 'click', selector: '#buy' } }, exec)).rejects.toThrow()
     expect(h.browser.prepare).toHaveBeenCalledOnce()
@@ -123,10 +178,33 @@ describe('browser tool approval policy', () => {
       tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const mount = { kind: 'entry_mount', page, mountId: 'feed', selector: '.card', label: '保存条目' }
     await registered.get('browser_entry_mount')!.execute({ installationId: 'installation', action: mount }, { agent, signal: h.controller.signal } as ToolRunContext)
-    expect(h.browser.execute).toHaveBeenCalledWith({ sessionId, installationId: 'installation', action: mount }, h.controller.signal)
+    expect(h.browser.execute).toHaveBeenCalledWith(expect.objectContaining({ sessionId,
+      installationId: 'installation', requestId: uuidMatcher(), action: mount }), h.controller.signal)
     expect(h.browser.prepare).not.toHaveBeenCalled()
     await registered.get('browser_entry_unmount')!.execute({ installationId: 'installation', action: { kind: 'entry_unmount', page, mountId: 'feed' } }, { agent, signal: h.controller.signal } as ToolRunContext)
     expect(h.browser.execute).toHaveBeenCalledTimes(2)
+  })
+  it('projects the retained request recovery boundary without replaying an action', async () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const result = await registered.get('browser_request_status')!.execute({ installationId: 'installation', requestId: 'request' },
+      { agent, signal: h.controller.signal } as ToolRunContext)
+    expect(result).toMatchObject({ outcome: 'unknown', quiescent: true, nextStep: 'owner-decision' })
+    expect(h.browser.requestStatus).toHaveBeenCalledWith({ requestId: 'request', installationId: 'installation', sessionId })
+    expect(h.browser.execute).not.toHaveBeenCalled()
+  })
+  it('derives a stable provider request identity from a durable one-off tool call', async () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const exec = { agent, signal: h.controller.signal, callId: 'tool-call-42' } as ToolRunContext
+    await registered.get('browser_tabs')!.execute({ installationId: 'installation' }, exec)
+    await registered.get('browser_tabs')!.execute({ installationId: 'installation' }, exec)
+    const ids = (h.browser.execute.mock.calls as unknown as [BrowserOperation, AbortSignal][]).map(([operation]) => operation.requestId)
+    expect(ids).toHaveLength(2)
+    expect(ids[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)
+    expect(ids[1]).toBe(ids[0])
   })
   it('extracts bounded collection items from a fresh snapshot while preserving stable control references', async () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
@@ -140,7 +218,8 @@ describe('browser tool approval policy', () => {
       tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const result = await registered.get('browser_extract')!.execute({ installationId: 'installation', tabId: 1, frameId: 0, query: '目标', limit: 1 }, { agent, signal: h.controller.signal } as ToolRunContext) as BrowserActionResult
     expect(result).toMatchObject({ outcome: 'observed', value: { snapshotId: 'snapshot-1', items: [{ index: 0, text: '目标条目', controls: [{ elementId: 'element-1' }] }] } })
-    expect(h.browser.execute).toHaveBeenCalledWith(expect.objectContaining({ action: expect.objectContaining({ kind: 'snapshot', structure: true, textLimit: 8000 }) }), h.controller.signal)
+    const call = h.browser.execute.mock.calls[0] as unknown as [BrowserOperation, AbortSignal] | undefined
+    expect(call?.[0].action).toMatchObject({ kind: 'snapshot', structure: true, textLimit: 8000 })
   })
   it('requires upload paths in a current user message before browser preparation', async () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
@@ -150,6 +229,7 @@ describe('browser tool approval policy', () => {
     const exec = { agent: uploadAgent, signal: h.controller.signal } as ToolRunContext
     const upload = { kind: 'upload' as const, element, files: ['C:/Users/me/report.pdf'], intent: '上传用户选择的文件' }
     await expect(registered.get('browser_action')!.execute({ installationId: 'installation', action: upload }, exec)).rejects.toThrow('exact upload paths')
+    await expect(registered.get('browser_action_sequence')!.execute({ installationId: 'installation', actions: [upload] }, exec)).rejects.toThrow('exact upload paths')
     expect(h.browser.prepare).not.toHaveBeenCalled()
 
     const allowedAgent = { session: { id: sessionId, events: [{ type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: '上传 C:/Users/me/report.pdf' }] } }] } } as unknown as typeof agent
@@ -168,6 +248,29 @@ describe('browser tool approval policy', () => {
     const result = await tool.execute({ installationId: 'installation', action: { kind: 'screenshot', page } }, { agent, signal: h.controller.signal } as ToolRunContext)
     const content = tool.output.render({}, result as never)
     expect(saveImage).toHaveBeenCalledWith({ data: Buffer.from('AQ==', 'base64'), mediaType: 'image/jpeg', name: 'browser.jpg' })
+    expect(JSON.stringify(content)).not.toContain('AQ==')
+    expect(content).toContainEqual({ type: 'image', attachment })
+
+    const sequence = registered.get('browser_action_sequence')!
+    const sequenceResult = await sequence.execute({ installationId: 'installation', actions: [{ kind: 'screenshot', page }] },
+      { agent, signal: h.controller.signal } as ToolRunContext)
+    const sequenceContent = sequence.output.render({}, sequenceResult as never)
+    expect(saveImage).toHaveBeenCalledTimes(2)
+    expect(JSON.stringify(sequenceContent)).not.toContain('AQ==')
+    expect(sequenceContent).toContainEqual({ type: 'image', attachment })
+  })
+  it('retains a status screenshot as an image attachment instead of returning base64', async () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    const attachment = { attachmentId: 'sha256:image' as never, mediaType: 'image/jpeg' as const, bytes: 1, width: 1, height: 1 }
+    const saveImage = vi.fn(async () => attachment)
+    h.browser.requestStatus.mockResolvedValue({ ...observed, outcome: 'unknown', reason: 'effect_unverified', quiescent: true,
+      value: { screenshot: { data: 'AQ==', mimeType: 'image/jpeg' } } })
+    apply({ inject: vi.fn(), on: vi.fn(), get: (service: string) => service === 'attachments' ? { saveImage } : undefined,
+      browser: h.browser, approval: { request: h.approval },
+      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const tool = registered.get('browser_request_status')!
+    const result = await tool.execute({ installationId: 'installation', requestId: 'request' }, { agent, signal: h.controller.signal } as ToolRunContext)
+    const content = tool.output.render({}, result as never)
     expect(JSON.stringify(content)).not.toContain('AQ==')
     expect(content).toContainEqual({ type: 'image', attachment })
   })

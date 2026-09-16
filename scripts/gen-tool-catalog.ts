@@ -53,6 +53,7 @@ import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
 import RuntimeFacts from '@changanhua/dsh-runtime-facts'
 import { Browser } from '@changanhua/dsh-browser'
 import BrowserActivity from '@changanhua/dsh-browser-activity'
+import BrowserTaskService from '@changanhua/dsh-browser-task'
 import * as ToolBrowser from '@changanhua/dsh-tool-browser'
 import * as ToolRuntimeInspect from '@changanhua/dsh-tool-runtime-inspect'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
@@ -133,6 +134,7 @@ class CatalogBrowser extends Browser {
   instances(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
   observe(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
   execute(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
+  requestStatus(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
   prepare(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
   executePrepared(): Promise<never> { throw new Error('browser execution is unreachable during schema harvest') }
 }
@@ -241,21 +243,28 @@ const TOOL_PACKAGES: ToolPackage[] = [
     dir: 'tool-browser',
     source: {
       browser_instances: 'packages/browser/tool-browser/src/index.ts',
+      browser_action_sequence: 'packages/browser/tool-browser/src/index.ts',
       browser_tabs: 'packages/browser/tool-browser/src/index.ts',
+      browser_request_status: 'packages/browser/tool-browser/src/index.ts',
       browser_snapshot: 'packages/browser/tool-browser/src/index.ts',
+      browser_page_map: 'packages/browser/tool-browser/src/index.ts',
       browser_extract: 'packages/browser/tool-browser/src/index.ts',
       browser_action: 'packages/browser/tool-browser/src/index.ts',
       browser_entry_mount: 'packages/browser/tool-browser/src/index.ts',
       browser_entry_unmount: 'packages/browser/tool-browser/src/index.ts',
+      browser_region_render: 'packages/browser/tool-browser/src/index.ts',
+      browser_region_clear: 'packages/browser/tool-browser/src/index.ts',
       browser_task_start: 'packages/browser/tool-browser/src/index.ts',
       browser_task_verify: 'packages/browser/tool-browser/src/index.ts',
       browser_activity_search: 'packages/browser/tool-browser/src/activity.ts',
     },
-    requires: ['ctx.browser', 'ctx.tools', 'ctx.approval', 'ctx.browserActivity for historical activity search', 'an initiating Agent session'],
-    writes: ['tool/call', 'tool/result', 'approved page actions through Browser'],
+    requires: ['ctx.browser', 'ctx.browserTasks', 'ctx.tools', 'ctx.approval', 'ctx.browserActivity for historical activity search', 'an initiating Agent session'],
+    writes: ['tool/call', 'tool/result', 'browser-task/change', 'browser-task/receipt', 'browser-task/check', 'approved page actions through Browser'],
     async mount(ctx) {
+      await ctx.plugin(AgentRegistry)
       await ctx.plugin(CatalogBrowser)
       await ctx.plugin(CatalogBrowserActivity)
+      await ctx.plugin(BrowserTaskService)
       await ctx.plugin(ApprovalService)
       await ctx.plugin(ToolBrowser)
     },

@@ -3,6 +3,7 @@
   "entries": [
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserPage", "source": "packages/browser/browser/src/types.ts" },
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserElementReference", "source": "packages/browser/browser/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserRegionBlock", "source": "packages/browser/browser/src/types.ts" },
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserAction", "source": "packages/browser/browser/src/types.ts" },
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserInstance", "source": "packages/browser/browser/src/types.ts" },
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserOperation", "source": "packages/browser/browser/src/types.ts" },
@@ -10,6 +11,8 @@
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserActionDescription", "source": "packages/browser/browser/src/types.ts" },
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserPreparedAction", "source": "packages/browser/browser/src/types.ts" },
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserActionResult", "source": "packages/browser/browser/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserRequestStatusQuery", "source": "packages/browser/browser/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserRequestStatus", "source": "packages/browser/browser/src/types.ts" },
     {
       "doc": "docs/subsystems/core.md",
       "symbol": "Branded",

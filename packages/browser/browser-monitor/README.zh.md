@@ -47,11 +47,19 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-无。本包不注册模型工具、提示词区段或模型上下文，也不发起模型请求。
+### 监控消费方
 
-#### KV Cache 影响
+#### 模型可见内容
 
-无。监控 plan 和 notice 不会通过本包进入模型上下文。
+本包不注册直接模型工具或提示词区段。组合的 Gateway 可以暴露监控 notice，但本包绝不把采集的页面正文提供给模型上下文。
+
+#### Token 影响
+
+本包单独使用时没有影响。组合的 `browser.monitor.check@1` notice 包含有界的 digest、match、时间和页面身份事实，而非页面正文。
+
+#### KV Cache effect
+
+本包单独使用时没有影响；任何组合 notice 都追加在可复用请求前缀之后。
 
 ## 已知限制与后续工作
 

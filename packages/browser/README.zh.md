@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 摘要
 
-本包组定义显式指明会话、安装、页面和元素目标的浏览器操作。消费方可以选择 `ctx.browser` 背后的提供方，而不将扩展连接视为对每个页面执行操作的许可。扩展提供方通过 Host 网关和由所有者批准的授权连接经认证的 Chrome worker，而工具消费方准备并批准面向模型的页面操作。原生批准会为可见且同 Session 的 Chrome peer 委托既有 Approval 服务。监控消费方持有持久计划与比较状态，将每次有限读取交给 Queue，并保留通知直到收到确认。
+本包组定义显式指明会话、安装、页面和元素目标的浏览器操作。消费方可以选择 `ctx.browser` 背后的提供方，而不将扩展连接视为对每个页面执行操作的许可。BrowserTask 领域在 Session 日志中持有当前任务的证据、目标绑定、动作回执、页面资源处置、权限快照和验收。扩展提供方通过 Host 网关和由所有者批准的授权连接经认证的 Chrome worker，而工具消费方准备并批准面向模型的页面操作。原生批准会为可见且同 Session 的 Chrome peer 委托既有 Approval 服务。监控消费方持有持久计划与比较状态，将每次有限读取交给 Queue，并保留通知直到收到确认。
 
 ## 目录
 
@@ -27,6 +27,7 @@ kind: "package-group"
 | 包 | 作用 |
 |---|---|
 | [`@changanhua/dsh-browser`](browser/README.zh.md) | 在 `ctx.browser` 上定义会话寻址的实例、操作和会过期的准备操作 ticket。 |
+| [`@changanhua/dsh-browser-task`](browser-task/README.zh.md) | 持有 Session 持久化的浏览器任务，包括验收和页面资源处置。 |
 | [`@changanhua/dsh-browser-extension`](browser-extension/README.zh.md) | 通过经认证的 HTTP 和 WebSocket 路由连接已批准的 Chrome worker。 |
 | [`@changanhua/dsh-tool-browser`](tool-browser/README.zh.md) | 注册面向模型的检查工具和需要批准的页面操作工具。 |
 | [`@changanhua/dsh-browser-monitor`](browser-monitor/README.zh.md) | 持有持久监控计划、有限 Queue 检查和可恢复的通知投递。 |

@@ -47,11 +47,19 @@ Each accepted result atomically retains a settlement linking its Queue work, rev
 <a id="model-experience"></a>
 ## Model Experience
 
-None. This package registers no model tools, prompt sections, or model context, and it does not make model requests.
+### Monitor consumer
 
-#### KV Cache Impact
+#### What the model sees
 
-None. Monitor plans and notices do not enter model context through this package.
+This package registers no direct model tool or prompt section. A composed Gateway can expose monitor notices, but this package never supplies captured page text as model context.
+
+#### Token effect
+
+None from this package alone. A composed `browser.monitor.check@1` notice contains bounded digest, match, time, and page-identity facts rather than page body text.
+
+#### KV Cache effect
+
+None from this package alone; any composed notice appends after the reusable request prefix.
 
 ## Known Limitations and Deferred Work
 

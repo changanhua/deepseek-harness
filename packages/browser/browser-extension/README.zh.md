@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 摘要
 
-当要通过 Host Web Server 将已批准 Chrome worker 连接到会话寻址的浏览器操作和选定 DSH Session 时，请选择此提供方。它以 verifier 和 challenge 配对扩展，让已登录所有者批准或撤销范围受限的授权，并通过 HTTP 和 WebSocket 转发有界请求。worker 使用 assistant runtime、connection、channel、journal、executor 和 page 层执行浏览器操作。每次发送前，提供方都会检查授权 scope、允许的 origin 和授权 epoch；模型工具由 tool-browser 消费方提供，本包不安排后台监控。
+当要通过 Host Web Server 将已批准 Chrome worker 连接到会话寻址的浏览器操作和选定 DSH Session 时，请选择此提供方。它以 verifier 和 challenge 配对扩展，让已登录所有者批准或撤销范围受限的授权，并通过 HTTP 和 WebSocket 转发有界请求。worker 会在经认证握手中声明可执行 action 种类和恢复支持，再使用 assistant runtime、connection、channel、journal、executor 和 page 层执行浏览器操作。每次发送前，提供方都会检查握手、授权 scope、允许的 origin 和授权 epoch；模型工具由 tool-browser 消费方提供，本包不安排后台监控。
 
 ## 目录
 
@@ -33,6 +33,10 @@ kind: "package-reference"
 
 `prepare()` 创建绑定到当前授权 epoch、Session 和操作的私有 ticket。`executePrepared()` 会在派发前重新检查该绑定。worker 会在提交前同步复核表单状态：它直接展开本地 `<details>`，将其他无可见变化的点击视为 `unknown`，并把可见的本地页面变化报告为 `observed`，而不声称业务结果。填写回执不返回页面最终 value；批准 preview 来自 Host 输入。对于未知操作，journal 先检查完全停稳的 receipt，并要求用户按钮后才持久化 `acknowledgementPending`；`browser.acknowledge` 只向 Host 发送最小 identity、outcome 和完全停稳事实，成功后清除待处理 acknowledgement。重新连接可以再次同步它。旧 epoch 只能查询 status 或取消当前 write，绝不执行旧页面操作。请求、frame、结果、容量和截止时间均有边界。提供方每 20 秒发送一次 heartbeat，并断开陈旧 peer。取消会请求 worker 停止；缺失 receipt、断线、超时或传输失败会变为 `unknown`。重新连接仅恢复请求状态：不会重放查询或写入，任何未知的变更性操作在 worker 报告完全停稳前都不会解除。
 
+调用方在任何派发前提供请求 ID，Host 会在 worker 接收 action 前记录它。相同 ID 返回其保留回执；`requestStatus()` 要求 read authority，返回脱离内部状态的 value，绝不重放请求。`in-flight` 或 `unknown` 响应仍是恢复事实，不构成重试许可。授权 epoch 轮换可以查询状态或清理旧 epoch 所属区域，但不能针对那份旧所有权执行新的写入。
+
+`page_map` 会记录按 Session、安装、epoch 和精确页面身份索引的短时页面证据。`region_render` 必须使用该证据。Append 会创建扩展自有面板；replace 只接受已映射、disposable 且非 protected 的区域。Host 在派发前预留区域容量，并在 unknown 结果时保留该预留，因此并发调用不能超量占用页面。只有 worker 观察到 clear 时，`region_clear` 才能确认释放；`document_replaced` 记录消失资源，`target_url_stale` 则保持未解决。worker 的页面运行时跟踪挂载，不将 mount ID 放入 CSS selector；文档变化绝不悄然把挂载绑定到新 URL。
+
 具有 `session:interact` 时，经认证 peer 会获得严格的 `SessionController` facade，用于列出、创建、提示、取消、读取页面和附件，以及一个受控 follow stream。它校验每个 RPC 请求，串行替换 follow，将并发 Session 请求限制为 `maxSessionRequests`（默认 `4`，范围 `1`–`8`），并保留既有 16 MiB WebSocket frame 上限。提供方将 `sessionController` 作为注入的 peer dependency。
 
 提供方仅接受其协议已实现的 actions。Puppeteer 是 `click`、`fill`、`submit`、`double_click`、`right_click`、`hover`、`press`、`select`、`check`、`drag`、`upload`、导航、标签、截图、滚动和等待动作的默认执行器。DOM 兼容执行器仅支持 `click`、`fill`、`submit`、`navigate`、`scroll` 和 `wait`，并拒绝新动作类型。它不安装或配置 Chrome 扩展，服务定义本身也不挂载这些路由。源配置由 [BrowserExtension.Config](src/index.ts) 定义；生成的[配置目录](../../../docs/config-catalog.zh.md)是穷尽参考。
@@ -47,7 +51,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部机制 — 点击展开</summary>
 
-`BrowserExtension` 实现 `ctx.browser`，并负责 Host 路由注册、由凭据支持的授权和活动扩展传输。已连接 worker 负责其浏览器侧的 assistant runtime、channel、journal、executor 和 page 操作。`BrowserSessions` 是提供方对 `ctx.sessionController` 的严格 RPC facade，因此 worker 获得的是克隆结果而非直接服务访问。配对不会在公开视图中存储可复用 verifier。批准和撤销会断开受影响 peer，而每个请求在交付前封存授权 epoch 和目标。[授权处理](src/grants.ts)、[请求结算](src/requests.ts)、[Session RPC](src/sessions.ts)和[协议验证](src/wire.ts)包含准确的协议规则。
+`BrowserExtension` 实现 `ctx.browser`，并负责 Host 路由注册、由凭据支持的授权、保留请求回执、页面地图证据和活动扩展传输。已连接 worker 负责其浏览器侧的 assistant runtime、channel、journal、执行器 capability 和 page 操作。`BrowserSessions` 是提供方对 `ctx.sessionController` 的严格 RPC facade，因此 worker 获得的是克隆结果而非直接服务访问。配对不会在公开视图中存储可复用 verifier。批准和撤销会断开受影响 peer，而每个请求在交付前封存授权 epoch 和目标。[授权处理](src/grants.ts)、[请求结算](src/requests.ts)、[Session RPC](src/sessions.ts)和[协议验证](src/wire.ts)包含准确的协议规则。
 
 </details>
 
@@ -67,17 +71,25 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-持有既有 `session:interact` 授权时，`reading.generate` 直接向 DSH 模型发送一次请求，仅包含本条解读提示词和材料。它不创建会话、不加载历史、不注册工具，也不运行 Agent 循环。模型路由与密钥来自 Host 适配器；解读选择覆盖 DSH 默认模型。每个连接只允许一条正在生成的解读，上限为 52,000 输入字符、64,000 输出字符和四分钟。停止或断连会取消请求；传输失败不自动重试。
+### 独立解读请求
 
-#### KV Cache 影响
+#### 模型可见内容
+
+持有既有 `session:interact` 授权时，`reading.generate` 直接向 DSH 模型发送一次请求，仅包含本条解读提示词和材料。它不创建会话、不加载历史、不注册工具，也不运行 Agent 循环。
+
+#### Token 影响
+
+每个连接只允许一条正在生成的解读，上限为 52,000 输入字符、64,000 输出字符和四分钟。模型路由与密钥来自 Host 适配器；解读选择覆盖 DSH 默认模型。停止或断连会取消请求；传输失败不自动重试。
+
+#### KV Cache effect
 
 独立解读不发送之前的问题或输出，因此输入费用不会随解读历史增长。服务商可能缓存共同的提示词前缀；网关不保留会话缓存。
 
-<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与后续工作
 
 - 真实登录站点与真实模型的验收取决于部署配置。
 - 标准 Agent preset 已组合浏览器工具；此提供方不选择模型，也不登录网站。
+- 提供方报告执行器能力、传输和本地页面事实；会话持久的任务验收与业务完成属于 browser-task 消费方。
 - 监控不消费浏览器 worker 或 Session stream 结果。
 - 思源集成、观察和全局键处理不消费浏览器 worker 或 Session stream 结果。
 

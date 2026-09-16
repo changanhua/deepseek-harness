@@ -374,6 +374,12 @@
     - id: goal
       name: '@deepseek-ai/dsh-goal'
 
+    # The BrowserTask domain is host-owned Session state. Browser providers,
+    # tools, runners, and UI consumers attach to this projection; it is never
+    # mounted inside an agent preset.
+    - id: browser-task
+      name: '@changanhua/dsh-browser-task'
+
     - id: goal-round-driver
       name: '@deepseek-ai/dsh-goal-round-driver'
 

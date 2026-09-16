@@ -242,6 +242,41 @@ Types: [TokenUsage](subsystems/llm-streaming.md)
 
 Source: [`packages/core/session/src/types.ts:324`](../packages/core/session/src/types.ts)
 
+### `browser-task/*`
+
+<a id="browser-taskchange--log-only"></a>
+
+#### `browser-task/change` — log-only
+
+```ts persistence-catalog
+/** Complete post-mutation BrowserTask state for strict replay and client projection. */
+'browser-task/change': BrowserTaskChangeMeta
+```
+
+Source: [`packages/browser/browser-task/src/domain.ts:8`](../packages/browser/browser-task/src/domain.ts)
+
+<a id="browser-taskcheck--log-only"></a>
+
+#### `browser-task/check` — log-only
+
+```ts persistence-catalog
+/** Deterministic acceptance-check result over current evidence and the exact bound page. */
+'browser-task/check': BrowserTaskCheck
+```
+
+Source: [`packages/browser/browser-task/src/domain.ts:12`](../packages/browser/browser-task/src/domain.ts)
+
+<a id="browser-taskreceipt--log-only"></a>
+
+#### `browser-task/receipt` — log-only
+
+```ts persistence-catalog
+/** Bounded Browser execution receipt cited by an attempt, evidence record, or resource disposition. */
+'browser-task/receipt': BrowserTaskReceipt
+```
+
+Source: [`packages/browser/browser-task/src/domain.ts:10`](../packages/browser/browser-task/src/domain.ts)
+
 ### `command/*`
 
 <a id="commanddone--log-only"></a>
@@ -806,6 +841,28 @@ Source: [`packages/subagent/subagent/src/catalog.ts:40`](../packages/subagent/su
 ```
 
 Source: [`packages/subagent/subagent/src/descriptor.ts:38`](../packages/subagent/subagent/src/descriptor.ts)
+
+<a id="subagentforeground-input--log-only"></a>
+
+#### `subagent/foreground-input` — log-only
+
+```ts persistence-catalog
+/** Log-only input identity captured before a foreground child starts. */
+'subagent/foreground-input': ForegroundInputBindingData
+```
+
+Source: [`packages/subagent/tool-subagent/src/types.ts:24`](../packages/subagent/tool-subagent/src/types.ts)
+
+<a id="subagentforeground-stale--log-only"></a>
+
+#### `subagent/foreground-stale` — log-only
+
+```ts persistence-catalog
+/** Log-only obsolete output, retained without entering model history. */
+'subagent/foreground-stale': ForegroundStaleResultData
+```
+
+Source: [`packages/subagent/tool-subagent/src/types.ts:26`](../packages/subagent/tool-subagent/src/types.ts)
 
 <a id="subagentmodel-selection-policy--log-only"></a>
 

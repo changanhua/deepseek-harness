@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This group defines browser operations that name their session, installation, page, and element targets explicitly. Consumers can select a provider behind `ctx.browser` without treating an extension connection as permission to act on every page. The extension provider connects an authenticated Chrome worker through the Host gateway and owner-approved grants, while the tool consumer prepares and approves model-facing page actions. Native approval delegates to the existing Approval service for a visible same-Session Chrome peer. The monitor consumer owns durable plans and comparisons, delegates each finite read to Queue, and retains notifications until acknowledged.
+This group defines browser operations that name their session, installation, page, and element targets explicitly. Consumers can select a provider behind `ctx.browser` without treating an extension connection as permission to act on every page. The BrowserTask domain keeps the current task's evidence, target binding, action receipts, resource disposition, authority snapshot, and acceptance in the Session log. The extension provider connects an authenticated Chrome worker through the Host gateway and owner-approved grants, while the tool consumer prepares and approves model-facing page actions. Native approval delegates to the existing Approval service for a visible same-Session Chrome peer. The monitor consumer owns durable plans and comparisons, delegates each finite read to Queue, and retains notifications until acknowledged.
 
 ## Table of Contents
 
@@ -27,6 +27,7 @@ The definition and its Host provider have separate responsibilities and can be c
 | Package | Role |
 |---|---|
 | [`@changanhua/dsh-browser`](browser/README.md) | Defines session-addressed instances, operations, and expiring prepared-action tickets on `ctx.browser`. |
+| [`@changanhua/dsh-browser-task`](browser-task/README.md) | Owns the Session-persistent browser task, including acceptance and the disposition of page resources. |
 | [`@changanhua/dsh-browser-extension`](browser-extension/README.md) | Connects an approved Chrome worker through authenticated HTTP and WebSocket routes. |
 | [`@changanhua/dsh-tool-browser`](tool-browser/README.md) | Registers model-facing inspection and approval-gated page-action tools. |
 | [`@changanhua/dsh-browser-monitor`](browser-monitor/README.md) | Owns persistent monitor plans, finite Queue checks and recoverable notification delivery. |

@@ -28,13 +28,26 @@ interface BrowserElementReference {
 ```
 
 ```ts type-equiv
+/** One bounded plain-data block rendered by an extension-owned page region. */
+type BrowserRegionBlock =
+  | { readonly type: 'heading'; readonly text: string }
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'item'; readonly title: string; readonly meta?: string | undefined; readonly link?: string | undefined }
+  | { readonly type: 'keyvalue'; readonly label: string; readonly value: string }
+  | { readonly type: 'link'; readonly text: string; readonly href: string }
+```
+
+```ts type-equiv
 /** Current consumers: interactive tools, explicit page intake, and finite monitor checks. */
 type BrowserAction =
   | { readonly kind: 'tabs' }
-  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean }
+  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean }
+  | { readonly kind: 'page_map'; readonly page: BrowserPage }
   | { readonly kind: 'entry_inspect'; readonly page: BrowserPage; readonly regionSelector: string; readonly selector: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly sampleLimit?: number }
   | { readonly kind: 'entry_mount'; readonly page: BrowserPage; readonly mountId: string; readonly regionSelector?: string; readonly selector: string; readonly label: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly collected?: readonly string[] }
   | { readonly kind: 'entry_unmount'; readonly page: BrowserPage; readonly mountId: string; readonly forgetCollected?: boolean }
+  | { readonly kind: 'region_render'; readonly page: BrowserPage; readonly mountId: string; readonly selector: string; readonly placement?: 'prepend' | 'append'; readonly mode?: 'append' | 'replace'; readonly title?: string; readonly blocks: readonly BrowserRegionBlock[] }
+  | { readonly kind: 'region_clear'; readonly page: BrowserPage; readonly mountId: string }
   | { readonly kind: 'navigate'; readonly page: BrowserPage; readonly url: string }
   | { readonly kind: 'click'; readonly element: BrowserElementReference; readonly intent: string }
   | { readonly kind: 'fill'; readonly element: BrowserElementReference; readonly value: string; readonly intent: string }
@@ -51,6 +64,8 @@ type BrowserAction =
   | { readonly kind: 'wait'; readonly page: BrowserPage; readonly milliseconds: number }
 ```
 
+`page_map` 为精确文档返回有界区域，包含唯一 selector、几何信息、重要性以及可占用/保护提示。区域渲染会拒绝含糊 selector，并要求同一 Session、安装、grant epoch 和精确页面的短时 Host 页面地图证据。Append 模式添加扩展自有节点；replace 模式还要求区域已映射、可占用且未受保护，并把其原始子节点移到一边，直到 `region_clear` 将其恢复。页面运行时只把纯数据块渲染为文本节点，把挂载绑定到 Session、安装、grant epoch 和页面身份，绝不将旧挂载悄然绑定到新 URL。只有已观察到 clear 或 `document_replaced` 才能结算清理；`target_url_stale` 会使资源保持未解决。
+
 `tree` 快照从同一份稳定缓存分页返回层次。Document、元素、文本和开放 Shadow Root 节点会跨 `treeCursor` 读取保留 index 和 parent index，不会重新匹配节点。iframe 元素标出 source 边界，frame 文档仍需独立读取。隐藏、可编辑、script 和 style 文本会被排除，隐藏结构仍保留 hidden 标记。
 
 ```ts type-equiv
@@ -62,6 +77,8 @@ interface BrowserInstance {
   readonly grantEpoch: number
   readonly origins: readonly string[]
   readonly scopes: readonly string[]
+  /** Detached handshake snapshot; absent only while the authorized installation is offline. */
+  readonly capabilities?: BrowserExecutorCapabilities
 }
 ```
 
@@ -70,6 +87,8 @@ interface BrowserInstance {
 interface BrowserOperation {
   readonly sessionId: SessionId
   readonly installationId: string
+  /** Minted by the caller before dispatch; repeated identities are journaled idempotently. */
+  readonly requestId: string
   readonly action: BrowserAction
 }
 ```
@@ -84,6 +103,23 @@ interface BrowserActionResult {
   readonly delivery: 'not-sent' | 'sent'
   readonly reason?: string
   readonly value?: JsonValue
+}
+```
+
+```ts type-equiv
+/** Caller-scoped lookup of one retained request; querying never replays its action. */
+interface BrowserRequestStatusQuery {
+  readonly requestId: string
+  readonly sessionId: SessionId
+  readonly installationId: string
+}
+```
+
+```ts type-equiv
+/** Current retained state of one Browser request. */
+type BrowserRequestStatus = Omit<BrowserActionResult, 'outcome'> & {
+  readonly outcome: BrowserActionResult['outcome'] | 'in-flight'
+  readonly quiescent?: boolean
 }
 ```
 
@@ -132,15 +168,17 @@ interface BrowserPreparedAction {
 
 提供方根据动作判定读取或写入权限，并在派发前检查当前安装授权。扩展在执行前检查当前授权和 Chrome 站点权限。导航核验产生的新文档；重定向超出已授权站点时，不返回未授权目标的 URL。
 
-每次调用以摘要绑定协议版本、授权代次、请求 ID、会话、安装、截止时间、目标与动作。完全相同的重复请求共享已有回执。重连查询状态，不重新发送动作。扩展在页面效果发生前持久化最小执行意图；日志保留有界结果值，不保存原调用负载。后台重启后，未解决的写操作继续锁定整个标签，锁跨越会话与授权代次。已经初始化的日志丢失时，存储处于不可用状态，不视为空请求历史。
+调用方在派发前生成每个请求 ID。每次调用以该 ID、协议版本、授权代次、会话、安装、截止时间、目标与动作绑定摘要。完全相同的重复请求共享已有回执。在线安装会暴露 worker 的 capability 握手，因此缺少声明或不支持的 action 是不可用，而非猜测的回退。重连查询状态，不重新发送动作。扩展在页面效果发生前持久化最小执行意图；日志保留有界结果值，不保存原调用负载。后台重启后，未解决的写操作继续锁定整个标签，锁跨越会话与授权代次。已经初始化的日志丢失时，存储处于不可用状态，不视为空请求历史。
 
-取消只请求停止。回执丢失或超时产生 `unknown`，直到执行器证据确定结果。未解决的写操作持续持锁，直到观察到终态，或执行器确认不会继续执行后由用户显式确认。超时或站点权限丢失均不能证明旧文档已经停止执行。
+取消只请求停止。回执丢失或超时产生 `unknown`，直到执行器证据确定结果。`requestStatus()` 在不重放请求、不暴露权限指纹的前提下读取调用者作用域内的保留状态。未解决的写操作持续持锁，直到观察到终态，或执行器确认不会继续执行后由用户显式确认。超时或站点权限丢失均不能证明旧文档已经停止执行。
+
+`@changanhua/dsh-browser-task` 是自然语言现场任务的 Session 持久权威。其 projection 分离不可变页面 evidence 和目标绑定、planned/prepared/dispatched/settled attempt 与 receipt、页面资源 lease、capability 快照、委派事实和验收检查。由 checker 支持的验收条款不同于已观察到的页面 action 或已完成的委派 run。终态完成要求每个条款都引用当前 evidence、没有 blocker 或未解决 write、预算未耗尽，并且每个资源都已释放、消失或明确交给 Session/用户保留。工具消费方只继续该 projection；它不是进程内任务权威。
 
 Puppeteer 执行全部已实现动作。DOM 兼容执行器仅支持 `click`、`fill`、`submit`、`navigate`、`scroll` 和 `wait`，并拒绝新动作类型。截图要求主 frame，base64 上限为 400,000 字符。[网关 README](../../packages/browser/browser-extension/README.zh.md)负责传输边界与配置。[会话控制器](../../packages/api/session-controller/README.zh.md)负责对话历史；该服务不建立第二套消息存储。
 
 ## 有限观察与监控
 
-`observe()` 是对 `tabs` 或 `snapshot` 的有限读取，绑定到调用方 Session、安装和固定 observation grant epoch。提供方要求同时具备 read 和 observation scope，观察快照不会填充交互元素引用缓存。观察不可用是失败 outcome，绝不构成被监控页面未变化的证据。
+`observe()` 是对 `tabs`、`snapshot` 或 `page_map` 的有限读取，绑定到调用方 Session、安装和固定 observation grant epoch。提供方要求同时具备 read 和 observation scope，观察快照不会填充交互元素引用缓存。观察不可用是失败 outcome，绝不构成被监控页面未变化的证据。
 
 [`dsh-browser-monitor`](../../packages/browser/browser-monitor/README.zh.md)持久化显式 plan 和已接受 sample 摘要：SHA-256 digest、match 结果、时间和页面身份，而不是采集到的页面正文。null interval 调度一次检查；周期 plan 要么将逾期工作合并为 `latest`，要么跳过它，pause/resume 会先改变持久 plan，再调度新的 work。每个到期 slot 都成为类型化 Queue work kind `browser.monitor.check@1`；Queue 输入只包含 monitor id、revision 和 slot。
 
@@ -195,6 +233,13 @@ abstract observe(operation: BrowserObservation, signal: AbortSignal): Promise<Br
  * @returns Observed outcome or an unresolved result with its request identity.
  */
 abstract execute(operation: BrowserOperation, signal: AbortSignal): Promise<BrowserActionResult>
+
+/**
+ * Read one caller-scoped retained request without replaying it.
+ * @param query - Session, installation, and request id returned by an earlier action.
+ * @returns The current outcome and quiescence when known; authority fingerprints remain private.
+ */
+abstract requestStatus(query: BrowserRequestStatusQuery): Promise<BrowserRequestStatus>
 
 /**
  * Read facts for one page action and bind its immutable parameters before asking for approval.
@@ -325,6 +370,211 @@ acknowledge(id: string, installationId: string, noticeId: string, authorize?: ()
 ```
 
 Source: [`packages/browser/browser-monitor/src/index.ts`](../../packages/browser/browser-monitor/src/index.ts)
+
+<a id="ctxbrowsertasks--browsertaskservice"></a>
+
+### `ctx.browserTasks` — `BrowserTaskService`
+
+Session-log authority for one current browser task; no process-local task state exists.
+
+```ts cordis-catalog
+/**
+ * Read the current durable browser task for one live Agent.
+ * @param agent - Exact live Agent whose Session owns the task.
+ * @returns A detached task snapshot, or `undefined` when none exists.
+ */
+get(agent: Agent): BrowserTaskSnapshot | undefined
+
+/**
+ * Return the latest durable direct-user message available as a task source.
+ * @param agent - Exact live Agent whose Session is inspected.
+ * @returns The user-message sequence, or `undefined` before direct user input.
+ */
+latestUserSource(agent: Agent): number | undefined
+
+/**
+ * Create one task from a real user message after any prior task is terminal.
+ * @param agent - Exact live Agent that owns the task.
+ * @param request - Objective, acceptance clauses, target, source, and budgets.
+ * @returns The committed revision-one task.
+ */
+create(agent: Agent, request: CreateBrowserTaskRequest): BrowserTaskSnapshot
+
+/**
+ * Append a bounded Browser receipt before any task mutation cites it.
+ * @param agent - Exact live Agent that owns the task.
+ * @param task - Current compare-and-set task revision.
+ * @param receipt - Outcome bound to an existing attempt and exact authority.
+ * @returns The durable receipt source reference.
+ */
+recordReceipt( agent: Agent, task: BrowserTaskRef, receipt: Omit<BrowserTaskReceipt, 'kind' | 'version' | 'taskId'>, ): Extract<BrowserTaskSourceRef, { kind: 'browser-task-receipt' }>
+
+/**
+ * Append one deterministic acceptance check over current evidence.
+ * @param agent - Exact live Agent that owns the task.
+ * @param task - Current compare-and-set task revision.
+ * @param check - Checker identity, target, authority epoch, and clause results.
+ * @returns The durable checker source reference.
+ */
+recordCheck(agent: Agent, task: BrowserTaskRef, check: Omit<import('./types.ts').BrowserTaskCheck, 'kind' | 'version' | 'taskId'>): { kind: 'browser-task-check'; sessionSeq: number }
+
+/**
+ * Record the extension capability and authorization snapshot.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param capability - Installation, grant epoch, scopes, actions, and protocol.
+ * @returns The next task revision.
+ */
+recordCapability(agent: Agent, ref: BrowserTaskRef, capability: BrowserCapability): BrowserTaskSnapshot
+
+/**
+ * Add immutable bounded evidence from a real Session or Browser receipt fact.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param evidence - Digest, source, target, coverage, and authority epoch.
+ * @returns The next task revision.
+ */
+recordEvidence(agent: Agent, ref: BrowserTaskRef, evidence: BrowserTaskSnapshot['evidence'][number]): BrowserTaskSnapshot
+
+/**
+ * Invalidate current evidence without deleting its durable identity.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param id - Existing evidence identity.
+ * @param state - Invalidated evidence disposition.
+ * @returns The next task revision.
+ */
+staleEvidence(agent: Agent, ref: BrowserTaskRef, id: string, state: 'stale' | 'superseded'): BrowserTaskSnapshot
+
+/**
+ * Plan one caller-identified Browser attempt before dispatch.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param attempt - Planned request, action, target, and authority identity.
+ * @returns The next task revision.
+ */
+recordAttempt(agent: Agent, ref: BrowserTaskRef, attempt: BrowserActionAttempt): BrowserTaskSnapshot
+
+/**
+ * Advance an existing attempt through its monotonic lifecycle.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param attempt - Complete next attempt state with matching identity.
+ * @returns The next task revision.
+ */
+advanceAttempt(agent: Agent, ref: BrowserTaskRef, attempt: BrowserActionAttempt): BrowserTaskSnapshot
+
+/**
+ * Reconcile an unknown attempt from a matching quiescent receipt.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param attempt - Settled replacement citing the recovery receipt.
+ * @returns The next task revision.
+ */
+reconcileAttempt(agent: Agent, ref: BrowserTaskRef, attempt: BrowserActionAttempt): BrowserTaskSnapshot
+
+/**
+ * Reserve or advance one exact-page resource lease.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param resource - Complete next resource state and optional disposition.
+ * @returns The next task revision.
+ */
+upsertResource(agent: Agent, ref: BrowserTaskRef, resource: BrowserPageResource): BrowserTaskSnapshot
+
+/**
+ * Resolve an uncertain resource from a matching Browser receipt.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param resource - Final resource disposition with its receipt source.
+ * @returns The next task revision.
+ */
+reconcileResource(agent: Agent, ref: BrowserTaskRef, resource: BrowserPageResource): BrowserTaskSnapshot
+
+/**
+ * Link a Job, Subagent, or Cordis tool call without treating it as acceptance.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param work - Bounded delegated-work identity, status, source, and expectation.
+ * @returns The next task revision.
+ */
+linkDelegatedWork(agent: Agent, ref: BrowserTaskRef, work: DelegatedWorkRef): BrowserTaskSnapshot
+
+/**
+ * Apply checker-backed evaluations for declared acceptance clauses.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param evaluations - Clause results citing one matching check fact.
+ * @returns The next verifying task revision.
+ */
+evaluate(agent: Agent, ref: BrowserTaskRef, evaluations: readonly AcceptanceEvaluation[]): BrowserTaskSnapshot
+
+/**
+ * Change a nonterminal task phase without clearing derived blockers.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param phase - Next nonterminal phase.
+ * @param blockers - Optional complete blocker set; derived blockers cannot be removed here.
+ * @returns The next task revision.
+ */
+transition(agent: Agent, ref: BrowserTaskRef, phase: Exclude<BrowserTaskSnapshot['phase'], 'terminal'>, blockers?: readonly BrowserTaskBlocker[]): BrowserTaskSnapshot
+
+/**
+ * Rebind a target only after an explicit target-loss edge.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param next - New exact installation and page identity.
+ * @returns The next task revision with prior evidence stale.
+ */
+rebind(agent: Agent, ref: BrowserTaskRef, next: BrowserTargetBinding): BrowserTaskSnapshot
+
+/**
+ * Acknowledge an explicit rebind and clear only its target-loss blocker.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @returns The next task revision.
+ */
+acknowledgeTargetLoss(agent: Agent, ref: BrowserTaskRef): BrowserTaskSnapshot
+
+/**
+ * Resume after human interaction only with fresh authority and evidence.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @returns The next task revision without the human-interaction blocker.
+ */
+acknowledgeHumanInteraction(agent: Agent, ref: BrowserTaskRef): BrowserTaskSnapshot
+
+/**
+ * Consume durable Agent-continuation budget.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param steps - Positive number of continuation steps to consume.
+ * @returns The next task revision.
+ */
+consumeContinuation(agent: Agent, ref: BrowserTaskRef, steps: number = 1): BrowserTaskSnapshot
+
+/**
+ * Consume durable Browser-action budget.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param actions - Positive number of Browser actions to consume.
+ * @returns The next task revision.
+ */
+consumeAction(agent: Agent, ref: BrowserTaskRef, actions: number = 1): BrowserTaskSnapshot
+
+/**
+ * Terminate a task; completed outcomes pass every acceptance and cleanup gate.
+ * @param agent - Exact live Agent that owns the task.
+ * @param ref - Current compare-and-set task revision.
+ * @param outcome - Terminal outcome.
+ * @returns The terminal task revision.
+ */
+terminate(agent: Agent, ref: BrowserTaskRef, outcome: BrowserTaskSnapshot['outcome'] & string): BrowserTaskSnapshot
+```
+
+Types: [Agent](core.zh.md)
+
+Source: [`packages/browser/browser-task/src/index.ts`](../../packages/browser/browser-task/src/index.ts)
 
 <a id="browser-events"></a>
 

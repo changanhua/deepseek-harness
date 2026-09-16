@@ -199,6 +199,7 @@
     { "path": "./packages/content/content-remote" },
     { "path": "./packages/content/content-browser" },
     { "path": "./packages/browser/browser" },
+    { "path": "./packages/browser/browser-task" },
     { "path": "./packages/browser/browser-extension" },
     { "path": "./packages/browser/tool-browser" },
     { "path": "./packages/browser/browser-activity" },

@@ -16,7 +16,7 @@ kind: "package-reference"
 - [使用本包](#use-this-package)
 - [存储与恢复](#storage-and-recovery)
 - [模型体验](#model-experience)
-- [已知限制](#known-limitations)
+- [已知限制与后续工作](#known-limitations-and-deferred-work)
 - [开发说明](#dev-note)
 
 <a id="use-this-package"></a>
@@ -38,12 +38,24 @@ Chrome 离线时仍可检索历史，但继续受当前会话、授权版本、�
 <a id="model-experience"></a>
 ## 模型体验
 
-无。本包不注册模型工具或提示贡献，也不发起模型请求。消费者必须将采集正文视为来源资料，而非指令。
+### 活动检索消费方
 
-<a id="known-limitations"></a>
-## 已知限制
+#### 模型可见内容
 
-本包不采集 Chrome 事件、不上传图片，也不写入思源。Loader 测试通过外部 Browser 测试替身验证 SQLite 恢复；它不证明 Chrome 采集或完整知识工作流。
+本包不注册直接工具或提示贡献。`tool-browser` 组合本包时，模型可以接收有界的历史活动检索结果；它们仍是来源资料，而非指令。
+
+#### Token 影响
+
+本包本身不增加定义成本。组合的检索结果受消费方的文本、数量和编码字节限制。
+
+#### KV Cache effect
+
+本包没有直接影响。组合的检索结果追加在可复用请求前缀之后。
+
+## 已知限制与后续工作
+
+- 本包不采集 Chrome 事件、不上传图片，也不写入思源。
+- Loader 测试通过外部 Browser 测试替身验证 SQLite 恢复；它不证明 Chrome 采集或完整知识工作流。
 
 <a id="dev-note"></a>
 ### 开发说明

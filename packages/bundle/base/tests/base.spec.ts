@@ -156,6 +156,10 @@ describe('dsh-base bundle', () => {
     )
     expect(rows.length).toBeGreaterThan(50)
     expect(rows.some(row => row.id === 'agent-loop')).toBe(true)
+    const sessionProjectionIndex = rows.findIndex(row => row.id === 'session-projection')
+    const browserTaskIndex = rows.findIndex(row => row.id === 'browser-task')
+    expect(browserTaskIndex).toBeGreaterThan(sessionProjectionIndex)
+    expect(rows[browserTaskIndex]).toMatchObject({ name: '@changanhua/dsh-browser-task' })
     expect(rows.find(row => row.id === 'session-telemetry-otel')?.config?.['mode']).toEqual({
       __jsExpr: "process.env.DSH_TELEMETRY_MODE || 'FEEDBACK_ONLY'",
     })
@@ -189,6 +193,7 @@ describe('dsh-base bundle', () => {
     ])
     expect(rows.filter(row => row.id === 'tool-agent-run-task-queue')).toHaveLength(1)
     expect(manifest.dependencies).toMatchObject({
+      '@changanhua/dsh-browser-task': 'workspace:^',
       '@deepseek-ai/dsh-subagent-codex': 'workspace:^',
       '@deepseek-ai/dsh-subagent-claude-code': 'workspace:^',
       '@changanhua/dsh-task-queue-executor-dsh': 'workspace:^',

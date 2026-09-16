@@ -34,6 +34,8 @@
       "@changanhua/dsh-browser-extension": ["./packages/browser/browser-extension/src"],
       "@changanhua/dsh-browser-extension/types": ["./packages/browser/browser-extension/src/types.ts"],
       "@changanhua/dsh-browser-extension/invariant": ["./packages/browser/browser-extension/src/invariant.ts"],
+      "@changanhua/dsh-browser-task": ["./packages/browser/browser-task/src"],
+      "@changanhua/dsh-browser-task/types": ["./packages/browser/browser-task/src/types.ts"],
       "@changanhua/dsh-tool-browser": ["./packages/browser/tool-browser/src"],
       "@changanhua/dsh-tool-browser/invariant": ["./packages/browser/tool-browser/src/invariant.ts"],
       "@changanhua/dsh-browser-activity": ["./packages/browser/browser-activity/src"],

@@ -9,6 +9,574 @@ This file is GENERATED from source (`scripts/gen-config-catalog.ts`) and verifie
 
 A `Requires:` line lists the service keys the plugin `inject`s: its `cordis.yml` tree must also load providers for those services. Scope is the harness tier (`packages/`); the vendored cordis plugins a config tree may also load (`hmr`, the console logger, …) are pinned upstream source ([vendoring policy](../vendor/README.md)) and not catalogued here.
 
+<a id="changanhuadsh-browser-activity"></a>
+
+## `@changanhua/dsh-browser-activity`
+
+```ts config-catalog
+/** Host retention cadence and installation capacity. Collection is opt-in per installation. */
+export interface Config {
+  /** Cadence for retention pruning and policy refresh in milliseconds. */
+  pruneIntervalMs?: number
+  /** Maximum installations with retained activity state. */
+  maxInstallations?: number
+}
+```
+
+Source: [`packages/browser/browser-activity/src/index.ts:16`](../packages/browser/browser-activity/src/index.ts)
+
+<a id="changanhuadsh-browser-extension"></a>
+
+## `@changanhua/dsh-browser-extension`
+
+Requires: `webServer` · `connection` · `credentials` · `sessionController`
+
+```ts config-catalog
+/** Bounds for the Host connection, handshake, and retained operation receipts. */
+export interface Config {
+  /** Lifetime of one prepared action ticket in milliseconds. */
+  requestTTL?: number
+  /** Maximum pending owner pairing requests. */
+  pendingLimit?: number
+  /** Maximum retained installation grants. */
+  maxGrants?: number
+  /** Deadline for one extension execution request in milliseconds. */
+  requestTimeoutMs?: number
+  /** Maximum concurrent browser requests. */
+  requestCapacity?: number
+  /** Maximum encoded invocation size in bytes. */
+  maxRequestBytes?: number
+  /** Maximum encoded receipt size in bytes. */
+  maxResultBytes?: number
+  /** Maximum WebSocket frame size in bytes. */
+  maxFrameBytes?: number
+  /** Time allowed for the authenticated WebSocket hello in milliseconds. */
+  handshakeTimeoutMs?: number
+  /** Extension heartbeat cadence in milliseconds. */
+  heartbeatIntervalMs?: number
+  /** Retention window for settled request receipts in milliseconds. */
+  receiptRetentionMs?: number
+  /** Maximum concurrent Session RPC requests per extension connection. */
+  maxSessionRequests?: number
+  /** Shared capacity for entry and region page mounts. */
+  maxMounts?: number
+  /** Lifetime of exact-document page-map evidence in milliseconds. */
+  pageEvidenceTTL?: number
+}
+```
+
+Source: [`packages/browser/browser-extension/src/index.ts:28`](../packages/browser/browser-extension/src/index.ts)
+
+<a id="changanhuadsh-browser-monitor"></a>
+
+## `@changanhua/dsh-browser-monitor`
+
+```ts config-catalog
+/** Host scan interval and capacity; each Queue attempt has a separate finite read timeout. */
+export interface Config {
+  /** Cadence for scanning due monitor plans in milliseconds. */
+  pollIntervalMs?: number
+  /** Maximum persisted monitor plans. */
+  maxMonitors?: number
+  /** Timeout for one finite browser observation in milliseconds. */
+  checkTimeoutMs?: number
+}
+```
+
+Source: [`packages/browser/browser-monitor/src/index.ts:18`](../packages/browser/browser-monitor/src/index.ts)
+
+<a id="changanhuadsh-command-memory"></a>
+
+## `@changanhua/dsh-command-memory`
+
+Requires: `commands` · `projectMemory`
+
+```ts config-catalog
+/** Human output limits do not grant any model write or approval authority. */
+export interface Config {
+  /** Complete result byte limit; minimum reserves room for a durable mutation acknowledgment. */
+  maxOutputBytes?: number
+}
+```
+
+Source: [`packages/memory/command-memory/src/index.ts:15`](../packages/memory/command-memory/src/index.ts)
+
+<a id="changanhuadsh-content-browser"></a>
+
+## `@changanhua/dsh-content-browser`
+
+Requires: `webServer` · `connection` · `credentials` · `content`
+
+```ts config-catalog
+export interface ContentBrowserConfig {
+  /** Lifetime of a pending connection request, in milliseconds. */
+  requestTTL?: number
+  /** Maximum number of pending connection requests. */
+  pendingLimit?: number
+  /** Maximum accepted request body size, in bytes. */
+  maxRequestBodyBytes?: number
+}
+```
+
+Source: [`packages/content/content-browser/src/index.ts:36`](../packages/content/content-browser/src/index.ts)
+
+<a id="changanhuadsh-content-domain"></a>
+
+## `@changanhua/dsh-content-domain`
+
+```ts config-catalog
+/** Byte limits count all retained data; lowering them never prevents reading existing valid data. */
+export interface Config {
+  /** Maximum UTF-8 bytes in one retained body. */
+  bodyBytes?: number
+  /** Maximum JSON UTF-8 bytes in one entry, including versions and receipts. */
+  entryBytes?: number
+  /** Maximum JSON UTF-8 bytes in the complete logical Domain envelope. */
+  libraryBytes?: number
+}
+```
+
+Source: [`packages/content/content-domain/src/index.ts:25`](../packages/content/content-domain/src/index.ts)
+
+<a id="changanhuadsh-delivery-evidence-local"></a>
+
+## `@changanhua/dsh-delivery-evidence-local`
+
+```ts config-catalog
+/** Local evidence-store location. */
+export interface Config {
+  /** Private directory containing content-addressed evidence objects. */
+  readonly root: string
+  /** Complete-byte publication limit, capped by the P0 64 MiB ceiling. */
+  readonly maxBytes?: number
+}
+```
+
+Source: [`packages/delivery/delivery-evidence-local/src/index.ts:42`](../packages/delivery/delivery-evidence-local/src/index.ts)
+
+<a id="changanhuadsh-delivery-remote"></a>
+
+## `@changanhua/dsh-delivery-remote`
+
+Requires: `credentials` · `delivery` · `deliveryEvidence` · `repoWorkspace` · `taskQueue`
+
+```ts config-catalog
+/** Trusted single-operator identity configured on the Host, never supplied by browser input. */
+export interface Config {
+  /** Non-blank human operator identity minted by trusted Host configuration. */
+  readonly operatorId?: string
+  /** Single local repository bound to newly shaped human-origin Cases. */
+  readonly repositoryId?: string
+  /** Host-only map from Delivery repository ids to GitHub targets and credential references. */
+  readonly githubTargets?: Readonly<Record<string, {
+    /** GitHub repository owner used by the Host publisher. */
+    readonly owner: string
+    /** GitHub repository name paired with the configured owner. */
+    readonly name: string
+    /** Credential reference resolved by the Host for each publication operation. */
+    readonly credentialRef: string
+    /** Optional labels applied by the Host during Issue creation. */
+    readonly labels?: string[]
+  }>>
+}
+```
+
+Source: [`packages/delivery/delivery-remote/src/index.ts:103`](../packages/delivery/delivery-remote/src/index.ts)
+
+<a id="changanhuadsh-delivery-task-queue"></a>
+
+## `@changanhua/dsh-delivery-task-queue`
+
+Requires: `delivery` · `deliveryEvidence` · `repoWorkspace` · `subprocess` · `taskQueue`
+
+```ts config-catalog
+/** Loader-owned composition policy for both Delivery Queue handlers. */
+export interface Config {
+  /** Stable executor recorded on code-change bindings. */
+  readonly executorId?: typeof DEFAULT_EXECUTOR_ID
+  /** Optional Codex model override. */
+  readonly model?: string
+  /** Native unattended Codex approval and sandbox policy. */
+  readonly permissionMode?: CodexAppServerPermissionMode
+  /** Explicit child environment layered after credential scrubbing. */
+  readonly env?: Record<string, string>
+  /** Process-tree termination grace shared by runner and verifier. */
+  readonly disposeGraceMs?: number
+  /** Maximum retained UTF-8 bytes from Codex assistant output. */
+  readonly modelOutputBytes?: number
+  /** Maximum collected bytes from one verification check. */
+  readonly verificationOutputBytes?: number
+  /** Queue resource serialized across expensive Agent work. */
+  readonly resource?: string
+  /** Queue retry ceiling for both governed work kinds. */
+  readonly maxAttempts?: number
+  /** Stable verifier implementation identity persisted in verdicts. */
+  readonly verifierVersion?: string
+}
+```
+
+Depends on: [`CodexAppServerPermissionMode`](../packages/delivery/delivery-runner-codex/src/index.ts)
+
+Source: [`packages/delivery/delivery-task-queue/src/index.ts:91`](../packages/delivery/delivery-task-queue/src/index.ts)
+
+<a id="changanhuadsh-host-work-observatory"></a>
+
+## `@changanhua/dsh-host-work-observatory`
+
+Requires: `storageDomain` · `sessions`
+
+```ts config-catalog
+/** Deployment bounds for durable activity evidence. */
+export interface Config {
+  /** Whole days to retain browser transitions and completed Session steps. */
+  readonly retentionDays?: number
+  /** Maximum browser document identities retained concurrently. */
+  readonly maxClients?: number
+  /** Maximum retained transition and step rows one range read may consume. */
+  readonly maxQueryRecords?: number
+}
+```
+
+Source: [`packages/host/work-observatory/src/index.ts:33`](../packages/host/work-observatory/src/index.ts)
+
+<a id="changanhuadsh-image-generation-arkcli"></a>
+
+## `@changanhua/dsh-image-generation-arkcli`
+
+Requires: `imageGeneration` · `subprocess`
+
+```ts config-catalog
+/** Deployment limits for ArkCLI process output and decoded image resources. */
+export interface Config {
+  /** ArkCLI executable name or absolute host path. */
+  executable?: string
+  /** Fixed arguments placed before every ArkCLI subcommand, for host launchers such as `node.exe arkcli.js`. */
+  argvPrefix?: string[]
+  /** Maximum complete stdout bytes accepted from one ArkCLI invocation. */
+  stdoutMaxBytes?: number
+  /** Maximum stderr tail bytes retained for private failure classification. */
+  stderrMaxBytes?: number
+  /** Process-tree termination grace passed to the subprocess service. */
+  graceMs?: number
+  /** Bound for each process-tree quiescence probe after exit or cancellation. */
+  quiescenceTimeoutMs?: number
+  /** Maximum encoded bytes read from the generated file. */
+  maxImageBytes?: number
+  /** Maximum decoded pixels accepted from the generated image. */
+  maxImagePixels?: number
+  /** Minimum requested image pixels admitted before generation. */
+  minImagePixels?: number
+  /** Minimum admitted width-to-height ratio. */
+  minAspectRatio?: number
+  /** Maximum admitted width-to-height ratio. */
+  maxAspectRatio?: number
+}
+```
+
+Source: [`packages/image/image-generation-arkcli/src/index.ts:72`](../packages/image/image-generation-arkcli/src/index.ts)
+
+<a id="changanhuadsh-image-generation-task-queue"></a>
+
+## `@changanhua/dsh-image-generation-task-queue`
+
+Requires: `taskQueue` · `imageGeneration` · `attachments`
+
+```ts config-catalog
+/** Queue retry policy supplied by the deployment composition. */
+export interface Config {
+  /** Maximum admitted attempts for one image WorkItem. */
+  readonly maxAttempts?: number
+}
+```
+
+Source: [`packages/image/image-generation-task-queue/src/index.ts:11`](../packages/image/image-generation-task-queue/src/index.ts)
+
+<a id="changanhuadsh-knowledge-base"></a>
+
+## `@changanhua/dsh-knowledge-base`
+
+Requires: `storageDomain`
+
+```ts config-catalog
+/** 由可信 Profile 指定受管理内容根。 */
+export interface Config {
+  /** 绝对路径；模型不能通过业务工具覆盖此值。 */
+  root: string
+  /** 使用已配置的原生 MCP 服务；省略时保留文件模式。 */
+  siyuan?: false | {
+    /** 已由 MCP Client 注册的思源服务名称。 */
+    serverName: string
+    /** 保存知识正文的思源笔记本 ID。 */
+    notebook: string
+    /** 新建项目文档的绝对人类可读路径。 */
+    rootPath: string
+    /** 可选的项目 ID 到已有根文档 ID 映射，用于复用指定入口。 */
+    projectRoots?: Record<string, string>
+  }
+}
+```
+
+Source: [`packages/knowledge/knowledge-base/src/index.ts:26`](../packages/knowledge/knowledge-base/src/index.ts)
+
+<a id="changanhuadsh-knowledge-base-task-queue"></a>
+
+## `@changanhua/dsh-knowledge-base-task-queue`
+
+Requires: `knowledgeBase` · `taskQueue` · `subprocess`
+
+```ts config-catalog
+/** 可信 Profile 为知识阶段执行指定的非秘密配置。 */
+export interface Config {
+  /** 可选原生模型名称；省略时继承 Codex 自身配置。 */
+  readonly model?: string
+  /** Codex 原生权限模式，默认禁止交互批准。 */
+  readonly permissionMode?: CodexAppServerPermissionMode
+  /** 释放 Codex 子进程树时各终止阶段使用的宽限毫秒数。 */
+  readonly disposeGraceMs?: number
+}
+```
+
+Depends on: `CodexAppServerPermissionMode` (`@deepseek-ai/dsh-subagent-codex/app-server-run`)
+
+Source: [`packages/knowledge/knowledge-base-task-queue/src/index.ts:20`](../packages/knowledge/knowledge-base-task-queue/src/index.ts)
+
+<a id="changanhuadsh-memory-local"></a>
+
+## `@changanhua/dsh-memory-local`
+
+Requires: `storageDomain` · `workspaceRegistry` · `sessions` · `sessionPersistence` · `sessionQuery` · `fs`
+
+```ts config-catalog
+/** Local storage ownership and bounded read/write policies. */
+export interface Config {
+  /** Absolute lock directory shared by every composition targeting this memory store. */
+  ownershipRoot: string
+  /** Default interval from human acceptance to the next required review. */
+  reviewAfterDays?: number
+  /** Maximum stored memories per Workspace; full stores reject rather than evict. */
+  maxRecordsPerWorkspace?: number
+  /** Maximum immutable content versions per memory. */
+  maxRevisions?: number
+  /** Maximum committed mutations per memory. */
+  maxReceipts?: number
+  /** Maximum bytes read from one file or retained source event text. */
+  maxSourceBytes?: number
+  /** Maximum UTF-8 bytes of a complete model-facing service result. */
+  maxOutputBytes?: number
+  /** Maximum checked, usable results returned by a lexical search. */
+  maxSearchResults?: number
+}
+```
+
+Source: [`packages/memory/memory-local/src/index.ts:19`](../packages/memory/memory-local/src/index.ts)
+
+<a id="changanhuadsh-operation-run-task-queue"></a>
+
+## `@changanhua/dsh-operation-run-task-queue`
+
+Requires: `taskQueue` · `subprocess`
+
+```ts config-catalog
+/** Host-owned allowlist supplied to the operation WorkKind bridge. */
+export interface Config {
+  /** Closed map from caller-visible ids to trusted, fixed operation definitions. */
+  readonly operations: Readonly<Record<string, OperationDefinition>>
+}
+
+/** Trusted host definition for one allowlisted operation revision. */
+export interface OperationDefinition {
+  /** Stable host revision persisted with admitted WorkItems. */
+  readonly revision: string
+  /** Host-facing explanation of the named operation. */
+  readonly description: string
+  /** Fixed, secret-free process vector selected by trusted deployment configuration. */
+  readonly argv: readonly string[]
+  /** Existing working directory validated before process start. */
+  readonly cwd: string
+  /** Queue resource capacity key claimed by every Attempt. */
+  readonly resource: string
+  /** Positive resource units claimed by every Attempt. */
+  readonly units: number
+  /** Positive upper bound on durable Attempts for one WorkItem. */
+  readonly maxAttempts: number
+  /** Positive byte bound for subprocess output collection. */
+  readonly collectBytes: number
+  /** Positive byte bound for stdout exposed in a successful Result. */
+  readonly resultBytes: number
+  /** Positive byte bound for the stderr tail retained in a failure. */
+  readonly failureTailBytes: number
+  /** Positive millisecond grace between process termination stages. */
+  readonly graceMs: number
+  /** Positive millisecond execution deadline. */
+  readonly timeoutMs: number
+}
+```
+
+Source: [`packages/task-queue/operation-run-task-queue/src/index.ts:21`](../packages/task-queue/operation-run-task-queue/src/index.ts)
+
+<a id="changanhuadsh-repo-workspace-git-local"></a>
+
+## `@changanhua/dsh-repo-workspace-git-local`
+
+Requires: `subprocess`
+
+```ts config-catalog
+/** Configured repository identities and the isolated worktree parent. */
+export interface Config {
+  /** Closed map from stable repository id to its local Git checkout root. */
+  readonly repositories: Readonly<Record<string, string>>
+  /** Directory below which attempt-owned worktrees are created. */
+  readonly worktreeRoot: string
+  /** Git process TERM-to-KILL grace. */
+  readonly graceMs?: number
+  /** Complete-byte cap for one Git command stream. */
+  readonly maxGitOutputBytes?: number
+}
+```
+
+Source: [`packages/delivery/repo-workspace-git-local/src/index.ts:51`](../packages/delivery/repo-workspace-git-local/src/index.ts)
+
+<a id="changanhuadsh-runtime-facts"></a>
+
+## `@changanhua/dsh-runtime-facts`
+
+Requires: `systemPrompt`
+
+```ts config-catalog
+/** Runtime fact projection configuration. */
+export interface Config {
+  /** Include baseline facts in the dynamic runtime-context snapshot. */
+  includeInRuntimeContext?: boolean
+}
+```
+
+Source: [`packages/context/runtime-facts/src/index.ts:29`](../packages/context/runtime-facts/src/index.ts)
+
+<a id="changanhuadsh-task-queue-executor-dsh"></a>
+
+## `@changanhua/dsh-task-queue-executor-dsh`
+
+Requires: `taskQueue` · `subprocess`
+
+```ts config-catalog
+/** Deployment configuration for the restricted DSH worker handler. */
+export interface Config {
+  /** Executable and fixed argv prefix used to launch the worker. */
+  launcher: string[]
+  /** DSH home exposed to the restricted worker process. */
+  dshHome: string
+  /** Working directory allowed for every admitted request. */
+  workspaceDir: string
+  /** DSH profile loaded by the worker. */
+  profile?: string
+  /** Maximum UTF-8 bytes persisted from the semantic worker answer. */
+  maxAssistantBytes?: number
+  /** Maximum stdout bytes retained before spill collection. */
+  collectBytes?: number
+  /** Maximum UTF-8 bytes retained from nonzero-exit stderr. */
+  failureTailBytes?: number
+  /** Grace period for worker termination. */
+  graceMs?: number
+  /** Maximum attempts permitted for one admitted worker request. */
+  maxAttempts?: number
+}
+```
+
+Source: [`packages/task-queue/task-queue-executor-dsh/src/index.ts:36`](../packages/task-queue/task-queue-executor-dsh/src/index.ts)
+
+<a id="changanhuadsh-task-queue-local"></a>
+
+## `@changanhua/dsh-task-queue-local`
+
+```ts config-catalog
+/** Local Queue v2 configuration. */
+export interface Config {
+  /** Schema-v3 Queue root; the composing row must keep older formats in a separate directory. */
+  queueRoot: string
+  /** Maximum simultaneous prepared or live attempts. */
+  maxConcurrent?: number
+  /** Deployment capacity by handler-declared resource name. */
+  resourceCapacity?: Record<string, number>
+  /** Maximum time teardown or post-start durability cleanup waits for execution quiescence. */
+  shutdownTimeoutMs?: number
+}
+```
+
+Source: [`packages/task-queue/task-queue-local/src/index.ts:73`](../packages/task-queue/task-queue-local/src/index.ts)
+
+<a id="changanhuadsh-task-queue-remote"></a>
+
+## `@changanhua/dsh-task-queue-remote`
+
+Requires: `taskQueue`
+
+```ts config-catalog
+/** Reserved Remote plugin configuration. */
+export type Config = Record<string, never>
+```
+
+Source: [`packages/task-queue/task-queue-remote/src/index.ts:16`](../packages/task-queue/task-queue-remote/src/index.ts)
+
+<a id="changanhuadsh-tool-agent-run-task-queue"></a>
+
+## `@changanhua/dsh-tool-agent-run-task-queue`
+
+Requires: `tools` · `taskQueue`
+
+```ts config-catalog
+/** Reserved admission-tool configuration. */
+export interface Config {}
+```
+
+Source: [`packages/task-queue/tool-agent-run-task-queue/src/index.ts:12`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
+
+<a id="changanhuadsh-tool-memory"></a>
+
+## `@changanhua/dsh-tool-memory`
+
+Requires: `tools` · `systemPrompt` · `projectMemory`
+
+```ts config-catalog
+/** Deployment-owned result and cooperative execution bounds. */
+export interface Config {
+  /** Complete rendered result byte limit; at most 16 KiB. */
+  maxOutputBytes?: number
+  /** Tool execution deadline, enforced by the composed tool-timeout policy. */
+  timeoutMs?: number
+}
+```
+
+Source: [`packages/memory/tool-memory/src/index.ts:17`](../packages/memory/tool-memory/src/index.ts)
+
+<a id="changanhuadsh-tool-operation-run-task-queue"></a>
+
+## `@changanhua/dsh-tool-operation-run-task-queue`
+
+Requires: `tools` · `taskQueue`
+
+```ts config-catalog
+/** Reserved admission-tool configuration. */
+export interface Config {}
+```
+
+Source: [`packages/task-queue/tool-operation-run-task-queue/src/index.ts:16`](../packages/task-queue/tool-operation-run-task-queue/src/index.ts)
+
+<a id="changanhuadsh-tool-task-queue"></a>
+
+## `@changanhua/dsh-tool-task-queue`
+
+Requires: `tools` · `taskQueue` · `sessions`
+
+```ts config-catalog
+/** Required owner delivery bound. */
+export interface Config {
+  /** Maximum pending owner Notifications appended during one Agent pre-step. */
+  readonly maxNotificationsPerStep: number
+}
+```
+
+Source: [`packages/task-queue/tool-task-queue/src/index.ts:237`](../packages/task-queue/tool-task-queue/src/index.ts)
+
 <a id="deepseek-aidsh-acp"></a>
 
 ## `@deepseek-ai/dsh-acp`
@@ -383,7 +951,7 @@ export interface ConnectionRecoveryConfig {
 }
 ```
 
-Source: [`packages/client/connection/src/index.ts:72`](../packages/client/connection/src/index.ts)
+Source: [`packages/client/connection/src/index.ts:73`](../packages/client/connection/src/index.ts)
 
 <a id="deepseek-aidsh-client-hmr"></a>
 
@@ -518,7 +1086,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/extensions/cordis-host-runner/src/index.ts:88`](../packages/extensions/cordis-host-runner/src/index.ts)
+Source: [`packages/extensions/cordis-host-runner/src/index.ts:89`](../packages/extensions/cordis-host-runner/src/index.ts)
 
 <a id="deepseek-aidsh-credentials-local"></a>
 
@@ -1463,6 +2031,40 @@ export type Config = Readonly<Record<string, never>>
 
 Source: [`packages/llm/llm-retry/src/index.ts:25`](../packages/llm/llm-retry/src/index.ts)
 
+<a id="deepseek-aidsh-llm-vision-relay"></a>
+
+## `@deepseek-ai/dsh-llm-vision-relay`
+
+Requires: `llm` · `settings`
+
+```ts config-catalog
+/** The whole settings section. */
+export interface RelaySettings {
+  /** Vision model every route derives evidence through. */
+  relay?: RelayModelConfig | null
+  /** Composite routes this plugin owns, keyed by the model id each offers. */
+  routes: Record<string, RelayRouteConfig>
+}
+
+/** One relay vision route: the model that reads images on behalf of a target. */
+export interface RelayModelConfig {
+  /** Provider route serving the vision model. */
+  provider: string
+  /** Exact vision model id. */
+  model: string
+}
+
+/** One composite route. The settings key is the model id it is selected by. */
+export interface RelayRouteConfig {
+  /** Display name; absent means the target model name plus the relay suffix. */
+  name?: string
+  /** Text-only route that ultimately answers. */
+  target: RelayModelConfig
+}
+```
+
+Source: [`packages/llm/llm-vision-relay/src/index.ts:54`](../packages/llm/llm-vision-relay/src/index.ts)
+
 <a id="deepseek-aidsh-lsp-stdio"></a>
 
 ## `@deepseek-ai/dsh-lsp-stdio`
@@ -2179,7 +2781,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/skill/skill/src/index.ts:278`](../packages/skill/skill/src/index.ts)
+Source: [`packages/skill/skill/src/index.ts:342`](../packages/skill/skill/src/index.ts)
 
 <a id="deepseek-aidsh-skill-filesystem"></a>
 
@@ -2321,6 +2923,8 @@ Requires: `storage`
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
+  /** Storage hub registration name; defaults to `sqlite` for compatibility. */
+  backendName?: string
   /**
    * Filesystem path to the SQLite database file. The special value `:memory:`
    * opens an in-process database (tests). On filesystems with POSIX modes,
@@ -2338,6 +2942,16 @@ export interface Config {
    * {@link JournalMode}.
    */
   journalMode?: JournalMode
+  /** Base for relative paths; the legacy behavior resolves from the process working directory. */
+  pathBase?: StoragePathBase
+  /** Hold the file for this connection's lifetime, or retain shared SQLite locking. */
+  ownership?: 'shared' | 'exclusive'
+  /** Explicit SQLite synchronous level; omission preserves SQLite's existing default. */
+  synchronous?: 'normal' | 'full' | 'extra'
+  /** Non-zero identity; only a newly created file or an exact stamped match opens. */
+  applicationId?: number
+  /** Require owner-private paths and reject unsafe aliases or writable ancestors. */
+  privateDirectory?: boolean
 }
 
 /**
@@ -2348,9 +2962,12 @@ export interface Config {
  * contradicts the durability clause of the KV backend contract.
  */
 export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
+
+/** Resolution base for a relative database path. */
+export type StoragePathBase = 'cwd' | 'dsh-home'
 ```
 
-Source: [`packages/storage/storage-sqlite/src/index.ts:24`](../packages/storage/storage-sqlite/src/index.ts)
+Source: [`packages/storage/storage-sqlite/src/index.ts:34`](../packages/storage/storage-sqlite/src/index.ts)
 
 <a id="deepseek-aidsh-subagent-acp"></a>
 
@@ -3067,7 +3684,7 @@ export interface Config {
 
 Depends on: [`AgentOptions`](subsystems/core.md)
 
-Source: [`packages/subagent/tool-subagent/src/index.ts:48`](../packages/subagent/tool-subagent/src/index.ts)
+Source: [`packages/subagent/tool-subagent/src/index.ts:50`](../packages/subagent/tool-subagent/src/index.ts)
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 
@@ -3189,7 +3806,7 @@ export interface Config {
 export type ToolPresentationMode = 'native' | 'ptc' | 'both'
 ```
 
-Source: [`packages/core/tools/src/index.ts:647`](../packages/core/tools/src/index.ts)
+Source: [`packages/core/tools/src/index.ts:652`](../packages/core/tools/src/index.ts)
 
 <a id="deepseek-aidsh-typert-loader"></a>
 
@@ -3242,6 +3859,8 @@ Source: [`packages/interaction/user-approval/src/index.ts:128`](../packages/inte
 
 ## `@deepseek-ai/dsh-web`
 
+Requires: `settings`
+
 ```ts config-catalog
 /**
  * Config for the web seam. `searchProvider` / `fetchProvider` pin which provider
@@ -3257,7 +3876,7 @@ export interface WebRuntimeConfig {
 }
 ```
 
-Source: [`packages/web/web/src/index.ts:55`](../packages/web/web/src/index.ts)
+Source: [`packages/web/web/src/index.ts:59`](../packages/web/web/src/index.ts)
 
 <a id="deepseek-aidsh-web-app"></a>
 
@@ -3360,7 +3979,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/web/web-search-exa/src/index.ts:35`](../packages/web/web-search-exa/src/index.ts)
+Source: [`packages/web/web-search-exa/src/index.ts:39`](../packages/web/web-search-exa/src/index.ts)
 
 <a id="deepseek-aidsh-web-search-perplexity"></a>
 
@@ -3384,7 +4003,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/web/web-search-perplexity/src/index.ts:30`](../packages/web/web-search-perplexity/src/index.ts)
+Source: [`packages/web/web-search-perplexity/src/index.ts:34`](../packages/web/web-search-perplexity/src/index.ts)
 
 <a id="deepseek-aidsh-webhook-github"></a>
 
@@ -3442,6 +4061,25 @@ Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
 
+- `@changanhua/dsh-browser-task` — requires `agents` · `sessionProjections` ([`packages/browser/browser-task/src/index.ts`](../packages/browser/browser-task/src/index.ts))
+- `@changanhua/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
+- `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
+- `@changanhua/dsh-client-ui-content` ([`packages/client/ui-content/src/index.ts`](../packages/client/ui-content/src/index.ts))
+- `@changanhua/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
+- `@changanhua/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
+- `@changanhua/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
+- `@changanhua/dsh-client-ui-work-observatory` ([`packages/client/ui-work-observatory/src/index.ts`](../packages/client/ui-work-observatory/src/index.ts))
+- `@changanhua/dsh-command-task-queue` — requires `commands` ([`packages/task-queue/command-task-queue/src/index.ts`](../packages/task-queue/command-task-queue/src/index.ts))
+- `@changanhua/dsh-content-remote` — requires `connection` · `content` · `contentSession` ([`packages/content/content-remote/src/index.ts`](../packages/content/content-remote/src/index.ts))
+- `@changanhua/dsh-content-session` — requires `sessionQuery` ([`packages/content/content-session/src/index.ts`](../packages/content/content-session/src/index.ts))
+- `@changanhua/dsh-delivery-local` — requires `storageDomain` ([`packages/delivery/delivery-local/src/index.ts`](../packages/delivery/delivery-local/src/index.ts))
+- `@changanhua/dsh-host-capability-registry` — requires `loader` · `skills` · `tools` · `agents` ([`packages/host/capability-registry/src/index.ts`](../packages/host/capability-registry/src/index.ts))
+- `@changanhua/dsh-image-generation` ([`packages/image/image-generation/src/index.ts`](../packages/image/image-generation/src/index.ts))
+- `@changanhua/dsh-runtime-facts-host` — requires `runtimeFacts` ([`packages/context/runtime-facts-host/src/index.ts`](../packages/context/runtime-facts-host/src/index.ts))
+- `@changanhua/dsh-tool-browser` — requires `browser` · `tools` · `approval` · `browserTasks` ([`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts))
+- `@changanhua/dsh-tool-image-generation-task-queue` — requires `tools` · `taskQueue` ([`packages/image/tool-image-generation-task-queue/src/index.ts`](../packages/image/tool-image-generation-task-queue/src/index.ts))
+- `@changanhua/dsh-tool-knowledge-base` — requires `tools` · `knowledgeBase` · `knowledgeQueue` ([`packages/knowledge/tool-knowledge-base/src/index.ts`](../packages/knowledge/tool-knowledge-base/src/index.ts))
+- `@changanhua/dsh-tool-runtime-inspect` — requires `tools` · `runtimeFacts` · `subprocess` ([`packages/extensions/tool-runtime-inspect/src/index.ts`](../packages/extensions/tool-runtime-inspect/src/index.ts))
 - `@deepseek-ai/dsh-acp-app` — requires `cmdlineArgs` ([`packages/bundle/acp-app/src/index.ts`](../packages/bundle/acp-app/src/index.ts))
 - `@deepseek-ai/dsh-agent` ([`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts))
 - `@deepseek-ai/dsh-api-remotes` — requires `typertGateway` ([`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts))
@@ -3530,6 +4168,13 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 
 Abstract service classes — a deployment loads a concrete implementation package instead ([capability seams](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)).
 
+- `@changanhua/dsh-browser` — abstract `Browser` ([`packages/browser/browser/src/index.ts`](../packages/browser/browser/src/index.ts))
+- `@changanhua/dsh-content` — abstract `Content` ([`packages/content/content/src/index.ts`](../packages/content/content/src/index.ts))
+- `@changanhua/dsh-delivery` — abstract `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
+- `@changanhua/dsh-delivery-evidence` — abstract `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
+- `@changanhua/dsh-memory` — abstract `ProjectMemory` ([`packages/memory/memory/src/index.ts`](../packages/memory/memory/src/index.ts))
+- `@changanhua/dsh-repo-workspace` — abstract `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))
+- `@changanhua/dsh-task-queue` — abstract `TaskQueue` ([`packages/task-queue/task-queue/src/index.ts`](../packages/task-queue/task-queue/src/index.ts))
 - `@deepseek-ai/dsh-attachment` — abstract `AttachmentStore` ([`packages/attachment/attachment/src/index.ts`](../packages/attachment/attachment/src/index.ts))
 - `@deepseek-ai/dsh-code-runtime` — abstract `CodeRuntime` ([`packages/code-runtime/code-runtime/src/index.ts`](../packages/code-runtime/code-runtime/src/index.ts))
 - `@deepseek-ai/dsh-compaction` — abstract `CompactionEngine` ([`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts))
@@ -3551,6 +4196,16 @@ Abstract service classes — a deployment loads a concrete implementation packag
 
 Imported as libraries by other packages; a `cordis.yml` cannot load them.
 
+- `@changanhua/dsh-delivery-github-intake` ([`packages/delivery/delivery-github-intake/src/index.ts`](../packages/delivery/delivery-github-intake/src/index.ts))
+- `@changanhua/dsh-delivery-github-publisher` ([`packages/delivery/delivery-github-publisher/src/index.ts`](../packages/delivery/delivery-github-publisher/src/index.ts))
+- `@changanhua/dsh-delivery-protocol` ([`packages/delivery/delivery-protocol/src/index.ts`](../packages/delivery/delivery-protocol/src/index.ts))
+- `@changanhua/dsh-delivery-runner-codex` ([`packages/delivery/delivery-runner-codex/src/index.ts`](../packages/delivery/delivery-runner-codex/src/index.ts))
+- `@changanhua/dsh-delivery-testkit` ([`packages/delivery/delivery-testkit/src/index.ts`](../packages/delivery/delivery-testkit/src/index.ts))
+- `@changanhua/dsh-delivery-verifier` ([`packages/delivery/delivery-verifier/src/index.ts`](../packages/delivery/delivery-verifier/src/index.ts))
+- `@changanhua/dsh-eval` ([`packages/eval/eval/src/index.ts`](../packages/eval/eval/src/index.ts))
+- `@changanhua/dsh-eval-session-snapshot` ([`packages/eval/eval-session-snapshot/src/index.ts`](../packages/eval/eval-session-snapshot/src/index.ts))
+- `@changanhua/dsh-personal-delivery` ([`packages/bundle/personal-delivery/src/index.ts`](../packages/bundle/personal-delivery/src/index.ts))
+- `@changanhua/dsh-personal-memory` ([`packages/bundle/personal-memory/src/index.ts`](../packages/bundle/personal-memory/src/index.ts))
 - `@deepseek-ai/dsh-agent-loop-testkit` ([`packages/test-support/agent-loop-testkit/src/index.ts`](../packages/test-support/agent-loop-testkit/src/index.ts))
 - `@deepseek-ai/dsh-anonymous-user-id` ([`packages/identity/anonymous-user-id/src/index.ts`](../packages/identity/anonymous-user-id/src/index.ts))
 - `@deepseek-ai/dsh-app-boot` ([`packages/boot/app-boot/src/index.ts`](../packages/boot/app-boot/src/index.ts))
