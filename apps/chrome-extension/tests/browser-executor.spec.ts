@@ -12,7 +12,7 @@ type ScriptOptions = { args?: unknown[]; target: { tabId: number; documentIds: s
 type ScriptResult = { documentId: string; frameId: number; result: unknown }
 const operation = (payload: BrowserInvocation['payload'] & { kind: string }) => sealBrowserInvocation({ protocolVersion: 1,
   installationId: grant.installationId, sessionId: 'session:test', grantEpoch: 1, requestId: randomUUID(),
-  deadline: Date.now() + 30000, mutates: !['tabs', 'snapshot', 'wait', 'screenshot'].includes(payload.kind), payload,
+  deadline: Date.now() + 30000, mutates: !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(payload.kind), payload,
   ...(['tabs', 'snapshot'].includes(payload.kind) ? {} : { target: { tabId: page.tabId, frameId: page.frameId, documentId: page.documentId } }),
 })
 function harness() {
@@ -193,12 +193,20 @@ describe('Chrome document-bound browser executor', () => {
     })
     const mount = operation({ kind: 'entry_mount', page, mountId: 'collect', selector: '.item', label: '收集标题' } as never)
     expect(await h.executor.execute(mount, new AbortController().signal)).toMatchObject({ outcome: 'observed', value: { mounted: 2 } })
-    expect(h.chromeApi.scripting.executeScript.mock.calls.map(call => call[0].args?.[0])).toContain('entryInspect')
-    expect(h.chromeApi.scripting.executeScript.mock.calls.findIndex(call => call[0].args?.[0] === 'entryInspect'))
-      .toBeLessThan(h.chromeApi.scripting.executeScript.mock.calls.findIndex(call => call[0].args?.[0] === 'entryMount'))
     expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args?.[0]).toBe('entryMount')
     const unmount = operation({ kind: 'entry_unmount', page, mountId: 'collect' } as never)
     expect(await h.executor.execute(unmount, new AbortController().signal)).toMatchObject({ outcome: 'observed', value: { unmounted: true } })
     expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args?.[0]).toBe('entryUnmount')
+  })
+  test('entry inspection is a read action issued through the page runtime', async () => {
+    const h = harness()
+    h.chromeApi.scripting.executeScript.mockImplementation(async (options) => {
+      if (options.args?.[0] === 'entryInspect') return [{ documentId: page.documentId, frameId: page.frameId,
+        result: { outcome: 'observed', quiescent: true, value: { matched: 2 } } }]
+      return [{ documentId: page.documentId, frameId: 0, result: { url: page.url, title: 'Account' } }]
+    })
+    const inspect = operation({ kind: 'entry_inspect', page, regionSelector: '#feed', selector: '.item', label: '收集' })
+    expect(await h.executor.execute(inspect, new AbortController().signal)).toMatchObject({ outcome: 'observed', value: { matched: 2 } })
+    expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args?.[0]).toBe('entryInspect')
   })
 })

@@ -2,11 +2,11 @@ const failure = code => Object.assign(new Error(code), { code })
 const clone = value => structuredClone(value)
 const MAX_SCREENSHOT_BASE64 = 1_500_000
 const SCREENSHOT_QUALITIES = [55, 45, 35, 25, 15]
-const mutating = kind => !['tabs', 'snapshot', 'wait', 'screenshot'].includes(kind)
+const mutating = kind => !['tabs', 'snapshot', 'entry_inspect', 'wait', 'screenshot'].includes(kind)
 const kinds = new Set(['tabs', 'snapshot', 'navigate', 'click', 'fill', 'submit', 'scroll', 'wait',
   'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload',
   'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot',
-  'entry_mount', 'entry_unmount'])
+  'entry_inspect', 'entry_mount', 'entry_unmount'])
 const siteOf = raw => {
   const url = new URL(raw)
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw failure('unsupported_page')
@@ -173,12 +173,12 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
         if (snapshot.url !== page.url) throw failure('stale_document')
         return { outcome: 'observed', quiescent: true, value: { ...snapshot, page, ...(frames.length ? { frames } : {}) } }
       }
+      if (action.kind === 'entry_inspect') {
+        const result = await invoke(page, 'entryInspect', clone(request))
+        grantFor(request, signal)
+        return result
+      }
       if (action.kind === 'entry_mount' || action.kind === 'entry_unmount') {
-        if (action.kind === 'entry_mount') {
-          const inspected = await invoke(page, 'entryInspect', clone(request))
-          grantFor(request, signal)
-          if (inspected.outcome !== 'observed') return inspected
-        }
         const result = await invoke(page, action.kind === 'entry_mount' ? 'entryMount' : 'entryUnmount', clone(request))
         grantFor(request, signal)
         return result
