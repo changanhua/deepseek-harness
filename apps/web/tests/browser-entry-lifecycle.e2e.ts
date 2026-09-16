@@ -2,10 +2,11 @@
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { chromium, type BrowserContext, type Page, type Worker } from 'playwright'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { developmentPage } from './fixtures/page-model/development.ts'
+import { stageBrowserExtension } from './fixtures/browser-extension.ts'
 
 interface Identity { tabId: number; frameId: number; documentId: string; url: string }
 interface Receipt { outcome: string; reason?: string; value?: Record<string, unknown> }
@@ -26,7 +27,7 @@ beforeAll(async () => {
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('missing fixture port')
   base = `http://127.0.0.1:${address.port}`
-  const extension = resolve('apps/chrome-extension')
+  const extension = await stageBrowserExtension(directory, base)
   context = await chromium.launchPersistentContext(join(directory, 'chrome'), {
     channel: 'chromium', headless: true,
     ...(process.env.DSH_PLAYWRIGHT_EXECUTABLE_PATH ? { executablePath: process.env.DSH_PLAYWRIGHT_EXECUTABLE_PATH } : {}),

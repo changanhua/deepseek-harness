@@ -1,9 +1,10 @@
 import { createServer } from 'node:http'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { expect, it } from 'vitest'
+import { stageBrowserExtension } from './fixtures/browser-extension.ts'
 
 interface FixturePage { tabId: number; frameId: number; documentId: string; url: string }
 interface FixtureElement { snapshotId: string; elementId: string; attributes: { id?: string } }
@@ -45,7 +46,8 @@ it('runs the extended action set through the loaded extension and checks browser
   await new Promise<void>(done => server.listen(0, '127.0.0.1', done))
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('missing server address')
-  const base = `http://127.0.0.1:${address.port}`, extension = resolve('apps/chrome-extension')
+  const base = `http://127.0.0.1:${address.port}`
+  const extension = await stageBrowserExtension(root, base)
   let context
   try {
     context = await chromium.launchPersistentContext(join(root, 'chrome'), { channel: 'chromium', headless: true,
