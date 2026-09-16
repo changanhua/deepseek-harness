@@ -8,6 +8,10 @@ DeepSeek Harness is a plugin-based agent harness on vendored Cordis: **everythin
 
 Compatibility and format-version rules are owned by the [Session package](packages/core/session/README.md) and [storage subsystem](docs/subsystems/storage.md); current formats may reject older data instead of shipping compatibility shims.
 
+## Protected local scope
+
+Until the user explicitly lifts this restriction in the current session, do not inspect, modify, test, stage, commit, or use `packages/mcp/control-mcp` while diagnosing other work. Preserve all existing tracked and untracked work in that directory exactly as found.
+
 ## Repository layout
 
 Repository layout and package groups: see [packages/README.md](packages/README.md).
