@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-12-browser-field-operation-lifecycle.md
-2026-09-12-browser-field-operation-lifecycle.md: 384eb503e6999b8e502b2fef01096bfc59625bb1
-2026-09-12-browser-field-operation-lifecycle.zh.md: a1e4e90d8b50b7ffae2c01c9079352c6a9773320
+2026-09-12-browser-field-operation-lifecycle.md: 31b740879b28cc0103e3a982fa5c3a5fffc35d80
+2026-09-12-browser-field-operation-lifecycle.zh.md: aac2c743abe771d75528e1d321f062aa327d55bb

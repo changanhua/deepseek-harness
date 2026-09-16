@@ -39,7 +39,7 @@ kind: "package-reference"
 
 - 标准 Web 组合和 `tool-browser` 已使用本服务，但通用 Session 投影还没有专门的任务状态 UI。
 - owner cancel 只接受资源清理完成后最新直接用户消息中的明确标记 `[browser-task:cancel]` 或 `[browser-task:accept-unknown]`。Agent 遇到 unknown 浏览器效果需要用户决定时必须请求该标记，不能从普通自然语言推断同意，也不能断言效果发生或未发生。
-- 真实 DeepSeek-v4.1-flash 扩展验收依赖已配置部署，与包级测试分开记录。
+- 代表性的 DeepSeek-v4.1-flash 扩展验收已通过已配置的标准 Web 部署完成；包级测试与真实 Session 证据仍分别记录。
 
 <a id="dev-note"></a>
 ### 开发备注

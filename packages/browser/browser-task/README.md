@@ -39,7 +39,7 @@ Stable task schema and consumer composition preserve the reusable prefix. Change
 
 - The standard Web composition and `tool-browser` consumer use this service, but no dedicated task-status UI renders its generic Session projection yet.
 - An owner cancellation is available only after cleanup and an explicit latest direct-user marker: `[browser-task:cancel]` or `[browser-task:accept-unknown]`. The Agent must ask for that marker when an unknown browser effect needs an owner decision; it cannot infer consent from ordinary prose or assert what the effect did.
-- Real DeepSeek-v4.1-flash extension acceptance depends on the configured deployment and is tracked separately from package tests.
+- A representative DeepSeek-v4.1-flash extension acceptance completed through the configured standard Web deployment; package tests and live Session evidence remain separately owned.
 
 <a id="dev-note"></a>
 ### Dev Note

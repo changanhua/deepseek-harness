@@ -66,7 +66,7 @@ kind: "package-reference"
 ## 已知限制与后续工作
 
 - 本包不拥有浏览器提供方、Chrome worker 或站点登录执行器。
-- 可见且同 Session 的 Chrome peer 可以通过既有 Approval chain 回答；隐藏或断线 peer 委托 Web。真实登录站点与真实模型的验收取决于部署配置；代表性的 DeepSeek-v4.1-flash 验收尚未形成完成证据。
+- 可见且同 Session 的 Chrome peer 可以通过既有 Approval chain 回答；隐藏或断线 peer 委托 Web。代表性的 DeepSeek-v4.1-flash 现场验收已通过标准 Web 组合在获授权的知乎页面完成：精确 mount 范围的展示证据已被观察，临时资源已清理，任务最终以 completed 且无 blocker 的状态结束。其他站点登录和模型路由仍取决于部署配置。
 
 <a id="dev-note"></a>
 ### 开发备注

@@ -66,7 +66,7 @@ Prefix-stable while the visible tool set and scoped composition are unchanged. T
 ## Known Limitations and Deferred Work
 
 - The package has no browser provider, Chrome worker, or site-login executor of its own.
-- A visible same-Session Chrome peer can answer through the existing Approval chain; hidden or disconnected peers delegate to Web. Site-login and real-model acceptance depend on the configured deployment; representative DeepSeek-v4.1-flash acceptance has not yet established completion evidence.
+- A visible same-Session Chrome peer can answer through the existing Approval chain; hidden or disconnected peers delegate to Web. A representative DeepSeek-v4.1-flash field acceptance completed through the standard Web composition on an authorized Zhihu page: exact mount-scoped presentation evidence was observed, the temporary resource was cleared, and the task terminated completed without blockers. Other site logins and model routes still depend on the configured deployment.
 
 <a id="dev-note"></a>
 ### Dev Note

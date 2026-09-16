@@ -34,4 +34,4 @@ Browser service 负责显式请求身份、执行器能力声明、精确页面�
 
 ## 验证
 
-聚焦的 provider、页面运行时、工具、runner 和 browser-task 测试覆盖请求恢复、证据绑定的替换、容量预留、陈旧目标的资源处置、Session 回放、由 checker 支持的完成和 runner 清理。由 DeepSeek-v4.1-flash 驱动的代表性真实现场任务仍是明确的验收缺口；包和 fixture 检查不宣称模型行为已经通过。
+聚焦的 provider、页面运行时、工具、runner 和 browser-task 测试覆盖请求恢复、证据绑定的替换、容量预留、陈旧目标的资源处置、Session 回放、由 checker 支持的完成和 runner 清理。master 提交 `533338f8b6` 上的真实 Session `session-76cd8e9e-b3ff-4831-8c9d-675d18630f3e` 使用 `deepseek-official/deepseek-flash`（目录名称 `DeepSeek-V41-Flash`）在获授权的知乎页面渲染并验证 mount 范围的标记，清理精确资源，并让 BrowserTask `browser-task-a3aabe2d-8ce9-4e7c-92dc-32ec5e749f28` 以 completed 且无 blocker 的状态结束。独立 JSONL 验证记录了 seq 62 的渲染 receipt、seq 77 的展示检查、seq 98 的清理 receipt、seq 123 的清理后检查和 seq 125 的终态，且不存在 unknown 写动作或遗留资源。
