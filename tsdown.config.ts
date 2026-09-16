@@ -19,9 +19,7 @@ export default defineConfig(({ env }) => {
     workspace: client
       ? ['vendor/*', 'packages/*/*', 'apps/cli']
       : ['vendor/*', 'packages/*/*', 'apps/cli', 'apps/desktop', 'apps/desktop-host'],
-    // The workspace root is a private coordination package with no runtime
-    // entry; only package-local tsdown configs should run in the Host pass.
-    entry: client ? '' : undefined,
+    entry: client ? '' : ['lib/types/{index,invariant,startup}.js'],
     outDir: 'lib',
     format: ['esm'],
     platform: 'node',
