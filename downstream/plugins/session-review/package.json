@@ -1,0 +1,40 @@
+{
+  "name": "@changanhua/dsh-session-review",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Opt-in evidence-linked, read-only Session Review for the personal DSH fork",
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./client.mjs",
+    "./policy": "./policy.mjs",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "downstream/plugins/session-review"
+  }
+}
