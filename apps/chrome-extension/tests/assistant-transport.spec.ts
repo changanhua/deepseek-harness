@@ -40,6 +40,21 @@ describe('浏览器助手配对 transport', () => {
     })
   })
 
+  test('可信本地扩展直接取得连接凭据，不打开审批页', async () => {
+    const openApproval = vi.fn()
+    const direct = { status: 'connected', token: verifier, grant: { installationId, extensionId, grantEpoch: 7,
+      scopes: pendingResponse.scopes, origins: pendingResponse.origins, createdAt: '2026-09-07T02:00:00.000Z' } }
+    const transport = createAssistantTransport({ openApproval, fetchImpl: async (url: FetchInput) => urlText(url).endsWith('/info')
+      ? Response.json({ protocolVersion: 1, capabilities: ['browser:rpc'], scopes: capabilities })
+      : Response.json(direct) })
+
+    await expect(transport.begin({ baseUrl: 'https://dsh.example.test', installationId, extensionId,
+      scopes: pendingResponse.scopes, origins: pendingResponse.origins, verifier })).resolves.toEqual({
+      phase: 'connected', token: verifier, grant: direct.grant,
+    })
+    expect(openApproval).not.toHaveBeenCalled()
+  })
+
   test('单次交换在未批准时返回 pending，在批准后接受缩减后的 grant', async () => {
     let exchangeCount = 0
     const transport = createAssistantTransport({

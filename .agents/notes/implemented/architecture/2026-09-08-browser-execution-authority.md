@@ -10,7 +10,7 @@ A browser operation acts in a document the user already has open. Foreground-tab
 
 ## Decision
 
-The [browser family](../../../../packages/browser/README.md) separates its service definition, Host extension provider, and Chrome execution runtime. It uses an installation-specific browser grant in the existing credential provider, independent of Web cookies and Content import. The signed-in owner approves a requested subset. Revocation invalidates dispatch permission before asynchronous credential writes complete; replacement advances the grant epoch, which every live connection and request must match.
+The [browser family](../../../../packages/browser/README.md) separates its service definition, Host extension provider, and Chrome execution runtime. It uses an installation-specific browser grant in the existing credential provider, independent of Web cookies and Content import. The signed-in owner approves a requested subset by default; the personal composition's exact-id exception is owned by the [trusted local mode decision](2026-09-16-browser-trusted-local-mode.md). Revocation invalidates dispatch permission before asynchronous credential writes complete; replacement advances the grant epoch, which every live connection and request must match.
 
 The [subsystem contract](../../../../docs/subsystems/browser.md) binds operations to a Session, installation, tab, frame and Chrome document identity. Snapshot elements retain isolated-world DOM object references and their action-relevant attributes. Page commands target the recorded document, including navigation; a newly focused tab cannot absorb an earlier operation.
 

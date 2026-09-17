@@ -211,7 +211,21 @@ export const createAssistantConnection = ({
         stopChannel()
         runtime = { phase: 'configured', grant: null }
         notify(record)
-        const pending = await transport.begin({ baseUrl: record.baseUrl, installationId: record.installationId, extensionId, scopes, origins, signal: controller.signal })
+        const result = await transport.begin({ baseUrl: record.baseUrl, installationId: record.installationId, extensionId, scopes, origins, signal: controller.signal })
+        if (result.phase === 'connected') {
+          let connected
+          await serial(async () => {
+            if (generation !== epoch || controller.signal.aborted) throw failure('cancelled')
+            const latest = await load()
+            if (latest.baseUrl !== record.baseUrl || latest.installationId !== record.installationId) throw failure('cancelled')
+            connected = { ...latest, pending: undefined, token: result.token, grant: result.grant, error: undefined }
+            await save(connected)
+          })
+          await startChannel(connected, epoch)
+          return api.read()
+        }
+        if (result.phase !== undefined && result.phase !== 'pending') throw failure('invalid_exchange')
+        const pending = result
         await serial(async () => {
           if (generation !== epoch || controller.signal.aborted) throw failure('cancelled')
           const latest = await load()

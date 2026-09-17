@@ -186,6 +186,11 @@
       name: '@changanhua/dsh-browser-extension'
       isolate:
         sessionController: web-host
+      config:
+        # Personal local mode: this unpacked extension is trusted by id and
+        # receives a rotating durable transport credential without owner pairing.
+        trustedExtensionIds:
+          - cimpmgjgfahhppmekdecgnboipoaajcf
 
     - id: browser-activity
       name: '@changanhua/dsh-browser-activity'

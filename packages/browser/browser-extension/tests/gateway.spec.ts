@@ -120,11 +120,41 @@ async function peer(base: string, identity: { installationId: string; token: str
 }
 
 describe('browser extension gateway over the real HTTP and WebSocket carriers', () => {
-  it('default gateway retains more than sixteen rotating installation grants', async () => {
-    const h = await mounted()
-    const installations = []
-    for (let index = 0; index < 17; index += 1) installations.push((await h.pair(['browser:read'])).installationId)
-    expect(new Set(installations).size).toBe(17)
+  it('auto-connects a configured trusted extension without owner approval or retained-grant growth', async () => {
+    const h = await mounted({ trustedExtensionIds: [extensionId], maxGrants: 1 })
+    const connect = async (installationId: string) => h.post('/connect', { extensionId, installationId,
+      challenge: createHash('sha256').update(randomBytes(32)).digest('base64url'),
+      scopes: ['browser:read', 'browser:write'], origins: ['https://example.test'] })
+    const first = await connect(randomUUID())
+    const firstPeer = await peer(h.base, {
+      installationId: string(object(first.body.grant).installationId), token: string(first.body.token),
+    })
+    const firstClosed = new Promise<void>(resolve => firstPeer.socket.once('close', () => { resolve() }))
+    const second = await connect(randomUUID())
+
+    expect(first.status).toBe(200)
+    expect(second).toMatchObject({ status: 200, body: { status: 'connected' } })
+    await firstClosed
+    const grants = (await h.post('/owner/grants', {}, true)).body.grants as Array<{ installationId: string }>
+    expect(grants).toEqual([expect.objectContaining({ installationId: object(second.body.grant).installationId })])
+    await peer(h.base, { installationId: string(object(second.body.grant).installationId), token: string(second.body.token) })
+  })
+
+  it('reports grant_capacity instead of replacing an online installation', async () => {
+    const h = await mounted({ maxGrants: 1 })
+    const current = await h.pair(['browser:read'])
+    await peer(h.base, current)
+    const nextId = randomUUID()
+    const verifier = randomBytes(32).toString('base64url')
+    const pending = await h.post('/connect', { extensionId, installationId: nextId,
+      challenge: createHash('sha256').update(Buffer.from(verifier, 'base64url')).digest('base64url'),
+      scopes: ['browser:read'], origins: ['https://example.test'] })
+    const approved = await h.post('/owner/approve', { requestId: string(pending.body.requestId),
+      scopes: ['browser:read'], origins: ['https://example.test'] }, true)
+    expect(approved).toMatchObject({ status: 409, body: { error: 'grant_capacity' } })
+    expect((await h.post('/owner/grants', {}, true)).body.grants).toEqual([
+      expect.objectContaining({ installationId: current.installationId }),
+    ])
   })
 
   it('waits for the dispatch-intent policy before an execute frame can cross the provider boundary', async () => {

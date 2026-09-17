@@ -61,6 +61,17 @@ describe('浏览器助手持久连接', () => {
     expect(h.createChannel).not.toHaveBeenCalled()
   })
 
+  test('可信本地扩展的直连凭据持久化后立即启动通道', async () => {
+    const h = harness()
+    h.transport.begin.mockResolvedValueOnce({ phase: 'connected', token: verifier, grant })
+    await h.connection.configure('https://dsh.example.test')
+
+    await expect(h.connection.connect({ scopes: pending.scopes, origins: pending.origins })).resolves.toMatchObject({ phase: 'connecting' })
+    expect(h.channels).toHaveLength(1)
+    expect(h.channels[0].start).toHaveBeenCalledTimes(1)
+    expect(h.values.get('dsh.assistant.connection.v1')).toMatchObject({ token: verifier, grant, pending: undefined })
+  })
+
   test('重启后用持久 pending 单次 exchange，持久凭证成功后才启动通道', async () => {
     const h = harness({ 'dsh.assistant.connection.v1': { baseUrl: pending.baseUrl, installationId, pending } })
     await expect(h.connection.poll()).resolves.toMatchObject({ phase: 'connecting' })

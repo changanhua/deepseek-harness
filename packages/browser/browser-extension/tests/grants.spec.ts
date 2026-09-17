@@ -20,11 +20,12 @@ class SerialCredentials extends MemoryCredentials {
     return operation
   }
 }
-async function create() {
+async function create(trustedExtensionIds: readonly string[] = []) {
   const ctx = new Context()
   await ctx.plugin(SerialCredentials)
   const invalidated: string[] = []
-  const grants = new BrowserGrants(ctx, { requestTTL: 1000, pendingLimit: 2, maxGrants: 2 }, (id) => { invalidated.push(id) })
+  const grants = new BrowserGrants(ctx, { requestTTL: 1000, pendingLimit: 2, maxGrants: 2 },
+    (id) => { invalidated.push(id) }, trustedExtensionIds)
   await grants.start()
   return { ctx, grants, invalidated }
 }
@@ -52,6 +53,71 @@ describe('BrowserGrants', () => {
     const restarted = new BrowserGrants(ctx, { requestTTL: 1000, pendingLimit: 2, maxGrants: 2 }, () => {})
     await restarted.start()
     expect(await restarted.list()).toEqual([])
+  })
+  it('auto-connects a trusted extension and replaces its prior installation without consuming capacity', async () => {
+    const { ctx, grants, invalidated } = await create([extensionId])
+    const first = await grants.trust({ extensionId, installationId, challenge: pair().challenge,
+      scopes: ['browser:read'], origins: ['*'] })
+    const replacement = '323e4567-e89b-42d3-a456-426614174000'
+    const second = await grants.trust({ extensionId, installationId: replacement, challenge: pair().challenge,
+      scopes: ['browser:read', 'browser:write'], origins: ['*'] })
+
+    expect(first.status).toBe('connected')
+    expect(second).toMatchObject({ status: 'connected', grant: { installationId: replacement, extensionId,
+      scopes: ['browser:read', 'browser:write'], origins: ['*'] } })
+    expect(await grants.authenticate(second.token, extensionId)).toEqual(second.grant)
+    expect(await grants.list()).toEqual([second.grant])
+    expect(invalidated).toContain(installationId)
+
+    await grants.dispose()
+    const restarted = new BrowserGrants(ctx, { requestTTL: 1000, pendingLimit: 2, maxGrants: 2 }, () => {}, [extensionId])
+    await restarted.start()
+    expect(await restarted.authenticate(second.token, extensionId)).toEqual(second.grant)
+  })
+  it('keeps trusted slots independent from the bounded manual approval capacity', async () => {
+    const { grants } = await create([extensionId])
+    for (const [manualExtensionId, manualInstallationId] of [
+      ['b'.repeat(32), '223e4567-e89b-42d3-a456-426614174000'],
+      ['c'.repeat(32), '323e4567-e89b-42d3-a456-426614174000'],
+    ]) {
+      const pending = await grants.begin({ extensionId: manualExtensionId, installationId: manualInstallationId,
+        challenge: pair().challenge, scopes: ['browser:read'], origins: ['*'] })
+      await grants.approve(pending.requestId, { scopes: ['browser:read'], origins: ['*'] })
+    }
+    const trusted = await grants.trust({ extensionId, installationId, challenge: pair().challenge,
+      scopes: ['browser:read'], origins: ['*'] })
+    expect(await grants.list()).toHaveLength(3)
+    expect(trusted.grant.installationId).toBe(installationId)
+  })
+  it('migrates legacy same-extension grants to one durable trusted slot and rejects the old token', async () => {
+    const { ctx, grants } = await create()
+    const connectLegacy = async (id: string) => {
+      const proof = pair()
+      const pending = await grants.begin({ extensionId, installationId: id, challenge: proof.challenge,
+        scopes: ['browser:read'], origins: ['*'] })
+      await grants.approve(pending.requestId, { scopes: ['browser:read'], origins: ['*'] })
+      const connected = await grants.exchange(pending.requestId, { extensionId, installationId: id, verifier: proof.verifier })
+      if (connected.status !== 'connected') throw new Error('expected connected legacy grant')
+      return connected
+    }
+    const first = await connectLegacy(installationId)
+    const second = await connectLegacy('323e4567-e89b-42d3-a456-426614174000')
+    await grants.dispose()
+
+    const migrated = new BrowserGrants(ctx, { requestTTL: 1000, pendingLimit: 2, maxGrants: 2 }, () => {}, [extensionId])
+    await migrated.start()
+    expect(await migrated.list()).toEqual([second.grant])
+    expect(await migrated.authenticate(first.token, extensionId)).toBeUndefined()
+    expect(await migrated.authenticate(second.token, extensionId)).toEqual(second.grant)
+    const stored = await ctx.credentials.readRecord(credentialKey('browser-extension', 'grants'))
+    expect(stored?.kind === 'grant' ? stored.payload : undefined).toMatchObject({
+      grants: [{ installationId: second.grant.installationId, mode: 'trusted' }],
+    })
+
+    const pending = await migrated.begin({ extensionId, installationId, challenge: pair().challenge,
+      scopes: ['browser:read'], origins: ['*'] })
+    await expect(migrated.approve(pending.requestId, { scopes: ['browser:read'], origins: ['*'] }))
+      .rejects.toThrow('approval exceeds request')
   })
   it('allows narrowing explicitly requested all-sites access to a single origin', async () => {
     const { grants } = await create()

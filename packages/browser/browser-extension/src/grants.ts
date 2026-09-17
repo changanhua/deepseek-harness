@@ -5,6 +5,8 @@ import type { CredentialRecord } from '@deepseek-ai/dsh-credentials'
 import { z } from 'zod'
 
 const KEY = credentialKey('browser-extension', 'grants')
+const MAX_MANUAL_GRANTS = 128
+const MAX_TRUSTED_EXTENSIONS = 16
 const extensionId = z.string().regex(/^[a-p]{32}$/u)
 const installationId = z.uuid({ version: 'v4' })
 const encodedSecret = z.string().refine((value) => {
@@ -23,11 +25,11 @@ const choiceSchema = z.object({
 const pairingSchema = choiceSchema.extend({ extensionId, installationId, challenge: encodedSecret })
 const storedGrant = choiceSchema.extend({
   installationId, extensionId, grantEpoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  createdAt: z.iso.datetime(), tokenHash: encodedSecret,
+  createdAt: z.iso.datetime(), tokenHash: encodedSecret, mode: z.enum(['manual', 'trusted']).optional(),
 })
 const recordSchema = z.object({
   version: z.literal(1), nextEpoch: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-  grants: z.array(storedGrant).max(128),
+  grants: z.array(storedGrant).max(MAX_MANUAL_GRANTS + MAX_TRUSTED_EXTENSIONS),
 }).strict().refine(value => new Set(value.grants.map(grant => grant.installationId)).size === value.grants.length
   && value.grants.every(grant => grant.grantEpoch <= value.nextEpoch))
 
@@ -49,6 +51,11 @@ interface Pending {
   status: 'pending' | 'approved'
   token?: string
   grantEpoch?: number
+}
+
+export class BrowserGrantCapacityError extends Error {
+  readonly code = 'grant_capacity'
+  constructor() { super('grant capacity') }
 }
 /** Public pairing view excludes the challenge and exchange token. */
 export interface PendingView {
@@ -78,7 +85,11 @@ export class BrowserGrants {
     private readonly ctx: Context,
     private readonly limits: { requestTTL: number; pendingLimit: number; maxGrants: number },
     private readonly onInvalidate: (installationId: string) => void,
+    trustedExtensionIds: readonly string[] = [],
   ) {
+    const trusted = trustedExtensionIds.map(id => extensionId.parse(id))
+    if (new Set(trusted).size !== trusted.length) throw new RangeError('duplicate trusted extension id')
+    this.trustedExtensionIds = new Set(trusted)
     this.unlisten = ctx.on('credentials/record-updated', (key) => {
       if (key !== KEY || this.closed) return
       this.revision += 1
@@ -88,13 +99,16 @@ export class BrowserGrants {
       void this.refresh().catch(() => {})
     })
   }
+  private readonly trustedExtensionIds: ReadonlySet<string>
 
   /** Read and validate durable authority before exposing any send permit. */
   async start(): Promise<void> {
     if (Object.values(this.limits).some(value => !Number.isSafeInteger(value) || value <= 0)
-      || this.limits.pendingLimit > 32 || this.limits.maxGrants > 128 || this.limits.requestTTL > 300000) {
+      || this.limits.pendingLimit > 32 || this.limits.maxGrants > MAX_MANUAL_GRANTS || this.limits.requestTTL > 300000
+      || this.trustedExtensionIds.size > MAX_TRUSTED_EXTENSIONS) {
       throw new RangeError('invalid browser grant limits')
     }
+    await this.normalizeRecord()
     await this.refresh()
   }
 
@@ -115,6 +129,45 @@ export class BrowserGrants {
     return view(value)
   }
 
+  /** Atomically issue authority for a Host-configured trusted extension without creating an approval request. */
+  async trust(input: {
+    extensionId: string
+    installationId: string
+    challenge: string
+    scopes: readonly string[]
+    origins: readonly string[]
+  }): Promise<{ status: 'connected'; token: string; grant: GrantSummary }> {
+    await this.fresh()
+    const parsed = pairingSchema.parse(input)
+    if (!this.trustedExtensionIds.has(parsed.extensionId)) throw new Error('extension is not trusted')
+    const token = randomBytes(32).toString('base64url')
+    const priorRevocation = this.revoking.get(parsed.installationId)
+    const replaced = new Set<string>()
+    return this.serialize(async () => {
+      let accepted: StoredGrant | undefined
+      await this.ctx.credentials.modifyRecord(KEY, (current) => {
+        const prior = normalizePayload(payloadOf(current), this.trustedExtensionIds).payload
+        if (prior.nextEpoch === Number.MAX_SAFE_INTEGER) throw new Error('grant epoch exhausted')
+        const retained = prior.grants.filter((grant) => {
+          if (grant.extensionId !== parsed.extensionId) return true
+          replaced.add(grant.installationId)
+          return false
+        })
+        accepted = { scopes: parsed.scopes, origins: parsed.origins, installationId: parsed.installationId,
+          extensionId: parsed.extensionId, grantEpoch: prior.nextEpoch + 1, createdAt: new Date().toISOString(),
+          tokenHash: hash(token), mode: 'trusted' }
+        return Promise.resolve<CredentialRecord>({ kind: 'grant', payload: {
+          version: 1, nextEpoch: accepted.grantEpoch, grants: [...retained, accepted],
+        } })
+      })
+      if (accepted === undefined) throw new Error('grant commit unavailable')
+      for (const id of replaced) this.invalidate(id)
+      if (this.revoking.get(accepted.installationId) === priorRevocation) this.revoking.delete(accepted.installationId)
+      await this.refresh()
+      return { status: 'connected', token, grant: summary(accepted) }
+    })
+  }
+
   /** Read safe pairing metadata; expired or disposed requests cannot be approved. */
   request(requestId: string): PendingView { return view(this.pendingRequest(requestId)) }
 
@@ -123,6 +176,7 @@ export class BrowserGrants {
     const pending = this.pendingRequest(requestId)
     const parsed = choiceSchema.parse(choice)
     if (pending.status !== 'pending'
+      || this.trustedExtensionIds.has(pending.input.extensionId)
       || !subset(parsed.scopes, pending.input.scopes)
       || !pending.input.origins.includes('*') && !subset(parsed.origins, pending.input.origins)) {
       throw new Error('approval exceeds request or is already settled')
@@ -134,12 +188,13 @@ export class BrowserGrants {
       await this.ctx.credentials.modifyRecord(KEY, (current) => {
         const live = this.pendingRequest(requestId)
         if (live !== pending || live.status !== 'pending') throw new Error('request unavailable')
-        const prior = payloadOf(current)
+        const prior = normalizePayload(payloadOf(current), this.trustedExtensionIds).payload
         if (prior.nextEpoch === Number.MAX_SAFE_INTEGER) throw new Error('grant epoch exhausted')
         const retained = prior.grants.filter(grant => grant.installationId !== pending.input.installationId)
-        if (retained.length >= this.limits.maxGrants) throw new Error('grant capacity')
+        const manualCount = retained.filter(grant => !this.trustedExtensionIds.has(grant.extensionId)).length
+        if (manualCount >= this.limits.maxGrants) throw new BrowserGrantCapacityError()
         accepted = { ...parsed, installationId: pending.input.installationId, extensionId: pending.input.extensionId,
-          grantEpoch: prior.nextEpoch + 1, createdAt: new Date().toISOString(), tokenHash: hash(token) }
+          grantEpoch: prior.nextEpoch + 1, createdAt: new Date().toISOString(), tokenHash: hash(token), mode: 'manual' }
         return Promise.resolve<CredentialRecord>({ kind: 'grant', payload: {
           version: 1, nextEpoch: accepted.grantEpoch, grants: [...retained, accepted],
         } })
@@ -202,7 +257,7 @@ export class BrowserGrants {
     await this.serialize(async () => {
       await this.ctx.credentials.modifyRecord(KEY, (current) => {
         this.open()
-        const prior = payloadOf(current)
+        const prior = normalizePayload(payloadOf(current), this.trustedExtensionIds).payload
         return Promise.resolve<CredentialRecord>({ kind: 'grant', payload: {
           ...prior, grants: prior.grants.filter(grant => grant.installationId !== id),
         } })
@@ -246,7 +301,7 @@ export class BrowserGrants {
     const task = (async () => {
       for (;;) {
         const revision = this.revision
-        const payload = payloadOf(await this.ctx.credentials.readRecord(KEY))
+        const payload = normalizePayload(payloadOf(await this.ctx.credentials.readRecord(KEY)), this.trustedExtensionIds).payload
         this.open()
         if (revision !== this.revision) continue
         this.grants = payload.grants
@@ -276,6 +331,18 @@ export class BrowserGrants {
 
   private open(): void { if (this.closed) throw new Error('browser grant owner closed') }
 
+  private async normalizeRecord(): Promise<void> {
+    const invalidated = new Set<string>()
+    await this.ctx.credentials.modifyRecord(KEY, (current) => {
+      if (current === undefined) return Promise.resolve(undefined)
+      const normalized = normalizePayload(payloadOf(current), this.trustedExtensionIds)
+      for (const id of normalized.removed) invalidated.add(id)
+      if (!normalized.changed) return Promise.resolve(undefined)
+      return Promise.resolve<CredentialRecord>({ kind: 'grant', payload: normalized.payload })
+    })
+    for (const id of invalidated) this.invalidate(id)
+  }
+
   private invalidate(id: string): void {
     try { this.onInvalidate(id) } catch { this.ctx.logger.warn('browser grant connection invalidation failed') }
   }
@@ -285,6 +352,31 @@ function payloadOf(record: CredentialRecord | undefined): StoredPayload {
   if (record === undefined) return { version: 1, nextEpoch: 0, grants: [] }
   if (record.kind !== 'grant') throw new Error('invalid browser grant record')
   return recordSchema.parse(record.payload)
+}
+function normalizePayload(payload: StoredPayload, trustedExtensionIds: ReadonlySet<string>): {
+  payload: StoredPayload
+  removed: readonly string[]
+  changed: boolean
+} {
+  const newestTrusted = new Map<string, StoredGrant>()
+  for (const grant of payload.grants) {
+    if (!trustedExtensionIds.has(grant.extensionId)) continue
+    const current = newestTrusted.get(grant.extensionId)
+    if (current === undefined || grant.grantEpoch > current.grantEpoch) newestTrusted.set(grant.extensionId, grant)
+  }
+  const removed: string[] = []
+  const grants: StoredGrant[] = []
+  for (const grant of payload.grants) {
+    if (trustedExtensionIds.has(grant.extensionId)) {
+      if (newestTrusted.get(grant.extensionId) !== grant) { removed.push(grant.installationId); continue }
+      grants.push(grant.mode === 'trusted' ? grant : { ...grant, mode: 'trusted' })
+      continue
+    }
+    if (grant.mode === 'trusted') { removed.push(grant.installationId); continue }
+    grants.push(grant)
+  }
+  const changed = removed.length > 0 || grants.some((grant, index) => grant !== payload.grants[index])
+  return { payload: changed ? { ...payload, grants } : payload, removed, changed }
 }
 function hash(value: string): string { return createHash('sha256').update(value).digest('base64url') }
 function hashBytes(value: string): string { return createHash('sha256').update(Buffer.from(value, 'base64url')).digest('base64url') }

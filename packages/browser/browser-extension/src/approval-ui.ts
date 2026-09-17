@@ -10,8 +10,9 @@ export const approvalScript = `(() => {
   const element = (tag, text) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; return node; };
   const api = async (path, body) => {
     const response = await fetch('/api/browser-extension/v1/owner/' + path, { method: 'POST', credentials: 'same-origin', redirect: 'error', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!response.ok) throw Error(response.status === 401 ? '登录已失效，请重新打开 DSH 启动链接。' : '请求已过期、被撤销或暂不可用。');
-    return response.json();
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw Error(response.status === 401 ? '登录已失效，请重新打开 DSH 启动链接。' : result.error === 'grant_capacity' ? '授权连接已达上限，且现有连接仍在线。请返回连接列表撤销不再使用的连接。' : '请求已过期、被撤销或暂不可用。');
+    return result;
   };
   const checkbox = (parent, group, value, label) => {
     const row = element('label'), box = element('input'); box.type = 'checkbox'; box.name = group; box.value = value; box.checked = true;

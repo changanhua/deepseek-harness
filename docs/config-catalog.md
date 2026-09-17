@@ -34,11 +34,13 @@ Requires: `webServer` · `connection` · `credentials` · `sessionController`
 ```ts config-catalog
 /** Bounds for the Host connection, handshake, and retained operation receipts. */
 export interface Config {
+  /** Extension ids trusted by this local Host and connected without interactive owner approval. */
+  trustedExtensionIds?: string[]
   /** Lifetime of one prepared action ticket in milliseconds. */
   requestTTL?: number
   /** Maximum pending owner pairing requests. */
   pendingLimit?: number
-  /** Maximum retained installation grants. */
+  /** Maximum retained manually approved installation grants; configured trusted extensions use separate single-installation slots. */
   maxGrants?: number
   /** Deadline for one extension execution request in milliseconds. */
   requestTimeoutMs?: number
@@ -65,7 +67,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/browser/browser-extension/src/index.ts:29`](../packages/browser/browser-extension/src/index.ts)
+Source: [`packages/browser/browser-extension/src/index.ts:31`](../packages/browser/browser-extension/src/index.ts)
 
 <a id="changanhuadsh-browser-monitor"></a>
 
@@ -1076,7 +1078,7 @@ Source: [`packages/compaction/compaction-tool-result-pruner/src/types.ts:5`](../
 
 ## `@deepseek-ai/dsh-cordis-host-runner`
 
-Requires: `tools`
+Requires: `tools` · `agents`
 
 ```ts config-catalog
 /** Runner configuration. */
@@ -4061,7 +4063,7 @@ Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
 
-- `@changanhua/dsh-browser-task` — requires `agents` · `sessionProjections` · `tools` ([`packages/browser/browser-task/src/index.ts`](../packages/browser/browser-task/src/index.ts))
+- `@changanhua/dsh-browser-task` — requires `agents` · `sessions` · `sessionProjections` · `tools` ([`packages/browser/browser-task/src/index.ts`](../packages/browser/browser-task/src/index.ts))
 - `@changanhua/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
 - `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
 - `@changanhua/dsh-client-ui-content` ([`packages/client/ui-content/src/index.ts`](../packages/client/ui-content/src/index.ts))

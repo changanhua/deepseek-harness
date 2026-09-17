@@ -77,10 +77,11 @@ Dynamic Plugin registry and Host-half lifecycle.
 ```ts cordis-catalog
 /**
  * Define a new Plugin's first Package or append a Package to an existing Plugin.
- * @param request - Session ownership, Plugin selection, metadata, and source code.
+ * @param agent - Exact live Agent that owns the Plugin and browser operations.
+ * @param request - Plugin selection, metadata, and source code.
  * @returns Host-minted Plugin and Package identities with declared-half metadata.
  */
-define(request: DynamicCordisDefineRequest): DynamicCordisDefineReceipt
+define(agent: Agent, request: DynamicCordisDefineRequest): DynamicCordisDefineReceipt
 
 /**
  * Remove a Plugin, its active run, and all immutable Packages.

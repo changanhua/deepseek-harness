@@ -12,7 +12,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 import { bridge } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { BrowserGrants, type GrantSummary } from './grants.ts'
+import { BrowserGrantCapacityError, BrowserGrants, type GrantSummary } from './grants.ts'
 import { BrowserRequests, sealBrowserInvocation } from './requests.ts'
 import type { BrowserInvocation, BrowserRequestResult, BrowserRequestStatusView } from './types.ts'
 import { approvalHtml, approvalScript } from './approval-ui.ts'
@@ -29,11 +29,13 @@ import { BROWSER_EXTENSION_PATH as API, approveSchema, browserActionSchema, conn
 
 /** Bounds for the Host connection, handshake, and retained operation receipts. */
 export interface Config {
+  /** Extension ids trusted by this local Host and connected without interactive owner approval. */
+  trustedExtensionIds?: string[]
   /** Lifetime of one prepared action ticket in milliseconds. */
   requestTTL?: number
   /** Maximum pending owner pairing requests. */
   pendingLimit?: number
-  /** Maximum retained installation grants. */
+  /** Maximum retained manually approved installation grants; configured trusted extensions use separate single-installation slots. */
   maxGrants?: number
   /** Deadline for one extension execution request in milliseconds. */
   requestTimeoutMs?: number
@@ -143,9 +145,10 @@ interface PendingResourceSettlement {
 export class BrowserExtension extends Browser {
   static inject = ['webServer', 'connection', 'credentials', 'sessionController']
   static Config: z<Config> = z.object({
+    trustedExtensionIds: z.array(z.string().pattern(/^[a-p]{32}$/u)).max(16).default([]),
     requestTTL: z.natural().min(1).max(300000).default(300000),
     pendingLimit: z.natural().min(1).max(32).default(32),
-    maxGrants: z.natural().min(1).max(128).default(128),
+    maxGrants: z.natural().min(1).max(128).default(16),
     requestTimeoutMs: z.natural().min(1).max(120000).default(30000),
     requestCapacity: z.natural().min(1).max(256).default(128),
     maxRequestBytes: z.natural().min(1024).max(1048576).default(65536),
@@ -197,7 +200,8 @@ export class BrowserExtension extends Browser {
         request.logicalOperation, request.phase) })
     this.approvals = new BrowserApprovals({ maxPending: this.config.maxSessionRequests, ttl: this.config.requestTTL })
     ctx.effect(() => ctx.on('approval/request', (request, next) => this.approvals.answer(request, next), { prepend: true }), 'browser-extension: native approval answerer')
-    this.grants = new BrowserGrants(ctx, this.config, (id) => { this.disconnect(id) })
+    this.grants = new BrowserGrants(ctx, { requestTTL: this.config.requestTTL, pendingLimit: this.config.pendingLimit,
+      maxGrants: this.config.maxGrants }, (id) => { this.disconnect(id) }, this.config.trustedExtensionIds)
     this.sockets = new WebSocketServer({ noServer: true, maxPayload: this.config.maxFrameBytes })
     ctx.effect(() => async () => {
       this.requests.dispose()
@@ -905,6 +909,7 @@ export class BrowserExtension extends Browser {
       if (path === '/connect' && !owner) {
         const input = connectSchema.parse(body)
         if (input.extensionId !== extension) return response(403, { error: 'forbidden' }, cors)
+        if (this.config.trustedExtensionIds.includes(input.extensionId)) return response(200, await this.grants.trust(input), cors)
         return response(201, await this.grants.begin(input), cors)
       }
       const exchange = /^\/connect\/([^/]+)\/token$/u.exec(path)
@@ -921,7 +926,10 @@ export class BrowserExtension extends Browser {
       if (owner && path === '/owner/grants') return response(200, { grants: await this.grants.list() })
       if (owner && path === '/owner/revoke') { await this.grants.revoke(revokeSchema.parse(body).installationId); return response(200, { revoked: true }) }
       return response(404, { error: 'not_found' }, cors)
-    } catch { return response(400, { error: 'request_unavailable' }, cors) }
+    } catch (error) {
+      if (error instanceof BrowserGrantCapacityError) return response(409, { error: error.code }, cors)
+      return response(400, { error: 'request_unavailable' }, cors)
+    }
   }
 
   private upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {

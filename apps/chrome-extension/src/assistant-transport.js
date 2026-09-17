@@ -174,10 +174,14 @@ export const createAssistantTransport = ({ fetchImpl = fetch, openApproval }) =>
       const serviceInfo = await info({ baseUrl: normalized, signal })
       const supportedScopes = normalizeScopes(serviceInfo.scopes)
       if (!requested.scopes.every(scope => supportedScopes.includes(scope))) throw new AssistantTransportError('unsupported_scope')
-      const { body } = await requestJson(fetchImpl, endpoint(normalized, '/connect'), {
+      const { response, body } = await requestJson(fetchImpl, endpoint(normalized, '/connect'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ extensionId, installationId, challenge: await challengeFor(verifier), scopes: requested.scopes, origins: requested.origins }),
-      }, { signal, timeoutMs: 10_000 }, [201])
+      }, { signal, timeoutMs: 10_000 }, [200, 201])
+      if (response.status === 200) {
+        if (body.status !== 'connected') throw new AssistantTransportError('invalid_connect_response', 200)
+        return { phase: 'connected', token: validateToken(body.token), grant: validateGrant(body.grant, requested) }
+      }
       const pending = validatePending(body, requested)
       if (typeof openApproval !== 'function') throw new AssistantTransportError('approval_unavailable')
       await openApproval(`${normalized}/browser-assistant?requestId=${encodeURIComponent(pending.requestId)}`)
