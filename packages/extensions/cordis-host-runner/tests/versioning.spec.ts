@@ -6,8 +6,7 @@ const HOST = 'return { apply() {} }'
 describe('dynamic Plugin versions', () => {
   it('keeps currentPackageId when an update fails and clears nextPackageId after rollback', async () => {
     const { runner } = await setup()
-    const first = runner.define({
-      sessionId: AGENT_A.id,
+    const first = runner.define(AGENT_A, {
       plugin: { kind: 'new', idPrefix: 'clock' },
       name: 'clock v1',
       purpose: 'show time',
@@ -15,8 +14,7 @@ describe('dynamic Plugin versions', () => {
     })
     await expect(runner.run(AGENT_A, first.pluginId, first.packageId, 'run')).resolves.toMatchObject({ ok: true })
 
-    const second = runner.define({
-      sessionId: AGENT_A.id,
+    const second = runner.define(AGENT_A, {
       plugin: { kind: 'existing', pluginId: first.pluginId },
       name: 'clock v2',
       purpose: 'show time',
@@ -40,8 +38,7 @@ describe('dynamic Plugin versions', () => {
 
   it('cancels and retracts a Host activation owned by the pending approval', async () => {
     const { runner, gateway } = await setup()
-    const defined = runner.define({
-      sessionId: AGENT_A.id,
+    const defined = runner.define(AGENT_A, {
       plugin: { kind: 'new', idPrefix: 'panel' },
       name: 'panel',
       purpose: 'render a panel',
@@ -74,8 +71,7 @@ describe('dynamic Plugin versions', () => {
 
   it('does not stop an existing Host run when an attaching page fails to load Client code', async () => {
     const { runner } = await setup()
-    const defined = runner.define({
-      sessionId: AGENT_A.id,
+    const defined = runner.define(AGENT_A, {
       plugin: { kind: 'new', idPrefix: 'panel' },
       name: 'panel',
       purpose: 'render a panel',

@@ -5,7 +5,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
-import BrowserTaskService from '@changanhua/dsh-browser-task'
+import BrowserTaskService, { foldBrowserTask } from '@changanhua/dsh-browser-task'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { BrowserActionResult, BrowserOperation } from '@changanhua/dsh-browser'
@@ -14,6 +14,12 @@ import { BrowserTaskLoop, MAX_ACTIONS, MAX_STEPS } from '../src/loop.ts'
 import { actionMutates } from '../src/policy.ts'
 
 const page = { tabId: 4, frameId: 0, documentId: 'first', url: 'https://example.test/first' }
+const REGION_REF = '11111111-1111-4111-8111-111111111111' as never
+const OTHER_REGION_REF = '22222222-2222-4222-8222-222222222222' as never
+const renderAction = (mountId: string, text: string, options: { readonly regionRef?: typeof REGION_REF; readonly mode?: 'append' | 'replace' } = {}) => ({
+  kind: 'region_render' as const, page, mountId, regionRef: options.regionRef ?? REGION_REF,
+  ...(options.mode === undefined ? {} : { mode: options.mode }), presentation: { summary: text },
+})
 type PresentationObservation = { mountId:string;text:string;present:boolean }
 const instance = { installationId: 'extension', extensionId: 'test', online: true, grantEpoch: 1, origins: ['https://example.test'], scopes: ['browser:read'], capabilities: { protocolVersion: 1 as const, actionKinds: ['snapshot', 'click'] as const, requestRecovery: true as const } }
 async function harness() {
@@ -43,6 +49,13 @@ describe('BrowserTaskLoop durable bridge', () => {
     ])
     await h.ctx.fiber.dispose()
   })
+  it('does not claim a task-start observation exception proves no request was sent', async () => {
+    const h=await harness();h.browser.execute.mockRejectedValueOnce(new Error('transport_boundary_failed'))
+    await h.loop.start(h.agent,{ installationId:'extension',page,goal:'读取页面',success:{ text:'Never' } },new AbortController().signal)
+    const receipt=h.agent.session.events.find(event=>event.type==='browser-task/receipt')
+    expect(receipt?.data).toMatchObject({ outcome:'unknown',delivery:'sent',reason:'snapshot_failed' })
+    await h.ctx.fiber.dispose()
+  })
   it('stops continuation when a provider omits requested presentation observations and recovers after refresh', async () => {
     const h = await harness(); let forwardsPresentationQueries = false
     h.browser.execute.mockImplementation(async (operation: BrowserOperation) => ({ requestId: operation.requestId,
@@ -67,8 +80,7 @@ describe('BrowserTaskLoop durable bridge', () => {
       value: { page, text: '原页面', elements: [], presentations } }))
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '展示分析',
       success: { region: { mountId: 'analysis-panel', text: '证据分歧' } } }, new AbortController().signal)
-    const render = { kind: 'region_render' as const, page, mountId: 'analysis-panel', selector: '#sidebar',
-      blocks: [{ type: 'text' as const, text: '证据分歧' }] }
+    const render = renderAction('analysis-panel', '证据分歧')
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'render-drift', action: render })
     h.loop.reserveResource(h.agent, 'analysis-panel'); h.loop.dispatched(h.agent, 'render-drift')
     const rendered = { requestId: 'render-drift', sessionId: h.agent.session.id, installationId: 'extension',
@@ -90,7 +102,7 @@ describe('BrowserTaskLoop durable bridge', () => {
       installationId:'extension',outcome:'observed' as const,delivery:'sent' as const,value:{ page,text:visibleText,elements:[],presentations } }))
     await h.loop.start(h.agent,{ installationId:'extension',page,goal:'展示分析',
       success:{ region:{ mountId:'analysis-panel',text:'证据分歧' } } },new AbortController().signal)
-    const render={ kind:'region_render' as const,page,mountId:'analysis-panel',selector:'#sidebar',blocks:[{ type:'text' as const,text:'证据分歧' }] }
+    const render=renderAction('analysis-panel','证据分歧')
     h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'render',action:render });h.loop.reserveResource(h.agent,'analysis-panel');h.loop.dispatched(h.agent,'render')
     const rendered={ requestId:'render',sessionId:h.agent.session.id,installationId:'extension',outcome:'observed' as const,delivery:'sent' as const,value:{ rendered:1,containers:1 } }
     const renderSettlement=h.loop.settle(h.agent,rendered,render)!
@@ -117,8 +129,7 @@ describe('BrowserTaskLoop durable bridge', () => {
       value: { page, text: visibleText, elements: [], presentations } }))
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '展示分析',
       success: { region: { mountId: 'analysis-panel', text: expected } } }, new AbortController().signal)
-    const render = { kind: 'region_render' as const, page, mountId: 'analysis-panel', selector: '#sidebar',
-      blocks: [{ type: 'text' as const, text: prefix + expected }] }
+    const render = renderAction('analysis-panel', prefix + expected)
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'late-render', action: render })
     h.loop.reserveResource(h.agent, 'analysis-panel'); h.loop.dispatched(h.agent, 'late-render')
     const rendered = { requestId: 'late-render', sessionId: h.agent.session.id, installationId: 'extension',
@@ -135,8 +146,7 @@ describe('BrowserTaskLoop durable bridge', () => {
     const h = await harness()
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '展示分析',
       success: { region: { mountId: 'analysis-panel', text: '必须出现' } } }, new AbortController().signal)
-    const render = { kind: 'region_render' as const, page, mountId: 'analysis-panel', selector: '#sidebar',
-      blocks: [{ type: 'text' as const, text: '别的内容' }] }
+    const render = renderAction('analysis-panel', '别的内容')
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'wrong-render', action: render })
     h.loop.reserveResource(h.agent, 'analysis-panel'); h.loop.dispatched(h.agent, 'wrong-render')
     const rendered = { requestId: 'wrong-render', sessionId: h.agent.session.id, installationId: 'extension',
@@ -153,8 +163,7 @@ describe('BrowserTaskLoop durable bridge', () => {
       value: { page, text: visibleText, elements: [], presentations } }))
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '展示分析',
       success: { region: { mountId: 'analysis-panel', text: '恢复后的证据' } } }, new AbortController().signal)
-    const render = { kind: 'region_render' as const, page, mountId: 'analysis-panel', selector: '#sidebar',
-      blocks: [{ type: 'text' as const, text: '恢复后的证据' }] }
+    const render = renderAction('analysis-panel', '恢复后的证据')
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'unknown-render', action: render })
     h.loop.reserveResource(h.agent, 'analysis-panel'); h.loop.dispatched(h.agent, 'unknown-render')
     const unknown = { requestId: 'unknown-render', sessionId: h.agent.session.id, installationId: 'extension',
@@ -182,7 +191,7 @@ describe('BrowserTaskLoop durable bridge', () => {
       value:{ page,text:'原页面已经包含证据分歧',elements:[],presentations } }))
     await h.loop.start(h.agent,{ installationId:'extension',page,goal:'展示分析',
       success:{ region:{ mountId:'analysis-panel',text:'证据分歧' } } },new AbortController().signal)
-    const render={ kind:'region_render' as const,page,mountId:'analysis-panel',selector:'#sidebar',blocks:[{ type:'text' as const,text:'证据分歧' }] }
+    const render=renderAction('analysis-panel','证据分歧')
     h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'same-text',action:render })
     h.loop.reserveResource(h.agent,'analysis-panel');h.loop.dispatched(h.agent,'same-text')
     const rendered={ requestId:'same-text',sessionId:h.agent.session.id,installationId:'extension',outcome:'observed' as const,delivery:'sent' as const,value:{ rendered:1 } }
@@ -209,7 +218,7 @@ describe('BrowserTaskLoop durable bridge', () => {
   })
   it('accepts only an observed exact absent disposition as a vanished region receipt', async () => {
     const h = await harness(); await h.loop.start(h.agent, { installationId:'extension',page,goal:'cleanup',success:{ text:'Never' } }, new AbortController().signal)
-    const render={ kind:'region_render' as const,page,mountId:'panel',selector:'#sidebar',blocks:[{ type:'text' as const,text:'x' }] }
+    const render=renderAction('panel','x')
     h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'render-absent',action:render });h.loop.reserveResource(h.agent,'panel');h.loop.dispatched(h.agent,'render-absent')
     const rendered={ requestId:'render-absent',sessionId:h.agent.session.id,installationId:'extension',outcome:'observed' as const,delivery:'sent' as const,value:{ rendered:1 } }
     const renderReceipt=h.loop.settle(h.agent,rendered,render)!
@@ -224,12 +233,103 @@ describe('BrowserTaskLoop durable bridge', () => {
   })
   it('does not call a not-sent document replacement a vanished resource', async () => {
     const h = await harness(); await h.loop.start(h.agent, { installationId:'extension',page,goal:'cleanup',success:{ text:'Never' } }, new AbortController().signal)
-    const render={ kind:'region_render' as const,page,mountId:'panel',selector:'#sidebar',blocks:[{ type:'text' as const,text:'x' }] }
+    const render=renderAction('panel','x')
     h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'render-unsent',action:render });h.loop.reserveResource(h.agent,'panel')
     const unsent={ requestId:'render-unsent',sessionId:h.agent.session.id,installationId:'extension',outcome:'failed' as const,delivery:'not-sent' as const,reason:'document_replaced' }
     const settlement=h.loop.settle(h.agent,unsent,render)!
     h.loop.settleResource(h.agent,'panel',unsent,render,settlement.receipt)
     expect(h.ctx.browserTasks.get(h.agent)?.resources[0]).toMatchObject({ state:'released',disposition:'not-sent' })
+    await h.ctx.fiber.dispose()
+  })
+  it('continues with a different resource after a not-sent render releases its reservation', async () => {
+    const h = await harness()
+    await h.loop.start(h.agent, { installationId:'extension',page,goal:'render a panel',success:{ text:'Never' } }, new AbortController().signal)
+    const rejected=renderAction('bad-panel','probe')
+    h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'rejected',action:rejected })
+    h.loop.reserveResource(h.agent,'bad-panel')
+    const notSent={ requestId:'rejected',sessionId:h.agent.session.id,installationId:'extension',outcome:'failed' as const,delivery:'not-sent' as const,reason:'region_ref_not_current' }
+    const rejectedSettlement=h.loop.settle(h.agent,notSent,rejected)!
+    h.loop.settleResource(h.agent,'bad-panel',notSent,rejected,rejectedSettlement.receipt)
+    const afterRejected=h.ctx.browserTasks.get(h.agent)!
+    expect(h.loop.releasePending(h.agent,'bad-panel')).toBe(false)
+    expect(h.ctx.browserTasks.get(h.agent)).toMatchObject({ revision:afterRejected.revision,resources:afterRejected.resources })
+    const accepted=renderAction('result-panel','result',{ regionRef:OTHER_REGION_REF })
+    h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'accepted',action:accepted })
+    h.loop.reserveResource(h.agent,'result-panel');h.loop.dispatched(h.agent,'accepted')
+    const observed={ requestId:'accepted',sessionId:h.agent.session.id,installationId:'extension',outcome:'observed' as const,delivery:'sent' as const,value:{ rendered:1,containers:1 } }
+    const acceptedSettlement=h.loop.settle(h.agent,observed,accepted)!
+    h.loop.settleResource(h.agent,'result-panel',observed,accepted,acceptedSettlement.receipt)
+    expect(h.ctx.browserTasks.get(h.agent)?.resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id:'bad-panel',state:'released',disposition:'not-sent' }),
+      expect.objectContaining({ id:'result-panel',state:'active' }),
+    ]))
+    await h.ctx.fiber.dispose()
+  })
+  it('blocks a deterministic failure after its first occurrence without blocking a changed target', async () => {
+    const h = await harness()
+    await h.loop.start(h.agent, { installationId:'extension',page,goal:'render a panel',success:{ text:'Never' } }, new AbortController().signal)
+    const render=renderAction('panel','probe')
+    h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'first-failure',action:render })
+    h.loop.reserveResource(h.agent,'panel')
+    const failed={ requestId:'first-failure',sessionId:h.agent.session.id,installationId:'extension',outcome:'failed' as const,delivery:'not-sent' as const,reason:'region_ref_not_current' }
+    const settlement=h.loop.settle(h.agent,failed,render)!
+    h.loop.settleResource(h.agent,'panel',failed,render,settlement.receipt)
+    expect(h.ctx.browserTasks.get(h.agent)).toMatchObject({ phase:'waiting',blockers:['repeated-error'] })
+    expect(h.loop.allowsAction(h.agent,render)).toBe(false)
+    expect(h.loop.allowsAction(h.agent,{ ...render,mountId:'renamed-panel' })).toBe(false)
+    expect(h.loop.allowsAction(h.agent,{ ...render,mountId:'alternative-panel',regionRef:OTHER_REGION_REF })).toBe(true)
+    expect(h.loop.allowsAction(h.agent,{ kind:'page_map',page })).toBe(true)
+    await h.ctx.fiber.dispose()
+  })
+  it('requires newer page-map evidence before retrying the same failed selector', async () => {
+    const h=await harness()
+    await h.loop.start(h.agent,{ installationId:'extension',page,goal:'render a panel',success:{ text:'Never' } },new AbortController().signal)
+    const render=renderAction('panel','probe')
+    h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'failed-render',action:render })
+    h.loop.reserveResource(h.agent,'panel')
+    const failed={ requestId:'failed-render',sessionId:h.agent.session.id,installationId:'extension',outcome:'failed' as const,
+      delivery:'not-sent' as const,reason:'region_ref_not_current' }
+    const settlement=h.loop.settle(h.agent,failed,render)!
+    h.loop.settleResource(h.agent,'panel',failed,render,settlement.receipt)
+    const map=async(requestId:string,regions:readonly { selector:string;disposable:boolean;protected:boolean }[])=>{
+      const operation={ sessionId:h.agent.session.id,installationId:'extension',requestId,
+        action:{ kind:'page_map' as const,page } }
+      h.browser.execute.mockResolvedValueOnce({ requestId,sessionId:h.agent.session.id,installationId:'extension',
+        outcome:'observed',delivery:'sent',value:{ page,regions } })
+      await executeObserved({ browser:h.browser,loop:h.loop,agent:h.agent,operation,
+        signal:new AbortController().signal,evidence:true })
+    }
+    await map('map-still-missing',[{ regionRef:OTHER_REGION_REF,disposable:true,protected:false }])
+    expect(h.loop.allowsAction(h.agent,{ ...render,mountId:'renamed' })).toBe(false)
+    await map('map-now-present',[{ regionRef:REGION_REF,disposable:true,protected:false }])
+    expect(h.loop.allowsAction(h.agent,{ ...render,mountId:'renamed' })).toBe(true)
+    expect(()=>h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'recovered',
+      action:{ ...render,mountId:'renamed' } })).not.toThrow()
+    expect(h.ctx.browserTasks.get(h.agent)).toMatchObject({ phase:'running',blockers:[] })
+    await h.ctx.fiber.dispose()
+  })
+  it('does not let a fresh protected page map justify the same replacement strategy', async () => {
+    const h=await harness()
+    await h.loop.start(h.agent,{ installationId:'extension',page,goal:'replace a panel',success:{ text:'Never' } },new AbortController().signal)
+    const render=renderAction('panel','probe',{ mode:'replace' })
+    h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'failed-replace',action:render })
+    h.loop.reserveResource(h.agent,'panel')
+    const failed={ requestId:'failed-replace',sessionId:h.agent.session.id,installationId:'extension',outcome:'failed' as const,
+      delivery:'not-sent' as const,reason:'region_replace_not_permitted' }
+    const settlement=h.loop.settle(h.agent,failed,render)!
+    h.loop.settleResource(h.agent,'panel',failed,render,settlement.receipt)
+    const observeMap=async(requestId:string,disposable:boolean,protectedRegion:boolean)=>{
+      const operation={ sessionId:h.agent.session.id,installationId:'extension',requestId,
+        action:{ kind:'page_map' as const,page } }
+      h.browser.execute.mockResolvedValueOnce({ requestId,sessionId:h.agent.session.id,installationId:'extension',
+        outcome:'observed',delivery:'sent',value:{ page,regions:[{ regionRef:REGION_REF,disposable,protected:protectedRegion }] } })
+      await executeObserved({ browser:h.browser,loop:h.loop,agent:h.agent,operation,
+        signal:new AbortController().signal,evidence:true })
+    }
+    await observeMap('map-protected',true,true)
+    expect(h.loop.allowsAction(h.agent,{ ...render,mountId:'renamed' })).toBe(false)
+    await observeMap('map-replaceable',true,false)
+    expect(h.loop.allowsAction(h.agent,{ ...render,mountId:'renamed' })).toBe(true)
     await h.ctx.fiber.dispose()
   })
   it('appends an execution receipt before settling the durable attempt', async () => {
@@ -260,6 +360,18 @@ describe('BrowserTaskLoop durable bridge', () => {
     const settled = h.agent.session.events.find(event => event.type === 'browser-task/change' && event.data.task.attempts.some((item: { requestId: string; stage: string }) => item.requestId === requestId && item.stage === 'settled'))!
     expect(after.budget.actionsUsed).toBe(before.budget.actionsUsed + 1)
     expect(receipt.seq).toBeLessThan(settled.seq)
+    await h.ctx.fiber.dispose()
+  })
+  it('records a direct provider exception after execute as sent with an unknown outcome', async () => {
+    const h = await harness(); await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Never' } }, new AbortController().signal)
+    h.browser.execute.mockRejectedValueOnce(new Error('transport_boundary_failed'))
+    const requestId='direct-snapshot-exception'
+    const result=await executeObserved({ browser:h.browser,loop:h.loop,agent:h.agent,signal:new AbortController().signal,
+      operation:{ sessionId:h.agent.session.id,installationId:'extension',requestId,
+        action:{ kind:'snapshot',tabId:page.tabId,frameId:page.frameId,documentId:page.documentId,limit:1,textLimit:0 } } })
+    expect(result).toMatchObject({ requestId,outcome:'unknown',delivery:'sent',reason:'transport_boundary_failed' })
+    expect(h.agent.session.events.find(event=>event.type==='browser-task/receipt'&&event.data.requestId===requestId)?.data)
+      .toMatchObject({ outcome:'unknown',delivery:'sent' })
     await h.ctx.fiber.dispose()
   })
   it('does not silently replace the target after a non-navigation page mismatch', async () => {
@@ -429,8 +541,7 @@ describe('BrowserTaskLoop durable bridge', () => {
   it('does not reset an active region lease when an idempotent re-render is not sent', async () => {
     const h = await harness()
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Never' } }, new AbortController().signal)
-    const initial = { kind: 'region_render' as const, page, mountId: 'panel', selector: '#sidebar',
-      blocks: [{ type: 'text' as const, text: '初始' }] }
+    const initial = renderAction('panel', '初始')
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'first-render', action: initial })
     h.loop.reserveResource(h.agent, 'panel')
     const first = { requestId: 'first-render', sessionId: h.agent.session.id, installationId: 'extension',
@@ -450,8 +561,7 @@ describe('BrowserTaskLoop durable bridge', () => {
   it('reconciles an unknown render to active, then permits its exact clear from unresolved', async () => {
     const h = await harness()
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Never' } }, new AbortController().signal)
-    const render = { kind: 'region_render' as const, page, mountId: 'panel', selector: '#sidebar',
-      blocks: [{ type: 'text' as const, text: '结果' }] }
+    const render = renderAction('panel', '结果')
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'unknown-render', action: render })
     h.loop.reserveResource(h.agent, 'panel')
     h.loop.dispatched(h.agent, 'unknown-render')
@@ -501,8 +611,7 @@ describe('BrowserTaskLoop durable bridge', () => {
   it('settles a directly failed render document replacement as vanished, but not an ordinary stale target', async () => {
     const h = await harness()
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Never' } }, new AbortController().signal)
-    const render = { kind: 'region_render' as const, page, mountId: 'panel', selector: '#sidebar',
-      blocks: [{ type: 'text' as const, text: '结果' }] }
+    const render = renderAction('panel', '结果')
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'render-replaced', action: render })
     h.loop.reserveResource(h.agent, 'panel')
     h.loop.dispatched(h.agent, 'render-replaced')
@@ -542,8 +651,7 @@ describe('BrowserTaskLoop durable bridge', () => {
 
     const fresh = await harness()
     await fresh.loop.start(fresh.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Never' } }, new AbortController().signal)
-    const render = { kind: 'region_render' as const, page, mountId: 'new-panel', selector: '#sidebar',
-      blocks: [{ type: 'text' as const, text: '结果' }] }
+    const render = renderAction('new-panel', '结果')
     fresh.loop.planned(fresh.agent, { sessionId: fresh.agent.session.id, installationId: 'extension', requestId: 'render-not-sent', action: render })
     fresh.loop.reserveResource(fresh.agent, 'new-panel')
     const renderResult = { requestId: 'render-not-sent', sessionId: fresh.agent.session.id, installationId: 'extension',
@@ -558,7 +666,7 @@ describe('BrowserTaskLoop durable bridge', () => {
   })
   it('plans an active region_render before reserving its cleanup obligation', async () => {
     const h = await harness(); await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Never' } }, new AbortController().signal)
-    const requestId = 'render'; const action = { kind: 'region_render' as const, page, mountId: 'result-panel', selector: '#sidebar', blocks: [{ type: 'text' as const, text: '结果' }] }
+    const requestId = 'render'; const action = renderAction('result-panel', '结果')
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId, action }); h.loop.reserveResource(h.agent, 'result-panel'); h.loop.dispatched(h.agent, requestId)
     const result = { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed' as const, delivery: 'sent' as const }
     const settled = h.loop.settle(h.agent, result, action)!
@@ -595,8 +703,7 @@ describe('BrowserTaskLoop durable bridge', () => {
         presentations: operation.action.kind === 'snapshot'
           ? (operation.action.presentationQueries ?? []).map(query => ({ ...query, present: false })) : [] } }))
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Done' } }, new AbortController().signal)
-    const render = { kind: 'region_render' as const, page, mountId: 'budget-panel', selector: '#sidebar',
-      blocks: [{ type: 'text' as const, text: '结果' }] }
+    const render = renderAction('budget-panel', '结果')
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'budget-render', action: render })
     h.loop.reserveResource(h.agent, 'budget-panel'); h.loop.dispatched(h.agent, 'budget-render')
     const rendered = { requestId: 'budget-render', sessionId: h.agent.session.id, installationId: 'extension',
@@ -614,6 +721,26 @@ describe('BrowserTaskLoop durable bridge', () => {
       resources: [{ id: 'budget-panel', state: 'released', disposition: 'clear-observed' }] })
     await h.ctx.fiber.dispose()
   })
+  it('keeps cleanup unresolved when the provider throws after entering execute', async () => {
+    const h=await harness();await h.loop.start(h.agent,{ installationId:'extension',page,goal:'完成',success:{ text:'Never' } },new AbortController().signal)
+    const render=renderAction('uncertain-panel','结果')
+    h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:'uncertain-render',action:render })
+    h.loop.reserveResource(h.agent,'uncertain-panel');h.loop.dispatched(h.agent,'uncertain-render')
+    const rendered={ requestId:'uncertain-render',sessionId:h.agent.session.id,installationId:'extension',outcome:'observed' as const,delivery:'sent' as const,value:{ rendered:1 } }
+    const settlement=h.loop.settle(h.agent,rendered,render)!
+    h.loop.settleResource(h.agent,'uncertain-panel',rendered,render,settlement.receipt)
+    for(let index=h.ctx.browserTasks.get(h.agent)!.budget.actionsUsed;index<MAX_ACTIONS;index+=1){
+      h.loop.planned(h.agent,{ sessionId:h.agent.session.id,installationId:'extension',requestId:`uncertain-read-${index}`,
+        action:{ kind:'snapshot',tabId:page.tabId,frameId:page.frameId,documentId:page.documentId,limit:1,textLimit:0 } },false)
+    }
+    h.browser.execute.mockRejectedValue(new Error('transport_boundary_failed'))
+    await h.loop.turnStopping(h.agent,new AbortController().signal)
+    const task=h.ctx.browserTasks.get(h.agent)
+    expect(task?.phase).toBe('running')
+    expect(task?.blockers).toEqual(expect.arrayContaining(['unknown-attempt','cleanup']))
+    expect(task?.resources).toMatchObject([{ id:'uncertain-panel',state:'unresolved' }])
+    await h.ctx.fiber.dispose()
+  })
   it('still cleans an exact active resource when the final observation reports capability drift', async () => {
     const h = await harness(); let presentationContract = true
     h.browser.execute.mockImplementation(async (operation: BrowserOperation) => ({ requestId: operation.requestId,
@@ -623,8 +750,7 @@ describe('BrowserTaskLoop durable bridge', () => {
           ? (operation.action.presentationQueries ?? []).map(query => ({ ...query, present: false })) : [] } }))
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '展示',
       success: { region: { mountId: 'drift-panel', text: '结果' } } }, new AbortController().signal)
-    const render = { kind: 'region_render' as const, page, mountId: 'drift-panel', selector: '#sidebar',
-      blocks: [{ type: 'text' as const, text: '结果' }] }
+    const render = renderAction('drift-panel', '结果')
     h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'drift-render', action: render })
     h.loop.reserveResource(h.agent, 'drift-panel'); h.loop.dispatched(h.agent, 'drift-render')
     const rendered = { requestId: 'drift-render', sessionId: h.agent.session.id, installationId: 'extension',
@@ -693,6 +819,42 @@ describe('BrowserTaskLoop durable bridge', () => {
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Done' } }, new AbortController().signal)
     expect(h.ctx.browserTasks.get(h.agent)!.blockers).toContain('capability-drift')
     expect(h.browser.execute).not.toHaveBeenCalled()
+    await h.ctx.fiber.dispose()
+  })
+  it('recovers a persisted dispatch intent as an unknown vanished cleanup without replaying its write', async () => {
+    const h = await harness()
+    await h.loop.start(h.agent, { installationId: 'extension', page, goal: '清理页面临时面板',
+      success: { text: 'Never' } }, new AbortController().signal)
+    const action = { kind: 'region_clear' as const, page, mountId: 'crash-panel' }
+    h.loop.reserveResource(h.agent, 'crash-panel')
+    h.loop.releasePending(h.agent, 'crash-panel')
+    h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension',
+      requestId: 'crash-clear', action })
+    let task = h.ctx.browserTasks.get(h.agent)!
+    const planned = task.attempts.find(item => item.requestId === 'crash-clear')!
+    task = h.ctx.browserTasks.advanceAttempt(h.agent, { id: task.id, revision: task.revision }, {
+      ...planned,
+      stage: 'dispatch-intent',
+      recoveryLocator: { kind: 'extension-journal-v1', protocolVersion: 1,
+        transportRequestId: 'transport-crash-clear', installationId: 'extension', grantEpoch: 1 },
+    })
+    const persisted = foldBrowserTask(h.agent.session.snapshotEvents())!
+    expect(persisted.revision).toBe(task.revision)
+    expect(persisted.attempts.find(item => item.requestId === 'crash-clear')).toMatchObject({ stage: 'dispatch-intent' })
+    expect(persisted.resources.find(item => item.id === 'crash-panel')).toMatchObject({ state: 'release-pending' })
+    expect(persisted.blockers).toContain('unknown-attempt')
+
+    const recovered = h.loop.reconcile(h.agent, 'crash-clear', { requestId: 'crash-clear',
+      sessionId: h.agent.session.id, installationId: 'extension', outcome: 'unknown', delivery: 'sent',
+      quiescent: true, reason: 'document_replaced' })!
+    const attempt = recovered.attempts.find(item => item.requestId === 'crash-clear')!
+    const resource = recovered.resources.find(item => item.id === 'crash-panel')!
+    expect(attempt).toMatchObject({ stage: 'settled', outcome: 'unknown', quiescent: true })
+    expect(attempt.settledBy).toMatchObject({ kind: 'browser-task-receipt' })
+    expect(resource).toMatchObject({ state: 'vanished', disposition: 'document-replaced',
+      dispositionSource: attempt.settledBy })
+    expect(recovered.blockers).toContain('unknown-attempt')
+    expect(foldBrowserTask(h.agent.session.snapshotEvents())).toEqual(recovered)
     await h.ctx.fiber.dispose()
   })
   it('recreates the facade after a restart without losing the projected task', async () => {

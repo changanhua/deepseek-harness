@@ -3920,12 +3920,36 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'key', description: 'the credential record the finished attempt was authorizing.' }, { name: 'settlement', description: 'how it ended, including the `failed` case its caller sees as a thrown error.' }],
   },
   {
+    name: 'browser/dispatch-intent',
+    mode: 'waterfall',
+    signature: '\'browser/dispatch-intent\'(context: BrowserDispatchContext, next: () => BrowserDispatchDecision | Promise<BrowserDispatchDecision>): Promise<BrowserDispatchDecision>',
+    summary: 'Single-slot policy immediately before a Browser Provider can cross its transport boundary.',
+    description: 'Single-slot policy immediately before a Browser Provider can cross its transport boundary. Calling `next()` delegates to the next policy; a denial returns a conclusive result without sending.',
+    parameters: [{ name: 'context', description: 'Logical operation plus exact transport identity, authority epoch, and mutation class.' }, { name: 'next', description: 'Continue to the next dispatch listener or the default allow decision.' }],
+  },
+  {
     name: 'browser/entry-click',
     mode: 'emit',
     signature: '\'browser/entry-click\'(event: BrowserEntryEvent): void',
     summary: 'A user clicked one entry mounted in an authorized external webpage.',
     description: 'A user clicked one entry mounted in an authorized external webpage.',
     parameters: [{ name: 'event', description: 'Verified mount, Session, page, title, and link identity for the click.' }],
+  },
+  {
+    name: 'browser/operation-intent',
+    mode: 'waterfall',
+    signature: '\'browser/operation-intent\'(context: BrowserOperationContext, next: () => BrowserDispatchDecision | Promise<BrowserDispatchDecision>): Promise<BrowserDispatchDecision>',
+    summary: 'Single-slot admission for one logical Browser operation, before Provider-specific preconditions.',
+    description: 'Single-slot admission for one logical Browser operation, before Provider-specific preconditions.',
+    parameters: [{ name: 'context', description: 'Caller identity, logical action, mutation class, and lifecycle phase.' }, { name: 'next', description: 'Continue to the next admission listener or the default allow decision.' }],
+  },
+  {
+    name: 'browser/operation-settled',
+    mode: 'parallel',
+    signature: '\'browser/operation-settled\'(context: BrowserOperationContext, settlement: BrowserOperationSettlement): Promise<void> | void',
+    summary: 'Awaited non-rewriting notification after one logical operation reaches a durable lifecycle fact.',
+    description: 'Awaited non-rewriting notification after one logical operation reaches a durable lifecycle fact. A listener failure cannot replace the Provider result.',
+    parameters: [{ name: 'context', description: 'Exact logical operation and lifecycle phase that reached a fact.' }, { name: 'settlement', description: 'Prepared marker, conclusive result, or conservative delivery error.' }],
   },
   {
     name: 'commands/change',
@@ -4545,7 +4569,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AttemptStage',
-    declaration: 'export type AttemptStage = \'planned\' | \'prepared\' | \'dispatched\' | \'settled\';',
+    declaration: 'export type AttemptStage = \'planned\' | \'prepared\' | \'dispatch-intent\' | \'dispatched\' | \'settled\';',
   },
   {
     name: 'AttemptStatus',
@@ -4661,11 +4685,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserAction',
-    declaration: 'export type BrowserAction = {\n    readonly kind: \'tabs\';\n} | {\n    readonly kind: \'snapshot\';\n    readonly tabId: number;\n    readonly frameId: number;\n    readonly documentId?: string;\n    readonly query?: string;\n    readonly offset?: number;\n    readonly limit?: number;\n    readonly textLimit?: number;\n    readonly tree?: boolean;\n    readonly treeCursor?: string;\n    readonly treeLimit?: number;\n    readonly includeOptions?: boolean;\n    readonly structure?: boolean;\n    readonly presentationQueries?: readonly BrowserPresentationQuery[];\n} | {\n    readonly kind: \'page_map\';\n    readonly page: BrowserPage;\n} | {\n    readonly kind: \'entry_inspect\';\n    readonly page: BrowserPage;\n    readonly regionSelector: string;\n    readonly selector: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly sampleLimit?: number;\n} | {\n    readonly kind: \'entry_mount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly regionSelector?: string;\n    readonly selector: string;\n    readonly label: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly collected?: readonly string[];\n} | {\n    readonly kind: \'entry_unmount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly forgetCollected?: boolean;\n} | {\n    readonly kind: \'region_render\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly selector: string;\n    readonly placement?: \'prepend\' | \' /* …truncated — full shape in source */',
+    declaration: 'export type BrowserAction = {\n    readonly kind: \'tabs\';\n} | {\n    readonly kind: \'snapshot\';\n    readonly tabId: number;\n    readonly frameId: number;\n    readonly documentId?: string;\n    readonly query?: string;\n    readonly offset?: number;\n    readonly limit?: number;\n    readonly textLimit?: number;\n    readonly tree?: boolean;\n    readonly treeCursor?: string;\n    readonly treeLimit?: number;\n    readonly includeOptions?: boolean;\n    readonly structure?: boolean;\n    readonly presentationQueries?: readonly BrowserPresentationQuery[];\n} | {\n    readonly kind: \'page_map\';\n    readonly page: BrowserPage;\n} | {\n    readonly kind: \'entry_inspect\';\n    readonly page: BrowserPage;\n    readonly regionSelector: string;\n    readonly selector: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly sampleLimit?: number;\n} | {\n    readonly kind: \'entry_mount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly regionSelector?: string;\n    readonly selector: string;\n    readonly label: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly collected?: readonly string[];\n} | {\n    readonly kind: \'entry_unmount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly forgetCollected?: boolean;\n} | {\n    readonly kind: \'region_render\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly regionRef: BrowserRegionRef;\n    readonly presentation:  /* …truncated — full shape in source */',
   },
   {
     name: 'BrowserActionAttempt',
-    declaration: 'export interface BrowserActionAttempt {\n    readonly attemptId: string;\n    readonly requestId: string;\n    readonly actionKind: string;\n    readonly grantEpoch: number;\n    readonly stage: AttemptStage;\n    readonly outcome?: AttemptOutcome;\n    readonly quiescent?: boolean;\n    readonly write: boolean;\n    readonly target: BrowserTargetBinding;\n    readonly resourceId?: string;\n    readonly presentationIntent?: {\n        readonly contentDigest: string;\n        readonly excerpt: string;\n    };\n    readonly settledBy?: BrowserTaskSourceRef;\n    readonly reconciledBy?: BrowserTaskSourceRef;\n}',
+    declaration: 'export interface BrowserActionAttempt {\n    readonly attemptId: string;\n    readonly requestId: string;\n    readonly actionKind: string;\n    readonly grantEpoch: number;\n    readonly stage: AttemptStage;\n    readonly outcome?: AttemptOutcome;\n    readonly quiescent?: boolean;\n    readonly write: boolean;\n    readonly target: BrowserTargetBinding;\n    readonly resourceId?: string;\n    readonly presentationIntent?: {\n        readonly contentDigest: string;\n        readonly excerpt: string;\n    };\n    readonly recoveryLocator?: BrowserRecoveryLocator;\n    readonly settledBy?: BrowserTaskSourceRef;\n    readonly reconciledBy?: BrowserTaskSourceRef;\n}',
   },
   {
     name: 'BrowserActionDescription',
@@ -4684,12 +4708,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BrowserConnectRequest {\n    readonly requestId: string;\n    readonly installationId: string;\n    readonly extensionId: string;\n    readonly expiresAt: string;\n    readonly status: \'pending\' | \'approved\' | \'rejected\';\n}',
   },
   {
+    name: 'BrowserDispatchContext',
+    declaration: 'export interface BrowserDispatchContext {\n    readonly operation: BrowserOperation;\n    readonly transportRequestId: string;\n    readonly phase: BrowserDispatchPhase;\n    readonly logicalMutates: boolean;\n    readonly transportMutates: boolean;\n    readonly grantEpoch: number;\n}',
+  },
+  {
+    name: 'BrowserDispatchDecision',
+    declaration: 'export type BrowserDispatchDecision = {\n    readonly kind: \'allow\';\n} | {\n    readonly kind: \'deny\';\n    readonly result: BrowserActionResult;\n};',
+  },
+  {
+    name: 'BrowserDispatchPhase',
+    declaration: 'export type BrowserDispatchPhase = \'execute\' | \'prepare\' | \'prepared-commit\' | \'observe\';',
+  },
+  {
     name: 'BrowserEntryEvent',
     declaration: 'export interface BrowserEntryEvent {\n    readonly installationId: string;\n    readonly sessionId: SessionId;\n    readonly mountId: string;\n    readonly entry: {\n        readonly title: string;\n        readonly link: string;\n    };\n    readonly url: string;\n    readonly at: number;\n}',
   },
   {
     name: 'BrowserExecutorCapabilities',
-    declaration: 'export interface BrowserExecutorCapabilities {\n    readonly protocolVersion: 1;\n    readonly actionKinds: readonly BrowserAction[\'kind\'][];\n    readonly requestRecovery: true;\n}',
+    declaration: 'export interface BrowserExecutorCapabilities {\n    readonly protocolVersion: 1;\n    readonly actionKinds: readonly BrowserAction[\'kind\'][];\n    readonly requestRecovery: true;\n    readonly restartStatusLookup?: true;\n}',
   },
   {
     name: 'BrowserGrantSummary',
@@ -4708,8 +4744,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BrowserOperation {\n    readonly sessionId: SessionId;\n    readonly installationId: string;\n    readonly requestId: string;\n    readonly action: BrowserAction;\n}',
   },
   {
+    name: 'BrowserOperationContext',
+    declaration: 'export interface BrowserOperationContext {\n    readonly operation: BrowserOperation;\n    readonly phase: BrowserDispatchPhase;\n    readonly logicalMutates: boolean;\n}',
+  },
+  {
+    name: 'BrowserOperationSettlement',
+    declaration: 'export type BrowserOperationSettlement = {\n    readonly kind: \'prepared\';\n} | {\n    readonly kind: \'result\';\n    readonly result: BrowserActionResult;\n} | {\n    readonly kind: \'error\';\n    readonly delivery: \'not-sent\' | \'sent\';\n    readonly reason: string;\n};',
+  },
+  {
     name: 'BrowserPage',
     declaration: 'export interface BrowserPage {\n    readonly tabId: number;\n    readonly frameId: number;\n    readonly documentId: string;\n    readonly url: string;\n}',
+  },
+  {
+    name: 'BrowserPageMapEvidence',
+    declaration: 'export interface BrowserPageMapEvidence {\n    readonly regions: readonly {\n        readonly regionRef: string;\n        readonly disposable: boolean;\n        readonly protected: boolean;\n    }[];\n}',
   },
   {
     name: 'BrowserPagePresentation',
@@ -4732,8 +4780,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BrowserPresentationQuery {\n    readonly mountId: string;\n    readonly text: string;\n}',
   },
   {
+    name: 'BrowserRecoveryLocator',
+    declaration: 'export interface BrowserRecoveryLocator {\n    readonly kind: \'extension-journal-v1\';\n    readonly protocolVersion: 1;\n    readonly transportRequestId: string;\n    readonly installationId: string;\n    readonly grantEpoch: number;\n}',
+  },
+  {
+    name: 'BrowserRegionRef',
+    declaration: 'export type BrowserRegionRef = Branded<\'BrowserRegionRef\'>;',
+  },
+  {
     name: 'BrowserRequestStatusQuery',
-    declaration: 'export interface BrowserRequestStatusQuery {\n    readonly requestId: string;\n    readonly sessionId: SessionId;\n    readonly installationId: string;\n}',
+    declaration: 'export interface BrowserRequestStatusQuery {\n    readonly requestId: string;\n    readonly sessionId: SessionId;\n    readonly installationId: string;\n    readonly recoveryLocator?: BrowserRecoveryLocator;\n}',
   },
   {
     name: 'BrowserTargetBinding',
@@ -4741,7 +4797,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserTaskBlocker',
-    declaration: 'export type BrowserTaskBlocker = \'approval\' | \'human-interaction\' | \'unknown-attempt\' | \'capability-drift\' | \'target-lost\' | \'delegated-work\' | \'cleanup\';',
+    declaration: 'export type BrowserTaskBlocker = \'approval\' | \'human-interaction\' | \'unknown-attempt\' | \'capability-drift\' | \'target-lost\' | \'delegated-work\' | \'cleanup\' | \'repeated-error\' | \'internal-invariant\';',
   },
   {
     name: 'BrowserTaskBudget',
@@ -4753,7 +4809,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserTaskEvidence',
-    declaration: 'export interface BrowserTaskEvidence {\n    readonly id: string;\n    readonly state: EvidenceState;\n    readonly source: BrowserTaskSourceRef;\n    readonly digest: string;\n    readonly coverage?: number;\n    readonly target: BrowserTargetBinding;\n    readonly grantEpoch: number;\n}',
+    declaration: 'export interface BrowserTaskEvidence {\n    readonly id: string;\n    readonly state: EvidenceState;\n    readonly source: BrowserTaskSourceRef;\n    readonly digest: string;\n    readonly coverage?: number;\n    readonly pageMap?: BrowserPageMapEvidence;\n    readonly target: BrowserTargetBinding;\n    readonly grantEpoch: number;\n}',
   },
   {
     name: 'BrowserTaskId',
@@ -4769,7 +4825,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserTaskReceipt',
-    declaration: 'export interface BrowserTaskReceipt {\n    readonly kind: \'browser-task/receipt\';\n    readonly version: 1;\n    readonly taskId: BrowserTaskId;\n    readonly requestId: string;\n    readonly actionKind: string;\n    readonly target: BrowserTargetBinding;\n    readonly outcome: AttemptOutcome;\n    readonly delivery: \'sent\' | \'not-sent\';\n    readonly quiescent: boolean;\n    readonly grantEpoch: number;\n    readonly resourceId?: string;\n    readonly reason?: string;\n    readonly presentation?: {\n        readonly contentDigest: string;\n        readonly excerpt: string;\n    };\n}',
+    declaration: 'export interface BrowserTaskReceipt {\n    readonly kind: \'browser-task/receipt\';\n    readonly version: 1;\n    readonly taskId: BrowserTaskId;\n    readonly requestId: string;\n    readonly actionKind: string;\n    readonly target: BrowserTargetBinding;\n    readonly outcome: AttemptOutcome;\n    readonly delivery: \'sent\' | \'not-sent\';\n    readonly quiescent: boolean;\n    readonly grantEpoch: number;\n    readonly resourceId?: string;\n    readonly reason?: string;\n    readonly failureFingerprint?: string;\n    readonly presentation?: {\n        readonly contentDigest: string;\n        readonly excerpt: string;\n    };\n}',
   },
   {
     name: 'BrowserTaskRef',

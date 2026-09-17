@@ -294,7 +294,7 @@ export const createAssistantConnection = ({
       return channel.call(...args)
     },
 
-    sendReceipt(receipt) { return channel?.sendReceipt(receipt) ?? false },
+    sendReceipt(receipt, options) { return channel?.sendReceipt(receipt, options) ?? false },
     getGrant() { return !invalid && channel && runtime.phase === 'connected' && runtime.grant ? clone(runtime.grant) : null },
     permit(request) {
       const grant = !invalid && channel && runtime.phase === 'connected' ? runtime.grant : null

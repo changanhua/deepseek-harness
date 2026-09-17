@@ -4,6 +4,7 @@ import type {
   BrowserDispatchFrame, BrowserInvocation, BrowserReceipt, BrowserRequestIdentity,
   BrowserRequestLimits, BrowserRequestResult, BrowserRequestStatus, BrowserRequestStatusView,
 } from './types.ts'
+import type { BrowserRecoveryLocator } from '@changanhua/dsh-browser/types'
 
 /** Capture a detached invocation and digest every authority, target, action and deadline field. */
 export function sealBrowserInvocation(request: Omit<BrowserInvocation, 'fingerprint'>): BrowserInvocation {
@@ -19,6 +20,16 @@ export function sealBrowserInvocation(request: Omit<BrowserInvocation, 'fingerpr
 }
 
 interface Connection { readonly send: (frame: BrowserDispatchFrame) => void }
+interface RestartLookup {
+  readonly locator: BrowserRecoveryLocator
+  readonly sessionId: string
+  readonly resolve: (value: BrowserRequestStatusView | undefined) => void
+  readonly timer: ReturnType<typeof setTimeout>
+}
+interface RestartPermit {
+  readonly locator: BrowserRecoveryLocator
+  readonly sessionId: string
+}
 interface Entry {
   readonly request: BrowserInvocation
   readonly promise: Promise<BrowserRequestResult>
@@ -38,10 +49,16 @@ interface Entry {
 export class BrowserRequests {
   private readonly connections = new Map<string, Connection>()
   private readonly entries = new Map<string, Entry>()
+  private readonly restartLookups = new Map<string, RestartLookup>()
+  private readonly restartPermits = new Map<string, RestartPermit>()
   private closed = false
 
   /** Bounds cover retained requests/results; unresolved writes are never evicted. */
-  constructor(private readonly limits: BrowserRequestLimits) {
+  constructor(
+    private readonly limits: BrowserRequestLimits,
+    private readonly projectResult: (request: BrowserInvocation, result: BrowserRequestResult) => BrowserRequestResult
+      = (_request, result) => result,
+  ) {
     if (Object.values(limits).some(value => !Number.isSafeInteger(value) || value <= 0)) {
       throw new RangeError('browser request bounds must be positive safe integers')
     }
@@ -69,8 +86,22 @@ export class BrowserRequests {
           return
         }
         const entry = this.find(receipt)
-        if (entry === undefined || entry.request.installationId !== installationId) return
+        if (entry === undefined) {
+          const pending = this.restartLookups.get(receipt.requestId)
+          if (pending === undefined || receipt.installationId !== installationId
+            || receipt.installationId !== pending.locator.installationId || receipt.grantEpoch !== pending.locator.grantEpoch
+            || receipt.requestId !== pending.locator.transportRequestId || receipt.sessionId !== pending.sessionId) return
+          clearTimeout(pending.timer)
+          this.restartLookups.delete(receipt.requestId)
+          pending.resolve({ requestId: receipt.requestId, sessionId: receipt.sessionId, installationId: receipt.installationId,
+            outcome: receipt.outcome, delivery: 'sent', ...(receipt.reason === undefined ? {} : { reason: receipt.reason }),
+            ...(receipt.value === undefined ? {} : { value: structuredClone(receipt.value) }),
+            ...(receipt.quiescent === undefined ? {} : { quiescent: receipt.quiescent }) })
+          return
+        }
+        if (entry.request.installationId !== installationId) return
         if (entry.result !== undefined && entry.result.outcome !== 'unknown') return
+        if (this.matchesRestartPermit(receipt)) this.restartPermits.delete(receipt.requestId)
         if (!['observed', 'failed', 'cancelled', 'unknown'].includes(receipt.outcome)
           || receipt.reason !== undefined && typeof receipt.reason !== 'string'
           || receipt.quiescent !== undefined && typeof receipt.quiescent !== 'boolean') {
@@ -86,7 +117,7 @@ export class BrowserRequests {
           this.unknown(entry, 'result_too_large')
           return
         }
-        this.settle(entry, structuredClone(result), receipt.quiescent === true)
+        this.settle(entry, structuredClone(this.projectResult(entry.request, result)), receipt.quiescent === true)
       },
       disconnect: () => { this.disconnect(installationId, connection) },
     }
@@ -166,6 +197,68 @@ export class BrowserRequests {
     })
   }
 
+  /** Host memory retains the original invocation, so status shaping can be action-specific. */
+  isPageMap(requestId: string, sessionId: string, installationId: string): boolean {
+    const entry = this.entries.get(requestId)
+    if (entry === undefined || entry.request.sessionId !== sessionId || entry.request.installationId !== installationId) return false
+    const payload = entry.request.payload
+    return isRecord(payload) && payload.kind === 'page_map'
+  }
+
+  /** Query the extension-owned durable journal after this Host lost its memory. Never emits execute. */
+  restartStatus(locator: BrowserRecoveryLocator, sessionId: string): Promise<BrowserRequestStatusView | undefined> {
+    if (this.closed || this.restartLookups.has(locator.transportRequestId)
+      || !this.connections.has(locator.installationId)) return Promise.resolve(undefined)
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        const pending = this.restartLookups.get(locator.transportRequestId)
+        if (pending?.timer !== timer) return
+        this.restartLookups.delete(locator.transportRequestId)
+        resolve(undefined)
+      }, this.limits.maxDurationMs)
+      timer.unref()
+      this.restartLookups.set(locator.transportRequestId, { locator: structuredClone(locator), sessionId, resolve, timer })
+      const connection = this.connections.get(locator.installationId)
+      try { connection?.send({ type: 'status-query', locator: structuredClone(locator), sessionId }) }
+      catch {
+        clearTimeout(timer)
+        this.restartLookups.delete(locator.transportRequestId)
+        resolve(undefined)
+      }
+    })
+  }
+
+  /** Authorize one exact old-epoch journal reply for an unknown request still retained in Host memory. */
+  authorizeRestartStatus(locator: BrowserRecoveryLocator, sessionId: string): boolean {
+    const entry = this.entries.get(locator.transportRequestId)
+    if (entry === undefined || entry.request.sessionId !== sessionId
+      || entry.request.installationId !== locator.installationId || entry.request.grantEpoch !== locator.grantEpoch
+      || entry.result?.outcome !== 'unknown') return false
+    this.restartPermits.set(locator.transportRequestId, { locator: structuredClone(locator), sessionId })
+    return true
+  }
+
+  /** Withdraw a lookup permit when its status-query frame could not be sent. */
+  cancelRestartStatus(locator: BrowserRecoveryLocator, sessionId: string): void {
+    const pending = this.restartPermits.get(locator.transportRequestId)
+    if (pending?.sessionId === sessionId && pending.locator.installationId === locator.installationId
+      && pending.locator.grantEpoch === locator.grantEpoch) this.restartPermits.delete(locator.transportRequestId)
+  }
+
+  /** Match an old-epoch receipt only to the exact restart lookup that requested it. */
+  expectsRestartStatus(identity: Pick<BrowserRequestIdentity, 'requestId' | 'sessionId' | 'installationId' | 'grantEpoch'>): boolean {
+    const pending = this.restartLookups.get(identity.requestId)
+    const retained = this.restartPermits.get(identity.requestId)
+    return pending !== undefined && pending.sessionId === identity.sessionId
+      && pending.locator.transportRequestId === identity.requestId
+      && pending.locator.installationId === identity.installationId
+      && pending.locator.grantEpoch === identity.grantEpoch
+      || retained !== undefined && retained.sessionId === identity.sessionId
+      && retained.locator.transportRequestId === identity.requestId
+      && retained.locator.installationId === identity.installationId
+      && retained.locator.grantEpoch === identity.grantEpoch
+  }
+
   /** A quiescent document-replaced result proves this exact sent request cannot continue on its old target. */
   releaseDocumentReplaced(requestId: string, sessionId: string, installationId: string): BrowserInvocation['target'] | undefined {
     this.prune()
@@ -200,6 +293,9 @@ export class BrowserRequests {
       entry.cleanup()
     }
     this.connections.clear()
+    for (const pending of this.restartLookups.values()) { clearTimeout(pending.timer); pending.resolve(undefined) }
+    this.restartLookups.clear()
+    this.restartPermits.clear()
     this.entries.clear()
   }
 
@@ -218,6 +314,9 @@ export class BrowserRequests {
   private disconnect(installationId: string, connection: Connection | undefined): void {
     if (connection === undefined || this.connections.get(installationId) !== connection) return
     this.connections.delete(installationId)
+    for (const [requestId, pending] of this.restartPermits) {
+      if (pending.locator.installationId === installationId) this.restartPermits.delete(requestId)
+    }
     for (const entry of this.entries.values()) {
       if (entry.request.installationId === installationId && entry.result === undefined) this.unknown(entry, 'disconnected')
     }
@@ -241,6 +340,14 @@ export class BrowserRequests {
     entry.result = result
     entry.quiescent = result.outcome === 'unknown' ? quiescent : true
     entry.resolve(structuredClone(result))
+  }
+
+  private matchesRestartPermit(identity: Pick<BrowserRequestIdentity, 'requestId' | 'sessionId' | 'installationId' | 'grantEpoch'>): boolean {
+    const pending = this.restartPermits.get(identity.requestId)
+    return pending !== undefined && pending.sessionId === identity.sessionId
+      && pending.locator.transportRequestId === identity.requestId
+      && pending.locator.installationId === identity.installationId
+      && pending.locator.grantEpoch === identity.grantEpoch
   }
 
   private prune(): void {
@@ -273,4 +380,4 @@ function canonical(value: JsonValue): string {
   }).join(',')}}`
 }
 
-function isRecord(value: unknown): boolean { return typeof value === 'object' && value !== null && !Array.isArray(value) }
+function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }

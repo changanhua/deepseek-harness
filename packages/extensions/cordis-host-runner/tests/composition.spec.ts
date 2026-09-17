@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type { CordisDynamicPackageId, CordisDynamicPluginId } from '../src/types.ts'
 import { missingServices } from '../src/lifecycle.ts'
 import {
@@ -141,6 +144,213 @@ describe('cross-package provide/inject', () => {
 })
 
 describe('stop reaches quiescence', () => {
+  it('cleans browser resources through the owner scope before the Agent detaches', async () => {
+    const harness = await setup()
+    const ownerId = SessionId('S-scoped-cleanup')
+    const ownerCtx = new Context()
+    const owner = { ...AGENT_A, id: ownerId, session: { id: ownerId }, ctx: ownerCtx } as Agent
+    const detach = harness.ctx.agents.register(owner)
+    const cleanup = Promise.withResolvers<undefined>()
+    const browser = {
+      execute: vi.fn(async (operation: { action: { kind: string } }) => {
+        expect(harness.ctx.agents.get(owner.id)).toBe(owner)
+        expect(harness.ctx.agents.currentInitiator()).toBe(owner)
+        if (operation.action.kind === 'region_clear') cleanup.resolve(undefined)
+        return {
+          requestId: `browser-${operation.action.kind}`, sessionId: owner.id, installationId: 'install-1',
+          outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'page_map'
+            ? { regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] }
+            : operation.action.kind === 'region_clear'
+              ? { cleared: true, restored: 1 } : { kind: operation.action.kind },
+        }
+      }),
+    }
+    harness.ctx.provide('browser', browser)
+    const { pluginId, packageId } = harness.runner.define(owner, {
+      plugin: { kind: 'new', idPrefix: 'scope' }, name: 'scope-cleanup', purpose: 'test cleanup ordering',
+      code: { host: `
+        return { name: 'scope-cleanup', inject: ['browser', 'tools'], apply(ctx) {
+          harness.registerTool(ctx, harness.defineTool({
+            name: 'scope_cleanup_browser', description: 'Render a temporary page region.', parameters: {},
+            output: { schema: { type: 'json' }, render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }] } },
+            async execute() { const page = { tabId: 7, frameId: 0, documentId: 'doc-1', url: 'https://example.test/feed' }; const map = await harness.browser.pageMap({ installationId: 'install-1', page }); return harness.browser.render({ installationId: 'install-1', page, slot: 'owner', regionRef: map.value.regions[0].regionRef, presentation: { summary: 'owned' } }) },
+          }))
+        }}
+      ` },
+    })
+    await harness.runner.run(owner, pluginId, packageId, 'run')
+    await call(harness.ctx, 'scope_cleanup_browser', {})
+
+    await ownerCtx.fiber.dispose()
+    await cleanup.promise
+    expect(harness.runner.inventory()).not.toEqual(expect.arrayContaining([expect.objectContaining({ pluginId })]))
+    detach()
+  })
+
+  it('attributes browser dispatch and stop cleanup to the exact live defining Agent', async () => {
+    const harness = await setup()
+    const initiators: Array<Agent | undefined> = []
+    const browser = {
+      execute: vi.fn(async (operation: { action: { kind: string } }) => {
+        initiators.push(harness.ctx.agents.currentInitiator())
+        return {
+          requestId: `browser-${operation.action.kind}`, sessionId: AGENT_A.id, installationId: 'install-1',
+          outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'page_map'
+            ? { regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] }
+            : operation.action.kind === 'region_clear'
+              ? { cleared: true, restored: 1 } : { kind: operation.action.kind },
+        }
+      }),
+    }
+    harness.ctx.provide('browser', browser)
+    const { pluginId, packageId } = harness.runner.define(AGENT_A, {
+      plugin: { kind: 'new', idPrefix: 'owner' }, name: 'owner-bound', purpose: 'test browser ownership',
+      code: { host: `
+        return { name: 'owner-bound', inject: ['browser', 'tools'], apply(ctx) {
+          harness.registerTool(ctx, harness.defineTool({
+            name: 'owner_bound_browser', description: 'Render a temporary page region.', parameters: {},
+            output: { schema: { type: 'json' }, render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }] } },
+            async execute() { const page = { tabId: 7, frameId: 0, documentId: 'doc-1', url: 'https://example.test/feed' }; const map = await harness.browser.pageMap({ installationId: 'install-1', page }); return harness.browser.render({ installationId: 'install-1', page, slot: 'owner', regionRef: map.value.regions[0].regionRef, presentation: { summary: 'owned' } }) },
+          }))
+        }}
+      ` },
+    })
+
+    await harness.runner.run(AGENT_A, pluginId, packageId, 'run')
+    await call(harness.ctx, 'owner_bound_browser', {})
+    await harness.runner.stop(AGENT_A, pluginId)
+
+    expect(initiators).toEqual([AGENT_A, AGENT_A, AGENT_A])
+    expect(JSON.parse(JSON.stringify(harness.runner.inventory()))).not.toHaveProperty('ownerAgent')
+  })
+
+  it('refuses a forged defining Agent even when its session id matches a live owner', async () => {
+    const harness = await setup()
+    expect(() => harness.runner.define({ ...AGENT_A }, {
+      plugin: { kind: 'new', idPrefix: 'forge' }, name: 'forged', purpose: 'must fail', code: { host: 'return () => {}' },
+    })).toThrow('live Agent')
+  })
+
+  it('does not revive the disposed owner while it clears that owner\'s rendered region', async () => {
+    const harness = await setup()
+    const cleanup = Promise.withResolvers<undefined>()
+    const initiators: Array<Agent | undefined> = []
+    harness.ctx.provide('browser', {
+      execute: vi.fn(async (operation: { action: { kind: string } }) => {
+        initiators.push(harness.ctx.agents.currentInitiator())
+        if (operation.action.kind === 'region_clear') cleanup.resolve(undefined)
+        return {
+          requestId: `browser-${operation.action.kind}`, sessionId: AGENT_A.id, installationId: 'install-1',
+          outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'page_map'
+            ? { regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] }
+            : operation.action.kind === 'region_clear'
+              ? { cleared: true, restored: 1 } : { kind: operation.action.kind },
+        }
+      }),
+    })
+    const { pluginId, packageId } = harness.runner.define(AGENT_A, {
+      plugin: { kind: 'new', idPrefix: 'gone' }, name: 'dispose-bound', purpose: 'test owner disposal',
+      code: { host: `
+        return { name: 'dispose-bound', inject: ['browser', 'tools'], apply(ctx) {
+          harness.registerTool(ctx, harness.defineTool({
+            name: 'dispose_bound_browser', description: 'Render a temporary page region.', parameters: {},
+            output: { schema: { type: 'json' }, render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }] } },
+            async execute() { const page = { tabId: 7, frameId: 0, documentId: 'doc-1', url: 'https://example.test/feed' }; const map = await harness.browser.pageMap({ installationId: 'install-1', page }); return harness.browser.render({ installationId: 'install-1', page, slot: 'dispose', regionRef: map.value.regions[0].regionRef, presentation: { summary: 'owned' } }) },
+          }))
+        }}
+      ` },
+    })
+
+    await harness.runner.run(AGENT_A, pluginId, packageId, 'run')
+    await call(harness.ctx, 'dispose_bound_browser', {})
+    harness.disposeAgent(AGENT_A)
+    await cleanup.promise
+
+    expect(initiators).toEqual([AGENT_A, AGENT_A, undefined])
+  })
+
+  it('retries unresolved owner cleanup after detachment without reviving the disposed Agent', async () => {
+    const harness = await setup()
+    const completed = Promise.withResolvers<undefined>()
+    const initiators: Array<Agent | undefined> = []
+    let clears = 0
+    const statusRequests: string[] = []
+    harness.ctx.provide('browser', {
+      execute: vi.fn(async (operation: { action: { kind: string } }) => {
+        initiators.push(harness.ctx.agents.currentInitiator())
+        if (operation.action.kind === 'region_clear') {
+          clears++
+          if (clears === 1) return { outcome: 'unknown', delivery: 'sent' }
+          completed.resolve(undefined)
+          return { outcome: 'observed', delivery: 'sent', value: { cleared: true, restored: 1 } }
+        }
+        return {
+          requestId: `browser-${operation.action.kind}`, sessionId: AGENT_A.id, installationId: 'install-1',
+          outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'page_map'
+            ? { regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] }
+            : { rendered: 1 },
+        }
+      }),
+      requestStatus: vi.fn(async (query: { requestId: string }) => {
+        statusRequests.push(query.requestId)
+        completed.resolve(undefined)
+        return { requestId: query.requestId, sessionId: AGENT_A.id, installationId: 'install-1',
+          outcome: 'observed', delivery: 'sent', value: { cleared: true, restored: 1 } }
+      }),
+    })
+    const { pluginId, packageId } = harness.runner.define(AGENT_A, {
+      plugin: { kind: 'new', idPrefix: 'orphan' }, name: 'orphan-cleanup', purpose: 'recover page cleanup after owner disposal',
+      code: { host: `
+        return { name: 'orphan-cleanup', inject: ['browser', 'tools'], apply(ctx) {
+          harness.registerTool(ctx, harness.defineTool({
+            name: 'orphan_cleanup_browser', description: 'Render a temporary page region.', parameters: {},
+            output: { schema: { type: 'json' }, render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }] } },
+            async execute() { const page = { tabId: 7, frameId: 0, documentId: 'doc-1', url: 'https://example.test/feed' }; const map = await harness.browser.pageMap({ installationId: 'install-1', page }); return harness.browser.render({ installationId: 'install-1', page, slot: 'orphan', regionRef: map.value.regions[0].regionRef, presentation: { summary: 'owned' } }) },
+          }))
+        }}
+      ` },
+    })
+
+    await harness.runner.run(AGENT_A, pluginId, packageId, 'run')
+    await call(harness.ctx, 'orphan_cleanup_browser', {})
+    harness.disposeAgent(AGENT_A)
+    await completed.promise
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(clears).toBe(1)
+    expect(initiators).toEqual([AGENT_A, AGENT_A, undefined])
+    expect(statusRequests).toHaveLength(1)
+    expect(harness.runner.inventory().find(row => row.pluginId === pluginId)).toBeUndefined()
+  })
+
+  it('transfers exact cleanup to the runner ledger after the owning BrowserTask is terminal', async () => {
+    const harness = await setup()
+    const initiators: Array<Agent | undefined> = []
+    harness.ctx.provide('browserTasks', { get: () => ({ phase: 'terminal' }) } as never)
+    harness.ctx.provide('browser', { execute: vi.fn(async (operation: { action: { kind: string } }) => {
+      initiators.push(harness.ctx.agents.currentInitiator())
+      return {
+        requestId: `browser-${operation.action.kind}`, sessionId: AGENT_A.id, installationId: 'install-1',
+        outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'entry_unmount'
+          ? { unmounted: true, remaining: 0 } : { mounted: 1 },
+      }
+    }) } as never)
+    const { pluginId, packageId } = harness.runner.define(AGENT_A, {
+      plugin: { kind: 'new', idPrefix: 'term' }, name: 'terminal-cleanup', purpose: 'clean after task terminal',
+      code: { host: `
+        return { name: 'terminal-cleanup', async apply() {
+          await harness.browser.mount({ installationId: 'install-1',
+            page: { tabId: 7, frameId: 0, documentId: 'doc-1', url: 'https://example.test/feed' },
+            slot: 'collect', regionSelector: 'main', selector: ':scope > article', label: 'Collect' })
+        } }
+      ` },
+    })
+
+    await expect(harness.runner.run(AGENT_A, pluginId, packageId, 'run')).resolves.toMatchObject({ ok: true })
+    await expect(harness.runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
+    expect(initiators).toEqual([AGENT_A, undefined])
+  })
+
   it('lets an Agent-made tool use the bounded Browser facade with a fresh page identity', async () => {
     const harness = await setup()
     const browser = {
@@ -198,8 +408,10 @@ describe('stop reaches quiescence', () => {
     const browser = {
       execute: vi.fn(async (operation: { sessionId: string; installationId: string; action: { kind: string } }) => ({
         requestId: `browser-${operation.action.kind}`, sessionId: operation.sessionId, installationId: operation.installationId,
-        outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'region_clear'
-          ? { cleared: true, restored: 1 } : { kind: operation.action.kind },
+        outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'page_map'
+          ? { regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] }
+          : operation.action.kind === 'region_clear'
+            ? { cleared: true, restored: 1 } : { kind: operation.action.kind },
       })),
     }
     harness.ctx.provide('browser', browser)
@@ -214,7 +426,7 @@ describe('stop reaches quiescence', () => {
             async execute() {
               const page = { tabId: 7, frameId: 0, documentId: 'doc-1', url: 'https://example.test/feed' }
               const map = await harness.browser.pageMap({ installationId: 'install-1', page })
-              const panel = await harness.browser.render({ installationId: 'install-1', page, slot: 'analysis', selector: '#side', mode: 'replace', blocks: [{ type: 'text', text: '结果' }] })
+              const panel = await harness.browser.render({ installationId: 'install-1', page, slot: 'analysis', regionRef: map.value.regions[0].regionRef, mode: 'replace', presentation: { summary: '结果' } })
               return { map, panel }
             },
           }))

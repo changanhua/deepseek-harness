@@ -39,11 +39,11 @@ kind: "package-reference"
 
 `isAuthorized(instance)` 同步复查旧实例快照是否仍符合当前身份、授权版本、权限和站点范围。异步工作结束后、返回保留的观察内容前使用它。离线本身不撤销权限；撤权一开始，此检查就必须失败。
 
-`instances()` 报告已授权的浏览器安装，不暴露凭据。`execute()` 接受显式会话、安装和操作目标；`prepare()` 返回绑定到该提供方、epoch、Session 和操作且会过期的 ticket，`executePrepared()` 只能提交该 ticket。结果区分已观察到的本地操作、失败、取消和 `unknown` outcome。`unknown` 结果不构成重试许可，因为提供方无法证明浏览器没有执行变更性操作。
+`instances()` 报告已授权的浏览器安装，不暴露凭据。`execute()` 接受显式会话、安装和操作目标；`prepare()` 是只读的准入探测，返回绑定到该提供方、epoch、Session 和操作且会过期的 ticket；`executePrepared()` 只能提交该 ticket。准备不是已派发的 attempt。结果区分已观察到的本地操作、失败、取消和 `unknown` outcome。`unknown` 结果不构成重试许可，因为提供方无法证明浏览器没有执行变更性操作。
 
-每个 `BrowserOperation` 都携带调用方在派发前生成的请求 ID。提供方会在派发前记录该身份，因此完全相同的重复调用只读取同一份保留回执，不会再次执行页面操作。在线实例携带执行器握手：协议版本、已实现 action 种类和请求恢复支持。消费方必须把缺失 capability 快照或变化的授权 epoch 视为不可用 authority，而不是猜测 worker 的能力。
+每个 `BrowserOperation` 都携带调用方在派发前生成的请求 ID。`browser/operation-intent` 准入逻辑操作，`browser/dispatch-intent` 是发送前的最终决定，`browser/operation-settled` 发布其不可改写的结果。提供方会在派发前记录该身份，因此完全相同的重复调用只读取同一份保留回执，不会再次执行页面操作。需要重启恢复的消费方会在派发时保存公开且不含动作的 locator，在发送前 flush 其持久状态，之后只查询状态。在线实例携带执行器握手：协议版本、已实现 action 种类和请求恢复支持。消费方必须把缺失 capability 快照或变化的授权 epoch 视为不可用 authority，而不是猜测 worker 的能力。
 
-`page_map` 为 `region_render` 建立短时、精确文档证据。只有该证据仍命名所选区域时，提供方才可以追加扩展自有区域；替换还要求其 disposable 提示，并拒绝 protected 或未知区域。只有已观察到 `cleared:true`、已观察到精确的 `disposition:'absent'`，或已发送且返回 `document_replaced`，才能确认清理；`target_url_stale` 表示资源仍未解决，必须重新观察或作出恢复决定。Host registration 带有 generation：晚到的 clear 或 unmount 只能结算其捕获的 generation，不能删除后来复用同一 ID 的 render 或 mount。
+`page_map` 为 `region_render` 建立短时、精确文档证据，但最多返回 64 个不透明的 `regionRef`，而不是 CSS selector。`region_render` 接收一个引用和一个有界的 `BrowserRegionPresentation`；Host 解析私有 selector 并编译扩展 payload。公开 action 与 status 结果会递归移除展示 selector 和编译后的 blocks。这不改变条目适配：`entry_inspect` 和 `entry_mount` 仍是由提供方验证的 selector 动作。只有该引用仍命名所选区域时，提供方才可以追加扩展自有区域；替换还要求其 disposable 提示，并拒绝 protected 或未知区域。只有已观察到 `cleared:true`、已观察到精确的 `disposition:'absent'`，或已发送且返回 `document_replaced`，才能确认清理；`target_url_stale` 表示资源仍未解决，必须重新观察或作出恢复决定。Host registration 带有 generation：晚到的 clear 或 unmount 只能结算其捕获的 generation，不能删除后来复用同一 ID 的 render 或 mount。
 
 `observe()` 只在显式 observation grant epoch 以及 `browser:read` 和 `browser:observe` 两项 scope 下执行有限的 `tabs` 或 `snapshot` 读取。观察快照不会在交互元素缓存中分配或保留元素引用；浏览器不可用绝不报告为未变化的观察结果。
 

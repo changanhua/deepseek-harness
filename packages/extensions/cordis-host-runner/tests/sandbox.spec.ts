@@ -188,8 +188,7 @@ describe('parse failures teach the fix', () => {
   it('answers TypeScript syntax in the plain-JS sandbox with the fix, at define time', async () => {
     const harness = await setup()
     // The precheck runs inside define, so unparseable code never reaches the registry.
-    expect(() => harness.runner.define({
-      sessionId: AGENT_A.id,
+    expect(() => harness.runner.define(AGENT_A, {
       plugin: { kind: 'new', idPrefix: 'probe' },
       name: 'ts',
       purpose: 'p',
@@ -205,8 +204,7 @@ describe('parse failures teach the fix', () => {
     // not trigger the TypeScript hint — the heuristic reads the failing line.
     let message = ''
     try {
-      harness.runner.define({
-        sessionId: AGENT_A.id,
+      harness.runner.define(AGENT_A, {
         plugin: { kind: 'new', idPrefix: 'probe' },
         name: 'oops',
         purpose: 'p',

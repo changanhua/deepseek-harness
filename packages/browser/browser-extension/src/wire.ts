@@ -10,6 +10,7 @@ const browserActionKinds = ['tabs', 'snapshot', 'page_map', 'entry_inspect', 'en
 const executorCapabilities = z.object({
   protocolVersion: z.literal(1), actionKinds: z.array(z.enum(browserActionKinds)).min(1).max(browserActionKinds.length)
     .refine(value => new Set(value).size === value.length), requestRecovery: z.literal(true),
+  restartStatusLookup: z.literal(true).optional(),
 }).strict()
 const page = z.object({ tabId: z.number().int().nonnegative(), frameId: z.number().int().nonnegative(),
   documentId: id, url: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)) }).strict()
@@ -27,16 +28,21 @@ export const browserPreparationSchema = z.object({
   preparationId: z.uuid({ version: 'v4' }), expiresAt: z.number().int().positive(), description: browserActionDescriptionSchema,
 }).strict()
 
-/** One plain-data content block. The page half renders each field as a DOM text node, never as markup. */
-const regionBlockSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('heading'), text: z.string().max(512) }).strict(),
-  z.object({ type: z.literal('text'), text: z.string().max(4096) }).strict(),
-  z.object({ type: z.literal('item'), title: z.string().max(512), meta: z.string().max(512).optional(),
-    link: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)).optional() }).strict(),
-  z.object({ type: z.literal('keyvalue'), label: z.string().max(256), value: z.string().max(1024) }).strict(),
-  z.object({ type: z.literal('link'), text: z.string().max(512),
-    href: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)) }).strict(),
-])
+/** Selector-free public input. Only BrowserExtension compiles it to blocks. */
+const regionPresentationSchema = z.object({
+  title: z.string().min(1).max(128).optional(),
+  summary: z.string().min(1).max(4096).optional(),
+  items: z.array(z.object({ title: z.string().min(1).max(512), meta: z.string().max(512).optional(),
+    link: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)).optional() }).strict()).max(128).optional(),
+  facts: z.array(z.object({ label: z.string().min(1).max(256), value: z.string().max(1024) }).strict()).max(128).optional(),
+  links: z.array(z.object({ text: z.string().min(1).max(512), href: z.url().max(8192)
+    .refine(value => ['http:', 'https:'].includes(new URL(value).protocol)) }).strict()).max(128).optional(),
+  footer: z.string().min(1).max(4096).optional(),
+}).strict()
+  .refine(value => value.title !== undefined || value.summary !== undefined || value.items?.length
+    || value.facts?.length || value.links?.length || value.footer !== undefined)
+  .refine(value => Number(value.title !== undefined) + Number(value.summary !== undefined) + Number(value.footer !== undefined)
+    + (value.items?.length ?? 0) + (value.facts?.length ?? 0) + (value.links?.length ?? 0) <= 200)
 
 /** Domain actions accepted by every entry into the provider, including direct callers. */
 export const browserActionSchema = z.discriminatedUnion('kind', [
@@ -73,9 +79,8 @@ export const browserActionSchema = z.discriminatedUnion('kind', [
     linkSelector: z.string().max(256).optional(),
     collected: z.array(z.string().max(8192)).max(512).optional() }).strict(),
   z.object({ kind: z.literal('entry_unmount'), page, mountId: id, forgetCollected: z.boolean().optional() }).strict(),
-  z.object({ kind: z.literal('region_render'), page, mountId: id, selector: z.string().min(1).max(256),
-    placement: z.enum(['prepend', 'append']).optional(), mode: z.enum(['append', 'replace']).optional(), title: z.string().max(128).optional(),
-    blocks: z.array(regionBlockSchema).min(1).max(200) }).strict(),
+  z.object({ kind: z.literal('region_render'), page, mountId: id, regionRef: z.uuid({ version: 'v4' }),
+    placement: z.enum(['prepend', 'append']).optional(), mode: z.enum(['append', 'replace']).optional(), presentation: regionPresentationSchema }).strict(),
   z.object({ kind: z.literal('region_clear'), page, mountId: id }).strict(),
 ])
 const identity = z.object({

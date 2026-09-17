@@ -1,12 +1,12 @@
 /** Client-safe durable vocabulary for the Session-backed browser task domain. */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { BrowserPage } from '@changanhua/dsh-browser/types'
+import type { BrowserPage, BrowserRecoveryLocator } from '@changanhua/dsh-browser/types'
 
 export type BrowserTaskId = Branded<'BrowserTaskId'>
 export interface BrowserTaskRef { readonly id: BrowserTaskId; readonly revision: number }
 export type BrowserTaskPhase = 'running' | 'waiting' | 'verifying' | 'settling' | 'terminal'
 export type BrowserTaskOutcome = 'completed' | 'refused' | 'cancelled' | 'failed' | 'budget-exhausted'
-export type BrowserTaskBlocker = 'approval' | 'human-interaction' | 'unknown-attempt' | 'capability-drift' | 'target-lost' | 'delegated-work' | 'cleanup'
+export type BrowserTaskBlocker = 'approval' | 'human-interaction' | 'unknown-attempt' | 'capability-drift' | 'target-lost' | 'delegated-work' | 'cleanup' | 'repeated-error' | 'internal-invariant'
 export interface BrowserTargetBinding { readonly installationId: string; readonly page: BrowserPage }
 
 /** A small, typed pointer to a fact already present in the Session log. */
@@ -19,12 +19,22 @@ export type BrowserTaskSourceRef =
   | { readonly kind: 'browser-task-delegation'; readonly sessionSeq: number }
 
 export type EvidenceState = 'current' | 'stale' | 'superseded'
+export interface BrowserPageMapEvidence {
+  readonly regions: readonly {
+    /** Opaque map generation reference; never a page selector. */
+    readonly regionRef: string
+    readonly disposable: boolean
+    readonly protected: boolean
+  }[]
+}
 export interface BrowserTaskEvidence {
   readonly id: string
   readonly state: EvidenceState
   readonly source: BrowserTaskSourceRef
   readonly digest: string
   readonly coverage?: number
+  /** Bounded page facts used only to decide whether a failed semantic target materially changed. */
+  readonly pageMap?: BrowserPageMapEvidence
   readonly target: BrowserTargetBinding
   readonly grantEpoch: number
 }
@@ -39,7 +49,7 @@ export interface AcceptanceEvaluation {
   readonly evidenceIds: readonly string[]
   readonly checkerRef: { readonly kind: 'browser-task-check'; readonly sessionSeq: number }
 }
-export type AttemptStage = 'planned' | 'prepared' | 'dispatched' | 'settled'
+export type AttemptStage = 'planned' | 'prepared' | 'dispatch-intent' | 'dispatched' | 'settled'
 export type AttemptOutcome = 'observed' | 'failed' | 'cancelled' | 'unknown'
 export interface BrowserActionAttempt {
   readonly attemptId: string
@@ -55,6 +65,8 @@ export interface BrowserActionAttempt {
   readonly resourceId?: string
   /** Bounded render intent retained before dispatch so a recovered receipt can prove presentation. */
   readonly presentationIntent?: { readonly contentDigest: string; readonly excerpt: string }
+  /** Public extension-journal key written atomically with dispatch intent. */
+  readonly recoveryLocator?: BrowserRecoveryLocator
   readonly settledBy?: BrowserTaskSourceRef
   readonly reconciledBy?: BrowserTaskSourceRef
 }
@@ -141,6 +153,8 @@ export interface BrowserTaskReceipt {
   /** Exact resource lease affected by this receipt, when the action is resource-scoped. */
   readonly resourceId?: string
   readonly reason?: string
+  /** Stable semantic identity for a deterministic failure; excludes request and resource IDs. */
+  readonly failureFingerprint?: string
   readonly presentation?: { readonly contentDigest: string; readonly excerpt: string }
 }
 export interface BrowserTaskCheck { readonly kind: 'browser-task/check'; readonly version: 1; readonly taskId: BrowserTaskId; readonly checkerId: string; readonly target: BrowserTargetBinding; readonly grantEpoch: number; readonly evaluations: readonly { readonly clauseId: string; readonly satisfied: boolean; readonly evidenceIds: readonly string[] }[] }
@@ -149,6 +163,16 @@ export interface BrowserTaskDelegation {
   readonly kind: 'browser-task/delegation'
   readonly version: 1
   readonly taskId: BrowserTaskId
+  readonly work: Omit<DelegatedWorkRef, 'source'>
+}
+/** Canonical delegated work observed before its same-turn BrowserTask exists. */
+export interface BrowserTaskDelegationCandidate {
+  readonly kind: 'browser-task/delegation-candidate'
+  readonly version: 1
+  readonly originUserSeq: number
+  readonly toolCallId: string
+  readonly toolCallSeq: number
+  readonly toolResultSeq: number
   readonly work: Omit<DelegatedWorkRef, 'source'>
 }
 /** Host-only replay index. It never crosses the projection wire. */
@@ -169,6 +193,7 @@ export interface BrowserTaskSourceFact {
   readonly grantEpoch?: number
   readonly resourceId?: string
   readonly reason?: string
+  readonly failureFingerprint?: string
   readonly presentation?: { readonly contentDigest: string; readonly excerpt: string }
   readonly checkerId?: string
   readonly evaluations?: readonly {
@@ -184,6 +209,8 @@ export interface BrowserTaskProjectionState {
   readonly lastSourceSeq: number
   readonly lastTaskSourceSeq: number
   readonly sourceFacts: readonly BrowserTaskSourceFact[]
+  /** Host-only same-user-turn delegations waiting for task creation. */
+  readonly pendingDelegations: readonly BrowserTaskDelegationCandidate[]
   readonly failure: string | null
 }
 export interface CreateBrowserTaskRequest {

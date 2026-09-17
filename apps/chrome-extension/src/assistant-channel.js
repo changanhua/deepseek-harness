@@ -11,6 +11,7 @@ const executorCapabilities = Object.freeze({
     'navigate', 'click', 'fill', 'submit', 'scroll', 'wait', 'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload',
     'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot']),
   requestRecovery: true,
+  restartStatusLookup: true,
 })
 
 const channelError = (code, reason) => Object.assign(new Error(code), { code, ...(reason === undefined ? {} : { reason }) })
@@ -90,6 +91,17 @@ export const createAssistantChannel = ({
 
   const dispatchCommand = frame => {
     const prior = frame.type !== 'execute' && activeGrant?.scopes?.includes('browser:write')
+    if (frame.type === 'status-query') {
+      const locator = frame.locator
+      if (!locator || locator.kind !== 'extension-journal-v1' || locator.protocolVersion !== 1
+        || locator.installationId !== channelCredentials.installationId
+        || !Number.isSafeInteger(locator.grantEpoch) || locator.grantEpoch < 1 || locator.grantEpoch > activeGrant?.grantEpoch
+        || typeof locator.transportRequestId !== 'string' || !locator.transportRequestId
+        || typeof frame.sessionId !== 'string' || !frame.sessionId
+        || !activeGrant?.scopes?.includes('browser:read')) return
+      void Promise.resolve(onCommand(clone(frame))).catch(() => {})
+      return
+    }
     if (!['execute', 'status', 'cancel'].includes(frame.type) || !matchesRequestIdentity(frame.request, channelCredentials, prior)) return
     Promise.resolve().then(() => onCommand(clone(frame))).catch(() => {})
   }
@@ -188,10 +200,19 @@ export const createAssistantChannel = ({
     report({ phase: 'stopped' })
   }
 
-  const sendReceipt = receipt => {
-    if (!socketIsOpen(socket, WebSocketImpl) || !activeGrant || !matchesRequestIdentity(receipt, channelCredentials, activeGrant.scopes?.includes('browser:write'))) return false
+  const sendReceipt = (receipt, options = {}) => {
+    const lookup = options.restartLookup
+    const restartLookup = lookup?.type === 'status-query' && activeGrant?.scopes?.includes('browser:read')
+      && lookup.locator?.kind === 'extension-journal-v1' && lookup.locator.protocolVersion === 1
+      && lookup.locator.transportRequestId === receipt?.requestId
+      && lookup.locator.installationId === receipt?.installationId
+      && lookup.locator.grantEpoch === receipt?.grantEpoch
+      && lookup.sessionId === receipt?.sessionId
+      && receipt?.grantEpoch <= activeGrant.grantEpoch
+    if (!socketIsOpen(socket, WebSocketImpl) || !activeGrant
+      || !matchesRequestIdentity(receipt, channelCredentials, restartLookup || activeGrant.scopes?.includes('browser:write'))) return false
     try {
-      const value = receipt.grantEpoch === activeGrant.grantEpoch ? clone(receipt) : {
+      const value = receipt.grantEpoch === activeGrant.grantEpoch || restartLookup ? clone(receipt) : {
         ...Object.fromEntries(['protocolVersion', 'grantEpoch', 'requestId', 'sessionId', 'installationId', 'deadline', 'fingerprint'].map(key => [key, receipt[key]])),
         outcome: receipt.outcome, quiescent: receipt.quiescent === true,
       }

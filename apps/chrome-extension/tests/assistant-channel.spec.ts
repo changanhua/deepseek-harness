@@ -36,6 +36,7 @@ const executorCapabilities = {
     'navigate', 'click', 'fill', 'submit', 'scroll', 'wait', 'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload',
     'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot'],
   requestRecovery: true,
+  restartStatusLookup: true,
 }
 
 class FakeSocket {
@@ -90,6 +91,23 @@ describe('浏览器助手 WebSocket 通道', () => {
     expect(sent(socket).at(-1).receipt).not.toHaveProperty('reason')
     expect(JSON.stringify(sent(socket).at(-1))).not.toContain('secret')
     expect(JSON.stringify(sent(socket).at(-1))).not.toContain('private-url')
+    channel.stop()
+  })
+  test('restart status-query accepts an older journal epoch but never turns into execute', async () => {
+    const onCommand = vi.fn<(frame: { type: string }) => void>()
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, onCommand })
+    channel.start(); const socket = FakeSocket.instances.at(-1)!; socket.open(); ready(socket)
+    const lookup = { type: 'status-query', locator: { kind: 'extension-journal-v1', protocolVersion: 1,
+      transportRequestId: 'old-journal-request', installationId: credentials.installationId, grantEpoch: 6 },
+    sessionId: 'old-session' }
+    socket.message(lookup)
+    await Promise.resolve()
+    expect(onCommand).toHaveBeenCalledWith(expect.objectContaining({ type: 'status-query' }))
+    expect(onCommand.mock.calls.some(([frame]) => frame.type === 'execute')).toBe(false)
+    expect(channel.sendReceipt({ ...receipt('old-journal-request', 6), sessionId: 'old-session',
+      value: { rendered: 1 }, reason: 'terminal-proof', quiescent: true }, { restartLookup: lookup })).toBe(true)
+    expect(sent(socket).at(-1)?.receipt).toMatchObject({ grantEpoch: 6, sessionId: 'old-session',
+      value: { rendered: 1 }, reason: 'terminal-proof', quiescent: true })
     channel.stop()
   })
   test('只转发当前已认证连接的会话事件', async () => {

@@ -38,15 +38,39 @@ type BrowserRegionBlock =
 ```
 
 ```ts type-equiv
+/**
+ * Model-facing, selector-free description of a temporary result panel.
+ * The Host compiles this into the extension wire blocks after resolving a
+ * short-lived regionRef.  It is intentionally data, never HTML.
+ */
+interface BrowserRegionPresentation {
+  readonly title?: string
+  readonly summary?: string
+  readonly items?: readonly { readonly title: string; readonly meta?: string; readonly link?: string }[]
+  readonly facts?: readonly { readonly label: string; readonly value: string }[]
+  readonly links?: readonly { readonly text: string; readonly href: string }[]
+  readonly footer?: string
+}
+```
+
+```ts type-equiv
+/** Host-authored bounded query used only to bind fresh snapshot evidence to a live DSH region mount. */
+interface BrowserPresentationQuery {
+  readonly mountId: string
+  readonly text: string
+}
+```
+
+```ts type-equiv
 /** Current consumers: interactive tools, explicit page intake, and finite monitor checks. */
 type BrowserAction =
   | { readonly kind: 'tabs' }
-  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean }
+  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean; readonly presentationQueries?: readonly BrowserPresentationQuery[] }
   | { readonly kind: 'page_map'; readonly page: BrowserPage }
   | { readonly kind: 'entry_inspect'; readonly page: BrowserPage; readonly regionSelector: string; readonly selector: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly sampleLimit?: number }
   | { readonly kind: 'entry_mount'; readonly page: BrowserPage; readonly mountId: string; readonly regionSelector?: string; readonly selector: string; readonly label: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly collected?: readonly string[] }
   | { readonly kind: 'entry_unmount'; readonly page: BrowserPage; readonly mountId: string; readonly forgetCollected?: boolean }
-  | { readonly kind: 'region_render'; readonly page: BrowserPage; readonly mountId: string; readonly selector: string; readonly placement?: 'prepend' | 'append'; readonly mode?: 'append' | 'replace'; readonly title?: string; readonly blocks: readonly BrowserRegionBlock[] }
+  | { readonly kind: 'region_render'; readonly page: BrowserPage; readonly mountId: string; readonly regionRef: BrowserRegionRef; readonly presentation: BrowserRegionPresentation; readonly placement?: 'prepend' | 'append'; readonly mode?: 'append' | 'replace' }
   | { readonly kind: 'region_clear'; readonly page: BrowserPage; readonly mountId: string }
   | { readonly kind: 'navigate'; readonly page: BrowserPage; readonly url: string }
   | { readonly kind: 'click'; readonly element: BrowserElementReference; readonly intent: string }
@@ -64,7 +88,7 @@ type BrowserAction =
   | { readonly kind: 'wait'; readonly page: BrowserPage; readonly milliseconds: number }
 ```
 
-`page_map` returns bounded regions for the exact document with unique selectors, geometry, importance, and disposable/protected hints. Call it before `region_render`: a render refuses an ambiguous selector and requires short-lived Host page-map evidence for the same Session, installation, grant epoch, and exact page. Append mode adds extension-owned nodes; replace mode additionally requires a mapped disposable, non-protected region and moves its original children aside until `region_clear` restores them. The page runtime renders only plain-data blocks as text nodes, binds the mount to its Session, installation, grant epoch, and page identity, and does not silently bind an old mount to a new URL. A clear is settled only by an observed `cleared:true`, an observed exact `disposition:'absent'`, or a sent `document_replaced`; `target_url_stale` leaves the resource unresolved.
+`page_map` returns at most 64 bounded regions for the exact document, but replaces each private selector with a short-lived opaque `regionRef`. Call it before `region_render`: a render accepts that reference and a bounded high-level presentation, while the Host alone resolves the selector and compiles plain-data blocks. The reference binds the Session, installation, grant epoch, exact page, and map lifetime; a new map invalidates its predecessors. Public action and status results recursively remove selectors, region selectors, and compiled blocks. This selector-free rule applies to page-map presentation only: the separately bounded `entry_inspect` and `entry_mount` site-adaptation actions retain their explicit, provider-validated selectors. Append mode adds extension-owned nodes; replace mode additionally requires the referenced disposable, non-protected region and moves its original children aside until `region_clear` restores them. The page runtime binds the mount to its Session, installation, grant epoch, and page identity, and does not silently bind an old mount to a new URL. A clear is settled only by an observed `cleared:true`, an observed exact `disposition:'absent'`, or a sent `document_replaced`; `target_url_stale` leaves the resource unresolved.
 
 A `tree` snapshot returns one stable cached hierarchy in pages. Its Document, element, text, and open Shadow Root nodes retain indexes and parent indexes across `treeCursor` reads; it does not rematch nodes. Iframe elements mark their source boundary, while frame documents require their own read. Hidden, editable, script, and style text is omitted, although hidden structure remains available with a hidden marker.
 
@@ -94,6 +118,22 @@ interface BrowserOperation {
 ```
 
 ```ts type-equiv
+/** Host-minted, short-lived reference to one exact page-map region. */
+type BrowserRegionRef = Branded<'BrowserRegionRef'>
+```
+
+```ts type-equiv
+/** Public, action-free key retained with a sent attempt for restart recovery. */
+interface BrowserRecoveryLocator {
+  readonly kind: 'extension-journal-v1'
+  readonly protocolVersion: 1
+  readonly transportRequestId: string
+  readonly installationId: string
+  readonly grantEpoch: number
+}
+```
+
+```ts type-equiv
 /** A carrier acknowledgement is not itself an observed business effect. */
 interface BrowserActionResult {
   readonly requestId: string
@@ -112,6 +152,8 @@ interface BrowserRequestStatusQuery {
   readonly requestId: string
   readonly sessionId: SessionId
   readonly installationId: string
+  /** Required when the Host no longer has the in-memory transport request. */
+  readonly recoveryLocator?: BrowserRecoveryLocator
 }
 ```
 
@@ -131,7 +173,7 @@ The manifest-declared `zhihu-feed.js` content script owns the separate reading-f
 
 ## Prepared actions
 
-Model tools prepare one immutable action before requesting approval. The provider owns an expiring ticket binding the Session, installation, grant epoch and complete action; a commit cannot replace its parameters. The extension keeps target and form values only in bounded document memory and compares them synchronously before executing. Changed or evicted snapshots and changed form state invalidate the preparation.
+Model tools prepare one immutable action before requesting approval. Preparation is an admission-only, read-only probe: abandoning a ticket neither consumes a task action budget nor leaves a planned attempt. The provider owns an expiring ticket binding the Session, installation, grant epoch and complete action; a commit cannot replace its parameters. The extension keeps target and form values only in bounded document memory and compares them synchronously before executing. Changed or evicted snapshots and changed form state invalidate the preparation.
 
 The tool policy uses both the action kind and browser-observed effect. Only native details disclosure, scrolling and waiting run without action approval. Other clicks, navigation, filling (which may autosave) and submission use the existing Approval service. Upload paths must be absolute and appear verbatim in the current user message; the model tool checks that origin before it executes the action and adds no separate approval dialog. The displayed value preview comes from the proposed Host input; existing page field values are not returned by preparation.
 
@@ -168,11 +210,11 @@ interface BrowserPreparedAction {
 
 The provider derives read or write scope from the action and checks the current installation grant before dispatch. The extension checks its current grant and Chrome site permissions before executing. Navigation verifies the resulting document; redirects beyond the authorized sites do not return the unauthorized destination's URL.
 
-The caller mints every request id before dispatch. Each invocation binds that id, protocol version, grant epoch, Session, installation, deadline, target and action to a digest. An exact duplicate shares its existing receipt. An online installation exposes the worker's capability handshake, so a missing declaration or unsupported action is unavailable rather than a guessed fallback. Reconnection asks for status and does not resend an action. The extension persists minimal intent before a page effect; the journal retains bounded result values without storing the original invocation payload. A restarted worker retains unresolved writes as locks on the whole tab, across Sessions and grant epochs. A missing initialized journal is an unavailable store, not an empty request history.
+The caller mints every request id before dispatch. Each invocation binds that id, protocol version, grant epoch, Session, installation, deadline, target and action to a digest. An exact duplicate shares its existing receipt. An online installation exposes the worker's capability handshake, so a missing declaration or unsupported action is unavailable rather than a guessed fallback. `browser/operation-intent` admits one logical action before provider-specific checks; `browser/dispatch-intent` runs immediately before the transport boundary; `browser/operation-settled` records the durable result without rewriting it. BrowserTask listeners use all three for direct calls, tool calls, prepared commits, and Dynamic Cordis calls. At dispatch they persist the planned attempt and action-free recovery locator, flush the Session, and only then allow the send. Reconnection asks for status and does not resend an action. The extension persists minimal intent before a page effect; the journal retains bounded result values without storing the original invocation payload. A restarted worker retains unresolved writes as locks on the whole tab, across Sessions and grant epochs. A missing initialized journal is an unavailable store, not an empty request history.
 
-Cancellation requests a stop. A lost receipt or deadline produces `unknown` until executor evidence resolves it. `requestStatus()` reads the caller-scoped retained state without replaying the request or disclosing its authority fingerprint. An unresolved write remains locked until an observed terminal result or explicit acknowledgement after executor quiescence. Neither a timeout nor loss of site permission proves that an old document stopped executing.
+Cancellation requests a stop. A lost receipt or deadline produces `unknown` until executor evidence resolves it. `requestStatus()` reads the caller-scoped retained state without replaying the request or disclosing its authority fingerprint. After Host memory loss, an exact recovery locator can issue only a journal `status-query` bound to the request, Session, installation, and original epoch; a missing, mismatched, offline, timed-out, or unsupported reply remains `unknown`. An unresolved write remains locked until an observed terminal result or explicit acknowledgement after executor quiescence. Neither a timeout nor loss of site permission proves that an old document stopped executing.
 
-`@changanhua/dsh-browser-task` is the Session-persistent authority for a natural-language field task. Its projection separates immutable page evidence and target binding, planned/prepared/dispatched/settled attempts and receipts, page-resource leases, capability snapshots, canonical Subagent/Job/Cordis identities, and acceptance checks. A checker-backed acceptance clause is distinct from an observed page action or a completed delegated run. A region presentation clause cites both the observed render and the later fresh page evidence before cleanup. Terminal completion requires every clause to cite current evidence, no blocker or unresolved write, an unexhausted budget, and every resource released or confirmed vanished. If the extension accepts an unknown request, it releases only its transport lock; it does not finish the Session task. A later direct user message may explicitly cancel that task only after every page resource has a receipt-backed final disposition, while the unknown attempt remains in the log. The tool consumer only continues this projection; it is not a process-local task authority.
+`@changanhua/dsh-browser-task` is the Session-persistent authority for a natural-language field task. Its projection separates immutable page evidence and target binding, planned/prepared/dispatched/settled attempts and receipts, page-resource leases, capability snapshots, canonical Subagent/Job/Cordis identities, and acceptance checks. A checker-backed acceptance clause is distinct from an observed page action or a completed delegated run. A region presentation clause cites both the observed render and the later fresh page evidence before cleanup. Terminal completion requires every clause to cite current evidence, no blocker or unresolved write, an unexhausted budget, and every resource released or confirmed vanished. A sent unknown request never replays. A deterministic not-sent failure blocks its unchanged semantic target after the first occurrence and resumes only when fresh evidence proves that precondition changed; internal projection errors become an `internal-invariant` blocker rather than a retryable Browser error. Exhausting a task budget permits only exact cleanup and ends the task once resources are final. If the extension accepts an unknown request, it releases only its transport lock; it does not finish the Session task. A later direct user message may explicitly cancel that task only after every page resource has a receipt-backed final disposition, while the unknown attempt remains in the log. The tool consumer only continues this projection; it is not a process-local task authority.
 
 The Puppeteer executor performs every implemented action. The DOM compatibility executor supports only `click`, `fill`, `submit`, `navigate`, `scroll`, and `wait`, and rejects newer action kinds. Screenshots require the main frame and are limited to 400,000 base64 characters. The [gateway README](../../packages/browser/browser-extension/README.md) owns transport bounds and configuration. The [Session Controller](../../packages/api/session-controller/README.md) owns conversation history; this service does not create a second message store.
 
@@ -590,6 +632,25 @@ Source: [`packages/browser/browser-task/src/index.ts`](../../packages/browser/br
 
 ### `browser/*` events
 
+<a id="browserdispatch-intent--waterfall"></a>
+
+#### `browser/dispatch-intent` — waterfall
+
+Single-slot policy immediately before a Browser Provider can cross its transport boundary. Calling `next()` delegates to the next policy; a denial returns a conclusive result without sending.
+
+```ts cordis-catalog
+/**
+ * Single-slot policy immediately before a Browser Provider can cross its transport boundary.
+ * Calling `next()` delegates to the next policy; a denial returns a conclusive result without sending.
+ * @param context - Logical operation plus exact transport identity, authority epoch, and mutation class.
+ * @param next - Continue to the next dispatch listener or the default allow decision.
+ * @mode waterfall
+ */
+'browser/dispatch-intent'(context: BrowserDispatchContext, next: () => BrowserDispatchDecision | Promise<BrowserDispatchDecision>): Promise<BrowserDispatchDecision>
+```
+
+Source: [`packages/browser/browser/src/index.ts`](../../packages/browser/browser/src/index.ts)
+
 <a id="browserentry-click--emit"></a>
 
 #### `browser/entry-click` — emit
@@ -603,6 +664,43 @@ A user clicked one entry mounted in an authorized external webpage.
  * @mode emit
  */
 'browser/entry-click'(event: BrowserEntryEvent): void
+```
+
+Source: [`packages/browser/browser/src/index.ts`](../../packages/browser/browser/src/index.ts)
+
+<a id="browseroperation-intent--waterfall"></a>
+
+#### `browser/operation-intent` — waterfall
+
+Single-slot admission for one logical Browser operation, before Provider-specific preconditions.
+
+```ts cordis-catalog
+/**
+ * Single-slot admission for one logical Browser operation, before Provider-specific preconditions.
+ * @param context - Caller identity, logical action, mutation class, and lifecycle phase.
+ * @param next - Continue to the next admission listener or the default allow decision.
+ * @mode waterfall
+ */
+'browser/operation-intent'(context: BrowserOperationContext, next: () => BrowserDispatchDecision | Promise<BrowserDispatchDecision>): Promise<BrowserDispatchDecision>
+```
+
+Source: [`packages/browser/browser/src/index.ts`](../../packages/browser/browser/src/index.ts)
+
+<a id="browseroperation-settled--parallel"></a>
+
+#### `browser/operation-settled` — parallel
+
+Awaited non-rewriting notification after one logical operation reaches a durable lifecycle fact. A listener failure cannot replace the Provider result.
+
+```ts cordis-catalog
+/**
+ * Awaited non-rewriting notification after one logical operation reaches a durable lifecycle fact.
+ * A listener failure cannot replace the Provider result.
+ * @param context - Exact logical operation and lifecycle phase that reached a fact.
+ * @param settlement - Prepared marker, conclusive result, or conservative delivery error.
+ * @mode parallel
+ */
+'browser/operation-settled'(context: BrowserOperationContext, settlement: BrowserOperationSettlement): Promise<void> | void
 ```
 
 Source: [`packages/browser/browser/src/index.ts`](../../packages/browser/browser/src/index.ts)

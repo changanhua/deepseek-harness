@@ -88,6 +88,32 @@ describe('browser tool approval policy', () => {
     expect(requestIds.every(requestId => typeof requestId === 'string' && /^[0-9a-f]{8}-/u.test(requestId))).toBe(true)
     expect(h.browser.executePrepared).toHaveBeenCalledTimes(2)
   })
+  it('returns one conclusive not-sent result when a sequence provider throws', async () => {
+    const h = harness('unknown'); h.browser.prepare.mockRejectedValue(new Error('offline'))
+    const onFailure=vi.fn()
+    const result=await dispatchSequence({ browser:h.browser,operations:[operation],agent,callId:undefined,
+      signal:h.controller.signal,approval:h.input.approval,onFailure })
+    expect(result).toEqual({ results:[expect.objectContaining({ requestId:operation.requestId,outcome:'failed',delivery:'not-sent',reason:'offline' })],stoppedAt:0 })
+    expect(onFailure).toHaveBeenCalledOnce()
+    expect(h.browser.executePrepared).not.toHaveBeenCalled()
+  })
+  it('returns an unknown sent result when prepared execution throws after its dispatch boundary', async () => {
+    const h = harness('unknown'); h.browser.executePrepared.mockRejectedValue(new Error('transport_boundary_failed'))
+    const result=await dispatchSequence({ browser:h.browser,operations:[operation],agent,callId:undefined,
+      signal:h.controller.signal,approval:h.input.approval })
+    expect(result).toEqual({ results:[expect.objectContaining({ requestId:operation.requestId,outcome:'unknown',
+      delivery:'sent',reason:'transport_boundary_failed' })],stoppedAt:0 })
+    expect(h.browser.executePrepared).toHaveBeenCalledOnce()
+  })
+  it.each([
+    ['ticket_unavailable','failed'],['expired','failed'],['closed','failed'],['unauthorized','failed'],['cancelled','cancelled'],
+  ] as const)('keeps the known local prepared failure %s conclusively not-sent',async(reason,outcome)=>{
+    const h=harness('unknown')
+    h.browser.executePrepared.mockRejectedValue(Object.assign(new Error(reason),{ code:reason }))
+    await expect(dispatchPrepared(h.input)).resolves.toMatchObject({ requestId:operation.requestId,
+      outcome,delivery:'not-sent',reason })
+    expect(h.browser.executePrepared).toHaveBeenCalledOnce()
+  })
   it('applies the approval policy to every prepared sequence step', async () => {
     const h = harness('local-disclosure')
     h.browser.prepare
@@ -191,6 +217,39 @@ describe('browser tool approval policy', () => {
     expect(h.browser.prepare).not.toHaveBeenCalled()
     await registered.get('browser_entry_unmount')!.execute({ installationId: 'installation', action: { kind: 'entry_unmount', page, mountId: 'feed' } }, { agent, signal: h.controller.signal } as ToolRunContext)
     expect(h.browser.execute).toHaveBeenCalledTimes(2)
+  })
+  it('returns a structured recovery diagnostic for a deterministic region rejection', async () => {
+    const h=harness('unknown'),registered=new Map<string,ToolDefinition>()
+    h.browser.execute.mockResolvedValue({ ...observed,outcome:'failed',delivery:'not-sent',reason:'region_ref_not_current' })
+    apply({ inject:vi.fn(),on:vi.fn(),browser:h.browser,approval:{ request:h.approval },
+      tools:{ register:(tool:ToolDefinition)=>{registered.set(tool.name,tool)} } } as unknown as Context)
+    const result=await registered.get('browser_region_render')!.execute({ installationId:'installation',action:{ kind:'region_render',page,
+      mountId:'panel',regionRef:'11111111-1111-4111-8111-111111111111',presentation:{ summary:'result' } } },{ agent,signal:h.controller.signal } as ToolRunContext)
+    expect(result).toMatchObject({ outcome:'failed',delivery:'not-sent',diagnostic:{ code:'REGION_REF_NOT_CURRENT',
+      category:'precondition',retryable:false,requiredNextAction:'refresh-page-map' } })
+    expect(JSON.stringify(result)).toMatch(/"fingerprint":"sha256:[a-f0-9]{64}"/u)
+  })
+  it('does not claim a direct provider exception proves that a page write was not sent', async () => {
+    const h=harness('unknown'),registered=new Map<string,ToolDefinition>()
+    h.browser.execute.mockRejectedValue(new Error('transport_boundary_failed'))
+    apply({ inject:vi.fn(),on:vi.fn(),browser:h.browser,approval:{ request:h.approval },
+      tools:{ register:(tool:ToolDefinition)=>{registered.set(tool.name,tool)} } } as unknown as Context)
+    const result=await registered.get('browser_region_render')!.execute({ installationId:'installation',action:{ kind:'region_render',page,
+      mountId:'panel',regionRef:'11111111-1111-4111-8111-111111111111',presentation:{ summary:'result' } } },{ agent,signal:h.controller.signal } as ToolRunContext)
+    expect(result).toMatchObject({ outcome:'unknown',delivery:'sent',reason:'transport_boundary_failed',
+      diagnostic:{ code:'OUTCOME_UNKNOWN',category:'unknown',retryable:false,requiredNextAction:'request-status' } })
+  })
+  it('treats cleanup of a conclusively released resource as an idempotent no-op', async () => {
+    const h=harness('unknown'),registered=new Map<string,ToolDefinition>()
+    const browserTasks={ get:()=>({ resources:[{ id:'panel',state:'released',target:{ installationId:'installation',page },
+      disposition:'not-sent',dispositionSource:{ kind:'browser-task-receipt',sessionSeq:1 } }] }) }
+    apply({ inject:vi.fn(),on:vi.fn(),browser:h.browser,browserTasks,approval:{ request:h.approval },
+      tools:{ register:(tool:ToolDefinition)=>{registered.set(tool.name,tool)} } } as unknown as Context)
+    const result=await registered.get('browser_region_clear')!.execute({ installationId:'installation',action:{ kind:'region_clear',page,mountId:'panel' } },
+      { agent,signal:h.controller.signal } as ToolRunContext)
+    expect(result).toMatchObject({ outcome:'observed',delivery:'not-sent',reason:'already_released',
+      value:{ cleared:true,disposition:'already-released' } })
+    expect(h.browser.execute).not.toHaveBeenCalled()
   })
   it('projects the retained request recovery boundary without replaying an action', async () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()

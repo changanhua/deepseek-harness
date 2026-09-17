@@ -4,6 +4,7 @@
  */
 
 import type { Fiber } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 import type {
@@ -70,6 +71,8 @@ export interface DynamicCordisPlugin {
   pluginId: CordisDynamicPluginId
   /** Owning session. */
   sessionId: SessionId
+  /** Exact live Agent that defined this Plugin; never included in public views. */
+  ownerAgent: Agent
   /** Versions in define order. */
   packages: Map<CordisDynamicPackageId, DynamicCordisDefinition>
   /** Client-bearing Packages individually authorized by the user. */
@@ -118,8 +121,6 @@ export interface DynamicCordisPendingRequest {
 
 /** Request accepted by `define`; it never crosses the Remote transport. */
 export interface DynamicCordisDefineRequest {
-  /** Session that owns the plugin. */
-  sessionId: SessionId
   /** Create a plugin or append to an existing one. */
   plugin:
     | { kind: 'new'; idPrefix: string }

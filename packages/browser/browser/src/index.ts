@@ -1,9 +1,22 @@
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { BrowserActionResult, BrowserEntryEvent, BrowserInstance, BrowserObservation, BrowserOperation, BrowserRequestStatus,
+import type {
+  BrowserActionResult,
+  BrowserDispatchContext,
+  BrowserDispatchDecision,
+  BrowserEntryEvent,
+  BrowserInstance,
+  BrowserObservation,
+  BrowserOperation,
+  BrowserOperationContext,
+  BrowserOperationSettlement,
+  BrowserPreparedAction,
+  BrowserPreparedTicket,
+  BrowserRequestStatus,
   BrowserRequestStatusQuery,
-  BrowserPreparedAction, BrowserPreparedTicket } from './types.ts'
+} from './types.ts'
 
 export type * from './types.ts'
+export { BrowserRegionRef } from './types.ts'
 declare module '@deepseek-ai/cordis' {
   interface Events {
     /**
@@ -12,6 +25,29 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'browser/entry-click'(event: BrowserEntryEvent): void
+    /**
+     * Single-slot admission for one logical Browser operation, before Provider-specific preconditions.
+     * @param context - Caller identity, logical action, mutation class, and lifecycle phase.
+     * @param next - Continue to the next admission listener or the default allow decision.
+     * @mode waterfall
+     */
+    'browser/operation-intent'(context: BrowserOperationContext, next: () => BrowserDispatchDecision | Promise<BrowserDispatchDecision>): Promise<BrowserDispatchDecision>
+    /**
+     * Single-slot policy immediately before a Browser Provider can cross its transport boundary.
+     * Calling `next()` delegates to the next policy; a denial returns a conclusive result without sending.
+     * @param context - Logical operation plus exact transport identity, authority epoch, and mutation class.
+     * @param next - Continue to the next dispatch listener or the default allow decision.
+     * @mode waterfall
+     */
+    'browser/dispatch-intent'(context: BrowserDispatchContext, next: () => BrowserDispatchDecision | Promise<BrowserDispatchDecision>): Promise<BrowserDispatchDecision>
+    /**
+     * Awaited non-rewriting notification after one logical operation reaches a durable lifecycle fact.
+     * A listener failure cannot replace the Provider result.
+     * @param context - Exact logical operation and lifecycle phase that reached a fact.
+     * @param settlement - Prepared marker, conclusive result, or conservative delivery error.
+     * @mode parallel
+     */
+    'browser/operation-settled'(context: BrowserOperationContext, settlement: BrowserOperationSettlement): Promise<void> | void
   }
 }
 declare module '@deepseek-ai/cordis' {

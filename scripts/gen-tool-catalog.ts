@@ -262,6 +262,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
     requires: ['ctx.browser', 'ctx.browserTasks', 'ctx.tools', 'ctx.approval', 'ctx.browserActivity for historical activity search', 'an initiating Agent session'],
     writes: ['tool/call', 'tool/result', 'browser-task/change', 'browser-task/receipt', 'browser-task/check', 'browser-task/delegation', 'approved page actions through Browser'],
     async mount(ctx) {
+      await ctx.plugin(SessionStore)
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(CatalogBrowser)
       await ctx.plugin(CatalogBrowserActivity)
@@ -383,9 +384,11 @@ const TOOL_PACKAGES: ToolPackage[] = [
     pkg: '@deepseek-ai/dsh-tool-cordis',
     dir: 'tool-cordis',
     source: 'packages/extensions/tool-cordis/src/index.ts',
-    requires: ['ctx.tools', 'ctx.dynamicCordisRunner'],
+    requires: ['ctx.tools', 'ctx.dynamicCordisRunner', 'ctx.agents for exact dynamic-package ownership'],
     writes: ['tool/call', 'tool/result', 'process-local dynamic package lifecycle'],
     async mount(ctx) {
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AgentRegistry)
       await ctx.plugin(CordisHostRunner)
       await ctx.plugin(ToolCordis)
     },

@@ -38,15 +38,39 @@ type BrowserRegionBlock =
 ```
 
 ```ts type-equiv
+/**
+ * Model-facing, selector-free description of a temporary result panel.
+ * The Host compiles this into the extension wire blocks after resolving a
+ * short-lived regionRef.  It is intentionally data, never HTML.
+ */
+interface BrowserRegionPresentation {
+  readonly title?: string
+  readonly summary?: string
+  readonly items?: readonly { readonly title: string; readonly meta?: string; readonly link?: string }[]
+  readonly facts?: readonly { readonly label: string; readonly value: string }[]
+  readonly links?: readonly { readonly text: string; readonly href: string }[]
+  readonly footer?: string
+}
+```
+
+```ts type-equiv
+/** Host-authored bounded query used only to bind fresh snapshot evidence to a live DSH region mount. */
+interface BrowserPresentationQuery {
+  readonly mountId: string
+  readonly text: string
+}
+```
+
+```ts type-equiv
 /** Current consumers: interactive tools, explicit page intake, and finite monitor checks. */
 type BrowserAction =
   | { readonly kind: 'tabs' }
-  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean }
+  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean; readonly presentationQueries?: readonly BrowserPresentationQuery[] }
   | { readonly kind: 'page_map'; readonly page: BrowserPage }
   | { readonly kind: 'entry_inspect'; readonly page: BrowserPage; readonly regionSelector: string; readonly selector: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly sampleLimit?: number }
   | { readonly kind: 'entry_mount'; readonly page: BrowserPage; readonly mountId: string; readonly regionSelector?: string; readonly selector: string; readonly label: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly collected?: readonly string[] }
   | { readonly kind: 'entry_unmount'; readonly page: BrowserPage; readonly mountId: string; readonly forgetCollected?: boolean }
-  | { readonly kind: 'region_render'; readonly page: BrowserPage; readonly mountId: string; readonly selector: string; readonly placement?: 'prepend' | 'append'; readonly mode?: 'append' | 'replace'; readonly title?: string; readonly blocks: readonly BrowserRegionBlock[] }
+  | { readonly kind: 'region_render'; readonly page: BrowserPage; readonly mountId: string; readonly regionRef: BrowserRegionRef; readonly presentation: BrowserRegionPresentation; readonly placement?: 'prepend' | 'append'; readonly mode?: 'append' | 'replace' }
   | { readonly kind: 'region_clear'; readonly page: BrowserPage; readonly mountId: string }
   | { readonly kind: 'navigate'; readonly page: BrowserPage; readonly url: string }
   | { readonly kind: 'click'; readonly element: BrowserElementReference; readonly intent: string }
@@ -64,7 +88,7 @@ type BrowserAction =
   | { readonly kind: 'wait'; readonly page: BrowserPage; readonly milliseconds: number }
 ```
 
-`page_map` 为精确文档返回有界区域，包含唯一 selector、几何信息、重要性以及可占用/保护提示。必须先调用它再 `region_render`：区域渲染会拒绝含糊 selector，并要求同一 Session、安装、grant epoch 和精确页面的短时 Host 页面地图证据。Append 模式添加扩展自有节点；replace 模式还要求区域已映射、可占用且未受保护，并把其原始子节点移到一边，直到 `region_clear` 将其恢复。页面运行时只把纯数据块渲染为文本节点，把挂载绑定到 Session、安装、grant epoch 和页面身份，绝不将旧挂载悄然绑定到新 URL。只有已观察到的 `cleared:true`、已观察到的精确 `disposition:'absent'` 或 sent 的 `document_replaced` 才能结算清理；`target_url_stale` 会使资源保持未解决。
+`page_map` 为精确文档最多返回 64 个有界区域，但会将每个私有 selector 替换为短时有效、不透明的 `regionRef`。必须先调用它再 `region_render`：渲染接收该引用和有界的高层展示数据，只有 Host 解析 selector 并编译纯数据块。引用绑定 Session、安装、grant epoch、精确页面与地图寿命；新的地图会使旧引用失效。公开 action 与 status 结果会递归移除 selector、region selector 和编译后的 blocks。这条无 selector 规则仅适用于页面地图展示：独立且有界的 `entry_inspect` 和 `entry_mount` 站点适配动作仍保留明确、由提供方验证的 selector。Append 模式添加扩展自有节点；replace 模式还要求引用的区域可占用且未受保护，并把其原始子节点移到一边，直到 `region_clear` 将其恢复。页面运行时把挂载绑定到 Session、安装、grant epoch 和页面身份，绝不将旧挂载悄然绑定到新 URL。只有已观察到的 `cleared:true`、已观察到的精确 `disposition:'absent'` 或 sent 的 `document_replaced` 才能结算清理；`target_url_stale` 会使资源保持未解决。
 
 `tree` 快照从同一份稳定缓存分页返回层次。Document、元素、文本和开放 Shadow Root 节点会跨 `treeCursor` 读取保留 index 和 parent index，不会重新匹配节点。iframe 元素标出 source 边界，frame 文档仍需独立读取。隐藏、可编辑、script 和 style 文本会被排除，隐藏结构仍保留 hidden 标记。
 
@@ -94,6 +118,22 @@ interface BrowserOperation {
 ```
 
 ```ts type-equiv
+/** Host-minted, short-lived reference to one exact page-map region. */
+type BrowserRegionRef = Branded<'BrowserRegionRef'>
+```
+
+```ts type-equiv
+/** Public, action-free key retained with a sent attempt for restart recovery. */
+interface BrowserRecoveryLocator {
+  readonly kind: 'extension-journal-v1'
+  readonly protocolVersion: 1
+  readonly transportRequestId: string
+  readonly installationId: string
+  readonly grantEpoch: number
+}
+```
+
+```ts type-equiv
 /** A carrier acknowledgement is not itself an observed business effect. */
 interface BrowserActionResult {
   readonly requestId: string
@@ -112,6 +152,8 @@ interface BrowserRequestStatusQuery {
   readonly requestId: string
   readonly sessionId: SessionId
   readonly installationId: string
+  /** Required when the Host no longer has the in-memory transport request. */
+  readonly recoveryLocator?: BrowserRecoveryLocator
 }
 ```
 
@@ -131,7 +173,7 @@ manifest 显式声明的 `zhihu-feed.js` 内容脚本负责独立的阅读流适
 
 ## 准备动作
 
-模型工具在请求审批前准备一项固定动作。提供方持有短期 ticket，绑定会话、安装、授权代次与完整动作；提交时不能替换参数。扩展仅在文档的有界内存中保留目标和表单值，并在执行前同步比较。快照变化或被淘汰、表单状态变化都会使准备失效。
+模型工具在请求审批前准备一项固定动作。准备只是准入时的只读探测：放弃 ticket 不消耗任务动作预算，也不留下 planned attempt。提供方持有短期 ticket，绑定会话、安装、授权代次与完整动作；提交时不能替换参数。扩展仅在文档的有界内存中保留目标和表单值，并在执行前同步比较。快照变化或被淘汰、表单状态变化都会使准备失效。
 
 工具策略同时检查动作种类和浏览器观察到的影响。仅原生 details 正文展开、滚动和等待无需动作审批。其它点击、导航、填写（可能自动保存）和提交复用现有 Approval 服务。上传路径必须是绝对路径，并在当前用户消息中逐字出现；模型工具会在执行前检查该来源，不额外显示批准框。展示的填写预览来自拟执行的 Host 输入；准备结果不返回页面原有字段值。
 
@@ -168,11 +210,11 @@ interface BrowserPreparedAction {
 
 提供方根据动作判定读取或写入权限，并在派发前检查当前安装授权。扩展在执行前检查当前授权和 Chrome 站点权限。导航核验产生的新文档；重定向超出已授权站点时，不返回未授权目标的 URL。
 
-调用方在派发前生成每个请求 ID。每次调用以该 ID、协议版本、授权代次、会话、安装、截止时间、目标与动作绑定摘要。完全相同的重复请求共享已有回执。在线安装会暴露 worker 的 capability 握手，因此缺少声明或不支持的 action 是不可用，而非猜测的回退。重连查询状态，不重新发送动作。扩展在页面效果发生前持久化最小执行意图；日志保留有界结果值，不保存原调用负载。后台重启后，未解决的写操作继续锁定整个标签，锁跨越会话与授权代次。已经初始化的日志丢失时，存储处于不可用状态，不视为空请求历史。
+调用方在派发前生成每个请求 ID。每次调用以该 ID、协议版本、授权代次、会话、安装、截止时间、目标与动作绑定摘要。完全相同的重复请求共享已有回执。在线安装会暴露 worker 的 capability 握手，因此缺少声明或不支持的 action 是不可用，而非猜测的回退。`browser/operation-intent` 在提供方专属检查前准入一个逻辑动作；`browser/dispatch-intent` 紧邻传输边界执行；`browser/operation-settled` 记录持久结果而不改写它。BrowserTask listener 将三者用于直连调用、工具调用、已准备提交和 Dynamic Cordis 调用。派发时，它持久化 planned attempt 与不含动作的 recovery locator，flush Session，然后才允许发送。重连查询状态，不重新发送动作。扩展在页面效果发生前持久化最小执行意图；日志保留有界结果值，不保存原调用负载。后台重启后，未解决的写操作继续锁定整个标签，锁跨越会话与授权代次。已经初始化的日志丢失时，存储处于不可用状态，不视为空请求历史。
 
-取消只请求停止。回执丢失或超时产生 `unknown`，直到执行器证据确定结果。`requestStatus()` 在不重放请求、不暴露权限指纹的前提下读取调用者作用域内的保留状态。未解决的写操作持续持锁，直到观察到终态，或执行器确认不会继续执行后由用户显式确认。超时或站点权限丢失均不能证明旧文档已经停止执行。
+取消只请求停止。回执丢失或超时产生 `unknown`，直到执行器证据确定结果。`requestStatus()` 在不重放请求、不暴露权限指纹的前提下读取调用者作用域内的保留状态。Host 内存丢失后，精确的 recovery locator 只能发出日志 `status-query`，并绑定请求、Session、安装和原 epoch；缺失、不匹配、离线、超时或不支持的答复保持为 `unknown`。未解决的写操作持续持锁，直到观察到终态，或执行器确认不会继续执行后由用户显式确认。超时或站点权限丢失均不能证明旧文档已经停止执行。
 
-`@changanhua/dsh-browser-task` 是自然语言现场任务的 Session 持久权威。其 projection 分离不可变页面 evidence 和目标绑定、planned/prepared/dispatched/settled attempt 与 receipt、页面资源 lease、capability 快照、规范 Subagent/Job/Cordis 身份和验收检查。由 checker 支持的验收条款不同于已观察到的页面 action 或已完成的委派 run。区域展示条款在清理前同时引用 observed render 与后续的新页面 evidence。终态完成要求每个条款都引用当前 evidence、没有 blocker 或未解决 write、预算未耗尽，并且每个资源都已释放或确认消失。扩展侧接受 unknown 只会释放传输锁，绝不完成 Session 任务；此后只有新的直接用户消息才能显式取消任务，且必须先让每项页面资源都有回执支持的终态，unknown attempt 仍保留在日志中。工具消费方只继续该 projection；它不是进程内任务权威。
+`@changanhua/dsh-browser-task` 是自然语言现场任务的 Session 持久权威。其 projection 分离不可变页面 evidence 和目标绑定、planned/prepared/dispatched/settled attempt 与 receipt、页面资源 lease、capability 快照、规范 Subagent/Job/Cordis 身份和验收检查。由 checker 支持的验收条款不同于已观察到的页面 action 或已完成的委派 run。区域展示条款在清理前同时引用 observed render 与后续的新页面 evidence。终态完成要求每个条款都引用当前 evidence、没有 blocker 或未解决 write、预算未耗尽，并且每个资源都已释放或确认消失。sent unknown 请求绝不重放。确定性的 not-sent 失败在首次发生后阻断语义目标未变的调用，只有新 evidence 证明前置条件改变才恢复；内部 projection 错误成为 `internal-invariant` blocker，而不是可重试的 Browser 错误。任务预算耗尽后只允许精确清理，并在资源终态后结束任务。扩展侧接受 unknown 只会释放传输锁，绝不完成 Session 任务；此后只有新的直接用户消息才能显式取消任务，且必须先让每项页面资源都有回执支持的终态，unknown attempt 仍保留在日志中。工具消费方只继续该 projection；它不是进程内任务权威。
 
 Puppeteer 执行全部已实现动作。DOM 兼容执行器仅支持 `click`、`fill`、`submit`、`navigate`、`scroll` 和 `wait`，并拒绝新动作类型。截图要求主 frame，base64 上限为 400,000 字符。[网关 README](../../packages/browser/browser-extension/README.zh.md)负责传输边界与配置。[会话控制器](../../packages/api/session-controller/README.zh.md)负责对话历史；该服务不建立第二套消息存储。
 
@@ -590,6 +632,25 @@ Source: [`packages/browser/browser-task/src/index.ts`](../../packages/browser/br
 
 ### `browser/*` events
 
+<a id="browserdispatch-intent--waterfall"></a>
+
+#### `browser/dispatch-intent` — waterfall
+
+Single-slot policy immediately before a Browser Provider can cross its transport boundary. Calling `next()` delegates to the next policy; a denial returns a conclusive result without sending.
+
+```ts cordis-catalog
+/**
+ * Single-slot policy immediately before a Browser Provider can cross its transport boundary.
+ * Calling `next()` delegates to the next policy; a denial returns a conclusive result without sending.
+ * @param context - Logical operation plus exact transport identity, authority epoch, and mutation class.
+ * @param next - Continue to the next dispatch listener or the default allow decision.
+ * @mode waterfall
+ */
+'browser/dispatch-intent'(context: BrowserDispatchContext, next: () => BrowserDispatchDecision | Promise<BrowserDispatchDecision>): Promise<BrowserDispatchDecision>
+```
+
+Source: [`packages/browser/browser/src/index.ts`](../../packages/browser/browser/src/index.ts)
+
 <a id="browserentry-click--emit"></a>
 
 #### `browser/entry-click` — emit
@@ -603,6 +664,43 @@ A user clicked one entry mounted in an authorized external webpage.
  * @mode emit
  */
 'browser/entry-click'(event: BrowserEntryEvent): void
+```
+
+Source: [`packages/browser/browser/src/index.ts`](../../packages/browser/browser/src/index.ts)
+
+<a id="browseroperation-intent--waterfall"></a>
+
+#### `browser/operation-intent` — waterfall
+
+Single-slot admission for one logical Browser operation, before Provider-specific preconditions.
+
+```ts cordis-catalog
+/**
+ * Single-slot admission for one logical Browser operation, before Provider-specific preconditions.
+ * @param context - Caller identity, logical action, mutation class, and lifecycle phase.
+ * @param next - Continue to the next admission listener or the default allow decision.
+ * @mode waterfall
+ */
+'browser/operation-intent'(context: BrowserOperationContext, next: () => BrowserDispatchDecision | Promise<BrowserDispatchDecision>): Promise<BrowserDispatchDecision>
+```
+
+Source: [`packages/browser/browser/src/index.ts`](../../packages/browser/browser/src/index.ts)
+
+<a id="browseroperation-settled--parallel"></a>
+
+#### `browser/operation-settled` — parallel
+
+Awaited non-rewriting notification after one logical operation reaches a durable lifecycle fact. A listener failure cannot replace the Provider result.
+
+```ts cordis-catalog
+/**
+ * Awaited non-rewriting notification after one logical operation reaches a durable lifecycle fact.
+ * A listener failure cannot replace the Provider result.
+ * @param context - Exact logical operation and lifecycle phase that reached a fact.
+ * @param settlement - Prepared marker, conclusive result, or conservative delivery error.
+ * @mode parallel
+ */
+'browser/operation-settled'(context: BrowserOperationContext, settlement: BrowserOperationSettlement): Promise<void> | void
 ```
 
 Source: [`packages/browser/browser/src/index.ts`](../../packages/browser/browser/src/index.ts)

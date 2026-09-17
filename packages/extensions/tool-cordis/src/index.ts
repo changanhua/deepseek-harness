@@ -225,8 +225,7 @@ export function apply(ctx: Context): void {
       const plugin = args.plugin.kind === 'new'
         ? { kind: 'new' as const, idPrefix: args.plugin.idPrefix }
         : { kind: 'existing' as const, pluginId: CordisDynamicPluginId(args.plugin.pluginId) }
-      const receipt = ctx.dynamicCordisRunner.define({
-        sessionId: requireAgent(exec).id,
+      const receipt = ctx.dynamicCordisRunner.define(requireAgent(exec), {
         plugin,
         name: args.name,
         purpose: args.purpose,

@@ -72,7 +72,14 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
   connection = createAssistantConnection({ storage, extensionId: chromeApi.runtime.id,
     transport: createAssistantTransport({ openApproval: openApprovalPage }), createChannel: createAssistantChannel,
     hasPermission, hasOrigins, openApprovalPage,
-    onCommand: async frame => { connection.sendReceipt(await journal.handle(frame)) },
+    onCommand: async frame => {
+      if (frame.type === 'status-query') {
+        const receipt = await journal.lookup(frame.locator, frame.sessionId)
+        if (receipt) connection.sendReceipt(receipt, { restartLookup: frame })
+        return
+      }
+      connection.sendReceipt(await journal.handle(frame))
+    },
     onEvent: frame => frame.type === 'reading' ? readings.onEvent(frame) : frame.type === 'approval' ? approvals.onEvent(frame) : sessions.onEvent(frame),
     changed: state => {
       connectionState = state

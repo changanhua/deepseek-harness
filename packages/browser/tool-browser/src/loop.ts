@@ -20,7 +20,8 @@ import type {
   BrowserTaskSourceRef,
   BrowserTargetBinding,
 } from '@changanhua/dsh-browser-task'
-import { BROWSER_TASK_LIMITS } from '@changanhua/dsh-browser-task'
+import { BROWSER_TASK_LIMITS, browserFailureFingerprint, browserPageMapEvidence, browserPageMapRecoversFailure,
+  deterministicBrowserFailureCode } from '@changanhua/dsh-browser-task'
 
 export const MAX_STEPS = 12
 export const MAX_ACTIONS = 40
@@ -130,15 +131,16 @@ function reconciledResource(resource: BrowserPageResource,
 
 function regionPresentation(action: BrowserAction, expected?: string): { contentDigest: string; excerpt: string } | undefined {
   if (action.kind !== 'region_render') return undefined
-  const visible = presentationText([action.title ?? '', ...action.blocks.flatMap((block) => {
-    if (block.type === 'heading' || block.type === 'text' || block.type === 'link') return [block.text]
-    if (block.type === 'item') return [block.title, block.meta ?? '']
-    return [block.label, block.value]
-  })].filter(Boolean).join('\n'))
+  const presentation = action.presentation
+  const visible = presentationText([presentation.title ?? '', presentation.summary ?? '', presentation.footer ?? '',
+    ...(presentation.items ?? []).flatMap(item => [item.title, item.meta ?? '']),
+    ...(presentation.facts ?? []).flatMap(fact => [fact.label, fact.value]),
+    ...(presentation.links ?? []).map(link => link.text),
+  ].filter(Boolean).join('\n'))
   if (!visible) return undefined
   const normalizedExpected = expected === undefined ? undefined : presentationText(expected)
   if (normalizedExpected !== undefined && !visible.includes(normalizedExpected)) return undefined
-  return { contentDigest: `sha256:${digest({ title: action.title ?? '', blocks: action.blocks })}`,
+  return { contentDigest: `sha256:${digest(presentation)}`,
     excerpt: normalizedExpected ?? Array.from(visible).slice(0, 128).join('') }
 }
 
@@ -239,6 +241,11 @@ export class BrowserTaskLoop {
     return this.tasks
   }
 
+  /** Durable, action-free key for a Host-restart status lookup. */
+  recoveryLocator(agent: Agent, requestId: string) {
+    return this.current(agent)?.attempts.find(item => item.requestId === requestId)?.recoveryLocator
+  }
+
   private clearsPending(task: BrowserTaskSnapshot, action?: BrowserAction): boolean {
     const resourceId = action !== undefined && ('mountId' in action ? action.mountId : undefined)
     return (action?.kind === 'region_clear' || action?.kind === 'entry_unmount') && resourceId !== undefined
@@ -288,11 +295,16 @@ export class BrowserTaskLoop {
     quiescent = result.outcome !== 'unknown'): BrowserTaskSourceRef {
     const presentation = !confirmsPresentation(result) ? undefined
       : action === undefined ? attempt.presentationIntent : regionPresentation(action, regionExpectation(task, action))
+    const failureCode = result.outcome === 'failed' && result.delivery === 'not-sent'
+      ? deterministicBrowserFailureCode(result.reason) : undefined
+    const failureFingerprint = action === undefined || failureCode === undefined
+      ? undefined : browserFailureFingerprint(action, failureCode)
     return this.authority().recordReceipt(agent, ref(task), { requestId: result.requestId,
       actionKind: attempt.actionKind, target: attempt.target, outcome: result.outcome,
       delivery: result.delivery, quiescent, grantEpoch: attempt.grantEpoch,
       ...(attempt.resourceId === undefined ? {} : { resourceId: attempt.resourceId }),
       ...(result.reason === undefined ? {} : { reason: result.reason }),
+      ...(failureFingerprint === undefined ? {} : { failureFingerprint }),
       ...(presentation === undefined ? {} : { presentation }) })
   }
 
@@ -330,8 +342,8 @@ export class BrowserTaskLoop {
     if (next === undefined) throw new Error('browser task observation was not planned')
     let result: BrowserActionResult
     try { result = await this.browser.execute(operation, signal) }
-    catch { result = { requestId, sessionId: agent.session.id, installationId, outcome: 'failed',
-      delivery: 'not-sent', reason: 'snapshot_failed' } }
+    catch { result = { requestId, sessionId: agent.session.id, installationId, outcome: 'unknown',
+      delivery: 'sent', reason: 'snapshot_failed' } }
     const settled = this.settle(agent, result, action)
     if (settled === undefined) throw new Error('browser task observation was not settled')
     next = settled.task
@@ -393,16 +405,28 @@ export class BrowserTaskLoop {
     const targetMatches = page === undefined || samePage(page, task.target?.page)
     const clearsPending = this.clearsPending(task, action)
     const cleanupOnly = task.blockers.every(blocker => blocker === 'cleanup'
-      || blocker === 'unknown-attempt' || blocker === 'capability-drift')
+      || blocker === 'unknown-attempt' || blocker === 'capability-drift' || blocker === 'repeated-error')
     if (task.phase === 'terminal') return action === undefined || readsPage(action)
     if (!targetMatches) return false
     if (clearsPending && cleanupOnly) return true
+    if (task.blockers.includes('repeated-error') && action !== undefined) {
+      if (readsPage(action)) return true
+      if (task.blockers.some(blocker => blocker !== 'repeated-error')) return false
+      const repeatsUnchangedFailure = agent.session.events.some((event) => {
+        if (event.type !== 'browser-task/receipt' || event.data.taskId !== task.id
+          || event.data.outcome !== 'failed' || event.data.delivery !== 'not-sent') return false
+        const code = deterministicBrowserFailureCode(event.data.reason)
+        if (code === undefined || event.data.failureFingerprint !== browserFailureFingerprint(action, code)) return false
+        return !browserPageMapRecoversFailure(task, action, code, event.seq)
+      })
+      return !repeatsUnchangedFailure && task.budget.actionsUsed < task.budget.maxActions
+    }
     if (task.budget.actionsUsed >= task.budget.maxActions) return false
     return task.blockers.length === 0 || (clearsPending && cleanupOnly)
   }
 
   planned(agent: Agent, operation: BrowserOperation, write = true): BrowserTaskSnapshot | undefined {
-    const task = this.current(agent)
+    let task = this.current(agent)
     if (task === undefined) return undefined
     if (task.phase === 'terminal') {
       if (readsPage(operation.action)) return undefined
@@ -413,6 +437,9 @@ export class BrowserTaskLoop {
     }
     if (!this.allowsAction(agent, operation.action)) throw new Error('browser task has a blocker, exhausted budget, or target mismatch')
     if (!operation.requestId) throw new Error('browser task operations require caller-minted requestId')
+    if (task.blockers.includes('repeated-error') && !readsPage(operation.action)) {
+      task = this.authority().transition(agent, ref(task), 'running', task.blockers.filter(blocker => blocker !== 'repeated-error'))
+    }
     const budgeted = this.clearsPending(task, operation.action) ? task : this.authority().consumeAction(agent, ref(task))
     return this.authority().recordAttempt(agent, ref(budgeted), this.attempt(budgeted,
       operation.requestId, operation.action, write))
@@ -454,6 +481,7 @@ export class BrowserTaskLoop {
       : result, action)
     task = this.authority().advanceAttempt(agent, ref(task), { ...attempt, stage: 'settled',
       outcome: result.outcome, quiescent: result.outcome !== 'unknown', settledBy: receipt })
+    task = this.stopRepeatedDeterministicFailure(agent, task, result)
     const feedback = object(result.value)
     const observed = object(feedback?.feedback)
     const page = snapshotPage(observed?.status === 'observed' ? observed.snapshot : undefined)
@@ -468,17 +496,28 @@ export class BrowserTaskLoop {
     return { task, receipt }
   }
 
+  private stopRepeatedDeterministicFailure(agent: Agent, task: BrowserTaskSnapshot,
+    result: BrowserActionResult): BrowserTaskSnapshot {
+    const code = deterministicBrowserFailureCode(result.reason)
+    if (result.outcome !== 'failed' || result.delivery !== 'not-sent'
+      || code === undefined || task.blockers.includes('repeated-error')) return task
+    return this.authority().transition(agent, ref(task), 'waiting',
+      [...new Set([...task.blockers, 'repeated-error'])] as BrowserTaskBlocker[])
+  }
+
   /** Bind a direct snapshot read to its exact receipt; mismatched pages never become fresh evidence. */
   recordObservedEvidence(agent: Agent, settled: { task: BrowserTaskSnapshot; receipt: BrowserTaskSourceRef },
-    result: BrowserActionResult): BrowserTaskSnapshot {
+    result: BrowserActionResult, action?: BrowserAction): BrowserTaskSnapshot {
     let task = settled.task
     if (result.outcome !== 'observed' || task.target === undefined || task.capability?.state !== 'observed') return task
     const page = snapshotPage(result.value)
     if (page === undefined) return task
     if (!samePage(page, task.target.page)) return this.targetLost(agent, task)
     const evidenceId = `evidence-${result.requestId}`
+    const pageMap = action?.kind === 'page_map' ? browserPageMapEvidence(result.value) : undefined
     task = this.authority().recordEvidence(agent, ref(task), { id: evidenceId, state: 'current',
-      source: settled.receipt, digest: digest(result.value), target: task.target, grantEpoch: task.capability.grantEpoch })
+      source: settled.receipt, digest: digest(result.value), target: task.target, grantEpoch: task.capability.grantEpoch,
+      ...(pageMap === undefined ? {} : { pageMap }) })
     return this.confirmPresentations(agent, task, result.value, evidenceId)
   }
 
@@ -489,12 +528,14 @@ export class BrowserTaskLoop {
     this.authority().upsertResource(agent, ref(task), { id, state: 'reserved', target: task.target })
   }
 
-  releasePending(agent: Agent, id: string): void {
+  releasePending(agent: Agent, id: string): boolean {
     const task = this.current(agent)
     const prior = task?.resources.find(item => item.id === id)
-    if (task === undefined || prior === undefined) return
-    if (prior.state === 'unresolved') return
+    if (task === undefined || prior === undefined || prior.state === 'unresolved') return true
+    if (prior.state === 'released' || prior.state === 'vanished') return false
+    if (prior.state === 'release-pending') return true
     this.authority().upsertResource(agent, ref(task), provisionalResource(prior, 'release-pending'))
+    return true
   }
 
   settleResource(agent: Agent, id: string, result: BrowserActionResult, action: BrowserAction,
@@ -558,7 +599,23 @@ export class BrowserTaskLoop {
       const unknownResult: BrowserActionResult = { requestId: result.requestId, sessionId: result.sessionId,
         installationId: result.installationId, outcome: 'unknown', delivery: result.delivery,
         reason: result.reason }
+      // A recovered terminal journal status proves the request crossed the
+      // transport boundary even when its effect remains unknowable.  A
+      // persisted dispatch intent has not yet reached the receipt boundary,
+      // so advance it first; recordReceipt deliberately rejects sent results
+      // for pre-dispatch attempts.  Keep the unknown outcome afterwards: the
+      // resource can be reconciled as gone, but the write itself cannot be
+      // replayed or unblocked as known.
+      if (result.delivery === 'sent' && attempt.stage !== 'dispatched' && attempt.stage !== 'settled') {
+        current = this.authority().advanceAttempt(agent, ref(current), { ...attempt, stage: 'dispatched' })
+        attempt = current.attempts.find(item => item.requestId === requestId)
+        if (attempt === undefined) throw new Error('browser task attempt disappeared during unknown request recovery')
+      }
       const receipt = this.receipt(agent, current, attempt, unknownResult, undefined, true)
+      if (attempt.stage !== 'settled') {
+        current = this.authority().advanceAttempt(agent, ref(current), { ...attempt, stage: 'settled',
+          outcome: 'unknown', quiescent: true, settledBy: receipt })
+      }
       return this.reconcileResources(agent, current, attempt, result, receipt)
     }
     const recovered: BrowserActionResult = { requestId: result.requestId, sessionId: result.sessionId,
@@ -677,12 +734,12 @@ export class BrowserTaskLoop {
       const operation: BrowserOperation = { sessionId: agent.session.id, installationId: resource.target.installationId,
         requestId: randomUUID(), action }
       let result: BrowserActionResult
+      this.planned(agent, operation)
       try {
-        this.planned(agent, operation)
         result = await this.browser.execute(operation, signal)
       } catch (cause) {
         result = { requestId: operation.requestId, sessionId: operation.sessionId,
-          installationId: operation.installationId, outcome: 'failed', delivery: 'not-sent',
+          installationId: operation.installationId, outcome: 'unknown', delivery: 'sent',
           reason: cause instanceof Error ? cause.message : 'browser_cleanup_failed' }
       }
       const settled = this.settle(agent, result, action)

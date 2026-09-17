@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 摘要
 
-当要通过 Host Web Server 将已批准 Chrome worker 连接到会话寻址的浏览器操作和选定 DSH Session 时，请选择此提供方。它以 verifier 和 challenge 配对扩展，让已登录所有者批准或撤销范围受限的授权，并通过 HTTP 和 WebSocket 转发有界请求。worker 会在经认证握手中声明可执行 action 种类和恢复支持，再使用 assistant runtime、connection、channel、journal、executor 和 page 层执行浏览器操作。每次发送前，提供方都会检查握手、授权 scope、允许的 origin 和授权 epoch；模型工具由 tool-browser 消费方提供，本包不安排后台监控。
+当要通过 Host Web Server 将已批准 Chrome worker 连接到会话寻址的浏览器操作和选定 DSH Session 时，请选择此提供方。它以 verifier 和 challenge 配对扩展，让已登录所有者批准或撤销范围受限的授权，并通过 HTTP 和 WebSocket 转发有界请求。worker 会在经认证握手中声明可执行 action 种类、进程内恢复和可选的重启 journal 查询，再使用 assistant runtime、connection、channel、journal、executor 和 page 层执行浏览器操作。每次发送前，提供方都会检查握手、授权 scope、允许的 origin、授权 epoch 和 Browser 生命周期策略；模型工具由 tool-browser 消费方提供，本包不安排后台监控。
 
 ## 目录
 
@@ -33,9 +33,9 @@ kind: "package-reference"
 
 `prepare()` 创建绑定到当前授权 epoch、Session 和操作的私有 ticket。`executePrepared()` 会在派发前重新检查该绑定。worker 会在提交前同步复核表单状态：它直接展开本地 `<details>`，将其他无可见变化的点击视为 `unknown`，并把可见的本地页面变化报告为 `observed`，而不声称业务结果。填写回执不返回页面最终 value；批准 preview 来自 Host 输入。对于未知操作，journal 先检查完全停稳的 receipt，并要求用户按钮后才持久化 `acknowledgementPending`；`browser.acknowledge` 只向 Host 发送最小 identity、outcome 和完全停稳事实，成功后清除待处理 acknowledgement。重新连接可以再次同步它。旧 epoch 只能查询 status 或取消当前 write，绝不执行旧页面操作。请求、frame、结果、容量和截止时间均有边界。提供方每 20 秒发送一次 heartbeat，并断开陈旧 peer。取消会请求 worker 停止；缺失 receipt、断线、超时或传输失败会变为 `unknown`。重新连接仅恢复请求状态：不会重放查询或写入，任何未知的变更性操作在 worker 报告完全停稳前都不会解除。
 
-调用方在任何派发前提供请求 ID，Host 会在 worker 接收 action 前记录它。相同 ID 返回其保留回执；`requestStatus()` 要求 read authority，返回脱离内部状态的 value，绝不重放请求。`in-flight` 或 `unknown` 响应仍是恢复事实，不构成重试许可。授权 epoch 轮换可以查询状态或清理旧 epoch 所属区域，但不能针对那份旧所有权执行新的写入。
+调用方在任何派发前提供请求 ID。组合的 BrowserTask 监听器会记录精确逻辑 attempt 与公开恢复定位符，flush Session，随后才允许 provider 发送。相同 ID 返回其保留回执；`requestStatus()` 要求 read authority，返回脱离内部状态的 value，绝不重放请求。Host 丢失内存后，它可以向扩展 journal 发送不含 action 的 `status-query`。查询会绑定 request、Session、安装和原 grant epoch；查无记录、超时、扩展离线、不支持该 capability 或回执不匹配都会返回 `unknown`，且不产生 execute frame。授权 epoch 轮换可以查询旧 journal 条目或清理旧 epoch 所属区域，但不能针对那份旧所有权执行新的写入。
 
-`page_map` 会记录按 Session、安装、epoch 和精确页面身份索引的短时页面证据。`region_render` 必须使用该证据。Append 会创建扩展自有面板；replace 只接受已映射、disposable 且非 protected 的区域。Host 在派发前预留区域容量，并在 unknown 结果时保留该预留，因此并发调用不能超量占用页面。只有 worker 观察到 `cleared:true`，或证明精确挂载已经不存在时，`region_clear` 才能确认释放；已发送的 `document_replaced` 记录消失资源，`target_url_stale` 则保持未解决。每次 render 或 mount 都会推进 Host registration generation，因此保留的晚到回执不能删除后来复用同一 ID 的资源；如果新操作确定失败，较早已观察到的清理仍保持权威。worker 的页面运行时跟踪挂载，不将 mount ID 放入 CSS selector；文档变化绝不悄然把挂载绑定到新 URL。内部快照展示查询只有在匹配的运行时自有面板仍真实存在时才返回肯定事实，不会把页面其他位置的同文当作证据。
+`page_map` 会记录按 Session、安装、epoch 和精确页面身份索引的最多 64 个短时页面区域。原始 selector 进入保留状态、BrowserTask evidence、Dynamic Cordis 或模型工具之前，Host 会把它们全部替换为不透明 `regionRef`；公开 action 与 status 结果还会递归移除 selector 和编译后的 block。新地图会让旧引用失效。这适用于页面地图展示，不适用于独立的、由 provider 验证 selector 输入的条目适配。`region_render` 接受一个引用和有界高层展示；provider 解析私有 selector，编译确定性的纯数据 block，并且仅在引用指向 disposable 且非 protected 的区域时允许 replace。重启后的 Host 绝不会从旧页面地图 journal 回执重建引用。Host 在派发前预留区域容量，并在 unknown 结果时保留该预留，因此并发调用不能超量占用页面。只有 worker 观察到 `cleared:true`，或证明精确挂载已经不存在时，`region_clear` 才能确认释放；已发送的 `document_replaced` 记录消失资源，`target_url_stale` 则保持未解决。每次 render 或 mount 都会推进 Host registration generation，因此保留的晚到回执不能删除后来复用同一 ID 的资源。内部快照展示查询只有在匹配的运行时自有面板仍真实存在时才返回肯定事实，不会把页面其他位置的同文当作证据。
 
 具有 `session:interact` 时，经认证 peer 会获得严格的 `SessionController` facade，用于列出、创建、提示、取消、读取页面和附件，以及一个受控 follow stream。它校验每个 RPC 请求，串行替换 follow，将并发 Session 请求限制为 `maxSessionRequests`（默认 `4`，范围 `1`–`8`），并保留既有 16 MiB WebSocket frame 上限。提供方将 `sessionController` 作为注入的 peer dependency。
 

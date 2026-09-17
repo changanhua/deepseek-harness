@@ -189,6 +189,25 @@ export const createAssistantJournal = ({ storage, execute, inspect = async () =>
     return recover(admitted.entry, frame.type)
   }
 
+  /**
+   * Restart recovery is deliberately a lookup-only lane: it never calls the
+   * executor or inspection hook.  A missing journal entry is silent so the
+   * Host times out conservatively instead of inventing a terminal receipt.
+   */
+  const lookup = async (locator, sessionId) => serialize(async () => {
+    if (!locator || locator.kind !== 'extension-journal-v1' || locator.protocolVersion !== 1
+      || !uuid(locator.transportRequestId) || !uuid(locator.installationId)
+      || !Number.isSafeInteger(locator.grantEpoch) || locator.grantEpoch < 1
+      || typeof sessionId !== 'string' || !sessionId) return undefined
+    await initialize()
+    const entry = entries.find(row => row.identity.requestId === locator.transportRequestId
+      && row.identity.sessionId === sessionId && row.identity.installationId === locator.installationId
+      && row.identity.grantEpoch === locator.grantEpoch)
+    if (!entry) return undefined
+    if (entry.state === 'settled' && entry.result) return clone(entry.result)
+    return unknown(entry.identity, 'receipt_unavailable')
+  })
+
   // User acknowledgement is separate from a status query. The executor, not
   // the UI, must first prove that no old operation can issue another action.
   const acknowledge = async identity => {
@@ -229,5 +248,5 @@ export const createAssistantJournal = ({ storage, execute, inspect = async () =>
     await lane
   }
   const list = () => serialize(async () => { await initialize(); return clone(entries) })
-  return { handle, acknowledge, acknowledgements, confirmAcknowledgement, interrupt, stop, list }
+  return { handle, lookup, acknowledge, acknowledgements, confirmAcknowledgement, interrupt, stop, list }
 }

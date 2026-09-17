@@ -9,6 +9,7 @@ import { BrowserAuth } from '../../../client/connection/src/browser-auth.ts'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import BrowserExtension from '../src/index.ts'
 import type { BrowserInvocation } from '../src/types.ts'
+import type { BrowserActionResult, BrowserPage } from '@changanhua/dsh-browser'
 import type { SessionController } from '@deepseek-ai/dsh-api-session-controller'
 
 const API = '/api/browser-extension/v1'
@@ -20,11 +21,14 @@ const executorCapabilities = {
     'navigate', 'click', 'fill', 'submit', 'scroll', 'wait', 'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload',
     'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot'],
   requestRecovery: true,
+  restartStatusLookup: true as const,
 }
 const cleanups: Array<() => Promise<void>> = []
 interface GatewayFrame {
   readonly type: string
   readonly request?: BrowserInvocation
+  readonly locator?: { readonly grantEpoch?: number }
+  readonly sessionId?: string
   readonly requestId?: string
   readonly result?: unknown
 }
@@ -33,6 +37,9 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 function string(value: unknown): string { if (typeof value !== 'string') throw new Error('expected string'); return value }
+function matching(value: Record<string, unknown>): unknown {
+  return expect.objectContaining(value) as unknown
+}
 function actionKind(frame: GatewayFrame, kind: string): boolean {
   return frame.type === 'execute' && frame.request !== undefined && object(frame.request.payload).kind === kind
 }
@@ -41,7 +48,17 @@ function execute(frames: readonly GatewayFrame[], match: (request: BrowserInvoca
   if (found?.request === undefined) throw new Error('missing execute frame')
   return found.request
 }
-afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
+function mappedRegion(result: BrowserActionResult, index = 0): string {
+  const value = object(result.value)
+  const regions = value.regions
+  if (!Array.isArray(regions)) throw new Error('missing mapped regions')
+  return string(object(regions[index]).regionRef)
+}
+function regionRender(page: BrowserPage, mountId: string, regionRef: string, summary: string, mode?: 'append' | 'replace') {
+  return { kind: 'region_render' as const, page, mountId, regionRef: regionRef as never,
+    ...(mode === undefined ? {} : { mode }), presentation: { summary } }
+}
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.restoreAllMocks() })
 
 async function mounted(config: Record<string, unknown> = {}) {
   const ctx = new Context()
@@ -103,6 +120,71 @@ async function peer(base: string, identity: { installationId: string; token: str
 }
 
 describe('browser extension gateway over the real HTTP and WebSocket carriers', () => {
+  it('waits for the dispatch-intent policy before an execute frame can cross the provider boundary', async () => {
+    const test=await mounted({ requestTimeoutMs:500 });const identity=await test.pair();const extension=await peer(test.base,identity)
+    const entered=Promise.withResolvers<undefined>(),release=Promise.withResolvers<undefined>()
+    let policyEntered=false
+    test.ctx.on('browser/dispatch-intent' as never,(async(_context:unknown,next:()=>Promise<unknown>)=>{
+      policyEntered=true;entered.resolve(undefined);await release.promise;return next()
+    }) as never)
+    const operation={ requestId:randomUUID(),sessionId:SessionId('test-session'),installationId:identity.installationId,
+      action:{ kind:'tabs' as const } }
+    const pending=test.ctx.browser.execute(operation,new AbortController().signal)
+    await Promise.race([entered.promise,expect.poll(()=>extension.frames.some(frame=>actionKind(frame,'tabs'))).toBe(true)])
+    expect(policyEntered).toBe(true)
+    expect(extension.frames.some(frame=>actionKind(frame,'tabs'))).toBe(false)
+    release.resolve(undefined);await expect.poll(()=>extension.frames.some(frame=>actionKind(frame,'tabs'))).toBe(true)
+    const request=execute(extension.frames,request=>object(request.payload).kind==='tabs')
+    extension.socket.send(JSON.stringify({ type:'result',receipt:{ protocolVersion:request.protocolVersion,grantEpoch:request.grantEpoch,
+      installationId:request.installationId,sessionId:request.sessionId,requestId:request.requestId,deadline:request.deadline,
+      fingerprint:request.fingerprint,outcome:'observed',quiescent:true,value:{ tabs:[] } } }))
+    await expect(pending).resolves.toMatchObject({ outcome:'observed',delivery:'sent' })
+  })
+  it('allows operation policy to reject a logical action before provider preconditions run', async () => {
+    const test=await mounted();const identity=await test.pair();const extension=await peer(test.base,identity)
+    const requestId=randomUUID(),sessionId=SessionId('test-session')
+    let observedContext:unknown
+    test.ctx.on('browser/operation-intent' as never,(async(context:unknown)=>{
+      observedContext=context
+      return { kind:'deny',result:{ requestId,sessionId,installationId:identity.installationId,
+        outcome:'failed',delivery:'not-sent',reason:'task_recovery_required' } }
+    }) as never)
+    const result=await test.ctx.browser.execute({ requestId,sessionId,installationId:identity.installationId,
+      action:regionRender({ tabId:12,frameId:0,documentId:'document-1',url:'https://example.test/page' },'summary','11111111-1111-4111-8111-111111111111','摘要') },new AbortController().signal)
+    expect(observedContext).toMatchObject({ phase:'execute',operation:{ requestId,sessionId },logicalMutates:true })
+    expect(result).toMatchObject({ outcome:'failed',delivery:'not-sent',reason:'task_recovery_required' })
+    expect(extension.frames.some(frame=>actionKind(frame,'region_render'))).toBe(false)
+  })
+  it('publishes an early provider rejection as the logical operation settlement', async () => {
+    const test=await mounted();const identity=await test.pair();await peer(test.base,identity)
+    const settlements:unknown[]=[]
+    test.ctx.on('browser/operation-settled' as never,((context:unknown,settlement:unknown)=>{
+      settlements.push({ context,settlement })
+    }) as never)
+    const requestId=randomUUID(),sessionId=SessionId('test-session')
+    const result=await test.ctx.browser.execute({ requestId,sessionId,installationId:identity.installationId,
+      action:regionRender({ tabId:12,frameId:0,documentId:'document-1',url:'https://example.test/page' },'summary','11111111-1111-4111-8111-111111111111','摘要') },new AbortController().signal)
+    expect(result).toMatchObject({ delivery:'not-sent',reason:'page_map_evidence_required' })
+    const expected: unknown = [matching({
+      context: matching({ phase: 'execute', operation: matching({ requestId }) }),
+      settlement: { kind: 'result', result: matching({ requestId, delivery: 'not-sent', reason: 'page_map_evidence_required' }) },
+    })]
+    expect(settlements).toEqual(expected)
+  })
+  it('fails closed when a later pre-send policy listener throws', async () => {
+    const test=await mounted();const identity=await test.pair()
+    const settlements:unknown[]=[]
+    test.ctx.on('browser/operation-intent' as never,((_:unknown,next:()=>unknown)=>next()) as never)
+    test.ctx.on('browser/operation-intent' as never,(()=>{ throw new Error('late_policy_failure') }) as never)
+    test.ctx.on('browser/operation-settled' as never,((_:unknown,settlement:unknown)=>{settlements.push(settlement)}) as never)
+    const result=await test.ctx.browser.execute({ requestId:randomUUID(),sessionId:SessionId('test-session'),installationId:identity.installationId,
+      action:{ kind:'tabs' } },new AbortController().signal)
+    expect(result).toMatchObject({ outcome:'failed',delivery:'not-sent',reason:'browser_policy_internal_error' })
+    const expected: unknown = [matching({
+      kind: 'result', result: matching({ outcome: 'failed', delivery: 'not-sent' }),
+    })]
+    expect(settlements).toEqual(expected)
+  })
   it('requires a complete executor capability handshake before an installation becomes online', async () => {
     const test = await mounted(); const identity = await test.pair()
     const socket = new WebSocket(test.base.replace('http', 'ws') + API + '/ws', { headers: { Origin: origin } })
@@ -117,7 +199,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     const extension = await peer(test.base, identity)
     const page = { tabId: 12, frameId: 0, documentId: 'document-1', url: 'https://example.test/page' }
     const pending = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page, mountId: 'summary', selector: '#sidebar', blocks: [{ type: 'text', text: '摘要' }] } }, new AbortController().signal)
+      action: regionRender(page, 'summary', '11111111-1111-4111-8111-111111111111', '摘要') }, new AbortController().signal)
     await expect(pending).resolves.toMatchObject({ delivery: 'not-sent', reason: 'page_map_evidence_required' })
     expect(extension.frames.some(frame => actionKind(frame, 'region_render'))).toBe(false)
   })
@@ -135,9 +217,12 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       deadline: request.deadline, fingerprint: request.fingerprint,
       outcome: 'observed', quiescent: true, value: { page, regions: [{ selector: '#main', disposable: true, protected: true }] },
     } }))
-    await expect(mapped).resolves.toMatchObject({ outcome: 'observed', value: { page, regions: [{ selector: '#main' }] } })
+    const mappedResult = await mapped
+    expect(mappedResult).toMatchObject({ outcome: 'observed', value: { page, regions: [{ disposable: true, protected: true }] } })
+    expect(JSON.stringify(mappedResult)).not.toContain('#main')
+    const regionRef = mappedRegion(mappedResult)
     const pending = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page, mountId: 'summary', selector: '#main', mode: 'replace', blocks: [{ type: 'text', text: '摘要' }] } }, new AbortController().signal)
+      action: regionRender(page, 'summary', regionRef, '摘要', 'replace') }, new AbortController().signal)
     await expect(pending).resolves.toMatchObject({ delivery: 'not-sent', reason: 'region_replace_not_permitted' })
     expect(extension.frames.filter(frame => actionKind(frame, 'region_render'))).toHaveLength(0)
   })
@@ -156,15 +241,62 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
         { selector: '#one', disposable: true, protected: false }, { selector: '#two', disposable: true, protected: false },
       ] },
     } }))
-    await mapped
+    const mappedResult = await mapped
+    const [oneRef, twoRef] = [mappedRegion(mappedResult), mappedRegion(mappedResult, 1)]
     const first = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page, mountId: 'one', selector: '#one', blocks: [{ type: 'text', text: '一' }] } }, new AbortController().signal)
+      action: regionRender(page, 'one', oneRef, '一') }, new AbortController().signal)
     await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'region_render'))).toBe(true)
     extension.socket.terminate()
     await expect(first).resolves.toMatchObject({ outcome: 'unknown', delivery: 'sent' })
     await expect(test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page, mountId: 'two', selector: '#two', blocks: [{ type: 'text', text: '二' }] } }, new AbortController().signal))
+      action: regionRender(page, 'two', twoRef, '二') }, new AbortController().signal))
       .resolves.toMatchObject({ delivery: 'not-sent', reason: 'mount_capacity' })
+  })
+
+  it('joins concurrent direct region renders before policy and rejects a conflicting reuse without settling it', async () => {
+    const test = await mounted({ maxMounts: 1 }); const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const page = { tabId: 12, frameId: 0, documentId: 'document-direct-lifecycle', url: 'https://example.test/page' }
+    const mapped = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('direct-lifecycle'), installationId: identity.installationId,
+      action: { kind: 'page_map', page } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'page_map'))).toBe(true)
+    const map = execute(extension.frames, request => object(request.payload).kind === 'page_map')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: map.protocolVersion, grantEpoch: map.grantEpoch,
+      installationId: map.installationId, sessionId: map.sessionId, requestId: map.requestId, deadline: map.deadline,
+      fingerprint: map.fingerprint,
+      outcome: 'observed', quiescent: true, value: { page, regions: [{ selector: '#summary', disposable: true, protected: false }] } } }))
+    const regionRef = mappedRegion(await mapped)
+    const requestId = randomUUID(); const sessionId = SessionId('direct-lifecycle')
+    const action = regionRender(page, 'summary', regionRef, '第一份摘要')
+    const intents: unknown[] = []; const settlements: unknown[] = []
+    test.ctx.on('browser/operation-intent' as never, ((context: { operation: { requestId: string } }, next: () => unknown) => {
+      if (context.operation.requestId === requestId) intents.push(context)
+      return next()
+    }) as never)
+    test.ctx.on('browser/operation-settled' as never, ((context: { operation: { requestId: string } }, settlement: unknown) => {
+      if (context.operation.requestId === requestId) settlements.push(settlement)
+    }) as never)
+    const operation = { requestId, sessionId, installationId: identity.installationId, action }
+    const first = test.ctx.browser.execute(operation, new AbortController().signal)
+    const second = test.ctx.browser.execute(structuredClone(operation), new AbortController().signal)
+    await expect.poll(() => extension.frames.filter(frame => actionKind(frame, 'region_render'))).toHaveLength(1)
+    const conflict = await test.ctx.browser.execute({ ...operation, action: regionRender(page, 'summary', regionRef, '另一份摘要') }, new AbortController().signal)
+    expect(conflict).toMatchObject({ outcome: 'failed', delivery: 'not-sent', reason: 'request_conflict' })
+    expect(intents).toHaveLength(1)
+    expect(settlements).toHaveLength(0)
+    const gateway = test.ctx.browser as unknown as { readonly regions: Map<string, unknown> }
+    expect(gateway.regions).toHaveLength(1)
+    const render = execute(extension.frames, request => object(request.payload).kind === 'region_render')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: render.protocolVersion, grantEpoch: render.grantEpoch,
+      installationId: render.installationId, sessionId: render.sessionId, requestId: render.requestId, deadline: render.deadline,
+      fingerprint: render.fingerprint, outcome: 'observed', quiescent: true, value: { rendered: 1 } } }))
+    const result = await first
+    expect(await second).toEqual(result)
+    expect(await test.ctx.browser.execute(structuredClone(operation), new AbortController().signal)).toEqual(result)
+    expect(result).toMatchObject({ outcome: 'observed', delivery: 'sent', value: { rendered: 1 } })
+    expect(extension.frames.filter(frame => actionKind(frame, 'region_render'))).toHaveLength(1)
+    expect(intents).toHaveLength(1)
+    expect(settlements).toHaveLength(1)
+    expect(gateway.regions).toHaveLength(1)
   })
 
   it('region_clear 只在 cleared 或精确 absent 证明后释放 Host 预留容量', async () => {
@@ -181,9 +313,10 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
         { selector: '#one', disposable: true, protected: false }, { selector: '#two', disposable: true, protected: false },
       ] },
     } }))
-    await mapped
+    const mappedResult = await mapped
+    const [oneRef, twoRef] = [mappedRegion(mappedResult), mappedRegion(mappedResult, 1)]
     const rendered = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page, mountId: 'one', selector: '#one', blocks: [{ type: 'text', text: '一' }] } }, new AbortController().signal)
+      action: regionRender(page, 'one', oneRef, '一') }, new AbortController().signal)
     await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'region_render'))).toBe(true)
     const render = execute(extension.frames, request => object(request.payload).kind === 'region_render')
     extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: render.protocolVersion, grantEpoch: render.grantEpoch,
@@ -203,7 +336,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     } }))
     await expect(clearing).resolves.toMatchObject({ outcome: 'observed', value: { cleared: false } })
     await expect(test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page, mountId: 'two', selector: '#two', blocks: [{ type: 'text', text: '二' }] } }, new AbortController().signal))
+      action: regionRender(page, 'two', twoRef, '二') }, new AbortController().signal))
       .resolves.toMatchObject({ delivery: 'not-sent', reason: 'mount_capacity' })
     const absent = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
       action: { kind: 'region_clear', page, mountId: 'one' } }, new AbortController().signal)
@@ -216,7 +349,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     } }))
     await expect(absent).resolves.toMatchObject({ outcome: 'observed', value: { disposition: 'absent' } })
     const replacement = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page, mountId: 'two', selector: '#two', blocks: [{ type: 'text', text: '二' }] } }, new AbortController().signal)
+      action: regionRender(page, 'two', twoRef, '二') }, new AbortController().signal)
     await expect.poll(() => extension.frames.filter(frame => actionKind(frame, 'region_render')).length).toBe(2)
     const rerender = execute(extension.frames, request => request.requestId !== render.requestId && object(request.payload).kind === 'region_render')
     extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: rerender.protocolVersion, grantEpoch: rerender.grantEpoch,
@@ -238,10 +371,11 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       deadline: mapRequest.deadline, fingerprint: mapRequest.fingerprint, outcome: 'observed', quiescent: true,
       value: { page, regions: [{ selector: '#one', disposable: true, protected: false }, { selector: '#two', disposable: true, protected: false }] },
     } }))
-    await map
-    const render = (mountId: string, selector: string) => test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'),
-      installationId: identity.installationId, action: { kind: 'region_render', page, mountId, selector, blocks: [{ type: 'text', text: mountId }] } }, new AbortController().signal)
-    const first = render('one', '#one')
+    const mappedResult = await map
+    const [oneRef, twoRef] = [mappedRegion(mappedResult), mappedRegion(mappedResult, 1)]
+    const renderPanel = (mountId: string, regionRef: string) => test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'),
+      installationId: identity.installationId, action: regionRender(page, mountId, regionRef, mountId) }, new AbortController().signal)
+    const first = renderPanel('one', oneRef)
     await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'region_render'))).toBe(true)
     const initial = execute(extension.frames, request => object(request.payload).kind === 'region_render')
     extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: initial.protocolVersion, grantEpoch: initial.grantEpoch,
@@ -249,7 +383,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       deadline: initial.deadline, fingerprint: initial.fingerprint, outcome: 'observed', quiescent: true, value: { rendered: 1 },
     } }))
     await first
-    const update = render('one', '#one')
+    const update = renderPanel('one', oneRef)
     await expect.poll(() => extension.frames.filter(frame => actionKind(frame, 'region_render')).length).toBe(2)
     const updateRequest = execute(extension.frames, request => request.requestId !== initial.requestId && object(request.payload).kind === 'region_render')
     extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: updateRequest.protocolVersion, grantEpoch: updateRequest.grantEpoch,
@@ -257,7 +391,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       deadline: updateRequest.deadline, fingerprint: updateRequest.fingerprint, outcome: 'failed', quiescent: true, reason: 'region_target_not_found',
     } }))
     await expect(update).resolves.toMatchObject({ outcome: 'failed', reason: 'region_target_not_found' })
-    await expect(render('two', '#two')).resolves.toMatchObject({ delivery: 'not-sent', reason: 'mount_capacity' })
+    await expect(renderPanel('two', twoRef)).resolves.toMatchObject({ delivery: 'not-sent', reason: 'mount_capacity' })
   })
 
   it('仅 document_replaced 回收失去页面运行时的 entry lease', async () => {
@@ -305,9 +439,10 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       deadline: mapRequest.deadline, fingerprint: mapRequest.fingerprint, outcome: 'observed', quiescent: true,
       value: { page: oldPage, regions: [{ selector: '#one', disposable: true, protected: false }] },
     } }))
-    await map
+    const oldMap = await map
+    const oldRef = mappedRegion(oldMap)
     const render = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page: oldPage, mountId: 'old-region', selector: '#one', blocks: [{ type: 'text', text: '一' }] } }, new AbortController().signal)
+      action: regionRender(oldPage, 'old-region', oldRef, '一') }, new AbortController().signal)
     await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'region_render'))).toBe(true)
     const renderRequest = execute(extension.frames, request => object(request.payload).kind === 'region_render')
     extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: renderRequest.protocolVersion, grantEpoch: renderRequest.grantEpoch,
@@ -325,7 +460,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     } }))
     await staleClear
     const blocked = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page: oldPage, mountId: 'still-blocked', selector: '#one', blocks: [{ type: 'text', text: '二' }] } }, new AbortController().signal)
+      action: regionRender(oldPage, 'still-blocked', oldRef, '二') }, new AbortController().signal)
     await expect(blocked).resolves.toMatchObject({ delivery: 'not-sent', reason: 'mount_capacity' })
     const replacedClear = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
       action: { kind: 'region_clear', page: oldPage, mountId: 'old-region' } }, new AbortController().signal)
@@ -346,9 +481,10 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       deadline: newMapRequest.deadline, fingerprint: newMapRequest.fingerprint, outcome: 'observed', quiescent: true,
       value: { page: newPage, regions: [{ selector: '#two', disposable: true, protected: false }] },
     } }))
-    await newMap
+    const newMapResult = await newMap
+    const newRef = mappedRegion(newMapResult)
     const replacement = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page: newPage, mountId: 'new-region', selector: '#two', blocks: [{ type: 'text', text: '二' }] } }, new AbortController().signal)
+      action: regionRender(newPage, 'new-region', newRef, '二') }, new AbortController().signal)
     await expect.poll(() => extension.frames.filter(frame => actionKind(frame, 'region_render')).length).toBe(2)
     const replacementRequest = execute(extension.frames, request => request.requestId !== renderRequest.requestId && object(request.payload).kind === 'region_render')
     extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: replacementRequest.protocolVersion, grantEpoch: replacementRequest.grantEpoch,
@@ -372,9 +508,10 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
         { selector: '#one', disposable: true, protected: false }, { selector: '#two', disposable: true, protected: false },
       ] },
     } }))
-    await mapped
+    const mappedResult = await mapped
+    const oneRef = mappedRegion(mappedResult)
     const rendered = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page, mountId: 'one', selector: '#one', blocks: [{ type: 'text', text: '一' }] } }, new AbortController().signal)
+      action: regionRender(page, 'one', oneRef, '一') }, new AbortController().signal)
     await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'region_render'))).toBe(true)
     const render = execute(extension.frames, request => object(request.payload).kind === 'region_render')
     extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: render.protocolVersion, grantEpoch: render.grantEpoch,
@@ -405,9 +542,10 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       deadline: remap.deadline, fingerprint: remap.fingerprint,
       outcome: 'observed', quiescent: true, value: { page, regions: [{ selector: '#two', disposable: true, protected: false }] },
     } }))
-    await remapped
+    const remappedResult = await remapped
+    const twoRef = mappedRegion(remappedResult)
     const next = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'region_render', page, mountId: 'two', selector: '#two', blocks: [{ type: 'text', text: '二' }] } }, new AbortController().signal)
+      action: regionRender(page, 'two', twoRef, '二') }, new AbortController().signal)
     await expect.poll(() => replacement.frames.filter(frame => actionKind(frame, 'region_render'))).toHaveLength(1)
     const nextRequest = execute(replacement.frames, request => object(request.payload).kind === 'region_render')
     replacement.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: nextRequest.protocolVersion, grantEpoch: nextRequest.grantEpoch,
@@ -538,9 +676,10 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     extension.socket.send(JSON.stringify({ type:'result',receipt:{ protocolVersion:mapRequest.protocolVersion,grantEpoch:mapRequest.grantEpoch,
       installationId:mapRequest.installationId,sessionId:mapRequest.sessionId,requestId:mapRequest.requestId,deadline:mapRequest.deadline,
       fingerprint:mapRequest.fingerprint,outcome:'observed',quiescent:true,value:{ page,regions:[{ selector:'#side',disposable:true,protected:false }] } } }))
-    await mapped
+    const mappedResult = await mapped
+    const regionRef = mappedRegion(mappedResult)
     const render=(requestId:string)=>test.ctx.browser.execute({ requestId,sessionId,installationId:identity.installationId,
-      action:{ kind:'region_render',page,mountId:'panel',selector:'#side',blocks:[{ type:'text',text:'证据' }] } },new AbortController().signal)
+      action:regionRender(page,'panel',regionRef,'证据') },new AbortController().signal)
     const firstId=randomUUID();const first=render(firstId)
     await expect.poll(()=>extension.frames.some(frame=>actionKind(frame,'region_render'))).toBe(true)
     const firstRequest=execute(extension.frames,request=>request.requestId===firstId)
@@ -600,7 +739,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     gateway.settleResourceAction({ operation,action:operation.action,mount:undefined,region,mountCreated:false,regionCreated:false,
       regionGeneration:1 },{ requestId:'clear-old',outcome:'observed',delivery:'sent',value:{ cleared:true } })
     expect(gateway.regions.has(key)).toBe(true)
-    const render={ ...operation,requestId:'render-new',action:{ kind:'region_render',page,mountId:'panel',selector:'#side',blocks:[{ type:'text',text:'证据' }] } }
+    const render={ ...operation,requestId:'render-new',action:regionRender(page,'panel','11111111-1111-4111-8111-111111111111','证据') }
     gateway.settleResourceAction({ operation:render,action:render.action,mount:undefined,region,mountCreated:false,regionCreated:false,
       regionGeneration:2,regionPreviousGeneration:1 },{ requestId:'render-new',outcome:'failed',delivery:'not-sent',reason:'offline' })
     expect(gateway.regions.has(key)).toBe(false)
@@ -898,6 +1037,13 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
 
   it('keeps page preparation opaque to callers and commits its exact action once', async () => {
     const test = await mounted(); const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const intents:string[]=[];const settlements:string[]=[]
+    test.ctx.on('browser/operation-intent' as never,((context:{ phase:string },next:()=>unknown)=>{
+      intents.push(context.phase);return next()
+    }) as never)
+    test.ctx.on('browser/operation-settled' as never,((context:{ phase:string })=>{
+      settlements.push(context.phase)
+    }) as never)
     const action = { kind: 'click' as const, intent: '打开详情', element: {
       page: { tabId: 12, frameId: 0, documentId: 'document-1', url: 'https://example.test/page' }, snapshotId: 'snapshot-1', elementId: 'element-1',
     } }
@@ -923,8 +1069,8 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       } } } }))
     const ticket = await preparing
     expect(ticket.ticket).not.toBe(preparationId)
-    const committing = test.ctx.browser.executePrepared(
-      ticket.ticket, new AbortController().signal)
+    const committing = test.ctx.browser.executePrepared(ticket.ticket, new AbortController().signal)
+    const concurrent = test.ctx.browser.executePrepared(ticket.ticket, new AbortController().signal)
     await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'commit'))).toBe(true)
     const commit = execute(extension.frames, request => object(request.payload).kind === 'commit')
     expect(commit.requestId).toBe(callerRequestId)
@@ -935,7 +1081,151 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       installationId: commit.installationId, sessionId: commit.sessionId, requestId: commit.requestId,
       deadline: commit.deadline, fingerprint: commit.fingerprint,
       outcome: 'observed', value: { clicked: true } } }))
-    expect(await committing).toMatchObject({ outcome: 'observed', value: { clicked: true } })
+    const first=await committing;const second=await concurrent
+    expect(first).toMatchObject({ outcome: 'observed', value: { clicked: true } })
+    expect(second).toEqual(first)
+    expect(await test.ctx.browser.executePrepared(ticket.ticket,new AbortController().signal)).toEqual(first)
+    expect(extension.frames.filter(frame=>frame.type==='execute'
+      &&object(object(frame.request).payload).kind==='commit')).toHaveLength(1)
+    expect(intents.filter(phase=>phase==='prepared-commit')).toHaveLength(1)
+    expect(settlements.filter(phase=>phase==='prepared-commit')).toHaveLength(1)
+  })
+
+  it('retains an expired in-flight prepared lifecycle through another preparation prune', async () => {
+    let now = 1_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const test = await mounted({ requestTTL: 20, receiptRetentionMs: 1000 })
+    const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const action = { kind: 'click' as const, intent: '打开详情', element: {
+      page: { tabId: 12, frameId: 0, documentId: 'document-prepared-race', url: 'https://example.test/page' }, snapshotId: 'snapshot-1', elementId: 'element-1',
+    } }
+    const requestId = randomUUID()
+    let preparedCommitIntents = 0; const preparedCommitSettlements: unknown[] = []
+    test.ctx.on('browser/operation-intent' as never, ((context: { phase: string }, next: () => unknown) => {
+      if (context.phase === 'prepared-commit') {
+        preparedCommitIntents += 1
+        // If the expired lifecycle were deleted, this second policy path would
+        // turn the duplicate into a conclusively not-sent result.
+        if (preparedCommitIntents > 1) return { kind: 'deny', result: { requestId, sessionId: 'prepared-race',
+          installationId: identity.installationId, outcome: 'failed', delivery: 'not-sent', reason: 'duplicate_commit' } }
+      }
+      return next()
+    }) as never)
+    test.ctx.on('browser/operation-settled' as never, ((context: { phase: string }) => {
+      if (context.phase === 'prepared-commit') preparedCommitSettlements.push(context)
+    }) as never)
+    const preparing = test.ctx.browser.prepare({ sessionId: SessionId('prepared-race'), installationId: identity.installationId,
+      requestId, action }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'prepare'))).toBe(true)
+    const prepare = execute(extension.frames, frame => object(frame.payload).kind === 'prepare')
+    const expiresAt = object(prepare.payload).expiresAt
+    if (typeof expiresAt !== 'number') throw new Error('missing prepare expiry')
+    const preparationId = randomUUID()
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: prepare.protocolVersion, grantEpoch: prepare.grantEpoch,
+      installationId: prepare.installationId, sessionId: prepare.sessionId, requestId: prepare.requestId, deadline: prepare.deadline,
+      fingerprint: prepare.fingerprint, outcome: 'observed', value: { preparationId, expiresAt, description: {
+        kind: 'click', page: action.element.page, title: '示例页面', effect: 'unknown' } } } }))
+    const ticket = await preparing
+    const first = test.ctx.browser.executePrepared(ticket.ticket, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'commit'))).toBe(true)
+    now += 21
+    // A fresh preparation exercises both Host and BrowserPreparations pruning
+    // while the first commit is deliberately still in flight.
+    const another = test.ctx.browser.prepare({ sessionId: SessionId('prepared-race'), installationId: identity.installationId,
+      requestId: randomUUID(), action }, new AbortController().signal)
+    await expect.poll(() => extension.frames.filter(frame => actionKind(frame, 'prepare')).length).toBe(2)
+    const secondPrepare = [...extension.frames].reverse().find(frame => actionKind(frame, 'prepare'))?.request
+    if (secondPrepare === undefined) throw new Error('missing second prepare')
+    const secondExpiresAt = object(secondPrepare.payload).expiresAt
+    if (typeof secondExpiresAt !== 'number') throw new Error('missing second prepare expiry')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: secondPrepare.protocolVersion,
+      grantEpoch: secondPrepare.grantEpoch, installationId: secondPrepare.installationId, sessionId: secondPrepare.sessionId,
+      requestId: secondPrepare.requestId, deadline: secondPrepare.deadline, fingerprint: secondPrepare.fingerprint, outcome: 'observed',
+      value: { preparationId: randomUUID(), expiresAt: secondExpiresAt, description: { kind: 'click', page: action.element.page,
+        title: '示例页面', effect: 'unknown' } } } }))
+    await another
+    const duplicate = test.ctx.browser.executePrepared(ticket.ticket, new AbortController().signal)
+    expect(extension.frames.filter(frame => actionKind(frame, 'commit'))).toHaveLength(1)
+    const commit = execute(extension.frames, frame => object(frame.payload).kind === 'commit')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: commit.protocolVersion, grantEpoch: commit.grantEpoch,
+      installationId: commit.installationId, sessionId: commit.sessionId, requestId: commit.requestId, deadline: commit.deadline,
+      fingerprint: commit.fingerprint, outcome: 'observed', value: { clicked: true } } }))
+    const result = await first
+    // The controlled clock also expires the transport deadline, so the first
+    // caller must retain its sent/unknown result rather than accepting the
+    // duplicate policy's not-sent denial.
+    expect(result).toMatchObject({ outcome: 'unknown', delivery: 'sent' })
+    expect(await duplicate).toEqual(result)
+    expect(preparedCommitIntents).toBe(1)
+    expect(preparedCommitSettlements).toHaveLength(1)
+  })
+
+  it('retains a settled prepared result for the receipt window then rejects the ticket without resend', async () => {
+    let now = 2_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const test = await mounted({ requestTTL: 20, receiptRetentionMs: 1000 })
+    const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const action = { kind: 'click' as const, intent: '打开详情', element: {
+      page: { tabId: 12, frameId: 0, documentId: 'document-prepared-retention', url: 'https://example.test/page' }, snapshotId: 'snapshot-1', elementId: 'element-1',
+    } }
+    const preparing = test.ctx.browser.prepare({ sessionId: SessionId('prepared-retention'), installationId: identity.installationId,
+      requestId: randomUUID(), action }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'prepare'))).toBe(true)
+    const prepare = execute(extension.frames, frame => object(frame.payload).kind === 'prepare')
+    const expiresAt = object(prepare.payload).expiresAt
+    if (typeof expiresAt !== 'number') throw new Error('missing prepare expiry')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: prepare.protocolVersion, grantEpoch: prepare.grantEpoch,
+      installationId: prepare.installationId, sessionId: prepare.sessionId, requestId: prepare.requestId, deadline: prepare.deadline,
+      fingerprint: prepare.fingerprint, outcome: 'observed', value: { preparationId: randomUUID(), expiresAt, description: {
+        kind: 'click', page: action.element.page, title: '示例页面', effect: 'unknown' } } } }))
+    const ticket = await preparing
+    const pending = test.ctx.browser.executePrepared(ticket.ticket, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'commit'))).toBe(true)
+    const commit = execute(extension.frames, frame => object(frame.payload).kind === 'commit')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: commit.protocolVersion, grantEpoch: commit.grantEpoch,
+      installationId: commit.installationId, sessionId: commit.sessionId, requestId: commit.requestId, deadline: commit.deadline,
+      fingerprint: commit.fingerprint, outcome: 'observed', value: { clicked: true } } }))
+    const result = await pending
+    now += 999
+    expect(await test.ctx.browser.executePrepared(ticket.ticket, new AbortController().signal)).toEqual(result)
+    now += 1
+    await expect(test.ctx.browser.executePrepared(ticket.ticket, new AbortController().signal)).rejects.toMatchObject({ code: 'ticket_unavailable' })
+    expect(extension.frames.filter(frame => actionKind(frame, 'commit'))).toHaveLength(1)
+  })
+
+  it('settles a prepared-commit policy exception as conclusively not-sent',async()=>{
+    const test=await mounted();const identity=await test.pair();const extension=await peer(test.base,identity)
+    const action={ kind:'click' as const,intent:'open',element:{ page:{ tabId:12,frameId:0,
+      documentId:'document-policy-commit',url:'https://example.test/page' },snapshotId:'snapshot-1',elementId:'element-1' } }
+    const requestId=randomUUID();const preparing=test.ctx.browser.prepare({ sessionId:SessionId('prepared-policy'),
+      installationId:identity.installationId,requestId,action },new AbortController().signal)
+    await expect.poll(()=>extension.frames.some(frame=>frame.type==='execute'
+      &&object(object(frame.request).payload).kind==='prepare')).toBe(true)
+    const prepare=execute(extension.frames,value=>object(value.payload).kind==='prepare')
+    const expiresAt=object(prepare.payload).expiresAt
+    if(typeof expiresAt!=='number')throw new Error('missing prepare expiry')
+    extension.socket.send(JSON.stringify({ type:'result',receipt:{ protocolVersion:prepare.protocolVersion,
+      grantEpoch:prepare.grantEpoch,installationId:prepare.installationId,sessionId:prepare.sessionId,
+      requestId:prepare.requestId,deadline:prepare.deadline,fingerprint:prepare.fingerprint,outcome:'observed',
+      value:{ preparationId:randomUUID(),expiresAt,description:{ kind:'click',page:action.element.page,
+        title:'Example',effect:'unknown' } } } }))
+    const ticket=await preparing;const settlements:unknown[]=[]
+    test.ctx.on('browser/operation-intent' as never,((context:{ phase:string },next:()=>unknown)=>{
+      if(context.phase==='prepared-commit')throw new Error('commit_policy_failure')
+      return next()
+    }) as never)
+    test.ctx.on('browser/operation-settled' as never,((context:unknown,settlement:unknown)=>{
+      settlements.push({ context,settlement })
+    }) as never)
+    await expect(test.ctx.browser.executePrepared(ticket.ticket,new AbortController().signal)).resolves.toMatchObject({
+      requestId,outcome:'failed',delivery:'not-sent',reason:'browser_policy_internal_error' })
+    expect(extension.frames.some(frame=>frame.type==='execute'
+      &&object(object(frame.request).payload).kind==='commit')).toBe(false)
+    const expected: unknown = [matching({
+      context: matching({ phase: 'prepared-commit' }),
+      settlement: matching({ kind: 'result', result: matching({ delivery: 'not-sent' }) }),
+    })]
+    expect(settlements).toEqual(expected)
   })
 
   it('preserves a sent action as unknown across disconnect and only queries it on reconnect', async () => {
@@ -947,6 +1237,62 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     const replacement = await peer(test.base, identity)
     await expect.poll(() => replacement.frames.some(frame => frame.type === 'status')).toBe(true)
     expect(replacement.frames.some(frame => frame.type === 'execute')).toBe(false)
+  })
+
+  it('uses a read-only journal lookup to reconcile an old unknown write after write access is revoked',async()=>{
+    const test=await mounted();const identity=await test.pair();const extension=await peer(test.base,identity)
+    const sessionId=SessionId('read-only-recovery');const requestId=randomUUID()
+    const operation={ requestId,sessionId,installationId:identity.installationId,action:{ kind:'click' as const,
+      intent:'open',element:{ page:{ tabId:12,frameId:0,documentId:'document-1',url:'https://example.test/page' },
+        snapshotId:'snapshot-1',elementId:'button-1' } } }
+    const pending=test.ctx.browser.execute(operation,new AbortController().signal)
+    await expect.poll(()=>extension.frames.some(frame=>frame.type==='execute')).toBe(true)
+    const issued=execute(extension.frames,request=>request.requestId===requestId)
+    extension.socket.terminate()
+    await expect(pending).resolves.toMatchObject({ outcome:'unknown',delivery:'sent' })
+    const renewed=await test.pair(['browser:read'],identity.installationId)
+    const replacement=await peer(test.base,renewed)
+    await expect.poll(()=>replacement.frames.some(frame=>frame.type==='status-query')).toBe(true)
+    expect(replacement.frames.some(frame=>frame.type==='execute')).toBe(false)
+    replacement.socket.send(JSON.stringify({ type:'result',receipt:{ protocolVersion:issued.protocolVersion,
+      grantEpoch:issued.grantEpoch,installationId:issued.installationId,sessionId:issued.sessionId,
+      requestId:issued.requestId,deadline:issued.deadline,fingerprint:issued.fingerprint,
+      outcome:'observed',quiescent:true,value:{ clicked:true } } }))
+    await expect.poll(async()=>test.ctx.browser.requestStatus({ requestId,sessionId,
+      installationId:identity.installationId })).toMatchObject({ outcome:'observed',delivery:'sent',value:{ clicked:true } })
+    const executeFrames=replacement.frames.filter(frame=>frame.type==='execute').length
+    await expect(test.ctx.browser.execute(operation,new AbortController().signal)).resolves.toMatchObject({
+      outcome:'observed',delivery:'sent',value:{ clicked:true } })
+    expect(replacement.frames.filter(frame=>frame.type==='execute')).toHaveLength(executeFrames)
+  })
+
+  it('queries an older-epoch extension journal after Host request memory is lost without replay', async () => {
+    const test=await mounted();const identity=await test.pair();const extension=await peer(test.base,identity)
+    const sessionId=SessionId('restart-session');const requestId=randomUUID()
+    const operation={ requestId,sessionId,installationId:identity.installationId,
+      action:{ kind:'click' as const,intent:'open',element:{ page:{ tabId:12,frameId:0,documentId:'document-1',
+        url:'https://example.test/page' },snapshotId:'snapshot-1',elementId:'button-1' } } }
+    const executing=test.ctx.browser.execute(operation,new AbortController().signal)
+    await expect.poll(()=>extension.frames.some(frame=>frame.type==='execute')).toBe(true)
+    const issued=execute(extension.frames,request=>request.requestId===requestId)
+    const receipt={ protocolVersion:issued.protocolVersion,grantEpoch:issued.grantEpoch,
+      installationId:issued.installationId,sessionId:issued.sessionId,requestId:issued.requestId,
+      deadline:issued.deadline,fingerprint:issued.fingerprint,outcome:'observed' as const,quiescent:true,value:{ clicked:true } }
+    extension.socket.send(JSON.stringify({ type:'result',receipt }))
+    await expect(executing).resolves.toMatchObject({ outcome:'observed' })
+    const gateway=test.ctx.browser as unknown as { requests:{ entries:Map<string,unknown> } }
+    gateway.requests.entries.clear()
+    const renewed=await test.pair(['browser:read','browser:write'],identity.installationId)
+    const replacement=await peer(test.base,renewed)
+    const status=test.ctx.browser.requestStatus({ requestId,sessionId,installationId:identity.installationId,
+      recoveryLocator:{ kind:'extension-journal-v1',protocolVersion:1,transportRequestId:requestId,
+        installationId:identity.installationId,grantEpoch:issued.grantEpoch } })
+    await expect.poll(()=>replacement.frames.some(frame=>frame.type==='status-query')).toBe(true)
+    const query=replacement.frames.find(frame=>frame.type==='status-query')
+    expect(query).toMatchObject({ type:'status-query',sessionId,locator:{ grantEpoch:issued.grantEpoch } })
+    expect(replacement.frames.some(frame=>frame.type==='execute')).toBe(false)
+    replacement.socket.send(JSON.stringify({ type:'result',receipt }))
+    await expect(status).resolves.toMatchObject({ outcome:'observed',delivery:'sent',value:{ clicked:true } })
   })
 
   it('accepts an operator-verified quiescent receipt and releases an unknown write lock', async () => {
@@ -1032,5 +1378,100 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     expect(page.status).toBe(200)
     expect(page.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
     expect(await page.text()).toContain('/browser-assistant/app.js')
+  })
+
+  it('mints a private regionRef, never returns a selector, and compiles presentation only at the extension boundary', async () => {
+    const test = await mounted(); const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const page = { tabId: 12, frameId: 0, documentId: 'document-ref', url: 'https://example.test/page' }
+    const mapping = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
+      action: { kind: 'page_map', page } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'page_map'))).toBe(true)
+    const request = execute(extension.frames, value => object(value.payload).kind === 'page_map')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: request.protocolVersion, grantEpoch: request.grantEpoch,
+      installationId: request.installationId, sessionId: request.sessionId, requestId: request.requestId,
+      deadline: request.deadline, fingerprint: request.fingerprint,
+      outcome: 'observed', value: { page, selector: '#root-private', blocks: [{ type: 'text', text: 'private' }],
+        nested: { regionSelector: '#nested-private' }, regions: [{ selector: '#private-side', disposable: true,
+          protected: false, label: 'Side', nested: { selector: '#region-private' } }] } } }))
+    const mapped = await mapping
+    const region = object(mapped.value).regions as unknown[]
+    expect(JSON.stringify(mapped.value)).not.toContain('#private-side')
+    expect(JSON.stringify(mapped.value)).not.toMatch(/selector|blocks|private/iu)
+    expect(typeof object(mapped.value).evidenceExpiresAt).toBe('number')
+    const regionRef = string(object(region[0]).regionRef)
+    const retained = await test.ctx.browser.requestStatus({ requestId: request.requestId, sessionId: SessionId('test-session'), installationId: identity.installationId })
+    expect(JSON.stringify(retained.value)).not.toContain('#private-side')
+    expect(JSON.stringify(retained.value)).toContain(regionRef)
+    const render = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
+      action: { kind: 'region_render', page, mountId: 'private-panel', regionRef,
+        presentation: { title: 'Result', summary: 'No selector leaves the Host.' } } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'region_render'))).toBe(true)
+    const compiled = object(execute(extension.frames, value => object(value.payload).kind === 'region_render').payload)
+    expect(compiled).toMatchObject({ selector: '#private-side', title: 'Result' })
+    expect(compiled.blocks).toEqual(expect.arrayContaining([{ type: 'text', text: 'No selector leaves the Host.' }]))
+    expect(compiled).not.toHaveProperty('regionRef')
+    const renderRequest = execute(extension.frames, value => object(value.payload).kind === 'region_render')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: renderRequest.protocolVersion, grantEpoch: renderRequest.grantEpoch,
+      installationId: renderRequest.installationId, sessionId: renderRequest.sessionId, requestId: renderRequest.requestId,
+      deadline: renderRequest.deadline,
+      fingerprint: renderRequest.fingerprint, outcome: 'observed', value: { rendered: 1 } } }))
+    await expect(render).resolves.toMatchObject({ outcome: 'observed' })
+  })
+
+  it('projects observe page maps through the same opaque bounded contract', async () => {
+    const test = await mounted(); const identity = await test.pair(['browser:read', 'browser:observe']); const extension = await peer(test.base, identity)
+    const instance = (await test.ctx.browser.instances())[0]!
+    const page = { tabId: 12, frameId: 0, documentId: 'document-observe-map', url: 'https://example.test/page' }
+    const observing = test.ctx.browser.observe({ sessionId: SessionId('observe-session'), installationId: identity.installationId,
+      grantEpoch: instance.grantEpoch, action: { kind: 'page_map', page } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => frame.type === 'execute'
+      && object(object(frame.request).payload).kind === 'observe')).toBe(true)
+    const request = execute(extension.frames, value => object(value.payload).kind === 'observe')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: request.protocolVersion,
+      grantEpoch: request.grantEpoch, installationId: request.installationId, sessionId: request.sessionId,
+      requestId: request.requestId, deadline: request.deadline, fingerprint: request.fingerprint, outcome: 'observed',
+      value: { page, regions: [{ selector: '#observe-private', disposable: true, protected: false }] } } }))
+    const result = await observing
+    expect(JSON.stringify(result.value)).not.toContain('selector')
+    expect(object((object(result.value).regions as unknown[])[0]).regionRef).toEqual(expect.any(String))
+  })
+
+  it('deeply redacts selector protocol fields from every other public action result', async () => {
+    const test = await mounted(); const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const pending = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('redact-session'),
+      installationId: identity.installationId, action: { kind: 'tabs' } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'tabs'))).toBe(true)
+    const request = execute(extension.frames, value => object(value.payload).kind === 'tabs')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: request.protocolVersion,
+      grantEpoch: request.grantEpoch, installationId: request.installationId, sessionId: request.sessionId,
+      requestId: request.requestId, deadline: request.deadline, fingerprint: request.fingerprint, outcome: 'observed',
+      value: { tabs: [{ tabId: 12, selector: '#nested-private', data: { blocks: [{ text: 'private' }] } }],
+        regionSelector: '#root-private' } } }))
+    const result = await pending
+    expect(JSON.stringify(result.value)).not.toMatch(/selector|blocks|private/iu)
+  })
+
+  it('rejects an oversized page map instead of retaining unbounded refs', async () => {
+    const test = await mounted(); const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const page = { tabId: 12, frameId: 0, documentId: 'document-large-map', url: 'https://example.test/page' }
+    const mapping = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('large-map'),
+      installationId: identity.installationId, action: { kind: 'page_map', page } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'page_map'))).toBe(true)
+    const request = execute(extension.frames, value => object(value.payload).kind === 'page_map')
+    extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: request.protocolVersion,
+      grantEpoch: request.grantEpoch, installationId: request.installationId, sessionId: request.sessionId,
+      requestId: request.requestId, deadline: request.deadline, fingerprint: request.fingerprint, outcome: 'observed',
+      value: { page, regions: Array.from({ length: 65 }, (_, index) => ({ selector: `#r-${index}`,
+        disposable: true, protected: false })) } } }))
+    await expect(mapping).resolves.toMatchObject({ outcome: 'failed', delivery: 'sent', reason: 'invalid_page_map' })
+  })
+
+  it('rejects a selector-shaped direct Browser action before it reaches the extension', async () => {
+    const test = await mounted(); const identity = await test.pair(); const extension = await peer(test.base, identity)
+    const page = { tabId: 12, frameId: 0, documentId: 'document-direct', url: 'https://example.test/page' }
+    const result = await test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
+      action: { kind: 'region_render', page, mountId: 'bypass', selector: '#forbidden', blocks: [{ type: 'text', text: 'no' }] } as never }, new AbortController().signal)
+    expect(result).toMatchObject({ outcome: 'failed', delivery: 'not-sent', reason: 'invalid_action' })
+    expect(extension.frames.some(frame => actionKind(frame, 'region_render'))).toBe(false)
   })
 })

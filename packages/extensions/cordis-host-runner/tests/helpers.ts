@@ -6,6 +6,7 @@ import ToolRegistry from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { CordisDynamicPluginId } from '../src/types.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import DynamicCordisRunnerService from '../src/index.ts'
 import type { Config } from '../src/index.ts'
@@ -34,16 +35,18 @@ interface Gateway {
   answering?: Promise<void>
 }
 
+const inertAgentContext = { effect: () => () => {} } as unknown as Context
 /** The session that owns every definition these suites define. */
-export const AGENT_A = { id: 'S-a' as SessionId, steer() {}, inject() {} } as unknown as Agent
+export const AGENT_A = { id: 'S-a' as SessionId, session: { id: 'S-a' as SessionId }, ctx: inertAgentContext, steer() {}, inject() {} } as unknown as Agent
 /** A second session, for the authority-scoping cases. */
-export const AGENT_B = { id: 'S-b' as SessionId, steer() {}, inject() {} } as unknown as Agent
+export const AGENT_B = { id: 'S-b' as SessionId, session: { id: 'S-b' as SessionId }, ctx: inertAgentContext, steer() {}, inject() {} } as unknown as Agent
 
 /** One live tree: the context, the runner, and the recording gateway. */
 interface Harness {
   ctx: Context
   runner: DynamicCordisRunnerService
   gateway: Gateway
+  disposeAgent(agent: Agent): void
 }
 
 /**
@@ -56,6 +59,11 @@ export async function setup(config?: Config): Promise<Harness> {
   await ctx.plugin(Timer)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRegistry)
+  await ctx.plugin(AgentRegistry)
+  const agentDisposers = new Map<Agent, () => void>([
+    [AGENT_A, ctx.agents.register(AGENT_A)],
+    [AGENT_B, ctx.agents.register(AGENT_B)],
+  ])
   const gateway: Gateway = { events: [] }
   ctx.on('cordis/request-run', (request) => {
     gateway.events.push(['cordis/request-run', request])
@@ -100,7 +108,12 @@ export async function setup(config?: Config): Promise<Harness> {
   }
   await ctx.plugin(DynamicCordisRunnerService, config)
   const runner = ctx.dynamicCordisRunner
-  return { ctx, runner, gateway }
+  return {
+    ctx,
+    runner,
+    gateway,
+    disposeAgent(agent) { agentDisposers.get(agent)?.() },
+  }
 }
 
 /**
@@ -129,8 +142,7 @@ let definitionCounter = 0
  * @throws the runner's refusal message when define prechecks or the run fails.
  */
 export async function mount(harness: Harness, code: string): Promise<CordisDynamicPluginId> {
-  const { pluginId, packageId } = harness.runner.define({
-    sessionId: AGENT_A.id,
+  const { pluginId, packageId } = harness.runner.define(AGENT_A, {
     plugin: { kind: 'new', idPrefix: 'probe' },
     name: `probe-${++definitionCounter}`,
     purpose: 'spec fixture',

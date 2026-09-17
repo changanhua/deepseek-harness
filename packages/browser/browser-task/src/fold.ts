@@ -5,10 +5,13 @@ import type {
   BrowserTaskBlocker,
   BrowserTaskId,
   BrowserTaskDelegation,
+  BrowserTaskDelegationCandidate,
   BrowserTaskSnapshot,
   BrowserTaskSourceFact,
   BrowserTaskSourceRef,
+  BrowserTargetBinding,
 } from './types.ts'
+import { BROWSER_PAGE_MAP_REGION_LIMIT } from './evidence.ts'
 
 export const BROWSER_TASK_LIMITS = {
   acceptance: 32,
@@ -17,6 +20,7 @@ export const BROWSER_TASK_LIMITS = {
   attempts: 128,
   resources: 64,
   delegated: 32,
+  pendingDelegations: 32,
   evidenceRefs: 32,
   sourceFacts: 256,
   recentTaskIds: 64,
@@ -34,7 +38,7 @@ const operations = new Set<BrowserTaskOperation>([
 const phases = new Set(['running', 'waiting', 'verifying', 'settling', 'terminal'])
 const blockers = new Set<BrowserTaskBlocker>([
   'approval', 'human-interaction', 'unknown-attempt', 'capability-drift',
-  'target-lost', 'delegated-work', 'cleanup',
+  'target-lost', 'delegated-work', 'cleanup', 'repeated-error', 'internal-invariant',
 ])
 const outcomes = new Set(['completed', 'refused', 'cancelled', 'failed', 'budget-exhausted'])
 const finalResources = new Set(['released', 'vanished', 'retained'])
@@ -42,7 +46,7 @@ const resourceCreateActions = new Set(['entry_mount', 'region_render'])
 const resourceClearActions = new Set(['entry_unmount', 'region_clear'])
 const resourceActions = new Set([...resourceCreateActions, ...resourceClearActions])
 const derivedBlockers = new Set<BrowserTaskBlocker>([
-  'human-interaction', 'unknown-attempt', 'capability-drift', 'target-lost', 'delegated-work', 'cleanup',
+  'human-interaction', 'unknown-attempt', 'capability-drift', 'target-lost', 'delegated-work', 'cleanup', 'internal-invariant',
 ])
 const delegationPending = (work: { readonly kind: string; readonly status: string }): boolean => work.kind === 'cordis'
   ? ['starting', 'awaiting-approval', 'waiting', 'client-pending'].includes(work.status)
@@ -148,24 +152,46 @@ function validateClause(value: unknown): void {
 }
 
 function validateEvidence(value: unknown): void {
-  const evidence = exact(value, 'evidence', ['id', 'state', 'source', 'digest', 'target', 'grantEpoch'], ['coverage'])
+  const evidence = exact(value, 'evidence', ['id', 'state', 'source', 'digest', 'target', 'grantEpoch'], ['coverage', 'pageMap'])
   text(evidence.id, 'evidence.id')
   if (!['current', 'stale', 'superseded'].includes(String(evidence.state))) throw new Error('evidence state invalid')
   sourceRef(evidence.source, 'evidence.source')
   text(evidence.digest, 'evidence.digest')
   if (evidence.coverage !== undefined) integer(evidence.coverage, 'evidence.coverage')
+  if (evidence.pageMap !== undefined) {
+    const pageMap = exact(evidence.pageMap, 'evidence.pageMap', ['regions'])
+    if (!Array.isArray(pageMap.regions) || pageMap.regions.length > BROWSER_PAGE_MAP_REGION_LIMIT) throw new Error('evidence page map regions invalid')
+    const refs = new Set<string>()
+    for (const value of pageMap.regions) {
+      const region = exact(value, 'evidence.pageMap.region', ['regionRef', 'disposable', 'protected'])
+      const regionRef = text(region.regionRef, 'evidence.pageMap.region.regionRef')
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(regionRef)) throw new Error('evidence page map regionRef invalid')
+      if (refs.has(regionRef)) throw new Error('evidence page map regionRef duplicated')
+      refs.add(regionRef)
+      if (typeof region.disposable !== 'boolean' || typeof region.protected !== 'boolean') throw new Error('evidence page map flags invalid')
+    }
+    if ((evidence.source as BrowserTaskSourceRef).kind !== 'browser-task-receipt') throw new Error('evidence page map needs browser receipt source')
+  }
   target(evidence.target, 'evidence.target')
   integer(evidence.grantEpoch, 'evidence.grantEpoch')
 }
 
 function validateAttempt(value: unknown): void {
-  const attempt = exact(value, 'attempt', ['attemptId', 'requestId', 'actionKind', 'grantEpoch', 'stage', 'write', 'target'], ['resourceId', 'presentationIntent', 'outcome', 'quiescent', 'settledBy', 'reconciledBy'])
+  const attempt = exact(value, 'attempt', ['attemptId', 'requestId', 'actionKind', 'grantEpoch', 'stage', 'write', 'target'], ['resourceId', 'presentationIntent', 'recoveryLocator', 'outcome', 'quiescent', 'settledBy', 'reconciledBy'])
   text(attempt.attemptId, 'attempt.id')
   text(attempt.requestId, 'attempt.request')
   text(attempt.actionKind, 'attempt.actionKind')
   integer(attempt.grantEpoch, 'attempt.grantEpoch')
-  if (!['planned', 'prepared', 'dispatched', 'settled'].includes(String(attempt.stage)) || typeof attempt.write !== 'boolean') throw new Error('attempt invalid')
+  if (!['planned', 'prepared', 'dispatch-intent', 'dispatched', 'settled'].includes(String(attempt.stage)) || typeof attempt.write !== 'boolean') throw new Error('attempt invalid')
   target(attempt.target, 'attempt.target')
+  if (attempt.recoveryLocator !== undefined) {
+    const locator = exact(attempt.recoveryLocator, 'attempt.recoveryLocator', ['kind', 'protocolVersion', 'transportRequestId', 'installationId', 'grantEpoch'])
+    if (locator.kind !== 'extension-journal-v1' || locator.protocolVersion !== 1) throw new Error('attempt recovery locator invalid')
+    text(locator.transportRequestId, 'attempt.recoveryLocator.transportRequestId')
+    text(locator.installationId, 'attempt.recoveryLocator.installationId')
+    integer(locator.grantEpoch, 'attempt.recoveryLocator.grantEpoch')
+    if (locator.installationId !== (attempt.target as BrowserTargetBinding).installationId || locator.grantEpoch !== attempt.grantEpoch) throw new Error('attempt recovery locator identity invalid')
+  }
   if (attempt.resourceId !== undefined) text(attempt.resourceId, 'attempt.resourceId')
   const actionIsResourceScoped = resourceActions.has(attempt.actionKind as string)
   if ((attempt.resourceId !== undefined) !== actionIsResourceScoped) {
@@ -332,7 +358,7 @@ export function decodeBrowserTaskChange(value: unknown): BrowserTaskChangeMeta |
   if (!record(value) || value.kind !== 'browser-task/change') return undefined
   const change = exact(value, 'change', ['kind', 'version', 'operation', 'task'])
   if (change.version !== BROWSER_TASK_CHANGE_VERSION || typeof change.operation !== 'string' || !operations.has(change.operation as BrowserTaskOperation)) throw new Error('change header invalid')
-  return { kind: 'browser-task/change', version: 2, operation: change.operation as BrowserTaskOperation, task: assertBrowserTaskSnapshot(change.task) }
+  return { kind: 'browser-task/change', version: 3, operation: change.operation as BrowserTaskOperation, task: assertBrowserTaskSnapshot(change.task) }
 }
 
 function mapBy<T extends object>(values: readonly T[], key: string): Map<string, T> {
@@ -378,7 +404,7 @@ function requireTaskFacts(task: BrowserTaskSnapshot, facts: readonly BrowserTask
   for (const evidence of task.evidence) {
     requireFact(facts, evidence.source, 'evidence.source')
     const source = evidence.source
-    if (source.kind === 'browser-task-receipt' && !facts.some(fact => fact.kind === 'browser-task-receipt' && fact.sessionSeq === source.sessionSeq && fact.taskId === task.id && same(fact.target, evidence.target) && fact.grantEpoch === evidence.grantEpoch && fact.outcome === 'observed' && fact.delivery === 'sent' && fact.quiescent === true && task.attempts.some(attempt => attempt.requestId === fact.requestId && attempt.actionKind === fact.actionKind && same(attempt.target, evidence.target) && attempt.grantEpoch === evidence.grantEpoch))) throw new Error('evidence receipt does not match target authority')
+    if (source.kind === 'browser-task-receipt' && !facts.some(fact => fact.kind === 'browser-task-receipt' && fact.sessionSeq === source.sessionSeq && fact.taskId === task.id && same(fact.target, evidence.target) && fact.grantEpoch === evidence.grantEpoch && fact.outcome === 'observed' && fact.delivery === 'sent' && fact.quiescent === true && (evidence.pageMap === undefined || fact.actionKind === 'page_map') && task.attempts.some(attempt => attempt.requestId === fact.requestId && attempt.actionKind === fact.actionKind && same(attempt.target, evidence.target) && attempt.grantEpoch === evidence.grantEpoch))) throw new Error('evidence receipt does not match target authority')
   }
   for (const evaluation of task.evaluations) {
     requireFact(facts, evaluation.checkerRef, 'evaluation.checkerRef')
@@ -490,7 +516,12 @@ function attempts(next: BrowserTaskSnapshot, previous: BrowserTaskSnapshot, reco
   only(next, previous, reconciliation ? 'reconcile-attempt' : 'attempt', ['attempts', 'blockers'])
   preserveCollection(previous.attempts, next.attempts, 'attemptId', reconciliation ? 'reconcile-attempt' : 'attempt')
   const old = mapBy(previous.attempts, 'attemptId')
-  const transitions: Record<string, readonly string[]> = { planned: ['prepared', 'dispatched', 'settled'], prepared: ['dispatched', 'settled'], dispatched: ['settled'], settled: [] }
+  const transitions: Record<string, readonly string[]> = {
+    planned: ['prepared', 'dispatch-intent', 'dispatched', 'settled'],
+    prepared: ['dispatch-intent', 'dispatched', 'settled'],
+    'dispatch-intent': ['dispatched', 'settled'],
+    dispatched: ['settled'], settled: [],
+  }
   for (const item of next.attempts) {
     taskTarget(next, item.target)
     const before = old.get(item.attemptId)
@@ -499,8 +530,14 @@ function attempts(next: BrowserTaskSnapshot, previous: BrowserTaskSnapshot, reco
       continue
     }
     if (!same(
-      { ...before, stage: undefined, outcome: undefined, quiescent: undefined, settledBy: undefined, reconciledBy: undefined },
-      { ...item, stage: undefined, outcome: undefined, quiescent: undefined, settledBy: undefined, reconciledBy: undefined },
+      {
+        ...before, stage: undefined, recoveryLocator: undefined, outcome: undefined,
+        quiescent: undefined, settledBy: undefined, reconciledBy: undefined,
+      },
+      {
+        ...item, stage: undefined, recoveryLocator: undefined, outcome: undefined,
+        quiescent: undefined, settledBy: undefined, reconciledBy: undefined,
+      },
     )) throw new Error('attempt identity invalid')
     if (same(before, item)) continue
     if (before.outcome === 'unknown') {
@@ -581,11 +618,14 @@ function resources(next: BrowserTaskSnapshot, previous: BrowserTaskSnapshot, rec
       }
     } else if (before.state === 'unresolved') {
       throw new Error('unresolved resource needs reconciliation')
-    } else if (before.state !== item.state && !transitions[before.state]?.includes(item.state)) {
+    } else if (before.state !== item.state
+      && !(before.state === 'released' && before.disposition === 'not-sent' && item.state === 'reserved')
+      && !transitions[before.state]?.includes(item.state)) {
       throw new Error('resource transition invalid')
     }
     if (before.state === 'reserved' && item.state === 'released' && item.disposition !== 'not-sent') throw new Error('reserved release requires not-sent')
-    if (item.disposition === 'not-sent' && (before.state !== 'reserved' || item.state !== 'released')) throw new Error('not-sent requires a reserved release')
+    if (!same(before, item) && item.disposition === 'not-sent'
+      && (before.state !== 'reserved' || item.state !== 'released')) throw new Error('not-sent requires a reserved release')
   }
 }
 
@@ -616,6 +656,7 @@ export interface BrowserTaskFoldState {
   lastSourceSeq: number
   lastTaskSourceSeq: number
   sourceFacts: BrowserTaskSourceFact[]
+  pendingDelegations: BrowserTaskDelegationCandidate[]
 }
 
 export const emptyBrowserTaskFoldState = (): BrowserTaskFoldState => ({
@@ -623,6 +664,7 @@ export const emptyBrowserTaskFoldState = (): BrowserTaskFoldState => ({
   lastSourceSeq: -1,
   lastTaskSourceSeq: -1,
   sourceFacts: [],
+  pendingDelegations: [],
 })
 
 export function applyBrowserTaskChange(state: BrowserTaskFoldState, change: BrowserTaskChangeMeta): void {
@@ -633,6 +675,7 @@ export function applyBrowserTaskChange(state: BrowserTaskFoldState, change: Brow
     validateCreate(next, state)
     state.recentTaskIds = [...state.recentTaskIds, next.id].slice(-BROWSER_TASK_LIMITS.recentTaskIds)
     state.lastTaskSourceSeq = next.sourceSeq
+    state.pendingDelegations = state.pendingDelegations.filter(candidate => candidate.originUserSeq !== next.sourceSeq)
   } else {
     if (!previous || previous.phase === 'terminal' || next.id !== previous.id || next.revision !== previous.revision + 1 || next.createdAt !== previous.createdAt || next.updatedAt < previous.updatedAt || next.objective !== previous.objective || next.sourceSeq !== previous.sourceSeq || !same(next.acceptance, previous.acceptance)) throw new Error('mutation continuity invalid')
     switch (change.operation) {
@@ -656,7 +699,11 @@ export function applyBrowserTaskChange(state: BrowserTaskFoldState, change: Brow
       case 'transition':
         only(next, previous, 'transition', ['phase', 'blockers', 'evidence', 'evaluations'])
         validateDerivedBlockers(next, previous, change.operation)
-        if (next.blockers.includes('human-interaction') && !previous.blockers.includes('human-interaction') && (next.evidence.some(item => item.state === 'current') || next.evaluations.length > 0)) throw new Error('human interaction must stale evidence and evaluations')
+        if ((next.blockers.includes('human-interaction') && !previous.blockers.includes('human-interaction')
+          || next.blockers.includes('capability-drift') && !previous.blockers.includes('capability-drift'))
+          && (next.evidence.some(item => item.state === 'current') || next.evaluations.length > 0)) {
+          throw new Error('authority transition must stale evidence and evaluations')
+        }
         break
       case 'rebind':
         only(next, previous, 'rebind', ['target', 'blockers', 'targetLossAcknowledged', 'evidence'])
@@ -725,6 +772,7 @@ function factFor(event: SessionEvent): BrowserTaskSourceFact | undefined {
     grantEpoch: event.data.grantEpoch,
     ...(event.data.resourceId === undefined ? {} : { resourceId: event.data.resourceId }),
     ...(event.data.reason === undefined ? {} : { reason: event.data.reason }),
+    ...(event.data.failureFingerprint === undefined ? {} : { failureFingerprint: event.data.failureFingerprint }),
     ...(event.data.presentation === undefined ? {} : { presentation: event.data.presentation }),
   }
   if (event.type === 'browser-task/check') return { kind: 'browser-task-check', sessionSeq: event.seq, taskId: event.data.taskId, checkerId: event.data.checkerId, target: event.data.target, grantEpoch: event.data.grantEpoch, evaluations: event.data.evaluations }
@@ -733,7 +781,7 @@ function factFor(event: SessionEvent): BrowserTaskSourceFact | undefined {
 }
 
 export function validateReceipt(value: unknown): void {
-  const receipt = exact(value, 'receipt', ['kind', 'version', 'taskId', 'requestId', 'actionKind', 'target', 'outcome', 'delivery', 'quiescent', 'grantEpoch'], ['resourceId', 'reason', 'presentation'])
+  const receipt = exact(value, 'receipt', ['kind', 'version', 'taskId', 'requestId', 'actionKind', 'target', 'outcome', 'delivery', 'quiescent', 'grantEpoch'], ['resourceId', 'reason', 'failureFingerprint', 'presentation'])
   if (receipt.kind !== 'browser-task/receipt' || receipt.version !== 1) throw new Error('receipt header invalid')
   text(receipt.taskId, 'receipt.taskId')
   text(receipt.requestId, 'receipt.requestId')
@@ -745,6 +793,10 @@ export function validateReceipt(value: unknown): void {
   integer(receipt.grantEpoch, 'receipt.grantEpoch')
   if (receipt.resourceId !== undefined) text(receipt.resourceId, 'receipt.resourceId')
   if (receipt.reason !== undefined) text(receipt.reason, 'receipt.reason', true)
+  if (receipt.failureFingerprint !== undefined
+    && (typeof receipt.failureFingerprint !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(receipt.failureFingerprint))) {
+    throw new Error('receipt failure fingerprint invalid')
+  }
   if (receipt.presentation !== undefined) {
     validatePresentation(receipt.presentation, 'receipt.presentation', false)
     if (receipt.actionKind !== 'region_render' || receipt.outcome !== 'observed' || receipt.delivery !== 'sent' || ! receipt.quiescent || receipt.resourceId === undefined) throw new Error('receipt presentation invalid')
@@ -766,12 +818,46 @@ export function validateDelegationFact(value: unknown): asserts value is Browser
   validateDelegation({ ...(fact.work as object), source: { kind: 'browser-task-delegation', sessionSeq: 0 } })
 }
 
+export function validateDelegationCandidate(value: unknown): asserts value is BrowserTaskDelegationCandidate {
+  const fact = exact(value, 'delegation candidate', ['kind', 'version', 'originUserSeq', 'toolCallId', 'toolCallSeq', 'toolResultSeq', 'work'])
+  if (fact.kind !== 'browser-task/delegation-candidate' || fact.version !== 1) throw new Error('delegation candidate header invalid')
+  integer(fact.originUserSeq, 'delegation candidate.originUserSeq')
+  text(fact.toolCallId, 'delegation candidate.toolCallId')
+  integer(fact.toolCallSeq, 'delegation candidate.toolCallSeq')
+  integer(fact.toolResultSeq, 'delegation candidate.toolResultSeq')
+  validateDelegation({ ...(fact.work as object), source: { kind:'browser-task-delegation',sessionSeq:0 } })
+}
+
+function applyDelegationCandidate(state: BrowserTaskFoldState, candidate: BrowserTaskDelegationCandidate): void {
+  validateDelegationCandidate(candidate)
+  const origin = state.sourceFacts.find(fact => fact.kind === 'user' && fact.sessionSeq === candidate.originUserSeq)
+  const call = state.sourceFacts.find(fact => fact.kind === 'tool-call' && fact.sessionSeq === candidate.toolCallSeq
+    && fact.callId === candidate.toolCallId)
+  const result = state.sourceFacts.find(fact => fact.kind === 'tool-result' && fact.sessionSeq === candidate.toolResultSeq
+    && fact.callId === candidate.toolCallId)
+  if (origin === undefined || call === undefined || result === undefined
+    || !(candidate.originUserSeq < candidate.toolCallSeq && candidate.toolCallSeq < candidate.toolResultSeq)) {
+    throw new Error('delegation candidate source facts invalid')
+  }
+  const prior = state.pendingDelegations.find(item => item.work.callId === candidate.work.callId)
+  if (prior === undefined) {
+    if (candidate.toolCallId !== candidate.work.callId) throw new Error('delegation candidate initial call mismatch')
+    if (state.pendingDelegations.length >= BROWSER_TASK_LIMITS.pendingDelegations) throw new Error('delegation candidate capacity exceeded')
+  } else if (prior.originUserSeq !== candidate.originUserSeq || prior.work.kind !== candidate.work.kind
+    || !same(prior.work.identity, candidate.work.identity)) throw new Error('delegation candidate update invalid')
+  state.pendingDelegations = [
+    ...state.pendingDelegations.filter(item => item.work.callId !== candidate.work.callId),
+    structuredClone(candidate),
+  ]
+}
+
 export function observeBrowserTaskSource(state: BrowserTaskFoldState, event: SessionEvent): boolean {
   const fact = factFor(event)
   if (fact === undefined) return false
   if (fact.sessionSeq <= state.lastSourceSeq) throw new Error('source sequence is not strictly increasing')
   state.lastSourceSeq = fact.sessionSeq
   const facts = [...state.sourceFacts, fact]
+  if (fact.kind === 'user') state.pendingDelegations = []
   const protectedSeqs = new Set<number>()
   const protect = (ref: BrowserTaskSourceRef | undefined) => { if (ref !== undefined && 'sessionSeq' in ref) protectedSeqs.add(ref.sessionSeq) }
   if (state.current !== undefined) {
@@ -784,6 +870,11 @@ export function observeBrowserTaskSource(state: BrowserTaskFoldState, event: Ses
     state.current.resources.forEach((item) =>{  protect(item.dispositionSource) })
     state.current.resources.forEach((item) =>{  protect(item.presentation?.renderReceipt) })
     state.current.delegated.forEach((item) =>{  protect(item.source) })
+  }
+  for (const candidate of state.pendingDelegations) {
+    protectedSeqs.add(candidate.originUserSeq)
+    protectedSeqs.add(candidate.toolCallSeq)
+    protectedSeqs.add(candidate.toolResultSeq)
   }
   for (const call of facts.filter(item => item.kind === 'tool-call' && item.callId !== undefined)) if (!facts.some(item => item.kind === 'tool-result' && item.callId === call.callId)) protectedSeqs.add(call.sessionSeq)
   while (facts.length > BROWSER_TASK_LIMITS.sourceFacts) {
@@ -799,6 +890,10 @@ export function applyBrowserTaskEvent(state: BrowserTaskFoldState, event: Sessio
   if (event.type === 'browser-task/receipt') validateReceipt(event.data)
   if (event.type === 'browser-task/check') validateCheck(event.data)
   if (event.type === 'browser-task/delegation') validateDelegationFact(event.data)
+  if (event.type === 'browser-task/delegation-candidate') {
+    applyDelegationCandidate(state, event.data)
+    return
+  }
   if (event.type !== 'browser-task/change') {
     observeBrowserTaskSource(state, event)
     return

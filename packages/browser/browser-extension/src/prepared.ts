@@ -4,8 +4,10 @@ import { BrowserPreparedTicket as ticketId } from '@changanhua/dsh-browser/types
 import { browserPreparationSchema } from './wire.ts'
 
 interface PreparedDispatch {
+  readonly logicalOperation: BrowserOperation
   readonly action: BrowserAction
   readonly operation: BrowserOperation
+  readonly phase: 'prepare' | 'prepared-commit'
   readonly payload: { readonly kind: 'prepare'; readonly action: BrowserAction; readonly expiresAt: number } | { readonly kind: 'commit'; readonly action: BrowserAction; readonly preparationId: string }
   readonly mutates: boolean
   readonly deadline: number
@@ -59,6 +61,7 @@ export class BrowserPreparations {
       // caller-owned identity reserved for the subsequent irreversible commit.
       const preparationOperation = { ...fixed, requestId: randomUUID() }
       const result = await this.options.dispatch({ operation: preparationOperation, action: fixed.action,
+        logicalOperation: fixed, phase: 'prepare',
         payload: { kind: 'prepare', action: fixed.action, expiresAt }, mutates: false, deadline, target, signal,
         ...(grantEpoch === undefined ? {} : { grantEpoch }) })
       this.checkLifetime(signal)
@@ -98,6 +101,7 @@ export class BrowserPreparations {
     const lifetime = AbortSignal.any([entry.signal, signal])
     const deadline = Math.min(entry.expiresAt, Date.now() + (this.options.requestDeadlineMs ?? this.options.requestTTL))
     const work = Promise.resolve().then(() => this.options.dispatch({ operation: entry.operation, action: entry.operation.action,
+      logicalOperation: entry.operation, phase: 'prepared-commit',
       payload: { kind: 'commit', action: entry.operation.action, preparationId: entry.preparationId },
       mutates: mutates(entry.operation.action), deadline, target: entry.description.page, signal: lifetime,
       ...(entry.grantEpoch === undefined ? {} : { grantEpoch: entry.grantEpoch }) }))
@@ -106,6 +110,12 @@ export class BrowserPreparations {
       })
     entry.commit = work
     return work.then(value => structuredClone(value))
+  }
+
+  /** Logical identity retained by an opaque ticket; used only by the Host lifecycle seam. */
+  operation(ticket: BrowserPreparedTicket): BrowserOperation | undefined {
+    const entry = this.entries.get(ticket)
+    return entry === undefined ? undefined : structuredClone(entry.operation)
   }
 
   dispose(): void { this.closed = true }

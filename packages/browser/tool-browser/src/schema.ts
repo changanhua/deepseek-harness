@@ -19,28 +19,18 @@ export const entryUnmountActionSchema = { type: 'object', additionalProperties: 
   kind: { type: 'string', const: 'entry_unmount', required: true }, page: { ...page, required: true }, mountId: { type: 'string', required: true },
 } } as const satisfies ValueSchemaSpec
 
-/** One plain-data block. The page half renders each field as a DOM text node, never as markup. */
-const regionBlock = { oneOf: [
-  { type: 'object', additionalProperties: false, properties: {
-    type: { type: 'string', const: 'heading', required: true }, text: { type: 'string', required: true } } },
-  { type: 'object', additionalProperties: false, properties: {
-    type: { type: 'string', const: 'text', required: true }, text: { type: 'string', required: true } } },
-  { type: 'object', additionalProperties: false, properties: {
-    type: { type: 'string', const: 'item', required: true }, title: { type: 'string', required: true },
-    meta: { type: 'string' }, link: { type: 'string' } } },
-  { type: 'object', additionalProperties: false, properties: {
-    type: { type: 'string', const: 'keyvalue', required: true }, label: { type: 'string', required: true }, value: { type: 'string', required: true } } },
-  { type: 'object', additionalProperties: false, properties: {
-    type: { type: 'string', const: 'link', required: true }, text: { type: 'string', required: true }, href: { type: 'string', required: true } } },
-] } as const satisfies ValueSchemaSpec
-
 export const regionRenderActionSchema = { type: 'object', additionalProperties: false, properties: {
   kind: { type: 'string', const: 'region_render', required: true }, page: { ...page, required: true },
   mountId: { type: 'string', required: true, description: 'Idempotent panel id; re-rendering the same id replaces the panel.' },
-  selector: { type: 'string', required: true, description: 'Container selector from browser_page_map for this exact document.' },
+  regionRef: { type: 'string', required: true, description: 'Opaque short-lived region reference returned by browser_page_map for this exact page.' },
   placement: { type: 'string', enum: ['prepend', 'append'], description: 'Where inside the container the panel goes; defaults to prepend.' },
   mode: { type: 'string', enum: ['append', 'replace'], description: 'Append a panel or temporarily replace the region while preserving it for restore.' },
-  title: { type: 'string' }, blocks: { type: 'array', required: true, items: regionBlock },
+  presentation: { type: 'object', required: true, additionalProperties: false, properties: {
+    title: { type: 'string' }, summary: { type: 'string' }, footer: { type: 'string' },
+    items: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { title: { type: 'string', required: true }, meta: { type: 'string' }, link: { type: 'string' } } } },
+    facts: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { label: { type: 'string', required: true }, value: { type: 'string', required: true } } } },
+    links: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { text: { type: 'string', required: true }, href: { type: 'string', required: true } } } },
+  }, description: 'High-level text-only panel content; Host compiles this into the private extension wire payload.' },
 } } as const satisfies ValueSchemaSpec
 export const regionClearActionSchema = { type: 'object', additionalProperties: false, properties: {
   kind: { type: 'string', const: 'region_clear', required: true }, page: { ...page, required: true }, mountId: { type: 'string', required: true },
@@ -76,6 +66,14 @@ export const actionResultSchema = { type: 'object', additionalProperties: false,
   requestId: { type: 'string', required: true }, sessionId: { type: 'string', required: true }, installationId: { type: 'string', required: true },
   outcome: { type: 'string', required: true, enum: ['observed', 'failed', 'cancelled', 'unknown'] },
   delivery: { type: 'string', required: true, enum: ['not-sent', 'sent'] }, reason: { type: 'string' }, value: { type: 'json' },
+  diagnostic: { type: 'object', additionalProperties: false, properties: {
+    code: { type: 'string', required: true },
+    category: { type: 'string', required: true, enum: ['input', 'precondition', 'delivery', 'unknown', 'capability', 'internal'] },
+    retryable: { type: 'boolean', required: true },
+    requiredNextAction: { type: 'string', required: true,
+      enum: ['refresh-page-map', 'request-status', 'refresh-target', 'cleanup', 'new-request-after-precondition', 'stop'] },
+    fingerprint: { type: 'string' },
+  } },
 } } as const satisfies ValueSchemaSpec
 
 export const requestStatusSchema = { type: 'object', additionalProperties: false, properties: {

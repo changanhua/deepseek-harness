@@ -22,6 +22,7 @@ type JournalRecord = { version: 1
 type AssistantJournal = {
   handle: (frame: { type: 'execute' | 'status' | 'cancel'
     request: BrowserInvocation }) => Promise<JournalResult>
+  lookup: (locator: { kind: 'extension-journal-v1'; protocolVersion: 1; transportRequestId: string; installationId: string; grantEpoch: number }) => Promise<JournalResult | undefined>
   acknowledge: (identity: BrowserInvocation) => Promise<void>
   acknowledgements: () => Promise<JournalResult[]>
   confirmAcknowledgement: (identity: BrowserInvocation) => Promise<void>
@@ -70,6 +71,19 @@ describe('Chrome durable browser execution journal', () => {
     expect(await h.journal.handle({ type: 'execute', request: r })).toMatchObject(receipt)
     const restarted = createJournal(h)
     expect(await restarted.handle({ type: 'status', request: r })).toMatchObject(receipt)
+    expect(h.execute).toHaveBeenCalledTimes(1)
+  })
+  test('restart locator only returns the exact durable journal receipt and never executes', async () => {
+    const h = harness(); const r = request()
+    await h.journal.handle({ type: 'execute', request: r })
+    const restarted = createJournal(h)
+    await expect(restarted.lookup({ kind: 'extension-journal-v1', protocolVersion: 1,
+      transportRequestId: r.requestId, installationId: r.installationId, grantEpoch: r.grantEpoch },
+    r.sessionId)).resolves.toMatchObject(receipt)
+    await expect(restarted.lookup({ kind: 'extension-journal-v1', protocolVersion: 1,
+      transportRequestId: r.requestId, installationId: r.installationId, grantEpoch: r.grantEpoch }, 'other-session')).resolves.toBeUndefined()
+    await expect(restarted.lookup({ kind: 'extension-journal-v1', protocolVersion: 1,
+      transportRequestId: r.requestId, installationId: r.installationId, grantEpoch: 2 }, r.sessionId)).resolves.toBeUndefined()
     expect(h.execute).toHaveBeenCalledTimes(1)
   })
   test('a restarted worker retains unknown writes across grant changes and never executes a status query', async () => {

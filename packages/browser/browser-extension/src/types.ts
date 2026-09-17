@@ -1,4 +1,5 @@
 import type { JsonValue } from '@deepseek-ai/dsh-session/types'
+import type { BrowserRecoveryLocator } from '@changanhua/dsh-browser/types'
 
 /** Transport correlation; authorization is checked by the gateway before admission. */
 export interface BrowserRequestIdentity {
@@ -30,6 +31,7 @@ export interface BrowserRequestResult extends BrowserRequestIdentity {
 export type BrowserDispatchFrame =
   | { readonly type: 'execute'; readonly request: BrowserInvocation }
   | { readonly type: 'status' | 'cancel'; readonly request: BrowserRequestIdentity }
+  | { readonly type: 'status-query'; readonly locator: BrowserRecoveryLocator; readonly sessionId: string }
 
 /** A response is accepted only on its current installation connection. */
 export interface BrowserReceipt extends BrowserRequestIdentity {

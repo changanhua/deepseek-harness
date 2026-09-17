@@ -54,6 +54,20 @@ describe('Host browser request ownership', () => {
     expect(firstFrames).toHaveLength(1)
   })
 
+  it('uses the restart journal lookup exactly once and never emits an execute frame', async () => {
+    const frames: BrowserDispatchFrame[] = []
+    const connection = requests.connect('i1', (frame) => { frames.push(frame) })
+    const request = invocation('restart-status')
+    const pending = requests.restartStatus({ kind: 'extension-journal-v1', protocolVersion: 1,
+      transportRequestId: request.requestId, installationId: request.installationId, grantEpoch: request.grantEpoch }, request.sessionId)
+    expect(frames).toEqual([{ type: 'status-query', locator: { kind: 'extension-journal-v1', protocolVersion: 1,
+      transportRequestId: request.requestId, installationId: request.installationId, grantEpoch: request.grantEpoch },
+    sessionId: request.sessionId }])
+    connection.receive({ ...request, outcome: 'observed', quiescent: true, value: { restored: true } })
+    await expect(pending).resolves.toMatchObject({ outcome: 'observed', delivery: 'sent', value: { restored: true } })
+    expect(frames.filter(frame => frame.type === 'execute')).toEqual([])
+  })
+
   it('keeps an unknown write locked while allowing another tab and a same-tab observation', async () => {
     const first = requests.connect('i1', () => {})
     const request = invocation()

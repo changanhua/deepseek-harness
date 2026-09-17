@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ApprovalRequestId } from '../src/index.ts'
 import type {
   ApprovalRequestId as ApprovalRequestIdType, CordisDynamicPluginId,
@@ -35,8 +35,7 @@ function define(
     client?: string
   },
 ) {
-  return runner.define({
-    sessionId: request.sessionId,
+  return runner.define(request.sessionId === AGENT_A.id ? AGENT_A : AGENT_B, {
     plugin: { kind: 'new', idPrefix: 'dyn' },
     name: request.name,
     purpose: request.purpose,
@@ -453,7 +452,7 @@ describe('dynamic runner teardown', () => {
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'invalid-page', purpose: 'workspace', host: `
       return { name: 'invalid-page', async apply() {
         await harness.browser.render({ installationId: 'installation-1', page: {tabId:-1,frameId:0,documentId:'d',url:'https://example.test'},
-          slot: 'analysis', selector: '#side', blocks: [{ type: 'text', text: 'result' }] })
+          slot: 'analysis', regionRef: '11111111-1111-4111-8111-111111111111', presentation: { summary: 'result' } })
       } }
     ` })
     await expect(runner.run(AGENT_A, pluginId, packageId, 'run')).resolves.toMatchObject({ ok: false, reason: 'host-half-failed' })
@@ -463,15 +462,17 @@ describe('dynamic runner teardown', () => {
   it('does not let a late restore erase a newer same-slot region registration', async () => {
     const { ctx, runner } = await setup()
     const firstClear = Promise.withResolvers<object>()
+    const mappedPage = { tabId: 1, frameId: 0, documentId: 'd', url: 'https://example.test' }
     let clearCalls = 0
     ctx.provide('browser', { execute: async (operation: { action: { kind: string } }) => {
+      if (operation.action.kind === 'page_map') return { outcome: 'observed', delivery: 'sent', value: { page: mappedPage, regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
       if (operation.action.kind === 'region_render') return { outcome: 'observed', delivery: 'sent', value: { rendered: 1 } }
       clearCalls++
       return clearCalls === 1 ? firstClear.promise : { outcome: 'observed', delivery: 'sent', value: { cleared: true } }
     } } as never)
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'region-race', purpose: 'workspace', host: `
       const input = { installationId: 'installation-1', page: {tabId:1,frameId:0,documentId:'d',url:'https://example.test'},
-        slot: 'analysis', selector: '#side', blocks: [{ type: 'text', text: 'result' }] }
+        slot: 'analysis', regionRef: '11111111-1111-4111-8111-111111111111', presentation: { summary: 'result' } }
       const render = () => harness.browser.render(input)
       const restore = () => harness.browser.restore(input)
       return { name: 'region-race', apply(ctx) { ctx.provide('regionRace', { render, restore }) } }
@@ -521,16 +522,18 @@ describe('dynamic runner teardown', () => {
   it('does not let a late retraction cleanup erase a replacement run region', async () => {
     const { ctx, runner } = await setup()
     const firstClear = Promise.withResolvers<object>()
+    const mappedPage = { tabId: 1, frameId: 0, documentId: 'd', url: 'https://example.test' }
     let clearCalls = 0
     ctx.provide('browser', { execute: async (operation: { action: { kind: string } }) => {
+      if (operation.action.kind === 'page_map') return { outcome: 'observed', delivery: 'sent', value: { page: mappedPage, regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
       if (operation.action.kind === 'region_render') return { outcome: 'observed', delivery: 'sent', value: { rendered: 1 } }
       clearCalls++
       return clearCalls === 1 ? firstClear.promise : { outcome: 'observed', delivery: 'sent', value: { cleared: true } }
     } } as never)
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'cleanup-race', purpose: 'workspace', host: `
       return { name: 'cleanup-race', async apply() {
-        await harness.browser.render({ installationId: 'installation-1', page: {tabId:1,frameId:0,documentId:'d',url:'https://example.test'},
-          slot: 'analysis', selector: '#side', blocks: [{ type: 'text', text: 'result' }] })
+        const page = {tabId:1,frameId:0,documentId:'d',url:'https://example.test'}; const map = await harness.browser.pageMap({ installationId: 'installation-1', page })
+        await harness.browser.render({ installationId: 'installation-1', page, slot: 'analysis', regionRef: map.value.regions[0].regionRef, presentation: { summary: 'result' } })
       } }
     ` })
     await expect(runner.run(AGENT_A, pluginId, packageId, 'run')).resolves.toMatchObject({ ok: true })
@@ -546,8 +549,10 @@ describe('dynamic runner teardown', () => {
 
   it('accepts a value-level absent region disposition, not a top-level or bare uncleared receipt', async () => {
     const { ctx, runner } = await setup()
+    const mappedPage = { tabId: 1, frameId: 0, documentId: 'd', url: 'https://example.test' }
     let clears = 0
     ctx.provide('browser', { execute: async (operation: { action: { kind: string } }) => {
+      if (operation.action.kind === 'page_map') return { outcome: 'observed', delivery: 'sent', value: { page: mappedPage, regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
       if (operation.action.kind === 'region_render') return { outcome: 'observed', delivery: 'sent', value: { rendered: 1 } }
       clears++
       return clears === 1
@@ -557,8 +562,8 @@ describe('dynamic runner teardown', () => {
     } } as never)
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'absent', purpose: 'workspace', host: `
       return { name: 'absent', async apply() {
-        await harness.browser.render({ installationId: 'installation-1', page: {tabId:1,frameId:0,documentId:'d',url:'https://example.test'},
-          slot: 'analysis', selector: '#side', blocks: [{ type: 'text', text: 'result' }] })
+        const page = {tabId:1,frameId:0,documentId:'d',url:'https://example.test'}; const map = await harness.browser.pageMap({ installationId: 'installation-1', page })
+        await harness.browser.render({ installationId: 'installation-1', page, slot: 'analysis', regionRef: map.value.regions[0].regionRef, presentation: { summary: 'result' } })
       } }
     ` })
     await runner.run(AGENT_A, pluginId, packageId, 'run')
@@ -571,8 +576,9 @@ describe('dynamic runner teardown', () => {
 
     const second = define(runner, { sessionId: AGENT_A.id, name: 'uncleared', purpose: 'workspace', host: `
       return { name: 'uncleared', async apply() {
-        await harness.browser.render({ installationId: 'installation-1', page: {tabId:1,frameId:0,documentId:'d',url:'https://example.test'},
-          slot: 'analysis', selector: '#side', blocks: [{ type: 'text', text: 'result' }] })
+        const page = {tabId:1,frameId:0,documentId:'d',url:'https://example.test'}; const map = await harness.browser.pageMap({ installationId: 'installation-1', page })
+        await harness.browser.render({ installationId: 'installation-1', page,
+          slot: 'analysis', regionRef: map.value.regions[0].regionRef, presentation: { summary: 'result' } })
       } }
     ` })
     await runner.run(AGENT_A, second.pluginId, second.packageId, 'run')
@@ -581,23 +587,34 @@ describe('dynamic runner teardown', () => {
 
   it('reconciles a pending region with an exact value-level absent receipt without retaining cleanup debt', async () => {
     const { ctx, runner } = await setup()
+    const mappedPage = { tabId: 1, frameId: 0, documentId: 'd', url: 'https://example.test' }
     let clears = 0
+    let statusCalls = 0
     ctx.provide('browser', { execute: async (operation: { action: { kind: string } }) => {
+      if (operation.action.kind === 'page_map') return { outcome: 'observed', delivery: 'sent', value: { page: mappedPage, regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
       if (operation.action.kind === 'region_render') return { outcome: 'observed', delivery: 'sent', value: { rendered: 1 } }
       clears++
       return clears <= 2
         ? { outcome: 'unknown', delivery: 'sent' }
         : { outcome: 'observed', delivery: 'sent', value: { cleared: false, disposition: 'absent' } }
+    }, requestStatus: async () => {
+      statusCalls++
+      return statusCalls === 1
+        ? { outcome: 'unknown', delivery: 'sent' }
+        : { outcome: 'observed', delivery: 'sent', value: { cleared: false, disposition: 'absent' } }
     } } as never)
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'pending-absent', purpose: 'workspace', host: `
       return { name: 'pending-absent', async apply() {
-        await harness.browser.render({ installationId: 'installation-1', page: {tabId:1,frameId:0,documentId:'d',url:'https://example.test'},
-          slot: 'analysis', selector: '#side', blocks: [{ type: 'text', text: 'result' }] })
+        const page = {tabId:1,frameId:0,documentId:'d',url:'https://example.test'}; const map = await harness.browser.pageMap({ installationId: 'installation-1', page })
+        await harness.browser.render({ installationId: 'installation-1', page,
+          slot: 'analysis', regionRef: map.value.regions[0].regionRef, presentation: { summary: 'result' } })
       } }
     ` })
     await runner.run(AGENT_A, pluginId, packageId, 'run')
     await expect(runner.stop(AGENT_A, pluginId)).resolves.toMatchObject({ ok: false, reason: 'cleanup-pending' })
     await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
+    expect(clears).toBe(1)
+    expect(statusCalls).toBe(2)
     await expect(runner.run(AGENT_A, pluginId, packageId, 'run')).resolves.toMatchObject({ ok: true })
     await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
   })
@@ -718,14 +735,94 @@ describe('dynamic runner teardown', () => {
       action: { kind: 'entry_unmount', mountId: `${pluginId}:feed`, page } })
   })
 
-  it('retries page cleanup before stop reports completion', async () => {
+  it.each(['entry_mount', 'region_render'] as const)(
+    'releases the local %s reservation when BrowserTask denies it before send',
+    async (kind) => {
+      const { ctx, runner } = await setup()
+      const calls: string[] = []
+      ctx.provide('browser', { execute: async (operation: { action: { kind: string; page?: unknown } }) => {
+        calls.push(operation.action.kind)
+        if (operation.action.kind === 'page_map') {
+          return { outcome: 'observed', delivery: 'sent', value: { page: operation.action.page,
+            regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
+        }
+        return { outcome: 'failed', delivery: 'not-sent', reason: 'browser_task_already_released' }
+      } } as never)
+      const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
+      const operation = kind === 'entry_mount'
+        ? `await harness.browser.mount({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'surface', regionSelector: 'main', selector: ':scope > article', label: 'Collect' })`
+        : `const map = await harness.browser.pageMap({ installationId: 'installation-1', page: ${JSON.stringify(page)} }); await harness.browser.render({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'surface', regionRef: map.value.regions[0].regionRef, presentation: { summary: 'temporary' } })`
+      const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: `not-sent-${kind}`, purpose: 'release local ownership', host: `
+        return { name: 'not-sent-${kind}', async apply() { ${operation} } }
+      ` })
+
+      await expect(runner.run(AGENT_A, pluginId, packageId, 'run')).resolves.toMatchObject({ ok: true })
+      await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
+      await expect(runner.undefine(AGENT_A, pluginId)).resolves.toEqual({ ok: true, wasRunning: false })
+      expect(calls).toEqual(kind === 'entry_mount' ? ['entry_mount'] : ['page_map', 'region_render'])
+    },
+  )
+
+  it('does not reserve mount ownership before synchronous input validation succeeds', async () => {
     const { ctx, runner } = await setup()
-    let calls = 0
+    const execute = vi.fn()
+    ctx.provide('browser', { execute } as never)
+    const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'invalid-mount', purpose: 'reject invalid local input', host: `
+      return { name: 'invalid-mount', async apply() {
+        await harness.browser.mount({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'surface',
+          regionSelector: 'main', selector: ':scope > article', label: '' })
+      } }
+    ` })
+
+    await expect(runner.run(AGENT_A, pluginId, packageId, 'run')).resolves.toMatchObject({ ok: false })
+    await expect(runner.stop(AGENT_A, pluginId)).resolves.toMatchObject({ ok: false, reason: 'not-running' })
+    await expect(runner.undefine(AGENT_A, pluginId)).resolves.toEqual({ ok: true, wasRunning: false })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it.each(['entry_mount', 'region_render'] as const)(
+    'accepts BrowserTask already_released without retaining cleanup debt for %s',
+    async (kind) => {
+      const { ctx, runner } = await setup()
+      const calls: string[] = []
+      ctx.provide('browser', { execute: async (operation: { action: { kind: string; page?: unknown } }) => {
+        calls.push(operation.action.kind)
+        if (operation.action.kind === 'page_map') {
+          return { outcome: 'observed', delivery: 'sent', value: { page: operation.action.page,
+            regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
+        }
+        if (operation.action.kind === kind) return { outcome: 'observed', delivery: 'sent', value: { rendered: 1, mounted: 1 } }
+        return { outcome: 'observed', delivery: 'not-sent', reason: 'already_released' }
+      } } as never)
+      const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
+      const operation = kind === 'entry_mount'
+        ? `await harness.browser.mount({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'surface', regionSelector: 'main', selector: ':scope > article', label: 'Collect' })`
+        : `const map = await harness.browser.pageMap({ installationId: 'installation-1', page: ${JSON.stringify(page)} }); await harness.browser.render({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'surface', regionRef: map.value.regions[0].regionRef, presentation: { summary: 'temporary' } })`
+      const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: `already-released-${kind}`, purpose: 'release cleanup ownership', host: `
+        return { name: 'already-released-${kind}', async apply() { ${operation} } }
+      ` })
+
+      await runner.run(AGENT_A, pluginId, packageId, 'run')
+      await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
+      await expect(runner.undefine(AGENT_A, pluginId)).resolves.toEqual({ ok: true, wasRunning: false })
+      expect(calls.filter(value => value === 'entry_unmount' || value === 'region_clear')).toHaveLength(kind === 'entry_mount' ? 2 : 1)
+    },
+  )
+
+  it('status-polls a sent-unknown cleanup without replaying its page mutation', async () => {
+    const { ctx, runner } = await setup()
+    const calls: string[] = []
+    const statusRequests: string[] = []
     ctx.provide('browser', { execute: async (operation: { sessionId: string; installationId: string; action: Record<string, unknown> }) => {
-      calls++
-      return { requestId: `request-${calls}`, sessionId: operation.sessionId, installationId: operation.installationId,
-        outcome: operation.action.kind === 'entry_unmount' && calls === 2 ? 'unknown' : 'observed', delivery: 'sent',
+      calls.push(String(operation.action.kind))
+      return { requestId: `request-${calls.length}`, sessionId: operation.sessionId, installationId: operation.installationId,
+        outcome: operation.action.kind === 'entry_unmount' ? 'unknown' : 'observed', delivery: 'sent',
         value: { unmounted: true, remaining: 0 } }
+    }, requestStatus: async (query: { requestId: string }) => {
+      statusRequests.push(query.requestId)
+      return { requestId: query.requestId, sessionId: AGENT_A.id, installationId: 'installation-1',
+        outcome: 'observed', delivery: 'sent', value: { unmounted: true, remaining: 0 } }
     } } as never)
     const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'entries', purpose: 'collect', host: `
@@ -737,7 +834,67 @@ describe('dynamic runner teardown', () => {
     await runner.run(AGENT_A, pluginId, packageId, 'run')
 
     await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
-    expect(calls).toBe(3)
+    expect(calls).toEqual(['entry_mount', 'entry_unmount'])
+    expect(statusRequests).toHaveLength(1)
+  })
+
+  it('may issue a fresh cleanup request only after the previous cleanup was confirmed not-sent', async () => {
+    const { ctx, runner } = await setup()
+    const calls: string[] = []
+    ctx.provide('browser', { execute: async (operation: { action: { kind: string } }) => {
+      calls.push(operation.action.kind)
+      if (operation.action.kind === 'entry_mount') return { outcome: 'observed', delivery: 'sent', value: { mounted: 1 } }
+      return calls.filter(kind => kind === 'entry_unmount').length === 1
+        ? { outcome: 'failed', delivery: 'not-sent', reason: 'transport_closed' }
+        : { outcome: 'observed', delivery: 'sent', value: { unmounted: true, remaining: 0 } }
+    } } as never)
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'not-sent-retry', purpose: 'retry only a definitely unsent cleanup', host: `
+      return { name: 'not-sent-retry', async apply() {
+        await harness.browser.mount({ installationId: 'installation-1', page: { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }, slot: 'feed', regionSelector: 'main', selector: ':scope > article', label: 'Collect' })
+      } }
+    ` })
+    await runner.run(AGENT_A, pluginId, packageId, 'run')
+    await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
+    expect(calls).toEqual(['entry_mount', 'entry_unmount', 'entry_unmount'])
+  })
+
+  it('does not let a confirmed ordinary unmount substitute for a later forgetCollected cleanup', async () => {
+    const { ctx, runner } = await setup()
+    const unmounts: Array<{ requestId: string; forgetCollected?: boolean }> = []
+    const statusQueries: Array<Record<string, unknown>> = []
+    ctx.provide('browser', { execute: async (operation: { requestId: string; action: { kind: string; forgetCollected?: boolean } }) => {
+      if (operation.action.kind === 'entry_mount') return { outcome: 'observed', delivery: 'sent', value: { mounted: 1 } }
+      unmounts.push({
+        requestId: operation.requestId,
+        ...operation.action.forgetCollected === undefined ? {} : { forgetCollected: operation.action.forgetCollected },
+      })
+      return unmounts.length === 1
+        ? { outcome: 'unknown', delivery: 'sent' }
+        : { outcome: 'observed', delivery: 'sent', value: { unmounted: true, remaining: 0 } }
+    }, requestStatus: async (query: Record<string, unknown>) => {
+      statusQueries.push(structuredClone(query))
+      return statusQueries.length === 1
+        ? { outcome: 'unknown', delivery: 'sent' }
+        : { outcome: 'observed', delivery: 'sent', value: { unmounted: true, remaining: 0 } }
+    } } as never)
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'forget-after-unknown', purpose: 'permanently remove collected entries', host: `
+      return { name: 'forget-after-unknown', async apply() {
+        await harness.browser.mount({ installationId: 'installation-1', page: { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }, slot: 'feed', regionSelector: 'main', selector: ':scope > article', label: 'Collect' })
+      } }
+    ` })
+    await runner.run(AGENT_A, pluginId, packageId, 'run')
+    await expect(runner.stop(AGENT_A, pluginId)).resolves.toMatchObject({ ok: false, reason: 'cleanup-pending' })
+    // The first successful status only confirms the ordinary unmount. The
+    // stronger forgetCollected intent remains pending and must not be faked.
+    await expect(runner.undefine(AGENT_A, pluginId)).resolves.toMatchObject({ ok: false, reason: 'cleanup-pending' })
+    await expect(runner.undefine(AGENT_A, pluginId)).resolves.toEqual({ ok: true, wasRunning: false })
+
+    expect(unmounts).toEqual([
+      { requestId: unmounts[0]!.requestId },
+      { requestId: unmounts[1]!.requestId, forgetCollected: true },
+    ])
+    expect(unmounts[0]?.requestId).not.toBe(unmounts[1]?.requestId)
+    expect(statusQueries).toEqual(statusQueries.map(query => ({ requestId: query.requestId, sessionId: AGENT_A.id, installationId: 'installation-1' })))
   })
 
   it('cleans a mount whose original delivery outcome was unknown', async () => {
@@ -766,6 +923,7 @@ describe('dynamic runner teardown', () => {
     const calls: Array<Record<string, unknown>> = []
     ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => {
       calls.push(structuredClone(operation))
+      if (operation.action.kind === 'page_map') return { outcome: 'observed', delivery: 'sent', value: { page: operation.action.page, regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
       return operation.action.kind === 'region_render'
         ? { outcome: 'unknown', delivery: 'sent' }
         : { outcome: 'observed', delivery: 'sent', value: { cleared: true, restored: 1 } }
@@ -773,31 +931,40 @@ describe('dynamic runner teardown', () => {
     const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'region', purpose: 'workspace', host: `
       return { name: 'region', async apply() {
+        const map = await harness.browser.pageMap({ installationId: 'installation-1', page: ${JSON.stringify(page)} })
         await harness.browser.render({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'analysis',
-          selector: '#side', mode: 'replace', blocks: [{ type: 'text', text: '结果' }] })
+          regionRef: map.value.regions[0].regionRef, presentation: { summary: '结果' } })
       } }
     ` })
     await runner.run(AGENT_A, pluginId, packageId, 'run')
 
     await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
-    expect(calls).toHaveLength(2)
-    expect(calls[1]).toMatchObject({ action: { kind: 'region_clear', mountId: `${pluginId}:analysis`, page } })
+    expect(calls).toHaveLength(3)
+    expect(calls[2]).toMatchObject({ action: { kind: 'region_clear', mountId: `${pluginId}:analysis`, page } })
   })
 
   it('retries an unresolved region clear before stop reports the remaining cleanup', async () => {
     const { ctx, runner } = await setup()
     let clears = 0
+    let statusCalls = 0
     ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => {
+      if (operation.action.kind === 'page_map') return { outcome: 'observed', delivery: 'sent', value: { page: operation.action.page, regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
       if (operation.action.kind === 'region_render') return { outcome: 'observed', delivery: 'sent', value: { rendered: 1 } }
       clears++
       return clears <= 2 ? { outcome: 'unknown', delivery: 'sent' }
+        : { outcome: 'observed', delivery: 'sent', value: { cleared: true, restored: 1 } }
+    }, requestStatus: async () => {
+      statusCalls++
+      return statusCalls === 1
+        ? { outcome: 'unknown', delivery: 'sent' }
         : { outcome: 'observed', delivery: 'sent', value: { cleared: true, restored: 1 } }
     } } as never)
     const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'region', purpose: 'workspace', host: `
       return { name: 'region', async apply() {
+        const map = await harness.browser.pageMap({ installationId: 'installation-1', page: ${JSON.stringify(page)} })
         await harness.browser.render({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'analysis',
-          selector: '#side', blocks: [{ type: 'text', text: '结果' }] })
+          regionRef: map.value.regions[0].regionRef, presentation: { summary: '结果' } })
       } }
     ` })
     await runner.run(AGENT_A, pluginId, packageId, 'run')
@@ -808,22 +975,29 @@ describe('dynamic runner teardown', () => {
       cleanupPending: [`${pluginId}:analysis`],
     })
     await expect(runner.stop(AGENT_A, pluginId)).resolves.toEqual({ ok: true })
-    expect(clears).toBe(3)
+    expect(clears).toBe(1)
+    expect(statusCalls).toBe(2)
   })
 
   it('keeps a region pending when clear was observed without clearing it', async () => {
     const { ctx, runner } = await setup()
     let clears = 0
+    let statusCalls = 0
     ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => {
+      if (operation.action.kind === 'page_map') return { outcome: 'observed', delivery: 'sent', value: { page: operation.action.page, regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
       if (operation.action.kind === 'region_render') return { outcome: 'observed', delivery: 'sent', value: { rendered: 1 } }
       clears++
+      return { outcome: 'observed', delivery: 'sent', value: { cleared: false, restored: 0 } }
+    }, requestStatus: async () => {
+      statusCalls++
       return { outcome: 'observed', delivery: 'sent', value: { cleared: false, restored: 0 } }
     } } as never)
     const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'region', purpose: 'workspace', host: `
       return { name: 'region', async apply() {
+        const map = await harness.browser.pageMap({ installationId: 'installation-1', page: ${JSON.stringify(page)} })
         await harness.browser.render({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'analysis',
-          selector: '#side', blocks: [{ type: 'text', text: '结果' }] })
+          regionRef: map.value.regions[0].regionRef, presentation: { summary: '结果' } })
       } }
     ` })
     await runner.run(AGENT_A, pluginId, packageId, 'run')
@@ -833,20 +1007,29 @@ describe('dynamic runner teardown', () => {
       reason: 'cleanup-pending',
       cleanupPending: [`${pluginId}:analysis`],
     })
-    expect(clears).toBe(2)
+    expect(clears).toBe(1)
+    expect(statusCalls).toBe(1)
   })
 
   it('keeps a same-document URL change pending because the panel may still exist', async () => {
     const { ctx, runner } = await setup()
     let clears = 0
-    ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => operation.action.kind === 'region_render'
-      ? { outcome: 'observed', delivery: 'sent', value: { rendered: 1 } }
-      : (clears++, { outcome: 'failed', delivery: 'sent', reason: 'target_url_stale' }) } as never)
+    let statusCalls = 0
+    ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => {
+      if (operation.action.kind === 'page_map') return { outcome: 'observed', delivery: 'sent', value: { page: operation.action.page, regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
+      return operation.action.kind === 'region_render'
+        ? { outcome: 'observed', delivery: 'sent', value: { rendered: 1 } }
+        : (clears++, { outcome: 'failed', delivery: 'sent', reason: 'target_url_stale' })
+    }, requestStatus: async () => {
+      statusCalls++
+      return { outcome: 'failed', delivery: 'sent', reason: 'target_url_stale' }
+    } } as never)
     const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'region', purpose: 'workspace', host: `
       return { name: 'region', async apply() {
+        const map = await harness.browser.pageMap({ installationId: 'installation-1', page: ${JSON.stringify(page)} })
         await harness.browser.render({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'analysis',
-          selector: '#side', blocks: [{ type: 'text', text: '结果' }] })
+          regionRef: map.value.regions[0].regionRef, presentation: { summary: '结果' } })
       } }
     ` })
     await runner.run(AGENT_A, pluginId, packageId, 'run')
@@ -855,19 +1038,24 @@ describe('dynamic runner teardown', () => {
       reason: 'cleanup-pending',
       cleanupPending: [`${pluginId}:analysis`],
     })
-    expect(clears).toBe(2)
+    expect(clears).toBe(1)
+    expect(statusCalls).toBe(1)
   })
 
   it('treats a replaced document as conclusive region cleanup', async () => {
     const { ctx, runner } = await setup()
-    ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => operation.action.kind === 'region_render'
-      ? { outcome: 'observed', delivery: 'sent', value: { rendered: 1 } }
-      : { outcome: 'failed', delivery: 'sent', reason: 'document_replaced' } } as never)
+    ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => {
+      if (operation.action.kind === 'page_map') return { outcome: 'observed', delivery: 'sent', value: { page: operation.action.page, regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
+      return operation.action.kind === 'region_render'
+        ? { outcome: 'observed', delivery: 'sent', value: { rendered: 1 } }
+        : { outcome: 'failed', delivery: 'sent', reason: 'document_replaced' }
+    } } as never)
     const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
     const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'region', purpose: 'workspace', host: `
       return { name: 'region', async apply() {
+        const map = await harness.browser.pageMap({ installationId: 'installation-1', page: ${JSON.stringify(page)} })
         await harness.browser.render({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'analysis',
-          selector: '#side', blocks: [{ type: 'text', text: '结果' }] })
+          regionRef: map.value.regions[0].regionRef, presentation: { summary: '结果' } })
       } }
     ` })
     await runner.run(AGENT_A, pluginId, packageId, 'run')
@@ -895,15 +1083,19 @@ describe('dynamic runner teardown', () => {
     'does not treat an unsent document replacement as conclusive cleanup for %s',
     async (mountKind) => {
       const { ctx, runner } = await setup()
-      ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => operation.action.kind === mountKind
-        ? { outcome: 'observed', delivery: 'sent', value: mountKind === 'entry_mount' ? { mounted: 1 } : { rendered: 1 } }
-        : { outcome: 'failed', delivery: 'not-sent', reason: 'document_replaced' } } as never)
+      ctx.provide('browser', { execute: async (operation: { action: Record<string, unknown> }) => {
+        if (operation.action.kind === 'page_map') return { outcome: 'observed', delivery: 'sent', value: { page: operation.action.page, regions: [{ regionRef: '11111111-1111-4111-8111-111111111111', disposable: true, protected: false }] } }
+        return operation.action.kind === mountKind
+          ? { outcome: 'observed', delivery: 'sent', value: mountKind === 'entry_mount' ? { mounted: 1 } : { rendered: 1 } }
+          : { outcome: 'failed', delivery: 'not-sent', reason: 'document_replaced' }
+      } } as never)
       const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
       const body = mountKind === 'entry_mount'
         ? `await harness.browser.mount({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'surface',
             regionSelector: 'main', selector: ':scope > article', label: '收集' })`
-        : `await harness.browser.render({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'surface',
-            selector: '#side', blocks: [{ type: 'text', text: '结果' }] })`
+        : `const map = await harness.browser.pageMap({ installationId: 'installation-1', page: ${JSON.stringify(page)} })
+          await harness.browser.render({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'surface',
+            regionRef: map.value.regions[0].regionRef, presentation: { summary: '结果' } })`
       const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'surface', purpose: 'workspace', host: `
         return { name: 'surface', async apply() { ${body} } }
       ` })
