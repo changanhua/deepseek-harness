@@ -120,6 +120,13 @@ async function peer(base: string, identity: { installationId: string; token: str
 }
 
 describe('browser extension gateway over the real HTTP and WebSocket carriers', () => {
+  it('default gateway retains more than sixteen rotating installation grants', async () => {
+    const h = await mounted()
+    const installations = []
+    for (let index = 0; index < 17; index += 1) installations.push((await h.pair(['browser:read'])).installationId)
+    expect(new Set(installations).size).toBe(17)
+  })
+
   it('waits for the dispatch-intent policy before an execute frame can cross the provider boundary', async () => {
     const test=await mounted({ requestTimeoutMs:500 });const identity=await test.pair();const extension=await peer(test.base,identity)
     const entered=Promise.withResolvers<undefined>(),release=Promise.withResolvers<undefined>()

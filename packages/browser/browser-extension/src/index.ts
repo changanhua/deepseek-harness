@@ -145,7 +145,7 @@ export class BrowserExtension extends Browser {
   static Config: z<Config> = z.object({
     requestTTL: z.natural().min(1).max(300000).default(300000),
     pendingLimit: z.natural().min(1).max(32).default(32),
-    maxGrants: z.natural().min(1).max(128).default(16),
+    maxGrants: z.natural().min(1).max(128).default(128),
     requestTimeoutMs: z.natural().min(1).max(120000).default(30000),
     requestCapacity: z.natural().min(1).max(256).default(128),
     maxRequestBytes: z.natural().min(1024).max(1048576).default(65536),
