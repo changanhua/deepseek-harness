@@ -14,6 +14,7 @@ const validOrigin = origin => {
   } catch { return false }
 }
 const validScopes = scopes => Array.isArray(scopes) && scopes.length > 0 && scopes.every(scope => typeof scope === 'string' && scope)
+const pendingUnavailable = error => error && typeof error === 'object' && error.code === 'request_failed' && error.status === 400
 
 const approvalUrl = pending => `${pending.baseUrl}/browser-assistant?requestId=${encodeURIComponent(pending.requestId)}`
 
@@ -53,7 +54,7 @@ export const createAssistantConnection = ({
   const validRecord = value => {
     if (!value || typeof value !== 'object' || (value.baseUrl !== null && typeof value.baseUrl !== 'string') || !UUID_V4.test(value.installationId)) return false
     try { if (value.baseUrl !== null && normalizeBaseUrl(value.baseUrl) !== value.baseUrl) return false } catch { return false }
-    if (value.pending && (!UUID_V4.test(value.pending.requestId) || !BASE64_32.test(value.pending.verifier) || value.pending.baseUrl !== value.baseUrl || value.pending.installationId !== value.installationId || value.pending.extensionId !== extensionId || !validScopes(value.pending.scopes) || !Array.isArray(value.pending.origins) || !value.pending.origins.every(validOrigin) || !Number.isFinite(Date.parse(value.pending.expiresAt)) || Date.parse(value.pending.expiresAt) <= Date.now())) return false
+    if (value.pending && (!UUID_V4.test(value.pending.requestId) || !BASE64_32.test(value.pending.verifier) || value.pending.baseUrl !== value.baseUrl || value.pending.installationId !== value.installationId || value.pending.extensionId !== extensionId || !validScopes(value.pending.scopes) || !Array.isArray(value.pending.origins) || !value.pending.origins.every(validOrigin) || !Number.isFinite(Date.parse(value.pending.expiresAt)))) return false
     if ((value.token === undefined) !== (value.grant === undefined)) return false
     return !value.grant || (typeof value.baseUrl === 'string' && BASE64_32.test(value.token) && value.grant.installationId === value.installationId && value.grant.extensionId === extensionId && Number.isSafeInteger(value.grant.grantEpoch) && value.grant.grantEpoch > 0 && validScopes(value.grant.scopes) && Array.isArray(value.grant.origins) && value.grant.origins.every(validOrigin))
   }
@@ -63,6 +64,11 @@ export const createAssistantConnection = ({
     const record = (await storage.get(CONNECTION_KEY))[CONNECTION_KEY]
     if (record) {
       if (!validRecord(record)) { invalid = true; runtime = { phase: 'invalid', grant: null }; return null }
+      if (record.pending && Date.parse(record.pending.expiresAt) <= Date.now()) {
+        const recovered = { ...record, pending: undefined, error: undefined }
+        await save(recovered)
+        return clone(recovered)
+      }
       cached = clone(record)
       return clone(cached)
     }
@@ -229,7 +235,22 @@ export const createAssistantConnection = ({
         if (!record.pending) throw failure('no_pending')
         await requireAccess(record.baseUrl, record.pending.origins)
         if (generation !== epoch || controller.signal.aborted) throw failure('cancelled')
-        const result = await transport.exchange(clone(record.pending), { signal: controller.signal })
+        let result
+        try { result = await transport.exchange(clone(record.pending), { signal: controller.signal }) }
+        catch (error) {
+          if (!pendingUnavailable(error)) throw error
+          let cleared
+          await serial(async () => {
+            if (generation !== epoch || controller.signal.aborted) throw failure('cancelled')
+            const latest = await load()
+            if (latest?.pending?.requestId !== record.pending.requestId) throw failure('cancelled')
+            cleared = { ...latest, pending: undefined, error: undefined }
+            await save(cleared)
+            runtime = { phase: 'configured', grant: null }
+            notify(cleared)
+          })
+          return visible(cleared)
+        }
         if (result.phase === 'pending') return api.read()
         if (result.phase !== 'connected') throw failure('invalid_exchange')
         let connected

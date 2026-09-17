@@ -71,6 +71,27 @@ describe('浏览器助手持久连接', () => {
     await vi.waitFor(async () =>{  expect(await h.connection.read()).toMatchObject({ phase: 'connected', grant }) })
   })
 
+  test('Host 重启丢失 pending 后清除旧请求，下一次连接会创建新请求', async () => {
+    const h = harness({ 'dsh.assistant.connection.v1': { baseUrl: pending.baseUrl, installationId, pending } })
+    h.transport.exchange.mockRejectedValueOnce(Object.assign(new Error('request_failed'), { code: 'request_failed', status: 400 }))
+
+    await expect(h.connection.poll()).resolves.toMatchObject({ phase: 'configured' })
+    expect(await h.connection.read()).toMatchObject({ phase: 'configured', baseUrl: pending.baseUrl })
+    expect((h.values.get('dsh.assistant.connection.v1') as Record<string, unknown>).pending).toBeUndefined()
+
+    await expect(h.connection.connect({ scopes: pending.scopes, origins: pending.origins })).resolves.toMatchObject({ phase: 'pending' })
+    expect(h.transport.begin).toHaveBeenCalledTimes(1)
+  })
+
+  test('扩展重启读到已过期 pending 时保留安装身份并允许重新连接', async () => {
+    const expired = { ...pending, expiresAt: '2000-01-01T00:00:00.000Z' }
+    const h = harness({ 'dsh.assistant.connection.v1': { baseUrl: pending.baseUrl, installationId, pending: expired } })
+
+    await expect(h.connection.read()).resolves.toMatchObject({ phase: 'configured', baseUrl: pending.baseUrl })
+    expect((h.values.get('dsh.assistant.connection.v1') as Record<string, unknown>).pending).toBeUndefined()
+    await expect(h.connection.connect({ scopes: pending.scopes, origins: pending.origins })).resolves.toMatchObject({ phase: 'pending' })
+  })
+
   test('检查 DSH 与页面 origin 权限，允许纯会话空 origins 和显式通配', async () => {
     const h = harness()
     await h.connection.configure('https://dsh.example.test')
