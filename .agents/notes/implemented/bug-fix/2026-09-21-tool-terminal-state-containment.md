@@ -84,8 +84,8 @@ diagnostic cases in `packages/core/session/tests/tool-protocol.spec.ts`.
 
 The authoring environment cannot clone or install the workspace. Its isolated
 Node test carrier executes the production scheduler and driver boundary code
-against substitute service/persistence carriers: 24 cases pass, and the original
-scheduler fails 12 of the 14 scheduler cases. This is not a repository Vitest,
+against substitute service/persistence carriers: 25 cases pass, and the original
+scheduler fails 13 of the 15 scheduler cases. This is not a repository Vitest,
 typecheck, built-profile, provider or recorded-session snapshot acceptance.
 Those repository gates remain required before merge; do not infer a green
 product from the isolated carrier results.

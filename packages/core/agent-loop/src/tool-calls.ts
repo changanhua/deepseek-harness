@@ -235,9 +235,9 @@ async function runGroup(
     call.callSeq = appendToolCall(session, turn, step, call.block)
     started++
     const prepared = await scheduler.prepare(call.exec)
-    throwSchedulerFailure()
     switch (prepared.kind) {
       case 'dispatch': {
+        throwSchedulerFailure()
         // A synchronous throw can occur after an external effect, so once we
         // enter dispatch a missing result is conservatively outcome-unknown.
         call.dispatchStarted = true
@@ -264,6 +264,9 @@ async function runGroup(
       default:
         assertNever(prepared, 'tool-call scheduler prepare result')
     }
+    // Preserve an already returned policy result before surfacing a sibling's
+    // failure; only dispatch is suppressed when another call has failed.
+    throwSchedulerFailure()
   }
 
   const fillPool = async (): Promise<void> => {
