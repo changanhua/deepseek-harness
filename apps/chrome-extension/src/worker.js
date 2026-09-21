@@ -1,5 +1,5 @@
 import { createAssistantRuntime } from './assistant-runtime.js'
-import { createAssistantSurfaces } from './assistant-surfaces.js'
+import { assistantSurfaceId, createAssistantSurfaces } from './assistant-surfaces.js'
 import { createExtensionController } from './controller.js'
 import { createContentBrowserTransport } from './transport.js'
 import { createCaptureBridge } from './capture-bridge.js'
@@ -21,7 +21,9 @@ const captureController = createExtensionController({ storage: chrome.storage.lo
 })
 const captureBridge = createCaptureBridge({ controller: captureController, extensionId: chrome.runtime.id, openTab: url => chrome.tabs.create({ url }) })
 let readerRevision = 0
-const isSidebar = sender => sender.id === chrome.runtime.id && sender.url === chrome.runtime.getURL('sidebar.html')
+const sidebarUrl = chrome.runtime.getURL('sidebar.html')
+const surfaceOf = (sender, fallbackId) => assistantSurfaceId(sender, chrome.runtime.id, sidebarUrl, fallbackId)
+const isSidebar = sender => surfaceOf(sender) !== null
 const scripts = [
   { id: 'dsh-chatgpt', matches: ['https://chatgpt.com/*'] },
   { id: 'dsh-zhihu', matches: ['https://www.zhihu.com/*'] },
@@ -88,14 +90,17 @@ chrome.tabs.onUpdated.addListener((_id, change) => { if (change.status === 'comp
 chrome.tabs.onUpdated.addListener((_id, change) => { if (change.status === 'complete') broadcast() })
 chrome.permissions.onRemoved.addListener(() => { void ready.then(() => assistant.permissionsChanged()).catch(() => {}); broadcast() })
 chrome.runtime.onConnect.addListener(port => {
-  if (port.name !== 'dsh-assistant-view' || !isSidebar(port.sender)) { port.disconnect(); return }
-  const id = crypto.randomUUID()
+  const id = surfaceOf(port.sender)
+  if (port.name !== 'dsh-assistant-view' || id === null) { port.disconnect(); return }
   let closed = false
   port.onMessage.addListener(message => {
     if (message?.type !== 'presence' || typeof message.visible !== 'boolean') return
     void ready.then(() => { if (!closed) return assistant.viewChanged(id, message.visible) }).catch(() => {})
   })
-  port.onDisconnect.addListener(() => { closed = true; void ready.then(() => assistant.viewChanged(id, false)).catch(() => {}) })
+  port.onDisconnect.addListener(() => {
+    closed = true
+    void ready.then(() => Promise.all([assistant.viewChanged(id, false), assistant.surfaceClosed(id)])).catch(() => {})
+  })
 })
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message?.type === 'dsh-quick-capture') {
@@ -200,12 +205,13 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     })).then(respond, error => respond({ ok: false, error: error.code ?? error.message }))
     return true
   }
-  if (!isSidebar(sender) || typeof message?.type !== 'string' || !message.type.startsWith('dsh-assistant-')) return
+  const surfaceId = surfaceOf(sender, message?.surfaceId)
+  if (surfaceId === null || typeof message?.type !== 'string' || !message.type.startsWith('dsh-assistant-')) return
   if (message.type === 'dsh-assistant-open-window') {
     void surfaces.openWindow().then(value => respond({ ok: true, value }), () => respond({ ok: false, error: 'assistant_window_unavailable' }))
     return true
   }
-  void ready.then(() => assistant.handle(message)).then(async result => {
+  void ready.then(() => assistant.handle(message, surfaceId)).then(async result => {
     if (!result.state) return respond(result)
     const captureState = await captureController.read()
     return respond({ ...result, state: { ...result.state, readerRevision, capture: captureState.capture, captureConnection: captureState.connection } })

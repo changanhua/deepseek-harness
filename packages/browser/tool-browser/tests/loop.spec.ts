@@ -291,7 +291,7 @@ describe('BrowserTaskLoop durable bridge', () => {
       delivery:'not-sent' as const,reason:'region_ref_not_current' }
     const settlement=h.loop.settle(h.agent,failed,render)!
     h.loop.settleResource(h.agent,'panel',failed,render,settlement.receipt)
-    const map=async(requestId:string,regions:readonly { selector:string;disposable:boolean;protected:boolean }[])=>{
+    const map=async(requestId:string,regions:{ regionRef:string;disposable:boolean;protected:boolean }[])=>{
       const operation={ sessionId:h.agent.session.id,installationId:'extension',requestId,
         action:{ kind:'page_map' as const,page } }
       h.browser.execute.mockResolvedValueOnce({ requestId,sessionId:h.agent.session.id,installationId:'extension',

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { createAssistantSurfaces } from '../src/assistant-surfaces.js'
+import { assistantSurfaceId, createAssistantSurfaces } from '../src/assistant-surfaces.js'
 
 const url = 'chrome-extension://test/sidebar.html'
 interface TestWindow { id: number; state?: string }
@@ -14,6 +14,21 @@ const harness = () => {
 }
 
 describe('assistant independent surface', () => {
+  test('derives an opaque surface identity from the trusted Chrome document sender', () => {
+    expect(assistantSurfaceId({ id: 'extension-id', url, documentId: 'document-a' }, 'extension-id', url)).toBe('document-a')
+    expect(assistantSurfaceId({ id: 'extension-id', url, documentId: 'document-b' }, 'extension-id', url)).toBe('document-b')
+    expect(assistantSurfaceId({ id: 'foreign', url, documentId: 'document-a' }, 'extension-id', url)).toBeNull()
+    expect(assistantSurfaceId({ id: 'extension-id', url, documentId: '../unsafe' }, 'extension-id', url)).toBeNull()
+  })
+
+  test('uses the trusted sidebar fallback identity when Chrome omits documentId', () => {
+    const fallback = 'surface-123e4567-e89b-42d3-a456-426614174000'
+    expect(assistantSurfaceId({ id: 'extension-id', url }, 'extension-id', url, fallback)).toBe(fallback)
+    expect(assistantSurfaceId({ id: 'foreign', url }, 'extension-id', url, fallback)).toBeNull()
+    expect(assistantSurfaceId({ id: 'extension-id', url: `${url}?forged=1` }, 'extension-id', url, fallback)).toBeNull()
+    expect(assistantSurfaceId({ id: 'extension-id', url }, 'extension-id', url, '../unsafe')).toBeNull()
+  })
+
   test('simultaneous global invocations open one window using the existing sidebar entry', async () => {
     const h = harness()
     const [first, second] = await Promise.all([h.surfaces.openWindow(), h.surfaces.openWindow()])

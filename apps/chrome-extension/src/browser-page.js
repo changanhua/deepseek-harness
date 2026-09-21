@@ -8,6 +8,7 @@
   const RETENTION_MS = 60_000
   const MAX_PREPARATIONS = 32
   const MAX_PREPARATION_BYTES = 65_536
+  const CONTROL_SELECTOR = 'a,button,input,textarea,select,summary,[contenteditable="true"],[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="switch"],[role="option"],[role="combobox"],[role="tab"],[role="menuitem"],[tabindex]:not([tabindex="-1"])'
   const pageActions = ['navigate', 'scroll', 'wait', 'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot']
   const elementActions = ['click', 'fill', 'submit', 'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload']
   const snapshots = new Map()
@@ -48,13 +49,22 @@
     }
     return true
   }
+  const customActionability = node => {
+    if (node.hasAttribute('onclick')) return 'handler'
+    if (window.getComputedStyle(node).cursor !== 'pointer') return null
+    const parent = node.parentElement ?? node.getRootNode()?.host
+    return !parent || window.getComputedStyle(parent).cursor !== 'pointer' ? 'pointer' : null
+  }
+  const actionabilityOf = node => node.matches(CONTROL_SELECTOR) ? 'semantic' : customActionability(node)
   const critical = node => {
     const form = formOf(node)
+    const actionability = actionabilityOf(node)
     return { tag: node.tagName, id: node.getAttribute('id'), name: node.getAttribute('name'),
     type: node.getAttribute('type'), role: node.getAttribute('role'), label: node.getAttribute('aria-label'),
     href: node.getAttribute('href'), contenteditable: node.getAttribute('contenteditable'),
-    text: ['BUTTON', 'A', 'SUMMARY'].includes(node.tagName) ? text(node.textContent).slice(0, 500) : undefined,
+    text: ['BUTTON', 'A', 'SUMMARY'].includes(node.tagName) || actionability !== null && actionability !== 'semantic' ? elementText(node, 500) : undefined,
     disabled: disabledControl(node), readOnly: readOnlyControl(node), visible: visible(node),
+    actionability,
     inert: node.inert || node.closest('[inert]') !== null,
     formAction: node.getAttribute('formaction'), formMethod: node.getAttribute('formmethod'), formTarget: node.getAttribute('formtarget'),
     form: form && { action: form.action, method: form.method, target: form.target } }
@@ -68,15 +78,15 @@
     return false
   }
   // Open shadow roots share the same bounded traversal and host visibility rules.
-  function* walkOpen(root) {
-    const walkers = [document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)]
+  function* walkOpen(root, whatToShow = NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT) {
+    const walkers = [document.createTreeWalker(root, whatToShow)]
     let visited = 0
     while (walkers.length && visited < 10000) {
       const node = walkers.at(-1).nextNode()
       if (!node) { walkers.pop(); continue }
       visited++
       yield node
-      if (node.shadowRoot) walkers.push(document.createTreeWalker(node.shadowRoot, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT))
+      if (node.shadowRoot) walkers.push(document.createTreeWalker(node.shadowRoot, whatToShow))
     }
   }
   const elementText = (root, limit) => {
@@ -189,9 +199,9 @@
     const query = text(options?.query).slice(0, 256).toLocaleLowerCase()
     const contextCache = new Map()
     let examined = 0, matched = 0, hasMore = false
-    for (const node of options?.references === false ? [] : walkOpen(document.body)) {
+    for (const node of options?.references === false ? [] : walkOpen(document.body, NodeFilter.SHOW_ELEMENT)) {
       if (++examined > 10000) break
-      if (node.nodeType !== Node.ELEMENT_NODE || !node.matches('a,button,input,textarea,select,summary,[contenteditable="true"],[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="switch"],[role="option"],[role="combobox"],[role="tab"],[role="menuitem"],[tabindex]:not([tabindex="-1"])')) continue
+      if (!actionabilityOf(node)) continue
       if (!visible(node)) continue
       const parent = node.parentElement ?? node.getRootNode()?.host
       if (!contextCache.has(parent)) contextCache.set(parent, contextOf(node))
@@ -658,7 +668,7 @@
       if (root.isConnected) for (const match of root.querySelectorAll(action.selector)) attach(match)
     })
     observer.observe(document, { childList: true, subtree: true, attributes: true, characterData: true })
-    entryMounts.set(action.mountId, { observer, owner, key })
+    entryMounts.set(action.mountId, { observer, owner, key, attached })
     return receipt(request, 'observed', { quiescent: true, value: { mounted, collected: [...collected] } })
   }
   const entryUnmount = request => {
@@ -694,6 +704,16 @@
       return (installationId === undefined || parts[1] === installationId) && (sessionId === undefined || parts[0] === sessionId)
     }
     for (const [mountId, mount] of entryMounts) if (matches(mount.owner)) entryUnmountById(mountId)
+    for (const [key, inspection] of entryInspections) if (matches(inspection.owner)) entryInspections.delete(key)
+    for (const key of entryCollections.keys()) if (matches(JSON.parse(key)[0])) entryCollections.delete(key)
+  }
+  const releaseInstallation = (installationId, grantEpoch) => {
+    const matches = owner => {
+      const parts = JSON.parse(owner)
+      return parts[1] === installationId && parts[2] === grantEpoch
+    }
+    for (const [mountId, mount] of entryMounts) if (matches(mount.owner)) entryUnmountById(mountId)
+    for (const [mountId, mount] of regionMounts) if (matches(mount.owner)) regionClearById(mountId)
     for (const [key, inspection] of entryInspections) if (matches(inspection.owner)) entryInspections.delete(key)
     for (const key of entryCollections.keys()) if (matches(JSON.parse(key)[0])) entryCollections.delete(key)
   }
@@ -1088,8 +1108,35 @@
     return copy(result)
   }
 
-  globalThis.__dshBrowserAssistant = Object.freeze({ snapshot, prepare, execute, inspect,
-    entryInspect, entryMount, entryUnmount, releaseEntries, pageMap, regionRender, regionClear,
+  const revealNode = node => {
+    if (!node?.isConnected || !visible(node) || typeof node.scrollIntoView !== 'function') {
+      return { ok: false, reason: 'target_unavailable' }
+    }
+    node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })
+    // Web Animations leaves the page's inline styles and interaction state intact.
+    if (!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      node.animate?.([{ outline: '3px solid #6192e3', outlineOffset: '4px' },
+        { outline: '3px solid transparent', outlineOffset: '4px' }], { duration: 1800 })
+    }
+    return { ok: true }
+  }
+  const reveal = reference => {
+    prune()
+    if (!reference || reference.url !== location.href) return { ok: false, reason: 'target_changed' }
+    const node = staleElement({ element: { ...reference, page: { url: reference.url } } })
+    return node ? revealNode(node) : { ok: false, reason: 'stale_element' }
+  }
+  const revealFunction = reference => {
+    if (!reference || reference.url !== location.href) return { ok: false, reason: 'target_changed' }
+    const region = regionMounts.get(reference.mountId)
+    const entry = entryMounts.get(reference.mountId)
+    const nodes = region ? [...region.panels] : [...(entry?.attached.values() ?? [])].map(item => item.button)
+    const node = nodes.find(candidate => candidate.isConnected && visible(candidate))
+    return node ? revealNode(node) : { ok: false, reason: 'function_view_unavailable' }
+  }
+
+  globalThis.__dshBrowserAssistant = Object.freeze({ snapshot, prepare, execute, inspect, reveal, revealFunction,
+    entryInspect, entryMount, entryUnmount, releaseEntries, releaseInstallation, pageMap, regionRender, regionClear,
     documentToken: () => documentToken, startExternal, externalNode, issueExternal, completeExternal,
     guardExternal: request => {
       const record = externalRecord(request)

@@ -213,6 +213,8 @@ The inbox is the delivery vocabulary — two ordered pending-message lists the a
 ```ts type-equiv
 /** Agent-owned access to pending work; concrete storage belongs to the driver. */
 interface Inbox {
+  /** Whether either pending queue contains work. */
+  readonly hasPending: boolean
   /** Prompts awaiting individual turns. */
   readonly nextTurn: readonly UserMessage[]
   /** Input awaiting the next step boundary. */
@@ -1073,16 +1075,18 @@ Reject a proposed step or replace the messages that enter it. Calling `next()` p
  * `next()` preserves the current messages.
  * @param payload.agent - the agent proposing the step.
  * @param payload.messages - messages removed from the inbox for this step.
+ * @param payload.claimedUserRpcs - immutable identities of user RPCs claimed
+ * for this exact step; absent only for manually constructed compatibility payloads.
  * @param payload.turn - the turn that will own the step.
  * @param payload.step - the step proposed by the loop.
  * @param payload.signal - the current turn's cancellation signal.
  * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
  * @mode waterfall
  */
-'agent/pre-step'(this: Scoped<Agent>, payload: { agent: Agent; messages: UserMessage[]; turn: number; step: number; signal: AbortSignal }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision>
+'agent/pre-step'(this: Scoped<Agent>, payload: { agent: Agent messages: UserMessage[] /** The live loop always provides a frozen array; optional preserves hand-built compatibility payloads. */ readonly claimedUserRpcs?: readonly { readonly messageId: MessageId; readonly rpcId: string }[] turn: number step: number signal: AbortSignal }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision>
 ```
 
-Types: [Scoped](scope.md) · [UserMessage](session.md)
+Types: [MessageId](llm-streaming.md) · [Scoped](scope.md) · [UserMessage](session.md)
 
 Source: [`packages/core/agent/src/runtime-types.ts`](../../packages/core/agent/src/runtime-types.ts)
 

@@ -90,7 +90,7 @@ describe('agent/pre-step', () => {
       name: 'echo',
       description: 'echo',
       parameters: { text: { type: 'string', required: true } },
-      execute: async ({ text }) => [{ type: 'text', text }],
+      execute: async ({ text }) => [{ type: 'text', text: text ?? '' }],
     }))
     const agent = await ctx.agentLoop.create(SessionId('prompt-coordinates'), { provider: 'mock', model: 'mock' })
     const seen: Array<{ turn: number; step: number; messages: number }> = []
@@ -106,6 +106,107 @@ describe('agent/pre-step', () => {
       { turn: 1, step: 1, messages: 1 },
       { turn: 1, step: 2, messages: 0 },
     ])
+  })
+
+  it('publishes only the rpc identities claimed by each real pre-step', async () => {
+    const adapter = new MockAdapter([
+      toolCallResponse('c1', 'echo', { text: 'hi' }),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    ctx.tools.register(defineContentToolFixture({
+      name: 'echo', description: 'echo', parameters: { text: { type: 'string' } },
+      execute: async ({ text }) => [{ type: 'text', text: text ?? '' }],
+    }))
+    const agent = await ctx.agentLoop.create(SessionId('claimed-rpc-first-step'), { provider: 'mock', model: 'mock' })
+    const prompt = createUserMessage({
+      content: [{ type: 'text', text: 'first prompt' }],
+      source: { kind: 'user', rpcId: 'rpc-first' } as never,
+    })
+    const seen: Array<readonly { readonly messageId: string; readonly rpcId: string }[] | undefined> = []
+    ctx.on('agent/pre-step', async ({ claimedUserRpcs }, next) => {
+      seen.push(claimedUserRpcs)
+      return next()
+    })
+
+    agent.followup(prompt)
+    await waitForIdle(ctx, agent)
+
+    expect(seen).toEqual([
+      [{ messageId: prompt.id, rpcId: 'rpc-first' }],
+      [],
+    ])
+  })
+
+  it('keeps claimed rpc identities in steer then queued claim order', async () => {
+    const adapter = new MockAdapter([textResponse('first'), textResponse('steered'), textResponse('queued')])
+    const ctx = await harness(adapter)
+    const agent = await ctx.agentLoop.create(SessionId('claimed-rpc-steer-queue'), { provider: 'mock', model: 'mock' })
+    const initial = createUserMessage({
+      content: [{ type: 'text', text: 'initial' }],
+      source: { kind: 'user', rpcId: 'rpc-initial' } as never,
+    })
+    const steer = createUserMessage({
+      content: [{ type: 'text', text: 'steer' }],
+      source: { kind: 'user', rpcId: 'rpc-steer' } as never,
+    })
+    const queued = createUserMessage({
+      content: [{ type: 'text', text: 'queued' }],
+      source: { kind: 'user', rpcId: 'rpc-queued' } as never,
+    })
+    const seen: Array<readonly { readonly messageId: string; readonly rpcId: string }[] | undefined> = []
+    let first = true
+    ctx.on('agent/pre-step', async ({ agent: subject, claimedUserRpcs }, next) => {
+      seen.push(claimedUserRpcs)
+      if (first) {
+        first = false
+        subject.steer(steer)
+        subject.followup(queued)
+      }
+      return next()
+    })
+
+    agent.followup(initial)
+    await waitForIdle(ctx, agent)
+
+    expect(seen).toEqual([
+      [{ messageId: initial.id, rpcId: 'rpc-initial' }],
+      [{ messageId: steer.id, rpcId: 'rpc-steer' }],
+      [{ messageId: queued.id, rpcId: 'rpc-queued' }],
+    ])
+  })
+
+  it('prevents one listener from replacing claimed rpc identity for the next listener', async () => {
+    const adapter = new MockAdapter([textResponse('ok')])
+    const ctx = await harness(adapter)
+    const agent = await ctx.agentLoop.create(SessionId('claimed-rpc-listener-isolation'), { provider: 'mock', model: 'mock' })
+    const prompt = createUserMessage({
+      content: [{ type: 'text', text: 'protected' }],
+      source: { kind: 'user', rpcId: 'rpc-protected' } as never,
+    })
+    ctx.on('agent/pre-step', async (payload, next) => {
+      const descriptor = Object.getOwnPropertyDescriptor(payload, 'claimedUserRpcs')
+      expect(descriptor).toMatchObject({ writable: false, configurable: false, enumerable: true })
+      expect(Object.isFrozen(payload.claimedUserRpcs)).toBe(true)
+      expect(Object.isFrozen(payload.claimedUserRpcs?.[0])).toBe(true)
+      expect(() => {
+        ;(payload as { claimedUserRpcs?: unknown }).claimedUserRpcs = []
+      }).toThrow(TypeError)
+      expect(() => {
+        ;(payload.claimedUserRpcs as unknown as Array<{ rpcId: string }>).push({ rpcId: 'replacement' })
+      }).toThrow(TypeError)
+      expect(() => {
+        ;(payload.claimedUserRpcs?.[0] as { rpcId: string }).rpcId = 'mutated'
+      }).toThrow(TypeError)
+      return next()
+    })
+    ctx.on('agent/pre-step', async ({ claimedUserRpcs }, next) => {
+      expect(claimedUserRpcs).toEqual([{ messageId: prompt.id, rpcId: 'rpc-protected' }])
+      return next()
+    })
+
+    agent.followup(prompt)
+    await waitForIdle(ctx, agent)
   })
 
   it('publishes frozen input without replacing its identity', async () => {

@@ -37,6 +37,9 @@ export function diagnoseBrowserResult(result: BrowserActionResult, action: Brows
   if (result.outcome === 'unknown') {
     return { code:'OUTCOME_UNKNOWN',category:'unknown',retryable:false,requiredNextAction:'request-status' }
   }
+  if (result.reason === 'target_busy') {
+    return { code:'TARGET_BUSY',category:'precondition',retryable:false,requiredNextAction:'request-status' }
+  }
   const deterministic = result.reason === undefined ? undefined : deterministicReason.get(result.reason)
   if (deterministic !== undefined) {
     return { ...deterministic,retryable:false,fingerprint:diagnosticFingerprint(action,deterministic.code) }

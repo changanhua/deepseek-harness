@@ -50,6 +50,7 @@ interface BrowserSnapshot {
   title: string
   text: string
   textTruncated: boolean
+  scanTruncated: boolean
   elements: BrowserElement[]
   structure?: {
     regions: Array<{ kind: string; label: string; text: string }>
@@ -177,6 +178,51 @@ describe('页面内浏览器助手', () => {
     expect(found.elements).toHaveLength(1)
     expect(JSON.stringify(found)).not.toContain('PRIVATE_VALUE')
     expect(found.text.length).toBeLessThanOrEqual(80)
+  })
+  test('语义控件搜索不让普通文本节点耗尽扫描预算', () => {
+    document.body.innerHTML = Array.from({ length: 6_000 }, () => '<span>noise</span>').join('')
+      + '<button>Pace</button>'
+    const snapshot = install().snapshot({ query: 'Pace', textLimit: 0 })
+    expect(snapshot.elements).toMatchObject([{ tag: 'button', text: 'Pace' }])
+    expect(snapshot.scanTruncated).toBe(false)
+  })
+  test('无 ARIA 的 pointer 边界作为单个可执行的通用节点', async () => {
+    document.body.innerHTML = '<div id="slot" style="cursor:pointer"><span style="cursor:pointer">ST +</span></div><output>Empty</output>'
+    document.querySelector('#slot')!.addEventListener('click', () => { document.querySelector('output')!.textContent = 'Opened' })
+    const assistant = install(), snapshot = assistant.snapshot({ query: 'ST +' })
+    expect(snapshot.elements).toMatchObject([{ tag: 'div', text: 'ST +', role: 'generic' }])
+    expect(snapshot.elements).toHaveLength(1)
+    await expect(assistant.execute({ ...identity('custom-pointer-click'), payload: {
+      kind: 'click', intent: '打开球员槽位', element: { ...snapshot.elements[0],
+        page: { tabId: 7, frameId: 0, documentId: 'doc', url: location.href } },
+    } })).resolves.toMatchObject({ outcome: 'observed', value: { effect: 'page-changed' } })
+    expect(document.querySelector('output')!.textContent).toBe('Opened')
+  })
+  test('自定义控件的 pointer 或 onclick 移除后旧引用失效', async () => {
+    document.body.innerHTML = '<div id="pointer" style="cursor:pointer">Pointer</div><div id="handler" onclick="void 0">Handler</div>'
+    const handler = document.querySelector<HTMLElement>('#handler')!
+    const assistant = install(), snapshot = assistant.snapshot()
+    const pointerElement = snapshot.elements.find(item => item.attributes.id === 'pointer')!
+    const handlerElement = snapshot.elements.find(item => item.attributes.id === 'handler')!
+    expect(pointerElement).toBeDefined()
+    expect(handlerElement).toBeDefined()
+    document.querySelector<HTMLElement>('#pointer')!.style.cursor = 'default'
+    handler.removeAttribute('onclick')
+    const request = (requestId: string, element: BrowserElement) => ({ ...identity(requestId), payload: {
+      kind: 'click', intent: '测试自定义控件', element: { ...element,
+        page: { tabId: 7, frameId: 0, documentId: 'doc', url: location.href } },
+    } })
+    await expect(assistant.execute(request('pointer-removed', pointerElement))).resolves.toMatchObject({ outcome: 'failed', reason: 'stale_element' })
+    await expect(assistant.execute(request('handler-removed', handlerElement))).resolves.toMatchObject({ outcome: 'failed', reason: 'stale_element' })
+  })
+  test('自定义控件的可见身份文本变化后旧引用失效', async () => {
+    document.body.innerHTML = '<div id="slot" style="cursor:pointer">Delete</div>'
+    const assistant = install(), element = assistant.snapshot().elements[0]
+    document.querySelector('#slot')!.textContent = 'Save'
+    await expect(assistant.execute({ ...identity('custom-label-changed'), payload: {
+      kind: 'click', intent: '操作原始快照中的控件', element: { ...element,
+        page: { tabId: 7, frameId: 0, documentId: 'doc', url: location.href } },
+    } })).resolves.toMatchObject({ outcome: 'failed', reason: 'stale_element' })
   })
   test('初始 aria 或 fieldset 禁用控件不能准备或直接点击', async () => {
     for (const html of ['<div role="button" aria-disabled="true">禁用</div>', '<fieldset disabled><button>禁用</button></fieldset>']) {

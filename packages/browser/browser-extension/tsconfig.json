@@ -6,6 +6,8 @@
     { "path": "../../llm/llm" }, { "path": "../../core/agent-default-model" },
     { "path": "../browser-activity" },
     { "path": "../browser-monitor" },
+    { "path": "../browser-task" },
+    { "path": "../../core/agent" },
     { "path": "../../api/session-controller/tsconfig.host.json" },
     { "path": "../../../vendor/cordis" }, { "path": "../../../vendor/schemastery" },
     { "path": "../browser" }, { "path": "../../credentials/credentials" },

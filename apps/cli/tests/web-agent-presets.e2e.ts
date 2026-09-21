@@ -72,6 +72,11 @@ async function bootWeb(
     // moved into the presets that a host row still waits for. The boot audit
     // is that assertion.
     { id: 'webserver', disabled: true },
+    // These two surface adapters consume the disabled webServer. They do not
+    // decide preset tool membership, so this no-port composition omits them;
+    // the live Web Profile exercises both through its real bound server.
+    { id: 'content-browser', disabled: true },
+    { id: 'browser-extension', disabled: true },
     // The web bundle's runtime row injects `webServer`, so it cannot
     // activate without the bound port disabled above. It owns dist serving
     // and the URL prompt line — surface glue, not anything that decides an
@@ -146,6 +151,10 @@ async function bootWeb(
   const rootConfig = join(profileDir, 'cordis.yml')
   await writeFile(rootConfig, '[]\n')
   return await boot('dsh-test', rootConfig, [...bundlePatches, ...overrides], (bootCtx) => {
+    // The real Browser provider is an HTTP surface and is disabled above.
+    // Keep the host service seat present so preset composition can prove the
+    // Browser tool's fail-closed dependency pair without opening a port.
+    bootCtx.provide('browser', {} as never)
     bootCtx.provide('connection', {
       fetch: { register: () => () => {} },
       rpc: { intercept: () => () => {} },
@@ -221,12 +230,29 @@ describe('the shipped Web composition', () => {
     }
   })
 
-  it('supplies both shipped presets, and only those, from the system root', async () => {
+  it('supplies every shipped preset, and only those, from the system root', async () => {
     const listed = await ctx.agentPresets.list()
 
-    expect(listed.map(preset => preset.id).sort()).toEqual(['cordis', 'minimal', 'ptc', 'standard'])
+    expect(listed.map(preset => preset.id).sort()).toEqual(['browser-assistant', 'cordis', 'minimal', 'ptc', 'standard'])
     expect(listed.every(preset => preset.trust === 'system')).toBe(true)
     expect(ctx.agentPresets.defaultId).toBe('standard')
+  })
+
+  it('mounts the browser assistant with Browser, Dynamic Cordis, and conversation compaction', async () => {
+    const handle = await ctx.agents.create({
+      sessionId: SessionId('preset-browser-assistant'),
+      setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'browser-assistant').then(() => undefined),
+    })
+    try {
+      expect(toolNames(ctx, handle.agent)).toEqual(expect.arrayContaining(['browser_action', 'browser_task_start']))
+      expect(toolNames(ctx, handle.agent).some(name => name.startsWith('cordis_'))).toBe(true)
+      expect(toolNames(ctx, handle.agent)).not.toEqual(expect.arrayContaining(['bash', 'pwsh', 'str_replace_editor']))
+      expect(ctx.commands.find(handle.agent, 'compact')).toBeDefined()
+      expect(ctx.agentPresets.serviceFor(handle.agent, 'compaction')).toBeDefined()
+      expect(ctx.agentPresets.serviceFor(handle.agent, 'toolResultPruner')).toBeDefined()
+    } finally {
+      await handle.dispose()
+    }
   })
 
   it('composes the full agent from `standard`', async () => {

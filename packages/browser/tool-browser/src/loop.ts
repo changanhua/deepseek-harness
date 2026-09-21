@@ -47,7 +47,7 @@ export interface BrowserTaskStart {
 
 type BrowserTaskAuthority = Pick<
   import('@deepseek-ai/cordis').Context['browserTasks'],
-  | 'get' | 'latestUserSource' | 'create' | 'recordReceipt' | 'recordCheck'
+  | 'get' | 'readTarget' | 'latestUserSource' | 'create' | 'recordReceipt' | 'recordCheck'
   | 'recordCapability' | 'recordEvidence' | 'recordAttempt' | 'advanceAttempt'
   | 'reconcileAttempt' | 'upsertResource' | 'reconcileResource' | 'evaluate' | 'transition' | 'rebind'
   | 'acknowledgeTargetLoss' | 'consumeContinuation' | 'consumeAction' | 'terminate' | 'cancelByOwner'
@@ -376,6 +376,32 @@ export class BrowserTaskLoop {
     let task = authority.create(agent, { objective: input.goal, sourceSeq, acceptance,
       target: targetOf(input.installationId, input.page), maxSteps: MAX_STEPS, maxActions: MAX_ACTIONS })
     task = await this.capability(agent, task, input.installationId)
+    const observed = await this.observe(agent, task, signal)
+    return { status: observed.task.phase, blockers: observed.task.blockers, taskId: observed.task.id,
+      ...(observed.snapshot === undefined ? {} : { observation: observed.snapshot }),
+      ...(observed.missingPresentations === undefined ? {} : { diagnostic: {
+        code: 'presentation-observation-missing', queries: observed.missingPresentations,
+      } }), budget: observed.task.budget }
+  }
+
+  /** Product entry: copy the explicit Session binding instead of trusting model arguments. */
+  async startBound(agent: Agent, input: BrowserTaskStart, signal: AbortSignal): Promise<object> {
+    const selected = this.authority().readTarget(agent)
+    const binding = selected.binding
+    if (binding === null) throw new Error('browser target is not bound')
+    if (binding.installationId !== input.installationId || binding.page.tabId !== input.page.tabId) {
+      throw new Error('browser target selection changed')
+    }
+    const acceptance = clauses(input.success)
+    const sourceSeq = this.authority().latestUserSource(agent)
+    if (!input.goal.trim() || acceptance.length === 0) {
+      throw new Error('browser task goal and non-empty machine success condition are required')
+    }
+    if (sourceSeq === undefined) throw new Error('browser task requires a latest real user message')
+    let task = this.authority().create(agent, { objective: input.goal, sourceSeq, acceptance,
+      target: targetOf(binding.installationId, input.page), targetRevision: binding.revision,
+      maxSteps: MAX_STEPS, maxActions: MAX_ACTIONS })
+    task = await this.capability(agent, task, binding.installationId)
     const observed = await this.observe(agent, task, signal)
     return { status: observed.task.phase, blockers: observed.task.blockers, taskId: observed.task.id,
       ...(observed.snapshot === undefined ? {} : { observation: observed.snapshot }),
@@ -726,7 +752,7 @@ export class BrowserTaskLoop {
     let current = task
     for (const resource of task.resources) {
       if (signal.aborted) break
-      if (resource.state !== 'active' || resource.owner === 'user') continue
+      if (resource.state !== 'active' || resource.owner !== undefined) continue
       const action = this.cleanupAction(current, resource)
       if (action === undefined) continue
       this.releasePending(agent, resource.id)

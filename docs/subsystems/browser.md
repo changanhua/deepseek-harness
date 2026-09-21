@@ -428,6 +428,29 @@ Session-log authority for one current browser task; no process-local task state 
 get(agent: Agent): BrowserTaskSnapshot | undefined
 
 /**
+ * Read the durable target revision and detached binding for one Session.
+ * @param agent - Exact live Agent whose Session owns the target.
+ * @returns The current revision and binding, or a null binding when no page is selected.
+ */
+readTarget(agent: Agent): BrowserSessionTargetState
+
+/**
+ * Commit an exact page selected by an authenticated user surface.
+ * @param agent - Exact live Agent whose Session owns the target.
+ * @param request - Expected revision, authenticated installation, and observed page.
+ * @returns The committed binding at its next revision.
+ */
+bindTargetByUser(agent: Agent, request: { readonly expectedRevision: number readonly installationId: string readonly page: BrowserPage }): BrowserSessionTargetBinding
+
+/**
+ * Explicitly clear a Session target while advancing its stale-send fence.
+ * @param agent - Exact live Agent whose Session owns the target.
+ * @param expectedRevision - Compare-and-set revision observed by the user surface.
+ * @returns The next revision with a null binding.
+ */
+clearTargetByUser(agent: Agent, expectedRevision: number): BrowserSessionTargetState
+
+/**
  * Return the latest durable direct-user message available as a task source.
  * @param agent - Exact live Agent whose Session is inspected.
  * @returns The user-message sequence, or `undefined` before direct user input.
@@ -541,6 +564,15 @@ reconcileResource(agent: Agent, ref: BrowserTaskRef, resource: BrowserPageResour
  * @returns The next task revision.
  */
 linkDelegatedWork(agent: Agent, ref: BrowserTaskRef, work: DelegatedWorkRef): BrowserTaskSnapshot
+
+/**
+ * Transfer every active function resource to one exact installation-owned Cordis run.
+ * @param agent - Exact live Agent that owns the verified BrowserTask.
+ * @param ref - Current compare-and-set task revision.
+ * @param request - Authenticated function owner, delivery scope, and complete active resource set.
+ * @returns The next task revision with transferred resources marked retained.
+ */
+handoffFunction(agent: Agent, ref: BrowserTaskRef, request: HandoffBrowserFunctionRequest): BrowserTaskSnapshot
 
 /**
  * Apply checker-backed evaluations for declared acceptance clauses.

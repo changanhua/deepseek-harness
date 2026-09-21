@@ -5,6 +5,7 @@ type BrowserFrame = {
   type: string
   protocolVersion?: number
   installationId?: string
+  grantEpoch?: number
   requestId?: string
   token?: string
   receipt?: Record<string, unknown>
@@ -19,6 +20,7 @@ const parseFrame = (value: string): BrowserFrame => {
     type: parsed.type,
     ...(typeof parsed.protocolVersion === 'number' ? { protocolVersion: parsed.protocolVersion } : {}),
     ...(typeof parsed.installationId === 'string' ? { installationId: parsed.installationId } : {}),
+    ...(typeof parsed.grantEpoch === 'number' ? { grantEpoch: parsed.grantEpoch } : {}),
     ...(typeof parsed.requestId === 'string' ? { requestId: parsed.requestId } : {}),
     ...(typeof parsed.token === 'string' ? { token: parsed.token } : {}),
     ...(isRecord(parsed.receipt) ? { receipt: parsed.receipt } : {}),
@@ -180,6 +182,30 @@ describe('浏览器助手 WebSocket 通道', () => {
     expect(FakeSocket.instances).toHaveLength(2)
     expect(states.at(-1)).toEqual({ phase: 'unauthorized' })
     vi.useRealTimers()
+  })
+
+  test('撤权先等页面清理完成再回执，4401 拒绝重连时也补做同一代清理', async () => {
+    let finishCleanup!: () => void
+    const cleanup = new Promise<void>((resolve) => { finishCleanup = resolve })
+    const onCommand = vi.fn((frame: { type: string }) => frame.type === 'authority-revoked' ? cleanup : undefined)
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, onCommand })
+    channel.start(); const socket = FakeSocket.instances.at(-1)!; socket.open(); ready(socket)
+
+    socket.message({ type: 'authority-revoked', installationId: credentials.installationId, grantEpoch: credentials.grant.grantEpoch })
+    await Promise.resolve()
+    expect(sent(socket).some(frame => frame.type === 'authority-cleaned')).toBe(false)
+    finishCleanup()
+    await cleanup; await Promise.resolve(); await Promise.resolve()
+    expect(sent(socket).at(-1)).toEqual({ type: 'authority-cleaned', installationId: credentials.installationId,
+      grantEpoch: credentials.grant.grantEpoch })
+
+    const reconnectCleanup = vi.fn()
+    const rejected = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, onCommand: reconnectCleanup })
+    rejected.start(); const rejectedSocket = FakeSocket.instances.at(-1)!; rejectedSocket.open(); rejectedSocket.close(4401)
+    await Promise.resolve(); await Promise.resolve()
+    expect(reconnectCleanup).toHaveBeenCalledWith({ type: 'authority-revoked', installationId: credentials.installationId,
+      grantEpoch: credentials.grant.grantEpoch })
+    channel.stop()
   })
 
   test('拒绝错误 ready、超大消息和不匹配 epoch，且隔离 callback 异常', async () => {

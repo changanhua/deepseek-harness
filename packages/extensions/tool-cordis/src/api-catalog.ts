@@ -733,6 +733,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'A detached task snapshot, or `undefined` when none exists.',
       },
       {
+        signature: 'readTarget(agent: Agent): BrowserSessionTargetState',
+        description: 'Read the durable target revision and detached binding for one Session.',
+        parameters: [{ name: 'agent', description: 'Exact live Agent whose Session owns the target.' }],
+        returns: 'The current revision and binding, or a null binding when no page is selected.',
+      },
+      {
+        signature: 'bindTargetByUser(agent: Agent, request: { readonly expectedRevision: number readonly installationId: string readonly page: BrowserPage }): BrowserSessionTargetBinding',
+        description: 'Commit an exact page selected by an authenticated user surface.',
+        parameters: [{ name: 'agent', description: 'Exact live Agent whose Session owns the target.' }, { name: 'request', description: 'Expected revision, authenticated installation, and observed page.' }],
+        returns: 'The committed binding at its next revision.',
+      },
+      {
+        signature: 'clearTargetByUser(agent: Agent, expectedRevision: number): BrowserSessionTargetState',
+        description: 'Explicitly clear a Session target while advancing its stale-send fence.',
+        parameters: [{ name: 'agent', description: 'Exact live Agent whose Session owns the target.' }, { name: 'expectedRevision', description: 'Compare-and-set revision observed by the user surface.' }],
+        returns: 'The next revision with a null binding.',
+      },
+      {
         signature: 'latestUserSource(agent: Agent): number | undefined',
         description: 'Return the latest durable direct-user message available as a task source.',
         parameters: [{ name: 'agent', description: 'Exact live Agent whose Session is inspected.' }],
@@ -809,6 +827,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Link a Job, Subagent, or Cordis tool call without treating it as acceptance.',
         parameters: [{ name: 'agent', description: 'Exact live Agent that owns the task.' }, { name: 'ref', description: 'Current compare-and-set task revision.' }, { name: 'work', description: 'Bounded delegated-work identity, status, source, and expectation.' }],
         returns: 'The next task revision.',
+      },
+      {
+        signature: 'handoffFunction(agent: Agent, ref: BrowserTaskRef, request: HandoffBrowserFunctionRequest): BrowserTaskSnapshot',
+        description: 'Transfer every active function resource to one exact installation-owned Cordis run.',
+        parameters: [{ name: 'agent', description: 'Exact live Agent that owns the verified BrowserTask.' }, { name: 'ref', description: 'Current compare-and-set task revision.' }, { name: 'request', description: 'Authenticated function owner, delivery scope, and complete active resource set.' }],
+        returns: 'The next task revision with transferred resources marked retained.',
       },
       {
         signature: 'evaluate(agent: Agent, ref: BrowserTaskRef, evaluations: readonly AcceptanceEvaluation[]): BrowserTaskSnapshot',
@@ -3818,7 +3842,7 @@ export const EVENT_API: readonly EventApiEntry[] = [
   {
     name: 'agent/pre-step',
     mode: 'waterfall',
-    signature: '\'agent/pre-step\'(this: Scoped<Agent>, payload: { agent: Agent; messages: UserMessage[]; turn: number; step: number; signal: AbortSignal }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision>',
+    signature: '\'agent/pre-step\'(this: Scoped<Agent>, payload: { agent: Agent messages: UserMessage[] /** The live loop always provides a frozen array; optional preserves hand-built compatibility payloads. */ readonly claimedUserRpcs?: readonly { readonly messageId: MessageId; readonly rpcId: string }[] turn: number step: number signal: AbortSignal }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision>',
     summary: 'Reject a proposed step or replace the messages that enter it.',
     description: 'Reject a proposed step or replace the messages that enter it. Calling `next()` preserves the current messages.',
     parameters: [{ name: 'payload', description: '.signal - the current turn\'s cancellation signal. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.' }],
@@ -4728,6 +4752,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BrowserExecutorCapabilities {\n    readonly protocolVersion: 1;\n    readonly actionKinds: readonly BrowserAction[\'kind\'][];\n    readonly requestRecovery: true;\n    readonly restartStatusLookup?: true;\n}',
   },
   {
+    name: 'BrowserFunctionOwner',
+    declaration: 'export interface BrowserFunctionOwner {\n    readonly kind: \'browser-installation\';\n    readonly installationId: string;\n    readonly grantEpoch: number;\n    readonly pluginId: string;\n    readonly packageId: string;\n    readonly pluginRunId: string;\n    readonly handoffId: string;\n}',
+  },
+  {
+    name: 'BrowserFunctionScope',
+    declaration: 'export type BrowserFunctionScope = {\n    readonly kind: \'global\';\n} | {\n    readonly kind: \'page\';\n    readonly target: BrowserTargetBinding;\n    readonly targetRevision: number;\n};',
+  },
+  {
     name: 'BrowserGrantSummary',
     declaration: 'export interface BrowserGrantSummary {\n    readonly installationId: string;\n    readonly extensionId: string;\n    readonly createdAt: string;\n    readonly scope: \'content:import\';\n}',
   },
@@ -4765,7 +4797,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserPageResource',
-    declaration: 'export interface BrowserPageResource {\n    readonly id: string;\n    readonly state: PageResourceState;\n    readonly owner?: \'session\' | \'user\';\n    readonly target: BrowserTargetBinding;\n    readonly disposition?: ResourceDisposition;\n    readonly dispositionSource?: BrowserTaskSourceRef;\n    readonly presentation?: BrowserPagePresentation;\n}',
+    declaration: 'export interface BrowserPageResource {\n    readonly id: string;\n    readonly state: PageResourceState;\n    readonly owner?: BrowserFunctionOwner;\n    readonly target: BrowserTargetBinding;\n    readonly disposition?: ResourceDisposition;\n    readonly dispositionSource?: BrowserTaskSourceRef;\n    readonly presentation?: BrowserPagePresentation;\n}',
   },
   {
     name: 'BrowserPreparedAction',
@@ -4790,6 +4822,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'BrowserRequestStatusQuery',
     declaration: 'export interface BrowserRequestStatusQuery {\n    readonly requestId: string;\n    readonly sessionId: SessionId;\n    readonly installationId: string;\n    readonly recoveryLocator?: BrowserRecoveryLocator;\n}',
+  },
+  {
+    name: 'BrowserSessionTargetBinding',
+    declaration: 'export interface BrowserSessionTargetBinding extends BrowserTargetBinding {\n    readonly page: BrowserPage;\n    readonly revision: number;\n    readonly boundAt: number;\n    readonly boundBy: \'user\';\n}',
+  },
+  {
+    name: 'BrowserSessionTargetState',
+    declaration: 'export interface BrowserSessionTargetState {\n    readonly revision: number;\n    readonly binding: BrowserSessionTargetBinding | null;\n}',
   },
   {
     name: 'BrowserTargetBinding',
@@ -4833,11 +4873,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserTaskSnapshot',
-    declaration: 'export interface BrowserTaskSnapshot extends BrowserTaskRef {\n    readonly objective: string;\n    readonly sourceSeq: number;\n    readonly phase: BrowserTaskPhase;\n    readonly outcome?: BrowserTaskOutcome;\n    readonly terminationSource?: {\n        readonly kind: \'user\';\n        readonly sessionSeq: number;\n    };\n    readonly blockers: readonly BrowserTaskBlocker[];\n    readonly target?: BrowserTargetBinding;\n    readonly targetLossAcknowledged: boolean;\n    readonly acceptance: readonly AcceptanceClause[];\n    readonly evidence: readonly BrowserTaskEvidence[];\n    readonly evaluations: readonly AcceptanceEvaluation[];\n    readonly attempts: readonly BrowserActionAttempt[];\n    readonly resources: readonly BrowserPageResource[];\n    readonly capability?: BrowserCapability;\n    readonly delegated: readonly DelegatedWorkRef[];\n    readonly budget: BrowserTaskBudget;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n}',
+    declaration: 'export interface BrowserTaskSnapshot extends BrowserTaskRef {\n    readonly objective: string;\n    readonly sourceSeq: number;\n    readonly phase: BrowserTaskPhase;\n    readonly outcome?: BrowserTaskOutcome;\n    readonly terminationSource?: {\n        readonly kind: \'user\';\n        readonly sessionSeq: number;\n    };\n    readonly blockers: readonly BrowserTaskBlocker[];\n    readonly target?: BrowserTargetBinding;\n    readonly targetRevision?: number;\n    readonly targetLossAcknowledged: boolean;\n    readonly acceptance: readonly AcceptanceClause[];\n    readonly evidence: readonly BrowserTaskEvidence[];\n    readonly evaluations: readonly AcceptanceEvaluation[];\n    readonly attempts: readonly BrowserActionAttempt[];\n    readonly resources: readonly BrowserPageResource[];\n    readonly functionHandoff?: {\n        readonly owner: BrowserFunctionOwner;\n        readonly scope: BrowserFunctionScope;\n        readonly resourceIds: readonly string[];\n        readonly createdBySessionId: string;\n        readonly source: Extract<BrowserTaskSourceRef, {\n            kind: \'browser-task-function-handoff\';\n        }>;\n    };\n    readonly capability?: BrowserCapability;\n    readonly delegated: readonly DelegatedWorkRef[];\n    readonly budget: BrowserTaskBudget;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n}',
   },
   {
     name: 'BrowserTaskSourceRef',
-    declaration: 'export type BrowserTaskSourceRef = {\n    readonly kind: \'user\' | \'message\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'tool-call\';\n    readonly callId: string;\n} | {\n    readonly kind: \'tool-result\';\n    readonly callId: string;\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-receipt\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-check\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-delegation\';\n    readonly sessionSeq: number;\n};',
+    declaration: 'export type BrowserTaskSourceRef = {\n    readonly kind: \'user\' | \'message\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'tool-call\';\n    readonly callId: string;\n} | {\n    readonly kind: \'tool-result\';\n    readonly callId: string;\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-receipt\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-check\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-delegation\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-function-handoff\';\n    readonly sessionSeq: number;\n};',
   },
   {
     name: 'CapabilityState',
@@ -5109,7 +5149,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateBrowserTaskRequest',
-    declaration: 'export interface CreateBrowserTaskRequest {\n    readonly objective: string;\n    readonly sourceSeq: number;\n    readonly acceptance: readonly AcceptanceClause[];\n    readonly target?: BrowserTargetBinding;\n    readonly maxSteps?: number;\n    readonly maxActions?: number;\n}',
+    declaration: 'export interface CreateBrowserTaskRequest {\n    readonly objective: string;\n    readonly sourceSeq: number;\n    readonly acceptance: readonly AcceptanceClause[];\n    readonly target?: BrowserTargetBinding;\n    readonly targetRevision?: number;\n    readonly maxSteps?: number;\n    readonly maxActions?: number;\n}',
   },
   {
     name: 'CreateCheckpointRequest',
@@ -5546,6 +5586,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GrantRecord',
     declaration: 'export interface GrantRecord {\n    readonly kind: \'grant\';\n    readonly payload: unknown;\n}',
+  },
+  {
+    name: 'HandoffBrowserFunctionRequest',
+    declaration: 'export interface HandoffBrowserFunctionRequest {\n    readonly owner: BrowserFunctionOwner;\n    readonly scope: BrowserFunctionScope;\n    readonly resourceIds: readonly string[];\n}',
   },
   {
     name: 'ImageAttachmentLimits',

@@ -242,6 +242,19 @@ Types: [TokenUsage](subsystems/llm-streaming.md)
 
 Source: [`packages/core/session/src/types.ts:324`](../packages/core/session/src/types.ts)
 
+### `browser-target/*`
+
+<a id="browser-targetchange--log-only"></a>
+
+#### `browser-target/change` — log-only
+
+```ts persistence-catalog
+/** Explicit user selection or clear; ordinary Browser reads never emit it. */
+'browser-target/change': BrowserTargetChange
+```
+
+Source: [`packages/browser/browser-task/src/domain.ts:25`](../packages/browser/browser-task/src/domain.ts)
+
 ### `browser-task/*`
 
 <a id="browser-taskchange--log-only"></a>
@@ -253,7 +266,7 @@ Source: [`packages/core/session/src/types.ts:324`](../packages/core/session/src/
 'browser-task/change': BrowserTaskChangeMeta
 ```
 
-Source: [`packages/browser/browser-task/src/domain.ts:8`](../packages/browser/browser-task/src/domain.ts)
+Source: [`packages/browser/browser-task/src/domain.ts:15`](../packages/browser/browser-task/src/domain.ts)
 
 <a id="browser-taskcheck--log-only"></a>
 
@@ -264,7 +277,7 @@ Source: [`packages/browser/browser-task/src/domain.ts:8`](../packages/browser/br
 'browser-task/check': BrowserTaskCheck
 ```
 
-Source: [`packages/browser/browser-task/src/domain.ts:12`](../packages/browser/browser-task/src/domain.ts)
+Source: [`packages/browser/browser-task/src/domain.ts:19`](../packages/browser/browser-task/src/domain.ts)
 
 <a id="browser-taskdelegation--log-only"></a>
 
@@ -275,7 +288,29 @@ Source: [`packages/browser/browser-task/src/domain.ts:12`](../packages/browser/b
 'browser-task/delegation': BrowserTaskDelegation
 ```
 
-Source: [`packages/browser/browser-task/src/domain.ts:14`](../packages/browser/browser-task/src/domain.ts)
+Source: [`packages/browser/browser-task/src/domain.ts:21`](../packages/browser/browser-task/src/domain.ts)
+
+<a id="browser-taskdelegation-candidate--log-only"></a>
+
+#### `browser-task/delegation-candidate` — log-only
+
+```ts persistence-catalog
+/** Canonical delegated work completed before its same-turn BrowserTask was created. */
+'browser-task/delegation-candidate': BrowserTaskDelegationCandidate
+```
+
+Source: [`packages/browser/browser-task/src/domain.ts:23`](../packages/browser/browser-task/src/domain.ts)
+
+<a id="browser-taskfunction-handoff--log-only"></a>
+
+#### `browser-task/function-handoff` — log-only
+
+```ts persistence-catalog
+/** Exact Host-derived transfer of active function resources to an installation owner. */
+'browser-task/function-handoff': BrowserTaskFunctionHandoff
+```
+
+Source: [`packages/browser/browser-task/src/domain.ts:27`](../packages/browser/browser-task/src/domain.ts)
 
 <a id="browser-taskreceipt--log-only"></a>
 
@@ -286,7 +321,7 @@ Source: [`packages/browser/browser-task/src/domain.ts:14`](../packages/browser/b
 'browser-task/receipt': BrowserTaskReceipt
 ```
 
-Source: [`packages/browser/browser-task/src/domain.ts:10`](../packages/browser/browser-task/src/domain.ts)
+Source: [`packages/browser/browser-task/src/domain.ts:17`](../packages/browser/browser-task/src/domain.ts)
 
 ### `command/*`
 
@@ -441,6 +476,19 @@ Source: [`packages/compaction/compaction/src/types.ts:24`](../packages/compactio
 Types: [ContentBlock](subsystems/core.md) · [TokenUsage](subsystems/llm-streaming.md)
 
 Source: [`packages/compaction/compaction/src/types.ts:34`](../packages/compaction/compaction/src/types.ts)
+
+### `cordis/*`
+
+<a id="cordisfunction-command--log-only"></a>
+
+#### `cordis/function-command` — log-only
+
+```ts persistence-catalog
+/** Durable admission audit fact for one authenticated function edit request; it grants no authority. */
+'cordis/function-command': DynamicCordisFunctionCommandFact
+```
+
+Source: [`packages/extensions/cordis-host-runner/src/types.ts:144`](../packages/extensions/cordis-host-runner/src/types.ts)
 
 ### `deliverables/*`
 

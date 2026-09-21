@@ -3,10 +3,11 @@
  * @module @deepseek-ai/dsh-tool-cordis
  */
 
+import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import {
-  CordisDynamicPackageId, CordisDynamicPluginId,
+  CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId,
 } from '@deepseek-ai/dsh-cordis-host-runner'
 import type { DynamicCordisReference } from '@deepseek-ai/dsh-cordis-host-runner'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -41,6 +42,9 @@ export function apply(ctx: Context): void {
     ctx.effect(() => ctx.cordisInspect.register(provider), `tool-cordis: inspect ${provider.manifest.id}`)
   }
 
+  const browserTasks = typeof ctx.get === 'function'
+    ? ctx.get('browserTasks') as BrowserTaskBridge | undefined
+    : (ctx as unknown as { browserTasks?: BrowserTaskBridge }).browserTasks
   ctx.tools.register(defineTool({
     name: 'cordis_inspect_list',
     description:
@@ -332,6 +336,97 @@ export function apply(ctx: Context): void {
     presentCall: presentRunCall,
   }))
 
+  if (browserTasks !== undefined) ctx.tools.register(defineTool({
+    name: 'cordis_handoff',
+    description:
+      'Deliver one exact running dynamic Plugin as a reusable personal browser function after the current BrowserTask '
+      + 'has fully verified its result. Use scope:"page" when the function owns UI on the task target, or '
+      + 'scope:"global" only when it owns no page resources. The Host derives the authenticated browser installation, '
+      + 'grant epoch, Session, target, task revision, resources, and handoff identity; never ask the user or invent them. '
+      + 'A successful handoff completes the current BrowserTask and lets the same authorized browser installation '
+      + 'control the function from a later conversation.',
+    parameters: {
+      pluginId: { type: 'string', required: true, description: 'Exact running Plugin ID returned by cordis_run.' },
+      packageId: { type: 'string', required: true, description: 'Exact current Package ID returned by cordis_run.' },
+      pluginRunId: { type: 'string', required: true, description: 'Exact successful Run ID returned by cordis_run.' },
+      scope: {
+        type: 'string', required: true, enum: ['global', 'page'],
+        description: 'Use page for a function bound to the verified target page; global is valid only with no page resources.',
+      },
+    },
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value) => {
+        const result = requireJsonObject(value)
+        return [{ type: 'text', text: `Delivered ${requireJsonString(result, 'pluginId')}/${requireJsonString(result, 'packageId')} as a ${requireJsonString(result, 'scope')} browser function.` }]
+      },
+      presentationMeta: (_args, value) => {
+        const result = requireJsonObject(value)
+        return {
+          pluginId: requireJsonString(result, 'pluginId'),
+          packageId: requireJsonString(result, 'packageId'),
+          pluginRunId: requireJsonString(result, 'pluginRunId'),
+        }
+      },
+    },
+    execute(args, exec) {
+      const agent = requireAgent(exec)
+      const task = browserTasks.get(agent)
+      if (task === undefined || task.phase === 'terminal') {
+        throw new Error('cordis_handoff requires one active BrowserTask')
+      }
+      const authority = handoffAuthority(task)
+      const handoffId = `cordis-handoff-${randomUUID()}`
+      const pluginId = CordisDynamicPluginId(args.pluginId)
+      const packageId = CordisDynamicPackageId(args.packageId)
+      const pluginRunId = CordisDynamicPluginRunId(args.pluginRunId)
+      const runnerScope = args.scope === 'global'
+        ? { kind: 'global' as const }
+        : { kind: 'page' as const, target: structuredClone(authority.target.page), targetRevision: authority.targetRevision }
+      let handed: BrowserTaskLike | undefined
+      const receipt = ctx.dynamicCordisRunner.handoffToInstallation(agent, {
+        handoffId,
+        installationId: authority.installationId,
+        grantEpoch: authority.grantEpoch,
+        pluginId,
+        packageId,
+        pluginRunId,
+        scope: runnerScope,
+      }, (handoff) => {
+        handed = browserTasks.handoffFunction(agent, { id: task.id, revision: task.revision }, {
+          owner: {
+            kind: 'browser-installation',
+            installationId: handoff.owner.installationId,
+            grantEpoch: handoff.owner.grantEpoch,
+            pluginId: String(handoff.pluginId),
+            packageId: String(handoff.packageId),
+            pluginRunId: String(handoff.pluginRunId),
+            handoffId: handoff.handoffId,
+          },
+          scope: handoff.scope.kind === 'global'
+            ? { kind: 'global' }
+            : {
+              kind: 'page',
+              target: { installationId: handoff.owner.installationId, page: structuredClone(handoff.scope.target) },
+              targetRevision: handoff.scope.targetRevision,
+            },
+          resourceIds: handoff.browserResources.map(resource => resource.mountId),
+        })
+      })
+      if (!receipt.ok) throw new Error(receipt.message)
+      if (handed === undefined) throw new Error('cordis_handoff did not commit its BrowserTask handoff')
+      browserTasks.terminate(agent, { id: handed.id, revision: handed.revision }, 'completed')
+      return Promise.resolve({
+        status: 'handed-off',
+        handoffId,
+        pluginId: args.pluginId,
+        packageId: args.packageId,
+        pluginRunId: args.pluginRunId,
+        scope: args.scope,
+      })
+    },
+  }))
+
   ctx.tools.register(defineTool({
     name: 'cordis_stop',
     description:
@@ -384,11 +479,18 @@ export function apply(ctx: Context): void {
     presentCall: presentUndefineCall,
   }))
 
-  ctx.on('agent/pre-step', async ({ agent, messages, signal }, next): Promise<PreStepDecision> => {
+  ctx.on('agent/pre-step', async (payload, next): Promise<PreStepDecision> => {
+    const { agent, messages, signal } = payload
     const decision = await next()
     if (decision.kind === 'reject') return decision
+    const claimed = (payload as unknown as { claimedUserRpcs?: readonly { rpcId: string }[] }).claimedUserRpcs ?? []
+    const matching = claimed.flatMap((item) => {
+      const reference = ctx.dynamicCordisRunner.activatePreparedEdit(agent, item.rpcId)
+      return reference === undefined ? [] : [{ rpcId: item.rpcId, reference }]
+    })
+    if (matching.length > 1) throw new Error('function edit admission matched more than one prepared command')
     const ids = referencedPluginIds(messages)
-    if (ids.length === 0) return decision
+    if (ids.length === 0 && matching.length === 0) return decision
     signal.throwIfAborted()
     const contexts = ids.map((id) => {
       const reference = ctx.dynamicCordisRunner.reference(agent, CordisDynamicPluginId(id))
@@ -400,8 +502,61 @@ export function apply(ctx: Context): void {
         source: { kind: 'plugin', plugin: name, form: 'instructions' },
       })
     })
+    if (matching.length === 1) {
+      const command = matching[0]
+      if (command === undefined) throw new Error('function edit admission lost its exact command')
+      const reference = command.reference
+      const instruction = ctx.dynamicCordisRunner.preparedEditInstruction(agent, command.rpcId)
+      if (instruction === undefined) throw new Error('function edit admission lost its exact command instruction')
+      contexts.push(createUserMessage({
+        content: [{
+          type: 'text',
+          text: `${renderReference(reference)}\n<function_edit_instruction>${instruction}</function_edit_instruction>`,
+        }],
+        source: { kind: 'plugin', plugin: name, form: 'instructions' },
+      }))
+    }
     return { ...decision, messages: [...decision.messages, ...contexts] }
   })
+}
+
+interface BrowserTaskLike {
+  readonly id: string
+  readonly revision: number
+  readonly phase: string
+  readonly target?: {
+    readonly installationId: string
+    readonly page: { readonly tabId: number; readonly frameId: number; readonly documentId: string; readonly url: string }
+  }
+  readonly targetRevision?: number
+  readonly capability?: { readonly state: string; readonly installationId: string; readonly grantEpoch: number }
+}
+
+interface BrowserTaskBridge {
+  get(agent: Agent): BrowserTaskLike | undefined
+  handoffFunction(agent: Agent, ref: { id: string; revision: number }, request: unknown): BrowserTaskLike
+  terminate(agent: Agent, ref: { id: string; revision: number }, outcome: 'completed'): BrowserTaskLike
+}
+
+function handoffAuthority(task: BrowserTaskLike): {
+  installationId: string
+  grantEpoch: number
+  target: NonNullable<BrowserTaskLike['target']>
+  targetRevision: number
+} {
+  if (task.target === undefined || task.targetRevision === undefined) {
+    throw new Error('cordis_handoff requires an exact BrowserTask target revision')
+  }
+  if (task.capability?.state !== 'observed'
+    || task.capability.installationId !== task.target.installationId) {
+    throw new Error('cordis_handoff requires current observed browser authority')
+  }
+  return {
+    installationId: task.capability.installationId,
+    grantEpoch: task.capability.grantEpoch,
+    target: task.target,
+    targetRevision: task.targetRevision,
+  }
 }
 
 function requireJsonObject(value: JsonValue): Record<string, JsonValue> {

@@ -26,9 +26,13 @@ describe('browser tool diagnostics',()=>{
     expect(diagnoseBrowserResult(result({ outcome:'unknown',delivery:'sent',reason:'connection_lost' }),render))
       .toEqual({ code:'OUTCOME_UNKNOWN',category:'unknown',retryable:false,requiredNextAction:'request-status' })
   })
+  it('resolves target contention through the earlier request instead of retrying the rejected write',()=>{
+    expect(diagnoseBrowserResult(result({ reason:'target_busy' }),render))
+      .toEqual({ code:'TARGET_BUSY',category:'precondition',retryable:false,requiredNextAction:'request-status' })
+  })
   it('distinguishes a conclusive not-sent transport failure from an observed result',()=>{
     expect(diagnoseBrowserResult(result({ reason:'offline' }),render))
       .toEqual({ code:'NOT_SENT',category:'delivery',retryable:false,requiredNextAction:'new-request-after-precondition' })
-    expect(diagnoseBrowserResult(result({ outcome:'observed',delivery:'sent',reason:undefined }),render)).toBeUndefined()
+    expect(diagnoseBrowserResult(result({ outcome:'observed',delivery:'sent' }),render)).toBeUndefined()
   })
 })

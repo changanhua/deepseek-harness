@@ -3,14 +3,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { HostConnectionService } from '@deepseek-ai/dsh-client-connection'
 import { WebServer } from '@deepseek-ai/dsh-host-webserver'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import WebSocket from 'ws'
 import { BrowserAuth } from '../../../client/connection/src/browser-auth.ts'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import BrowserExtension from '../src/index.ts'
 import type { BrowserInvocation } from '../src/types.ts'
-import type { BrowserActionResult, BrowserPage } from '@changanhua/dsh-browser'
+import { BrowserRegionRef, type BrowserActionResult, type BrowserPage } from '@changanhua/dsh-browser'
 import type { SessionController } from '@deepseek-ai/dsh-api-session-controller'
+import BrowserTaskService from '@changanhua/dsh-browser-task'
 
 const API = '/api/browser-extension/v1'
 const extensionId = 'a'.repeat(32)
@@ -60,22 +67,23 @@ function regionRender(page: BrowserPage, mountId: string, regionRef: string, sum
 }
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.restoreAllMocks() })
 
-async function mounted(config: Record<string, unknown> = {}) {
+async function mounted(config: Record<string, unknown> = {}, setup?: (ctx: Context) => Promise<() => Promise<void>>) {
   const ctx = new Context()
   const credentials = ctx.plugin(MemoryCredentials); await credentials.await()
   const server = ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 }); await server.await()
   const base = `http://127.0.0.1:${ctx.webServer.port}`
   const auth = await BrowserAuth.create(ctx, ctx.credentials, 1)
   new HostConnectionService(ctx, [], auth)
-  // Session RPC behavior is exercised by BrowserSessions tests; these cases only use the browser transport.
-  ctx.provide('sessionController', {} as SessionController)
+  // Most cases only use the browser transport; Session target recovery supplies its exact Host dependencies.
+  const setupCleanup = setup === undefined ? undefined : await setup(ctx)
+  if (setup === undefined) ctx.provide('sessionController', {} as SessionController)
   let cookie = ''
   auth.authorizeIndex({ method: 'GET', url: auth.authenticatedUrl(base), headers: { host: new URL(base).host } }, {
     writeHead(_status, headers) { cookie = headers?.['set-cookie']?.split(';')[0] ?? '' }, end() {},
   })
   expect(cookie.length > 0).toBe(true)
   const fiber = ctx.plugin(BrowserExtension, { heartbeatIntervalMs: 1000, handshakeTimeoutMs: 1000, ...config }); await fiber.await()
-  cleanups.push(async () => { await fiber.dispose(); await server.dispose(); await credentials.dispose() })
+  cleanups.push(async () => { await fiber.dispose(); await setupCleanup?.(); await server.dispose(); await credentials.dispose() })
   const post = async (path: string, body: unknown, owner = false) => {
     const response = await fetch(base + API + path, { method: 'POST', headers: {
       'Content-Type': 'application/json', Origin: owner ? base : origin, ...(owner ? { Cookie: cookie } : {}),
@@ -120,6 +128,154 @@ async function peer(base: string, identity: { installationId: string; token: str
 }
 
 describe('browser extension gateway over the real HTTP and WebSocket carriers', () => {
+  it('resumes a cold ordinary Session before reading and binding its durable browser target', async () => {
+    const coldSessionId = SessionId('cold-browser-target')
+    let resolveAgent!: ReturnType<typeof vi.fn<SessionController['resolveAgent']>>
+    let inspectSession!: ReturnType<typeof vi.fn<SessionController['inspect']>>
+    let coldSession!: ReturnType<Context['sessions']['create']>
+    const test = await mounted({}, async (ctx) => {
+      const plugins = [
+        ctx.plugin(SessionStore), ctx.plugin(SessionProjectionRegistry), ctx.plugin(AgentRegistry),
+        ctx.plugin(SystemPrompt), ctx.plugin(ToolRuntime), ctx.plugin(BrowserTaskService),
+      ]
+      for (const plugin of plugins) await plugin.await()
+      const session = ctx.sessions.create(coldSessionId)
+      coldSession = session
+      const agent = {
+        id: session.id, options: {}, session, ctx, status: 'idle',
+        inbox: { append() {}, remove() { return false }, nextStep: [] },
+        send() {}, followup() {}, steer() {}, inject() {}, cancel() {},
+        runMaintenance(fn: (signal: AbortSignal) => unknown) { return fn(new AbortController().signal) },
+        whenIdle() { return Promise.resolve() },
+      } as unknown as Agent
+      resolveAgent = vi.fn<SessionController['resolveAgent']>(async (id) => {
+        if (id !== coldSessionId) {
+          return { error: new RemoteError('session/not-found', 'cold Session is unavailable', { sessionId: id }) }
+        }
+        if (ctx.agents.get(id) === undefined) ctx.agents.register(agent)
+        return { agent }
+      })
+      inspectSession = vi.fn<SessionController['inspect']>(async (id) => {
+        if (id !== coldSessionId) throw new RemoteError('session/not-found', 'cold Session is unavailable', { sessionId: id })
+        return { meta: session.header, inheritedEventCount: session.inheritedEventCount, events: session.snapshotEvents() }
+      })
+      ctx.provide('sessionController', { resolveAgent, inspect: inspectSession } as unknown as SessionController)
+      return async () => { for (const plugin of plugins.reverse()) await plugin.dispose() }
+    })
+    const identity = await test.pair(['session:interact'])
+    const extension = await peer(test.base, identity)
+    const readId = randomUUID()
+    extension.socket.send(JSON.stringify({ type: 'request', requestId: readId,
+      method: 'session.target.read', params: { sessionId: coldSessionId } }))
+    await expect.poll(() => extension.frames.find(frame => frame.type === 'response'
+      && frame.requestId === readId)?.result).toEqual({ ok: true, value: { revision: 0, binding: null } })
+    expect(resolveAgent).not.toHaveBeenCalled()
+    expect(inspectSession).toHaveBeenCalledOnce()
+
+    const page = { tabId: 7, frameId: 0, documentId: 'cold-document', url: 'https://example.test/cold' }
+    const bindId = randomUUID()
+    extension.socket.send(JSON.stringify({ type: 'request', requestId: bindId,
+      method: 'session.target.bind', params: { sessionId: coldSessionId, expectedRevision: 0, page } }))
+    await expect.poll(() => extension.frames.find(frame => frame.type === 'response'
+      && frame.requestId === bindId)?.result).toMatchObject({ ok: true, value: {
+      installationId: identity.installationId, page, revision: 1, boundBy: 'user',
+    } })
+    expect(resolveAgent).toHaveBeenCalledOnce()
+    expect(test.ctx.browserTasks.readTarget(test.ctx.agents.get(coldSessionId)!)).toMatchObject({
+      revision: 1, binding: { installationId: identity.installationId, page },
+    })
+
+    coldSession.append('browser-task/change', {
+      kind: 'browser-task/change', version: 3, operation: 'create', task: {},
+    } as never)
+    const secondReadId = randomUUID()
+    extension.socket.send(JSON.stringify({ type: 'request', requestId: secondReadId,
+      method: 'session.target.read', params: { sessionId: coldSessionId } }))
+    await expect.poll(() => extension.frames.find(frame => frame.type === 'response'
+      && frame.requestId === secondReadId)?.result).toMatchObject({ ok: true, value: {
+      revision: 1, binding: { installationId: identity.installationId, page },
+    } })
+    expect(resolveAgent).toHaveBeenCalledOnce()
+    expect(inspectSession).toHaveBeenCalledTimes(2)
+
+    const missingId = randomUUID()
+    extension.socket.send(JSON.stringify({ type: 'request', requestId: missingId,
+      method: 'session.target.read', params: { sessionId: 'missing-cold-session' } }))
+    await expect.poll(() => extension.frames.find(frame => frame.type === 'response'
+      && frame.requestId === missingId)?.result).toEqual({ ok: false, error: {
+      code: 'session/not-found', message: 'cold Session is unavailable',
+    } })
+    expect(resolveAgent).toHaveBeenCalledOnce()
+    expect(inspectSession).toHaveBeenCalledTimes(3)
+
+    const missingBindId = randomUUID()
+    extension.socket.send(JSON.stringify({ type: 'request', requestId: missingBindId,
+      method: 'session.target.bind', params: { sessionId: 'missing-cold-session', expectedRevision: 0, page } }))
+    await expect.poll(() => extension.frames.find(frame => frame.type === 'response'
+      && frame.requestId === missingBindId)?.result).toEqual({ ok: false, error: {
+      code: 'session/not-found', message: 'cold Session is unavailable',
+    } })
+    expect(resolveAgent).toHaveBeenCalledTimes(2)
+
+    coldSession.append('browser-target/change', {
+      kind: 'browser-target/change', version: 1, revision: 3, binding: null,
+    })
+    const invalidReadId = randomUUID()
+    extension.socket.send(JSON.stringify({ type: 'request', requestId: invalidReadId,
+      method: 'session.target.read', params: { sessionId: coldSessionId } }))
+    await expect.poll(() => extension.frames.find(frame => frame.type === 'response'
+      && frame.requestId === invalidReadId)?.result).toMatchObject({ ok: false, error: {
+      code: 'target_unavailable',
+    } })
+    expect(JSON.stringify(extension.frames.find(frame => frame.type === 'response'
+      && frame.requestId === invalidReadId)?.result)).toContain('browser task replay failed')
+  })
+
+  it('cancels a cold target bind on socket close before the recovered Agent can append', async () => {
+    const coldSessionId = SessionId('cancelled-cold-browser-target')
+    const resolver = Promise.withResolvers<Awaited<ReturnType<SessionController['resolveAgent']>>>()
+    let releaseResolver!: () => void
+    let resolveAgent!: ReturnType<typeof vi.fn<SessionController['resolveAgent']>>
+    let targetSession!: ReturnType<Context['sessions']['create']>
+    let targetAgent!: Agent
+    const test = await mounted({}, async (ctx) => {
+      const plugins = [
+        ctx.plugin(SessionStore), ctx.plugin(SessionProjectionRegistry), ctx.plugin(AgentRegistry),
+        ctx.plugin(SystemPrompt), ctx.plugin(ToolRuntime), ctx.plugin(BrowserTaskService),
+      ]
+      for (const plugin of plugins) await plugin.await()
+      targetSession = ctx.sessions.create(coldSessionId)
+      targetAgent = {
+        id: targetSession.id, options: {}, session: targetSession, ctx, status: 'idle',
+        inbox: { append() {}, remove() { return false }, nextStep: [] },
+        send() {}, followup() {}, steer() {}, inject() {}, cancel() {},
+        runMaintenance(fn: (signal: AbortSignal) => unknown) { return fn(new AbortController().signal) },
+        whenIdle() { return Promise.resolve() },
+      } as unknown as Agent
+      resolveAgent = vi.fn<SessionController['resolveAgent']>(() => resolver.promise)
+      releaseResolver = () => {
+        if (ctx.agents.get(coldSessionId) === undefined) ctx.agents.register(targetAgent)
+        resolver.resolve({ agent: targetAgent })
+      }
+      ctx.provide('sessionController', { resolveAgent } as unknown as SessionController)
+      return async () => { for (const plugin of plugins.reverse()) await plugin.dispose() }
+    })
+    const identity = await test.pair(['session:interact'])
+    const extension = await peer(test.base, identity)
+    extension.socket.send(JSON.stringify({ type: 'request', requestId: randomUUID(),
+      method: 'session.target.bind', params: { sessionId: coldSessionId, expectedRevision: 0,
+        page: { tabId: 8, frameId: 0, documentId: 'cancelled-document', url: 'https://example.test/cancelled' } } }))
+    await expect.poll(() => resolveAgent).toHaveBeenCalledOnce()
+    const closed = new Promise<void>(resolve => extension.socket.once('close', () => { resolve() }))
+    extension.socket.terminate()
+    await closed
+    releaseResolver()
+    await new Promise((resolve) => { setTimeout(resolve, 20) })
+    expect(targetSession.snapshotEvents().filter(event => event.type === 'browser-target/change')).toEqual([])
+    expect(test.ctx.browserTasks.readTarget(targetAgent)).toEqual({ revision: 0, binding: null })
+    await test.fiber.dispose()
+  })
+
   it('auto-connects a configured trusted extension without owner approval or retained-grant growth', async () => {
     const h = await mounted({ trustedExtensionIds: [extensionId], maxGrants: 1 })
     const connect = async (installationId: string) => h.post('/connect', { extensionId, installationId,
@@ -1435,7 +1591,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     expect(JSON.stringify(mapped.value)).not.toContain('#private-side')
     expect(JSON.stringify(mapped.value)).not.toMatch(/selector|blocks|private/iu)
     expect(typeof object(mapped.value).evidenceExpiresAt).toBe('number')
-    const regionRef = string(object(region[0]).regionRef)
+    const regionRef = BrowserRegionRef(string(object(region[0]).regionRef))
     const retained = await test.ctx.browser.requestStatus({ requestId: request.requestId, sessionId: SessionId('test-session'), installationId: identity.installationId })
     expect(JSON.stringify(retained.value)).not.toContain('#private-side')
     expect(JSON.stringify(retained.value)).toContain(regionRef)

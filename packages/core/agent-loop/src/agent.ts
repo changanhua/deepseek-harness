@@ -242,12 +242,24 @@ export class ReactLoopAgent implements Agent {
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": pre-step outside running phase`)
     const signal = this.phase.abort.signal
     const claimed = this.inbox.claim(target, position.turn)
+    const claimedUserRpcs = Object.freeze(claimed.flatMap((message) => {
+      if (message.source.kind !== 'user') return []
+      const rpcId = (message.source as { readonly rpcId?: unknown }).rpcId
+      return typeof rpcId === 'string' ? [Object.freeze({ messageId: message.id, rpcId })] : []
+    }))
     const assembly = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal))
     signal.throwIfAborted()
     const sections = renderContextSections(assembly)
     const context = this.runtimeContext.project(joinContextSections(sections), sections)
+    const payload = { messages: claimed, ...position, signal, claimedUserRpcs }
+    Object.defineProperty(payload, 'claimedUserRpcs', {
+      value: claimedUserRpcs,
+      writable: false,
+      configurable: false,
+      enumerable: true,
+    })
     const decision = await this.dispatch.waterfall(
-      'agent/pre-step', { messages: claimed, ...position, signal },
+      'agent/pre-step', payload,
       (): Promise<PreStepDecision> => Promise.resolve<PreStepDecision>({
         kind: 'enter',
         messages: context === undefined ? claimed : [...claimed, context],

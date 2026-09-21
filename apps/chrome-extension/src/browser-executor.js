@@ -25,6 +25,15 @@ const actionOf = request => ['prepare', 'commit', 'observe'].includes(request.pa
 
 /** All page work is pinned to Chrome's documentId, never foreground state. */
 export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, getEngine = () => 'puppeteer', now = Date.now, navigationTimeoutMs = 2000 }) => {
+  const releaseInstallation = async ({ installationId, grantEpoch }) => {
+    if (typeof installationId !== 'string' || !Number.isSafeInteger(grantEpoch) || grantEpoch < 1) return
+    const tabs = await chromeApi.tabs.query({})
+    await Promise.allSettled(tabs.filter(tab => Number.isInteger(tab.id)).map(tab => chromeApi.scripting.executeScript({
+      target: { tabId: tab.id, allFrames: true }, world: 'ISOLATED',
+      func: (owner) => globalThis.__dshBrowserAssistant?.releaseInstallation(owner.installationId, owner.grantEpoch),
+      args: [{ installationId, grantEpoch }],
+    })))
+  }
   const grantFor = (request, signal) => {
     if (signal?.aborted) throw failure('cancelled')
     if (now() >= request.deadline) throw failure('deadline')
@@ -258,5 +267,5 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
         quiescent: !issued, reason: issued ? 'executor_reply_lost' : cause.code ?? 'page_unavailable' }
     } finally { if (cancel) signal?.removeEventListener('abort', cancel) }
   }
-  return { execute, inspect }
+  return { execute, inspect, releaseInstallation }
 }

@@ -36,7 +36,8 @@ Before creating, modifying, or repairing a Plugin, load the cordis-plugin-develo
 4. cordis_define: create the first Package for a new Plugin or append an immutable Package to an existing Plugin. It defines code but does not run it.
 5. cordis_run: activate an exact Package. Use run for the first activation, restarting current, or rollback; use update to switch versions.
 6. cordis_stop: remove the current Run and pending approval request while retaining definitions, grants, and version pointers.
-7. cordis_undefine: permanently stop and delete a Plugin and all of its Packages. Use it only after confirming that the user no longer needs them.
+7. cordis_handoff (when BrowserTask is available): after the current task has verified the exact running Package, deliver it to the authenticated browser installation. Choose page only for exact target-bound UI resources; choose global only when no page resource exists. The Host derives ownership and target facts.
+8. cordis_undefine: permanently stop and delete a Plugin and all of its Packages. Use it only after confirming that the user no longer needs them.
 
 - Inspect and Catalog data only confirm capabilities, names, signatures, types, and registration protocols before code is written; they do not replace business APIs.
 - Query Service.listService and Event.listEvents without input to choose from their compact signature directories, then query the exact service or event before using it. Exact queries return the structured contract and only its referenced types.

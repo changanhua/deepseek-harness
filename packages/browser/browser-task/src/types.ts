@@ -8,6 +8,30 @@ export type BrowserTaskPhase = 'running' | 'waiting' | 'verifying' | 'settling' 
 export type BrowserTaskOutcome = 'completed' | 'refused' | 'cancelled' | 'failed' | 'budget-exhausted'
 export type BrowserTaskBlocker = 'approval' | 'human-interaction' | 'unknown-attempt' | 'capability-drift' | 'target-lost' | 'delegated-work' | 'cleanup' | 'repeated-error' | 'internal-invariant'
 export interface BrowserTargetBinding { readonly installationId: string; readonly page: BrowserPage }
+export interface BrowserFunctionOwner {
+  readonly kind: 'browser-installation'
+  readonly installationId: string
+  readonly grantEpoch: number
+  readonly pluginId: string
+  readonly packageId: string
+  readonly pluginRunId: string
+  readonly handoffId: string
+}
+export type BrowserFunctionScope =
+  | { readonly kind: 'global' }
+  | { readonly kind: 'page'; readonly target: BrowserTargetBinding; readonly targetRevision: number }
+/** Session-owned stable tab chosen through an authenticated user surface. */
+export interface BrowserSessionTargetBinding extends BrowserTargetBinding {
+  /** Bind-time page evidence; only its tabId is the lasting selection identity. */
+  readonly page: BrowserPage
+  readonly revision: number
+  readonly boundAt: number
+  readonly boundBy: 'user'
+}
+export interface BrowserSessionTargetState {
+  readonly revision: number
+  readonly binding: BrowserSessionTargetBinding | null
+}
 
 /** A small, typed pointer to a fact already present in the Session log. */
 export type BrowserTaskSourceRef =
@@ -17,6 +41,7 @@ export type BrowserTaskSourceRef =
   | { readonly kind: 'browser-task-receipt'; readonly sessionSeq: number }
   | { readonly kind: 'browser-task-check'; readonly sessionSeq: number }
   | { readonly kind: 'browser-task-delegation'; readonly sessionSeq: number }
+  | { readonly kind: 'browser-task-function-handoff'; readonly sessionSeq: number }
 
 export type EvidenceState = 'current' | 'stale' | 'superseded'
 export interface BrowserPageMapEvidence {
@@ -81,7 +106,7 @@ export interface BrowserPagePresentation {
 export interface BrowserPageResource {
   readonly id: string
   readonly state: PageResourceState
-  readonly owner?: 'session' | 'user'
+  readonly owner?: BrowserFunctionOwner
   readonly target: BrowserTargetBinding
   readonly disposition?: ResourceDisposition
   readonly dispositionSource?: BrowserTaskSourceRef
@@ -126,12 +151,21 @@ export interface BrowserTaskSnapshot extends BrowserTaskRef {
   readonly terminationSource?: { readonly kind: 'user'; readonly sessionSeq: number }
   readonly blockers: readonly BrowserTaskBlocker[]
   readonly target?: BrowserTargetBinding
+  /** Session target revision copied when the product tool starts this task. */
+  readonly targetRevision?: number
   readonly targetLossAcknowledged: boolean
   readonly acceptance: readonly AcceptanceClause[]
   readonly evidence: readonly BrowserTaskEvidence[]
   readonly evaluations: readonly AcceptanceEvaluation[]
   readonly attempts: readonly BrowserActionAttempt[]
   readonly resources: readonly BrowserPageResource[]
+  readonly functionHandoff?: {
+    readonly owner: BrowserFunctionOwner
+    readonly scope: BrowserFunctionScope
+    readonly resourceIds: readonly string[]
+    readonly createdBySessionId: string
+    readonly source: Extract<BrowserTaskSourceRef, { kind: 'browser-task-function-handoff' }>
+  }
   readonly capability?: BrowserCapability
   readonly delegated: readonly DelegatedWorkRef[]
   readonly budget: BrowserTaskBudget
@@ -175,6 +209,16 @@ export interface BrowserTaskDelegationCandidate {
   readonly toolResultSeq: number
   readonly work: Omit<DelegatedWorkRef, 'source'>
 }
+export interface BrowserTaskFunctionHandoff {
+  readonly kind: 'browser-task/function-handoff'
+  readonly version: 1
+  readonly taskId: BrowserTaskId
+  readonly taskRevision: number
+  readonly createdBySessionId: string
+  readonly owner: BrowserFunctionOwner
+  readonly scope: BrowserFunctionScope
+  readonly resourceIds: readonly string[]
+}
 /** Host-only replay index. It never crosses the projection wire. */
 export interface BrowserTaskSourceFact {
   readonly kind: BrowserTaskSourceRef['kind']
@@ -202,6 +246,11 @@ export interface BrowserTaskSourceFact {
     readonly evidenceIds: readonly string[]
   }[]
   readonly work?: Omit<DelegatedWorkRef, 'source'>
+  readonly owner?: BrowserFunctionOwner
+  readonly scope?: BrowserFunctionScope
+  readonly resourceIds?: readonly string[]
+  readonly taskRevision?: number
+  readonly createdBySessionId?: string
 }
 export interface BrowserTaskProjectionState {
   readonly current: BrowserTaskSnapshot | null
@@ -211,6 +260,8 @@ export interface BrowserTaskProjectionState {
   readonly sourceFacts: readonly BrowserTaskSourceFact[]
   /** Host-only same-user-turn delegations waiting for task creation. */
   readonly pendingDelegations: readonly BrowserTaskDelegationCandidate[]
+  readonly targetBinding: BrowserSessionTargetBinding | null
+  readonly targetRevision: number
   readonly failure: string | null
 }
 export interface CreateBrowserTaskRequest {
@@ -218,8 +269,14 @@ export interface CreateBrowserTaskRequest {
   readonly sourceSeq: number
   readonly acceptance: readonly AcceptanceClause[]
   readonly target?: BrowserTargetBinding
+  readonly targetRevision?: number
   readonly maxSteps?: number
   readonly maxActions?: number
+}
+export interface HandoffBrowserFunctionRequest {
+  readonly owner: BrowserFunctionOwner
+  readonly scope: BrowserFunctionScope
+  readonly resourceIds: readonly string[]
 }
 
 declare module '@deepseek-ai/dsh-session-projection/types' {

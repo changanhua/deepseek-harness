@@ -16,5 +16,6 @@
     "open-assistant-window": { "suggested_key": { "default": "Ctrl+Shift+7" }, "description": "全局打开 DSH 助手窗口", "global": true }
   },
   "permissions": ["activeTab", "tabs", "scripting", "sidePanel", "storage", "contextMenus", "debugger", "webNavigation"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"]
 }

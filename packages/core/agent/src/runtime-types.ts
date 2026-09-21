@@ -323,13 +323,23 @@ declare module '@deepseek-ai/cordis' {
      * `next()` preserves the current messages.
      * @param payload.agent - the agent proposing the step.
      * @param payload.messages - messages removed from the inbox for this step.
+     * @param payload.claimedUserRpcs - immutable identities of user RPCs claimed
+     * for this exact step; absent only for manually constructed compatibility payloads.
      * @param payload.turn - the turn that will own the step.
      * @param payload.step - the step proposed by the loop.
      * @param payload.signal - the current turn's cancellation signal.
      * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
      * @mode waterfall
      */
-    'agent/pre-step'(this: Scoped<Agent>, payload: { agent: Agent; messages: UserMessage[]; turn: number; step: number; signal: AbortSignal }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision>
+    'agent/pre-step'(this: Scoped<Agent>, payload: {
+      agent: Agent
+      messages: UserMessage[]
+      /** The live loop always provides a frozen array; optional preserves hand-built compatibility payloads. */
+      readonly claimedUserRpcs?: readonly { readonly messageId: MessageId; readonly rpcId: string }[]
+      turn: number
+      step: number
+      signal: AbortSignal
+    }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision>
     /**
      * Replace the frozen call configuration. `await next()` yields the config
      * the machine would use (agent options on the first request, the logged

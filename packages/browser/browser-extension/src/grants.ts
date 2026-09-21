@@ -80,12 +80,14 @@ export class BrowserGrants {
   private refreshing: Promise<void> | undefined
   private mutations = Promise.resolve()
   private readonly unlisten: () => void
+  private readonly authorityNotified = new Set<string>()
 
   constructor(
     private readonly ctx: Context,
     private readonly limits: { requestTTL: number; pendingLimit: number; maxGrants: number },
     private readonly onInvalidate: (installationId: string) => void,
     trustedExtensionIds: readonly string[] = [],
+    private readonly onAuthorityLost: (grant: GrantSummary) => void = () => {},
   ) {
     const trusted = trustedExtensionIds.map(id => extensionId.parse(id))
     if (new Set(trusted).size !== trusted.length) throw new RangeError('duplicate trusted extension id')
@@ -94,6 +96,8 @@ export class BrowserGrants {
       if (key !== KEY || this.closed) return
       this.revision += 1
       this.active = false
+      // Fence every peer synchronously. A later refresh may prove that the
+      // grant survived, but no captured send permit may span a record update.
       for (const grant of this.grants) this.invalidate(grant.installationId)
       // Never ignore an external event while our own write is waiting for I/O.
       void this.refresh().catch(() => {})
@@ -251,7 +255,9 @@ export class BrowserGrants {
     this.open()
     installationId.parse(id)
     const revocation = {}
+    const prior = this.grants.find(grant => grant.installationId === id)
     this.revoking.set(id, revocation)
+    if (prior !== undefined) this.authorityLost(summary(prior))
     this.invalidate(id)
     for (const [key, pending] of this.pending) if (pending.input.installationId === id) this.pending.delete(key)
     await this.serialize(async () => {
@@ -273,7 +279,7 @@ export class BrowserGrants {
     this.closed = true
     this.active = false
     this.unlisten()
-    for (const grant of this.grants) this.invalidate(grant.installationId)
+    for (const grant of this.grants) { this.invalidate(grant.installationId); this.authorityLost(summary(grant)) }
     this.pending.clear()
     await this.mutations
     await this.refreshing?.catch(() => {})
@@ -304,7 +310,14 @@ export class BrowserGrants {
         const payload = normalizePayload(payloadOf(await this.ctx.credentials.readRecord(KEY)), this.trustedExtensionIds).payload
         this.open()
         if (revision !== this.revision) continue
+        const prior = this.grants
         this.grants = payload.grants
+        for (const grant of prior) {
+          const current = this.grants.find(candidate => candidate.installationId === grant.installationId)
+          if (current === undefined || current.grantEpoch !== grant.grantEpoch) {
+            this.authorityLost(summary(grant)); this.invalidate(grant.installationId)
+          }
+        }
         this.snapshotRevision = revision
         this.active = true
         return
@@ -345,6 +358,17 @@ export class BrowserGrants {
 
   private invalidate(id: string): void {
     try { this.onInvalidate(id) } catch { this.ctx.logger.warn('browser grant connection invalidation failed') }
+  }
+
+  private authorityLost(grant: GrantSummary): void {
+    const key = `${grant.installationId}:${grant.grantEpoch}`
+    if (this.authorityNotified.has(key)) return
+    this.authorityNotified.add(key)
+    if (this.authorityNotified.size > 512) {
+      const oldest = this.authorityNotified.values().next().value
+      if (typeof oldest === 'string') this.authorityNotified.delete(oldest)
+    }
+    try { this.onAuthorityLost(grant) } catch { this.ctx.logger.warn('browser grant authority-loss callback failed') }
   }
 }
 

@@ -79,7 +79,7 @@ describe('BrowserGrants', () => {
     for (const [manualExtensionId, manualInstallationId] of [
       ['b'.repeat(32), '223e4567-e89b-42d3-a456-426614174000'],
       ['c'.repeat(32), '323e4567-e89b-42d3-a456-426614174000'],
-    ]) {
+    ] as const) {
       const pending = await grants.begin({ extensionId: manualExtensionId, installationId: manualInstallationId,
         challenge: pair().challenge, scopes: ['browser:read'], origins: ['*'] })
       await grants.approve(pending.requestId, { scopes: ['browser:read'], origins: ['*'] })

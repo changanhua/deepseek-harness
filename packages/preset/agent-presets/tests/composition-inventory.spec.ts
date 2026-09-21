@@ -20,7 +20,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import AgentPresets, { COMPOSITION_FILE, METADATA_FILE } from '@deepseek-ai/dsh-agent-presets'
+import AgentPresets, { COMPOSITION_FILE, METADATA_FILE, SHIPPED_PRESET_ROOT } from '@deepseek-ai/dsh-agent-presets'
 import type { Config } from '@deepseek-ai/dsh-agent-presets'
 import { evaluate } from '@deepseek-ai/cordis-plugin-loader'
 import { fileComposition, mountedCompositionRows } from '../src/composition-inventory.ts'
@@ -65,6 +65,35 @@ async function harness(roster: Config): Promise<Context> {
 }
 
 describe('fileComposition', () => {
+  it('keeps browser-assistant limited to Browser, Dynamic Cordis, and conversation compaction', async () => {
+    const ctx = await harness({
+      default: 'browser-assistant',
+      roots: [{ path: SHIPPED_PRESET_ROOT, trust: 'system' }],
+      includeShippedRoot: false,
+      includeUserRoot: false,
+    })
+    expect((await ctx.agentPresets.list()).find(preset => preset.id === 'browser-assistant'))
+      .toMatchObject({ id: 'browser-assistant', trust: 'system' })
+
+    const composition = await fileComposition(
+      join(SHIPPED_PRESET_ROOT, 'browser-assistant', COMPOSITION_FILE),
+      refuseExpression,
+    )
+    if ('broken' in composition) throw new Error(composition.broken)
+
+    expect(composition.rows.map(row => row.entryId)).toEqual([
+      'persona', 'agent-instructions', 'compaction-basic', 'command-compact', 'tool-result-pruner',
+      'tool-browser', 'tool-cordis',
+    ])
+    expect(composition.rows.filter(row => row.moduleName === '@changanhua/dsh-tool-browser')).toEqual([
+      expect.objectContaining({ entryId: 'tool-browser', enabled: 'conditional' }),
+    ])
+    expect(composition.rows.filter(row => row.moduleName === '@deepseek-ai/dsh-tool-cordis')).toEqual([
+      { entryId: 'tool-cordis', moduleName: '@deepseek-ai/dsh-tool-cordis', enabled: true },
+    ])
+    expect(new Set(composition.rows.map(row => row.entryId)).size).toBe(composition.rows.length)
+  })
+
   it('flattens groups and keeps refused expressions conditional', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-composition-'))
     roots.push(dir)

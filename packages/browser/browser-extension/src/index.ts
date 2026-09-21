@@ -10,13 +10,15 @@ import type { BrowserOperation, BrowserObservation, BrowserAction, BrowserAction
   BrowserEntryEvent, BrowserExecutorCapabilities, BrowserPreparedAction, BrowserPreparedTicket, BrowserRequestStatusQuery, BrowserRequestStatus, BrowserDispatchDecision } from '@changanhua/dsh-browser'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { JsonValue } from '@deepseek-ai/dsh-session/types'
+import type {} from '@deepseek-ai/dsh-agent'
+import { browserTaskProjectionDefinition } from '@changanhua/dsh-browser-task'
 import { bridge } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { BrowserGrantCapacityError, BrowserGrants, type GrantSummary } from './grants.ts'
 import { BrowserRequests, sealBrowserInvocation } from './requests.ts'
 import type { BrowserInvocation, BrowserRequestResult, BrowserRequestStatusView } from './types.ts'
 import { approvalHtml, approvalScript } from './approval-ui.ts'
-import { BrowserSessions } from './sessions.ts'
+import { BrowserFunctions, type BrowserFunctionRunner, BrowserSessions } from './sessions.ts'
 import { BrowserPreparations } from './prepared.ts'
 import { BrowserApprovals } from './approvals.ts'
 import { BrowserMonitors } from './monitors.ts'
@@ -24,6 +26,7 @@ import { BrowserActivities } from './activity.ts'
 import { BrowserReadings } from './readings.ts'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
+import type {} from '@deepseek-ai/dsh-commands'
 import { BROWSER_EXTENSION_PATH as API, approveSchema, browserActionSchema, connectSchema,
   exchangeSchema, extensionFrameSchema, extensionIdSchema, entryEventSchema, EntryEventInput, jsonValueSchema, requestSchema, revokeSchema, approvalPresenceSchema, approvalDecideSchema, browserAcknowledgeSchema, routeDiscardSchema, RouteDiscardInput } from './wire.ts'
 
@@ -71,6 +74,7 @@ interface Peer {
   queuedBytes: number
   lastSeen: number
   sessions?: BrowserSessions
+  functions?: BrowserFunctions
   readings?: BrowserReadings
   approval?: { readonly id: string; readonly permit: () => boolean; readonly send: (frame: unknown) => void }
   readonly pending: Set<Promise<void>>
@@ -175,6 +179,7 @@ export class BrowserExtension extends Browser {
   private readonly pendingResourceSettlements = new Map<string, PendingResourceSettlement>()
   private readonly preparedExecutions = new Map<BrowserPreparedTicket, PreparedExecution>()
   private readonly directExecutions = new Map<string, DirectExecution>()
+  private readonly revokingInstallations = new Set<string>()
   private closed = false
 
   constructor(ctx: Context, config: Config) {
@@ -201,7 +206,10 @@ export class BrowserExtension extends Browser {
     this.approvals = new BrowserApprovals({ maxPending: this.config.maxSessionRequests, ttl: this.config.requestTTL })
     ctx.effect(() => ctx.on('approval/request', (request, next) => this.approvals.answer(request, next), { prepend: true }), 'browser-extension: native approval answerer')
     this.grants = new BrowserGrants(ctx, { requestTTL: this.config.requestTTL, pendingLimit: this.config.pendingLimit,
-      maxGrants: this.config.maxGrants }, (id) => { this.disconnect(id) }, this.config.trustedExtensionIds)
+      maxGrants: this.config.maxGrants }, (id) => {
+      if (!this.revokingInstallations.has(id)) this.disconnect(id)
+    }, this.config.trustedExtensionIds,
+    (grant) => { this.revokeInstallation(grant) })
     this.sockets = new WebSocketServer({ noServer: true, maxPayload: this.config.maxFrameBytes })
     ctx.effect(() => async () => {
       this.requests.dispose()
@@ -997,11 +1005,70 @@ export class BrowserExtension extends Browser {
         ? { ...structuredClone(frame.capabilities), restartStatusLookup: true }
         : { protocolVersion: 1, actionKinds: [...frame.capabilities.actionKinds], requestRecovery: true }
       this.installed.set(grant.installationId, peer)
+      const sessionPermit = () => !this.closed && peer.socket.readyState === WebSocket.OPEN
+        && this.grants.permit(grant) && grant.scopes.includes('session:interact')
+      const commands = this.ctx.get('commands')
       peer.sessions = new BrowserSessions(this.ctx.sessionController, {
-        permit: () => !this.closed && peer.socket.readyState === WebSocket.OPEN
-          && this.grants.permit(grant) && grant.scopes.includes('session:interact'),
+        permit: sessionPermit,
         send: (frame) => { this.sendPeer(peer, frame) }, maxFrameBytes: this.config.maxFrameBytes,
+        installationId: grant.installationId,
+        ...(commands === undefined ? {} : { commands: {
+          execute: async (sessionId: string, line: string, signal: AbortSignal) => {
+            const resolved = await this.ctx.sessionController.resolveAgent(SessionId(sessionId))
+            signal.throwIfAborted()
+            if ('error' in resolved) throw resolved.error
+            return commands.execute(resolved.agent, line, [], signal)
+          },
+        } }),
+        targets: {
+          read: async (sessionId, signal) => {
+            const inspection = await this.ctx.sessionController.inspect(SessionId(sessionId), signal)
+            signal.throwIfAborted()
+            let state = browserTaskProjectionDefinition.init()
+            for (const event of inspection.events) {
+              if (event.type === 'browser-target/change') state = browserTaskProjectionDefinition.apply(state, event)
+            }
+            if (state.failure !== null) {
+              throw Object.assign(new Error(state.failure), { code: 'target_unavailable' })
+            }
+            return { revision: state.targetRevision,
+              binding: state.targetBinding === null ? null : structuredClone(state.targetBinding) }
+          },
+          bind: async (sessionId, request, signal) => {
+            const { agent, tasks } = await this.targetAuthority(sessionId)
+            signal.throwIfAborted()
+            if (!sessionPermit()) throw Object.assign(new Error('session permission is not active'), { code: 'forbidden' })
+            try { return tasks.bindTargetByUser(agent, request) } catch (error) {
+              if (error !== null && typeof error === 'object'
+                && (error as { code?: unknown }).code === 'BROWSER_TARGET_REVISION_CHANGED') {
+                throw Object.assign(new Error('browser target revision changed'), { code: 'target_changed' })
+              }
+              throw error
+            }
+          },
+          clear: async (sessionId, expectedRevision, signal) => {
+            const { agent, tasks } = await this.targetAuthority(sessionId)
+            signal.throwIfAborted()
+            if (!sessionPermit()) throw Object.assign(new Error('session permission is not active'), { code: 'forbidden' })
+            try { return tasks.clearTargetByUser(agent, expectedRevision) } catch (error) {
+              if (error !== null && typeof error === 'object'
+                && (error as { code?: unknown }).code === 'BROWSER_TARGET_REVISION_CHANGED') {
+                throw Object.assign(new Error('browser target revision changed'), { code: 'target_changed' })
+              }
+              throw error
+            }
+          },
+        },
       })
+      const functionRunner = this.ctx.reflect.get('dynamicCordisRunner') as BrowserFunctionRunner | undefined
+      if (functionRunner !== undefined) {
+        peer.functions = new BrowserFunctions(functionRunner, this.ctx.sessionController, {
+          installationId: grant.installationId,
+          grantEpoch: grant.grantEpoch,
+          permit: () => !this.closed && peer.socket.readyState === WebSocket.OPEN
+            && this.grants.permit(grant) && grant.scopes.includes('session:interact'),
+        })
+      }
       peer.readings = new BrowserReadings(this.ctx,
         () => this.peerOpen(peer) && this.grants.permit(grant) && grant.scopes.includes('session:interact'),
         (frame) =>{  this.sendPeer(peer, frame) })
@@ -1038,6 +1105,13 @@ export class BrowserExtension extends Browser {
       })
       return
     }
+    if (frame.type === 'authority-cleaned') {
+      if (frame.installationId !== peer.grant.installationId || frame.grantEpoch !== peer.grant.grantEpoch
+        || !this.revokingInstallations.has(frame.installationId)) throw new Error('unexpected authority cleanup')
+      this.revokingInstallations.delete(frame.installationId)
+      peer.socket.close(4401, 'authorization revoked')
+      return
+    }
     if (!this.grants.permit(peer.grant)) throw new Error('grant revoked')
     if (frame.type === 'result') {
       const old = frame.receipt.grantEpoch < peer.grant.grantEpoch
@@ -1070,7 +1144,7 @@ export class BrowserExtension extends Browser {
         if (!peer.readings) throw new Error('reading_unavailable')
         value = await peer.readings.handle(frame.method, frame.params ?? {})
       } else if (frame.method === 'approval.presence') {
-        value = this.approvals.presence(this.approvalPeer(peer), approvalPresenceSchema.parse(frame.params ?? {}).sessionId)
+        value = this.approvals.presence(this.approvalPeer(peer), approvalPresenceSchema.parse(frame.params ?? {}))
       } else if (frame.method === 'approval.decide') {
         value = { accepted: this.approvals.decide(this.approvalPeer(peer), approvalDecideSchema.parse(frame.params ?? {})) }
       } else if (frame.method === 'browser.acknowledge') {
@@ -1081,6 +1155,9 @@ export class BrowserExtension extends Browser {
         value = this.routeDiscard(peer, routeDiscardSchema.parse(frame.params ?? {}))
       } else if (frame.method === 'instances') {
         value = (await this.instances()).filter(instance => instance.installationId === grant.installationId)
+      } else if (frame.method.startsWith('function.')) {
+        if (peer.functions === undefined) throw Object.assign(new Error('browser function service is unavailable'), { code: 'function_unavailable' })
+        value = await peer.functions.handle(frame.method, frame.params ?? {})
       } else if (frame.method.startsWith('activity.')) {
         const activity = this.ctx.get('browserActivity')
         if (activity === undefined) throw new Error('browser_activity_unavailable')
@@ -1105,6 +1182,16 @@ export class BrowserExtension extends Browser {
         message: typeof message === 'string' ? message.slice(0, 1024) : 'Session request failed',
       } } }) } catch { peer.socket.terminate() }
     }
+  }
+
+  private async targetAuthority(sessionId: string) {
+    const tasks = this.ctx.get('browserTasks')
+    if (tasks === undefined) {
+      throw Object.assign(new Error('browser target service is unavailable'), { code: 'target_unavailable' })
+    }
+    const resolved = await this.ctx.sessionController.resolveAgent(SessionId(sessionId))
+    if ('error' in resolved) throw resolved.error
+    return { agent: resolved.agent, tasks }
   }
 
   private approvalPeer(peer: Peer): NonNullable<Peer['approval']> {
@@ -1170,6 +1257,26 @@ export class BrowserExtension extends Browser {
     this.installed.delete(id)
     peer.binding?.disconnect()
     peer.socket.terminate()
+  }
+
+  /** Revoke dynamic functions before dropping the peer so no stale grant can issue another command. */
+  private revokeInstallation(grant: { readonly installationId: string; readonly grantEpoch: number }): void {
+    const peer = this.installed.get(grant.installationId)
+    if (peer?.grant?.grantEpoch === grant.grantEpoch && peer.socket.readyState === WebSocket.OPEN) {
+      this.revokingInstallations.add(grant.installationId)
+      try { peer.socket.send(JSON.stringify({ type: 'authority-revoked', installationId: grant.installationId, grantEpoch: grant.grantEpoch })) } catch { /* cleanup signal is best effort */ }
+      const timer = setTimeout(() => {
+        this.revokingInstallations.delete(grant.installationId)
+        if (peer.socket.readyState === WebSocket.OPEN) peer.socket.close(4401, 'authorization revoked')
+      }, 750)
+      timer.unref()
+    }
+    const runner = this.ctx.reflect.get('dynamicCordisRunner') as BrowserFunctionRunner | undefined
+    if (runner === undefined) return
+    try {
+      void Promise.resolve(runner.revokeInstallation({ installationId: grant.installationId,
+        grantEpoch: grant.grantEpoch })).catch(() => {})
+    } catch { /* grant invalidation must still disconnect a bad peer */ }
   }
 }
 

@@ -158,6 +158,96 @@ async run( agent: Agent, pluginId: CordisDynamicPluginId, packageId: CordisDynam
 async stop(agent: Agent, pluginId: CordisDynamicPluginId): Promise<DynamicCordisStopResponse>
 
 /**
+ * Promote one exact settled run only after BrowserTask durably records the
+ * corresponding resource handoff. The callback is deliberately synchronous:
+ * the owner changes at the same commit point as that external fact.
+ * @param agent - Exact live Agent that owns the running Plugin.
+ * @param request - Exact run, installation owner, handoff identity, and delivery scope.
+ * @param persist - Synchronous callback that commits the BrowserTask handoff fact.
+ * @returns The committed handoff, or a refusal that leaves ownership unchanged.
+ */
+handoffToInstallation( agent: Agent, request: DynamicCordisFunctionHandoffRequest, persist: (handoff: DynamicCordisFunctionHandoff) => unknown, ): DynamicCordisFunctionHandoffReceipt
+
+/**
+ * List only functions promoted to one exact authenticated installation grant.
+ * @param owner - Installation and grant epoch derived from the authenticated peer.
+ * @returns Source-free inspections for functions owned by that exact grant.
+ */
+listForInstallation(owner: DynamicCordisInstallationOwner): DynamicCordisPluginInspection[]
+
+/**
+ * Inspect one function only when the installation and current grant epoch match exactly.
+ * @param owner - Installation and grant epoch derived from the authenticated peer.
+ * @param pluginId - Stable delivered-function identity.
+ * @returns A source-free inspection, or `undefined` when ownership does not match.
+ */
+inspectForInstallation( owner: DynamicCordisInstallationOwner, pluginId: CordisDynamicPluginId, ): DynamicCordisPluginInspection | undefined
+
+/**
+ * Stop one delivered function while retaining its original cleanup ledger.
+ * @param owner - Installation and grant epoch derived from the authenticated peer.
+ * @param request - Exact Package and Run compare-and-set fence.
+ * @returns The stop outcome, including unresolved cleanup when present.
+ */
+async stopForInstallation( owner: DynamicCordisInstallationOwner, request: DynamicCordisFunctionStopRequest, ): Promise<DynamicCordisStopResponse>
+
+/**
+ * Immediately fence one revoked grant, then converge only the captured cleanup ledger.
+ * @param owner - Installation and grant epoch whose authority was withdrawn.
+ */
+async revokeInstallation(owner: DynamicCordisInstallationOwner): Promise<void>
+
+/**
+ * Run one delivered function for the authenticated installation.  This is a
+ * direct command path: it never gives the new conversation general access to
+ * the creating Agent's Plugin registry.
+ * @param agent - Exact live Agent selected by the user for this activation.
+ * @param owner - Installation and grant epoch derived from the authenticated peer.
+ * @param request - Idempotency, version, run, and target revision fences.
+ * @returns The activation receipt or a typed refusal; retries reuse the first result.
+ */
+async runForInstallation( agent: Agent, owner: DynamicCordisInstallationOwner, request: DynamicCordisFunctionRunRequest, ): Promise<DynamicCordisFunctionCommandReceipt>
+
+/**
+ * Read bounded command progress without exposing the edit instruction or installation identity.
+ * @param owner - Installation and grant epoch derived from the authenticated peer.
+ * @param requestId - Previously admitted function command identity.
+ * @returns Owner-scoped progress, or `missing` after restart, eviction, or ownership loss.
+ */
+commandStatusForInstallation( owner: DynamicCordisInstallationOwner, requestId: string, ): DynamicCordisFunctionCommandStatus
+
+/**
+ * Reserve an edit without granting model tools until its exact prompt RPC is claimed.
+ * @param agent - Exact live Agent selected by the user for the edit turn.
+ * @param owner - Installation and grant epoch derived from the authenticated peer.
+ * @param request - Idempotency, version, target, and natural-language instruction.
+ * @returns A prepared receipt or a typed refusal without activating tool access.
+ */
+prepareEditForInstallation( agent: Agent, owner: DynamicCordisInstallationOwner, request: DynamicCordisFunctionEditRequest, ): DynamicCordisPreparedEditReceipt
+
+/**
+ * Activate only from the exact SessionController RPC claimed for this pre-step.
+ * @param agent - Exact live Agent whose inbox claimed the prompt.
+ * @param requestId - RPC identity emitted by the Agent Loop claim receipt.
+ * @returns The authorized Plugin reference, or `undefined` without an exact prepared match.
+ */
+activatePreparedEdit(agent: Agent, requestId: string): DynamicCordisReference | undefined
+
+/**
+ * Read the instruction retained inside one active Host capability.
+ * @param agent - Exact live Agent that activated the edit.
+ * @param requestId - Exact prepared command identity.
+ * @returns The instruction only while that command remains active.
+ */
+preparedEditInstruction(agent: Agent, requestId: string): string | undefined
+
+/**
+ * Withdraw a prepared or active edit after prompt admission or turn failure.
+ * @param requestId - Exact prepared command identity to revoke.
+ */
+revokePreparedEdit(requestId: string): void
+
+/**
  * Stop a Plugin from the user panel and queue the resulting state change for the model's next step.
  * @param agent - Agent whose Session owns the Plugin and receives the context.
  * @param pluginId - Stable Plugin identity to stop.

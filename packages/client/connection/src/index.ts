@@ -71,6 +71,8 @@ export const inject = ['credentials']
 
 /** Browser authentication, request limits, and connection recovery configuration. */
 export interface ConnectionConfig {
+  /** Require the process launch token and browser-session cookie. @default true */
+  browserAuth?: boolean
   /** Browser recovery timing, injected into each served page. */
   recovery?: ConnectionRecoveryConfig
   /**
@@ -89,6 +91,7 @@ export interface ConnectionConfig {
 }
 
 export const Config: z<ConnectionConfig> = z.object({
+  browserAuth: z.boolean().default(true),
   recovery: ConnectionRecoveryConfigSchema.default({}),
   trustedHosts: z.array(String).default([]),
   cookieMaxAgeDays: z.natural().min(1).default(30),
@@ -103,6 +106,7 @@ export const Config: z<ConnectionConfig> = z.object({
  * @param config - resolved plugin config (schema defaults applied).
  */
 export async function apply(ctx: Context, config?: ConnectionConfig): Promise<void> {
+  const requireBrowserAuth = config?.browserAuth ?? true
   const recovery = resolveConnectionConfig(config?.recovery)
   // The Loader resolves schema defaults; hand-built test contexts may pass none.
   const trustedHosts = config?.trustedHosts ?? []
@@ -115,7 +119,7 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
   const connection = new HostConnectionService(
     ctx,
     trustedHosts,
-    await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays),
+    requireBrowserAuth ? await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays) : undefined,
   )
   ctx.inject(['webServer'], (webCtx) => {
     assertImageBodyCapacity(webCtx, maxRequestBodyBytes)

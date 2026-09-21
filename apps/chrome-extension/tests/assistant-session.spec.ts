@@ -11,6 +11,7 @@ type SessionBinding = { baseUrl: string
 type PendingInput = SessionBinding & { requestId: string
   content: InputPart[]
   mode: 'queue' | 'steer'
+  expectedTargetRevision?: number
   status: string }
 type PendingCreate = SessionBinding & { cwd?: string }
 type SessionEvent = { type: string
@@ -26,7 +27,8 @@ type SnapshotEvent = { type: 'snapshot'
   records: SessionRecord[]
   cursor: number
   hasMore: boolean
-  projections: Record<string, never> }
+  projections: Record<string, never>
+  assistantStream: Record<string, unknown> }
 type SessionFrame = { type: 'event'
   streamId: string | null
   event?: SessionRecord | SnapshotEvent
@@ -37,6 +39,8 @@ type SessionState = { binding: SessionBinding | null
   pendingCreate: PendingCreate | null
   records: SessionRecord[]
   streamId: string | null
+  assistantLive: { revision: number; active: null | { chunks: unknown[] } }
+  modelSelection: null | { lastUsed: unknown; next: unknown }
   error: { code: string } | null }
 type SessionCall = [method: string, params: Record<string, unknown>]
 type SessionConnection = { baseUrl: string
@@ -48,13 +52,20 @@ type AssistantSession = {
   restore: () => Promise<SessionState>
   bind: (sessionId: string) => Promise<SessionState>
   create: (options?: { cwd?: string }) => Promise<SessionState>
+  models: () => Promise<unknown>
+  selectModel: (selection: { provider: string
+    model: string
+    reasoningEffort?: string }, expectedSessionId: string | null) => Promise<unknown>
   submit: (input: { content: InputPart[]
-    mode?: 'queue' | 'steer' }) => Promise<unknown>
+    mode?: 'queue' | 'steer'
+    expectedSessionId?: string | null
+    expectedTargetRevision?: number }) => Promise<unknown>
   retry: () => Promise<unknown>
   discardDraft: () => Promise<void>
   stop: () => Promise<unknown>
   onEvent: (frame: SessionFrame) => Promise<void>
   connectionChanged: (connection: SessionConnection) => Promise<void>
+  dispose: () => Promise<void>
 }
 type Deferred<T> = { promise: Promise<T>
   resolve: (value: T) => void }
@@ -79,22 +90,37 @@ function harness(initial: Record<string, unknown> = {}) {
   const call = vi.fn(async (method: string, params: Record<string, unknown>) => {
     if (method === 'session.follow' || method === 'session.unfollow') return { streamId: params.streamId }
     if (method === 'session.create') return { sessionId: params.sessionId }
+    if (method === 'session.modelCatalog') return {
+      default: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'medium' },
+      routableProviders: ['deepseek'],
+      groups: [{ id: 'deepseek', name: 'DeepSeek', models: [{ id: 'deepseek-chat', name: 'DeepSeek Chat',
+        reasoning: { efforts: [{ id: 'low', name: '低' }, { id: 'medium', name: '中' }], defaultEffort: 'medium' } }] }],
+      failures: [],
+    }
+    if (method === 'session.selectModel') return { selected: {
+      provider: params.provider, model: params.model,
+      ...(params.reasoningEffort === undefined ? {} : { reasoningEffort: params.reasoningEffort }),
+    } }
     if (method === 'session.prompt') {
-      expect(params).toEqual({ requestId: expect.any(String) as unknown, sessionId: expect.any(String) as unknown,
-        content: expect.any(Array) as unknown, mode: expect.any(String) as unknown, clientTimeZone: expect.any(String) as unknown })
+      expect(params).toEqual(expect.objectContaining({ requestId: expect.any(String) as unknown, sessionId: expect.any(String) as unknown,
+        content: expect.any(Array) as unknown, mode: expect.any(String) as unknown, clientTimeZone: expect.any(String) as unknown }))
       return { accepted: true }
+    }
+    if (method === 'commands.execute') {
+      return { commandId: 'command-1', result: { kind: 'success', text: 'Compacted 8 history items.' } }
     }
     if (method === 'session.cancel') return { accepted: true }
     throw new Error('Unexpected method ' + method)
   })
   const changed = vi.fn()
-  const session = createAssistantSession({ storage, call, getConnection: () => current, changed }) as AssistantSession
+  const session: AssistantSession = createAssistantSession({ storage, call, getConnection: () => current, changed })
   return { session, storage, values, set, call, changed, setConnection: (value: SessionConnection) => { current = value } }
 }
 
 const lost = () => Object.assign(new Error('lost reply'), { code: 'result_unknown' })
 const calls = (call: { mock: { calls: unknown } }): SessionCall[] => call.mock.calls as SessionCall[]
 const promptCalls = (call: { mock: { calls: unknown } }) => calls(call).filter(([method]) => method === 'session.prompt')
+const followCalls = (call: { mock: { calls: unknown } }) => calls(call).filter(([method]) => method === 'session.follow')
 const callParams = (call: { mock: { calls: unknown } }, method: string) => calls(call).find(([name]) => name === method)?.[1]
 const pending = (session: AssistantSession) => { const value = session.read().pending
   expect(value).not.toBeNull()
@@ -108,13 +134,82 @@ const pendingCreate = (session: AssistantSession) => { const value = session.rea
 const streamId = (session: AssistantSession) => { const value = session.read().streamId
   expect(value).not.toBeNull()
   return value as string }
-const snapshot = (session: AssistantSession, records: SessionRecord[] = [], cursor = -1): SessionFrame => ({
+const snapshot = (session: AssistantSession, records: SessionRecord[] = [], cursor = -1,
+  assistantStream: Record<string, unknown> = { revision: 0 }): SessionFrame => ({
   type: 'event', streamId: session.read().streamId,
-  event: { type: 'snapshot', header: { id: binding(session).sessionId, version: 1, createdAt: 1 }, records, cursor, hasMore: false, projections: {} },
+  event: { type: 'snapshot', header: { id: binding(session).sessionId, version: 1, createdAt: 1 }, records, cursor, hasMore: false, projections: {}, assistantStream },
 })
 const message = (rpcId: string, seq = 0): SessionRecord => ({ type: 'event', event: { type: 'user/message', seq, time: 1, data: { role: 'user', id: 'message-1', source: { kind: 'user', rpcId }, content: input() } } })
 
 describe('assistant Session binding and unconfirmed submissions', () => {
+  test('reads the Host model catalog without creating a Session', async () => {
+    const h = harness()
+
+    await expect(h.session.models()).resolves.toMatchObject({ groups: [{ id: 'deepseek' }] })
+
+    expect(callParams(h.call, 'session.modelCatalog')).toEqual({})
+    expect(callParams(h.call, 'session.create')).toBeUndefined()
+    expect(h.session.read().binding).toBeNull()
+  })
+
+  test('selects a model for the exact bound Session and updates only its next selection', async () => {
+    const h = harness()
+    await h.session.bind('session-1')
+
+    await h.session.selectModel({ provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'low' }, 'session-1')
+
+    expect(callParams(h.call, 'session.selectModel')).toEqual({
+      sessionId: 'session-1', provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'low',
+    })
+    expect(h.session.read().modelSelection).toEqual({ lastUsed: null,
+      next: { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'low' } })
+  })
+
+  test('creates the browser-assistant Session only when an unbound selection is confirmed', async () => {
+    const h = harness()
+
+    await h.session.selectModel({ provider: 'deepseek', model: 'deepseek-chat' }, null)
+
+    const created = callParams(h.call, 'session.create')
+    expect(created?.agentPreset).toBe('browser-assistant')
+    expect(callParams(h.call, 'session.selectModel')?.sessionId).toBe(created?.sessionId)
+  })
+
+  test('rejects a selection opened for another Session before calling the Host', async () => {
+    const h = harness()
+    await h.session.bind('session-2')
+
+    await expect(h.session.selectModel({ provider: 'deepseek', model: 'deepseek-chat' }, 'session-1'))
+      .rejects.toMatchObject({ code: 'session_changed' })
+
+    expect(callParams(h.call, 'session.selectModel')).toBeUndefined()
+  })
+
+  test('discards a delayed selection response after the surface binds another Session', async () => {
+    const h = harness()
+    await h.session.bind('session-1')
+    const response = deferred<{ selected: { provider: string; model: string } }>()
+    h.call.mockImplementationOnce(() => response.promise)
+
+    const selecting = h.session.selectModel({ provider: 'deepseek', model: 'deepseek-chat' }, 'session-1')
+    await vi.waitFor(() => { expect(callParams(h.call, 'session.selectModel')).toBeDefined() })
+    await h.session.bind('session-2')
+    response.resolve({ selected: { provider: 'deepseek', model: 'deepseek-chat' } })
+
+    await expect(selecting).rejects.toMatchObject({ code: 'session_changed' })
+    expect(h.session.read().binding?.sessionId).toBe('session-2')
+    expect(h.session.read().modelSelection).toBeNull()
+  })
+
+  test('follow opts into the formal Assistant stream baseline', async () => {
+    const h = harness()
+    await h.session.bind('session-1')
+
+    expect(callParams(h.call, 'session.follow')?.request).toEqual({
+      address: { kind: 'session', sessionId: 'session-1' }, maxMessages: 50, assistantStream: true,
+    })
+  })
+
   test('first submission creates a Session before sending and keeps the same binding', async () => {
     const h = harness()
     await h.session.submit({ content: input() })
@@ -137,6 +232,20 @@ describe('assistant Session binding and unconfirmed submissions', () => {
     expect(binding(h.session).sessionId).toBe(original)
     expect(promptCalls(h.call)).toHaveLength(1)
   })
+  test('routes a known slash command without sending it through the model', async () => {
+    const h = harness()
+
+    await expect(h.session.submit({ content: [{ type: 'text', text: '/compact' }], expectedSessionId: null }))
+      .resolves.toEqual({ accepted: true, command: {
+        commandId: 'command-1', result: { kind: 'success', text: 'Compacted 8 history items.' },
+      } })
+
+    expect(callParams(h.call, 'commands.execute')).toEqual({
+      sessionId: binding(h.session).sessionId, line: '/compact',
+    })
+    expect(promptCalls(h.call)).toHaveLength(0)
+    expect(h.session.read().pending).toBeNull()
+  })
 
   test('persists before sending and keeps a failed persistence attempt out of the network', async () => {
     const h = harness()
@@ -156,6 +265,43 @@ describe('assistant Session binding and unconfirmed submissions', () => {
     expect(pending(h.session).status).toBe('accepted')
     await h.session.submit({ content: [{ type: 'text', text: 'Next input' }] })
     expect(promptCalls(h.call)).toHaveLength(2)
+  })
+  test('rejects a draft when another surface changed the selected Session before send', async () => {
+    const h = harness()
+    await h.session.bind('session-2')
+
+    await expect(h.session.submit({ content: input(), expectedSessionId: 'session-1' }))
+      .rejects.toMatchObject({ code: 'session_changed' })
+
+    expect(binding(h.session).sessionId).toBe('session-2')
+    expect(promptCalls(h.call)).toHaveLength(0)
+    expect(h.session.read().pending).toBeNull()
+  })
+  test('persists and reuses the captured target revision for an unknown prompt retry', async () => {
+    const h = harness()
+    await h.session.bind('session-1')
+    h.call.mockRejectedValueOnce(lost())
+    await h.session.submit({ content: input(), expectedSessionId: 'session-1', expectedTargetRevision: 4 }).catch(() => {})
+    const first = callParams(h.call, 'session.prompt')
+    expect(first?.expectedTargetRevision).toBe(4)
+    expect(pending(h.session).expectedTargetRevision).toBe(4)
+    await h.session.retry()
+    expect(promptCalls(h.call)[1]?.[1]).toEqual(first)
+  })
+  test('keeps each surface binding in an isolated durable storage slot', async () => {
+    const h = harness()
+    const second: AssistantSession = createAssistantSession({
+      storage: h.storage, call: h.call, getConnection: connection,
+      storageKey: 'dsh.assistant.session.v2.surface-2',
+    })
+
+    await h.session.bind('session-1')
+    await second.bind('session-2')
+
+    expect(sessionState(h.values[KEY]).binding?.sessionId).toBe('session-1')
+    expect(sessionState(h.values['dsh.assistant.session.v2.surface-2']).binding?.sessionId).toBe('session-2')
+    expect(binding(h.session).sessionId).toBe('session-1')
+    expect(binding(second).sessionId).toBe('session-2')
   })
   test('unknown input survives disconnect and cannot be rebound or discarded', async () => {
     const h = harness()
@@ -221,6 +367,8 @@ describe('assistant Session binding and unconfirmed submissions', () => {
     const first = binding(h.session).sessionId
     await h.session.create({ cwd: '/second' })
     expect(binding(h.session).sessionId).not.toBe(first)
+    const retiring = streamId(h.session)
+    h.call.mockResolvedValueOnce({ streamId: retiring })
     h.call.mockRejectedValueOnce(lost())
     await h.session.create({ cwd: '/third' }).catch(() => {})
     const saved = pendingCreate(h.session)
@@ -228,7 +376,8 @@ describe('assistant Session binding and unconfirmed submissions', () => {
     const restarted = harness(h.values)
     await restarted.session.restore()
     await restarted.session.create()
-    expect(callParams(restarted.call, 'session.create')).toEqual({ sessionId: saved.sessionId, cwd: '/third' })
+    expect(callParams(restarted.call, 'session.create')).toEqual({ sessionId: saved.sessionId,
+      agentPreset: 'browser-assistant', cwd: '/third' })
   })
   test('snapshot echoes acknowledge a lost receipt and preserve wrapped records', async () => {
     const h = harness()
@@ -241,6 +390,48 @@ describe('assistant Session binding and unconfirmed submissions', () => {
     expect(h.session.read().records).toEqual([record])
     await h.session.onEvent({ type: 'event', streamId: streamId(h.session), event: record })
     expect(h.session.read().records).toHaveLength(1)
+  })
+  test('a stream gap preserves settled content and automatically rebaselines from a new follow', async () => {
+    const h = harness()
+    await h.session.bind('session-1')
+    const baseline = message('baseline', 0)
+    await h.session.onEvent(snapshot(h.session, [baseline], 0))
+    const firstStream = streamId(h.session)
+
+    await h.session.onEvent({ type: 'event', streamId: firstStream, event: message('missed-one', 2) })
+
+    expect(h.session.read().records).toEqual([baseline])
+    expect(promptCalls(h.call)).toHaveLength(0)
+    expect(followCalls(h.call)).toHaveLength(2)
+    const recoveredStream = streamId(h.session)
+    expect(recoveredStream).not.toBe(firstStream)
+
+    const middle = message('middle', 1)
+    const recovered = message('recovered', 2)
+    await h.session.onEvent(snapshot(h.session, [baseline, middle, recovered], 2))
+    expect(h.session.read().records).toEqual([baseline, middle, recovered])
+  })
+  test('folds formal Assistant frames and rebaselines a broken live revision without erasing the prefix', async () => {
+    const h = harness()
+    await h.session.bind('session-1')
+    await h.session.onEvent(snapshot(h.session, [], -1, { revision: 1, activeAttempt: {
+      attemptId: 'attempt-1', startedAfterSeq: -1, turn: 1, step: 1, nextIndex: 0, stream: [],
+    } }))
+    const firstStream = streamId(h.session)
+    await h.session.onEvent({ type: 'event', streamId: firstStream, event: { type: 'assistant-stream', frame: {
+      type: 'chunk', attemptId: 'attempt-1', revision: 2, index: 0, time: 2,
+      chunk: { type: 'text-delta', index: 0, text: 'visible' },
+    } } as never })
+    const visible = structuredClone(h.session.read().assistantLive)
+    expect(visible.active?.chunks).toHaveLength(1)
+
+    await h.session.onEvent({ type: 'event', streamId: firstStream, event: { type: 'assistant-stream', frame: {
+      type: 'chunk', attemptId: 'attempt-1', revision: 4, index: 1, time: 3,
+      chunk: { type: 'text-delta', index: 0, text: 'gap' },
+    } } as never })
+
+    expect(h.session.read().assistantLive).toEqual(visible)
+    expect(followCalls(h.call)).toHaveLength(2)
   })
   test('an inbox echo is accepted only after a matching snapshot baseline', async () => {
     const h = harness()
@@ -264,6 +455,16 @@ describe('assistant Session binding and unconfirmed submissions', () => {
     expect(h.session.read().error?.code).toBe('stream_error')
     await h.session.stop()
     expect(h.call).toHaveBeenCalledWith('session.cancel', { sessionId: 'session-1' })
+  })
+  test('dispose unfollows the exact live stream before releasing the surface', async () => {
+    const h = harness()
+    await h.session.bind('session-1')
+    const active = streamId(h.session)
+
+    await h.session.dispose()
+
+    expect(h.call).toHaveBeenCalledWith('session.unfollow', { streamId: active })
+    expect(h.session.read().streamId).toBeNull()
   })
   test('a delayed storage write cannot send after its connection was withdrawn', async () => {
     const h = harness()

@@ -6,6 +6,9 @@ import { createBrowserExecutor } from './browser-executor.js'
 import { createPuppeteerDriver } from './browser-puppeteer.js'
 import { connect, ExtensionTransport } from '../vendor/puppeteer.js'
 import { createAssistantSession } from './assistant-session.js'
+import { createAssistantSessionSurfaces } from './assistant-session-surfaces.js'
+import { projectAssistantView } from './assistant-view.js'
+import { projectAssistantCognition } from './assistant-cognition.js'
 import { createBrowserContext } from './browser-context.js'
 import { createAssistantApproval } from './assistant-approval.js'
 import { createAssistantMonitors } from './assistant-monitors.js'
@@ -13,6 +16,7 @@ import { createAssistantActivity } from './assistant-activity.js'
 import { createBrowserActivity } from './browser-activity.js'
 import { knowledgePrompt } from './assistant-knowledge.js'
 import { createAssistantReadings } from './assistant-readings.js'
+import { createAssistantFunctions } from './assistant-functions.js'
 
 /** Service-worker composition; UI messages reach it only after sender validation. */
 export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
@@ -26,6 +30,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
   let browserEngine = 'puppeteer'
   let connectionState = { baseUrl: null, phase: 'unconfigured' }
   let sessions
+  let surfaceSessions
   const readings = createAssistantReadings({ storage, call: (...args) => connection.call(...args), changed })
   let approvals
   let monitors
@@ -38,6 +43,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
   let submittedContexts = null
   let acknowledgementFlight = null
   let acknowledgementRequested = false
+  const functions = createAssistantFunctions({ call: (...args) => connection.call(...args), getConnection: () => connectionState, storage, changed })
   const intake = createBrowserContext({ chromeApi })
   const executor = createBrowserExecutor({ chromeApi, getGrant: () => connection.getGrant(),
     getEngine: () => browserEngine,
@@ -73,6 +79,10 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
     transport: createAssistantTransport({ openApproval: openApprovalPage }), createChannel: createAssistantChannel,
     hasPermission, hasOrigins, openApprovalPage,
     onCommand: async frame => {
+      if (frame.type === 'authority-revoked') {
+        await executor.releaseInstallation({ installationId: frame.installationId, grantEpoch: frame.grantEpoch })
+        return
+      }
       if (frame.type === 'status-query') {
         const receipt = await journal.lookup(frame.locator, frame.sessionId)
         if (receipt) connection.sendReceipt(receipt, { restartLookup: frame })
@@ -80,14 +90,17 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       }
       connection.sendReceipt(await journal.handle(frame))
     },
-    onEvent: frame => frame.type === 'reading' ? readings.onEvent(frame) : frame.type === 'approval' ? approvals.onEvent(frame) : sessions.onEvent(frame),
+    onEvent: frame => frame.type === 'reading' ? readings.onEvent(frame) : frame.type === 'approval' ? approvals.onEvent(frame)
+      : Promise.all([sessions.onEvent(frame), surfaceSessions.onEvent(frame)]),
     changed: state => {
       connectionState = state
       if (state.phase !== 'connected') journal.interrupt('connection_lost')
       void sessions?.connectionChanged(state).catch(() => { changed() })
+      void surfaceSessions?.connectionChanged(state).catch(() => { changed() })
       void approvals?.sync()
       void monitors?.connectionChanged(state).catch(() => { changed() })
       void activity?.connectionChanged(state).catch(() => { changed() })
+      void functions.connectionChanged(state).catch(() => { changed() })
       if (state.phase === 'connected') void syncAcknowledgements().catch(() => { changed() })
       changed()
     },
@@ -95,7 +108,21 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
   sessions = createAssistantSession({ storage, call: (...args) => connection.call(...args),
     getConnection: () => connectionState,
     changed: state => {
-      if (submittedContexts) {
+      if (submittedContexts?.surfaceId === undefined) {
+        if (state.pending) submittedContexts.seen = true
+        if (submittedContexts.seen && (!state.pending || state.pending.status === 'accepted')) {
+          contexts = contexts.filter(item => !submittedContexts.ids.includes(item.id))
+          submittedContexts = null
+        }
+      }
+      void approvals?.sync()
+      changed()
+    },
+  })
+  surfaceSessions = createAssistantSessionSurfaces({ storage, call: (...args) => connection.call(...args),
+    getConnection: () => connectionState,
+    changed: (surfaceId, state) => {
+      if (submittedContexts?.surfaceId === surfaceId) {
         if (state.pending) submittedContexts.seen = true
         if (submittedContexts.seen && (!state.pending || state.pending.status === 'accepted')) {
           contexts = contexts.filter(item => !submittedContexts.ids.includes(item.id))
@@ -107,7 +134,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
     },
   })
   approvals = createAssistantApproval({ call: (...args) => connection.call(...args),
-    getConnection: () => connectionState, getBinding: () => sessions.read().binding, changed })
+    getConnection: () => connectionState, getBinding: surfaceId => surfaceSessions.peek(surfaceId)?.binding ?? null, changed })
   monitors = createAssistantMonitors({ storage, call: (...args) => connection.call(...args), getConnection: () => connectionState,
     changed: state => {
       const count = state.monitors.reduce((total, plan) => total + plan.outbox.length, 0)
@@ -125,20 +152,54 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
   activityCollector = createBrowserActivity({ chromeApi, getPolicy: activity.policy, enqueue: activity.enqueue, flush: activity.flush,
     changed: error => { collectionError = error; changed() },
   })
-  const read = async () => ({ connection: await connection.read(), session: sessions.read(),
-    browserEngine,
-    readings: readings.read(),
-    approvals: approvals.read(),
-    monitoring: monitors.read(),
-    activity: { ...activity.read(), collectionError },
-    contexts: structuredClone(contexts), page: await intake.current(),
-    unresolved: (await journal.list()).filter(entry => entry.mutates && (!entry.released || entry.acknowledgementPending))
-      .map(entry => ({ identity: entry.identity, target: entry.target, outcome: entry.result?.outcome ?? 'unknown', acknowledgementPending: entry.acknowledgementPending === true })),
-  })
+  const read = async surfaceId => {
+    const activeSession = surfaceId === undefined ? sessions : await surfaceSessions.ready(surfaceId)
+    const sessionState = activeSession.read()
+    const candidates = await intake.candidates()
+    let targetState = { availability: 'unavailable', revision: null, selected: null,
+      candidates, readError: null }
+    const sessionBinding = sessionState.binding
+    if (sessionBinding && connectionState.phase === 'connected'
+      && sessionBinding.baseUrl === connectionState.baseUrl && sessionBinding.installationId === connectionState.grant?.installationId) {
+      try {
+        const target = await connection.call('session.target.read', { sessionId: sessionBinding.sessionId })
+        if (!Number.isSafeInteger(target?.revision) || target.revision < 0
+          || target.binding !== null && (!target.binding?.page || typeof target.binding.installationId !== 'string')) throw new Error('invalid_target')
+        const page = target.binding?.page
+        if (page && target.binding.installationId !== sessionBinding.installationId) {
+          targetState = { ...targetState, availability: 'ready', revision: target.revision, selected: null,
+            bindingState: 'other-installation' }
+        } else {
+          const liveTab = page ? await intake.describe(page.tabId) : null
+          const selected = page ? { ...page, revision: target.binding.revision, boundAt: target.binding.boundAt,
+            title: liveTab?.title ?? '', liveUrl: liveTab?.url ?? null,
+            status: !liveTab ? 'closed' : liveTab.url === page.url ? 'selected-document' : 'navigated' } : null
+          targetState = { ...targetState, availability: 'ready', revision: target.revision, selected }
+        }
+      } catch (error) {
+        targetState = { ...targetState, readError: { code: String(error?.code ?? 'target_read_failed').slice(0, 128),
+          message: String(error?.message ?? 'Target service unavailable').slice(0, 1024) } }
+      }
+    }
+    const state = { connection: await connection.read(), session: sessionState,
+      target: targetState,
+      cognition: projectAssistantCognition({ sessionId: sessionBinding?.sessionId ?? null, records: sessionState.records }),
+      functionSnapshot: functions.read({ target: targetState, installationId: connectionState.grant?.installationId }),
+      browserEngine,
+      readings: readings.read(),
+      approvals: surfaceId === undefined ? { sessionId: null, requests: [] } : approvals.read(surfaceId),
+      monitoring: monitors.read(),
+      activity: { ...activity.read(), collectionError },
+      contexts: structuredClone(contexts), page: await intake.current(),
+      unresolved: (await journal.list()).filter(entry => entry.mutates && (!entry.released || entry.acknowledgementPending))
+        .map(entry => ({ identity: entry.identity, target: entry.target, outcome: entry.result?.outcome ?? 'unknown', acknowledgementPending: entry.acknowledgementPending === true })),
+    }
+    return surfaceId === undefined ? state : { ...state, assistantV2: projectAssistantView({ surfaceId, state }) }
+  }
   const start = async () => {
     browserEngine = (await storage.get('dsh.assistant.browser-engine'))['dsh.assistant.browser-engine'] === 'dom' ? 'dom' : 'puppeteer'
     await readings.restore()
-    await journal.list(); await sessions.restore(); await monitors.restore().catch(() => { changed() })
+    await journal.list(); await sessions.restore(); await functions.restore(); await monitors.restore().catch(() => { changed() })
     await activity.restore().catch(() => { changed() }); await activityCollector.start(); return connection.read()
   }
   const capture = async kind => {
@@ -148,7 +209,15 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
     contexts = next; changed()
     return item
   }
-  const handle = async message => {
+  const functionTarget = async binding => {
+    const target = await connection.call('session.target.read', { sessionId: binding.sessionId })
+    const page = target?.binding?.page
+    const live = page ? await intake.describe(page.tabId) : null
+    return { availability: 'ready', revision: target?.revision ?? null,
+      selected: !page ? null : { ...page, status: !live ? 'closed' : live.url === page.url ? 'selected-document' : 'navigated' } }
+  }
+  const handle = async (message, surfaceId) => {
+    const activeSession = surfaceId === undefined ? sessions : await surfaceSessions.ready(surfaceId)
     switch (message.type) {
       case 'dsh-assistant-state': break
       case 'dsh-assistant-browser-engine': {
@@ -213,8 +282,11 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
         return { ok: true, value: await connection.call('browser.routeDiscard', payload) }
       }
       case 'dsh-assistant-session-list': return { ok: true, value: await connection.call('session.list', {}) }
-      case 'dsh-assistant-session-bind': await sessions.bind(message.sessionId); break
-      case 'dsh-assistant-session-create': await sessions.create(message.cwd ? { cwd: message.cwd } : {}); break
+      case 'dsh-assistant-session-models': return { ok: true, value: await activeSession.models() }
+      case 'dsh-assistant-session-select-model': await activeSession.selectModel(message.selection, message.expectedSessionId); break
+      case 'dsh-assistant-target-candidates': return { ok: true, value: { items: await intake.candidates() } }
+      case 'dsh-assistant-session-bind': await activeSession.bind(message.sessionId); break
+      case 'dsh-assistant-session-create': await activeSession.create(message.cwd ? { cwd: message.cwd } : {}); break
       case 'dsh-assistant-session-submit': {
         if (typeof message.text !== 'string' || message.text.length > 65536) throw new Error('invalid_input')
         const images = message.images ?? []
@@ -223,6 +295,13 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
           || typeof image.data !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/u.test(image.data)
           || image.data.length > 2_800_000 || image.name !== undefined && (typeof image.name !== 'string' || image.name.length > 256))
           || images.reduce((total, image) => total + image.data.length, 0) > 4 * 1024 * 1024) throw new Error('invalid_input')
+        const commandLine = (message.mode ?? 'queue') === 'queue' && !images.length && message.text.trim().startsWith('/')
+          ? message.text.trim() : null
+        if (commandLine !== null) {
+          const submitted = await activeSession.submit({ content: [{ type: 'text', text: commandLine }], mode: 'queue',
+            ...(Object.hasOwn(message, 'expectedSessionId') ? { expectedSessionId: message.expectedSessionId } : {}) })
+          return { ok: true, value: submitted, state: await read(surfaceId) }
+        }
         const content = message.text.trim() ? [{ type: 'text', text: message.text }] : []
         content.push(...images)
         const selected = structuredClone(contexts)
@@ -233,18 +312,135 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
           if (item.data) content.push({ type: 'image', mediaType: item.mediaType, data: item.data, name: 'browser-screenshot.jpg' })
         }
         if (!content.length) throw new Error('empty_input')
-        submittedContexts = { ids: selected.map(item => item.id), seen: false }
-        await sessions.submit({ content, mode: message.mode ?? 'queue' }); break
+        submittedContexts = { surfaceId, ids: selected.map(item => item.id), seen: false }
+        const submitted = await activeSession.submit({ content, mode: message.mode ?? 'queue',
+          ...(Object.hasOwn(message, 'expectedSessionId') ? { expectedSessionId: message.expectedSessionId } : {}),
+          ...(Object.hasOwn(message, 'expectedTargetRevision') ? { expectedTargetRevision: message.expectedTargetRevision } : {}) })
+        if (submitted?.command) return { ok: true, value: submitted, state: await read(surfaceId) }
+        break
       }
-      case 'dsh-assistant-session-retry': await sessions.retry(); break
-      case 'dsh-assistant-session-discard': await sessions.discardDraft(); break
-      case 'dsh-assistant-session-stop': await sessions.stop(); break
-      case 'dsh-assistant-approval-decide': await approvals.decide(message.id, message.decision); break
+      case 'dsh-assistant-target-bind': {
+        const before = activeSession.read().binding
+        if (!before || before.baseUrl !== connectionState.baseUrl || before.installationId !== connectionState.grant?.installationId) throw new Error('target_changed')
+        if (!Number.isSafeInteger(message.expectedRevision) || message.expectedRevision < 0) throw new Error('invalid_target_revision')
+        const page = await intake.target(message.tabId)
+        const after = activeSession.read().binding
+        if (after?.sessionId !== before.sessionId || after.baseUrl !== before.baseUrl || after.installationId !== before.installationId) throw new Error('session_changed')
+        await connection.call('session.target.bind', { sessionId: before.sessionId, expectedRevision: message.expectedRevision,
+          page: { tabId: page.tabId, frameId: page.frameId, documentId: page.documentId, url: page.url } })
+        changed(); break
+      }
+      case 'dsh-assistant-target-clear': {
+        const binding = activeSession.read().binding
+        if (!binding || binding.baseUrl !== connectionState.baseUrl || binding.installationId !== connectionState.grant?.installationId) throw new Error('target_changed')
+        if (!Number.isSafeInteger(message.expectedRevision) || message.expectedRevision < 0) throw new Error('invalid_target_revision')
+        await connection.call('session.target.clear', { sessionId: binding.sessionId, expectedRevision: message.expectedRevision })
+        changed(); break
+      }
+      case 'dsh-assistant-cognition-refresh': {
+        const binding = activeSession.read().binding
+        if (!binding || binding.sessionId !== message.expectedSessionId || binding.baseUrl !== connectionState.baseUrl
+          || binding.installationId !== connectionState.grant?.installationId) throw new Error('session_changed')
+        if (!Number.isSafeInteger(message.expectedTargetRevision) || message.expectedTargetRevision < 0) throw new Error('invalid_target_revision')
+        const target = await connection.call('session.target.read', { sessionId: binding.sessionId })
+        if (target?.revision !== message.expectedTargetRevision) throw new Error('target_changed')
+        if (!target.binding) throw new Error('target_unbound')
+        await activeSession.submit({ mode: 'queue', expectedSessionId: binding.sessionId,
+          expectedTargetRevision: message.expectedTargetRevision, content: [{ type: 'text',
+            text: '请刷新当前固定目标标签的页面认知。只做一次满足当前问题所需的有界读取，把实际读取范围、截断和遗漏如实说明；不要执行任何写操作，也不要读取其他标签。' }] })
+        break
+      }
+      case 'dsh-assistant-cognition-locate': {
+        if (typeof message.itemId !== 'string') throw new Error('invalid_input')
+        const sessionState = activeSession.read()
+        const cognition = projectAssistantCognition({ sessionId: sessionState.binding?.sessionId ?? null, records: sessionState.records })
+        const item = cognition.items.find(candidate => candidate.id === message.itemId && candidate.locatorsValid)
+        if (!item) throw new Error('cognition_location_unavailable')
+        const tab = await chromeApi.tabs.update(item.target.page.tabId, { active: true })
+        if (Number.isInteger(tab.windowId)) await chromeApi.windows.update(tab.windowId, { focused: true })
+        break
+      }
+      case 'dsh-assistant-cognition-reveal-node': {
+        if (typeof message.itemId !== 'string' || !Number.isSafeInteger(message.nodeIndex)) throw new Error('invalid_input')
+        const sessionState = activeSession.read()
+        const binding = sessionState.binding
+        const cognition = projectAssistantCognition({ sessionId: binding?.sessionId ?? null, records: sessionState.records })
+        const item = cognition.items.find(candidate => candidate.id === message.itemId && candidate.locatorsValid)
+        const node = item?.tree?.nodes?.find(candidate => candidate.index === message.nodeIndex && candidate.snapshotId && candidate.elementId)
+        if (!binding || !item || !node || item.target.installationId !== binding.installationId) throw new Error('cognition_location_unavailable')
+        const selected = await functionTarget(binding)
+        if (selected.selected?.status !== 'selected-document' || item.target.page.tabId !== selected.selected.tabId
+          || item.target.page.frameId !== selected.selected.frameId || item.target.page.documentId !== selected.selected.documentId
+          || item.target.page.url !== selected.selected.url) throw new Error('cognition_location_unavailable')
+        const rows = await chromeApi.scripting.executeScript({ target: { tabId: item.target.page.tabId, documentIds: [item.target.page.documentId] }, world: 'ISOLATED',
+          func: input => globalThis.__dshBrowserAssistant?.reveal?.(input) ?? { ok: false, reason: 'target_unavailable' },
+          args: [{ snapshotId: node.snapshotId, elementId: node.elementId, url: item.target.page.url }] })
+        const revealed = rows.find(row => row.documentId === item.target.page.documentId && row.frameId === item.target.page.frameId)?.result
+        if (revealed?.ok !== true) throw new Error(revealed?.reason ?? 'cognition_location_unavailable')
+        const tab = await chromeApi.tabs.update(item.target.page.tabId, { active: true })
+        if (Number.isInteger(tab.windowId)) await chromeApi.windows.update(tab.windowId, { focused: true })
+        break
+      }
+      case 'dsh-assistant-functions-refresh': await functions.refresh(); break
+      case 'dsh-assistant-function-inspect': {
+        if (typeof message.pluginId !== 'string') throw new Error('invalid_input')
+        await functions.inspect(message.pluginId); break
+      }
+      case 'dsh-assistant-function-stop': {
+        if (typeof message.pluginId !== 'string') throw new Error('invalid_input')
+        await functions.stop(message.pluginId); break
+      }
+      case 'dsh-assistant-function-run': {
+        if (typeof message.pluginId !== 'string') throw new Error('invalid_input')
+        const binding = activeSession.read().binding
+        if (!binding || binding.baseUrl !== connectionState.baseUrl || binding.installationId !== connectionState.grant?.installationId) throw new Error('session_changed')
+        const target = functions.scope(message.pluginId) === 'page' ? await functionTarget(binding)
+          : { availability: 'ready', revision: null, selected: null }
+        await functions.run(message.pluginId, { sessionId: binding.sessionId, target })
+        break
+      }
+      case 'dsh-assistant-function-edit': {
+        if (typeof message.pluginId !== 'string' || typeof message.instruction !== 'string') throw new Error('invalid_input')
+        const binding = activeSession.read().binding
+        if (!binding || binding.baseUrl !== connectionState.baseUrl || binding.installationId !== connectionState.grant?.installationId) throw new Error('session_changed')
+        const target = functions.scope(message.pluginId) === 'page' ? await functionTarget(binding)
+          : { availability: 'ready', revision: null, selected: null }
+        await functions.edit(message.pluginId, { sessionId: binding.sessionId, instruction: message.instruction, target })
+        break
+      }
+      case 'dsh-assistant-function-open': {
+        if (typeof message.pluginId !== 'string') throw new Error('invalid_input')
+        const inspection = await functions.inspect(message.pluginId)
+        const openTarget = inspection?.function?.openTarget ?? inspection?.openTarget
+        if (openTarget?.kind === 'web' && typeof openTarget.sessionId === 'string') {
+          await chromeApi.tabs.create({ url: connectionState.baseUrl + '/#session=' + encodeURIComponent(openTarget.sessionId) })
+          break
+        }
+        const resource = openTarget?.kind === 'browser' ? openTarget.resource : null
+        if (!resource || !['region_render', 'entry_mount'].includes(resource.kind)
+          || resource.installationId !== connectionState.grant?.installationId
+          || typeof resource.mountId !== 'string' || !resource.page) throw new Error('function_view_unavailable')
+        const rows = await chromeApi.scripting.executeScript({ target: { tabId: resource.page.tabId, documentIds: [resource.page.documentId] }, world: 'ISOLATED',
+          func: input => globalThis.__dshBrowserAssistant?.revealFunction?.(input) ?? { ok: false, reason: 'function_view_unavailable' },
+          args: [{ mountId: resource.mountId, url: resource.page.url }] })
+        const revealed = rows.find(row => row.documentId === resource.page.documentId && row.frameId === resource.page.frameId)?.result
+        if (revealed?.ok !== true) throw new Error(revealed?.reason ?? 'function_view_unavailable')
+        const tab = await chromeApi.tabs.update(resource.page.tabId, { active: true })
+        if (Number.isInteger(tab.windowId)) await chromeApi.windows.update(tab.windowId, { focused: true })
+        break
+      }
+      case 'dsh-assistant-session-retry': await activeSession.retry(); break
+      case 'dsh-assistant-session-discard': await activeSession.discardDraft(); break
+      case 'dsh-assistant-session-stop': await activeSession.stop(); break
+      case 'dsh-assistant-approval-decide': {
+        if (surfaceId === undefined) throw new Error('approval_unavailable')
+        await approvals.decide(surfaceId, message.id, message.decision); break
+      }
       case 'dsh-assistant-monitor-create': {
-        const binding = sessions.read().binding
+        const binding = activeSession.read().binding
         if (!binding || binding.baseUrl !== connectionState.baseUrl || binding.installationId !== connectionState.grant?.installationId) throw new Error('target_changed')
         const current = await intake.current()
-        const live = sessions.read().binding
+        const live = activeSession.read().binding
         if (!current || current.tabId !== message.page?.tabId || current.url !== message.page?.url) throw new Error('capture_target_changed')
         if (live?.sessionId !== binding.sessionId || live.baseUrl !== binding.baseUrl || live.installationId !== binding.installationId
           || connectionState.baseUrl !== binding.baseUrl || connectionState.grant?.installationId !== binding.installationId) throw new Error('target_changed')
@@ -255,7 +451,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       }
       case 'dsh-assistant-monitor-retry': await monitors.retry(); break
       case 'dsh-assistant-activity-configure': {
-        const binding = sessions.read().binding
+        const binding = activeSession.read().binding
         if (!binding || binding.baseUrl !== connectionState.baseUrl || binding.installationId !== connectionState.grant?.installationId) throw new Error('target_changed')
         collectionError = null
         await activity.configure({ ...message.settings, sessionId: binding.sessionId })
@@ -272,14 +468,14 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       case 'dsh-assistant-activity-refresh': await activity.sync(); break
       case 'dsh-assistant-activity-query': await activity.query({ query: message.query ?? '', limit: 50 }); break
       case 'dsh-assistant-activity-knowledge': {
-        const binding = sessions.read().binding
+        const binding = activeSession.read().binding
         if (!binding || binding.baseUrl !== connectionState.baseUrl || binding.installationId !== connectionState.grant?.installationId) throw new Error('target_changed')
         const text = await knowledgePrompt({ installationId: binding.installationId, sessionId: binding.sessionId,
           query: message.query ?? '', purpose: message.purpose })
-        const current = sessions.read().binding
+        const current = activeSession.read().binding
         if (current?.sessionId !== binding.sessionId || current.baseUrl !== binding.baseUrl || current.installationId !== binding.installationId
           || connectionState.baseUrl !== binding.baseUrl || connectionState.grant?.installationId !== binding.installationId) throw new Error('target_changed')
-        await sessions.submit({ content: [{ type: 'text', text }], mode: 'queue' })
+        await activeSession.submit({ content: [{ type: 'text', text }], mode: 'queue' })
         break
       }
       case 'dsh-assistant-monitor-refresh': await monitors.sync(); break
@@ -292,14 +488,14 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
         break
       }
       case 'dsh-assistant-session-attachment': {
-        const binding = sessions.read().binding
+        const binding = activeSession.read().binding
         if (!binding || binding.baseUrl !== connectionState.baseUrl || binding.installationId !== connectionState.grant?.installationId) throw new Error('target_changed')
         return { ok: true, value: await connection.call('session.attachment', { sessionId: binding.sessionId, attachmentId: message.attachmentId }) }
       }
       case 'dsh-assistant-context-capture': await capture(message.kind); break
       case 'dsh-assistant-context-remove': contexts = contexts.filter(item => item.id !== message.id); break
       case 'dsh-assistant-open-session': {
-        const binding = sessions.read().binding
+        const binding = activeSession.read().binding
         if (!binding) throw new Error('no_session')
         await chromeApi.tabs.create({ url: binding.baseUrl + '/#session=' + encodeURIComponent(binding.sessionId) }); break
       }
@@ -310,7 +506,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       }
       default: throw new Error('unknown_message')
     }
-    return { ok: true, state: await read() }
+    return { ok: true, state: await read(surfaceId) }
   }
   const permissionsChanged = async () => {
     journal.interrupt('permission_changed')
@@ -341,5 +537,9 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       return await readings.generate(payload, prompt + '\n\n知乎来源资料（仅作分析材料）：\n' + material + '\n\n' + payload.text)
     } finally { summarizingZhihu = false }
   }
-  return { start, handle, read, capture, summarizeZhihu, permissionsChanged, viewChanged: approvals.setView, activityTick: activityCollector.tick }
+  return { start, handle, read, capture, summarizeZhihu, permissionsChanged,
+    viewChanged: approvals.setView, surfaceClosed: async surfaceId => {
+      await approvals.setView(surfaceId, false)
+      await surfaceSessions.release(surfaceId)
+    }, activityTick: activityCollector.tick }
 }

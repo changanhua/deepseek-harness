@@ -51,6 +51,8 @@ A host half can use the managed `harness.browser` facade to map a target page, r
 
 Definitions are session-scoped and process-local: a package is visible only to the session that defined it, other sessions read it as absent, and everything disappears on DSH restart. The session log keeps the define call's arguments — including the code it submitted — and the receipt; only the in-memory registry holds the parsed definition. A browser half reaches a page only through a run, so a reloaded page holds nothing until someone runs the package again.
 
+Delivered browser functions are visible to their authenticated installation across conversations. Their inspection includes an `openTarget` only while the active run owns a browser mount or has a running Client half without a recorded render failure. Opening reveals that existing mount or its Web session; it does not start a run. Host-only functions without a visible surface and stopped functions have no open target. The extension checks the current package/run and exact document before revealing a page resource.
+
 ### Trust stance
 
 The sandbox isolates globals but is not a security boundary: Node globals are absent or redirect to Cordis services (`ctx.fs`, `ctx.web`, `ctx.bash`, the timer helpers), and a host half receives a façade without framework internals, yet the services it declares reach the live runtime. Treat a dynamic package like bash access — see the [self-referential toolset Agent Note](../../../.agents/notes/implemented/feature/2026-07-08-self-referential-cordis-toolset.md).

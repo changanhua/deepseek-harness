@@ -19,9 +19,11 @@ import {
   validateDelegationCandidate,
   validateReceipt,
   validateCompletion,
+  validateFunctionHandoff,
+  validateFunctionHandoffAdmission,
 } from './fold.ts'
 import type { BrowserTaskFoldState } from './fold.ts'
-import type { BrowserTaskChangeMeta, BrowserTaskOperation } from './domain.ts'
+import type { BrowserTargetChange, BrowserTaskChangeMeta, BrowserTaskOperation } from './domain.ts'
 import { browserFailureFingerprint, deterministicBrowserFailureCode } from './failure.ts'
 import { browserPageMapEvidence, browserPageMapRecoversFailure } from './evidence.ts'
 import type {
@@ -29,6 +31,9 @@ import type {
   BrowserActionAttempt,
   BrowserCapability,
   BrowserPageResource,
+  BrowserTaskFunctionHandoff,
+  BrowserSessionTargetBinding,
+  BrowserSessionTargetState,
   BrowserTargetBinding,
   BrowserTaskBlocker,
   BrowserTaskDelegation,
@@ -39,6 +44,7 @@ import type {
   BrowserTaskSnapshot,
   BrowserTaskSourceRef,
   CreateBrowserTaskRequest,
+  HandoffBrowserFunctionRequest,
   DelegatedWorkRef,
 } from './types.ts'
 
@@ -91,6 +97,8 @@ function foldState(state: BrowserTaskProjectionState): BrowserTaskFoldState {
     lastTaskSourceSeq: state.lastTaskSourceSeq,
     sourceFacts: [...state.sourceFacts],
     pendingDelegations: state.pendingDelegations.map(candidate => clone(candidate)),
+    targetBinding: clone(state.targetBinding),
+    targetRevision: state.targetRevision,
   }
 }
 
@@ -102,6 +110,8 @@ function project(state: BrowserTaskFoldState): BrowserTaskProjectionState {
     lastTaskSourceSeq: state.lastTaskSourceSeq,
     sourceFacts: clone(state.sourceFacts),
     pendingDelegations: clone(state.pendingDelegations),
+    targetBinding: clone(state.targetBinding),
+    targetRevision: state.targetRevision,
     failure: null,
   }
 }
@@ -115,7 +125,8 @@ export function applyBrowserTaskProjection(
     const fold = foldState(state)
     applyBrowserTaskEvent(fold, event)
     if (event.type !== 'browser-task/change' && fold.lastSourceSeq === state.lastSourceSeq
-      && same(fold.pendingDelegations, state.pendingDelegations)) return state
+      && same(fold.pendingDelegations, state.pendingDelegations)
+      && fold.targetRevision === state.targetRevision) return state
     return project(fold)
   } catch (error) {
     return {
@@ -136,7 +147,7 @@ const taskSchema: ZodType<BrowserTaskSnapshot> = zod.unknown().superRefine((valu
 const viewSchema: ZodType<BrowserTaskSnapshot | null> = zod.union([taskSchema, zod.null()])
 
 const sourceFactSchema = zod.object({
-  kind: zod.enum(['user', 'message', 'tool-call', 'tool-result', 'browser-task-receipt', 'browser-task-check', 'browser-task-delegation']),
+  kind: zod.enum(['user', 'message', 'tool-call', 'tool-result', 'browser-task-receipt', 'browser-task-check', 'browser-task-delegation', 'browser-task-function-handoff']),
   sessionSeq: zod.number().int().nonnegative(),
   callId: zod.string().min(1).optional(),
   name: zod.string().min(1).optional(),
@@ -160,6 +171,11 @@ const sourceFactSchema = zod.object({
     evidenceIds: zod.array(zod.string().min(1)).max(BROWSER_TASK_LIMITS.evidenceRefs),
   }).strict()).max(BROWSER_TASK_LIMITS.evaluations).optional(),
   work: zod.unknown().optional(),
+  owner: zod.unknown().optional(),
+  scope: zod.unknown().optional(),
+  resourceIds: zod.array(zod.string().min(1)).max(BROWSER_TASK_LIMITS.resources).optional(),
+  taskRevision: zod.number().int().positive().optional(),
+  createdBySessionId: zod.string().min(1).optional(),
 }).strict()
 
 const delegationCandidateSchema: ZodType<BrowserTaskDelegationCandidate> = zod.object({
@@ -179,6 +195,8 @@ const stateSchema: ZodType<BrowserTaskProjectionState> = zod.object({
   lastTaskSourceSeq: zod.number().int().min(-1),
   sourceFacts: zod.array(sourceFactSchema).max(BROWSER_TASK_LIMITS.sourceFacts),
   pendingDelegations: zod.array(delegationCandidateSchema).max(BROWSER_TASK_LIMITS.pendingDelegations),
+  targetBinding: zod.unknown().nullable(),
+  targetRevision: zod.number().int().nonnegative(),
   failure: zod.string().min(1).nullable(),
 }).strict().superRefine((value, context) => {
   try {
@@ -192,6 +210,11 @@ const stateSchema: ZodType<BrowserTaskProjectionState> = zod.object({
       if (fact.kind !== 'tool-call' && fact.kind !== 'tool-result' && fact.callId !== undefined) context.addIssue({ code: 'custom', message: 'non-tool fact cannot have callId' })
       if (fact.decision !== undefined && fact.kind !== 'user') context.addIssue({ code: 'custom', message: 'only user facts carry decisions' })
       if ((fact.kind === 'browser-task-delegation') !== (fact.work !== undefined)) context.addIssue({ code: 'custom', message: 'delegation fact needs work only on its own kind' })
+      const handoff = fact.kind === 'browser-task-function-handoff'
+      if (handoff !== (fact.owner !== undefined && fact.scope !== undefined && fact.resourceIds !== undefined
+        && fact.taskRevision !== undefined && fact.createdBySessionId !== undefined)) {
+        context.addIssue({ code: 'custom', message: 'function handoff fact fields invalid' })
+      }
     }
     const pendingIds = new Set<string>()
     for (const candidate of value.pendingDelegations) {
@@ -199,10 +222,23 @@ const stateSchema: ZodType<BrowserTaskProjectionState> = zod.object({
       if (pendingIds.has(candidate.work.callId)) context.addIssue({ code:'custom',message:'duplicate delegation candidate' })
       pendingIds.add(candidate.work.callId)
     }
+    const revision = value.targetRevision
+    if (value.targetBinding !== null) {
+      const binding = value.targetBinding as BrowserSessionTargetBinding
+      if (binding.revision !== revision || binding.boundAt < 0) {
+        context.addIssue({ code: 'custom', message: 'target binding invalid' })
+      }
+    }
   } catch (error) {
     context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) })
   }
 }) as unknown as ZodType<BrowserTaskProjectionState>
+
+type BrowserTaskViewInput = Pick<BrowserTaskProjectionState, 'current'>
+  & Partial<Omit<BrowserTaskProjectionState, 'current'>>
+const browserTaskView = (state: BrowserTaskViewInput) => (
+  state.current === null ? null : clone(state.current)
+)
 
 export const browserTaskProjectionDefinition = {
   key: 'browserTask',
@@ -214,11 +250,13 @@ export const browserTaskProjectionDefinition = {
     lastTaskSourceSeq: -1,
     sourceFacts: [],
     pendingDelegations: [],
+    targetBinding: null,
+    targetRevision: 0,
     failure: null,
   }),
   apply: applyBrowserTaskProjection,
-  wire: { viewSchema, view: (state: BrowserTaskProjectionState) => state.current === null ? null : clone(state.current) },
-  stateVersion: 7,
+  wire: { viewSchema, view: browserTaskView },
+  stateVersion: 8,
 } satisfies ProjectionDefinition<'browserTask', BrowserTaskProjectionState>
 
 function target(task: BrowserTaskSnapshot, value: BrowserTargetBinding): void {
@@ -315,15 +353,36 @@ function canonicalDelegation(exec: Readonly<ToolExecution>, result: Readonly<Too
 
 /** Session-log authority for one current browser task; no process-local task state exists. */
 export class BrowserTaskService extends Service {
-  static inject = ['agents', 'sessions', 'sessionProjections', 'tools']
+  static inject = ['agents', 'sessions', 'sessionProjections', 'systemPrompt', 'tools']
   static Config = z.object({})
   private readonly capturing = new Set<string>()
   private readonly toolResults = new Map<string, PendingDelegation>()
   private readonly providerOwned = new Set<string>()
+  private readonly capturedTargets = new Map<string, BrowserSessionTargetBinding>()
 
   constructor(ctx: Context) {
     super(ctx, 'browserTasks')
     ctx.sessionProjections.register(browserTaskProjectionDefinition)
+    ctx.systemPrompt.context({
+      name: 'browser:target',
+      order: ctx.systemPrompt.getContextOrder('BROWSER_TARGET'),
+      text: (context) => {
+        if (context.agent === undefined) return ''
+        const target = this.readTarget(context.agent).binding
+        if (target === null) {
+          return 'No browser target is fixed for this Session. Do not infer “current page” or “this page” from active tabs or windows. Ask the user to fix a target tab unless they explicitly requested tab discovery.'
+        }
+        const identity = JSON.stringify({
+          installationId: target.installationId,
+          tabId: target.page.tabId,
+          frameId: target.page.frameId,
+          documentId: target.page.documentId,
+          url: target.page.url,
+          revision: target.revision,
+        })
+        return `The user fixed the browser target for this Session. Treat “current page”, “this page”, and “target page” as this tab only: ${identity}. Never choose another tab from active flags or another window, and do not ask which tab. Use this installationId, tabId, and frameId for browser reads and actions. The URL and documentId record the page at binding time; the same tab may navigate. If the tab is unavailable, report that instead of falling back.`
+      },
+    })
     ctx.on('browser/operation-intent',(context,next)=>this.admitProviderOperation(context,next))
     ctx.on('browser/dispatch-intent',(context,next)=>this.flushProviderDispatch(context,next))
     ctx.on('browser/operation-settled',(context,settlement)=>{
@@ -337,6 +396,7 @@ export class BrowserTaskService extends Service {
     ctx.on('agent/disposed', ({ agent }) => {
       for (const key of this.toolResults.keys()) if (key.startsWith(`${agent.id}\u0000`)) this.dropDelegation(key)
       for (const key of this.providerOwned) if (key.startsWith(`${agent.id}\u0000`)) this.providerOwned.delete(key)
+      for (const key of this.capturedTargets.keys()) if (key.startsWith(`${agent.id}\u0000`)) this.capturedTargets.delete(key)
     })
     ctx.on('session/event', (session, event) => {
       queueMicrotask(() => {
@@ -358,8 +418,79 @@ export class BrowserTaskService extends Service {
     return current === null ? undefined : clone(current)
   }
 
+  /**
+   * Read the durable target revision and detached binding for one Session.
+   * @param agent - Exact live Agent whose Session owns the target.
+   * @returns The current revision and binding, or a null binding when no page is selected.
+   */
+  readTarget(agent: Agent): BrowserSessionTargetState {
+    this.live(agent)
+    const projection = this.projection(agent.session)
+    return { revision: projection.targetRevision,
+      binding: projection.targetBinding === null ? null : clone(projection.targetBinding) }
+  }
+
+  /**
+   * Commit an exact page selected by an authenticated user surface.
+   * @param agent - Exact live Agent whose Session owns the target.
+   * @param request - Expected revision, authenticated installation, and observed page.
+   * @returns The committed binding at its next revision.
+   */
+  bindTargetByUser(agent: Agent, request: {
+    readonly expectedRevision: number
+    readonly installationId: string
+    readonly page: BrowserPage
+  }): BrowserSessionTargetBinding {
+    this.live(agent)
+    const current = this.readTarget(agent)
+    if (request.expectedRevision !== current.revision) {
+      throw new BrowserTaskError('browser target revision changed', 'BROWSER_TARGET_REVISION_CHANGED')
+    }
+    if (!request.installationId || !Number.isSafeInteger(request.page.tabId) || request.page.tabId < 0
+      || !Number.isSafeInteger(request.page.frameId) || request.page.frameId < 0
+      || !request.page.documentId || !request.page.url) {
+      throw new BrowserTaskError('browser target binding invalid', 'BROWSER_TASK_INVALID_INPUT')
+    }
+    const binding: BrowserSessionTargetBinding = { installationId: request.installationId,
+      page: clone(request.page), revision: current.revision + 1, boundAt: Date.now(), boundBy: 'user' }
+    const change: BrowserTargetChange = { kind: 'browser-target/change', version: 1,
+      revision: binding.revision, binding }
+    agent.session.append('browser-target/change', change)
+    return clone(binding)
+  }
+
+  /**
+   * Explicitly clear a Session target while advancing its stale-send fence.
+   * @param agent - Exact live Agent whose Session owns the target.
+   * @param expectedRevision - Compare-and-set revision observed by the user surface.
+   * @returns The next revision with a null binding.
+   */
+  clearTargetByUser(agent: Agent, expectedRevision: number): BrowserSessionTargetState {
+    this.live(agent)
+    const current = this.readTarget(agent)
+    if (expectedRevision !== current.revision) {
+      throw new BrowserTaskError('browser target revision changed', 'BROWSER_TARGET_REVISION_CHANGED')
+    }
+    const revision = current.revision + 1
+    const change: BrowserTargetChange = { kind: 'browser-target/change', version: 1, revision, binding: null }
+    agent.session.append('browser-target/change', change)
+    return { revision, binding: null }
+  }
+
   private providerKey(agent: Agent, requestId: string): string {
     return `${agent.id}\u0000${requestId}`
+  }
+
+  private operationBinding(agent: Agent, action: BrowserAction): BrowserSessionTargetBinding | undefined {
+    if (action.kind === 'tabs') return undefined
+    return this.readTarget(agent).binding ?? undefined
+  }
+
+  private actionMatchesSelection(action: BrowserAction, binding: BrowserTargetBinding): boolean {
+    if (action.kind === 'tabs') return true
+    if (action.kind === 'snapshot') return action.tabId === binding.page.tabId
+    const page = actionPage(action)
+    return page !== undefined && page.tabId === binding.page.tabId
   }
 
   private denied(context: BrowserOperationContext, reason: string): BrowserDispatchDecision {
@@ -373,18 +504,35 @@ export class BrowserTaskService extends Service {
   ): Promise<BrowserDispatchDecision> {
     const agent=this.ctx.agents.currentInitiator()
     if(agent===undefined)return next()
-    let task=this.get(agent)
-    if(task===undefined)return next()
     if(context.operation.sessionId!==agent.session.id)return this.denied(context,'browser_task_owner_mismatch')
-    if(task.phase==='terminal')return directRead(context.operation.action)?next():this.denied(context,'browser_task_terminal')
+    const operationBinding=this.operationBinding(agent,context.operation.action)
+    if(context.operation.action.kind!=='tabs'){
+      if(operationBinding===undefined)return this.denied(context,'browser_target_unbound')
+      if(context.operation.installationId!==operationBinding.installationId
+        ||!this.actionMatchesSelection(context.operation.action,operationBinding)){
+        return this.denied(context,'browser_target_mismatch')
+      }
+    }
+    const proceed=()=>{
+      if(operationBinding!==undefined){
+        this.capturedTargets.set(this.providerKey(agent,context.operation.requestId),clone(operationBinding))
+      }
+      return next()
+    }
+    let task=this.get(agent)
+    if(task===undefined)return proceed()
+    if(task.phase==='terminal')return directRead(context.operation.action)?proceed():this.denied(context,'browser_task_terminal')
     if(task.target===undefined||task.target.installationId!==context.operation.installationId){
       return this.denied(context,'browser_task_target_mismatch')
     }
     const page=actionPage(context.operation.action)
     if(page!==undefined&&!samePage(page,task.target.page))return this.denied(context,'browser_task_target_mismatch')
+    if(task.targetRevision!==undefined&&task.targetRevision!==operationBinding?.revision){
+      return this.denied(context,'browser_task_target_mismatch')
+    }
     // Preparation only asks whether this eventual action is admissible. It must
     // not consume budget or create a durable attempt until the ticket commits.
-    if(context.phase==='prepare')return next()
+    if(context.phase==='prepare')return proceed()
     const resourceId='mountId'in context.operation.action?context.operation.action.mountId:undefined
     const prior=resourceId===undefined?undefined:task.resources.find(item=>item.id===resourceId)
     const finalCollectionCleanup=prior?.state==='released'&&collectionFinalizer(context.operation.action)
@@ -411,7 +559,7 @@ export class BrowserTaskService extends Service {
         ||['dispatch-intent','dispatched','settled'].includes(existing.stage)){
         return this.denied(context,'browser_task_reconcile_required')
       }
-      return next()
+      return proceed()
     }
     if(resourceId!==undefined&&resourceClear(context.operation.action)
       &&(prior?.state==='released'||prior?.state==='vanished')&&!finalCollectionCleanup){
@@ -448,16 +596,23 @@ export class BrowserTaskService extends Service {
         ...(prior.presentation===undefined?{}:{ presentation:prior.presentation }) })
     }
     this.providerOwned.add(this.providerKey(agent,context.operation.requestId))
-    return next()
+    return proceed()
   }
 
   private async flushProviderDispatch(
     context: BrowserDispatchContext,
     next: () => BrowserDispatchDecision | Promise<BrowserDispatchDecision>,
   ): Promise<BrowserDispatchDecision> {
-    if(!context.transportMutates)return next()
     const agent=this.ctx.agents.currentInitiator()
     if(agent===undefined)return next()
+    if(context.operation.action.kind!=='tabs'){
+      const captured=this.capturedTargets.get(this.providerKey(agent,context.operation.requestId))
+      const current=this.operationBinding(agent,context.operation.action)
+      if(captured===undefined||current===undefined||!same(captured,current)){
+        return this.denied(context,'browser_target_changed')
+      }
+    }
+    if(!context.transportMutates)return next()
     let task=this.get(agent)
     const attempt=task?.attempts.find(item=>item.requestId===context.operation.requestId)
     if(task===undefined||attempt===undefined)return next()
@@ -494,7 +649,11 @@ export class BrowserTaskService extends Service {
       }
       return
     }
-    if(settlement.kind!=='result')return
+    if(settlement.kind!=='result'){
+      this.capturedTargets.delete(key)
+      return
+    }
+    this.capturedTargets.delete(key)
     if(!this.providerOwned.delete(key))return
     let task=this.get(agent)
     if(task===undefined)return
@@ -623,6 +782,7 @@ export class BrowserTaskService extends Service {
       phase: 'running',
       blockers: [],
       ...request.target === undefined ? {} : { target: clone(request.target) },
+      ...request.targetRevision === undefined ? {} : { targetRevision: request.targetRevision },
       targetLossAcknowledged: false,
       acceptance: clone(request.acceptance),
       evidence: [],
@@ -843,6 +1003,38 @@ export class BrowserTaskService extends Service {
       else blockers.delete('delegated-work')
       return { ...task, delegated, blockers: [...blockers] }
     })
+  }
+
+  /**
+   * Transfer every active function resource to one exact installation-owned Cordis run.
+   * @param agent - Exact live Agent that owns the verified BrowserTask.
+   * @param ref - Current compare-and-set task revision.
+   * @param request - Authenticated function owner, delivery scope, and complete active resource set.
+   * @returns The next task revision with transferred resources marked retained.
+   */
+  handoffFunction(agent: Agent, ref: BrowserTaskRef, request: HandoffBrowserFunctionRequest): BrowserTaskSnapshot {
+    const current = this.requireCurrent(agent, ref)
+    const fact: BrowserTaskFunctionHandoff = {
+      kind: 'browser-task/function-handoff', version: 1, taskId: current.id,
+      taskRevision: current.revision, createdBySessionId: String(agent.session.id),
+      owner: clone(request.owner), scope: clone(request.scope), resourceIds: [...request.resourceIds],
+    }
+    try {
+      validateFunctionHandoff(fact)
+      validateFunctionHandoffAdmission(current, fact, foldState(this.projection(agent.session)).sourceFacts)
+    } catch (error) {
+      throw new BrowserTaskError(error instanceof Error ? error.message : String(error), 'BROWSER_TASK_FUNCTION_HANDOFF_DENIED')
+    }
+    const event = agent.session.append('browser-task/function-handoff', fact)
+    const source = { kind: 'browser-task-function-handoff' as const, sessionSeq: event.seq }
+    return this.mutate(agent, ref, 'handoff-function', task => ({ ...task,
+      functionHandoff: { owner: clone(fact.owner), scope: clone(fact.scope), resourceIds: [...fact.resourceIds],
+        createdBySessionId: fact.createdBySessionId, source },
+      resources: task.resources.map(resource => resource.state !== 'active' ? resource : {
+        ...resource, state: 'retained' as const, owner: clone(fact.owner), disposition: 'owner-transfer' as const,
+        dispositionSource: source,
+      }),
+    }))
   }
 
   /**

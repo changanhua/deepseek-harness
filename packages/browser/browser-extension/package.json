@@ -20,7 +20,10 @@
   "peerDependencies": {
     "@changanhua/dsh-browser-activity": "workspace:^",
     "@changanhua/dsh-browser-monitor": "workspace:^",
+    "@changanhua/dsh-browser-task": "workspace:^",
     "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-commands": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^", "@deepseek-ai/dsh-agent-default-model": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^", "@changanhua/dsh-browser": "workspace:^",
     "@deepseek-ai/dsh-client-connection": "workspace:^", "@deepseek-ai/dsh-credentials": "workspace:^",
@@ -30,7 +33,10 @@
   "devDependencies": {
     "@changanhua/dsh-browser-activity": "workspace:^",
     "@changanhua/dsh-browser-monitor": "workspace:^",
+    "@changanhua/dsh-browser-task": "workspace:^",
     "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-commands": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^", "@deepseek-ai/dsh-agent-default-model": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^", "@changanhua/dsh-browser": "workspace:^",
     "@deepseek-ai/dsh-client-connection": "workspace:^", "@deepseek-ai/dsh-credentials": "workspace:^",

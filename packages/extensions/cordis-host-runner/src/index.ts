@@ -4,7 +4,7 @@
  * @module @deepseek-ai/dsh-cordis-host-runner
  */
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -19,7 +19,7 @@ import { DynamicCordisRegistry } from './registry.ts'
 import type {
   DynamicCordisDefineReceipt, DynamicCordisDefineRequest, DynamicCordisDefinition,
   DynamicCordisPackageInspection, DynamicCordisPendingRequest, DynamicCordisPlugin,
-  DynamicCordisPluginInspection,
+  DynamicCordisPluginInspection, DynamicCordisPluginOwner,
   DynamicCordisReference, DynamicCordisRun,
 } from './registry.ts'
 import { createSandbox, evaluateHostCode, precheckCode } from './sandbox.ts'
@@ -29,7 +29,12 @@ import type {
   CordisInspectRequestId, CordisInspectResolveAck, DynamicCordisClientSource, DynamicCordisHostHalfResult,
   DynamicCordisInventoryRow, DynamicCordisInvokeResult, DynamicCordisRenderFailure, DynamicCordisResolveAck,
   DynamicCordisRunAttempt, DynamicCordisRunResolution, DynamicCordisRunResponse, DynamicCordisStopResponse,
-  DynamicCordisUndefineReceipt, RequestRunOutcome,
+  DynamicCordisUndefineReceipt, DynamicCordisBrowserResource, DynamicCordisFunctionHandoff,
+  DynamicCordisFunctionHandoffReceipt, DynamicCordisFunctionHandoffRequest, DynamicCordisInstallationOwner,
+  DynamicCordisFunctionScope, DynamicCordisFunctionRunRequest, DynamicCordisFunctionCommandReceipt,
+  DynamicCordisFunctionCommandStatus,
+  DynamicCordisFunctionStopRequest, DynamicCordisFunctionEditRequest, DynamicCordisPreparedEditReceipt, RequestRunOutcome,
+  DynamicCordisFunctionCommandFact,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -119,6 +124,7 @@ interface ActivationPlan {
   plugin: DynamicCordisPlugin
   definition: DynamicCordisDefinition
   mode: CordisDynamicRunMode
+  controller?: NonNullable<DynamicCordisRun['controller']>
 }
 
 type BrowserCleanupKind = 'entry_unmount' | 'region_clear'
@@ -162,6 +168,29 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   private readonly cleanupRequests = new Map<string, BrowserCleanupRequest>()
   private readonly inspectRegistry: CordisInspectRegistryService
   private readonly starting = new Map<CordisDynamicPluginId, Promise<DynamicCordisHostHalfResult>>()
+  /** Installation command idempotency survives a dropped browser response within this Host process. */
+  private readonly functionRuns = new Map<string, {
+    digest: string
+    pluginId: CordisDynamicPluginId
+    result: Promise<DynamicCordisFunctionCommandReceipt>
+    settled?: DynamicCordisFunctionCommandReceipt
+  }>()
+  /** Controller is carried from authenticated function admission into the Client-half Remote round trip. */
+  private readonly functionRunControllers = new Map<ApprovalRequestId, NonNullable<DynamicCordisRun['controller']>>()
+  /** Prepared only: no model/tool path can consume this until Session exposes an exact inbound rpc identity. */
+  private readonly preparedFunctionEdits = new Map<string, {
+    digest: string
+    pluginId: CordisDynamicPluginId
+    packageId: CordisDynamicPackageId
+    agent: Agent
+    owner: DynamicCordisInstallationOwner
+    scope: DynamicCordisFunctionScope
+    instruction: string
+    capturedRunId?: CordisDynamicPluginRunId
+    state: 'prepared' | 'active' | 'defined' | 'consumed' | 'completed' | 'failed' | 'revoked'
+    definedPackageId?: CordisDynamicPackageId
+  }>()
+  private static readonly functionCommandCapacity = 512
   private readonly resolved: ResolvedConfig
   private group: Fiber | undefined
 
@@ -177,14 +206,16 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       this.orphanCleanupAttempts.clear()
     }, 'dynamicCordisRunner: orphan cleanup timers')
     ctx.on('agent/disposed', ({ agent }) => {
+      this.revokePreparedEdits(agent)
       void this.disposeOwned(agent).catch((error: unknown) => {
         console.error(`[cordis:${agent.id}] owner disposal failed`, error)
       })
     })
+    ctx.on('agent/turn-stopping', ({ agent }) => { this.revokePreparedEdits(agent) })
   }
 
   private async disposeOwned(agent: Agent): Promise<void> {
-    for (const plugin of this.registry.ofSession(agent.id).filter(candidate => candidate.ownerAgent === agent)) {
+    for (const plugin of this.registry.ofSession(agent.id).filter(candidate => this.agentOwner(candidate)?.agent === agent)) {
       this.cancelPending(plugin.pluginId, `dynamic plugin "${plugin.pluginId}" owner was disposed`)
       if (plugin.run !== undefined) await this.retract(plugin)
       for (const mount of plugin.retainedBrowserMounts.values()) plugin.pendingBrowserMounts.set(mount.mountId, mount)
@@ -234,8 +265,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       const pluginId = CordisDynamicPluginId(this.registry.mintPluginId(prefix))
       plugin = {
         pluginId,
-        sessionId: agent.id,
-        ownerAgent: agent,
+        createdBySessionId: agent.id,
+        owner: { kind: 'agent', agent },
         packages: new Map(),
         approvedClientPackages: new Set(),
         clientVersionUpdatesApproved: false,
@@ -248,8 +279,12 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       this.registry.add(plugin)
     } else {
       const found = this.registry.get(request.plugin.pluginId)
-      if (found === undefined || found.ownerAgent !== agent) {
+      const edit = this.activeEdit(agent, request.plugin.pluginId)
+      if (found === undefined || (this.agentOwner(found)?.agent !== agent && edit?.pluginId !== found.pluginId)) {
         throw new Error(missingPluginMessage(request.plugin.pluginId))
+      }
+      if (edit !== undefined && (edit.state !== 'active' || edit.packageId !== found.currentPackageId)) {
+        throw new Error('function edit capability no longer permits this definition')
       }
       plugin = found
     }
@@ -263,6 +298,11 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       ...request.code.client === undefined ? {} : { clientCode: request.code.client },
     }
     plugin.packages.set(packageId, definition)
+    const edit = this.activeEdit(agent, plugin.pluginId)
+    if (edit !== undefined) {
+      edit.state = 'defined'
+      edit.definedPackageId = packageId
+    }
     return {
       pluginId: plugin.pluginId,
       packageId,
@@ -327,7 +367,10 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     mode: CordisDynamicRunMode,
     signal?: AbortSignal,
   ): Promise<DynamicCordisRunResponse> {
-    const plan = this.resolvePlan(agent, pluginId, packageId, mode)
+    const edit = this.activeEdit(agent, pluginId)
+    const plan = edit === undefined
+      ? this.resolvePlan(agent, pluginId, packageId, mode)
+      : this.resolveEditPlan(agent, pluginId, packageId, mode, edit)
     if (!plan.ok) return plan.response
     if (signal?.aborted === true) {
       return {
@@ -344,7 +387,11 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     plan.plugin.latestRun = attempt
     if (plan.definition.clientCode === undefined) {
       const started = await this.activate(plan, undefined, false, attempt)
-      if (started.ok) return this.runResponse(plan.plugin, started)
+      if (started.ok) {
+        if (edit !== undefined) edit.state = 'completed'
+        return this.runResponse(plan.plugin, started)
+      }
+      if (edit !== undefined) { edit.state = 'failed'; edit.instruction = '' }
       this.failAttempt(plan.plugin, attempt, 'host-load', started)
       return { ...started, reason: 'host-half-failed' }
     }
@@ -363,6 +410,13 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       mode,
       requiresApproval,
     })
+    if (edit !== undefined) {
+      edit.state = 'consumed'
+      edit.instruction = ''
+      this.functionRunControllers.set(requestId, {
+        sessionId: agent.id, owner: structuredClone(edit.owner), scope: structuredClone(edit.scope),
+      })
+    }
     this.ctx.emit('cordis/request-run', {
       requestId,
       agentId: agent.id,
@@ -405,7 +459,12 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     requestId: ApprovalRequestId | null,
     approveFutureVersions: boolean,
   ): Promise<DynamicCordisHostHalfResult> {
-    const plan = this.resolvePlan(agent, pluginId, packageId, mode, requestId === null)
+    const controller = requestId === null ? undefined : this.functionRunControllers.get(requestId)
+    const pending = requestId === null ? undefined : this.registry.peekRequest(requestId)
+    const functionControlled = controller !== undefined && pending?.agentId === agent.id
+    const plan = functionControlled
+      ? this.resolveDeliveredPlan(pluginId, packageId, mode, controller)
+      : this.resolvePlan(agent, pluginId, packageId, mode, requestId === null)
     if (!plan.ok) return { ok: false, message: plan.response.message }
     let attempt: DynamicCordisRunAttempt
     if (requestId !== null) {
@@ -444,6 +503,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       if (attempt.host.status !== 'absent') attempt.host = { status: 'pending', waitingFor: [] }
     }
     const started = await this.activate(plan, requestId ?? undefined, attaching, attempt)
+    if (requestId !== null) this.functionRunControllers.delete(requestId)
     if (!started.ok) this.failAttempt(plan.plugin, attempt, 'host-load', started)
     return started
   }
@@ -461,7 +521,10 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     pluginId: CordisDynamicPluginId,
     pluginRunId: CordisDynamicPluginRunId,
   ): DynamicCordisClientSource {
+    const candidate = this.registry.get(pluginId)
     const plugin = this.owned(agent, pluginId)
+      ?? (candidate?.run?.controller?.sessionId === agent.id && this.installationOwner(candidate, candidate.run.controller.owner)
+        ? candidate : undefined)
     if (plugin === undefined) throw new Error(missingPluginMessage(pluginId))
     const run = plugin.run
     if (run === undefined || run.pluginRunId !== pluginRunId) {
@@ -496,6 +559,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     if (!resolution.ok && resolution.pluginRunId !== undefined
       && plugin?.run?.pluginRunId !== resolution.pluginRunId) return { accepted: false }
     this.registry.claimRequest(requestId)
+    this.functionRunControllers.delete(requestId)
     const settled = await this.settleActivation(plugin, resolution, requestId)
     this.announceResolved(requestId, resolution, pending.requiresApproval ? undefined : 'completed')
     this.steerRunOutcome(pending, settled)
@@ -531,12 +595,384 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   async stop(agent: Agent, pluginId: CordisDynamicPluginId): Promise<DynamicCordisStopResponse> {
     const plugin = this.owned(agent, pluginId)
     if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
-    const pending = this.registry.pendingRequestFor(pluginId)
+    return this.stopPlugin(plugin)
+  }
+
+  /**
+   * Promote one exact settled run only after BrowserTask durably records the
+   * corresponding resource handoff. The callback is deliberately synchronous:
+   * the owner changes at the same commit point as that external fact.
+   * @param agent - Exact live Agent that owns the running Plugin.
+   * @param request - Exact run, installation owner, handoff identity, and delivery scope.
+   * @param persist - Synchronous callback that commits the BrowserTask handoff fact.
+   * @returns The committed handoff, or a refusal that leaves ownership unchanged.
+   */
+  handoffToInstallation(
+    agent: Agent,
+    request: DynamicCordisFunctionHandoffRequest,
+    persist: (handoff: DynamicCordisFunctionHandoff) => unknown,
+  ): DynamicCordisFunctionHandoffReceipt {
+    const plugin = this.owned(agent, request.pluginId)
+    if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(request.pluginId) }
+    if (request.handoffId.trim().length === 0 || request.handoffId.length > 128) {
+      return { ok: false, reason: 'handoff-not-ready', message: 'function handoff requires a non-empty bridge-minted handoffId' }
+    }
+    const run = plugin.run
+    if (run === undefined || run.pluginRunId !== request.pluginRunId || run.packageId !== request.packageId
+      || plugin.currentPackageId !== request.packageId || plugin.latestRun?.pluginRunId !== request.pluginRunId
+      || plugin.latestRun.status !== 'running') {
+      return { ok: false, reason: 'not-running', message: `dynamic plugin "${request.pluginId}" is not the exact running Package` }
+    }
+    if (this.registry.pendingRequestFor(plugin.pluginId) !== undefined || this.starting.has(plugin.pluginId)
+      || run.browserWork.size !== 0 || plugin.pendingBrowserWork.size !== 0
+      || plugin.pendingBrowserMounts.size !== 0 || plugin.pendingBrowserRegions.size !== 0) {
+      return { ok: false, reason: 'handoff-not-ready', message: `dynamic plugin "${request.pluginId}" has pending activation, browser work, or cleanup` }
+    }
+    const owner: DynamicCordisInstallationOwner = {
+      installationId: request.installationId,
+      grantEpoch: request.grantEpoch,
+    }
+    const browserResources = this.browserResources(run)
+    if (!validDeliveryScope(request.scope, owner, browserResources)) {
+      return { ok: false, reason: 'handoff-not-ready', message: `dynamic plugin "${request.pluginId}" resources do not match its delivery scope` }
+    }
+    const handoff: DynamicCordisFunctionHandoff = {
+      handoffId: request.handoffId,
+      pluginId: plugin.pluginId,
+      packageId: run.packageId,
+      pluginRunId: run.pluginRunId,
+      createdBySessionId: plugin.createdBySessionId,
+      owner,
+      scope: structuredClone(request.scope),
+      browserResources,
+    }
+    try {
+      const persisted = persist(handoff)
+      if (persisted !== undefined && persisted !== null && typeof (persisted as { then?: unknown }).then === 'function') {
+        return { ok: false, reason: 'persist-failed', message: 'function handoff persistence must settle synchronously' }
+      }
+    } catch (error) {
+      return { ok: false, reason: 'persist-failed', message: error instanceof Error ? error.message : 'function handoff persistence failed' }
+    }
+    plugin.owner = { kind: 'browser-installation', ...owner }
+    plugin.delivery = {
+      handoffId: request.handoffId,
+      owner: structuredClone(owner),
+      scope: structuredClone(request.scope),
+    }
+    return { ok: true, handoff }
+  }
+
+  /**
+   * List only functions promoted to one exact authenticated installation grant.
+   * @param owner - Installation and grant epoch derived from the authenticated peer.
+   * @returns Source-free inspections for functions owned by that exact grant.
+   */
+  listForInstallation(owner: DynamicCordisInstallationOwner): DynamicCordisPluginInspection[] {
+    return this.registry.all().filter(plugin => this.installationOwner(plugin, owner))
+      .map(plugin => this.inspectOwnedPlugin(plugin))
+  }
+
+  /**
+   * Inspect one function only when the installation and current grant epoch match exactly.
+   * @param owner - Installation and grant epoch derived from the authenticated peer.
+   * @param pluginId - Stable delivered-function identity.
+   * @returns A source-free inspection, or `undefined` when ownership does not match.
+   */
+  inspectForInstallation(
+    owner: DynamicCordisInstallationOwner,
+    pluginId: CordisDynamicPluginId,
+  ): DynamicCordisPluginInspection | undefined {
+    const plugin = this.registry.get(pluginId)
+    return plugin !== undefined && this.installationOwner(plugin, owner) ? this.inspectOwnedPlugin(plugin) : undefined
+  }
+
+  /**
+   * Stop one delivered function while retaining its original cleanup ledger.
+   * @param owner - Installation and grant epoch derived from the authenticated peer.
+   * @param request - Exact Package and Run compare-and-set fence.
+   * @returns The stop outcome, including unresolved cleanup when present.
+   */
+  async stopForInstallation(
+    owner: DynamicCordisInstallationOwner,
+    request: DynamicCordisFunctionStopRequest,
+  ): Promise<DynamicCordisStopResponse> {
+    const plugin = this.registry.get(request.pluginId)
+    if (plugin === undefined || !this.installationOwner(plugin, owner)) {
+      return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(request.pluginId) }
+    }
+    if (plugin.currentPackageId !== request.expectedPackageId || plugin.run?.pluginRunId !== request.expectedPluginRunId) {
+      return { ok: false, reason: 'not-running', message: `function "${request.pluginId}" changed before it could be stopped` }
+    }
+    return this.stopPlugin(plugin)
+  }
+
+  /**
+   * Immediately fence one revoked grant, then converge only the captured cleanup ledger.
+   * @param owner - Installation and grant epoch whose authority was withdrawn.
+   */
+  async revokeInstallation(owner: DynamicCordisInstallationOwner): Promise<void> {
+    const revoked = this.registry.all().filter(plugin => this.installationOwner(plugin, owner))
+    for (const plugin of revoked) {
+      plugin.owner = { kind: 'revoked', installationId: owner.installationId, grantEpoch: owner.grantEpoch }
+    }
+    for (const plugin of revoked) {
+      this.cancelPending(plugin.pluginId, `browser installation "${owner.installationId}" was revoked`)
+      if (plugin.run !== undefined) await this.retract(plugin)
+      for (const mount of plugin.retainedBrowserMounts.values()) plugin.pendingBrowserMounts.set(mount.mountId, mount)
+      const remaining = await this.cleanupPendingBrowserMounts(plugin, true)
+      if (remaining.length === 0) this.forgetPlugin(plugin)
+    }
+  }
+
+  /**
+   * Run one delivered function for the authenticated installation.  This is a
+   * direct command path: it never gives the new conversation general access to
+   * the creating Agent's Plugin registry.
+   * @param agent - Exact live Agent selected by the user for this activation.
+   * @param owner - Installation and grant epoch derived from the authenticated peer.
+   * @param request - Idempotency, version, run, and target revision fences.
+   * @returns The activation receipt or a typed refusal; retries reuse the first result.
+   */
+  async runForInstallation(
+    agent: Agent,
+    owner: DynamicCordisInstallationOwner,
+    request: DynamicCordisFunctionRunRequest,
+  ): Promise<DynamicCordisFunctionCommandReceipt> {
+    this.requireLiveAgent(agent)
+    const digest = JSON.stringify({ owner, agentId: agent.id, ...request })
+    const previous = this.functionRuns.get(request.requestId)
+    if (previous !== undefined) {
+      return previous.digest === digest
+        ? previous.result
+        : { ok: false, reason: 'request-conflict', message: `function request "${request.requestId}" was already used for another command` }
+    }
+    if (!this.makeFunctionCommandRoom()) {
+      return { ok: false, reason: 'busy', message: 'function command ledger is busy; wait for an existing command to settle' }
+    }
+    const result = this.runDeliveredFunction(agent, owner, request)
+    const record: {
+      digest: string
+      pluginId: CordisDynamicPluginId
+      result: Promise<DynamicCordisFunctionCommandReceipt>
+      settled?: DynamicCordisFunctionCommandReceipt
+    } = { digest, pluginId: request.pluginId, result }
+    this.functionRuns.set(request.requestId, record)
+    void result.then((settled) => { record.settled = settled })
+    return result
+  }
+
+  /**
+   * Read bounded command progress without exposing the edit instruction or installation identity.
+   * @param owner - Installation and grant epoch derived from the authenticated peer.
+   * @param requestId - Previously admitted function command identity.
+   * @returns Owner-scoped progress, or `missing` after restart, eviction, or ownership loss.
+   */
+  commandStatusForInstallation(
+    owner: DynamicCordisInstallationOwner,
+    requestId: string,
+  ): DynamicCordisFunctionCommandStatus {
+    const run = this.functionRuns.get(requestId)
+    if (run !== undefined) {
+      const plugin = this.registry.get(run.pluginId)
+      if (plugin === undefined || !this.installationOwner(plugin, owner)) return { status: 'missing' }
+      return run.settled === undefined
+        ? { kind: 'run', status: 'pending', pluginId: run.pluginId }
+        : { kind: 'run', status: 'settled', pluginId: run.pluginId, receipt: run.settled }
+    }
+    const edit = this.preparedFunctionEdits.get(requestId)
+    if (edit === undefined) return { status: 'missing' }
+    const plugin = this.registry.get(edit.pluginId)
+    if (plugin === undefined || !this.installationOwner(plugin, owner)) return { status: 'missing' }
+    return {
+      kind: 'edit', status: edit.state, pluginId: edit.pluginId, expectedPackageId: edit.packageId,
+      ...edit.definedPackageId === undefined ? {} : { newPackageId: edit.definedPackageId },
+    }
+  }
+
+  private async runDeliveredFunction(
+    agent: Agent,
+    owner: DynamicCordisInstallationOwner,
+    request: DynamicCordisFunctionRunRequest,
+  ): Promise<DynamicCordisFunctionCommandReceipt> {
+    if (request.requestId.trim().length === 0 || request.requestId.length > 128) {
+      return { ok: false, reason: 'request-conflict', message: 'function command requires a bounded requestId' }
+    }
+    const plugin = this.registry.get(request.pluginId)
+    if (plugin === undefined || !this.installationOwner(plugin, owner)) {
+      return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(request.pluginId) }
+    }
+    if (plugin.currentPackageId !== request.expectedPackageId) {
+      return { ok: false, reason: 'function-changed', message: `function "${request.pluginId}" no longer has expected Package "${request.expectedPackageId}"` }
+    }
+    if (request.expectedPluginRunId !== plugin.run?.pluginRunId) {
+      return { ok: false, reason: 'function-changed', message: `function "${request.pluginId}" no longer has expected Run` }
+    }
+    if (plugin.run !== undefined) {
+      return { ok: false, reason: 'transition-in-flight', message: `function "${request.pluginId}" is already running` }
+    }
+    if (!this.matchesDeliveredTarget(agent, plugin, request.expectedTargetRevision)) {
+      return { ok: false, reason: 'target-changed', message: `function "${request.pluginId}" target is no longer current` }
+    }
+    const definition = plugin.packages.get(request.expectedPackageId)
+    if (definition === undefined) return { ok: false, reason: 'function-changed', message: 'function Package is unavailable' }
+    if (this.registry.pendingRequestFor(plugin.pluginId) !== undefined || this.starting.has(plugin.pluginId)) {
+      return { ok: false, reason: 'transition-in-flight', message: `dynamic plugin "${plugin.pluginId}" already has a pending run request` }
+    }
+    const delivery = plugin.delivery
+    if (delivery === undefined) return { ok: false, reason: 'function-changed', message: 'function delivery is unavailable' }
+    const currentScope = this.currentDeliveredScope(agent, plugin, request.expectedTargetRevision)
+    if (currentScope === undefined) return { ok: false, reason: 'target-changed', message: `function "${request.pluginId}" target is no longer current` }
+    const plan: ActivationPlan = {
+      plugin, definition, mode: 'run',
+      controller: { sessionId: agent.id, owner: structuredClone(owner), scope: currentScope },
+    }
+    const attempt = this.createAttempt(plan)
+    plugin.nextPackageId = definition.packageId
+    plugin.latestRun = attempt
+    if (definition.clientCode !== undefined) {
+      const approvalRequestId = ApprovalRequestId(this.registry.mintApprovalRequestId())
+      attempt.approvalRequestId = approvalRequestId
+      attempt.requiresApproval = false
+      attempt.status = 'starting-host'
+      this.registry.armRequest(approvalRequestId, {
+        agentId: agent.id, pluginId: plugin.pluginId, packageId: definition.packageId,
+        pluginRunId: attempt.pluginRunId, mode: 'run', requiresApproval: false,
+      })
+      this.functionRunControllers.set(approvalRequestId, plan.controller as NonNullable<DynamicCordisRun['controller']>)
+      this.ctx.emit('cordis/request-run', {
+        requestId: approvalRequestId, agentId: agent.id, pluginId: plugin.pluginId,
+        packageId: definition.packageId, mode: 'run', name: definition.name,
+        purpose: definition.purpose, requiresApproval: false,
+      })
+      return {
+        ok: true, status: 'starting', pluginId: plugin.pluginId, packageId: definition.packageId,
+        pluginRunId: attempt.pluginRunId, mode: 'run', waitingFor: [], currentPackageId: definition.packageId,
+        nextPackageId: definition.packageId,
+      }
+    }
+    const started = await this.activate(plan, undefined, false, attempt)
+    if (started.ok) return this.runResponse(plugin, started)
+    this.failAttempt(plugin, attempt, 'host-load', started)
+    return { ...started, reason: 'host-half-failed' }
+  }
+
+  /**
+   * Reserve an edit without granting model tools until its exact prompt RPC is claimed.
+   * @param agent - Exact live Agent selected by the user for the edit turn.
+   * @param owner - Installation and grant epoch derived from the authenticated peer.
+   * @param request - Idempotency, version, target, and natural-language instruction.
+   * @returns A prepared receipt or a typed refusal without activating tool access.
+   */
+  prepareEditForInstallation(
+    agent: Agent,
+    owner: DynamicCordisInstallationOwner,
+    request: DynamicCordisFunctionEditRequest,
+  ): DynamicCordisPreparedEditReceipt {
+    this.requireLiveAgent(agent)
+    const digest = JSON.stringify({ owner, agentId: agent.id, ...request })
+    const existing = this.preparedFunctionEdits.get(request.requestId)
+    if (existing !== undefined) {
+      return existing.digest === digest
+        ? { ok: true, requestId: request.requestId, pluginId: existing.pluginId, state: 'prepared' }
+        : { ok: false, reason: 'request-conflict', message: `function request "${request.requestId}" was already used for another command` }
+    }
+    if (!this.makeFunctionCommandRoom()) {
+      return { ok: false, reason: 'busy', message: 'function command ledger is busy; wait for an existing command to settle' }
+    }
+    const plugin = this.registry.get(request.pluginId)
+    if (plugin === undefined || !this.installationOwner(plugin, owner) || plugin.currentPackageId !== request.expectedPackageId) {
+      return { ok: false, reason: 'function-changed', message: `function "${request.pluginId}" changed before edit preparation` }
+    }
+    if (!this.matchesEditTarget(agent, plugin, request.expectedTargetRevision)) {
+      return { ok: false, reason: 'target-changed', message: `function "${request.pluginId}" target is no longer current` }
+    }
+    if (request.instruction.trim().length === 0 || request.instruction.length > 16_384) {
+      return { ok: false, reason: 'request-conflict', message: 'function edit requires bounded non-empty instruction text' }
+    }
+    const scope = this.currentEditScope(agent, plugin, request.expectedTargetRevision)
+    if (scope === undefined) return { ok: false, reason: 'target-changed', message: `function "${request.pluginId}" target is no longer current` }
+    const fact: DynamicCordisFunctionCommandFact = {
+      kind: 'cordis/function-command', version: 1, requestId: request.requestId,
+      pluginId: plugin.pluginId, expectedPackageId: request.expectedPackageId,
+      ...plugin.run === undefined ? {} : { capturedRunId: plugin.run.pluginRunId },
+      owner: structuredClone(owner), scope: structuredClone(scope),
+      instructionDigest: createHash('sha256').update(request.instruction).digest('hex'),
+    }
+    agent.session.append('cordis/function-command', fact)
+    this.preparedFunctionEdits.set(request.requestId, {
+      digest, pluginId: plugin.pluginId, packageId: request.expectedPackageId, agent,
+      owner: structuredClone(owner), scope, instruction: request.instruction, state: 'prepared',
+      ...plugin.run === undefined ? {} : { capturedRunId: plugin.run.pluginRunId },
+    })
+    return { ok: true, requestId: request.requestId, pluginId: plugin.pluginId, state: 'prepared' }
+  }
+
+  /**
+   * Activate only from the exact SessionController RPC claimed for this pre-step.
+   * @param agent - Exact live Agent whose inbox claimed the prompt.
+   * @param requestId - RPC identity emitted by the Agent Loop claim receipt.
+   * @returns The authorized Plugin reference, or `undefined` without an exact prepared match.
+   */
+  activatePreparedEdit(agent: Agent, requestId: string): DynamicCordisReference | undefined {
+    const edit = this.preparedFunctionEdits.get(requestId)
+    if (edit === undefined || edit.state !== 'prepared' || edit.agent !== agent) return undefined
+    const plugin = this.registry.get(edit.pluginId)
+    const revision = edit.scope.kind === 'page' ? edit.scope.targetRevision : undefined
+    if (plugin === undefined || !this.installationOwner(plugin, edit.owner)
+      || plugin.currentPackageId !== edit.packageId || plugin.run?.pluginRunId !== edit.capturedRunId
+      || !this.matchesEditTarget(agent, plugin, revision)) {
+      edit.state = 'revoked'
+      return undefined
+    }
+    edit.state = 'active'
+    return this.referenceForEdit(plugin)
+  }
+
+  /**
+   * Read the instruction retained inside one active Host capability.
+   * @param agent - Exact live Agent that activated the edit.
+   * @param requestId - Exact prepared command identity.
+   * @returns The instruction only while that command remains active.
+   */
+  preparedEditInstruction(agent: Agent, requestId: string): string | undefined {
+    const edit = this.preparedFunctionEdits.get(requestId)
+    return edit?.state === 'active' && edit.agent === agent ? edit.instruction : undefined
+  }
+
+  /**
+   * Withdraw a prepared or active edit after prompt admission or turn failure.
+   * @param requestId - Exact prepared command identity to revoke.
+   */
+  revokePreparedEdit(requestId: string): void {
+    const edit = this.preparedFunctionEdits.get(requestId)
+    if (edit !== undefined && edit.state !== 'consumed') edit.state = 'revoked'
+  }
+
+  private makeFunctionCommandRoom(): boolean {
+    const total = () => this.functionRuns.size + this.preparedFunctionEdits.size
+    while (total() >= DynamicCordisRunnerService.functionCommandCapacity) {
+      const settledRun = [...this.functionRuns].find(([, record]) => record.settled !== undefined)
+      if (settledRun !== undefined) {
+        this.functionRuns.delete(settledRun[0])
+        continue
+      }
+      const terminalEdit = [...this.preparedFunctionEdits].find(([, edit]) =>
+        edit.state === 'completed' || edit.state === 'failed' || edit.state === 'revoked')
+      if (terminalEdit === undefined) return false
+      terminalEdit[1].instruction = ''
+      this.preparedFunctionEdits.delete(terminalEdit[0])
+    }
+    return true
+  }
+
+  private async stopPlugin(plugin: DynamicCordisPlugin): Promise<DynamicCordisStopResponse> {
+    const pending = this.registry.pendingRequestFor(plugin.pluginId)
     if (plugin.run === undefined && pending === undefined
       && plugin.pendingBrowserMounts.size === 0 && plugin.pendingBrowserRegions.size === 0) {
-      return { ok: false, reason: 'not-running', message: `dynamic plugin "${pluginId}" is not running` }
+      return { ok: false, reason: 'not-running', message: `dynamic plugin "${plugin.pluginId}" is not running` }
     }
-    if (pending !== undefined) this.cancelPending(pluginId, `dynamic plugin "${pluginId}" was stopped before approval`)
+    if (pending !== undefined) this.cancelPending(plugin.pluginId, `dynamic plugin "${plugin.pluginId}" was stopped before approval`)
     if (plugin.run !== undefined) await this.retract(plugin)
     const cleanupPending = await this.cleanupPendingBrowserMounts(plugin)
     if (plugin.latestRun !== undefined) {
@@ -610,7 +1046,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   inventory(): DynamicCordisInventoryRow[] {
     return this.registry.all().map(plugin => ({
       pluginId: plugin.pluginId,
-      agentId: plugin.sessionId,
+      agentId: plugin.createdBySessionId,
       packages: [...plugin.packages.values()].map(definition => ({
         packageId: definition.packageId,
         name: definition.name,
@@ -667,6 +1103,10 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   reference(agent: Agent, pluginId: CordisDynamicPluginId): DynamicCordisReference | undefined {
     const plugin = this.owned(agent, pluginId)
     if (plugin === undefined) return undefined
+    return this.referenceForEdit(plugin)
+  }
+
+  private referenceForEdit(plugin: DynamicCordisPlugin): DynamicCordisReference | undefined {
     const packageId = plugin.nextPackageId
       ?? plugin.currentPackageId
       ?? [...plugin.packages.keys()].at(-1)
@@ -674,7 +1114,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     const definition = plugin.packages.get(packageId)
     if (definition === undefined) return undefined
     return {
-      pluginId,
+      pluginId: plugin.pluginId,
       packageId,
       name: definition.name,
       purpose: definition.purpose,
@@ -733,6 +1173,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     packageId: CordisDynamicPackageId,
   ): DynamicCordisPackageInspection {
     const plugin = this.owned(agent, pluginId)
+      ?? (this.activeEdit(agent, pluginId) === undefined ? undefined : this.registry.get(pluginId))
     if (plugin === undefined) throw new Error(missingPluginMessage(pluginId))
     const definition = plugin.packages.get(packageId)
     if (definition === undefined) {
@@ -773,7 +1214,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     pluginRunId: CordisDynamicPluginRunId,
     failure: DynamicCordisRenderFailure,
   ): Promise<null> {
-    const plugin = this.owned(agent, pluginId)
+    const plugin = this.owned(agent, pluginId) ?? this.controllerOwned(agent, pluginId)
     if (plugin?.run?.pluginRunId === pluginRunId) {
       const run = plugin.run
       const definition = plugin.packages.get(plugin.run.packageId)
@@ -807,7 +1248,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     pluginRunId: CordisDynamicPluginRunId,
     failure: CordisErrorDetails,
   ): Promise<null> {
-    const plugin = this.owned(agent, pluginId)
+    const plugin = this.owned(agent, pluginId) ?? this.controllerOwned(agent, pluginId)
     const run = plugin?.run
     if (plugin !== undefined && run?.pluginRunId === pluginRunId) {
       this.steerGuardFailure(plugin, run, 'Client', failure)
@@ -893,6 +1334,46 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     return { ok: true, plugin, definition, mode }
   }
 
+  /** Same immutable-package checks as an Agent run, but only for a controller minted by function admission. */
+  private resolveDeliveredPlan(
+    pluginId: CordisDynamicPluginId,
+    packageId: CordisDynamicPackageId,
+    mode: CordisDynamicRunMode,
+    controller: NonNullable<DynamicCordisRun['controller']>,
+  ): { ok: true } & ActivationPlan | { ok: false; response: Extract<DynamicCordisRunResponse, { ok: false }> } {
+    const plugin = this.registry.get(pluginId)
+    if (plugin === undefined || !this.installationOwner(plugin, controller.owner)) {
+      return { ok: false, response: { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) } }
+    }
+    const definition = plugin.packages.get(packageId)
+    if (definition === undefined || (mode === 'run' && plugin.currentPackageId !== packageId)) {
+      return { ok: false, response: { ok: false, reason: 'package-missing', message: `plugin "${pluginId}" no longer has package "${packageId}"` } }
+    }
+    return { ok: true, plugin, definition, mode, controller }
+  }
+
+  private resolveEditPlan(
+    agent: Agent,
+    pluginId: CordisDynamicPluginId,
+    packageId: CordisDynamicPackageId,
+    mode: CordisDynamicRunMode,
+    edit: NonNullable<ReturnType<DynamicCordisRunnerService['activeEdit']>>,
+  ): { ok: true } & ActivationPlan | { ok: false; response: Extract<DynamicCordisRunResponse, { ok: false }> } {
+    const plugin = this.registry.get(pluginId)
+    if (plugin === undefined || edit.agent !== agent || edit.state !== 'defined' || edit.definedPackageId !== packageId
+      || plugin.run?.pluginRunId !== edit.capturedRunId || mode !== 'update') {
+      return { ok: false, response: { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) } }
+    }
+    const definition = plugin.packages.get(packageId)
+    if (definition === undefined || plugin.currentPackageId !== edit.packageId) {
+      return { ok: false, response: { ok: false, reason: 'package-missing', message: `plugin "${pluginId}" edit package is unavailable` } }
+    }
+    return {
+      ok: true, plugin, definition, mode,
+      controller: { sessionId: agent.id, owner: structuredClone(edit.owner), scope: structuredClone(edit.scope) },
+    }
+  }
+
   private activate(
     plan: ActivationPlan,
     requestId: ApprovalRequestId | undefined,
@@ -941,6 +1422,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       ownedBrowserRegions: new Map(),
       browserLifetime: new AbortController(),
       browserWork: new Set(),
+      ...plan.controller === undefined ? {} : { controller: structuredClone(plan.controller) },
       ...requestId === undefined ? {} : { startedForRequest: requestId },
     }
     plugin.run = run
@@ -999,7 +1481,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     try {
       const sandbox = createSandbox(plugin.pluginId, {
         handle,
-        sessionId: plugin.sessionId,
+        sessionId: run.controller?.sessionId ?? plugin.createdBySessionId,
         pluginId: plugin.pluginId,
         pluginRunId: run.pluginRunId,
         state: pluginStateFacade(plugin),
@@ -1031,11 +1513,25 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       const browser = this.ctx.get('browser') as { execute?: (operation: unknown, signal: AbortSignal) => Promise<unknown> } | undefined
       if (typeof browser?.execute !== 'function') throw new Error('harness.browser requires the Browser service')
       const installationId = requiredText(input.installationId, 'installationId', 128)
+      const controller = run.controller
+      if (plugin.owner.kind === 'browser-installation') {
+        if (controller === undefined || controller.owner.installationId !== plugin.owner.installationId
+          || controller.owner.grantEpoch !== plugin.owner.grantEpoch) {
+          throw new Error('delivered function has no valid browser controller')
+        }
+        if (controller.scope.kind === 'global') {
+          throw new Error('global delivered function has no browser authority')
+        }
+        const requestedPage = action.page as Record<string, unknown> | undefined
+        if (installationId !== controller.owner.installationId || !sameBrowserPage(requestedPage, controller.scope.target)) {
+          throw new Error('page delivered function may operate only on its current exact target')
+        }
+      }
       const lifetime = AbortSignal.any([run.browserLifetime.signal, signal ?? AbortSignal.timeout(15_000)])
       const work = this.executeBrowser(
         plugin,
         browser,
-        { sessionId: plugin.sessionId, installationId, requestId: randomUUID(), action },
+        { sessionId: controller?.sessionId ?? plugin.createdBySessionId, installationId, requestId: randomUUID(), action },
         lifetime,
       )
       run.browserWork.add(work)
@@ -1097,7 +1593,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         if (previous === undefined && plugin.retainedBrowserMounts.size >= 128) {
           throw new Error('browser slot retention capacity exceeded')
         }
-        const owned = { installationId,
+        const owned = { sessionId: run.controller?.sessionId ?? plugin.createdBySessionId, installationId,
           page: ownedPage as { tabId: number; frameId: number; documentId: string; url: string }, mountId }
         run.ownedBrowserMounts.set(ownedSlot, owned)
         plugin.retainedBrowserMounts.set(mountId, owned)
@@ -1145,7 +1641,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
           || previous.page.documentId !== ownedPage.documentId || previous.page.url !== ownedPage.url)) {
           throw new Error('browser region slot is bound to another page; restore it before rebinding')
         }
-        const owned = { installationId,
+        const owned = { sessionId: run.controller?.sessionId ?? plugin.createdBySessionId, installationId,
           page: ownedPage as { tabId: number; frameId: number; documentId: string; url: string }, mountId }
         // Track before dispatch because an infrastructure failure can surface after delivery crossed the process boundary.
         run.ownedBrowserRegions.set(ownedSlot, owned)
@@ -1252,7 +1748,12 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     plugin: DynamicCordisPlugin,
     browser: BrowserGateway,
     kind: BrowserCleanupKind,
-    target: { installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string }; mountId: string },
+    target: {
+      sessionId: string
+      installationId: string
+      page: { tabId: number; frameId: number; documentId: string; url: string }
+      mountId: string
+    },
     forgetCollected: boolean,
   ): Promise<boolean> {
     const key = this.cleanupKey(plugin, kind, target.mountId)
@@ -1284,7 +1785,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     }
 
     const request: BrowserCleanupRequest = {
-      requestId: randomUUID(), sessionId: plugin.sessionId, installationId: target.installationId, forgetCollected,
+      requestId: randomUUID(), sessionId: target.sessionId, installationId: target.installationId, forgetCollected,
     }
     const action = kind === 'entry_unmount'
       ? { kind, page: target.page, mountId: target.mountId, ...(forgetCollected ? { forgetCollected: true } : {}) }
@@ -1375,6 +1876,9 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
 
   private commitActivation(plugin: DynamicCordisPlugin, run: DynamicCordisRun): void {
     plugin.currentPackageId = run.packageId
+    if (plugin.delivery !== undefined && run.controller !== undefined) {
+      plugin.delivery = { ...plugin.delivery, owner: structuredClone(run.controller.owner), scope: structuredClone(run.controller.scope) }
+    }
     delete plugin.nextPackageId
     delete run.startedForRequest
     const attempt = plugin.latestRun
@@ -1383,6 +1887,16 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       delete attempt.approvalRequestId
       delete attempt.requiresApproval
       delete attempt.error
+    }
+    this.settleFunctionEdit(plugin, run.packageId, 'completed')
+  }
+
+  private settleFunctionEdit(plugin: DynamicCordisPlugin, packageId: CordisDynamicPackageId, state: 'completed' | 'failed'): void {
+    for (const edit of this.preparedFunctionEdits.values()) {
+      if (edit.pluginId === plugin.pluginId && edit.definedPackageId === packageId && (edit.state === 'consumed' || edit.state === 'defined')) {
+        edit.state = state
+        edit.instruction = ''
+      }
     }
   }
 
@@ -1471,7 +1985,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     const reportKey = `Host\u0000handler\u0000${method}\u0000${failure.message}`
     if (!this.claimRuntimeFailure(plugin, run, reportKey)) return
     const agents = this.rootCtx.get('agents')
-    const agent = agents?.get(plugin.sessionId)
+    const agent = agents?.get(run.controller?.sessionId ?? plugin.createdBySessionId)
     if (agent === undefined) return
     agent.steer(createUserMessage({
       content: [{
@@ -1497,7 +2011,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     const reportKey = `${platform}\u0000guard\u0000${failure.message}`
     if (!this.claimRuntimeFailure(plugin, run, reportKey)) return
     const agents = this.rootCtx.get('agents')
-    const agent = agents?.get(plugin.sessionId)
+    const agent = agents?.get(run.controller?.sessionId ?? plugin.createdBySessionId)
     if (agent === undefined) return
     agent.steer(createUserMessage({
       content: [{
@@ -1556,6 +2070,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     if (requestId === undefined) return
     const pending = this.registry.claimRequest(requestId)
     if (pending === undefined) return
+    this.functionRunControllers.delete(requestId)
     const plugin = this.registry.get(pluginId)
     if (plugin?.latestRun?.pluginRunId === pending.pluginRunId) {
       plugin.latestRun.status = 'cancelled'
@@ -1593,6 +2108,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     attempt.error = this.diagnostic(plugin, attempt, phase, failure)
     if (phase.startsWith('host')) attempt.host = { status: 'failed', waitingFor: [], error: failure.message }
     else attempt.client = { status: 'failed', waitingFor: [], error: failure.message }
+    this.settleFunctionEdit(plugin, attempt.packageId, 'failed')
   }
 
   private diagnostic(
@@ -1629,7 +2145,142 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
 
   private owned(agent: Agent, pluginId: CordisDynamicPluginId): DynamicCordisPlugin | undefined {
     const plugin = this.registry.get(pluginId)
-    return this.rootCtx.agents.get(agent.id) === agent && plugin?.ownerAgent === agent ? plugin : undefined
+    return this.rootCtx.agents.get(agent.id) === agent && this.agentOwner(plugin)?.agent === agent ? plugin : undefined
+  }
+
+  private controllerOwned(agent: Agent, pluginId: CordisDynamicPluginId): DynamicCordisPlugin | undefined {
+    const plugin = this.registry.get(pluginId)
+    const controller = plugin?.run?.controller
+    return this.rootCtx.agents.get(agent.id) === agent && controller?.sessionId === agent.id
+      && plugin !== undefined && this.installationOwner(plugin, controller.owner) ? plugin : undefined
+  }
+
+  private agentOwner(plugin: DynamicCordisPlugin | undefined): Extract<DynamicCordisPluginOwner, { kind: 'agent' }> | undefined {
+    return plugin?.owner.kind === 'agent' ? plugin.owner : undefined
+  }
+
+  private activeEdit(agent: Agent, pluginId: CordisDynamicPluginId) {
+    return [...this.preparedFunctionEdits.values()].find(edit => edit.agent === agent && edit.pluginId === pluginId
+      && (edit.state === 'active' || edit.state === 'defined'))
+  }
+
+  private revokePreparedEdits(agent: Agent): void {
+    for (const edit of this.preparedFunctionEdits.values()) {
+      if (edit.agent === agent && (edit.state === 'prepared' || edit.state === 'active' || edit.state === 'defined')) {
+        edit.state = 'revoked'
+        edit.instruction = ''
+      }
+    }
+  }
+
+  private installationOwner(plugin: DynamicCordisPlugin, owner: DynamicCordisInstallationOwner): boolean {
+    return plugin.owner.kind === 'browser-installation'
+      && plugin.owner.installationId === owner.installationId && plugin.owner.grantEpoch === owner.grantEpoch
+  }
+
+  /** Re-read the current BrowserTask fence at the executor, never trust a UI snapshot. */
+  private matchesDeliveredTarget(agent: Agent, plugin: DynamicCordisPlugin, expectedRevision: number | undefined): boolean {
+    const delivery = plugin.delivery
+    const scope = delivery?.scope
+    if (scope === undefined || delivery === undefined) return false
+    if (scope.kind === 'global') return expectedRevision === undefined
+    if (!Number.isSafeInteger(expectedRevision)) return false
+    const target = this.readFunctionTarget(agent)
+    if (target === undefined || target.binding === null) return false
+    const binding = target.binding
+    const page = binding.page as { tabId: unknown; frameId: unknown; documentId: unknown; url: unknown }
+    return target.revision === expectedRevision && binding.installationId === delivery.owner.installationId
+      && page.tabId === scope.target.tabId && page.frameId === scope.target.frameId
+      && page.documentId === scope.target.documentId && page.url === scope.target.url
+  }
+
+  private currentDeliveredScope(
+    agent: Agent,
+    plugin: DynamicCordisPlugin,
+    expectedRevision: number | undefined,
+  ): DynamicCordisFunctionScope | undefined {
+    if (!this.matchesDeliveredTarget(agent, plugin, expectedRevision)) return undefined
+    const scope = plugin.delivery?.scope
+    if (scope === undefined) return undefined
+    if (scope.kind === 'global') return { kind: 'global' }
+    if (expectedRevision === undefined) return undefined
+    return { kind: 'page', target: structuredClone(scope.target), targetRevision: expectedRevision }
+  }
+
+  private currentEditScope(
+    agent: Agent,
+    plugin: DynamicCordisPlugin,
+    expectedRevision: number | undefined,
+  ): DynamicCordisFunctionScope | undefined {
+    if (!this.matchesEditTarget(agent, plugin, expectedRevision)) return undefined
+    const scope = plugin.delivery?.scope
+    if (scope === undefined || scope.kind === 'global') return scope === undefined ? undefined : { kind: 'global' }
+    const target = this.readFunctionTarget(agent)
+    if (target?.binding === null || target === undefined || expectedRevision === undefined) return undefined
+    const page = target.binding.page as { tabId?: unknown; frameId?: unknown; documentId?: unknown; url?: unknown }
+    if (typeof page.tabId !== 'number' || typeof page.frameId !== 'number'
+      || typeof page.documentId !== 'string' || typeof page.url !== 'string') return undefined
+    return {
+      kind: 'page', target: { tabId: page.tabId, frameId: page.frameId, documentId: page.documentId, url: page.url },
+      targetRevision: expectedRevision,
+    }
+  }
+
+  /** Editing may deliberately migrate a page function to the user's newly fixed document. */
+  private matchesEditTarget(agent: Agent, plugin: DynamicCordisPlugin, expectedRevision: number | undefined): boolean {
+    const delivery = plugin.delivery
+    const scope = delivery?.scope
+    if (scope === undefined || delivery === undefined) return false
+    if (scope.kind === 'global') return expectedRevision === undefined
+    if (!Number.isSafeInteger(expectedRevision)) return false
+    const target = this.readFunctionTarget(agent)
+    return target !== undefined && target.revision === expectedRevision
+      && target.binding?.installationId === delivery.owner.installationId
+  }
+
+  private readFunctionTarget(agent: Agent): { revision: number; binding: { installationId: string; page: unknown } | null } | undefined {
+    const tasks = this.rootCtx.get('browserTasks') as {
+      readTarget?: (candidate: Agent) => { revision: number; binding: { installationId: string; page: unknown } | null }
+    } | undefined
+    return tasks?.readTarget?.(agent)
+  }
+
+  private browserResources(run: DynamicCordisRun): DynamicCordisBrowserResource[] {
+    return [
+      ...[...run.ownedBrowserMounts.values()].map(resource => ({ kind: 'entry_mount' as const, ...resource })),
+      ...[...run.ownedBrowserRegions.values()].map(resource => ({ kind: 'region_render' as const, ...resource })),
+    ].map(resource => structuredClone(resource))
+  }
+
+  private inspectOwnedPlugin(plugin: DynamicCordisPlugin): DynamicCordisPluginInspection {
+    const packageId = plugin.nextPackageId ?? plugin.currentPackageId ?? [...plugin.packages.keys()].at(-1)
+    if (packageId === undefined) throw new Error(`dynamic plugin "${plugin.pluginId}" has no package`)
+    const definition = plugin.packages.get(packageId)
+    if (definition === undefined) throw new Error(`dynamic package "${packageId}" does not exist on plugin "${plugin.pluginId}"`)
+    const run = plugin.run
+    const resource = run === undefined ? undefined : this.browserResources(run)[0]
+    const clientReady = run !== undefined && plugin.latestRun?.pluginRunId === run.pluginRunId
+      && plugin.latestRun.client.status === 'running' && run.renderFailure === undefined
+    const openTarget: DynamicCordisPluginInspection['openTarget'] = resource !== undefined
+      ? { kind: 'browser', resource }
+      : clientReady ? { kind: 'web', sessionId: run.controller?.sessionId ?? plugin.createdBySessionId } : undefined
+    return {
+      pluginId: plugin.pluginId,
+      packageId,
+      name: definition.name,
+      purpose: definition.purpose,
+      ...(openTarget === undefined ? {} : { openTarget }),
+      ...plugin.currentPackageId === undefined ? {} : { currentPackageId: plugin.currentPackageId },
+      ...plugin.nextPackageId === undefined ? {} : { nextPackageId: plugin.nextPackageId },
+      ...plugin.run === undefined ? {} : { activeRun: { pluginRunId: plugin.run.pluginRunId, packageId: plugin.run.packageId } },
+      ...plugin.latestRun === undefined ? {} : { latestRun: cloneAttempt(plugin.latestRun) },
+      state: structuredClone(Object.fromEntries(plugin.state)),
+      packages: [...plugin.packages.values()].map(candidate => ({
+        packageId: candidate.packageId, name: candidate.name, purpose: candidate.purpose,
+        hasHostHalf: candidate.hostCode !== undefined, hasClientHalf: candidate.clientCode !== undefined,
+      })),
+      ...plugin.delivery === undefined ? {} : { delivery: structuredClone(plugin.delivery) },
+    }
   }
 
   private requireLiveAgent(agent: Agent): void {
@@ -1649,7 +2300,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   }
 
   private ownerIsLive(plugin: DynamicCordisPlugin): boolean {
-    return this.rootCtx.agents.get(plugin.ownerAgent.id) === plugin.ownerAgent
+    const owner = this.agentOwner(plugin)
+    return owner === undefined || this.rootCtx.agents.get(owner.agent.id) === owner.agent
   }
 
   /** Retry only orphaned exact cleanup receipts, never ordinary Plugin work. */
@@ -1703,16 +2355,26 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     // runner ledger instead of mutating or reopening that old task. Ordinary
     // Plugin work never enters this path, and unknown cleanup remains bound to
     // its original requestStatus identity in reconcileCleanup().
-    if (allowDetachedOwnerCleanup && (!this.ownerIsLive(plugin) || this.ownerTaskIsTerminal(plugin))) {
+    if (allowDetachedOwnerCleanup && (plugin.owner.kind === 'browser-installation' || plugin.owner.kind === 'revoked'
+      || !this.ownerIsLive(plugin) || this.ownerTaskIsTerminal(plugin))) {
       return execute(operation, signal)
     }
-    return this.rootCtx.agents.withInitiator(plugin.ownerAgent, () => execute(operation, signal))
+    const controller = plugin.run?.controller
+    if (controller !== undefined) {
+      const controllerAgent = this.rootCtx.agents.get(controller.sessionId)
+      if (controllerAgent === undefined) throw new Error('delivered dynamic Plugin browser controller is no longer live')
+      return this.rootCtx.agents.withInitiator(controllerAgent, () => execute(operation, signal))
+    }
+    const owner = this.agentOwner(plugin)
+    if (owner === undefined) throw new Error('delivered dynamic Plugin browser work requires an installation authority')
+    return this.rootCtx.agents.withInitiator(owner.agent, () => execute(operation, signal))
   }
 
   private ownerTaskIsTerminal(plugin: DynamicCordisPlugin): boolean {
     const tasks = this.rootCtx.get('browserTasks') as { get?: (agent: Agent) => { phase?: unknown } | undefined } | undefined
     if (typeof tasks?.get !== 'function') return false
-    try { return tasks.get(plugin.ownerAgent)?.phase === 'terminal' }
+    const owner = this.agentOwner(plugin)
+    try { return owner !== undefined && tasks.get(owner.agent)?.phase === 'terminal' }
     catch { return false }
   }
 
@@ -1724,6 +2386,28 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
 
 function missingFor(ctx: Context, run: DynamicCordisRun): string[] {
   return run.fiber === undefined ? [] : missingServices(ctx, run.fiber)
+}
+
+/** A page delivery may retain only resources on its exact captured document. */
+function validDeliveryScope(
+  scope: DynamicCordisFunctionScope,
+  owner: DynamicCordisInstallationOwner,
+  resources: readonly DynamicCordisBrowserResource[],
+): boolean {
+  if (scope.kind === 'global') return resources.length === 0
+  return resources.length > 0 && resources.every(resource => resource.installationId === owner.installationId
+    && resource.page.tabId === scope.target.tabId
+    && resource.page.frameId === scope.target.frameId
+    && resource.page.documentId === scope.target.documentId
+    && resource.page.url === scope.target.url)
+}
+
+function sameBrowserPage(
+  value: Record<string, unknown> | undefined,
+  expected: { readonly tabId: number; readonly frameId: number; readonly documentId: string; readonly url: string },
+): boolean {
+  return value?.tabId === expected.tabId && value.frameId === expected.frameId
+    && value.documentId === expected.documentId && value.url === expected.url
 }
 
 function confirmedUnmount(result: unknown): boolean {

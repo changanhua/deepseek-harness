@@ -1,0 +1,8 @@
+version: 1
+scenario: browser-assistant-preset
+profile: web
+composition: browser-assistant
+recording: live
+header:
+  class: web-browser-assistant-preset
+  pin: true

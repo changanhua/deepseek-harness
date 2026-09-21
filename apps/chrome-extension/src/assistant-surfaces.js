@@ -1,4 +1,15 @@
-/** Reuse one dedicated assistant window. It shares the worker's Session binding and has no second history. */
+const validSurfaceId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/u.test(value)
+const validFallbackId = value => typeof value === 'string'
+  && /^surface-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(value)
+
+/** Resolve one trusted sidebar/popup document to its worker-owned surface identity. */
+export const assistantSurfaceId = (sender, extensionId, sidebarUrl, fallbackId) => {
+  if (sender?.id !== extensionId || sender.url !== sidebarUrl) return null
+  if (validSurfaceId(sender.documentId)) return sender.documentId
+  return validFallbackId(fallbackId) ? fallbackId : null
+}
+
+/** Reuse one dedicated assistant window; its document identity owns an independent Session selection. */
 export const createAssistantSurfaces = ({ chromeApi }) => {
   let opening = null
   const openWindow = () => {

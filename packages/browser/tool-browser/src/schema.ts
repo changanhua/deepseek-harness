@@ -93,5 +93,6 @@ export const instancesSchema = { type: 'array', items: { type: 'object', additio
     protocolVersion: { type: 'integer', required: true },
     actionKinds: { type: 'array', required: true, items: { type: 'string' } },
     requestRecovery: { type: 'boolean', required: true },
+    restartStatusLookup: { type: 'boolean' },
   } },
 } } } as const satisfies ValueSchemaSpec

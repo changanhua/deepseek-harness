@@ -234,6 +234,20 @@ describe('connection node half', () => {
     await dispose()
   })
 
+  it('permits the loopback web surface without a token only when browserAuth is explicitly disabled', async () => {
+    const { routes, connection, dispose } = await mounted({ browserAuth: false })
+    const root = fakeResponse()
+    expect(connection.authenticatedUrl('http://127.0.0.1:3080')).toBe('http://127.0.0.1:3080')
+    expect(connection.authorizeIndex(fakeRequest({ host: '127.0.0.1:3080' }, '/'), root.response)).toBe(true)
+    expect(root.state).toEqual({})
+    expect(connection.requestRejection(fakeRequest({ host: '127.0.0.1:3080' }))).toBeUndefined()
+    const api = fakeResponse()
+    await routes[0]!.handler(fakeRequest({ host: '127.0.0.1:3080' }), api.response)
+    expect(api.state.status).toBe(404)
+    expect(connection.requestRejection(fakeRequest({ host: 'harness.example' }))).toBe(403)
+    await dispose()
+  })
+
   it('passes loopback and declared-authority requests through to the bridge', async () => {
     const { routes, connection, dispose } = await mounted({ trustedHosts: ['harness.example:3080', '192.168.1.5'] })
     // Loopback, no browser markers (curl shape): the fence passes; the carrier

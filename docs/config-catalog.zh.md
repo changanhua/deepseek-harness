@@ -350,6 +350,8 @@ export type Config = LocalConfig
 ```ts config-catalog
 /** Browser authentication, request limits, and connection recovery configuration. */
 export interface ConnectionConfig {
+  /** Require the process launch token and browser-session cookie. @default true */
+  browserAuth?: boolean
   /** Browser recovery timing, injected into each served page. */
   recovery?: ConnectionRecoveryConfig
   /**

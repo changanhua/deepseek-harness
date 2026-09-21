@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
-import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { validateJsonSchemaValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { BrowserPreparedTicket } from '@changanhua/dsh-browser/types'
 import type { BrowserAction, BrowserActionDescription, BrowserActionResult, BrowserOperation } from '@changanhua/dsh-browser'
 import { actionMutates, approvalNeeded, approvalReason } from '../src/policy.ts'
-import { apply, dispatchPrepared, dispatchSequence, dispatchWithFeedback } from '../src/index.ts'
+import { apply, dispatchPrepared, dispatchSequence, dispatchWithFeedback, resultText } from '../src/index.ts'
 import { requestStatusSchema } from '../src/schema.ts'
 
 const page = { tabId: 1, frameId: 0, documentId: 'document', url: 'https://example.test/' }
@@ -41,8 +41,31 @@ describe('browser tool approval policy', () => {
     expect(JSON.stringify(registered.get('browser_instances')!.output.schema)).toContain('"capabilities"')
     expect(JSON.stringify(registered.get('browser_instances')!.output.schema)).toContain('"requestRecovery"')
   })
+  it('accepts restart status lookup capability in browser_instances output', async () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    const browser = { ...h.browser, instances: vi.fn(async () => [{
+      installationId: 'installation', extensionId: 'abcdefghijklmnopabcdefghijklmnop', online: true, grantEpoch: 1,
+      origins: ['https://example.test'], scopes: ['browser:read'],
+      capabilities: { protocolVersion: 1 as const, actionKinds: ['tabs'] as const,
+        requestRecovery: true as const, restartStatusLookup: true as const },
+    }]) }
+    apply({ inject: vi.fn(), on: vi.fn(), browser, approval: { request: h.approval },
+      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const tool = registered.get('browser_instances')!
+    const value = await tool.execute({}, { agent, signal: h.controller.signal } as ToolRunContext)
+    expect(validateJsonSchemaValue(tool.output.schema, value)).toEqual([])
+  })
   it('declares retained request values in the status result schema', () => {
     expect(requestStatusSchema.properties.value).toEqual({ type: 'json' })
+  })
+
+  it('names the exact unknown request to inspect without misclassifying a rejected busy request', () => {
+    expect(resultText({ requestId: 'unknown-request', outcome: 'unknown', delivery: 'sent', reason: 'effect_unverified' }))
+      .toBe('Browser action outcome is unknown: effect_unverified. Do not retry it. Call browser_request_status with requestId "unknown-request" before any new write to this target.')
+    expect(resultText({ requestId: 'rejected-request', outcome: 'failed', delivery: 'not-sent', reason: 'target_busy' }))
+      .toBe('Browser action was not sent: target_busy. The rejected requestId "rejected-request" has no effect to recover. Resolve the earlier in-flight or unknown write first by calling browser_request_status with that earlier result\'s requestId.')
+    expect(resultText({ requestId: 'offline-request', outcome: 'failed', delivery: 'not-sent', reason: 'offline' }))
+      .toBe('Browser action was not sent: offline. Fix the stated precondition before issuing a new request.')
   })
 
   it('returns fresh page evidence after an action without repeating the write', async () => {
@@ -53,7 +76,7 @@ describe('browser tool approval policy', () => {
     expect(h.browser.executePrepared).toHaveBeenCalledOnce()
     expect(h.browser.execute).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ sessionId,
       installationId: 'installation', requestId: uuidMatcher(),
-      action: { kind: 'snapshot', tabId: 1, frameId: 0, limit: 64, textLimit: 4000 } }), h.controller.signal)
+      action: { kind: 'snapshot', tabId: 1, frameId: 0, limit: 64, textLimit: 4000, structure: false } }), h.controller.signal)
   })
   it('returns fresh references when preparation is stale but does not choose or click a replacement', async () => {
     const h = harness('unknown')

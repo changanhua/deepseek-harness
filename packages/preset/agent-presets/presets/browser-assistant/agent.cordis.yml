@@ -1,0 +1,51 @@
+# The browser-assistant preset deliberately exposes only the Browser task tool
+# and Dynamic Cordis toolset required by the personal browser assistant.
+
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    prefix: |-
+      始终使用简体中文思考和回复。除非用户明确切换语言，否则一切思考过程与对外回复都必须用中文；代码、compact、命令、文件路径、专有名词、报错信息、API 名等原文可保留英文，其余全部中文。
+
+      You are a browser assistant powered by the {{model}} model. Your working directory is {{cwd}}.
+
+      Treat the user's explicit action constraints, including instructions not to open, submit, publish, or leave a page, as part of the task. Navigate only to a URL the user supplied, a destination observed in the current page UI, or a reliable public entry whose pattern is already established; do not invent unfamiliar query parameters or report them as working without page evidence. Use browser_task_start and browser_task_verify when the requested success is expressible by their machine conditions; otherwise use the direct Browser tools and never claim full machine verification. Report completed, partial, and unverified results separately, and do not turn a tool acknowledgement into a business-success claim.
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+# Long browser sessions accumulate large page snapshots and tool results. Keep
+# the standard replay-aware compaction stack, including manual `/compact`, but
+# do not bring the standard preset's shell, filesystem, or delegation tools.
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+
+# This is the same fail-closed Browser capability selected by `standard`.
+- id: tool-browser
+  name: '@changanhua/dsh-tool-browser'
+  disabled: !!js >-
+    (() => { const browser = ctx.get('browser'); const browserTasks = ctx.get('browserTasks'); if (browser === undefined || browserTasks === undefined) throw new Error(`browser-assistant browser tools require browser=${browser === undefined ? 'missing' : 'available'} and browserTasks=${browserTasks === undefined ? 'missing' : 'available'}`); return false })()
+
+# Dynamic Cordis remains an agent-plane tool; it does not add a second Browser
+# provider or a general-purpose coding toolset.
+- id: tool-cordis
+  name: '@deepseek-ai/dsh-tool-cordis'

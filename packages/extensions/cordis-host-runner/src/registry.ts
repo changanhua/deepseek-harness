@@ -9,11 +9,20 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 import type {
   ApprovalRequestId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId,
-  CordisDynamicRunMode, DynamicCordisRenderFailure, DynamicCordisRunAttempt,
+  CordisDynamicRunMode, DynamicCordisBrowserResource, DynamicCordisFunctionScope, DynamicCordisInstallationOwner,
+  DynamicCordisRenderFailure, DynamicCordisRunAttempt,
 } from './types.ts'
 
 /** One Host method exposed to this package's Client half. */
 export type DynamicCordisHandler = (args: unknown) => Promise<unknown>
+
+/** Agent ownership applies until an explicit, checked installation handoff. */
+export type DynamicCordisAgentOwner = { readonly kind: 'agent'; readonly agent: Agent }
+/** Revocation fences every installation command before deferred old-ledger cleanup settles. */
+export type DynamicCordisRevokedOwner = { readonly kind: 'revoked'; readonly installationId: string; readonly grantEpoch: number }
+
+/** Delivered ownership survives the creating Agent but remains installation fenced. */
+export type DynamicCordisPluginOwner = DynamicCordisAgentOwner | DynamicCordisRevokedOwner | ({ readonly kind: 'browser-installation' } & DynamicCordisInstallationOwner)
 
 /** One live activation and everything its teardown owns. */
 export interface DynamicCordisRun {
@@ -35,12 +44,14 @@ export interface DynamicCordisRun {
   browserWork: Set<Promise<unknown>>
   /** Browser entry mounts owned by this activation and removed during retraction. */
   ownedBrowserMounts: Map<string, {
+    sessionId: SessionId
     installationId: string
     page: { tabId: number; frameId: number; documentId: string; url: string }
     mountId: string
   }>
   /** Page workspace regions owned by this activation and restored during retraction. */
   ownedBrowserRegions: Map<string, {
+    sessionId: SessionId
     installationId: string
     page: { tabId: number; frameId: number; documentId: string; url: string }
     mountId: string
@@ -49,6 +60,12 @@ export interface DynamicCordisRun {
   renderFailure?: DynamicCordisRenderFailure
   /** Approval whose transition started this run, when model-driven. */
   startedForRequest?: ApprovalRequestId
+  /** New-session controller for an installation-delivered function activation. */
+  controller?: {
+    sessionId: SessionId
+    owner: DynamicCordisInstallationOwner
+    scope: DynamicCordisFunctionScope
+  }
 }
 
 /** One immutable package version. */
@@ -69,10 +86,12 @@ export interface DynamicCordisDefinition {
 export interface DynamicCordisPlugin {
   /** Stable identity. */
   pluginId: CordisDynamicPluginId
-  /** Owning session. */
-  sessionId: SessionId
-  /** Exact live Agent that defined this Plugin; never included in public views. */
-  ownerAgent: Agent
+  /** Session that created this Plugin, retained solely for audit and exact cleanup attribution. */
+  createdBySessionId: SessionId
+  /** Agent or authenticated installation that currently owns this Plugin lifecycle. */
+  owner: DynamicCordisPluginOwner
+  /** Scope and installation owner committed by the checked delivery handoff. */
+  delivery?: { handoffId: string; owner: DynamicCordisInstallationOwner; scope: DynamicCordisFunctionScope }
   /** Versions in define order. */
   packages: Map<CordisDynamicPackageId, DynamicCordisDefinition>
   /** Client-bearing Packages individually authorized by the user. */
@@ -87,12 +106,14 @@ export interface DynamicCordisPlugin {
   pendingBrowserWork: Set<Promise<unknown>>
   /** Unmounts whose result was unknown, retained so a later stop can reconcile them. */
   pendingBrowserMounts: Map<string, {
+    sessionId: SessionId
     installationId: string
     page: { tabId: number; frameId: number; documentId: string; url: string }
     mountId: string
   }>
   /** Region restores whose result is unresolved and must be reconciled before another run. */
   pendingBrowserRegions: Map<string, {
+    sessionId: SessionId
     installationId: string
     page: { tabId: number; frameId: number; documentId: string; url: string }
     mountId: string
@@ -157,6 +178,9 @@ export interface DynamicCordisReference {
 
 /** Source-free Plugin summary returned by layered self inspection. */
 export interface DynamicCordisPluginInspection extends DynamicCordisReference {
+  /** Existing visible surface of the active run; opening it never runs the function. */
+  openTarget?: { readonly kind: 'browser'; readonly resource: DynamicCordisBrowserResource }
+    | { readonly kind: 'web'; readonly sessionId: SessionId }
   /** Detached bounded Plugin state, retained across ordinary stops. */
   state: Record<string, JsonValue>
   /** Immutable Package summaries in define order. */
@@ -167,6 +191,8 @@ export interface DynamicCordisPluginInspection extends DynamicCordisReference {
     hasHostHalf: boolean
     hasClientHalf: boolean
   }>
+  /** Present only after an installation-owned delivery handoff. */
+  delivery?: { handoffId: string; owner: DynamicCordisInstallationOwner; scope: DynamicCordisFunctionScope }
 }
 
 /** Exact immutable Package metadata and source returned by explicit inspection. */
@@ -260,7 +286,7 @@ export class DynamicCordisRegistry {
    * @returns a snapshot of matching Plugin records.
    */
   ofSession(sessionId: SessionId): DynamicCordisPlugin[] {
-    return this.all().filter(plugin => plugin.sessionId === sessionId)
+    return this.all().filter(plugin => plugin.createdBySessionId === sessionId)
   }
 
   /**

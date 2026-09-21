@@ -95,11 +95,15 @@ const receipt = identity.extend({
 /** Authentication is a bounded first frame, never a credential in the URL. */
 export const extensionFrameSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('hello'), protocolVersion: z.literal(1), installationId: z.uuid({ version: 'v4' }), token: z.string().regex(/^[A-Za-z0-9_-]{43}$/u), capabilities: executorCapabilities }).strict(),
+  z.object({ type: z.literal('authority-cleaned'), installationId: z.uuid({ version: 'v4' }), grantEpoch: z.number().int().positive() }).strict(),
   z.object({ type: z.literal('result'), receipt }).strict(),
   z.object({ type: z.literal('pong') }).strict(),
   z.object({ type: z.literal('request'), requestId: z.uuid({ version: 'v4' }), method: z.enum(['instances',
     'reading.models', 'reading.model', 'reading.generate', 'reading.stop',
     'session.list', 'session.create', 'session.prompt', 'session.cancel', 'session.follow', 'session.unfollow', 'session.page', 'session.attachment',
+    'session.modelCatalog', 'session.selectModel', 'commands.execute',
+    'session.target.read', 'session.target.bind', 'session.target.clear',
+    'function.list', 'function.inspect', 'function.stop', 'function.run', 'function.edit', 'function.command.status',
     'approval.presence', 'approval.decide', 'browser.acknowledge', 'browser.entryEvent', 'browser.routeDiscard', 'monitor.list', 'monitor.create', 'monitor.pause', 'monitor.resume',
     'monitor.acknowledge', 'activity.state', 'activity.configure', 'activity.append', 'activity.query']), params: z.json().optional() }).strict(),
 ])
@@ -111,8 +115,9 @@ export const exchangeSchema = z.object({ installationId: z.uuid({ version: 'v4' 
 export const approveSchema = z.object({ requestId: z.uuid({ version: 'v4' }), scopes: z.array(z.string().max(32)).max(4), origins: z.array(z.string().max(512)).max(64) }).strict()
 export const revokeSchema = z.object({ installationId: z.uuid({ version: 'v4' }) }).strict()
 export const requestSchema = z.object({ requestId: z.uuid({ version: 'v4' }) }).strict()
-export const approvalPresenceSchema = z.object({ sessionId: z.string().min(1).max(128).nullable() }).strict()
-export const approvalDecideSchema = z.object({ sessionId: z.string().min(1).max(128), id: z.uuid({ version: 'v4' }), decision: z.enum(['allowed-once', 'rejected']) }).strict()
+const surfaceId = z.string().min(1).max(256)
+export const approvalPresenceSchema = z.object({ surfaceId, sessionId: z.string().min(1).max(128).nullable() }).strict()
+export const approvalDecideSchema = z.object({ surfaceId, sessionId: z.string().min(1).max(128), id: z.uuid({ version: 'v4' }), decision: z.enum(['allowed-once', 'rejected']) }).strict()
 export const browserAcknowledgeSchema = z.object({ receipt: identity.extend({
   outcome: z.enum(['observed', 'failed', 'cancelled', 'unknown']), quiescent: z.literal(true),
 }).strict() }).strict()

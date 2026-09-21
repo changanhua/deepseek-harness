@@ -64,6 +64,7 @@ export const createAssistantChannel = ({
   let stopped = false
   let reconnectTimer = null
   const pending = new Map()
+  const authorityCleanups = new Set()
 
   const report = state => {
     try { Promise.resolve(onState(clone(state))).catch(() => {}) } catch { /* observer failures cannot change transport state */ }
@@ -87,6 +88,20 @@ export const createAssistantChannel = ({
 
   const closeCurrent = code => {
     try { socket?.close(code) } catch { /* closing is best effort */ }
+  }
+
+  const cleanupAuthority = (grant, acknowledgeSocket = null) => {
+    if (!grant) return
+    const key = `${grant.installationId}:${grant.grantEpoch}`
+    if (authorityCleanups.has(key)) return
+    authorityCleanups.add(key)
+    const frame = { type: 'authority-revoked', installationId: grant.installationId, grantEpoch: grant.grantEpoch }
+    Promise.resolve().then(() => onCommand(clone(frame))).then(() => {
+      if (acknowledgeSocket && socket === acknowledgeSocket && socketIsOpen(acknowledgeSocket, WebSocketImpl)) {
+        acknowledgeSocket.send(JSON.stringify({ type: 'authority-cleaned', installationId: grant.installationId,
+          grantEpoch: grant.grantEpoch }))
+      }
+    }).catch(() => {})
   }
 
   const dispatchCommand = frame => {
@@ -145,6 +160,11 @@ export const createAssistantChannel = ({
         return
       }
       if (!activeGrant) return
+      if (frame.type === 'authority-revoked') {
+        if (frame.installationId !== activeGrant.installationId || frame.grantEpoch !== activeGrant.grantEpoch) return
+        cleanupAuthority(activeGrant, next)
+        return
+      }
       if (frame.type === 'reading' && typeof frame.id === 'string' && typeof frame.text === 'string'
         || frame.type === 'event' && typeof frame.streamId === 'string' && frame.streamId.length <= 128
         || frame.type === 'approval' && typeof frame.sessionId === 'string' && frame.sessionId.length <= 256 && Array.isArray(frame.requests)) {
@@ -168,11 +188,13 @@ export const createAssistantChannel = ({
     }
     next.onclose = event => {
       if (socket !== next) return
+      const priorGrant = activeGrant ?? channelCredentials.grant
       socket = null
       activeGrant = null
       settleAll(channelError('result_unknown', 'connection_lost'))
       if (stopped) return
       if (event.code === 4401) {
+        cleanupAuthority(priorGrant)
         stopped = true
         report({ phase: 'unauthorized' })
         return

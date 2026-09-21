@@ -21,6 +21,26 @@ export const createBrowserContext = ({ chromeApi }) => {
     try { const tab = await activeTab(); return { tabId: tab.id, windowId: tab.windowId, url: tab.url, title: tab.title ?? '' } }
     catch { return null }
   }
+  const candidates = async () => {
+    const items = []
+    for (const tab of await chromeApi.tabs.query({})) {
+      if (!Number.isInteger(tab?.id) || !Number.isInteger(tab.windowId)) continue
+      try {
+        items.push({ tabId: tab.id, windowId: tab.windowId, url: pageUrl(tab.url),
+          title: String(tab.title ?? '').slice(0, 512), active: tab.active === true })
+      } catch { /* Browser-internal and credential-bearing pages are never candidates. */ }
+      if (items.length >= 128) break
+    }
+    return items
+  }
+  const describe = async tabId => {
+    if (!Number.isInteger(tabId) || tabId < 0) return null
+    try {
+      const tab = await chromeApi.tabs.get(tabId)
+      if (!tab || tab.id !== tabId || !Number.isInteger(tab.windowId)) return null
+      return { tabId, windowId: tab.windowId, url: pageUrl(tab.url), title: String(tab.title ?? '').slice(0, 512) }
+    } catch { return null }
+  }
   const readDocument = async (tab, documentId) => {
     let results
     try {
@@ -35,6 +55,23 @@ export const createBrowserContext = ({ chromeApi }) => {
     return { page: { tabId: tab.id, windowId: tab.windowId, frameId: 0, documentId: result.documentId,
       url: pageUrl(result.result.url), title: String(result.result.title ?? '').slice(0, 512) },
     text: String(result.result.selection ?? '').trim() }
+  }
+  const target = async tabId => {
+    const tab = Number.isInteger(tabId) ? await chromeApi.tabs.get(tabId) : await activeTab()
+    if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId)) throw failure('no_active_tab')
+    pageUrl(tab.url)
+    let results
+    try {
+      results = await chromeApi.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, world: 'ISOLATED',
+        func: () => ({ url: location.href, title: document.title.slice(0, 512) }) })
+    } catch { throw failure('page_permission_required') }
+    const result = results[0]
+    if (results.length !== 1 || !result.documentId || result.frameId !== 0) throw failure('capture_target_changed')
+    const resolved = { page: { tabId: tab.id, windowId: tab.windowId, frameId: 0, documentId: result.documentId,
+      url: pageUrl(result.result.url), title: String(result.result.title ?? '').slice(0, 512) } }
+    const after = Number.isInteger(tabId) ? await chromeApi.tabs.get(tab.id) : await activeTab()
+    if (after.id !== tab.id || after.windowId !== tab.windowId || after.url !== resolved.page.url) throw failure('capture_target_changed')
+    return resolved.page
   }
   const capture = async kind => {
     if (!['selection', 'page-body', 'screenshot'].includes(kind)) throw failure('invalid_capture')
@@ -89,5 +126,5 @@ export const createBrowserContext = ({ chromeApi }) => {
       chromeApi.tabs.onUpdated.removeListener(updated)
     }
   }
-  return { current, capture }
+  return { current, candidates, describe, target, capture }
 }

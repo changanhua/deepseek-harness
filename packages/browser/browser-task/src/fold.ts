@@ -1,6 +1,6 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { BROWSER_TASK_CHANGE_VERSION } from './runtime.ts'
-import type { BrowserTaskChangeMeta, BrowserTaskOperation } from './domain.ts'
+import type { BrowserTargetChange, BrowserTaskChangeMeta, BrowserTaskOperation } from './domain.ts'
 import type {
   BrowserTaskBlocker,
   BrowserTaskId,
@@ -9,6 +9,10 @@ import type {
   BrowserTaskSnapshot,
   BrowserTaskSourceFact,
   BrowserTaskSourceRef,
+  BrowserFunctionOwner,
+  BrowserFunctionScope,
+  BrowserSessionTargetBinding,
+  BrowserTaskFunctionHandoff,
   BrowserTargetBinding,
 } from './types.ts'
 import { BROWSER_PAGE_MAP_REGION_LIMIT } from './evidence.ts'
@@ -33,7 +37,7 @@ const operations = new Set<BrowserTaskOperation>([
   'create', 'evidence', 'attempt', 'reconcile-attempt', 'resource',
   'reconcile-resource', 'capability', 'delegation', 'evaluate', 'transition',
   'rebind', 'acknowledge-target-loss', 'consume-budget', 'terminate', 'owner-cancel',
-  'acknowledge-human-interaction',
+  'acknowledge-human-interaction', 'handoff-function',
 ])
 const phases = new Set(['running', 'waiting', 'verifying', 'settling', 'terminal'])
 const blockers = new Set<BrowserTaskBlocker>([
@@ -77,7 +81,7 @@ function integer(value: unknown, field: string, min = 0): number {
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
 
-function uniqueStrings(values: unknown, field: string, limit = BROWSER_TASK_LIMITS.evidenceRefs): readonly string[] {
+function uniqueStrings(values: unknown, field: string, limit: number = BROWSER_TASK_LIMITS.evidenceRefs): readonly string[] {
   if (!Array.isArray(values)) throw new Error(`${field} invalid`)
   const items: readonly unknown[] = values
   if (
@@ -105,6 +109,34 @@ function target(value: unknown, field: string): void {
   text(page.url, `${field}.page.url`)
 }
 
+function sessionTarget(value: unknown, field: string): BrowserSessionTargetBinding {
+  const binding = exact(value, field, ['installationId', 'page', 'revision', 'boundAt', 'boundBy'])
+  target({ installationId: binding.installationId, page: binding.page }, field)
+  integer(binding.revision, `${field}.revision`, 1)
+  integer(binding.boundAt, `${field}.boundAt`)
+  if (binding.boundBy !== 'user') throw new Error(`${field}.boundBy invalid`)
+  return binding as unknown as BrowserSessionTargetBinding
+}
+
+function functionOwner(value: unknown, field: string): BrowserFunctionOwner {
+  const owner = exact(value, field, ['kind', 'installationId', 'grantEpoch', 'pluginId', 'packageId', 'pluginRunId', 'handoffId'])
+  if (owner.kind !== 'browser-installation') throw new Error(`${field}.kind invalid`)
+  for (const key of ['installationId', 'pluginId', 'packageId', 'pluginRunId', 'handoffId'] as const) text(owner[key], `${field}.${key}`)
+  integer(owner.grantEpoch, `${field}.grantEpoch`, 1)
+  return owner as unknown as BrowserFunctionOwner
+}
+
+function functionScope(value: unknown, field: string): BrowserFunctionScope {
+  const scope = exact(value, field, ['kind'], ['target', 'targetRevision'])
+  if (scope.kind === 'global' && Object.keys(scope).length === 1) return { kind: 'global' }
+  if (scope.kind === 'page' && Object.keys(scope).length === 3) {
+    target(scope.target, `${field}.target`)
+    integer(scope.targetRevision, `${field}.targetRevision`, 1)
+    return scope as unknown as BrowserFunctionScope
+  }
+  throw new Error(`${field} invalid`)
+}
+
 function sourceRef(value: unknown, field: string): BrowserTaskSourceRef {
   const ref = exact(value, field, ['kind'], ['sessionSeq', 'callId'])
   if (ref.kind === 'user' || ref.kind === 'message') {
@@ -123,7 +155,8 @@ function sourceRef(value: unknown, field: string): BrowserTaskSourceRef {
     integer(ref.sessionSeq, `${field}.sessionSeq`)
     return ref as BrowserTaskSourceRef
   }
-  if (ref.kind === 'browser-task-receipt' || ref.kind === 'browser-task-check' || ref.kind === 'browser-task-delegation') {
+  if (ref.kind === 'browser-task-receipt' || ref.kind === 'browser-task-check' || ref.kind === 'browser-task-delegation'
+    || ref.kind === 'browser-task-function-handoff') {
     if (Object.keys(ref).length !== 2) throw new Error(`${field} invalid`)
     integer(ref.sessionSeq, `${field}.sessionSeq`)
     return ref as BrowserTaskSourceRef
@@ -225,7 +258,7 @@ function validateResource(value: unknown): void {
   text(resource.id, 'resource.id')
   if (!['reserved', 'active', 'release-pending', 'released', 'vanished', 'unresolved', 'retained'].includes(String(resource.state))) throw new Error('resource state invalid')
   target(resource.target, 'resource.target')
-  if (resource.owner !== undefined && resource.owner !== 'session' && resource.owner !== 'user') throw new Error('resource owner invalid')
+  if (resource.owner !== undefined) functionOwner(resource.owner, 'resource.owner')
   if (resource.disposition !== undefined && (
     typeof resource.disposition !== 'string'
     || ![
@@ -233,14 +266,20 @@ function validateResource(value: unknown): void {
       'reconcile-observed', 'not-sent',
     ].includes(resource.disposition)
   )) throw new Error('resource disposition invalid')
-  if (resource.dispositionSource !== undefined && sourceRef(resource.dispositionSource, 'resource.dispositionSource').kind !== 'browser-task-receipt') throw new Error('resource disposition must cite receipt')
+  const dispositionSource = resource.dispositionSource === undefined ? undefined
+    : sourceRef(resource.dispositionSource, 'resource.dispositionSource')
+  if (resource.state !== 'retained' && dispositionSource !== undefined
+    && dispositionSource.kind !== 'browser-task-receipt') throw new Error('resource disposition must cite receipt')
   const final = finalResources.has(String(resource.state))
   const reconciledActive = resource.state === 'active' && resource.disposition === 'reconcile-active'
   if (final && (resource.disposition === undefined || resource.dispositionSource === undefined)) throw new Error('final resource needs disposition source')
   if (reconciledActive && resource.dispositionSource === undefined) throw new Error('reconciled active resource needs disposition source')
   if (!final && !reconciledActive && (resource.disposition !== undefined || resource.dispositionSource !== undefined)) throw new Error('unfinished resource cannot have disposition')
-  if (resource.state === 'retained') throw new Error('retained resource requires owner decision protocol')
-  if (resource.state !== 'retained' && resource.owner !== undefined) throw new Error('resource owner invalid')
+  if (resource.state === 'retained') {
+    if (resource.owner === undefined || resource.disposition !== 'owner-transfer'
+      || dispositionSource?.kind !== 'browser-task-function-handoff') throw new Error('retained resource requires exact handoff')
+  } else if (resource.owner !== undefined || resource.disposition === 'owner-transfer'
+    || dispositionSource?.kind === 'browser-task-function-handoff') throw new Error('resource owner invalid')
   if (resource.presentation !== undefined) validatePresentation(resource.presentation, 'resource.presentation', true)
 }
 
@@ -291,7 +330,7 @@ export function assertBrowserTaskSnapshot(value: unknown): BrowserTaskSnapshot {
     'id', 'revision', 'objective', 'sourceSeq', 'phase', 'blockers', 'targetLossAcknowledged',
     'acceptance', 'evidence', 'evaluations', 'attempts', 'resources', 'delegated', 'budget',
     'createdAt', 'updatedAt',
-  ], ['outcome', 'target', 'capability', 'terminationSource'])
+  ], ['outcome', 'target', 'targetRevision', 'capability', 'terminationSource', 'functionHandoff'])
   text(task.id, 'id')
   integer(task.revision, 'revision', 1)
   text(task.objective, 'objective')
@@ -303,6 +342,10 @@ export function assertBrowserTaskSnapshot(value: unknown): BrowserTaskSnapshot {
   if (task.terminationSource !== undefined && (task.phase !== 'terminal' || task.outcome !== 'cancelled')) throw new Error('termination source requires cancelled terminal task')
   if (!Array.isArray(task.blockers) || task.blockers.some((value: unknown) => typeof value !== 'string' || !blockers.has(value as BrowserTaskBlocker)) || new Set(task.blockers).size !== task.blockers.length) throw new Error('blockers invalid')
   if (task.target !== undefined) target(task.target, 'target')
+  if (task.targetRevision !== undefined) {
+    integer(task.targetRevision, 'targetRevision', 1)
+    if (task.target === undefined) throw new Error('target revision requires target')
+  }
   if (typeof task.targetLossAcknowledged !== 'boolean') throw new Error('target acknowledgement invalid')
   const acceptance = array(task.acceptance, 'acceptance')
   const evidence = array(task.evidence, 'evidence')
@@ -335,6 +378,13 @@ export function assertBrowserTaskSnapshot(value: unknown): BrowserTaskSnapshot {
   }
   attempts.forEach(validateAttempt)
   resources.forEach(validateResource)
+  if (task.functionHandoff !== undefined) {
+    const handoff = exact(task.functionHandoff, 'functionHandoff', ['owner', 'scope', 'resourceIds', 'createdBySessionId', 'source'])
+    functionOwner(handoff.owner, 'functionHandoff.owner'); functionScope(handoff.scope, 'functionHandoff.scope')
+    uniqueStrings(handoff.resourceIds, 'functionHandoff.resourceIds', BROWSER_TASK_LIMITS.resources)
+    text(handoff.createdBySessionId, 'functionHandoff.createdBySessionId')
+    if (sourceRef(handoff.source, 'functionHandoff.source').kind !== 'browser-task-function-handoff') throw new Error('functionHandoff source invalid')
+  }
   if (task.capability !== undefined) validateCapability(task.capability)
   delegated.forEach(validateDelegation)
   const budget = exact(task.budget, 'budget', ['maxSteps', 'maxActions', 'stepsUsed', 'actionsUsed'])
@@ -433,7 +483,13 @@ function requireTaskFacts(task: BrowserTaskSnapshot, facts: readonly BrowserTask
   for (const resource of task.resources) if (resource.dispositionSource !== undefined) {
     requireFact(facts, resource.dispositionSource, 'resource.dispositionSource')
     const source = resource.dispositionSource
-    if (source.kind === 'browser-task-receipt' && !facts.some((fact) => {
+    if (source.kind === 'browser-task-function-handoff') {
+      const fact = facts.find(item => item.kind === source.kind && item.sessionSeq === source.sessionSeq
+        && item.taskId === task.id)
+      if (resource.state !== 'retained' || resource.disposition !== 'owner-transfer'
+        || fact?.owner === undefined || !same(resource.owner, fact.owner)
+        || !fact.resourceIds?.includes(resource.id)) throw new Error('resource handoff fact does not match')
+    } else if (source.kind === 'browser-task-receipt' && !facts.some((fact) => {
       if (fact.kind !== 'browser-task-receipt' || fact.sessionSeq !== source.sessionSeq) return false
       if (fact.taskId !== task.id || !same(fact.target, resource.target)) return false
       if (fact.resourceId !== resource.id || fact.quiescent !== true) return false
@@ -468,6 +524,13 @@ function requireTaskFacts(task: BrowserTaskSnapshot, facts: readonly BrowserTask
       }
     })) throw new Error('resource receipt does not match')
   }
+  if (task.functionHandoff !== undefined) {
+    const source = task.functionHandoff.source
+    const fact = facts.find(item => item.kind === source.kind && item.sessionSeq === source.sessionSeq && item.taskId === task.id)
+    if (fact?.owner === undefined || !same(fact.owner, task.functionHandoff.owner)
+      || !same(fact.scope, task.functionHandoff.scope) || !same(fact.resourceIds, task.functionHandoff.resourceIds)
+      || fact.createdBySessionId !== task.functionHandoff.createdBySessionId) throw new Error('function handoff projection does not match fact')
+  }
   for (const delegation of task.delegated) {
     requireFact(facts, delegation.source, 'delegation.source')
     const source = delegation.source
@@ -494,7 +557,7 @@ function requireTaskFacts(task: BrowserTaskSnapshot, facts: readonly BrowserTask
 }
 
 function validateCreate(next: BrowserTaskSnapshot, state: BrowserTaskFoldState): void {
-  if (next.revision !== 1 || next.phase !== 'running' || next.outcome !== undefined || next.blockers.length !== 0 || next.evidence.length !== 0 || next.evaluations.length !== 0 || next.attempts.length !== 0 || next.resources.length !== 0 || next.capability !== undefined || next.delegated.length !== 0 || next.targetLossAcknowledged || next.budget.stepsUsed !== 0 || next.budget.actionsUsed !== 0) throw new Error('create baseline invalid')
+  if (next.revision !== 1 || next.phase !== 'running' || next.outcome !== undefined || next.blockers.length !== 0 || next.evidence.length !== 0 || next.evaluations.length !== 0 || next.attempts.length !== 0 || next.resources.length !== 0 || next.functionHandoff !== undefined || next.capability !== undefined || next.delegated.length !== 0 || next.targetLossAcknowledged || next.budget.stepsUsed !== 0 || next.budget.actionsUsed !== 0) throw new Error('create baseline invalid')
   if (state.recentTaskIds.includes(next.id) || next.sourceSeq <= state.lastTaskSourceSeq) throw new Error('create task identity replayed')
   const source = state.sourceFacts.find(fact => fact.kind === 'user' && fact.sessionSeq === next.sourceSeq)
   if (source === undefined) throw new Error('create source must cite earlier user message')
@@ -578,6 +641,10 @@ function resources(next: BrowserTaskSnapshot, previous: BrowserTaskSnapshot, rec
     unresolved: [], released: [], vanished: [], retained: [],
   }
   for (const item of next.resources) {
+    if (item.state === 'retained' || item.disposition === 'owner-transfer'
+      || item.dispositionSource?.kind === 'browser-task-function-handoff') {
+      throw new Error('retained resource requires function handoff operation')
+    }
     taskTarget(next, item.target)
     const before = old.get(item.id)
     if (before === undefined) {
@@ -657,6 +724,8 @@ export interface BrowserTaskFoldState {
   lastTaskSourceSeq: number
   sourceFacts: BrowserTaskSourceFact[]
   pendingDelegations: BrowserTaskDelegationCandidate[]
+  targetBinding: BrowserSessionTargetBinding | null
+  targetRevision: number
 }
 
 export const emptyBrowserTaskFoldState = (): BrowserTaskFoldState => ({
@@ -665,7 +734,20 @@ export const emptyBrowserTaskFoldState = (): BrowserTaskFoldState => ({
   lastTaskSourceSeq: -1,
   sourceFacts: [],
   pendingDelegations: [],
+  targetBinding: null,
+  targetRevision: 0,
 })
+
+export function applyBrowserTargetChange(state: BrowserTaskFoldState, change: BrowserTargetChange): void {
+  const parsed = exact(change, 'target change', ['kind', 'version', 'revision', 'binding'])
+  if (parsed.kind !== 'browser-target/change' || parsed.version !== 1) throw new Error('target change header invalid')
+  const revision = integer(parsed.revision, 'target change revision', 1)
+  if (revision !== state.targetRevision + 1) throw new Error('target change revision is not monotonic')
+  const binding = parsed.binding === null ? null : sessionTarget(parsed.binding, 'target change binding')
+  if (binding !== null && binding.revision !== revision) throw new Error('target binding revision mismatch')
+  state.targetRevision = revision
+  state.targetBinding = binding === null ? null : structuredClone(binding)
+}
 
 export function applyBrowserTaskChange(state: BrowserTaskFoldState, change: BrowserTaskChangeMeta): void {
   const next = change.task
@@ -693,6 +775,36 @@ export function applyBrowserTaskChange(state: BrowserTaskFoldState, change: Brow
         only(next, previous, 'delegation', ['delegated', 'blockers'])
         preserveCollection(previous.delegated, next.delegated, 'callId', 'delegation')
         break
+      case 'handoff-function': {
+        only(next, previous, 'handoff-function', ['resources', 'functionHandoff'])
+        const fact = [...state.sourceFacts].reverse().find(item => item.kind === 'browser-task-function-handoff'
+          && item.taskId === previous.id && item.taskRevision === previous.revision)
+        if (fact?.owner === undefined || fact.scope === undefined || fact.resourceIds === undefined
+          || fact.createdBySessionId === undefined || fact.taskId !== previous.id || fact.taskRevision !== previous.revision) {
+          throw new Error('function handoff source invalid')
+        }
+        validateFunctionHandoffAdmission(previous, {
+          kind: 'browser-task/function-handoff', version: 1, taskId: previous.id,
+          taskRevision: previous.revision, createdBySessionId: fact.createdBySessionId, owner: fact.owner,
+          scope: fact.scope, resourceIds: fact.resourceIds,
+        }, state.sourceFacts.filter(item => item.sessionSeq !== fact.sessionSeq))
+        if (next.functionHandoff === undefined || !same(next.functionHandoff, {
+          owner: fact.owner, scope: fact.scope, resourceIds: fact.resourceIds,
+          createdBySessionId: fact.createdBySessionId,
+          source: { kind: 'browser-task-function-handoff', sessionSeq: fact.sessionSeq },
+        })) throw new Error('function handoff projection invalid')
+        for (const before of previous.resources) {
+          const after = next.resources.find(item => item.id === before.id)
+          if (after === undefined) throw new Error('function handoff removed resource')
+          if (before.state === 'active') {
+            if (after.state !== 'retained' || after.disposition !== 'owner-transfer'
+              || after.dispositionSource?.kind !== 'browser-task-function-handoff'
+              || after.dispositionSource.sessionSeq !== fact.sessionSeq || !same(after.owner, fact.owner)
+              || !same(after.target, before.target)) throw new Error('function handoff transition invalid')
+          } else if (!same(after, before)) throw new Error('function handoff changed final resource')
+        }
+        break
+      }
       case 'evaluate':
         only(next, previous, 'evaluate', ['evaluations', 'phase'])
         break
@@ -777,6 +889,10 @@ function factFor(event: SessionEvent): BrowserTaskSourceFact | undefined {
   }
   if (event.type === 'browser-task/check') return { kind: 'browser-task-check', sessionSeq: event.seq, taskId: event.data.taskId, checkerId: event.data.checkerId, target: event.data.target, grantEpoch: event.data.grantEpoch, evaluations: event.data.evaluations }
   if (event.type === 'browser-task/delegation') return { kind: 'browser-task-delegation', sessionSeq: event.seq, taskId: event.data.taskId, work: event.data.work }
+  if (event.type === 'browser-task/function-handoff') return { kind: 'browser-task-function-handoff',
+    sessionSeq: event.seq, taskId: event.data.taskId, taskRevision: event.data.taskRevision,
+    createdBySessionId: event.data.createdBySessionId, owner: event.data.owner, scope: event.data.scope,
+    resourceIds: event.data.resourceIds }
   return undefined
 }
 
@@ -828,6 +944,58 @@ export function validateDelegationCandidate(value: unknown): asserts value is Br
   validateDelegation({ ...(fact.work as object), source: { kind:'browser-task-delegation',sessionSeq:0 } })
 }
 
+export function validateFunctionHandoff(value: unknown): asserts value is BrowserTaskFunctionHandoff {
+  const fact = exact(value, 'function handoff', ['kind', 'version', 'taskId', 'taskRevision', 'createdBySessionId', 'owner', 'scope', 'resourceIds'])
+  if (fact.kind !== 'browser-task/function-handoff' || fact.version !== 1) throw new Error('function handoff header invalid')
+  text(fact.taskId, 'function handoff.taskId'); integer(fact.taskRevision, 'function handoff.taskRevision', 1)
+  text(fact.createdBySessionId, 'function handoff.createdBySessionId')
+  functionOwner(fact.owner, 'function handoff.owner'); functionScope(fact.scope, 'function handoff.scope')
+  uniqueStrings(fact.resourceIds, 'function handoff.resourceIds', BROWSER_TASK_LIMITS.resources)
+}
+
+function acceptanceCurrent(task: BrowserTaskSnapshot): boolean {
+  return task.target !== undefined && task.capability?.state === 'observed'
+    && task.acceptance.every(clause => task.evaluations.some(evaluation => evaluation.clauseId === clause.id
+      && evaluation.satisfied && evaluation.evidenceIds.length > 0
+      && evaluation.evidenceIds.every(id => task.evidence.some(evidence => evidence.id === id
+        && evidence.state === 'current' && same(evidence.target, task.target)
+        && evidence.grantEpoch === task.capability?.grantEpoch))))
+}
+
+export function validateFunctionHandoffAdmission(task: BrowserTaskSnapshot, fact: BrowserTaskFunctionHandoff,
+  facts: readonly BrowserTaskSourceFact[]): void {
+  if (task.phase === 'terminal' || fact.taskId !== task.id || fact.taskRevision !== task.revision) throw new Error('function handoff task identity invalid')
+  if (facts.some(item => item.kind === 'browser-task-function-handoff' && item.taskId === task.id)) throw new Error('function handoff already exists')
+  if (task.target === undefined || task.targetRevision === undefined || task.capability?.state !== 'observed'
+    || task.capability.installationId !== task.target.installationId || task.capability.installationId !== fact.owner.installationId
+    || task.capability.grantEpoch !== fact.owner.grantEpoch || task.blockers.length > 0 || !acceptanceCurrent(task)) {
+    throw new Error('function handoff authority or acceptance invalid')
+  }
+  if (task.attempts.some(attempt => attempt.write
+    && (attempt.stage !== 'settled' || attempt.outcome === 'unknown' || attempt.quiescent !== true))) {
+    throw new Error('function handoff has unsettled write')
+  }
+  const delegated = task.delegated.filter(item => item.kind === 'cordis' && item.status === 'running'
+    && item.identity.mode === 'cordis' && item.identity.pluginId === fact.owner.pluginId
+    && item.identity.packageId === fact.owner.packageId && item.identity.pluginRunId === fact.owner.pluginRunId)
+  if (delegated.length !== 1) throw new Error('function handoff Cordis owner invalid')
+  const active = task.resources.filter(resource => resource.state === 'active')
+  const ids = [...active.map(resource => resource.id)].sort()
+  if (!same(ids, [...fact.resourceIds].sort())
+    || task.resources.some(resource => resource.state !== 'active' && !finalResources.has(resource.state))) {
+    throw new Error('function handoff resource set invalid')
+  }
+  if (fact.scope.kind === 'global') {
+    if (active.length !== 0) throw new Error('global function cannot retain page resources')
+  } else {
+    const scopeTarget = fact.scope.target
+    if (!same(scopeTarget, task.target) || fact.scope.targetRevision !== task.targetRevision
+      || active.length === 0 || active.some(resource => !same(resource.target, scopeTarget))) {
+      throw new Error('page function scope invalid')
+    }
+  }
+}
+
 function applyDelegationCandidate(state: BrowserTaskFoldState, candidate: BrowserTaskDelegationCandidate): void {
   validateDelegationCandidate(candidate)
   const origin = state.sourceFacts.find(fact => fact.kind === 'user' && fact.sessionSeq === candidate.originUserSeq)
@@ -870,6 +1038,7 @@ export function observeBrowserTaskSource(state: BrowserTaskFoldState, event: Ses
     state.current.resources.forEach((item) =>{  protect(item.dispositionSource) })
     state.current.resources.forEach((item) =>{  protect(item.presentation?.renderReceipt) })
     state.current.delegated.forEach((item) =>{  protect(item.source) })
+    protect(state.current.functionHandoff?.source)
   }
   for (const candidate of state.pendingDelegations) {
     protectedSeqs.add(candidate.originUserSeq)
@@ -887,9 +1056,18 @@ export function observeBrowserTaskSource(state: BrowserTaskFoldState, event: Ses
 }
 
 export function applyBrowserTaskEvent(state: BrowserTaskFoldState, event: SessionEvent): void {
+  if (event.type === 'browser-target/change') {
+    applyBrowserTargetChange(state, event.data)
+    return
+  }
   if (event.type === 'browser-task/receipt') validateReceipt(event.data)
   if (event.type === 'browser-task/check') validateCheck(event.data)
   if (event.type === 'browser-task/delegation') validateDelegationFact(event.data)
+  if (event.type === 'browser-task/function-handoff') {
+    validateFunctionHandoff(event.data)
+    if (state.current === undefined) throw new Error('function handoff has no task')
+    validateFunctionHandoffAdmission(state.current, event.data, state.sourceFacts)
+  }
   if (event.type === 'browser-task/delegation-candidate') {
     applyDelegationCandidate(state, event.data)
     return

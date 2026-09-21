@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId, type JsonValue } from '@deepseek-ai/dsh-session'
+import { BrowserRegionRef, type BrowserRegionRef as BrowserRegionReference } from '@changanhua/dsh-browser'
 import { createToolResultMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -16,6 +17,11 @@ import BrowserTaskService, {
 } from '../src/index.ts'
 const target={ installationId:'chrome-a',page:{ tabId:1,frameId:0,documentId:'doc-a',url:'https://example.test/a' } } as const
 async function h(){const ctx=new Context();await ctx.plugin(SessionStore);await ctx.plugin(SessionProjectionRegistry);await ctx.plugin(AgentRegistry);await ctx.plugin(SystemPrompt);await ctx.plugin(ToolRuntime);await ctx.plugin(BrowserTaskService);const session=ctx.sessions.create(SessionId(`bt-${Math.random()}`));session.append('user/message',createUserMessage({ content:[{ type:'text',text:'prove task' }],source:{ kind:'user' } }),{ surfaceOp:'append' });const agent={ id:session.id,options:{},session,ctx,status:'idle',inbox:{ append(){},remove(){return false},nextStep:[] },send(){},followup(){},steer(){},inject(){},cancel(){},runMaintenance(fn:(s:AbortSignal)=>unknown){return fn(new AbortController().signal)},whenIdle(){return Promise.resolve()} } as unknown as Agent;ctx.agents.register(agent);return{ ctx,agent,session }}
+async function providerH(){
+  const harness=await h()
+  harness.ctx.browserTasks.bindTargetByUser(harness.agent,{ expectedRevision:0,...target })
+  return harness
+}
 const create=(ctx:Context,a:Agent,seq=0)=>ctx.browserTasks.create(a,{ objective:'prove task',sourceSeq:seq,target,acceptance:[{ id:'url',kind:'url-equals',url:target.page.url }],maxSteps:3,maxActions:2 })
 const cap={ installationId:'chrome-a',state:'observed' as const,grantEpoch:1,scopes:['browser:read'],actions:['snapshot'],protocol:'v1' }
 const evidence={ id:'e1',state:'current' as const,source:{ kind:'user' as const,sessionSeq:0 },digest:'sha256:e1',target,grantEpoch:1 }
@@ -26,7 +32,7 @@ describe('browser task kernel',()=>{
     expect(browserPageMapEvidence({ regions:[{ selector:'#private',disposable:true,protected:false }] })).toBeUndefined()
     expect(browserPageMapEvidence({ regions:[{ regionRef:'11111111-1111-1111-1111-111111111111',disposable:true,protected:false }] })).toBeUndefined()
   })
-  it('replays strict complete snapshots and wire state is detached',async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap);expect(t.blockers).not.toContain('capability-drift');t=ctx.browserTasks.recordEvidence(agent,t,evidence);const check=ctx.browserTasks.recordCheck(agent,t,{ checkerId:'check-1',target,grantEpoch:1,evaluations:[{ clauseId:'url',satisfied:true,evidenceIds:['e1'] }] });t=ctx.browserTasks.evaluate(agent,t,[{ clauseId:'url',satisfied:true,evidenceIds:['e1'],checkerRef:check }]);const view=ctx.sessionProjections.stateOf(session,'browserTask')!.current!;const wire=browserTaskProjectionDefinition.wire.view({ current:view,recentTaskIds:[view.id],lastSourceSeq:1,lastTaskSourceSeq:0,sourceFacts:[{ kind:'user',sessionSeq:0 }],failure:null });if(wire!==null)Reflect.set(wire,'objective','mutated');expect(ctx.browserTasks.get(agent)!.objective).toBe('prove task');expect(foldBrowserTask(session.snapshotEvents())?.revision).toBe(t.revision)})
+  it('replays strict complete snapshots and wire state is detached',async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap);expect(t.blockers).not.toContain('capability-drift');t=ctx.browserTasks.recordEvidence(agent,t,evidence);const check=ctx.browserTasks.recordCheck(agent,t,{ checkerId:'check-1',target,grantEpoch:1,evaluations:[{ clauseId:'url',satisfied:true,evidenceIds:['e1'] }] });t=ctx.browserTasks.evaluate(agent,t,[{ clauseId:'url',satisfied:true,evidenceIds:['e1'],checkerRef:check }]);const view=ctx.sessionProjections.stateOf(session,'browserTask')!.current!;const wire=browserTaskProjectionDefinition.wire.view({ current:view,recentTaskIds:[view.id],lastSourceSeq:1,lastTaskSourceSeq:0,sourceFacts:[{ kind:'user',sessionSeq:0 }],pendingDelegations:[],failure:null });if(wire!==null)Reflect.set(wire,'objective','mutated');expect(ctx.browserTasks.get(agent)!.objective).toBe('prove task');expect(foldBrowserTask(session.snapshotEvents())?.revision).toBe(t.revision)})
   it('rejects CAS, duplicate source sequence, and invalid command before append',async()=>{const{ ctx,agent,session }=await h();const t=create(ctx,agent);const before=session.snapshotEvents().length;expect(()=>ctx.browserTasks.recordEvidence(agent,t,{ ...evidence,grantEpoch:9 })).toThrow(BrowserTaskError);expect(session.snapshotEvents()).toHaveLength(before);ctx.browserTasks.terminate(agent,t,'failed');expect(()=>create(ctx,agent,1)).toThrow(BrowserTaskError);expect(()=>ctx.browserTasks.transition(agent,t,'waiting')).toThrow(BrowserTaskError)})
   it('contains delegation observer reads after the projection has failed', async()=>{
     const { ctx, agent, session } = await h()
@@ -363,7 +369,7 @@ describe('browser task kernel',()=>{
       reason:'region_ref_not_current',failureFingerprint:'sha256:not-a-digest' })).toThrow()
     expect(session.snapshotEvents()).toHaveLength(before)
   })
-  it('accepts a checkpoint carrying a bounded browser task check fact',()=>{expect(browserTaskProjectionDefinition.stateSchema.parse({ current:null,recentTaskIds:[],lastSourceSeq:1,lastTaskSourceSeq:-1,sourceFacts:[{ kind:'browser-task-check',sessionSeq:1,taskId:'task',checkerId:'check',target,grantEpoch:1,evaluations:[] }],pendingDelegations:[],failure:null }).sourceFacts[0]?.kind).toBe('browser-task-check')})
+  it('accepts a checkpoint carrying a bounded browser task check fact',()=>{expect(browserTaskProjectionDefinition.stateSchema.parse({ current:null,recentTaskIds:[],lastSourceSeq:1,lastTaskSourceSeq:-1,sourceFacts:[{ kind:'browser-task-check',sessionSeq:1,taskId:'task',checkerId:'check',target,grantEpoch:1,evaluations:[] }],pendingDelegations:[],targetBinding:null,targetRevision:0,failure:null }).sourceFacts[0]?.kind).toBe('browser-task-check')})
   it('rejects raw user references for unknown reconciliation and final resources',async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordAttempt(agent,t,attempt({ attemptId:'a',requestId:'a',stage:'planned',write:true,target }) as never);t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:'a',requestId:'a',stage:'dispatched',write:true,target }) as never);const receipt=ctx.browserTasks.recordReceipt(agent,t,{ requestId:'a',actionKind:'click',target,outcome:'unknown',delivery:'sent',quiescent:false,grantEpoch:1 });t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:'a',requestId:'a',stage:'settled',outcome:'unknown',quiescent:false,settledBy:receipt,write:true,target }) as never);session.append('browser-task/change',{ kind:'browser-task/change',version:3,operation:'reconcile-attempt',task:{ ...t,revision:t.revision+1,updatedAt:t.updatedAt+1,attempts:[{ ...t.attempts[0],outcome:'observed',quiescent:true,settledBy:{ kind:'user',sessionSeq:0 },reconciledBy:{ kind:'user',sessionSeq:0 } }] } } as never);expect(()=>ctx.browserTasks.get(agent)).toThrow('browser task replay failed')})
   it('rejects a raw observed settlement without a matching receipt',async()=>{
     const{ ctx,agent,session }=await h();let t=create(ctx,agent)
@@ -395,7 +401,7 @@ describe('browser task kernel',()=>{
     expect(t.blockers).not.toContain('unknown-attempt')
   })
   it('governs a provider operation from admission through flushed dispatch and settlement',async()=>{
-    const{ ctx,agent }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
+    const{ ctx,agent }=await providerH();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
     let flushes=0;ctx.on('session/flush',()=>{flushes+=1})
     const operation={ requestId:'provider-operation',sessionId:agent.session.id,installationId:target.installationId,
       action:{ kind:'click' as const,element:{ page:target.page,snapshotId:'snapshot',elementId:'go' },intent:'open' } }
@@ -420,10 +426,10 @@ describe('browser task kernel',()=>{
       attempts:[{ requestId:'provider-operation',stage:'settled',outcome:'observed' }] })
   })
   it('dispatches a stronger forget-collected finalizer after the entry lease was released',async()=>{
-    const{ ctx,agent }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,{ ...cap,
+    const{ ctx,agent }=await providerH();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,{ ...cap,
       actions:['entry_mount','entry_unmount'] });ctx.on('session/flush',()=>{})
     const run=async(requestId:string,action:{ kind:'entry_mount';page:typeof target.page;mountId:string;regionSelector:string;selector:string;label:string }
-      |{ kind:'entry_unmount';page:typeof target.page;mountId:string;forgetCollected?:boolean },value:object)=>{
+      |{ kind:'entry_unmount';page:typeof target.page;mountId:string;forgetCollected?:boolean },value:JsonValue)=>{
       const operation={ requestId,sessionId:agent.session.id,installationId:target.installationId,action }
       const context={ operation,phase:'execute' as const,logicalMutates:true }
       const admitted=await ctx.agents.withInitiator(agent,()=>ctx.waterfall('browser/operation-intent',context,
@@ -458,7 +464,7 @@ describe('browser task kernel',()=>{
       ] })
   })
   it('admits an owner-fenced collection finalizer without a current-task mount lease as a budgeted write',async()=>{
-    const{ ctx,agent }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,{ ...cap,
+    const{ ctx,agent }=await providerH();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,{ ...cap,
       actions:['entry_unmount'] })
     const operation={ requestId:'late-forget',sessionId:agent.session.id,installationId:target.installationId,
       action:{ kind:'entry_unmount' as const,page:target.page,mountId:'prior-task-mount',forgetCollected:true } }
@@ -468,7 +474,7 @@ describe('browser task kernel',()=>{
       attempts:[{ requestId:'late-forget',stage:'planned',resourceId:'prior-task-mount' }] })
   })
   it('governs a direct prepared operation once across prepare and commit',async()=>{
-    const{ ctx,agent }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
+    const{ ctx,agent }=await providerH();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
     let flushes=0;ctx.on('session/flush',()=>{flushes+=1})
     const operation={ requestId:'direct-prepared',sessionId:agent.session.id,installationId:target.installationId,
       action:{ kind:'click' as const,element:{ page:target.page,snapshotId:'snapshot',elementId:'go' },intent:'open' } }
@@ -494,12 +500,12 @@ describe('browser task kernel',()=>{
       attempts:[{ requestId:'direct-prepared',stage:'settled',outcome:'observed' }] })
   })
   it('blocks exhausted and replayed writes while keeping exact cleanup free',async()=>{
-    const{ ctx,agent }=await h();let t=ctx.browserTasks.create(agent,{ objective:'bounded direct task',sourceSeq:0,target,
+    const{ ctx,agent }=await providerH();let t=ctx.browserTasks.create(agent,{ objective:'bounded direct task',sourceSeq:0,target,
       acceptance:[{ id:'url',kind:'url-equals',url:target.page.url }],maxSteps:2,maxActions:1 })
     t=ctx.browserTasks.recordCapability(agent,t,cap);ctx.on('session/flush',()=>{})
     const renderOperation={ requestId:'bounded-render',sessionId:agent.session.id,installationId:target.installationId,
       action:{ kind:'region_render' as const,page:target.page,mountId:'bounded-panel',
-        regionRef:'11111111-1111-4111-8111-111111111111',presentation:{ summary:'bounded' } } }
+        regionRef:BrowserRegionRef('11111111-1111-4111-8111-111111111111'),presentation:{ summary:'bounded' } } }
     const renderContext={ operation:renderOperation,phase:'execute' as const,logicalMutates:true }
     expect(await ctx.agents.withInitiator(agent,()=>ctx.waterfall('browser/operation-intent',renderContext,
       ()=>({ kind:'allow' as const })))).toEqual({ kind:'allow' })
@@ -530,7 +536,7 @@ describe('browser task kernel',()=>{
     expect(ctx.browserTasks.get(agent)).toMatchObject({ budget:{ actionsUsed:1 },resources:[{ id:'bounded-panel',state:'release-pending' }] })
   })
   it('drops process-local provider ownership when its Agent is disposed',async()=>{
-    const{ ctx,agent }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
+    const{ ctx,agent }=await providerH();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
     const operation={ requestId:'dispose-owned',sessionId:agent.session.id,installationId:target.installationId,
       action:{ kind:'click' as const,element:{ page:target.page,snapshotId:'snapshot',elementId:'go' },intent:'open' } }
     expect(await ctx.agents.withInitiator(agent,()=>ctx.waterfall('browser/operation-intent',{
@@ -541,10 +547,10 @@ describe('browser task kernel',()=>{
     expect(owned.size).toBe(0)
   })
   it('applies deterministic recovery and page-map evidence to direct provider calls',async()=>{
-    const{ ctx,agent }=await h();let t=ctx.browserTasks.create(agent,{ objective:'prove task',sourceSeq:0,target,
+    const{ ctx,agent }=await providerH();let t=ctx.browserTasks.create(agent,{ objective:'prove task',sourceSeq:0,target,
       acceptance:[{ id:'url',kind:'url-equals',url:target.page.url }],maxSteps:3,maxActions:4 })
     t=ctx.browserTasks.recordCapability(agent,t,cap)
-    const invoke=async(requestId:string,action:{ kind:'region_render';page:typeof target.page;mountId:string;regionRef:string;presentation:{ summary:string } }|{ kind:'page_map';page:typeof target.page },result:{ outcome:'observed'|'failed';delivery:'sent'|'not-sent';reason?:string;value?:object })=>{
+    const invoke=async(requestId:string,action:{ kind:'region_render';page:typeof target.page;mountId:string;regionRef:BrowserRegionReference;presentation:{ summary:string } }|{ kind:'page_map';page:typeof target.page },result:{ outcome:'observed'|'failed';delivery:'sent'|'not-sent';reason?:string;value?:JsonValue })=>{
       const operation={ requestId,sessionId:agent.session.id,installationId:target.installationId,action }
       const context={ operation,phase:'execute' as const,logicalMutates:action.kind==='region_render' }
       const decision=await ctx.agents.withInitiator(agent,()=>ctx.waterfall('browser/operation-intent',context,()=>({ kind:'allow' as const })))
@@ -554,7 +560,7 @@ describe('browser task kernel',()=>{
       } }))
       return decision
     }
-    const render={ kind:'region_render' as const,page:target.page,mountId:'panel',regionRef:'11111111-1111-4111-8111-111111111111',presentation:{ summary:'result' } }
+    const render={ kind:'region_render' as const,page:target.page,mountId:'panel',regionRef:BrowserRegionRef('11111111-1111-4111-8111-111111111111'),presentation:{ summary:'result' } }
     await invoke('direct-failure',render,{ outcome:'failed',delivery:'not-sent',reason:'region_ref_not_current' })
     expect(ctx.browserTasks.get(agent)).toMatchObject({ phase:'waiting',blockers:['repeated-error'] })
     expect(await invoke('same-target',{ ...render,mountId:'renamed' },{ outcome:'observed',delivery:'sent',value:{ rendered:1 } }))
@@ -562,12 +568,12 @@ describe('browser task kernel',()=>{
     await invoke('direct-page-map',{ kind:'page_map',page:target.page },{ outcome:'observed',delivery:'sent',
       value:{ page:target.page,regions:[{ regionRef:'22222222-2222-4222-8222-222222222222',disposable:true,protected:false }] } })
     expect(ctx.browserTasks.get(agent)?.evidence.at(-1)).toMatchObject({ pageMap:{ regions:[{ regionRef:'22222222-2222-4222-8222-222222222222',disposable:true,protected:false }] } })
-    expect(await invoke('recovered-target',{ ...render,mountId:'renamed',regionRef:'22222222-2222-4222-8222-222222222222' },{ outcome:'observed',delivery:'sent',value:{ rendered:1 } }))
+    expect(await invoke('recovered-target',{ ...render,mountId:'renamed',regionRef:BrowserRegionRef('22222222-2222-4222-8222-222222222222') },{ outcome:'observed',delivery:'sent',value:{ rendered:1 } }))
       .toEqual({ kind:'allow' })
     expect(ctx.browserTasks.get(agent)).toMatchObject({ phase:'running',blockers:[] })
   })
   it('denies a write when no durability listener can persist its dispatch intent',async()=>{
-    const{ ctx,agent }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
+    const{ ctx,agent }=await providerH();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
     const operation={ requestId:'unpersisted-operation',sessionId:agent.session.id,installationId:target.installationId,
       action:{ kind:'click' as const,element:{ page:target.page,snapshotId:'snapshot',elementId:'go' },intent:'open' } }
     const operationContext={ operation,phase:'execute' as const,logicalMutates:true }
@@ -584,7 +590,7 @@ describe('browser task kernel',()=>{
       attempts:[{ requestId:'unpersisted-operation',stage:'settled',outcome:'failed' }] })
   })
   it('rejects a changed grant epoch as not-sent capability drift before dispatch intent',async()=>{
-    const{ ctx,agent }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
+    const{ ctx,agent }=await providerH();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
     const operation={ requestId:'stale-epoch-operation',sessionId:agent.session.id,installationId:target.installationId,
       action:{ kind:'click' as const,element:{ page:target.page,snapshotId:'snapshot',elementId:'go' },intent:'open' } }
     const operationContext={ operation,phase:'execute' as const,logicalMutates:true }
@@ -603,9 +609,9 @@ describe('browser task kernel',()=>{
       attempts:[{ requestId:'stale-epoch-operation',stage:'settled',outcome:'failed' }] })
   })
   it('owns and releases a page resource created through the provider execution policy',async()=>{
-    const{ ctx,agent }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
+    const{ ctx,agent }=await providerH();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap)
     ctx.on('session/flush',()=>{})
-    const run=async(requestId:string,action:{ kind:'region_render';page:typeof target.page;mountId:string;regionRef:string;presentation:{ summary:string } }|{ kind:'region_clear';page:typeof target.page;mountId:string },value:object)=>{
+    const run=async(requestId:string,action:{ kind:'region_render';page:typeof target.page;mountId:string;regionRef:BrowserRegionReference;presentation:{ summary:string } }|{ kind:'region_clear';page:typeof target.page;mountId:string },value:JsonValue)=>{
       const operation={ requestId,sessionId:agent.session.id,installationId:target.installationId,action }
       const context={ operation,phase:'execute' as const,logicalMutates:true }
       expect(await ctx.agents.withInitiator(agent,()=>ctx.waterfall('browser/operation-intent',context,()=>({ kind:'allow' as const })))).toEqual({ kind:'allow' })
@@ -614,18 +620,18 @@ describe('browser task kernel',()=>{
         requestId,sessionId:agent.session.id,installationId:target.installationId,outcome:'observed',delivery:'sent',value,
       } }))
     }
-    await run('render',{ kind:'region_render',page:target.page,mountId:'panel',regionRef:'11111111-1111-4111-8111-111111111111',presentation:{ summary:'result' } },{ rendered:1 })
+    await run('render',{ kind:'region_render',page:target.page,mountId:'panel',regionRef:BrowserRegionRef('11111111-1111-4111-8111-111111111111'),presentation:{ summary:'result' } },{ rendered:1 })
     expect(ctx.browserTasks.get(agent)?.resources).toMatchObject([{ id:'panel',state:'active' }])
     await run('clear',{ kind:'region_clear',page:target.page,mountId:'panel' },{ cleared:true })
     expect(ctx.browserTasks.get(agent)?.resources).toMatchObject([{ id:'panel',state:'released',disposition:'clear-observed' }])
   })
   it('binds provider-rendered presentation intent to its exact receipt',async()=>{
-    const{ ctx,agent }=await h()
+    const{ ctx,agent }=await providerH()
     let t=ctx.browserTasks.create(agent,{ objective:'show result',sourceSeq:0,target,
       acceptance:[{ id:'region',kind:'region-content',resourceId:'panel',text:'result' }],maxSteps:3,maxActions:2 })
     t=ctx.browserTasks.recordCapability(agent,t,cap);ctx.on('session/flush',()=>{})
     const operation={ requestId:'presentation-render',sessionId:agent.session.id,installationId:target.installationId,
-      action:{ kind:'region_render' as const,page:target.page,mountId:'panel',regionRef:'11111111-1111-4111-8111-111111111111',presentation:{ summary:'result' } } }
+      action:{ kind:'region_render' as const,page:target.page,mountId:'panel',regionRef:BrowserRegionRef('11111111-1111-4111-8111-111111111111'),presentation:{ summary:'result' } } }
     const context={ operation,phase:'execute' as const,logicalMutates:true }
     await ctx.agents.withInitiator(agent,()=>ctx.waterfall('browser/operation-intent',context,()=>({ kind:'allow' as const })))
     await ctx.agents.withInitiator(agent,()=>ctx.waterfall('browser/dispatch-intent',{ ...context,transportRequestId:operation.requestId,

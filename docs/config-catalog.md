@@ -67,7 +67,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/browser/browser-extension/src/index.ts:31`](../packages/browser/browser-extension/src/index.ts)
+Source: [`packages/browser/browser-extension/src/index.ts:34`](../packages/browser/browser-extension/src/index.ts)
 
 <a id="changanhuadsh-browser-monitor"></a>
 
@@ -918,6 +918,8 @@ Requires: `credentials`
 ```ts config-catalog
 /** Browser authentication, request limits, and connection recovery configuration. */
 export interface ConnectionConfig {
+  /** Require the process launch token and browser-session cookie. @default true */
+  browserAuth?: boolean
   /** Browser recovery timing, injected into each served page. */
   recovery?: ConnectionRecoveryConfig
   /**
@@ -1088,7 +1090,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/extensions/cordis-host-runner/src/index.ts:89`](../packages/extensions/cordis-host-runner/src/index.ts)
+Source: [`packages/extensions/cordis-host-runner/src/index.ts:94`](../packages/extensions/cordis-host-runner/src/index.ts)
 
 <a id="deepseek-aidsh-credentials-local"></a>
 
@@ -3226,7 +3228,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/core/system-prompt/src/index.ts:242`](../packages/core/system-prompt/src/index.ts)
+Source: [`packages/core/system-prompt/src/index.ts:243`](../packages/core/system-prompt/src/index.ts)
 
 <a id="deepseek-aidsh-terminal-bash"></a>
 
@@ -4063,7 +4065,7 @@ Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
 
-- `@changanhua/dsh-browser-task` — requires `agents` · `sessions` · `sessionProjections` · `tools` ([`packages/browser/browser-task/src/index.ts`](../packages/browser/browser-task/src/index.ts))
+- `@changanhua/dsh-browser-task` — requires `agents` · `sessions` · `sessionProjections` · `systemPrompt` · `tools` ([`packages/browser/browser-task/src/index.ts`](../packages/browser/browser-task/src/index.ts))
 - `@changanhua/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
 - `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
 - `@changanhua/dsh-client-ui-content` ([`packages/client/ui-content/src/index.ts`](../packages/client/ui-content/src/index.ts))

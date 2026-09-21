@@ -37,7 +37,7 @@ kind: "package-reference"
 
 `page_map` 会记录按 Session、安装、epoch 和精确页面身份索引的最多 64 个短时页面区域。原始 selector 进入保留状态、BrowserTask evidence、Dynamic Cordis 或模型工具之前，Host 会把它们全部替换为不透明 `regionRef`；公开 action 与 status 结果还会递归移除 selector 和编译后的 block。新地图会让旧引用失效。这适用于页面地图展示，不适用于独立的、由 provider 验证 selector 输入的条目适配。`region_render` 接受一个引用和有界高层展示；provider 解析私有 selector，编译确定性的纯数据 block，并且仅在引用指向 disposable 且非 protected 的区域时允许 replace。重启后的 Host 绝不会从旧页面地图 journal 回执重建引用。Host 在派发前预留区域容量，并在 unknown 结果时保留该预留，因此并发调用不能超量占用页面。只有 worker 观察到 `cleared:true`，或证明精确挂载已经不存在时，`region_clear` 才能确认释放；已发送的 `document_replaced` 记录消失资源，`target_url_stale` 则保持未解决。每次 render 或 mount 都会推进 Host registration generation，因此保留的晚到回执不能删除后来复用同一 ID 的资源。内部快照展示查询只有在匹配的运行时自有面板仍真实存在时才返回肯定事实，不会把页面其他位置的同文当作证据。
 
-具有 `session:interact` 时，经认证 peer 会获得严格的 `SessionController` facade，用于列出、创建、提示、取消、读取页面和附件，以及一个受控 follow stream。它校验每个 RPC 请求，串行替换 follow，将并发 Session 请求限制为 `maxSessionRequests`（默认 `4`，范围 `1`–`8`），并保留既有 16 MiB WebSocket frame 上限。提供方将 `sessionController` 作为注入的 peer dependency。
+具有 `session:interact` 时，经认证 peer 会获得严格的 `SessionController` facade，用于列出、创建、提示、取消、读取页面和附件、读取 Host 模型目录、选择一个 Session 模型，以及受控 follow streams。`session.modelCatalog` 只接受空对象；`session.selectModel` 接受一个 Session id，以及由 Host 校验并持久化的提供方、模型与可选推理强度；扩展只保留内存态展示目录，成功选择从下一条请求生效，不改变正在生成的请求。Host 组合了 `ctx.commands` 时，同一 facade 会解析指定 Session 的 Agent 并直接执行已校验的斜杠命令行；命令结果无需模型往返便返回扩展，缺失的命令仍是未匹配结果，assistant 可以把它作为普通文本提交。连接释放会取消正在执行的请求，且绝不重放。facade 校验每个 RPC 请求，串行替换 follow，将并发 Session 请求限制为 `maxSessionRequests`（默认 `4`，范围 `1`–`8`），并保留既有 16 MiB WebSocket frame 上限。提供方将 `sessionController` 作为注入的 peer dependency，并仅在可用时消费 `commands`。
 
 提供方仅接受其协议已实现的 actions。Puppeteer 是 `click`、`fill`、`submit`、`double_click`、`right_click`、`hover`、`press`、`select`、`check`、`drag`、`upload`、导航、标签、截图、滚动和等待动作的默认执行器。DOM 兼容执行器仅支持 `click`、`fill`、`submit`、`navigate`、`scroll` 和 `wait`，并拒绝新动作类型。它不安装或配置 Chrome 扩展，服务定义本身也不挂载这些路由。源配置由 [BrowserExtension.Config](src/index.ts) 定义；生成的[配置目录](../../../docs/config-catalog.zh.md)是穷尽参考。
 
@@ -88,7 +88,7 @@ kind: "package-reference"
 ## 已知限制与后续工作
 
 - 真实登录站点与真实模型的验收取决于部署配置。
-- 标准 Agent preset 已组合浏览器工具；此提供方不选择模型，也不登录网站。
+- 标准 Agent preset 已组合浏览器工具；此提供方暴露 Host 所有的 Session 模型选择，但不定义模型或推理强度可用性，也不登录网站。
 - 提供方报告执行器能力、传输和本地页面事实；会话持久的任务验收与业务完成属于 browser-task 消费方。
 - 监控不消费浏览器 worker 或 Session stream 结果。
 - 思源集成、观察和全局键处理不消费浏览器 worker 或 Session stream 结果。

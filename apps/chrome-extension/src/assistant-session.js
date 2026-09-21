@@ -1,4 +1,5 @@
 import { normalizeBaseUrl } from './pending.js'
+import { createAssistantLive } from './assistant-live.js'
 
 const KEY = 'dsh.assistant.session.v1'
 const clone = value => structuredClone(value)
@@ -32,7 +33,7 @@ const acceptedBy = (records, requestId) => records.some(record => {
 })
 
 /** Persistent intake identity; conversation records remain a bounded memory view of the Host log. */
-export const createAssistantSession = ({ storage, call, getConnection, changed = () => {} }) => {
+export const createAssistantSession = ({ storage, call, getConnection, changed = () => {}, storageKey = KEY }) => {
   let durable = { version: 1, binding: null, pending: null, pendingCreate: null }
   let view = { records: [], header: null, cursor: -1, hasMore: false, truncated: false, phase: 'idle', error: null, modelSelection: null }
   let initialized = false
@@ -42,21 +43,24 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
   let stream = null
   let lane = Promise.resolve()
   let eventBytes = 0
+  const assistantLive = createAssistantLive()
   const sending = new Map()
-  const read = () => clone({ ...durable, ...view, streamId: stream?.id ?? null })
+  const unfollows = new Set()
+  const read = () => clone({ ...durable, ...view, streamId: stream?.id ?? null, assistantLive: assistantLive.read() })
   const emit = () => { try { Promise.resolve(changed(read())).catch(() => {}) } catch { /* observations cannot reopen a target */ } }
   const open = () => { if (invalid) throw failure('storage_invalid'); if (closed) throw failure('disposed') }
   const initialize = async () => {
     open()
     if (initialized) return
     let saved
-    try { saved = (await storage.get(KEY))[KEY] } catch (cause) { invalid = true; throw failure('storage_failed', cause) }
+    try { saved = (await storage.get(storageKey))[storageKey] } catch (cause) { invalid = true; throw failure('storage_failed', cause) }
     if (saved !== undefined) {
       const pending = saved?.pending, creation = saved?.pendingCreate
       if (saved?.version !== 1 || bytes(saved) > 6 * 1024 * 1024
         || saved.binding !== null && !targetValid(saved.binding)
         || pending !== null && (!targetValid(pending) || !sameBinding(pending, saved.binding) || !uuid(pending.requestId)
           || !contentValid(pending.content) || !['queue', 'steer'].includes(pending.mode)
+          || pending.expectedTargetRevision !== undefined && (!Number.isSafeInteger(pending.expectedTargetRevision) || pending.expectedTargetRevision < 0)
           || !['sending', 'unknown', 'accepted', 'draft', 'failed'].includes(pending.status)
           || typeof pending.clientTimeZone !== 'string' || pending.clientTimeZone.length > 128)
         || creation !== null && (!targetValid(creation) || !sameBinding(creation, saved.binding)
@@ -76,7 +80,7 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
   }
   const save = async next => {
     if (bytes(next) > 6 * 1024 * 1024) throw failure('storage_limit')
-    try { await storage.set({ [KEY]: clone(next) }) }
+    try { await storage.set({ [storageKey]: clone(next) }) }
     catch (cause) { invalid = true; view.phase = 'invalid'; view.error = { code: 'storage_failed' }; emit(); throw failure('storage_failed', cause) }
     durable = clone(next)
   }
@@ -88,8 +92,19 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
     if (binding && !sameTarget(binding, target(connection))) throw failure('target_changed')
     return connection
   }
-  const resetStream = () => { generation += 1; stream = null }
-  const clearRecords = () => { view = { ...view, records: [], header: null, cursor: -1, hasMore: false, truncated: false, modelSelection: null } }
+  const resetStream = () => {
+    const streamId = stream?.id
+    generation += 1; stream = null
+    if (streamId) {
+      const retiring = Promise.resolve(call('session.unfollow', { streamId })).catch(() => {})
+        .finally(() => { unfollows.delete(retiring) })
+      unfollows.add(retiring)
+    }
+  }
+  const clearRecords = () => {
+    assistantLive.replace({ revision: 0 })
+    view = { ...view, records: [], header: null, cursor: -1, hasMore: false, truncated: false, modelSelection: null }
+  }
   const follow = async () => {
     const candidate = await transaction(() => {
       ready()
@@ -101,7 +116,7 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
     if (!candidate) return
     try {
       const result = await call('session.follow', { streamId: candidate.id,
-        request: { address: { kind: 'session', sessionId: candidate.binding.sessionId }, maxMessages: 50 } })
+        request: { address: { kind: 'session', sessionId: candidate.binding.sessionId }, maxMessages: 50, assistantStream: true } })
       if (stream !== candidate || generation !== candidate.generation) return
       if (result?.streamId !== candidate.id) throw failure('invalid_stream')
     } catch (cause) {
@@ -148,7 +163,8 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
       const epoch = generation
       try {
         ready(prepared)
-        const result = await call('session.create', { sessionId: prepared.sessionId, ...(prepared.cwd === undefined ? {} : { cwd: prepared.cwd }) })
+        const result = await call('session.create', { sessionId: prepared.sessionId, agentPreset: 'browser-assistant',
+          ...(prepared.cwd === undefined ? {} : { cwd: prepared.cwd }) })
         if (result?.sessionId !== prepared.sessionId) throw failure('invalid_response')
         await transaction(async () => {
           if (durable.pendingCreate?.sessionId !== prepared.sessionId) return
@@ -163,6 +179,46 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
       }
     })
   }
+  const models = async () => {
+    await transaction(() => { ready() })
+    return clone(await call('session.modelCatalog', {}))
+  }
+  const selectModel = async (selection, expectedSessionId) => {
+    const requested = clone(selection)
+    if (!requested || typeof requested !== 'object'
+      || !id(requested.provider) || !id(requested.model)
+      || requested.reasoningEffort !== undefined && (!id(requested.reasoningEffort) || requested.reasoningEffort.length > 128)
+      || Object.keys(requested).some(key => !['provider', 'model', 'reasoningEffort'].includes(key))
+      || expectedSessionId !== null && !id(expectedSessionId)) throw failure('invalid_model_selection')
+    let selectedSessionId = await transaction(() => {
+      ready()
+      const current = durable.binding?.sessionId ?? null
+      if (current !== expectedSessionId) throw failure('session_changed')
+      return current
+    })
+    if (selectedSessionId === null) {
+      const created = await create()
+      selectedSessionId = created.binding?.sessionId ?? null
+    }
+    if (selectedSessionId === null) throw failure('invalid_response')
+    await transaction(() => {
+      ready()
+      if (durable.binding?.sessionId !== selectedSessionId) throw failure('session_changed')
+    })
+    const result = await call('session.selectModel', { sessionId: selectedSessionId, ...requested })
+    const selected = result?.selected
+    if (!selected || !id(selected.provider) || !id(selected.model)
+      || selected.reasoningEffort !== undefined && (!id(selected.reasoningEffort) || selected.reasoningEffort.length > 128)) {
+      throw failure('invalid_response')
+    }
+    await transaction(() => {
+      if (durable.binding?.sessionId !== selectedSessionId) throw failure('session_changed')
+      view.modelSelection = { lastUsed: view.modelSelection?.lastUsed ?? null, next: clone(selected) }
+      view.error = null
+      emit()
+    })
+    return clone(selected)
+  }
   const deliver = pending => runOnce(pending.requestId, async () => {
     const epoch = generation
     let issued = false
@@ -171,7 +227,8 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
       if (!sameBinding(pending, durable.binding)) throw failure('target_changed')
       issued = true
       const result = await call('session.prompt', { requestId: pending.requestId, sessionId: pending.sessionId,
-        mode: pending.mode, content: clone(pending.content), clientTimeZone: pending.clientTimeZone })
+        mode: pending.mode, content: clone(pending.content), clientTimeZone: pending.clientTimeZone,
+        ...(pending.expectedTargetRevision === undefined ? {} : { expectedTargetRevision: pending.expectedTargetRevision }) })
       if (result?.accepted !== true) throw failure('invalid_response')
       await transaction(async () => {
         if (durable.pending?.requestId !== pending.requestId) return
@@ -194,14 +251,39 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
   const submit = async input => {
     const request = clone(input)
     if (!contentValid(request.content) || !['queue', 'steer'].includes(request.mode ?? 'queue')) throw failure('invalid_content')
-    const needsSession = await transaction(() => { ready(); return durable.binding === null })
-    if (needsSession) await create()
+    const commandLine = (request.mode ?? 'queue') === 'queue' && request.content.length === 1
+      && request.content[0]?.type === 'text' && request.content[0].text.trim().startsWith('/')
+      ? request.content[0].text.trim() : null
+    const checksSession = Object.prototype.hasOwnProperty.call(request, 'expectedSessionId')
+    if (checksSession && request.expectedSessionId !== null && !id(request.expectedSessionId)) throw failure('invalid_session')
+    if (request.expectedTargetRevision !== undefined
+      && (!Number.isSafeInteger(request.expectedTargetRevision) || request.expectedTargetRevision < 0)) throw failure('invalid_target_revision')
+    let admittedSessionId = await transaction(() => {
+      ready()
+      const current = durable.binding?.sessionId ?? null
+      if (checksSession && request.expectedSessionId !== current) throw failure('session_changed')
+      return current
+    })
+    if (admittedSessionId === null) {
+      const created = await create()
+      admittedSessionId = created.binding?.sessionId ?? null
+    }
+    if (commandLine !== null) {
+      await transaction(() => {
+        ready()
+        if (!durable.binding || durable.binding.sessionId !== admittedSessionId) throw failure('session_changed')
+        if (durable.pendingCreate || durable.pending && durable.pending.status !== 'accepted') throw failure('pending_exists')
+      })
+      const command = await call('commands.execute', { sessionId: admittedSessionId, line: commandLine })
+      if (command !== undefined) return { accepted: true, command }
+    }
     const prepared = await transaction(async () => {
       ready()
-      if (!durable.binding) throw failure('no_session')
+      if (!durable.binding || durable.binding.sessionId !== admittedSessionId) throw failure('session_changed')
       if (durable.pendingCreate || durable.pending && durable.pending.status !== 'accepted') throw failure('pending_exists')
       const prepared = { ...durable.binding, requestId: crypto.randomUUID(), content: request.content,
-        mode: request.mode ?? 'queue', clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, status: 'sending' }
+        mode: request.mode ?? 'queue', clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, status: 'sending',
+        ...(request.expectedTargetRevision === undefined ? {} : { expectedTargetRevision: request.expectedTargetRevision }) }
       await save({ ...durable, pending: prepared }); emit()
       return clone(prepared)
     })
@@ -238,6 +320,7 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
       view.phase = 'error'; view.error = { code: 'stream_too_large' }; resetStream(); emit(); return Promise.resolve()
     }
     eventBytes += size
+    let rebaseline = false
     return transaction(async () => {
       if (stream !== candidate || generation !== candidate.generation || !sameBinding(durable.binding, candidate.binding)) return
       if (frame.error) { view.phase = 'error'; view.error = errorView(frame.error); emit(); return }
@@ -245,7 +328,11 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
       let records
       if (event?.type === 'snapshot') {
         if (candidate.snapshotSeen || event.header?.id !== candidate.binding.sessionId || !Number.isSafeInteger(event.cursor)
-          || event.cursor < -1 || !Array.isArray(event.records) || event.records.some(record => !['event', 'chunks'].includes(record?.type) || !record.event)) {
+          || event.cursor < -1 || !Array.isArray(event.records) || event.records.some(record => !['event', 'chunks'].includes(record?.type) || !record.event)
+          || !event.assistantStream) {
+          view.phase = 'error'; view.error = { code: 'invalid_snapshot' }; emit(); return
+        }
+        try { assistantLive.replace(event.assistantStream) } catch {
           view.phase = 'error'; view.error = { code: 'invalid_snapshot' }; emit(); return
         }
         candidate.snapshotSeen = true
@@ -256,7 +343,9 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
         if (!candidate.snapshotSeen) return
         const seq = event.event?.seq
         if (!Number.isSafeInteger(seq) || seq <= view.cursor) return
-        if (seq !== view.cursor + 1) { view.phase = 'error'; view.error = { code: 'stream_gap' }; resetStream(); emit(); return }
+        if (seq !== view.cursor + 1) {
+          view.phase = 'error'; view.error = { code: 'stream_gap' }; resetStream(); rebaseline = true; emit(); return
+        }
         records = [clone(event)]; view.records = trim([...view.records, ...records]); view.cursor = seq
         if (event.event.type === 'model/selection') {
           view.modelSelection = { lastUsed: view.modelSelection?.lastUsed ?? null, next: clone(event.event.data) }
@@ -269,10 +358,17 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
           const pending = previous?.next && !equal(previous.next, previous.lastUsed) && !equal(previous.next, used) ? previous.next : null
           view.modelSelection = { lastUsed: used, next: pending ?? used }
         }
+      } else if (event?.type === 'assistant-stream') {
+        if (!candidate.snapshotSeen) return
+        const decision = assistantLive.accept(event.frame)
+        if (decision === 'rebaseline') {
+          view.phase = 'error'; view.error = { code: 'stream_gap' }; resetStream(); rebaseline = true; emit(); return
+        }
+        emit(); return
       } else return
       if (durable.pending && acceptedBy(records, durable.pending.requestId)) await save({ ...durable, pending: null })
       emit()
-    }).finally(() => { eventBytes -= size })
+    }).then(() => rebaseline ? follow() : undefined).finally(() => { eventBytes -= size })
   }
   const connectionChanged = async connection => {
     resetStream()
@@ -285,6 +381,6 @@ export const createAssistantSession = ({ storage, call, getConnection, changed =
       && sameTarget(durable.binding, target(connection))) await follow()
   }
   const restore = async () => { await transaction(() => { emit() }); return read() }
-  const dispose = async () => { closed = true; resetStream(); await lane }
-  return { read, restore, bind, create, submit, retry, discardDraft, stop, onEvent, connectionChanged, dispose }
+  const dispose = async () => { closed = true; resetStream(); await lane; await Promise.all([...unfollows]) }
+  return { read, restore, bind, create, models, selectModel, submit, retry, discardDraft, stop, onEvent, connectionChanged, dispose }
 }

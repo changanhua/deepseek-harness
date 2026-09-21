@@ -16,6 +16,135 @@ export type CordisDynamicPackageId = Branded<'CordisDynamicPackageId'>
 /** Identity of one successful activation attempt. */
 export type CordisDynamicPluginRunId = Branded<'CordisDynamicPluginRunId'>
 
+/** Authenticated personal browser installation that owns a delivered function. */
+export interface DynamicCordisInstallationOwner {
+  readonly installationId: string
+  readonly grantEpoch: number
+}
+
+/** Exact browser-side resource which remains the delivered function's cleanup responsibility. */
+export interface DynamicCordisBrowserResource {
+  readonly kind: 'entry_mount' | 'region_render'
+  readonly sessionId: SessionId
+  readonly installationId: string
+  readonly page: { readonly tabId: number; readonly frameId: number; readonly documentId: string; readonly url: string }
+  readonly mountId: string
+}
+
+/** Delivery scope selected by the user; page functions retain one exact target revision. */
+export type DynamicCordisFunctionScope =
+  | { readonly kind: 'global' }
+  | {
+    readonly kind: 'page'
+    readonly target: { readonly tabId: number; readonly frameId: number; readonly documentId: string; readonly url: string }
+    readonly targetRevision: number
+  }
+
+/** Trusted request to promote one exact running Plugin into an authenticated installation. */
+export interface DynamicCordisFunctionHandoffRequest extends DynamicCordisInstallationOwner {
+  /** Host/tool bridge minted identity for this exact BrowserTask handoff. */
+  readonly handoffId: string
+  readonly pluginId: CordisDynamicPluginId
+  readonly packageId: CordisDynamicPackageId
+  readonly pluginRunId: CordisDynamicPluginRunId
+  readonly scope: DynamicCordisFunctionScope
+}
+
+/** Exact fact which BrowserTask persists before the runner changes its lifecycle owner. */
+export interface DynamicCordisFunctionHandoff {
+  /** Exact BrowserTask handoff identity, retained unchanged by the runner. */
+  readonly handoffId: string
+  readonly pluginId: CordisDynamicPluginId
+  readonly packageId: CordisDynamicPackageId
+  readonly pluginRunId: CordisDynamicPluginRunId
+  readonly createdBySessionId: SessionId
+  readonly owner: DynamicCordisInstallationOwner
+  readonly scope: DynamicCordisFunctionScope
+  readonly browserResources: readonly DynamicCordisBrowserResource[]
+}
+
+/** Synchronous handoff outcome; callback failure never changes the owner. */
+export type DynamicCordisFunctionHandoffReceipt =
+  | { readonly ok: true; readonly handoff: DynamicCordisFunctionHandoff }
+  | {
+    readonly ok: false
+    readonly reason: 'plugin-missing' | 'not-running' | 'handoff-not-ready' | 'persist-failed'
+    readonly message: string
+  }
+
+/** Authenticated request to run one delivered function without exposing its owner to the caller. */
+export interface DynamicCordisFunctionRunRequest {
+  readonly requestId: string
+  readonly pluginId: CordisDynamicPluginId
+  readonly expectedPackageId: CordisDynamicPackageId
+  /** The active run observed by the caller, omitted when restarting a stopped function. */
+  readonly expectedPluginRunId?: CordisDynamicPluginRunId
+  /** Required for page functions and forbidden for global functions. */
+  readonly expectedTargetRevision?: number
+}
+
+/** Compare-and-swap fence for stopping a delivered function. */
+export interface DynamicCordisFunctionStopRequest {
+  readonly pluginId: CordisDynamicPluginId
+  readonly expectedPackageId: CordisDynamicPackageId
+  readonly expectedPluginRunId?: CordisDynamicPluginRunId
+}
+
+/** A function command is never retried as a fresh side effect for the same request id. */
+export type DynamicCordisFunctionCommandReceipt = DynamicCordisRunResponse | {
+  readonly ok: false
+  readonly reason: 'request-conflict' | 'function-changed' | 'target-changed' | 'busy'
+  readonly message: string
+}
+
+/** Authenticated request to prepare one natural-language function edit. */
+export interface DynamicCordisFunctionEditRequest extends DynamicCordisFunctionRunRequest {
+  readonly instruction: string
+}
+
+/** Prepared edits are deliberately inert until a source-bound Session admission can activate them. */
+export type DynamicCordisPreparedEditReceipt =
+  | { readonly ok: true; readonly requestId: string; readonly pluginId: CordisDynamicPluginId; readonly state: 'prepared' }
+  | { readonly ok: false; readonly reason: 'request-conflict' | 'function-changed' | 'target-changed' | 'busy'; readonly message: string }
+
+/** Owner-scoped progress for one previously admitted function command. */
+export type DynamicCordisFunctionCommandStatus =
+  | { readonly status: 'missing' }
+  | { readonly kind: 'run'; readonly status: 'pending'; readonly pluginId: CordisDynamicPluginId }
+  | {
+    readonly kind: 'run'
+    readonly status: 'settled'
+    readonly pluginId: CordisDynamicPluginId
+    readonly receipt: DynamicCordisFunctionCommandReceipt
+  }
+  | {
+    readonly kind: 'edit'
+    readonly status: 'prepared' | 'active' | 'defined' | 'consumed' | 'completed' | 'failed' | 'revoked'
+    readonly pluginId: CordisDynamicPluginId
+    readonly expectedPackageId: CordisDynamicPackageId
+    readonly newPackageId?: CordisDynamicPackageId
+  }
+
+/** Durable audit fact for an authenticated edit admission; it is not an authority grant. */
+export interface DynamicCordisFunctionCommandFact {
+  readonly kind: 'cordis/function-command'
+  readonly version: 1
+  readonly requestId: string
+  readonly pluginId: CordisDynamicPluginId
+  readonly expectedPackageId: CordisDynamicPackageId
+  readonly capturedRunId?: CordisDynamicPluginRunId
+  readonly owner: DynamicCordisInstallationOwner
+  readonly scope: DynamicCordisFunctionScope
+  readonly instructionDigest: string
+}
+
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap {
+    /** Durable admission audit fact for one authenticated function edit request; it grants no authority. */
+    'cordis/function-command': DynamicCordisFunctionCommandFact
+  }
+}
+
 /** Identity of one human approval request. */
 export type ApprovalRequestId = Branded<'ApprovalRequestId'>
 
