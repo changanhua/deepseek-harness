@@ -122,7 +122,11 @@ Prompt admission uses the actual `prepareCall()` result, not the preceding `requ
 
 ### Failure and cancellation
 
-Final adapter selection, dispatch, and iteration failures arrive as terminal finishes and enter `agent/request-error`; a handling listener returns `{ kind: 'retry' }` without calling `next()`, while an unhandled failure is terminal. Middleware, result-processing, tool, and other extension failures remain thrown and close the turn directly — plugin failure ends the turn, not the loop. Undispatched model tool calls after cancellation receive synthetic `tool/call` plus `ABORTED_BEFORE_DISPATCH` result pairs. The [explicit-cancellation decision](../../../.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md) owns the signal lifecycle.
+Final adapter selection, dispatch, and iteration failures arrive as terminal finishes and enter `agent/request-error`; a handling listener returns `{ kind: 'retry' }` without calling `next()`, while an unhandled failure is terminal. Failures whose tool outcomes are fully settled end the turn as an error, not the loop. Undispatched model tool calls after cancellation receive synthetic `tool/call` plus `ABORTED_BEFORE_DISPATCH` result pairs. The [explicit-cancellation decision](../../../.agents/notes/implemented/architecture/2026-07-16-explicit-turn-cancellation.md) owns the signal lifecycle.
+
+An internal scheduler failure stops new dispatches and drains started work. The batch then closes all requested calls in model order: committed results are retained, settled siblings pass through normal finalization once, and remaining calls receive `TOOL_NOT_STARTED` or `TOOL_OUTCOME_UNKNOWN`. It never reruns a tool body or failed finalizer, and it does not bypass output validation by logging an unfinalized body result. Recovery awaits `ctx.sessions.flush(session)` before surfacing the original scheduler failure.
+
+If a call/result append or that recovery checkpoint is rejected, `ToolCallSettlementError` leaves the step and turn open. The exact driver rejects further sends, maintenance and automatic wakes without clearing already accepted input. Address the storage fault, dispose that handle and use the existing resume path to recover its interrupted tail. The [terminal-state decision](../../../.agents/notes/implemented/bug-fix/2026-09-21-tool-terminal-state-containment.md) records this boundary and its verification limits.
 
 </details>
 
@@ -187,6 +191,20 @@ One fixed error result per skipped call remains in history until compaction shad
 
 Append-only; each synthetic result follows the reusable request prefix and does not invalidate existing KV Cache entries.
 
+### Calls interrupted by scheduler failure
+
+#### What the model sees
+
+A later request retains known finalized outcomes. An unstarted call has a `TOOL_NOT_STARTED` error result; a dispatched call without a validated result has `TOOL_OUTCOME_UNKNOWN` and an instruction to reconcile the original operation rather than blindly repeat side effects. These are execution facts, not permission to retry or proof that a browser task completed.
+
+#### Token effect
+
+One result per unresolved request is appended on the failure path. Containment makes no additional model call and adds no steady-state prompt policy.
+
+#### KV Cache effect
+
+The results extend the existing transcript rather than rewriting previous messages. A settlement failure blocks the driver instead of sending an incomplete request.
+
 ## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
@@ -198,6 +216,8 @@ These limits define when the loop needs special care. They are current package c
 - **Config labels are fresh by default** — omitting `sessionId` creates a fresh `${id}-session-<uuid>` on every startup; exact resume-or-create behavior requires an explicit stable `sessionId`, while `resumeSessionId` requires existing persisted history.
 - **Config agents have no per-agent persona field or setup hook** — they use the deployment persona; scoped persona and tool composition are available only through the programmatic `ctx.agents.create()` / `resume()` factory options.
 - **No built-in turn budget** — tool calls or steering continue the current turn; a policy that bounds runaway turns must cancel from an existing lifecycle extension point such as `agent/turn-stopping`.
+- **Closed historical tool gaps are not automatically repaired** — the opt-in Session invariant companion diagnoses their source and closing sequences. Interrupted-tail repair remains separate; do not append results into already-closed historical steps.
+- **Rejected tool settlement blocks the current handle** — recovery needs the existing dispose/resume lifecycle after addressing persistence failure. A memory-only composition cannot provide disk durability.
 
 <a id="dev-note"></a>
 ### Dev Note

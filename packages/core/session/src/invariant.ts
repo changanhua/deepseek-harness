@@ -11,6 +11,7 @@ import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-inva
 import type { Session, SessionEvent, SessionSeqCursor } from '@deepseek-ai/dsh-session'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { TOOL_NOT_STARTED } from './repair.ts'
+import { closedToolCallGaps } from './tool-protocol.ts'
 
 const PACKAGE_NAME = '@deepseek-ai/dsh-session'
 
@@ -211,7 +212,13 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     const trace = freshTrace()
     traces.set(session, trace)
     // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
-    for (const event of session.snapshotEvents()) {
+    const history = session.snapshotEvents()
+    // Diagnose already-closed gaps; do not synthesize events or reinterpret
+    // an unknown external effect as a failed/retryable operation.
+    for (const gap of closedToolCallGaps(history)) {
+      fail(`closed tool-call gap: turn ${gap.turn}/step ${gap.step}, call ${gap.callId}, request seq ${gap.requestSeq}, closed at seq ${gap.closedAt}`)
+    }
+    for (const event of history) {
       applyTransition(trace, validateEvent(trace, event, fail))
     }
     return trace
