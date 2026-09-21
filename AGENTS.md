@@ -20,6 +20,8 @@ Only `dsh` profiles launch supported Node applications; package bins, demos, and
 
 After an interruption, resume from Codex task and tool state: reuse completed results, continue a returned execution handle, and reconcile only the exact target of the last mutating tool when the runtime explicitly marks its outcome unknown. Do not restart discovery or verified checks, and do not infer a DSH architecture or Skill defect from that tool-level ambiguity ([delivery recovery](.agents/skills/dsh-feature-delivery/SKILL.md#resume-after-interruption)).
 
+After context compaction, treat the generated summary as recovery evidence, not as user-authored authority. Call a constraint a user requirement only when the visible conversation contains the user's actual words; otherwise label it as an assistant decision, observed fact, or unverified inference. Assistant-created safeguards such as file hashes, protected-file lists, or temporary no-edit rules must not be attributed to the user or block necessary work without revalidation.
+
 ## Conventions
 
 Package design, ownership, lifecycle, runtime-invariant, and Agent Note rules live in [packages/AGENTS.md](packages/AGENTS.md) and [.agents/notes/README.md](.agents/notes/README.md). Type, tunable, dependency, and source/artifact rules live in [docs/development.md](docs/development.md); validation, secrets, and provider-e2e policy live in [docs/testing.md](docs/testing.md); concurrency, subprocess, and teardown rules live in [docs/defensive-patterns.md](docs/defensive-patterns.md). Fork-specific differences are recorded in [FORK-DIVERGENCE.md](FORK-DIVERGENCE.md).
