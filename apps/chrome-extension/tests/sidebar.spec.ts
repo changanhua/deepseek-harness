@@ -51,6 +51,13 @@ const element = (selector: string): HTMLElement => {
   if (!result) throw new Error(`Missing fixture element: ${selector}`)
   return result
 }
+const openReading = () => {
+  element('[data-view="cognition"]').click()
+  const tab = [...document.querySelectorAll<HTMLButtonElement>('.atlas-tabs button')]
+    .find(candidate => candidate.textContent === '阅读')
+  if (!tab) throw new Error('Missing 阅读 view')
+  tab.click()
+}
 const projectedAtlasPage = (shape: object, addDefaults = true) => {
   const value = { page: { tabId: 9, frameId: 0, documentId: 'atlas-doc', url: 'https://example.test/atlas' }, snapshotId: 'atlas-snapshot', elements: [{ elementId: 'atlas-action', role: 'button', label: '定位', context: '主要区域' }], ...shape,
     ...(addDefaults ? { structure: { ...(shape as { structure?: object }).structure, regions: [{ role: 'main', label: '主要区域', text: '已送达内容', bounds: { x: 0, y: 0, width: 1, height: 1 }, importance: 'high' }] } } : {}) }
@@ -77,7 +84,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     const fixture = await load(baseState({ assistantV2: { ...baseState().assistantV2,
       session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
       target: { availability: 'ready', revision: 4, selected: page.target.page }, cognition: { status: 'ready', pages: [page] } } }))
-    element('[data-view="cognition"]').click()
+    openReading()
     const sentBefore = fixture.messages.length
     expect(element('.semantic-overview').textContent).toContain('缓存的收益与适用范围')
     expect(element('.semantic-overview').textContent).not.toContain('在三种模板中，平均时间')
@@ -108,7 +115,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
       cognition: { status: 'ready', pages: [page] },
     } })
     const fixture = await load(current)
-    element('[data-view="cognition"]').click()
+    openReading()
     element('.semantic-unorganized').click()
     element('[data-source-ref="block-0"]').click()
     const locate = element('[data-source-locate="block-0"]') as HTMLButtonElement
@@ -121,7 +128,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     const page = projectedAtlasPage({ title: 'Popular players', text: 'Kylian Mbappé · 91 · ST\nAitana Bonmatí · 91 · CM', textTruncated: true,
       structure: { regions: [{ kind: 'header' }, { kind: 'nav' }, { kind: 'main' }, { kind: 'main' }, { kind: 'footer' }] } }, false)
     await load(baseState({ assistantV2: { ...baseState().assistantV2, cognition: { status: 'ready', pages: [page] } } }))
-    element('[data-view="cognition"]').click()
+    openReading()
     expect(element('.atlas-map').textContent).toContain('Kylian Mbappé')
     expect(element('.atlas-map').textContent).toContain('Aitana Bonmatí')
     expect(element('.atlas-gaps').textContent).toContain('正文超出本次读取范围')
@@ -134,7 +141,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     const fixture = await load(baseState({ assistantV2: { ...baseState().assistantV2,
       session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
       target: { availability: 'ready', revision: 4, selected: page.target.page }, cognition: { status: 'ready', pages: [page] } } }))
-    element('[data-view="cognition"]').click()
+    openReading()
     expect(element('.atlas-map').textContent).toContain('已读取的内容仍然应当可以看到。')
     element('.semantic-generate').click(); await Promise.resolve()
     expect(fixture.messages).toContainEqual(expect.objectContaining({ type: 'dsh-assistant-cognition-generate' }))
@@ -144,7 +151,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     const page = projectedAtlasPage({ title: 'Reading list', elements: [{ elementId: 'account', label: 'My account', role: 'button' }],
       structure: { collections: [{ kind: 'list', itemCount: 2, items: [{ index: 0, text: 'Designing Data-Intensive Applications' }, { index: 1, text: 'A Philosophy of Software Design' }] }] } }, false)
     await load(baseState({ assistantV2: { ...baseState().assistantV2, cognition: { status: 'ready', pages: [page] } } }))
-    element('[data-view="cognition"]').click()
+    openReading()
     expect(element('.atlas-map').textContent).toContain('Designing Data-Intensive Applications')
     const region = element('[data-atlas-region-id]'); region.focus(); region.click()
     expect(document.activeElement).toBe(region)
@@ -477,7 +484,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
       session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
       target: { availability: 'ready', revision: 4, selected: { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' }, candidates: [] }, cognition } })
     const fixture = await load(current)
-    element('[data-view="cognition"]').click()
+    openReading()
     ;(element('[data-atlas-region-id="main"]') as HTMLButtonElement).click()
     expect(element('#cognition-content').textContent).toContain('已经送达 Agent 的正文片段')
     expect(element('#cognition-content').textContent).toContain('仅展示已读部分')
@@ -504,7 +511,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
       target: { availability: 'ready', revision: 2, selected: { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' }, candidates: [] },
       cognition: { status: 'ready', pages: [page], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } },
     } })
-    const fixture = await load(current); element('[data-view="cognition"]').click(); element('.atlas-tabs button:nth-child(2)').click()
+    const fixture = await load(current); element('[data-view="cognition"]').click(); element('.atlas-tabs button:nth-child(3)').click()
     ;(element('.tree-node') as HTMLButtonElement).click()
     const reveal = [...document.querySelectorAll<HTMLButtonElement>('#cognition-content button')].find(node => node.textContent === '在页面中显示')
     expect(reveal).toBeDefined(); reveal?.click(); await Promise.resolve()
@@ -530,7 +537,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
       target: { availability: 'ready', revision: 4, selected: { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' }, candidates: [] },
       cognition: { status: 'ready', pages: [page], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } },
     } })
-    const fixture = await load(current); element('[data-view="cognition"]').click()
+    const fixture = await load(current); openReading()
     expect(element('#cognition-content').textContent).toContain('文章页面')
     expect(element('#cognition-content').textContent).toContain('选择一个内容分支')
     const region = element('[data-atlas-region-id="main"]') as HTMLButtonElement; region.click()
@@ -550,7 +557,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
       target: { availability: 'ready', revision: 4, selected: page.target.page, candidates: [] },
       cognition: { status: 'ready', pages: [page], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } },
     } })
-    await load(current); element('[data-view="cognition"]').click()
+    await load(current); openReading()
     expect(element('#cognition-content').textContent).toContain(shape.title)
     expect(element('#cognition-content').textContent).toContain('主要区域')
     ;(element('[data-atlas-region-id]') as HTMLButtonElement).click()
@@ -565,7 +572,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
       target: { availability: 'ready', revision: 4, selected: { ...page.target.page, documentId: 'new-document', url: 'https://example.test/new' }, candidates: [] },
       cognition: { status: 'ready', pages: [page], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } },
     } })
-    await load(current); element('[data-view="cognition"]').click(); (element('[data-atlas-region-id]') as HTMLButtonElement).click()
+    await load(current); openReading(); (element('[data-atlas-region-id]') as HTMLButtonElement).click()
     expect([...document.querySelectorAll<HTMLButtonElement>('#cognition-content button')].find(node => node.textContent === '定位标签')?.disabled).toBe(true)
     expect([...document.querySelectorAll<HTMLButtonElement>('#cognition-content button')].find(node => node.textContent === '定位到页面')?.disabled).toBe(true)
   })
@@ -580,7 +587,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     await load(current); element('[data-view="cognition"]').click()
     expect((element('#refresh-cognition') as HTMLButtonElement).disabled).toBe(true)
     expect(element('#refresh-cognition').textContent).toBe('等待新证据…')
-    ;(element('.atlas-tabs button:nth-child(3)') as HTMLButtonElement).click()
+    ;(element('.atlas-tabs button:nth-child(4)') as HTMLButtonElement).click()
     expect(element('#cognition-content').textContent).toContain('session-v2:2')
     expect(element('#cognition-content').textContent).toContain('正文 4 字')
     expect(styles).toContain('@container (min-width: 700px)')

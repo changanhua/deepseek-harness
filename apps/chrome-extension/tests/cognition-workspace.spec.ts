@@ -1,9 +1,52 @@
 import assert from 'node:assert/strict'
 import { it } from 'vitest'
-import { projectCognitionWorkspace, createCognitionScope, compileCognitionContext, attachCognitionContext, cognitionScopeIssue } from '../src/assistant-cognition-workspace.js'
+import { projectCognitionWorkspace as rawProject, createCognitionScope as rawScope,
+  compileCognitionContext as rawCompile, attachCognitionContext as rawAttach,
+  cognitionScopeIssue as rawScopeIssue } from '../src/assistant-cognition-workspace.js'
+
+interface WorkspaceObject {
+  id: string
+  label: string
+  observationId: string
+  kind: string
+  role: string
+  text: string
+  states: Record<string, boolean | string>
+  blockIds: string[]
+  totalCount: number | null
+  excerptTruncated: boolean
+  interpretation: Array<{ summary: string; correction: { label: string } | null }> | null
+}
+interface WorkspaceModel {
+  objects: WorkspaceObject[]
+  relations: Array<{ kind: string; observationId: string }>
+  source: unknown
+  gaps: string[]
+  kind: string
+}
+interface CompiledContext {
+  json: string
+  packet: { objects: Array<{
+    id: string
+    userCorrection: string | null
+    observed: string
+    children: Array<{ excerpt: string }>
+    excerptTruncated: boolean
+    totalCount: number | null
+  }> }
+}
+// The shipping module is plain JS; constrain its test boundary without changing production declarations.
+const projectCognitionWorkspace = rawProject as (page: object) => WorkspaceModel
+const createCognitionScope = rawScope as (page: object, current: object, ids: string[],
+  corrections?: Record<string, string>) => object
+const compileCognitionContext = rawCompile as (scope: object, page: object, current: object) => CompiledContext
+const attachCognitionContext = rawAttach as (instruction: string, context: CompiledContext) => string
+const cognitionScopeIssue = rawScopeIssue as (scope: object, page: object, current: object) => string | null
 
 const fixture = () => {
-  const target: { tabId: number; frameId: number; documentId: string; url: string; status?: string } = { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/issues' }
+  const target: { tabId: number; frameId: number; documentId: string; url: string; status?: string } = {
+    tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/issues',
+  }
   const action = { id: 'action-a', elementId: 'element-a', observationId: 'session-a:2', snapshotId: 'snapshot-a', role: 'button', label: '提交', locatorsValid: true }
   const observation = { id: 'session-a:2', snapshotId: 'snapshot-a', observedAt: 100, source: { toolResultSeq: 2 },
     regions: [{ role: 'main', label: '当前列表', text: '两条记录' }, { role: 'navigation', label: '导航', text: '问题 / 文档' }] as { role: string; label: string; text?: string }[],
@@ -14,7 +57,12 @@ const fixture = () => {
     omissions: { textTruncated: true }, preview: { text: '本次片段' } }
   const page = { id: 'page-a', sessionId: 'session-a', title: '问题工作台', target: { installationId: 'install-a', page: target },
     documentState: 'current', locatorsValid: true,
-    semanticMaps: [] as { mapId: string; snapshotId: string; sourceResultSeq: number; nodes: { nodeId: string; label: string; summary: string; sourceRefs: string[] }[] }[],
+    semanticMaps: [] as Array<{
+      mapId: string
+      snapshotId: string
+      sourceResultSeq: number
+      nodes: Array<{ nodeId: string; label: string; summary: string; sourceRefs: string[] }>
+    }>,
     semanticFeedback: { revision: 0 } as { revision: number; entries?: { mapId: string; nodeId: string; label: string }[] },
     observations: [observation], regions: [], unplacedActions: [action],
     sourceSnapshots: [{ snapshotId: 'snapshot-a', observationId: observation.id, current: true, omissions: [], blocks: [
