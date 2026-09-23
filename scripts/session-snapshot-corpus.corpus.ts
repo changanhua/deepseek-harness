@@ -23,9 +23,13 @@ const repoRoot = resolve(import.meta.dirname, '..')
 const corpusRoot = join(repoRoot, 'snapshots')
 const profiles = ['acp', 'sdk', 'session', 'web'] as const
 const snapshotAdapters = [
+  'apps/web/tests/browser-assistant-preset.snapshot.ts',
+  'apps/web/tests/browser-cognition-context.snapshot.ts',
+  'apps/web/tests/knowledge-base.snapshot.ts',
   'apps/web/tests/message-feedback-protocol.snapshot.ts',
   'apps/web/tests/minimal-preset.snapshot.ts',
   'apps/web/tests/preset-migration.snapshot.ts',
+  'apps/web/tests/project-memory.snapshot.ts',
   'snapshots/acp/acp.snapshot.ts',
   'snapshots/sdk/sdk.snapshot.ts',
   'snapshots/session/headless.snapshot.ts',

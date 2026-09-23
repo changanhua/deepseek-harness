@@ -22,6 +22,7 @@
     "apps/web/tests/startup-rpc-budget.e2e.ts",
     "apps/web/tests/minimal-preset.snapshot.ts",
     "apps/web/tests/browser-assistant-preset.snapshot.ts",
+    "apps/web/tests/browser-cognition-context.snapshot.ts",
     "apps/web/tests/project-memory.snapshot.ts",
     "apps/web/tests/knowledge-base.snapshot.ts",
     "apps/web/tests/message-feedback-protocol.snapshot.ts",
