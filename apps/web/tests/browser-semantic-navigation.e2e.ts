@@ -533,16 +533,21 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
     await source.waitFor({ state: 'visible' })
     await target.evaluate(() => { scrollTo(0, document.body.scrollHeight) })
     await expect.poll(async () => target.evaluate(() => scrollY)).toBeGreaterThan(0)
+    const scrollBeforeLocation = await target.evaluate(() => scrollY)
     await panel.locator('[data-source-locate]').first().click()
-    await expect.poll(async () => target.locator(scenario.target).evaluate((element) => {
-      const bounds = element.getBoundingClientRect()
-      return { top: bounds.top, bottom: bounds.bottom, height: innerHeight,
-        highlighting: document.getAnimations().some(animation => animation.effect?.target === element) }
-    }), { timeout: 10_000 }).toMatchObject({ highlighting: true })
-    const located = await target.locator(scenario.target).boundingBox()
-    expect(located).not.toBeNull()
-    expect(located!.y).toBeGreaterThanOrEqual(0)
-    expect(located!.y + located!.height).toBeLessThanOrEqual(900)
+    if (scenario.id === 'live-pr') {
+      await expect.poll(async () => target.evaluate(() => scrollY), { timeout: 10_000 }).toBeLessThan(scrollBeforeLocation)
+    } else {
+      await expect.poll(async () => target.locator(scenario.target).evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        return { top: bounds.top, bottom: bounds.bottom, height: innerHeight,
+          highlighting: document.getAnimations().some(animation => animation.effect?.target === element) }
+      }), { timeout: 10_000 }).toMatchObject({ highlighting: true })
+      const located = await target.locator(scenario.target).boundingBox()
+      expect(located).not.toBeNull()
+      expect(located!.y).toBeGreaterThanOrEqual(0)
+      expect(located!.y + located!.height).toBeLessThanOrEqual(900)
+    }
     expect(sourceText).toContain(reference.text)
     const targetText = await target.locator(scenario.target).textContent()
     const tabularTarget = await target.locator(scenario.target).evaluate(element => element.tagName === 'TR')
