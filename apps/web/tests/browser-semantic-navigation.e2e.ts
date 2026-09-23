@@ -174,7 +174,7 @@ async function prepareReplay(root: string, scenarioId: string): Promise<string> 
 
 async function assistantState(panel: Page): Promise<AssistantState> {
   const reply = await panel.evaluate(async () => {
-    const browserGlobal = globalThis as typeof globalThis & { chrome: ExtensionChrome }
+    const browserGlobal = globalThis as unknown as { chrome: ExtensionChrome }
     return browserGlobal.chrome.runtime.sendMessage({ type: 'dsh-assistant-state', surfaceId: sessionStorage.getItem('dsh.assistant.surface.v2') })
   }) as { ok?: boolean; error?: unknown; state?: AssistantState }
   if (reply.ok !== true) throw new Error(`assistant state failed: ${String(reply.error)}`)
