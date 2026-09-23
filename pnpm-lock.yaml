@@ -1505,6 +1505,10 @@ importers:
         version: link:../../core/tools
 
   packages/browser/tool-browser:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@changanhua/dsh-browser':
         specifier: workspace:^
@@ -1533,6 +1537,9 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../core/session
+      '@deepseek-ai/dsh-session-projection':
+        specifier: workspace:^
+        version: link:../../session/session-projection
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools

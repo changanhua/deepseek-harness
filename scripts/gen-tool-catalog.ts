@@ -247,6 +247,8 @@ const TOOL_PACKAGES: ToolPackage[] = [
       browser_tabs: 'packages/browser/tool-browser/src/index.ts',
       browser_request_status: 'packages/browser/tool-browser/src/index.ts',
       browser_snapshot: 'packages/browser/tool-browser/src/index.ts',
+      browser_read_source: 'packages/browser/tool-browser/src/semantic-map.ts',
+      browser_publish_semantic_map: 'packages/browser/tool-browser/src/semantic-map.ts',
       browser_page_map: 'packages/browser/tool-browser/src/index.ts',
       browser_extract: 'packages/browser/tool-browser/src/index.ts',
       browser_action: 'packages/browser/tool-browser/src/index.ts',

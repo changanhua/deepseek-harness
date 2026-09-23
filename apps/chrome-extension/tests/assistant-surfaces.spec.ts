@@ -21,8 +21,10 @@ describe('assistant independent surface', () => {
     expect(assistantSurfaceId({ id: 'extension-id', url, documentId: '../unsafe' }, 'extension-id', url)).toBeNull()
   })
 
-  test('uses the trusted sidebar fallback identity when Chrome omits documentId', () => {
+  test('uses the stable trusted sidebar identity across Chrome document reloads', () => {
     const fallback = 'surface-123e4567-e89b-42d3-a456-426614174000'
+    expect(assistantSurfaceId({ id: 'extension-id', url, documentId: 'document-before-reload' }, 'extension-id', url, fallback)).toBe(fallback)
+    expect(assistantSurfaceId({ id: 'extension-id', url, documentId: 'document-after-reload' }, 'extension-id', url, fallback)).toBe(fallback)
     expect(assistantSurfaceId({ id: 'extension-id', url }, 'extension-id', url, fallback)).toBe(fallback)
     expect(assistantSurfaceId({ id: 'foreign', url }, 'extension-id', url, fallback)).toBeNull()
     expect(assistantSurfaceId({ id: 'extension-id', url: `${url}?forged=1` }, 'extension-id', url, fallback)).toBeNull()

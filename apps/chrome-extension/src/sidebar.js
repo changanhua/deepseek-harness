@@ -1,5 +1,7 @@
 import { modelSummary } from './model-summary.js'
 import { renderMarkdown } from './preview.js'
+import { renderContentMap } from './assistant-content-view.js'
+import { renderSemanticNavigation } from './assistant-semantic-view.js'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3080'
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
@@ -29,6 +31,9 @@ let recentKey = null
 let recentFlight = null
 let selectedCognitionId = null
 let selectedNodeIndex = null
+let selectedAtlasPageId = null
+let selectedAtlasRegionId = null
+let cognitionDetailView = 'map'
 let submitting = false
 let editingUrl = false
 let modelCatalog = null
@@ -37,12 +42,12 @@ let modelPicker = { open: false, phase: 'idle', sessionId: null, selection: null
 let targetDialogTrigger = null
 
 const label = phase => ({ unconfigured: '尚未配置', configured: '尚未连接', pending: '等待批准', connecting: '正在连接', connected: '已连接', offline: '离线', unauthorized: '需要授权', invalid: '配置无效' })[phase] ?? '未知状态'
-const messageError = error => ({ offline: '连接已中断，恢复连接后可继续。', result_unknown: '提交结果尚未确认，请重试原请求，不要重新发送。', pending_locked: '上次请求尚未确认，请先确认原请求。', session_changed: '会话已变化，请确认后重试。', target_changed: '操作目标已变化，请重新选择。', function_view_unavailable: '这个功能当前没有可打开的界面。', cognition_location_unavailable: '这个页面节点已经失效，请重新读取页面。' })[error?.code ?? error?.message ?? error] ?? (error?.message || String(error ?? '操作未完成'))
+const messageError = error => ({ semantic_feedback_conflict: '这个节点已有新修正。草稿已保留，请核对最新版本后再保存。', semantic_feedback_capacity_exceeded: '本地修正记录已达到容量上限，草稿尚未保存。', semantic_feedback_storage_failed: '个人修正保存失败，草稿已保留，请重试。', semantic_feedback_unavailable: '找不到这份地图或节点，未保存修正。', network_error: '网络请求失败，请检查 DSH 服务后重试。', offline: '连接已中断，恢复连接后可继续。', result_unknown: '提交结果尚未确认，请重试原请求，不要重新发送。', pending_locked: '上次请求尚未确认，请先确认原请求。', session_changed: '会话已变化，请确认后重试。', target_changed: '操作目标已变化，请重新选择。', function_view_unavailable: '这个功能当前没有可打开的界面。', cognition_location_unavailable: '这个页面节点已经失效，请重新读取页面。', source_changed: '原文已变化，定位已取消。旧快照仍可查看，重新读取后可再定位。', source_unavailable: '这份快照的网页定位信息已失效。请重新读取页面，旧原文快照仍可查看。' })[error?.code ?? error?.message ?? error] ?? (error?.message || String(error ?? '操作未完成'))
 const notice = text => { const node = byId('notice'); node.hidden = !text; node.textContent = text ?? '' }
 const fallback = () => ({ connection: state?.connection ?? { phase: 'unconfigured' }, surface: { id: null },
   session: { binding: state?.session?.binding ?? null, phase: state?.session?.phase ?? 'idle', error: null, pending: state?.session?.pending ?? null, pendingCreate: state?.session?.pendingCreate ?? null, modelSelection: state?.session?.modelSelection ?? null, transcript: [] },
   target: { availability: 'unavailable', revision: null, selected: null, candidates: [], readError: null },
-  cognition: { status: 'unread', items: [], refreshPolicy: 'manual-or-agent-request' },
+  cognition: { status: 'unread', pages: [], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } },
   functions: { availability: 'unavailable', items: [] } })
 const viewState = () => state?.assistantV2 ?? fallback()
 const draftKey = current => {
@@ -67,6 +72,7 @@ const send = async message => {
     const result = await chrome.runtime.sendMessage({ ...message, surfaceId })
     if (!result?.ok) throw new Error(result?.error ?? '操作未完成')
     if (result.state) applyState(result.state)
+    notice(null)
     return result
   } catch (error) { notice(messageError(error)); return null }
 }
@@ -313,7 +319,7 @@ const renderConversation = () => {
   byId('session-controls').hidden = !current.session?.binding
   byId('conversation-label').textContent = current.session?.binding ? '当前对话' : '新对话'
   home.hidden = Boolean(current.session?.binding || transcript.length); conversation.hidden = !home.hidden; conversation.replaceChildren()
-  const cognitionItems = current.cognition?.items ?? []; const assignedReceipts = new Set(); let previousAssistantSeq = -1
+  const cognitionPages = current.cognition?.pages ?? []; const cognitionItems = cognitionPages.flatMap(page => page.observations ?? []); const assignedReceipts = new Set(); let previousAssistantSeq = -1
   const receiptNode = items => { const receipt = document.createElement('div'); receipt.className = 'reading-receipt'; receipt.append(`已读取的页面内容 ${items.length} 条`, button('查看', () => { activeView = 'cognition'; selectedCognitionId = items.at(-1)?.id ?? null; render() })); return receipt }
   for (const item of transcript) {
     const message = document.createElement('article'); message.className = `message ${item.role === 'user' ? 'user' : 'assistant'}`
@@ -337,7 +343,7 @@ const renderConversation = () => {
   if (pendingReceipts.length && home.hidden) conversation.append(receiptNode(pendingReceipts))
   const liveFunctions = (current.functions?.availability === 'ready' ? current.functions.items ?? [] : []).filter(item => item.activeRun).slice(0, 3)
   if (liveFunctions.length && home.hidden) { const rail = document.createElement('section'); rail.className = 'conversation-functions'; const heading = document.createElement('strong'); heading.textContent = '可用功能'; rail.append(heading); for (const item of liveFunctions) rail.append(renderFunctionCard(item, true)); conversation.append(rail) }
-  byId('cognition-count').textContent = String(cognitionItems.length)
+  byId('cognition-count').textContent = String(cognitionPages.length)
   const functions = current.functions?.items ?? []
   byId('function-count').textContent = String(functions.filter(item => item.scope !== 'page' || item.scopeStatus === 'current-target').length)
 }
@@ -370,39 +376,77 @@ const renderUnresolved = () => {
 }
 
 const nodeTitle = node => ({ tag: bounded(node.tag, 64) || node.kind, label: bounded(node.label || node.text || node.role, 256) || '无公开文字' })
-const renderCognitionTree = (item, card) => {
-  const nodes = item.tree?.nodes ?? []; const byIndex = new Map(nodes.map(node => [node.index, node])); const children = new Map()
+const exactPage = (left, right) => left?.tabId === right?.tabId && left?.frameId === right?.frameId && left?.documentId === right?.documentId && left?.url === right?.url
+const currentTargetPage = (page, current) => {
+  const observed = page?.target?.page, pinned = current.target?.selected
+  if (!observed || !pinned || page.documentState !== 'current' || observed.tabId !== pinned.tabId || observed.frameId !== pinned.frameId
+    || current.connection?.grant?.installationId && page.target.installationId !== current.connection.grant.installationId) return false
+  return exactPage(observed, pinned) || pinned.liveUrl === observed.url && Number.isSafeInteger(pinned.boundAt)
+    && page.observations?.some(item => Number.isSafeInteger(item.observedAt) && item.observedAt >= pinned.boundAt)
+}
+const contentSummary = page => page.sourceSnapshot ? `${page.sourceSnapshot.blocks.length} 块原文` : `${page.content?.groups.length ?? 0} 个内容分组`
+const cognitionCommand = (type, page, extra = {}) => {
+  const current = viewState()
+  return send({ type, pageId: page.id, expectedSessionId: current.session?.binding?.sessionId ?? null, expectedTargetRevision: current.target?.revision, ...extra })
+}
+const renderCognitionTree = (page, observation, card) => {
+  const canLocate = page.locatorsValid && currentTargetPage(page, viewState())
+  const nodes = observation.tree?.nodes ?? []; const byIndex = new Map(nodes.map(node => [node.index, node])); const children = new Map()
   for (const node of nodes) { const parent = byIndex.has(node.parentIndex) ? node.parentIndex : null; const siblings = children.get(parent) ?? []; siblings.push(node); children.set(parent, siblings) }
-  const select = node => { selectedCognitionId = item.id; selectedNodeIndex = node.index; renderCognition() }
+  const select = node => { selectedCognitionId = observation.id; selectedNodeIndex = node.index; renderCognition() }
   const branch = (node, depth) => {
     const nested = children.get(node.index) ?? []; const title = nodeTitle(node)
-    if (!nested.length) { const leaf = button('', () => select(node), 'tree-node'); leaf.setAttribute('aria-current', String(selectedCognitionId === item.id && selectedNodeIndex === node.index)); const tag = document.createElement('code'); tag.textContent = title.tag; const label = document.createElement('span'); label.textContent = title.label; leaf.append(tag, label); return leaf }
-    const details = document.createElement('details'); details.open = depth < 2 || selectedCognitionId === item.id && (selectedNodeIndex === node.index || nested.some(child => child.index === selectedNodeIndex))
-    const summary = document.createElement('summary'); summary.className = 'tree-node'; summary.setAttribute('aria-current', String(selectedCognitionId === item.id && selectedNodeIndex === node.index)); const tag = document.createElement('code'); tag.textContent = title.tag; const label = document.createElement('span'); label.textContent = title.label; const inspect = button('详情', () => select(node), 'tree-detail'); inspect.addEventListener('click', event => event.stopPropagation()); summary.append(tag, label, inspect)
+    if (!nested.length) { const leaf = button('', () => select(node), 'tree-node'); leaf.setAttribute('aria-current', String(selectedCognitionId === observation.id && selectedNodeIndex === node.index)); const tag = document.createElement('code'); tag.textContent = title.tag; const label = document.createElement('span'); label.textContent = title.label; leaf.append(tag, label); return leaf }
+    const details = document.createElement('details'); details.open = depth < 2 || selectedCognitionId === observation.id && (selectedNodeIndex === node.index || nested.some(child => child.index === selectedNodeIndex))
+    const summary = document.createElement('summary'); summary.className = 'tree-node'; summary.setAttribute('aria-current', String(selectedCognitionId === observation.id && selectedNodeIndex === node.index)); const tag = document.createElement('code'); tag.textContent = title.tag; const label = document.createElement('span'); label.textContent = title.label; const inspect = button('详情', () => select(node), 'tree-detail'); inspect.addEventListener('click', event => event.stopPropagation()); summary.append(tag, label, inspect)
     const group = document.createElement('div'); group.className = 'tree-children'; for (const child of nested) group.append(branch(child, depth + 1)); details.append(summary, group); return details
   }
   const tree = document.createElement('div'); tree.className = 'cognition-tree'; for (const root of children.get(null) ?? []) tree.append(branch(root, 0)); card.append(tree)
-  const selected = selectedCognitionId === item.id ? nodes.find(node => node.index === selectedNodeIndex) : null
-  if (selected) { const nodeDetail = document.createElement('div'); nodeDetail.className = 'node-detail'; const title = nodeTitle(selected); nodeDetail.append(`${selected.kind}${selected.tag ? ` · ${selected.tag}` : ''}${selected.role ? ` · ${selected.role}` : ''}`, title.label); if (item.locatorsValid && selected.snapshotId && selected.elementId) nodeDetail.append(button('在页面中显示', () => send({ type: 'dsh-assistant-cognition-reveal-node', itemId: item.id, nodeIndex: selected.index }), 'primary')); card.append(nodeDetail) }
+  const selected = selectedCognitionId === observation.id ? nodes.find(node => node.index === selectedNodeIndex) : null
+  if (selected) { const nodeDetail = document.createElement('div'); nodeDetail.className = 'node-detail'; const title = nodeTitle(selected); nodeDetail.append(`${selected.kind}${selected.tag ? ` · ${selected.tag}` : ''}${selected.role ? ` · ${selected.role}` : ''}`, title.label); if (canLocate && selected.snapshotId && selected.elementId) nodeDetail.append(button('在页面中显示', () => cognitionCommand('dsh-assistant-cognition-reveal-node', page, { observationId: observation.id, nodeIndex: selected.index }), 'primary')); card.append(nodeDetail) }
 }
 const renderCognition = () => {
+  const focused = document.activeElement, previousView = focused?.closest('.semantic-navigation')
+  const focusKey = focused?.dataset?.semanticFocus, previousKey = previousView?.dataset.semanticView
+  const previousPane = previousView?.closest('.pane'), previousScroll = previousPane?.scrollTop
   const current = viewState(); const cognition = current.cognition ?? {}; const panel = byId('cognition-content'); panel.replaceChildren()
-  const refresh = byId('refresh-cognition'); const canRefresh = current.connection?.phase === 'connected' && Boolean(current.session?.binding) && current.target?.availability === 'ready' && Boolean(current.target?.selected) && !locked(current.session?.pending) && !current.session?.pendingCreate
-  refresh.disabled = !canRefresh; refresh.title = canRefresh ? '让 Agent 对当前操作网页做一次新的有界读取' : '请先连接、选择对话并选择网页'
-  if (!cognition.items?.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = cognition.status === 'unread' ? '还没有已送达 Agent 的页面认知。选择网页本身不会读取页面。' : '页面认知暂不可用。'; panel.append(empty); return }
-  for (const item of cognition.items) {
-    const card = document.createElement('article'); card.className = 'cognition-item'; const page = item.target?.page; const previous = item.documentState === 'previous-document'
-    const title = document.createElement('strong'); title.textContent = `${previous ? '先前页面 · ' : ''}${page?.url ?? '已送达页面认知'}`
-    const labels = item.preview?.labels?.length ? `可见控件：${item.preview.labels.join('、')}` : ''; const regions = item.preview?.regions?.flatMap(region => region.label || region.role ? [region.label ?? region.role] : []).join('、')
-    const detail = document.createElement('p'); detail.textContent = item.preview?.text || labels || (regions ? `页面区域：${regions}` : '已记录读取事实，但没有可展示文字。')
-    const scope = item.scope ?? {}; const omitted = Object.values(item.omissions ?? {}).some(value => value === true || value !== null && typeof value !== 'boolean')
-    const meta = document.createElement('small'); meta.className = 'cognition-meta'; meta.textContent = [item.readMode, `正文 ${scope.textChars ?? 0} 字`, `控件 ${scope.elementCount ?? 0} 个`, `DOM ${scope.treeNodeCount ?? 0} 节点`, `区域 ${scope.regionCount ?? 0} 个`, omitted ? '有截断或后续页' : '未报告截断', previous ? '旧页面' : '当前页面'].join(' · ')
-    card.append(title, detail, meta)
-    if (item.locatorsValid) card.append(button('定位标签', () => send({ type: 'dsh-assistant-cognition-locate', itemId: item.id })))
-    if (item.tree?.nodes?.length) renderCognitionTree(item, card)
-    const unread = [item.omissions?.textTruncated && '正文超出本次读取范围', item.omissions?.scanTruncated && '其余可操作控件', item.omissions?.treeTruncated && '其余 DOM 节点', item.omissions?.nextOffset !== null && item.omissions?.nextOffset !== undefined && '后续正文分页', previous && '该页面后续状态'].filter(Boolean)
-    if (unread.length) { const section = document.createElement('section'); section.className = 'cognition-unread'; const heading = document.createElement('strong'); heading.textContent = '尚未读取'; const copy = document.createElement('p'); copy.textContent = unread.join('、'); section.append(heading, copy); card.append(section) }
-    panel.append(card)
+  const refresh = byId('refresh-cognition'); const refreshStatus = cognition.refresh?.status ?? 'idle'; const canRefresh = current.connection?.phase === 'connected' && Boolean(current.session?.binding) && current.target?.availability === 'ready' && Boolean(current.target?.selected) && !locked(current.session?.pending) && !current.session?.pendingCreate && !['submitting', 'waiting', 'unknown'].includes(refreshStatus)
+  refresh.disabled = !canRefresh; refresh.textContent = ({ submitting: '正在提交…', waiting: '等待新证据…', complete: '刷新完成', 'no-new-evidence': '没有新证据', failed: '刷新失败' })[refreshStatus] ?? '刷新'; refresh.title = canRefresh ? '让 Agent 对当前操作网页做一次新的有界读取' : '请先连接、选择对话并选择网页'
+  const pages = cognition.pages ?? []
+  const generate = () => { const value = viewState(); void send({ type: 'dsh-assistant-cognition-generate', expectedSessionId: value.session?.binding?.sessionId, expectedTargetRevision: value.target?.revision }) }
+  if (!pages.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = cognition.status === 'unread' ? '还没有已送达 Agent 的页面认知。选择网页本身不会读取页面。' : '页面认知暂不可用。'; const start = button('读取并生成语义地图', generate, 'semantic-generate'); start.disabled = !canRefresh; empty.append(start); panel.append(empty); return }
+  const selected = pages.find(page => page.id === selectedAtlasPageId) ?? pages.find(page => currentTargetPage(page, current)) ?? pages.find(page => page.documentState === 'current') ?? pages.at(-1)
+  selectedAtlasPageId = selected.id
+  const cards = document.createElement('div'); cards.className = 'atlas-pages'
+  for (const page of pages) { const card = button('', () => { selectedAtlasPageId = page.id; selectedAtlasRegionId = null; renderCognition() }, 'atlas-page-card'); card.setAttribute('aria-pressed', String(page.id === selected.id)); card.append(`${page.documentState === 'previous-document' ? '先前页面 · ' : ''}${page.title || page.target?.page?.url || '已送达页面'} · ${contentSummary(page)}`); cards.append(card) }
+  if (pages.length > 1) panel.append(cards)
+  const canLocate = selected.locatorsValid && currentTargetPage(selected, current)
+  const detail = document.createElement('article'); detail.className = 'atlas-detail'; const heading = document.createElement('header'); const title = document.createElement('h2'); title.textContent = selected.documentState === 'previous-document' ? '先前页面的读取记录' : '当前页面的理解范围'; const meta = document.createElement('small'); meta.className = 'cognition-meta'; meta.textContent = `${selected.coverage?.observationCount ?? 0} 次读取 · ${contentSummary(selected)} · 仅展示已读部分`; heading.append(title, meta)
+  if (selected.locatorsValid) { const locate = button('定位标签', () => cognitionCommand('dsh-assistant-cognition-locate', selected)); locate.disabled = !canLocate; if (!canLocate) locate.title = '固定目标已变化，不能定位旧页面。'; heading.append(locate) }
+  detail.append(heading)
+  const tabs = document.createElement('div'); tabs.className = 'atlas-tabs'; for (const [id, copy] of [['map', '地图'], ['structure', '结构'], ['evidence', '证据']]) { const tab = button(copy, () => { cognitionDetailView = id; renderCognition() }); tab.setAttribute('aria-pressed', String(cognitionDetailView === id)); tabs.append(tab) }; detail.append(tabs)
+  if (cognitionDetailView === 'structure') { const observation = selected.observations?.at(-1); if (observation?.tree?.nodes?.length) renderCognitionTree(selected, observation, detail); else detail.append('没有已送达的 DOM 树。') }
+  else if (cognitionDetailView === 'evidence') { const evidence = document.createElement('div'); evidence.className = 'atlas-evidence'; for (const observation of selected.observations ?? []) { const row = document.createElement('p'); row.textContent = `${observation.id} · ${observation.readMode} · ${new Date(observation.observedAt ?? 0).toLocaleString()} · 正文 ${observation.scope?.textChars ?? 0} 字${observation.omissions?.textTruncated ? ' · 正文截断' : ''}`; evidence.append(row) }; if (selected.omissions?.length) evidence.append(`遗漏：${selected.omissions.join('、')}`); detail.append(evidence) }
+  else if (selected.sourceSnapshot?.blocks.length) detail.append(renderSemanticNavigation(selected, {
+    canLocate: currentTargetPage(selected, current), canGenerate: canRefresh && currentTargetPage(selected, current), generating: ['submitting', 'waiting', 'unknown'].includes(refreshStatus),
+    onGenerate: generate,
+    onReveal: (blockId, snapshotId) => cognitionCommand('dsh-assistant-cognition-reveal-source', selected, { blockId, snapshotId }),
+    canReview: current.connection?.phase === 'connected' && Boolean(current.session?.binding),
+    onFeedback: (mapId, nodeId, update) => cognitionCommand('dsh-assistant-semantic-feedback', selected, { mapId, nodeId, ...update }),
+  }))
+  else {
+    const start = button('读取并生成语义地图', generate, 'semantic-generate')
+    start.disabled = !canRefresh || !exactPage(selected.target?.page, current.target?.selected)
+    detail.append(start, renderContentMap(selected, { canLocate, selectedId: selectedAtlasRegionId,
+      onSelect: id => { selectedAtlasRegionId = id },
+      onReveal: actionId => cognitionCommand('dsh-assistant-cognition-reveal-action', selected, { actionId }) }))
+  }
+  panel.append(detail)
+  if (previousKey && focusKey) {
+    const nextView = [...panel.querySelectorAll('[data-semantic-view]')].find(node => node.dataset.semanticView === previousKey)
+    const nextFocus = [...nextView?.querySelectorAll('[data-semantic-focus]') ?? []].find(node => node.dataset.semanticFocus === focusKey)
+    if (nextFocus) { if (nextFocus.tagName === 'H3') nextFocus.tabIndex = -1; nextFocus.focus({ preventScroll: true }) }
+    if (nextView && previousPane && previousScroll !== undefined) previousPane.scrollTop = previousScroll
   }
 }
 
@@ -530,7 +574,7 @@ document.addEventListener('click', event => {
   if (modelPicker.open && !path.includes(byId('composer-model')) && !path.includes(byId('model-popover'))) closeModelPicker()
   if (!byId('target-dialog').hidden && !path.includes(byId('target-panel')) && !path.includes(byId('target-dialog'))) closeTargetDialog()
 })
-chrome.runtime.onMessage.addListener(message => { if (message?.type === 'dsh-state-changed') void readState(); if (message?.type === 'dsh-assistant-error') notice(message.error) })
+chrome.runtime.onMessage.addListener(message => { if (message?.type === 'dsh-state-changed') void readState(); if (message?.type === 'dsh-assistant-error') notice(messageError(message.error)) })
 
 let presencePort; let presenceRetry; let closingView = false
 const publishPresence = () => { try { presencePort?.postMessage({ type: 'presence', visible: document.visibilityState === 'visible' }) } catch {} }

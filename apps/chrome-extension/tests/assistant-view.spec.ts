@@ -48,7 +48,7 @@ describe('assistant V2 view projection', () => {
       { key: 'assistant:1', role: 'assistant', text: 'visible answer', images: [] },
     ])
     expect(view.target).toEqual({ availability: 'unavailable', revision: null, selected: null, candidates: [] })
-    expect(view.cognition).toEqual({ status: 'unread', items: [], refreshPolicy: 'manual-or-agent-request' })
+    expect(view.cognition).toEqual({ status: 'unread', pages: [], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } })
     expect(view.functions).toEqual({ availability: 'unavailable', items: [] })
   })
 })

@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import rawMarkup from '../sidebar.html?raw'
+import { projectAssistantCognition } from '../src/assistant-cognition.js'
+import { atlasPageFixtures } from './fixtures/assistant-atlas.js'
 
 const markup: unknown = rawMarkup
 const styles = readFileSync(resolve(import.meta.dirname, '../src/sidebar.css'), 'utf8')
@@ -49,9 +51,108 @@ const element = (selector: string): HTMLElement => {
   if (!result) throw new Error(`Missing fixture element: ${selector}`)
   return result
 }
+const projectedAtlasPage = (shape: object, addDefaults = true) => {
+  const value = { page: { tabId: 9, frameId: 0, documentId: 'atlas-doc', url: 'https://example.test/atlas' }, snapshotId: 'atlas-snapshot', elements: [{ elementId: 'atlas-action', role: 'button', label: '定位', context: '主要区域' }], ...shape,
+    ...(addDefaults ? { structure: { ...(shape as { structure?: object }).structure, regions: [{ role: 'main', label: '主要区域', text: '已送达内容', bounds: { x: 0, y: 0, width: 1, height: 1 }, importance: 'high' }] } } : {}) }
+  const records = [
+    { type: 'event', event: { type: 'tool/call', seq: 1, time: 10, data: { callId: 'atlas', name: 'browser_snapshot', arguments: '{}' } } },
+    { type: 'event', event: { type: 'tool/result', seq: 2, time: 20, surfaceOp: 'append', sourceEventSeqs: [1], data: { message: { source: { callId: 'atlas' }, content: [{ type: 'tool-result', toolCallId: 'atlas', isError: false, content: [{ type: 'text', text: JSON.stringify({ sessionId: 'session-v2', requestId: 'request-atlas', installationId: 'install', outcome: 'observed', delivery: 'sent', value }) }] }] } } } },
+  ]
+  return projectAssistantCognition({ sessionId: 'session-v2', now: 30, records }).pages[0] as {
+    id: string
+    target: { page: { tabId: number; frameId: number; documentId: string; url: string } }
+  }
+}
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); document.body.replaceChildren() })
 
 describe('DSH 浏览器助手 V2 侧栏', () => {
+  test('语义缩放依次显示主题、重点和原文，返回保留焦点且展开不调用模型', async () => {
+    const page = { ...projectedAtlasPage({ title: '缓存试验' }), sourceSnapshot: { snapshotId: 'snapshot-a', current: true, omissions: ['仅取得正文片段'], blocks: [
+      { blockId: 'block-0', kind: 'paragraph', text: '在三种模板中，平均时间缩短约 14%；其他页面未验证。', truncated: false },
+      { blockId: 'block-1', kind: 'paragraph', text: '独立保留的其他内容。', truncated: false },
+    ] }, semanticMap: { mapId: 'map-a', nodes: [
+      { nodeId: 'topic', parentId: null, label: '缓存的收益与适用范围', summary: '收益只在有限模板中观察到。', sourceRefs: ['block-0'], origin: 'ai-summary' },
+      { nodeId: 'detail', parentId: 'topic', label: '实验范围与限制', summary: '三种模板的平均改善约为 14%，不能推及所有页面。', sourceRefs: ['block-0'], origin: 'ai-summary' },
+    ], unorganizedBlockIds: ['block-1'] } }
+    const fixture = await load(baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected: page.target.page }, cognition: { status: 'ready', pages: [page] } } }))
+    element('[data-view="cognition"]').click()
+    const sentBefore = fixture.messages.length
+    expect(element('.semantic-overview').textContent).toContain('缓存的收益与适用范围')
+    expect(element('.semantic-overview').textContent).not.toContain('在三种模板中，平均时间')
+    element('[data-semantic-node="topic"]').click()
+    expect(element('.semantic-focus').textContent).toContain('实验范围与限制')
+    element('[data-source-ref="block-0"]').click()
+    expect(element('.semantic-source').textContent).toContain('在三种模板中，平均时间缩短约 14%；其他页面未验证。')
+    element('[data-semantic-back]').click()
+    expect(element('.semantic-focus').textContent).toContain('实验范围与限制')
+    expect(fixture.messages).toHaveLength(sentBefore)
+    const update = fixture.listener.mock.calls[0][0]
+    update({ type: 'dsh-state-changed' }); await Promise.resolve(); await Promise.resolve()
+    expect(document.activeElement).toBe(element('[data-source-ref="block-0"]'))
+    element('[data-source-ref="block-0"]').click()
+    element('[data-source-locate="block-0"]').click(); await Promise.resolve()
+    expect(fixture.messages).toContainEqual(expect.objectContaining({ type: 'dsh-assistant-cognition-reveal-source', blockId: 'block-0', pageId: page.id }))
+  })
+
+  test('同一标签刷新后，新文档来源仍可定位', async () => {
+    const page = { ...projectedAtlasPage({ title: '刷新后的文章' }), sourceSnapshot: {
+      snapshotId: 'snapshot-b', current: true, omissions: [], blocks: [
+        { blockId: 'block-0', kind: 'paragraph', text: '刷新后的原文。', truncated: false },
+      ] } }
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected: { ...page.target.page,
+        documentId: 'bound-document', boundAt: 10, liveUrl: page.target.page.url, status: 'selected-document' } },
+      cognition: { status: 'ready', pages: [page] },
+    } })
+    const fixture = await load(current)
+    element('[data-view="cognition"]').click()
+    element('.semantic-unorganized').click()
+    element('[data-source-ref="block-0"]').click()
+    const locate = element('[data-source-locate="block-0"]') as HTMLButtonElement
+    expect(locate.disabled).toBe(false)
+    locate.click(); await Promise.resolve()
+    expect(fixture.messages).toContainEqual(expect.objectContaining({ type: 'dsh-assistant-cognition-reveal-source', pageId: page.id,
+      blockId: 'block-0', snapshotId: 'snapshot-b' }))
+  })
+  test('缺少区域几何时仍直接展示已读正文和遗漏，不让标签空框占据地图', async () => {
+    const page = projectedAtlasPage({ title: 'Popular players', text: 'Kylian Mbappé · 91 · ST\nAitana Bonmatí · 91 · CM', textTruncated: true,
+      structure: { regions: [{ kind: 'header' }, { kind: 'nav' }, { kind: 'main' }, { kind: 'main' }, { kind: 'footer' }] } }, false)
+    await load(baseState({ assistantV2: { ...baseState().assistantV2, cognition: { status: 'ready', pages: [page] } } }))
+    element('[data-view="cognition"]').click()
+    expect(element('.atlas-map').textContent).toContain('Kylian Mbappé')
+    expect(element('.atlas-map').textContent).toContain('Aitana Bonmatí')
+    expect(element('.atlas-gaps').textContent).toContain('正文超出本次读取范围')
+    expect([...document.querySelectorAll('[data-atlas-region-id]')].some(node => node.textContent === 'main')).toBe(false)
+  })
+
+  test('未取得来源块时保留已读结构内容，并给出显式语义生成入口', async () => {
+    const page = { ...projectedAtlasPage({ title: '旧快照', text: '已读取的内容仍然应当可以看到。' }, false),
+      sourceSnapshot: { snapshotId: 'empty-source', blocks: [], current: true, omissions: ['未取得可回源的正文块'] } }
+    const fixture = await load(baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected: page.target.page }, cognition: { status: 'ready', pages: [page] } } }))
+    element('[data-view="cognition"]').click()
+    expect(element('.atlas-map').textContent).toContain('已读取的内容仍然应当可以看到。')
+    element('.semantic-generate').click(); await Promise.resolve()
+    expect(fixture.messages).toContainEqual(expect.objectContaining({ type: 'dsh-assistant-cognition-generate' }))
+  })
+
+  test('集合直接显示成员，选中内容保留键盘焦点且不把全页控件冒充区域操作', async () => {
+    const page = projectedAtlasPage({ title: 'Reading list', elements: [{ elementId: 'account', label: 'My account', role: 'button' }],
+      structure: { collections: [{ kind: 'list', itemCount: 2, items: [{ index: 0, text: 'Designing Data-Intensive Applications' }, { index: 1, text: 'A Philosophy of Software Design' }] }] } }, false)
+    await load(baseState({ assistantV2: { ...baseState().assistantV2, cognition: { status: 'ready', pages: [page] } } }))
+    element('[data-view="cognition"]').click()
+    expect(element('.atlas-map').textContent).toContain('Designing Data-Intensive Applications')
+    const region = element('[data-atlas-region-id]'); region.focus(); region.click()
+    expect(document.activeElement).toBe(region)
+    expect(element('.atlas-inspector').textContent).toContain('A Philosophy of Software Design')
+    expect(element('.atlas-inspector').textContent).not.toContain('My account')
+    expect(element('.atlas-page-actions').textContent).toContain('My account')
+  })
+
   test('worker 尚未返回时也先提供可操作的连接与设置入口', async () => {
     await load(baseState(), message => message.type === 'dsh-assistant-state'
       ? new Promise(() => {})
@@ -65,6 +166,29 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     const fixture = await load()
     expect(fixture.wireMessages[0]?.type).toBe('dsh-assistant-state')
     expect(String(fixture.wireMessages[0]?.surfaceId)).toMatch(/^surface-[0-9a-f-]{36}$/u)
+  })
+
+  test('连接恢复并成功刷新状态后清除先前的瞬时错误', async () => {
+    const fixture = await load()
+    const notify = fixture.listener.mock.calls[0]?.[0] as ((message: { type: string; error?: string }) => void) | undefined
+    if (!notify) throw new Error('Expected worker message listener')
+
+    notify({ type: 'dsh-assistant-error', error: 'network_error' })
+    expect(element('#notice').textContent).toBe('网络请求失败，请检查 DSH 服务后重试。')
+    expect(element('#notice').hidden).toBe(false)
+
+    notify({ type: 'dsh-state-changed' })
+    await vi.waitFor(() => { expect(element('#notice').hidden).toBe(true) })
+    expect(element('#notice').textContent).toBe('')
+  })
+
+  test('网络异常使用用户可理解的提示而不是内部错误码', async () => {
+    const fixture = await load()
+    const notify = fixture.listener.mock.calls[0]?.[0] as ((message: { type: string; error?: string }) => void) | undefined
+    if (!notify) throw new Error('Expected worker message listener')
+
+    notify({ type: 'dsh-assistant-error', error: 'network_error' })
+    expect(element('#notice').textContent).toBe('网络请求失败，请检查 DSH 服务后重试。')
   })
 
   test('首页不创建会话，主导航只保留对话、页面认知和功能', async () => {
@@ -340,49 +464,126 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
   })
 
   test('认知展示真实读取范围并只为当前文档提供刷新和定位命令', async () => {
-    const cognition = { status: 'ready', refreshPolicy: 'manual-or-agent-request', items: [{
-      id: 'session-v2:12', observedAt: 1000, readMode: 'tree', documentState: 'current', locatorsValid: true,
+    const pageId = 'install:9:0:doc-a:https://example.test/a'
+    const cognition = { status: 'ready', refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' }, pages: [{
+      id: pageId, title: '已读取文章', pageType: 'article', documentState: 'current', locatorsValid: true,
       target: { installationId: 'install', page: { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' } },
-      source: { toolResultSeq: 12, requestId: 'request-12' },
-      scope: { textChars: 120, elementCount: 3, treeNodeCount: 8, regionCount: 1 },
-      omissions: { textTruncated: true, scanTruncated: false, treeTruncated: true, nextOffset: null, treeCursor: 'next' },
-      preview: { text: '已经送达 Agent 的正文片段', labels: ['展开'], regions: [{ label: '侧栏' }] },
+      coverage: { observationCount: 1, textChars: 120, elementCount: 3, treeNodeCount: 8, regionCount: 1, totalKnown: false }, omissions: ['正文超出本次读取范围'], collections: [], unplacedActions: [],
+      content: { groups: [{ id: 'main', parentId: null, title: '正文', kind: 'section', excerpt: '已经送达 Agent 的正文片段', items: [], actionIds: [], evidenceIds: ['session-v2:12'] }], gaps: ['正文超出本次读取范围'], unplacedActionIds: [] },
+      regions: [{ id: 'main', role: 'main', label: '正文', text: '已经送达 Agent 的正文片段', bounds: null, importance: 'high', coverage: 'partial', actions: [], collections: [], omissions: ['正文超出本次读取范围'], evidenceIds: ['session-v2:12'], anchorActionId: null }],
+      observations: [{ id: 'session-v2:12', observedAt: 1000, readMode: 'tree', scope: { textChars: 120, elementCount: 3, treeNodeCount: 8, regionCount: 1 }, omissions: { textTruncated: true }, preview: { text: '已经送达 Agent 的正文片段' } }],
     }] }
     const current = baseState({ assistantV2: { ...baseState().assistantV2,
       session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
-      target: { availability: 'ready', revision: 4, selected: { tabId: 9 }, candidates: [] }, cognition } })
+      target: { availability: 'ready', revision: 4, selected: { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' }, candidates: [] }, cognition } })
     const fixture = await load(current)
     element('[data-view="cognition"]').click()
+    ;(element('[data-atlas-region-id="main"]') as HTMLButtonElement).click()
     expect(element('#cognition-content').textContent).toContain('已经送达 Agent 的正文片段')
-    expect(element('#cognition-content').textContent).toContain('正文 120 字')
-    expect(element('#cognition-content').textContent).toContain('DOM 8 节点')
-    expect(element('#cognition-content').textContent).toContain('有截断或后续页')
+    expect(element('#cognition-content').textContent).toContain('仅展示已读部分')
+    expect(element('#cognition-content').textContent).toContain('1 个内容分组')
+    expect(element('#cognition-content').textContent).toContain('正文超出本次读取范围')
     expect((element('#refresh-cognition') as HTMLButtonElement).disabled).toBe(false)
     element('#refresh-cognition').click()
-    const locate = [...document.querySelectorAll<HTMLButtonElement>('#cognition-content button')]
-      .find(node => node.textContent === '定位标签')
+    const locate = [...document.querySelectorAll<HTMLButtonElement>('#cognition-content button')].find(node => node.textContent === '定位标签')
     locate?.click(); await Promise.resolve()
     expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-cognition-refresh', expectedSessionId: 'session-v2', expectedTargetRevision: 4 })
-    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-cognition-locate', itemId: 'session-v2:12' })
+    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-cognition-locate', pageId, expectedSessionId: 'session-v2', expectedTargetRevision: 4 })
   })
 
   test('认知树节点只通过真实快照引用请求页面高亮', async () => {
-    const item = {
-      id: 'session-v2:22', readMode: 'tree', documentState: 'current', locatorsValid: true,
+    const page = {
+      id: 'install:9:0:doc-a:https://example.test/a', title: '树页面', pageType: 'unknown', documentState: 'current', locatorsValid: true,
       target: { installationId: 'install', page: { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' } },
-      scope: { textChars: 5, elementCount: 1, treeNodeCount: 1, regionCount: 0 }, omissions: {}, preview: { text: '保存', labels: [], regions: [] },
-      tree: { snapshotId: 'snapshot-a', complete: true, cursor: null, nodes: [{ index: 3, parentIndex: null, kind: 'element', tag: 'button', label: '保存', snapshotId: 'snapshot-a', elementId: 'element-3' }] },
+      coverage: { observationCount: 1, textChars: 5, elementCount: 1, treeNodeCount: 1, regionCount: 0, totalKnown: false },
+      omissions: [], regions: [], collections: [], unplacedActions: [],
+      observations: [{ id: 'session-v2:22', observedAt: 1000, readMode: 'tree', scope: { textChars: 5, elementCount: 1, treeNodeCount: 1, regionCount: 0 }, omissions: {}, preview: { text: '保存' }, tree: { snapshotId: 'snapshot-a', complete: true, cursor: null, nodes: [{ index: 3, parentIndex: null, kind: 'element', tag: 'button', label: '保存', snapshotId: 'snapshot-a', elementId: 'element-3' }] } }],
     }
     const current = baseState({ assistantV2: { ...baseState().assistantV2,
       session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
-      target: { availability: 'ready', revision: 2, selected: { tabId: 9 }, candidates: [] },
-      cognition: { status: 'ready', items: [item], refreshPolicy: 'manual-or-agent-request' },
+      target: { availability: 'ready', revision: 2, selected: { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' }, candidates: [] },
+      cognition: { status: 'ready', pages: [page], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } },
     } })
-    const fixture = await load(current); element('[data-view="cognition"]').click()
+    const fixture = await load(current); element('[data-view="cognition"]').click(); element('.atlas-tabs button:nth-child(2)').click()
     ;(element('.tree-node') as HTMLButtonElement).click()
     const reveal = [...document.querySelectorAll<HTMLButtonElement>('#cognition-content button')].find(node => node.textContent === '在页面中显示')
     expect(reveal).toBeDefined(); reveal?.click(); await Promise.resolve()
-    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-cognition-reveal-node', itemId: 'session-v2:22', nodeIndex: 3 })
+    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-cognition-reveal-node', pageId: page.id, observationId: 'session-v2:22', nodeIndex: 3, expectedSessionId: 'session-v2', expectedTargetRevision: 2 })
+  })
+
+  test('语义地图以页面为单位显示区域检查器，并只分发当前精确页面的定位引用', async () => {
+    const page = {
+      id: 'install:9:0:doc-a:https://example.test/a', title: '文章页面', pageType: 'article', documentState: 'current', locatorsValid: true,
+      target: { installationId: 'install', page: { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' } },
+      coverage: { observationCount: 1, textChars: 120, elementCount: 2, treeNodeCount: 1, regionCount: 1, totalKnown: false },
+      content: { groups: [{ id: 'main', parentId: null, title: '正文', kind: 'section', excerpt: '已经送达 Agent 的正文片段', items: [], actionIds: ['open', 'old'], evidenceIds: ['session-v2:12'] }], gaps: ['正文超出本次读取范围'], unplacedActionIds: ['share'] },
+      omissions: ['正文超出本次读取范围'], collections: [{ kind: 'results', items: [{ index: 0, text: '第一项' }], observedCount: 1, totalCount: null, partial: true, evidenceIds: ['session-v2:12'] }],
+      regions: [{ id: 'main', role: 'main', label: '正文', text: '已经送达 Agent 的正文片段', bounds: { x: 0.1, y: 0.1, width: 0.6, height: 0.7 }, importance: 'high', coverage: 'partial', omissions: ['正文超出本次读取范围'], evidenceIds: ['session-v2:12'], anchorActionId: 'open', collections: [], actions: [
+        { id: 'open', observationId: 'session-v2:12', snapshotId: 'snapshot-a', elementId: 'open', role: 'button', label: '展开', state: {}, locatorsValid: true },
+        { id: 'old', observationId: 'session-v2:11', snapshotId: 'snapshot-old', elementId: 'old', role: 'button', label: '旧引用', state: {}, locatorsValid: false },
+      ] }],
+      unplacedActions: [{ id: 'share', observationId: 'session-v2:12', snapshotId: 'snapshot-a', elementId: 'share', role: 'button', label: '分享', state: {}, locatorsValid: true }],
+      observations: [{ id: 'session-v2:12', observedAt: 1000, readMode: 'page-map', title: '文章页面', scope: { textChars: 120, elementCount: 2, treeNodeCount: 1, regionCount: 1 }, omissions: { textTruncated: true }, preview: { text: '已经送达 Agent 的正文片段' }, tree: { snapshotId: 'snapshot-a', complete: true, cursor: null, nodes: [{ index: 3, parentIndex: null, kind: 'element', tag: 'button', label: '展开', snapshotId: 'snapshot-a', elementId: 'open' }] } }],
+    }
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected: { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' }, candidates: [] },
+      cognition: { status: 'ready', pages: [page], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } },
+    } })
+    const fixture = await load(current); element('[data-view="cognition"]').click()
+    expect(element('#cognition-content').textContent).toContain('文章页面')
+    expect(element('#cognition-content').textContent).toContain('选择一个内容分支')
+    const region = element('[data-atlas-region-id="main"]') as HTMLButtonElement; region.click()
+    expect(element('#cognition-content').textContent).toContain('掌握内容')
+    expect(element('#cognition-content').textContent).toContain('分享')
+    expect(element('#cognition-content').textContent).toContain('尚未覆盖')
+    const locate = [...document.querySelectorAll<HTMLButtonElement>('#cognition-content button')].find(node => node.textContent === '定位到页面')
+    locate?.click(); await Promise.resolve()
+    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-cognition-reveal-action', pageId: page.id, actionId: 'open', expectedSessionId: 'session-v2', expectedTargetRevision: 4 })
+    expect(fixture.messages).not.toContainEqual(expect.objectContaining({ type: 'dsh-assistant-cognition-reveal-action', actionId: 'old' }))
+  })
+
+  test.each(atlasPageFixtures)('语义地图用真实通用投影展示 %s 页面，而不依赖网站识别', async (_name, shape) => {
+    const page = projectedAtlasPage(shape)
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected: page.target.page, candidates: [] },
+      cognition: { status: 'ready', pages: [page], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } },
+    } })
+    await load(current); element('[data-view="cognition"]').click()
+    expect(element('#cognition-content').textContent).toContain(shape.title)
+    expect(element('#cognition-content').textContent).toContain('主要区域')
+    ;(element('[data-atlas-region-id]') as HTMLButtonElement).click()
+    expect(element('#cognition-content').textContent).toContain('已送达内容')
+    expect(element('#cognition-content').textContent).toContain('定位到页面')
+  })
+
+  test('固定目标不是该精确页面时保留历史证据但禁用全部定位', async () => {
+    const page = projectedAtlasPage({ title: '旧页面' })
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected: { ...page.target.page, documentId: 'new-document', url: 'https://example.test/new' }, candidates: [] },
+      cognition: { status: 'ready', pages: [page], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } },
+    } })
+    await load(current); element('[data-view="cognition"]').click(); (element('[data-atlas-region-id]') as HTMLButtonElement).click()
+    expect([...document.querySelectorAll<HTMLButtonElement>('#cognition-content button')].find(node => node.textContent === '定位标签')?.disabled).toBe(true)
+    expect([...document.querySelectorAll<HTMLButtonElement>('#cognition-content button')].find(node => node.textContent === '定位到页面')?.disabled).toBe(true)
+  })
+
+  test('刷新等待新证据时不重复排队，证据视图保留观察身份与范围', async () => {
+    const page = projectedAtlasPage({ title: '证据页面', text: '送达内容' })
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected: page.target.page, candidates: [] },
+      cognition: { status: 'ready', pages: [page], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'waiting' } },
+    } })
+    await load(current); element('[data-view="cognition"]').click()
+    expect((element('#refresh-cognition') as HTMLButtonElement).disabled).toBe(true)
+    expect(element('#refresh-cognition').textContent).toBe('等待新证据…')
+    ;(element('.atlas-tabs button:nth-child(3)') as HTMLButtonElement).click()
+    expect(element('#cognition-content').textContent).toContain('session-v2:2')
+    expect(element('#cognition-content').textContent).toContain('正文 4 字')
+    expect(styles).toContain('@container (min-width: 700px)')
   })
 
   test('目标后端可用时从候选标签精确选择并以修订号清除', async () => {

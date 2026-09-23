@@ -2,6 +2,8 @@
 
 English | [中文](2026-09-21-browser-assistant-semantic-page-atlas.zh.md)
 
+The approved [semantic navigation plan](2026-09-21-browser-semantic-navigation.md) replaces the primary view and delivery sequence. The region-layout design below remains a historical proposal, not the completion standard for a semantic map.
+
 **Goal / definition of done:** Replace observation-shaped page cognition cards with one evidence-backed semantic atlas per exact page document. A user can understand page structure, known content, available actions and important omissions at a glance; select a region for detail; and locate current references without treating inferred or unread content as known.
 
 **Scope:** This plan owns cognition projection and extension rendering. It does not add a new reader, storage system, site-specific scraper, authorization path, background poller or model-generated source of truth. The [personal browser assistant V2 decision](../../../.agents/notes/proposed/feature/2026-09-20-personal-browser-assistant-v2.md) owns the rationale and authority boundaries.
@@ -10,9 +12,9 @@ English | [中文](2026-09-21-browser-assistant-semantic-page-atlas.zh.md)
 
 ### One map, three reading speeds
 
-The primary view is a semantic map, not a screenshot and not a list of tool observations. In under one second, shape and state expose the main content, side regions and unread areas. In several seconds, region cards expose content, entity and action counts. Selection opens a region inspector with known content, available actions, omissions and evidence.
+The primary view is a semantic map, not a screenshot and not a list of tool observations. In under one second, shape and state expose the main content, side regions and unread areas. In several seconds, region cards expose delivered content, collection items and actions. Selection opens a region inspector with known content, available actions, omissions and evidence. Entity extraction is deferred to the later entity-grouping stage.
 
-The atlas absorbs the old overview and actionable-element views. Structure and evidence remain secondary inspection views because they answer debugging and verification questions rather than the ordinary “what does the Agent know and what can it do here?” question.
+The atlas combines overview and action discovery. Add Structure and Evidence as secondary inspection views: Structure shows delivered DOM trees and their limits; Evidence shows observation sources, times, exact page identities and omissions. These secondary views answer debugging and verification questions rather than the ordinary “what does the Agent know and what can it do here?” question.
 
 ### Evidence before aesthetics
 
@@ -40,48 +42,51 @@ Region action chips provide discovery and exact-page location. Mutating actions 
 
 ## Frozen projection contract
 
-The projection groups observations by `installationId + tabId + frameId + documentId + url`. Each page exposes identity, current/previous state, observations, aggregate coverage, regions, unplaced actions, omissions and evidence references. The latest document per tab/frame is current; earlier exact documents are previous.
+Within one Session, the projection groups observations by `installationId + tabId + frameId + documentId + url`. Each page exposes identity, current/previous state, observations, aggregate coverage, regions, unplaced actions, omissions and evidence references. The latest document per tab/frame is current; earlier exact documents are previous. Titles come from delivered snapshot titles, falling back to the exact URL. Page-type labels use explicit delivered semantic roles or collections, falling back to unknown; search results use the catalog/list presentation. Frame identity stays visible. A bounded event window may lose earlier evidence; the projection reports that limitation rather than maintaining another history store.
 
-Each region exposes a stable projection ID, semantic role, label, normalized bounds, importance, coverage state, bounded delivered text, entity/collection summaries, current actions, omissions and evidence references. Bounds and semantic content come from `browser_page_map` and delivered snapshots; the projection strips selectors and other private implementation details.
+Each region exposes a projection ID, semantic role, label, normalized bounds, importance, coverage state, bounded delivered text, collection summaries, current actions, omissions and evidence references. Bounds and semantic content come from `browser_page_map` and delivered snapshots; the projection strips selectors and other private implementation details. Within a page, match unique role/label pairs across observations; an unnamed region requires a unique exact role/text match. Keep the first matched observation identity, never a hash of changing bounds or text. Ambiguous matches stay separate evidence. The latest region observation determines the displayed region inventory; older inventories remain in Evidence instead of increasing current counts. Normalize geometry only within one observation; do not compare viewport coordinates captured at different times as if they shared a frame of reference.
 
-Each action retains its exact page, snapshot and element identities, role, label, state and region membership. Membership uses containment when trustworthy bounds exist and semantic context otherwise. An action with no trustworthy membership appears under unplaced actions; the renderer never guesses a region.
+Each action retains its exact page, snapshot and element identities, role, label, state and region membership. Membership uses containment only for trustworthy bounds from the same observation, or a unique explicit semantic association. An action with no trustworthy membership appears under unplaced actions; the renderer never guesses a region. A region offers location only through a valid delivered element reference belonging to it; otherwise selection opens its inspector only. Locator eligibility requires the latest observed snapshot for that exact document and the provider retention bound; the provider rechecks cache eviction and document identity at dispatch. Expired references stay historical, and failure requests a manual refresh without automatically reading again.
 
-Coverage is a set of explicit measures, not one invented completeness score: delivered text range, observed collection items versus reported item count, controls returned versus pagination state, tree nodes/cursor, regions observed and known truncation. The UI may display a local ratio only where numerator and denominator are both supplied by evidence.
+Coverage is a set of explicit measures, not one invented completeness score: delivered text size, observed collection items versus trustworthy reported totals, controls returned versus pagination state, tree nodes/cursor, regions observed and known truncation. A control offset is not a text offset. Include delivered `browser_extract` items and their control references, but its filtered, bounded item count is not the page total. A collection count at the provider clamp of 128 is unknown as a denominator. At the page-map limit of 32 regions, or the structural-summary limit of 24 regions, report possible truncation. Only explicitly trustworthy totals may form a local ratio; missing totals remain unknown.
 
 The projection remains bounded by existing Browser limits. It retains at most the delivered 32 regions, 128 controls and bounded tree/text previews per observation; it aggregates references instead of storing a second full DOM database.
 
 ## Interaction and layout rules
 
 - Use the atlas as the default cognition view. Keep only Structure and Evidence as secondary tabs; do not restore separate Overview or Actionable tabs.
-- Encode read state with text and border treatment as well as color. Every map region is keyboard selectable and has an equivalent accessible name and status.
-- Put the most useful safe navigation/location actions directly in a region. Collapse the remainder behind a count without hiding that they exist.
-- Selecting a region updates one inspector with Known content, Available actions and Not covered. The inspector does not duplicate raw DOM metadata.
+- Encode read state with text and border treatment as well as color. Every page card and map region is keyboard selectable and has an equivalent accessible name and status; traversal follows rendered order.
+- Show the first valid location reference in delivered order directly in a region. The inspector lists all its actions and is the access point for the remaining action count. These controls locate elements; they do not execute the element's website action.
+- Selecting a region updates one inspector with Known content, Available actions and Not covered. Initially show a selection hint. In narrow layouts make selection feedback visible through an adjacent status and an accessible live announcement; scrolling must not steal keyboard focus. The inspector does not duplicate raw DOM metadata.
 - Locate a region or element in the pinned page without changing the target. Stale locators remain visible only as historical evidence and cannot dispatch.
-- Follow the available container width. At approximately 40 viewport percent, use map plus inspector columns; below 700 CSS pixels, stack them. Avoid long prose wider than 72 characters per line.
-- Render current pages as a deck: the selected page is expanded and other pages show compact semantic thumbnails with title, page type, coverage and omissions.
+- Use container width as the sole breakpoint: at least 700 CSS pixels displays map and inspector side by side; below it they stack. Avoid long prose wider than 72 characters per line.
+- Render pages as a deck: preserve a user's current selection; initially prefer the exact pinned page, otherwise the latest observed current page. Other pages show compact semantic thumbnails with title, page type, coverage and omissions. Keyboard selection updates the same expanded page without changing the task target.
+- During a requested refresh, retain committed facts and show whether the request is being submitted, awaits a delivered observation, or ended without new evidence. Repeated clicks must not enqueue duplicate refreshes; failures remain retryable through the existing request reconciliation.
 - Preserve a deterministic generic fallback for missing bounds, unknown page types, Canvas, cross-origin frames and virtualized content. The fallback is a semantic outline, not an empty map.
 
 ## Delivery plan
 
 ### P0 — Freeze page-level behavior with failing tests
 
-Owner: root/Sol. Extend `apps/chrome-extension/tests/assistant-cognition.spec.ts` before production edits. RED cases cover grouping multiple observations into one exact page, page count versus observation count, current/previous documents, region bounds and text retention, explicit omissions, unplaced actions and stale locator removal.
+Owner: primary integrator. Extend `apps/chrome-extension/tests/assistant-cognition.spec.ts` before production edits. RED cases cover grouping multiple observations into one exact page, page count versus observation count, current/previous documents, region bounds and text retention, explicit omissions, unplaced actions, dynamic DOM matching and stale or evicted locators. Preserve parent I4 coverage: unread before delivery, honest partial coverage, Session/document isolation, unchanged reads after like changes, and one refresh request chain. Freeze the page/observation/action identifiers and expected Session/target revision in command fixtures.
 
 Completion: every test names the production change that makes it pass; failures come from the current observation-list projection rather than fixture or import errors.
 
 ### P1 — Project pages, regions and coverage
 
-Owner: Sol. Reshape `apps/chrome-extension/src/assistant-cognition.js` from `{ items }` to page-level projection. Preserve public `browser_page_map` role, label, text, importance, stability and bounds; normalize geometry and deduplicate nested landmarks deterministically. Keep observation provenance and history inside each page.
+Owner: primary integrator. Reshape `apps/chrome-extension/src/assistant-cognition.js` from `{ items }` to page-level projection. Preserve public `browser_page_map` role, label, text, importance, stability and bounds; normalize geometry and deduplicate nested landmarks only where identity and equivalent content are proven. Keep observation provenance and history inside each page. Update `assistant-runtime.js` message handlers and `assistant-view.js` state transport together, including refresh status and exact-reference location. Include `browser_extract` evidence without inventing region membership or page totals.
 
 Add element bounds to `apps/chrome-extension/src/browser-page.js` only if tests prove semantic context cannot assign actions reliably. Bound and validate any new public field through the existing Browser result path; do not add another Host route or persistence format.
 
-Completion: focused cognition and browser-page tests pass; malformed or extreme bounds fail closed; no page read occurs during projection.
+Completion: `pnpm run test -- apps/chrome-extension/tests/assistant-cognition.spec.ts apps/chrome-extension/tests/browser-page.spec.ts apps/chrome-extension/tests/browser-dom-tree.spec.ts apps/chrome-extension/tests/browser-context.spec.ts apps/chrome-extension/tests/assistant-runtime-functions.spec.ts apps/chrome-extension/tests/sidebar.spec.ts` covers the parent I4 promises and command receivers. Malformed or extreme bounds fail closed; no page read occurs during projection. Integrate P1 and P2 as one candidate before building or reloading; no temporary dual projection is required.
+
+Within one extension runtime, target bind, clear and reveal share one serialized lane, followed by a Host revision check. A different Host client can still change the target while a local highlight is executing; eliminating that distributed race requires a new Host reservation/dispatch route and is outside this slice rather than atomically proven here.
 
 ### P2 — Render the atlas as the primary cognition surface
 
-Owner: Terra after P1 freezes fixtures. Modify `apps/chrome-extension/src/sidebar.js`, `sidebar.css`, `sidebar.html` only as needed, plus `tests/sidebar.spec.ts`. Render the page deck, atlas grid, region action chips and selection inspector; retain Structure and Evidence secondary views. Use container queries for the wide and stacked layouts.
+Owner: UI worker after P1 freezes fixtures. Modify `apps/chrome-extension/src/sidebar.js`, `sidebar.css`, `sidebar.html` only as needed, plus `tests/sidebar.spec.ts`. Render the page deck, atlas grid, region location buttons and selection inspector; add the specified Structure and Evidence secondary views. Use container queries for the wide and stacked layouts. Keep conversation receipts derived from page observations and show page count independently of observation count.
 
-Completion: sidebar tests cover keyboard selection, text equivalents for state, wide/stacked layout hooks, current and previous pages, empty/fallback maps, stale locators and command payloads. The renderer consumes projection facts and contains no website detection or Host policy.
+Completion: sidebar tests cover page and region keyboard selection, selection announcements, refresh feedback, Structure/Evidence contents, complete inspector action access, wide/stacked layout hooks, current and previous pages, empty/fallback maps, stale locators and command payloads. Retain all non-cognition regressions. The renderer consumes projection facts and contains no website detection or Host policy.
 
 ### P3 — Prove cross-page generality
 
@@ -93,7 +98,7 @@ Completion: the same projection and renderer pass all fixtures. Add a specialize
 
 Owner: Sol. Build the extension, reload the exact candidate and inspect one real Zhihu question page plus one structurally different page. Confirm map geometry against observed regions, content/actions against delivered results, unread areas against actual truncation and every locator against the pinned page. Browsing another tab must not retarget the atlas or its actions.
 
-Completion: retain screenshots, Session/request/page/snapshot identities and source-result comparisons under the existing browser-assistant evidence directory. The HTML prototype is a visual reference, not acceptance evidence. Do not restart the working Host until the source and focused checks are stable and a real boundary run is ready.
+Completion: create `.artifacts/browser-assistant-v2/semantic-atlas/` if absent and retain screenshots, Session/request/page/snapshot identities and source-result comparisons there. Include unchanged read counts after an irrelevant like-count mutation, one explicit refresh chain, and expired-reference rejection. Use an article or structured list for the second page and state the observed coverage. The HTML prototype is a visual reference, not acceptance evidence. Do not restart the working Host until the source and focused checks are stable and a real boundary run is ready.
 
 ## Evolution policy
 

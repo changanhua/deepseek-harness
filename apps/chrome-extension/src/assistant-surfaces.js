@@ -5,8 +5,11 @@ const validFallbackId = value => typeof value === 'string'
 /** Resolve one trusted sidebar/popup document to its worker-owned surface identity. */
 export const assistantSurfaceId = (sender, extensionId, sidebarUrl, fallbackId) => {
   if (sender?.id !== extensionId || sender.url !== sidebarUrl) return null
-  if (validSurfaceId(sender.documentId)) return sender.documentId
-  return validFallbackId(fallbackId) ? fallbackId : null
+  // A sidebar reload receives a new documentId but retains its sessionStorage
+  // identity. Prefer the validated sender-supplied identity so its selected
+  // Session and target survive that document lifecycle change.
+  if (validFallbackId(fallbackId)) return fallbackId
+  return validSurfaceId(sender.documentId) ? sender.documentId : null
 }
 
 /** Reuse one dedicated assistant window; its document identity owns an independent Session selection. */

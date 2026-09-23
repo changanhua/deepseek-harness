@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-09-21-browser-assistant-semantic-page-atlas.md
-2026-09-21-browser-assistant-semantic-page-atlas.md: c17d14d8c46ef82897f1ceb032109b81d76143d1
-2026-09-21-browser-assistant-semantic-page-atlas.zh.md: 39ecdded687c7086dc5e635356fdc9eac4113b28
+2026-09-21-browser-assistant-semantic-page-atlas.md: 990621764e65b0e2b1895a40f03d6fcb984015d9
+2026-09-21-browser-assistant-semantic-page-atlas.zh.md: 409f0ad88db40af5297dbfbe63f26588b2f894a3

@@ -99,7 +99,7 @@ Sol 在 `apps/chrome-extension/src/assistant-view.js` 及其测试中拥有单�
 
 ### I4 — 有证据的页面认知（Sol，随后 Terra 接渲染）
 
-角色：消费方；依赖 I3。按[语义页面地图计划](2026-09-21-browser-assistant-semantic-page-atlas.zh.md)的 P0–P4 顺序实施。`apps/chrome-extension/src/assistant-cognition.js` 及其测试负责确定性页面/区域/覆盖度投影；`assistant-runtime.js` 和 I1 适配器只传递该状态。来源为已提交的 Browser 快照、页面地图及明确接收的上下文。既有 follow 有界窗口无法供给来源时才补最小 Host 投影；渲染器不能自行读页，也不持久化第二份完整 DOM 数据库。
+角色：消费方；依赖 I3。按[语义页面地图计划](2026-09-21-browser-assistant-semantic-page-atlas.zh.md)的 P0–P4 顺序实施。`apps/chrome-extension/src/assistant-cognition.js` 及其测试负责确定性页面/区域/覆盖度投影；`assistant-runtime.js` 和 I1 适配器传递该状态，并负责既有刷新/定位命令的接收端。来源为已提交的 Browser 快照、页面地图、有界集合提取及明确接收的上下文。既有 follow 有界窗口无法供给来源时才补最小 Host 投影；渲染器不能自行读页，也不持久化第二份完整 DOM 数据库。
 
 完成：`pnpm run test -- apps/chrome-extension/tests/assistant-cognition.spec.ts apps/chrome-extension/tests/browser-dom-tree.spec.ts apps/chrome-extension/tests/browser-context.spec.ts apps/chrome-extension/tests/sidebar.spec.ts`。RED/PASS 证明页面级归并、实际送达前未读、部分覆盖不夸大、会话/文档隔离、陈旧定位移除、点赞变化不增加读取及刷新仅走一次请求链路。真实页面地图必须与已提交来源事件及 page-map 几何对照，不能只检查模拟文案。
 

@@ -1639,9 +1639,11 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       grantEpoch: request.grantEpoch, installationId: request.installationId, sessionId: request.sessionId,
       requestId: request.requestId, deadline: request.deadline, fingerprint: request.fingerprint, outcome: 'observed',
       value: { tabs: [{ tabId: 12, selector: '#nested-private', data: { blocks: [{ text: 'private' }] } }],
-        regionSelector: '#root-private' } } }))
+        regionSelector: '#root-private', source: { version: 1, extractorVersion: 'browser-source-v1',
+          contentBlocks: [{ blockId: 'block-0', ordinal: 0, kind: 'paragraph', text: 'Public source passage.', truncated: false }], omissions: [] } } } }))
     const result = await pending
-    expect(JSON.stringify(result.value)).not.toMatch(/selector|blocks|private/iu)
+    expect(JSON.stringify(result.value)).not.toMatch(/selector|"blocks"|private/iu)
+    expect(object(result.value).source).toMatchObject({ contentBlocks: [{ blockId: 'block-0', text: 'Public source passage.' }] })
   })
 
   it('rejects an oversized page map instead of retaining unbounded refs', async () => {

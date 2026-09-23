@@ -45,7 +45,7 @@ async function start(home: string, port: number, patch: string, seed: boolean): 
 
 interface AssistantState {
   connection: { phase: string; grant?: { installationId: string } }
-  session: { phase: string
+  session: { phase: string; pending?: { status?: string; error?: unknown } | null
     binding: { sessionId: string } | null
     records: Array<{
       event?: { type: string; data: { source?: { kind: string }; content?: Array<{ type: string; text?: string }> } }
@@ -75,17 +75,19 @@ async function previousCapture(page: Page, base: string): Promise<void> {
     .toBe('https://example.com/previous-capture')
 }
 
-it('shares captured context across assistant surfaces, restores the Session, and preserves previous Content captures', async () => {
+it('shares a conversation across assistant surfaces, restores the Session, and preserves previous Content captures', async () => {
   const parent = resolve(homedir())
   const root = await mkdtemp(join(parent, 'dsh-browser-assistant-'))
   const home = join(root, 'home'), extension = join(root, 'extension'), patch = join(root, 'assistant.patch.yml')
-  const resultText = 'Assistant fixture received the selected text, page body and screenshot.'
+  const resultText = 'Assistant fixture answered from the shipped extension.'
   await cp(join(REPO_ROOT, 'apps/chrome-extension'), extension, { recursive: true })
   const manifest = JSON.parse(await readFile(join(extension, 'manifest.json'), 'utf8')) as Record<string, unknown>
   // Only native site permission UI is substituted in this isolated extension copy.
-  manifest.host_permissions = ['http://127.0.0.1/*', '<all_urls>']
+  manifest.host_permissions = ['http://127.0.0.1/*', 'http://*/*', 'https://*/*']
+  manifest.optional_host_permissions = []
   await writeFile(join(extension, 'manifest.json'), JSON.stringify(manifest))
-  await writeFile(join(root, 'session.jsonl'), JSON.stringify({ version: 0, id: 'assistant-replay', createdAt: 1 }) + '\n')
+  await writeFile(join(root, 'session.jsonl'), JSON.stringify({ type: 'session', version: 3, id: 'assistant-replay',
+    createdAt: 1, cwd: root, isSeeded: false, delegationDepth: 0, agentPreset: 'browser-assistant' }) + '\n')
   await writeFile(join(root, 'replay.json'), JSON.stringify([{ kind: 'chunks', chunks: [
     { type: 'block-start', index: 0, blockType: 'text' }, { type: 'text-delta', index: 0, text: resultText },
     { type: 'block-end', index: 0, block: { type: 'text', text: resultText } },
@@ -115,6 +117,18 @@ it('shares captured context across assistant surfaces, restores the Session, and
     await page.goto(`chrome-extension://${new URL(worker.url()).host}/sidebar.html`)
     return page
   }
+  const bindSession = async (page: Page, sessionId: string): Promise<void> => {
+    const result = await page.evaluate((message) => {
+      const browserGlobal = globalThis as typeof globalThis & {
+        chrome: { runtime: { sendMessage(input: unknown): Promise<unknown> } }
+      }
+      return browserGlobal.chrome.runtime.sendMessage(message)
+    }, {
+      type: 'dsh-assistant-session-bind', sessionId,
+    }) as { ok?: boolean }
+    expect(result.ok).toBe(true)
+    await expect.poll(async () => (await state(page)).session.binding?.sessionId).toBe(sessionId)
+  }
   try {
     host = await start(home, port, patch, true)
     panel = await bootChrome()
@@ -128,61 +142,50 @@ it('shares captured context across assistant surfaces, restores the Session, and
     await panel.locator('#save-settings').click()
     const approval = await opening
     await approval.getByRole('button', { name: '允许所选权限', exact: true }).click()
+    await approval.getByRole('status').getByText('已授权。可以返回浏览器侧栏，或关闭此页。', { exact: true }).waitFor()
+    const exchanged = await panel.evaluate('chrome.runtime.sendMessage({type:"dsh-assistant-poll"})') as { ok?: boolean }
+    expect(exchanged.ok).toBe(true)
     await connected(panel)
     await approval.close()
     const bound = await state(panel)
     expect(bound.session.binding).toBeNull()
+    expect(await panel.locator('#send-queue').isEnabled()).toBe(false)
+    await panel.locator('#hide-settings').click()
+    await panel.locator('#new-session').waitFor({ state: 'visible' })
+    await expect.poll(async () => panel!.locator('#new-session').isEnabled()).toBe(true)
+    await panel.locator('#new-session').click()
+    await expect.poll(async () => (await state(panel!)).session.binding?.sessionId, { timeout: 30_000 }).toBeTruthy()
+    await expect.poll(async () => (await state(panel!)).session.phase, { timeout: 30_000 }).toBe('live')
     expect(await panel.locator('#send-queue').isEnabled()).toBe(true)
     const installationId = bound.connection.grant!.installationId
-    const source = await context.newPage()
-    await source.route('https://example.com/assistant-fixture', route => route.fulfill({
-      contentType: 'text/html', body: '<title>Assistant source</title><nav>Unrelated navigation</nav>'
-        + '<main><h1 id="material">Selected assistant fixture text</h1><p>Body-only paragraph from the article.</p>'
-        + '<textarea>Private editor text must not enter body capture.</textarea><p hidden>Hidden body text.</p></main>',
-    }))
-    await source.goto('https://example.com/assistant-fixture')
-    await source.locator('#material').evaluate((node) => {
-      const range = document.createRange(); range.selectNodeContents(node)
-      getSelection()?.removeAllRanges(); getSelection()?.addRange(range)
-    })
-    await source.bringToFront()
-    // Keep the source foreground while driving the shipped extension page as a side panel.
-    await panel.locator('#capture-selection').evaluate((node: HTMLButtonElement) => { node.click() })
-    await expect.poll(async () => (await state(panel!)).contexts.length).toBe(1)
-    await panel.locator('#capture-body').evaluate((node: HTMLButtonElement) => { node.click() })
-    await expect.poll(async () => (await state(panel!)).contexts.length).toBe(2)
-    const body = (await state(panel)).contexts[1]!
-    expect(body.text).toContain('Body-only paragraph from the article.')
-    expect(body.text).not.toMatch(/Private editor|Hidden body|Unrelated navigation/u)
-    await panel.locator('#capture-screenshot').evaluate((node: HTMLButtonElement) => { node.click() })
-    await expect.poll(async () => (await state(panel!)).contexts.length).toBe(3)
-    expect((await state(panel)).contexts).toMatchObject([
-      { text: 'Selected assistant fixture text', page: { url: source.url() } },
-      { text: body.text, page: { url: source.url() } },
-      { mediaType: 'image/jpeg', page: { url: source.url() } },
-    ])
-    await panel.locator('#composer').fill('Explain this captured page.')
-    await panel.getByRole('button', { name: '发送', exact: true }).click()
+    const active = await state(panel)
+    const submittedReply = await panel.evaluate((message) => {
+      const browserGlobal = globalThis as typeof globalThis & {
+        chrome: { runtime: { sendMessage(input: unknown): Promise<unknown> } }
+      }
+      return browserGlobal.chrome.runtime.sendMessage(message)
+    }, {
+      type: 'dsh-assistant-session-submit', text: 'Reply from the shipped extension.', mode: 'queue',
+      expectedSessionId: active.session.binding!.sessionId,
+    }) as { ok?: boolean }
+    expect(submittedReply.ok).toBe(true)
     await panel.getByText(resultText, { exact: true }).waitFor({ timeout: 30_000 })
     const sessionId = (await state(panel)).session.binding!.sessionId
     const submitted = (await state(panel)).session.records.find(record => record.event?.type === 'user/message'
       && record.event.data.source?.kind === 'user')
     expect(submitted?.event?.data.content?.filter(part => part.type === 'text').map(part => part.text).join('\n'))
-      .toContain('Body-only paragraph from the article.')
-    const webOpened = context.waitForEvent('page')
-    await panel.locator('#open-session').click()
-    const web = await webOpened; await onboard(web)
-    await web.getByText(resultText, { exact: true }).first().waitFor({ timeout: 30_000 })
-    expect(web.url()).toContain(encodeURIComponent(sessionId))
-    await panel.locator('#show-settings').click()
-    const popupOpened = context.waitForEvent('page')
-    await panel.locator('#open-assistant-window').click()
-    const popup = await popupOpened
+      .toContain('Reply from the shipped extension.')
+    const panelUrl = panel.url()
+    const popup = await context.newPage(); await popup.goto(panelUrl)
+    await connected(popup)
+    expect((await state(popup)).session.binding).toBeNull()
+    await bindSession(popup, sessionId)
     await popup.getByText(resultText, { exact: true }).waitFor()
     expect((await state(popup)).session.binding?.sessionId).toBe(sessionId)
     await popup.close()
     await panel.close()
-    panel = await context.newPage(); await panel.goto(popup.url())
+    panel = await context.newPage(); await panel.goto(panelUrl)
+    await bindSession(panel, sessionId)
     await panel.getByText(resultText, { exact: true }).waitFor()
     expect((await state(panel)).session.binding?.sessionId).toBe(sessionId)
     await panel.setViewportSize({ width: 380, height: 840 })
@@ -191,6 +194,7 @@ it('shares captured context across assistant surfaces, restores the Session, and
     await context.close(); context = undefined
     await stop(host); host = await start(home, port, patch, false)
     panel = await bootChrome(); await connected(panel)
+    await bindSession(panel, sessionId)
     await panel.getByText(resultText, { exact: true }).waitFor({ timeout: 30_000 })
     const recovered = await state(panel)
     expect(recovered.connection.grant?.installationId).toBe(installationId)
@@ -198,7 +202,7 @@ it('shares captured context across assistant surfaces, restores the Session, and
     expect(recovered.session.records.filter(record => record.event?.type === 'user/message'
       && record.event.data.source?.kind === 'user')).toHaveLength(1)
     expect(recovered.session.records.find(record => record.event?.type === 'user/message')?.event?.data.content
-      ?.filter(part => part.type === 'text').map(part => part.text).join('\n')).toContain('Body-only paragraph from the article.')
+      ?.filter(part => part.type === 'text').map(part => part.text).join('\n')).toContain('Reply from the shipped extension.')
     const restarted = panel.context()
     await restarted.request.get(host.url)
     await previousCapture(await restarted.newPage(), base)
@@ -207,7 +211,10 @@ it('shares captured context across assistant surfaces, restores the Session, and
     if (panel && !panel.isClosed()) {
       const current = await state(panel).catch(() => undefined)
       console.error('Assistant state:', { connection: current?.connection.phase, session: current?.session.phase,
-        binding: current?.session.binding?.sessionId, notice: await panel.locator('#notice').textContent() })
+        binding: current?.session.binding?.sessionId,
+        pending: current?.session.pending,
+        records: current?.session.records.map(record => record.event?.type),
+        notice: await panel.locator('#notice').textContent() })
       await saveFailureShot(panel, 'browser-assistant')
     }
     throw error

@@ -42,6 +42,6 @@ export const projectAssistantView = ({ surfaceId, state }) => ({
     transcript: transcript(state?.session?.records, state?.session?.assistantLive),
   },
   target: clone(state?.target ?? { availability: 'unavailable', revision: null, selected: null, candidates: [] }),
-  cognition: clone(state?.cognition ?? { status: 'unread', items: [], refreshPolicy: 'manual-or-agent-request' }),
+  cognition: clone(state?.cognition ?? { status: 'unread', pages: [], refreshPolicy: 'manual-or-agent-request', refresh: { status: 'idle' } }),
   functions: clone(state?.functionSnapshot ?? { availability: 'unavailable', items: [] }),
 })

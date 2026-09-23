@@ -14,6 +14,7 @@ const sessionId = SessionId('session-test')
 const action: BrowserAction = { kind: 'click', element, intent: '检查目标' }
 const operation: BrowserOperation = { requestId: '00000000-0000-4000-8000-000000000001', sessionId, installationId: 'installation', action }
 const agent = { session: { id: sessionId } } as Parameters<Context['approval']['request']>[0]['agent']
+const sessionProjections = { register: vi.fn(), stateOf: vi.fn() }
 const observed: BrowserActionResult = { requestId: 'request', sessionId, installationId: 'installation', outcome: 'observed', delivery: 'sent' }
 function uuidMatcher(): string {
   const matcher: unknown = expect.stringMatching(/^[0-9a-f]{8}-/u)
@@ -36,8 +37,11 @@ const harness = (effect: BrowserActionDescription['effect'], kind: BrowserAction
 describe('browser tool approval policy', () => {
   it('declares the online executor capability handshake in browser_instances output', () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
-    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const guard = vi.fn()
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { guard, register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    expect(guard).toHaveBeenCalledOnce()
+    expect(guard).toHaveBeenCalledWith(expect.any(Function))
     expect(JSON.stringify(registered.get('browser_instances')!.output.schema)).toContain('"capabilities"')
     expect(JSON.stringify(registered.get('browser_instances')!.output.schema)).toContain('"requestRecovery"')
   })
@@ -49,14 +53,60 @@ describe('browser tool approval policy', () => {
       capabilities: { protocolVersion: 1 as const, actionKinds: ['tabs'] as const,
         requestRecovery: true as const, restartStatusLookup: true as const },
     }]) }
-    apply({ inject: vi.fn(), on: vi.fn(), browser, approval: { request: h.approval },
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), browser, approval: { request: h.approval },
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const tool = registered.get('browser_instances')!
     const value = await tool.execute({}, { agent, signal: h.controller.signal } as ToolRunContext)
     expect(validateJsonSchemaValue(tool.output.schema, value)).toEqual([])
   })
   it('declares retained request values in the status result schema', () => {
     expect(requestStatusSchema.properties.value).toEqual({ type: 'json' })
+  })
+
+  it('persists bounded sanitized observation metadata independently of spill-prone model text', () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const meta = registered.get('browser_snapshot')!.output.presentationMeta?.(
+      { installationId: 'installation', tabId: 1, frameId: 0 },
+      { requestId: 'request', sessionId, installationId: 'installation', outcome: 'observed', delivery: 'sent',
+        value: { page, snapshotId: 'snapshot', title: 'Article', text: 'x'.repeat(50_000), textTruncated: true,
+          source: { version: 1, extractorVersion: 'browser-source-v1', contentBlocks: [{ blockId: 'block-0', ordinal: 0,
+            kind: 'paragraph', text: 'Only three templates were tested.', truncated: false, selector: '#private' }], omissions: [] },
+          elements: [{ elementId: 'open', role: 'button', label: 'Open', context: 'Article',
+            selector: '#private', href: 'https://secret.test/' }],
+          structure: { regions: [{ role: 'main', label: 'Article', text: 'Body',
+            bounds: { x: 10, y: 20, width: 300, height: 400 }, selector: 'main' }],
+          collections: [{ kind: 'ul', label: 'Related reading', contextRole: 'main', selector: '#private-list',
+            items: [{ index: 0, text: 'Queues', controls: [{ elementId: 'read', role: 'link', label: 'Read' }] }] }] } } },
+    )
+    expect(meta).toMatchObject({ browserObservation: { version: 1, result: {
+      requestId: 'request', sessionId, installationId: 'installation', outcome: 'observed', delivery: 'sent',
+      value: { page, snapshotId: 'snapshot', title: 'Article', textTruncated: true,
+        source: { version: 1, extractorVersion: 'browser-source-v1', blocks: [{ blockId: 'block-0', ordinal: 0,
+          kind: 'paragraph', text: 'Only three templates were tested.', truncated: false }], omissions: [] },
+        elements: [{ elementId: 'open', role: 'button', label: 'Open', context: 'Article' }],
+        structure: { regions: [{ role: 'main', label: 'Article', text: 'Body',
+          bounds: { x: 10, y: 20, width: 300, height: 400 } }],
+        collections: [{ kind: 'ul', label: 'Related reading', contextRole: 'main', items: [{ index: 0, text: 'Queues', controls: [{ elementId: 'read' }] }] }] } },
+    } } })
+    expect(JSON.stringify(meta)).not.toMatch(/private|secret\.test|selector|href/u)
+    expect(new TextEncoder().encode(JSON.stringify(meta)).byteLength).toBeLessThanOrEqual(256 * 1024)
+  })
+
+  it('persists bounded task observations independently of the task result text', () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } },
+      browserTasks: { } } as unknown as Context)
+    const meta = registered.get('browser_task_start')!.output.presentationMeta?.({}, {
+      taskId: 'task-1', observation: { page, snapshotId: 'task-snapshot', title: 'Task page',
+        elements: [{ elementId: 'inspect', role: 'button', label: 'Inspect', selector: '#private' }] },
+    })
+    expect(meta).toEqual({ browserObservation: { version: 1, result: {
+      taskId: 'task-1', observation: { page, snapshotId: 'task-snapshot', title: 'Task page',
+        elements: [{ elementId: 'inspect', role: 'button', label: 'Inspect' }] },
+    } } })
   })
 
   it('names the exact unknown request to inspect without misclassifying a rejected busy request', () => {
@@ -214,12 +264,12 @@ describe('browser tool approval policy', () => {
   })
   it('registered tools publish closed action shapes and derive Session solely from the executing Agent', async () => {
     const h = harness('unknown'); const registered = new Map<string, ToolDefinition>()
-    apply({
+    apply({ sessionProjections,
       inject: vi.fn(),
       on: vi.fn(),
       browser: h.browser,
       approval: { request: h.approval },
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } },
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } },
     } as unknown as Context)
     const exec = { agent, signal: h.controller.signal } as ToolRunContext
     const tool = registered.get('browser_action')!
@@ -231,8 +281,8 @@ describe('browser tool approval policy', () => {
   })
   it('exposes persistent entry mounts to the preset Agent without routing them through one-shot preparation', async () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
-    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const mount = { kind: 'entry_mount', page, mountId: 'feed', selector: '.card', label: '保存条目' }
     await registered.get('browser_entry_mount')!.execute({ installationId: 'installation', action: mount }, { agent, signal: h.controller.signal } as ToolRunContext)
     expect(h.browser.execute).toHaveBeenCalledWith(expect.objectContaining({ sessionId,
@@ -244,8 +294,8 @@ describe('browser tool approval policy', () => {
   it('returns a structured recovery diagnostic for a deterministic region rejection', async () => {
     const h=harness('unknown'),registered=new Map<string,ToolDefinition>()
     h.browser.execute.mockResolvedValue({ ...observed,outcome:'failed',delivery:'not-sent',reason:'region_ref_not_current' })
-    apply({ inject:vi.fn(),on:vi.fn(),browser:h.browser,approval:{ request:h.approval },
-      tools:{ register:(tool:ToolDefinition)=>{registered.set(tool.name,tool)} } } as unknown as Context)
+    apply({ sessionProjections, inject:vi.fn(),on:vi.fn(),browser:h.browser,approval:{ request:h.approval },
+      tools:{ guard:vi.fn(),register:(tool:ToolDefinition)=>{registered.set(tool.name,tool)} } } as unknown as Context)
     const result=await registered.get('browser_region_render')!.execute({ installationId:'installation',action:{ kind:'region_render',page,
       mountId:'panel',regionRef:'11111111-1111-4111-8111-111111111111',presentation:{ summary:'result' } } },{ agent,signal:h.controller.signal } as ToolRunContext)
     expect(result).toMatchObject({ outcome:'failed',delivery:'not-sent',diagnostic:{ code:'REGION_REF_NOT_CURRENT',
@@ -255,8 +305,8 @@ describe('browser tool approval policy', () => {
   it('does not claim a direct provider exception proves that a page write was not sent', async () => {
     const h=harness('unknown'),registered=new Map<string,ToolDefinition>()
     h.browser.execute.mockRejectedValue(new Error('transport_boundary_failed'))
-    apply({ inject:vi.fn(),on:vi.fn(),browser:h.browser,approval:{ request:h.approval },
-      tools:{ register:(tool:ToolDefinition)=>{registered.set(tool.name,tool)} } } as unknown as Context)
+    apply({ sessionProjections, inject:vi.fn(),on:vi.fn(),browser:h.browser,approval:{ request:h.approval },
+      tools:{ guard:vi.fn(),register:(tool:ToolDefinition)=>{registered.set(tool.name,tool)} } } as unknown as Context)
     const result=await registered.get('browser_region_render')!.execute({ installationId:'installation',action:{ kind:'region_render',page,
       mountId:'panel',regionRef:'11111111-1111-4111-8111-111111111111',presentation:{ summary:'result' } } },{ agent,signal:h.controller.signal } as ToolRunContext)
     expect(result).toMatchObject({ outcome:'unknown',delivery:'sent',reason:'transport_boundary_failed',
@@ -266,8 +316,8 @@ describe('browser tool approval policy', () => {
     const h=harness('unknown'),registered=new Map<string,ToolDefinition>()
     const browserTasks={ get:()=>({ resources:[{ id:'panel',state:'released',target:{ installationId:'installation',page },
       disposition:'not-sent',dispositionSource:{ kind:'browser-task-receipt',sessionSeq:1 } }] }) }
-    apply({ inject:vi.fn(),on:vi.fn(),browser:h.browser,browserTasks,approval:{ request:h.approval },
-      tools:{ register:(tool:ToolDefinition)=>{registered.set(tool.name,tool)} } } as unknown as Context)
+    apply({ sessionProjections, inject:vi.fn(),on:vi.fn(),browser:h.browser,browserTasks,approval:{ request:h.approval },
+      tools:{ guard:vi.fn(),register:(tool:ToolDefinition)=>{registered.set(tool.name,tool)} } } as unknown as Context)
     const result=await registered.get('browser_region_clear')!.execute({ installationId:'installation',action:{ kind:'region_clear',page,mountId:'panel' } },
       { agent,signal:h.controller.signal } as ToolRunContext)
     expect(result).toMatchObject({ outcome:'observed',delivery:'not-sent',reason:'already_released',
@@ -276,8 +326,8 @@ describe('browser tool approval policy', () => {
   })
   it('projects the retained request recovery boundary without replaying an action', async () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
-    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const result = await registered.get('browser_request_status')!.execute({ installationId: 'installation', requestId: 'request' },
       { agent, signal: h.controller.signal } as ToolRunContext)
     expect(result).toMatchObject({ outcome: 'unknown', quiescent: true, nextStep: 'owner-decision' })
@@ -286,8 +336,8 @@ describe('browser tool approval policy', () => {
   })
   it('derives a stable provider request identity from a durable one-off tool call', async () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
-    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const exec = { agent, signal: h.controller.signal, callId: 'tool-call-42' } as ToolRunContext
     await registered.get('browser_tabs')!.execute({ installationId: 'installation' }, exec)
     await registered.get('browser_tabs')!.execute({ installationId: 'installation' }, exec)
@@ -304,8 +354,8 @@ describe('browser tool approval policy', () => {
         { index: 1, text: '其他条目', controls: [] },
       ] },
     ] } } })
-    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const result = await registered.get('browser_extract')!.execute({ installationId: 'installation', tabId: 1, frameId: 0, query: '目标', limit: 1 }, { agent, signal: h.controller.signal } as ToolRunContext) as BrowserActionResult
     expect(result).toMatchObject({ outcome: 'observed', value: { snapshotId: 'snapshot-1', items: [{ index: 0, text: '目标条目', controls: [{ elementId: 'element-1' }] }] } })
     const call = h.browser.execute.mock.calls[0] as unknown as [BrowserOperation, AbortSignal] | undefined
@@ -313,8 +363,8 @@ describe('browser tool approval policy', () => {
   })
   it('requires upload paths in a current user message before browser preparation', async () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
-    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const uploadAgent = { session: { id: sessionId, events: [] } } as unknown as typeof agent
     const exec = { agent: uploadAgent, signal: h.controller.signal } as ToolRunContext
     const upload = { kind: 'upload' as const, element, files: ['C:/Users/me/report.pdf'], intent: '上传用户选择的文件' }
@@ -331,9 +381,9 @@ describe('browser tool approval policy', () => {
     const attachment = { attachmentId: 'sha256:image' as never, mediaType: 'image/jpeg' as const, bytes: 1, width: 1, height: 1 }
     const saveImage = vi.fn(async () => attachment)
     h.browser.executePrepared.mockResolvedValue({ ...observed, value: { screenshot: { data: 'AQ==', mimeType: 'image/jpeg' } } })
-    apply({ inject: vi.fn(), on: vi.fn(), get: (service: string) => service === 'attachments' ? { saveImage } : undefined,
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), get: (service: string) => service === 'attachments' ? { saveImage } : undefined,
       browser: h.browser, approval: { request: h.approval },
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const tool = registered.get('browser_action')!
     const result = await tool.execute({ installationId: 'installation', action: { kind: 'screenshot', page } }, { agent, signal: h.controller.signal } as ToolRunContext)
     const content = tool.output.render({}, result as never)
@@ -355,9 +405,9 @@ describe('browser tool approval policy', () => {
     const saveImage = vi.fn(async () => attachment)
     h.browser.requestStatus.mockResolvedValue({ ...observed, outcome: 'unknown', reason: 'effect_unverified', quiescent: true,
       value: { screenshot: { data: 'AQ==', mimeType: 'image/jpeg' } } })
-    apply({ inject: vi.fn(), on: vi.fn(), get: (service: string) => service === 'attachments' ? { saveImage } : undefined,
+    apply({ sessionProjections, inject: vi.fn(), on: vi.fn(), get: (service: string) => service === 'attachments' ? { saveImage } : undefined,
       browser: h.browser, approval: { request: h.approval },
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const tool = registered.get('browser_request_status')!
     const result = await tool.execute({ installationId: 'installation', requestId: 'request' }, { agent, signal: h.controller.signal } as ToolRunContext)
     const content = tool.output.render({}, result as never)

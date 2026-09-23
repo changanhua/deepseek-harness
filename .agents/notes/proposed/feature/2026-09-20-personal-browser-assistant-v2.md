@@ -18,7 +18,9 @@ The extension creates Sessions on a dedicated `browser-assistant` preset. It kee
 
 ## Semantic page atlas
 
-Page cognition uses one semantic atlas per exact page document as its primary view. The atlas preserves broad observed layout, groups delivered content and current actions into regions, and exposes explicit coverage and omissions. It absorbs separate overview and actionable-element views; Structure and Evidence remain secondary inspection views.
+[Semantic navigation and source location](2026-09-21-browser-semantic-navigation.md) partially supersedes the spatial-region primary view. The exact-target, delivered-evidence, and authority rules below remain applicable; region boxes alone no longer constitute semantic-map delivery.
+
+Page cognition uses one semantic atlas per exact page document within one Session as its primary view. The atlas preserves broad observed layout, groups delivered content and current actions into regions, and exposes explicit coverage and omissions. Browser observation tools persist bounded, selector-free structured evidence outside spill-prone model text, and the atlas projects that durable result metadata. Overview and action discovery share this view; Structure and Evidence are secondary inspection views. Unknown totals and ambiguous region matches stay explicit. Location requires a current delivered element reference; selection alone never grants a website action.
 
 The atlas is deterministic evidence presentation, not a screenshot replica or an authoritative model summary. Generic semantic roles and collection patterns work across sites; a site adapter may enrich labels only after repeated evidence shows that the generic projection loses important structure. No presenter changes target authority, locator validity, action policy or known-versus-unread state.
 

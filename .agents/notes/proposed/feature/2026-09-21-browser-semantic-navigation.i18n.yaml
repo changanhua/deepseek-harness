@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-09-21-browser-semantic-navigation.md
+2026-09-21-browser-semantic-navigation.md: d055a879f62cb5a2702afbc309b3019b88857511
+2026-09-21-browser-semantic-navigation.zh.md: 1c11eaa68c612ef4f9fabc1b65bf896ee711e656

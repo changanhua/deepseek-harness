@@ -52,6 +52,12 @@ interface BrowserSnapshot {
   textTruncated: boolean
   scanTruncated: boolean
   elements: BrowserElement[]
+  source?: {
+    version: number
+    extractorVersion: string
+    contentBlocks: Array<{ blockId: string; ordinal: number; kind: string; text: string; truncated: boolean }>
+    omissions: string[]
+  }
   structure?: {
     regions: Array<{ kind: string; label: string; text: string }>
     collections: Array<{
@@ -98,6 +104,7 @@ interface BrowserAssistant {
   prepare(request: BrowserRequest): Promise<BrowserPreparationReceipt>
   execute(request: BrowserRequest): Promise<BrowserReceipt>
   inspect(identity: BrowserIdentity, options?: { cancel?: boolean }): BrowserReceipt
+  revealSource(reference: { snapshotId: string; blockId: string; url: string }): { ok: boolean; reason?: string; text?: string }
 }
 
 type BrowserPageGlobal = typeof globalThis & { __dshBrowserAssistant?: BrowserAssistant }
@@ -119,9 +126,260 @@ afterEach(() => {
   delete (globalThis as typeof globalThis & { __dshBrowserAssistant?: unknown }).__dshBrowserAssistant
   history.replaceState({}, '', '/article')
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe('页面内浏览器助手', () => {
+  test('已采集原文祖先隐藏时主动失效，并拒绝当前网页定位', async () => {
+    document.body.innerHTML = '<main><section id="container"><p>仅在三种模板中验证。</p></section></main>'
+    const sendMessage = vi.fn(async () => ({}))
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const assistant = install(), snapshot = assistant.snapshot()
+    const block = snapshot.source!.contentBlocks[0]
+    document.querySelector('#container')!.setAttribute('hidden', '')
+    await vi.waitFor(() => { expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'dsh-source-position', snapshotId: snapshot.snapshotId, invalidated: true,
+    })) })
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId: block.blockId, url: location.href }))
+      .toMatchObject({ ok: false, reason: 'source_changed' })
+  })
+  test('开放 Shadow DOM 中的原文变化会主动使来源失效', async () => {
+    document.body.innerHTML = '<main><div id="host"></div></main>'
+    const shadow = document.querySelector('#host')!.attachShadow({ mode: 'open' })
+    shadow.innerHTML = '<p id="source">工具失败后先检查状态。</p>'
+    const sendMessage = vi.fn(async () => ({}))
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    const block = snapshot.source!.contentBlocks.find(item => item.text === '工具失败后先检查状态。')!
+    expect(block).toBeTruthy()
+    shadow.querySelector('#source')!.textContent = '工具失败后直接重试。'
+    await vi.waitFor(() => { expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'dsh-source-position', snapshotId: snapshot.snapshotId, invalidated: true,
+    })) })
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId: block.blockId, url: location.href }))
+      .toMatchObject({ ok: false, reason: 'source_changed' })
+  })
+  test('开放 Shadow DOM 的宿主被隐藏时也会主动使来源失效', async () => {
+    document.body.innerHTML = '<main><div id="host"></div></main>'
+    const host = document.querySelector('#host')!, shadow = host.attachShadow({ mode: 'open' })
+    shadow.innerHTML = '<p>宿主隐藏后这段原文不可定位。</p>'
+    const sendMessage = vi.fn(async () => ({}))
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    const block = snapshot.source!.contentBlocks.find(item => item.text === '宿主隐藏后这段原文不可定位。')!
+    expect(block).toBeTruthy()
+    host.setAttribute('hidden', '')
+    await vi.waitFor(() => { expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'dsh-source-position', snapshotId: snapshot.snapshotId, invalidated: true,
+    })) })
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId: block.blockId, url: location.href }))
+      .toMatchObject({ ok: false, reason: 'source_changed' })
+  })
+  test('开放 Shadow DOM 的宿主被移除时也会主动使来源失效', async () => {
+    document.body.innerHTML = '<main><div id="host"></div></main>'
+    const host = document.querySelector('#host')!, shadow = host.attachShadow({ mode: 'open' })
+    shadow.innerHTML = '<p>宿主移除后这段原文不可定位。</p>'
+    const sendMessage = vi.fn(async () => ({}))
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    const block = snapshot.source!.contentBlocks.find(item => item.text === '宿主移除后这段原文不可定位。')!
+    expect(block).toBeTruthy()
+    host.remove()
+    await vi.waitFor(() => { expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'dsh-source-position', snapshotId: snapshot.snapshotId, invalidated: true,
+    })) })
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId: block.blockId, url: location.href }))
+      .toMatchObject({ ok: false, reason: 'source_changed' })
+  })
+  test('来源块有独立身份，段落回源核对原文，重复文本不猜位置', () => {
+    document.body.innerHTML = '<main><h1>缓存测试</h1><p id="first">只在三种模板中观察到平均约 14% 的提升。</p>'
+      + '<p id="second">只在三种模板中观察到平均约 14% 的提升。</p><input value="PRIVATE"></main>'
+    const assistant = install(), snapshot = assistant.snapshot()
+    expect(snapshot.source?.contentBlocks.map(block => block.text)).toEqual(['缓存测试', '只在三种模板中观察到平均约 14% 的提升。', '只在三种模板中观察到平均约 14% 的提升。'])
+    const blocks = snapshot.source!.contentBlocks
+    expect(blocks[1].blockId).not.toBe(blocks[2].blockId)
+    const second = document.querySelector('#second') as HTMLElement
+    const scroll = vi.fn(); second.scrollIntoView = scroll
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId: blocks[2].blockId, url: location.href }))
+      .toMatchObject({ ok: true, text: blocks[2].text })
+    expect(scroll).toHaveBeenCalledOnce()
+    second.textContent = '缓存总能提升 14%。'
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId: blocks[2].blockId, url: location.href })).toMatchObject({ ok: false, reason: 'source_changed' })
+    second.remove()
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId: blocks[2].blockId, url: location.href }).ok).toBe(false)
+  })
+
+  test('来源块不丢代码空白和表格行顺序，并明确截断边界', () => {
+    document.body.innerHTML = '<main><pre>if ready:\n    run()</pre><table><tr><th>型号</th><th>评分</th></tr><tr><td>A</td><td>91</td></tr></table>'
+      + `<p>${'长'.repeat(1400)}</p></main>`
+    const source = install().snapshot().source
+    expect(source?.contentBlocks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'code', text: 'if ready:\n    run()' }),
+      expect.objectContaining({ kind: 'table-row', text: '型号 | 评分' }),
+      expect.objectContaining({ kind: 'table-row', text: 'A | 91' }),
+      expect.objectContaining({ truncated: true }),
+    ]))
+    expect(source?.omissions.length).toBeGreaterThan(0)
+  })
+  test('无语义标签的正文仍按可见内容块采集，不把整页或导航混为一块', () => {
+    document.body.innerHTML = '<nav><div>登录 注册</div></nav><main><div><div>先连接服务。</div>'
+      + '<div><strong>失败处理：</strong><span>检查端口后再试。</span></div></div><div><input value="PRIVATE"></div></main>'
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    expect(snapshot.source?.contentBlocks.map(block => block.text)).toEqual(['先连接服务。', '失败处理： 检查端口后再试。'])
+    const block = snapshot.source!.contentBlocks[1]
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId: block.blockId, url: location.href }))
+      .toMatchObject({ ok: true, text: '失败处理： 检查端口后再试。' })
+  })
+  test('重复的纯 div 实体卡片按每条记录回源，不把字段拆散或合并整页', () => {
+    document.body.innerHTML = '<main><div class="players">'
+      + '<div class="player" id="first-player"><div><strong>Kylian Mbappé</strong></div><div>ST · 91</div></div>'
+      + '<div class="player" id="second-player"><div><strong>Aitana Bonmatí</strong></div><div>CM · 91</div></div>'
+      + '</div></main>'
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    expect(snapshot.source?.contentBlocks.map(block => block.text)).toEqual([
+      'Kylian Mbappé ST · 91', 'Aitana Bonmatí CM · 91',
+    ])
+    const target = document.querySelector('#second-player') as HTMLElement, scroll = vi.fn()
+    target.scrollIntoView = scroll
+    const blockId = snapshot.source!.contentBlocks[1].blockId
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId, url: location.href })).toMatchObject({ ok: true, blockId })
+    expect(scroll).toHaveBeenCalledOnce()
+  })
+  test('带链接和嵌套字段的重复卡片仍以实体记录采集并精确回源', () => {
+    document.body.innerHTML = '<main><div class="players">'
+      + '<div class="player" id="first-player"><a href="/player/1"><div><span>Kylian Mbappé</span></div></a>'
+      + '<div class="meta"><div>ST</div><div>91</div></div></div>'
+      + '<div class="player" id="second-player"><a href="/player/2"><div><span>Aitana Bonmatí</span></div></a>'
+      + '<div class="meta"><div>CM</div><div>91</div></div></div></div></main>'
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    expect(snapshot.source?.contentBlocks).toEqual([
+      expect.objectContaining({ kind: 'record', text: 'Kylian Mbappé ST 91' }),
+      expect.objectContaining({ kind: 'record', text: 'Aitana Bonmatí CM 91' }),
+    ])
+    const target = document.querySelector('#second-player') as HTMLElement, scroll = vi.fn()
+    target.scrollIntoView = scroll
+    expect(assistant.revealSource({
+      snapshotId: snapshot.snapshotId, blockId: snapshot.source!.contentBlocks[1].blockId, url: location.href,
+    }))
+      .toMatchObject({ ok: true, text: 'Aitana Bonmatí CM 91' })
+    expect(scroll).toHaveBeenCalledOnce()
+  })
+  test('整张球员卡片是链接时保留每名球员的完整记录', () => {
+    document.body.innerHTML = '<main><h1>EA FC 27 Popular Players</h1>'
+      + '<a href="/27/popular/evolutions"><span>Popular Evolution Players</span></a><div class="players">'
+      + '<div class="slot"><a id="kika" href="/27/player/506/francisca-ramos-nazareth-sousa">'
+      + '<div>73K Coin 410 Item Score</div><div>83 CM Kika Nazareth</div><div>85 PAC 82 SHO 82 PAS 84 DRI 60 DEF 80 PHY</div>'
+      + '</a></div><div class="slot"><a id="rashford" href="/27/player/810/marcus-rashford">'
+      + '<div>72K Coin 340 Item Score</div><div>82 LW Rashford</div><div>92 PAC 83 SHO 78 PAS 81 DRI 33 DEF 68 PHY</div>'
+      + '</a></div></div></main>'
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    expect(snapshot.source?.contentBlocks.map(block => block.kind)).toEqual(['heading', 'record', 'record'])
+    expect(snapshot.source!.contentBlocks[0].text).toBe('EA FC 27 Popular Players')
+    expect(snapshot.source!.contentBlocks[1].text).toContain('Kika Nazareth')
+    expect(snapshot.source!.contentBlocks[2].text).toContain('Rashford')
+    expect(snapshot.source!.contentBlocks[1].text).toContain('85 PAC 82 SHO')
+    expect(snapshot.source!.contentBlocks[2].text).toContain('92 PAC 83 SHO')
+    const card = document.querySelector('#rashford') as HTMLElement, scroll = vi.fn()
+    card.scrollIntoView = scroll
+    expect(assistant.revealSource({
+      snapshotId: snapshot.snapshotId, blockId: snapshot.source!.contentBlocks[2].blockId, url: location.href,
+    })).toMatchObject({ ok: true, text: snapshot.source!.contentBlocks[2].text })
+    expect(scroll).toHaveBeenCalledOnce()
+  })
+  test('球员卡片保留可访问的图标标签，标签变化时拒绝旧来源定位', () => {
+    document.body.innerHTML = '<main><a id="card" href="/27/player/506/francisca-ramos-nazareth-sousa">'
+      + '<div><span>73K</span><img alt="Coin"><span>410</span><span role="img" aria-label="Item Score"></span></div>'
+      + '<div>83 CM Kika Nazareth 85 PAC 82 SHO 82 PAS 84 DRI 60 DEF 80 PHY</div></a></main>'
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    const block = snapshot.source!.contentBlocks[0]
+    expect(block.kind).toBe('record')
+    expect(block.text).toContain('73K Coin 410 Item Score')
+    expect(block.text).toContain('Kika Nazareth')
+    document.querySelector('img')!.alt = 'Tokens'
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId: block.blockId, url: location.href }))
+      .toMatchObject({ ok: false, reason: 'source_changed' })
+  })
+  test('球员卡片保留图标 title 中的国籍联赛俱乐部，改值时使来源失效', async () => {
+    document.body.innerHTML = '<main><a id="card" href="/27/player/506/francisca-ramos-nazareth-sousa">'
+      + '<div>73K<img alt="Coin">410<img alt="Item Score"></div>'
+      + '<div>83 CM Kika Nazareth 85 PAC 82 SHO 82 PAS 84 DRI 60 DEF 80 PHY'
+      + '<img alt="Nation" title="Portugal"><img alt="League" title="Liga F">'
+      + '<img alt="Club" title="FC Barcelona"></div></a></main>'
+    const sendMessage = vi.fn(async () => ({}))
+    vi.stubGlobal('chrome', { runtime: { sendMessage } })
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    const block = snapshot.source!.contentBlocks[0]
+    expect(block.kind).toBe('record')
+    expect(block.text).toContain('Nation: Portugal')
+    expect(block.text).toContain('League: Liga F')
+    expect(block.text).toContain('Club: FC Barcelona')
+    document.querySelector('img[alt="Club"]')!.setAttribute('title', 'Real Madrid')
+    await vi.waitFor(() => { expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'dsh-source-position', snapshotId: snapshot.snapshotId, invalidated: true,
+    })) })
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId, blockId: block.blockId, url: location.href }))
+      .toMatchObject({ ok: false, reason: 'source_changed' })
+  })
+  test('单层包装的整卡链接保留图标与字段，短导航链接不变成记录', () => {
+    document.body.innerHTML = '<main><a href="/popular/evolutions"><span>Popular Evolution Players</span></a>'
+      + '<a id="card" href="/27/player/506/francisca-ramos-nazareth-sousa"><div>'
+      + '<span>73K</span><img alt="Coin"><span>410</span><span role="img" aria-label="Item Score"></span>'
+      + '<div>83 CM Kika Nazareth 85 PAC 82 SHO 82 PAS 84 DRI 60 DEF 80 PHY</div>'
+      + '</div></a></main>'
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    expect(snapshot.source?.contentBlocks).toHaveLength(1)
+    expect(snapshot.source?.contentBlocks[0].kind).toBe('record')
+    expect(snapshot.source?.contentBlocks[0].text).toContain('73K Coin 410 Item Score')
+    const target = document.querySelector('#card') as HTMLElement, scroll = vi.fn()
+    target.scrollIntoView = scroll
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId,
+      blockId: snapshot.source!.contentBlocks[0].blockId, url: location.href })).toMatchObject({ ok: true })
+    expect(scroll).toHaveBeenCalledOnce()
+  })
+  test('没有图片的通用重复链接卡片也按独立记录采集', () => {
+    document.body.innerHTML = '<main><section class="catalog">'
+      + '<a id="alpha" href="/catalog/alpha"><div><span>Alpha Workbench</span><span>2 seats</span>'
+      + '<span>Monthly plan includes shared notes and audit history.</span></div></a>'
+      + '<a id="beta" href="/catalog/beta"><div><span>Beta Workbench</span><span>5 seats</span>'
+      + '<span>Annual plan includes exports and team permissions.</span></div></a>'
+      + '</section></main>'
+    const assistant = install(), snapshot = assistant.snapshot({ textLimit: 0 })
+    expect(snapshot.source?.contentBlocks.map(block => block.kind)).toEqual(['record', 'record'])
+    expect(snapshot.source?.contentBlocks[0].text).toContain('Alpha Workbench')
+    expect(snapshot.source?.contentBlocks[1].text).toContain('Beta Workbench')
+    const target = document.querySelector('#beta') as HTMLElement, scroll = vi.fn()
+    target.scrollIntoView = scroll
+    expect(assistant.revealSource({ snapshotId: snapshot.snapshotId,
+      blockId: snapshot.source!.contentBlocks[1].blockId, url: location.href })).toMatchObject({ ok: true })
+    expect(scroll).toHaveBeenCalledOnce()
+  })
+  test('长球员列表只采集有界的完整记录，并显示其余未采集', () => {
+    const cards = Array.from({ length: 90 }, (_, index) => `<div><a href="/player/${index}">`
+      + `<div>Player ${index + 1}</div><div>85 CM 91 PAC 82 SHO 83 PAS 84 DRI 60 DEF 80 PHY</div></a></div>`).join('')
+    document.body.innerHTML = `<main><h1>Popular Players</h1><div class="players">${cards}</div></main>`
+    const source = install().snapshot({ textLimit: 0 }).source!
+    expect(source.contentBlocks).toHaveLength(64)
+    expect(source.contentBlocks[0].kind).toBe('heading')
+    expect(source.contentBlocks.slice(1).every(block => block.kind === 'record')).toBe(true)
+    expect(source.contentBlocks[63].text).toContain('Player 63')
+    expect(source.contentBlocks.some(block => block.text.includes('Player 64'))).toBe(false)
+    expect(source.omissions).toContain('其余正文块未采集')
+  })
+  test('结构摘要保留章节正文并明确列表位于导航还是正文，不采输入值', () => {
+    document.body.innerHTML = '<header><nav><ul><li>登录</li><li>注册</li></ul></nav></header><main><article><h1>电池指南</h1>'
+      + '<h2>日常充电</h2><p>保持通风，避免高温。</p><input value="PRIVATE_VALUE"><h2>长期存放</h2><p>保持适中的电量。</p>'
+      + '<section><h2>相关阅读</h2><ul><li>充放电循环</li><li>电池温度</li></ul></section></article></main>'
+    const structure = install().snapshot().structure
+    expect(structure?.regions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'section', label: '日常充电', text: '保持通风，避免高温。' }),
+      expect.objectContaining({ kind: 'section', label: '长期存放', text: '保持适中的电量。' }),
+    ]))
+    expect(structure?.collections).toEqual(expect.arrayContaining([
+      expect.objectContaining({ contextRole: 'navigation' }),
+      expect.objectContaining({ label: '相关阅读', contextRole: 'main' }),
+    ]))
+    expect(JSON.stringify(structure)).not.toContain('PRIVATE_VALUE')
+  })
   test('同名按钮带所属卡片标题且可以按卡片标题查找', () => {
     document.body.innerHTML = '<article><h2>显卡选购</h2><button>阅读全文</button></article>'
       + '<article><h2>空气炸锅</h2><button>阅读全文</button></article>'

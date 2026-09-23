@@ -31,8 +31,8 @@ describe('fixed browser target discovery', () => {
       installationId: 'installation', page, revision: 1, boundAt: 1, boundBy: 'user',
     } }) }
     const registered = new Map<string, ToolDefinition>()
-    apply({ inject: vi.fn(), on: vi.fn(), browser, browserTasks,
-      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } },
+    apply({ sessionProjections: { register: vi.fn(), stateOf: vi.fn() }, inject: vi.fn(), on: vi.fn(), browser, browserTasks,
+      tools: { guard: vi.fn(), register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } },
     } as unknown as Context)
     const exec = { agent, signal: new AbortController().signal } as ToolRunContext
 

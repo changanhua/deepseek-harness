@@ -12,6 +12,48 @@
   const pageActions = ['navigate', 'scroll', 'wait', 'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot']
   const elementActions = ['click', 'fill', 'submit', 'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload']
   const snapshots = new Map()
+  const sourceSnapshots = new Map()
+  let latestSourceSnapshotId = null, sourcePositionPending = false, lastSourcePosition = null
+  const publishSourceState = (extra = {}) => {
+    const saved = sourceSnapshots.get(latestSourceSnapshotId)
+    if (!saved || saved.url !== location.href || !globalThis.chrome?.runtime?.sendMessage) return
+    let nearest = null, distance = Infinity
+    for (const [blockId, anchor] of saved.anchors) {
+      if (!anchor.node.isConnected) continue
+      const rect = anchor.node.getBoundingClientRect()
+      if (rect.bottom < 0 || rect.top > innerHeight) continue
+      const candidate = Math.abs(rect.top - innerHeight * .25)
+      if (candidate < distance) { nearest = blockId; distance = candidate }
+    }
+    const key = `${latestSourceSnapshotId}:${nearest}`
+    if (key === lastSourcePosition && !extra.invalidated) return
+    lastSourcePosition = key
+    void globalThis.chrome.runtime.sendMessage({ type: 'dsh-source-position', snapshotId: latestSourceSnapshotId, blockId: nearest, ...extra }).catch(() => {})
+  }
+  window.addEventListener('scroll', () => {
+    if (sourcePositionPending || !latestSourceSnapshotId) return
+    sourcePositionPending = true
+    requestAnimationFrame(() => { sourcePositionPending = false; publishSourceState() })
+  }, { passive: true })
+  const composedContains = (container, node) => {
+    for (let current = node; current; current = current.getRootNode()?.host) {
+      if (container === current || container.contains?.(current)) return true
+    }
+    return false
+  }
+  const sourceObserverOptions = { subtree: true, childList: true, characterData: true, attributes: true,
+    attributeFilter: ['hidden', 'aria-hidden', 'aria-label', 'alt', 'title', 'inert', 'style', 'class'] }
+  const sourceObserver = new MutationObserver(records => {
+    const saved = sourceSnapshots.get(latestSourceSnapshotId)
+    if (!saved || saved.invalidated) return
+    if (records.some(record => [...saved.anchors.values()].some(anchor => record.type === 'attributes'
+      ? (composedContains(anchor.node, record.target) || composedContains(record.target, anchor.node))
+        && (!visible(anchor.node) || sourceText(anchor.node, anchor.includeLabels) !== anchor.original)
+      : composedContains(anchor.node, record.target) || [...record.removedNodes].some(removed => composedContains(removed, anchor.node))))) {
+      saved.invalidated = true; publishSourceState({ invalidated: true })
+    }
+  })
+  sourceObserver.observe(document, sourceObserverOptions)
   const records = new Map()
   const preparations = new Map()
   let serial = 0
@@ -89,10 +131,22 @@
       if (node.shadowRoot) walkers.push(document.createTreeWalker(node.shadowRoot, whatToShow))
     }
   }
-  const elementText = (root, limit) => {
-    const pieces = [], walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const elementText = (root, limit, includeLabels = false) => {
+    const whatToShow = includeLabels ? NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT : NodeFilter.SHOW_TEXT
+    const pieces = [], walker = document.createTreeWalker(root, whatToShow)
     let child, length = 0, visited = 0
     while ((child = walker.nextNode()) && ++visited <= 512 && length < limit) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        const icon = child.matches('img[alt],[role="img"][aria-label],svg[aria-label]')
+        const name = icon ? child.getAttribute('alt') || child.getAttribute('aria-label') : null
+        const detail = icon ? child.getAttribute('title') : null
+        const label = name && detail && name !== detail ? `${name}: ${detail}` : name || detail
+        if (label && !containsInputValue(child) && visible(child)) {
+          const value = text(label.slice(0, limit - length))
+          if (value) { pieces.push(value); length += value.length + 1 }
+        }
+        continue
+      }
       const parent = child.parentElement
       if (!parent || containsInputValue(parent) || parent.closest('script,style') || !visible(parent)) continue
       const value = text((child.nodeValue ?? '').slice(0, limit - length))
@@ -152,17 +206,34 @@
   const bounded = (value, fallback, minimum, maximum) => Number.isSafeInteger(value) ? Math.min(maximum, Math.max(minimum, value)) : fallback
   const structuralSummary = (elements = [], nodes = new Map()) => {
     const regions = [], collections = []
+    const auxiliary = 'nav,header,footer,aside,[role="navigation"],[role="banner"],[role="contentinfo"],[role="complementary"]'
+    const contentRoot = document.querySelector('main,[role="main"],article') ?? document.body
+    const sections = []
+    let section = null, sectionScope = null
+    for (const node of walkOpen(contentRoot)) {
+      const parent = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
+      if (!parent || parent.closest(auxiliary) || containsInputValue(parent) || parent.closest('script,style,noscript,template') || !visible(parent)) continue
+      if (node.nodeType === Node.ELEMENT_NODE && node.matches('h1,h2,h3,h4,h5,h6,[role="heading"]')) {
+        const label = elementText(node, 160)
+        section = label && sections.length < 16 ? { kind: 'section', label, text: '' } : null
+        sectionScope = node.closest('article,section,main,[role="main"]') ?? contentRoot
+        if (section) sections.push(section)
+      } else if (section && node.nodeType === Node.TEXT_NODE && !parent.closest('h1,h2,h3,h4,h5,h6,[role="heading"]')
+        && (parent.closest('article,section,main,[role="main"]') ?? contentRoot) === sectionScope) {
+        section.text = text(`${section.text} ${node.nodeValue ?? ''}`).slice(0, 512)
+      }
+    }
     const regionNodes = [...document.querySelectorAll('main,nav,header,aside,footer,[role="main"],[role="navigation"],[role="region"]')]
     for (const node of regionNodes.slice(0, 24)) {
       if (!visible(node)) continue
       const heading = node.querySelector(':scope > h1,:scope > h2,:scope > h3,:scope > [role="heading"]')
       regions.push({ kind: roleOf(node) === 'generic' ? node.tagName.toLowerCase() : roleOf(node), label: text(heading?.textContent ?? '').slice(0, 160), text: elementText(node, 240) })
     }
-    const collectionNodes = [...document.querySelectorAll('[role="feed"],[role="list"],[role="grid"],ul,ol')]
+    const collectionNodes = [...document.querySelectorAll('[role="feed"],[role="list"],[role="grid"],ul,ol,table')]
     for (const node of collectionNodes.slice(0, 16)) {
       if (!visible(node)) continue
       const kind = node.getAttribute('role') ?? node.tagName.toLowerCase()
-      const itemNodes = [...node.querySelectorAll(':scope > [role="listitem"],:scope > [role="gridcell"],:scope > li,:scope > article,:scope > [role="row"]')]
+      const itemNodes = [...node.querySelectorAll(':scope > [role="listitem"],:scope > [role="gridcell"],:scope > li,:scope > article,:scope > [role="row"],:scope > tr,:scope > tbody > tr,:scope > thead > tr')]
       const items = itemNodes.slice(0, 16).filter(item => visible(item)).map((item, index) => {
         const controls = elements.filter(element => {
           const record = nodes.get(element.elementId)
@@ -170,9 +241,107 @@
         }).slice(0, 24).map(element => ({ elementId: element.elementId, role: element.role, label: element.label, state: element.state }))
         return { index, text: elementText(item, 180), controls, ...(controls.length >= 24 ? { controlsTruncated: true } : {}) }
       })
-      collections.push({ kind, itemCount: Math.min(itemNodes.length, 128), items, itemsTruncated: itemNodes.length > items.length })
+      const landmark = node.closest('nav,header,footer,aside,main,[role="navigation"],[role="main"],[role="complementary"]')
+      const contextRole = landmark?.getAttribute('role') || ({ NAV: 'navigation', HEADER: 'banner', FOOTER: 'contentinfo', ASIDE: 'complementary', MAIN: 'main' })[landmark?.tagName] || ''
+      collections.push({ kind, label: text(node.getAttribute('aria-label') || contextOf(node)).slice(0, 160), contextRole,
+        itemCount: Math.min(itemNodes.length, 128), items, itemsTruncated: itemNodes.length > items.length })
     }
-    return { regions, collections }
+    return { regions: [...sections, ...regions].slice(0, 24), collections }
+  }
+  const sourceText = (node, includeLabels = false) => {
+    if (node.matches('tr,[role="row"]')) return [...node.children].map(cell => elementText(cell, 2000, includeLabels)).join(' | ')
+    if (node.matches('pre')) {
+      const pieces = []
+      for (const child of walkOpen(node, NodeFilter.SHOW_TEXT)) {
+        const parent = child.parentElement
+        if (parent && !containsInputValue(parent) && !parent.closest('script,style') && visible(parent)) pieces.push(child.nodeValue ?? '')
+        if (pieces.join('').length > MAX_TEXT) break
+      }
+      return pieces.join('').replace(/\r\n?/gu, '\n').trim().slice(0, MAX_TEXT)
+    }
+    return elementText(node, MAX_TEXT, includeLabels)
+  }
+  const captureSource = snapshotId => {
+    const root = document.querySelector('main,[role="main"],article') ?? document.body
+    const selector = 'h1,h2,h3,h4,h5,h6,p,li,pre,blockquote,figcaption,tr,[role="heading"],[role="listitem"],[role="row"]'
+    const plainContainer = 'div,section,article'
+    const auxiliary = 'nav,header,footer,[role="navigation"],[role="banner"],[role="contentinfo"]'
+    const blocks = [], anchors = new Map(), omissions = []
+    const groupedCards = new WeakSet(), siblingGroups = new WeakMap(), linkedGroups = new WeakMap()
+    const cardShape = element => element.matches('div') && element.children.length >= 2 && element.children.length <= 16
+      && !element.querySelector(selector) && (
+        [...element.children].every(child => child.matches('div') && !child.querySelector(plainContainer))
+        || element.querySelector('a[href]') !== null && elementText(element, 1201).length <= 1200
+      )
+    const isRepeatedCard = element => {
+      const parent = element.parentElement
+      if (!parent || !cardShape(element)) return false
+      if (!siblingGroups.has(parent)) {
+        const siblings = [...parent.children].filter(cardShape)
+        siblingGroups.set(parent, siblings.length >= 2 ? new Set(siblings) : new Set())
+      }
+      return siblingGroups.get(parent).has(element)
+    }
+    const isRepeatedLinkedCard = element => {
+      const parent = element.parentElement
+      if (!parent) return false
+      if (!linkedGroups.has(parent)) {
+        const siblings = [...parent.children].filter(child => {
+          if (!child.matches('a[href]') || child.children.length !== 1 || child.querySelector(selector)) return false
+          const length = elementText(child, 1201).length
+          return length >= 40 && length <= 1200
+        })
+        linkedGroups.set(parent, siblings.length >= 2 ? new Set(siblings) : new Set())
+      }
+      return linkedGroups.get(parent).has(element)
+    }
+    let characters = 0, visited = 0
+    for (const node of walkOpen(root, NodeFilter.SHOW_ELEMENT)) {
+      if (++visited >= 10000) { omissions.push('正文扫描达到节点上限'); break }
+      let ancestor = node.parentElement, insideGroupedCard = false
+      while (ancestor && !insideGroupedCard) { insideGroupedCard = groupedCards.has(ancestor); ancestor = ancestor.parentElement }
+      if (insideGroupedCard) continue
+      const semanticBlock = node.matches(selector)
+      const groupedCard = !semanticBlock && isRepeatedCard(node)
+      const linkedText = !semanticBlock && node.matches('a[href]')
+        && (node.children.length >= 2 || node.children.length === 1
+          && (node.querySelector('img[alt],[role="img"][aria-label],svg[aria-label]') || isRepeatedLinkedCard(node)))
+        && !node.querySelector(selector) ? elementText(node, 1201) : ''
+      const linkedCard = linkedText.length >= 40 && linkedText.length <= 1200
+      const plainBlock = groupedCard || linkedCard
+        || !semanticBlock && node.matches(plainContainer) && !node.querySelector(`${selector},${plainContainer}`)
+      if ((!semanticBlock && !plainBlock) || !visible(node) || containsInputValue(node) || node.closest(auxiliary)) continue
+      if (node.parentElement?.closest('li,tr,pre,blockquote,[role="listitem"],[role="row"]')) continue
+      const includeLabels = groupedCard || linkedCard
+      const original = sourceText(node, includeLabels)
+      if (!original) continue
+      if (blocks.length >= 64 || characters >= 16000) { omissions.push('其余正文块未采集'); break }
+      const content = original.slice(0, Math.min(1200, 16000 - characters)), blockId = `block-${blocks.length}`
+      const kind = groupedCard || linkedCard ? 'record' : node.matches('h1,h2,h3,h4,h5,h6,[role="heading"]') ? 'heading' : node.matches('pre') ? 'code'
+        : node.matches('tr,[role="row"]') ? 'table-row' : node.matches('li,[role="listitem"]') ? 'list-item' : 'paragraph'
+      blocks.push({ blockId, ordinal: blocks.length, kind, text: content, truncated: content !== original })
+      if (groupedCard || linkedCard) groupedCards.add(node)
+      anchors.set(blockId, { node, original, text: content, includeLabels }); characters += content.length
+      if (content !== original && !omissions.includes('部分原文块仅采集开头片段')) omissions.push('部分原文块仅采集开头片段')
+    }
+    if (!blocks.length) omissions.push('未取得可回源的正文块')
+    omissions.push('仅包含本次已加载且可读取的内容')
+    sourceSnapshots.set(snapshotId, { url: location.href, anchors })
+    latestSourceSnapshotId = snapshotId
+    while (sourceSnapshots.size > MAX_SNAPSHOTS) sourceSnapshots.delete(sourceSnapshots.keys().next().value)
+    sourceObserver.disconnect()
+    sourceObserver.observe(document, sourceObserverOptions)
+    const roots = new Set()
+    for (const anchor of anchors.values()) {
+      for (let current = anchor.node; current; current = current.getRootNode()?.host) {
+        const shadow = current.getRootNode()
+        if (shadow instanceof ShadowRoot && !roots.has(shadow)) {
+          roots.add(shadow)
+          sourceObserver.observe(shadow, sourceObserverOptions)
+        }
+      }
+    }
+    return { version: 1, extractorVersion: 'browser-source-v2', contentBlocks: blocks, omissions }
   }
   const snapshot = options => {
     prune()
@@ -235,6 +404,7 @@
       return [{ mountId: query.mountId, text: expected, present: panels.some(panel => text(panel.textContent).includes(expected)) }]
     }) : []
     return { snapshotId, url: window.location.href, title: document.title,
+      ...(options?.structure === false ? {} : { source: captureSource(snapshotId) }),
       ...visibleBodyText(bounded(options?.textLimit, MAX_TEXT, 0, MAX_TEXT)), elements,
       presentations,
       ...(options?.structure === false ? {} : { structure: structuralSummary(elements, nodes) }),
@@ -1135,7 +1305,15 @@
     return node ? revealNode(node) : { ok: false, reason: 'function_view_unavailable' }
   }
 
-  globalThis.__dshBrowserAssistant = Object.freeze({ snapshot, prepare, execute, inspect, reveal, revealFunction,
+  const revealSource = reference => {
+    const saved = sourceSnapshots.get(reference?.snapshotId), block = saved?.anchors.get(reference?.blockId)
+    if (!saved || saved.url !== location.href || reference.url !== location.href) return { ok: false, reason: 'source_unavailable' }
+    if (!block?.node.isConnected || !visible(block.node)
+      || sourceText(block.node, block.includeLabels) !== block.original) return { ok: false, reason: 'source_changed' }
+    revealNode(block.node)
+    return { ok: true, blockId: reference.blockId, text: block.text }
+  }
+  globalThis.__dshBrowserAssistant = Object.freeze({ snapshot, prepare, execute, inspect, reveal, revealSource, revealFunction,
     entryInspect, entryMount, entryUnmount, releaseEntries, releaseInstallation, pageMap, regionRender, regionClear,
     documentToken: () => documentToken, startExternal, externalNode, issueExternal, completeExternal,
     guardExternal: request => {

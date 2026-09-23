@@ -205,6 +205,13 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     })).then(respond, error => respond({ ok: false, error: error.code ?? error.message }))
     return true
   }
+  if (message?.type === 'dsh-source-position') {
+    if (sender.id !== chrome.runtime.id || !Number.isInteger(sender.tab?.id) || !Number.isInteger(sender.frameId)
+      || typeof sender.documentId !== 'string' || typeof sender.url !== 'string') return
+    void ready.then(() => assistant.sourcePosition({ snapshotId: message.snapshotId, blockId: message.blockId, invalidated: message.invalidated,
+      page: { tabId: sender.tab.id, frameId: sender.frameId, documentId: sender.documentId, url: sender.url } }))
+    return
+  }
   const surfaceId = surfaceOf(sender, message?.surfaceId)
   if (surfaceId === null || typeof message?.type !== 'string' || !message.type.startsWith('dsh-assistant-')) return
   if (message.type === 'dsh-assistant-open-window') {
