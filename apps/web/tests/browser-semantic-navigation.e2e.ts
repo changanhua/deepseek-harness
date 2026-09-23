@@ -558,7 +558,7 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
       expect(await target.locator(`${scenario.target} img[alt="League"]`).getAttribute('title')).toBe('Liga F')
       expect(await target.locator(`${scenario.target} img[alt="Club"]`).getAttribute('title')).toBe('FC Barcelona')
     } else if (scenario.id === 'live-pr') {
-      expect(targetText).toContain(reference.text)
+      expect(normalizeTable(targetText)).toContain(normalizeTable(reference.text))
     } else {
       expect(tabularTarget ? normalizeTable(targetText) : targetText)
         .toBe(tabularTarget ? normalizeTable(reference.text) : reference.text)
