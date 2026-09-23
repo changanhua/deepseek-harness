@@ -44,6 +44,8 @@ Stable task schema and consumer composition preserve the reusable prefix. Change
 - Extension journal expiry, storage loss, an offline executor, or a mismatched locator leaves the request unknown. The task does not infer `not-sent` and does not replay the write.
 - A representative DeepSeek-v4.1-flash extension acceptance completed through the configured standard Web deployment; package tests and live Session evidence remain separately owned.
 
+No invariant companion is published because the Session projection and lifecycle tests verify durable task state, with no separate runtime observation owned by this definition.
+
 <a id="dev-note"></a>
 ### Dev Note
 

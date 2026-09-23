@@ -70,6 +70,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/task-queue/tool-agent-run-task-queue': { kind: 'indirect', reason: 'The WorkKind-specific Consumer contributes only the two agent.run admission tool schemas and their Queue ids.' },
   'packages/image/image-generation': { kind: 'indirect', reason: 'The Service Definition delegates model rendering to image-generation consumers.' },
   'packages/image/tool-image-generation-task-queue': { kind: 'indirect', reason: 'The package contributes the image_generate_enqueue model tool.' },
+  'packages/delivery/delivery-github-publisher': { kind: 'indirect', reason: 'The publisher renders Issue bodies and handles HTTP results; Delivery Remote or UI consumers own any model-facing projection.' },
   'packages/task-queue/command-task-queue': { kind: 'none', reason: 'The human-facing /queue command renders records directly; registers no model surface.' },
   'packages/task-queue/task-queue-remote': { kind: 'none', reason: 'Browser wire face rendering durable records; dsh-tool-task-queue owns the model-facing tools.' },
   'packages/eval/eval': { kind: 'none', reason: 'Pure deterministic-evaluation contracts and report formatting; runner consumers own every model-facing effect.' },

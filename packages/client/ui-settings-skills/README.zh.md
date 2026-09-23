@@ -25,3 +25,5 @@
 - **P0 为只读**——`actions.edit/remove/setInvocation` 仅具信息意义；尚无写入 RPC。
 - **adoption 是进程内状态**——显式会话选择不持久化；刷新后回退为跟随当前普通会话。
 - **standing 保真度**——冷组合的快照可能静默缺失 realm-only provider；UI 显示 standing 横幅，但无法检测 realm-only 缺失。
+
+此包不发布 invariant companion，因为界面只读取管理 Remote；加载失败保留为页面局部错误，不形成独立运行时关系。

@@ -13,7 +13,6 @@
     { "path": "../../attachment/attachment" },
     { "path": "../../interaction/user-approval" },
     { "path": "../browser" },
-    { "path": "../browser-task" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../browser-task" }
   ]
 }

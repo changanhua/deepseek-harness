@@ -91,6 +91,8 @@ Schema 要求套件版本、固定十六进制源码 revision、默认路由矩�
 - 回放证明针对录制证据的行为，不证明当前 Provider 可用性或当前模型质量；真实 Provider 验证是独立的受控操作。
 - 每个被比较路由都需要独立录制的 fixture；此库不会录制或合成 fixture。
 
+此包不发布 invariant companion，因为严格 schema、跨对象校验和报告排序是由包测试覆盖的纯操作。
+
 <a id="dev-note"></a>
 ### 开发备注
 

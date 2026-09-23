@@ -15,16 +15,11 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./invariant": {
-      "types": "./lib/types/invariant.d.ts",
-      "default": "./lib/invariant.js"
-    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
-    "lib/invariant.js",
     "fixtures/*.json",
     "fixtures/*.md",
     "lib/types/**/*.d.ts"
@@ -37,14 +32,12 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@changanhua/dsh-delivery": "workspace:^",
-    "@changanhua/dsh-delivery-protocol": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^"
+    "@changanhua/dsh-delivery-protocol": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@changanhua/dsh-delivery": "workspace:^",
     "@changanhua/dsh-delivery-protocol": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
     "@changanhua/dsh-repo-workspace": "workspace:^"
   },
   "private": true

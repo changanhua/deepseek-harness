@@ -33,3 +33,5 @@ None; this package never assembles model input.
 
 - **No backend, no operations** — without a `ctx.taskQueue` Provider mounted, every subcommand reports that Queue v2 is unavailable.
 - The command exposes the trusted operator facade but does not admit WorkItems or resolve unknown outcomes; WorkKind Consumers own admission and Remote/UI own the restricted unknown-resolution flow.
+
+No invariant companion is published because the `/queue` command only projects and mutates the durable queue through the Service seam, and the command registry already enforces name uniqueness.

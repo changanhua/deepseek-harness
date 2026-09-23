@@ -57,6 +57,8 @@ None; connection and import operations do not enter a model context.
 - Site structure and extraction belong to the extension. Webpage provenance is unverified; the Host never fetches the source URL.
 - Pending handshakes do not survive Host restarts. Existing grants and saved content use their providers' persistence; a restarted handshake requires a new request.
 
+No invariant companion is published because request-bound grant checks and Content commit admission own authorization; no ambient event represents a permitted import.
+
 <a id="dev-note"></a>
 
 ## Dev Note

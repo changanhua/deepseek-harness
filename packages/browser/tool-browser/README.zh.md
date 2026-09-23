@@ -74,6 +74,8 @@ kind: "package-reference"
 - 语义地图只覆盖已采集来源块。来源校验只证明引用了采集文本，不证明概括准确或整页已覆盖；两级导航不推断因果关系，也不会静默重定位已变化的原文。
 - 可见且同 Session 的 Chrome peer 可以通过既有 Approval chain 回答；隐藏或断线 peer 委托 Web。代表性的 DeepSeek-v4.1-flash 现场验收已通过标准 Web 组合在获授权的知乎页面完成：精确 mount 范围的展示证据已被观察，临时资源已清理，任务最终以 completed 且无 blocker 的状态结束。其他站点登录和模型路由仍取决于部署配置。
 
+此包不发布 invariant companion，因为任务循环状态由 Agent 生命周期持有，并由 Agent 销毁监听器清理。
+
 <a id="dev-note"></a>
 ### 开发备注
 

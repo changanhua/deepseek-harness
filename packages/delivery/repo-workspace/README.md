@@ -65,3 +65,5 @@ No request prefix is changed.
 
 - This contract defines local Git worktrees only; remote workspaces and multi-host leases are unsupported without another provider and lifecycle decision.
 - Preserved uncertain workspaces require explicit operator handling; this service does not invent success or authorize Queue retry.
+
+No invariant companion is published because this abstract Service Definition owns no checkout; each provider checks its own Git facts.

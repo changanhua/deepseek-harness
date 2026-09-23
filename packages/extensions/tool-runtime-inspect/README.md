@@ -65,3 +65,5 @@ Append-only; newly returned inspection content follows the reusable request pref
 - V1 supports only registered facts and executable resolution. It is not a Doctor, provider-readiness framework, network scanner, or generic process inspector.
 - V1 does not pre-register per-command facts and does not expose raw environment, proxy URLs, credential values, or subprocess-provider exception text.
 - Richer execution-world descriptions and automatic network reachability probes remain deferred by the Runtime Awareness design.
+
+No invariant companion is published because tool registration lifecycle is owned by `ctx.tools`; authoritative fact and executable relations are enforced by the runtime-facts and subprocess seams and covered by this package's tests.

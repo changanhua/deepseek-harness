@@ -61,6 +61,8 @@ No direct effect: content requests do not invoke a model.
 - WebSocket and direct in-process callers have no authenticated HTTP request binding and are refused. Browser UI and shipping Profile composition are separate consumers.
 - Clearing a browser cookie does not revoke a request already sent; Connection's credential activation and expiry rules apply.
 
+No invariant companion is published because the Remote owns no durable state; Connection and Content check each invocation.
+
 <a id="dev-note"></a>
 ### Dev Note
 

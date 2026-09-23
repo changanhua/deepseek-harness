@@ -65,3 +65,5 @@ Append-only；新返回的 inspection 内容追加在可复用请求前缀之后
 - V1 只支持已注册 facts 与 executable resolution；它不是 Doctor、provider readiness 框架、网络扫描器或通用进程检查器。
 - V1 不为每个 command 预注册 fact，也不暴露原始环境变量、proxy URL、credential value 或 subprocess provider 原始异常文本。
 - 更丰富的 execution-world 描述与自动网络可达性 probe 仍按 Runtime Awareness 设计推迟。
+
+此包不发布 invariant companion，因为工具注册生命周期由 Tools 持有，运行时事实和执行关系由对应服务与包测试核对。

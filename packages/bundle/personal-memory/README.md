@@ -66,6 +66,8 @@ Stable composition keeps schemas and guidance stable; source-checked results ent
 - Workspace identities stay separate, including worktrees. The bundle does not merge projects or synchronize external knowledge stores.
 - Models propose candidates; only exact human commands accept or withdraw them. Acceptance does not bypass current source, review-date, or conflict checks.
 
+No invariant companion is published because this static Bundle owns patch composition; its provider and consumers own runtime facts.
+
 ### Dev Note
 
 Keep this package a static patch carrier. Runtime state and authority belong to the memory plugins and existing infrastructure owners.

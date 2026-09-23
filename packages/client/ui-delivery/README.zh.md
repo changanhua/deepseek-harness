@@ -36,6 +36,8 @@ Remote contribution、slot registration 与 locale dictionary 会在 plugin disp
 
 默认入口把一段想法保存为本地 Shaping Case，其中 outcome、scope、acceptance、base 与 verification field 可以暂不完整。补全这些交付条件是显式 revision action；Existing-Issue import 与 GitHub publication 是次级 action。Browser 只提交有界 content 与 selection；repository binding、human actor identity、idempotency、credential、publication marker、raw Queue authority 与 acceptance proof 均由 Host 拥有。
 
+此包不发布 invariant companion，因为 Slot、语言和 Remote 服务各自执行其注册与调用检查。
+
 <a id="dev-note"></a>
 
 ## 开发说明

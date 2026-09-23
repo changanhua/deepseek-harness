@@ -430,7 +430,7 @@ git status --short -- packages/task-queue/task-queue packages/task-queue/task-qu
 - 新建：`packages/task-queue/tool-agent-run-task-queue/package.json`
 - 新建：`packages/task-queue/tool-agent-run-task-queue/tsconfig.json`
 - 新建：`packages/task-queue/tool-agent-run-task-queue/src/index.ts`
-- 新建：`packages/task-queue/tool-agent-run-task-queue/src/invariant.ts`
+- 在 `packages/task-queue/tool-agent-run-task-queue/README.zh.md` 中说明为何省略 invariant companion。
 - 新建：`packages/task-queue/tool-agent-run-task-queue/tests/index.spec.ts`
 - 为 `packages/task-queue/tool-agent-run-task-queue` 新建成对 package README。
 - 修改：`packages/bundle/base/package.json`

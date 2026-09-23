@@ -60,3 +60,5 @@ No request prefix is changed.
 
 - The first service contract covers one local-repository delivery flow and manual human decisions; planning, Batch/DAG orchestration, and multi-host leases are outside it.
 - Completion claims and verification verdicts remain Queue results rather than duplicated Delivery records; host-only resolvers expose them for one Packet creation or decision operation.
+
+No invariant companion is published because this abstract Service Definition owns no persisted records; each provider validates its own medium.

@@ -33,3 +33,5 @@ Provider 验证 initiator identity，再把 opaque `VerifiedAgentAuthority` 或 
 ## 已知限制与待办
 
 - 本包只定义并 fold 领域事实。Provider 负责持久化、资源容量、调度与 crash recovery。typed WorkKind result 可以引用由 Attachment 等其他服务持有的字节；Queue 不定义通用路径写入器。
+
+此包不发布 invariant companion，因为服务定义不持有运行时状态；提供方持有持久 ChangeSet 与调度关系。

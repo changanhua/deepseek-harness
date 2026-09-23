@@ -88,6 +88,8 @@ Stable framing, disposition instructions, and retention wording can share a reus
 - **Codex is the only selected provider** — alternative providers and a shared executor registry are out of scope without a separate evidence-backed architecture decision.
 - **No Queue ownership** — this package cannot register `code.change@1`, choose retries, or write Queue lifecycle state; `dsh-delivery-task-queue` owns that bridge.
 
+No invariant companion is published because the runner is an operation-local closure. Queue owns Attempt lifecycle and Delivery Evidence owns immutable evidence publication.
+
 <a id="dev-note"></a>
 ### Dev Note
 

@@ -30,7 +30,7 @@ async function createFixture(): Promise<Fixture> {
     dependencies: {},
     dsh: {
       profile: {
-        bundles: ['@deepseek-ai/dsh-base', '@changanhua/dsh-personal-delivery'],
+        bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@changanhua/dsh-personal-delivery'],
         patchReload: 'startup',
       },
     },
@@ -104,7 +104,7 @@ describe('personal source distribution', () => {
   })
 
   it('boots the personal services through Loader and exits through the launcher', async () => {
-    const result = await run(await createFixture(), [])
+    const result = await run(await createFixture(), ['--port', '0', '--no-open'])
 
     expect(result.code, result.stderr).toBe(0)
     expect(result.stdout).toContain('personal-source-runtime-ok')

@@ -89,6 +89,8 @@ None; this package never assembles model input.
 - **Local execution world only** — remote workspaces and multi-host leases require another provider and lifecycle decision.
 - **Preserved worktrees require operator action** — an uncertain Attempt keeps its checkout; this provider does not authorize retry or invent success.
 
+No invariant companion is published because each awaited operation verifies repository proofs and lease ownership, and this provider emits no event relation.
+
 <a id="dev-note"></a>
 ### Dev Note
 

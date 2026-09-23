@@ -80,6 +80,8 @@ There is no model request and therefore no KV-cache contribution; deterministic 
 - **The plan is not discovered at runtime** — arbitrary shell text, repository-provided executable policy, and model-generated commands are outside this package.
 - **Acceptance remains human-owned** — a passed verdict does not call `recordAcceptanceDecision` and cannot merge or accept delivery.
 
+No invariant companion is published because the verifier owns no durable store or event stream. Protocol schemas, Queue settlement, and Evidence storage retain those checks.
+
 <a id="dev-note"></a>
 ### Dev Note
 

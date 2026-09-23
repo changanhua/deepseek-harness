@@ -36,6 +36,8 @@ The Remote contribution, slot registrations, and locale dictionaries disappear t
 
 The default intake saves one idea as a local Shaping Case with incomplete outcome, scope, acceptance, base, and verification fields. Completing those delivery conditions is an explicit revision action; existing-Issue import and GitHub publication are secondary actions. The browser submits bounded content and selections only; repository binding, human actor identity, idempotency, credentials, publication markers, raw Queue authority, and acceptance proof remain Host-owned.
 
+No invariant companion is published because slot, locale, and Remote service contracts own these checks.
+
 <a id="dev-note"></a>
 
 ## Dev Note

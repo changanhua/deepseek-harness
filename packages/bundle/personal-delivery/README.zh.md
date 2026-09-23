@@ -29,6 +29,8 @@ Patch 按依赖顺序挂载 `delivery-local`、`delivery-evidence-local`、`repo
 
 Bundle 只包含 composition。它不实现 scheduler、不复制 Queue state、不解析 Issue、不执行 Git、不验证 evidence，也不接受交付。
 
+此包不发布 invariant companion，因为它只承载静态配置补丁，运行时关系由补丁装配的各个插件持有。
+
 <a id="dev-note"></a>
 ## 开发备注
 

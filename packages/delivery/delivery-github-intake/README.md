@@ -57,3 +57,5 @@ There is no direct KV-cache contribution; stable Issue templates may make downst
 - **One Issue snapshot per call** — webhooks, polling, bulk synchronization, comments, Projects, labels, and PR mutation are out of scope.
 - **No automatic requirement invention** — every authoritative field must be present; unresolved ambiguity is an explicitly identified `openDecisions` entry, and intake cannot silently make a Contract ready.
 - **A late older HTTP response appends a revision** — the version-2 contract does not retain the GitHub `updatedAt` of an import, so a delayed stale response becomes an expected-head child of the current head instead of being detected as older; repeating identical content stays idempotent.
+
+No invariant companion is published because intake adopts immutable snapshots through Delivery and owns no independent persistence, event stream, or mutable registry.

@@ -46,6 +46,8 @@ The `./types` export contains the JSON wire declarations. Generated `./typert` a
 
 The Remote injects `credentials`, `delivery`, `deliveryEvidence`, `repoWorkspace`, and `taskQueue`, but does not make browser input authoritative. Git proves commits, Queue owns execution, evidence storage resolves and integrity-reads every exact referenced object, and the publisher owns GitHub request uncertainty. Trusted Host configuration supplies a non-blank `operatorId` (default `local-operator`), one `repositoryId` for new human Cases (default `workspace`), and optional `githubTargets` entries keyed by Delivery repository id; each target carries owner, repository name, a credential reference, and optional Issue labels, never a token value. Browser inputs contain bounded content and selections rather than authority-bearing identities, raw Queue payloads, host paths, provider URIs, publication markers, digests, credentials, or caller-defined idempotency keys.
 
+No invariant companion is published because typert validation and injected service contracts own these checks.
+
 <a id="dev-note"></a>
 
 ## Dev Note

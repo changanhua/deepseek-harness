@@ -8,7 +8,6 @@
     { "path": "../delivery-protocol" },
     { "path": "../delivery" },
     { "path": "../repo-workspace" },
-    { "path": "../delivery-evidence" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../delivery-evidence" }
   ]
 }

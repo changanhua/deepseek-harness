@@ -64,6 +64,8 @@ The definition does not supply user entry points.
 - Session authorization, remote transport and UI are consumer responsibilities and are not registered by this package.
 - Arbitrary same-process plugins remain trusted code; a callback is not a sandbox for malicious plugins.
 
+No invariant companion is published because this abstract definition has no records; providers validate stored aggregates.
+
 <a id="dev-note"></a>
 ### Dev Note
 

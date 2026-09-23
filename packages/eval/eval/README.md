@@ -91,6 +91,8 @@ None.
 - Replay proves behavior against recorded evidence, not current Provider availability or current model quality; live Provider validation is a separate controlled operation.
 - Every compared route needs an independently recorded fixture; the library does not record or synthesize one.
 
+No invariant companion is published because strict schemas, cross-object validation, and report ordering are pure operations covered by package tests.
+
 <a id="dev-note"></a>
 ### Dev Note
 

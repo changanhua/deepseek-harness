@@ -10,7 +10,6 @@
     { "path": "../../../vendor/cordis" },
     { "path": "../../../vendor/schemastery" },
     { "path": "../image-generation" },
-    { "path": "../../subprocess/subprocess" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../../subprocess/subprocess" }
   ]
 }

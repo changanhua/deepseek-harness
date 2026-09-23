@@ -92,6 +92,8 @@ None; Work Observatory reads and writes remain outside model input and do not st
 - **Local evidence only** — the package does not combine several Hosts or claim causal productivity and time savings.
 - **Optional domain bridges are absent** — Queue, Delivery, and Skill invocation facts remain independent until a dedicated bridge contributes them.
 
+No invariant companion is published because input relations are enforced before storage and stored rows are schema validated.
+
 <a id="dev-note"></a>
 ### Dev Note
 

@@ -117,6 +117,8 @@ bundle patch 会在既有 Queue 容量旁设置 `knowledge-base: 1` 和 `codex: 
 - **fetch 依赖 Profile** — URL fetch 和 refresh 需要可选 web service；直接来源文本不需要。
 - **思源写入需要可信调用方** — 模型工具不能同步或接纳；需要配置原生 MCP client，并通过人工命令或可信 Host 路径调用。
 
+此包不发布 invariant companion，因为消费方不持有持久事实；操作与 Loader 测试核对请求拒绝和注册清理。
+
 <a id="dev-note"></a>
 ### Dev Note
 

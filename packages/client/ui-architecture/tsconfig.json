@@ -18,7 +18,6 @@
     { "path": "../ui-sidebar" },
     { "path": "../ui-slots" },
     { "path": "../../host/plugin-inventory" },
-    { "path": "../../typert/protocol" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../../typert/protocol" }
   ]
 }

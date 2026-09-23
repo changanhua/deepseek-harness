@@ -74,6 +74,8 @@ Prefix-stable while the visible tool set and scoped composition are unchanged. T
 - Semantic maps cover only captured source blocks. Source validation proves a reference to captured text, not summary accuracy or complete page coverage; two-level navigation does not infer causal relations or silently remap changed source content.
 - A visible same-Session Chrome peer can answer through the existing Approval chain; hidden or disconnected peers delegate to Web. A representative DeepSeek-v4.1-flash field acceptance completed through the standard Web composition on an authorized Zhihu page: exact mount-scoped presentation evidence was observed, the temporary resource was cleared, and the task terminated completed without blockers. Other site logins and model routes still depend on the configured deployment.
 
+No invariant companion is published because task-loop state is owned by the Agent lifecycle and removed by its disposal listener.
+
 <a id="dev-note"></a>
 ### Dev Note
 

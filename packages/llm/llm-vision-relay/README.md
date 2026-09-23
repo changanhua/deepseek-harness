@@ -111,3 +111,5 @@ the plugin keeps the previously registered routes.
   requested reasoning effort falls back to its own default for that turn.
 - **`read_image` still needs the composite route selected.** The tool gates on the
   calling route's declared modalities; selecting the target directly bypasses the relay.
+
+No invariant companion is published because this package rewrites request messages and registers adapter routes, and every relation it relies on — one route set per provider, one evidence envelope per image — is enforced synchronously in the operation that establishes it.

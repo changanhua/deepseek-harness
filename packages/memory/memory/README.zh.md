@@ -47,6 +47,8 @@ Consumer 依赖此包并使用 `ctx.projectMemory`；组合挂载 [memory-local]
 - Definition 不提供存储、自动提炼、语义检索或外部知识同步。
 - 人工接纳允许复用，但不证明命题真实，也不覆盖当前用户指令。
 
+此包不发布 invariant companion，因为定义本身没有可变状态；提供方按照 schema 核对持久记录。
+
 <a id="dev-note"></a>
 ### 开发备注
 

@@ -39,3 +39,5 @@ WorkKind 专用准入工具由独立 Consumer 包提供。
 - 控制仅作用于当前 Agent Session 名下的 WorkItem；受信任 operator 使用 operator Queue API。
 - 稳定投递不会唤醒 idle Agent，也不会自动继续 Goal。
 - 完整 Attempt 历史由 Queue operator 视图提供，不通过这些模型工具返回。
+
+此包不发布 invariant companion，因为工具包只通过 Queue 服务受信任的入口准入任务，这些入口执行准入校验。

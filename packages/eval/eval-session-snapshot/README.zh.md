@@ -55,7 +55,6 @@ const result = await runEvalSuite(suite, execute, { signal })
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 路由选择、fixture 限制/provenance、ACP 执行与快照比较 |
-| [`src/invariant.ts`](src/invariant.ts) | 无运行时 invariant 的配套注册 |
 
 </details>
 
@@ -96,6 +95,8 @@ Case 提示词是新的用户消息后缀。稳定的 Profile header 保留其�
 - AbortSignal 会阻止新 case 启动，也会阻止接受取消后返回的分数，但上游子进程 harness 不暴露运行中 signal 取消。
 - 录制实时 Provider fixture 与选择凭据仍是本包之外的显式 session-snapshot 操作。
 - 聚焦测试无密钥执行全部十个 Case，为两条路由启动真实 session-snapshot ACP 子进程 harness，通过 ACP handshake 启动已发布 Loader/Profile，并 replay 一份 `recording: live` Provider fixture 来验证 usage 分桶。新的实时调用仍是需要显式凭据的操作。
+
+此包不发布 invariant companion，因为每次执行只拥有一个 Session 快照子进程，其清理和 fixture 检查由上游 harness 持有。
 
 <a id="dev-note"></a>
 ### 开发备注

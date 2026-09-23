@@ -52,3 +52,5 @@ None from this service.
 
 - Automatic retention and garbage collection are unsupported; references may outlive Packets and Attempts.
 - This contract is restricted to code-delivery evidence and is not a generic artifact platform.
+
+No invariant companion is published because this abstract Service Definition owns no bytes; each provider verifies its own objects.

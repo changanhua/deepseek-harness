@@ -31,3 +31,5 @@ None, as 此浏览器 Remote 传输 Queue 记录且不注册模型界面。
 
 - Remote 暴露 operator 读取、取消、重试、unknown resolution 与派发暂停控制；准入保留在类型化宿主和模型工具入口。
 - 批量 UI 操作目前为每个 WorkItem 发送一次 Remote mutation，并在最后刷新一次。
+
+此包不发布 invariant companion，因为 Remote 通过服务读写持久队列，Typert 在传输边界核对 endpoint 身份。

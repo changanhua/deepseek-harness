@@ -109,3 +109,5 @@ None. This package does not modify any model-visible prefix.
 - **No byte access in schemas** — `EvidenceRef` validates metadata; the evidence provider must retrieve immutable bytes and call `evidenceBytesMatch()` before evidence can satisfy verification.
 - **No cross-store lookup in schemas** — ancestry, repository identity, Queue existence, and human authority require their owning services. The exported cross-object findings cover only relationships whose complete inputs the caller supplies.
 - **No migration compatibility** — V2 schemas reject every other `schemaVersion`; a future version needs an explicit migration and new golden fixtures rather than permissive parsing.
+
+No invariant companion is published because this package owns immutable value schemas and canonical digest functions, whose algebra is enforced by golden and unit tests.

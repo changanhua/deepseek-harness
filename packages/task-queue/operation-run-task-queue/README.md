@@ -84,3 +84,5 @@ No direct invalidation; mounting or changing this handler leaves the model reque
 
 - The handler runs only explicitly configured local operations and does not provide an arbitrary command-execution interface.
 - Completion output is bounded text; streamed progress, structured per-operation output, and operation-specific result renderers are not part of `operation.run@1`.
+
+No invariant companion is published because the queue registry owns duplicate-handler rejection and lifecycle settlement; this plugin contributes only one effect-scoped handler.

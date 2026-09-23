@@ -5,6 +5,8 @@
 - insert:
     - id: delivery-local
       name: '@changanhua/dsh-delivery-local'
+      isolate:
+        storageDomain: web-host
 
     - id: delivery-evidence-local
       name: '@changanhua/dsh-delivery-evidence-local'

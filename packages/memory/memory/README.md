@@ -47,6 +47,8 @@ None, because this package does not assemble model requests.
 - The Definition does not supply storage, automatic extraction, semantic retrieval, or external knowledge synchronization.
 - Human acceptance permits reuse; it does not certify that the claim is true or override current user instructions.
 
+No invariant companion is published because this Definition has no mutable state; the provider checks durable records against its schemas.
+
 <a id="dev-note"></a>
 ### Dev Note
 

@@ -21,3 +21,5 @@ No direct invalidation; the owning tool controls model-visible schemas and resul
 - The active profile must be an Agent Plan profile with a compatible image model.
 - One generation invocation must produce exactly one PNG or JPEG file.
 - Retry classification reports provider evidence but does not authorize a retry.
+
+No invariant companion is published because registration and generation lifecycle relations belong to the shared seams.

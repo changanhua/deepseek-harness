@@ -58,3 +58,5 @@ No request prefix is changed.
 
 - Fake repository leases model declared lifecycle outcomes; real Git behavior belongs to the local provider's own contract and vertical tests.
 - The testkit does not fake Queue scheduling or Codex transport; those owners retain their own test infrastructure.
+
+No invariant companion is published because this test-support package owns no production event stream or mutable data.

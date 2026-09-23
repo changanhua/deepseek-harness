@@ -15,16 +15,11 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./invariant": {
-      "types": "./lib/types/invariant.d.ts",
-      "default": "./lib/invariant.js"
-    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
-    "lib/invariant.js",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
@@ -32,16 +27,14 @@
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
     "@changanhua/dsh-delivery": "workspace:^",
-    "@changanhua/dsh-delivery-protocol": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^"
+    "@changanhua/dsh-delivery-protocol": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
     "@changanhua/dsh-delivery": "workspace:^",
     "@changanhua/dsh-delivery-protocol": "workspace:^",
-    "@changanhua/dsh-delivery-testkit": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^"
+    "@changanhua/dsh-delivery-testkit": "workspace:^"
   },
   "private": true
 }

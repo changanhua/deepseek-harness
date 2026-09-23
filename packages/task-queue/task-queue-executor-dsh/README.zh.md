@@ -43,3 +43,5 @@ handler 在自动初始化的 `task-worker` profile 下启动当前 DSH argv，�
 - **准入由 WorkKind 持有**——`@changanhua/dsh-tool-agent-run-task-queue` 只准入 `agent.run@1`；其他能力使用各自的 WorkKind Consumer 与 handler。
 - **没有持久 continuation**——任务完成会产生持久队列状态与 owner 通知，但不会自行唤醒或恢复 goal。
 - **一个宿主持有一个队列根目录**——多宿主 session 与任务 ownership 不属于该提供方。
+
+此包不发布 invariant companion，因为注册由 taskQueue 注册器持有，Loader 核对服务和配置，Queue 持有执行与结算关系。

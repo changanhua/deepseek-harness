@@ -117,6 +117,8 @@ These limits keep automation bounded and publication deliberate.
 - **Fetch depends on the profile** — URL fetch and refresh need the optional web service; direct source text does not.
 - **SiYuan writes need a trusted caller** — synchronize and adopt are unavailable through the model tool; a configured native MCP client and the human command or trusted Host path are required.
 
+No invariant companion is published because this consumer owns no durable facts. Request denial and registration disposal are verified by operation and Loader tests.
+
 <a id="dev-note"></a>
 ### Dev Note
 

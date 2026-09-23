@@ -1,5 +1,4 @@
 import { Context, Service } from '@deepseek-ai/cordis'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import { describe, expect, it, vi } from 'vitest'
 import type { PreparedStage, StageRecord } from '@changanhua/dsh-knowledge-base'
 import type { CodexAppServerStartRequest, CodexAppServerRunHandle } from '@deepseek-ai/dsh-subagent-codex/app-server-run'
@@ -8,7 +7,6 @@ vi.mock('@deepseek-ai/dsh-subagent-codex/app-server-run', async importOriginal =
   startCodexAppServerRun: vi.fn(),
 }))
 import KnowledgeQueueService, { Config, createKnowledgeStageHandler } from '../src/index.ts'
-import * as KnowledgeQueueInvariant from '../src/invariant.ts'
 import { isQuotaFailure, modelText, stageOutput, startStageRun, unknownFailure } from '../src/runner.ts'
 
 const prepared: PreparedStage = Object.freeze({
@@ -63,17 +61,10 @@ function operator(current = view()) {
 }
 
 describe('knowledge Queue coverage contracts', () => {
-  it('validates configuration and registers its explained empty invariant', async () => {
+  it('validates configuration', () => {
     expect(Config({})).toEqual({ permissionMode: 'never', disposeGraceMs: 5_000 })
     expect(Config({ model: 'model-a', permissionMode: 'approve-for-me', disposeGraceMs: 1 })).toMatchObject({ model: 'model-a', permissionMode: 'approve-for-me', disposeGraceMs: 1 })
     expect(() => Config({ model: '', permissionMode: 'unsafe', disposeGraceMs: 0 } as never)).toThrow()
-
-    const ctx = new Context()
-    await ctx.plugin(InvariantRegistry)
-    const fiber = await ctx.plugin(KnowledgeQueueInvariant)
-    expect(() => ctx.invariants.register('@changanhua/dsh-knowledge-base-task-queue', () => {})).toThrow(/already registered/)
-    await fiber.dispose()
-    await ctx.fiber.dispose()
   })
 
   it('defines admission, resources, policy, defaults, and rejects absent or mismatched stages', async () => {

@@ -10,12 +10,11 @@
   "exports": {
     ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
     "./types": { "types": "./lib/types/types.d.ts", "default": "./lib/types/types.js" },
-    "./invariant": { "types": "./lib/types/invariant.d.ts", "default": "./lib/invariant.js" },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
-  "files": ["lib/index.js", "lib/invariant.js", "lib/types/**/*.js", "lib/types/**/*.d.ts"],
+  "files": ["lib/index.js", "lib/types/**/*.js", "lib/types/**/*.d.ts"],
   "license": "MIT",
-  "peerDependencies": { "@deepseek-ai/cordis": "workspace:^", "@deepseek-ai/dsh-brand": "workspace:^", "@deepseek-ai/dsh-session": "workspace:^", "@deepseek-ai/dsh-invariants": "workspace:^" },
-  "devDependencies": { "@deepseek-ai/cordis": "workspace:^", "@deepseek-ai/dsh-brand": "workspace:^", "@deepseek-ai/dsh-session": "workspace:^", "@deepseek-ai/dsh-invariants": "workspace:^" }
+  "peerDependencies": { "@deepseek-ai/cordis": "workspace:^", "@deepseek-ai/dsh-brand": "workspace:^", "@deepseek-ai/dsh-session": "workspace:^" },
+  "devDependencies": { "@deepseek-ai/cordis": "workspace:^", "@deepseek-ai/dsh-brand": "workspace:^", "@deepseek-ai/dsh-session": "workspace:^" }
 }

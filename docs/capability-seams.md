@@ -214,6 +214,30 @@ flowchart LR
   pkg_tool_task_queue["tool-task-queue"]
   pkg_tool_agent_run_task_queue["tool-agent-run-task-queue"]
   pkg_tool_image_generation_task_queue["tool-image-generation-task-queue"]
+  pkg_browser["browser"]
+  svc_browser["ctx.browser<br/>Browser operation provider seam"]
+  pkg_browser_extension["browser-extension"]
+  pkg_tool_browser["tool-browser"]
+  pkg_browser_task["browser-task"]
+  pkg_browser_monitor["browser-monitor"]
+  pkg_content_browser["content-browser"]
+  pkg_browser_activity["browser-activity"]
+  svc_browserActivity["ctx.browserActivity<br/>Private browser activity history"]
+  svc_browserMonitor["ctx.browserMonitor<br/>Durable browser observation plans"]
+  svc_browserTasks["ctx.browserTasks<br/>Session-backed browser task authority"]
+  pkg_content["content"]
+  svc_content["ctx.content<br/>Versioned content service seam"]
+  pkg_content_domain["content-domain"]
+  pkg_content_remote["content-remote"]
+  pkg_content_session["content-session"]
+  svc_contentBrowser["ctx.contentBrowser<br/>Browser source import adapter"]
+  svc_contentRemote["ctx.contentRemote<br/>Authenticated Content Remote"]
+  svc_contentSession["ctx.contentSession<br/>Session content source resolver"]
+  pkg_knowledge_base["knowledge-base"]
+  svc_knowledgeBase["ctx.knowledgeBase<br/>Durable knowledge project"]
+  pkg_knowledge_base_task_queue["knowledge-base-task-queue"]
+  pkg_tool_knowledge_base["tool-knowledge-base"]
+  svc_knowledgeQueue["ctx.knowledgeQueue<br/>Knowledge stage Queue adapter"]
   pkg_delivery["delivery"]
   svc_delivery["ctx.delivery<br/>Personal Delivery domain seam"]
   pkg_delivery_local["delivery-local"]
@@ -279,6 +303,11 @@ flowchart LR
   pkg_authorization --> svc_authorization
   pkg_bash_local --> svc_shell
   pkg_bash_sandbox --> svc_shell
+  pkg_browser --> svc_browser
+  pkg_browser_activity --> svc_browserActivity
+  pkg_browser_extension --> svc_browser
+  pkg_browser_monitor --> svc_browserMonitor
+  pkg_browser_task --> svc_browserTasks
   pkg_client_file_upload --> svc_fileUploads
   pkg_client_modules --> svc_clientModules
   pkg_code_runtime --> svc_codeRuntime
@@ -288,6 +317,11 @@ flowchart LR
   pkg_compaction --> svc_compaction
   pkg_compaction_basic --> svc_compaction
   pkg_compaction_tool_result_pruner --> svc_toolResultPruner
+  pkg_content --> svc_content
+  pkg_content_browser --> svc_contentBrowser
+  pkg_content_domain --> svc_content
+  pkg_content_remote --> svc_contentRemote
+  pkg_content_session --> svc_contentSession
   pkg_cordis_host_runner --> svc_cordisInspect
   pkg_cordis_host_runner --> svc_dynamicCordisRunner
   pkg_credentials --> svc_credentials
@@ -318,6 +352,8 @@ flowchart LR
   pkg_invariants --> svc_invariants
   pkg_jobs --> svc_jobs
   pkg_jobs_local --> svc_jobs
+  pkg_knowledge_base --> svc_knowledgeBase
+  pkg_knowledge_base_task_queue --> svc_knowledgeQueue
   pkg_llm --> svc_llm
   pkg_llm_deepseek --> svc_llm
   pkg_llm_pi_ai --> svc_llm
@@ -411,9 +447,22 @@ flowchart LR
   svc_attachments --> pkg_llm_pi_ai
   svc_attachments --> pkg_tool_fs
   svc_authorization --> pkg_llm_pi_ai
+  svc_browser --> pkg_browser_monitor
+  svc_browser --> pkg_browser_task
+  svc_browser --> pkg_content_browser
+  svc_browser --> pkg_tool_browser
+  svc_browserActivity --> pkg_browser_extension
+  svc_browserActivity --> pkg_tool_browser
+  svc_browserMonitor --> pkg_browser_extension
+  svc_browserTasks --> pkg_browser_extension
+  svc_browserTasks --> pkg_tool_browser
   svc_clientModules --> pkg_client_hmr
   svc_codeRuntime --> pkg_tools
   svc_compaction --> pkg_compaction_basic
+  svc_content --> pkg_content_browser
+  svc_content --> pkg_content_remote
+  svc_content --> pkg_content_session
+  svc_contentBrowser --> pkg_browser_extension
   svc_cordisInspect --> pkg_tool_cordis
   svc_credentials --> pkg_api_settings_controller
   svc_credentials --> pkg_llm_deepseek
@@ -440,6 +489,9 @@ flowchart LR
   svc_jobs --> pkg_tool_jobs
   svc_jobs --> pkg_tool_subagent
   svc_jobs --> pkg_tool_terminal
+  svc_knowledgeBase --> pkg_knowledge_base_task_queue
+  svc_knowledgeBase --> pkg_tool_knowledge_base
+  svc_knowledgeQueue --> pkg_tool_knowledge_base
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
@@ -612,6 +664,16 @@ flowchart LR
 | `ctx.inspector` | `core` | `inspector` | - | - | - | Owns the Worker-hosted CDP target and the transport-independent Host and Client observation and Cordis-tree query API. |
 | `ctx.jobs` | `seam` | [`jobs`](../packages/jobs/jobs) | [`jobs-local`](../packages/jobs/jobs-local) | [`tool-bash`](../packages/shell/tool-bash), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-jobs`](../packages/jobs/tool-jobs) | - | Producers (background bash, PTY sends, and subagent delegations) register running work; tool-jobs is the model-facing controller that reads, lists, and kills it; jobs-local is the process-local registry. |
 | `ctx.taskQueue` | `seam` | [`task-queue`](../packages/task-queue/task-queue) | [`task-queue-local`](../packages/task-queue/task-queue-local) | [`task-queue-executor-dsh`](../packages/task-queue/task-queue-executor-dsh), [`image-generation-task-queue`](../packages/image/image-generation-task-queue), [`tool-task-queue`](../packages/task-queue/tool-task-queue), [`tool-agent-run-task-queue`](../packages/task-queue/tool-agent-run-task-queue), [`tool-image-generation-task-queue`](../packages/image/tool-image-generation-task-queue) | - | The host-plane service persists typed WorkItems and atomic ChangeSets, enforces resource and Batch limits, and recovers uncertain attempts; WorkKind handlers own execution, WorkKind-specific tools own admission, and tool-task-queue owns generic control, explicit result reads, and stable owner delivery. |
+| `ctx.browser` | `seam` | [`browser`](../packages/browser/browser) | [`browser-extension`](../packages/browser/browser-extension) | [`tool-browser`](../packages/browser/tool-browser), [`browser-task`](../packages/browser/browser-task), [`browser-monitor`](../packages/browser/browser-monitor), [`content-browser`](../packages/content/content-browser) | - | The definition names browser operations; the extension provider owns grants, prepared actions, transport receipts, and exact page identity. |
+| `ctx.browserActivity` | `core` | [`browser-activity`](../packages/browser/browser-activity) | - | [`browser-extension`](../packages/browser/browser-extension), [`tool-browser`](../packages/browser/tool-browser) | - | Stores installation-scoped observation events only after an explicit policy and applies grant-epoch checks to history reads. |
+| `ctx.browserMonitor` | `core` | [`browser-monitor`](../packages/browser/browser-monitor) | - | [`browser-extension`](../packages/browser/browser-extension) | - | Schedules bounded Queue checks against one authorized installation and retains digest-based changes until acknowledgement. |
+| `ctx.browserTasks` | `core` | [`browser-task`](../packages/browser/browser-task) | - | [`browser-extension`](../packages/browser/browser-extension), [`tool-browser`](../packages/browser/tool-browser) | - | Folds durable task evidence, write attempts, resource dispositions, and acceptance from the owning Session. |
+| `ctx.content` | `seam` | [`content`](../packages/content/content) | [`content-domain`](../packages/content/content-domain) | [`content-remote`](../packages/content/content-remote), [`content-session`](../packages/content/content-session), [`content-browser`](../packages/content/content-browser) | - | Defines immutable originals, editable drafts, idempotent commands, and trusted authorization callbacks; the domain provider stores records. |
+| `ctx.contentBrowser` | `core` | [`content-browser`](../packages/content/content-browser) | - | [`browser-extension`](../packages/browser/browser-extension) | - | Binds an authorized browser source receipt to Content admission without treating page text as a Host-verified Session fact. |
+| `ctx.contentRemote` | `core` | [`content-remote`](../packages/content/content-remote) | - | - | - | Maps signed-in requests to Content operations and rechecks authorization at each invocation. |
+| `ctx.contentSession` | `core` | [`content-session`](../packages/content/content-session) | - | - | - | Resolves one Session observation into a bounded content source and releases the observation before returning. |
+| `ctx.knowledgeBase` | `core` | [`knowledge-base`](../packages/knowledge/knowledge-base) | - | [`knowledge-base-task-queue`](../packages/knowledge/knowledge-base-task-queue), [`tool-knowledge-base`](../packages/knowledge/tool-knowledge-base) | - | Owns source snapshots, editable entries, verified releases, and publication records under a managed content root. |
+| `ctx.knowledgeQueue` | `core` | [`knowledge-base-task-queue`](../packages/knowledge/knowledge-base-task-queue) | - | [`tool-knowledge-base`](../packages/knowledge/tool-knowledge-base) | - | Admits prepared knowledge stages into the typed Queue and reconciles attempt results with the knowledge project. |
 | `ctx.delivery` | `seam` | [`delivery`](../packages/delivery/delivery) | [`delivery-local`](../packages/delivery/delivery-local) | [`delivery-github-intake`](../packages/delivery/delivery-github-intake), [`delivery-remote`](../packages/delivery/delivery-remote), [`delivery-task-queue`](../packages/delivery/delivery-task-queue) | - | Owns immutable Contract revisions, bounded Packets, Queue admission bindings, and human acceptance decisions without duplicating Queue lifecycle state. |
 | `ctx.repoWorkspace` | `seam` | [`repo-workspace`](../packages/delivery/repo-workspace) | [`repo-workspace-git-local`](../packages/delivery/repo-workspace-git-local) | [`delivery-runner-codex`](../packages/delivery/delivery-runner-codex), [`delivery-verifier`](../packages/delivery/delivery-verifier) | - | Verifies configured repository revisions and owns isolated change and verification workspace leases; durable records retain Git identity rather than host paths. |
 | `ctx.deliveryEvidence` | `seam` | [`delivery-evidence`](../packages/delivery/delivery-evidence) | [`delivery-evidence-local`](../packages/delivery/delivery-evidence-local) | [`delivery-runner-codex`](../packages/delivery/delivery-runner-codex), [`delivery-verifier`](../packages/delivery/delivery-verifier) | - | Publishes immutable content-addressed evidence only after bytes are durable and verifies identity, length, and digest on reads. |

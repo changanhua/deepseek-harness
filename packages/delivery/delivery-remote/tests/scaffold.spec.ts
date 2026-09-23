@@ -6,8 +6,6 @@ import {
 } from '@changanhua/dsh-delivery-github-publisher'
 import { startCodeChange, startVerification } from '@changanhua/dsh-delivery-task-queue'
 import { describe, expect, it } from 'vitest'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
-import * as RemoteInvariant from '../src/invariant.ts'
 import {
   Config,
   DeliveryRemoteService,
@@ -39,12 +37,6 @@ function context(): Context {
 }
 
 describe('Delivery Remote host boundary', () => {
-  it('registers its package invariant companion', async () => {
-    const ctx = new Context()
-    await ctx.plugin(InvariantRegistry, { enabled: true })
-    await expect(ctx.plugin(RemoteInvariant).await()).resolves.toBeDefined()
-    await ctx.fiber.dispose()
-  })
   it('keeps the trusted operator id host-owned and non-blank', () => {
     expect(Config({})).toEqual({ operatorId: 'local-operator', repositoryId: 'workspace', githubTargets: {} })
     expect(Config({

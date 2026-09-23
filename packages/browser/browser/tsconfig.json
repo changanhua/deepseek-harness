@@ -5,7 +5,6 @@
   "references": [
     { "path": "../../util/brand" },
     { "path": "../../../vendor/cordis" },
-    { "path": "../../core/session" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../../core/session" }
   ]
 }

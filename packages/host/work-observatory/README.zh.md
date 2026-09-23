@@ -92,6 +92,8 @@ kind: "package-reference"
 - **仅限本机证据**——本包不合并多个 Host，也不声明因果生产力或节省时间。
 - **可选 domain bridge 尚未提供**——Queue、Delivery 和 Skill 调用事实保持独立，直到专用 bridge 提供这些事实。
 
+此包不发布 invariant companion，因为输入关系在存储前执行检查，已存储记录再由 schema 验证。
+
 <a id="dev-note"></a>
 ### 开发注记
 

@@ -430,7 +430,7 @@ git status --short -- packages/task-queue/task-queue packages/task-queue/task-qu
 - Create: `packages/task-queue/tool-agent-run-task-queue/package.json`
 - Create: `packages/task-queue/tool-agent-run-task-queue/tsconfig.json`
 - Create: `packages/task-queue/tool-agent-run-task-queue/src/index.ts`
-- Create: `packages/task-queue/tool-agent-run-task-queue/src/invariant.ts`
+- Document the omitted invariant companion in `packages/task-queue/tool-agent-run-task-queue/README.md`.
 - Create: `packages/task-queue/tool-agent-run-task-queue/tests/index.spec.ts`
 - Create paired package READMEs for `packages/task-queue/tool-agent-run-task-queue`.
 - Modify: `packages/bundle/base/package.json`

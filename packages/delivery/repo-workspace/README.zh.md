@@ -65,3 +65,5 @@ executor 进程树静止后，change lease 可以创建一个受治理的 checkp
 
 - 此契约只定义本地 Git worktree；没有另一个 provider 与生命周期决策时，不支持远程 workspace 和多主机 lease。
 - 被保留的不确定 workspace 需要 operator 显式处理；此服务不会编造成功，也不会授权 Queue retry。
+
+此包不发布 invariant companion，因为抽象定义不持有 checkout；具体提供方验证各自的 Git 事实。

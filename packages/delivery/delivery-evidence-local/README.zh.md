@@ -87,6 +87,8 @@ kind: "package-reference"
 - **没有自动 retention 或 garbage collection** — 在 operator 管理配置 root 前，reference 可能比 Packet 与 Attempt 存活更久。
 - **需要本地文件系统发布 primitive** — 无法创建私有 exclusive file 与 hard link 的文件系统会让发布以 `write-failed` 失败。
 
+此包不发布 invariant companion，因为每次等待完成的发布和读取操作都验证不可变对象，提供方不发布独立事件。
+
 <a id="dev-note"></a>
 ### 开发说明
 

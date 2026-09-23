@@ -16,9 +16,6 @@
     },
     {
       "path": "../task-queue"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }

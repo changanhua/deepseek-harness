@@ -93,6 +93,8 @@ None; captures and library reads never enter model context or start a model requ
 - **No cross-surface capture status** — a page reload clears the pressed state; the library itself is authoritative, and a later capture of the same source replays the original creation receipt.
 - **Editor text is page-local** — an in-progress draft title or body lives in the editor component; a reload discards it. Persisted drafts and versions stay on the Host.
 
+No invariant companion is published because the plugin owns one library controller, three slot registrations, and one locale dictionary, all released by the same effect disposers, so no second authority exists to check at runtime.
+
 <a id="dev-note"></a>
 ### Dev Note
 

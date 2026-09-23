@@ -84,3 +84,5 @@ Operation definition 是受信任的部署配置，且必须保持无秘密。�
 
 - 此 handler 只运行显式配置的 local operations，不提供任意 command-execution interface。
 - 完成 output 是有界文本；streamed progress、structured per-operation output 和 operation-specific result renderers 不属于 `operation.run@1`。
+
+此包不发布 invariant companion，因为队列注册器负责重复处理器拒绝和生命周期结算，此插件只贡献一个随 effect 销毁的处理器。

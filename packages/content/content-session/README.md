@@ -41,6 +41,8 @@ None. Resolving a source does not invoke a model.
 - Capture recognizes only text-only assistant messages. Reasoning, tool, image, or future non-text blocks reject the whole message.
 - This package reads a durable Session cut. Content owns byte limits, duplicate detection, and persistence.
 
+No invariant companion is published because each resolve call owns no retained state and disposes its Session observation before returning.
+
 ### Dev Note
 
 No runtime invariant is needed because a resolve call retains no state after its read completes.

@@ -60,3 +60,5 @@ const packet = await ctx.delivery.createWorkPacket(packetRequest)
 
 - 首版服务契约只覆盖一个本地仓库的交付流程和手工人工决策；planning、Batch/DAG 编排和多主机 lease 不在范围内。
 - Completion claim 与 verification verdict 继续作为 Queue result 保存，不复制成 Delivery 记录；host-only resolver 只在一次 Packet 创建或决定操作中暴露它们。
+
+此包不发布 invariant companion，因为抽象定义不持有持久记录；具体提供方验证各自的存储介质。

@@ -89,6 +89,8 @@ kind: "package-reference"
 - **仅限本地执行世界** — remote workspace 与 multi-host lease 需要另一个提供方和生命周期决策。
 - **保留的 worktree 需要 operator 操作** — 不确定的 Attempt 会保留 checkout；此提供方不会授权 retry 或虚构成功。
 
+此包不发布 invariant companion，因为每次等待完成的操作都验证仓库事实和租约归属，提供方不发布独立事件。
+
 <a id="dev-note"></a>
 ### 开发说明
 

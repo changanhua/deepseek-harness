@@ -84,6 +84,8 @@ None; browser observations and range reads never enter model context or start a 
 - **No causal attribution** — Skill, Queue, and Delivery records are not interpreted as causes of duration or productivity.
 - **Visible-page evidence** — browser sleep, forced termination, and transport loss end evidence at the last Host-received heartbeat.
 
+No invariant companion is published because lifecycle teardown and slot identity have focused browser tests.
+
 <a id="dev-note"></a>
 ### Dev Note
 

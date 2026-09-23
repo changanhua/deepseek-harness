@@ -7,7 +7,6 @@
     { "path": "../content" },
     { "path": "../content-session" },
     { "path": "../../client/connection/tsconfig.host.json" },
-    { "path": "../../typert/protocol" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../../typert/protocol" }
   ]
 }

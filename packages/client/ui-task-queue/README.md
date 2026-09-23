@@ -33,3 +33,5 @@ None; this package never assembles model input.
 - Result output renders through a JSON tree; artifact-specific previews remain deferred.
 - `confirm-succeeded` result editing is not offered; the UI keeps retry and confirmed failure only.
 - Batch-wide actions and server-side pagination remain deferred if real volume requires them.
+
+No invariant companion is published because the Queue workspace only projects the durable queue through the panel Remote, and the slot registry already enforces entry identity for `shell.view` / `sidebar.modules`.

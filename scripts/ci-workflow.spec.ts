@@ -677,13 +677,13 @@ describe('Python release workflows', () => {
     expect(authorize.run).toContain('[ "$REPOSITORY" = "$PYPI_PUBLISHER_REPOSITORY" ]')
     expect(validateSteps).toContain('100000000')
     expect(publishRuntime).toMatchObject({
-      if: "github.event_name == 'workflow_dispatch' && inputs.publish",
+      if: "github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'workflow_dispatch' && inputs.publish",
       needs: 'validate',
       environment: 'pypi-runtime',
       permissions: { contents: 'read', 'id-token': 'write' },
     })
     expect(publishSdk).toMatchObject({
-      if: "github.event_name == 'workflow_dispatch' && inputs.publish",
+      if: "github.repository == 'deepseek-ai/deepseek-harness' && github.event_name == 'workflow_dispatch' && inputs.publish",
       needs: ['validate', 'publish-runtime'],
       environment: 'pypi',
       permissions: { contents: 'read', 'id-token': 'write' },
@@ -745,7 +745,7 @@ describe('Python release workflows', () => {
       release: { type: 'boolean', default: false },
     })
     expect(call.secrets).toMatchObject({
-      DEEPSEEK_API_KEY_EXTERNAL: { required: false },
+      OPENCODE_GO_API_KEY: { required: false },
     })
     expect(workflow.concurrency).toMatchObject({
       group: 'build-single-exe-${{ github.workflow }}-${{ github.ref }}',
@@ -789,7 +789,7 @@ describe('Python release workflows', () => {
     expect(cleanVenvWindows).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
     expect(JSON.stringify(cleanVenvWindows)).toContain('Scripts\\\\python.exe')
     expect(realApiPreflightPosix).toMatchObject({
-      env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
+      env: { DEEPSEEK_API_KEY: '${{ secrets.OPENCODE_GO_API_KEY }}' },
     })
     expect(String(realApiPreflightPosix.if)).toContain('inputs.ci')
     expect(String(realApiPreflightPosix.if)).toContain('head.repo.fork')
@@ -797,8 +797,8 @@ describe('Python release workflows', () => {
     expect(realApiPreflightWindows).toMatchObject({ shell: 'pwsh' })
     expect(installedRealApiPosix).toMatchObject({
       env: {
-        DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
-        DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
+        DEEPSEEK_API_KEY: '${{ secrets.OPENCODE_GO_API_KEY }}',
+        DEEPSEEK_BASE_URL: 'https://opencode.ai/zen/go/v1',
       },
     })
     expect(JSON.stringify(installedRealApiPosix)).toContain('--scenario sdk-live')
@@ -934,19 +934,18 @@ describe('Weighted approval workflow', () => {
 })
 
 describe('Issue lifecycle workflow', () => {
-  it('runs the lifecycle job on every PR/review event but gates token and board steps', () => {
+  it('restricts lifecycle work to upstream and gates token and board steps', () => {
     const lifecycle = loadWorkflow('.github/workflows/issue-lifecycle.yml')
     const policy = loadWorkflow('.github/workflows/issue-policy.yml')
     const lifecycleJob = workflowJob(lifecycle, 'lifecycle')
     if (!Array.isArray(lifecycleJob.steps)) throw new TypeError('Issue lifecycle job must define steps')
 
-    // The job has no job-level `if`, so it is listed on every pull_request /
-    // pull_request_review event and reports success instead of a gray skip. The
-    // write-capable steps are gated at step level so approved/commented reviews
-    // never mint a Project/Issue App token nor touch the board.
+    // Forks must never mint the upstream Project/Issue App token. On upstream,
+    // write-capable steps are gated so approved/commented reviews never touch
+    // the board.
     expect(lifecycle.on).toHaveProperty('pull_request')
     expect(lifecycle.on).toHaveProperty('pull_request_review')
-    expect(lifecycleJob.if).toBeUndefined()
+    expect(lifecycleJob.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
     // Keep the subscription-type gates: issue-lifecycle does not re-subscribe
     // ready_for_review (issue-policy owns that) and only reacts to submitted
     // review events.
@@ -1051,16 +1050,15 @@ describe('Documentation site publication', () => {
     // publication must never appear as a PR check.
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
 
-    // RELEASE_PUBLISH makes release:verify reject every ref that is not a dsh-v*
-    // tag naming this tree's version, so the site and the npm sequence share one
-    // definition of a released version.
+    // RELEASE_VERIFY_TAG rejects refs that are not dsh-v* tags naming this
+    // tree's version without applying package publication identity checks.
     const steps = build.steps.filter(isRecord)
     const verify = steps.find(step => step.name === 'Verify release version')
     const checkout = steps.find(
       step => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
     )
     expect(verify).toMatchObject({
-      env: { RELEASE_PUBLISH: 'true' },
+      env: { RELEASE_VERIFY_TAG: 'true' },
       run: 'pnpm run release:verify --family dsh',
     })
     // Complete history: the release scripts read tags.
@@ -1079,7 +1077,7 @@ describe('Documentation site publication', () => {
 })
 
 describe('Git hooks', () => {
-  it('leaves frozen Agent Note sidecars to the archive verifier', () => {
+  it('runs the archive verifier for frozen Agent Notes', () => {
     const lefthook = loadWorkflow('lefthook.yml')
 
     for (const hookName of ['pre-commit', 'pre-merge-commit']) {
@@ -1087,11 +1085,13 @@ describe('Git hooks', () => {
       if (!isRecord(hook) || !Array.isArray(hook.jobs)) {
         throw new TypeError(`lefthook must define ${hookName} jobs`)
       }
-      const pairing: unknown = hook.jobs.find(
-        (job: unknown) => isRecord(job) && job.name === 'translation pairing (staged records)',
+      const archive: unknown = hook.jobs.find(
+        (job: unknown) => isRecord(job) && job.name === 'archived agent notes',
       )
-
-      expect(pairing).toMatchObject({ exclude: ['.agents/notes/archived/**'] })
+      expect(archive).toMatchObject({
+        glob: '.agents/notes/archived/**',
+        run: 'node_modules/.bin/tsx scripts/verify-archived-agent-notes.ts',
+      })
     }
   })
 })

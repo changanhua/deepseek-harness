@@ -92,6 +92,8 @@ These constraints preserve a conservative side-effect boundary.
 - **Fixed capacity names** — every mounted Queue needs both `knowledge-base` and `codex` capacity declarations.
 - **Native provider only** — this bridge uses the Codex app-server run path and its existing local authentication.
 
+No invariant companion is published because this bridge owns no event schema; knowledge-base checks persisted stage provenance, while task-queue checks Work/Attempt lifecycle.
+
 <a id="dev-note"></a>
 ### Dev Note
 

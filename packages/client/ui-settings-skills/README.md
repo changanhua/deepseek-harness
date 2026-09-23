@@ -25,3 +25,5 @@ None; this package never assembles model input.
 - **P0 is read-only** — `actions.edit/remove/setInvocation` are informational only; no write RPC exists yet.
 - **Adoption is process-local** — the adopted-session choice is not persisted; a reload falls back to following the current ordinary session.
 - **Standing fidelity** — a cold composition's snapshot may silently omit realm-only providers; the UI shows the standing banner but cannot detect realm-only absence.
+
+No invariant companion is published because the feature owns no read/write load-bearing mutation — it observes the read-only management remote and renders from it, and every failing load is kept as page-local error state rather than an invariant.
