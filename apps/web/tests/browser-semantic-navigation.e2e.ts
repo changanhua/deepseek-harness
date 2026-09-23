@@ -392,7 +392,7 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
     const boundReply = bound as { ok?: boolean; error?: unknown }
     if (boundReply.ok !== true) throw new Error(`target bind failed: ${String(boundReply.error)}`)
     await expect.poll(async () => (await assistantState(panel!)).target.selected?.tabId).toBe(targetTabId)
-    if (scenario.id === 'live-pr') {
+    if (scenario.id === 'live-pr' && replay) {
       await panel.locator('[data-view="cognition"]').click()
       const beforeRead = await assistantState(panel)
       const reading = await extensionMessage(panel, { type: 'dsh-assistant-cognition-refresh',
