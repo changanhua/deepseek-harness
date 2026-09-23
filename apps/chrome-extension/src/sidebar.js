@@ -2,6 +2,8 @@ import { modelSummary } from './model-summary.js'
 import { renderMarkdown } from './preview.js'
 import { renderContentMap } from './assistant-content-view.js'
 import { renderSemanticNavigation } from './assistant-semantic-view.js'
+import { createCognitionScope, compileCognitionContext, attachCognitionContext } from './assistant-cognition-workspace.js'
+import { renderCognitionWorkspace, renderCognitionTaskScope } from './assistant-cognition-workspace-view.js'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3080'
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
@@ -25,6 +27,9 @@ let activeView = 'chat'
 let functionScope = 'global'
 let draftImages = []
 const drafts = new Map()
+// Draft-only selection; Host Session remains submission and history authority.
+const cognitionScopes = new Map()
+const cognitionNavigation = new Map()
 let activeDraftKey = null
 let recentSessions = []
 let recentKey = null
@@ -414,7 +419,8 @@ const renderCognition = () => {
   refresh.disabled = !canRefresh; refresh.textContent = ({ submitting: '正在提交…', waiting: '等待新证据…', complete: '刷新完成', 'no-new-evidence': '没有新证据', failed: '刷新失败' })[refreshStatus] ?? '刷新'; refresh.title = canRefresh ? '让 Agent 对当前操作网页做一次新的有界读取' : '请先连接、选择对话并选择网页'
   const pages = cognition.pages ?? []
   const generate = () => { const value = viewState(); void send({ type: 'dsh-assistant-cognition-generate', expectedSessionId: value.session?.binding?.sessionId, expectedTargetRevision: value.target?.revision }) }
-  if (!pages.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = cognition.status === 'unread' ? '还没有已送达 Agent 的页面认知。选择网页本身不会读取页面。' : '页面认知暂不可用。'; const start = button('读取并生成语义地图', generate, 'semantic-generate'); start.disabled = !canRefresh; empty.append(start); panel.append(empty); return }
+  const readPage = () => { const value = viewState(); void send({ type: 'dsh-assistant-cognition-refresh', expectedSessionId: value.session?.binding?.sessionId, expectedTargetRevision: value.target?.revision }) }
+  if (!pages.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = cognition.status === 'unread' ? '还没有已送达 Agent 的页面认知。选择网页本身不会读取页面。' : '页面认知暂不可用。'; const start = button('读取页面认知', readPage, 'semantic-generate'); start.disabled = !canRefresh; empty.append(start); panel.append(empty); return }
   const selected = pages.find(page => page.id === selectedAtlasPageId) ?? pages.find(page => currentTargetPage(page, current)) ?? pages.find(page => page.documentState === 'current') ?? pages.at(-1)
   selectedAtlasPageId = selected.id
   const cards = document.createElement('div'); cards.className = 'atlas-pages'
@@ -423,10 +429,44 @@ const renderCognition = () => {
   const canLocate = selected.locatorsValid && currentTargetPage(selected, current)
   const detail = document.createElement('article'); detail.className = 'atlas-detail'; const heading = document.createElement('header'); const title = document.createElement('h2'); title.textContent = selected.documentState === 'previous-document' ? '先前页面的读取记录' : '当前页面的理解范围'; const meta = document.createElement('small'); meta.className = 'cognition-meta'; meta.textContent = `${selected.coverage?.observationCount ?? 0} 次读取 · ${contentSummary(selected)} · 仅展示已读部分`; heading.append(title, meta)
   if (selected.locatorsValid) { const locate = button('定位标签', () => cognitionCommand('dsh-assistant-cognition-locate', selected)); locate.disabled = !canLocate; if (!canLocate) locate.title = '固定目标已变化，不能定位旧页面。'; heading.append(locate) }
-  detail.append(heading)
-  const tabs = document.createElement('div'); tabs.className = 'atlas-tabs'; for (const [id, copy] of [['map', '地图'], ['structure', '结构'], ['evidence', '证据']]) { const tab = button(copy, () => { cognitionDetailView = id; renderCognition() }); tab.setAttribute('aria-pressed', String(cognitionDetailView === id)); tabs.append(tab) }; detail.append(tabs)
+  if (cognitionDetailView !== 'map') detail.append(heading)
+  const tabs = document.createElement('div'); tabs.className = 'atlas-tabs'; for (const [id, copy] of [['map', '认知'], ['reading', '阅读'], ['structure', '结构'], ['evidence', '证据']]) { const tab = button(copy, () => { cognitionDetailView = id; renderCognition() }); tab.setAttribute('aria-pressed', String(cognitionDetailView === id)); tabs.append(tab) }; detail.append(tabs)
   if (cognitionDetailView === 'structure') { const observation = selected.observations?.at(-1); if (observation?.tree?.nodes?.length) renderCognitionTree(selected, observation, detail); else detail.append('没有已送达的 DOM 树。') }
   else if (cognitionDetailView === 'evidence') { const evidence = document.createElement('div'); evidence.className = 'atlas-evidence'; for (const observation of selected.observations ?? []) { const row = document.createElement('p'); row.textContent = `${observation.id} · ${observation.readMode} · ${new Date(observation.observedAt ?? 0).toLocaleString()} · 正文 ${observation.scope?.textChars ?? 0} 字${observation.omissions?.textTruncated ? ' · 正文截断' : ''}`; evidence.append(row) }; if (selected.omissions?.length) evidence.append(`遗漏：${selected.omissions.join('、')}`); detail.append(evidence) }
+  else if (cognitionDetailView === 'map') {
+    const latest = selected.observations?.at(-1)
+    const navigationKey = JSON.stringify([selected.id, latest?.id, latest?.snapshotId])
+    if (!cognitionNavigation.has(navigationKey)) {
+      cognitionNavigation.set(navigationKey, {})
+      if (cognitionNavigation.size > 64) cognitionNavigation.delete(cognitionNavigation.keys().next().value)
+    }
+    const updateScope = (objectId, correction) => {
+      const value = viewState(), key = draftKey(value)
+      if (submitting || locked(value.session?.pending) || value.session?.pendingCreate) return
+      const existing = cognitionScopes.get(key)
+      let ids = [], corrections = {}
+      if (existing?.pageId === selected.id) {
+        try { compileCognitionContext(existing, selected, value); ids = [...existing.objectIds]; corrections = { ...existing.corrections } } catch { /* Explicit selection replaces a stale draft, never remaps old IDs. */ }
+      }
+      if (correction !== undefined) { if (!ids.includes(objectId)) ids.push(objectId); corrections[objectId] = correction }
+      else if (ids.includes(objectId)) { ids = ids.filter(id => id !== objectId); delete corrections[objectId] }
+      else ids.push(objectId)
+      try {
+        if (ids.length) cognitionScopes.set(key, createCognitionScope(selected, value, ids, corrections))
+        else cognitionScopes.delete(key)
+        render(); byId('composer').focus({ preventScroll: true })
+      } catch (error) { notice(error.message) }
+    }
+    detail.append(renderCognitionWorkspace(selected, {
+      navigation: cognitionNavigation.get(navigationKey), scope: cognitionScopes.get(activeDraftKey),
+      canUse: currentTargetPage(selected, current) && current.connection?.phase === 'connected'
+        && Boolean(current.session?.binding) && !submitting && !locked(current.session?.pending) && !current.session?.pendingCreate,
+      canLocate: currentTargetPage(selected, current),
+      onUse: objectId => updateScope(objectId), onCorrect: (objectId, correction) => updateScope(objectId, correction),
+      onRevealSource: (blockId, snapshotId) => cognitionCommand('dsh-assistant-cognition-reveal-source', selected, { blockId, snapshotId }),
+      onRevealAction: actionId => cognitionCommand('dsh-assistant-cognition-reveal-action', selected, { actionId }),
+    }))
+  }
   else if (selected.sourceSnapshot?.blocks.length) detail.append(renderSemanticNavigation(selected, {
     canLocate: currentTargetPage(selected, current), canGenerate: canRefresh && currentTargetPage(selected, current), generating: ['submitting', 'waiting', 'unknown'].includes(refreshStatus),
     onGenerate: generate,
@@ -511,11 +551,23 @@ const refreshRecent = async () => {
 }
 
 const renderDraftImages = () => { const rail = byId('draft-images'); rail.replaceChildren(); for (const [index, image] of draftImages.entries()) { const card = document.createElement('div'); card.className = 'draft-image'; const preview = document.createElement('img'); preview.alt = image.name; preview.src = `data:${image.mediaType};base64,${image.data}`; const remove = button('×', () => { draftImages = draftImages.filter((_, candidate) => candidate !== index); renderDraftImages() }); remove.setAttribute('aria-label', `移除图片 ${image.name}`); card.append(preview, remove); rail.append(card) } }
+const renderCognitionDraftScope = () => {
+  byId('cognition-draft-scope')?.remove()
+  const scope = cognitionScopes.get(activeDraftKey)
+  if (!scope) return
+  const current = viewState(), page = current.cognition?.pages?.find(item => item.id === scope.pageId)
+  const rail = renderCognitionTaskScope(scope, page, current, {
+    disabled: submitting || locked(current.session?.pending) || Boolean(current.session?.pendingCreate),
+    onClear: () => { cognitionScopes.delete(activeDraftKey); cognitionNavigation.clear(); render() },
+  })
+  rail.id = 'cognition-draft-scope'; byId('composer-wrap').prepend(rail)
+}
 const render = () => {
   const current = viewState(); const connection = current.connection ?? {}; const session = current.session ?? {}; const blocked = locked(session.pending) || Boolean(session.pendingCreate)
   renderConnection(); renderSettings(); renderTarget(); renderConversation(); renderPending(); renderApprovals(); renderUnresolved(); renderCognition(); renderFunctions(); renderRecent(); renderModelPicker()
   for (const name of ['chat', 'cognition', 'functions']) { byId(`${name}-panel`).hidden = activeView !== name; for (const node of document.querySelectorAll(`[data-view="${name}"]`)) node.setAttribute('aria-selected', String(activeView === name)) }
-  byId('composer-wrap').hidden = activeView !== 'chat'
+  byId('composer-wrap').hidden = activeView === 'functions'
+  renderCognitionDraftScope()
   const offline = connection.phase !== 'connected' || session.phase === 'foreign'
   byId('composer').disabled = blocked; byId('send-queue').disabled = blocked || offline || submitting; byId('send-steer').disabled = blocked || offline || submitting; byId('stop-session').disabled = offline || !session.binding; byId('new-session').disabled = offline || blocked; byId('session-picker').disabled = offline || blocked
   const status = session.phase === 'foreign' ? '当前对话属于另一台 DSH，请恢复原连接。' : offline ? '请先连接 DSH，草稿会留在输入框中。' : session.pendingCreate ? '正在确认新对话。' : locked(session.pending) ? '上次提交尚未确认。' : session.error?.message ? `对话读取失败：${bounded(session.error.message, 300)}` : !session.binding ? '选择“新对话”或继续已有对话后即可发送。' : ''
@@ -525,7 +577,32 @@ const render = () => {
 const connect = async () => { try { if (!await chrome.permissions.request({ origins: ['http://*/*', 'https://*/*'] })) return notice('未授予所有网站访问权限'); await send({ type: 'dsh-assistant-connect', scopes: ['session:interact', 'browser:read', 'browser:write', 'browser:observe'], origins: ['*'] }) } catch (error) { notice(messageError(error)) } }
 const configure = async () => { const baseUrl = byId('base-url').value.trim() || DEFAULT_BASE_URL; try { if (!['http:', 'https:'].includes(new URL(baseUrl).protocol)) throw new Error('invalid_url') } catch { return notice('请输入有效的 HTTP(S) 地址') }; editingUrl = false; if (await send({ type: 'dsh-assistant-configure', baseUrl })) await connect() }
 const openSessionMenu = async menuId => { const menu = byId(menuId); menu.hidden = false; const result = await send({ type: 'dsh-assistant-session-list' }); renderSessionList(menu, normalizeSessions(result?.value), () => { menu.hidden = true }) }
-const submit = async (mode = 'queue') => { const text = byId('composer').value.trim(); const current = viewState(); if ((!text && !draftImages.length) || submitting || locked(current.session?.pending) || current.session?.pendingCreate) return; if (current.connection?.phase !== 'connected' || current.session?.phase === 'foreign') return render(); const submittedDraftKey = activeDraftKey; submitting = true; render(); try { const result = await send({ type: 'dsh-assistant-session-submit', text, mode, expectedSessionId: current.session?.binding?.sessionId ?? null, ...(Number.isSafeInteger(current.target?.revision) ? { expectedTargetRevision: current.target.revision } : {}), ...(draftImages.length ? { images: structuredClone(draftImages) } : {}) }); if (result) { const command = result.value?.command?.result; if (command) notice(command.text || (command.kind === 'success' ? '命令已完成。' : '命令未完成。')); drafts.delete(submittedDraftKey); if (activeDraftKey === submittedDraftKey) { byId('composer').value = ''; draftImages = []; renderDraftImages() } } } finally { submitting = false; render() } }
+const submit = async (mode = 'queue') => {
+  const instruction = byId('composer').value.trim(), current = viewState()
+  if ((!instruction && !draftImages.length) || submitting || locked(current.session?.pending) || current.session?.pendingCreate) return
+  if (current.connection?.phase !== 'connected' || current.session?.phase === 'foreign') return render()
+  const submittedDraftKey = activeDraftKey, scope = cognitionScopes.get(submittedDraftKey)
+  let text = instruction
+  if (scope) {
+    try {
+      const page = current.cognition?.pages?.find(item => item.id === scope.pageId)
+      text = attachCognitionContext(instruction, compileCognitionContext(scope, page, current))
+    } catch (error) { notice(error.message); return }
+  }
+  submitting = true; render()
+  try {
+    const result = await send({ type: 'dsh-assistant-session-submit', text, mode,
+      expectedSessionId: current.session?.binding?.sessionId ?? null,
+      ...(Number.isSafeInteger(current.target?.revision) ? { expectedTargetRevision: current.target.revision } : {}),
+      ...(draftImages.length ? { images: structuredClone(draftImages) } : {}) })
+    if (result) {
+      const command = result.value?.command?.result
+      if (command) notice(command.text || (command.kind === 'success' ? '命令已完成。' : '命令未完成。'))
+      drafts.delete(submittedDraftKey); cognitionScopes.delete(submittedDraftKey)
+      if (activeDraftKey === submittedDraftKey) { byId('composer').value = ''; draftImages = []; renderDraftImages() }
+    }
+  } finally { submitting = false; render() }
+}
 const imageData = file => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = () => reject(new Error('image_read_failed')); reader.onload = () => { const match = /^data:([^;]+);base64,([A-Za-z0-9+/]+={0,2})$/u.exec(String(reader.result ?? '')); if (!match) return reject(new Error('image_read_failed')); resolve({ type: 'image', mediaType: match[1], data: match[2], name: file.name || 'clipboard-image' }) }; reader.readAsDataURL(file) })
 const addFiles = async files => { const candidates = [...files].filter(file => file instanceof File); if (!candidates.length) return; const totalBytes = draftImages.reduce((total, image) => total + Math.floor(image.data.length * 3 / 4), 0) + candidates.reduce((total, file) => total + file.size, 0); if (draftImages.length + candidates.length > 4 || candidates.some(file => !IMAGE_TYPES.has(file.type) || file.size > 2 * 1024 * 1024) || totalBytes > 3 * 1024 * 1024) return notice('最多添加 4 张、每张不超过 2MB 且合计不超过 3MB 的 PNG、JPG、WebP 或 GIF 图片。'); try { draftImages = [...draftImages, ...await Promise.all(candidates.map(imageData))]; renderDraftImages() } catch (error) { notice(messageError(error)) } }
 
