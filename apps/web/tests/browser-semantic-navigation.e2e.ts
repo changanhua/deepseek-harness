@@ -15,6 +15,8 @@ import { selectSemanticEvaluationCase } from './fixtures/semantic-evaluation.ts'
 const replay = process.env.DSH_SEMANTIC_REPLAY === '1' || process.env.DSH_SNAPSHOT === 'replay'
 const workspace = replay && (process.env.DSH_SEMANTIC_CASE === undefined || process.env.DSH_SEMANTIC_CASE === 'article')
 const real = process.env.DSH_SEMANTIC_REAL === '1' && Boolean(process.env.DEEPSEEK_API_KEY)
+const headful = process.env.DSH_SEMANTIC_HEADFUL === '1'
+const videoDir = process.env.DSH_SEMANTIC_VIDEO_DIR
 const navigateAfterBind = process.env.DSH_SEMANTIC_NAVIGATE_AFTER_BIND === '1'
 const article = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>缓存定位实验</title>
 <style>body{max-width:780px;margin:40px auto;font:18px sans-serif;line-height:1.65}section{margin:2em 0}.spacer{height:900px}</style></head><body>
@@ -339,6 +341,7 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
   let feedbackEvidence: Record<string, unknown> | null = null
   let navigationEvidence: Record<string, unknown> | null = null
   try {
+    if (videoDir) await mkdir(videoDir, { recursive: true })
     await cp(join(REPO_ROOT, 'apps/chrome-extension'), extension, { recursive: true })
     const manifest = JSON.parse(await readFile(join(extension, 'manifest.json'), 'utf8')) as Record<string, unknown>
     manifest.host_permissions = ['http://127.0.0.1/*', 'http://*/*', 'https://*/*']
@@ -346,7 +349,9 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
     await writeFile(join(extension, 'manifest.json'), JSON.stringify(manifest))
     host = await start(home, port, replay ? await prepareReplay(root, scenario.id) : undefined)
     context = await chromium.launchPersistentContext(join(root, 'browser'), {
-      channel: 'chromium', headless: true, locale: 'zh-CN', viewport: { width: 1200, height: 900 }, timeout: 30_000,
+      channel: 'chromium', headless: !headful, locale: 'zh-CN', viewport: { width: 1200, height: 900 }, timeout: 30_000,
+      ...(headful ? { slowMo: 80 } : {}),
+      ...(videoDir ? { recordVideo: { dir: videoDir, size: { width: 1200, height: 900 } } } : {}),
       ...(process.env.DSH_PLAYWRIGHT_EXECUTABLE_PATH === undefined ? {} : { executablePath: process.env.DSH_PLAYWRIGHT_EXECUTABLE_PATH }),
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     })
