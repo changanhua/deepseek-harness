@@ -61,6 +61,8 @@ Remote 从 Connection 的活动请求绑定派生同步授权回调。排队命�
 - WebSocket 和直接进程内调用者没有经过认证的 HTTP 请求绑定，因此会被拒绝。浏览器 UI 和随附 Profile 组合属于独立消费方。
 - 清除浏览器 cookie 不会撤销已经发出的请求；适用 Connection 的凭据激活和过期规则。
 
+此包不发布 invariant companion，因为 Remote 不持有持久状态；Connection 和 Content 在每次调用时执行检查。
+
 <a id="dev-note"></a>
 ### 开发备注
 

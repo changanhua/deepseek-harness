@@ -95,6 +95,8 @@ None from this package alone; consumer composition determines any cacheable mode
 - An `unknown` outcome remains unresolved until the responsible consumer reconciles it; the definition never converts it into an automatic retry.
 - Session-persistent task acceptance, evidence, receipts, and page-resource disposition belong to [`@changanhua/dsh-browser-task`](../browser-task/README.md), not to this service definition.
 
+No invariant companion is published because this abstract definition owns no connections, grants, or execution state.
+
 <a id="dev-note"></a>
 ### Dev Note
 

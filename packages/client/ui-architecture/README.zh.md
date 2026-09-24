@@ -83,6 +83,8 @@ kind: "package-reference"
 - **手动运行时刷新** — Host 不提供插件清单订阅，因此打开的页面只在用户请求或插件重载时刷新。
 - **仅限工作区包** — 外部插件可以贡献 Loader 条目，但只有构建 checkout 中的包才有生成的包方块。
 
+此包不发布 invariant companion，因为 Slot 身份和生成目录的新鲜度已有专门检查。
+
 <a id="dev-note"></a>
 ### 开发备注
 

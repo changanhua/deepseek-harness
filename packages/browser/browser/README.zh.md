@@ -95,6 +95,8 @@ kind: "package-reference"
 - `unknown` outcome 保持未解决，直至负责的消费方完成协调；该定义绝不将其转换为自动重试。
 - 会话持久的任务验收、证据、回执和页面资源处置属于 [`@changanhua/dsh-browser-task`](../browser-task/README.zh.md)，而非此服务定义。
 
+此包不发布 invariant companion，因为这个抽象定义不持有连接、授权或执行状态。
+
 <a id="dev-note"></a>
 ### 开发备注
 

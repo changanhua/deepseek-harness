@@ -12,8 +12,11 @@ import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
 import { probeFreePort, REPO_ROOT, saveFailureShot } from './support.ts'
 import { selectSemanticEvaluationCase } from './fixtures/semantic-evaluation.ts'
 
-const replay = process.env.DSH_SEMANTIC_REPLAY === '1'
+const replay = process.env.DSH_SEMANTIC_REPLAY === '1' || process.env.DSH_SNAPSHOT === 'replay'
+const workspace = replay && (process.env.DSH_SEMANTIC_CASE === undefined || process.env.DSH_SEMANTIC_CASE === 'article')
 const real = process.env.DSH_SEMANTIC_REAL === '1' && Boolean(process.env.DEEPSEEK_API_KEY)
+const headful = process.env.DSH_SEMANTIC_HEADFUL === '1'
+const videoDir = process.env.DSH_SEMANTIC_VIDEO_DIR
 const navigateAfterBind = process.env.DSH_SEMANTIC_NAVIGATE_AFTER_BIND === '1'
 const article = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>缓存定位实验</title>
 <style>body{max-width:780px;margin:40px auto;font:18px sans-serif;line-height:1.65}section{margin:2em 0}.spacer{height:900px}</style></head><body>
@@ -26,7 +29,7 @@ const playerList = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><
 <tr id="player-target"><td>Kylian Mbappé</td><td>Paris SG</td><td>ST</td><td>91</td></tr><tr><td>Aitana Bonmatí</td><td>Barcelona</td><td>CM</td><td>91</td></tr>
 </tbody></table><div class="spacer"></div></article></main></body></html>`
 const caseId = process.env.DSH_SEMANTIC_CASE
-const fixed = caseId && caseId !== 'article' && caseId !== 'list'
+const fixed = caseId && caseId !== 'article' && caseId !== 'list' && caseId !== 'live-pr'
   && caseId !== 'live-dom-sample'
   ? selectSemanticEvaluationCase(caseId, process.env.DSH_SEMANTIC_SPLIT) : undefined
 if (fixed === undefined && process.env.DSH_SEMANTIC_SPLIT !== undefined && process.env.DSH_SEMANTIC_SPLIT !== 'example') {
@@ -37,9 +40,12 @@ const liveSampleHtml = caseId === 'live-dom-sample'
 const scenario = fixed === undefined ? caseId === 'live-dom-sample'
   ? { id: 'live-dom-sample', split: 'live-page-sample', html: liveSampleHtml!, title: 'FUTBIN live DOM sample',
     target: 'main a[href*="/27/player/506/"]', identity: 'Kika Nazareth', exact: false, sourceBlockOrdinal: undefined }
-  : process.env.DSH_SEMANTIC_CASE === 'list'
-    ? { id: 'list', split: 'example', html: playerList, title: '合成球员列表', target: '#player-target', identity: 'Kylian Mbappé', exact: false, sourceBlockOrdinal: undefined }
-    : { id: 'article', split: 'example', html: article, title: '缓存定位实验', target: '#limited', identity: '在我们测试的三种页面模板中，缓存使平均定位时间缩短了约 14%；其他页面尚未验证。', exact: true, sourceBlockOrdinal: undefined }
+  : caseId === 'live-pr'
+    ? { id: 'live-pr', split: 'live-site', html: '', title: 'DeepSeek Harness PR #73',
+      target: 'body', identity: 'deepseek-harness', exact: false, sourceBlockOrdinal: undefined }
+    : process.env.DSH_SEMANTIC_CASE === 'list'
+      ? { id: 'list', split: 'example', html: playerList, title: '合成球员列表', target: '#player-target', identity: 'Kylian Mbappé', exact: false, sourceBlockOrdinal: undefined }
+      : { id: 'article', split: 'example', html: article, title: '缓存定位实验', target: '#limited', identity: '在我们测试的三种页面模板中，缓存使平均定位时间缩短了约 14%；其他页面尚未验证。', exact: true, sourceBlockOrdinal: undefined }
   : { id: fixed.id, split: fixed.split, html: fixed.html, title: fixed.title, target: fixed.targetSelector,
     identity: fixed.expectedSnapshotText, exact: false, sourceBlockOrdinal: fixed.targetBlockOrdinal }
 const fixtureSha256 = createHash('sha256').update(JSON.stringify(scenario)).digest('hex')
@@ -132,7 +138,26 @@ async function prepareReplay(root: string, scenarioId: string): Promise<string> 
       { type: 'finish', reason: { kind: 'stop' } },
     ] },
   ]
-  const script = [...round('first'), ...(process.env.DSH_SEMANTIC_FEEDBACK === '1' ? round('second') : [])]
+  const taskAnswer = { kind: 'chunks', chunks: [
+    { type: 'block-start', index: 0, blockType: 'text' },
+    { type: 'text-delta', index: 0, text: '已按选入对象和人工修正处理。' },
+    { type: 'block-end', index: 0, block: { type: 'text', text: '已按选入对象和人工修正处理。' } },
+    { type: 'usage', usage: { inputTokens: 100, outputTokens: 20 } },
+    { type: 'finish', reason: { kind: 'stop' } },
+  ] }
+  const script = scenarioId === 'live-pr'
+    ? [call('live-pr-snapshot', 'browser_snapshot', `{"installationId":"${targetInstallation}","tabId":${targetTab},"frameId":0,"tree":false,"structure":true,"textLimit":5000,"limit":64}`),
+      call('live-pr-source', 'browser_read_source', `{"snapshotId":"${snapshotId}","offset":0}`),
+      call('live-pr-source-next', 'browser_read_source', `{"snapshotId":"${snapshotId}","offset":8}`),
+      call('live-pr-source-more', 'browser_read_source', `{"snapshotId":"${snapshotId}","offset":16}`),
+      { kind: 'chunks', chunks: [
+        { type: 'block-start', index: 0, blockType: 'text' },
+        { type: 'text-delta', index: 0, text: '已读取当前固定网页。' },
+        { type: 'block-end', index: 0, block: { type: 'text', text: '已读取当前固定网页。' } },
+        { type: 'usage', usage: { inputTokens: 100, outputTokens: 20 } },
+        { type: 'finish', reason: { kind: 'stop' } },
+      ] }, taskAnswer]
+    : [...round('first'), ...(process.env.DSH_SEMANTIC_FEEDBACK === '1' ? round('second') : []), ...(workspace ? [taskAnswer] : [])]
   await writeFile(join(root, 'session.jsonl'), JSON.stringify({ type: 'session', version: 3,
     id: 'semantic-replay', createdAt: 1, cwd: root, isSeeded: false, delegationDepth: 0,
     agentPreset: 'browser-assistant' }) + '\n')
@@ -151,7 +176,7 @@ async function prepareReplay(root: string, scenarioId: string): Promise<string> 
 
 async function assistantState(panel: Page): Promise<AssistantState> {
   const reply = await panel.evaluate(async () => {
-    const browserGlobal = globalThis as typeof globalThis & { chrome: ExtensionChrome }
+    const browserGlobal = globalThis as unknown as { chrome: ExtensionChrome }
     return browserGlobal.chrome.runtime.sendMessage({ type: 'dsh-assistant-state', surfaceId: sessionStorage.getItem('dsh.assistant.surface.v2') })
   }) as { ok?: boolean; error?: unknown; state?: AssistantState }
   if (reply.ok !== true) throw new Error(`assistant state failed: ${String(reply.error)}`)
@@ -192,7 +217,8 @@ async function connect(panel: Page, context: BrowserContext, base: string): Prom
     await approval.getByRole('status').getByText(/已授权|authorized/iu).waitFor()
     await approval.close()
   }
-  await extensionMessage(panel, { type: 'dsh-assistant-poll' })
+  await expect.poll(async () => panel.locator('#connection-label').textContent(), { timeout: 30_000 }).toBe('已连接')
+  await expect.poll(async () => panel.locator('#connection-panel').isHidden()).toBe(true)
   await expect.poll(async () => (await assistantState(panel)).connection.phase, { timeout: 30_000 }).toBe('connected')
   await panel.locator('#hide-settings').click()
 }
@@ -301,20 +327,22 @@ function semanticReference(state: AssistantState, expectedSource: string, exact:
 }
 
 it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounded semantic map in the loaded extension', async () => {
-  if (replay && !['article', 'live-dom-sample'].includes(scenario.id)) throw new Error('keyless semantic replay only covers the article and live DOM sample')
+  if (replay && !['article', 'live-dom-sample', 'live-pr'].includes(scenario.id)) throw new Error('keyless semantic replay only covers article, live DOM and live PR cases')
   const parent = resolve(homedir()), root = await mkdtemp(join(parent, 'dsh-semantic-navigation-'))
   const home = join(root, 'home'), extension = join(root, 'extension')
   const port = await probeFreePort(), fixturePort = await probeFreePort()
   const base = `http://127.0.0.1:${port}`, fixture = `http://127.0.0.1:${fixturePort}`
-  const artifact = join(REPO_ROOT, '.artifacts/browser-assistant-v2/semantic-navigation',
-    replay ? scenario.id === 'live-dom-sample' ? 'replay-futbin-live-dom-sample'
+  const replayArtifact = scenario.id === 'live-pr' ? 'replay-live-pr'
+    : scenario.id === 'live-dom-sample' ? 'replay-futbin-live-dom-sample'
       : navigateAfterBind ? 'replay-navigation-article'
-        : process.env.DSH_SEMANTIC_FEEDBACK === '1' ? 'replay-feedback-article' : 'replay-article' : scenario.id)
+        : process.env.DSH_SEMANTIC_FEEDBACK === '1' ? 'replay-feedback-article' : 'replay-article'
+  const artifact = join(REPO_ROOT, '.artifacts/browser-assistant-v2/semantic-navigation', replay ? replayArtifact : scenario.id)
   let host: Host | undefined, context: BrowserContext | undefined, panel: Page | undefined
   const focusEvidence: FocusEvidence[] = []
   let feedbackEvidence: Record<string, unknown> | null = null
   let navigationEvidence: Record<string, unknown> | null = null
   try {
+    if (videoDir) await mkdir(videoDir, { recursive: true })
     await cp(join(REPO_ROOT, 'apps/chrome-extension'), extension, { recursive: true })
     const manifest = JSON.parse(await readFile(join(extension, 'manifest.json'), 'utf8')) as Record<string, unknown>
     manifest.host_permissions = ['http://127.0.0.1/*', 'http://*/*', 'https://*/*']
@@ -322,16 +350,19 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
     await writeFile(join(extension, 'manifest.json'), JSON.stringify(manifest))
     host = await start(home, port, replay ? await prepareReplay(root, scenario.id) : undefined)
     context = await chromium.launchPersistentContext(join(root, 'browser'), {
-      channel: 'chromium', headless: true, locale: 'zh-CN', viewport: { width: 1200, height: 900 }, timeout: 30_000,
+      channel: 'chromium', headless: !headful, locale: 'zh-CN', viewport: { width: 1200, height: 900 }, timeout: 30_000,
+      ...(headful ? { slowMo: 80 } : {}),
+      ...(videoDir ? { recordVideo: { dir: videoDir, size: { width: 1200, height: 900 } } } : {}),
       ...(process.env.DSH_PLAYWRIGHT_EXECUTABLE_PATH === undefined ? {} : { executablePath: process.env.DSH_PLAYWRIGHT_EXECUTABLE_PATH }),
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     })
     const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker', { timeout: 15_000 })
     await context.request.get(host.url)
     const target = await context.newPage()
-    await target.route(`${fixture}/article`, route => route.fulfill({ body: scenario.html, contentType: 'text/html' }))
+    if (scenario.id !== 'live-pr') await target.route(`${fixture}/article`, route => route.fulfill({ body: scenario.html, contentType: 'text/html' }))
     if (scenario.id === 'live-dom-sample') await target.route('https://**', route => route.abort())
-    await target.goto(`${fixture}/article`)
+    await target.goto(scenario.id === 'live-pr' ? 'https://github.com/changanhua/deepseek-harness/pull/73' : `${fixture}/article`,
+      { waitUntil: 'domcontentloaded' })
     const unrelated = await context.newPage()
     await unrelated.route(`${fixture}/other`, route => route.fulfill({ body: '<h1>无关标签</h1>', contentType: 'text/html' }))
     await unrelated.goto(`${fixture}/other`)
@@ -362,6 +393,76 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
     const boundReply = bound as { ok?: boolean; error?: unknown }
     if (boundReply.ok !== true) throw new Error(`target bind failed: ${String(boundReply.error)}`)
     await expect.poll(async () => (await assistantState(panel!)).target.selected?.tabId).toBe(targetTabId)
+    if (scenario.id === 'live-pr' && replay) {
+      await panel.locator('[data-view="cognition"]').click()
+      const beforeRead = await assistantState(panel)
+      const reading = await extensionMessage(panel, { type: 'dsh-assistant-cognition-refresh',
+        expectedSessionId: beforeRead.session.binding?.sessionId,
+        expectedTargetRevision: beforeRead.target.revision }) as { ok?: boolean; error?: unknown }
+      if (reading.ok !== true) throw new Error(`live PR read failed: ${String(reading.error)}`)
+      await expect.poll(async () => {
+        const current = await assistantState(panel!)
+        const calls = toolEvidence(current.session.records).filter(entry => entry.kind === 'call').map(entry => entry.name)
+        return calls.includes('browser_snapshot') && calls.includes('browser_read_source') && turnEnded(current.session.records)
+      }, { timeout: 90_000 }).toBe(true)
+      await panel.locator('.cog-object-open').first().waitFor({ state: 'visible', timeout: 15_000 })
+      const readState = await assistantState(panel)
+      const cognition = readState.cognition as { pages?: Array<{
+        documentState?: string
+        target?: { page?: { url?: string } }
+        observations?: unknown[]
+        sourceSnapshots?: unknown[]
+      }> } | undefined
+      const page = cognition?.pages?.find(item => item.documentState === 'current')
+      expect(page?.target?.page?.url).toBe('https://github.com/changanhua/deepseek-harness/pull/73')
+      expect(page?.observations?.length).toBeGreaterThan(0)
+      await mkdir(artifact, { recursive: true })
+      await panel.screenshot({ path: join(artifact, '01-live-pr-overview.png'), fullPage: true })
+      const sourceCollection = panel.locator('.cog-object-open').filter({ hasText: '本次原文与论据' })
+      if (await sourceCollection.count()) {
+        await sourceCollection.click()
+        const prContent = panel.locator('.cog-child-open').filter({ hasText: /WIP|语义阅读地图/u })
+        await (await prContent.count() ? prContent.first() : panel.locator('.cog-child-open').first()).click()
+      } else await panel.locator('.cog-object-open').first().click()
+      await panel.getByRole('button', { name: '核对来源 →' }).click()
+      await panel.locator('.cog-source').waitFor({ state: 'visible' })
+      const exactSource = await panel.locator('[data-cognition-reveal-source]').count() > 0
+      if (exactSource) {
+        await panel.locator('[data-cognition-reveal-source]').first().click()
+        await expect.poll(async () => panel.locator('.cog-source [role="status"]').textContent()).toContain('定位请求已返回')
+      }
+      await panel.screenshot({ path: join(artifact, '02-live-pr-source.png'), fullPage: true })
+      await panel.getByRole('button', { name: '← 返回聚焦' }).click()
+      await panel.locator('.cog-focus [data-cognition-use]').click()
+      const correction = '人工修正：这只是 PR #73 当前页面的已读内容，不能代表整个仓库状态。'
+      await panel.locator('[data-cognition-correction]').fill(correction)
+      await panel.getByRole('button', { name: '将修正加入任务上下文' }).click()
+      await panel.locator('#composer').fill('根据明确选入的页面对象，概括已读部分')
+      await panel.locator('#send-queue').click()
+      await expect.poll(async () => (await assistantState(panel!)).session.records.some((record) => {
+        const event = record.event as {
+          type?: string
+          data?: { source?: { kind?: string }; content?: Array<{ text?: string }> }
+        } | undefined
+        return event?.type === 'user/message' && event.data?.source?.kind === 'user'
+          && event.data.content?.some(part => part.text?.includes(correction))
+      }), { timeout: 30_000 }).toBe(true)
+      const sourceBlocks = page?.sourceSnapshots?.flatMap((source) => {
+        const blocks = (source as { blocks?: Array<{ text?: string }> }).blocks
+        return blocks ?? []
+      }) ?? []
+      await writeFile(join(artifact, 'live-pr-evidence.json'), JSON.stringify({
+        modelMode: 'keyless-replay', livePageUrl: target.url(), pageTitle: await target.title(),
+        sessionId: readState.session.binding?.sessionId, observationCount: page?.observations?.length,
+        sourceSnapshotCount: page?.sourceSnapshots?.length, sourceBlockCount: sourceBlocks.length,
+        prTextObserved: sourceBlocks.some(block => /WIP|语义阅读地图/u.test(block.text ?? '')), exactSource,
+        toolCalls: toolEvidence((await assistantState(panel)).session.records)
+          .filter(entry => entry.kind === 'call').map(entry => entry.name),
+        hostReceivedCorrection: true,
+      }, null, 2))
+      await panel.screenshot({ path: join(artifact, '03-live-pr-submitted.png'), fullPage: true })
+      return
+    }
     if (navigateAfterBind) {
       const fixedPage = (await assistantState(panel)).target.selected
       if (!fixedPage?.documentId || !fixedPage.url) throw new Error('fixed target did not expose its binding document')
@@ -371,7 +472,12 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
       navigationEvidence = { boundDocumentId: fixedPage.documentId, boundUrl: fixedPage.url, currentUrl: target.url() }
     }
     await panel.locator('[data-view="cognition"]').click()
-    await panel.getByRole('button', { name: '读取并生成语义地图' }).click()
+    // The cognition workspace is the default view; semantic reading is now explicit.
+    const generating = await assistantState(panel)
+    const generated = await extensionMessage(panel, { type: 'dsh-assistant-cognition-generate',
+      expectedSessionId: generating.session.binding?.sessionId,
+      expectedTargetRevision: generating.target.revision }) as { ok?: boolean; error?: unknown }
+    if (generated.ok !== true) throw new Error(`semantic generation failed: ${String(generated.error)}`)
     await unrelated.bringToFront()
     await expect.poll(async () => {
       const current = await assistantState(panel!)
@@ -380,6 +486,7 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
       return 'pending'
     }, { timeout: 180_000 }).toBe('published')
     await expect.poll(async () => turnEnded((await assistantState(panel!)).session.records), { timeout: 30_000 }).toBe(true)
+    await panel.getByRole('button', { name: '阅读', exact: true }).click()
     await panel.locator('.semantic-overview').waitFor({ state: 'visible', timeout: 10_000 })
     const after = await assistantState(panel)
     expect(after.target.selected?.tabId).not.toBe(unrelatedTabId)
@@ -427,16 +534,21 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
     await source.waitFor({ state: 'visible' })
     await target.evaluate(() => { scrollTo(0, document.body.scrollHeight) })
     await expect.poll(async () => target.evaluate(() => scrollY)).toBeGreaterThan(0)
+    const scrollBeforeLocation = await target.evaluate(() => scrollY)
     await panel.locator('[data-source-locate]').first().click()
-    await expect.poll(async () => target.locator(scenario.target).evaluate((element) => {
-      const bounds = element.getBoundingClientRect()
-      return { top: bounds.top, bottom: bounds.bottom, height: innerHeight,
-        highlighting: document.getAnimations().some(animation => animation.effect?.target === element) }
-    }), { timeout: 10_000 }).toMatchObject({ highlighting: true })
-    const located = await target.locator(scenario.target).boundingBox()
-    expect(located).not.toBeNull()
-    expect(located!.y).toBeGreaterThanOrEqual(0)
-    expect(located!.y + located!.height).toBeLessThanOrEqual(900)
+    if (scenario.id === 'live-pr') {
+      await expect.poll(async () => target.evaluate(() => scrollY), { timeout: 10_000 }).toBeLessThan(scrollBeforeLocation)
+    } else {
+      await expect.poll(async () => target.locator(scenario.target).evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        return { top: bounds.top, bottom: bounds.bottom, height: innerHeight,
+          highlighting: document.getAnimations().some(animation => animation.effect?.target === element) }
+      }), { timeout: 10_000 }).toMatchObject({ highlighting: true })
+      const located = await target.locator(scenario.target).boundingBox()
+      expect(located).not.toBeNull()
+      expect(located!.y).toBeGreaterThanOrEqual(0)
+      expect(located!.y + located!.height).toBeLessThanOrEqual(900)
+    }
     expect(sourceText).toContain(reference.text)
     const targetText = await target.locator(scenario.target).textContent()
     const tabularTarget = await target.locator(scenario.target).evaluate(element => element.tagName === 'TR')
@@ -446,6 +558,8 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
       expect(await target.locator(`${scenario.target} img[alt="Nation"]`).getAttribute('title')).toBe('Portugal')
       expect(await target.locator(`${scenario.target} img[alt="League"]`).getAttribute('title')).toBe('Liga F')
       expect(await target.locator(`${scenario.target} img[alt="Club"]`).getAttribute('title')).toBe('FC Barcelona')
+    } else if (scenario.id === 'live-pr') {
+      expect(normalizeTable(targetText)).toContain(normalizeTable(reference.text))
     } else {
       expect(tabularTarget ? normalizeTable(targetText) : targetText)
         .toBe(tabularTarget ? normalizeTable(reference.text) : reference.text)
@@ -472,6 +586,7 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
         .map(key => [key, sessionStorage.getItem(key)])))
       await panel.reload()
       await panel.locator('[data-view="cognition"]').click()
+      await panel.getByRole('button', { name: '阅读', exact: true }).click()
       const currentLayer = async () => panel.evaluate(() => {
         if ([...document.querySelectorAll('.semantic-focus')].some(element => element.checkVisibility())) return 'focus'
         if ([...document.querySelectorAll('.semantic-overview')].some(element => element.checkVisibility())) return 'overview'
@@ -505,6 +620,73 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
       feedbackEvidence = { ...feedbackEvidence, finalMapVersions: await panel.getByLabel('地图版本').locator('option').count(),
         oldVersionSelected: await panel.getByLabel('地图版本').inputValue(), restoredHumanLabel: humanLabel }
     }
+    let workspaceEvidence: Record<string, unknown> | null = null
+    if (workspace) {
+      await panel.getByRole('button', { name: '认知', exact: true }).click()
+      await panel.locator('.cog-objects').waitFor({ state: 'visible' })
+      expect(await panel.locator('.cog-header h3').textContent()).toContain('Overview')
+      const beforeFocus = (await assistantState(panel)).session.records.length
+      await panel.locator('.cog-object-open').filter({ hasText: '本次原文与论据' }).click()
+      expect(await panel.locator('.cog-header h3').textContent()).toContain('Focus')
+      expect((await assistantState(panel)).session.records).toHaveLength(beforeFocus)
+      await panel.locator('.cog-child-open').filter({ hasText: scenario.identity.slice(0, 18) }).first().click()
+      await panel.getByRole('button', { name: '核对来源 →' }).click()
+      await expect.poll(async () => panel.locator('.cog-source').textContent()).toContain(scenario.identity)
+      expect(await panel.locator('.cog-header h3').textContent()).toContain('Source')
+      await panel.screenshot({ path: join(artifact, '06-workspace-source.png'), fullPage: true })
+      await panel.getByRole('button', { name: '← 返回聚焦' }).click()
+      await panel.locator('.cog-focus [data-cognition-use]').click()
+      const correction = '人工修正：结论仅限三种已测模板，不能推广到所有网页。'
+      await panel.locator('[data-cognition-correction]').fill(correction)
+      await panel.getByRole('button', { name: '将修正加入任务上下文' }).click()
+      await expect.poll(async () => panel.locator('[data-cognition-scope] pre').textContent()).toContain(correction)
+      await panel.locator('#composer').fill('请分析选入的实验结论')
+      await panel.locator('#send-queue').click()
+      await expect.poll(async () => {
+        const current = await assistantState(panel!)
+        return current.session.records.find((record) => {
+          const event = record.event as {
+            type?: string
+            data?: { source?: { kind?: string }; content?: Array<{ type?: string; text?: string }> }
+          } | undefined
+          return event?.type === 'user/message' && event.data?.source?.kind === 'user'
+            && event.data.content?.some(part => part.text?.includes('请分析选入的实验结论'))
+        })
+      }, { timeout: 30_000 }).toBeTruthy()
+      const submitted = (await assistantState(panel)).session.records.find((record) => {
+        const event = record.event as { type?: string; data?: { content?: Array<{ text?: string }> } } | undefined
+        return event?.type === 'user/message' && event.data?.content?.some(part => part.text?.includes('请分析选入的实验结论'))
+      })
+      const submittedText = (submitted?.event as { data?: { content?: Array<{ text?: string }> } } | undefined)?.data?.content
+        ?.map(part => part.text ?? '').join('\n') ?? ''
+      expect(submittedText).toContain(correction)
+      expect(submittedText).toContain(scenario.identity)
+      expect(submittedText).toContain('用户选择的任务对象；不扩展页面读取或操作权限')
+      await panel.getByText('已按选入对象和人工修正处理。', { exact: true }).waitFor({ state: 'attached', timeout: 30_000 })
+      await panel.locator('.cog-focus [data-cognition-use]').click()
+      await panel.locator('#composer').fill('目标变化后保留的草稿')
+      const beforeSwitch = await assistantState(panel)
+      const switched = await extensionMessage(panel, { type: 'dsh-assistant-target-bind',
+        expectedRevision: beforeSwitch.target.revision, tabId: unrelatedTabId }) as { ok?: boolean; error?: unknown }
+      if (switched.ok !== true) throw new Error(`target switch failed: ${String(switched.error)}`)
+      await expect.poll(async () => (await assistantState(panel!)).target.selected?.tabId).toBe(unrelatedTabId)
+      await expect.poll(async () => panel.locator('[data-cognition-scope]').textContent()).toContain('任务范围待重新确认')
+      const userMessageCount = (await assistantState(panel)).session.records.filter((record) => {
+        const event = record.event as { type?: string; data?: { source?: { kind?: string } } } | undefined
+        return event?.type === 'user/message' && event.data?.source?.kind === 'user'
+      }).length
+      await panel.locator('#send-queue').click()
+      expect(await panel.locator('#composer').inputValue()).toBe('目标变化后保留的草稿')
+      expect((await assistantState(panel)).session.records.filter((record) => {
+        const event = record.event as { type?: string; data?: { source?: { kind?: string } } } | undefined
+        return event?.type === 'user/message' && event.data?.source?.kind === 'user'
+      })).toHaveLength(userMessageCount)
+      workspaceEvidence = { sessionId: (await assistantState(panel)).session.binding?.sessionId,
+        submittedText, recordCountBeforeFocus: beforeFocus, recordCountAfterSubmit: (await assistantState(panel)).session.records.length,
+        staleScopeAfterTargetSwitch: await panel.locator('[data-cognition-scope]').textContent(),
+        retainedDraftAfterTargetSwitch: await panel.locator('#composer').inputValue() }
+      await panel.screenshot({ path: join(artifact, '07-workspace-submitted.png'), fullPage: true })
+    }
     const completed = await assistantState(panel)
     await writeFile(join(artifact, 'semantic-evidence.json'), JSON.stringify({
       caseId: scenario.id, split: scenario.split, fixtureSha256, modelMode: replay ? 'keyless-replay' : 'real-provider',
@@ -513,6 +695,7 @@ it.skipIf(!real && !replay)('generates, navigates, and verifies a source-grounde
       focusEvidence,
       feedbackEvidence,
       navigationEvidence,
+      workspaceEvidence,
       focusEvents: await panel.evaluate(() => {
         return (globalThis as typeof globalThis & { __semanticFocusEvents?: unknown }).__semanticFocusEvents ?? []
       }),

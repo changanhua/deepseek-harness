@@ -1,0 +1,37 @@
+/* Scoped to the cognition projection; no canvas or page-site selectors. */
+.cognition-workspace { display: grid; gap: 16px; min-width: 0; color: var(--text, #25334a); font-family: system-ui, 'Noto Sans Mono CJK SC', sans-serif; }
+.cog-header { display: grid; gap: 8px; }
+.cog-header h3 { font-size: 18px; margin: 0; letter-spacing: -.3px; }
+.cog-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 1.2px; color: #4d71a2; }
+.cog-muted, .cog-footnote { font-size: 12px; line-height: 1.65; color: #68778d; margin: 0; overflow-wrap: anywhere; }
+.cog-levels { display: flex; gap: 6px; border-bottom: 1px solid #e1e7ef; padding-bottom: 8px; }
+.cog-levels button { flex: 1; border-radius: 7px; }
+.cog-levels [aria-current="true"] { background: #e9f1fe; border-color: #99b8e4; color: #24558f; }
+.cog-kind { background: #f3f7fc; border: 1px solid #e0e9f4; border-radius: 10px; padding: 12px; }
+.cognition-workspace h4 { font-size: 12px; margin: 0 0 7px; }
+.cognition-workspace section > p { margin: 0; line-height: 1.7; font-size: 13px; overflow-wrap: anywhere; }
+.cog-objects { display: grid; gap: 8px; }
+.cog-object { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border: 1px solid #dde5ee; border-radius: 10px; overflow: hidden; background: #fff; }
+.cog-object-open { width: 100%; display: grid; grid-template-columns: 24px minmax(0, 1fr); text-align: left; gap: 5px 8px; padding: 12px; background: transparent; border: 0; }
+.cog-object-open strong { font-size: 14px; overflow-wrap: anywhere; }
+.cog-object-open small { grid-column: 2; color: #718097; font-size: 11px; }
+.cog-object-index { grid-row: span 2; font-size: 11px; color: #5379a9; padding-top: 2px; }
+.cog-use { font-size: 11px; margin: 0 10px 9px; border-radius: 6px; color: #375a85; }
+.cog-focus, .cog-source { display: grid; gap: 14px; min-width: 0; }
+.cog-focus .cog-focus-title { font-size: 17px; }
+.cog-warning { background: #fff7e9; border: 1px solid #eeddbc; color: #755528; border-radius: 9px; padding: 10px; font-size: 12px; line-height: 1.65; }
+.cog-children { display: grid; gap: 7px; }
+.cog-child { padding: 8px; border: 1px solid #e2e8f0; border-radius: 8px; }
+.cog-child-open { text-align: left; width: 100%; border: 0; background: transparent; padding: 5px; overflow-wrap: anywhere; }
+.cog-child .cog-use { margin: 5px 4px 0; }
+.cog-correction { display: grid; gap: 8px; font-size: 12px; line-height: 1.6; }
+.cog-correction textarea { width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical; border: 1px solid #c9d6e6; border-radius: 7px; padding: 8px; font: inherit; }
+.cog-passage { margin: 0; padding: 12px; background: #f6f8fb; border-left: 3px solid #b5c9e2; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; max-height: 260px; font-size: 12px; line-height: 1.75; }
+.cog-task-scope { display: grid; gap: 7px; margin-bottom: 8px; padding: 10px; border: 1px solid #b7cfe9; border-radius: 9px; background: #f3f8ff; font-size: 12px; max-height: 240px; overflow: auto; }
+.cog-task-scope > button { justify-self: start; font-size: 11px; }
+.cog-task-scope .cog-passage { max-height: 160px; }
+.cognition-workspace button:focus-visible, .cog-task-scope button:focus-visible { outline: 2px solid #4479b6; outline-offset: 2px; }
+.cognition-workspace button:disabled { opacity: .5; cursor: not-allowed; }
+
+.cog-object > .cog-use { margin: 8px; max-width: 86px; line-height: 1.5; }
+@media (max-width: 360px) { .cog-object { grid-template-columns: minmax(0, 1fr); } .cog-object > .cog-use { justify-self: start; max-width: none; } }

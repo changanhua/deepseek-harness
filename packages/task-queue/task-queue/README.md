@@ -33,3 +33,5 @@ None.
 ## Known Limitations and Deferred Work
 
 - This package defines and folds the domain. A provider owns persistence, resource capacity, scheduling, and crash recovery. Typed WorkKind results may reference bytes owned by another service, such as Attachments; Queue defines no generic path writer.
+
+No invariant companion is published because this Service Definition owns no runtime state; its provider owns durable ChangeSet and scheduling invariants.

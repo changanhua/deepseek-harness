@@ -57,7 +57,6 @@ Renderer 从 Case 与 revision id 派生唯一 publication id，输出便于人�
 | [`src/render.ts`](src/render.ts) | 确定性 Issue body、有界 UTF-8 output、digest 与 terminal marker |
 | [`src/index.ts`](src/index.ts) | Publication、response validation、failure classification 与 GET reconciliation |
 | [`src/failures.ts`](src/failures.ts) | 不含 raw provider 或 credential detail 的稳定 Host error code |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion；mutable state machine 由 Delivery 拥有 |
 
 </details>
 
@@ -92,6 +91,8 @@ Renderer 从 Case 与 revision id 派生唯一 publication id，输出便于人�
 - **完整 Issue body 上限为 64 KiB**——过大的已渲染需求会在 publication 前失败，不会被截断。
 - **Repository mapping 留在 Host Consumer**——本库只消费 target lookup capability，不拥有 settings、discovery、RBAC 或 multi-host lease。
 - **只创建 Issue**——创建时可以附带已配置 label；milestone、comment、Projects、PR creation、merge、close 与 bidirectional synchronization 均不属于此包。
+
+此包不发布 invariant companion，因为 Delivery 服务持有所有持久化发布状态变化。
 
 <a id="dev-note"></a>
 ### 开发注记

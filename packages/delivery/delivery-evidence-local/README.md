@@ -87,6 +87,8 @@ None; this package never assembles model input.
 - **No automatic retention or garbage collection** — references may outlive Packets and Attempts until an operator manages the configured root.
 - **Local filesystem publication primitives are required** — a filesystem that cannot create private exclusive files and hard links fails publication with `write-failed`.
 
+No invariant companion is published because publication and reads verify immutable objects within each awaited operation, and this provider emits no event relation.
+
 <a id="dev-note"></a>
 ### Dev Note
 

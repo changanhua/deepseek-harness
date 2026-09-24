@@ -57,6 +57,8 @@ kind: "package-reference"
 - 查看结果超限时需要选择一个记忆版本；不会返回不完整命题正文。
 - 接纳允许复用，但不证明事实真实。
 
+此包不发布 invariant companion，因为 Commands 持有调用记录，projectMemory 持有授权和持久决策。
+
 ### 开发备注
 
 无。

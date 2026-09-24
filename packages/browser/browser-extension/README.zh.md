@@ -93,6 +93,8 @@ kind: "package-reference"
 - 监控不消费浏览器 worker 或 Session stream 结果。
 - 思源集成、观察和全局键处理不消费浏览器 worker 或 Session stream 结果。
 
+此包不发布 invariant companion，因为授权许可和执行回执是请求内部状态，没有独立事件能证明某次操作已获授权。
+
 <a id="dev-note"></a>
 ### 开发备注
 

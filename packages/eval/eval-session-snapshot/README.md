@@ -55,7 +55,6 @@ The adapter resolves primary, override, child, and Workspace fixture paths, read
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Route selection, fixture confinement/provenance, ACP execution, and snapshot comparison |
-| [`src/invariant.ts`](src/invariant.ts) | No-runtime-invariant companion registration |
 
 </details>
 
@@ -96,6 +95,8 @@ The case prompt is a new user-message suffix. Stable profile headers retain thei
 - An AbortSignal prevents a new case from starting and prevents a returned score from being accepted, but the upstream subprocess harness does not expose mid-flight signal cancellation.
 - Recording live Provider fixtures and selecting credentials remain explicit session-snapshot operations outside this package.
 - Focused tests execute all ten cases keylessly, boot the real session-snapshot ACP subprocess harness for both routes, boot the shipped Loader/Profile through an ACP handshake, and replay a `recording: live` Provider fixture to verify usage buckets. A fresh live call remains an explicit credentialed operation.
+
+No invariant companion is published because each executor invocation owns one session-snapshot subprocess, and the upstream harness owns its teardown and fixture checks.
 
 <a id="dev-note"></a>
 ### Dev Note

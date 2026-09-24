@@ -59,3 +59,5 @@ The two schemas change the reusable request prefix when this plugin is mounted, 
 
 - Admission requires both a live Agent Session and a host composition that has mounted the operation WorkHandler with matching resource capacity.
 - Batch admission is atomic but has no per-item partial-success response; callers receive the Batch id and inspect durable Queue records for terminal outcomes.
+
+No invariant companion is published because queue admission and ToolRuntime own the observable authority, schema-validation, and registration-disposal relations; this package holds no durable state.

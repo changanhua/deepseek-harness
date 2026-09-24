@@ -72,3 +72,5 @@ There is no direct KV-cache contribution; keeping admission metadata out of prom
 - **No automatic acceptance** — Queue success records only a typed claim or verdict. No handler, activation path, or recovery operation creates a human decision.
 - **No generic executor capability** — one Codex provider and one caller do not justify a registry; alternative providers require a separate evidence-backed architecture decision.
 - **No client authority escalation** — browsers may select a Packet, executor, and existing change binding only through trusted Remote validation. They cannot supply verification target or plan identity, Queue ownership, idempotency keys, evidence provenance, or acceptance.
+
+No invariant companion is published because the bridge registers typed handlers and performs an idempotent cross-store handshake; Delivery and Queue own their durable facts.

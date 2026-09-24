@@ -21,3 +21,5 @@ None; this package never assembles model input.
 - **MCP connection state is not observable** — the MCP client connection supervisor owns connection/reconnect state as private closure variables with no read interface; the projection can prove a server is configured and count its registered tools, not that it is connected.
 - **Point-in-time state only** — the result contains no durable failure history or subscription; a server with zero registered tools may be connecting, reconnecting, or exhausted.
 - **No invalid-skill diagnostics projection** — skills discarded before registry entry are not surfaced; only runtime-known candidates appear.
+
+No invariant companion is published because every snapshot is projected directly from registry-owned state.

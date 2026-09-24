@@ -33,3 +33,5 @@ None, as 此浏览器工作台渲染 Queue 记录且不注册模型界面。
 - Result output 通过 JSON tree 渲染；artifact 专属预览仍属延后工作。
 - 不提供 `confirm-succeeded` 的结果编辑；UI 仅保留重试与确认失败。
 - Batch 范围操作与服务端分页仍属延后工作，除非真实量级要求它们。
+
+此包不发布 invariant companion，因为队列界面只展示持久队列，Slot 注册器负责入口身份。

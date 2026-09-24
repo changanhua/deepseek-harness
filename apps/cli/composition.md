@@ -130,6 +130,8 @@ flowchart LR
   cfg --> plugin_dsh_base_task_queue_remote
   plugin_dsh_base_goal["goal<br/>@deepseek-ai/dsh-goal"]
   cfg --> plugin_dsh_base_goal
+  plugin_dsh_base_browser_task["browser-task<br/>@changanhua/dsh-browser-task"]
+  cfg --> plugin_dsh_base_browser_task
   plugin_dsh_base_goal_round_driver["goal-round-driver<br/>@deepseek-ai/dsh-goal-round-driver"]
   cfg --> plugin_dsh_base_goal_round_driver
   plugin_dsh_base_command_goal["command-goal<br/>@deepseek-ai/dsh-command-goal"]
@@ -200,6 +202,8 @@ flowchart LR
   cfg --> plugin_dsh_base_fs_sandbox
   plugin_dsh_base_llm_deepseek["llm-deepseek<br/>@deepseek-ai/dsh-llm-deepseek"]
   cfg --> plugin_dsh_base_llm_deepseek
+  plugin_dsh_base_llm_vision_relay["llm-vision-relay<br/>@deepseek-ai/dsh-llm-vision-relay"]
+  cfg --> plugin_dsh_base_llm_vision_relay
 ```
 
 | Plugin id | Package / module |
@@ -265,6 +269,7 @@ flowchart LR
 | `command-task-queue` | `@changanhua/dsh-command-task-queue` |
 | `task-queue-remote` | `@changanhua/dsh-task-queue-remote` |
 | `goal` | `@deepseek-ai/dsh-goal` |
+| `browser-task` | `@changanhua/dsh-browser-task` |
 | `goal-round-driver` | `@deepseek-ai/dsh-goal-round-driver` |
 | `command-goal` | `@deepseek-ai/dsh-command-goal` |
 | `plan-mode` | `@deepseek-ai/dsh-plan-mode` |
@@ -300,6 +305,7 @@ flowchart LR
 | `agent-loop` | `@deepseek-ai/dsh-agent-loop` |
 | `fs-sandbox` | `@deepseek-ai/dsh-fs-sandbox` |
 | `llm-deepseek` | `@deepseek-ai/dsh-llm-deepseek` |
+| `llm-vision-relay` | `@deepseek-ai/dsh-llm-vision-relay` |
 
 Source config: [`packages/bundle/base/cordis.patch.yml`](../../packages/bundle/base/cordis.patch.yml).
 

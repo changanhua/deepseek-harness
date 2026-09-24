@@ -21,3 +21,5 @@
 - 当前 profile 必须是包含兼容图片模型的 Agent Plan profile。
 - 单次生成必须恰好产生一个 PNG 或 JPEG 文件。
 - 重试分类只报告 provider 证据，不授权重试。
+
+此包不发布 invariant companion，因为注册与生成生命周期的关系由共用服务持有。

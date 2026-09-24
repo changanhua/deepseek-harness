@@ -76,6 +76,8 @@ The provider supplies a content backend, with these current limits:
 - Logical snapshots are available to trusted consumers; restore import and automatic backup are not implemented.
 - Closing a Domain handle does not release the backend's exclusive SQLite connection. Recovery must dispose the dedicated backend too; it must never close a shared backend through this provider.
 
+No invariant companion is published because the provider privately owns the handle and validates aggregates before writes and on open.
+
 <a id="dev-note"></a>
 ### Dev Note
 

@@ -92,6 +92,8 @@ prompt 会贡献所选来源、前置项和请求的生成或审查任务。Queu
 - **固定容量名称** — 每个已挂载 Queue 都需要 `knowledge-base` 和 `codex` 容量声明。
 - **仅原生 provider** — 此桥接使用 Codex app-server run 路径及其现有本地认证。
 
+此包不发布 invariant companion，因为桥接器不持有事件 schema；知识库核对持久阶段来源，Queue 核对 Work 与 Attempt 生命周期。
+
 <a id="dev-note"></a>
 ### Dev Note
 

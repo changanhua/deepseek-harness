@@ -8,7 +8,6 @@
     { "path": "../knowledge-base-task-queue" },
     { "path": "../../core/tools" },
     { "path": "../../interaction/commands" },
-    { "path": "../../web/web" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../../web/web" }
   ]
 }

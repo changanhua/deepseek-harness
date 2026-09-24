@@ -12,7 +12,6 @@
     { "path": "../../../vendor/schemastery" },
     { "path": "../../core/session" },
     { "path": "../../storage/storage-domain" },
-    { "path": "../../typert/protocol" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../../typert/protocol" }
   ]
 }

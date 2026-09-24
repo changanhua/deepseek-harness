@@ -19,9 +19,6 @@
     },
     {
       "path": "../delivery-evidence"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }

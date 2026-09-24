@@ -84,6 +84,8 @@ kind: "package-reference"
 - **不做因果归因**——Skill、Queue 和 Delivery 记录不会被解释为时长或生产力的原因。
 - **可见页面证据**——浏览器休眠、强制终止和传输丢失会在 Host 最后收到的 heartbeat 处结束证据。
 
+此包不发布 invariant companion，因为生命周期清理和 Slot 身份由聚焦浏览器测试核对。
+
 <a id="dev-note"></a>
 ### 开发注记
 

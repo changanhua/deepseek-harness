@@ -33,3 +33,5 @@
 
 - **无后端即无操作**——未挂载 `ctx.taskQueue` Provider 时所有子命令都报告 Queue v2 不可用。
 - 命令暴露 trusted operator facade，但不准入 WorkItem，也不解决 unknown outcome；WorkKind Consumer 持有 admission，Remote/UI 持有限制后的 unknown-resolution flow。
+
+此包不发布 invariant companion，因为队列命令通过服务读写持久队列，命令注册器负责名称唯一性。

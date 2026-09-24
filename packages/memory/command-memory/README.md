@@ -57,6 +57,8 @@ None, because command results do not modify a model request prefix.
 - Oversized inspection output requires choosing one memory revision; partial claim bodies are not returned.
 - Acceptance permits reuse and does not certify factual truth.
 
+No invariant companion is published because commands owns invocation logging and projectMemory owns authorization and durable decisions.
+
 ### Dev Note
 
 None.

@@ -72,3 +72,5 @@ None; this package never assembles model input.
   no configured `mcp-client` rows truthfully shows 0 servers.
 - Invalid-skill diagnostics are not surfaced; the view shows whatever the skill
   registry reports at runtime.
+
+No invariant companion is published because the Capability workspace only projects the capabilityRegistry Remote through declared slots, and the slot registry already enforces entry identity for `shell.view` / `sidebar.modules.group`.

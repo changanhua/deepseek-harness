@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-08-27-queue-v2-owner-delivery-worker-closure.md
-2026-08-27-queue-v2-owner-delivery-worker-closure.md: 28684b272cc62c0c2e342fb6af23e5447b60cb1d
-2026-08-27-queue-v2-owner-delivery-worker-closure.zh.md: 6cb78b336d4c9bc0b006db4500c37c89e61bd595
+2026-08-27-queue-v2-owner-delivery-worker-closure.md: 07f45d1b7dfec0faec3675a9a5b5df2ebfc8274f
+2026-08-27-queue-v2-owner-delivery-worker-closure.zh.md: c491ef8a28002010cc494df81e72110fbe75ac19

@@ -5,7 +5,6 @@ import TaskQueue, {
   canAutoRetry, isTerminalState,
 } from '@changanhua/dsh-task-queue'
 import type { AgentWorkQueue, OperatorWorkQueue, WorkHandler, WorkKind, WorkStatus } from '@changanhua/dsh-task-queue'
-import { apply, inject, name } from '../src/invariant.ts'
 
 describe('public runtime API', () => {
   it('brands every durable id without changing its value', () => {
@@ -40,22 +39,4 @@ describe('public runtime API', () => {
     expect(() => { dispose() }).not.toThrow()
   })
 
-  it('registers the package-owned empty invariant companion', async () => {
-    let installed = false
-    const disposer = () => undefined
-    const ctx = {
-      invariants: {
-        register(packageName: string, installer: () => void) {
-          expect(packageName).toBe('@changanhua/dsh-task-queue')
-          installer()
-          installed = true
-          return disposer
-        },
-      },
-    }
-    expect(name).toBe('task-queue-invariant')
-    expect(inject).toEqual(['invariants'])
-    await expect(apply(ctx as unknown as Context)).resolves.toBe(disposer)
-    expect(installed).toBe(true)
-  })
 })

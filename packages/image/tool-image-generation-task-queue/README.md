@@ -16,3 +16,5 @@ The tool schema changes the reusable request prefix when this plugin is mounted 
 
 - Batch admission requires every prompt and output setting to be complete before the call.
 - The caller must supply a live Agent session and cannot select Queue execution internals.
+
+No invariant companion is published because owner and WorkKind validation are enforced by the Queue admission facade.

@@ -2,12 +2,10 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply as applyHost } from '../src/index.ts'
-import * as DeliveryInvariant from '../src/invariant.ts'
 import { apply, inject } from '../src/client/index.ts'
 
 const contexts: Context[] = []
@@ -62,13 +60,10 @@ async function bench(snapshot = { contractsWithoutPacket: [], cards: [] }) {
 }
 
 describe('ui-delivery client composition', () => {
-  it('keeps the node half inert and registers its package invariant companion', async () => {
+  it('keeps the node half inert', () => {
     applyHost()
-    const ctx = new Context()
-    contexts.push(ctx)
-    await ctx.plugin(InvariantRegistry, { enabled: true })
-    await expect(ctx.plugin(DeliveryInvariant).await()).resolves.toBeDefined()
   })
+
   it('declares only the Remote, locale, and two existing slot services it consumes', () => {
     expect(inject).toEqual(['slots', 'locale', 'remote'])
   })

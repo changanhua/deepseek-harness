@@ -135,7 +135,6 @@ describe('protocol golden fixtures', () => {
       'canonical.ts',
       'github.ts',
       'index.ts',
-      'invariant.ts',
       'schemas.ts',
       'semantics.ts',
       'types.ts',

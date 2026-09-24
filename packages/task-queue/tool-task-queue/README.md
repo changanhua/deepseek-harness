@@ -39,3 +39,5 @@ Mounting or removing this plugin changes the reusable request prefix through its
 - Controls operate only on WorkItems owned by the current Agent Session; trusted operators use the operator Queue API.
 - Stable delivery does not wake an idle Agent or continue a Goal automatically.
 - Full Attempt history remains available through Queue operator views rather than these model tools.
+
+No invariant companion is published because the toolkit only admits tasks through the Service seam's trusted entry points, which already own admission validation.

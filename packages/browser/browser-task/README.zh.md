@@ -44,6 +44,8 @@ Browser 生命周期监听器会把该权威应用于普通工具、直接 Provi
 - 扩展 journal 过期、存储丢失、执行器离线或定位符不匹配都会让请求保持 unknown。任务不会据此推断 `not-sent`，也不会重放 write。
 - 代表性的 DeepSeek-v4.1-flash 扩展验收已通过已配置的标准 Web 部署完成；包级测试与真实 Session 证据仍分别记录。
 
+此包不发布 invariant companion，因为会话事件与投影折叠拥有持久任务事实，工具和生命周期测试核对其变化。
+
 <a id="dev-note"></a>
 ### 开发备注
 

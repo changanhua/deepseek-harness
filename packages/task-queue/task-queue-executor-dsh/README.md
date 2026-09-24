@@ -43,3 +43,5 @@ No direct invalidation; the named consumer owns tool-schema and prompt-prefix ch
 - **Admission is WorkKind-specific** — `@changanhua/dsh-tool-agent-run-task-queue` admits only `agent.run@1`; other capabilities use their own WorkKind Consumers and handlers.
 - **No durable continuation** — task completion produces durable queue state and an owner notification, but does not wake or resume a goal by itself.
 - **One host owns a queue root** — multi-host session and task ownership remain outside this provider.
+
+No invariant companion is published because registration is an effect on the taskQueue registry and has no independent event stream. Required service injection and config checks fail at load; the queue owns execution and settlement invariants.

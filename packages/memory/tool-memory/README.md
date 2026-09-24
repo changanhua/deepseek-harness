@@ -81,6 +81,8 @@ Schemas remain prefix-stable. Tool results append to the logged conversation.
 - A proposal is not accepted knowledge. Human commands own acceptance and withdrawal.
 - An oversized single result fails explicitly; narrowing the query or inspecting one memory avoids partial claims.
 
+No invariant companion is published because this stateless Consumer delegates records to projectMemory and reversible tool registration to Tools.
+
 ### Dev Note
 
 None.

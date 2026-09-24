@@ -20,3 +20,5 @@ No direct invalidation; the named tool owns model-visible changes.
 
 - One WorkItem represents one prompt and one resolved provider request.
 - Provider failures retain category, side-effect, and retry evidence; Queue policy decides whether a retry is allowed.
+
+No invariant companion is published because handler registration and resource claims are enforced by the Queue provider.

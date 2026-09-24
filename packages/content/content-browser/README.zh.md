@@ -57,6 +57,8 @@ Connection 提供已配置的 Host authority 检查；桥另行要求精确扩�
 - 网站结构与提取由扩展负责。网页来源信息未经验证；Host 不访问来源 URL。
 - 待批准握手不跨 Host 重启保存。既有授权与内容使用各自 Provider 的持久化；重启后的握手需要新请求。
 
+此包不发布 invariant companion，因为请求范围内的授权检查和 Content 提交准入负责导入权限，没有独立事件代表一次获准导入。
+
 <a id="dev-note"></a>
 
 ## 开发备注

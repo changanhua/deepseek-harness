@@ -46,6 +46,8 @@ Snapshot 把一次 Delivery read 与可信 operator 的 Queue view 合并成六�
 
 Remote 注入 `credentials`、`delivery`、`deliveryEvidence`、`repoWorkspace` 与 `taskQueue`，但不会让 browser input 成为 authority。Git 证明 commit，Queue 拥有 execution，evidence storage 会解析并完整性读取每个精确引用的对象，publisher 拥有 GitHub request uncertainty。可信 Host 配置提供非空白 `operatorId`（默认 `local-operator`）、新 human Case 使用的一个 `repositoryId`（默认 `workspace`），以及以 Delivery repository id 为 key 的可选 `githubTargets` entry；每个 target 携带 owner、repository name、credential reference 与可选 Issue label，绝不携带 token value。Browser input 只包含有界 content 与 selection，不包含 authority-bearing identity、raw Queue payload、host path、provider URI、publication marker、digest、credential 或 caller-defined idempotency key。
 
+此包不发布 invariant companion，因为 Typert 校验和注入的服务契约负责这些检查。
+
 <a id="dev-note"></a>
 
 ## 开发说明

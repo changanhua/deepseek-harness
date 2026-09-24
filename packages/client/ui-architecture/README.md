@@ -83,6 +83,8 @@ The view states only what its two evidence owners can prove.
 - **Manual Runtime refresh** — the Host exposes no plugin-inventory subscription, so an open page refreshes only on user request or plugin reload.
 - **Workspace packages only** — external plugins can contribute Loader entries but have no generated package tile unless they are part of the build checkout.
 
+No invariant companion is published because slot identity and generated-catalog freshness have dedicated gates.
+
 <a id="dev-note"></a>
 ### Dev Note
 

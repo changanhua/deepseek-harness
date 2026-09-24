@@ -16,3 +16,5 @@
 
 - Batch 准入要求调用前已完成每条提示词和输出设置。
 - 调用方必须提供实时 Agent 会话，且不能选择 Queue 执行内部参数。
+
+此包不发布 invariant companion，因为 Queue 准入接口负责 owner 和 WorkKind 校验。

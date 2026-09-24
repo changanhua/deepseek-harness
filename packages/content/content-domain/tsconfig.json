@@ -5,7 +5,6 @@
   "references": [
     { "path": "../../../vendor/cordis" },
     { "path": "../content" },
-    { "path": "../../storage/storage-domain" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../../storage/storage-domain" }
   ]
 }

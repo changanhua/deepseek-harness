@@ -29,6 +29,8 @@ The patch mounts `delivery-local`, `delivery-evidence-local`, `repo-workspace-gi
 
 The bundle contains composition only. It does not implement a scheduler, duplicate Queue state, parse Issues, execute Git, verify evidence, or accept a delivery.
 
+No invariant companion is published because this package is a static patch carrier and owns no runtime relation beyond the rows composed by its manifest-owned patch.
+
 <a id="dev-note"></a>
 ## Dev Note
 

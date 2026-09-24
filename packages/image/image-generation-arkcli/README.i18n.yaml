@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/image/image-generation-arkcli/README.md
-README.md: 99b772514820ddcfb21822b2a86e3e65a7f97fcc
-README.zh.md: 250f392eb8007dcd96fe0d370ff2d1d422763a23
+README.md: 013051f7968f2cdf910f4e67a3ba8bc2a56cc56a
+README.zh.md: ad508ae40aae28e1f95429d0aec5a4d01c554183

@@ -57,7 +57,6 @@ The renderer derives one publication id from the Case and revision ids, emits hu
 | [`src/render.ts`](src/render.ts) | Deterministic Issue body, bounded UTF-8 output, digest, and terminal marker |
 | [`src/index.ts`](src/index.ts) | Publication, response validation, failure classification, and GET reconciliation |
 | [`src/failures.ts`](src/failures.ts) | Stable Host error codes without raw provider or credential detail |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion; Delivery owns the mutable state machine |
 
 </details>
 
@@ -92,6 +91,8 @@ No direct invalidation; Issue rendering and HTTP results never enter a model req
 - **The complete Issue body is capped at 64 KiB** — oversized rendered requirements fail before publication rather than being truncated.
 - **Repository mapping stays with the Host Consumer** — this library consumes a target lookup capability and does not own settings, discovery, RBAC, or multi-host leases.
 - **Issue creation only** — configured labels may accompany creation; milestones, comments, Projects, PR creation, merge, close, and bidirectional synchronization remain outside this package.
+
+No invariant companion is published because delivery owns every durable publication transition.
 
 <a id="dev-note"></a>
 ### Dev Note

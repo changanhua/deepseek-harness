@@ -27,3 +27,5 @@ Queue provider 解析并持久化 worker 规范、策略与资源声明。通用
 
 - 准入需要实时 Agent Session，且仅支持 `agent.run@1`。
 - Batch item 只接受标题与提示词；执行控制由 host 持有。
+
+此包不发布 invariant companion，因为工具将准入交给 Queue 提供方受 owner 约束的接口。

@@ -27,3 +27,5 @@ Mounting or removing the plugin changes the reusable request prefix through its 
 
 - Admission requires a live Agent Session and supports only `agent.run@1`.
 - Batch items accept a title and prompt only; execution controls remain host-owned.
+
+No invariant companion is published because each tool delegates admission to the Queue provider's owner-fenced facade.

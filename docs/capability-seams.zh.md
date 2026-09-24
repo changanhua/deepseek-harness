@@ -216,6 +216,30 @@ flowchart LR
   pkg_tool_task_queue["tool-task-queue"]
   pkg_tool_agent_run_task_queue["tool-agent-run-task-queue"]
   pkg_tool_image_generation_task_queue["tool-image-generation-task-queue"]
+  pkg_browser["browser"]
+  svc_browser["ctx.browser<br/>Browser operation provider seam"]
+  pkg_browser_extension["browser-extension"]
+  pkg_tool_browser["tool-browser"]
+  pkg_browser_task["browser-task"]
+  pkg_browser_monitor["browser-monitor"]
+  pkg_content_browser["content-browser"]
+  pkg_browser_activity["browser-activity"]
+  svc_browserActivity["ctx.browserActivity<br/>Private browser activity history"]
+  svc_browserMonitor["ctx.browserMonitor<br/>Durable browser observation plans"]
+  svc_browserTasks["ctx.browserTasks<br/>Session-backed browser task authority"]
+  pkg_content["content"]
+  svc_content["ctx.content<br/>Versioned content service seam"]
+  pkg_content_domain["content-domain"]
+  pkg_content_remote["content-remote"]
+  pkg_content_session["content-session"]
+  svc_contentBrowser["ctx.contentBrowser<br/>Browser source import adapter"]
+  svc_contentRemote["ctx.contentRemote<br/>Authenticated Content Remote"]
+  svc_contentSession["ctx.contentSession<br/>Session content source resolver"]
+  pkg_knowledge_base["knowledge-base"]
+  svc_knowledgeBase["ctx.knowledgeBase<br/>Durable knowledge project"]
+  pkg_knowledge_base_task_queue["knowledge-base-task-queue"]
+  pkg_tool_knowledge_base["tool-knowledge-base"]
+  svc_knowledgeQueue["ctx.knowledgeQueue<br/>Knowledge stage Queue adapter"]
   pkg_delivery["delivery"]
   svc_delivery["ctx.delivery<br/>Personal Delivery domain seam"]
   pkg_delivery_local["delivery-local"]
@@ -281,6 +305,11 @@ flowchart LR
   pkg_authorization --> svc_authorization
   pkg_bash_local --> svc_shell
   pkg_bash_sandbox --> svc_shell
+  pkg_browser --> svc_browser
+  pkg_browser_activity --> svc_browserActivity
+  pkg_browser_extension --> svc_browser
+  pkg_browser_monitor --> svc_browserMonitor
+  pkg_browser_task --> svc_browserTasks
   pkg_client_file_upload --> svc_fileUploads
   pkg_client_modules --> svc_clientModules
   pkg_code_runtime --> svc_codeRuntime
@@ -290,6 +319,11 @@ flowchart LR
   pkg_compaction --> svc_compaction
   pkg_compaction_basic --> svc_compaction
   pkg_compaction_tool_result_pruner --> svc_toolResultPruner
+  pkg_content --> svc_content
+  pkg_content_browser --> svc_contentBrowser
+  pkg_content_domain --> svc_content
+  pkg_content_remote --> svc_contentRemote
+  pkg_content_session --> svc_contentSession
   pkg_cordis_host_runner --> svc_cordisInspect
   pkg_cordis_host_runner --> svc_dynamicCordisRunner
   pkg_credentials --> svc_credentials
@@ -320,6 +354,8 @@ flowchart LR
   pkg_invariants --> svc_invariants
   pkg_jobs --> svc_jobs
   pkg_jobs_local --> svc_jobs
+  pkg_knowledge_base --> svc_knowledgeBase
+  pkg_knowledge_base_task_queue --> svc_knowledgeQueue
   pkg_llm --> svc_llm
   pkg_llm_deepseek --> svc_llm
   pkg_llm_pi_ai --> svc_llm
@@ -413,9 +449,22 @@ flowchart LR
   svc_attachments --> pkg_llm_pi_ai
   svc_attachments --> pkg_tool_fs
   svc_authorization --> pkg_llm_pi_ai
+  svc_browser --> pkg_browser_monitor
+  svc_browser --> pkg_browser_task
+  svc_browser --> pkg_content_browser
+  svc_browser --> pkg_tool_browser
+  svc_browserActivity --> pkg_browser_extension
+  svc_browserActivity --> pkg_tool_browser
+  svc_browserMonitor --> pkg_browser_extension
+  svc_browserTasks --> pkg_browser_extension
+  svc_browserTasks --> pkg_tool_browser
   svc_clientModules --> pkg_client_hmr
   svc_codeRuntime --> pkg_tools
   svc_compaction --> pkg_compaction_basic
+  svc_content --> pkg_content_browser
+  svc_content --> pkg_content_remote
+  svc_content --> pkg_content_session
+  svc_contentBrowser --> pkg_browser_extension
   svc_cordisInspect --> pkg_tool_cordis
   svc_credentials --> pkg_api_settings_controller
   svc_credentials --> pkg_llm_deepseek
@@ -442,6 +491,9 @@ flowchart LR
   svc_jobs --> pkg_tool_jobs
   svc_jobs --> pkg_tool_subagent
   svc_jobs --> pkg_tool_terminal
+  svc_knowledgeBase --> pkg_knowledge_base_task_queue
+  svc_knowledgeBase --> pkg_tool_knowledge_base
+  svc_knowledgeQueue --> pkg_tool_knowledge_base
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
@@ -614,6 +666,16 @@ flowchart LR
 | `ctx.inspector` | `core` | `inspector` | - | - | - | 负责 Worker 托管的 CDP target，以及与传输无关的 Host/Client observation 和 Cordis-tree query API。 |
 | `ctx.jobs` | `seam` | [`jobs`](../packages/jobs/jobs) | [`jobs-local`](../packages/jobs/jobs-local) | [`tool-bash`](../packages/shell/tool-bash), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-jobs`](../packages/jobs/tool-jobs) | - | 生产方（后台 bash、PTY 发送和 subagent 委派）登记正在运行的工作；tool-jobs 是面向模型的控制器，用于读取、列出和终止这些工作；jobs-local 是进程本地注册表。 |
 | `ctx.taskQueue` | `seam` | [`task-queue`](../packages/task-queue/task-queue) | [`task-queue-local`](../packages/task-queue/task-queue-local) | [`task-queue-executor-dsh`](../packages/task-queue/task-queue-executor-dsh), [`image-generation-task-queue`](../packages/image/image-generation-task-queue), [`tool-task-queue`](../packages/task-queue/tool-task-queue), [`tool-agent-run-task-queue`](../packages/task-queue/tool-agent-run-task-queue), [`tool-image-generation-task-queue`](../packages/image/tool-image-generation-task-queue) | - | host 平面服务持久化 typed WorkItem 与原子 ChangeSet，执行资源和 Batch 限制，并恢复 outcome 不确定的 Attempt；WorkKind handler 持有执行，WorkKind 专属工具持有准入，tool-task-queue 持有通用控制、显式结果读取与稳定 owner 投递。 |
+| `ctx.browser` | `seam` | [`browser`](../packages/browser/browser) | [`browser-extension`](../packages/browser/browser-extension) | [`tool-browser`](../packages/browser/tool-browser), [`browser-task`](../packages/browser/browser-task), [`browser-monitor`](../packages/browser/browser-monitor), [`content-browser`](../packages/content/content-browser) | - | 定义浏览器操作；扩展提供者负责授权、预备动作、传输回执和精确的页面身份。 |
+| `ctx.browserActivity` | `core` | [`browser-activity`](../packages/browser/browser-activity) | - | [`browser-extension`](../packages/browser/browser-extension), [`tool-browser`](../packages/browser/tool-browser) | - | 仅在明确策略允许后保存按安装隔离的观察事件，读取历史时检查授权轮次。 |
+| `ctx.browserMonitor` | `core` | [`browser-monitor`](../packages/browser/browser-monitor) | - | [`browser-extension`](../packages/browser/browser-extension) | - | 针对一个已授权的安装调度有界 Queue 检查，并保留基于摘要的变化，直到收到确认。 |
+| `ctx.browserTasks` | `core` | [`browser-task`](../packages/browser/browser-task) | - | [`browser-extension`](../packages/browser/browser-extension), [`tool-browser`](../packages/browser/tool-browser) | - | 从所属 Session 汇总持久化的任务证据、写入尝试、资源处置和验收状态。 |
+| `ctx.content` | `seam` | [`content`](../packages/content/content) | [`content-domain`](../packages/content/content-domain) | [`content-remote`](../packages/content/content-remote), [`content-session`](../packages/content/content-session), [`content-browser`](../packages/content/content-browser) | - | 定义不可变原件、可编辑草稿、幂等命令和可信授权回调；领域提供者保存记录。 |
+| `ctx.contentBrowser` | `core` | [`content-browser`](../packages/content/content-browser) | - | [`browser-extension`](../packages/browser/browser-extension) | - | 将已授权的浏览器来源回执绑定到 Content 接入流程，不把页面文本当作 Host 已核实的 Session 事实。 |
+| `ctx.contentRemote` | `core` | [`content-remote`](../packages/content/content-remote) | - | - | - | 将已登录请求映射到 Content 操作，并在每次调用时重新检查授权。 |
+| `ctx.contentSession` | `core` | [`content-session`](../packages/content/content-session) | - | - | - | 将一次 Session 观察解析为有界内容来源，并在返回前释放该观察。 |
+| `ctx.knowledgeBase` | `core` | [`knowledge-base`](../packages/knowledge/knowledge-base) | - | [`knowledge-base-task-queue`](../packages/knowledge/knowledge-base-task-queue), [`tool-knowledge-base`](../packages/knowledge/tool-knowledge-base) | - | 在托管内容根目录下管理来源快照、可编辑条目、已验证发布版本和发布记录。 |
+| `ctx.knowledgeQueue` | `core` | [`knowledge-base-task-queue`](../packages/knowledge/knowledge-base-task-queue) | - | [`tool-knowledge-base`](../packages/knowledge/tool-knowledge-base) | - | 将已预备的知识处理阶段送入类型化 Queue，并核对尝试结果与知识项目。 |
 | `ctx.delivery` | `seam` | [`delivery`](../packages/delivery/delivery) | [`delivery-local`](../packages/delivery/delivery-local) | [`delivery-github-intake`](../packages/delivery/delivery-github-intake), [`delivery-remote`](../packages/delivery/delivery-remote), [`delivery-task-queue`](../packages/delivery/delivery-task-queue) | - | 负责不可变 Contract revision、有界 Packet、Queue admission binding 与人工 acceptance decision，而不复制 Queue lifecycle state。 |
 | `ctx.repoWorkspace` | `seam` | [`repo-workspace`](../packages/delivery/repo-workspace) | [`repo-workspace-git-local`](../packages/delivery/repo-workspace-git-local) | [`delivery-runner-codex`](../packages/delivery/delivery-runner-codex), [`delivery-verifier`](../packages/delivery/delivery-verifier) | - | 验证已配置 repository revision，并负责隔离的 change/verification workspace lease；持久 record 保留 Git identity，而不保留 host path。 |
 | `ctx.deliveryEvidence` | `seam` | [`delivery-evidence`](../packages/delivery/delivery-evidence) | [`delivery-evidence-local`](../packages/delivery/delivery-evidence-local) | [`delivery-runner-codex`](../packages/delivery/delivery-runner-codex), [`delivery-verifier`](../packages/delivery/delivery-verifier) | - | 仅在字节持久化后发布不可变 content-addressed evidence，并在读取时验证 identity、length 与 digest。 |

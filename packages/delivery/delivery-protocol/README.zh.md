@@ -109,3 +109,5 @@ fixture catalog 只包含虚假的 repository、Queue、evidence 和 human id，
 - **Schema 无法访问证据字节**：`EvidenceRef` 校验 metadata；evidence provider 必须取回不可变字节，并在证据可满足验证前调用 `evidenceBytesMatch()`。
 - **Schema 不执行跨 store lookup**：ancestry、repository identity、Queue existence 与 human authority 需要各自所有服务。导出的跨对象 finding 只覆盖 caller 提供完整输入的关系。
 - **没有 migration compatibility**：V2 Schema 拒绝所有其他 `schemaVersion`；未来版本需要显式 migration 与新 golden fixture，而不是宽松解析。
+
+此包不发布 invariant companion，因为不可变值的 schema 和规范摘要由 golden 与单元测试验证。

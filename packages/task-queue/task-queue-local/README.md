@@ -42,3 +42,5 @@ No direct invalidation; the named tools own model-visible changes.
 - The provider accepts only a schema-v3 root; it has no decoder or migrator for earlier schemas.
 - `unknown` is intentionally non-terminal and cannot auto-retry.
 - The owner lock is local-host coordination, not multi-host scheduling.
+
+No invariant companion is published because the local backend already fails closed on append errors and redetermines the durable log on boot; those guarantees live in the backend itself, not in a separate invariant installer.

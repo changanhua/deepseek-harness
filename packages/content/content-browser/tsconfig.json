@@ -8,7 +8,6 @@
     { "path": "../../credentials/credentials" },
     { "path": "../../client/connection/tsconfig.host.json" },
     { "path": "../../host/webserver" },
-    { "path": "../../typert/protocol" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    { "path": "../../typert/protocol" }
   ]
 }

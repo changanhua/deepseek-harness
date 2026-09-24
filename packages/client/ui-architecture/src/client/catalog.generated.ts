@@ -63,6 +63,7 @@ export const architectureCatalog: ArchitectureCatalog = {
       path: 'packages/bundle/base',
       description: 'The shared dsh core as a profile bundle: the first patch layer of base-backed profiles, inserting core rows over the empty profile root',
       packages: [
+        '@changanhua/dsh-browser-task',
         '@changanhua/dsh-command-task-queue',
         '@changanhua/dsh-image-generation',
         '@changanhua/dsh-image-generation-arkcli',
@@ -671,12 +672,14 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-browser',
         '@changanhua/dsh-browser-activity',
         '@changanhua/dsh-browser-monitor',
+        '@changanhua/dsh-browser-task',
+        '@deepseek-ai/dsh-agent',
         '@deepseek-ai/dsh-agent-default-model',
         '@deepseek-ai/dsh-api-session-controller',
         '@deepseek-ai/dsh-client-connection',
+        '@deepseek-ai/dsh-commands',
         '@deepseek-ai/dsh-credentials',
         '@deepseek-ai/dsh-host-webserver',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-llm',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-user-approval',
@@ -704,6 +707,26 @@ export const architectureCatalog: ArchitectureCatalog = {
       ],
     },
     {
+      name: '@changanhua/dsh-browser-task',
+      short: 'browser-task',
+      group: 'browser',
+      path: 'packages/browser/browser-task',
+      source: 'packages/browser/browser-task/package.json',
+      description: 'Session-persistent browser task acceptance domain for DeepSeek Harness',
+      dependencies: [
+        '@changanhua/dsh-browser',
+        '@deepseek-ai/dsh-agent',
+        '@deepseek-ai/dsh-brand',
+        '@deepseek-ai/dsh-session',
+        '@deepseek-ai/dsh-session-projection',
+        '@deepseek-ai/dsh-system-prompt',
+        '@deepseek-ai/dsh-tools',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
       name: '@changanhua/dsh-browser',
       short: 'browser',
       group: 'browser',
@@ -712,7 +735,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Session-addressed browser capability for personal DSH tools and finite background checks',
       dependencies: [
         '@deepseek-ai/dsh-brand',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-session',
       ],
       faces: [
@@ -729,10 +751,11 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-browser',
         '@changanhua/dsh-browser-activity',
+        '@changanhua/dsh-browser-task',
         '@deepseek-ai/dsh-agent',
         '@deepseek-ai/dsh-attachment',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-llm',
+        '@deepseek-ai/dsh-session-projection',
         '@deepseek-ai/dsh-tools',
         '@deepseek-ai/dsh-user-approval',
       ],
@@ -791,7 +814,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       source: 'packages/bundle/personal-delivery/package.json',
       description: 'Personal Delivery add-on bundle for Case shaping, optional GitHub Issue publication, isolated Codex changes, independent verification, and human acceptance',
       dependencies: [
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'bundle',
@@ -805,7 +827,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       source: 'packages/bundle/personal-memory/package.json',
       description: 'Explicit project-memory bundle with proposal tools and human review commands',
       dependencies: [
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'bundle',
@@ -986,7 +1007,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-client-ui-renderer',
         '@deepseek-ai/dsh-client-ui-sidebar',
         '@deepseek-ai/dsh-host-plugin-inventory',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-typert-protocol',
       ],
       faces: [
@@ -1034,7 +1054,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-client-ui-layout',
         '@deepseek-ai/dsh-client-ui-renderer',
         '@deepseek-ai/dsh-client-ui-sidebar',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-typert-protocol',
       ],
@@ -1086,7 +1105,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-client-ui-layout',
         '@deepseek-ai/dsh-client-ui-renderer',
         '@deepseek-ai/dsh-client-ui-sidebar',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-typert-protocol',
         '@deepseek-ai/dsh-util-crypto',
@@ -1135,7 +1153,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-client-ui-layout',
         '@deepseek-ai/dsh-client-ui-renderer',
         '@deepseek-ai/dsh-client-ui-sidebar',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-typert-protocol',
       ],
       faces: [
@@ -1430,7 +1447,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-client-ui-conversation',
         '@deepseek-ai/dsh-client-ui-renderer',
         '@deepseek-ai/dsh-client-ui-settings',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-typert-protocol',
       ],
@@ -1556,7 +1572,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-client-ui-layout',
         '@deepseek-ai/dsh-client-ui-renderer',
         '@deepseek-ai/dsh-client-ui-sidebar',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-typert-protocol',
       ],
       faces: [
@@ -1630,7 +1645,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-client-ui-layout',
         '@deepseek-ai/dsh-client-ui-renderer',
         '@deepseek-ai/dsh-client-ui-sidebar',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-typert-protocol',
         '@deepseek-ai/dsh-util-crypto',
@@ -1789,7 +1803,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-client-connection',
         '@deepseek-ai/dsh-credentials',
         '@deepseek-ai/dsh-host-webserver',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-typert-protocol',
       ],
       faces: [
@@ -1805,7 +1818,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Storage-domain-backed local provider for personal Content records',
       dependencies: [
         '@changanhua/dsh-content',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-storage-domain',
       ],
       faces: [
@@ -1823,7 +1835,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-content',
         '@changanhua/dsh-content-session',
         '@deepseek-ai/dsh-client-connection',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-typert-protocol',
       ],
       faces: [
@@ -1839,7 +1850,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Verified completed-session message resolver for personal Content capture',
       dependencies: [
         '@changanhua/dsh-content',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-session-query',
       ],
@@ -1855,7 +1865,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       source: 'packages/content/content/package.json',
       description: 'Personal content records and provider-independent editing contract',
       dependencies: [
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -2205,7 +2214,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-delivery-evidence',
         '@changanhua/dsh-delivery-protocol',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -2220,7 +2228,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Immutable content-addressed evidence Service Definition for Personal Delivery',
       dependencies: [
         '@changanhua/dsh-delivery-protocol',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -2236,7 +2243,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-delivery',
         '@changanhua/dsh-delivery-protocol',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -2253,7 +2259,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-delivery',
         '@changanhua/dsh-delivery-protocol',
         '@deepseek-ai/dsh-credentials',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -2285,7 +2290,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Queue-independent durable records, strict runtime schemas, and canonical digests for Personal Delivery',
       dependencies: [
         '@deepseek-ai/dsh-brand',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-timeout',
       ],
       faces: [
@@ -2309,7 +2313,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-repo-workspace',
         '@changanhua/dsh-task-queue',
         '@deepseek-ai/dsh-credentials',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-typert-protocol',
       ],
       faces: [
@@ -2327,7 +2330,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-delivery-evidence',
         '@changanhua/dsh-delivery-protocol',
         '@changanhua/dsh-repo-workspace',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-subprocess',
         '@deepseek-ai/dsh-timeout',
       ],
@@ -2350,7 +2352,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-delivery-verifier',
         '@changanhua/dsh-repo-workspace',
         '@changanhua/dsh-task-queue',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-subprocess',
         '@deepseek-ai/dsh-timeout',
       ],
@@ -2370,7 +2371,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-delivery-evidence',
         '@changanhua/dsh-delivery-protocol',
         '@changanhua/dsh-repo-workspace',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -2387,7 +2387,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-delivery-evidence',
         '@changanhua/dsh-delivery-protocol',
         '@changanhua/dsh-repo-workspace',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-subprocess',
         '@deepseek-ai/dsh-timeout',
       ],
@@ -2405,7 +2404,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-delivery-protocol',
         '@changanhua/dsh-repo-workspace',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -2421,7 +2419,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-delivery-protocol',
         '@changanhua/dsh-repo-workspace',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-subprocess',
       ],
       faces: [
@@ -2437,7 +2434,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Repository base and blob verification, isolated checkout, checkpoint, and Git range Service Definition for Personal Delivery',
       dependencies: [
         '@changanhua/dsh-delivery-protocol',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -2496,7 +2492,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       source: 'packages/eval/eval-session-snapshot/package.json',
       description: 'Keyless ACP session-snapshot executor for deterministic DSH Eval suites',
       dependencies: [
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -2510,7 +2505,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       source: 'packages/eval/eval/package.json',
       description: 'Strict deterministic evaluation contracts, outcome folding, and stable reports',
       dependencies: [
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -2727,7 +2721,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Model-facing authoritative runtime fact and executable inspection',
       dependencies: [
         '@changanhua/dsh-runtime-facts',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-subprocess',
         '@deepseek-ai/dsh-tools',
       ],
@@ -3095,7 +3088,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Read-only Remote projection of current Skills, Tools, and MCP server capability state',
       dependencies: [
         '@deepseek-ai/dsh-brand',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-scope',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-skill',
@@ -3229,7 +3221,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       source: 'packages/host/work-observatory/package.json',
       description: 'Host-authoritative human activity and Session-step wall-clock accounting',
       dependencies: [
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-storage-domain',
         '@deepseek-ai/dsh-typert-protocol',
@@ -3262,7 +3253,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Host ArkCLI provider for the DeepSeek Harness image generation seam',
       dependencies: [
         '@changanhua/dsh-image-generation',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-subprocess',
       ],
       faces: [
@@ -3280,7 +3270,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-image-generation',
         '@changanhua/dsh-task-queue',
         '@deepseek-ai/dsh-attachment',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -3294,7 +3283,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       source: 'packages/image/image-generation/package.json',
       description: 'Shared image generation capability seam for the DeepSeek Harness',
       dependencies: [
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -3310,7 +3298,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-image-generation-task-queue',
         '@changanhua/dsh-task-queue',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-tools',
       ],
       faces: [
@@ -3475,7 +3462,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-knowledge-base',
         '@changanhua/dsh-task-queue',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-subagent-codex',
         '@deepseek-ai/dsh-subprocess',
       ],
@@ -3510,7 +3496,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Knowledge library operations for model tools and human DSH commands',
       dependencies: [
         '@deepseek-ai/dsh-commands',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-tools',
         '@deepseek-ai/dsh-web',
       ],
@@ -3605,7 +3590,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       source: 'packages/llm/llm-vision-relay/package.json',
       description: 'Composite vision-relay adapter: a text-only route that declares image input and derives visual evidence through a separate vision model',
       dependencies: [
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-llm',
         '@deepseek-ai/dsh-settings',
       ],
@@ -3743,7 +3727,6 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-memory',
         '@deepseek-ai/dsh-agent',
         '@deepseek-ai/dsh-commands',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -3781,7 +3764,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Project-scoped memory records, source evidence and human decision contracts',
       dependencies: [
         '@deepseek-ai/dsh-agent',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -3797,7 +3779,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-memory',
         '@deepseek-ai/dsh-agent',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-llm',
         '@deepseek-ai/dsh-system-prompt',
         '@deepseek-ai/dsh-tools',
@@ -5017,7 +4998,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-task-queue',
         '@deepseek-ai/dsh-commands',
-        '@deepseek-ai/dsh-invariants',
       ],
       faces: [
         'package',
@@ -5032,7 +5012,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Allowlisted host-operation WorkHandler for the durable task queue',
       dependencies: [
         '@changanhua/dsh-task-queue',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-subprocess',
         '@deepseek-ai/dsh-timeout',
       ],
@@ -5049,7 +5028,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Restricted DeepSeek Harness worker executor for the durable task queue',
       dependencies: [
         '@changanhua/dsh-task-queue',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-subprocess',
       ],
       faces: [
@@ -5066,7 +5044,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-task-queue',
         '@deepseek-ai/dsh-atomic-write',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-subprocess',
       ],
       faces: [
@@ -5082,7 +5059,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Browser panel Remote face over ctx.taskQueue: list/stats/get/cancel/retry as JSON wire views',
       dependencies: [
         '@changanhua/dsh-task-queue',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-typert-protocol',
       ],
       faces: [
@@ -5098,7 +5074,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Durable typed-work queue Service Definition, immutable domain records, atomic ChangeSet fold, authority API, and WorkHandler registry',
       dependencies: [
         '@deepseek-ai/dsh-brand',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-subprocess',
       ],
@@ -5116,7 +5091,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-task-queue',
         '@changanhua/dsh-task-queue-executor-dsh',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-tools',
       ],
       faces: [
@@ -5133,7 +5107,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-operation-run-task-queue',
         '@changanhua/dsh-task-queue',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-tools',
       ],
       faces: [
@@ -5150,7 +5123,6 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-task-queue',
         '@deepseek-ai/dsh-agent',
-        '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-llm',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-system-prompt',

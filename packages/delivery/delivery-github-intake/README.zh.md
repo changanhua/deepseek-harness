@@ -57,3 +57,5 @@ Intake 不增加 prompt token、tool schema 或模型调用；保持一个紧凑
 - **每次调用只处理一个 Issue snapshot**——webhook、polling、bulk synchronization、comment、Projects、label 与 PR mutation 均不在范围内。
 - **不自动发明需求**——每个权威字段都必须存在；未解决的歧义必须成为带显式 id 的 `openDecisions` entry，intake 不能悄悄把 Contract 变为 ready。
 - **较晚返回的旧 HTTP 响应会追加 revision**——version-2 contract 不保留导入的 GitHub `updatedAt`，所以延迟到达的 stale response 会成为当前 head 的 expected-head child，而不会被识别为更旧；重复的相同内容仍保持幂等。
+
+此包不发布 invariant companion，因为导入方通过 Delivery 接收不可变快照，不持有独立存储、事件流或可变注册表。

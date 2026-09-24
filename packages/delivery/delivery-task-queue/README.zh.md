@@ -72,3 +72,5 @@ Bridge 不增加 prompt token 或 tool schema，也不把 Queue 历史复制进 
 - **不会自动验收**——Queue success 只记录 typed claim 或 verdict。Handler、activation path 与 recovery operation 都不会创建人工 decision。
 - **没有通用 executor capability**——一个 Codex provider 与一个 caller 不足以证明 registry；alternative provider 需要单独、有证据的架构决策。
 - **不提升 client 权限**——browser 只能经可信 Remote 校验选择 Packet、executor 与已有 change binding；不能提供 verification target 或 plan identity，也不能选择 Queue 所有权、idempotency key、evidence provenance 或 acceptance。
+
+此包不发布 invariant companion，因为桥接器注册类型化处理器并执行幂等握手；持久事实由 Delivery 和 Queue 持有。

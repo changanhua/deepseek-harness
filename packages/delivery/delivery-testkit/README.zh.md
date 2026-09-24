@@ -58,3 +58,5 @@ Packet creation 测试使用 `resolveBase`；恢复执行测试通过 `inspectRe
 
 - Fake repository lease 模拟声明的生命周期结果；真实 Git 行为属于本地 provider 自己的 contract 与 vertical test。
 - Testkit 不伪造 Queue scheduling 或 Codex transport；这些 owner 继续使用各自的测试基础设施。
+
+此包不发布 invariant companion，因为这个测试支持包不持有生产事件流或可变数据。

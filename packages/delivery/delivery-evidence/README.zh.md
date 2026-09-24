@@ -52,3 +52,5 @@ Claim、Verdict 与 Resume Capsule 只保留持久 `EvidenceId`，因此 `resolv
 
 - 不支持自动 retention 或 garbage collection；reference 可能比 Packet 与 Attempt 保留更久。
 - 此契约仅用于代码交付证据，不是通用 artifact 平台。
+
+此包不发布 invariant companion，因为抽象定义不持有字节；具体提供方验证各自的对象。

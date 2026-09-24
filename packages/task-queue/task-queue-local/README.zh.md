@@ -42,3 +42,5 @@ shipped base composition 使用 `$DSH_HOME/task-queue-v3`、全局并发 `3`、i
 - Provider 只接受 schema-v3 root，不提供早期 schema 的 decoder 或 migrator。
 - `unknown` 有意保持非终态，不能自动重试。
 - owner lock 是 local-host coordination，不是 multi-host scheduling。
+
+此包不发布 invariant companion，因为本地后端在追加失败时拒绝写入，并在启动时重算持久日志。

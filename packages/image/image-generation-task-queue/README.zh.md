@@ -20,3 +20,5 @@ Queue v2 `image.generate@1` WorkHandler。准入阶段在持久化前解析图�
 
 - 一个 WorkItem 表示一个提示词与一个 resolved provider 请求。
 - Provider 失败保留类别、副作用与重试证据；是否允许重试由 Queue 策略决定。
+
+此包不发布 invariant companion，因为 Queue 提供方负责处理器注册和资源声明。

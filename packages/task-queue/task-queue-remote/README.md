@@ -31,3 +31,5 @@ None; this package never assembles model input.
 
 - The Remote exposes operator reads, cancellation, retry, unknown resolution, and dispatch pause control; admission remains on typed host and model-tool entry points.
 - Bulk UI actions currently issue one Remote mutation per WorkItem and refresh once afterward.
+
+No invariant companion is published because the Remote face only projects and mutates the durable queue through the Service seam, and Typert enforces endpoint identity at the wire boundary.

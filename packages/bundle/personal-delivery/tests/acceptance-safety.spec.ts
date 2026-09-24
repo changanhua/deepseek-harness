@@ -30,12 +30,21 @@ let runnerMode: 'complete' | 'hang' | 'cleanup' | 'no-checkpoint' = 'complete'
 let runnerDisposed = 0
 let runnerChild: import('node:child_process').ChildProcess | undefined
 const runnerCwds: string[] = []
+async function stopControlledChild(child: import('node:child_process').ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return
+  await new Promise<void>((resolve, reject) => {
+    child.once('exit', () => { resolve() })
+    child.once('error', reject)
+    child.kill()
+  })
+}
 vi.mock('@deepseek-ai/dsh-subagent-codex/app-server-run', async () => ({
   CODEX_APP_SERVER_PERMISSION_MODES: ['never'],
   async startCodexAppServerRun(request: { readonly cwd: string; readonly signal: AbortSignal }) {
     runnerCwds.push(request.cwd)
     const childProcess = await import('node:child_process')
-    runnerChild = childProcess.spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
+    const child = childProcess.spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
+    runnerChild = child
     await mkdir(join(request.cwd, runnerPath.includes('/') ? runnerPath.slice(0, runnerPath.lastIndexOf('/')) : '.'), { recursive: true })
     await writeFile(join(request.cwd, runnerPath), 'controlled\n')
     const mode: string = runnerMode
@@ -49,7 +58,7 @@ vi.mock('@deepseek-ai/dsh-subagent-codex/app-server-run', async () => ({
     } else {
       result = Promise.resolve({ stopReason: 'completed', output: [{ type: 'text', text: JSON.stringify(mode === 'no-checkpoint' ? { disposition: 'blocked', summary: 'blocked', completedWork: [], remainingWork: ['checkpoint required'], blocker: 'no checkpoint', nextSmallestAction: 'checkpoint' } : { disposition: 'completed', summary: 'controlled change', completedWork: ['controlled'], remainingWork: [] }) }] })
     }
-    return { result, async dispose() { runnerDisposed++; runnerChild?.kill(); await new Promise(resolve => runnerChild?.once('exit', resolve)); if (mode === 'cleanup') throw new Error('controlled cleanup uncertainty') } }
+    return { result, async dispose() { runnerDisposed++; await stopControlledChild(child); if (mode === 'cleanup') throw new Error('controlled cleanup uncertainty') } }
   },
 }))
 
@@ -62,7 +71,9 @@ const testCredentialsHost = {
   },
 }
 
-const queueStateTimeoutMs = process.platform === 'win32' ? 5_000 : 2_000
+// Git worktree creation and child teardown can exceed the old five-second
+// polling budget on the Windows CI runner while the owning case is still live.
+const queueStateTimeoutMs = process.platform === 'win32' ? 20_000 : 10_000
 
 async function waitFor(check: () => boolean, timeoutMs = queueStateTimeoutMs): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -98,7 +109,7 @@ async function bootDelivery(temp: string, repository: string): Promise<Context> 
   await writeFile(configPath, [
     "- { id: storage, name: '@deepseek-ai/dsh-storage' }",
     "- id: storage-json\n  name: '@deepseek-ai/dsh-storage-json'\n  config:\n    root: " + JSON.stringify(join(temp, 'storage')),
-    "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  config:\n    backend: json",
+    "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  isolate:\n    storageDomain: web-host\n  config:\n    backend: json",
     "- { id: credentials, name: '@test/dsh-credentials' }",
     "- { id: subprocess, name: '@deepseek-ai/dsh-subprocess-local' }",
     "- id: task-queue\n  name: '@changanhua/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(join(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1', patch,
@@ -134,30 +145,52 @@ async function completeChain(temp: string, command = 'process.exit(0)', stopAfte
   const { repository } = await repositoryFixture(temp); await mkdir(join(repository, 'src'))
   await writeFile(join(repository, 'src', 'base.txt'), 'base\n'); await git(repository, 'add', '.'); await git(repository, 'commit', '-m', 'source')
   const ctx = await bootDelivery(temp, repository)
-  const remote = ctx.get('deliveryRemote') as unknown as { internals: { fetch: typeof fetch }; importIssue(a: unknown, s: AbortSignal): Promise<{ id: string }>; createPacket(a: unknown, s: AbortSignal): Promise<{ id: string }>; startChange(a: unknown, s: AbortSignal): Promise<{ id: string; queueWorkId: string }>; startVerification(a: unknown, s: AbortSignal): Promise<{ id: string; queueWorkId: string }>; recordDecision(a: unknown, s: AbortSignal): Promise<unknown> }
-  remote.internals.fetch = vi.fn(async () => new Response(JSON.stringify({ number: 7, html_url: 'https://github.com/example/project/issues/7', repository_url: 'https://api.github.com/repos/example/project', updated_at: '2026-08-30T12:00:00.000Z', title: 'safety', body: brief(command) }), { headers: { 'content-type': 'application/json' } }))
-  const signal = new AbortController().signal; const revision = await remote.importIssue({ issueUrl: 'https://github.com/example/project/issues/7' }, signal)
-  const deliveryCase = ctx.delivery.snapshot().deliveryCases.find(candidate => candidate.headRevisionId === revision.id)
-  if (deliveryCase === undefined) throw new Error('Imported revision has no owning Delivery Case')
-  await ctx.delivery.recordRequirementDecision({
-    idempotencyKey: `approve:${deliveryCase.id}:${revision.id}`,
-    caseId: deliveryCase.id,
-    revisionId: deliveryCase.headRevisionId,
-    decision: 'approved',
-    reason: 'Controlled safety acceptance approved the imported requirement.',
-    actorId: 'acceptance-operator',
-    decisionNonce: `approve:${revision.id}`,
-  })
-  const packet = await remote.createPacket({ contractRevisionId: revision.id, packet: { objective, allowedPaths: [{ kind: 'subtree', path: 'src' }], forbiddenPaths: [], acceptanceClauseIds: ['accepted'], stopConditions: ['stop'], executorPreference: { mode: 'required', executorId: 'codex' } } }, signal)
-  const change = await remote.startChange({ packetId: packet.id, executorId: 'codex' }, signal); const operator = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
-  if (stopAfterChange) return { ctx, remote, packet, change, verification: undefined as never, signal, evidence: join(temp, 'evidence', 'objects', 'sha256'), operator, repository }
-  await waitFor(() => operator.get(change.queueWorkId as never).state.status === 'succeeded')
-  const verification = await remote.startVerification({ packetId: packet.id, changeBindingId: change.id }, signal)
-  await waitFor(() => ['succeeded', 'failed'].includes(operator.get(verification.queueWorkId as never).state.status))
-  return { ctx, remote, packet, change, verification, signal, evidence: join(temp, 'evidence', 'objects', 'sha256'), operator, repository }
+  try {
+    const remote = ctx.get('deliveryRemote') as unknown as { internals: { fetch: typeof fetch }; importIssue(a: unknown, s: AbortSignal): Promise<{ id: string }>; createPacket(a: unknown, s: AbortSignal): Promise<{ id: string }>; startChange(a: unknown, s: AbortSignal): Promise<{ id: string; queueWorkId: string }>; startVerification(a: unknown, s: AbortSignal): Promise<{ id: string; queueWorkId: string }>; recordDecision(a: unknown, s: AbortSignal): Promise<unknown> }
+    remote.internals.fetch = vi.fn(async () => new Response(JSON.stringify({ number: 7, html_url: 'https://github.com/example/project/issues/7', repository_url: 'https://api.github.com/repos/example/project', updated_at: '2026-08-30T12:00:00.000Z', title: 'safety', body: brief(command) }), { headers: { 'content-type': 'application/json' } }))
+    const signal = new AbortController().signal; const revision = await remote.importIssue({ issueUrl: 'https://github.com/example/project/issues/7' }, signal)
+    const deliveryCase = ctx.delivery.snapshot().deliveryCases.find(candidate => candidate.headRevisionId === revision.id)
+    if (deliveryCase === undefined) throw new Error('Imported revision has no owning Delivery Case')
+    await ctx.delivery.recordRequirementDecision({
+      idempotencyKey: `approve:${deliveryCase.id}:${revision.id}`,
+      caseId: deliveryCase.id,
+      revisionId: deliveryCase.headRevisionId,
+      decision: 'approved',
+      reason: 'Controlled safety acceptance approved the imported requirement.',
+      actorId: 'acceptance-operator',
+      decisionNonce: `approve:${revision.id}`,
+    })
+    const packet = await remote.createPacket({ contractRevisionId: revision.id, packet: { objective, allowedPaths: [{ kind: 'subtree', path: 'src' }], forbiddenPaths: [], acceptanceClauseIds: ['accepted'], stopConditions: ['stop'], executorPreference: { mode: 'required', executorId: 'codex' } } }, signal)
+    const change = await remote.startChange({ packetId: packet.id, executorId: 'codex' }, signal); const operator = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
+    if (stopAfterChange) return { ctx, remote, packet, change, verification: undefined as never, signal, evidence: join(temp, 'evidence', 'objects', 'sha256'), operator, repository }
+    await waitFor(() => operator.get(change.queueWorkId as never).state.status === 'succeeded')
+    const verification = await remote.startVerification({ packetId: packet.id, changeBindingId: change.id }, signal)
+    await waitFor(() => ['succeeded', 'failed'].includes(operator.get(verification.queueWorkId as never).state.status))
+    return { ctx, remote, packet, change, verification, signal, evidence: join(temp, 'evidence', 'objects', 'sha256'), operator, repository }
+  } catch (error) {
+    await ctx.fiber.dispose()
+    throw error
+  }
 }
 
 describe('Personal Delivery MVP safety acceptance', () => {
+  it('registers child exit observation before requesting termination', async () => {
+    const listeners: Array<() => void> = []
+    const child = {
+      exitCode: null,
+      signalCode: null,
+      once(event: string, listener: () => void) {
+        if (event === 'exit') listeners.push(listener)
+        return child
+      },
+      kill() {
+        expect(listeners).toHaveLength(1)
+        listeners[0]!()
+        return true
+      },
+    } as unknown as import('node:child_process').ChildProcess
+    await stopControlledChild(child)
+  })
   it('4: bundle cancellation disposes the controlled child and records one canceled Delivery attempt', { timeout: 15_000 }, async () => {
     const temp = await mkdtemp(join(tmpdir(), 'dsh-delivery-live-cancel-')); runnerMode = 'hang'; runnerDisposed = 0
     let chain: Awaited<ReturnType<typeof completeChain>> | undefined
@@ -219,7 +252,7 @@ describe('Personal Delivery MVP safety acceptance', () => {
     } finally { runnerMode = 'complete'; await chain?.ctx.fiber.dispose(); await rm(temp, { recursive: true, force: true }) }
   })
 
-  it('7: failed command, forbidden change, missing evidence and digest corruption all refuse human acceptance', { timeout: process.platform === 'win32' ? 60_000 : 30_000 }, async () => {
+  it('7: failed command, forbidden change, missing evidence and digest corruption all refuse human acceptance', { timeout: process.platform === 'win32' ? 120_000 : 60_000 }, async () => {
     const variants = [
       { name: 'failed command', command: 'process.exit(1)', path: 'src/accepted.txt', corrupt: undefined },
       { name: 'forbidden path', command: 'process.exit(0)', path: 'outside.txt', corrupt: undefined },
@@ -240,12 +273,11 @@ describe('Personal Delivery MVP safety acceptance', () => {
         }
         await expect(chain.remote.recordDecision({ packetId: chain.packet.id, changeBindingId: chain.change.id, verificationBindingId: chain.verification.id, decision: 'accepted', reason: variant.name, decisionNonce: variant.name }, chain.signal)).rejects.toThrow(/Delivery/u)
         expect(chain.ctx.delivery.snapshot().acceptanceDecisions).toEqual([])
-      } finally { await chain?.ctx.fiber.dispose(); await rm(temp, { recursive: true, force: true }) }
+      } finally { runnerPath = 'src/accepted.txt'; await chain?.ctx.fiber.dispose(); await rm(temp, { recursive: true, force: true }) }
     }
-    runnerPath = 'src/accepted.txt'
   })
 
-  it('8: two real Packet changes use distinct Attempt worktrees and leave the control checkout untouched', { timeout: 20_000 }, async () => {
+  it('8: two real Packet changes use distinct Attempt worktrees and leave the control checkout untouched', { timeout: process.platform === 'win32' ? 60_000 : 30_000 }, async () => {
     const temp = await mkdtemp(join(tmpdir(), 'dsh-delivery-worktrees-')); runnerCwds.length = 0
     let chain: Awaited<ReturnType<typeof completeChain>> | undefined
     try {

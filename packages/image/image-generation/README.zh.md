@@ -20,3 +20,5 @@
 
 - 服务协调 provider，但不持久化请求或生成的字节。
 - Provider 选择没有优先级或回退链。
+
+此包不发布 invariant companion，因为提供方注册是私有的 effect 状态，每次解析或生成都会核对所选提供方。

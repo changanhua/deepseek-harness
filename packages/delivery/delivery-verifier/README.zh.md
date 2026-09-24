@@ -80,6 +80,8 @@ Queue 桥接器先要求声明的状态为 `completed`，证明 `claim.packetId 
 - **验证器不在运行时发现计划**——任意 shell 文本、仓库提供的可执行策略和模型生成命令都不属于此包。
 - **验收仍由人工负责**——通过的判定不会调用 `recordAcceptanceDecision`，也不能合并或接受交付。
 
+此包不发布 invariant companion，因为验证器不持有持久存储或事件流；协议 schema、Queue 结算和 Evidence 存储分别执行检查。
+
 <a id="dev-note"></a>
 ### 开发备注
 

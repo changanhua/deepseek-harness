@@ -93,6 +93,8 @@ Independent readings send no previous questions or outputs, so their input cost 
 - Monitoring does not consume browser-worker or Session stream results.
 - SiYuan integration, observation, and global-key handling do not consume browser-worker or Session stream results.
 
+No invariant companion is published because authorization permits and executor receipts are private request state; no independent ambient event represents an authorized action.
+
 <a id="dev-note"></a>
 ### Dev Note
 

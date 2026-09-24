@@ -59,3 +59,5 @@ schemas 有意只暴露 title、operation id、idempotency key、Batch items 和
 
 - 准入同时需要实时 Agent Session，以及已带匹配 resource capacity 挂载 operation WorkHandler 的 host composition。
 - Batch admission 是原子的，但没有按 item 的 partial-success response；调用方获得 Batch id，并通过持久化 Queue records 检查终态 outcomes。
+
+此包不发布 invariant companion，因为 Queue 准入与 ToolRuntime 分别负责授权、schema 校验和注册清理；此包不持有持久状态。

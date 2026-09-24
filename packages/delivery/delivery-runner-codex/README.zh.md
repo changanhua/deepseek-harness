@@ -88,6 +88,8 @@ const claim = await run.done
 - **Codex 是唯一选定的提供方**——没有单独且有证据支持的架构决策时，其他提供方与共享执行器注册表均不在范围内。
 - **不拥有 Queue**——此包不能注册 `code.change@1`、选择重试或写入 Queue 生命周期状态；该桥接层由 `dsh-delivery-task-queue` 拥有。
 
+此包不发布 invariant companion，因为运行器仅在单次操作中存在；Queue 持有 Attempt 生命周期，Delivery Evidence 持有不可变证据。
+
 <a id="dev-note"></a>
 ### 开发备注
 
