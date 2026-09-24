@@ -37,6 +37,7 @@ let recentFlight = null
 let selectedCognitionId = null
 let selectedNodeIndex = null
 let selectedAtlasPageId = null
+let selectedAtlasHistorical = false
 let selectedAtlasRegionId = null
 let cognitionDetailView = 'map'
 let submitting = false
@@ -437,10 +438,13 @@ const renderCognition = () => {
   const generate = () => { const value = viewState(); void send({ type: 'dsh-assistant-cognition-generate', expectedSessionId: value.session?.binding?.sessionId, expectedTargetRevision: value.target?.revision }) }
   const readPage = () => { const value = viewState(); void send({ type: 'dsh-assistant-cognition-refresh', expectedSessionId: value.session?.binding?.sessionId, expectedTargetRevision: value.target?.revision }) }
   if (!pages.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = cognition.status === 'unread' ? '还没有已送达 Agent 的页面认知。选择网页本身不会读取页面。' : '页面认知暂不可用。'; const start = button('读取页面认知', readPage, 'semantic-generate'); start.disabled = !canRefresh; empty.append(start); panel.append(empty); return }
-  const selected = pages.find(page => page.id === selectedAtlasPageId) ?? pages.find(page => currentTargetPage(page, current)) ?? pages.find(page => page.documentState === 'current') ?? pages.at(-1)
+  const remembered = pages.find(page => page.id === selectedAtlasPageId)
+  if (!remembered) selectedAtlasHistorical = false
+  const currentPage = pages.find(page => currentTargetPage(page, current)) ?? pages.find(page => page.documentState === 'current')
+  const selected = selectedAtlasHistorical && remembered ? remembered : currentPage ?? remembered ?? pages.at(-1)
   selectedAtlasPageId = selected.id
   const cards = document.createElement('div'); cards.className = 'atlas-pages'
-  for (const page of pages) { const card = button('', () => { selectedAtlasPageId = page.id; selectedAtlasRegionId = null; renderCognition() }, 'atlas-page-card'); card.setAttribute('aria-pressed', String(page.id === selected.id)); card.append(`${page.documentState === 'previous-document' ? '先前页面 · ' : ''}${page.title || page.target?.page?.url || '已送达页面'} · ${contentSummary(page)}`); cards.append(card) }
+  for (const page of pages) { const card = button('', () => { selectedAtlasPageId = page.id; selectedAtlasHistorical = page.documentState === 'previous-document'; selectedAtlasRegionId = null; renderCognition() }, 'atlas-page-card'); card.setAttribute('aria-pressed', String(page.id === selected.id)); card.append(`${page.documentState === 'previous-document' ? '先前页面 · ' : ''}${page.title || page.target?.page?.url || '已送达页面'} · ${contentSummary(page)}`); cards.append(card) }
   if (pages.length > 1) panel.append(cards)
   const canLocate = selected.locatorsValid && currentTargetPage(selected, current)
   const detail = document.createElement('article'); detail.className = 'atlas-detail'; const heading = document.createElement('header'); const title = document.createElement('h2'); title.textContent = selected.documentState === 'previous-document' ? '先前页面的读取记录' : '当前页面的理解范围'; const meta = document.createElement('small'); meta.className = 'cognition-meta'; meta.textContent = `${selected.coverage?.observationCount ?? 0} 次读取 · ${contentSummary(selected)} · 仅展示已读部分`; heading.append(title, meta)

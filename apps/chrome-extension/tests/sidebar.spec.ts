@@ -498,6 +498,28 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-cognition-locate', pageId, expectedSessionId: 'session-v2', expectedTargetRevision: 4 })
   })
 
+  test('页面换版后默认展示当前认知，显式查看先前页面时保留选择', async () => {
+    const previous = projectedAtlasPage({ title: '换版前', page: { tabId: 9, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' } })
+    const latest = projectedAtlasPage({ title: '换版后', page: { tabId: 9, frameId: 0, documentId: 'doc-b', url: 'https://example.test/a' } })
+    const makeState = (pages: unknown[], selected: unknown) => baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected }, cognition: { status: 'ready', pages } } })
+    let next = makeState([previous], previous.target.page)
+    const fixture = await load(next, () => ({ ok: true, state: next }))
+    element('[data-view="cognition"]').click()
+    expect(document.querySelectorAll('.atlas-page-card')).toHaveLength(0)
+
+    next = makeState([{ ...previous, documentState: 'previous-document', locatorsValid: false }, latest], latest.target.page)
+    fixture.listener.mock.calls[0][0]({ type: 'dsh-state-changed' })
+    await vi.waitFor(() => { expect(element('.atlas-page-card[aria-pressed="true"]').textContent).toContain('换版后') })
+    expect(element('.atlas-detail').textContent).not.toContain('先前页面 · 只能查看历史证据')
+
+    ;(element('.atlas-page-card') as HTMLButtonElement).click()
+    expect(element('.atlas-detail').textContent).toContain('先前页面 · 只能查看历史证据')
+    fixture.listener.mock.calls[0][0]({ type: 'dsh-state-changed' })
+    await vi.waitFor(() => { expect(element('.atlas-page-card[aria-pressed="true"]').textContent).toContain('先前页面') })
+  })
+
   test('认知树节点只通过真实快照引用请求页面高亮', async () => {
     const page = {
       id: 'install:9:0:doc-a:https://example.test/a', title: '树页面', pageType: 'unknown', documentState: 'current', locatorsValid: true,
