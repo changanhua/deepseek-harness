@@ -1,0 +1,55 @@
+version: 1
+unit: mental-model-agent-runtime
+capabilities:
+  - runtime_mental_model
+  - state_ownership
+  - capability_boundary
+recorded_at: "2026-08-27T14:36:57+08:00"
+
+attempt:
+  prompt_or_task: |
+    为什么 DSH 的 task_queue 不应该只是几个 Tool？
+    至少说明 Tool、业务能力、state owner、重启语义，以及模型如何 SEE / ACT。
+  prediction_before_reveal: |
+    tool是给模型的抓手,业务能力由service和provider负责，任务状态数据库或其他持久化对象own,重启后应依然存在，通过上下文see、通过loop来act
+
+observations:
+  - claim: Learner correctly separates the model-facing Tool surface from the underlying durable task state.
+    evidence: Current answer explicitly identifies Tool as the model-facing grasp and durable storage as state owner.
+  - claim: Learner recognizes that a background queue intended to survive process restart needs durable state outside model context or Tool instance memory.
+    evidence: Current answer says the task state is owned by a database or another persistent object and should still exist after restart.
+  - claim: The Service/Provider boundary is still conflated.
+    evidence: The answer says business capability is jointly handled by Service and Provider without distinguishing domain capability from replaceable implementation/provider seams.
+  - claim: The ACT path is still misidentified.
+    evidence: The answer says the model acts "through the loop"; the loop orchestrates execution, while the model-facing action seam is normally the Tool/command surface exposed to the model.
+
+verification:
+  method: teacher review against the mental-model-agent-runtime contract
+  result: partial
+
+evidence_items:
+  explain_why_task_queue_is_not_only_tools: partial
+
+assessment:
+  strengths:
+    - Correctly identifies Tool as a model-facing interface rather than the durable state owner.
+    - Correctly places durable task truth in persistent storage rather than model context or transient Tool memory.
+    - Correctly expects intended background task state to survive process restart.
+  misconceptions:
+    - Service and Provider are not interchangeable co-owners of business capability; Service usually expresses the domain/runtime capability, while Provider is a replaceable implementation seam when such indirection is actually needed.
+    - Agent Loop is not the model-facing ACT interface. The model usually ACTs through Tool/command surfaces; the loop coordinates the model-call/tool-call cycle.
+    - SEE is too broad as "through context"; distinguish always-pushed model-visible context from discoverable Tool schema or on-demand introspection.
+  demonstrated:
+    runtime_mental_model: partial
+    state_ownership: pass
+    capability_boundary: partial
+  routing:
+    ready_for: []
+    revisit:
+      - mental-model-agent-runtime
+
+artifacts:
+  commits: []
+  files: []
+  prs:
+    - "#9"
