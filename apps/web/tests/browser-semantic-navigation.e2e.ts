@@ -217,7 +217,8 @@ async function connect(panel: Page, context: BrowserContext, base: string): Prom
     await approval.getByRole('status').getByText(/已授权|authorized/iu).waitFor()
     await approval.close()
   }
-  await extensionMessage(panel, { type: 'dsh-assistant-poll' })
+  await expect.poll(async () => panel.locator('#connection-label').textContent(), { timeout: 30_000 }).toBe('已连接')
+  await expect.poll(async () => panel.locator('#connection-panel').isHidden()).toBe(true)
   await expect.poll(async () => (await assistantState(panel)).connection.phase, { timeout: 30_000 }).toBe('connected')
   await panel.locator('#hide-settings').click()
 }

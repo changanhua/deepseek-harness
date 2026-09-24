@@ -45,6 +45,9 @@ let modelCatalog = null
 let modelRequest = 0
 let modelPicker = { open: false, phase: 'idle', sessionId: null, selection: null, applying: false }
 let targetDialogTrigger = null
+let approvalPollTimer
+let approvalPolling = false
+let closingView = false
 
 const label = phase => ({ unconfigured: '尚未配置', configured: '尚未连接', pending: '等待批准', connecting: '正在连接', connected: '已连接', offline: '离线', unauthorized: '需要授权', invalid: '配置无效' })[phase] ?? '未知状态'
 const messageError = error => ({ semantic_feedback_conflict: '这个节点已有新修正。草稿已保留，请核对最新版本后再保存。', semantic_feedback_capacity_exceeded: '本地修正记录已达到容量上限，草稿尚未保存。', semantic_feedback_storage_failed: '个人修正保存失败，草稿已保留，请重试。', semantic_feedback_unavailable: '找不到这份地图或节点，未保存修正。', network_error: '网络请求失败，请检查 DSH 服务后重试。', offline: '连接已中断，恢复连接后可继续。', result_unknown: '提交结果尚未确认，请重试原请求，不要重新发送。', pending_locked: '上次请求尚未确认，请先确认原请求。', session_changed: '会话已变化，请确认后重试。', target_changed: '操作目标已变化，请重新选择。', function_view_unavailable: '这个功能当前没有可打开的界面。', cognition_location_unavailable: '这个页面节点已经失效，请重新读取页面。', source_changed: '原文已变化，定位已取消。旧快照仍可查看，重新读取后可再定位。', source_unavailable: '这份快照的网页定位信息已失效。请重新读取页面，旧原文快照仍可查看。' })[error?.code ?? error?.message ?? error] ?? (error?.message || String(error ?? '操作未完成'))
@@ -101,6 +104,19 @@ const selectionLabel = selection => {
 
 const renderConnection = () => {
   const connection = viewState().connection ?? { phase: 'unconfigured' }
+  if (connection.phase !== 'pending') { clearTimeout(approvalPollTimer); approvalPollTimer = undefined }
+  else if (!closingView && !approvalPollTimer && !approvalPolling) {
+    approvalPollTimer = setTimeout(async () => {
+      approvalPollTimer = undefined
+      if (closingView || viewState().connection?.phase !== 'pending') return
+      approvalPolling = true
+      try { await send({ type: 'dsh-assistant-poll' }) }
+      finally {
+        approvalPolling = false
+        if (!closingView && viewState().connection?.phase === 'pending') renderConnection()
+      }
+    }, 2000)
+  }
   byId('connection-label').textContent = label(connection.phase)
   byId('connection-dot').className = `connection-dot ${connection.phase}`
   const panel = byId('connection-panel'); panel.replaceChildren(); panel.hidden = connection.phase === 'connected'
@@ -653,9 +669,9 @@ document.addEventListener('click', event => {
 })
 chrome.runtime.onMessage.addListener(message => { if (message?.type === 'dsh-state-changed') void readState(); if (message?.type === 'dsh-assistant-error') notice(messageError(message.error)) })
 
-let presencePort; let presenceRetry; let closingView = false
+let presencePort; let presenceRetry
 const publishPresence = () => { try { presencePort?.postMessage({ type: 'presence', visible: document.visibilityState === 'visible' }) } catch {} }
 const connectView = () => { if (closingView || typeof chrome.runtime.connect !== 'function') return; try { const port = chrome.runtime.connect({ name: 'dsh-assistant-view' }); presencePort = port; port.onDisconnect.addListener(() => { if (presencePort !== port) return; presencePort = undefined; if (!closingView) presenceRetry = setTimeout(connectView, 1000) }); publishPresence() } catch { if (!closingView) presenceRetry = setTimeout(connectView, 1000) } }
 document.addEventListener('visibilitychange', publishPresence)
-window.addEventListener('pagehide', () => { closingView = true; clearTimeout(presenceRetry); presencePort?.disconnect(); presencePort = undefined })
+window.addEventListener('pagehide', () => { closingView = true; clearTimeout(approvalPollTimer); clearTimeout(presenceRetry); presencePort?.disconnect(); presencePort = undefined })
 render(); connectView(); void readState()
