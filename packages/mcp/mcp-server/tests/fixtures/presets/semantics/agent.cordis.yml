@@ -1,0 +1,7 @@
+- id: semantics-tool
+  name: ../../plugins/capability.js
+  config:
+    name: semantic_lookup
+    description: Semantic lookup.
+    additionalContext: true
+    concludesTurn: true

@@ -17,6 +17,7 @@ import type { SpillRef } from '@deepseek-ai/dsh-spill'
 import { runRipgrep, toWorkdirRelative, trySaveFormattedResult } from './search-core.ts'
 import { globSearchMeta, searchViewFromMeta } from './presentation.ts'
 import { acceptedDirectCallValue } from './direct-call.ts'
+import { describe, GLOB_OUTPUT_SCHEMA, GLOB_PARAMETERS } from './declaration.ts'
 
 /**
  * Default cap on paths retained inline by one `glob` call (the `globMaxResults`
@@ -306,34 +307,17 @@ export function applyGlobTool(ctx: Context, caps: GlobToolCaps): void {
       + `Results are files only, never directories, and include hidden and ignored files: a result that fits comes back in modification-time order, ${overCapGuidance}`,
   })
 
-  const overCapDescription = caps.sampleOverCapGlobResults
-    ? `a larger result instead returns ${caps.maxResults} paths sampled across top-level entries`
-    : `a larger result returns the first ${caps.maxResults} paths in modification-time order`
+  const declaration = describe({
+    sampleOverCapGlobResults: caps.sampleOverCapGlobResults,
+    globMaxResults: caps.maxResults,
+  })
   const tool = defineTool({
-    name: 'glob',
-    description: 'Find files whose paths match a glob pattern. Returns matching file paths — never directories — '
-      + 'including hidden and ignored files (VCS metadata directories are excluded). '
-      + `Up to ${caps.maxResults} paths come back in modification-time order; ${overCapDescription}, `
-      + 'says so, and reports where the complete sorted list was saved. This tool does not enumerate directory entries.',
-    parameters: {
-      pattern: {
-        type: 'string',
-        required: true,
-        description: 'Glob pattern to match file paths against (e.g. "**/*.ts", "src/**/*.test.js"). '
-          + 'A pattern with no "/" matches the basename at any depth, so "*" and "*.ts" both search the whole tree; include a separator to anchor the depth.',
-      },
-      path: { type: 'string', description: 'Directory to search in. Defaults to the session workspace; a relative path resolves against it.' },
-    },
+    name: declaration.name,
+    description: declaration.description,
+    parameters: GLOB_PARAMETERS,
     timeoutMs: caps.timeoutMs,
     output: {
-      schema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          root: { type: 'string', required: true },
-          paths: { type: 'array', required: true, items: { type: 'string' } },
-        },
-      },
+      schema: GLOB_OUTPUT_SCHEMA,
       render: (_args, value) => [{ type: 'text', text: renderGlobPaths(value.paths, caps, value.root) }],
       presentationMeta: (_args, value) => {
         const page = globCardPage(value.paths, caps, value.root)

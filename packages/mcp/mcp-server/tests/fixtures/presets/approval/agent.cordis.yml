@@ -1,0 +1,6 @@
+- id: approval-tool
+  name: ../../plugins/capability.js
+  config:
+    name: approval_lookup
+    description: Approval lookup.
+    ask: true

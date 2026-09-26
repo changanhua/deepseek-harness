@@ -1,0 +1,79 @@
+# Standalone local MCP capability host. The root mounts only the execution
+# kernel and endpoint; each catalog tool mounts its preset on first use.
+
+- insert:
+    - id: timer
+      name: '@deepseek-ai/cordis-plugin-timer'
+
+    # The root LLM registry satisfies the agent-loop kernel but intentionally
+    # registers no provider. The choice preset owns its isolated provider.
+    - id: llm
+      name: '@deepseek-ai/dsh-llm'
+
+    - id: session
+      name: '@deepseek-ai/dsh-session'
+
+    - id: session-projection
+      name: '@deepseek-ai/dsh-session-projection'
+
+    - id: system-prompt
+      name: '@deepseek-ai/dsh-system-prompt'
+      config:
+        includeHarnessIdentity: false
+        includeRuntimeContext: false
+        personaPrefix: ''
+
+    - id: tools
+      name: '@deepseek-ai/dsh-tools'
+      config:
+        mode: native
+
+    - id: agent
+      name: '@deepseek-ai/dsh-agent'
+
+    - id: agent-loop
+      name: '@deepseek-ai/dsh-agent-loop'
+      config:
+        agents: []
+
+    - id: sessions
+      name: '@deepseek-ai/dsh-session-persistence-jsonl'
+      config:
+        root: !!js dshHomePath('sessions')
+        compression: none
+
+    - id: webserver
+      name: '@deepseek-ai/dsh-host-webserver'
+      config:
+        host: 127.0.0.1
+        port: !!js Number(process.env.DSH_MCP_PORT ?? 8765)
+
+    # This replacement service exposes only the two bundle-owned preset roots;
+    # neither the general shipped roster nor DSH_HOME user presets are visible.
+    - id: agent-presets
+      name: '@changanhua/dsh-capabilities'
+      config:
+        default: choice
+        roots: []
+        includeShippedRoot: false
+        includeUserRoot: false
+
+    - id: mcp-server
+      name: '@changanhua/dsh-mcp-server'
+      config:
+        path: /mcp
+        tokenEnv: DSH_MCP_TOKEN
+        workspace: !!js process.env.DSH_MCP_WORKSPACE ?? ''
+        requestMaxBytes: 262144
+        resultMaxBytes: 1048576
+        callTimeoutMs: 15000
+        maxPendingCalls: 8
+        catalog:
+          - preset: choice
+            declaration: '@changanhua/dsh-tool-choice/declaration'
+            options: {}
+          - preset: search
+            declaration: '@deepseek-ai/dsh-tool-fs-search/declaration'
+            options:
+              sampleOverCapGlobResults: false
+              globMaxResults: 200
