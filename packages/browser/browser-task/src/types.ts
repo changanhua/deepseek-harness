@@ -1,6 +1,6 @@
 /** Client-safe durable vocabulary for the Session-backed browser task domain. */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { BrowserPage, BrowserRecoveryLocator } from '@changanhua/dsh-browser/types'
+import type { BrowserPage, BrowserRecoveryLocator, BrowserTabReference } from '@changanhua/dsh-browser/types'
 
 export type BrowserTaskId = Branded<'BrowserTaskId'>
 export interface BrowserTaskRef { readonly id: BrowserTaskId; readonly revision: number }
@@ -76,7 +76,10 @@ export interface AcceptanceEvaluation {
 }
 export type AttemptStage = 'planned' | 'prepared' | 'dispatch-intent' | 'dispatched' | 'settled'
 export type AttemptOutcome = 'observed' | 'failed' | 'cancelled' | 'unknown'
-export interface BrowserActionAttempt {
+export type BrowserBootstrapAuthority =
+  | { readonly kind: 'target-free-open'; readonly installationId: string; readonly targetRevision: number; readonly url: string }
+  | { readonly kind: 'opened-tab-snapshot'; readonly installationId: string; readonly targetRevision: number; readonly tabId: number; readonly windowId: number; readonly browserSessionId: string; readonly openedByRequestId: string }
+export interface BrowserActionAttemptBase {
   readonly attemptId: string
   readonly requestId: string
   readonly actionKind: string
@@ -85,7 +88,6 @@ export interface BrowserActionAttempt {
   readonly outcome?: AttemptOutcome
   readonly quiescent?: boolean
   readonly write: boolean
-  readonly target: BrowserTargetBinding
   /** Exact page-resource lease for a region or mount action, when applicable. */
   readonly resourceId?: string
   /** Bounded render intent retained before dispatch so a recovered receipt can prove presentation. */
@@ -95,6 +97,10 @@ export interface BrowserActionAttempt {
   readonly settledBy?: BrowserTaskSourceRef
   readonly reconciledBy?: BrowserTaskSourceRef
 }
+/** An attempt has one authority branch. A bootstrap attempt can never borrow a page target. */
+export type BrowserActionAttempt =
+  | (BrowserActionAttemptBase & { readonly target: BrowserTargetBinding; readonly bootstrap?: never })
+  | (BrowserActionAttemptBase & { readonly bootstrap: BrowserBootstrapAuthority; readonly target?: never })
 export type PageResourceState = 'reserved' | 'active' | 'release-pending' | 'released' | 'vanished' | 'unresolved' | 'retained'
 export type ResourceDisposition = 'clear-observed' | 'document-replaced' | 'absent' | 'owner-transfer' | 'reconcile-active' | 'reconcile-observed' | 'not-sent'
 export interface BrowserPagePresentation {
@@ -120,6 +126,8 @@ export interface BrowserCapability {
   readonly scopes: readonly string[]
   readonly actions: readonly string[]
   readonly protocol: string
+  /** The connected executor accepts page-less tab_open and returns a session-bound tab reference. */
+  readonly targetFreeOpen?: true
 }
 export type DelegatedWorkIdentity =
   | { readonly mode: 'foreground'; readonly runId: string }
@@ -142,6 +150,13 @@ export interface BrowserTaskBudget {
   readonly stepsUsed: number
   readonly actionsUsed: number
 }
+export interface BrowserPendingTarget extends BrowserTabReference {
+  readonly installationId: string
+  readonly targetRevision: number
+  readonly grantEpoch: number
+  readonly openedByRequestId: string
+  readonly openedByReceipt: Extract<BrowserTaskSourceRef, { readonly kind: 'browser-task-receipt' }>
+}
 export interface BrowserTaskSnapshot extends BrowserTaskRef {
   readonly objective: string
   readonly sourceSeq: number
@@ -153,6 +168,7 @@ export interface BrowserTaskSnapshot extends BrowserTaskRef {
   readonly target?: BrowserTargetBinding
   /** Session target revision copied when the product tool starts this task. */
   readonly targetRevision?: number
+  readonly pendingTarget?: BrowserPendingTarget
   readonly targetLossAcknowledged: boolean
   readonly acceptance: readonly AcceptanceClause[]
   readonly evidence: readonly BrowserTaskEvidence[]
@@ -173,13 +189,11 @@ export interface BrowserTaskSnapshot extends BrowserTaskRef {
   readonly updatedAt: number
 }
 /** Bounded receipt fact appended before a task change cites an execution outcome. */
-export interface BrowserTaskReceipt {
+export interface BrowserTaskReceiptBase {
   readonly kind: 'browser-task/receipt'
-  readonly version: 1
   readonly taskId: BrowserTaskId
   readonly requestId: string
   readonly actionKind: string
-  readonly target: BrowserTargetBinding
   readonly outcome: AttemptOutcome
   readonly delivery: 'sent' | 'not-sent'
   readonly quiescent: boolean
@@ -191,6 +205,21 @@ export interface BrowserTaskReceipt {
   readonly failureFingerprint?: string
   readonly presentation?: { readonly contentDigest: string; readonly excerpt: string }
 }
+/** v1 is the existing exact-page receipt. v2 records a target-free bootstrap fact. */
+export type BrowserTaskReceipt =
+  | (BrowserTaskReceiptBase & {
+    readonly version: 1
+    readonly target: BrowserTargetBinding
+    readonly bootstrap?: never
+    readonly observation?: never
+  })
+  | (BrowserTaskReceiptBase & {
+    readonly version: 2
+    readonly bootstrap: BrowserBootstrapAuthority
+    readonly target?: never
+    readonly observation: { readonly kind: 'none' } | { readonly kind: 'opened-tab'; readonly tab: BrowserTabReference }
+      | { readonly kind: 'page'; readonly target: BrowserTargetBinding; readonly digest: string }
+  })
 export interface BrowserTaskCheck { readonly kind: 'browser-task/check'; readonly version: 1; readonly taskId: BrowserTaskId; readonly checkerId: string; readonly target: BrowserTargetBinding; readonly grantEpoch: number; readonly evaluations: readonly { readonly clauseId: string; readonly satisfied: boolean; readonly evidenceIds: readonly string[] }[] }
 /** Canonical bounded delegation fact captured from the Tool runtime before the task cites it. */
 export interface BrowserTaskDelegation {
@@ -239,6 +268,8 @@ export interface BrowserTaskSourceFact {
   readonly reason?: string
   readonly failureFingerprint?: string
   readonly presentation?: { readonly contentDigest: string; readonly excerpt: string }
+  readonly bootstrap?: BrowserBootstrapAuthority
+  readonly observation?: Extract<BrowserTaskReceipt, { readonly version: 2 }>['observation']
   readonly checkerId?: string
   readonly evaluations?: readonly {
     readonly clauseId: string
@@ -272,6 +303,15 @@ export interface CreateBrowserTaskRequest {
   readonly targetRevision?: number
   readonly maxSteps?: number
   readonly maxActions?: number
+}
+export type BrowserBootstrapSettlement =
+  | { readonly kind: 'result'; readonly result: import('@changanhua/dsh-browser').BrowserActionResult }
+  | { readonly kind: 'recovery'; readonly status: import('@changanhua/dsh-browser').BrowserRequestStatus & { readonly quiescent: true } }
+export interface BrowserBootstrapSettlementResult {
+  readonly task: BrowserTaskSnapshot
+  readonly receipt: Extract<BrowserTaskSourceRef, { readonly kind: 'browser-task-receipt' }>
+  readonly disposition: 'settled' | 'reconciled' | 'unchanged'
+  readonly evidenceRecorded: boolean
 }
 export interface HandoffBrowserFunctionRequest {
   readonly owner: BrowserFunctionOwner

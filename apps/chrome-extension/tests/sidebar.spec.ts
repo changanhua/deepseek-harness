@@ -31,27 +31,41 @@ const modelCatalog = () => ({
   ],
   failures: [],
 })
-const load = async (current: unknown = baseState(), reply?: (message: Record<string, unknown>) => unknown) => {
+const load = async (current: unknown = baseState(), reply?: (message: Record<string, unknown>) => unknown,
+  connectImpl?: () => unknown) => {
   document.body.innerHTML = markup
   const messages: Record<string, unknown>[] = []
   const wireMessages: Record<string, unknown>[] = []
+  const permissionRequest = vi.fn(async () => true)
   const listener = vi.fn<(callback: (message: { type: string }) => void) => void>()
-  vi.stubGlobal('chrome', { runtime: { sendMessage: vi.fn(async (message: Record<string, unknown>) => {
+  vi.stubGlobal('chrome', { runtime: { ...(connectImpl ? { connect: connectImpl } : {}), sendMessage: vi.fn(async (message: Record<string, unknown>) => {
     wireMessages.push(message)
     const { surfaceId: _surfaceId, ...semanticMessage } = message
     messages.push(semanticMessage); return reply?.(message) ?? { ok: true, state: current }
-  }), onMessage: { addListener: listener } }, permissions: { request: vi.fn(async () => true) } })
+  }), onMessage: { addListener: listener } }, permissions: { request: permissionRequest } })
   await import('../src/sidebar.js'); await Promise.resolve(); await Promise.resolve()
-  return { messages, wireMessages, listener }
+  return { messages, wireMessages, listener, permissionRequest }
 }
 const element = (selector: string): HTMLElement => {
   const result = document.querySelector<HTMLElement>(selector)
   if (!result) throw new Error(`Missing fixture element: ${selector}`)
   return result
 }
-afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); document.body.replaceChildren() })
+afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); vi.useRealTimers(); document.body.replaceChildren() })
 
 describe('DSH 浏览器助手 V2 侧栏', () => {
+  test('设置页显示独立的 Codex 浏览器连接，并可发起连接', async () => {
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      codexConnection: { baseUrl: 'http://127.0.0.1:3091', phase: 'configured' } } })
+    const fixture = await load(current)
+    element('#show-settings').click()
+    expect(element('#codex-browser-connection').textContent).toContain('Codex 网页连接')
+    const action = [...element('#codex-browser-connection').querySelectorAll('button')].find(node => node.textContent === '连接 Codex')
+    expect(action).toBeTruthy()
+    action!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => { expect(fixture.messages).toContainEqual({ type: 'dsh-codex-browser-connect' }) })
+  })
+
   test('worker 尚未返回时也先提供可操作的连接与设置入口', async () => {
     await load(baseState(), message => message.type === 'dsh-assistant-state'
       ? new Promise(() => {})
@@ -273,6 +287,29 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     expect(fixture.messages).not.toContainEqual(expect.objectContaining({ type: 'dsh-assistant-target-bind' }))
   })
 
+  test('固定目标明确限定在当前对话，会话列表显示身份以免误选同名对话', async () => {
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-12345678' } },
+      target: { availability: 'ready', revision: 3, selected: { tabId: 9, title: 'FC Ultimate Team Web App' }, candidates: [] },
+    } })
+    await load(current, message => message.type === 'dsh-assistant-session-list'
+      ? { ok: true, value: { items: [
+        { sessionId: 'session-12345678', projections: { values: { title: 'FC 研究' } } },
+        { sessionId: 'session-87654321', projections: { values: { title: 'FC 研究' } } },
+      ] } }
+      : { ok: true, state: current })
+
+    expect(element('#target-panel').textContent).toContain('已固定到此对话')
+    expect(element('#target-panel').textContent).toContain('仅此对话')
+    expect(element('#target-panel').textContent).toContain('12345678')
+    element('#session-switch').click()
+    await vi.waitFor(() => { expect(document.querySelectorAll('#session-switch-menu button')).toHaveLength(2) })
+    const rows = [...document.querySelectorAll<HTMLButtonElement>('#session-switch-menu button')]
+    expect(rows[0]?.textContent).toContain('12345678')
+    expect(rows[1]?.textContent).toContain('87654321')
+    expect(rows[1]?.title).toContain('session-87654321')
+  })
+
   test('目标选择弹层点击内部保持打开，点击外部关闭', async () => {
     const current = baseState({ assistantV2: { ...baseState().assistantV2,
       session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
@@ -301,32 +338,59 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
   })
 
   test('已绑定会话可直接切到当前页而不打开标签弹层', async () => {
+    const selected = { tabId: 7, windowId: 2, frameId: 0, documentId: 'doc-7', url: 'https://example.test/a', title: 'A' }
     const current = baseState({ assistantV2: { ...baseState().assistantV2,
       session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
       target: { availability: 'ready', revision: 3, selected: { tabId: 9, title: '固定文章' }, candidates: [] },
     } })
-    const fixture = await load(current)
+    const fixture = await load(current, message => message.type === 'dsh-assistant-target-current'
+      ? { ok: true, value: selected } : { ok: true, state: current })
 
     const switchCurrent = [...document.querySelectorAll<HTMLButtonElement>('#target-panel button')]
       .find(node => node.textContent === '切到当前页')
     switchCurrent?.click()
-    await Promise.resolve()
 
     expect(element('#target-dialog').hidden).toBe(true)
-    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-target-bind', expectedRevision: 3 })
+    await vi.waitFor(() => { expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-target-bind',
+      expectedRevision: 3, tabId: 7, expectedPage: selected }) })
   })
 
   test('首页显式固定当前标签时只绑定刚创建且仍为当前的对话', async () => {
+    const selected = { tabId: 7, windowId: 2, frameId: 0, documentId: 'doc-7', url: 'https://example.test/a', title: 'A' }
     const created = baseState({ assistantV2: { ...baseState().assistantV2,
       session: { ...baseState().assistantV2.session, binding: { sessionId: 'created-session' } },
       target: { availability: 'ready', revision: 0, selected: null, candidates: [] },
     } })
-    const fixture = await load(baseState(), message => message.type === 'dsh-assistant-session-create'
-      ? { ok: true, state: created } : { ok: true, state: message.type === 'dsh-assistant-state' ? baseState() : created })
+    const fixture = await load(baseState(), message => message.type === 'dsh-assistant-target-current'
+      ? { ok: true, value: selected } : message.type === 'dsh-assistant-session-create'
+        ? { ok: true, state: created } : { ok: true, state: message.type === 'dsh-assistant-state' ? baseState() : created })
     const fix = [...document.querySelectorAll<HTMLButtonElement>('#target-panel button')].find(node => node.textContent === '固定当前标签')
-    fix?.click(); await vi.waitFor(() =>{  expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-target-bind', expectedRevision: 0 }) })
+    fix?.click(); await vi.waitFor(() =>{  expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-target-bind',
+      expectedRevision: 0, tabId: 7, expectedPage: selected }) })
     expect(fixture.messages.indexOf(fixture.messages.find(message => message.type === 'dsh-assistant-session-create')!))
       .toBeLessThan(fixture.messages.indexOf(fixture.messages.find(message => message.type === 'dsh-assistant-target-bind')!))
+  })
+
+  test('创建会话期间切换标签也只绑定点击时的文档', async () => {
+    const selected = { tabId: 7, windowId: 2, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a', title: 'A' }
+    let active = selected
+    const created = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'created-session' } },
+      target: { availability: 'ready', revision: 0, selected: null, candidates: [] },
+    } })
+    let finishCreate!: (value: unknown) => void
+    const creating = new Promise((resolve) => { finishCreate = resolve })
+    const fixture = await load(baseState(), message => message.type === 'dsh-assistant-target-current'
+      ? { ok: true, value: active }
+      : message.type === 'dsh-assistant-session-create' ? creating
+        : { ok: true, state: message.type === 'dsh-assistant-state' ? baseState() : created })
+    const fix = [...document.querySelectorAll<HTMLButtonElement>('#target-panel button')].find(node => node.textContent === '固定当前标签')
+    fix?.click()
+    await vi.waitFor(() => { expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-session-create' }) })
+    active = { tabId: 8, windowId: 2, frameId: 0, documentId: 'doc-b', url: 'https://example.test/b', title: 'B' }
+    finishCreate({ ok: true, state: created })
+    await vi.waitFor(() => { expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-target-bind',
+      expectedRevision: 0, tabId: 7, expectedPage: selected }) })
   })
 
   test('已绑定会话但目标服务不可用时提示重试或重连', async () => {
@@ -409,6 +473,32 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-target-clear', expectedRevision: 3 })
   })
 
+  test('多窗口候选不把两个活动标签都标成当前，并精确绑定 FC 标签', async () => {
+    const items = [
+      { tabId: 70, windowId: 1, title: 'B 站视频', url: 'https://www.bilibili.com/video/a', active: true },
+      { tabId: 80, windowId: 2, title: 'FC Ultimate Team Web App', url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', active: true },
+      { tabId: 81, windowId: 2, title: 'FUTBIN', url: 'https://www.futbin.com/popular', active: false },
+    ]
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 0, selected: null, candidates: items },
+    } })
+    const fixture = await load(current, message => message.type === 'dsh-assistant-target-candidates'
+      ? { ok: true, value: { items } } : { ok: true, state: current })
+
+    expect(element('#target-panel').textContent).not.toContain('切到当前页')
+    const choose = [...document.querySelectorAll<HTMLButtonElement>('#target-panel button')]
+      .find(node => node.textContent === '选择其他标签')
+    choose?.click()
+    await vi.waitFor(() => { expect(element('#target-candidates').textContent).toContain('FC Ultimate Team Web App') })
+    const candidates = [...document.querySelectorAll<HTMLButtonElement>('#target-candidates button')]
+    expect(candidates[0]?.textContent).toContain('窗口 1 · 该窗口已选中 · B 站视频')
+    expect(candidates[1]?.textContent).toContain('窗口 2 · 该窗口已选中 · FC Ultimate Team Web App')
+    expect(candidates.filter(node => node.hasAttribute('aria-current'))).toHaveLength(0)
+    candidates[1]?.click()
+    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-target-bind', expectedRevision: 0, tabId: 80 })
+  })
+
   test('功能未接通时绝不展示投影条目为成功功能，页面范围可切换', async () => {
     await load(baseState({ assistantV2: { ...baseState().assistantV2, functions: { availability: 'unavailable', items: [{ name: '演示功能' }] } } }))
     element('[data-view="functions"]').click()
@@ -462,30 +552,55 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     expect(element('#functions-content').textContent).toContain('当前操作网页没有可用功能')
   })
 
-  test('功能只在目录给出真实打开目标时允许打开，创建通过对话草稿表达范围', async () => {
-    const current = baseState({ assistantV2: { ...baseState().assistantV2, functions: { availability: 'ready', items: [
-      { pluginId: 'with-view', name: '可视功能', purpose: '已有界面', currentPackageId: 'pkg-1', activeRun: { pluginRunId: 'run-1' }, scope: 'global', status: 'running', openTarget: { kind: 'web', sessionId: 'view-session' } },
-      { pluginId: 'host-only', name: '后台功能', purpose: '没有界面', currentPackageId: 'pkg-2', activeRun: { pluginRunId: 'run-2' }, scope: 'global', status: 'running' },
-    ] } } })
-    const fixture = await load(current); element('[data-view="functions"]').click()
-    const cards = [...document.querySelectorAll<HTMLElement>('#functions-content .function')]
-    const open = [...cards[0].querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === '在 DSH 中打开')
-    const disabled = [...cards[1].querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === '没有可打开的界面')
-    expect(open?.disabled).toBe(false); expect(disabled?.disabled).toBe(true); open?.click(); await Promise.resolve()
-    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-function-open', pluginId: 'with-view' })
-    expect((cards[0].querySelector('input') as HTMLInputElement).disabled).toBe(true)
-    expect(cards[0].textContent).toContain('开始或选择对话后可运行和修改')
-    element('#create-function').click()
-    expect((element('#composer') as HTMLTextAreaElement).value).toBe('帮我创建一个全局功能：')
-    expect(element('#chat-panel').hidden).toBe(false)
-  })
-
   test('离线错误状态保留可编辑草稿，不允许把它发送到未知会话', async () => {
-    await load(baseState({ assistantV2: { ...baseState().assistantV2, connection: { phase: 'offline' } } }))
+    const fixture = await load(baseState({ assistantV2: { ...baseState().assistantV2, connection: { phase: 'offline' } } }))
     expect((element('#composer') as HTMLTextAreaElement).disabled).toBe(false)
     expect((element('#send-queue') as HTMLButtonElement).disabled).toBe(true)
     expect(element('#send-status').textContent).toContain('连接 DSH')
     expect(element('#target-panel').textContent).toContain('请先连接 DSH')
+    const retry = [...element('#connection-panel').querySelectorAll('button')].find(node => node.textContent === '重试连接')
+    expect(retry).toBeDefined()
+    retry?.click(); await vi.waitFor(() => { expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-retry' }) })
+    expect(fixture.permissionRequest).not.toHaveBeenCalled()
+  })
+
+  test('侧栏后台 presence 连续断开后保持有界重试，握手恢复后清除提示', async () => {
+    vi.useFakeTimers()
+    const disconnects: Array<() => void> = []
+    const messages: Array<(message: { type: string }) => void> = []
+    const connect = vi.fn(() => ({ postMessage: vi.fn(), disconnect: vi.fn(),
+      onMessage: { addListener: (callback: (message: { type: string }) => void) => { messages.push(callback) } },
+      onDisconnect: { addListener: (callback: () => void) => { disconnects.push(callback) } } }))
+    await load(baseState(), undefined, connect)
+    expect(connect).toHaveBeenCalledTimes(1)
+    for (const delay of [1000, 2000, 4000, 8000, 16000]) {
+      disconnects.at(-1)!()
+      await vi.advanceTimersByTimeAsync(delay)
+    }
+    disconnects.at(-1)!()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(connect).toHaveBeenCalledTimes(7)
+    messages.at(-1)!({ type: 'presence-ready' })
+    expect(element('#notice').hidden).toBe(true)
+    disconnects.at(-1)!()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(connect).toHaveBeenCalledTimes(8)
+  })
+
+  test('扩展上下文失效时提示重新打开侧栏并停止无效重试', async () => {
+    vi.useFakeTimers()
+    const connect = vi.fn(() => { throw new Error('Extension context invalidated.') })
+    await load(baseState(), undefined, connect)
+    expect(element('#notice').textContent).toContain('重新打开侧栏')
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(connect).toHaveBeenCalledTimes(1)
+  })
+
+  test('连接握手中禁用再次连接按钮', async () => {
+    await load(baseState({ assistantV2: { ...baseState().assistantV2,
+      connection: { baseUrl: 'http://127.0.0.1:3080', phase: 'connecting' } } }))
+    const action = element('#connection-panel button') as HTMLButtonElement
+    expect(action.disabled).toBe(true)
   })
 
   test('保留粘贴图片、Enter 发送和 Shift+Enter 换行的编辑行为', async () => {
@@ -518,18 +633,6 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
       approvals: { sessionId: 'session-other', requests: [{ id: 'approval-2', reason: '不属于当前会话' }] },
     }))
     expect(element('#action-approvals').textContent).not.toContain('不属于当前会话')
-  })
-
-  test('未知动作保留查看目标与人工核对入口', async () => {
-    const identity = { installationId: 'install', sessionId: 'session-v2', requestId: 'request-1' }
-    const fixture = await load(baseState({ unresolved: [{ identity, target: { tabId: 9 }, acknowledgementPending: false }] }))
-    expect(element('#unresolved-actions').textContent).toContain('结果未知')
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>('#unresolved-actions button')]
-    buttons.find(node => node.textContent === '查看目标标签')?.click()
-    buttons.find(node => node.textContent?.includes('接受未知结果'))?.click()
-    await Promise.resolve()
-    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-reveal-target', requestId: 'request-1' })
-    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-acknowledge', identity })
   })
 
   test('设置保留网页引擎和站点权限，steer 仍约束当前会话', async () => {

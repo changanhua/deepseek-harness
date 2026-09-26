@@ -6,6 +6,8 @@
 
 ## 使用侧栏
 
+同一个扩展可以独立连接 Codex 和 DSH。安装监听 `http://127.0.0.1:3091` 的独立浏览器连接器后，在“连接与设置”点击“连接 Codex”，再从 Codex 提问或操作目标网页，无需运行 DSH。两条连接分别管理凭据、结果和断线，共用浏览器执行账本，避免未确认结束的写入在同一标签上冲突。扩展内的聊天和阅读控件继续使用 DSH。
+
 解读页未连接时直接显示连接卡片，可填写 DSH 地址并使用现有连接流程。首次配置、等待连接和临时离线分别显示对应提示。连接前隐藏空的阅读控件，已有解读仍可查看；临时断线使用已保存的授权重连。
 
 “解读”页独立选择模型与支持的推理强度，列表来自 DSH 已配置的全部服务商，包括兼容接口的自定义模型。“DSH 完整设置 ↗”通过 `/#settings=models` 打开完整设置面板，可配置服务商、API 地址、密钥、模型列表及其他 DSH 设置。密钥保留在 DSH，扩展只保存解读模型选择；配置后可刷新模型列表。
@@ -60,4 +62,4 @@ Chrome 在离线或重启期间保留不可变 pending submission 或 `pendingCr
 
 ## 连接行为
 
-worker 为所选 Session 流式传送首个 snapshot 和后续按 cursor 寻址的 events。可见且同 Session、具备 `session:interact` 的 peer 能通过既有 Approval answer chain 接收浏览器操作卡；隐藏或断线 peer 委托 Web，取消或超时会移除卡。对于未知操作，journal 要求用户 acknowledgement 按钮后才持久化 `acknowledgementPending`，随后通过 `browser.acknowledge` 发送最小 identity、outcome 和完全停稳事实；后续连接可以再次同步它。真实登录站点与真实模型的验收取决于部署配置。扩展不管理 Chrome 用户配置，也不替代 DSH Web 应用的会话历史。
+worker 为所选 Session 流式传送首个 snapshot 和后续按 cursor 寻址的 events。可见且同 Session、具备 `session:interact` 的 peer 能通过既有 Approval answer chain 接收浏览器操作卡；隐藏或断线 peer 委托 Web，取消或超时会移除卡。对于未知操作，journal 直接持久化最小 identity、outcome 和完全停稳事实，无需人工确认：只有仍可能运行的操作占用标签页，已证明停稳的结果会释放占用并保持可查询，后续连接仍可同步它。真实登录站点与真实模型的验收取决于部署配置。扩展不管理 Chrome 用户配置，也不替代 DSH Web 应用的会话历史。

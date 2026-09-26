@@ -11,7 +11,7 @@ interface ExternalApi {
   startExternal(request: unknown): unknown
   externalNode(request: unknown): Element | null
   issueExternal(request: unknown): unknown
-  completeExternal(request: unknown): unknown
+  completeExternal(request: unknown, options?: unknown): unknown
   inspect(request: unknown, options?: { cancel: boolean }): unknown
 }
 const pageGlobal = globalThis as typeof globalThis & { __dshBrowserAssistant?: ExternalApi }
@@ -66,6 +66,28 @@ test('unchanged page after trusted click is reported honestly', async () => {
   const { api, request } = await setup()
   api.startExternal(request); api.issueExternal(request)
   expect(api.completeExternal(request)).toMatchObject({ outcome: 'unknown', reason: 'effect_unverified', quiescent: true })
+})
+test('confirmed input completion does not claim a business effect or lock an unchanged page', async () => {
+  const { api, request } = await setup()
+  api.startExternal(request); api.issueExternal(request)
+  const result = api.completeExternal(request, { result: { input: 'click' } })
+  expect(result).toMatchObject({ outcome: 'observed', quiescent: true,
+    value: { engine: 'puppeteer', input: 'click', effect: 'not-observed', businessOutcome: 'unverified' } })
+  expect(api.startExternal(request)).toEqual(result)
+})
+test('a direct connector action gets the same preparation guards and preserves its request identity', async () => {
+  const { api, request: committed } = await setup()
+  const request = { ...committed, requestId: randomUUID(), payload: committed.payload.action }
+  expect(api.startExternal(request)).toEqual({ ready: true })
+  expect(api.externalNode(request)).toBe(document.querySelector('button'))
+  document.querySelector('button')!.textContent = 'Buy'
+  expect(api.issueExternal(request)).toMatchObject({ requestId: request.requestId, outcome: 'failed', reason: 'stale_preparation' })
+})
+test('an interrupted click remains unknown even when its input metadata exists', async () => {
+  const { api, request } = await setup()
+  api.startExternal(request); api.issueExternal(request)
+  expect(api.completeExternal(request, { reason: 'connection_lost', result: { input: 'click' } }))
+    .toMatchObject({ outcome: 'unknown', reason: 'connection_lost', quiescent: true })
 })
 test('page-level screenshot reserves and issues without reading a null DOM node', async () => {
   document.body.innerHTML = '<main>Visual page</main>'

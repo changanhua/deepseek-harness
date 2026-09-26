@@ -312,7 +312,7 @@
     return value
   }
   const binding = request => JSON.stringify([request.installationId, request.sessionId, request.grantEpoch])
-  const prepare = request => {
+  const prepare = (request, { retainReceipt = true } = {}) => {
     prune()
     const reject = reason => receipt(request, 'failed', { reason, quiescent: true })
     if (!validIdentity(request) || request.payload?.kind !== 'prepare') return reject('invalid_request')
@@ -341,19 +341,29 @@
       preparations.set(preparationId, { action: JSON.stringify(action), binding: binding(request), state, node, expiresAt, used: false })
       if (action.element) snapshots.get(action.element.snapshotId).expiresAt = Math.max(snapshots.get(action.element.snapshotId).expiresAt, expiresAt)
       const result = receipt(request, 'observed', { quiescent: true, value: { preparationId, expiresAt, description } })
-      addRecord(request, { receipt: result })
+      if (retainReceipt) addRecord(request, { receipt: result })
       return copy(result)
     } catch { return reject('preparation_too_large') }
   }
 
   const effectState = node => JSON.stringify({ url: location.href, title: document.title, text: visibleBodyText().text, node: fieldState(node), controlState: stateOf(node) })
+  const clickTarget = node => {
+    if (customActionability(node) !== 'pointer') return node
+    const fallback = node.querySelector('button,a,input,select,textarea,[role="button"],[role="link"]') ? null : node
+    const headings = node.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')
+    if (headings.length !== 1 || !visible(headings[0])
+      || headings[0].closest('button,a,[role="button"],[role="link"]')) return fallback
+    return headings[0]
+  }
   const run = (node, action) => {
     if (node && (disabledControl(node) || !visible(node))) return { rejected: 'target_unavailable' }
     if (action.kind === 'click') {
+      const target = clickTarget(node)
+      if (!target) return { rejected: 'ambiguous_click_target' }
       const before = effectState(node)
-      node.click()
-      return before === effectState(node) ? { unverified: 'effect_unverified' }
-        : { elementId: action.element.elementId, effect: 'page-changed', businessOutcome: 'unverified' }
+      target.click()
+      return { engine: 'dom', input: 'click', elementId: action.element.elementId,
+        effect: before === effectState(node) ? 'not-observed' : 'page-changed', businessOutcome: 'unverified' }
     }
     if (action.kind === 'fill') {
       if (!editable(node)) return { rejected: 'not_editable' }
@@ -1045,13 +1055,23 @@
   const startExternal = request => {
     prune()
     const reject = reason => receipt(request, 'failed', { reason, quiescent: true })
-    if (!validIdentity(request) || request.payload?.kind !== 'commit') return reject('invalid_request')
+    if (!validIdentity(request)) return reject('invalid_request')
     const prior = records.get(request.requestId)
     if (prior) return sameIdentity(prior.identity, request) ? copy(prior.receipt ?? unknown(request, 'in_flight')) : reject('request_conflict')
     if (Date.now() >= request.deadline) return reject('deadline')
     if (records.size >= MAX_RECORDS) return reject('capacity')
-    const action = request.payload.action, prepared = preparations.get(request.payload.preparationId)
+    const committing = request.payload?.kind === 'commit'
+    const action = committing ? request.payload.action : request.payload
     if (![...elementActions, ...pageActions].includes(action?.kind)) return reject('unsupported_action')
+    let preparationId = request.payload.preparationId
+    if (!committing) {
+      // A direct connector request still takes the same preparation path, under
+      // its original journal identity. Only the final input owns a receipt.
+      const result = prepare({ ...request, payload: { kind: 'prepare', action } }, { retainReceipt: false })
+      if (result.outcome !== 'observed') return result
+      preparationId = result.value.preparationId
+    }
+    const prepared = preparations.get(preparationId)
     if (!prepared || prepared.used) return reject('preparation_unavailable')
     if (prepared.binding !== binding(request) || prepared.action !== JSON.stringify(action)) return reject('preparation_mismatch')
     const node = action.element ? staleElement(action) : null
@@ -1100,7 +1120,9 @@
       result = valueSet ? receipt(request, 'observed', { quiescent: true, value: { engine: 'puppeteer', valueSet: true, businessOutcome: 'unverified' } })
         : unknown(request, 'field_value_unverified', true)
     } else if (options.result) result = receipt(request, 'observed', { quiescent: true,
-      value: { engine: 'puppeteer', ...options.result, businessOutcome: 'unverified' } })
+      value: { engine: 'puppeteer', ...options.result,
+        ...(action.kind === 'click' ? { effect: before === effectState(node) ? 'not-observed' : 'page-changed' } : {}),
+        businessOutcome: 'unverified' } })
     else result = before !== effectState(node)
       ? receipt(request, 'observed', { quiescent: true, value: { engine: 'puppeteer', effect: 'page-changed', businessOutcome: 'unverified' } })
       : unknown(request, 'effect_unverified', true)

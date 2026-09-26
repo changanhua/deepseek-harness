@@ -39,6 +39,7 @@ Browser 生命周期监听器会把该权威应用于普通工具、直接 Provi
 
 ## 已知限制与后续工作
 
+- 投影状态版本 8 保存 BrowserTask 变更版本 4 的快照；旧任务变更格式会被拒绝，不提供迁移。无目标任务会捕获用户空选择的修订号；`tab_open` 后保留待确认的精确标签页引用，只有匹配的主框架快照才能接入页面。接入只属于当前任务，绝不会修改用户的 Session 绑定。
 - 标准 Web 组合和 `tool-browser` 已使用本服务，但通用 Session 投影还没有专门的任务状态 UI。
 - owner cancel 只接受资源清理完成后最新直接用户消息中的明确标记 `[browser-task:cancel]` 或 `[browser-task:accept-unknown]`。Agent 遇到 unknown 浏览器效果需要用户决定时必须请求该标记，不能从普通自然语言推断同意，也不能断言效果发生或未发生。
 - 扩展 journal 过期、存储丢失、执行器离线或定位符不匹配都会让请求保持 unknown。任务不会据此推断 `not-sent`，也不会重放 write。

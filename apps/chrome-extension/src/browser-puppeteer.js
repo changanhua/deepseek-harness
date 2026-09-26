@@ -153,7 +153,7 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
         if (!ancestor) throw error('stale_document')
         ancestors.push(ancestor)
       }
-      const action = request.payload.action
+      const action = request.payload.kind === 'commit' ? request.payload.action : request.payload
       const requiresHit = Boolean(action.element) && action.kind !== 'upload'
       if (requiresHit) {
         for (const ancestor of [...ancestors].reverse()) await ancestor.scrollIntoView()

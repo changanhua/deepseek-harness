@@ -32,6 +32,7 @@ const transcript = (records, live) => {
 export const projectAssistantView = ({ surfaceId, state }) => ({
   surface: { id: surfaceId },
   connection: clone(state?.connection ?? null),
+  codexConnection: clone(state?.codexConnection ?? null),
   session: {
     binding: clone(state?.session?.binding ?? null),
     phase: state?.session?.phase ?? 'idle',

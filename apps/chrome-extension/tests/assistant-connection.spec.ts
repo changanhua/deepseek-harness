@@ -22,9 +22,9 @@ const harness = (initial: Record<string, unknown> = {}) => {
     stop: ReturnType<typeof vi.fn>
     call: ReturnType<typeof vi.fn>
     sendReceipt: ReturnType<typeof vi.fn>
-    onState: (state: { phase: string }) => void
+    onState: (state: { phase: string; retryPaused?: boolean }) => void
   }> = []
-  const createChannel = vi.fn((options: { onState: (state: { phase: string }) => void }) => {
+  const createChannel = vi.fn((options: { onState: (state: { phase: string; retryPaused?: boolean }) => void }) => {
     const channel = { start: vi.fn(), stop: vi.fn(), call: vi.fn(), sendReceipt: vi.fn(), onState: options.onState }
     channels.push(channel)
     return channel
@@ -171,6 +171,61 @@ describe('浏览器助手持久连接', () => {
     await expect(h.connection.read()).resolves.toMatchObject({ phase: 'offline' })
     expect(h.createChannel).not.toHaveBeenCalled()
     expect(h.hasOrigins).not.toHaveBeenCalled()
+  })
+
+  test('离线后手动重试沿用已保存授权，不重新配对', async () => {
+    const h = harness({ 'dsh.assistant.connection.v1': { baseUrl: pending.baseUrl, installationId, token: verifier, grant } })
+    await h.connection.read()
+    const channel = h.channels[0]
+    channel.onState({ phase: 'offline' })
+    await vi.waitFor(async () => { expect(await h.connection.read()).toMatchObject({ phase: 'offline' }) })
+    await expect(h.connection.retrySaved()).resolves.toBe(true)
+    expect(channel.start).toHaveBeenCalledTimes(2)
+    expect(h.transport.begin).not.toHaveBeenCalled()
+    expect(h.channels).toHaveLength(1)
+  })
+
+  test('自动重试耗尽后跨 worker 重启保持暂停，显式重试才恢复原凭据', async () => {
+    const h = harness({ 'dsh.assistant.connection.v1': { baseUrl: pending.baseUrl, installationId, token: verifier, grant } })
+    await h.connection.read()
+    h.channels[0].onState({ phase: 'offline', retryPaused: true })
+    await vi.waitFor(() => {
+      expect(h.values.get('dsh.assistant.connection.v1')).toMatchObject({ retryPaused: true, token: verifier, grant })
+    })
+    const restarted = createAssistantConnection({ storage: h.storage, transport: h.transport, createChannel: h.createChannel,
+      hasPermission: h.hasPermission, hasOrigins: h.hasOrigins, extensionId,
+      createInstallationId: () => installationId, openApprovalPage: h.openApprovalPage })
+    await expect(restarted.read()).resolves.toMatchObject({ phase: 'offline', baseUrl: pending.baseUrl })
+    expect(h.channels).toHaveLength(1)
+    await expect(restarted.retrySaved()).resolves.toBe(true)
+    expect(h.channels).toHaveLength(2)
+    expect(h.channels[1].start).toHaveBeenCalledTimes(1)
+    expect(h.transport.begin).not.toHaveBeenCalled()
+  })
+
+  test('首次离线即阻止 worker 重启重复尝试，稳定连接再解除持久暂停', async () => {
+    const h = harness({ 'dsh.assistant.connection.v1': { baseUrl: pending.baseUrl, installationId, token: verifier, grant } })
+    await h.connection.read()
+    h.channels[0].onState({ phase: 'offline', retryPaused: true })
+    await vi.waitFor(() => { expect(h.values.get('dsh.assistant.connection.v1')).toMatchObject({ retryPaused: true }) })
+    const restarted = createAssistantConnection({ storage: h.storage, transport: h.transport, createChannel: h.createChannel,
+      hasPermission: h.hasPermission, hasOrigins: h.hasOrigins, extensionId,
+      createInstallationId: () => installationId, openApprovalPage: h.openApprovalPage })
+    await expect(restarted.read()).resolves.toMatchObject({ phase: 'offline' })
+    expect(h.channels).toHaveLength(1)
+    h.channels[0].onState({ phase: 'connected', grant })
+    await vi.waitFor(async () => { expect(await h.connection.read()).toMatchObject({ phase: 'connected' }) })
+    h.channels[0].onState({ phase: 'stable' })
+    await vi.waitFor(() => { expect(h.values.get('dsh.assistant.connection.v1')).not.toHaveProperty('retryPaused', true) })
+  })
+
+  test('保存的连接已经在握手时，重试不切断它也不重新配对', async () => {
+    const h = harness({ 'dsh.assistant.connection.v1': { baseUrl: pending.baseUrl, installationId, token: verifier, grant } })
+    await expect(h.connection.read()).resolves.toMatchObject({ phase: 'connecting' })
+    await expect(h.connection.retrySaved()).resolves.toBe(true)
+    expect(h.channels[0].start).toHaveBeenCalledTimes(1)
+    expect(h.channels[0].stop).not.toHaveBeenCalled()
+    expect(h.transport.begin).not.toHaveBeenCalled()
   })
 
   test('通道撤销的持久化失败会本地禁用，之后 read 不会重新启动旧 token', async () => {

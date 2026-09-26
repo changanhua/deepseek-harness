@@ -56,7 +56,7 @@ export const createBrowserContext = ({ chromeApi }) => {
       url: pageUrl(result.result.url), title: String(result.result.title ?? '').slice(0, 512) },
     text: String(result.result.selection ?? '').trim() }
   }
-  const target = async tabId => {
+  const target = async (tabId, expectedPage) => {
     const tab = Number.isInteger(tabId) ? await chromeApi.tabs.get(tabId) : await activeTab()
     if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId)) throw failure('no_active_tab')
     pageUrl(tab.url)
@@ -71,6 +71,8 @@ export const createBrowserContext = ({ chromeApi }) => {
       url: pageUrl(result.result.url), title: String(result.result.title ?? '').slice(0, 512) } }
     const after = Number.isInteger(tabId) ? await chromeApi.tabs.get(tab.id) : await activeTab()
     if (after.id !== tab.id || after.windowId !== tab.windowId || after.url !== resolved.page.url) throw failure('capture_target_changed')
+    if (expectedPage && ['tabId', 'windowId', 'frameId', 'documentId', 'url']
+      .some(key => expectedPage[key] !== resolved.page[key])) throw failure('capture_target_changed')
     return resolved.page
   }
   const capture = async kind => {

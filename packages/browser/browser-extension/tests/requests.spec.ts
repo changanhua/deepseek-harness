@@ -14,6 +14,25 @@ describe('Host browser request ownership', () => {
   beforeEach(() => { vi.useFakeTimers(); requests = new BrowserRequests(limits) })
   afterEach(() => { requests.dispose(); vi.useRealTimers() })
 
+  it('admits independent tab creation without a page and deduplicates its pending identity', async () => {
+    const frames: BrowserDispatchFrame[] = []
+    const connection = requests.connect('i1', (frame) => { frames.push(frame) })
+    const { target: _target, ...base } = invocation()
+    const request = sealBrowserInvocation({ ...base, payload: { kind: 'tab_open', url: 'https://example.test/' } })
+    const first = requests.execute(request, liveSignal())
+    expect(frames).toEqual([{ type: 'execute', request }])
+    const secondRequest = sealBrowserInvocation({ ...request, requestId: 'r2' })
+    const second = requests.execute(secondRequest, liveSignal())
+    expect(frames).toHaveLength(2)
+    connection.receive({ ...secondRequest, outcome: 'observed', quiescent: true, value: { opened: true, tab: { tabId: 13, windowId: 1 } } })
+    expect(await second).toMatchObject({ value: { tab: { tabId: 13 } } })
+    connection.receive({ ...request, outcome: 'observed', quiescent: true, value: { opened: true, tab: { tabId: 12, windowId: 1 } } })
+    expect(await first).toMatchObject({ outcome: 'observed', value: { tab: { tabId: 12 } } })
+    expect(await requests.execute(request, liveSignal())).toEqual(await first)
+    expect(frames).toHaveLength(2)
+    expect(await requests.execute(sealBrowserInvocation({ ...base, requestId: 'r3', payload: { kind: 'click' } }), liveSignal())).toMatchObject({ reason: 'target_required' })
+  })
+
   it('deduplicates an exact request and binds the receipt to its session and installation', async () => {
     const frames: BrowserDispatchFrame[] = []
     const connection = requests.connect('i1', (frame) => { frames.push(frame) })
@@ -175,18 +194,17 @@ describe('Host browser request ownership', () => {
     expect(await requests.execute(invocation('r2'), liveSignal())).toMatchObject({ reason: 'target_busy' })
   })
 
-  it('allows only an explicit matching unknown acknowledgement to release a write', async () => {
+  it('releases a write lock only for a quiescent unknown receipt of the same request', async () => {
     const connection = requests.connect('i1', () => {})
     const request = invocation()
     const pending = requests.execute(request, liveSignal())
     connection.disconnect(); await pending
     const current = requests.connect('i1', () => {})
-    expect(requests.acknowledgeUnknown({ ...request, sessionId: 'wrong' })).toBe(false)
-    expect(requests.acknowledgeUnknown(request)).toBe(false)
+    // A disconnect settles as a non-quiescent unknown, which keeps the write lock.
+    expect(await requests.execute(invocation('r2'), liveSignal())).toMatchObject({ reason: 'target_busy' })
     current.receive({ ...request, outcome: 'unknown', quiescent: true })
-    expect(requests.acknowledgeUnknown(request)).toBe(true)
     expect(requests.status(request).outcome).toBe('unknown')
-    const next = requests.execute(invocation('r2'), liveSignal())
+    const next = requests.execute(invocation('r3'), liveSignal())
     requests.dispose()
     expect(await next).toMatchObject({ delivery: 'sent', outcome: 'unknown' })
   })

@@ -9,6 +9,15 @@ The [browser package group](../../packages/browser/README.md) owns `ctx.browser`
 An installation is one independently authorized Chrome extension. An operation names both its calling Session and its target installation. A page reference carries Chrome tab, frame, and document identity plus the observed URL; an element reference also names its snapshot. Switching the foreground tab does not change these targets. Replaced nodes, changed action attributes, and stale document references are rejected rather than resolved again by selector.
 
 ```ts type-equiv
+/** A tab handle valid only in the browser session that created or observed it. */
+interface BrowserTabReference {
+  readonly tabId: number
+  readonly windowId: number
+  readonly browserSessionId: string
+}
+```
+
+```ts type-equiv
 /** Page identity is independent of whichever tab is currently in the foreground. */
 interface BrowserPage {
   readonly tabId: number
@@ -65,7 +74,7 @@ interface BrowserPresentationQuery {
 /** Current consumers: interactive tools, explicit page intake, and finite monitor checks. */
 type BrowserAction =
   | { readonly kind: 'tabs' }
-  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean; readonly presentationQueries?: readonly BrowserPresentationQuery[] }
+  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly expectedTab?: BrowserTabReference; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean; readonly presentationQueries?: readonly BrowserPresentationQuery[] }
   | { readonly kind: 'page_map'; readonly page: BrowserPage }
   | { readonly kind: 'entry_inspect'; readonly page: BrowserPage; readonly regionSelector: string; readonly selector: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly sampleLimit?: number }
   | { readonly kind: 'entry_mount'; readonly page: BrowserPage; readonly mountId: string; readonly regionSelector?: string; readonly selector: string; readonly label: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly collected?: readonly string[] }
@@ -83,7 +92,8 @@ type BrowserAction =
   | { readonly kind: 'drag'; readonly element: BrowserElementReference; readonly target: BrowserElementReference; readonly intent: string }
   | { readonly kind: 'upload'; readonly element: BrowserElementReference; readonly files: readonly string[]; readonly intent: string }
   | { readonly kind: 'back' | 'forward' | 'reload' | 'tab_close' | 'tab_focus' | 'screenshot'; readonly page: BrowserPage }
-  | { readonly kind: 'tab_open'; readonly page: BrowserPage; readonly url: string }
+  /** Without page, creates a background tab and returns a tab handle before any page observation. */
+  | { readonly kind: 'tab_open'; readonly page?: BrowserPage; readonly url: string }
   | { readonly kind: 'scroll'; readonly page: BrowserPage; readonly x: number; readonly y: number }
   | { readonly kind: 'wait'; readonly page: BrowserPage; readonly milliseconds: number }
 ```
@@ -464,6 +474,15 @@ latestUserSource(agent: Agent): number | undefined
  * @returns The committed revision-one task.
  */
 create(agent: Agent, request: CreateBrowserTaskRequest): BrowserTaskSnapshot
+
+/**
+ * Settle one target-free open or its first exact snapshot without spending another action.
+ * @param agent - Exact live Agent whose Session owns the bootstrap attempt.
+ * @param ref - Current task compare-and-set reference.
+ * @param settlement - Returned result or a quiescent journal recovery status.
+ * @returns The receipt, settlement disposition, and atomically adopted task when a fresh snapshot proves it.
+ */
+settleBootstrapOperation(agent: Agent, ref: BrowserTaskRef, settlement: BrowserBootstrapSettlement): BrowserBootstrapSettlementResult
 
 /**
  * Append a bounded Browser receipt before any task mutation cites it.

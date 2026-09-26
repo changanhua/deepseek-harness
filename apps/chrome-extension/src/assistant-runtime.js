@@ -1,6 +1,7 @@
 import { createAssistantTransport } from './assistant-transport.js'
 import { createAssistantChannel } from './assistant-channel.js'
 import { createAssistantConnection } from './assistant-connection.js'
+import { createCodexBrowserConnection } from './codex-browser-connection.js'
 import { createAssistantJournal } from './assistant-journal.js'
 import { createBrowserExecutor } from './browser-executor.js'
 import { createPuppeteerDriver } from './browser-puppeteer.js'
@@ -27,8 +28,11 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
   })
   const openApprovalPage = url => chromeApi.tabs.create({ url })
   let connection
+  let codexConnection
   let browserEngine = 'puppeteer'
   let connectionState = { baseUrl: null, phase: 'unconfigured' }
+  let dshInstallationId = null
+  let codexInstallationId = null
   let sessions
   let surfaceSessions
   const readings = createAssistantReadings({ storage, call: (...args) => connection.call(...args), changed })
@@ -41,67 +45,74 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
   let badgeLane = Promise.resolve()
   let contexts = []
   let submittedContexts = null
-  let acknowledgementFlight = null
-  let acknowledgementRequested = false
   const functions = createAssistantFunctions({ call: (...args) => connection.call(...args), getConnection: () => connectionState, storage, changed })
   const intake = createBrowserContext({ chromeApi })
-  const executor = createBrowserExecutor({ chromeApi, getGrant: () => connection.getGrant(),
+  const grantForRequest = request => {
+    const codexGrant = codexConnection?.getGrant()
+    if (codexGrant?.installationId === request?.installationId) return codexGrant
+    return connection.getGrant()
+  }
+  const executor = createBrowserExecutor({ chromeApi, getGrant: grantForRequest,
     getEngine: () => browserEngine,
     puppeteer: createPuppeteerDriver({ chromeApi, connect, ExtensionTransport }) })
-  const journal = createAssistantJournal({ storage, ...executor,
-    canBootstrap: async () => (await storage.get('dsh.assistant.connection.v1'))['dsh.assistant.connection.v1'] === undefined,
-    permit: request => connection.permit({ ...request, scope: request.mutates ? 'browser:write' : 'browser:read' }),
-    changed: receipt => { connection.sendReceipt(receipt); changed() },
-  })
-  const syncAcknowledgements = () => {
-    acknowledgementRequested = true
-    if (acknowledgementFlight) return acknowledgementFlight
-    const work = (async () => {
-      while (acknowledgementRequested) {
-        acknowledgementRequested = false
-        for (const receipt of await journal.acknowledgements()) {
-          const grant = connection.getGrant()
-          if (!grant?.scopes.includes('browser:write') || grant.installationId !== receipt.installationId || grant.grantEpoch < receipt.grantEpoch) return
-          const result = await connection.call('browser.acknowledge', { receipt })
-          if (result?.acknowledged !== true) throw new Error('acknowledgement_unconfirmed')
-          await journal.confirmAcknowledgement(receipt)
-          changed()
-        }
-      }
-    })().catch(error => { acknowledgementRequested = false; throw error }).finally(() => {
-      acknowledgementFlight = null
-      if (acknowledgementRequested) return syncAcknowledgements()
-    })
-    acknowledgementFlight = work
-    return work
+  let journal
+  const sendReceipt = receipt => {
+    const codexGrant = codexConnection?.getGrant()
+    if (codexGrant?.installationId === receipt?.installationId) return codexConnection.sendReceipt(receipt)
+    return connection.sendReceipt(receipt)
   }
+  const receiveCommand = (source, frame) => {
+    if (frame.type === 'authority-revoked') {
+      void executor.releaseInstallation({ installationId: frame.installationId, grantEpoch: frame.grantEpoch })
+      return
+    }
+    if (frame.type === 'status-query') {
+      void journal.lookup(frame.locator, frame.sessionId).then(receipt => {
+        if (receipt) source.sendReceipt(receipt, { restartLookup: frame })
+      }).catch(() => {})
+      return
+    }
+    void journal.handle(frame).then(receipt => source.sendReceipt(receipt)).catch(() => {})
+  }
+  const permitRequest = request => {
+    const codexGrant = codexConnection?.getGrant()
+    const scope = request.mutates ? 'browser:write' : 'browser:read'
+    if (codexGrant?.installationId === request.installationId) {
+      return codexGrant.grantEpoch === request.grantEpoch && codexGrant.scopes.includes(scope)
+    }
+    return connection.permit({ ...request, scope })
+  }
+  journal = createAssistantJournal({ storage, ...executor,
+    canBootstrap: async () => (await storage.get('dsh.assistant.connection.v1'))['dsh.assistant.connection.v1'] === undefined,
+    permit: permitRequest,
+    changed: receipt => { sendReceipt(receipt); changed() },
+  })
   connection = createAssistantConnection({ storage, extensionId: chromeApi.runtime.id,
     transport: createAssistantTransport({ openApproval: openApprovalPage }), createChannel: createAssistantChannel,
     hasPermission, hasOrigins, openApprovalPage,
-    onCommand: async frame => {
-      if (frame.type === 'authority-revoked') {
-        await executor.releaseInstallation({ installationId: frame.installationId, grantEpoch: frame.grantEpoch })
-        return
-      }
-      if (frame.type === 'status-query') {
-        const receipt = await journal.lookup(frame.locator, frame.sessionId)
-        if (receipt) connection.sendReceipt(receipt, { restartLookup: frame })
-        return
-      }
-      connection.sendReceipt(await journal.handle(frame))
-    },
+    onCommand: frame => receiveCommand(connection, frame),
     onEvent: frame => frame.type === 'reading' ? readings.onEvent(frame) : frame.type === 'approval' ? approvals.onEvent(frame)
       : Promise.all([sessions.onEvent(frame), surfaceSessions.onEvent(frame)]),
     changed: state => {
       connectionState = state
-      if (state.phase !== 'connected') journal.interrupt('connection_lost')
+      if (typeof state.grant?.installationId === 'string') dshInstallationId = state.grant.installationId
+      const installationId = state.grant?.installationId ?? dshInstallationId
+      if (state.phase !== 'connected' && installationId) journal.interrupt('connection_lost', installationId)
       void sessions?.connectionChanged(state).catch(() => { changed() })
       void surfaceSessions?.connectionChanged(state).catch(() => { changed() })
       void approvals?.sync()
       void monitors?.connectionChanged(state).catch(() => { changed() })
       void activity?.connectionChanged(state).catch(() => { changed() })
       void functions.connectionChanged(state).catch(() => { changed() })
-      if (state.phase === 'connected') void syncAcknowledgements().catch(() => { changed() })
+      changed()
+    },
+  })
+  codexConnection = createCodexBrowserConnection({ storage, extensionId: chromeApi.runtime.id, createChannel: createAssistantChannel,
+    onCommand: (frame, source) => receiveCommand(source, frame),
+    changed: state => {
+      if (typeof state.grant?.installationId === 'string') codexInstallationId = state.grant.installationId
+      const installationId = state.grant?.installationId ?? codexInstallationId
+      if (state.phase !== 'connected' && installationId) journal.interrupt('connection_lost', installationId)
       changed()
     },
   })
@@ -181,7 +192,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
           message: String(error?.message ?? 'Target service unavailable').slice(0, 1024) } }
       }
     }
-    const state = { connection: await connection.read(), session: sessionState,
+    const state = { connection: await connection.read(), codexConnection: await codexConnection.read(), session: sessionState,
       target: targetState,
       cognition: projectAssistantCognition({ sessionId: sessionBinding?.sessionId ?? null, records: sessionState.records }),
       functionSnapshot: functions.read({ target: targetState, installationId: connectionState.grant?.installationId }),
@@ -191,16 +202,14 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       monitoring: monitors.read(),
       activity: { ...activity.read(), collectionError },
       contexts: structuredClone(contexts), page: await intake.current(),
-      unresolved: (await journal.list()).filter(entry => entry.mutates && (!entry.released || entry.acknowledgementPending))
-        .map(entry => ({ identity: entry.identity, target: entry.target, outcome: entry.result?.outcome ?? 'unknown', acknowledgementPending: entry.acknowledgementPending === true })),
     }
     return surfaceId === undefined ? state : { ...state, assistantV2: projectAssistantView({ surfaceId, state }) }
   }
   const start = async () => {
     browserEngine = (await storage.get('dsh.assistant.browser-engine'))['dsh.assistant.browser-engine'] === 'dom' ? 'dom' : 'puppeteer'
     await readings.restore()
-    await journal.list(); await sessions.restore(); await functions.restore(); await monitors.restore().catch(() => { changed() })
-    await activity.restore().catch(() => { changed() }); await activityCollector.start(); return connection.read()
+    await journal.list(); await codexConnection.restore(); await sessions.restore(); await functions.restore(); await monitors.restore().catch(() => { changed() })
+    await activity.restore().catch(() => { changed() }); await activityCollector.start(); return { connection: await connection.read(), codexConnection: await codexConnection.read() }
   }
   const capture = async kind => {
     const item = await intake.capture(kind)
@@ -233,10 +242,19 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       case 'dsh-assistant-reading-select': readings.select(message.url); break
       case 'dsh-assistant-reading-stop': await readings.stop(); break
       case 'dsh-assistant-configure': await connection.configure(message.baseUrl); break
+      case 'dsh-codex-browser-configure': await codexConnection.configure(message.baseUrl); break
+      case 'dsh-codex-browser-connect': await codexConnection.connect(); break
+      case 'dsh-codex-browser-disconnect': await codexConnection.disconnect(); break
       case 'dsh-assistant-connect': {
-        if ((await connection.read()).phase === 'unconfigured') await connection.configure('http://127.0.0.1:3080')
-        await connection.connect({ scopes: message.scopes ?? ['session:interact', 'browser:read', 'browser:write', 'browser:observe'], origins: message.origins ?? ['*'] }); break
+        const current = await connection.read()
+        if (current.phase === 'unconfigured') await connection.configure('http://127.0.0.1:3080')
+        if (current.phase === 'connecting') break
+        const request = { scopes: message.scopes ?? ['session:interact', 'browser:read', 'browser:write', 'browser:observe'], origins: message.origins ?? ['*'] }
+        await connection.connect(request); break
       }
+      case 'dsh-assistant-retry':
+        if (!await connection.retrySaved()) throw new Error('no_saved_connection')
+        break
       case 'dsh-assistant-poll': await connection.poll(); break
       case 'dsh-assistant-authorize-site': {
         const current = await intake.current()
@@ -254,14 +272,6 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       case 'dsh-assistant-cancel': await connection.cancel(); break
       case 'dsh-assistant-disconnect': await connection.disconnect(); break
       case 'dsh-assistant-open-approval': await connection.openApproval(); break
-      case 'dsh-assistant-acknowledge': await journal.acknowledge(message.identity); await syncAcknowledgements(); break
-      case 'dsh-assistant-reveal-target': {
-        const entry = (await journal.list()).find(row => row.identity.requestId === message.requestId && row.mutates && (!row.released || row.acknowledgementPending))
-        if (!entry?.target) throw new Error('target_unavailable')
-        const tab = await chromeApi.tabs.update(entry.target.tabId, { active: true })
-        if (Number.isInteger(tab.windowId)) await chromeApi.windows.update(tab.windowId, { focused: true })
-        break
-      }
       case 'dsh-assistant-call': return { ok: true, value: await connection.call(message.method, message.params) }
       case 'dsh-entry-click': {
         const payload = message.payload
@@ -285,6 +295,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       case 'dsh-assistant-session-models': return { ok: true, value: await activeSession.models() }
       case 'dsh-assistant-session-select-model': await activeSession.selectModel(message.selection, message.expectedSessionId); break
       case 'dsh-assistant-target-candidates': return { ok: true, value: { items: await intake.candidates() } }
+      case 'dsh-assistant-target-current': return { ok: true, value: await intake.target() }
       case 'dsh-assistant-session-bind': await activeSession.bind(message.sessionId); break
       case 'dsh-assistant-session-create': await activeSession.create(message.cwd ? { cwd: message.cwd } : {}); break
       case 'dsh-assistant-session-submit': {
@@ -323,7 +334,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
         const before = activeSession.read().binding
         if (!before || before.baseUrl !== connectionState.baseUrl || before.installationId !== connectionState.grant?.installationId) throw new Error('target_changed')
         if (!Number.isSafeInteger(message.expectedRevision) || message.expectedRevision < 0) throw new Error('invalid_target_revision')
-        const page = await intake.target(message.tabId)
+        const page = await intake.target(message.tabId, message.expectedPage)
         const after = activeSession.read().binding
         if (after?.sessionId !== before.sessionId || after.baseUrl !== before.baseUrl || after.installationId !== before.installationId) throw new Error('session_changed')
         await connection.call('session.target.bind', { sessionId: before.sessionId, expectedRevision: message.expectedRevision,

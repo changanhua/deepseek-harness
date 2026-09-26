@@ -28,7 +28,7 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-commands'
 import { BROWSER_EXTENSION_PATH as API, approveSchema, browserActionSchema, connectSchema,
-  exchangeSchema, extensionFrameSchema, extensionIdSchema, entryEventSchema, EntryEventInput, jsonValueSchema, requestSchema, revokeSchema, approvalPresenceSchema, approvalDecideSchema, browserAcknowledgeSchema, routeDiscardSchema, RouteDiscardInput } from './wire.ts'
+  exchangeSchema, extensionFrameSchema, extensionIdSchema, entryEventSchema, EntryEventInput, jsonValueSchema, requestSchema, revokeSchema, approvalPresenceSchema, approvalDecideSchema, routeDiscardSchema, RouteDiscardInput } from './wire.ts'
 
 /** Bounds for the Host connection, handshake, and retained operation receipts. */
 export interface Config {
@@ -666,6 +666,9 @@ export class BrowserExtension extends Browser {
     const peer = this.installed.get(operation.installationId)
     if (peer !== undefined && (peer.grant?.grantEpoch !== grant.grantEpoch || peer.capabilities === undefined
       || !peer.capabilities.actionKinds.includes(action.kind))) return this.failure(operation, signal, 'capability_unavailable')
+    if (action.kind === 'tab_open' && action.page === undefined && peer?.capabilities?.targetFreeOpen !== true) {
+      return this.failure(operation, signal, 'capability_unavailable')
+    }
     if (target !== undefined && !allows(grant, target.url) || (action.kind === 'navigate' || action.kind === 'tab_open') && !allows(grant, action.url)) return this.failure(operation, signal, 'site_not_authorized')
     // `list()` may await a credential refresh. Fence its captured epoch immediately before dispatch.
     const finalUnavailable = this.unavailable(signal)
@@ -1001,9 +1004,9 @@ export class BrowserExtension extends Browser {
       if (!this.peerOpen(peer)) return
       this.disconnect(grant.installationId)
       peer.grant = grant
-      peer.capabilities = frame.capabilities.restartStatusLookup === true
-        ? { ...structuredClone(frame.capabilities), restartStatusLookup: true }
-        : { protocolVersion: 1, actionKinds: [...frame.capabilities.actionKinds], requestRecovery: true }
+      peer.capabilities = { protocolVersion: 1, actionKinds: [...frame.capabilities.actionKinds], requestRecovery: true,
+        ...(frame.capabilities.restartStatusLookup === true ? { restartStatusLookup: true } : {}),
+        ...(frame.capabilities.targetFreeOpen === true ? { targetFreeOpen: true } : {}) }
       this.installed.set(grant.installationId, peer)
       const sessionPermit = () => !this.closed && peer.socket.readyState === WebSocket.OPEN
         && this.grants.permit(grant) && grant.scopes.includes('session:interact')
@@ -1147,8 +1150,6 @@ export class BrowserExtension extends Browser {
         value = this.approvals.presence(this.approvalPeer(peer), approvalPresenceSchema.parse(frame.params ?? {}))
       } else if (frame.method === 'approval.decide') {
         value = { accepted: this.approvals.decide(this.approvalPeer(peer), approvalDecideSchema.parse(frame.params ?? {})) }
-      } else if (frame.method === 'browser.acknowledge') {
-        value = this.acknowledge(peer, browserAcknowledgeSchema.parse(frame.params ?? {}).receipt)
       } else if (frame.method === 'browser.entryEvent') {
         value = this.entryEvent(peer, entryEventSchema.parse(frame.params ?? {}))
       } else if (frame.method === 'browser.routeDiscard') {
@@ -1197,15 +1198,6 @@ export class BrowserExtension extends Browser {
   private approvalPeer(peer: Peer): NonNullable<Peer['approval']> {
     if (peer.approval === undefined || !peer.approval.permit()) throw Object.assign(new Error('forbidden'), { code: 'forbidden' })
     return peer.approval
-  }
-
-  private acknowledge(peer: Peer, receipt: ReturnType<typeof browserAcknowledgeSchema.parse>['receipt']): { acknowledged: true } {
-    const grant = peer.grant
-    if (grant === undefined || !this.grants.permit(grant) || !grant.scopes.includes('browser:write')
-      || receipt.installationId !== grant.installationId || receipt.grantEpoch > grant.grantEpoch) throw Object.assign(new Error('forbidden'), { code: 'forbidden' })
-    peer.binding?.receive(receipt)
-    if (!this.requests.acknowledgeUnknown(receipt)) throw Object.assign(new Error('acknowledgement_unconfirmed'), { code: 'acknowledgement_unconfirmed' })
-    return { acknowledged: true }
   }
 
   /** Gate one page-entry click against the mount table: identity, epoch, and document must match. */
@@ -1284,6 +1276,8 @@ function allows(grant: GrantSummary, url: string): boolean {
   try { const parsed = new URL(url); return ['http:', 'https:'].includes(parsed.protocol) && (grant.origins.includes('*') || grant.origins.includes(parsed.origin)) } catch { return false }
 }
 function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): BrowserAction {
+  if (action.kind === 'tab_open') return { kind: action.kind, url: action.url,
+    ...(action.page === undefined ? {} : { page: action.page }) }
   if (action.kind === 'entry_unmount') return { kind: action.kind, page: action.page, mountId: action.mountId,
     ...(action.forgetCollected === undefined ? {} : { forgetCollected: action.forgetCollected }) }
   if (action.kind === 'entry_inspect') {
@@ -1316,6 +1310,7 @@ function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): 
   }
   return action.kind === 'snapshot'
     ? { kind: action.kind, tabId: action.tabId, frameId: action.frameId,
+      ...(action.expectedTab === undefined ? {} : { expectedTab: action.expectedTab }),
       ...(action.documentId === undefined ? {} : { documentId: action.documentId }),
       ...(action.query === undefined ? {} : { query: action.query }),
       ...(action.offset === undefined ? {} : { offset: action.offset }),

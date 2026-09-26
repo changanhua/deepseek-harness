@@ -9,6 +9,13 @@ export interface BrowserPage {
   readonly url: string
 }
 
+/** A tab handle valid only in the browser session that created or observed it. */
+export interface BrowserTabReference {
+  readonly tabId: number
+  readonly windowId: number
+  readonly browserSessionId: string
+}
+
 /** A snapshot-local element reference, never a selector to be rematched later. */
 export interface BrowserElementReference {
   readonly page: BrowserPage
@@ -47,7 +54,7 @@ export interface BrowserPresentationQuery {
 /** Current consumers: interactive tools, explicit page intake, and finite monitor checks. */
 export type BrowserAction =
   | { readonly kind: 'tabs' }
-  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean; readonly presentationQueries?: readonly BrowserPresentationQuery[] }
+  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly expectedTab?: BrowserTabReference; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean; readonly presentationQueries?: readonly BrowserPresentationQuery[] }
   | { readonly kind: 'page_map'; readonly page: BrowserPage }
   | { readonly kind: 'entry_inspect'; readonly page: BrowserPage; readonly regionSelector: string; readonly selector: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly sampleLimit?: number }
   | { readonly kind: 'entry_mount'; readonly page: BrowserPage; readonly mountId: string; readonly regionSelector?: string; readonly selector: string; readonly label: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly collected?: readonly string[] }
@@ -65,7 +72,8 @@ export type BrowserAction =
   | { readonly kind: 'drag'; readonly element: BrowserElementReference; readonly target: BrowserElementReference; readonly intent: string }
   | { readonly kind: 'upload'; readonly element: BrowserElementReference; readonly files: readonly string[]; readonly intent: string }
   | { readonly kind: 'back' | 'forward' | 'reload' | 'tab_close' | 'tab_focus' | 'screenshot'; readonly page: BrowserPage }
-  | { readonly kind: 'tab_open'; readonly page: BrowserPage; readonly url: string }
+  /** Without page, creates a background tab and returns a tab handle before any page observation. */
+  | { readonly kind: 'tab_open'; readonly page?: BrowserPage; readonly url: string }
   | { readonly kind: 'scroll'; readonly page: BrowserPage; readonly x: number; readonly y: number }
   | { readonly kind: 'wait'; readonly page: BrowserPage; readonly milliseconds: number }
 
@@ -77,6 +85,8 @@ export interface BrowserExecutorCapabilities {
   readonly requestRecovery: true
   /** The executor can answer a durable journal status lookup after Host restart. */
   readonly restartStatusLookup?: true
+  /** Direct tab_open accepts an explicit URL without a prior page reference. */
+  readonly targetFreeOpen?: true
 }
 
 /** Public, action-free key retained with a sent attempt for restart recovery. */

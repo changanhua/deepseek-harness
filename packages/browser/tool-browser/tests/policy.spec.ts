@@ -34,6 +34,15 @@ const harness = (effect: BrowserActionDescription['effect'], kind: BrowserAction
 }
 
 describe('browser tool approval policy', () => {
+  it('offers target-free opening only through the direct action schema', () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const open = { kind: 'tab_open', url: page.url }
+    expect(validateJsonSchemaValue(registered.get('browser_action')!.parameters, { installationId: 'installation', action: open })).toEqual([])
+    expect(validateJsonSchemaValue(registered.get('browser_action_sequence')!.parameters, { installationId: 'installation', actions: [open] })).not.toEqual([])
+    expect(validateJsonSchemaValue(registered.get('browser_action_sequence')!.parameters, { installationId: 'installation', actions: [{ ...open, page }] })).toEqual([])
+  })
   it('declares the online executor capability handshake in browser_instances output', () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
     apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
@@ -228,6 +237,17 @@ describe('browser tool approval policy', () => {
     expect(JSON.stringify(tool.parameters)).toContain('snapshotId')
     await expect(tool.execute({ installationId: 'installation', action: { kind: 'click', selector: '#buy' } }, exec)).rejects.toThrow()
     expect(h.browser.prepare).toHaveBeenCalledOnce()
+  })
+  it('dispatches a target-free tab open directly instead of creating a fake prepared page action', async () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    h.browser.execute.mockResolvedValue({ ...observed, value: { tab: { tabId: 7, windowId: 3, browserSessionId: 'browser-session' } } })
+    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const result = await registered.get('browser_action')!.execute({ installationId: 'installation',
+      action: { kind: 'tab_open', url: 'https://example.test/opened' } }, { agent, signal: h.controller.signal } as ToolRunContext)
+    expect(result).toMatchObject({ outcome: 'observed', value: { tab: { tabId: 7, windowId: 3 } } })
+    expect(h.browser.execute).toHaveBeenCalledOnce()
+    expect(h.browser.prepare).not.toHaveBeenCalled()
   })
   it('exposes persistent entry mounts to the preset Agent without routing them through one-shot preparation', async () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()

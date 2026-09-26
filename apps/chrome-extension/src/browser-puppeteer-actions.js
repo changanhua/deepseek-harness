@@ -5,7 +5,29 @@ const SCREENSHOT_QUALITIES = [55, 45, 35, 25, 15]
 /** Execute one already-reserved action. Returned facts acknowledge the primitive, not the user's whole task. */
 export const performPuppeteerAction = async ({ action, handle, frame, page, chromeApi, targetPage, check, resolveDrop, authorizeUrl }) => {
   check()
-  if (action.kind === 'click') { await handle.click(); return null }
+  if (action.kind === 'click') {
+    if (action.element?.role === 'generic') {
+      const target = await handle.evaluate(node => {
+        const independentControl = node.querySelector('button,a,input,select,textarea,[role="button"],[role="link"]') !== null
+        const fallback = independentControl ? { blocked: true } : null
+        if (getComputedStyle(node).cursor !== 'pointer') return fallback
+        const headings = node.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')
+        if (headings.length !== 1) return fallback
+        const heading = headings[0]
+        if (heading.closest('button,a,[role="button"],[role="link"]')) return fallback
+        const rect = heading.getBoundingClientRect()
+        if (rect.width <= 0 || rect.height <= 0) return fallback
+        const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+        const hit = document.elementFromPoint(x, y)
+        const bounds = node.getBoundingClientRect()
+        return hit && heading.contains(hit) ? { point: { x: x - bounds.left, y: y - bounds.top } } : fallback
+      })
+      if (target?.blocked) throw failure('ambiguous_click_target')
+      if (target?.point) { check(); await handle.click({ offset: target.point }); return { input: 'click' } }
+    }
+    await handle.click()
+    return { input: 'click' }
+  }
   if (action.kind === 'double_click') { await handle.click({ count: 2 }); return { input: 'double_click' } }
   if (action.kind === 'right_click') { await handle.click({ button: 'right' }); return { input: 'right_click' } }
   if (action.kind === 'hover') { await handle.hover(); return { input: 'hover' } }

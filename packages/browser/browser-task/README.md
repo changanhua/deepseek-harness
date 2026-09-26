@@ -39,6 +39,7 @@ Stable task schema and consumer composition preserve the reusable prefix. Change
 
 ## Known Limitations and Deferred Work
 
+- Projection state version 8 stores BrowserTask change version 4 snapshots; older task-change formats are rejected without migration. A target-free task captures a null user-selection revision, retains a pending exact tab reference after `tab_open`, and adopts a page only from a matching main-frame snapshot. Adoption is task-local and never changes the user's Session binding.
 - The standard Web composition and `tool-browser` consumer use this service, but no dedicated task-status UI renders its generic Session projection yet.
 - An owner cancellation is available only after cleanup and an explicit latest direct-user marker: `[browser-task:cancel]` or `[browser-task:accept-unknown]`. The Agent must ask for that marker when an unknown browser effect needs an owner decision; it cannot infer consent from ordinary prose or assert what the effect did.
 - Extension journal expiry, storage loss, an offline executor, or a mismatched locator leaves the request unknown. The task does not infer `not-sent` and does not replay the write.

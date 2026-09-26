@@ -1,0 +1,18 @@
+{
+  "name": "@changanhua/browser-extension-mcp",
+  "version": "0.1.0",
+  "description": "Independent local browser extension connector for MCP clients",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./startup": "./lib/startup.js",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib/*.js", "lib/types/**/*.js", "lib/types/**/*.d.ts"],
+  "license": "MIT",
+  "dependencies": { "@modelcontextprotocol/sdk": "^1.12.0", "ws": "^8.18.3", "zod": "^4.4.3" },
+  "devDependencies": { "@types/ws": "^8.18.1", "playwright": "^1.49.0" }
+}

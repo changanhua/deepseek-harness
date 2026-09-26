@@ -25,6 +25,7 @@ const actionOf = request => ['prepare', 'commit', 'observe'].includes(request.pa
 
 /** All page work is pinned to Chrome's documentId, never foreground state. */
 export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, getEngine = () => 'puppeteer', now = Date.now, navigationTimeoutMs = 2000 }) => {
+  const browserSessionId = createBrowserSessionId({ storageSession: chromeApi.storage?.session })
   const releaseInstallation = async ({ installationId, grantEpoch }) => {
     if (typeof installationId !== 'string' || !Number.isSafeInteger(grantEpoch) || grantEpoch < 1) return
     const tabs = await chromeApi.tabs.query({})
@@ -37,7 +38,7 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
   const grantFor = (request, signal) => {
     if (signal?.aborted) throw failure('cancelled')
     if (now() >= request.deadline) throw failure('deadline')
-    const grant = getGrant()
+    const grant = getGrant(request)
     if (!grant || grant.installationId !== request.installationId || grant.grantEpoch !== request.grantEpoch
       || !grant.scopes.includes(mutating(actionOf(request).kind) ? 'browser:write' : 'browser:read')
       || request.payload.kind === 'observe' && !grant.scopes.includes('browser:observe')) throw failure('authorization_changed')
@@ -63,6 +64,7 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
     return result.result
   }
   const inspect = async (entry, { cancel = false } = {}) => {
+    if (entry.operation === 'tab_open') return { outcome: 'unknown', quiescent: false, reason: 'tab_creation_unconfirmed' }
     if (!entry.target) return { outcome: 'unknown', quiescent: true, reason: 'read_interrupted' }
     try {
       // Do not inject a new page runtime while reconciling an old request.
@@ -120,12 +122,31 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
         return { outcome: 'observed', quiescent: true, value: { tabs } }
       }
       const expected = pageOf(action)
+      if (action.kind === 'tab_open' && !expected) {
+        if (request.target || preparing || committing || observing) throw failure('invalid_action')
+        const sessionId = await browserSessionId()
+        await checkSite(request, signal, action.url)
+        grantFor(request, signal)
+        issued = true
+        const tab = await chromeApi.tabs.create({ url: action.url, active: false })
+        if (!Number.isSafeInteger(tab?.id) || tab.id < 0 || !Number.isSafeInteger(tab.windowId)) throw failure('tab_creation_unconfirmed')
+        // Creation is already confirmed. Return only its handle, even if the
+        // grant changed while Chrome answered; later reads recheck authority.
+        return { outcome: 'observed', quiescent: true, value: { opened: true, tab: { tabId: tab.id, windowId: tab.windowId, browserSessionId: sessionId } } }
+      }
       if (expected) {
         if (!request.target || request.target.tabId !== expected.tabId || request.target.frameId !== expected.frameId
           || request.target.documentId !== expected.documentId) throw failure('target_mismatch')
         await checkSite(request, signal, expected.url)
       }
       if (['navigate', 'tab_open'].includes(action.kind)) await checkSite(request, signal, action.url)
+      if (action.kind === 'snapshot' && action.expectedTab) {
+        const reference = action.expectedTab
+        if (reference.tabId !== action.tabId || await browserSessionId() !== reference.browserSessionId) throw failure('tab_reference_stale')
+        let tab
+        try { tab = await chromeApi.tabs.get(reference.tabId) } catch { throw failure('tab_reference_stale') }
+        if (tab?.id !== reference.tabId || tab.windowId !== reference.windowId) throw failure('tab_reference_stale')
+      }
       const target = expected ? targetOf(expected) : action.documentId
         ? { tabId: action.tabId, documentIds: [action.documentId] } : { tabId: action.tabId, frameIds: [action.frameId] }
       let page
@@ -254,9 +275,9 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
       cancel = () => { void inspect({ target: page, identity: request }, { cancel: true }) }
       signal?.addEventListener('abort', cancel, { once: true })
       grantFor(request, signal)
-      if (puppeteer && getEngine() === 'puppeteer' && committing) {
-        return await puppeteer.execute({ page, request: clone(request), invoke, signal,
-          validate: () => grantFor(request, signal), authorizeUrl: url => checkSite(request, signal, url) })
+      if (puppeteer && getEngine() === 'puppeteer') {
+          return await puppeteer.execute({ page, request: clone(request), invoke, signal,
+            validate: () => grantFor(request, signal), authorizeUrl: url => checkSite(request, signal, url) })
       }
       issued = true
       const result = await invoke(page, 'execute', clone(request))
@@ -269,3 +290,4 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
   }
   return { execute, inspect, releaseInstallation }
 }
+import { createBrowserSessionId } from './browser-session-id.js'

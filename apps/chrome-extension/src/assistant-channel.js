@@ -1,6 +1,8 @@
 import { normalizeBaseUrl } from './pending.js'
 
 const MAX_MESSAGE_BYTES = 16 * 1024 * 1024
+const MAX_AUTO_RECONNECTS = 5
+const STABLE_CONNECTION_MS = 30_000
 const messageBytes = value => new TextEncoder().encode(value).byteLength
 
 // This is deliberately declared by the installed executor, rather than inferred
@@ -12,6 +14,7 @@ const executorCapabilities = Object.freeze({
     'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot']),
   requestRecovery: true,
   restartStatusLookup: true,
+  targetFreeOpen: true,
 })
 
 const channelError = (code, reason) => Object.assign(new Error(code), { code, ...(reason === undefined ? {} : { reason }) })
@@ -63,6 +66,9 @@ export const createAssistantChannel = ({
   let activeGrant = null
   let stopped = false
   let reconnectTimer = null
+  let autoReconnects = 0
+  let connectedAt = null
+  let stableTimer = null
   const pending = new Map()
   const authorityCleanups = new Set()
 
@@ -79,11 +85,13 @@ export const createAssistantChannel = ({
   }
 
   const scheduleReconnect = () => {
-    if (stopped || reconnectTimer) return
+    if (stopped || reconnectTimer || autoReconnects >= MAX_AUTO_RECONNECTS) return
+    const delay = reconnectDelayMs * 2 ** autoReconnects
+    autoReconnects += 1
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       connect()
-    }, reconnectDelayMs)
+    }, delay)
   }
 
   const closeCurrent = code => {
@@ -125,8 +133,8 @@ export const createAssistantChannel = ({
     if (stopped) return
     let next
     try { next = new WebSocketImpl(socketUrlFor(channelCredentials.baseUrl)) } catch {
-      report({ phase: 'offline' })
       scheduleReconnect()
+      report({ phase: 'offline', retryPaused: true })
       return
     }
     socket = next
@@ -156,6 +164,14 @@ export const createAssistantChannel = ({
           return
         }
         activeGrant = clone(frame.grant)
+        connectedAt = Date.now()
+        if (stableTimer) clearTimeout(stableTimer)
+        stableTimer = setTimeout(() => {
+          stableTimer = null
+          if (socket !== next || stopped || !activeGrant) return
+          autoReconnects = 0
+          report({ phase: 'stable' })
+        }, STABLE_CONNECTION_MS)
         report({ phase: 'connected', grant: clone(activeGrant) })
         return
       }
@@ -188,6 +204,10 @@ export const createAssistantChannel = ({
     }
     next.onclose = event => {
       if (socket !== next) return
+      if (stableTimer) clearTimeout(stableTimer)
+      stableTimer = null
+      if (connectedAt !== null && Date.now() - connectedAt >= STABLE_CONNECTION_MS) autoReconnects = 0
+      connectedAt = null
       const priorGrant = activeGrant ?? channelCredentials.grant
       socket = null
       activeGrant = null
@@ -199,21 +219,30 @@ export const createAssistantChannel = ({
         report({ phase: 'unauthorized' })
         return
       }
-      report({ phase: 'offline' })
       scheduleReconnect()
+      report({ phase: 'offline', retryPaused: true })
     }
     next.onerror = () => {}
   }
 
   const start = () => {
-    if (stopped) return
-    if (!socket && !reconnectTimer) connect()
+    if (stopped || socket) return
+    if (reconnectTimer) clearTimeout(reconnectTimer)
+    reconnectTimer = null
+    autoReconnects = 0
+    connectedAt = null
+    if (stableTimer) clearTimeout(stableTimer)
+    stableTimer = null
+    connect()
   }
 
   const stop = () => {
     stopped = true
     if (reconnectTimer) clearTimeout(reconnectTimer)
     reconnectTimer = null
+    connectedAt = null
+    if (stableTimer) clearTimeout(stableTimer)
+    stableTimer = null
     settleAll(channelError('result_unknown', 'connection_lost'))
     const current = socket
     socket = null

@@ -198,6 +198,30 @@ describe('页面内浏览器助手', () => {
     } })).resolves.toMatchObject({ outcome: 'observed', value: { effect: 'page-changed' } })
     expect(document.querySelector('output')!.textContent).toBe('Opened')
   })
+  test('DOM 引擎点击带唯一标题的 pointer 行时命中标题区域', async () => {
+    document.body.innerHTML = '<div id="row" style="cursor:pointer"><h1 style="cursor:pointer">挪威对葡萄牙</h1><div>开始挑战</div></div><output>意大利对比利时</output>'
+    document.querySelector('h1')!.addEventListener('click', () => { document.querySelector('output')!.textContent = '挪威对葡萄牙' })
+    const assistant = install(), snapshot = assistant.snapshot({ query: '挪威对葡萄牙' })
+    const row = snapshot.elements.find(item => item.attributes.id === 'row')!
+
+    expect(await assistant.execute({ ...identity('row-heading-click'), payload: {
+      kind: 'click', intent: '查看关卡', element: { ...row,
+        page: { tabId: 7, frameId: 0, documentId: 'doc', url: location.href } },
+    } })).toMatchObject({ outcome: 'observed', value: { effect: 'page-changed' } })
+    expect(document.querySelector('output')!.textContent).toBe('挪威对葡萄牙')
+  })
+  test('DOM 引擎拒绝标题不可用且含独立收藏按钮的整卡点击', async () => {
+    document.body.innerHTML = '<div id="card" style="cursor:pointer"><button id="favorite">收藏</button><h1 style="display:none">重大比赛</h1></div>'
+    const click = vi.fn()
+    document.querySelector('#card')!.addEventListener('click', click)
+    const assistant = install(), card = assistant.snapshot().elements.find(item => item.attributes.id === 'card')!
+
+    expect(await assistant.execute({ ...identity('ambiguous-card-click'), payload: {
+      kind: 'click', intent: '打开重大比赛', element: { ...card,
+        page: { tabId: 7, frameId: 0, documentId: 'doc', url: location.href } },
+    } })).toMatchObject({ outcome: 'failed', reason: 'ambiguous_click_target' })
+    expect(click).not.toHaveBeenCalled()
+  })
   test('自定义控件的 pointer 或 onclick 移除后旧引用失效', async () => {
     document.body.innerHTML = '<div id="pointer" style="cursor:pointer">Pointer</div><div id="handler" onclick="void 0">Handler</div>'
     const handler = document.querySelector<HTMLElement>('#handler')!
@@ -395,7 +419,8 @@ describe('页面内浏览器助手', () => {
     const assistant = install(); const snapshot = assistant.snapshot(); const request = { ...identity('repeat'), payload: { kind: 'click', element: snapshot.elements[0] } }
     const first = await assistant.execute(request); const duplicate = await assistant.execute(request)
     const conflict = await assistant.execute({ ...request, fingerprint: 'different' })
-    expect(first).toMatchObject({ outcome: 'unknown', reason: 'effect_unverified', quiescent: true }); expect(first).toEqual(duplicate); expect(click).toHaveBeenCalledTimes(1)
+    expect(first).toMatchObject({ outcome: 'observed', value: { input: 'click', effect: 'not-observed' }, quiescent: true })
+    expect(first).toEqual(duplicate); expect(click).toHaveBeenCalledTimes(1)
     expect(conflict).toMatchObject({ outcome: 'failed', reason: 'request_conflict' })
   })
 
@@ -404,7 +429,8 @@ describe('页面内浏览器助手', () => {
     document.body.innerHTML = '<input id="other"><button id="target">执行</button>'
     const click = vi.fn(); document.querySelector('#target')!.addEventListener('click', click)
     const assistant = install(); const snapshot = assistant.snapshot(); document.querySelector<HTMLInputElement>('#other')!.focus()
-    await expect(assistant.execute({ ...identity('focus'), payload: { kind: 'click', element: snapshot.elements.find(item => item.attributes.id === 'target') } })).resolves.toMatchObject({ outcome: 'unknown', reason: 'effect_unverified' })
+    await expect(assistant.execute({ ...identity('focus'), payload: { kind: 'click', element: snapshot.elements.find(item => item.attributes.id === 'target') } }))
+      .resolves.toMatchObject({ outcome: 'observed', value: { input: 'click', businessOutcome: 'unverified' } })
     expect(click).toHaveBeenCalledOnce()
     const wait = assistant.execute({ ...identity('wait'), payload: { kind: 'wait', milliseconds: 1_000 } })
     expect(assistant.inspect(identity('missing', { deadline: Date.now() + 1_000 }))).toMatchObject({ outcome: 'unknown', quiescent: false })
@@ -418,7 +444,7 @@ describe('页面内浏览器助手', () => {
     const assistant = install(); const snapshot = assistant.snapshot()
     const noOp = snapshot.elements.find(item => item.attributes.id === 'noop')
     expect(await assistant.execute({ ...identity('no-effect'), payload: { kind: 'click', element: noOp } }))
-      .toMatchObject({ outcome: 'unknown', reason: 'effect_unverified', quiescent: true })
+      .toMatchObject({ outcome: 'observed', value: { engine: 'dom', input: 'click', effect: 'not-observed', businessOutcome: 'unverified' }, quiescent: true })
     expect(await assistant.execute({ ...identity('invalid-form'), payload: { kind: 'submit', element: snapshot.elements[1] } }))
       .toMatchObject({ outcome: 'failed', reason: 'form_invalid', quiescent: true })
   })

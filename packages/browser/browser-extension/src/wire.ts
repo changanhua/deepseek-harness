@@ -11,10 +11,13 @@ const executorCapabilities = z.object({
   protocolVersion: z.literal(1), actionKinds: z.array(z.enum(browserActionKinds)).min(1).max(browserActionKinds.length)
     .refine(value => new Set(value).size === value.length), requestRecovery: z.literal(true),
   restartStatusLookup: z.literal(true).optional(),
+  targetFreeOpen: z.literal(true).optional(),
 }).strict()
 const page = z.object({ tabId: z.number().int().nonnegative(), frameId: z.number().int().nonnegative(),
   documentId: id, url: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)) }).strict()
 const element = z.object({ page, snapshotId: id, elementId: id }).strict()
+const tabReference = z.object({ tabId: z.number().int().nonnegative(), windowId: z.number().int().nonnegative(),
+  browserSessionId: z.uuid({ version: 'v4' }) }).strict()
 /** Bounded browser-observed facts presented for approval, never a page-owned form value. */
 export const browserActionDescriptionSchema = z.object({
   kind: z.enum(['navigate', 'click', 'fill', 'submit', 'scroll', 'wait', 'double_click', 'right_click', 'hover', 'press', 'select', 'check', 'drag', 'upload', 'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot']), page,
@@ -48,6 +51,7 @@ const regionPresentationSchema = z.object({
 export const browserActionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('tabs') }).strict(),
   z.object({ kind: z.literal('snapshot'), tabId: z.number().int().nonnegative(), frameId: z.number().int().nonnegative(), documentId: id.optional(),
+    expectedTab: tabReference.optional(),
     query: z.string().max(256).optional(), offset: z.number().int().min(0).max(10000).optional(),
     limit: z.number().int().min(1).max(128).optional(), textLimit: z.number().int().min(0).max(50000).optional(),
     tree: z.boolean().optional(), treeCursor: z.string().min(1).max(256).optional(),
@@ -71,7 +75,7 @@ export const browserActionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('drag'), element, intent: z.string().min(1).max(1024), target: element }).strict(),
   z.object({ kind: z.literal('upload'), element, intent: z.string().min(1).max(1024), files: z.array(z.string().max(8192).regex(/^(?:[a-z]:[\\/]|\/|\\\\)/iu)).max(16) }).strict(),
   ...(['back', 'forward', 'reload', 'tab_close', 'tab_focus', 'screenshot'] as const).map(kind => z.object({ kind: z.literal(kind), page }).strict()),
-  z.object({ kind: z.literal('tab_open'), page, url: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)) }).strict(),
+  z.object({ kind: z.literal('tab_open'), page: page.optional(), url: z.url().max(8192).refine(value => ['http:', 'https:'].includes(new URL(value).protocol)) }).strict(),
   z.object({ kind: z.literal('scroll'), page, x: z.number().int().min(-100000).max(100000), y: z.number().int().min(-100000).max(100000) }).strict(),
   z.object({ kind: z.literal('wait'), page, milliseconds: z.number().int().min(0).max(15000) }).strict(),
   z.object({ kind: z.literal('entry_mount'), page, mountId: id, regionSelector: z.string().min(1).max(256).optional(), selector: z.string().min(1).max(256),
@@ -104,7 +108,7 @@ export const extensionFrameSchema = z.discriminatedUnion('type', [
     'session.modelCatalog', 'session.selectModel', 'commands.execute',
     'session.target.read', 'session.target.bind', 'session.target.clear',
     'function.list', 'function.inspect', 'function.stop', 'function.run', 'function.edit', 'function.command.status',
-    'approval.presence', 'approval.decide', 'browser.acknowledge', 'browser.entryEvent', 'browser.routeDiscard', 'monitor.list', 'monitor.create', 'monitor.pause', 'monitor.resume',
+    'approval.presence', 'approval.decide', 'browser.entryEvent', 'browser.routeDiscard', 'monitor.list', 'monitor.create', 'monitor.pause', 'monitor.resume',
     'monitor.acknowledge', 'activity.state', 'activity.configure', 'activity.append', 'activity.query']), params: z.json().optional() }).strict(),
 ])
 export const connectSchema = z.object({
@@ -118,9 +122,6 @@ export const requestSchema = z.object({ requestId: z.uuid({ version: 'v4' }) }).
 const surfaceId = z.string().min(1).max(256)
 export const approvalPresenceSchema = z.object({ surfaceId, sessionId: z.string().min(1).max(128).nullable() }).strict()
 export const approvalDecideSchema = z.object({ surfaceId, sessionId: z.string().min(1).max(128), id: z.uuid({ version: 'v4' }), decision: z.enum(['allowed-once', 'rejected']) }).strict()
-export const browserAcknowledgeSchema = z.object({ receipt: identity.extend({
-  outcome: z.enum(['observed', 'failed', 'cancelled', 'unknown']), quiescent: z.literal(true),
-}).strict() }).strict()
 
 /** One mounted page entry reporting a user click; the Host gate checks it against the mount table. */
 export const entryEventSchema = z.object({

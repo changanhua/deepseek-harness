@@ -1,6 +1,5 @@
 import { modelSummary } from './model-summary.js'
 import { renderMarkdown } from './preview.js'
-
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3080'
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const SURFACE_KEY = 'dsh.assistant.surface.v2'
@@ -35,9 +34,22 @@ let modelCatalog = null
 let modelRequest = 0
 let modelPicker = { open: false, phase: 'idle', sessionId: null, selection: null, applying: false }
 let targetDialogTrigger = null
-
 const label = phase => ({ unconfigured: '尚未配置', configured: '尚未连接', pending: '等待批准', connecting: '正在连接', connected: '已连接', offline: '离线', unauthorized: '需要授权', invalid: '配置无效' })[phase] ?? '未知状态'
-const messageError = error => ({ offline: '连接已中断，恢复连接后可继续。', result_unknown: '提交结果尚未确认，请重试原请求，不要重新发送。', pending_locked: '上次请求尚未确认，请先确认原请求。', session_changed: '会话已变化，请确认后重试。', target_changed: '操作目标已变化，请重新选择。', function_view_unavailable: '这个功能当前没有可打开的界面。', cognition_location_unavailable: '这个页面节点已经失效，请重新读取页面。' })[error?.code ?? error?.message ?? error] ?? (error?.message || String(error ?? '操作未完成'))
+const messageError = error => ({
+  offline: '连接已中断，恢复连接后可继续。',
+  no_saved_connection: '原连接授权不可恢复，请重新连接 DSH。',
+  permission_required: '扩展无权访问 DSH 地址，请检查 Chrome 扩展权限。',
+  site_permission_required: '已保存的网站权限不可用，请检查 Chrome 扩展权限。',
+  result_unknown: '提交结果尚未确认，请重试原请求，不要重新发送。',
+  pending_locked: '上次请求尚未确认，请先确认原请求。',
+  session_changed: '会话已变化，请确认后重试。',
+  target_changed: '操作目标已变化，请重新选择。',
+  capture_target_changed: 'FC 标签已刷新或切换。请停留在当前任务组，重新梳理。',
+  page_permission_required: '扩展无法读取当前标签。请切回 EA 页面，从扩展图标打开侧栏后重试。',
+  sbc_view_changed: 'SBC 页面在读取期间切换了任务组或关卡，请停留在当前任务组重试。',
+  function_view_unavailable: '这个功能当前没有可打开的界面。',
+  cognition_location_unavailable: '这个页面节点已经失效，请重新读取页面。',
+})[error?.code ?? error?.message ?? error] ?? (error?.message || String(error ?? '操作未完成'))
 const notice = text => { const node = byId('notice'); node.hidden = !text; node.textContent = text ?? '' }
 const fallback = () => ({ connection: state?.connection ?? { phase: 'unconfigured' }, surface: { id: null },
   session: { binding: state?.session?.binding ?? null, phase: state?.session?.phase ?? 'idle', error: null, pending: state?.session?.pending ?? null, pendingCreate: state?.session?.pendingCreate ?? null, modelSelection: state?.session?.modelSelection ?? null, transcript: [] },
@@ -73,6 +85,7 @@ const send = async message => {
 const readState = () => send({ type: 'dsh-assistant-state' })
 const selectedName = target => target?.title ?? target?.pageTitle ?? target?.url ?? (Number.isInteger(target?.tabId) ? `标签 ${target.tabId}` : '未固定目标标签')
 const sessionName = item => bounded(item?.projections?.values?.title, 160) || bounded(item?.cwd?.split(/[\\/]/u).at(-1), 120) || '未命名对话'
+const targetIdentity = target => [target?.tabId, target?.frameId, target?.documentId, target?.url].join('\u0000')
 const catalogRoute = selection => {
   if (!selection || !modelCatalog) return null
   const group = modelCatalog.groups?.find(candidate => candidate.id === selection.provider)
@@ -94,7 +107,12 @@ const renderConnection = () => {
   byId('connection-dot').className = `connection-dot ${connection.phase}`
   const panel = byId('connection-panel'); panel.replaceChildren(); panel.hidden = connection.phase === 'connected'
   if (connection.phase === 'pending') panel.append('等待 DSH 批准此扩展。', button('打开批准页', () => send({ type: 'dsh-assistant-open-approval' }), 'primary'), button('取消连接', () => send({ type: 'dsh-assistant-cancel' })))
-  else if (connection.phase !== 'connected') panel.append(`${label(connection.phase)}${connection.baseUrl ? ` · ${connection.baseUrl}` : ''}`, button('连接本机 DSH', connect, 'primary'))
+  else if (connection.phase !== 'connected') {
+    const action = button(connection.phase === 'offline' ? '重试连接' : '连接本机 DSH',
+      connection.phase === 'offline' ? retryConnection : connect, 'primary')
+    action.disabled = connection.phase === 'connecting'
+    panel.append(`${label(connection.phase)}${connection.baseUrl ? ` · ${connection.baseUrl}` : ''}`, action)
+  }
 }
 
 const renderSettings = () => {
@@ -114,6 +132,15 @@ const renderSettings = () => {
   const covered = grant?.origins?.includes('*') && ['browser:read', 'browser:write', 'browser:observe'].every(scope => grant.scopes?.includes(scope))
   access.append(covered ? '所有网站已授权，直到你撤销。' : '尚未授权所有网站。')
   if (!covered && connection.phase === 'connected') access.append(button('授权所有网站', connect, 'primary'))
+  const codex = current.codexConnection ?? { baseUrl: 'http://127.0.0.1:3091', phase: 'unconfigured' }
+  const codexPanel = byId('codex-browser-connection'); codexPanel.replaceChildren()
+  codexPanel.append(`Codex 网页连接：${label(codex.phase)}${codex.baseUrl ? ` · ${codex.baseUrl}` : ''}`)
+  if (codex.phase === 'connected') codexPanel.append(button('断开 Codex', () => send({ type: 'dsh-codex-browser-disconnect' })))
+  else {
+    const action = button(codex.phase === 'offline' ? '重试 Codex' : '连接 Codex', () => send({ type: 'dsh-codex-browser-connect' }), 'primary')
+    action.disabled = codex.phase === 'connecting'
+    codexPanel.append(action)
+  }
 }
 
 const chooseModel = (group, model) => {
@@ -239,15 +266,21 @@ const openTargetDialog = async () => {
     .filter(item => Number.isInteger(item?.tabId))
     .sort((left, right) => Number(right.active === true) - Number(left.active === true)
       || Number(right.tabId === fixedTabId) - Number(left.tabId === fixedTabId))
+  const windowIds = [...new Set(candidates.map(item => item.windowId).filter(Number.isInteger))]
+  const multipleWindows = windowIds.length > 1
   for (const item of candidates) {
     let host = ''
     try { host = new URL(item.url).hostname } catch {}
-    const states = [item.active ? '当前' : '', item.tabId === fixedTabId ? '已固定' : ''].filter(Boolean)
-    const candidate = button(`${states.length ? `${states.join(' · ')} · ` : ''}${bounded(item.title, 120) || host || `标签 ${item.tabId}`}${host ? ` · ${host}` : ''}`, async () => {
+    const windowLabel = multipleWindows && Number.isInteger(item.windowId)
+      ? `窗口 ${windowIds.indexOf(item.windowId) + 1} · ` : ''
+    const states = [item.active ? multipleWindows ? '该窗口已选中' : '当前' : '',
+      item.tabId === fixedTabId ? '已固定' : ''].filter(Boolean)
+    const candidate = button(`${windowLabel}${states.length ? `${states.join(' · ')} · ` : ''}${bounded(item.title, 120) || host || `标签 ${item.tabId}`}${host ? ` · ${host}` : ''}`, async () => {
       const bound = await send({ type: 'dsh-assistant-target-bind', expectedRevision, tabId: item.tabId })
       if (bound) closeTargetDialog()
     })
-    if (item.active) { candidate.classList.add('current-target'); candidate.setAttribute('aria-current', 'page') }
+    candidate.title = `${item.title ?? ''}\n${item.url ?? ''}`.trim()
+    if (item.active && !multipleWindows) { candidate.classList.add('current-target'); candidate.setAttribute('aria-current', 'page') }
     if (item.tabId === fixedTabId) { candidate.classList.add('fixed-target'); candidate.setAttribute('aria-pressed', 'true') }
     panel.append(candidate)
   }
@@ -255,8 +288,10 @@ const openTargetDialog = async () => {
 }
 const renderTarget = () => {
   const current = viewState(); const target = current.target ?? {}; const panel = byId('target-panel'); panel.replaceChildren()
-  const heading = document.createElement('strong'); heading.textContent = target.selected ? `已固定 · ${selectedName(target.selected)}` : '未固定操作标签'
+  const heading = document.createElement('strong'); heading.textContent = target.selected ? `已固定到此对话 · ${selectedName(target.selected)}` : '未固定操作标签'
   const connected = current.connection?.phase === 'connected'; const bound = Boolean(current.session?.binding)
+  if (bound) heading.title = `对话 ${current.session.binding.sessionId}`
+  const multipleWindows = new Set((target.candidates ?? []).map(item => item.windowId).filter(Number.isInteger)).size > 1
   const targetReady = target.availability === 'ready' && Number.isSafeInteger(target.revision)
   const hint = document.createElement('small'); hint.textContent = !connected ? '请先连接 DSH，再选择网页。'
     : !bound ? '按需选择网页；显式固定时会先新建对话。'
@@ -264,14 +299,14 @@ const renderTarget = () => {
         : target.bindingState === 'other-installation' ? '原目标属于另一个浏览器，请重新固定。'
           : target.selected?.status === 'closed' ? '原网页已关闭，请重新选择。'
           : target.selected?.status === 'navigated' ? '网页已跳转，旧节点引用已失效。'
-            : target.selected ? '切换浏览标签不会改变操作目标。' : '选择网页本身不会读取正文。'
+            : target.selected ? `仅此对话 ${current.session.binding.sessionId.slice(-8)} 可用；切换对话需重新固定。` : '选择网页本身不会读取正文。'
   const actions = document.createElement('div'); actions.className = 'target-actions'
   if (!bound) {
-    const fixCurrent = button('固定当前标签', createAndBindCurrent, 'primary')
+    const fixCurrent = button(multipleWindows ? '固定最近聚焦页' : '固定当前标签', createAndBindCurrent, 'primary')
     fixCurrent.disabled = !connected; if (fixCurrent.disabled) fixCurrent.title = hint.textContent
     actions.append(fixCurrent)
   }
-  if (bound) {
+  if (bound && !multipleWindows) {
     const switchCurrent = button('切到当前页', bindCurrentTarget, !target.selected ? 'primary' : '')
     switchCurrent.disabled = !connected || !targetReady; if (switchCurrent.disabled) switchCurrent.title = hint.textContent
     actions.append(switchCurrent)
@@ -286,17 +321,24 @@ const renderTarget = () => {
 
 const createAndBindCurrent = async () => {
   if (viewState().session?.binding) return notice('对话已变化，请重新点击固定。')
+  const selected = (await send({ type: 'dsh-assistant-target-current' }))?.value
+  if (!selected || viewState().session?.binding) return notice('当前标签或对话已变化，请重新点击固定。')
   const created = await send({ type: 'dsh-assistant-session-create' })
   const createdBinding = created?.state?.assistantV2?.session?.binding
   const current = viewState()
   if (!createdBinding?.sessionId || current.session?.binding?.sessionId !== createdBinding.sessionId
     || !Number.isSafeInteger(current.target?.revision)) return notice('新对话尚未就绪，请稍后重试固定。')
-  await send({ type: 'dsh-assistant-target-bind', expectedRevision: current.target.revision })
+  await send({ type: 'dsh-assistant-target-bind', expectedRevision: current.target.revision,
+    tabId: selected.tabId, expectedPage: selected })
 }
 const bindCurrentTarget = async () => {
   const current = viewState()
   if (!current.session?.binding || !Number.isSafeInteger(current.target?.revision)) return notice('当前对话或目标尚未就绪。')
-  await send({ type: 'dsh-assistant-target-bind', expectedRevision: current.target.revision })
+  const selected = (await send({ type: 'dsh-assistant-target-current' }))?.value
+  if (!selected || viewState().session?.binding?.sessionId !== current.session.binding.sessionId
+    || viewState().target?.revision !== current.target.revision) return notice('当前标签或对话已变化，请重新选择。')
+  await send({ type: 'dsh-assistant-target-bind', expectedRevision: current.target.revision,
+    tabId: selected.tabId, expectedPage: selected })
 }
 
 const renderTranscriptImage = (message, attachment) => {
@@ -360,15 +402,6 @@ const renderApprovals = () => {
     controls.append(button('允许这一次', () => decide('allowed-once'), 'primary'), button('拒绝', () => decide('rejected'))); card.append(title, reason, controls); panel.append(card); panel.hidden = false
   }
 }
-const renderUnresolved = () => {
-  const panel = byId('unresolved-actions'); panel.replaceChildren(); panel.hidden = true
-  for (const item of state?.unresolved ?? []) {
-    const row = document.createElement('article'); const text = document.createElement('p'); text.textContent = `标签 ${item.target?.tabId} · 会话 ${item.identity.sessionId.slice(-12)}：${item.acknowledgementPending ? '已人工核对，等待同步到 DSH。' : '旧操作结果未知，同一标签的后续操作已暂停。请先查看页面。'}`
-    row.append(text, button('查看目标标签', () => send({ type: 'dsh-assistant-reveal-target', requestId: item.identity.requestId })), button(item.acknowledgementPending ? '同步核对结果' : '我已核对页面，接受未知结果', () => send({ type: 'dsh-assistant-acknowledge', identity: item.identity })))
-    panel.append(row); panel.hidden = false
-  }
-}
-
 const nodeTitle = node => ({ tag: bounded(node.tag, 64) || node.kind, label: bounded(node.label || node.text || node.role, 256) || '无公开文字' })
 const renderCognitionTree = (item, card) => {
   const nodes = item.tree?.nodes ?? []; const byIndex = new Map(nodes.map(node => [node.index, node])); const children = new Map()
@@ -448,7 +481,10 @@ const renderSessionList = (container, items, after = () => {}) => {
   container.replaceChildren()
   for (const item of items) {
     const row = button('', async () => { const result = await send({ type: 'dsh-assistant-session-bind', sessionId: item.sessionId }); if (result) after() })
-    const title = document.createElement('span'); title.textContent = sessionName(item); const action = document.createElement('small'); action.textContent = '继续对话'; row.append(title, action); container.append(row)
+    row.title = `对话 ${item.sessionId}`
+    const title = document.createElement('span'); title.textContent = sessionName(item)
+    const action = document.createElement('small'); action.textContent = item.sessionId.slice(-8)
+    row.append(title, action); container.append(row)
   }
   if (!container.childElementCount) { const empty = document.createElement('p'); empty.className = 'recent-empty'; empty.textContent = '还没有可继续的对话。'; container.append(empty) }
 }
@@ -469,7 +505,7 @@ const refreshRecent = async () => {
 const renderDraftImages = () => { const rail = byId('draft-images'); rail.replaceChildren(); for (const [index, image] of draftImages.entries()) { const card = document.createElement('div'); card.className = 'draft-image'; const preview = document.createElement('img'); preview.alt = image.name; preview.src = `data:${image.mediaType};base64,${image.data}`; const remove = button('×', () => { draftImages = draftImages.filter((_, candidate) => candidate !== index); renderDraftImages() }); remove.setAttribute('aria-label', `移除图片 ${image.name}`); card.append(preview, remove); rail.append(card) } }
 const render = () => {
   const current = viewState(); const connection = current.connection ?? {}; const session = current.session ?? {}; const blocked = locked(session.pending) || Boolean(session.pendingCreate)
-  renderConnection(); renderSettings(); renderTarget(); renderConversation(); renderPending(); renderApprovals(); renderUnresolved(); renderCognition(); renderFunctions(); renderRecent(); renderModelPicker()
+  renderConnection(); renderSettings(); renderTarget(); renderConversation(); renderPending(); renderApprovals(); renderCognition(); renderFunctions(); renderRecent(); renderModelPicker()
   for (const name of ['chat', 'cognition', 'functions']) { byId(`${name}-panel`).hidden = activeView !== name; for (const node of document.querySelectorAll(`[data-view="${name}"]`)) node.setAttribute('aria-selected', String(activeView === name)) }
   byId('composer-wrap').hidden = activeView !== 'chat'
   const offline = connection.phase !== 'connected' || session.phase === 'foreign'
@@ -479,6 +515,7 @@ const render = () => {
 }
 
 const connect = async () => { try { if (!await chrome.permissions.request({ origins: ['http://*/*', 'https://*/*'] })) return notice('未授予所有网站访问权限'); await send({ type: 'dsh-assistant-connect', scopes: ['session:interact', 'browser:read', 'browser:write', 'browser:observe'], origins: ['*'] }) } catch (error) { notice(messageError(error)) } }
+const retryConnection = () => send({ type: 'dsh-assistant-retry' })
 const configure = async () => { const baseUrl = byId('base-url').value.trim() || DEFAULT_BASE_URL; try { if (!['http:', 'https:'].includes(new URL(baseUrl).protocol)) throw new Error('invalid_url') } catch { return notice('请输入有效的 HTTP(S) 地址') }; editingUrl = false; if (await send({ type: 'dsh-assistant-configure', baseUrl })) await connect() }
 const openSessionMenu = async menuId => { const menu = byId(menuId); menu.hidden = false; const result = await send({ type: 'dsh-assistant-session-list' }); renderSessionList(menu, normalizeSessions(result?.value), () => { menu.hidden = true }) }
 const submit = async (mode = 'queue') => { const text = byId('composer').value.trim(); const current = viewState(); if ((!text && !draftImages.length) || submitting || locked(current.session?.pending) || current.session?.pendingCreate) return; if (current.connection?.phase !== 'connected' || current.session?.phase === 'foreign') return render(); const submittedDraftKey = activeDraftKey; submitting = true; render(); try { const result = await send({ type: 'dsh-assistant-session-submit', text, mode, expectedSessionId: current.session?.binding?.sessionId ?? null, ...(Number.isSafeInteger(current.target?.revision) ? { expectedTargetRevision: current.target.revision } : {}), ...(draftImages.length ? { images: structuredClone(draftImages) } : {}) }); if (result) { const command = result.value?.command?.result; if (command) notice(command.text || (command.kind === 'success' ? '命令已完成。' : '命令未完成。')); drafts.delete(submittedDraftKey); if (activeDraftKey === submittedDraftKey) { byId('composer').value = ''; draftImages = []; renderDraftImages() } } } finally { submitting = false; render() } }
@@ -512,9 +549,6 @@ byId('session-new').addEventListener('click', () => { void send({ type: 'dsh-ass
 byId('session-switch').addEventListener('click', () => { void openSessionMenu('session-switch-menu') })
 byId('refresh-cognition').addEventListener('click', () => { const current = viewState(); void send({ type: 'dsh-assistant-cognition-refresh', expectedSessionId: current.session?.binding?.sessionId ?? null, expectedTargetRevision: current.target?.revision }) })
 byId('refresh-functions').addEventListener('click', () => { void send({ type: 'dsh-assistant-functions-refresh' }) })
-byId('create-function').addEventListener('click', () => { activeView = 'chat'; byId('composer').value = `帮我创建一个${functionScope === 'page' ? '当前页面' : '全局'}功能：`; render(); byId('composer').focus() })
-byId('attach-image').addEventListener('click', () => byId('image-input').click())
-byId('image-input').addEventListener('change', event => { void addFiles(event.target.files); event.target.value = '' })
 byId('composer').addEventListener('paste', event => { const files = [...(event.clipboardData?.items ?? [])].filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean); if (files.length) { event.preventDefault(); void addFiles(files) } })
 byId('composer').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void submit() } })
 byId('send-queue').addEventListener('click', () => { void submit() })
@@ -532,9 +566,46 @@ document.addEventListener('click', event => {
 })
 chrome.runtime.onMessage.addListener(message => { if (message?.type === 'dsh-state-changed') void readState(); if (message?.type === 'dsh-assistant-error') notice(message.error) })
 
-let presencePort; let presenceRetry; let closingView = false
-const publishPresence = () => { try { presencePort?.postMessage({ type: 'presence', visible: document.visibilityState === 'visible' }) } catch {} }
-const connectView = () => { if (closingView || typeof chrome.runtime.connect !== 'function') return; try { const port = chrome.runtime.connect({ name: 'dsh-assistant-view' }); presencePort = port; port.onDisconnect.addListener(() => { if (presencePort !== port) return; presencePort = undefined; if (!closingView) presenceRetry = setTimeout(connectView, 1000) }); publishPresence() } catch { if (!closingView) presenceRetry = setTimeout(connectView, 1000) } }
+let presencePort; let presenceRetry; let presenceFailures = 0; let closingView = false
+const presenceRecoveryNotice = '扩展后台连接正在恢复。'
+const invalidatedExtensionContext = error => /Extension context invalidated/iu.test(String(error?.message ?? error ?? ''))
+const stopInvalidatedView = () => {
+  closingView = true
+  clearTimeout(presenceRetry)
+  presenceRetry = undefined
+  notice('扩展已更新，请重新打开侧栏。')
+}
+const publishPresence = () => {
+  try { presencePort?.postMessage({ type: 'presence', visible: document.visibilityState === 'visible', surfaceId }) }
+  catch (error) { if (invalidatedExtensionContext(error)) stopInvalidatedView() }
+}
+const retryView = () => {
+  if (closingView || presenceRetry) return
+  const delay = Math.min(1000 * 2 ** presenceFailures, 30_000)
+  presenceFailures = Math.min(presenceFailures + 1, 5)
+  if (presenceFailures === 5) notice(presenceRecoveryNotice)
+  presenceRetry = setTimeout(() => { presenceRetry = undefined; connectView() }, delay)
+}
+const connectView = () => {
+  if (closingView || typeof chrome.runtime.connect !== 'function') return
+  try {
+    const port = chrome.runtime.connect({ name: 'dsh-assistant-view' })
+    const connectedAt = Date.now()
+    presencePort = port
+    port.onMessage.addListener(message => {
+      if (presencePort !== port || message?.type !== 'presence-ready') return
+      presenceFailures = 0
+      if (byId('notice').textContent === presenceRecoveryNotice) notice(null)
+    })
+    port.onDisconnect.addListener(() => {
+      if (presencePort !== port) return
+      presencePort = undefined
+      if (Date.now() - connectedAt >= 30_000) presenceFailures = 0
+      retryView()
+    })
+    publishPresence()
+  } catch (error) { if (invalidatedExtensionContext(error)) stopInvalidatedView(); else retryView() }
+}
 document.addEventListener('visibilitychange', publishPresence)
 window.addEventListener('pagehide', () => { closingView = true; clearTimeout(presenceRetry); presencePort?.disconnect(); presencePort = undefined })
 render(); connectView(); void readState()

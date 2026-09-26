@@ -14,7 +14,6 @@ type JournalResult = { outcome: JournalOutcome
 type JournalEntry = { identity: BrowserInvocation
   state: 'active' | 'settled'
   released: boolean
-  acknowledgementPending?: boolean
   result?: JournalResult }
 type JournalRecord = { version: 1
   journalId: string
@@ -23,9 +22,7 @@ type AssistantJournal = {
   handle: (frame: { type: 'execute' | 'status' | 'cancel'
     request: BrowserInvocation }) => Promise<JournalResult>
   lookup: (locator: { kind: 'extension-journal-v1'; protocolVersion: 1; transportRequestId: string; installationId: string; grantEpoch: number }) => Promise<JournalResult | undefined>
-  acknowledge: (identity: BrowserInvocation) => Promise<void>
-  acknowledgements: () => Promise<JournalResult[]>
-  confirmAcknowledgement: (identity: BrowserInvocation) => Promise<void>
+  interrupt: (reason?: string, installationId?: string) => void
   list: () => Promise<JournalEntry[]>
 }
 type Deferred<T> = { promise: Promise<T>
@@ -61,6 +58,76 @@ function harness() {
 }
 
 describe('Chrome durable browser execution journal', () => {
+  test('journals target-free tab creation and recovers its exact receipt without reopening', async () => {
+    const h = harness()
+    const { target: _target, ...base } = request()
+    const r = sealBrowserInvocation({ ...base, payload: { kind: 'tab_open', url: 'https://example.test/' } })
+    const opened = { outcome: 'observed' as const, quiescent: true, value: { opened: true, tab: { tabId: 10, windowId: 1 } } }
+    h.execute.mockImplementationOnce(async () => {
+      expect(journalRecord(h.values).entries[0]).toMatchObject({ operation: 'tab_open', state: 'active', mutates: true })
+      expect(JSON.stringify(h.values)).not.toContain('https://example.test/')
+      return opened
+    })
+    expect(await h.journal.handle({ type: 'execute', request: r })).toMatchObject(opened)
+    expect(await createJournal(h).handle({ type: 'execute', request: r })).toMatchObject(opened)
+    expect(h.execute).toHaveBeenCalledTimes(1)
+  })
+  test('an unresolved open is never replayed but does not occupy another new tab', async () => {
+    const h = harness()
+    const { target: _target, ...base } = request()
+    const r = sealBrowserInvocation({ ...base, payload: { kind: 'tab_open', url: 'https://example.test/' } })
+    h.execute.mockResolvedValueOnce({ outcome: 'unknown', quiescent: false })
+    await h.journal.handle({ type: 'execute', request: r })
+    expect(await h.journal.handle({ type: 'execute', request: r })).toMatchObject({ outcome: 'unknown' })
+    expect(await h.journal.handle({ type: 'execute', request: sealBrowserInvocation({ ...r, requestId: randomUUID() }) })).toMatchObject(receipt)
+    expect(await h.journal.handle({ type: 'execute', request: request() })).toMatchObject(receipt)
+    expect(await h.journal.handle({ type: 'execute', request: sealBrowserInvocation({ ...r, requestId: randomUUID(), installationId: randomUUID() }) })).toMatchObject(receipt)
+    expect(h.execute).toHaveBeenCalledTimes(4)
+  })
+  test('expired creation receipts cannot be retrieved during an idle worker or executed again', async () => {
+    const h = harness()
+    let time = Date.now()
+    const { target: _target, ...base } = request()
+    const r = sealBrowserInvocation({ ...base, deadline: time + 10, payload: { kind: 'tab_open', url: 'https://example.test/' } })
+    const journal = createJournal({ ...h, now: () => time, retentionMs: 20 })
+    const locator = { kind: 'extension-journal-v1' as const, protocolVersion: 1 as const,
+      transportRequestId: r.requestId, installationId: r.installationId, grantEpoch: r.grantEpoch }
+    await journal.handle({ type: 'execute', request: r })
+    time = r.deadline + 19
+    expect(await journal.lookup(locator, r.sessionId)).toMatchObject(receipt)
+    time += 1
+    expect(await journal.lookup(locator, r.sessionId)).toBeUndefined()
+    expect(await journal.handle({ type: 'execute', request: r })).toMatchObject({ outcome: 'unknown', reason: 'receipt_expired' })
+    expect(h.execute).toHaveBeenCalledTimes(1)
+  })
+  test('target-free admission does not permit other writes or prepared-action wrappers', async () => {
+    const h = harness()
+    const { target: _target, ...base } = request()
+    for (const payload of [{ kind: 'click' }, { kind: 'commit', action: { kind: 'tab_open', url: 'https://example.test/' } }]) {
+      await expect(h.journal.handle({ type: 'execute', request: sealBrowserInvocation({ ...base, payload }) })).rejects.toThrow('invalid_request')
+    }
+    expect(h.execute).not.toHaveBeenCalled()
+  })
+  test('a worker lost after creation admission can query but cannot execute that open again', async () => {
+    const h = harness()
+    const { target: _target, ...base } = request()
+    const r = sealBrowserInvocation({ ...base, payload: { kind: 'tab_open', url: 'https://example.test/' } })
+    const started = deferred<undefined>()
+    const effect = deferred<JournalResult>()
+    h.execute.mockImplementationOnce(async () => { started.resolve(undefined); return effect.promise })
+    const pending = h.journal.handle({ type: 'execute', request: r })
+    await started.promise
+    const retained = structuredClone(h.values)
+    const recovered = createJournal({ ...h, storage: {
+      get: async (key: string) => structuredClone({ [key]: retained[key] }),
+      set: async (patch: Record<string, unknown>) => { Object.assign(retained, structuredClone(patch)) },
+    } })
+    expect(await recovered.handle({ type: 'status', request: r })).toMatchObject({ outcome: 'unknown', quiescent: false })
+    expect(await recovered.handle({ type: 'execute', request: r })).toMatchObject({ outcome: 'unknown', quiescent: false })
+    expect(h.execute).toHaveBeenCalledTimes(1)
+    effect.resolve(receipt)
+    await pending
+  })
   test('persists minimal intent before an effect and redelivers its receipt without replay', async () => {
     const h = harness()
     const r = request()
@@ -139,6 +206,104 @@ describe('Chrome durable browser execution journal', () => {
     effect.resolve(receipt)
     await first
   })
+  test('只中断指定安装身份的执行，另一条连接仍可完成', async () => {
+    const h = harness()
+    const started = deferred<undefined>()
+    const codexStarted = deferred<undefined>()
+    const codexEffect = deferred<JournalResult>()
+    const codexInstallationId = '323e4567-e89b-42d3-a456-426614174000'
+    h.execute.mockImplementationOnce(async (_request: BrowserInvocation, signal: AbortSignal) => {
+      started.resolve(undefined)
+      await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }))
+      return { outcome: 'cancelled', quiescent: true, reason: 'connection_lost' }
+    })
+    h.execute.mockImplementationOnce(async (_request: BrowserInvocation, signal: AbortSignal) => {
+      codexStarted.resolve(undefined)
+      return Promise.race([codexEffect.promise, new Promise<JournalResult>(resolve => signal.addEventListener('abort', () => {
+        resolve({ outcome: 'cancelled', quiescent: true, reason: 'connection_lost' })
+      }, { once: true }))])
+    })
+    const dsh = request(7, false)
+    const codex = sealBrowserInvocation({ ...request(8, false), installationId: codexInstallationId })
+    const dshRun = h.journal.handle({ type: 'execute', request: dsh })
+    await started.promise
+    const codexRun = h.journal.handle({ type: 'execute', request: codex })
+    await codexStarted.promise
+    h.journal.interrupt('connection_lost', installationId)
+
+    await expect(dshRun).resolves.toMatchObject({ outcome: 'cancelled' })
+    codexEffect.resolve(receipt)
+    await expect(codexRun).resolves.toMatchObject(receipt)
+  })
+  test('capacity pressure evicts oldest settled reads but preserves write receipts', async () => {
+    const h = harness()
+    const journal = createJournal({ ...h, capacity: 3 })
+    const write = request(7, true), firstRead = request(7, false), secondRead = request(7, false), thirdRead = request(7, false)
+    for (const item of [write, firstRead, secondRead]) {
+      expect(await journal.handle({ type: 'execute', request: item })).toMatchObject(receipt)
+    }
+    const restarted = createJournal({ ...h, capacity: 3 })
+    expect(await restarted.handle({ type: 'execute', request: thirdRead })).toMatchObject(receipt)
+    const entries = await restarted.list()
+    expect(entries.map(item => item.identity.requestId)).toEqual([write.requestId, secondRead.requestId, thirdRead.requestId])
+    expect(h.execute).toHaveBeenCalledTimes(4)
+    expect(await restarted.handle({ type: 'status', request: write })).toMatchObject(receipt)
+  })
+  test('capacity pressure never evicts writes or unsettled reads', async () => {
+    const h = harness()
+    const journal = createJournal({ ...h, capacity: 2 })
+    const first = request(7, true), second = request(8, true)
+    expect(await journal.handle({ type: 'execute', request: first })).toMatchObject(receipt)
+    expect(await journal.handle({ type: 'execute', request: second })).toMatchObject(receipt)
+    expect(await journal.handle({ type: 'execute', request: request(9, false) })).toMatchObject({ outcome: 'failed', reason: 'journal_capacity' })
+    expect((await journal.list()).map(item => item.identity.requestId)).toEqual([first.requestId, second.requestId])
+    expect(h.execute).toHaveBeenCalledTimes(2)
+  })
+  test('storage-byte pressure also evicts completed reads before refusing a new request', async () => {
+    const h = harness()
+    h.execute.mockResolvedValue({ outcome: 'observed', quiescent: true, value: { text: 'x'.repeat(800) } })
+    const journal = createJournal({ ...h, capacity: 10, maxStorageBytes: 4000 })
+    const write = request(7, true), firstRead = request(7, false), secondRead = request(7, false)
+    for (const item of [write, firstRead, secondRead]) {
+      expect(await journal.handle({ type: 'execute', request: item })).toMatchObject({ outcome: 'observed' })
+    }
+    const ids = (await journal.list()).map(item => item.identity.requestId)
+    expect(ids).toContain(write.requestId)
+    expect(ids).toContain(secondRead.requestId)
+    expect(ids).not.toContain(firstRead.requestId)
+  })
+  test('cannot report a current read as observed after evicting its own receipt', async () => {
+    const h = harness()
+    h.execute.mockResolvedValue({ outcome: 'observed', quiescent: true, value: { text: 'x'.repeat(800) } })
+    const journal = createJournal({ ...h, maxStorageBytes: 1000 })
+    const current = request(7, false)
+
+    expect(await journal.handle({ type: 'execute', request: current })).toMatchObject({
+      outcome: 'unknown', reason: 'receipt_persistence_failed',
+    })
+    expect((await journal.list()).map(item => item.identity.requestId)).toContain(current.requestId)
+    expect(h.execute).toHaveBeenCalledOnce()
+  })
+  test('compacting reads cannot evict a settled unknown write receipt', async () => {
+    const h = harness()
+    h.execute.mockResolvedValueOnce({ outcome: 'unknown', reason: 'effect_unverified', quiescent: true })
+    const journal = createJournal({ ...h, capacity: 2 })
+    const uncertain = request(7, true)
+    expect(await journal.handle({ type: 'execute', request: uncertain })).toMatchObject({ outcome: 'unknown' })
+    expect(await journal.handle({ type: 'execute', request: request(7, false) })).toMatchObject(receipt)
+    expect(await journal.handle({ type: 'execute', request: request(7, false) })).toMatchObject(receipt)
+    expect(await journal.handle({ type: 'execute', request: request(7, true) })).toMatchObject(receipt)
+    expect((await journal.list())[0]).toMatchObject({ identity: { requestId: uncertain.requestId }, released: true })
+  })
+  test('an unknown write holds the tab until it is proven quiescent', async () => {
+    const h = harness()
+    h.execute.mockResolvedValueOnce({ outcome: 'unknown', reason: 'effect_unverified', quiescent: false })
+    const journal = createJournal({ ...h, capacity: 3 })
+    const uncertain = request(7, true)
+    expect(await journal.handle({ type: 'execute', request: uncertain })).toMatchObject({ outcome: 'unknown' })
+    expect(await journal.handle({ type: 'execute', request: request(7, true) })).toMatchObject({ outcome: 'failed', reason: 'target_busy' })
+    expect((await journal.list())[0]).toMatchObject({ identity: { requestId: uncertain.requestId }, released: false })
+  })
   test('cancel only requests stop; completion or verified quiescence owns release', async () => {
     const h = harness()
     const effect = deferred<JournalResult>()
@@ -166,23 +331,35 @@ describe('Chrome durable browser execution journal', () => {
     await expect(h.journal.handle({ type: 'execute', request: conflicting })).rejects.toThrow('request_conflict')
     expect(h.execute).toHaveBeenCalledTimes(1)
   })
-  test('unknown writes require explicit acknowledgement after executor quiescence', async () => {
+  test('an unknown write releases the tab once inspection proves quiescence', async () => {
     const h = harness()
     const r = request()
     h.execute.mockResolvedValueOnce({ outcome: 'unknown', value: {}, quiescent: false })
-    await h.journal.handle({ type: 'execute', request: r })
-    await expect(h.journal.acknowledge(r)).rejects.toThrow('executor_not_quiescent')
+    expect(await h.journal.handle({ type: 'execute', request: r })).toMatchObject({ outcome: 'unknown', quiescent: false })
+    expect((await h.journal.list())[0]).toMatchObject({ released: false })
     h.inspect.mockResolvedValueOnce({ outcome: 'unknown', quiescent: true })
-    await h.journal.acknowledge(r)
-    expect((await h.journal.list())[0]).toMatchObject({ released: true, acknowledgementPending: true })
-    const receipts = await h.journal.acknowledgements()
-    expect(receipts[0]).toMatchObject({ requestId: r.requestId, outcome: 'unknown', quiescent: true })
-    expect(receipts[0]).not.toHaveProperty('value')
-    await h.journal.confirmAcknowledgement(r)
-    expect(await h.journal.acknowledgements()).toEqual([])
+    expect(await h.journal.handle({ type: 'status', request: r })).toMatchObject({ outcome: 'unknown', quiescent: true })
+    const entry = (await h.journal.list())[0]
+    expect(entry).toMatchObject({ released: true })
+    expect(entry.result).toMatchObject({ requestId: r.requestId, outcome: 'unknown', quiescent: true })
+    expect(entry.result).not.toHaveProperty('value')
     expect(await h.journal.handle({ type: 'execute', request: request() })).toMatchObject(receipt)
   })
-  test('late human acknowledgement cannot replace an already observed status result', async () => {
+  test('each connection settles its own unresolved write without starving the other', async () => {
+    const h = harness()
+    const first = request(7, true)
+    const second = sealBrowserInvocation({ ...request(8, true), installationId: '323e4567-e89b-42d3-a456-426614174000' })
+    h.execute.mockResolvedValue({ outcome: 'unknown', quiescent: false })
+    await h.journal.handle({ type: 'execute', request: first })
+    await h.journal.handle({ type: 'execute', request: second })
+    h.inspect.mockResolvedValue({ outcome: 'unknown', quiescent: true })
+    expect(await h.journal.handle({ type: 'status', request: first })).toMatchObject({ outcome: 'unknown', quiescent: true })
+    expect(await h.journal.handle({ type: 'status', request: second })).toMatchObject({ outcome: 'unknown', quiescent: true })
+    const entries = await h.journal.list()
+    expect(entries.filter(entry => entry.identity.installationId === first.installationId && entry.released)).toHaveLength(1)
+    expect(entries.filter(entry => entry.identity.installationId === second.installationId && entry.released)).toHaveLength(1)
+  })
+  test('a slow inspection cannot replace an already observed status result', async () => {
     const h = harness()
     const r = request()
     const checked = deferred<undefined>()
@@ -191,14 +368,13 @@ describe('Chrome durable browser execution journal', () => {
     await h.journal.handle({ type: 'execute', request: r })
     h.inspect.mockImplementationOnce(async () => { checked.resolve(undefined)
       return inspection.promise })
-    const acknowledging = h.journal.acknowledge(r)
+    const slow = h.journal.handle({ type: 'status', request: r })
     await checked.promise
     h.inspect.mockResolvedValueOnce(receipt)
     expect(await h.journal.handle({ type: 'status', request: r })).toMatchObject(receipt)
     inspection.resolve({ outcome: 'unknown', quiescent: true })
-    await acknowledging
+    await slow
     expect((await h.journal.list())[0].result).toMatchObject(receipt)
-    expect(await h.journal.acknowledgements()).toEqual([])
   })
   test('malformed storage fails closed and cannot be replaced with an empty journal', async () => {
     const h = harness()

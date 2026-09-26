@@ -1,5 +1,5 @@
 import { createAssistantRuntime } from './assistant-runtime.js'
-import { assistantSurfaceId, createAssistantSurfaces } from './assistant-surfaces.js'
+import { assistantSurfaceId, attachAssistantViewPort, createAssistantSurfaces } from './assistant-surfaces.js'
 import { createExtensionController } from './controller.js'
 import { createContentBrowserTransport } from './transport.js'
 import { createCaptureBridge } from './capture-bridge.js'
@@ -90,16 +90,9 @@ chrome.tabs.onUpdated.addListener((_id, change) => { if (change.status === 'comp
 chrome.tabs.onUpdated.addListener((_id, change) => { if (change.status === 'complete') broadcast() })
 chrome.permissions.onRemoved.addListener(() => { void ready.then(() => assistant.permissionsChanged()).catch(() => {}); broadcast() })
 chrome.runtime.onConnect.addListener(port => {
-  const id = surfaceOf(port.sender)
-  if (port.name !== 'dsh-assistant-view' || id === null) { port.disconnect(); return }
-  let closed = false
-  port.onMessage.addListener(message => {
-    if (message?.type !== 'presence' || typeof message.visible !== 'boolean') return
-    void ready.then(() => { if (!closed) return assistant.viewChanged(id, message.visible) }).catch(() => {})
-  })
-  port.onDisconnect.addListener(() => {
-    closed = true
-    void ready.then(() => Promise.all([assistant.viewChanged(id, false), assistant.surfaceClosed(id)])).catch(() => {})
+  attachAssistantViewPort({ port, extensionId: chrome.runtime.id, sidebarUrl,
+    onPresence: (id, visible) => ready.then(() => assistant.viewChanged(id, visible)),
+    onClosed: id => ready.then(() => Promise.all([assistant.viewChanged(id, false), assistant.surfaceClosed(id)])),
   })
 })
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
@@ -150,6 +143,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id === chrome.runtime.id && sender.url === chrome.runtime.getURL('reader.html')
     && ['dsh-assistant-state', 'dsh-assistant-open-model-settings', 'dsh-assistant-reading-models',
       'dsh-assistant-configure', 'dsh-assistant-connect', 'dsh-assistant-poll', 'dsh-assistant-open-approval', 'dsh-assistant-cancel',
+      'dsh-assistant-retry',
       'dsh-assistant-reading-model', 'dsh-assistant-reading-configure', 'dsh-assistant-reading-stop'].includes(message?.type)) {
     void ready.then(() => assistant.handle(message)).then(respond,
       error => respond({ ok: false, error: error.code ?? error.message }))
@@ -206,7 +200,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     return true
   }
   const surfaceId = surfaceOf(sender, message?.surfaceId)
-  if (surfaceId === null || typeof message?.type !== 'string' || !message.type.startsWith('dsh-assistant-')) return
+  if (surfaceId === null || typeof message?.type !== 'string'
+    || !message.type.startsWith('dsh-assistant-') && !['dsh-codex-browser-configure', 'dsh-codex-browser-connect', 'dsh-codex-browser-disconnect'].includes(message.type)) return
   if (message.type === 'dsh-assistant-open-window') {
     void surfaces.openWindow().then(value => respond({ ok: true, value }), () => respond({ ok: false, error: 'assistant_window_unavailable' }))
     return true

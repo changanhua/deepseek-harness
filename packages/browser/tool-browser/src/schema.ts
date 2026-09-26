@@ -56,11 +56,20 @@ export const pageActionSchema = { oneOf: [
     files: { type: 'array', required: true, items: { type: 'string' }, description: 'Up to 16 absolute local paths explicitly chosen for this task.' } } },
   ...(['back', 'forward', 'reload', 'tab_close', 'tab_focus', 'screenshot'] as const).map(kind => ({ type: 'object' as const,
     additionalProperties: false as const, properties: { kind: { type: 'string' as const, const: kind, required: true as const }, page: { ...page, required: true as const } } })),
-  { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', const: 'tab_open', required: true }, page: { ...page, required: true },
+  { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', const: 'tab_open', required: true }, page,
     url: { type: 'string', required: true } } },
   { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', const: 'scroll', required: true }, page: { ...page, required: true }, x: { type: 'integer', required: true }, y: { type: 'integer', required: true } } },
   { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', const: 'wait', required: true }, page: { ...page, required: true }, milliseconds: { type: 'integer', required: true, description: 'At most 15000 milliseconds.' } } },
 ] } as const satisfies ValueSchemaSpec
+
+/** Prepared sequences require an existing page; bootstrap opens use the direct action tool. */
+export const sequenceActionSchema = { oneOf: [pageActionSchema.oneOf[0], pageActionSchema.oneOf[1],
+  ...pageActionSchema.oneOf.slice(2).map(action =>
+    action.properties.kind.const === 'tab_open'
+      ? { type: 'object' as const, additionalProperties: false as const, properties: {
+        kind: { type: 'string' as const, const: 'tab_open' as const, required: true as const },
+        page: { ...page, required: true as const }, url: { type: 'string' as const, required: true as const } } }
+      : action)] } as const satisfies ValueSchemaSpec
 
 export const actionResultSchema = { type: 'object', additionalProperties: false, properties: {
   requestId: { type: 'string', required: true }, sessionId: { type: 'string', required: true }, installationId: { type: 'string', required: true },
@@ -94,5 +103,6 @@ export const instancesSchema = { type: 'array', items: { type: 'object', additio
     actionKinds: { type: 'array', required: true, items: { type: 'string' } },
     requestRecovery: { type: 'boolean', required: true },
     restartStatusLookup: { type: 'boolean' },
+    targetFreeOpen: { type: 'boolean' },
   } },
 } } } as const satisfies ValueSchemaSpec

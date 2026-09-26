@@ -18,6 +18,10 @@ const validResult = value => value && ['observed', 'failed', 'cancelled', 'unkno
   && typeof value.quiescent === 'boolean' && (value.outcome === 'unknown' || value.quiescent)
   && (value.reason === undefined || typeof value.reason === 'string' && value.reason.length <= 1024)
 const unknown = (identity, reason, quiescent = false) => ({ ...identity, outcome: 'unknown', reason, quiescent })
+const opensTab = request => request.mutates && request.target === undefined
+  && request.payload?.kind === 'tab_open' && request.payload.page === undefined
+const conflictsWith = (entry, request) => entry.mutates && !entry.released
+  && request.target !== undefined && entry.target?.tabId === request.target.tabId
 
 function canonical(value) {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value)
@@ -31,7 +35,8 @@ function canonical(value) {
 
 async function verifyInvocation(request, maxRequestBytes) {
   if (!validIdentity(request) || typeof request.mutates !== 'boolean'
-    || request.target !== undefined && !validTarget(request.target) || request.mutates && !request.target) throw error('invalid_request')
+    || request.target !== undefined && !validTarget(request.target)
+    || request.mutates && !request.target && !opensTab(request)) throw error('invalid_request')
   if (bytes(request) > maxRequestBytes) throw error('request_too_large')
   const body = { protocolVersion: request.protocolVersion, grantEpoch: request.grantEpoch, requestId: request.requestId,
     sessionId: request.sessionId, installationId: request.installationId, deadline: request.deadline,
@@ -44,7 +49,8 @@ async function verifyInvocation(request, maxRequestBytes) {
 /**
  * One service-worker writer owns this journal. Persist intent before invoking
  * the executor; never persist action inputs or replay them during recovery.
- * Unknown writes lock the whole tab across sessions, grants and Host restarts.
+ * Only an operation that may still be running holds the tab. A quiescent
+ * unknown result remains queryable without requiring a person to clear it.
  */
 export const createAssistantJournal = ({ storage, execute, inspect = async () => ({ outcome: 'unknown', quiescent: false }),
   permit = () => false, changed = () => {}, canBootstrap = async () => false, now = Date.now, capacity = 64, maxRequestBytes = 65536,
@@ -74,14 +80,18 @@ export const createAssistantJournal = ({ storage, execute, inspect = async () =>
           || !Array.isArray(record.entries) || record.entries.length > capacity
           || bytes(record) > maxStorageBytes || new Set(record.entries.map(row => row?.identity?.requestId)).size !== record.entries.length
           || record.entries.some(row => !validIdentity(row.identity) || typeof row.mutates !== 'boolean'
-            || row.target !== undefined && !validTarget(row.target) || row.mutates && !row.target
+            || row.target !== undefined && !validTarget(row.target)
+            || row.operation !== undefined && (row.operation !== 'tab_open' || !row.mutates || row.target !== undefined)
+            || row.mutates && !row.target && row.operation !== 'tab_open'
             || typeof row.released !== 'boolean' || !['active', 'settled'].includes(row.state)
-            || row.acknowledgementPending !== undefined && typeof row.acknowledgementPending !== 'boolean'
-            || row.acknowledgementPending && (!row.released || row.state !== 'settled' || !row.result?.quiescent)
             || row.state === 'settled' && (!validResult(row.result) || !sameIdentity(row.result, row.identity))
             || row.released && (row.state !== 'settled' || !row.result.quiescent))) throw error('invalid_journal')
-        entries = clone(record.entries)
+        // A settled quiescent record is released on read: no person clears an unresolved write.
+        entries = record.entries.map(row => ({ ...row, released: row.released || row.state === 'settled' && row.result.quiescent }))
         journalId = record.journalId
+        if (record.entries.some((row, index) => row.released !== entries[index].released)) {
+          await storage.set({ [JOURNAL_KEY]: { ...record, entries } })
+        }
       } else {
         if (anchor !== undefined || !await canBootstrap()) throw error('journal_missing')
         journalId = crypto.randomUUID()
@@ -90,13 +100,20 @@ export const createAssistantJournal = ({ storage, execute, inspect = async () =>
       initialized = true
     } catch { unavailable = true; throw error('journal_unavailable') }
   }
-  const persist = async next => {
+  const persist = async (next, protectedRequestId = null) => {
     if (unavailable) throw error('journal_unavailable')
-    const record = { version: 1, journalId, entries: next }
-    if (bytes(record) > maxStorageBytes) throw error('journal_capacity')
+    const kept = next.filter(row => !row.released || row.identity.deadline + retentionMs > now())
+    const record = { version: 1, journalId, entries: kept }
+    // Completed reads are replay-safe; sent writes and unresolved requests are not.
+    while (kept.length > capacity || bytes(record) > maxStorageBytes) {
+      const index = kept.findIndex(row => row.identity.requestId !== protectedRequestId && !row.mutates
+        && row.state === 'settled' && row.released)
+      if (index < 0) throw error('journal_capacity')
+      kept.splice(index, 1)
+    }
     try { await storage.set({ [JOURNAL_KEY]: record }) }
     catch { unavailable = true; throw error('journal_unavailable') }
-    entries = next
+    entries = kept
   }
   const find = identity => {
     const entry = entries.find(row => row.identity.requestId === identity.requestId)
@@ -116,9 +133,11 @@ export const createAssistantJournal = ({ storage, execute, inspect = async () =>
   const conclude = (entry, candidate) => serialize(async () => {
     const current = find(entry.identity)
     if (current?.released && current.result?.outcome === 'unknown') return clone(current.result)
+    // A late inspection reports missing information, never a downgrade of a settled outcome.
+    if (current?.result && current.result.outcome !== 'unknown' && candidate.outcome === 'unknown') return clone(current.result)
     const result = resultFor(entry.identity, candidate)
-    const settled = { ...entry, state: 'settled', result, released: result.outcome !== 'unknown' && result.quiescent }
-    try { await persist(entries.map(row => row.identity.requestId === entry.identity.requestId ? settled : row)) }
+    const settled = { ...entry, state: 'settled', result, released: result.quiescent }
+    try { await persist(entries.map(row => row.identity.requestId === entry.identity.requestId ? settled : row), entry.identity.requestId) }
     catch { return unknown(entry.identity, 'receipt_persistence_failed') }
     notify(result)
     return clone(result)
@@ -160,21 +179,33 @@ export const createAssistantJournal = ({ storage, execute, inspect = async () =>
     if (!['execute', 'status', 'cancel'].includes(frame?.type) || !validIdentity(frame.request)) throw error('invalid_request')
     const request = clone(frame.request)
     if (frame.type === 'execute') await verifyInvocation(request, maxRequestBytes)
+    if (frame.type === 'execute' && request.mutates) {
+      const conflicts = await serialize(async () => {
+        await initialize()
+        return entries.filter(row => conflictsWith(row, request)
+          && !active.has(row.identity.requestId)).map(row => clone(row))
+      })
+      for (const entry of conflicts) await recover(entry, 'status')
+    }
     const admitted = await serialize(async () => {
       await initialize()
       const existing = find(request)
+      if (existing?.released && existing.identity.deadline + retentionMs <= now()) {
+        return { result: unknown(existing.identity, 'receipt_expired', true) }
+      }
       if (existing) return { entry: clone(existing) }
       if (frame.type !== 'execute') return { result: unknown(identityOf(request), 'receipt_unavailable') }
       open()
       const denied = reason => ({ result: { ...identityOf(request), outcome: 'failed', quiescent: true, reason } })
       if (request.deadline <= now() || request.deadline - now() > maxDurationMs) return denied('deadline')
       if (!permit(request)) return denied('authorization_changed')
-      if (request.mutates && entries.some(row => row.mutates && !row.released && row.target.tabId === request.target.tabId)) return denied('target_busy')
-      const retained = entries.filter(row => !row.released || row.acknowledgementPending || row.identity.deadline + retentionMs > now())
-      if (retained.length >= capacity) return denied('journal_capacity')
+      if (request.mutates && entries.some(row => conflictsWith(row, request))) return denied('target_busy')
+      const retained = entries.filter(row => !row.released || row.identity.deadline + retentionMs > now())
       const entry = { identity: identityOf(request), mutates: request.mutates,
+        ...(opensTab(request) ? { operation: 'tab_open' } : {}),
         ...(request.target === undefined ? {} : { target: clone(request.target) }), state: 'active', released: false }
-      await persist([...retained, entry])
+      try { await persist([...retained, entry]) }
+      catch (cause) { if (cause?.code === 'journal_capacity') return denied('journal_capacity'); throw cause }
       const deferred = Promise.withResolvers()
       const work = { ...deferred, controller: new AbortController(), timer: undefined }
       active.set(request.requestId, work)
@@ -203,40 +234,17 @@ export const createAssistantJournal = ({ storage, execute, inspect = async () =>
     const entry = entries.find(row => row.identity.requestId === locator.transportRequestId
       && row.identity.sessionId === sessionId && row.identity.installationId === locator.installationId
       && row.identity.grantEpoch === locator.grantEpoch)
-    if (!entry) return undefined
+    if (!entry || entry.released && entry.identity.deadline + retentionMs <= now()) return undefined
     if (entry.state === 'settled' && entry.result) return clone(entry.result)
     return unknown(entry.identity, 'receipt_unavailable')
   })
 
-  // User acknowledgement is separate from a status query. The executor, not
-  // the UI, must first prove that no old operation can issue another action.
-  const acknowledge = async identity => {
-    if (!validIdentity(identity)) throw error('invalid_request')
-    const entry = await serialize(async () => { open(); await initialize(); return clone(find(identity)) })
-    if (!entry || active.has(identity.requestId)) throw error('executor_not_quiescent')
-    if (entry.released && entry.result?.quiescent) return
-    const observed = await inspect(clone(entry), { cancel: true })
-    if (!validResult(observed) || !observed.quiescent) throw error('executor_not_quiescent')
-    await serialize(async () => {
-      open()
-      const current = find(identity)
-      if (!current || current.released || current.state === 'settled' && current.result.outcome !== 'unknown') return
-      const result = resultFor(identityOf(identity), observed)
-      await persist(entries.map(row => row === current ? { ...row, state: 'settled', result, released: true, acknowledgementPending: true } : row))
-    })
-  }
-  const acknowledgements = () => serialize(async () => {
-    open(); await initialize()
-    return entries.filter(entry => entry.acknowledgementPending).map(entry => ({ ...identityOf(entry.identity), outcome: entry.result.outcome, quiescent: true }))
-  })
-  const confirmAcknowledgement = identity => serialize(async () => {
-    open(); await initialize()
-    const entry = find(identity)
-    if (!entry?.acknowledgementPending) return
-    await persist(entries.map(row => row === entry ? { ...row, acknowledgementPending: false } : row))
-  })
-  const interrupt = (reason = 'connection_lost') => {
-    for (const work of active.values()) work.controller.abort(error(reason))
+  const interrupt = (reason = 'connection_lost', installationId = undefined) => {
+    for (const [requestId, work] of active) {
+      const entry = entries.find(row => row.identity.requestId === requestId)
+      if (installationId !== undefined && entry?.identity.installationId !== installationId) continue
+      work.controller.abort(error(reason))
+    }
   }
   const stop = async () => {
     closed = true
@@ -248,5 +256,5 @@ export const createAssistantJournal = ({ storage, execute, inspect = async () =>
     await lane
   }
   const list = () => serialize(async () => { await initialize(); return clone(entries) })
-  return { handle, lookup, acknowledge, acknowledgements, confirmAcknowledgement, interrupt, stop, list }
+  return { handle, lookup, interrupt, stop, list }
 }

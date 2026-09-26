@@ -60,7 +60,7 @@
 
 ### `browser_action`
 
-在现有个人授权下执行一个页面动作，然后在 `value.feedback` 中返回新鲜快照。对于自然语言多步骤任务，先调用 `browser_task_start` 并提供机器可检查的成功条件，再在每个动作后调用 `browser_task_verify`；直接的 `browser_action` 仍用于一次性动作。选择下一步前，先将反馈与目标核对。引用过期时，使用新的 `page + snapshotId + elementId` 重新选择预期目标。绝不自动重试结果未知的动作；仅有确认响应并不能证明成功。
+在现有个人授权下执行一个页面动作，然后在 `value.feedback` 中返回新鲜的紧凑快照。无目标 `tab_open` 打开明确 URL 并返回标签页引用；调用 `browser_task_verify` 读取并接纳它，再操作页面。成功结果可由 `browser_task_start` 表达的自然语言多步骤任务，应先启动任务并在每个动作后核验；直接 `browser_action` 仍用于一次性动作或机器条件无法表达的目标。选择下一步前，先将反馈与目标核对。表单控件文本会脱敏，空文本不证明填入失败；`valueSet` 只确认本次设置值，业务结果仍须另行核验。引用过期时，使用新的 `page + snapshotId + elementId` 重新选择预期目标。绝不自动重试结果未知的动作；仅有确认响应并不能证明成功。
 
 ```json
 {
@@ -1111,7 +1111,6 @@
           },
           "required": [
             "kind",
-            "page",
             "url"
           ]
         },
@@ -2930,6 +2929,26 @@
     "documentId": {
       "type": "string"
     },
+    "expectedTab": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tabId": {
+          "type": "integer"
+        },
+        "windowId": {
+          "type": "integer"
+        },
+        "browserSessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tabId",
+        "windowId",
+        "browserSessionId"
+      ]
+    },
     "query": {
       "type": "string",
       "description": "Case-insensitive substring in label, text, role, placeholder or card/section title; up to 256 characters."
@@ -3012,7 +3031,7 @@
 
 ### `browser_task_start`
 
-启动一个有界浏览器任务。提供自然语言目标以及至少一个机器可检查的成功条件。任务会观察页面；此后只有在仍未验证时，Agent 循环才继续。
+以自然语言目标和至少一个机器可检查的成功条件启动有界浏览器任务。有用户固定目标时，提供其新鲜页面引用。未固定目标时省略 `page`；`nextStep: open-target-free-tab` 表示先通过 `browser_action tab_open` 打开明确 URL，再调用 `browser_task_verify` 读取并接纳返回的标签页。整个过程保留同一个任务和动作预算。
 
 ```json
 {
@@ -3098,7 +3117,6 @@
   "required": [
     "installationId",
     "goal",
-    "page",
     "success"
   ]
 }

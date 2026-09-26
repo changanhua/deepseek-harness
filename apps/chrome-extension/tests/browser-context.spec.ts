@@ -53,6 +53,13 @@ describe('explicit browser context capture', () => {
     h.chromeApi.tabs.get.mockResolvedValueOnce(h.tab).mockResolvedValueOnce({ ...h.tab, url: 'https://example.test/replaced' })
     await expect(h.capture.target(7)).rejects.toMatchObject({ code: 'capture_target_changed' })
   })
+  test('rejects a replacement document even when the tab and URL stay the same', async () => {
+    const h = harness()
+    const selected = await h.capture.target()
+    h.chromeApi.scripting.executeScript.mockResolvedValueOnce([{ documentId: 'doc-2', frameId: 0,
+      result: { url: h.tab.url, title: h.tab.title } }])
+    await expect(h.capture.target(selected.tabId, selected)).rejects.toMatchObject({ code: 'capture_target_changed' })
+  })
   test('body capture reads and rechecks the exact document and preserves incomplete-source flags', async () => {
     const h = harness()
     h.chromeApi.scripting.executeScript.mockResolvedValueOnce([{ documentId: 'doc-1', frameId: 0,

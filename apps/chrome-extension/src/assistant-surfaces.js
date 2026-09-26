@@ -9,6 +9,35 @@ export const assistantSurfaceId = (sender, extensionId, sidebarUrl, fallbackId) 
   return validFallbackId(fallbackId) ? fallbackId : null
 }
 
+export const attachAssistantViewPort = ({ port, extensionId, sidebarUrl, onPresence, onClosed }) => {
+  const sender = port.sender
+  if (port.name !== 'dsh-assistant-view' || sender?.id !== extensionId || sender.url !== sidebarUrl) {
+    port.disconnect()
+    return
+  }
+  let surfaceId = assistantSurfaceId(sender, extensionId, sidebarUrl)
+  let closed = false
+  port.onMessage.addListener(message => {
+    if (closed || message?.type !== 'presence' || typeof message.visible !== 'boolean') return
+    const resolved = assistantSurfaceId(sender, extensionId, sidebarUrl, message.surfaceId)
+    if (resolved === null || surfaceId !== null && resolved !== surfaceId) {
+      port.disconnect()
+      return
+    }
+    surfaceId = resolved
+    try {
+      void Promise.resolve(onPresence(surfaceId, message.visible)).then(() => {
+        if (!closed) port.postMessage({ type: 'presence-ready' })
+      }).catch(() => {})
+    } catch { /* A failed view update cannot grant presence. */ }
+  })
+  port.onDisconnect.addListener(() => {
+    closed = true
+    if (surfaceId === null) return
+    try { void Promise.resolve(onClosed(surfaceId)).catch(() => {}) } catch {}
+  })
+}
+
 /** Reuse one dedicated assistant window; its document identity owns an independent Session selection. */
 export const createAssistantSurfaces = ({ chromeApi }) => {
   let opening = null

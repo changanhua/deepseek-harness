@@ -1,0 +1,281 @@
+import { randomBytes, randomUUID } from 'node:crypto'
+import { once } from 'node:events'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, relative } from 'node:path'
+import { WebSocket } from 'ws'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createBrowserMcp } from '../src/index.ts'
+import { startBrowserRelay } from '../src/relay.ts'
+import type { Invocation } from '../src/types.ts'
+import { actionSchema, configSchema, rpcSchema } from '../src/schema.ts'
+
+const cleanup: (() => unknown)[] = []
+afterEach(async () => { vi.useRealTimers(); while (cleanup.length) await cleanup.pop()?.() })
+const extensionId = 'a'.repeat(32)
+const origin = `chrome-extension://${extensionId}`
+interface ResultBody {
+  result?: { requestId: string; outcome: string; reason?: string; value: { text: string } }
+  error?: { message: string }
+}
+const parse = (value: unknown) => value as ResultBody
+
+async function mcp(configPath: string) {
+  const server = createBrowserMcp({ configPath, autostart: false })
+  const client = new Client({ name: 'connector-test', version: '1' })
+  const [a, b] = InMemoryTransport.createLinkedPair()
+  cleanup.push(() => server.close(), () => client.close())
+  await server.connect(b); await client.connect(a)
+  return client
+}
+async function fixture(capabilities?: { targetFreeOpen?: boolean; actionKinds?: string[]; restartStatusLookup?: boolean }) {
+  const config = { port: 0, secret: randomBytes(32).toString('base64url'), extensionIds: [extensionId] }
+  const relay = await startBrowserRelay(config)
+  cleanup.push(relay.close)
+  const root = await mkdtemp(join(tmpdir(), 'browser-connector-test-'))
+  cleanup.push(async () => {
+    const child = relative(tmpdir(), root)
+    if (!child.startsWith('browser-connector-test-') || /[\\/]/u.test(child)) throw new Error('unsafe_cleanup')
+    await rm(root, { recursive: true, force: true })
+  })
+  const configPath = join(root, 'config.json')
+  await writeFile(configPath, JSON.stringify({ ...config, port: relay.port }))
+  const base = `http://127.0.0.1:${relay.port}`
+  const installationId = randomUUID()
+  const pair = await fetch(`${base}/browser-connector/connect`, {
+    method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify({ installationId, extensionId }),
+  })
+  expect(pair.status).toBe(200)
+  const credentials = await pair.json() as { token: string }
+  const socket = new WebSocket(`ws://127.0.0.1:${relay.port}/api/browser-extension/v1/ws`, { origin })
+  cleanup.push(() => { socket.terminate() })
+  await once(socket, 'open')
+  const ready = once(socket, 'message')
+  socket.send(JSON.stringify({ type: 'hello', protocolVersion: 1, installationId, token: credentials.token,
+    ...(capabilities ? { capabilities: { protocolVersion: 1, requestRecovery: true, actionKinds: capabilities.actionKinds ?? [],
+      ...(capabilities.restartStatusLookup === true ? { restartStatusLookup: true } : {}),
+      ...(capabilities.targetFreeOpen === undefined ? {} : { targetFreeOpen: capabilities.targetFreeOpen }) } } : {}) }))
+  await ready
+  return { configPath, base, installationId, socket, config, credentials }
+}
+
+describe('independent browser connector', () => {
+  it('discovers tools without configuration or DSH and contains unavailable calls', async () => {
+    const client = await mcp(join(tmpdir(), `absent-${randomUUID()}.json`))
+    expect((await client.listTools()).tools).toHaveLength(7)
+    expect((await client.callTool({ name: 'browser_status', arguments: {} })).isError).toBe(true)
+    expect((await client.listTools()).tools).toHaveLength(7)
+  })
+
+  it('isolates two MCP callers and preserves raw page data through the relay', async () => {
+    const { configPath, socket, installationId } = await fixture()
+    const requests: Invocation[] = []
+    socket.on('message', (data: Buffer) => {
+      const frame = JSON.parse(data.toString('utf8')) as { type: string; request: Invocation }
+      if (frame.type !== 'execute') return
+      const request = frame.request
+      requests.push(request)
+      if (request.payload.kind !== 'snapshot') return
+      const page = { tabId: request.payload.tabId, frameId: 0, documentId: `doc-${request.payload.tabId}`, url: `https://example.test/${request.payload.tabId}` }
+      const receipt = { ...request, outcome: 'observed', quiescent: true, value: { text: `original-${page.tabId}`, page } }
+      socket.send(JSON.stringify({ type: 'result', receipt: { ...receipt, sessionId: randomUUID(), value: { text: 'WRONG OWNER' } } }))
+      socket.send(JSON.stringify({ type: 'result', receipt }))
+    })
+    const a = await mcp(configPath), b = await mcp(configPath)
+    const read = (client: Client, tabId: number, url = `https://example.test/${tabId}`) => client.callTool({ name: 'browser_read_page', arguments: { installationId, tabId, url } })
+    const results = await Promise.all([read(a, 1), read(b, 2)])
+    expect(results.map(result => parse(result.structuredContent).result?.value.text)).toEqual(['original-1', 'original-2'])
+    expect(new Set(requests.map(request => request.sessionId)).size).toBe(2)
+    const id = parse(results[0]?.structuredContent).result?.requestId
+    expect((await b.callTool({ name: 'browser_request_status', arguments: { installationId, requestId: id } })).isError).toBe(true)
+    expect((await read(a, 1, 'https://example.test/changed')).isError).toBe(true)
+    await a.close()
+    expect((await read(b, 2)).isError).toBe(false)
+  })
+
+  it('rejects foreign web origins and unauthenticated local callers', async () => {
+    const { base, installationId } = await fixture()
+    const response = await fetch(`${base}/browser-connector/connect`, {
+      method: 'POST', headers: { origin: 'https://example.test', 'content-type': 'application/json' },
+      body: JSON.stringify({ installationId, extensionId }),
+    })
+    expect(response.status).toBe(403)
+    expect((await fetch(`${base}/rpc`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status).toBe(403)
+  })
+
+  it('replaces an authenticated stale connection without stranding the installation', async () => {
+    const { base, installationId, socket, credentials, configPath } = await fixture()
+    const replacement = new WebSocket(base.replace('http:', 'ws:') + '/api/browser-extension/v1/ws', { origin })
+    cleanup.push(() => { replacement.terminate() })
+    await once(replacement, 'open')
+    const oldClosed = once(socket, 'close')
+    const ready = once(replacement, 'message')
+    replacement.send(JSON.stringify({ type: 'hello', protocolVersion: 1, installationId, token: credentials.token }))
+    await ready; await oldClosed
+    replacement.on('message', (data: Buffer) => {
+      const frame = JSON.parse(data.toString('utf8')) as { type: string; request: Invocation }
+      if (frame.type === 'execute') replacement.send(JSON.stringify({ type: 'result', receipt: { ...frame.request,
+        outcome: 'observed', quiescent: true, value: { tabs: [] } } }))
+    })
+    const client = await mcp(configPath)
+    expect((await client.callTool({ name: 'browser_tabs', arguments: { installationId } })).isError).toBe(false)
+  })
+
+  it('expires retained source data while the relay is idle', async () => {
+    const { configPath, socket, installationId } = await fixture()
+    socket.on('message', (data: Buffer) => {
+      const frame = JSON.parse(data.toString('utf8')) as { type: string; request: Invocation }
+      if (frame.type === 'execute') socket.send(JSON.stringify({ type: 'result', receipt: { ...frame.request,
+        outcome: 'observed', quiescent: true, value: { tabs: [] } } }))
+    })
+    const client = await mcp(configPath)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const result = await client.callTool({ name: 'browser_tabs', arguments: { installationId } })
+    const requestId = parse(result.structuredContent).result?.requestId
+    await vi.advanceTimersByTimeAsync(61000)
+    vi.useRealTimers()
+    const expired = await client.callTool({ name: 'browser_request_status', arguments: { installationId, requestId } })
+    expect(parse(expired.structuredContent).result).toMatchObject({ outcome: 'unknown', reason: 'receipt_unavailable' })
+  })
+
+  it('rejects an undiscoverable ephemeral port in persisted client configuration', () => {
+    expect(configSchema.safeParse({ port: 0, secret: randomBytes(32).toString('base64url'), extensionIds: [extensionId] }).success).toBe(false)
+  })
+
+  it('accepts only UUID v4 request identifiers for extension-journal actions', () => {
+    const input = { sessionId: randomUUID(), method: 'execute' as const, installationId: randomUUID(),
+      action: { kind: 'tab_open' as const, url: 'https://example.test/open' } }
+    expect(rpcSchema.safeParse({ ...input, requestId: randomUUID() }).success).toBe(true)
+    expect(rpcSchema.safeParse({ ...input, requestId: '6ba7b810-9dad-11d1-80b4-00c04fd430c8' }).success).toBe(false)
+    expect(rpcSchema.safeParse({ ...input, requestId: '01890f0e-7c3a-7cc0-8a23-2f5d402a0c6a' }).success).toBe(false)
+  })
+
+  it('requires a complete UUID v4 browser session reference when a snapshot supplies expectedTab', () => {
+    const reference = { tabId: 9, windowId: 2, browserSessionId: randomUUID() }
+    expect(actionSchema.safeParse({ kind: 'snapshot', tabId: 9, frameId: 0, expectedTab: reference }).success).toBe(true)
+    expect(actionSchema.safeParse({ kind: 'snapshot', tabId: 9, frameId: 0, expectedTab: { ...reference, browserSessionId: '01890f0e-7c3a-7cc0-8a23-2f5d402a0c6a' } }).success).toBe(false)
+  })
+
+  it('returns unknown on a sent action disconnect and never replays it', async () => {
+    const { configPath, socket, installationId } = await fixture()
+    let count = 0
+    socket.on('message', (data: Buffer) => {
+      const frame = JSON.parse(data.toString('utf8')) as { type: string }
+      if (frame.type === 'execute') { count++; socket.close() }
+    })
+    const client = await mcp(configPath)
+    const result = await client.callTool({ name: 'browser_act', arguments: { installationId,
+      action: { kind: 'scroll', page: { tabId: 1, frameId: 0, documentId: 'doc-1', url: 'https://example.test/1' }, x: 0, y: 300 } } })
+    expect(parse(result.structuredContent).result).toMatchObject({ outcome: 'unknown', reason: 'connection_lost' })
+    const requestId = parse(result.structuredContent).result?.requestId
+    await client.callTool({ name: 'browser_request_status', arguments: { installationId, requestId } })
+    expect(count).toBe(1)
+    expect((await client.listTools()).tools).toHaveLength(7)
+  })
+
+  it('opens a target-free tab only when the installed executor declares that capability, and reuses its caller requestId', async () => {
+    const unavailable = await fixture()
+    const unavailableClient = await mcp(unavailable.configPath)
+    const missing = await unavailableClient.callTool({ name: 'browser_open_tab', arguments: {
+      installationId: unavailable.installationId, requestId: randomUUID(), url: 'https://example.test/open',
+    } })
+    expect(missing.isError).toBe(true)
+    expect(parse(missing.structuredContent).error?.message).toBe('capability_unavailable')
+    const bypass = await unavailableClient.callTool({ name: 'browser_act', arguments: {
+      installationId: unavailable.installationId, action: { kind: 'tab_open', url: 'https://example.test/open' },
+    } })
+    expect(bypass.isError).toBe(true)
+    expect(parse(bypass.structuredContent).error?.message).toBe('request_id_required')
+
+    const { configPath, socket, installationId } = await fixture({ targetFreeOpen: true, actionKinds: ['tabs', 'snapshot', 'tab_open'] })
+    const client = await mcp(configPath)
+    const requestId = randomUUID()
+    const requests: Invocation[] = []
+    socket.on('message', (data: Buffer) => {
+      const frame = JSON.parse(data.toString('utf8')) as { type: string; request: Invocation }
+      if (frame.type !== 'execute') return
+      requests.push(frame.request)
+      socket.send(JSON.stringify({ type: 'result', receipt: { ...frame.request, outcome: 'observed', quiescent: true,
+        value: { opened: true, tab: { tabId: 17, windowId: 4 } } } }))
+    })
+    const input = { installationId, requestId, url: 'https://example.test/open' }
+    const first = await client.callTool({ name: 'browser_open_tab', arguments: input })
+    const second = await client.callTool({ name: 'browser_open_tab', arguments: input })
+    expect(parse(first.structuredContent).result).toMatchObject({ requestId, outcome: 'observed', value: { opened: true, tab: { tabId: 17, windowId: 4 } } })
+    expect(parse(second.structuredContent).result).toMatchObject({ requestId, outcome: 'observed' })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]).toMatchObject({ requestId, mutates: true, payload: { kind: 'tab_open', url: input.url } })
+    expect(requests[0]?.target).toBeUndefined()
+    const conflict = await client.callTool({ name: 'browser_open_tab', arguments: { ...input, url: 'https://example.test/other' } })
+    expect(conflict.isError).toBe(true)
+    expect(parse(conflict.structuredContent).error?.message).toBe('request_conflict')
+    const status = await client.callTool({ name: 'browser_status', arguments: {} })
+    expect(parse(status.structuredContent).result?.instances).toContainEqual(expect.objectContaining({ installationId,
+      capabilities: { targetFreeOpen: true, actionKinds: ['tabs', 'snapshot', 'tab_open'] } }))
+  })
+
+  it('uses extension journal status-query only after relay receipt retention is absent', async () => {
+    const { configPath, socket, installationId } = await fixture({ actionKinds: ['tabs'], restartStatusLookup: true })
+    const client = await mcp(configPath)
+    const requestId = randomUUID()
+    let queries = 0
+    let executions = 0
+    socket.on('message', (data: Buffer) => {
+      const frame = JSON.parse(data.toString('utf8')) as { type: string; locator?: { transportRequestId: string }; sessionId?: string }
+      if (frame.type === 'execute') { executions++; return }
+      if (frame.type !== 'status-query' || !frame.locator || !frame.sessionId) return
+      queries++
+      socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: 1, grantEpoch: 1, requestId: frame.locator.transportRequestId,
+        sessionId: frame.sessionId, installationId, deadline: Date.now() + 1_000, fingerprint: 'a'.repeat(64), outcome: 'observed', quiescent: true,
+        value: { opened: true, tab: { tabId: 22, windowId: 3 } } } }))
+    })
+    const result = await client.callTool({ name: 'browser_request_status', arguments: { installationId, requestId } })
+    expect(parse(result.structuredContent).result).toMatchObject({ requestId, outcome: 'observed', value: { opened: true } })
+    expect(queries).toBe(1)
+    expect(executions).toBe(0)
+  })
+
+  it('returns an explicit in-flight status and shares a concurrent journal status lookup', async () => {
+    const opening = await fixture({ targetFreeOpen: true, actionKinds: ['tab_open'], restartStatusLookup: true })
+    const openingClient = await mcp(opening.configPath)
+    const openingId = randomUUID()
+    let received: Invocation | undefined
+    let releaseExecute: (() => void) | undefined
+    const executeReceived = new Promise<void>((resolve) => { releaseExecute = resolve })
+    opening.socket.on('message', (data: Buffer) => {
+      const frame = JSON.parse(data.toString('utf8')) as { type: string; request: Invocation }
+      if (frame.type === 'execute') { received = frame.request; releaseExecute?.() }
+    })
+    const open = openingClient.callTool({ name: 'browser_open_tab', arguments: { installationId: opening.installationId, requestId: openingId, url: 'https://example.test/open' } })
+    await executeReceived
+    const inFlight = await openingClient.callTool({ name: 'browser_request_status', arguments: { installationId: opening.installationId, requestId: openingId } })
+    expect(parse(inFlight.structuredContent).result).toMatchObject({ requestId: openingId, outcome: 'unknown', reason: 'in_flight' })
+    opening.socket.send(JSON.stringify({ type: 'result', receipt: { ...received, outcome: 'observed', quiescent: true,
+      value: { opened: true, tab: { tabId: 31, windowId: 2 } } } }))
+    await open
+    const recovered = await openingClient.callTool({ name: 'browser_open_tab', arguments: { installationId: opening.installationId, requestId: openingId, url: 'https://example.test/open' } })
+    expect(parse(recovered.structuredContent).result).toMatchObject({ requestId: openingId, outcome: 'observed', value: { opened: true } })
+
+    const { configPath, socket, installationId } = await fixture({ actionKinds: ['tabs'], restartStatusLookup: true })
+    const client = await mcp(configPath)
+    const requestId = randomUUID()
+    let queries = 0
+    socket.on('message', (data: Buffer) => {
+      const frame = JSON.parse(data.toString('utf8')) as { type: string; locator?: { transportRequestId: string }; sessionId?: string }
+      if (frame.type !== 'status-query' || !frame.locator || !frame.sessionId) return
+      queries++
+      setTimeout(() => socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: 1, grantEpoch: 1,
+        requestId: frame.locator?.transportRequestId, sessionId: frame.sessionId, installationId, deadline: Date.now() + 1_000,
+        fingerprint: 'a'.repeat(64), outcome: 'observed', quiescent: true, value: { opened: true } } })), 10)
+    })
+    const [a, b] = await Promise.all([
+      client.callTool({ name: 'browser_request_status', arguments: { installationId, requestId } }),
+      client.callTool({ name: 'browser_request_status', arguments: { installationId, requestId } }),
+    ])
+    expect(parse(a.structuredContent).result).toMatchObject({ requestId, outcome: 'observed' })
+    expect(parse(b.structuredContent).result).toMatchObject({ requestId, outcome: 'observed' })
+    expect(queries).toBe(1)
+  })
+})

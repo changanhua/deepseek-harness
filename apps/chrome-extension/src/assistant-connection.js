@@ -53,6 +53,7 @@ export const createAssistantConnection = ({
   const notify = record => { try { Promise.resolve(changed(visible(record))).catch(() => {}) } catch { /* observers cannot reopen authority */ } }
   const validRecord = value => {
     if (!value || typeof value !== 'object' || (value.baseUrl !== null && typeof value.baseUrl !== 'string') || !UUID_V4.test(value.installationId)) return false
+    if (value.retryPaused !== undefined && value.retryPaused !== true) return false
     try { if (value.baseUrl !== null && normalizeBaseUrl(value.baseUrl) !== value.baseUrl) return false } catch { return false }
     if (value.pending && (!UUID_V4.test(value.pending.requestId) || !BASE64_32.test(value.pending.verifier) || value.pending.baseUrl !== value.baseUrl || value.pending.installationId !== value.installationId || value.pending.extensionId !== extensionId || !validScopes(value.pending.scopes) || !Array.isArray(value.pending.origins) || !value.pending.origins.every(validOrigin) || !Number.isFinite(Date.parse(value.pending.expiresAt)))) return false
     if ((value.token === undefined) !== (value.grant === undefined)) return false
@@ -102,6 +103,14 @@ export const createAssistantConnection = ({
 
   const onChannelState = async (candidate, epoch, state) => {
     if (channel !== candidate || generation !== epoch) return
+    if (state?.phase === 'stable') {
+      await serial(async () => {
+        const current = await load()
+        if (channel !== candidate || generation !== epoch || !current?.retryPaused || runtime.phase !== 'connected') return
+        await save({ ...current, retryPaused: undefined })
+      })
+      return
+    }
     if (state?.phase === 'connected') {
       const current = await serial(load)
       if (channel !== candidate || generation !== epoch || !current || state.grant?.installationId !== current.installationId || state.grant?.extensionId !== extensionId || state.grant?.grantEpoch !== current.grant?.grantEpoch) return
@@ -111,8 +120,15 @@ export const createAssistantConnection = ({
     }
     if (state?.phase === 'connecting' || state?.phase === 'offline' || state?.phase === 'stopped') {
       runtime = { phase: state.phase, grant: null }
-      const current = await serial(load)
-      if (current) notify(current)
+      const current = await serial(async () => {
+        const record = await load()
+        if (channel !== candidate || generation !== epoch || !record) return null
+        if (state.phase !== 'offline' || state.retryPaused !== true || record.retryPaused === true) return record
+        const paused = { ...record, retryPaused: true }
+        await save(paused)
+        return paused
+      })
+      if (current && channel === candidate && generation === epoch) notify(current)
       return
     }
     if (state?.phase !== 'unauthorized') return
@@ -120,9 +136,9 @@ export const createAssistantConnection = ({
     await serial(async () => {
       if (channel !== candidate || generation !== epoch) return
       const current = await load()
-      await save({ ...current, token: undefined, grant: undefined, pending: undefined, error: 'unauthorized' })
+      await save({ ...current, token: undefined, grant: undefined, pending: undefined, retryPaused: undefined, error: 'unauthorized' })
       channel = null
-      notify({ ...current, token: undefined, grant: undefined, pending: undefined, error: 'unauthorized' })
+      notify({ ...current, token: undefined, grant: undefined, pending: undefined, retryPaused: undefined, error: 'unauthorized' })
     })
   }
   const startChannel = async (record, epoch) => {
@@ -152,6 +168,10 @@ export const createAssistantConnection = ({
     const epoch = generation
     const record = await load()
     if (!record) return null
+    if (record.retryPaused && record.token && record.grant && !channel) {
+      runtime = { phase: 'offline', grant: null }
+      return record
+    }
     if (record.token && record.grant && !channel) {
       try {
         await requireAccess(record.baseUrl, record.grant.origins ?? [])
@@ -170,6 +190,25 @@ export const createAssistantConnection = ({
       return serial(async () => {
         const record = await resumeChannel()
         return record ? visible(record) : { baseUrl: null, phase: 'invalid', error: 'invalid_state' }
+      })
+    },
+
+    async retrySaved() {
+      const epoch = generation
+      return serial(async () => {
+        const record = await load()
+        if (!record?.token || !record.grant) return false
+        if (channel && (runtime.phase === 'connecting' || runtime.phase === 'connected')) return true
+        await requireAccess(record.baseUrl, record.grant.origins ?? [])
+        if (generation !== epoch || channel && runtime.phase !== 'offline') return false
+        const current = record.retryPaused ? { ...record, retryPaused: undefined } : record
+        if (current !== record) await save(current)
+        if (channel) {
+          runtime = { phase: 'connecting', grant: null }
+          notify(current)
+          channel.start()
+        } else await startChannel(current, epoch)
+        return true
       })
     },
 
@@ -218,7 +257,8 @@ export const createAssistantConnection = ({
             if (generation !== epoch || controller.signal.aborted) throw failure('cancelled')
             const latest = await load()
             if (latest.baseUrl !== record.baseUrl || latest.installationId !== record.installationId) throw failure('cancelled')
-            connected = { ...latest, pending: undefined, token: result.token, grant: result.grant, error: undefined }
+            connected = { ...latest, pending: undefined, token: result.token, grant: result.grant,
+              retryPaused: undefined, error: undefined }
             await save(connected)
           })
           await startChannel(connected, epoch)
@@ -230,7 +270,7 @@ export const createAssistantConnection = ({
           if (generation !== epoch || controller.signal.aborted) throw failure('cancelled')
           const latest = await load()
           if (latest.baseUrl !== record.baseUrl || latest.installationId !== record.installationId) throw failure('cancelled')
-          await save({ ...latest, pending, token: undefined, grant: undefined, error: undefined })
+          await save({ ...latest, pending, token: undefined, grant: undefined, retryPaused: undefined, error: undefined })
         })
         return api.read()
       })()
@@ -272,7 +312,8 @@ export const createAssistantConnection = ({
           if (generation !== epoch || controller.signal.aborted) throw failure('cancelled')
           const latest = await load()
           if (latest.pending?.requestId !== record.pending.requestId) throw failure('cancelled')
-          connected = { ...latest, pending: undefined, token: result.token, grant: result.grant, error: undefined }
+          connected = { ...latest, pending: undefined, token: result.token, grant: result.grant,
+            retryPaused: undefined, error: undefined }
           await save(connected)
         })
         await startChannel(connected, epoch)
@@ -309,7 +350,8 @@ export const createAssistantConnection = ({
       return serial(async () => {
         const record = await load()
         if (!record) return { baseUrl: null, phase: 'invalid', error: 'invalid_state' }
-        const next = { ...record, pending: undefined, token: undefined, grant: undefined, error: undefined }
+        const next = { ...record, pending: undefined, token: undefined, grant: undefined,
+          retryPaused: undefined, error: undefined }
         runtime = { phase: next.baseUrl ? 'configured' : 'unconfigured', grant: null }
         await save(next)
         notify(next)

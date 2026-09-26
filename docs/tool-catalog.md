@@ -56,7 +56,7 @@ This table connects model-visible tool names to the plugin package and service s
 
 ### `browser_action`
 
-Perform one page action under standing personal authorization, then return a fresh compact snapshot in value.feedback. For a natural-language multi-step task whose success is expressible by browser_task_start, start it and call browser_task_verify after each action; direct browser_action remains for one-off actions and goals without an expressible machine condition. Check feedback against the goal before choosing the next step. Form-control text is redacted, so empty text does not prove fill failed. A fill result with valueSet only confirms that action set its requested value; verify the business outcome separately. On stale references, re-select the intended target using new page + snapshotId + elementId. Never automatically retry an unknown outcome. An acknowledgement alone does not prove success.
+Perform one page action under standing personal authorization, then return a fresh compact snapshot in value.feedback. A target-free tab_open opens one URL and returns its tab handle; call browser_task_verify to inspect and adopt it before a page action. For a natural-language multi-step task whose success is expressible by browser_task_start, start it and call browser_task_verify after each action; direct browser_action remains for one-off actions and goals without an expressible machine condition. Check feedback against the goal before choosing the next step. Form-control text is redacted, so empty text does not prove fill failed. A fill result with valueSet only confirms that action set its requested value; verify the business outcome separately. On stale references, re-select the intended target using new page + snapshotId + elementId. Never automatically retry an unknown outcome. An acknowledgement alone does not prove success.
 
 ```json
 {
@@ -1107,7 +1107,6 @@ Perform one page action under standing personal authorization, then return a fre
           },
           "required": [
             "kind",
-            "page",
             "url"
           ]
         },
@@ -2925,6 +2924,26 @@ Inspect a frame with semantic roles, labels, card/section context and fresh elem
     "documentId": {
       "type": "string"
     },
+    "expectedTab": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tabId": {
+          "type": "integer"
+        },
+        "windowId": {
+          "type": "integer"
+        },
+        "browserSessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tabId",
+        "windowId",
+        "browserSessionId"
+      ]
+    },
     "query": {
       "type": "string",
       "description": "Case-insensitive substring in label, text, role, placeholder or card/section title; up to 256 characters."
@@ -3007,7 +3026,7 @@ Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-
 
 ### `browser_task_start`
 
-Start a bounded browser task. Supply a natural-language goal plus at least one machine-checkable success condition. The task observes the page, then the Agent loop continues only while it remains unverified.
+Start a bounded browser task with a natural-language goal and at least one machine-checkable success condition. With a user-fixed target, supply its freshly observed page. With no fixed target, omit page; nextStep open-target-free-tab means use browser_action tab_open with an explicit URL, then browser_task_verify to inspect and adopt its returned tab. The same task and action budget continue throughout.
 
 ```json
 {
@@ -3093,7 +3112,6 @@ Start a bounded browser task. Supply a natural-language goal plus at least one m
   "required": [
     "installationId",
     "goal",
-    "page",
     "success"
   ]
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { assistantSurfaceId, createAssistantSurfaces } from '../src/assistant-surfaces.js'
+import { assistantSurfaceId, attachAssistantViewPort, createAssistantSurfaces } from '../src/assistant-surfaces.js'
 
 const url = 'chrome-extension://test/sidebar.html'
 interface TestWindow { id: number; state?: string }
@@ -14,6 +14,45 @@ const harness = () => {
 }
 
 describe('assistant independent surface', () => {
+  test('accepts a trusted sidebar port when Chrome omits its documentId', async () => {
+    const fallback = 'surface-123e4567-e89b-42d3-a456-426614174000'
+    let onMessage: (message: unknown) => void = () => {}
+    let onDisconnect: () => void = () => {}
+    const port = { name: 'dsh-assistant-view', sender: { id: 'extension-id', url },
+      postMessage: vi.fn(), disconnect: vi.fn(),
+      onMessage: { addListener: (handler: typeof onMessage) => { onMessage = handler } },
+      onDisconnect: { addListener: (handler: typeof onDisconnect) => { onDisconnect = handler } } }
+    const onPresence = vi.fn(async () => {})
+    const onClosed = vi.fn(async () => {})
+
+    attachAssistantViewPort({ port, extensionId: 'extension-id', sidebarUrl: url, onPresence, onClosed })
+    expect(port.disconnect).not.toHaveBeenCalled()
+    onMessage({ type: 'presence', visible: true, surfaceId: fallback })
+    await vi.waitFor(() => { expect(port.postMessage).toHaveBeenCalledWith({ type: 'presence-ready' }) })
+    expect(onPresence).toHaveBeenCalledWith(fallback, true)
+    onDisconnect()
+    expect(onClosed).toHaveBeenCalledWith(fallback)
+  })
+
+  test('rejects an untrusted view port and mismatched fallback identity', () => {
+    const fallback = 'surface-123e4567-e89b-42d3-a456-426614174000'
+    let onMessage: (message: unknown) => void = () => {}
+    const port = { name: 'dsh-assistant-view', sender: { id: 'extension-id', url },
+      postMessage: vi.fn(), disconnect: vi.fn(),
+      onMessage: { addListener: (handler: typeof onMessage) => { onMessage = handler } },
+      onDisconnect: { addListener: vi.fn() } }
+    const onPresence = vi.fn()
+    const onClosed = vi.fn()
+    attachAssistantViewPort({ port, extensionId: 'extension-id', sidebarUrl: url, onPresence, onClosed })
+    onMessage({ type: 'presence', visible: true, surfaceId: fallback })
+    onMessage({ type: 'presence', visible: false, surfaceId: 'surface-123e4567-e89b-42d3-a456-426614174001' })
+    expect(port.disconnect).toHaveBeenCalledOnce()
+    expect(onPresence).toHaveBeenCalledTimes(1)
+    attachAssistantViewPort({ port: { ...port, sender: { id: 'foreign', url } },
+      extensionId: 'extension-id', sidebarUrl: url, onPresence, onClosed })
+    expect(port.disconnect).toHaveBeenCalledTimes(2)
+  })
+
   test('derives an opaque surface identity from the trusted Chrome document sender', () => {
     expect(assistantSurfaceId({ id: 'extension-id', url, documentId: 'document-a' }, 'extension-id', url)).toBe('document-a')
     expect(assistantSurfaceId({ id: 'extension-id', url, documentId: 'document-b' }, 'extension-id', url)).toBe('document-b')

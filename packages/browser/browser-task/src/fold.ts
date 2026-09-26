@@ -14,6 +14,7 @@ import type {
   BrowserSessionTargetBinding,
   BrowserTaskFunctionHandoff,
   BrowserTargetBinding,
+  BrowserBootstrapAuthority,
 } from './types.ts'
 import { BROWSER_PAGE_MAP_REGION_LIMIT } from './evidence.ts'
 
@@ -36,7 +37,7 @@ export const BROWSER_TASK_LIMITS = {
 const operations = new Set<BrowserTaskOperation>([
   'create', 'evidence', 'attempt', 'reconcile-attempt', 'resource',
   'reconcile-resource', 'capability', 'delegation', 'evaluate', 'transition',
-  'rebind', 'acknowledge-target-loss', 'consume-budget', 'terminate', 'owner-cancel',
+  'rebind', 'acknowledge-target-loss', 'consume-budget', 'terminate', 'owner-cancel', 'bootstrap-settle',
   'acknowledge-human-interaction', 'handoff-function',
 ])
 const phases = new Set(['running', 'waiting', 'verifying', 'settling', 'terminal'])
@@ -210,26 +211,38 @@ function validateEvidence(value: unknown): void {
 }
 
 function validateAttempt(value: unknown): void {
-  const attempt = exact(value, 'attempt', ['attemptId', 'requestId', 'actionKind', 'grantEpoch', 'stage', 'write', 'target'], ['resourceId', 'presentationIntent', 'recoveryLocator', 'outcome', 'quiescent', 'settledBy', 'reconciledBy'])
+  const attempt = exact(value, 'attempt', ['attemptId', 'requestId', 'actionKind', 'grantEpoch', 'stage', 'write'], ['target', 'bootstrap', 'resourceId', 'presentationIntent', 'recoveryLocator', 'outcome', 'quiescent', 'settledBy', 'reconciledBy'])
   text(attempt.attemptId, 'attempt.id')
   text(attempt.requestId, 'attempt.request')
   text(attempt.actionKind, 'attempt.actionKind')
   integer(attempt.grantEpoch, 'attempt.grantEpoch')
   if (!['planned', 'prepared', 'dispatch-intent', 'dispatched', 'settled'].includes(String(attempt.stage)) || typeof attempt.write !== 'boolean') throw new Error('attempt invalid')
-  target(attempt.target, 'attempt.target')
+  if ((attempt.target === undefined) === (attempt.bootstrap === undefined)) throw new Error('attempt authority invalid')
+  if (attempt.target !== undefined) target(attempt.target, 'attempt.target')
+  if (attempt.bootstrap !== undefined) {
+    const bootstrap = exact(attempt.bootstrap, 'attempt.bootstrap', ['kind', 'installationId', 'targetRevision'], ['url', 'tabId', 'windowId', 'browserSessionId', 'openedByRequestId'])
+    text(bootstrap.installationId, 'attempt.bootstrap.installationId'); integer(bootstrap.targetRevision, 'attempt.bootstrap.targetRevision')
+    if (bootstrap.kind === 'target-free-open') { text(bootstrap.url, 'attempt.bootstrap.url'); if (Object.keys(bootstrap).length !== 4 || attempt.actionKind !== 'tab_open' || !attempt.write) throw new Error('open bootstrap invalid') }
+    else if (bootstrap.kind === 'opened-tab-snapshot') { integer(bootstrap.tabId, 'attempt.bootstrap.tabId'); integer(bootstrap.windowId, 'attempt.bootstrap.windowId'); text(bootstrap.browserSessionId, 'attempt.bootstrap.browserSessionId'); text(bootstrap.openedByRequestId, 'attempt.bootstrap.openedByRequestId'); if (Object.keys(bootstrap).length !== 7 || attempt.actionKind !== 'snapshot' || attempt.write) throw new Error('snapshot bootstrap invalid') }
+    else throw new Error('attempt bootstrap kind invalid')
+  }
   if (attempt.recoveryLocator !== undefined) {
     const locator = exact(attempt.recoveryLocator, 'attempt.recoveryLocator', ['kind', 'protocolVersion', 'transportRequestId', 'installationId', 'grantEpoch'])
     if (locator.kind !== 'extension-journal-v1' || locator.protocolVersion !== 1) throw new Error('attempt recovery locator invalid')
     text(locator.transportRequestId, 'attempt.recoveryLocator.transportRequestId')
     text(locator.installationId, 'attempt.recoveryLocator.installationId')
     integer(locator.grantEpoch, 'attempt.recoveryLocator.grantEpoch')
-    if (locator.installationId !== (attempt.target as BrowserTargetBinding).installationId || locator.grantEpoch !== attempt.grantEpoch) throw new Error('attempt recovery locator identity invalid')
+    const installationId = attempt.target === undefined
+      ? (attempt.bootstrap as { installationId: string }).installationId
+      : (attempt.target as BrowserTargetBinding).installationId
+    if (locator.installationId !== installationId || locator.grantEpoch !== attempt.grantEpoch) throw new Error('attempt recovery locator identity invalid')
   }
   if (attempt.resourceId !== undefined) text(attempt.resourceId, 'attempt.resourceId')
   const actionIsResourceScoped = resourceActions.has(attempt.actionKind as string)
   if ((attempt.resourceId !== undefined) !== actionIsResourceScoped) {
     throw new Error('resource action identity invalid')
   }
+  if (attempt.bootstrap !== undefined && attempt.resourceId !== undefined) throw new Error('bootstrap cannot own resource')
   if (attempt.presentationIntent !== undefined) {
     validatePresentation(attempt.presentationIntent, 'attempt.presentationIntent', false)
     if (attempt.actionKind !== 'region_render' || attempt.resourceId === undefined) throw new Error('presentation intent invalid')
@@ -293,13 +306,14 @@ function validatePresentation(value: unknown, field: string, withReceipt: boolea
 }
 
 function validateCapability(value: unknown): void {
-  const capability = exact(value, 'capability', ['installationId', 'state', 'grantEpoch', 'scopes', 'actions', 'protocol'])
+  const capability = exact(value, 'capability', ['installationId', 'state', 'grantEpoch', 'scopes', 'actions', 'protocol'], ['targetFreeOpen'])
   text(capability.installationId, 'capability.installationId')
   if (!['observed', 'degraded', 'unavailable'].includes(String(capability.state))) throw new Error('capability state invalid')
   integer(capability.grantEpoch, 'capability.grantEpoch')
   uniqueStrings(capability.scopes, 'capability.scopes', BROWSER_TASK_LIMITS.evidenceRefs)
   uniqueStrings(capability.actions, 'capability.actions', BROWSER_TASK_LIMITS.evidenceRefs)
   text(capability.protocol, 'capability.protocol')
+  if (capability.targetFreeOpen !== undefined && capability.targetFreeOpen !== true) throw new Error('capability.targetFreeOpen invalid')
 }
 
 function validateDelegation(value: unknown): void {
@@ -330,7 +344,7 @@ export function assertBrowserTaskSnapshot(value: unknown): BrowserTaskSnapshot {
     'id', 'revision', 'objective', 'sourceSeq', 'phase', 'blockers', 'targetLossAcknowledged',
     'acceptance', 'evidence', 'evaluations', 'attempts', 'resources', 'delegated', 'budget',
     'createdAt', 'updatedAt',
-  ], ['outcome', 'target', 'targetRevision', 'capability', 'terminationSource', 'functionHandoff'])
+  ], ['outcome', 'target', 'targetRevision', 'pendingTarget', 'capability', 'terminationSource', 'functionHandoff'])
   text(task.id, 'id')
   integer(task.revision, 'revision', 1)
   text(task.objective, 'objective')
@@ -342,9 +356,16 @@ export function assertBrowserTaskSnapshot(value: unknown): BrowserTaskSnapshot {
   if (task.terminationSource !== undefined && (task.phase !== 'terminal' || task.outcome !== 'cancelled')) throw new Error('termination source requires cancelled terminal task')
   if (!Array.isArray(task.blockers) || task.blockers.some((value: unknown) => typeof value !== 'string' || !blockers.has(value as BrowserTaskBlocker)) || new Set(task.blockers).size !== task.blockers.length) throw new Error('blockers invalid')
   if (task.target !== undefined) target(task.target, 'target')
-  if (task.targetRevision !== undefined) {
-    integer(task.targetRevision, 'targetRevision', 1)
-    if (task.target === undefined) throw new Error('target revision requires target')
+  if (task.targetRevision === undefined) throw new Error('target revision required')
+  integer(task.targetRevision, 'targetRevision')
+  if (task.pendingTarget !== undefined) {
+    const pending = exact(task.pendingTarget, 'pendingTarget', ['installationId', 'targetRevision', 'tabId', 'windowId', 'browserSessionId', 'grantEpoch', 'openedByRequestId', 'openedByReceipt'])
+    text(pending.installationId, 'pendingTarget.installationId'); integer(pending.targetRevision, 'pendingTarget.targetRevision')
+    integer(pending.tabId, 'pendingTarget.tabId'); integer(pending.windowId, 'pendingTarget.windowId')
+    text(pending.browserSessionId, 'pendingTarget.browserSessionId'); integer(pending.grantEpoch, 'pendingTarget.grantEpoch')
+    text(pending.openedByRequestId, 'pendingTarget.openedByRequestId')
+    if (sourceRef(pending.openedByReceipt, 'pendingTarget.openedByReceipt').kind !== 'browser-task-receipt') throw new Error('pending target receipt invalid')
+    if (task.target !== undefined || pending.targetRevision !== task.targetRevision) throw new Error('pending target authority invalid')
   }
   if (typeof task.targetLossAcknowledged !== 'boolean') throw new Error('target acknowledgement invalid')
   const acceptance = array(task.acceptance, 'acceptance')
@@ -408,7 +429,7 @@ export function decodeBrowserTaskChange(value: unknown): BrowserTaskChangeMeta |
   if (!record(value) || value.kind !== 'browser-task/change') return undefined
   const change = exact(value, 'change', ['kind', 'version', 'operation', 'task'])
   if (change.version !== BROWSER_TASK_CHANGE_VERSION || typeof change.operation !== 'string' || !operations.has(change.operation as BrowserTaskOperation)) throw new Error('change header invalid')
-  return { kind: 'browser-task/change', version: 3, operation: change.operation as BrowserTaskOperation, task: assertBrowserTaskSnapshot(change.task) }
+  return { kind: 'browser-task/change', version: 4, operation: change.operation as BrowserTaskOperation, task: assertBrowserTaskSnapshot(change.task) }
 }
 
 function mapBy<T extends object>(values: readonly T[], key: string): Map<string, T> {
@@ -454,7 +475,17 @@ function requireTaskFacts(task: BrowserTaskSnapshot, facts: readonly BrowserTask
   for (const evidence of task.evidence) {
     requireFact(facts, evidence.source, 'evidence.source')
     const source = evidence.source
-    if (source.kind === 'browser-task-receipt' && !facts.some(fact => fact.kind === 'browser-task-receipt' && fact.sessionSeq === source.sessionSeq && fact.taskId === task.id && same(fact.target, evidence.target) && fact.grantEpoch === evidence.grantEpoch && fact.outcome === 'observed' && fact.delivery === 'sent' && fact.quiescent === true && (evidence.pageMap === undefined || fact.actionKind === 'page_map') && task.attempts.some(attempt => attempt.requestId === fact.requestId && attempt.actionKind === fact.actionKind && same(attempt.target, evidence.target) && attempt.grantEpoch === evidence.grantEpoch))) throw new Error('evidence receipt does not match target authority')
+    if (source.kind === 'browser-task-receipt' && !facts.some((fact) => {
+      if (fact.kind !== 'browser-task-receipt' || fact.sessionSeq !== source.sessionSeq || fact.taskId !== task.id
+        || fact.grantEpoch !== evidence.grantEpoch || fact.outcome !== 'observed' || fact.delivery !== 'sent'
+        || fact.quiescent !== true || evidence.pageMap !== undefined && fact.actionKind !== 'page_map') return false
+      const observedTarget = fact.target ?? (fact.observation?.kind === 'page' ? fact.observation.target : undefined)
+      if (!same(observedTarget, evidence.target)) return false
+      return task.attempts.some(attempt => attempt.requestId === fact.requestId
+        && attempt.actionKind === fact.actionKind && attempt.grantEpoch === evidence.grantEpoch
+        && (same(attempt.target, evidence.target)
+          || attempt.bootstrap?.kind === 'opened-tab-snapshot' && same(observedTarget, evidence.target)))
+    })) throw new Error('evidence receipt does not match target authority')
   }
   for (const evaluation of task.evaluations) {
     requireFact(facts, evaluation.checkerRef, 'evaluation.checkerRef')
@@ -492,7 +523,8 @@ function requireTaskFacts(task: BrowserTaskSnapshot, facts: readonly BrowserTask
     } else if (source.kind === 'browser-task-receipt' && !facts.some((fact) => {
       if (fact.kind !== 'browser-task-receipt' || fact.sessionSeq !== source.sessionSeq) return false
       if (fact.taskId !== task.id || !same(fact.target, resource.target)) return false
-      if (fact.resourceId !== resource.id || fact.quiescent !== true) return false
+      if (fact.quiescent !== true) return false
+      if (fact.resourceId !== resource.id) return false
       const matchesResourceAttempt = task.attempts.some(attempt => (
         attempt.requestId === fact.requestId
         && attempt.actionKind === fact.actionKind
@@ -511,8 +543,7 @@ function requireTaskFacts(task: BrowserTaskSnapshot, facts: readonly BrowserTask
             && fact.delivery === 'sent' && fact.outcome === 'observed'
         case 'document-replaced':
           return resourceActions.has(fact.actionKind ?? '') && fact.delivery === 'sent'
-            && (fact.outcome === 'failed' || fact.outcome === 'unknown')
-            && fact.reason === 'document_replaced'
+            && (fact.outcome === 'failed' || fact.outcome === 'unknown') && fact.reason === 'document_replaced'
         case 'absent':
           return resourceClearActions.has(fact.actionKind ?? '') && fact.delivery === 'sent'
             && fact.outcome === 'observed' && fact.reason === 'absent'
@@ -561,6 +592,11 @@ function validateCreate(next: BrowserTaskSnapshot, state: BrowserTaskFoldState):
   if (state.recentTaskIds.includes(next.id) || next.sourceSeq <= state.lastTaskSourceSeq) throw new Error('create task identity replayed')
   const source = state.sourceFacts.find(fact => fact.kind === 'user' && fact.sessionSeq === next.sourceSeq)
   if (source === undefined) throw new Error('create source must cite earlier user message')
+  if (next.targetRevision !== state.targetRevision) throw new Error('create target revision changed')
+  if (next.target === undefined) {
+    if (state.targetBinding !== null || next.pendingTarget !== undefined) throw new Error('target-free create authority invalid')
+  } else if (state.targetBinding !== null && (next.target.installationId !== state.targetBinding.installationId
+    || next.target.page.tabId !== state.targetBinding.page.tabId)) throw new Error('create target binding invalid')
 }
 
 function evidence(next: BrowserTaskSnapshot, previous: BrowserTaskSnapshot): void {
@@ -575,8 +611,8 @@ function evidence(next: BrowserTaskSnapshot, previous: BrowserTaskSnapshot): voi
   }
 }
 
-function attempts(next: BrowserTaskSnapshot, previous: BrowserTaskSnapshot, reconciliation: boolean): void {
-  only(next, previous, reconciliation ? 'reconcile-attempt' : 'attempt', ['attempts', 'blockers'])
+function attempts(next: BrowserTaskSnapshot, previous: BrowserTaskSnapshot, reconciliation: boolean, ownsOnly = true): void {
+  if (ownsOnly) only(next, previous, reconciliation ? 'reconcile-attempt' : 'attempt', ['attempts', 'blockers'])
   preserveCollection(previous.attempts, next.attempts, 'attemptId', reconciliation ? 'reconcile-attempt' : 'attempt')
   const old = mapBy(previous.attempts, 'attemptId')
   const transitions: Record<string, readonly string[]> = {
@@ -586,7 +622,7 @@ function attempts(next: BrowserTaskSnapshot, previous: BrowserTaskSnapshot, reco
     dispatched: ['settled'], settled: [],
   }
   for (const item of next.attempts) {
-    taskTarget(next, item.target)
+    if (item.target !== undefined) taskTarget(next, item.target)
     const before = old.get(item.attemptId)
     if (before === undefined) {
       if (reconciliation || item.stage !== 'planned' || item.outcome !== undefined) throw new Error('attempt create invalid')
@@ -764,6 +800,27 @@ export function applyBrowserTaskChange(state: BrowserTaskFoldState, change: Brow
       case 'evidence': evidence(next, previous); break
       case 'attempt': attempts(next, previous, false); validateSettlementDelivery(next, previous, state.sourceFacts); break
       case 'reconcile-attempt': attempts(next, previous, true); validateSettlementDelivery(next, previous, state.sourceFacts); break
+      case 'bootstrap-settle': {
+        only(next, previous, 'bootstrap-settle', ['attempts', 'target', 'pendingTarget', 'evidence', 'evaluations', 'blockers'])
+        const changed = next.attempts.filter(item => !same(item, previous.attempts.find(before => before.attemptId === item.attemptId)))
+        const settled = changed[0]
+        if (changed.length !== 1 || settled?.bootstrap === undefined || settled.stage !== 'settled') throw new Error('bootstrap settlement attempt invalid')
+        const before = previous.attempts.find(item => item.attemptId === settled.attemptId)
+        if (before === undefined) throw new Error('bootstrap settlement attempt missing')
+        attempts(next, previous, before.outcome === 'unknown', false)
+        validateSettlementDelivery(next, previous, state.sourceFacts)
+        if (!same(next.target, previous.target)) {
+          const pending = previous.pendingTarget
+          if (previous.target !== undefined || next.target === undefined || pending === undefined
+            || settled.bootstrap.kind !== 'opened-tab-snapshot' || settled.outcome !== 'observed'
+            || state.targetBinding !== null || state.targetRevision !== settled.bootstrap.targetRevision
+            || pending.tabId !== settled.bootstrap.tabId || pending.windowId !== settled.bootstrap.windowId
+            || pending.browserSessionId !== settled.bootstrap.browserSessionId || next.target.installationId !== pending.installationId
+            || next.target.page.tabId !== pending.tabId || next.target.page.frameId !== 0
+            || next.pendingTarget !== undefined) throw new Error('bootstrap adoption authority invalid')
+        }
+        break
+      }
       case 'resource': resources(next, previous, false); break
       case 'reconcile-resource': resources(next, previous, true); break
       case 'capability':
@@ -787,7 +844,7 @@ export function applyBrowserTaskChange(state: BrowserTaskFoldState, change: Brow
           kind: 'browser-task/function-handoff', version: 1, taskId: previous.id,
           taskRevision: previous.revision, createdBySessionId: fact.createdBySessionId, owner: fact.owner,
           scope: fact.scope, resourceIds: fact.resourceIds,
-        }, state.sourceFacts.filter(item => item.sessionSeq !== fact.sessionSeq))
+        }, state.sourceFacts.filter(item => item.sessionSeq !== fact.sessionSeq), state.targetBinding, state.targetRevision)
         if (next.functionHandoff === undefined || !same(next.functionHandoff, {
           owner: fact.owner, scope: fact.scope, resourceIds: fact.resourceIds,
           createdBySessionId: fact.createdBySessionId,
@@ -877,7 +934,9 @@ function factFor(event: SessionEvent): BrowserTaskSourceFact | undefined {
     taskId: event.data.taskId,
     requestId: event.data.requestId,
     actionKind: event.data.actionKind,
-    target: event.data.target,
+    ...(event.data.target === undefined ? {} : { target: event.data.target }),
+    ...(event.data.bootstrap === undefined ? {} : { bootstrap: event.data.bootstrap }),
+    ...(event.data.observation === undefined ? {} : { observation: event.data.observation }),
     outcome: event.data.outcome,
     delivery: event.data.delivery,
     quiescent: event.data.quiescent,
@@ -897,12 +956,38 @@ function factFor(event: SessionEvent): BrowserTaskSourceFact | undefined {
 }
 
 export function validateReceipt(value: unknown): void {
-  const receipt = exact(value, 'receipt', ['kind', 'version', 'taskId', 'requestId', 'actionKind', 'target', 'outcome', 'delivery', 'quiescent', 'grantEpoch'], ['resourceId', 'reason', 'failureFingerprint', 'presentation'])
-  if (receipt.kind !== 'browser-task/receipt' || receipt.version !== 1) throw new Error('receipt header invalid')
+  const receipt = exact(value, 'receipt', ['kind', 'version', 'taskId', 'requestId', 'actionKind', 'outcome', 'delivery', 'quiescent', 'grantEpoch'], ['target', 'bootstrap', 'observation', 'resourceId', 'reason', 'failureFingerprint', 'presentation'])
+  if (receipt.kind !== 'browser-task/receipt' || (receipt.version !== 1 && receipt.version !== 2)) throw new Error('receipt header invalid')
   text(receipt.taskId, 'receipt.taskId')
   text(receipt.requestId, 'receipt.requestId')
   text(receipt.actionKind, 'receipt.actionKind')
-  target(receipt.target, 'receipt.target')
+  if (receipt.version === 1) {
+    if (receipt.bootstrap !== undefined || receipt.observation !== undefined) throw new Error('page receipt carries bootstrap fields')
+    target(receipt.target, 'receipt.target')
+  }
+  else {
+    if ((receipt.target === undefined) === (receipt.bootstrap === undefined)) throw new Error('bootstrap receipt authority invalid')
+    if (receipt.bootstrap === undefined || receipt.observation === undefined) throw new Error('bootstrap receipt observation missing')
+    const bootstrap = receipt.bootstrap as BrowserBootstrapAuthority
+    validateAttempt({ attemptId: receipt.requestId, requestId: receipt.requestId, actionKind: receipt.actionKind, grantEpoch: receipt.grantEpoch, stage: 'settled', write: receipt.actionKind === 'tab_open', bootstrap, outcome: receipt.outcome, quiescent: receipt.quiescent, settledBy: { kind: 'browser-task-receipt', sessionSeq: 0 } })
+    const observation = exact(receipt.observation, 'receipt.observation', ['kind'], ['tab', 'target', 'digest'])
+    if (observation.kind === 'none') {
+      if (Object.keys(observation).length !== 1) throw new Error('receipt no-observation invalid')
+    } else if (observation.kind === 'opened-tab') {
+      const tab = exact(observation.tab, 'receipt.observation.tab', ['tabId', 'windowId', 'browserSessionId'])
+      integer(tab.tabId, 'receipt.observation.tab.tabId'); integer(tab.windowId, 'receipt.observation.tab.windowId')
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(text(tab.browserSessionId, 'receipt.observation.tab.browserSessionId')) || Object.keys(observation).length !== 2) throw new Error('receipt opened-tab invalid')
+      if (bootstrap.kind !== 'target-free-open' || receipt.outcome !== 'observed' || receipt.delivery !== 'sent') throw new Error('receipt opened-tab authority invalid')
+    } else if (observation.kind === 'page') {
+      target(observation.target, 'receipt.observation.target')
+      if (!/^sha256:[a-f0-9]{64}$/u.test(text(observation.digest, 'receipt.observation.digest')) || Object.keys(observation).length !== 3) throw new Error('receipt page observation invalid')
+      const observedTarget = observation.target as BrowserTargetBinding
+      if (bootstrap.kind !== 'opened-tab-snapshot' || receipt.outcome !== 'observed' || receipt.delivery !== 'sent'
+        || observedTarget.installationId !== bootstrap.installationId || observedTarget.page.tabId !== bootstrap.tabId
+        || observedTarget.page.frameId !== 0) throw new Error('receipt page observation authority invalid')
+    } else throw new Error('receipt observation kind invalid')
+    if (receipt.outcome !== 'observed' && (observation as { kind: string }).kind !== 'none') throw new Error('non-observed bootstrap receipt cannot observe')
+  }
   if (!['observed', 'failed', 'cancelled', 'unknown'].includes(String(receipt.outcome))) throw new Error('receipt outcome invalid')
   if (receipt.delivery !== 'sent' && receipt.delivery !== 'not-sent') throw new Error('receipt delivery invalid')
   if (typeof receipt.quiescent !== 'boolean' || (receipt.outcome !== 'unknown' && ! receipt.quiescent)) throw new Error('receipt quiescence invalid')
@@ -963,7 +1048,8 @@ function acceptanceCurrent(task: BrowserTaskSnapshot): boolean {
 }
 
 export function validateFunctionHandoffAdmission(task: BrowserTaskSnapshot, fact: BrowserTaskFunctionHandoff,
-  facts: readonly BrowserTaskSourceFact[]): void {
+  facts: readonly BrowserTaskSourceFact[], userBinding: BrowserSessionTargetBinding | null,
+  userTargetRevision: number): void {
   if (task.phase === 'terminal' || fact.taskId !== task.id || fact.taskRevision !== task.revision) throw new Error('function handoff task identity invalid')
   if (facts.some(item => item.kind === 'browser-task-function-handoff' && item.taskId === task.id)) throw new Error('function handoff already exists')
   if (task.target === undefined || task.targetRevision === undefined || task.capability?.state !== 'observed'
@@ -990,6 +1076,8 @@ export function validateFunctionHandoffAdmission(task: BrowserTaskSnapshot, fact
   } else {
     const scopeTarget = fact.scope.target
     if (!same(scopeTarget, task.target) || fact.scope.targetRevision !== task.targetRevision
+      || userBinding === null || userTargetRevision !== fact.scope.targetRevision
+      || !same(scopeTarget, { installationId: userBinding.installationId, page: userBinding.page })
       || active.length === 0 || active.some(resource => !same(resource.target, scopeTarget))) {
       throw new Error('page function scope invalid')
     }
@@ -1066,7 +1154,7 @@ export function applyBrowserTaskEvent(state: BrowserTaskFoldState, event: Sessio
   if (event.type === 'browser-task/function-handoff') {
     validateFunctionHandoff(event.data)
     if (state.current === undefined) throw new Error('function handoff has no task')
-    validateFunctionHandoffAdmission(state.current, event.data, state.sourceFacts)
+    validateFunctionHandoffAdmission(state.current, event.data, state.sourceFacts, state.targetBinding, state.targetRevision)
   }
   if (event.type === 'browser-task/delegation-candidate') {
     applyDelegationCandidate(state, event.data)

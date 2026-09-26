@@ -39,6 +39,7 @@ const executorCapabilities = {
     'back', 'forward', 'reload', 'tab_open', 'tab_close', 'tab_focus', 'screenshot'],
   requestRecovery: true,
   restartStatusLookup: true,
+  targetFreeOpen: true,
 }
 
 class FakeSocket {
@@ -182,6 +183,71 @@ describe('浏览器助手 WebSocket 通道', () => {
     expect(FakeSocket.instances).toHaveLength(2)
     expect(states.at(-1)).toEqual({ phase: 'unauthorized' })
     vi.useRealTimers()
+  })
+
+  test('服务持续离线时有界退避并暂停，用户再次启动才继续尝试', async () => {
+    vi.useFakeTimers()
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, reconnectDelayMs: 1000 })
+    channel.start()
+    FakeSocket.instances.at(-1)!.close(1006)
+    for (const delay of [1000, 2000, 4000, 8000, 16000]) {
+      await vi.advanceTimersByTimeAsync(delay - 1)
+      expect(FakeSocket.instances).toHaveLength(1 + [1000, 2000, 4000, 8000, 16000].indexOf(delay))
+      await vi.advanceTimersByTimeAsync(1)
+      FakeSocket.instances.at(-1)!.close(1006)
+    }
+    expect(FakeSocket.instances).toHaveLength(6)
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(FakeSocket.instances).toHaveLength(6)
+
+    channel.start()
+    expect(FakeSocket.instances).toHaveLength(7)
+    const restored = FakeSocket.instances.at(-1)!
+    restored.open(); ready(restored)
+    restored.close(1006)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(FakeSocket.instances).toHaveLength(8)
+    channel.stop()
+  })
+
+  test('握手后立即断线也耗尽同一次启动的预算', async () => {
+    vi.useFakeTimers()
+    const states: Array<{ phase: string; retryPaused?: boolean }> = []
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, reconnectDelayMs: 1000,
+      onState: (state: { phase: string; retryPaused?: boolean }) => states.push(state) })
+    channel.start()
+    for (const delay of [1000, 2000, 4000, 8000, 16000]) {
+      const socket = FakeSocket.instances.at(-1)!
+      socket.open(); ready(socket); socket.close(1006)
+      await vi.advanceTimersByTimeAsync(delay)
+    }
+    const last = FakeSocket.instances.at(-1)!
+    last.open(); ready(last); last.close(1006)
+    expect(states.at(-1)).toMatchObject({ phase: 'offline', retryPaused: true })
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(FakeSocket.instances).toHaveLength(6)
+    channel.stop()
+  })
+
+  test('首次断线即阻止 worker 重启后新一轮自动尝试，稳定连接才解除', async () => {
+    vi.useFakeTimers()
+    const states: Array<{ phase: string; retryPaused?: boolean }> = []
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket,
+      onState: (state: { phase: string; retryPaused?: boolean }) => states.push(state) })
+    channel.start()
+    FakeSocket.instances.at(-1)!.close(1006)
+    expect(states.at(-1)).toMatchObject({ phase: 'offline', retryPaused: true })
+    await vi.advanceTimersByTimeAsync(1000)
+    const restored = FakeSocket.instances.at(-1)!
+    restored.open(); ready(restored)
+    await vi.advanceTimersByTimeAsync(29_999)
+    expect(states.some(state => state.phase === 'stable')).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(states.at(-1)).toMatchObject({ phase: 'stable' })
+    channel.stop()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   test('撤权先等页面清理完成再回执，4401 拒绝重连时也补做同一代清理', async () => {

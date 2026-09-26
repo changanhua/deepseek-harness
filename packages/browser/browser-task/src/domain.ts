@@ -1,7 +1,7 @@
 import type { BrowserSessionTargetBinding, BrowserTaskCheck, BrowserTaskDelegation, BrowserTaskDelegationCandidate, BrowserTaskFunctionHandoff, BrowserTaskReceipt, BrowserTaskSnapshot } from './types.ts'
-export type BrowserTaskOperation = 'create' | 'evidence' | 'attempt' | 'reconcile-attempt' | 'resource' | 'reconcile-resource' | 'capability' | 'delegation' | 'evaluate' | 'transition' | 'rebind' | 'acknowledge-target-loss' | 'acknowledge-human-interaction' | 'consume-budget' | 'terminate' | 'owner-cancel' | 'handoff-function'
+export type BrowserTaskOperation = 'create' | 'evidence' | 'attempt' | 'reconcile-attempt' | 'bootstrap-settle' | 'resource' | 'reconcile-resource' | 'capability' | 'delegation' | 'evaluate' | 'transition' | 'rebind' | 'acknowledge-target-loss' | 'acknowledge-human-interaction' | 'consume-budget' | 'terminate' | 'owner-cancel' | 'handoff-function'
 /** A closed operation plus full post-state enables strict replay without transient authority. */
-export interface BrowserTaskChangeMeta { readonly kind: 'browser-task/change'; readonly version: 3; readonly operation: BrowserTaskOperation; readonly task: BrowserTaskSnapshot }
+export interface BrowserTaskChangeMeta { readonly kind: 'browser-task/change'; readonly version: 4; readonly operation: BrowserTaskOperation; readonly task: BrowserTaskSnapshot }
 /** Complete post-state for the Session-owned target selection. */
 export interface BrowserTargetChange {
   readonly kind: 'browser-target/change'

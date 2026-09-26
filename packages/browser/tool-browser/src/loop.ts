@@ -9,6 +9,7 @@ import type {
   BrowserOperation,
   BrowserPage,
   BrowserRequestStatus,
+  BrowserTabReference,
 } from '@changanhua/dsh-browser'
 import type {
   AcceptanceClause,
@@ -40,7 +41,7 @@ export interface BrowserTaskSuccess {
 
 export interface BrowserTaskStart {
   readonly installationId: string
-  readonly page: BrowserPage
+  readonly page?: BrowserPage
   readonly goal: string
   readonly success: BrowserTaskSuccess
 }
@@ -51,6 +52,7 @@ type BrowserTaskAuthority = Pick<
   | 'recordCapability' | 'recordEvidence' | 'recordAttempt' | 'advanceAttempt'
   | 'reconcileAttempt' | 'upsertResource' | 'reconcileResource' | 'evaluate' | 'transition' | 'rebind'
   | 'acknowledgeTargetLoss' | 'consumeContinuation' | 'consumeAction' | 'terminate' | 'cancelByOwner'
+  | 'settleBootstrapOperation'
 >
 type BrowserProvider = Pick<import('@deepseek-ai/cordis').Context['browser'], 'execute' | 'instances'>
 
@@ -68,6 +70,10 @@ const samePage = (left: BrowserPage | undefined, right: BrowserPage | undefined)
   left !== undefined && right !== undefined
   && left.tabId === right.tabId && left.frameId === right.frameId
   && left.documentId === right.documentId && left.url === right.url
+)
+const sameTab = (left: BrowserTabReference | undefined, right: BrowserTabReference | undefined): boolean => (
+  left !== undefined && right !== undefined && left.tabId === right.tabId
+  && left.windowId === right.windowId && left.browserSessionId === right.browserSessionId
 )
 
 function snapshotPage(value: unknown): BrowserPage | undefined {
@@ -254,7 +260,24 @@ export class BrowserTaskLoop {
   }
 
   private attempt(task: BrowserTaskSnapshot, requestId: string, action: BrowserAction, write: boolean): BrowserActionAttempt {
-    if (task.target === undefined) throw new Error('browser task has no bound target')
+    if (task.target === undefined) {
+      const targetRevision = task.targetRevision
+      if (targetRevision === undefined) throw new Error('browser task has no target revision')
+      if (task.pendingTarget === undefined) {
+        if (action.kind !== 'tab_open' || action.page !== undefined) throw new Error('browser task needs a target-free tab open')
+        return { attemptId: requestId, requestId, actionKind: action.kind,
+          grantEpoch: task.capability?.grantEpoch ?? 0, stage: 'planned', write,
+          bootstrap: { kind: 'target-free-open', installationId: task.capability?.installationId ?? '', targetRevision, url: action.url } }
+      }
+      if (action.kind !== 'snapshot' || !sameTab(action.expectedTab, task.pendingTarget)) {
+        throw new Error('browser task needs a snapshot for its opened tab')
+      }
+      return { attemptId: requestId, requestId, actionKind: action.kind,
+        grantEpoch: task.pendingTarget.grantEpoch, stage: 'planned', write,
+        bootstrap: { kind: 'opened-tab-snapshot', installationId: task.pendingTarget.installationId,
+          targetRevision, tabId: task.pendingTarget.tabId, windowId: task.pendingTarget.windowId,
+          browserSessionId: task.pendingTarget.browserSessionId, openedByRequestId: task.pendingTarget.openedByRequestId } }
+    }
     const resourceId = 'mountId' in action ? action.mountId : undefined
     const presentationIntent = regionPresentation(action, regionExpectation(task, action))
     return { attemptId: requestId, requestId, actionKind: action.kind, grantEpoch: task.capability?.grantEpoch ?? 0,
@@ -273,6 +296,7 @@ export class BrowserTaskLoop {
         scopes: [...instance.scopes],
         actions: [...instance.capabilities.actionKinds],
         protocol: String(instance.capabilities.protocolVersion),
+        ...(instance.capabilities.targetFreeOpen === true ? { targetFreeOpen: true as const } : {}),
       }
       : {
         installationId,
@@ -293,6 +317,7 @@ export class BrowserTaskLoop {
     result: Pick<BrowserActionResult, 'requestId' | 'outcome' | 'delivery' | 'reason' | 'value'>,
     action?: BrowserAction,
     quiescent = result.outcome !== 'unknown'): BrowserTaskSourceRef {
+    if (attempt.target === undefined) throw new Error('page receipt requires an exact page attempt')
     const presentation = !confirmsPresentation(result) ? undefined
       : action === undefined ? attempt.presentationIntent : regionPresentation(action, regionExpectation(task, action))
     const failureCode = result.outcome === 'failed' && result.delivery === 'not-sent'
@@ -329,14 +354,38 @@ export class BrowserTaskLoop {
     snapshot?: unknown
     receipt?: BrowserTaskSourceRef
     missingPresentations?: readonly PresentationQuery[]
+    nextStep?: 'open-target-free-tab'
   }> {
-    if (task.target === undefined || task.capability?.state !== 'observed') return { task }
+    if (task.capability?.state !== 'observed') return { task }
+    if (task.target === undefined) {
+      const selection = this.authority().readTarget(agent)
+      if (selection.binding !== null || selection.revision !== task.targetRevision) return { task: this.targetLost(agent, task) }
+      if (task.pendingTarget === undefined) {
+        if (task.capability.targetFreeOpen !== true || !task.capability.scopes.includes('browser:write')
+          || !task.capability.actions.includes('tab_open')) {
+          return { task: this.authority().transition(agent, ref(task), 'waiting', ['capability-drift']) }
+        }
+        return { task, nextStep: 'open-target-free-tab' }
+      }
+    }
     const requestId = randomUUID()
-    const { installationId, page } = task.target
+    const pending = task.pendingTarget
+    if (task.target === undefined && pending === undefined) throw new Error('target-free browser task lost its opened tab')
+    const installationId = task.target?.installationId ?? pending?.installationId
+    if (installationId === undefined) throw new Error('browser task has no observation installation')
     const expectedPresentations = presentationQueries(task)
-    const action: BrowserAction = { kind: 'snapshot', tabId: page.tabId, frameId: page.frameId,
-      documentId: page.documentId, limit: 128, textLimit: 50000,
-      ...(expectedPresentations.length === 0 ? {} : { presentationQueries: expectedPresentations }) }
+    let action: BrowserAction
+    if (task.target === undefined) {
+      if (pending === undefined) throw new Error('target-free browser task lost its opened tab')
+      action = { kind: 'snapshot', tabId: pending.tabId, frameId: 0,
+        expectedTab: { tabId: pending.tabId, windowId: pending.windowId,
+          browserSessionId: pending.browserSessionId }, limit: 128, textLimit: 50000,
+        ...(expectedPresentations.length === 0 ? {} : { presentationQueries: expectedPresentations }) }
+    } else {
+      action = { kind: 'snapshot', tabId: task.target.page.tabId, frameId: task.target.page.frameId,
+        documentId: task.target.page.documentId, limit: 128, textLimit: 50000,
+        ...(expectedPresentations.length === 0 ? {} : { presentationQueries: expectedPresentations }) }
+    }
     const operation = { sessionId: agent.session.id, installationId, requestId, action }
     let next = this.planned(agent, operation, false)
     if (next === undefined) throw new Error('browser task observation was not planned')
@@ -349,7 +398,9 @@ export class BrowserTaskLoop {
     next = settled.task
     const snapshot = result.outcome === 'observed' ? result.value : undefined
     const observedPage = snapshotPage(snapshot)
-    if (snapshot === undefined || observedPage === undefined) return { task: next, receipt: settled.receipt }
+    if (snapshot === undefined || observedPage === undefined) return { task: next, receipt: settled.receipt,
+      ...(next.target === undefined && next.pendingTarget === undefined ? { nextStep: 'open-target-free-tab' as const } : {}) }
+    if (settled.evidenceRecorded) return { task: next, snapshot, receipt: settled.receipt }
     if (!samePage(observedPage, next.target?.page)) return { task: this.targetLost(agent, next), receipt: settled.receipt }
     if (next.target === undefined || next.capability === undefined) return { task: next, receipt: settled.receipt }
     const evidenceId = `evidence-${requestId}`
@@ -373,8 +424,10 @@ export class BrowserTaskLoop {
       throw new Error('browser task goal and non-empty machine success condition are required')
     }
     if (sourceSeq === undefined) throw new Error('browser task requires a latest real user message')
+    if (input.page === undefined) throw new Error('browser task page is required outside the product entry')
     let task = authority.create(agent, { objective: input.goal, sourceSeq, acceptance,
-      target: targetOf(input.installationId, input.page), maxSteps: MAX_STEPS, maxActions: MAX_ACTIONS })
+      target: targetOf(input.installationId, input.page),
+      maxSteps: MAX_STEPS, maxActions: MAX_ACTIONS })
     task = await this.capability(agent, task, input.installationId)
     const observed = await this.observe(agent, task, signal)
     return { status: observed.task.phase, blockers: observed.task.blockers, taskId: observed.task.id,
@@ -388,26 +441,30 @@ export class BrowserTaskLoop {
   async startBound(agent: Agent, input: BrowserTaskStart, signal: AbortSignal): Promise<object> {
     const selected = this.authority().readTarget(agent)
     const binding = selected.binding
-    if (binding === null) throw new Error('browser target is not bound')
-    if (binding.installationId !== input.installationId || binding.page.tabId !== input.page.tabId) {
+    if (binding !== null && (input.page === undefined || binding.installationId !== input.installationId
+      || binding.page.tabId !== input.page.tabId)) {
       throw new Error('browser target selection changed')
     }
+    if (binding === null && input.page !== undefined) throw new Error('browser task page must be omitted without a user target')
     const acceptance = clauses(input.success)
     const sourceSeq = this.authority().latestUserSource(agent)
     if (!input.goal.trim() || acceptance.length === 0) {
       throw new Error('browser task goal and non-empty machine success condition are required')
     }
     if (sourceSeq === undefined) throw new Error('browser task requires a latest real user message')
+    const taskTarget = binding === null ? undefined : input.page
+    if (binding !== null && taskTarget === undefined) throw new Error('browser target selection changed')
     let task = this.authority().create(agent, { objective: input.goal, sourceSeq, acceptance,
-      target: targetOf(binding.installationId, input.page), targetRevision: binding.revision,
-      maxSteps: MAX_STEPS, maxActions: MAX_ACTIONS })
-    task = await this.capability(agent, task, binding.installationId)
+      ...(binding === null || taskTarget === undefined ? { targetRevision: selected.revision } : {
+        target: targetOf(binding.installationId, taskTarget), targetRevision: binding.revision,
+      }), maxSteps: MAX_STEPS, maxActions: MAX_ACTIONS })
+    task = await this.capability(agent, task, input.installationId)
     const observed = await this.observe(agent, task, signal)
     return { status: observed.task.phase, blockers: observed.task.blockers, taskId: observed.task.id,
       ...(observed.snapshot === undefined ? {} : { observation: observed.snapshot }),
       ...(observed.missingPresentations === undefined ? {} : { diagnostic: {
         code: 'presentation-observation-missing', queries: observed.missingPresentations,
-      } }), budget: observed.task.budget }
+      } }), ...(observed.nextStep === undefined ? {} : { nextStep: observed.nextStep }), budget: observed.task.budget }
   }
 
   /**
@@ -427,6 +484,16 @@ export class BrowserTaskLoop {
   allowsAction(agent: Agent, action?: BrowserAction): boolean {
     const task = this.current(agent)
     if (task === undefined) return true
+    if (task.target === undefined) {
+      if (task.phase === 'terminal' || task.blockers.length > 0 || task.budget.actionsUsed >= task.budget.maxActions) return false
+      const selected = this.authority().readTarget(agent)
+      if (selected.binding !== null || selected.revision !== task.targetRevision || task.capability?.state !== 'observed') return false
+      if (task.pendingTarget === undefined) return action?.kind === 'tab_open' && action.page === undefined
+        && task.capability.targetFreeOpen === true && task.capability.scopes.includes('browser:write')
+        && task.capability.actions.includes('tab_open')
+      return action?.kind === 'snapshot' && action.frameId === 0 && action.tabId === task.pendingTarget.tabId
+        && sameTab(action.expectedTab, task.pendingTarget) && task.capability.scopes.includes('browser:read')
+    }
     const page = action === undefined ? undefined : actionPage(action)
     const targetMatches = page === undefined || samePage(page, task.target?.page)
     const clearsPending = this.clearsPending(task, action)
@@ -461,6 +528,9 @@ export class BrowserTaskLoop {
     if (task.target !== undefined && operation.installationId !== task.target.installationId) {
       throw new Error('browser task has a blocker, exhausted budget, or target mismatch')
     }
+    if (task.target === undefined && operation.installationId !== (task.pendingTarget?.installationId ?? task.capability?.installationId)) {
+      throw new Error('browser task has a blocker, exhausted budget, or target mismatch')
+    }
     if (!this.allowsAction(agent, operation.action)) throw new Error('browser task has a blocker, exhausted budget, or target mismatch')
     if (!operation.requestId) throw new Error('browser task operations require caller-minted requestId')
     if (task.blockers.includes('repeated-error') && !readsPage(operation.action)) {
@@ -490,11 +560,16 @@ export class BrowserTaskLoop {
   settle(agent: Agent, result: BrowserActionResult, action: BrowserAction): {
     task: BrowserTaskSnapshot
     receipt: BrowserTaskSourceRef
+    evidenceRecorded: boolean
   } | undefined {
     let task = this.current(agent)
     if (task === undefined) return undefined
     let attempt = task.attempts.find(item => item.requestId === result.requestId)
     if (attempt === undefined) return undefined
+    if (attempt.bootstrap !== undefined) {
+      const settled = this.authority().settleBootstrapOperation(agent, ref(task), { kind: 'result', result })
+      return { task: settled.task, receipt: settled.receipt, evidenceRecorded: settled.evidenceRecorded }
+    }
     if (result.delivery === 'sent' && attempt.stage !== 'dispatched') {
       task = this.authority().advanceAttempt(agent, ref(task), { ...attempt, stage: 'dispatched' })
       attempt = task.attempts.find(item => item.requestId === result.requestId)
@@ -519,7 +594,7 @@ export class BrowserTaskLoop {
         task = this.authority().acknowledgeTargetLoss(agent, ref(task))
       }
     }
-    return { task, receipt }
+    return { task, receipt, evidenceRecorded: false }
   }
 
   private stopRepeatedDeterministicFailure(agent: Agent, task: BrowserTaskSnapshot,
@@ -532,10 +607,10 @@ export class BrowserTaskLoop {
   }
 
   /** Bind a direct snapshot read to its exact receipt; mismatched pages never become fresh evidence. */
-  recordObservedEvidence(agent: Agent, settled: { task: BrowserTaskSnapshot; receipt: BrowserTaskSourceRef },
+  recordObservedEvidence(agent: Agent, settled: { task: BrowserTaskSnapshot; receipt: BrowserTaskSourceRef; evidenceRecorded: boolean },
     result: BrowserActionResult, action?: BrowserAction): BrowserTaskSnapshot {
     let task = settled.task
-    if (result.outcome !== 'observed' || task.target === undefined || task.capability?.state !== 'observed') return task
+    if (result.outcome !== 'observed' || settled.evidenceRecorded || task.target === undefined || task.capability?.state !== 'observed') return task
     const page = snapshotPage(result.value)
     if (page === undefined) return task
     if (!samePage(page, task.target.page)) return this.targetLost(agent, task)
@@ -620,6 +695,9 @@ export class BrowserTaskLoop {
     let attempt = current.attempts.find(item => item.requestId === requestId)
     if (attempt === undefined || result.requestId !== requestId || result.quiescent !== true
       || result.outcome === 'in-flight') return current
+    if (attempt.bootstrap !== undefined) {
+      return this.authority().settleBootstrapOperation(agent, ref(current), { kind: 'recovery', status: { ...result, quiescent: true } }).task
+    }
     if (result.outcome === 'unknown') {
       if (result.reason !== 'document_replaced') return current
       const unknownResult: BrowserActionResult = { requestId: result.requestId, sessionId: result.sessionId,
@@ -669,7 +747,7 @@ export class BrowserTaskLoop {
   /** Settle only leases whose action kind and exact target are proven by the recovered receipt. */
   private reconcileResources(agent: Agent, task: BrowserTaskSnapshot, attempt: BrowserActionAttempt,
     result: BrowserRequestStatus, receipt: BrowserTaskSourceRef): BrowserTaskSnapshot {
-    if (result.delivery !== 'sent' || result.quiescent !== true) return task
+    if (result.delivery !== 'sent' || result.quiescent !== true || attempt.target === undefined) return task
     const isResourceClear = attempt.actionKind === 'region_clear' || attempt.actionKind === 'entry_unmount'
     const isResourceMount = attempt.actionKind === 'region_render' || attempt.actionKind === 'entry_mount'
     const recovery = result.reason === 'document_replaced'
@@ -704,8 +782,9 @@ export class BrowserTaskLoop {
     let task = this.current(agent)
     if (task === undefined) throw new Error('no active browser task')
     const recoveringCapability = task.phase !== 'terminal' && task.blockers.includes('capability-drift')
-    if (recoveringCapability && task.target !== undefined) {
-      task = await this.capability(agent, task, task.target.installationId)
+    const installationId = task.target?.installationId ?? task.capability?.installationId
+    if (recoveringCapability && installationId !== undefined) {
+      task = await this.capability(agent, task, installationId)
     }
     const blocking = task.blockers.filter(blocker => blocker !== 'cleanup')
     if (task.phase === 'terminal' || blocking.length > 0) return { status: task.phase, blockers: task.blockers, budget: task.budget }
@@ -716,6 +795,7 @@ export class BrowserTaskLoop {
     task = observed.task
     if (observed.snapshot === undefined || task.blockers.length > 0) {
       return { status: task.phase, blockers: task.blockers,
+        ...(observed.nextStep === undefined ? {} : { nextStep: observed.nextStep }),
         ...(observed.missingPresentations === undefined ? {} : { diagnostic: {
           code: 'presentation-observation-missing', queries: observed.missingPresentations,
         } }), budget: task.budget }
@@ -736,7 +816,7 @@ export class BrowserTaskLoop {
   }
 
   private cleanupAction(task: BrowserTaskSnapshot, resource: BrowserPageResource): BrowserAction | undefined {
-    const origin = [...task.attempts].reverse().find(attempt => attempt.resourceId === resource.id
+    const origin = [...task.attempts].reverse().find(attempt => attempt.resourceId === resource.id && attempt.target !== undefined
       && samePage(attempt.target.page, resource.target.page)
       && attempt.target.installationId === resource.target.installationId
       && (attempt.actionKind === 'region_render' || attempt.actionKind === 'entry_mount'))

@@ -31,7 +31,7 @@ kind: "package-reference"
 
 该提供方在 Host Web Server 上注册 `/api/browser-extension/v1` HTTP 和 WebSocket 路由，并在 `/browser-assistant` 提供已登录所有者的批准页面。扩展发起 verifier/challenge 配对请求。所有者只能选择请求的 scopes 和 origins 的子集，包括独立的 `session:interact` 权限，随后可以撤销由 Credential Provider 存储的授权。可见且同 Session、具备 `session:interact` 的 peer 会通过既有 Approval answer chain 获得浏览器操作批准，由 transport UUID 标识；隐藏或断线 peer 委托 Web。`/info` scope 列表描述协议词汇；它不证明每个 scope 都有执行器。
 
-`prepare()` 创建绑定到当前授权 epoch、Session 和操作的私有 ticket。`executePrepared()` 会在派发前重新检查该绑定。worker 会在提交前同步复核表单状态：它直接展开本地 `<details>`，将其他无可见变化的点击视为 `unknown`，并把可见的本地页面变化报告为 `observed`，而不声称业务结果。填写回执不返回页面最终 value；批准 preview 来自 Host 输入。对于未知操作，journal 先检查完全停稳的 receipt，并要求用户按钮后才持久化 `acknowledgementPending`；`browser.acknowledge` 只向 Host 发送最小 identity、outcome 和完全停稳事实，成功后清除待处理 acknowledgement。重新连接可以再次同步它。旧 epoch 只能查询 status 或取消当前 write，绝不执行旧页面操作。请求、frame、结果、容量和截止时间均有边界。提供方每 20 秒发送一次 heartbeat，并断开陈旧 peer。取消会请求 worker 停止；缺失 receipt、断线、超时或传输失败会变为 `unknown`。重新连接仅恢复请求状态：不会重放查询或写入，任何未知的变更性操作在 worker 报告完全停稳前都不会解除。
+`prepare()` 创建绑定到当前授权 epoch、Session 和操作的私有 ticket。`executePrepared()` 会在派发前重新检查该绑定。worker 会在提交前同步复核表单状态：它直接展开本地 `<details>`，将其他无可见变化的点击视为 `unknown`，并把可见的本地页面变化报告为 `observed`，而不声称业务结果。填写回执不返回页面最终 value；批准 preview 来自 Host 输入。对于未知操作，receipt 只携带最小 identity、outcome 和完全停稳事实：完全停稳的结果自行释放写锁，未停稳的继续持有写锁，两种情况都能查询。不需要人工清除未解决的写操作。旧 epoch 只能查询 status 或取消当前 write，绝不执行旧页面操作。请求、frame、结果、容量和截止时间均有边界。提供方每 20 秒发送一次 heartbeat，并断开陈旧 peer。取消会请求 worker 停止；缺失 receipt、断线、超时或传输失败会变为 `unknown`。重新连接仅恢复请求状态：不会重放查询或写入，任何未知的变更性操作在 worker 报告完全停稳前都不会解除。
 
 调用方在任何派发前提供请求 ID。组合的 BrowserTask 监听器会记录精确逻辑 attempt 与公开恢复定位符，flush Session，随后才允许 provider 发送。相同 ID 返回其保留回执；`requestStatus()` 要求 read authority，返回脱离内部状态的 value，绝不重放请求。Host 丢失内存后，它可以向扩展 journal 发送不含 action 的 `status-query`。查询会绑定 request、Session、安装和原 grant epoch；查无记录、超时、扩展离线、不支持该 capability 或回执不匹配都会返回 `unknown`，且不产生 execute frame。授权 epoch 轮换可以查询旧 journal 条目或清理旧 epoch 所属区域，但不能针对那份旧所有权执行新的写入。
 
@@ -86,6 +86,8 @@ kind: "package-reference"
 独立解读不发送之前的问题或输出，因此输入费用不会随解读历史增长。服务商可能缓存共同的提示词前缀；网关不保留会话缓存。
 
 ## 已知限制与后续工作
+
+- 无目标 `tab_open` 要求执行器声明 `targetFreeOpen`、写入授权和已授权目的站点。worker 在创建后台标签前记录意图，保留创建回执；它不等待文档，也不重放丢失的请求。缺失创建回执保持 unknown。其他明确请求的新标签属于独立资源；对同一个已有标签的写入仍跨连接互斥。已停稳回执在保留截止时间后不可查询，过期存储条目在后续日志写入时清理。BrowserTask 准入与目标接纳由消费方负责。
 
 - 真实登录站点与真实模型的验收取决于部署配置。
 - 标准 Agent preset 已组合浏览器工具；此提供方暴露 Host 所有的 Session 模型选择，但不定义模型或推理强度可用性，也不登录网站。

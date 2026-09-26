@@ -7,6 +7,11 @@ const event = (seq: number, type: string, data: Record<string, unknown>, surface
 })
 
 describe('assistant V2 view projection', () => {
+  test('投影独立 Codex 连接，不把它混入 DSH 会话连接', () => {
+    const state = { connection: { phase: 'offline' }, codexConnection: { baseUrl: 'http://127.0.0.1:3091', phase: 'connected' } }
+    expect(projectAssistantView({ surfaceId: 'surface-1', state }).codexConnection).toEqual(state.codexConnection)
+  })
+
   test('shows one live Assistant prefix instead of its staged durable settlement', () => {
     const state = { session: {
       binding: null, phase: 'live', pending: null, pendingCreate: null, modelSelection: null,

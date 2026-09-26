@@ -26,6 +26,8 @@ kind: "package-reference"
 
 请将此消费方与 `ctx.browser`、`ctx.tools` 和既有 `ctx.approval` 服务组合。
 
+任务可以在页面尚不存在时开始。未固定用户目标时，调用 `browser_task_start` 可省略 `page`，再通过 `browser_action` 向声明 `targetFreeOpen` 的实例发送无页面引用的 `tab_open`。返回的 `tab` 包含 `tabId`、`windowId` 和 `browserSessionId`；`browser_task_verify` 读取这个精确标签页并将其接入同一个任务。若直接调用首次 `browser_snapshot`，必须将该引用作为 `expectedTab` 传入。开页和首次快照各占一次 action；接入和状态恢复不额外占用预算。unknown 开页会阻止该任务再次开页，必须用原 request id 核对结果。接入的目标属于任务，不改变用户的 Session 选页；用户之后选页或清空选择都会使这份权限失效。Cordis 页面函数仍要求自身精确的用户绑定页面作用域。
+
 组合 `ctx.browserActivity` 时，`browser_activity_search` 读取发起 Agent 会话的历史活动。模型不能指定其他会话 ID。检索按文本、时间、数量和编码字节数限定；Chrome 离线时仍以 Host 当前授权版本与站点为准。结果是来源资料，不是指令。知识写入使用部署另行配置的 MCP 工具与用户要求的工作流。
 
 `browser_instances`、`browser_tabs` 和 `browser_snapshot` 检查当前提供方状态。快照还会返回有界的页面区域和列表条目，让 Agent 可以定位通用卡片和列表。input、textarea 和 contenteditable 的值会被刻意脱敏，因此空 `text` 不能证明值为空。fill 结果中的 `valueSet` 确认该动作已设置其请求值，但不证明后续业务效果。`browser_extract` 可以在新的观察上按条目文本筛选有界结构，不执行页面操作。必须先调用 `browser_page_map` 再 `browser_region_render`：前者返回短时不透明区域引用，而非 CSS selector。渲染接受一个引用和高层标题、摘要、条目、事实、链接与页脚字段；Provider 会编译私有页面 payload。`browser_region_clear` 按 mount id 恢复精确的扩展自有结果面板。`browser_request_status` 读取保留请求或扩展 journal 请求而不重放，`browser_action_sequence` 会准备并按序提交已经规划的动作，直至第一个非 observed 结果。unknown 结果会给出需要查询的精确 request id。`target_busy` 表示当前请求已被拒绝且未发送，因此 Agent 应查询更早的 in-flight 或 unknown 请求 id，而不是被拒绝的 id。`browser_action` 接受封闭的 action schema，准备页面操作，并且只提交返回的 ticket。其紧凑反馈保留控件与正文，但省略重复的页面区域和列表结构。`browser_entry_mount` 和 `browser_entry_unmount` 直接暴露持久页面条目引用；它们是提供方授权的挂载，不是一次性准备动作。取消、目标检查、ticket 过期以及禁止自动重试 unknown 结果的约束继续执行。

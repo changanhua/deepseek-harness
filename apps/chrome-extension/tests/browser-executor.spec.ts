@@ -16,9 +16,14 @@ const operation = (payload: BrowserInvocation['payload'] & { kind: string }) => 
   ...(['tabs', 'snapshot'].includes(payload.kind) ? {} : { target: { tabId: page.tabId, frameId: page.frameId, documentId: page.documentId } }),
 })
 function harness() {
+  const session = new Map<string, unknown>()
   const chromeApi = {
+    storage: { session: { get: vi.fn(async (key: string) => ({ [key]: session.get(key) })),
+      set: vi.fn(async (value: Record<string, unknown>) => { for (const [key, item] of Object.entries(value)) session.set(key, item) }),
+      clear: vi.fn(async () => { session.clear() }) } },
     permissions: { contains: vi.fn(async () => true) },
     tabs: { query: vi.fn(async () => [{ id: 7, windowId: 1, url: page.url, title: 'Allowed', active: true }, { id: 8, url: 'https://private.test', title: 'Hidden' }]),
+      create: vi.fn(async (_options: { url: string; active: boolean }) => ({ id: 9, windowId: 2 })),
       get: vi.fn(async () => ({ id: 7, windowId: 1, url: page.url, title: 'Allowed', active: true })),
       update: vi.fn(async () => ({ id: 7, windowId: 1, url: page.url })),
       captureVisibleTab: vi.fn(async (
@@ -32,10 +37,100 @@ function harness() {
   }
   const getGrant = vi.fn((): typeof grant | null => structuredClone(grant))
   const executor = createBrowserExecutor({ chromeApi, getGrant, navigationTimeoutMs: 25 })
-  return { executor, chromeApi, getGrant }
+  return { executor, chromeApi, getGrant, session }
 }
 
 describe('Chrome document-bound browser executor', () => {
+  test('rechecks authority after browser session storage resolves before creating a tab', async () => {
+    const h = harness()
+    const request = operation({ kind: 'tab_open', url: page.url })
+    delete request.target
+    h.chromeApi.storage.session.set.mockImplementationOnce(async () => { h.getGrant.mockReturnValue(null) })
+    expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({
+      outcome: 'failed', quiescent: true, reason: 'authorization_changed',
+    })
+    expect(h.chromeApi.tabs.create).not.toHaveBeenCalled()
+  })
+  test('opens a background tab without an existing page, DOM injection or debugger attachment', async () => {
+    const h = harness()
+    const request = operation({ kind: 'tab_open', url: page.url })
+    delete request.target
+    expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({
+      outcome: 'observed', quiescent: true, value: { opened: true, tab: { tabId: 9, windowId: 2, browserSessionId: expect.any(String) } },
+    })
+    expect(h.chromeApi.tabs.create).toHaveBeenCalledExactlyOnceWith({ url: page.url, active: false })
+    expect(h.chromeApi.scripting.executeScript).not.toHaveBeenCalled()
+    expect(h.chromeApi.tabs.query).not.toHaveBeenCalled()
+  })
+  test('rejects a target-free snapshot when browser session storage was cleared before executor restart', async () => {
+    const h = harness()
+    const open = operation({ kind: 'tab_open', url: page.url }); delete open.target
+    const opened = await h.executor.execute(open, new AbortController().signal) as {
+      value: { tab: { tabId: number; windowId: number; browserSessionId: string } }
+    }
+    const snapshot = operation({ kind: 'snapshot', tabId: opened.value.tab.tabId, frameId: 0,
+      expectedTab: opened.value.tab } as BrowserInvocation['payload'] & { kind: 'snapshot'; expectedTab: { tabId: number; windowId: number; browserSessionId: string } })
+    h.chromeApi.tabs.get.mockResolvedValue({ id: 9, windowId: 2, url: page.url })
+    expect(await h.executor.execute(snapshot, new AbortController().signal)).toMatchObject({ outcome: 'observed' })
+    const beforeRestartInjections = h.chromeApi.scripting.executeScript.mock.calls.length
+    h.chromeApi.tabs.get.mockResolvedValue({ id: 9, windowId: 3, url: page.url })
+    expect(await h.executor.execute(snapshot, new AbortController().signal)).toMatchObject({ outcome: 'failed', quiescent: true, reason: 'tab_reference_stale' })
+    expect(h.chromeApi.scripting.executeScript).toHaveBeenCalledTimes(beforeRestartInjections)
+    await h.chromeApi.storage.session.clear()
+    const restarted = createBrowserExecutor({ chromeApi: h.chromeApi, getGrant: h.getGrant, navigationTimeoutMs: 25 })
+    expect(await restarted.execute(snapshot, new AbortController().signal)).toMatchObject({ outcome: 'failed', quiescent: true, reason: 'tab_reference_stale' })
+    expect(h.chromeApi.scripting.executeScript).toHaveBeenCalledTimes(beforeRestartInjections)
+  })
+  test('denies unauthorized target-free creation before issuing it', async () => {
+    const h = harness()
+    const request = operation({ kind: 'tab_open', url: 'https://private.test/' })
+    delete request.target
+    expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({ outcome: 'failed', reason: 'site_not_authorized' })
+    request.payload = { kind: 'tab_open', url: page.url }
+    h.chromeApi.permissions.contains.mockResolvedValue(false)
+    expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({ outcome: 'failed', reason: 'site_permission_required' })
+    expect(h.chromeApi.tabs.create).not.toHaveBeenCalled()
+  })
+  test('keeps a lost creation reply unknown and does not label restart recovery as a read', async () => {
+    const h = harness()
+    const request = operation({ kind: 'tab_open', url: page.url })
+    delete request.target
+    h.chromeApi.tabs.create.mockRejectedValueOnce(new Error('worker disconnected'))
+    expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({ outcome: 'unknown', quiescent: false })
+    expect(await h.executor.inspect({ identity: request, mutates: true, operation: 'tab_open' })).toEqual({
+      outcome: 'unknown', quiescent: false, reason: 'tab_creation_unconfirmed',
+    })
+    expect(h.chromeApi.tabs.create).toHaveBeenCalledTimes(1)
+  })
+  test('retains the created tab even when authorization changes after Chrome accepts creation', async () => {
+    const h = harness()
+    const request = operation({ kind: 'tab_open', url: page.url })
+    delete request.target
+    h.chromeApi.tabs.create.mockImplementationOnce(async () => { h.getGrant.mockReturnValue(null); return { id: 9, windowId: 2 } })
+    expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({
+      outcome: 'observed', quiescent: true, value: { opened: true, tab: { tabId: 9 } },
+    })
+    expect(h.chromeApi.scripting.executeScript).not.toHaveBeenCalled()
+  })
+  test('独立连接的直接点击也进入所选 Puppeteer 执行器，不降级为 DOM click', async () => {
+    const h = harness()
+    const puppeteer = { execute: vi.fn(async () => ({ outcome: 'observed', quiescent: true,
+      value: { engine: 'puppeteer', input: 'click', businessOutcome: 'unverified' } })) }
+    const executor = createBrowserExecutor({ chromeApi: h.chromeApi, getGrant: h.getGrant, puppeteer })
+    const request = operation({ kind: 'click', element: { page, snapshotId: 'snapshot', elementId: 'title' }, intent: '打开详情' })
+    expect(await executor.execute(request, new AbortController().signal))
+      .toMatchObject({ outcome: 'observed', value: { engine: 'puppeteer', input: 'click' } })
+    expect(puppeteer.execute).toHaveBeenCalledWith(expect.objectContaining({ page, request }))
+    expect(h.chromeApi.scripting.executeScript.mock.calls.some(([options]) => options.args?.[0] === 'execute')).toBe(false)
+  })
+
+  test('按请求安装身份选择授权，不把另一条连接的 grant 用于执行', async () => {
+    const h = harness()
+    const request = operation({ kind: 'snapshot', tabId: 7, frameId: 0 })
+    await h.executor.execute(request, new AbortController().signal)
+    expect(h.getGrant).toHaveBeenCalledWith(request)
+  })
+
   test('background observations require separate observe permission and cannot carry a write', async () => {
     const h = harness()
     const request = operation({ kind: 'observe', action: { kind: 'snapshot', tabId: page.tabId, frameId: 0 } })

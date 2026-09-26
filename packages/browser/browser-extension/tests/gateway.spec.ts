@@ -128,6 +128,24 @@ async function peer(base: string, identity: { installationId: string; token: str
 }
 
 describe('browser extension gateway over the real HTTP and WebSocket carriers', () => {
+  it('requires explicit target-free-open support and sends no synthetic page target', async () => {
+    const h = await mounted()
+    const identity = await h.pair()
+    const legacy = await peer(h.base, identity)
+    const op = { sessionId: SessionId('open-test'), installationId: identity.installationId,
+      requestId: randomUUID(), action: { kind: 'tab_open' as const, url: 'https://example.test/' } }
+    expect(await h.ctx.browser.execute(op, new AbortController().signal)).toMatchObject({ outcome: 'failed', delivery: 'not-sent', reason: 'capability_unavailable' })
+    expect(legacy.frames.some(frame => frame.type === 'execute')).toBe(false)
+    const modern = await peer(h.base, identity, { ...executorCapabilities, targetFreeOpen: true } as typeof executorCapabilities)
+    const pending = h.ctx.browser.execute({ ...op, requestId: randomUUID() }, new AbortController().signal)
+    await expect.poll(() => modern.frames.some(frame => actionKind(frame, 'tab_open'))).toBe(true)
+    const request = execute(modern.frames)
+    expect(request.target).toBeUndefined()
+    expect(request.mutates).toBe(true)
+    modern.socket.send(JSON.stringify({ type: 'result', receipt: { ...request, payload: undefined, mutates: undefined,
+      outcome: 'observed', quiescent: true, value: { opened: true, tab: { tabId: 12, windowId: 1 } } } }))
+    expect(await pending).toMatchObject({ outcome: 'observed', value: { tab: { tabId: 12 } } })
+  })
   it('resumes a cold ordinary Session before reading and binding its durable browser target', async () => {
     const coldSessionId = SessionId('cold-browser-target')
     let resolveAgent!: ReturnType<typeof vi.fn<SessionController['resolveAgent']>>
@@ -894,13 +912,6 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
       fingerprint:clearRequest.fingerprint,outcome:'unknown',quiescent:true,reason:'clear_unknown' } }))
     await expect.poll(async()=>test.ctx.browser.requestStatus({ requestId:clearId,sessionId,installationId:identity.installationId }))
       .toMatchObject({ outcome:'unknown',quiescent:true })
-    const acknowledgementId=randomUUID()
-    replacement.socket.send(JSON.stringify({ type:'request',requestId:acknowledgementId,method:'browser.acknowledge',params:{ receipt:{
-      protocolVersion:clearRequest.protocolVersion,grantEpoch:clearRequest.grantEpoch,installationId:clearRequest.installationId,
-      sessionId:clearRequest.sessionId,requestId:clearRequest.requestId,deadline:clearRequest.deadline,fingerprint:clearRequest.fingerprint,
-      outcome:'unknown',quiescent:true } } }))
-    await expect.poll(()=>replacement.frames.find(frame=>frame.type==='response'&&frame.requestId===acknowledgementId)?.result)
-      .toEqual({ ok:true,value:{ acknowledged:true } })
     const secondId=randomUUID();const second=render(secondId)
     await expect.poll(()=>replacement.frames.some(frame=>frame.type==='execute'&&frame.request?.requestId===secondId)).toBe(true)
     const secondRequest=execute(replacement.frames,request=>request.requestId===secondId)
@@ -1488,7 +1499,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     await expect(status).resolves.toMatchObject({ outcome:'observed',delivery:'sent',value:{ clicked:true } })
   })
 
-  it('accepts an operator-verified quiescent receipt and releases an unknown write lock', async () => {
+  it('a quiescent unknown receipt releases the write lock without an operator', async () => {
     const test = await mounted(); const identity = await test.pair(); const extension = await peer(test.base, identity)
     const action = { kind: 'click' as const, intent: '打开详情', element: {
       page: { tabId: 12, frameId: 0, documentId: 'document-1', url: 'https://example.test/page' }, snapshotId: 'snapshot-1', elementId: 'element-1',
@@ -1499,19 +1510,16 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     extension.socket.terminate()
     expect(await pending).toMatchObject({ outcome: 'unknown', delivery: 'sent' })
     const replacement = await peer(test.base, identity)
-    const requestId = randomUUID()
-    const wrongIdentityRequest = randomUUID()
-    replacement.socket.send(JSON.stringify({ type: 'request', requestId: wrongIdentityRequest, method: 'browser.acknowledge', params: { receipt: {
-      protocolVersion: issued.protocolVersion, grantEpoch: issued.grantEpoch, requestId: issued.requestId, sessionId: 'wrong-session',
-      installationId: issued.installationId, deadline: issued.deadline, fingerprint: issued.fingerprint, outcome: 'unknown', quiescent: true,
-    } } }))
-    await expect.poll(() => replacement.frames.find(frame => frame.type === 'response' && frame.requestId === wrongIdentityRequest)?.result)
-      .toMatchObject({ ok: false, error: { code: 'acknowledgement_unconfirmed' } })
-    replacement.socket.send(JSON.stringify({ type: 'request', requestId, method: 'browser.acknowledge', params: { receipt: {
-      protocolVersion: issued.protocolVersion, grantEpoch: issued.grantEpoch, requestId: issued.requestId, sessionId: issued.sessionId,
-      installationId: issued.installationId, deadline: issued.deadline, fingerprint: issued.fingerprint, outcome: 'unknown', quiescent: true,
-    } } }))
-    await expect.poll(() => replacement.frames.find(frame => frame.type === 'response' && frame.requestId === requestId)?.result).toEqual({ ok: true, value: { acknowledged: true } })
+    // The reconnected worker reports the same request as quiescent; that receipt alone
+    // releases the write lock while the request stays queryable.
+    replacement.socket.send(JSON.stringify({ type: 'result', receipt: {
+      protocolVersion: issued.protocolVersion, grantEpoch: issued.grantEpoch, installationId: issued.installationId,
+      sessionId: issued.sessionId, requestId: issued.requestId, deadline: issued.deadline,
+      fingerprint: issued.fingerprint, outcome: 'unknown', quiescent: true,
+    } }))
+    await expect.poll(async () => test.ctx.browser.requestStatus({ requestId: issued.requestId,
+      sessionId: SessionId('test-session'), installationId: identity.installationId }))
+      .toMatchObject({ outcome: 'unknown', quiescent: true })
     const next = test.ctx.browser.execute(
       { requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId, action }, new AbortController().signal)
     await expect.poll(() => replacement.frames.some(frame => frame.type === 'execute' && frame.request?.requestId !== issued.requestId)).toBe(true)

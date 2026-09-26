@@ -9,6 +9,7 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { BrowserAction, BrowserActionResult, BrowserDispatchContext, BrowserDispatchDecision,
   BrowserOperationContext, BrowserOperationSettlement, BrowserPage } from '@changanhua/dsh-browser'
+import type { BrowserTabReference } from '@changanhua/dsh-browser/types'
 import { BrowserTaskError, BrowserTaskId } from './runtime.ts'
 import {
   applyBrowserTaskChange,
@@ -43,6 +44,10 @@ import type {
   BrowserTaskRef,
   BrowserTaskSnapshot,
   BrowserTaskSourceRef,
+  BrowserBootstrapSettlement,
+  BrowserBootstrapSettlementResult,
+  BrowserBootstrapAuthority,
+  BrowserTaskEvidence,
   CreateBrowserTaskRequest,
   HandoffBrowserFunctionRequest,
   DelegatedWorkRef,
@@ -67,6 +72,11 @@ const actionPage = (action: BrowserAction): BrowserPage | undefined =>
 const samePage = (left: BrowserPage | undefined, right: BrowserPage | undefined): boolean =>
   left !== undefined && right !== undefined && left.tabId === right.tabId && left.frameId === right.frameId
   && left.documentId === right.documentId && left.url === right.url
+const sameTab = (left: Pick<BrowserTabReference, 'tabId' | 'windowId' | 'browserSessionId'> | undefined,
+  right: Pick<BrowserTabReference, 'tabId' | 'windowId' | 'browserSessionId'> | undefined): boolean =>
+  left !== undefined && right !== undefined && left.tabId === right.tabId && left.windowId === right.windowId
+  && left.browserSessionId === right.browserSessionId
+type ProviderTargetBinding = BrowserTargetBinding & { readonly revision: number }
 const resultPage = (value: unknown): BrowserPage | undefined => {
   const page = object(object(value)?.page)
   return typeof page?.tabId === 'number' && typeof page.frameId === 'number'
@@ -164,6 +174,8 @@ const sourceFactSchema = zod.object({
   reason: zod.string().max(BROWSER_TASK_LIMITS.text).optional(),
   failureFingerprint: zod.string().regex(/^sha256:[a-f0-9]{64}$/u).optional(),
   presentation: zod.unknown().optional(),
+  bootstrap: zod.unknown().optional(),
+  observation: zod.unknown().optional(),
   checkerId: zod.string().min(1).optional(),
   evaluations: zod.array(zod.object({
     clauseId: zod.string().min(1),
@@ -358,7 +370,7 @@ export class BrowserTaskService extends Service {
   private readonly capturing = new Set<string>()
   private readonly toolResults = new Map<string, PendingDelegation>()
   private readonly providerOwned = new Set<string>()
-  private readonly capturedTargets = new Map<string, BrowserSessionTargetBinding>()
+  private readonly capturedTargets = new Map<string, ProviderTargetBinding>()
 
   constructor(ctx: Context) {
     super(ctx, 'browserTasks')
@@ -368,9 +380,16 @@ export class BrowserTaskService extends Service {
       order: ctx.systemPrompt.getContextOrder('BROWSER_TARGET'),
       text: (context) => {
         if (context.agent === undefined) return ''
-        const target = this.readTarget(context.agent).binding
+        const selected = this.readTarget(context.agent)
+        const target = selected.binding
         if (target === null) {
-          return 'No browser target is fixed for this Session. Do not infer “current page” or “this page” from active tabs or windows. Ask the user to fix a target tab unless they explicitly requested tab discovery.'
+          const task = this.get(context.agent)
+          if (task !== undefined && task.targetRevision !== selected.revision) return 'The user changed the browser selection. The previous task target and pending tab are no longer authorized; do not continue with their references.'
+          if (task?.target !== undefined && this.operationBinding(context.agent, { kind: 'snapshot', tabId: task.target.page.tabId, frameId: task.target.page.frameId }) !== undefined) {
+            return `This task adopted one freshly observed page under null user selection: ${JSON.stringify(task.target)}. Use its exact page references. This task-local target does not authorize a Cordis page-function handoff or change the user's Session target.`
+          }
+          if (task?.pendingTarget !== undefined) return `This task has one opened tab awaiting an exact snapshot: ${JSON.stringify({ installationId: task.pendingTarget.installationId, tabId: task.pendingTarget.tabId, windowId: task.pendingTarget.windowId, browserSessionId: task.pendingTarget.browserSessionId })}. Read it through task verification or expectedTab; do not open another tab.`
+          return 'No browser target is fixed for this Session. Do not infer “current page” or “this page” from active tabs or windows. For an explicitly supplied URL, start a task without page and use target-free tab_open when the installation advertises support, then read its returned tab reference. Ask the user to fix a target for an ambiguous current-page request; explicit tab discovery may list candidates.'
         }
         const identity = JSON.stringify({
           installationId: target.installationId,
@@ -481,9 +500,20 @@ export class BrowserTaskService extends Service {
     return `${agent.id}\u0000${requestId}`
   }
 
-  private operationBinding(agent: Agent, action: BrowserAction): BrowserSessionTargetBinding | undefined {
-    if (action.kind === 'tabs') return undefined
-    return this.readTarget(agent).binding ?? undefined
+  private operationBinding(agent: Agent, action: BrowserAction): ProviderTargetBinding | undefined {
+    if (action.kind === 'tabs' || action.kind === 'tab_open' && action.page === undefined) return undefined
+    const selected = this.readTarget(agent)
+    if (selected.binding !== null) return selected.binding
+    const task = this.get(agent)
+    if (task?.target !== undefined) {
+      const adopted = this.projection(agent.session).sourceFacts.some(fact =>
+        fact.kind === 'browser-task-receipt' && fact.taskId === task.id && fact.observation?.kind === 'page'
+        && same(fact.observation.target, task.target))
+      if (adopted && task.targetRevision === selected.revision) {
+        return { ...task.target, revision: selected.revision }
+      }
+    }
+    return undefined
   }
 
   private actionMatchesSelection(action: BrowserAction, binding: BrowserTargetBinding): boolean {
@@ -505,11 +535,17 @@ export class BrowserTaskService extends Service {
     const agent=this.ctx.agents.currentInitiator()
     if(agent===undefined)return next()
     if(context.operation.sessionId!==agent.session.id)return this.denied(context,'browser_task_owner_mismatch')
+    let task=this.get(agent)
+    if (context.operation.action.kind === 'tab_open' && context.operation.action.page === undefined
+      && this.readTarget(agent).binding !== null) return this.denied(context, 'browser_target_mismatch')
     const operationBinding=this.operationBinding(agent,context.operation.action)
-    if(context.operation.action.kind!=='tabs'){
-      if(operationBinding===undefined)return this.denied(context,'browser_target_unbound')
-      if(context.operation.installationId!==operationBinding.installationId
-        ||!this.actionMatchesSelection(context.operation.action,operationBinding)){
+    const pendingSnapshot = task?.target === undefined && task?.pendingTarget !== undefined
+      && context.operation.action.kind === 'snapshot' && context.operation.action.tabId === task.pendingTarget.tabId
+      && context.operation.action.frameId === 0 && sameTab(context.operation.action.expectedTab, task.pendingTarget)
+    if(context.operation.action.kind!=='tabs' && !(context.operation.action.kind==='tab_open' && context.operation.action.page===undefined)){
+      if(operationBinding===undefined && !pendingSnapshot)return this.denied(context,'browser_target_unbound')
+      if(!pendingSnapshot && (context.operation.installationId!==operationBinding?.installationId
+        ||!this.actionMatchesSelection(context.operation.action,operationBinding))){
         return this.denied(context,'browser_target_mismatch')
       }
     }
@@ -519,10 +555,60 @@ export class BrowserTaskService extends Service {
       }
       return next()
     }
-    let task=this.get(agent)
     if(task===undefined)return proceed()
     if(task.phase==='terminal')return directRead(context.operation.action)?proceed():this.denied(context,'browser_task_terminal')
     if(task.target===undefined||task.target.installationId!==context.operation.installationId){
+      if (task.target === undefined && context.operation.action.kind === 'tab_open' && context.operation.action.page === undefined
+        && task.capability?.targetFreeOpen === true && task.capability.installationId === context.operation.installationId
+        && task.pendingTarget === undefined) {
+        const capability = task.capability
+        const targetRevision = task.targetRevision
+        if (targetRevision === undefined) return this.denied(context, 'browser_task_target_mismatch')
+        const selection = this.readTarget(agent)
+        if (selection.binding !== null || selection.revision !== task.targetRevision) {
+          return this.denied(context, 'browser_task_target_mismatch')
+        }
+        if (!context.logicalMutates || task.blockers.length > 0) {
+          return this.denied(context, task.blockers.length > 0 ? 'browser_task_blocked' : 'browser_task_budget_exhausted')
+        }
+        const existing = task.attempts.find(item => item.requestId === context.operation.requestId)
+        if (existing !== undefined) return existing.bootstrap?.kind === 'target-free-open'
+          && existing.bootstrap.installationId === context.operation.installationId
+          && existing.bootstrap.url === context.operation.action.url ? proceed() : this.denied(context, 'request_conflict')
+        if (task.budget.actionsUsed >= task.budget.maxActions) return this.denied(context, 'browser_task_budget_exhausted')
+        task = this.consumeAction(agent, taskRef(task))
+        task = this.recordAttempt(agent, taskRef(task), {
+          attemptId: context.operation.requestId, requestId: context.operation.requestId,
+          actionKind: 'tab_open', grantEpoch: capability.grantEpoch, stage: 'planned', write: context.logicalMutates,
+          bootstrap: { kind: 'target-free-open', installationId: capability.installationId,
+            targetRevision, url: context.operation.action.url },
+        })
+        this.providerOwned.add(this.providerKey(agent, context.operation.requestId))
+        return proceed()
+      }
+      if (pendingSnapshot && context.operation.action.kind === 'snapshot') {
+        const selection = this.readTarget(agent)
+        const pending = task.pendingTarget
+        if (pending === undefined) return this.denied(context, 'browser_task_target_mismatch')
+        if (context.operation.installationId !== pending.installationId || task.capability?.state !== 'observed'
+          || task.capability.grantEpoch !== pending.grantEpoch || selection.binding !== null
+          || selection.revision !== task.targetRevision || task.blockers.length > 0
+          || task.budget.actionsUsed >= task.budget.maxActions) {
+          return this.denied(context, 'browser_task_target_mismatch')
+        }
+        const existing = task.attempts.find(item => item.requestId === context.operation.requestId)
+        if (existing !== undefined) return existing.bootstrap?.kind === 'opened-tab-snapshot'
+          && existing.bootstrap.installationId === context.operation.installationId
+          && sameTab(existing.bootstrap, context.operation.action.expectedTab) ? proceed() : this.denied(context, 'request_conflict')
+        task = this.consumeAction(agent, taskRef(task))
+        task = this.recordAttempt(agent, taskRef(task), { attemptId: context.operation.requestId,
+          requestId: context.operation.requestId, actionKind: 'snapshot', grantEpoch: pending.grantEpoch,
+          stage: 'planned', write: false, bootstrap: { kind: 'opened-tab-snapshot', installationId: pending.installationId,
+            targetRevision: pending.targetRevision, tabId: pending.tabId, windowId: pending.windowId,
+            browserSessionId: pending.browserSessionId, openedByRequestId: pending.openedByRequestId } })
+        this.providerOwned.add(this.providerKey(agent, context.operation.requestId))
+        return proceed()
+      }
       return this.denied(context,'browser_task_target_mismatch')
     }
     const page=actionPage(context.operation.action)
@@ -605,17 +691,26 @@ export class BrowserTaskService extends Service {
   ): Promise<BrowserDispatchDecision> {
     const agent=this.ctx.agents.currentInitiator()
     if(agent===undefined)return next()
-    if(context.operation.action.kind!=='tabs'){
+    let task=this.get(agent)
+    const pendingSnapshot = task?.target === undefined && task?.pendingTarget !== undefined
+      && context.operation.action.kind === 'snapshot' && context.operation.action.tabId === task.pendingTarget.tabId
+      && context.operation.action.frameId === 0 && sameTab(context.operation.action.expectedTab, task.pendingTarget)
+    if(context.operation.action.kind!=='tabs' && !(context.operation.action.kind==='tab_open' && context.operation.action.page===undefined) && !pendingSnapshot){
       const captured=this.capturedTargets.get(this.providerKey(agent,context.operation.requestId))
       const current=this.operationBinding(agent,context.operation.action)
       if(captured===undefined||current===undefined||!same(captured,current)){
         return this.denied(context,'browser_target_changed')
       }
     }
-    if(!context.transportMutates)return next()
-    let task=this.get(agent)
     const attempt=task?.attempts.find(item=>item.requestId===context.operation.requestId)
     if(task===undefined||attempt===undefined)return next()
+    if (attempt.bootstrap !== undefined) {
+      const selection = this.readTarget(agent)
+      if (selection.binding !== null || selection.revision !== attempt.bootstrap.targetRevision) {
+        return this.denied(context, 'browser_target_changed')
+      }
+    }
+    if(!context.transportMutates)return next()
     if(attempt.stage==='dispatch-intent'||attempt.stage==='dispatched'||attempt.stage==='settled'){
       return this.denied(context,'browser_task_reconcile_required')
     }
@@ -630,6 +725,12 @@ export class BrowserTaskService extends Service {
     try {
       if(!await this.ctx.sessions.flush(agent.session))return this.denied(context,'durability_unavailable')
     } catch { return this.denied(context,'durability_unavailable') }
+    if (attempt.bootstrap !== undefined) {
+      const selection = this.readTarget(agent)
+      if (selection.binding !== null || selection.revision !== attempt.bootstrap.targetRevision) {
+        return this.denied(context, 'browser_target_changed')
+      }
+    }
     return next()
   }
 
@@ -660,6 +761,10 @@ export class BrowserTaskService extends Service {
     let attempt=task.attempts.find(item=>item.requestId===context.operation.requestId)
     if(attempt===undefined)return
     const result=settlement.result
+    if (attempt.bootstrap !== undefined) {
+      this.settleBootstrapOperation(agent, taskRef(task), { kind: 'result', result })
+      return
+    }
     if(result.delivery==='sent'&&attempt.stage!=='dispatched'){
       task=this.advanceAttempt(agent,taskRef(task),{ ...attempt,stage:'dispatched' })
       attempt=task.attempts.find(item=>item.requestId===context.operation.requestId)
@@ -669,8 +774,10 @@ export class BrowserTaskService extends Service {
       ?deterministicBrowserFailureCode(result.reason):undefined
     const failureFingerprint=failureCode===undefined?undefined
       :browserFailureFingerprint(context.operation.action,failureCode)
+    const attemptTarget = attempt.target
+    if (attemptTarget === undefined) throw new Error('page attempt has no target during provider settlement')
     const receipt=this.recordReceipt(agent,taskRef(task),{
-      requestId:result.requestId,actionKind:attempt.actionKind,target:attempt.target,outcome:result.outcome,
+      requestId:result.requestId,actionKind:attempt.actionKind,target:attemptTarget,outcome:result.outcome,
       delivery:result.delivery,quiescent:result.outcome!=='unknown',grantEpoch:attempt.grantEpoch,
       ...(attempt.resourceId===undefined?{}:{ resourceId:attempt.resourceId }),
       ...(result.reason===undefined?{}:{ reason:result.reason }),
@@ -772,6 +879,21 @@ export class BrowserTaskService extends Service {
     const maxSteps = request.maxSteps ?? 128
     const maxActions = request.maxActions ?? 64
     if (!Number.isSafeInteger(maxSteps) || !Number.isSafeInteger(maxActions) || maxSteps < 1 || maxActions < 1 || maxSteps > BROWSER_TASK_LIMITS.maxBudget || maxActions > BROWSER_TASK_LIMITS.maxBudget) throw new BrowserTaskError('budget invalid', 'BROWSER_TASK_INVALID_INPUT')
+    const selected = this.readTarget(agent)
+    const requestedTarget = request.target
+    const hasTarget = requestedTarget !== undefined
+    // Existing user-bound callers did not supply a revision. Preserve that
+    // entry while still pinning the create fact to the revision observed here.
+    const targetRevision = request.targetRevision ?? (hasTarget ? selected.revision : undefined)
+    if (targetRevision === undefined || targetRevision !== selected.revision
+      || !hasTarget && selected.binding !== null) {
+      throw new BrowserTaskError('browser task target authority changed', 'BROWSER_TASK_TARGET_MISMATCH')
+    }
+    if (hasTarget && request.targetRevision !== undefined && (selected.binding === null
+      || requestedTarget === undefined || requestedTarget.installationId !== selected.binding.installationId
+      || requestedTarget.page.tabId !== selected.binding.page.tabId)) {
+      throw new BrowserTaskError('browser task target authority changed', 'BROWSER_TASK_TARGET_MISMATCH')
+    }
     const now = Date.now()
     const pending = projection.pendingDelegations.filter(candidate => candidate.originUserSeq === request.sourceSeq)
     let created = this.commit(agent, 'create', {
@@ -781,8 +903,8 @@ export class BrowserTaskService extends Service {
       sourceSeq: request.sourceSeq,
       phase: 'running',
       blockers: [],
-      ...request.target === undefined ? {} : { target: clone(request.target) },
-      ...request.targetRevision === undefined ? {} : { targetRevision: request.targetRevision },
+      ...(requestedTarget === undefined ? { targetRevision }
+        : { target: clone(requestedTarget), targetRevision }),
       targetLossAcknowledged: false,
       acceptance: clone(request.acceptance),
       evidence: [],
@@ -804,6 +926,119 @@ export class BrowserTaskService extends Service {
   }
 
   /**
+   * Settle one target-free open or its first exact snapshot without spending another action.
+   * @param agent - Exact live Agent whose Session owns the bootstrap attempt.
+   * @param ref - Current task compare-and-set reference.
+   * @param settlement - Returned result or a quiescent journal recovery status.
+   * @returns The receipt, settlement disposition, and atomically adopted task when a fresh snapshot proves it.
+   */
+  settleBootstrapOperation(agent: Agent, ref: BrowserTaskRef,
+    settlement: BrowserBootstrapSettlement): BrowserBootstrapSettlementResult {
+    this.live(agent)
+    let task = this.requireCurrent(agent, ref)
+    const result = settlement.kind === 'result' ? settlement.result : settlement.status
+    if (result.sessionId !== agent.session.id) throw new BrowserTaskError('bootstrap owner mismatch', 'BROWSER_TASK_TARGET_MISMATCH')
+    let attempt = task.attempts.find(item => item.requestId === result.requestId && item.bootstrap !== undefined)
+    if (attempt === undefined) throw new BrowserTaskError('bootstrap attempt missing', 'BROWSER_TASK_INVALID_INPUT')
+    const bootstrap = attempt.bootstrap
+    if (bootstrap === undefined) throw new BrowserTaskError('bootstrap authority missing', 'BROWSER_TASK_INTERNAL_INVARIANT')
+    if (attempt.stage === 'settled' && (attempt.outcome !== 'unknown' || settlement.kind !== 'recovery' || result.outcome === 'unknown')) {
+      if (attempt.settledBy === undefined) throw new BrowserTaskError('bootstrap settlement missing receipt', 'BROWSER_TASK_INTERNAL_INVARIANT')
+      const receipt = attempt.settledBy as Extract<BrowserTaskSourceRef, { kind: 'browser-task-receipt' }>
+      return { task, receipt, disposition: 'unchanged',
+        evidenceRecorded: task.evidence.some(item => same(item.source, receipt)) }
+    }
+    if (attempt.grantEpoch < 0 || result.installationId !== bootstrap.installationId) {
+      throw new BrowserTaskError('bootstrap installation mismatch', 'BROWSER_TASK_TARGET_MISMATCH')
+    }
+    if (result.delivery === 'sent' && attempt.stage !== 'dispatched' && attempt.stage !== 'settled') {
+      task = this.advanceAttempt(agent, taskRef(task), { ...attempt, stage: 'dispatched' })
+      attempt = task.attempts.find(item => item.requestId === result.requestId)
+      if (attempt === undefined) throw new BrowserTaskError('bootstrap attempt disappeared', 'BROWSER_TASK_INTERNAL_INVARIANT')
+    }
+    const rawOutcome = result.outcome === 'in-flight' ? 'unknown' as const : result.outcome
+    const observed = rawOutcome === 'observed' && result.delivery === 'sent'
+    const openedTab = observed && bootstrap.kind === 'target-free-open' ? this.openedBootstrapTab(result.value) : undefined
+    const observedTarget = observed && bootstrap.kind === 'opened-tab-snapshot'
+      ? this.bootstrapSnapshotTarget(result.value, bootstrap) : undefined
+    const outcome = bootstrap.kind === 'target-free-open' && rawOutcome === 'observed'
+      && result.delivery === 'sent' && openedTab === undefined ? 'unknown' as const
+      : bootstrap.kind === 'opened-tab-snapshot' && rawOutcome === 'observed'
+        && result.delivery === 'sent' && observedTarget === undefined ? 'unknown' as const
+        : rawOutcome
+    let observation: Extract<BrowserTaskReceipt, { readonly version: 2 }>['observation']
+    if (openedTab !== undefined) observation = { kind: 'opened-tab', tab: openedTab }
+    else if (observedTarget !== undefined) observation = { kind: 'page', target: observedTarget, digest: outputDigest(result.value) }
+    else observation = { kind: 'none' }
+    const receipt = this.recordReceipt(agent, taskRef(task), {
+      requestId: result.requestId, actionKind: attempt.actionKind, bootstrap, observation,
+      outcome, delivery: result.delivery, quiescent: settlement.kind === 'recovery' ? true : outcome !== 'unknown',
+      grantEpoch: attempt.grantEpoch,
+      ...(result.reason === undefined && outcome === rawOutcome ? {} : { reason: result.reason ?? 'bootstrap_observation_unverified' }),
+    })
+    let evidenceRecorded = false
+    task = this.mutate(agent, taskRef(task), 'bootstrap-settle', (current) => {
+      const currentAttempt = current.attempts.find(item => item.requestId === result.requestId)
+      if (currentAttempt === undefined) throw new BrowserTaskError('bootstrap attempt disappeared', 'BROWSER_TASK_INTERNAL_INVARIANT')
+      const attempts = current.attempts.map(item => item.requestId !== result.requestId ? item : {
+        ...item, stage: 'settled' as const, outcome, quiescent: settlement.kind === 'recovery' ? true : outcome !== 'unknown', settledBy: receipt,
+        ...(item.outcome === 'unknown' && settlement.kind === 'recovery' ? { reconciledBy: receipt } : {}),
+      })
+      const unresolved = attempts.some(item => item.write && item.outcome === 'unknown')
+      if (currentAttempt.bootstrap?.kind === 'target-free-open' && outcome === 'observed' && result.delivery === 'sent' && openedTab !== undefined) {
+        const blockers = unresolved ? current.blockers : current.blockers.filter(blocker => blocker !== 'unknown-attempt')
+        return { ...current, attempts, pendingTarget: { installationId: currentAttempt.bootstrap.installationId,
+          targetRevision: currentAttempt.bootstrap.targetRevision, ...openedTab, grantEpoch: currentAttempt.grantEpoch,
+          openedByRequestId: currentAttempt.requestId, openedByReceipt: receipt }, blockers,
+        ...(current.phase === 'waiting' && blockers.length === 0 ? { phase: 'running' as const } : {}) }
+      }
+      if (currentAttempt.bootstrap?.kind === 'opened-tab-snapshot' && outcome === 'observed' && result.delivery === 'sent'
+        && observedTarget !== undefined) {
+        const selection = this.readTarget(agent)
+        if (selection.binding === null && selection.revision === currentAttempt.bootstrap.targetRevision
+          && current.pendingTarget !== undefined && sameTab(current.pendingTarget, currentAttempt.bootstrap)
+          && current.capability?.state === 'observed' && current.capability.installationId === observedTarget.installationId
+          && current.capability.grantEpoch === currentAttempt.grantEpoch) {
+          evidenceRecorded = true
+          const evidence: BrowserTaskEvidence = { id: `evidence-${result.requestId}`, state: 'current', source: receipt,
+            digest: outputDigest(result.value), target: observedTarget, grantEpoch: currentAttempt.grantEpoch }
+          const { pendingTarget: _pending, ...adoptable } = current
+          return { ...adoptable, attempts, target: observedTarget,
+            evidence: [...current.evidence.map(item => ({ ...item, state: item.state === 'current' ? 'stale' as const : item.state })), evidence],
+            evaluations: [] }
+        }
+        return { ...current, attempts, blockers: [...new Set([...current.blockers, 'target-lost' as const,
+          ...(unresolved ? ['unknown-attempt' as const] : [])])] }
+      }
+      if (currentAttempt.bootstrap?.kind === 'opened-tab-snapshot' && result.reason === 'tab_reference_stale') {
+        return { ...current, attempts, blockers: [...new Set([...current.blockers, 'target-lost' as const,
+          ...(unresolved ? ['unknown-attempt' as const] : [])])] }
+      }
+      return { ...current, attempts, blockers: unresolved
+        ? [...new Set([...current.blockers, 'unknown-attempt' as const])]
+        : current.blockers.filter(blocker => blocker !== 'unknown-attempt') }
+    })
+    return { task, receipt, disposition: settlement.kind === 'recovery' ? 'reconciled' : 'settled', evidenceRecorded }
+  }
+
+  private openedBootstrapTab(value: unknown): BrowserTabReference | undefined {
+    if (object(value)?.opened !== true) return undefined
+    const tab = object(object(value)?.tab)
+    return typeof tab?.tabId === 'number' && Number.isSafeInteger(tab.tabId) && tab.tabId >= 0
+      && typeof tab.windowId === 'number' && Number.isSafeInteger(tab.windowId) && tab.windowId >= 0
+      && typeof tab.browserSessionId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(tab.browserSessionId)
+      ? { tabId: tab.tabId, windowId: tab.windowId, browserSessionId: tab.browserSessionId } : undefined
+  }
+
+  private bootstrapSnapshotTarget(value: unknown, bootstrap: Extract<BrowserBootstrapAuthority, { kind: 'opened-tab-snapshot' }>): BrowserTargetBinding | undefined {
+    const page = resultPage(value)
+    if (page === undefined || page.frameId !== 0 || page.tabId !== bootstrap.tabId) return undefined
+    const tab = object(object(value)?.tab)
+    if (tab !== undefined && !sameTab(tab as unknown as BrowserTabReference, bootstrap)) return undefined
+    return { installationId: bootstrap.installationId, page }
+  }
+
+  /**
    * Append a bounded Browser receipt before any task mutation cites it.
    * @param agent - Exact live Agent that owns the task.
    * @param task - Current compare-and-set task revision.
@@ -817,7 +1052,7 @@ export class BrowserTaskService extends Service {
   ): Extract<BrowserTaskSourceRef, { kind: 'browser-task-receipt' }> {
     this.live(agent)
     const current = this.requireCurrent(agent, task)
-    target(current, receipt.target)
+    if (receipt.target !== undefined) target(current, receipt.target)
     const attempt = current.attempts.find(item => item.requestId === receipt.requestId)
     const beforeDispatch = attempt !== undefined
       && (attempt.stage === 'planned' || attempt.stage === 'prepared' || attempt.stage === 'dispatch-intent')
@@ -834,7 +1069,7 @@ export class BrowserTaskService extends Service {
       || attempt.resourceId !== receipt.resourceId
       || !same(attempt.target, receipt.target)
     ) throw new BrowserTaskError('receipt does not match the attempt delivery boundary', 'BROWSER_TASK_INVALID_INPUT')
-    const fact = { kind: 'browser-task/receipt', version: 1, taskId: current.id, ...clone(receipt) } as const
+    const fact = { kind: 'browser-task/receipt', version: receipt.bootstrap === undefined ? 1 : 2, taskId: current.id, ...clone(receipt) } as unknown as BrowserTaskReceipt
     try { validateReceipt(fact) } catch (error) { throw new BrowserTaskError(error instanceof Error ? error.message : String(error), 'BROWSER_TASK_INVALID_INPUT') }
     const event = agent.session.append('browser-task/receipt', fact)
     return { kind: 'browser-task-receipt', sessionSeq: event.seq }
@@ -916,7 +1151,10 @@ export class BrowserTaskService extends Service {
    */
   recordAttempt(agent: Agent, ref: BrowserTaskRef, attempt: BrowserActionAttempt): BrowserTaskSnapshot {
     return this.mutate(agent, ref, 'attempt', (task) => {
-      target(task, attempt.target)
+      if (attempt.target !== undefined) target(task, attempt.target)
+      else if (attempt.bootstrap === undefined || task.target !== undefined || task.targetRevision !== attempt.bootstrap.targetRevision
+        || attempt.bootstrap.kind === 'target-free-open' && task.pendingTarget !== undefined
+        || attempt.bootstrap.kind === 'opened-tab-snapshot' && (task.pendingTarget === undefined || !sameTab(task.pendingTarget, attempt.bootstrap))) throw new BrowserTaskError('bootstrap authority invalid', 'BROWSER_TASK_TARGET_MISMATCH')
       if (task.attempts.some(item => item.attemptId === attempt.attemptId)) throw new BrowserTaskError('attempt id exists', 'BROWSER_TASK_INVALID_INPUT')
       return { ...task, attempts: [...task.attempts, clone(attempt)] }
     })
@@ -931,7 +1169,10 @@ export class BrowserTaskService extends Service {
    */
   advanceAttempt(agent: Agent, ref: BrowserTaskRef, attempt: BrowserActionAttempt): BrowserTaskSnapshot {
     return this.mutate(agent, ref, 'attempt', (task) => {
-      target(task, attempt.target)
+      if (attempt.target !== undefined) target(task, attempt.target)
+      else if (attempt.bootstrap === undefined || task.target !== undefined || task.targetRevision !== attempt.bootstrap.targetRevision
+        || attempt.bootstrap.kind === 'target-free-open' && task.pendingTarget !== undefined
+        || attempt.bootstrap.kind === 'opened-tab-snapshot' && (task.pendingTarget === undefined || !sameTab(task.pendingTarget, attempt.bootstrap))) throw new BrowserTaskError('bootstrap authority invalid', 'BROWSER_TASK_TARGET_MISMATCH')
       if (!task.attempts.some(item => item.attemptId === attempt.attemptId)) throw new BrowserTaskError('attempt missing', 'BROWSER_TASK_INVALID_INPUT')
       const attempts = task.attempts.map(item => item.attemptId === attempt.attemptId ? clone(attempt) : item)
       const unresolvedWrite = attempts.some(item => item.write
@@ -1014,6 +1255,13 @@ export class BrowserTaskService extends Service {
    */
   handoffFunction(agent: Agent, ref: BrowserTaskRef, request: HandoffBrowserFunctionRequest): BrowserTaskSnapshot {
     const current = this.requireCurrent(agent, ref)
+    if (request.scope.kind === 'page') {
+      const selected = this.readTarget(agent)
+      if (selected.binding === null || selected.revision !== request.scope.targetRevision
+        || !same(request.scope.target, { installationId: selected.binding.installationId, page: selected.binding.page })) {
+        throw new BrowserTaskError('page function handoff requires the current explicit user target', 'BROWSER_TASK_FUNCTION_HANDOFF_DENIED')
+      }
+    }
     const fact: BrowserTaskFunctionHandoff = {
       kind: 'browser-task/function-handoff', version: 1, taskId: current.id,
       taskRevision: current.revision, createdBySessionId: String(agent.session.id),
@@ -1021,7 +1269,8 @@ export class BrowserTaskService extends Service {
     }
     try {
       validateFunctionHandoff(fact)
-      validateFunctionHandoffAdmission(current, fact, foldState(this.projection(agent.session)).sourceFacts)
+      validateFunctionHandoffAdmission(current, fact, foldState(this.projection(agent.session)).sourceFacts,
+        this.readTarget(agent).binding, this.readTarget(agent).revision)
     } catch (error) {
       throw new BrowserTaskError(error instanceof Error ? error.message : String(error), 'BROWSER_TASK_FUNCTION_HANDOFF_DENIED')
     }
@@ -1210,7 +1459,7 @@ export class BrowserTaskService extends Service {
 
   private commit(agent: Agent, operation: BrowserTaskOperation, task: BrowserTaskSnapshot): BrowserTaskSnapshot {
     this.live(agent)
-    const change: BrowserTaskChangeMeta = { kind: 'browser-task/change', version: 3, operation, task: clone(task) }
+    const change: BrowserTaskChangeMeta = { kind: 'browser-task/change', version: 4, operation, task: clone(task) }
     try {
       assertBrowserTaskSnapshot(change.task)
       const fold = foldState(this.projection(agent.session))

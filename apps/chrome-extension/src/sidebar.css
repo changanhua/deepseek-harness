@@ -38,11 +38,13 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .count { display: inline-block; margin-left: 4px; border-radius: 5px; padding: 1px 5px; color: #728096; background: #eff2f6; font-size: 10px; }
 .notice, .connection-panel { flex: none; margin: 8px 12px 0; padding: 9px 11px; border: 1px solid #f0d49b; border-radius: 10px; color: var(--warning); background: #fff9eb; }
 .connection-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; border-color: var(--line); color: var(--muted); background: var(--surface); }
+.codex-browser-connection { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); }
 .target-panel { flex: none; position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: 11px 14px 0; padding: 9px 10px 9px 39px; border: 1px solid var(--line); border-radius: 10px; background: #fafbfc; }
 .target-panel::before { content: ""; position: absolute; top: 17px; left: 12px; width: 17px; height: 17px; background: #8291a3; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='1.7' stroke-linejoin='round' d='m16 3 5 5-4 2-3 5-2-2-6 6-1-1 6-6-2-2 5-3z'/%3E%3C/svg%3E") center / contain no-repeat; }
 .target-panel strong, .target-panel small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .target-panel strong { font-size: 11px; font-weight: 600; }
 .target-panel small { color: #8290a2; font-size: 10px; line-height: 1.5; }
+.target-panel > small { white-space: normal; overflow-wrap: anywhere; }
 .target-actions { justify-content: start; flex-wrap: wrap; margin-top: 4px; }
 .target-actions button { min-height: 30px; padding: 4px 8px; font-size: 11px; }
 .target-actions .primary { background: transparent; color: var(--accent); }
@@ -99,6 +101,12 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .pending-actions, .action-approvals, .unresolved-actions { display: grid; gap: 7px; margin: 0 12px 8px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: var(--surface); font-size: 12px; }
 .pending-actions:empty { display: none; }
 .action-approvals article, .unresolved-actions article { display: grid; gap: 7px; }
+.unresolved-actions strong { color: var(--text); font-size: 12px; }
+.unresolved-actions .recovery-controls { display: flex; flex-wrap: wrap; gap: 6px; }
+.unresolved-actions .recovery-controls button { min-height: 28px; padding: 4px 9px; }
+.unresolved-actions details { font-size: 11px; }
+.unresolved-actions summary { cursor: pointer; }
+.unresolved-actions pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .action-approvals pre, .unresolved-actions p, .function-inspection { max-width: 100%; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12px; }
 .pane { overflow: auto; padding: 23px 18px; }
 .pane > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
@@ -148,6 +156,23 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .status-pill { display: inline-flex; width: max-content; padding: 2px 7px; border-radius: 99px; color: var(--muted); background: var(--surface-soft); font-size: 10px; }
 .status-pill.running { color: #087a50; background: #e7f7ef; }
 .error-state { border-color: #f1c7cd; color: var(--danger); background: #fff6f7; }
+.sbc-report { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 12px; }
+.sbc-report > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbc-report > .scope-note, .sbc-metrics, .sbc-issues, .sbc-field-audit, .sbc-dry-run, .sbc-risk-preflight, .sbc-approval-preview, .sbc-report > p { grid-column: 1 / -1; }
+.sbc-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin: 0; }
+.sbc-metrics dt, .sbc-metrics dd { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbc-metrics dt { color: var(--faint); font-size: 10px; }
+.sbc-metrics dd { font-size: 11px; font-weight: 600; }
+.sbc-issues { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid var(--line); }
+.sbc-issues strong { color: var(--muted); font-size: 11px; }
+.sbc-issues ul { display: grid; gap: 3px; margin: 0; padding-left: 17px; color: #4a5666; }
+.sbc-field-audit, .sbc-dry-run, .sbc-risk-preflight, .sbc-approval-preview { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid var(--line); }
+.sbc-field-audit strong, .sbc-dry-run strong, .sbc-risk-preflight strong, .sbc-approval-preview strong { color: var(--muted); font-size: 11px; }
+.sbc-field-audit ul, .sbc-dry-run ul, .sbc-risk-preflight ul, .sbc-approval-preview ul { display: grid; gap: 3px; margin: 0; padding-left: 17px; color: #4a5666; }
+.sbc-field-audit li, .sbc-dry-run li, .sbc-risk-preflight li, .sbc-approval-preview li { overflow-wrap: anywhere; }
+.sbc-handoff { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 8px; }
+.sbc-handoff summary { cursor: pointer; color: var(--muted); font-size: 11px; }
+.sbc-handoff pre { max-height: 220px; overflow: auto; margin: 8px 0; padding: 9px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-soft); font: 11px/1.6 Consolas, "Microsoft YaHei UI", monospace; }
 .composer-wrap { flex: none; position: relative; padding: 0 13px 10px; background: white; }
 .draft-context { display: flex; justify-content: space-between; gap: 8px; margin: 0 3px 5px; color: var(--faint); font-size: 10px; }
 .draft-context span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -198,6 +223,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   .target-panel { padding-right: 9px; }
   .home { padding-inline: 11px; }
   .conversation { padding-inline: 10px; }
+  .sbc-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .draft-context span:last-child { display: none; }
   .composer-wrap { padding-inline: 9px; }
 }

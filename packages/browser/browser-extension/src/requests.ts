@@ -144,7 +144,8 @@ export class BrowserRequests {
     if (!Number.isSafeInteger(request.deadline) || request.deadline <= Date.now()
       || request.deadline - Date.now() > this.limits.maxDurationMs) return reject('deadline')
     if (request.fingerprint !== sealed.fingerprint) return reject('invalid_fingerprint')
-    if (request.mutates && request.target === undefined) return reject('target_required')
+    if (request.mutates && request.target === undefined
+      && !(isRecord(request.payload) && request.payload.kind === 'tab_open' && request.payload.page === undefined)) return reject('target_required')
     if (!this.connections.has(request.installationId)) return reject('offline')
     if (this.entries.size >= this.limits.capacity) return reject('capacity')
     if (bytes({ type: 'execute', request: sealed }) > this.limits.maxRequestBytes) return reject('request_too_large')
@@ -270,20 +271,6 @@ export class BrowserRequests {
     return entry.request.target === undefined ? undefined : structuredClone(entry.request.target)
   }
 
-  /**
-   * Release an uncertain write only after executor quiescence and an explicit owner decision.
-   * The gateway must authenticate that decision; this never changes the observed outcome.
-   */
-  acknowledgeUnknown(identity: BrowserRequestIdentity): boolean {
-    if (this.closed) return false
-    if (!this.entries.has(identity.requestId)) return true
-    const entry = this.find(identity)
-    if (entry?.result !== undefined && entry.result.outcome !== 'unknown') return true
-    if (entry?.result?.outcome !== 'unknown' || !entry.quiescent) return false
-    entry.released = true
-    return true
-  }
-
   /** Settle callers and detach timers/listeners; socket shutdown belongs to the gateway. */
   dispose(): void {
     if (this.closed) return
@@ -308,6 +295,7 @@ export class BrowserRequests {
     return entry.request.mutates && !entry.released
       && (entry.result === undefined || entry.result.outcome === 'unknown')
       && entry.request.installationId === request.installationId
+      && request.target !== undefined
       && entry.request.target?.tabId === request.target?.tabId
   }
 
@@ -339,6 +327,9 @@ export class BrowserRequests {
     entry.cleanup()
     entry.result = result
     entry.quiescent = result.outcome === 'unknown' ? quiescent : true
+    // A result the executor proved quiescent cannot produce further effects, so it
+    // releases the tab on its own; no person clears an unresolved write.
+    if (entry.quiescent) entry.released = true
     entry.resolve(structuredClone(result))
   }
 
