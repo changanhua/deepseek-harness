@@ -66,7 +66,7 @@
         workspace: !!js process.env.DSH_MCP_WORKSPACE ?? ''
         requestMaxBytes: 262144
         resultMaxBytes: 1048576
-        callTimeoutMs: 15000
+        callTimeoutMs: 105000
         maxPendingCalls: 8
         catalog:
           - preset: choice
