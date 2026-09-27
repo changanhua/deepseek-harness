@@ -19,6 +19,19 @@ import { createBrowserActivity } from './browser-activity.js'
 import { knowledgePrompt } from './assistant-knowledge.js'
 import { createAssistantReadings } from './assistant-readings.js'
 import { createAssistantFunctions } from './assistant-functions.js'
+import { buildSbcPlanVariants } from './fc-sbc-core.js'
+import { probeFcSbcPage } from './fc-sbc-page-probe.js'
+import { readFcSbcMain } from './fc-sbc-main-read.js'
+import { evaluateFcSbcChemistryMain } from './fc-sbc-native-chemistry.js'
+import { createSbcReadinessReport } from './fc-sbc-readiness.js'
+
+const fcSbcViewIdentity = value => JSON.stringify({
+  kind: value?.view?.kind ?? value?.kind,
+  title: value?.challengeSet?.title ?? value?.title,
+  challenges: (Array.isArray(value?.challengeSet?.challenges) ? value.challengeSet.challenges
+    : Array.isArray(value?.challenges) ? value.challenges : [])
+    .map(challenge => ({ title: challenge.title, completed: challenge.completed === true })),
+})
 
 /** Service-worker composition; UI messages reach it only after sender validation. */
 export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
@@ -317,6 +330,83 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       case 'dsh-assistant-session-select-model': await activeSession.selectModel(message.selection, message.expectedSessionId); break
       case 'dsh-assistant-target-candidates': return { ok: true, value: { items: await intake.candidates() } }
       case 'dsh-assistant-target-current': return { ok: true, value: await intake.target() }
+      case 'dsh-assistant-fc-sbc-plan': return { ok: true, value: { variants: buildSbcPlanVariants(message.input) } }
+      case 'dsh-assistant-fc-sbc-readiness': return { ok: true, value: { report: createSbcReadinessReport(message.input) } }
+      case 'dsh-assistant-fc-sbc-probe': {
+        const page = await intake.target(message.tabId, message.expectedPage)
+        let rows
+        try {
+          rows = await chromeApi.scripting.executeScript({ target: { tabId: page.tabId, documentIds: [page.documentId] },
+            world: 'ISOLATED', func: probeFcSbcPage })
+        } catch { throw new Error('page_permission_required') }
+        const row = rows.find(candidate => candidate.documentId === page.documentId && candidate.frameId === page.frameId)
+        if (!row?.result || row.result.url !== page.url) throw new Error('capture_target_changed')
+        return { ok: true, value: { page, probe: row.result } }
+      }
+      case 'dsh-assistant-fc-sbc-slice': {
+        const readMode = message.mode ?? 'page-only'
+        if (!['page-only', 'full-read'].includes(readMode)) throw new Error('invalid_input')
+        // A local read may use the current document in the same fixed tab after an extension/page reload.
+        // The DSH Session binding stays unchanged; writes still require its exact document identity.
+        const page = await intake.target(message.tabId)
+        const expected = message.expectedPage
+        if (expected && ['tabId', 'windowId', 'frameId', 'url']
+          .some(key => expected[key] !== undefined && page[key] !== expected[key])) {
+          throw new Error('capture_target_changed')
+        }
+        const target = { tabId: page.tabId, documentIds: [page.documentId] }
+        let rows
+        try {
+          rows = await chromeApi.scripting.executeScript({ target, world: 'ISOLATED', func: probeFcSbcPage })
+        } catch { throw new Error('page_permission_required') }
+        const row = rows.find(candidate => candidate.documentId === page.documentId && candidate.frameId === page.frameId)
+        if (!row?.result || row.result.url !== page.url) throw new Error('capture_target_changed')
+        const probe = row.result
+        if (!probe.supported || readMode === 'page-only') {
+          return { ok: true, value: { page, probe, main: null, readMode: 'page-only' } }
+        }
+        try {
+          rows = await chromeApi.scripting.executeScript({ target, world: 'MAIN', func: readFcSbcMain,
+            args: [{ groupHint: probe.challengeSet?.title, challengeTitles: probe.challengeSet?.challenges?.map(challenge => challenge.title) }] })
+        } catch { throw new Error('page_permission_required') }
+        const mainRow = rows.find(candidate => candidate.documentId === page.documentId && candidate.frameId === page.frameId)
+        if (!mainRow?.result || mainRow.result.url !== page.url) throw new Error('capture_target_changed')
+        try {
+          rows = await chromeApi.scripting.executeScript({ target, world: 'ISOLATED', func: probeFcSbcPage })
+        } catch { throw new Error('page_permission_required') }
+        const afterRow = rows.find(candidate => candidate.documentId === page.documentId && candidate.frameId === page.frameId)
+        if (!afterRow?.result || afterRow.result.url !== page.url) throw new Error('capture_target_changed')
+        if (fcSbcViewIdentity(afterRow.result) !== fcSbcViewIdentity(probe)) throw new Error('sbc_view_changed')
+        return { ok: true, value: { page, probe, main: mainRow.result, readMode: 'full-read' } }
+      }
+      case 'dsh-assistant-fc-sbc-evaluate-chemistry': {
+        const page = await intake.target(message.tabId, message.expectedPage)
+        const target = { tabId: page.tabId, documentIds: [page.documentId] }
+        if (!message.expectedView || message.expectedView.kind !== 'sbc-group'
+          || typeof message.expectedView.title !== 'string' || !message.expectedView.title) throw new Error('invalid_input')
+        let rows
+        try {
+          rows = await chromeApi.scripting.executeScript({ target, world: 'ISOLATED', func: probeFcSbcPage })
+        } catch { throw new Error('page_permission_required') }
+        const beforeRow = rows.find(candidate => candidate.documentId === page.documentId && candidate.frameId === page.frameId)
+        if (!beforeRow?.result || beforeRow.result.url !== page.url) throw new Error('capture_target_changed')
+        if (fcSbcViewIdentity(beforeRow.result) !== fcSbcViewIdentity(message.expectedView)) throw new Error('sbc_view_changed')
+        try {
+          rows = await chromeApi.scripting.executeScript({
+            target, world: 'MAIN',
+            func: evaluateFcSbcChemistryMain, args: [{ groups: message.groups }],
+          })
+        } catch { throw new Error('page_permission_required') }
+        const row = rows.find(candidate => candidate.documentId === page.documentId && candidate.frameId === page.frameId)
+        if (!row?.result || row.result.url !== page.url) throw new Error('capture_target_changed')
+        try {
+          rows = await chromeApi.scripting.executeScript({ target, world: 'ISOLATED', func: probeFcSbcPage })
+        } catch { throw new Error('page_permission_required') }
+        const afterRow = rows.find(candidate => candidate.documentId === page.documentId && candidate.frameId === page.frameId)
+        if (!afterRow?.result || afterRow.result.url !== page.url) throw new Error('capture_target_changed')
+        if (fcSbcViewIdentity(afterRow.result) !== fcSbcViewIdentity(message.expectedView)) throw new Error('sbc_view_changed')
+        return { ok: true, value: { page, verification: row.result } }
+      }
       case 'dsh-assistant-session-bind': await activeSession.bind(message.sessionId); break
       case 'dsh-assistant-session-create': await activeSession.create(message.cwd ? { cwd: message.cwd } : {}); break
       case 'dsh-assistant-session-submit': {

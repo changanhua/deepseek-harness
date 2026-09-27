@@ -1,0 +1,68 @@
+Tool mode: built-in image_gen
+Use case: infographic-diagram
+Final asset: fc27-sbc-requirements-2026-09-26-v1.png
+
+INITIAL PROMPT
+
+Use case: infographic-diagram
+Asset type: 中文产品需求与当前纵切范围图，用于 FC 27 SBC 助手项目讨论。
+Create one high-resolution landscape Chinese infographic, approximately 3:2 aspect ratio, with two clearly separated stacked panels. It must read like a professionally typeset product requirements diagram, not a decorative illustration. Clean ivory-white background, dark ink text, precise thin arrows, consistent rounded rectangular cards, restrained blue and teal for current work, muted gray for later execution, green only for existing foundations. Generous whitespace, large crisp Simplified Chinese sans-serif typography. No photo, no people, no logos, no fake browser screenshot, no watermark.
+
+Main title exactly: “FC 27 SBC 助手”
+Subtitle exactly: “总体需求与当前纵切”
+
+UPPER PANEL, heading exactly “01  总体需求”
+An actual left-to-right flow with six connected cards, in this exact order. Each card has a bold title and smaller supporting copy:
+1. “读取任务” / “关卡 · 规则 · 奖励”
+2. “读取卡池” / “俱乐部 · SBC 仓库 · 锁卡”
+3. “整组求解” / “各关阵容 · 缺卡 · 预算”
+4. “一次确认” / “用卡 · 价格上限 · 提交范围”
+5. “执行方案” / “购买 → 对账 → 填阵 → 提交”
+6. “结果可查” / “完成 · 花费 · 消耗 · 奖励”
+Use blue-toned cards for the first three; muted gray-toned cards for the last three. Under the first three cards, a blue scope bracket labeled exactly “当前纵切覆盖：读取与方案生成”.
+Under the whole flow, a small unobtrusive reference strip containing these exact two phrases:
+“基础卡库：球员属性参考”
+“NoBrain / AutoPilot：实现思路参考”
+The reference strip should clearly be auxiliary reference material, not an authority gate or a required full database.
+At the upper panel's bottom right, a small note exactly “常规切页无需逐次确认”.
+
+LOWER PANEL, heading exactly “02  当前纵切：重大比赛四关”
+Subheading exactly “目标：先用已有卡生成可核对的整组方案”
+Show four large connected cards left-to-right:
+1. Title “数据读取”
+   Lines “EA 页内数据适配（待验证）”
+   “关卡 + 俱乐部 + SBC 仓库”
+2. Title “统一模型”
+   Lines “卡实例 ID / 卡定义 ID”
+   “当前视图 · 来源 · 覆盖范围”
+3. Title “约束求解”
+   Lines “规则编译 → 单关候选”
+   “跨四关分配 · 保护锁卡”
+4. Title “验证产物”
+   Lines “四关方案 + 条件校验表”
+   “脱敏样本 + 可重复回放”
+Below these cards, a clearly readable acceptance strip with label “本纵切通过条件” and exactly these four separated checkpoints:
+“读取范围可证明”
+“规则无遗漏”
+“同一实例不重复消耗”
+“每项条件可核对”
+Below that, show a separate gray next-stage box, connected with a dashed arrow, exact text:
+“后续实页验证：确认方案后填一关 → EA 条件全绿”
+This box MUST be visually outside the current read-only slice boundary. It must not imply fill, purchase or submission is already authorized or already completed.
+
+BOTTOM STATUS FOOTER, two compact rows, exact text:
+“已有基础：DOM 探针 · 观察缓存 · 库存合同 · 候选组合”
+“主干待完成：真实完整读取 · 规则编译 · 候选生成 · 实页验收”
+
+Critical semantics:
+The top is the finished product requirements, not a claim of completion.
+The lower panel is the current development target, not a completed feature.
+Current source has only partial foundations; no complete solver or runtime acceptance is claimed.
+Basic player card database and open-source projects are reference inputs. Do not add a prerequisite for full promotional-card coverage.
+Do not invent numeric player counts, budgets, completion percentages, or measured token savings.
+Render all quoted Chinese text verbatim, with correct Chinese characters and no additional paragraphs. All arrows must preserve the exact stage order. Ensure text fits within cards and no overlapping labels.
+
+CONTRAST EDIT PROMPT
+
+Edit the provided Chinese FC 27 SBC requirements infographic. Change only the background styling and contrast. Preserve all Chinese text exactly, preserve every icon, every card, every arrow, all stage order, all wording and the overall layout.
+Remove ALL dark blurry patches, shadows, vignettes, gradients, spotlight effects, glow, and photographic texture. Make the entire background a completely flat opaque warm white (#FAFBFC), with two very subtle solid light-gray panel fills. Make all title and body text dark navy or nearly black with high contrast. Keep current-scope cards a flat pale blue with thin blue borders, future execution cards flat pale gray, the reference and foundation strips flat pale green. Completely flat clean vector-like styling, zero shadows anywhere. The title “FC 27 SBC 助手” and subtitle “总体需求与当前纵切” must be extremely easy to read. All small Chinese text must remain sharp and accurate. No new text, no deletion, no layout rearrangement.

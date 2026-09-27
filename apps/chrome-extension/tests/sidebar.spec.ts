@@ -54,7 +54,7 @@ const element = (selector: string): HTMLElement => {
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); vi.useRealTimers(); document.body.replaceChildren() })
 
 describe('DSH 浏览器助手 V2 侧栏', () => {
-  test.each([true, false])('连接恢复状态区分有限退避与等待事件：retryPending=%s', async retryPending => {
+  test.each([true, false])('连接恢复状态区分有限退避与等待事件：retryPending=%s', async (retryPending) => {
     await load(baseState({ assistantV2: { ...baseState().assistantV2,
       connection: { phase: 'offline', baseUrl: 'http://127.0.0.1:3080', retryPending, retryPaused: !retryPending } } }))
     expect(element('#connection-panel').textContent).toContain(retryPending ? '正在有限退避重试' : '已暂停自动重试')
@@ -93,6 +93,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     expect(document.body.textContent).toContain('今天，想做点什么')
     expect(document.body.textContent).toContain('页面认知')
     expect(document.body.textContent).toContain('功能')
+    expect(document.body.textContent).toContain('SBC')
     expect(document.body.textContent).not.toContain('监控')
     expect(document.body.textContent).not.toContain('独立阅读')
     expect(fixture.messages).not.toContainEqual(expect.objectContaining({ type: 'dsh-assistant-session-create' }))
@@ -515,6 +516,231 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     expect(element('[data-scope="page"]').getAttribute('aria-pressed')).toBe('true')
   })
 
+  test('SBC 只读梳理无需先连接 DSH 或创建对话', async () => {
+    const selectedPage = { tabId: 9, windowId: 2, frameId: 0, documentId: 'doc-fc',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', title: 'FC Web App' }
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      connection: { phase: 'offline' }, target: { availability: 'unavailable', revision: null, selected: null, candidates: [] },
+    } })
+    const probe = { url: selectedPage.url, title: 'FC', capturedAt: '2026-09-26T02:00:00.000Z',
+      supported: true, loginRequired: false, taskType: 'puzzle', warnings: [],
+      marketAccess: { status: 'unknown', evidence: [] }, view: { kind: 'sbc-group', selectedChallenge: null },
+      challengeSet: { title: '重大比赛', visibleChallengeCount: 0, challenges: [] },
+      inventory: { coverage: 'unread', sbcStorageVisible: false, visibleCards: [] } }
+    const fixture = await load(current, message => message.type === 'dsh-assistant-fc-sbc-slice'
+      ? { ok: true, value: { page: selectedPage, probe, main: null } } : { ok: true, state: current })
+    element('[data-view="fc-sbc"]').click()
+    expect((element('#scan-fc-sbc') as HTMLButtonElement).disabled).toBe(false)
+    ;(element('#scan-fc-sbc') as HTMLButtonElement).click()
+    await vi.waitFor(() => { expect(element('#fc-sbc-content').textContent).toContain('重大比赛') })
+    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-fc-sbc-slice', mode: 'page-only' })
+    expect(fixture.messages).not.toContainEqual(expect.objectContaining({ type: 'dsh-assistant-session-create' }))
+  })
+
+  test('固定页重载后仍可只读梳理新文档，但旧 DSH 绑定不能发送报告', async () => {
+    const selected = { tabId: 9, windowId: 2, frameId: 0, documentId: 'old-doc',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', title: 'FC Web App' }
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected, candidates: [] },
+    } })
+    const probe = { url: selected.url, title: 'FC', capturedAt: '2026-09-26T02:00:00.000Z',
+      supported: true, loginRequired: false, taskType: 'puzzle', warnings: [],
+      marketAccess: { status: 'unknown', evidence: [] }, view: { kind: 'sbc-group', selectedChallenge: null },
+      challengeSet: { title: '重大比赛', visibleChallengeCount: 0, challenges: [] },
+      inventory: { coverage: 'unread', sbcStorageVisible: false, visibleCards: [] } }
+    const page = { ...selected, documentId: 'new-doc' }
+    const fixture = await load(current, message => message.type === 'dsh-assistant-fc-sbc-slice'
+      ? { ok: true, value: { page, probe, main: null } } : { ok: true, state: current })
+    element('[data-view="fc-sbc"]').click()
+    ;(element('#scan-fc-sbc') as HTMLButtonElement).click()
+    await vi.waitFor(() => { expect(element('#fc-sbc-content').textContent).toContain('旧文档已失效') })
+    const sendReport = [...document.querySelectorAll<HTMLButtonElement>('#fc-sbc-content button')]
+      .find(button => button.textContent === '发送给对话')
+    expect(sendReport?.disabled).toBe(true)
+    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-fc-sbc-slice', mode: 'page-only', tabId: 9, expectedPage: selected })
+  })
+
+  test('SBC 面板只读梳理当前固定页面，并展示阻塞项', async () => {
+    const selected = { tabId: 9, frameId: 0, documentId: 'doc-fc',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', title: 'FC Web App' }
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected, candidates: [] },
+    } })
+    const probe = { url: selected.url, title: selected.title, capturedAt: '2026-09-25T06:20:00.000Z',
+      supported: true, taskType: 'puzzle', marketAccess: { status: 'visible', evidence: ['transfer-market-visible'] },
+      view: { kind: 'sbc-group', selectedChallenge: { title: 'Marquee Matchups', visibleIndex: 0 } },
+      challengeSet: { title: 'Marquee Matchups', visibleChallengeCount: 2, challenges: [{
+        challengeId: 'match-a',
+        title: 'Marquee Matchups',
+        completed: false,
+        requirementLines: ['Min. 2 Clubs'],
+        rewardLines: ['Gold Pack'],
+        textSample: 'raw DOM challenge text',
+      }, { challengeId: 'match-b', title: 'Second Match', completed: false,
+        requirementLines: [], rewardLines: [], textSample: 'other raw DOM text' }] },
+      inventory: { coverage: 'visible-only', sbcStorageVisible: false, visibleCards: [{
+        visibleId: 'visible-card-1',
+        instanceId: 'private-card-instance',
+        rating: 91,
+        locked: false,
+        textSample: 'Mbappe private card text',
+      }] }, warnings: [] }
+    const report = { status: 'draft-only', canApproveExecution: false, nextAction: 'read-complete-inventory',
+      blockers: [{ code: 'inventory-visible-only', source: 'inventory' }, { code: 'plan-input-missing', source: 'solver' }],
+      deferred: [{ code: 'complete-inventory-adapter', source: 'inventory' }], warnings: [], variants: [],
+      fieldAudit: { schemaVersion: 1, kind: 'fc-sbc-field-audit', status: 'needs-samples',
+        summary: { covered: 10, partial: 4, missing: 5 },
+        fields: [],
+        gaps: [
+          { area: 'inventory', code: 'inventory-coverage', status: 'partial', detail: 'club inventory coverage', evidence: [] },
+          { area: 'readback', code: 'purchase-result-readback', status: 'missing', detail: 'purchase readback', evidence: [] },
+        ] },
+      executionDryRun: {
+        schemaVersion: 1,
+        kind: 'fc-sbc-execution-dry-run',
+        status: 'ready',
+        issues: [],
+        summary: { planId: 'plan-a', groupId: 'marquee', platform: 'pc', purchaseCount: 1, submitCount: 0,
+          maxSpend: 700, reservedIfStarted: 700, maxMarketSearches: 20, maxSearchesPerPurchase: 2 },
+        purchaseQueue: [{ order: 1, challengeId: 'match-a', planPurchaseId: 'p-a', cardVersionId: 'buy-a',
+          maxPrice: 700, maxSearches: 2 }],
+        submitQueue: [],
+        sideEffects: { browserWrites: false, purchases: false, squadFill: false, submits: false },
+      },
+      riskPreflight: {
+        schemaVersion: 1,
+        kind: 'fc-sbc-risk-preflight',
+        status: 'caution',
+        disclaimer: '该预检只量化自动化暴露量，不能证明不会封禁。',
+        issues: [{ code: 'automation-exposure-nonzero', detail: '1 purchases, 0 submits' }],
+        summary: { purchaseCount: 1, submitCount: 0, plannedSearches: 2, maxSearchesPerPurchase: 2,
+          maxPurchases: 12, maxSubmits: 4, maxTotalSearches: 20, marketAccess: 'visible', unknownTransactionCount: 0 },
+        sideEffects: { browserWrites: false, purchases: false, submits: false },
+      },
+      approvalPreview: {
+        schemaVersion: 1,
+        kind: 'fc-sbc-approval-preview',
+        status: 'ready',
+        reviewDigest: 'abc123ef',
+        identity: { sessionId: 'session-1', installationId: 'install-1', grantEpoch: 4, tabId: 9,
+          frameId: 0, documentId: 'doc-a', clubId: 'club-a', pageCapturedAt: '2026-09-25T06:20:00.000Z',
+          inventoryCapturedAt: '2026-09-25T06:25:00.000Z' },
+        notice: '只生成批准预览；不会购买、填阵或提交。',
+        issues: [],
+        approvalWindow: { approvedAt: 1, startBy: 601, expiresAt: 3601, startWithinMs: 600, expiresInMs: 3600 },
+        requiredBindings: { session: true, installation: true, tab: true, club: true },
+        scope: { planId: 'plan-a', groupId: 'marquee', platform: 'pc',
+          purchaseScope: [{ challengeId: 'match-a', planPurchaseId: 'p-a', cardVersionId: 'buy-a', maxPrice: 700 }],
+          submitChallengeIds: ['match-a'] },
+        summary: { planId: 'plan-a', groupId: 'marquee', platform: 'pc', purchaseCount: 1, submitCount: 1,
+          maxSpend: 700, reservedIfStarted: 700, plannedSearches: 2, riskStatus: 'caution',
+          readinessStatus: 'ready-for-approval', executionStatus: 'ready' },
+        sideEffects: { browserWrites: false, purchases: false, squadFill: false, submits: false },
+      },
+      summary: { taskType: 'puzzle', marketAccess: 'visible', inventoryCoverage: 'visible-only',
+        visibleChallengeCount: 2, variantCount: 0, purchaseRange: null, maxSpendRange: null, planError: null,
+        fieldCoverage: { covered: 10, partial: 4, missing: 5 } } }
+    const fixture = await load(current, message => message.type === 'dsh-assistant-fc-sbc-slice'
+      ? { ok: true, value: { page: selected, probe, main: null, report } }
+      : { ok: true, state: current })
+
+    element('[data-view="fc-sbc"]').click()
+    ;(element('#scan-fc-sbc') as HTMLButtonElement).click()
+    await vi.waitFor(() => { expect(element('#fc-sbc-content').textContent).toContain('库存只来自可见页面') })
+    expect(element('#fc-sbc-content').textContent).toContain('已读取关卡详情 1/2（仅可见关卡）')
+    expect(element('#fc-sbc-content').textContent).toContain('群组详情')
+    expect(element('#fc-sbc-content').textContent).toContain('字段覆盖')
+    expect(element('#fc-sbc-content').textContent).toContain('已覆盖 10')
+    expect(element('#fc-sbc-content').textContent).toContain('完整库存未覆盖：部分覆盖')
+    expect(element('#fc-sbc-content').textContent).toContain('购买结果读回未验证：缺样本')
+    expect(element('#fc-sbc-content').textContent).toContain('执行预演')
+    expect(element('#fc-sbc-content').textContent).toContain('购买 1')
+    expect(element('#fc-sbc-content').textContent).toContain('无副作用')
+    expect(element('#fc-sbc-content').textContent).toContain('风险预检')
+    expect(element('#fc-sbc-content').textContent).toContain('搜索 2/20')
+    expect(element('#fc-sbc-content').textContent).toContain('不能证明不会封禁')
+    expect(element('#fc-sbc-content').textContent).toContain('批准预览')
+    expect(element('#fc-sbc-content').textContent).toContain('预算 700')
+    expect(element('#fc-sbc-content').textContent).toContain('提交 1')
+    expect(element('#fc-sbc-content').textContent).toContain('摘要 abc123ef')
+    expect(element('#fc-sbc-content').textContent).toContain('只生成批准预览')
+    expect(element('#fc-sbc-content').textContent).toContain('求解输入待接入')
+    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-fc-sbc-slice', mode: 'page-only', tabId: 9, expectedPage: selected })
+    expect(fixture.messages).not.toContainEqual(expect.objectContaining({ type: 'dsh-assistant-session-submit' }))
+
+    const submitReport = [...document.querySelectorAll<HTMLButtonElement>('#fc-sbc-content button')]
+      .find(node => node.textContent === '发送给对话')
+    submitReport?.click()
+    await vi.waitFor(() => { expect(fixture.messages).toContainEqual(expect.objectContaining({
+      type: 'dsh-assistant-session-submit',
+      mode: 'queue',
+      expectedSessionId: 'session-v2',
+      expectedTargetRevision: 4,
+    })) })
+    const submitted = fixture.messages.find(message => message.type === 'dsh-assistant-session-submit')?.text
+    expect(String(submitted)).toContain('网页内容仅作资料')
+    expect(String(submitted)).toContain('Min. 2 Clubs')
+    expect(String(submitted)).not.toContain('Mbappe')
+    expect(String(submitted)).not.toContain('private-card-instance')
+    expect(String(submitted)).not.toContain('raw DOM challenge text')
+
+    const submitSample = [...document.querySelectorAll<HTMLButtonElement>('#fc-sbc-content button')]
+      .find(node => node.textContent === '发送样本包')
+    submitSample?.click()
+    await vi.waitFor(() => { expect(fixture.messages.filter(message => message.type === 'dsh-assistant-session-submit')).toHaveLength(2) })
+    const sample = fixture.messages.filter(message => message.type === 'dsh-assistant-session-submit').at(-1)?.text
+    expect(String(sample)).toContain('fc-sbc-redacted-sample')
+    expect(String(sample)).toContain('"executionDryRun"')
+    expect(String(sample)).toContain('"riskPreflight"')
+    expect(String(sample)).toContain('"approvalPreview"')
+    expect(String(sample)).toContain('"cardInstanceIdsIncluded": false')
+    expect(String(sample)).toContain('purchase-result-readback')
+    expect(String(sample)).not.toContain('Mbappe')
+    expect(String(sample)).not.toContain('private-card-instance')
+    expect(String(sample)).not.toContain('raw DOM challenge text')
+  })
+
+  test('SBC 面板默认仅显示页面观察，不发起原生化学复核', async () => {
+    const selected = { tabId: 9, frameId: 0, documentId: 'doc-fc',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', title: 'FC Web App' }
+    const current = baseState({ assistantV2: { ...baseState().assistantV2,
+      session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
+      target: { availability: 'ready', revision: 4, selected, candidates: [] },
+    } })
+    const probe = { url: selected.url, title: 'FC', capturedAt: '2026-09-26T02:00:00.000Z',
+      supported: true, loginRequired: false, taskType: 'puzzle', warnings: [],
+      marketAccess: { status: 'unknown', evidence: [] }, view: { kind: 'sbc-group', selectedChallenge: null },
+      challengeSet: { title: '重大比赛', visibleChallengeCount: 1, challenges: [] },
+      inventory: { coverage: 'unread', sbcStorageVisible: false, visibleCards: [] } }
+    const main = { url: selected.url, capturedAt: probe.capturedAt, platform: 'PC', status: 'complete', issues: [],
+      group: { status: 'complete', selectedSetId: 'set-19', sets: [{ setId: 'set-19', title: '重大比赛',
+        challenges: [{ challengeId: 'one', title: '首关', completed: false, formationName: 'f442',
+          requirements: { status: 'complete', slotCount: 11, constraints: [{ type: 'chemistry', minimum: 1 }] }, rewards: [] }] }] },
+      inventory: { coverage: 'complete', cards: Array.from({ length: 11 }, (_, index) => ({
+        instanceId: `owned-${index}`, cardVersionId: `base-${index}`, source: 'club', rating: 75, quality: 'gold',
+        nationId: '7', leagueId: '13', clubId: '19',
+      })) } }
+    const fixture = await load(current, (message) => {
+      if (message.type === 'dsh-assistant-fc-sbc-slice') return { ok: true, value: { page: selected, probe, main, readMode: 'page-only' } }
+      if (message.type === 'dsh-assistant-fc-sbc-evaluate-chemistry') return { ok: true, value: {
+        page: selected, verification: { url: selected.url, status: 'complete', issues: [],
+          results: (message.groups as { challengeId: string; candidates: { candidateId: string; instanceIds: string[] }[] }[])
+            .flatMap(group => group.candidates.map(candidate => ({ challengeId: group.challengeId,
+              candidateId: candidate.candidateId, instanceIds: candidate.instanceIds, status: 'complete',
+              chemistry: 2, squadRating: 75 }))) },
+      } }
+      return { ok: true, state: current }
+    })
+    element('[data-view="fc-sbc"]').click()
+    ;(element('#scan-fc-sbc') as HTMLButtonElement).click()
+    await vi.waitFor(() => { expect(element('#fc-sbc-content .sbc-metrics').textContent).toContain('仅当前页面可见内容') })
+    expect(element('#fc-sbc-content .sbc-metrics').textContent).toContain('方案0')
+    expect(fixture.messages).not.toContainEqual(expect.objectContaining({ type: 'dsh-assistant-fc-sbc-evaluate-chemistry' }))
+    expect(fixture.messages).not.toContainEqual(expect.objectContaining({ type: 'dsh-assistant-session-submit' }))
+  })
+
   test('我的功能按范围展示已交付项，运行态可查看、停止和用自然语言修改', async () => {
     const current = baseState({ assistantV2: { ...baseState().assistantV2,
       session: { ...baseState().assistantV2.session, binding: { sessionId: 'session-v2' } },
@@ -557,6 +783,24 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     element('[data-scope="page"]').click()
     expect(element('#functions-content').textContent).not.toContain('页面标注')
     expect(element('#functions-content').textContent).toContain('当前操作网页没有可用功能')
+  })
+
+  test('功能只在目录给出真实打开目标时允许打开，创建通过对话草稿表达范围', async () => {
+    const current = baseState({ assistantV2: { ...baseState().assistantV2, functions: { availability: 'ready', items: [
+      { pluginId: 'with-view', name: '可视功能', purpose: '已有界面', currentPackageId: 'pkg-1', activeRun: { pluginRunId: 'run-1' }, scope: 'global', status: 'running', openTarget: { kind: 'web', sessionId: 'view-session' } },
+      { pluginId: 'host-only', name: '后台功能', purpose: '没有界面', currentPackageId: 'pkg-2', activeRun: { pluginRunId: 'run-2' }, scope: 'global', status: 'running' },
+    ] } } })
+    const fixture = await load(current); element('[data-view="functions"]').click()
+    const cards = [...document.querySelectorAll<HTMLElement>('#functions-content .function')]
+    const open = [...cards[0].querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === '在 DSH 中打开')
+    const disabled = [...cards[1].querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === '没有可打开的界面')
+    expect(open?.disabled).toBe(false); expect(disabled?.disabled).toBe(true); open?.click(); await Promise.resolve()
+    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-function-open', pluginId: 'with-view' })
+    expect((cards[0].querySelector('input') as HTMLInputElement).disabled).toBe(true)
+    expect(cards[0].textContent).toContain('开始或选择对话后可运行和修改')
+    element('#create-function').click()
+    expect((element('#composer') as HTMLTextAreaElement).value).toBe('帮我创建一个全局功能：')
+    expect(element('#chat-panel').hidden).toBe(false)
   })
 
   test('离线错误状态保留可编辑草稿，不允许把它发送到未知会话', async () => {

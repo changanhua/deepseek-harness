@@ -146,6 +146,217 @@ describe('assistant runtime function handlers', () => {
     }))
   })
 
+  test('FC SBC 规划入口只计算候选方案，不触发会话或浏览器写动作', async () => {
+    const runtime = createAssistantRuntime({ chromeApi: chromeApi() })
+    const result = await runtime.handle({ type: 'dsh-assistant-fc-sbc-plan', input: {
+      now: 1790316000000, fcYear: 'FC27', platform: 'pc', groupId: 'marquee',
+      inventory: [{ instanceId: 'owned-a', cardVersionId: 'gold-a' }],
+      quotes: [{ platform: 'pc', cardVersionId: 'buy-a', price: 700, source: 'fixture',
+        observedAt: 1790316000000, validUntil: 1790316600000 }],
+      challenges: [{ challengeId: 'one', slotCount: 2, candidates: [
+        { cards: [{ instanceId: 'owned-a' }, { cardVersionId: 'buy-a', planPurchaseId: 'p-a' }] },
+      ] }],
+    } })
+
+    expect(result).toMatchObject({ ok: true, value: { variants: [{ purchaseCount: 1, maxSpend: 700 }] } })
+    expect(mocks.sessionSubmit).not.toHaveBeenCalled()
+    expect(mocks.connectionCall).not.toHaveBeenCalledWith('session.target.bind', expect.anything())
+  })
+
+  test('FC SBC 就绪度入口只梳理阻塞项，不触发会话或浏览器写动作', async () => {
+    const runtime = createAssistantRuntime({ chromeApi: chromeApi() })
+    const result = await runtime.handle({ type: 'dsh-assistant-fc-sbc-readiness', input: {
+      probe: {
+        url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/',
+        title: 'FC',
+        capturedAt: '2026-09-25T06:20:00.000Z',
+        supported: true,
+        taskType: 'puzzle',
+        marketAccess: { status: 'visible', evidence: ['transfer-market-visible'] },
+        challengeSet: { title: 'Marquee Matchups', visibleChallengeCount: 1, challenges: [] },
+        inventory: { coverage: 'visible-only', sbcStorageVisible: false, visibleCards: [] },
+        warnings: [],
+      },
+      planInput: {
+        now: 1790317200000, fcYear: 'FC27', platform: 'pc', groupId: 'marquee',
+        inventory: [{ instanceId: 'owned-a', cardVersionId: 'gold-a' }],
+        quotes: [{ platform: 'pc', cardVersionId: 'buy-a', price: 700, source: 'fixture',
+          observedAt: 1790317200000, validUntil: 1790317800000 }],
+        challenges: [{ challengeId: 'one', slotCount: 2, candidates: [
+          { cards: [{ instanceId: 'owned-a' }, { cardVersionId: 'buy-a', planPurchaseId: 'p-a' }] },
+        ] }],
+      },
+    } })
+
+    expect(result).toMatchObject({ ok: true, value: { report: { status: 'draft-only',
+      canApproveExecution: false, summary: { variantCount: 1 } } } })
+    const report = (result as {
+      readonly value: { readonly report: { readonly blockers: readonly { readonly code: string }[] } }
+    }).value.report
+    expect(report.blockers.map(issue => issue.code)).toContain('inventory-visible-only')
+    expect(mocks.sessionSubmit).not.toHaveBeenCalled()
+    expect(mocks.connectionCall).not.toHaveBeenCalledWith('session.target.bind', expect.anything())
+  })
+
+  test('FC SBC 页面探针在同一 documentId 上只读执行，并返回页面身份', async () => {
+    const api = chromeApi()
+    const runtime = createAssistantRuntime({ chromeApi: api }); mocks.connectionChanged?.(connected())
+    const selected = { tabId: 7, windowId: 2, frameId: 0, documentId: 'doc-7', url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', title: 'FC' }
+    mocks.intakeTarget.mockResolvedValueOnce(selected)
+    api.scripting.executeScript.mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: {
+      url: selected.url, title: 'FC', supported: true, taskType: 'puzzle',
+      marketAccess: { status: 'visible', evidence: ['transfer-market-visible'] },
+      challengeSet: { title: 'Marquee Matchups', visibleChallengeCount: 1, challenges: [] },
+      inventory: { coverage: 'visible-only', sbcStorageVisible: false, visibleCards: [] },
+      warnings: [],
+    } }])
+
+    await expect(runtime.handle({ type: 'dsh-assistant-fc-sbc-probe', tabId: 7,
+      expectedPage: selected })).resolves.toMatchObject({ ok: true, value: { page: selected,
+      probe: { supported: true, taskType: 'puzzle' } } })
+    expect(mocks.intakeTarget).toHaveBeenLastCalledWith(7, selected)
+    expect(api.scripting.executeScript).toHaveBeenCalledWith(expect.objectContaining({
+      target: { tabId: 7, documentIds: ['doc-7'] }, world: 'ISOLATED',
+    }))
+    expect(mocks.sessionSubmit).not.toHaveBeenCalled()
+  })
+
+  test('FC SBC 只读扫描可直接读取当前标签，不依赖 DSH 对话绑定', async () => {
+    const api = chromeApi(); const runtime = createAssistantRuntime({ chromeApi: api })
+    mocks.sessionState.binding = null
+    const page = { tabId: 7, windowId: 2, frameId: 0, documentId: 'doc-7',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', title: 'FC' }
+    mocks.intakeTarget.mockResolvedValue(page)
+    const probe = { url: page.url, supported: true, challengeSet: { title: '重大比赛', challenges: [] } }
+    api.scripting.executeScript.mockResolvedValue([{ frameId: 0, documentId: 'doc-7', result: probe }])
+    await expect(runtime.handle({ type: 'dsh-assistant-fc-sbc-slice' })).resolves.toMatchObject({
+      ok: true, value: { page, probe, main: null, readMode: 'page-only' },
+    })
+    expect(mocks.intakeTarget).toHaveBeenCalledWith(undefined)
+    expect(mocks.connectionCall).not.toHaveBeenCalled()
+    expect(api.scripting.executeScript).toHaveBeenCalledTimes(1)
+    expect(api.scripting.executeScript).toHaveBeenCalledWith(expect.objectContaining({
+      world: 'ISOLATED', target: { tabId: 7, documentIds: ['doc-7'] },
+    }))
+  })
+
+  test('FC SBC 纵切读取把 DOM 和应用数据固定在同一文档，且不触发写操作', async () => {
+    const api = chromeApi(); const runtime = createAssistantRuntime({ chromeApi: api })
+    const selected = { tabId: 7, windowId: 2, frameId: 0, documentId: 'doc-7',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/', title: 'FC' }
+    mocks.intakeTarget.mockResolvedValue(selected)
+    const probe = { url: selected.url, supported: true, taskType: 'puzzle', challengeSet: { title: 'Marquee Matchups' } }
+    const main = { url: selected.url, status: 'partial', group: { status: 'partial', sets: [] },
+      inventory: { coverage: 'unread', cards: [] }, issues: [{ code: 'service-unavailable' }] }
+    api.scripting.executeScript.mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: probe }])
+      .mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: main }])
+      .mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: probe }])
+
+    await expect(runtime.handle({ type: 'dsh-assistant-fc-sbc-slice', mode: 'full-read', tabId: 7,
+      expectedPage: selected })).resolves.toMatchObject({ ok: true, value: { page: selected, probe, main } })
+    expect(api.scripting.executeScript).toHaveBeenCalledTimes(3)
+    expect(api.scripting.executeScript).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      target: { tabId: 7, documentIds: ['doc-7'] }, world: 'ISOLATED',
+    }))
+    expect(api.scripting.executeScript).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      target: { tabId: 7, documentIds: ['doc-7'] }, world: 'MAIN',
+    }))
+    expect(api.scripting.executeScript).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      target: { tabId: 7, documentIds: ['doc-7'] }, world: 'ISOLATED',
+    }))
+    expect(mocks.sessionSubmit).not.toHaveBeenCalled()
+    expect(mocks.connectionCall).not.toHaveBeenCalledWith('browser.execute', expect.anything())
+  })
+
+  test('固定标签重载后只读扫描采用同标签同 URL 的新文档，不修改 DSH 绑定', async () => {
+    const api = chromeApi(); const runtime = createAssistantRuntime({ chromeApi: api })
+    const oldPage = { tabId: 7, windowId: 2, frameId: 0, documentId: 'old-doc',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/' }
+    const currentPage = { ...oldPage, documentId: 'new-doc' }
+    mocks.intakeTarget.mockResolvedValue(currentPage)
+    const probe = { url: currentPage.url, supported: true, view: { kind: 'sbc-group' },
+      challengeSet: { title: '重大比赛', challenges: [{ title: '首关', completed: false }] } }
+    const main = { url: currentPage.url, status: 'partial', group: { status: 'partial', sets: [] },
+      inventory: { coverage: 'unread', cards: [] }, issues: [] }
+    api.scripting.executeScript.mockResolvedValueOnce([{ frameId: 0, documentId: 'new-doc', result: probe }])
+      .mockResolvedValueOnce([{ frameId: 0, documentId: 'new-doc', result: main }])
+      .mockResolvedValueOnce([{ frameId: 0, documentId: 'new-doc', result: probe }])
+
+    await expect(runtime.handle({ type: 'dsh-assistant-fc-sbc-slice', mode: 'full-read', tabId: 7,
+      expectedPage: oldPage })).resolves.toMatchObject({ ok: true, value: { page: currentPage, probe, main } })
+    expect(mocks.intakeTarget).toHaveBeenCalledWith(7)
+    expect(mocks.connectionCall).not.toHaveBeenCalledWith('session.target.bind', expect.anything())
+  })
+
+  test('FC SBC 纵切读取拒绝应用数据来自另一文档', async () => {
+    const api = chromeApi(); const runtime = createAssistantRuntime({ chromeApi: api })
+    const selected = { tabId: 7, frameId: 0, documentId: 'doc-7',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/' }
+    mocks.intakeTarget.mockResolvedValue(selected)
+    api.scripting.executeScript.mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: {
+      url: selected.url, supported: true, challengeSet: { title: 'Marquee Matchups' },
+    } }]).mockResolvedValueOnce([{ frameId: 0, documentId: 'other-doc', result: { url: selected.url } }])
+
+    await expect(runtime.handle({ type: 'dsh-assistant-fc-sbc-slice', mode: 'full-read', tabId: 7,
+      expectedPage: selected })).rejects.toThrow('capture_target_changed')
+  })
+
+  test('FC SBC 同一文档内切换了任务组也拒绝过期读取', async () => {
+    const api = chromeApi(); const runtime = createAssistantRuntime({ chromeApi: api })
+    const selected = { tabId: 7, frameId: 0, documentId: 'doc-7',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/' }
+    mocks.intakeTarget.mockResolvedValue(selected)
+    const before = { url: selected.url, supported: true, view: { kind: 'sbc-group' },
+      challengeSet: { title: '重大比赛', challenges: [{ title: '首关' }] } }
+    api.scripting.executeScript.mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: before }])
+      .mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: { url: selected.url } }])
+      .mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: {
+        ...before, challengeSet: { title: '其他任务组', challenges: [{ title: '另一关' }] },
+      } }])
+    await expect(runtime.handle({ type: 'dsh-assistant-fc-sbc-slice', mode: 'full-read', tabId: 7,
+      expectedPage: selected })).rejects.toThrow('sbc_view_changed')
+  })
+
+  test('FC SBC 原生化学复核仅对固定文档注入只读函数', async () => {
+    const api = chromeApi(); const runtime = createAssistantRuntime({ chromeApi: api })
+    const selected = { tabId: 7, frameId: 0, documentId: 'doc-7',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/' }
+    mocks.intakeTarget.mockResolvedValue(selected)
+    const result = { url: selected.url, status: 'complete', issues: [], results: [] }
+    const probe = { url: selected.url, view: { kind: 'sbc-group' },
+      challengeSet: { title: '重大比赛', challenges: [{ title: '首关', completed: false }] } }
+    const expectedView = { kind: 'sbc-group', title: '重大比赛', challenges: [{ title: '首关', completed: false }] }
+    api.scripting.executeScript.mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: probe }])
+      .mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result }])
+      .mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: probe }])
+    const groups = [{ challengeId: 'one', formationName: 'f442', candidates: [] }]
+
+    await expect(runtime.handle({ type: 'dsh-assistant-fc-sbc-evaluate-chemistry', tabId: 7,
+      expectedPage: selected, expectedView, groups })).resolves.toMatchObject({ ok: true, value: { page: selected, verification: result } })
+    expect(api.scripting.executeScript).toHaveBeenCalledTimes(3)
+    expect(api.scripting.executeScript).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      target: { tabId: 7, documentIds: ['doc-7'] }, world: 'MAIN', args: [{ groups }],
+    }))
+    expect(mocks.sessionSubmit).not.toHaveBeenCalled()
+  })
+
+  test('FC SBC 原生化学复核时 SPA 切组会拒绝过期结果', async () => {
+    const api = chromeApi(); const runtime = createAssistantRuntime({ chromeApi: api })
+    const selected = { tabId: 7, frameId: 0, documentId: 'doc-7',
+      url: 'https://www.ea.com/ea-sports-fc/ultimate-team/web-app/' }
+    mocks.intakeTarget.mockResolvedValue(selected)
+    const before = { url: selected.url, view: { kind: 'sbc-group' },
+      challengeSet: { title: '重大比赛', challenges: [{ title: '首关', completed: false }] } }
+    api.scripting.executeScript.mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: before }])
+      .mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: { url: selected.url } }])
+      .mockResolvedValueOnce([{ frameId: 0, documentId: 'doc-7', result: { ...before,
+        challengeSet: { title: '另一任务组', challenges: [{ title: '另一关', completed: false }] },
+      } }])
+    await expect(runtime.handle({ type: 'dsh-assistant-fc-sbc-evaluate-chemistry', tabId: 7,
+      expectedPage: selected, expectedView: { kind: 'sbc-group', title: '重大比赛',
+        challenges: [{ title: '首关', completed: false }] }, groups: [] })).rejects.toThrow('sbc_view_changed')
+  })
+
   test('global run and edit do not consult a failing page-target service', async () => {
     const api = chromeApi(); const runtime = createAssistantRuntime({ chromeApi: api }); mocks.connectionChanged?.(connected())
     mocks.functionScope.mockReturnValue('global')

@@ -1,0 +1,228 @@
+{
+  "schemaVersion": "1.0.0",
+  "application": {
+    "id": "fc-web-app",
+    "displayName": "FC Web App",
+    "knowledgeRevision": 1,
+    "updatedAt": "2026-09-26",
+    "applicability": {
+      "observed": {
+        "language": "zh-CN",
+        "surface": "SBC list",
+        "date": "2026-09-26"
+      },
+      "unknown": [
+        "Current account inventory, balance, permissions, market prices, and completion state",
+        "Navigation, reading, or write behavior outside the observed SBC list",
+        "SBC group entry, squad editing, submission, and their business effects"
+      ]
+    }
+  },
+  "stateVocabulary": {
+    "evidence": {
+      "observed": "A fresh tool read returned the stated page data.",
+      "readbackVerified": "A fresh post-action observation confirms the stated business condition.",
+      "historical": "A dated past case; it is not a current page or account fact.",
+      "unverified": "A hypothesis, unavailable check, or tool outcome without business readback."
+    },
+    "coverage": {
+      "bounded": "Only the returned items, page segment, and fields are covered.",
+      "complete": "Requires explicit traversal/end, count or deduplication evidence, and required-field coverage.",
+      "unknown": "No coverage conclusion is supported."
+    },
+    "unknown": "Preserve absence of evidence as unknown; do not convert it to false, empty, unavailable, or impossible."
+  },
+  "pageStates": [
+    {
+      "id": "sbc-list",
+      "purpose": "Browse SBC groups before choosing a task instance.",
+      "recognition": {
+        "required": [
+          "SBC list or grid is present",
+          "SBC group cards expose a title or bounded card context"
+        ],
+        "freshness": "Confirm with a new page observation; labels and layout may change."
+      },
+      "objects": [
+        "sbcGroupDefinition",
+        "sbcGroupInstance"
+      ],
+      "availableActions": [
+        "open-sbc-group"
+      ],
+      "evidence": {
+        "status": "observed",
+        "date": "2026-09-26",
+        "scope": "A Chinese FC SBC list was read; only loaded list content is covered."
+      }
+    },
+    {
+      "id": "sbc-group",
+      "purpose": "Inspect one group and choose a challenge.",
+      "recognition": {
+        "required": [
+          "Group title and challenge entries are visible"
+        ],
+        "freshness": "Not yet verified on the current tool path."
+      },
+      "objects": [
+        "sbcGroupDefinition",
+        "challengeDefinition",
+        "challengeInstance"
+      ],
+      "availableActions": [
+        "select-challenge"
+      ],
+      "evidence": {
+        "status": "unverified",
+        "scope": "No reusable entry or readback rule is established."
+      }
+    }
+  ],
+  "objects": [
+    {
+      "id": "cardDefinition",
+      "meaning": "A card version or public attribute reference, distinct from an account-owned item.",
+      "relations": [
+        "inventoryInstance.references -> cardDefinition"
+      ],
+      "evidence": "unverified"
+    },
+    {
+      "id": "inventoryInstance",
+      "meaning": "One account-owned, selectable card instance. It may have instance-specific state such as protection or availability.",
+      "relations": [
+        "inventoryInstance.references -> cardDefinition",
+        "squadSlot.assignment -> inventoryInstance",
+        "challengeSubmission.consumes -> inventoryInstance"
+      ],
+      "evidence": "unverified"
+    },
+    {
+      "id": "sbcGroupDefinition",
+      "meaning": "The reusable definition of a named SBC group and its challenge definitions.",
+      "relations": [
+        "sbcGroupInstance.conformsTo -> sbcGroupDefinition",
+        "sbcGroupDefinition.contains -> challengeDefinition"
+      ],
+      "evidence": "observed only as a list-card concept"
+    },
+    {
+      "id": "sbcGroupInstance",
+      "meaning": "The current account/page presentation of one SBC group, including its currently displayed completion state.",
+      "relations": [
+        "sbcGroupInstance.conformsTo -> sbcGroupDefinition",
+        "sbcGroupInstance.contains -> challengeInstance"
+      ],
+      "evidence": "bounded observed list presentation"
+    },
+    {
+      "id": "challengeDefinition",
+      "meaning": "A challenge's rules, formation, reward description, and required slots.",
+      "relations": [
+        "challengeInstance.conformsTo -> challengeDefinition"
+      ],
+      "evidence": "unverified"
+    },
+    {
+      "id": "challengeInstance",
+      "meaning": "The current state of a challenge for this account, including selected squad and completion state.",
+      "relations": [
+        "challengeInstance.has -> squadSlot",
+        "challengeSubmission.targets -> challengeInstance"
+      ],
+      "evidence": "unverified"
+    },
+    {
+      "id": "squadSlot",
+      "meaning": "A position in a challenge squad that may be assigned one inventory instance.",
+      "relations": [
+        "squadSlot.assignment -> inventoryInstance"
+      ],
+      "evidence": "unverified"
+    }
+  ],
+  "actionTemplates": [
+    {
+      "id": "open-sbc-group",
+      "goal": "Enter the intended SBC group from the SBC list.",
+      "parameters": [
+        "groupTitle"
+      ],
+      "preconditions": [
+        "Fresh sbc-list recognition",
+        "A fresh card/control reference whose context matches groupTitle",
+        "The selected control is distinguishable from favourite/save or other adjacent actions"
+      ],
+      "locate": "Use the current semantic card context and the group title. Do not reuse selectors, element IDs, document IDs, snapshots, or a prior tab identity.",
+      "expectedEffect": "The group detail surface becomes available for observation.",
+      "readback": "Read the resulting page and confirm the intended group title plus challenge entries or an equivalent group-detail marker.",
+      "recovery": "If outcome is unknown, query the original request in the same channel. If the target is busy, recover the earlier unresolved request before any new write. If detail cannot be distinguished from favourite/save, stop and refine the generic locator.",
+      "verificationStatus": "unverified: this action did not reach the stated real-page readback in the 2026-09-26 session."
+    },
+    {
+      "id": "select-challenge",
+      "goal": "Open one challenge for inspection without assuming it is complete or editable.",
+      "parameters": [
+        "challengeTitle"
+      ],
+      "preconditions": [
+        "Fresh sbc-group recognition",
+        "Fresh target reference in the intended group"
+      ],
+      "locate": "Match challenge title in the fresh group observation and inspect the target's card context.",
+      "expectedEffect": "A challenge detail surface is available.",
+      "readback": "Confirm challenge title and read any currently exposed rules, formation, reward, and completion marker. Missing fields remain unknown.",
+      "recovery": "Use the request-status rule for unknown outcomes; otherwise obtain a new group observation and locate again.",
+      "verificationStatus": "unverified: this action did not reach the stated real-page readback in the 2026-09-26 session."
+    }
+  ],
+  "taskPatterns": [
+    {
+      "id": "inspect-a-task-instance",
+      "input": "A user goal that identifies an FC task instance by current visible title or supplied criteria.",
+      "completion": "The Agent reports only fields read from the current instance with their coverage; no account-changing action is required.",
+      "steps": [
+        "Discover a fresh page and identify its page state",
+        "Navigate using a matching action template and verify the business readback",
+        "Read rules, object instances, and constraints with explicit bounded/complete/unknown coverage"
+      ]
+    },
+    {
+      "id": "prepare-a-sbc-candidate",
+      "input": "A current challenge instance and an authorized request to prepare, not submit, a candidate.",
+      "completion": "Each proposed instance assignment, rule check, and search limitation is stated from current evidence.",
+      "steps": [
+        "Read current challenge requirements and available card-instance attributes",
+        "Use deterministic local computation only on observed inputs",
+        "Keep incomplete inventory coverage separate from candidate feasibility and from any no-solution claim"
+      ]
+    },
+    {
+      "id": "execute-an-authorized-account-change",
+      "input": "A fresh target, current user authorization for the specific account effect, and a task-specific completion condition.",
+      "completion": "A fresh business readback confirms the intended effect and reports any observed instance/completion change.",
+      "steps": [
+        "Reconfirm target and preconditions from a fresh observation",
+        "Perform one bounded action",
+        "Recover unknown outcomes before another write",
+        "Read back the business effect; record any remaining unknowns"
+      ]
+    }
+  ],
+  "updateProtocol": {
+    "beforeAction": [
+      "Record expected effect, preconditions, source, observation time, and bounded scope"
+    ],
+    "afterAction": [
+      "Record tool outcome and fresh business readback",
+      "Promote a rule only to observed; require a new-agent, new-page-instance verification before claiming cross-agent confirmation",
+      "Keep counterexamples and mark the affected rule unverified or narrowed"
+    ],
+    "prohibitedPersistence": [
+      "Credentials, tokens, account-wide inventory, balances, prices",
+      "Exact current tab, document, snapshot, element, request, or installation identifiers",
+      "Claims inferred from an absent field or incomplete page traversal"
+    ]
+  }
+}
