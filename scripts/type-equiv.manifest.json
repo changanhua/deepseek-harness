@@ -2,6 +2,14 @@
   "comment": "Maps each primary ` ```ts type-equiv ` or ` ```ts public-api ` block (by doc + declared symbol + projection) to the source declaration and original JSDoc it must match. Paired `.zh.md` blocks are byte-identical derivatives checked through their unsuffixed sibling and have no duplicate entry. Omit projection for the complete declaration; use public-api with a ` ```ts public-api ` block for a body-stripped public class declaration. verify-type-equiv.ts enforces a 1:1 correspondence between primary blocks and entries. Add an entry when you add a primary source-equivalence block; remove it when you remove the block.",
   "entries": [
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserTabReference", "source": "packages/browser/browser/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserTransitionObservation", "source": "packages/browser/browser/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserTaskChildObservation", "source": "packages/browser/browser-task/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserTaskScopeRequest", "source": "packages/browser/browser-task/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserTaskScope", "source": "packages/browser/browser-task/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserScopeSelectionEligibility", "source": "packages/browser/browser-task/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserScopeSelectionAuthority", "source": "packages/browser/browser-task/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserSelectionSettlement", "source": "packages/browser/browser-task/src/types.ts" },
+    { "doc": "docs/subsystems/browser.md", "symbol": "BrowserSelectionSettlementResult", "source": "packages/browser/browser-task/src/types.ts" },
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserPage", "source": "packages/browser/browser/src/types.ts" },
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserElementReference", "source": "packages/browser/browser/src/types.ts" },
     { "doc": "docs/subsystems/browser.md", "symbol": "BrowserRegionBlock", "source": "packages/browser/browser/src/types.ts" },
@@ -1346,6 +1354,21 @@
     {
       "doc": "docs/subsystems/skills.md",
       "symbol": "SkillDefinition",
+      "source": "packages/skill/skill/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/skills.md",
+      "symbol": "SkillResource",
+      "source": "packages/skill/skill/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/skills.md",
+      "symbol": "SkillResourceDefinition",
+      "source": "packages/skill/skill/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/skills.md",
+      "symbol": "SkillResourceViewOptions",
       "source": "packages/skill/skill/src/index.ts"
     },
     {

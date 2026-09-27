@@ -1320,6 +1320,7 @@ function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): 
       ...(action.treeCursor === undefined ? {} : { treeCursor: action.treeCursor }),
       ...(action.treeLimit === undefined ? {} : { treeLimit: action.treeLimit }),
       ...(action.includeOptions === undefined ? {} : { includeOptions: action.includeOptions }),
+      ...(action.includeValues === undefined ? {} : { includeValues: action.includeValues }),
       ...(action.structure === undefined ? {} : { structure: action.structure }),
       ...(action.presentationQueries === undefined ? {} : { presentationQueries: action.presentationQueries }) }
     : action

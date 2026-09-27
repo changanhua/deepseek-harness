@@ -23,6 +23,7 @@ export const snapshotSchema = z.object({
   treeLimit: z.number().int().min(1).max(1000).default(256),
   offset: z.number().int().min(0).max(10000).default(0), limit: z.number().int().min(1).max(128).default(64),
   query: z.string().max(256).optional(), structure: z.boolean().default(true),
+  includeValues: z.boolean().default(false),
   expectedTab: tabReferenceSchema.optional(),
 }).strict().refine(input => !input.treeCursor || input.tree && !!input.documentId, { message: 'Cursor continuation requires tree and documentId.' })
 export const actionSchema = z.discriminatedUnion('kind', [

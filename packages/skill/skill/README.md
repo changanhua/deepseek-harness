@@ -49,6 +49,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 - **One merged catalog.** A consumer asks for the current catalog of a workspace and receives every winning skill summary from every provider, sorted by name — no provider-specific ordering or deduplication to do.
 - **On-demand loading.** Asking for one skill by name returns the full instruction body from whichever provider owns the winning candidate; the registry re-validates the loaded definition and rejects a stale selection whose name changed between discovery and load.
+- **Provider-owned attachments.** A consumer can request a relative attachment from the same winning provider. The registry never turns `resourceBase` into filesystem access; unsupported, missing, or disposed-provider attachments fail without falling through to a shadowed source.
 - **Embedded skills.** Plugins register an in-memory skill with `ctx.skills.register(...)`; the registry fills in a default invocation policy and the `runtime` provider label. Same-name runtime registrations in one layer are first-wins with a warning.
 - **Provider registration.** A provider contributes its catalog with `ctx.skills.registerProvider(...)`; registration is synchronous, and the returned disposer removes the provider. `runtime` is a reserved provider name.
 
@@ -94,9 +95,11 @@ The registry is host+per-scope layered, the shape the tools registry established
 
 A read (`list`/`snapshot`) collects each layer's candidates: runtime skills first, then each provider's `list()` result, awaiting providers sequentially and containing failures. Candidates are validated, deduplicated within the layer, and merged across layers; summaries sort by name. Completed collections are cached per cwd, scope chain, and revision up to `collectCacheMaxEntries`; an in-flight collection retries once when a provider or runtime mutation bumps the revision mid-read, and a second change returns the latest candidates as an incomplete, uncached observation.
 
-### Loading and staleness
+### Loading, attachments, and staleness
 
 `get()` selects the winning candidate, races the provider's load against the lookup's abort signal, and rechecks cancellation after selection or a cache hit. The returned definition must match the selected candidate's name; a mismatch invalidates the cached catalogs so the next snapshot rediscovers the provider's skills. Definitions are never cached — every load asks the provider for the current body.
+
+`getResource()` selects through that same scope and precedence path, then delegates only to the winning provider's optional attachment method. A model-facing lookup declares that purpose, so the registry validates both the selected candidate and loaded definition before it starts the attachment read. Its registration lifecycle is joined to the read signal, so disposal cancels an in-flight read; after each await the registry confirms the same scoped winner still applies before returning the provider-confirmed relative path and complete text.
 
 ### Invalidation
 

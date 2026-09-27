@@ -17,6 +17,7 @@ import {
   isSkillName,
   isUserInvocable,
   renderSkillContent,
+  renderSkillResource,
   type SkillInvocationSource,
   type SkillSummary,
 } from '@deepseek-ai/dsh-skill'
@@ -83,6 +84,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     description: 'Load the full instructions for an available skill. Call this with the exact skill name from the session skill catalog before acting on a task that names or clearly matches that skill.',
     parameters: {
       name: { type: 'string', required: true, description: 'The exact skill name from the available skills list.' },
+      resource: { type: 'string', description: 'An exact relative attachment path from the selected skill bundle.' },
     },
     output: {
       schema: {
@@ -119,10 +121,16 @@ export function apply(ctx: Context, config: Config = {}): void {
               },
             ],
           },
+          resourcePath: { type: 'string' },
           content: { type: 'string', required: true },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: renderSkillContent(value) }],
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.resourcePath === undefined
+          ? renderSkillContent(value)
+          : renderSkillResource({ name: value.name, provider: value.provider, resourcePath: value.resourcePath, content: value.content }),
+      }],
     },
     async execute(args, exec) {
       if (!isSkillName(args.name)) {
@@ -131,6 +139,17 @@ export function apply(ctx: Context, config: Config = {}): void {
       // The agent is its own scope key, so the lookup resolves the layered
       // registry exactly as this agent's composition sees it.
       const lookup = { cwd: exec.agent?.session.header.cwd, signal: exec.signal, scope: exec.agent }
+      if (args.resource !== undefined) {
+        const resource = await ctx.skills.getResource(args.name, args.resource, { ...lookup, invocation: 'model' })
+        if (!resource) {
+          throw new Error(`skill "${args.name}" resource "${args.resource}" is unavailable`)
+        }
+        // Materialize the complete wrapper here as an explicit tool-result
+        // boundary. The renderer repeats this check when ToolRuntime validates
+        // output, so no JSON or script attachment is silently truncated.
+        renderSkillResource(resource)
+        return resource
+      }
       const summary = (await ctx.skills.list(lookup)).find(skill => skill.name === args.name)
       if (!summary) {
         throw new Error(`skill "${args.name}" is unknown or no longer available`)

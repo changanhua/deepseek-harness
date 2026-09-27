@@ -27,7 +27,7 @@ Use `dsh-agent-presets` to give each session the tools, prompt sections, and ski
 
 Mount this package in a composition that should give each agent session its own tools, prompt sections, and skills from a preset file. Every session names a preset — explicitly or through the configured default — and is composed from it; without the package, sessions fall back to whatever the host composition mounts.
 
-The shipped Web `standard`, `ptc`, and `cordis` presets include [explicit file delivery](../../client/ui-deliverables/README.md#explicit-deliveries). The `minimal` preset keeps its fixed two-tool training configuration.
+The shipped Web `standard`, `ptc`, and `cordis` presets include [explicit file delivery](../../client/ui-deliverables/README.md#explicit-deliveries). The `browser-assistant` preset combines Browser, Dynamic Cordis, and the scoped Skill catalog. When the Host provides `codeRuntime`, it exposes both native tools and `run_code` for optional deterministic flows; each sub-call retains the calling Agent and tool pipeline. This reuses the Host's trusted code runtime and does not define a JavaScript sandbox. It adds no shell or general filesystem tools. The `minimal` preset keeps its fixed two-tool training configuration.
 
 ### What a preset gives a session
 
@@ -159,6 +159,8 @@ Read these pages when the package-level contract is not enough; they move from t
 ## Model Experience
 
 Indirectly, through the plugins a preset's standing composition installs, which own every tool schema, prompt section, and skill the preset makes visible to the agents joined to it.
+
+Browser Assistant with a Host code runtime includes the native tool schemas and generated `run_code` SDK. This increases the initial prompt input while allowing a selected deterministic flow to call several tools without an intervening model decision; ambiguous stages still return to the model.
 
 #### KV Cache effect
 

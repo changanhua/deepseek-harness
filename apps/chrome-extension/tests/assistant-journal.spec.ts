@@ -259,6 +259,75 @@ describe('Chrome durable browser execution journal', () => {
     expect((await journal.list()).map(item => item.identity.requestId)).toEqual([first.requestId, second.requestId])
     expect(h.execute).toHaveBeenCalledTimes(2)
   })
+  test('capacity rejection reports no execution and an expiry check time, then recovers in the same journal', async () => {
+    const h = harness()
+    let clock = Date.now()
+    const journal = createJournal({ ...h, capacity: 2, now: () => clock, retentionMs: 1000 })
+    const first = sealBrowserInvocation({ ...request(7, true), deadline: clock + 100 })
+    const second = sealBrowserInvocation({ ...request(8, true), deadline: clock + 100 })
+    for (const pending of [first, second]) expect(await journal.handle({ type: 'execute', request: pending })).toMatchObject(receipt)
+    const checkAt = Math.min(first.deadline, second.deadline) + 1000
+    const rejected = sealBrowserInvocation({ ...request(9, false), deadline: clock + 100 })
+    expect(await journal.handle({ type: 'execute', request: rejected })).toMatchObject({
+      outcome: 'failed', reason: 'journal_capacity', quiescent: true,
+      value: { admission: { executed: false, recheckAt: checkAt } },
+    })
+    expect(h.execute).toHaveBeenCalledTimes(2)
+    clock = Math.max(first.deadline, second.deadline) + 1000
+    const next = sealBrowserInvocation({ ...request(9, false), deadline: clock + 100 })
+    expect(await journal.handle({ type: 'execute', request: next })).toMatchObject(receipt)
+    expect(h.execute).toHaveBeenCalledTimes(3)
+    expect((await journal.list()).map(item => item.identity.requestId)).toEqual([next.requestId])
+    expect(await journal.handle({ type: 'execute', request: first })).toMatchObject({ outcome: 'failed', reason: 'deadline' })
+    expect(h.execute).toHaveBeenCalledTimes(3)
+  })
+  test('capacity held by unquiescent requests has no time-only recovery and remains protected after deadlines', async () => {
+    const h = harness()
+    let clock = Date.now()
+    h.execute.mockResolvedValue({ outcome: 'unknown', quiescent: false })
+    const journal = createJournal({ ...h, capacity: 1, now: () => clock, retentionMs: 1000 })
+    const unresolved = sealBrowserInvocation({ ...request(7, true), deadline: clock + 100 })
+    expect(await journal.handle({ type: 'execute', request: unresolved })).toMatchObject({ outcome: 'unknown' })
+    clock = unresolved.deadline + 1001
+    const next = sealBrowserInvocation({ ...request(9, false), deadline: clock + 100 })
+    expect(await journal.handle({ type: 'execute', request: next })).toMatchObject({ outcome: 'failed', reason: 'journal_capacity',
+      value: { admission: { executed: false, recheckAt: null } } })
+    expect(await journal.handle({ type: 'status', request: unresolved })).toMatchObject({ outcome: 'unknown', quiescent: false })
+    expect(h.execute).toHaveBeenCalledTimes(1)
+    expect((await journal.list()).map(item => item.identity.requestId)).toEqual([unresolved.requestId])
+  })
+  test('byte capacity rejects before execution with the retained write expiry', async () => {
+    const h = harness()
+    h.execute.mockResolvedValue({ ...receipt, value: { text: 'x'.repeat(800) } })
+    const first = request(7, true)
+    expect(await h.journal.handle({ type: 'execute', request: first })).toMatchObject({ outcome: 'observed', quiescent: true })
+    const journal = createJournal({ ...h, maxStorageBytes: Buffer.byteLength(JSON.stringify(journalRecord(h.values))) + 32 })
+    expect(await journal.handle({ type: 'execute', request: request(8, false) })).toMatchObject({
+      outcome: 'failed', reason: 'journal_capacity', value: { admission: { executed: false, recheckAt: first.deadline + 60000 } },
+    })
+    expect(h.execute).toHaveBeenCalledTimes(1)
+    expect((await journal.list()).map(item => item.identity.requestId)).toEqual([first.requestId])
+  })
+  test('a recheck time does not reserve the expired capacity for one caller', async () => {
+    const h = harness()
+    let clock = Date.now()
+    const journal = createJournal({ ...h, capacity: 1, retentionMs: 1000, now: () => clock })
+    const fresh = (sessionId: string, mutates: boolean) => sealBrowserInvocation({
+      ...request(7, mutates), sessionId, deadline: clock + 100,
+    })
+    const first = fresh('first', true)
+    expect(await journal.handle({ type: 'execute', request: first })).toMatchObject(receipt)
+    expect(await journal.handle({ type: 'execute', request: fresh('waiting', false) })).toMatchObject({
+      reason: 'journal_capacity', value: { admission: { recheckAt: first.deadline + 1000 } },
+    })
+    clock = first.deadline + 1000
+    const competing = fresh('competing', true)
+    expect(await journal.handle({ type: 'execute', request: competing })).toMatchObject(receipt)
+    expect(await journal.handle({ type: 'execute', request: fresh('waiting', false) })).toMatchObject({
+      reason: 'journal_capacity', value: { admission: { executed: false, recheckAt: competing.deadline + 1000 } },
+    })
+    expect(h.execute).toHaveBeenCalledTimes(2)
+  })
   test('storage-byte pressure also evicts completed reads before refusing a new request', async () => {
     const h = harness()
     h.execute.mockResolvedValue({ outcome: 'observed', quiescent: true, value: { text: 'x'.repeat(800) } })
@@ -388,7 +457,9 @@ describe('Chrome durable browser execution journal', () => {
     h.execute.mockImplementationOnce(async () => { h.storage.set.mockRejectedValueOnce(new Error('quota'))
       return receipt })
     const r = request()
-    expect(await h.journal.handle({ type: 'execute', request: r })).toMatchObject({ outcome: 'unknown', reason: 'receipt_persistence_failed' })
+    const failed = await h.journal.handle({ type: 'execute', request: r })
+    expect(failed).toMatchObject({ outcome: 'unknown', reason: 'receipt_persistence_failed' })
+    expect(failed.value).toBeUndefined()
     expect(journalRecord(h.values).entries[0].state).toBe('active')
     expect(await createJournal(h).handle({ type: 'status', request: r })).toMatchObject({ outcome: 'unknown' })
   })

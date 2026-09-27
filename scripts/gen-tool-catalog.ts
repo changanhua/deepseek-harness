@@ -255,6 +255,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
       browser_region_render: 'packages/browser/tool-browser/src/index.ts',
       browser_region_clear: 'packages/browser/tool-browser/src/index.ts',
       browser_task_start: 'packages/browser/tool-browser/src/index.ts',
+      browser_task_select: 'packages/browser/tool-browser/src/index.ts',
       browser_task_verify: 'packages/browser/tool-browser/src/index.ts',
       browser_task_cancel: 'packages/browser/tool-browser/src/index.ts',
       browser_activity_search: 'packages/browser/tool-browser/src/activity.ts',

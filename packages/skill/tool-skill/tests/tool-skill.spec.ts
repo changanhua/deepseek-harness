@@ -171,6 +171,35 @@ async function mintAgentScope(ctx: Context, subject: string | Agent): Promise<{ 
 }
 
 describe('dsh-tool-skill', () => {
+  it('loads a bounded relative skill attachment through the model tool', async () => {
+    const home = await tempDir('tool-skill-resource')
+    const root = join(home, '.dsh/skills/resource-skill')
+    await writeSkill(join(home, '.dsh/skills'), 'resource-skill', 'Has an attachment', 'Read references/guide.md.')
+    await mkdir(join(root, 'references'), { recursive: true })
+    await writeFile(join(root, 'references/guide.md'), 'Attachment body.')
+    const ctx = await setup(home)
+
+    const result = await ctx.tools.execute({
+      signal: testToolSignal, callId: ToolCallId('resource'), name: 'skill',
+      arguments: { name: 'resource-skill', resource: 'references/guide.md' },
+    })
+
+    expect(result.isError).toBe(false)
+    const block = result.content[0]
+    if (block?.type !== 'text') throw new Error('expected text tool result')
+    expect(block.text).toContain('<skill_resource skill="resource-skill" provider="filesystem" path="references/guide.md">')
+    expect(block.text).toContain('Attachment body.')
+
+    const missing = await ctx.tools.execute({
+      signal: testToolSignal, callId: ToolCallId('missing-resource'), name: 'skill',
+      arguments: { name: 'resource-skill', resource: 'references/missing.md' },
+    })
+    expect(missing.isError).toBe(true)
+    const missingBlock = missing.content[0]
+    if (missingBlock?.type !== 'text') throw new Error('expected text tool result')
+    expect(missingBlock.text).toContain('skill "resource-skill" resource "references/missing.md" is unavailable')
+  })
+
   it('registers the skill tool schema and removes it on dispose', async () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
@@ -957,10 +986,13 @@ describe('dsh-tool-skill', () => {
           content: 'Instructions must not be disclosed.',
         }
       },
+      async getResource() {
+        throw new Error('model-disabled attachment must not load')
+      },
     }))
 
     const denied = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c6'), name: 'skill', arguments: { name: 'denied-skill' } })
-    const raced = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c7'), name: 'skill', arguments: { name: 'policy-race-skill' } })
+    const raced = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c7'), name: 'skill', arguments: { name: 'policy-race-skill', resource: 'references/hidden.md' } })
     const vanished = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c8'), name: 'skill', arguments: { name: 'vanishing-skill' } })
 
     expect(denied.isError).toBe(true)

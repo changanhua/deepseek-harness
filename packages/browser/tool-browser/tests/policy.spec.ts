@@ -34,6 +34,35 @@ const harness = (effect: BrowserActionDescription['effect'], kind: BrowserAction
 }
 
 describe('browser tool approval policy', () => {
+  it.each(['browser_snapshot','browser_extract'])('pins omitted snapshot identity to the accepted task for %s',async(name)=>{
+    const h=harness('unknown'),registered=new Map<string,ToolDefinition>()
+    const task={ phase:'terminal',outcome:'completed',target:{ installationId:'installation',page },blockers:[],resources:[] }
+    apply({ inject:vi.fn(),on:vi.fn(),browser:h.browser,browserTasks:{ get:()=>task },approval:{ request:h.approval },
+      tools:{ register:(tool:ToolDefinition)=>{registered.set(tool.name,tool)} } } as unknown as Context)
+    const tool=registered.get(name)
+    if(tool===undefined)throw new Error('snapshot tool missing')
+    const args={ installationId:'installation',tabId:page.tabId,frameId:page.frameId }
+    const exec={ agent,signal:h.controller.signal } as ToolRunContext
+    await tool.execute(args,exec)
+    expect(h.browser.execute.mock.calls[0]?.[0]).toMatchObject({ action:{ kind:'snapshot',documentId:page.documentId } })
+    h.browser.execute.mockClear()
+    for(const override of [{ frameId:9 },{ tabId:9 },{ installationId:'another-installation' },{ documentId:'unaccepted-document' }]){
+      await expect(tool.execute({ ...args,...override },exec)).rejects.toThrow('target mismatch')
+    }
+    expect(h.browser.execute).not.toHaveBeenCalled()
+  })
+  it('forwards includeValues only when browser_snapshot explicitly requests it', async () => {
+    const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
+      tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
+    const tool = registered.get('browser_snapshot')!
+    const exec = { agent, signal: h.controller.signal } as ToolRunContext
+    await tool.execute({ installationId: 'installation', tabId: page.tabId, frameId: page.frameId, includeValues: true }, exec)
+    expect(h.browser.execute.mock.calls[0]?.[0].action).toMatchObject({ kind: 'snapshot', includeValues: true })
+    h.browser.execute.mockClear()
+    await tool.execute({ installationId: 'installation', tabId: page.tabId, frameId: page.frameId }, exec)
+    expect(h.browser.execute.mock.calls[0]?.[0].action).not.toHaveProperty('includeValues')
+  })
   it('offers target-free opening only through the direct action schema', () => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
     apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
@@ -86,6 +115,21 @@ describe('browser tool approval policy', () => {
     expect(h.browser.execute).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ sessionId,
       installationId: 'installation', requestId: uuidMatcher(),
       action: { kind: 'snapshot', tabId: 1, frameId: 0, limit: 64, textLimit: 4000, structure: false } }), h.controller.signal)
+  })
+  it('preserves browser transition facts beside feedback without selecting a child', async () => {
+    const h = harness('local-disclosure')
+    const browserSessionId = '123e4567-e89b-42d3-a456-426614174000'
+    const transition = { version: 1, source: { page, tab: { tabId: 1, windowId: 3, browserSessionId } },
+      startedAt: 1, observedAt: 2, sameTab: { kind: 'unchanged' },
+      candidates: [{ tab: { tabId: 2, windowId: 3, browserSessionId }, relation: 'opener',
+        attribution: 'candidate', evidence: 'created-navigation-target' }], truncated: false }
+    h.browser.executePrepared.mockResolvedValue({ ...observed, value: { transition } })
+    h.browser.execute.mockResolvedValue({ ...observed, value: { page, text: 'Source unchanged' } })
+    expect(await dispatchWithFeedback(h.input)).toMatchObject({ value: {
+      transition, feedback: { snapshot: { page, text: 'Source unchanged' } },
+    } })
+    expect(h.browser.executePrepared).toHaveBeenCalledOnce()
+    expect(h.browser.execute.mock.calls[0]?.[0].action).toMatchObject({ kind: 'snapshot', tabId: 1 })
   })
   it('returns fresh references when preparation is stale but does not choose or click a replacement', async () => {
     const h = harness('unknown')

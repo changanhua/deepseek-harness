@@ -50,7 +50,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 ### What the model gets
 
 - **A session catalog.** When model-invocable skills exist and the `skill` tool is visible, the agent receives a durable user-role message before its first request, listing each skill's name and a capped description; the message tells the model to load a skill with the tool before acting on it, and never to infer instructions from the summary alone.
-- **A loader tool.** The model calls `skill` with the exact skill name and receives the full instruction body plus resource guidance in a canonical `<skill_content>` block; the result is retained as ordinary tool history.
+- **A loader tool.** The model calls `skill` with the exact skill name and receives the full instruction body plus resource guidance in a canonical `<skill_content>` block. Supplying `resource` requests one provider-owned relative attachment and returns it in a distinct `<skill_resource>` block; either result is retained as ordinary tool history.
 - **Explicit user invocation.** A `/name` token in direct user input that names a user-invocable skill injects that skill's instructions into the step, without the model having to load it.
 - **Live catalog updates.** Later membership, description, or visibility changes append a complete replacement catalog; removing every skill appends an empty catalog that retires older names.
 
@@ -153,7 +153,7 @@ Prefix-stable while the tool definition and visibility are unchanged. Shadowing,
 
 #### What the model sees
 
-A successful call uses the result template and the provider-managed, directory, URL, or opaque resource guidance below.
+A call without `resource` uses the result template and the provider-managed, directory, URL, or opaque resource guidance below. A call with `resource` returns the selected provider's complete attachment instead of reloading the main instructions.
 
 ##### Skill result template
 
@@ -197,6 +197,16 @@ Resources for this skill: <description>
 Load referenced resources only as needed.
 ```
 
+##### Attachment result
+
+```markdown
+<skill_resource skill="<escaped-name>" provider="<escaped-provider>" path="<confirmed-relative-path>">
+<complete-provider-owned-text>
+</skill_resource>
+```
+
+The tool checks model invocation before attachment loading. The final attachment wrapper is bounded to 72 KiB of UTF-8, and a filesystem attachment is already capped by its provider at 64 KiB; either boundary fails rather than truncating JSON, scripts, or other text.
+
 #### Token effect
 
 Loaded instructions are data-dependent tool-result tokens, resent on later steps until compaction; no duplicate `agent.inject()` copy is made.
@@ -209,7 +219,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 #### What the model sees
 
-Invalid or stale selections return exactly `Error: invalid skill name "<name>"`, `Error: skill "<name>" is unknown or no longer available`, or `Error: skill "<name>" is not available for model invocation`. Provider-thrown lookup text is data-dependent and receives the same `Error: <message>` wrapper.
+Invalid or stale selections return exactly `Error: invalid skill name "<name>"`, `Error: skill "<name>" is unknown or no longer available`, or `Error: skill "<name>" is not available for model invocation`. An unavailable attachment returns `Error: skill "<name>" resource "<path>" is unavailable`; a provider without attachment support reports that it does not support resources. Provider-thrown lookup text is data-dependent and receives the same `Error: <message>` wrapper.
 
 #### Token effect
 
@@ -242,7 +252,7 @@ These limits define when the catalog or the loader is a poor fit. They are curre
 
 - **The catalog omits `whenToUse`, source, and provider metadata** — routing is based only on name and a capped description; `whenToUse` remains provider metadata and is not rendered by the loaded wrapper either.
 - **Loaded instruction bodies have no size cap** — a provider can return a skill large enough to consume substantial next-step context; only catalog descriptions are truncated.
-- **Resources are guidance, not attachments** — the tool reports a base directory/URL/opaque hint but neither enumerates nor fetches referenced files for the model.
+- **Attachments are explicit reads** — the tool neither enumerates bundle files nor accepts a resource without a named skill; providers may decline attachments and remote providers need their own attachment implementation.
 - **Loading is one-shot text** — there is no partial, streaming, or cached-content handle when a remote provider is slow or a skill body is large.
 - **Catalog replacement is whole-list** — one changed name or description appends every visible summary; this keeps stale-name retirement explicit but costs tokens proportional to the catalog.
 - **Bodies are not versioned** — body-only edits do not change the catalog digest or notify the model; a later tool call reads the current provider content while earlier tool results remain historical facts.

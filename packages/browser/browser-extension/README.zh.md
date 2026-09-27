@@ -41,7 +41,7 @@ kind: "package-reference"
 
 提供方仅接受其协议已实现的 actions。Puppeteer 是 `click`、`fill`、`submit`、`double_click`、`right_click`、`hover`、`press`、`select`、`check`、`drag`、`upload`、导航、标签、截图、滚动和等待动作的默认执行器。DOM 兼容执行器仅支持 `click`、`fill`、`submit`、`navigate`、`scroll` 和 `wait`，并拒绝新动作类型。它不安装或配置 Chrome 扩展，服务定义本身也不挂载这些路由。源配置由 [BrowserExtension.Config](src/index.ts) 定义；生成的[配置目录](../../../docs/config-catalog.zh.md)是穷尽参考。
 
-交互快照包含可见元素的局部引用、DOM 角色、可读标签，以及禁用、只读、必填、选中和展开状态。树快照会将稳定的完整 Document、元素、文本和开放 Shadow Root 层次分页返回；节点跨 cursor 保留 index 和 parent index，iframe 元素只标记其 source 边界。原生标签和 `aria-labelledby` 会解析为文本，不读取编辑值。隐藏、可编辑、script 和 style 文本不会进入树输出；输入区、选择框和可编辑正文不会混入快照正文或元素标签；准备操作时，值仅在文档内的有界内存中保留，用于比较。隐藏或禁用控件不能执行，可见性或有效禁用、只读状态改变会使已准备动作失效。截图要求主 frame，base64 上限为 400,000 字符。上传只接受当前用户消息明确写出的绝对路径；该检查在模型工具执行前完成，不额外显示批准框。
+交互快照包含可见元素的局部引用、DOM 角色、可读标签，以及禁用、只读、必填、选中和展开状态。树快照会将稳定的完整 Document、元素、文本和开放 Shadow Root 层次分页返回；节点跨 cursor 保留 index 和 parent index，iframe 元素只标记其 source 边界。原生标签和 `aria-labelledby` 会解析为文本，不读取编辑值。`includeValues` 默认关闭，显式请求时只可返回当前非敏感表单值；password、file、hidden 与敏感 autocomplete 字段继续脱敏。隐藏、可编辑、script 和 style 文本不会进入树输出；除这项窄范围值读取外，输入区、选择框和可编辑正文不会混入快照正文或元素标签；准备操作时，值仅在文档内的有界内存中保留，用于比较。隐藏或禁用控件不能执行，可见性或有效禁用、只读状态改变会使已准备动作失效。截图要求主 frame，base64 上限为 400,000 字符。上传只接受当前用户消息明确写出的绝对路径；该检查在模型工具执行前完成，不额外显示批准框。
 
 -----
 

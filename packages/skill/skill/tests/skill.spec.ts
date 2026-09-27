@@ -58,6 +58,144 @@ function scopedSkills(ctx: Context): SkillRegistry {
 }
 
 describe('SkillRegistry registry', () => {
+  it('binds model attachment reads to the selected candidate policy and current registration', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    let attachmentCalls = 0
+    ctx.skills.registerProvider(() => ({
+      name: 'policy-changing-resource',
+      async list() {
+        return [{ ...memorySkill('policy-resource', 'Policy resource', 1), provider: 'policy-changing-resource' }]
+      },
+      async get(candidate) {
+        return { ...candidate, invocation: { modelInvocable: false, userInvocable: true }, content: 'Hidden instructions.' }
+      },
+      async getResource() {
+        attachmentCalls += 1
+        return { resourcePath: 'references/hidden.md', content: 'Must not load.' }
+      },
+    }))
+
+    await expect(ctx.skills.getResource('policy-resource', 'references/hidden.md', { invocation: 'model' })).rejects.toThrow('not available for model invocation')
+    expect(attachmentCalls).toBe(0)
+  })
+
+  it('does not retain candidates from a registration replaced while its list is pending', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    const listed = Promise.withResolvers<null>()
+    const release = Promise.withResolvers<null>()
+    let oldResourceCalls = 0
+    const dispose = ctx.skills.registerProvider(() => ({
+      name: 'replaced-resource',
+      async list() {
+        listed.resolve(null)
+        await release.promise
+        return [{ ...memorySkill('turnover-resource', 'Old', 1), provider: 'replaced-resource' }]
+      },
+      async get(candidate) { return { ...candidate, content: 'old' } },
+      async getResource() {
+        oldResourceCalls += 1
+        return { resourcePath: 'references/old.md', content: 'old' }
+      },
+    }))
+
+    const loading = ctx.skills.getResource('turnover-resource', 'references/current.md')
+    await listed.promise
+    dispose()
+    ctx.skills.registerProvider(() => ({
+      name: 'replaced-resource',
+      async list() { return [{ ...memorySkill('turnover-resource', 'New', 1), provider: 'replaced-resource' }] },
+      async get(candidate) { return { ...candidate, content: 'new' } },
+      async getResource(_candidate, resourcePath) { return { resourcePath, content: 'new' } },
+    }))
+    release.resolve(null)
+
+    await expect(loading).resolves.toEqual({
+      name: 'turnover-resource', provider: 'replaced-resource', resourcePath: 'references/current.md', content: 'new',
+    })
+    expect(oldResourceCalls).toBe(0)
+  })
+
+  it('withholds an attachment when a newer winner appears while its read is pending', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    const started = Promise.withResolvers<null>()
+    const release = Promise.withResolvers<null>()
+    ctx.skills.registerProvider(() => ({
+      name: 'slow-resource',
+      async list() { return [{ ...memorySkill('moving-resource', 'Slow', 10), provider: 'slow-resource' }] },
+      async get(candidate) { return { ...candidate, content: 'slow' } },
+      async getResource(_candidate, resourcePath) {
+        started.resolve(null)
+        await release.promise
+        return { resourcePath, content: 'stale content' }
+      },
+    }))
+
+    const loading = ctx.skills.getResource('moving-resource', 'references/guide.md')
+    await started.promise
+    ctx.skills.registerProvider(() => ({
+      name: 'new-resource',
+      async list() { return [{ ...memorySkill('moving-resource', 'New', 1), provider: 'new-resource' }] },
+      async get(candidate) { return { ...candidate, content: 'new' } },
+      async getResource(_candidate, resourcePath) { return { resourcePath, content: 'new content' } },
+    }))
+    release.resolve(null)
+
+    await expect(loading).resolves.toBeUndefined()
+  })
+
+  it('loads a resource only from the scope-winning provider and cancels it when that registration disposes', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    const calls: string[] = []
+    const resourceStarted = Promise.withResolvers<null>()
+    registerProvider(ctx, {
+      name: 'global-resources',
+      async list() { return [{ ...memorySkill('shared-resource', 'Global resource', 1), provider: 'global-resources' }] },
+      async get(candidate) { return { ...candidate, content: 'global' } },
+      async getResource() {
+        calls.push('global')
+        return { resourcePath: 'references/global.md', content: 'global resource' }
+      },
+    })
+    const preset = createScope(ctx, {} as never)
+    let cancelled!: AbortSignal
+    const dispose = scopedSkills(preset.ctx).registerProvider((control) => {
+      cancelled = control.signal
+      return {
+        name: 'scoped-resources',
+        async list() { return [{ ...memorySkill('shared-resource', 'Scoped resource', 1), provider: 'scoped-resources' }] },
+        async get(candidate) { return { ...candidate, content: 'scoped' } },
+        async getResource(candidate, resource) {
+          calls.push(`scoped:${resource}`)
+          if (resource === 'references/wait.md') {
+            resourceStarted.resolve(null)
+            return await new Promise<never>((_resolve, reject) => {
+              control.signal.addEventListener('abort', () => { reject(control.signal.reason) }, { once: true })
+            })
+          }
+          return { resourcePath: resource, content: `${candidate.name} resource` }
+        },
+      }
+    })
+
+    const scope = scopeOf(preset.ctx)
+    await expect(ctx.skills.getResource('shared-resource', 'references/guide.md', { scope })).resolves.toEqual({
+      name: 'shared-resource', provider: 'scoped-resources', resourcePath: 'references/guide.md', content: 'shared-resource resource',
+    })
+    expect(calls).toEqual(['scoped:references/guide.md'])
+    const pending = ctx.skills.getResource('shared-resource', 'references/wait.md', { scope })
+    await resourceStarted.promise
+    dispose()
+    expect(cancelled.aborted).toBe(true)
+    await expect(pending).rejects.toThrow('disposed')
+    await expect(ctx.skills.getResource('shared-resource', 'references/guide.md', { scope })).resolves.toEqual({
+      name: 'shared-resource', provider: 'global-resources', resourcePath: 'references/global.md', content: 'global resource',
+    })
+  })
+
   it('registers providers, resolves duplicates first-wins, and disposes providers', async () => {
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)

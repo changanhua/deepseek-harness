@@ -1,6 +1,6 @@
 /** Real extension + built stdio MCP. No DSH Host is started in this test. */
 import { randomBytes, randomUUID } from 'node:crypto'
-import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
@@ -14,7 +14,22 @@ import { startBrowserRelay } from '../src/relay.ts'
 interface TestPage { tabId: number; frameId: number; documentId: string; url: string }
 interface TestResult {
   instances: { installationId: string; online: boolean }[]
-  value: { tabs: TestPage[]; text: string; page: TestPage; elements: { text: string; snapshotId: string; elementId: string }[] }
+  value: {
+    tabs: TestPage[]
+    text: string
+    textScope?: string
+    structure?: unknown
+    page: TestPage
+    elements: {
+      text: string
+      label: string
+      value?: string
+      valueTruncated?: boolean
+      valueRedacted?: boolean
+      snapshotId: string
+      elementId: string
+    }[]
+  }
 }
 
 it('reads, clicks and reads back through Codex while DSH is absent', async () => {
@@ -25,9 +40,38 @@ it('reads, clicks and reads back through Codex while DSH is absent', async () =>
   let context: BrowserContext | undefined
   let relay: Awaited<ReturnType<typeof startBrowserRelay>> | undefined
   const client = new Client({ name: 'real-browser-test', version: '1' })
-  const server = createServer((_req, res) => {
+  const createdIssues: { title: string; body: string }[] = []
+  const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')
+  const server = createServer(async (req, res) => {
     res.setHeader('content-type', 'text/html; charset=utf-8')
-    res.end('<!doctype html><title>Independent connector proof</title><main><h1>Original page evidence</h1><p id="count">Clicks: 0</p><button onclick="this.dataset.n=String(Number(this.dataset.n||0)+1);document.querySelector(\'#count\').textContent=\'Clicks: \'+this.dataset.n">Count once</button><p style="margin-top:1400px">End of page</p></main>')
+    const location = new URL(req.url ?? '/', 'http://fixture.test')
+    const issuePath = '/team/repo/issues'
+    if (location.pathname.startsWith(issuePath)) {
+      if (req.method === 'POST' && location.pathname === `${issuePath}/new`) {
+        const chunks: Buffer[] = []
+        for await (const chunk of req) chunks.push(Buffer.from(chunk))
+        const form = new URLSearchParams(Buffer.concat(chunks).toString())
+        createdIssues.push({ title: form.get('title') ?? '', body: (form.get('body') ?? '').replaceAll('\r\n', '\n') })
+        res.writeHead(303, { location: `${issuePath}/1` }); res.end(); return
+      }
+      if (location.pathname === issuePath) {
+        const q = location.searchParams.get('q') ?? ''
+        res.end(`<!doctype html><title>Issue search</title><main><h1>Issues</h1>${['open', 'closed'].map(state => `<a href="${issuePath}?q=${encodeURIComponent(`${q} state:${state}`)}">${state} (0)</a>`).join('')}<a href="${issuePath}/new">New issue</a></main>`)
+        return
+      }
+      if (location.pathname === `${issuePath}/new`) {
+        res.end(`<!doctype html><title>New Issue</title><form method="post" action="${issuePath}/new"><label>Title<input name="title"></label><label>Body<textarea name="body"></textarea></label><button type="submit">Create issue</button></form>`)
+        return
+      }
+      const issue = createdIssues.at(-1)
+      res.end(`<!doctype html><title>Issue detail</title><h1>${escape(issue?.title ?? '')}</h1><article>${escape(issue?.body ?? '')}</article>`)
+      return
+    }
+    if (req.url?.startsWith('/enter-proof')) {
+      res.end('<!doctype html><title>Enter navigation proof</title><form action="/enter-proof"><input name="q" aria-label="Search"></form><p>Search page</p>')
+      return
+    }
+    res.end('<!doctype html><title>Independent connector proof</title><nav>Unrelated navigation</nav><main><h1>Original page evidence</h1><p id="count">Clicks: 0</p><button onclick="this.dataset.n=String(Number(this.dataset.n||0)+1);document.querySelector(\'#count\').textContent=\'Clicks: \'+this.dataset.n">Count once</button><form><h2>Issue draft</h2><input aria-label="Title"><textarea aria-label="Body"></textarea><input aria-label="Password" type="password" value="NEVER_EXPOSE_PASSWORD"></form><p style="margin-top:1400px">End of page</p></main>')
   })
   try {
     await cp(source, extension, { recursive: true })
@@ -66,6 +110,8 @@ it('reads, clicks and reads back through Codex while DSH is absent', async () =>
       return response.structuredContent?.result as unknown as TestResult
     }
     const status = await call('browser_status')
+    expect(status).toMatchObject({ connector: { mcp: { version: '0.3.1', modulePath: expect.stringContaining('lib'), processId: expect.any(Number) },
+      relay: { version: '0.3.1' } }, instances: [{ online: true, runtime: { version: '0.6.1' } }], issues: [] })
     const installationId = status.instances.find(entry => entry.online)?.installationId
     if (!installationId) throw new Error('No online extension')
     const opened = await call('browser_open_tab', { installationId, requestId: randomUUID(), url })
@@ -91,11 +137,51 @@ it('reads, clicks and reads back through Codex while DSH is absent', async () =>
     const button = read.value.elements.find(element => element.text === 'Count once')
     if (!button) throw new Error('Test button missing from snapshot')
     const page = read.value.page
-    await call('browser_act', { installationId, action: { kind: 'click', intent: 'Verify one test-page click',
-      element: { page, snapshotId: button.snapshotId, elementId: button.elementId } } })
+    const observerKey = `__suspendedViewport_${randomUUID().replaceAll('-', '')}`
+    // A background renderer can withhold viewport observer callbacks while ordinary DOM reads work.
+    await worker.evaluate((key) => {
+      const api = (globalThis as unknown as { chrome: { debugger: {
+        sendCommand: (target: object, method: string, params?: { functionDeclaration?: string }) => Promise<unknown>
+      } } }).chrome.debugger
+      const original = api.sendCommand.bind(api)
+      ;(globalThis as unknown as Record<string, unknown>)[key] = () => { api.sendCommand = original }
+      api.sendCommand = (target, method, params) => method === 'Runtime.callFunctionOn'
+        && params?.functionDeclaration?.includes('IntersectionObserver')
+        ? new Promise(() => {}) : original(target, method, params)
+    }, observerKey)
+    try {
+      await call('browser_act', { installationId, action: { kind: 'click', intent: 'Verify one test-page click',
+        element: { page, snapshotId: button.snapshotId, elementId: button.elementId } } })
+    } finally {
+      await worker.evaluate((key) => {
+        const scope = globalThis as unknown as Record<string, unknown>
+        const restore = scope[key]
+        if (typeof restore === 'function') restore()
+        Reflect.deleteProperty(scope, key)
+      }, observerKey)
+    }
     await expect.poll(() => site.locator('#count').textContent()).toBe('Clicks: 1')
     const after = await call('browser_read_page', { installationId, tabId: tab.tabId, url, documentId: page.documentId })
     expect(after.value.text).toContain('Clicks: 1')
+    const title = after.value.elements.find(element => element.label === 'Title')!
+    const body = after.value.elements.find(element => element.label === 'Body')!
+    const formTitle = '浏览器平台：子页面接续与显式多页面任务范围'
+    const formBody = '  扩展已经能报告子页面候选。\n\n验收要求：\n- Agent 明确选择。\n- 读取后接纳。  '
+    for (const [field, value] of [[title, formTitle], [body, formBody]] as const) {
+      await call('browser_act', { installationId, action: { kind: 'fill', intent: '填写本地测试草稿', value,
+        element: { page: after.value.page, snapshotId: field.snapshotId, elementId: field.elementId } } })
+    }
+    const form = await call('browser_read_page', { installationId, tabId: tab.tabId, url, documentId: page.documentId,
+      query: 'Issue draft', includeValues: true, structure: false })
+    expect(form.value).toMatchObject({ textScope: 'matched-controls' })
+    expect(form.value.structure).toBeUndefined()
+    expect(form.value.elements.find(element => element.label === 'Title')).toMatchObject({ value: formTitle, valueTruncated: false })
+    expect(form.value.elements.find(element => element.label === 'Body')).toMatchObject({ value: formBody, valueTruncated: false })
+    expect(form.value.elements.find(element => element.label === 'Password')).toMatchObject({ valueRedacted: true })
+    expect(JSON.stringify(form)).not.toContain('Unrelated navigation')
+    expect(JSON.stringify(form)).not.toContain('NEVER_EXPOSE_PASSWORD')
+    await expect(site.locator('input[aria-label="Title"]').inputValue()).resolves.toBe(formTitle)
+    await expect(site.locator('textarea').inputValue()).resolves.toBe(formBody)
     const interruptedUrl = `http://127.0.0.1:${address.port}/open-recovery-${randomUUID()}`
     const interruptedRequestId = randomUUID()
     const pauseKey = `__browserConnectorPause_${randomUUID().replaceAll('-', '')}`
@@ -136,6 +222,36 @@ it('reads, clicks and reads back through Codex while DSH is absent', async () =>
     expect((await call('browser_read_page', { installationId, tabId: tab.tabId, url, expectedTab: openedTab })).value.text).toContain('Clicks: 1')
     await message({ type: 'dsh-assistant-cancel' })
     expect((await call('browser_read_page', { installationId, tabId: tab.tabId, url })).value.text).toContain('Clicks: 1')
+    const searchUrl = `http://127.0.0.1:${address.port}/enter-proof`
+    await call('browser_act', { installationId, action: { kind: 'navigate', page, url: searchUrl } })
+    const searchPage = (await call('browser_read_page', { installationId, tabId: tab.tabId, url: searchUrl })).value
+    const searchInput = searchPage.elements.find(element => element.label === 'Search')!
+    const reference = { page: searchPage.page, snapshotId: searchInput.snapshotId, elementId: searchInput.elementId }
+    await call('browser_act', { installationId, action: { kind: 'fill', element: reference, value: 'needle', intent: '填写搜索' } })
+    const pressed = await call('browser_act', { installationId, action: {
+      kind: 'press', element: reference, key: 'Enter', intent: '搜索后读取新文档',
+    } })
+    expect(pressed).toMatchObject({ outcome: 'observed', quiescent: true, value: {
+      input: 'press', businessOutcome: 'unverified', transition: { sameTab: { kind: 'document-replaced' } },
+    } })
+    expect(site.url()).toBe(`${searchUrl}?q=needle`)
+    const replacement = (await call('browser_read_page', { installationId, tabId: tab.tabId, url: `${searchUrl}?q=needle` })).value
+    expect(replacement.page.documentId).not.toBe(searchPage.page.documentId)
+    expect(replacement.text).toContain('Search page')
+    const flowSource = await readFile(join(repo, '.agents/skills/github-issues/scripts/issue-flow.js'), 'utf8')
+    const flowModel = JSON.parse(await readFile(join(repo, '.agents/skills/github-issues/references/application-model.json'), 'utf8'))
+    const flow = new Function(`${flowSource}\nreturn runGitHubIssueFlow`)()
+    const flowResult = await flow({
+      read: (target: TestPage, includeValues: boolean) => call('browser_read_page', { installationId, ...target, includeValues, limit: 128, textLimit: 16000 }),
+      act: (action: unknown) => call('browser_act', { installationId, action }),
+      status: (requestId: string) => call('browser_request_status', { installationId, requestId }),
+    }, flowModel, { repository: `http://127.0.0.1:${address.port}/team/repo`, page: replacement.page,
+      title: 'Callable application flow', body: '  First line\n\nSecond line  ', submit: true })
+    expect(flowResult, JSON.stringify(flowResult)).toMatchObject({ status: 'submitted-readback-required',
+      detailUrl: `http://127.0.0.1:${address.port}/team/repo/issues/1` })
+    expect(createdIssues).toEqual([{ title: 'Callable application flow', body: '  First line\n\nSecond line  ' }])
+    await expect(site.locator('h1').textContent()).resolves.toBe('Callable application flow')
+    await expect(site.locator('article').textContent()).resolves.toBe('  First line\n\nSecond line  ')
     await panel.screenshot({ path: join(repo, '.artifacts/browser-connector-panel.png'), fullPage: true })
   } finally {
     await client.close()

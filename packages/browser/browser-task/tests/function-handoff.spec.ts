@@ -15,10 +15,13 @@ const owner = { kind: 'browser-installation' as const, installationId: 'chrome-a
   pluginId: 'plugin-a', packageId: 'package-a', pluginRunId: 'run-a', handoffId: 'handoff-a' }
 
 async function ready(options: {
+  unbound?: boolean
   acceptance?: boolean
   resource?: 'active' | 'pending' | 'none'
   unknownWrite?: boolean
   delegationStatus?: string
+  scope?: { readonly kind: 'descendants'; readonly root: { readonly tabId: number; readonly windowId: number; readonly browserSessionId: string } }
+  acceptanceUrl?: string
 } = {}) {
   const ctx = new Context(); await ctx.plugin(SessionStore); await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentRegistry); await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime); await ctx.plugin(BrowserTaskService)
@@ -32,11 +35,20 @@ async function ready(options: {
     whenIdle() { return Promise.resolve() },
   } as unknown as Agent
   const unregister = ctx.agents.register(agent)
-  ctx.browserTasks.bindTargetByUser(agent, { expectedRevision: 0, installationId: target.installationId, page })
-  let task = ctx.browserTasks.create(agent, { objective: '交付页面功能', sourceSeq: 0, target, targetRevision: 1,
-    acceptance: [{ id: 'url', kind: 'url-equals', url: page.url }] })
+  if (!options.unbound) ctx.browserTasks.bindTargetByUser(agent, { expectedRevision: 0, installationId: target.installationId, page })
+  const tab = { tabId: page.tabId, windowId: 3, browserSessionId: '123e4567-e89b-42d3-a456-426614174000' }
+  let task = ctx.browserTasks.create(agent, { objective: '交付页面功能', sourceSeq: 0,
+    ...(options.unbound ? { targetRevision: 0, scope: { kind: 'explicit-set' as const, tabs: [tab] } } : { target, targetRevision: 1 }),
+    ...(options.scope === undefined ? {} : { scope: options.scope }), acceptance: [{ id: 'url', kind: 'url-equals', url: options.acceptanceUrl ?? page.url }] })
   task = ctx.browserTasks.recordCapability(agent, task, { installationId: 'chrome-a', state: 'observed', grantEpoch: 7,
     scopes: ['browser:read', 'browser:write'], actions: ['snapshot', 'region_render'], protocol: '1' })
+  if (options.unbound) {
+    const selected = ctx.browserTasks.selectTarget(agent, task, { requestId: 'select-unbound', installationId: target.installationId, tab })
+    task = ctx.browserTasks.settleSelectionOperation(agent, selected.task, { kind: 'result', result: {
+      requestId: 'select-unbound', sessionId: agent.session.id, installationId: target.installationId,
+      outcome: 'observed', delivery: 'sent', value: { page, tab },
+    } }).task
+  }
   task = ctx.browserTasks.recordEvidence(agent, task, { id: 'evidence-a', state: 'current', source: { kind: 'user', sessionSeq: 0 },
     digest: 'sha256:evidence-a', target, grantEpoch: 7 })
   if (options.acceptance !== false) {
@@ -67,6 +79,22 @@ const pageRequest = (overrides: Record<string, unknown> = {}) => ({ owner, resou
 const globalRequest = () => ({ owner, resourceIds: [], scope: { kind: 'global' as const } })
 
 describe('BrowserTask function handoff', () => {
+  it.each([false, true])('hands off an unbound selected page only while its user revision is unchanged: changed=%s', async (changed) => {
+    const h = await ready({ unbound: true })
+    try {
+      expect(h.ctx.browserTasks.readTarget(h.agent)).toEqual({ binding: null, revision: 0 })
+      if (changed) h.ctx.browserTasks.bindTargetByUser(h.agent, { expectedRevision: 0, installationId: target.installationId, page })
+      const handoff = () => h.ctx.browserTasks.handoffFunction(h.agent, h.task, pageRequest({ scope: { kind: 'page', target, targetRevision: 0 } }))
+      if (changed) expect(handoff).toThrow(BrowserTaskError)
+      else {
+        const handed = handoff()
+        expect(handed.resources[0].state).toBe('retained')
+        expect(h.ctx.browserTasks.get(h.agent)).toEqual(handed)
+        expect(h.ctx.browserTasks.readTarget(h.agent)).toEqual({ binding: null, revision: 0 })
+      }
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
   it('keeps ordinary retained upserts forbidden', async () => {
     const h = await ready()
     expect(() => h.ctx.browserTasks.upsertResource(h.agent, h.task, { id: 'panel', state: 'retained', target,
@@ -146,5 +174,34 @@ describe('BrowserTask function handoff', () => {
     h.session.append('browser-task/function-handoff', fact.data)
     expect(() => h.ctx.browserTasks.get(h.agent)).toThrow('browser task replay failed')
     await h.ctx.fiber.dispose()
+  })
+
+  it('hands off the freshly selected child without changing the user root selection', async () => {
+    const browserSessionId = '123e4567-e89b-42d3-a456-426614174000'
+    const rootTab = { tabId: page.tabId, windowId: 3, browserSessionId }
+    const childTab = { tabId: 10, windowId: 3, browserSessionId }
+    const childPage = { tabId: 10, frameId: 0, documentId: 'doc-child', url: 'https://example.test/child' }
+    const childTarget = { installationId: target.installationId, page: childPage }
+    const h = await ready({ resource: 'none', acceptance: false, acceptanceUrl: childPage.url,
+      scope: { kind: 'descendants', root: rootTab } })
+    try {
+      let task = h.ctx.browserTasks.recordAttempt(h.agent, h.task, { attemptId: 'open-child', requestId: 'open-child', actionKind: 'click', grantEpoch: 7, stage: 'planned', write: true, target })
+      task = h.ctx.browserTasks.advanceAttempt(h.agent, task, { ...task.attempts.at(-1)!, stage: 'dispatched' })
+      const receipt = h.ctx.browserTasks.recordReceipt(h.agent, task, { requestId: 'open-child', actionKind: 'click', grantEpoch: 7, target, outcome: 'observed', delivery: 'sent', quiescent: true,
+        transition: { version: 1, source: { tab: rootTab, page }, startedAt: 1, observedAt: 2, sameTab: { kind: 'same-document', page }, candidates: [{ tab: childTab, relation: 'opener', attribution: 'candidate', evidence: 'created-navigation-target' }], truncated: false } })
+      task = h.ctx.browserTasks.advanceAttempt(h.agent, task, { ...task.attempts.at(-1)!, stage: 'settled', outcome: 'observed', quiescent: true, settledBy: receipt })
+      const selected = h.ctx.browserTasks.selectTarget(h.agent, task, { requestId: 'select-child', installationId: target.installationId, tab: childTab })
+      task = h.ctx.browserTasks.settleSelectionOperation(h.agent, selected.task, { kind: 'result', result: { requestId: 'select-child', sessionId: h.agent.session.id, installationId: target.installationId, outcome: 'observed', delivery: 'sent', value: { page: childPage, tab: childTab } } }).task
+      task = h.ctx.browserTasks.upsertResource(h.agent, task, { id: 'panel', state: 'reserved', target: childTarget })
+      task = h.ctx.browserTasks.upsertResource(h.agent, task, { id: 'panel', state: 'active', target: childTarget })
+      task = h.ctx.browserTasks.recordEvidence(h.agent, task, { id: 'child-evidence', state: 'current', source: { kind: 'user', sessionSeq: 0 }, digest: 'sha256:child', target: childTarget, grantEpoch: 7 })
+      const check = h.ctx.browserTasks.recordCheck(h.agent, task, { checkerId: 'child-check', target: childTarget, grantEpoch: 7, evaluations: [{ clauseId: 'url', satisfied: true, evidenceIds: ['child-evidence'] }] })
+      task = h.ctx.browserTasks.evaluate(h.agent, task, [{ clauseId: 'url', satisfied: true, evidenceIds: ['child-evidence'], checkerRef: check }])
+      const handed = h.ctx.browserTasks.handoffFunction(h.agent, task, { owner, resourceIds: ['panel'], scope: { kind: 'page', target: childTarget, targetRevision: 1 } })
+      expect(handed.functionHandoff?.scope).toEqual({ kind: 'page', target: childTarget, targetRevision: 1 })
+      expect(handed.resources).toEqual([expect.objectContaining({ id: 'panel', state: 'retained', target: childTarget })])
+      expect(h.ctx.browserTasks.readTarget(h.agent).binding?.page).toEqual(page)
+      expect(h.ctx.browserTasks.get(h.agent)).toEqual(handed)
+    } finally { await h.ctx.fiber.dispose() }
   })
 })

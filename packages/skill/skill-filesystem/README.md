@@ -37,6 +37,8 @@ A skill is either a directory bundle `<name>/SKILL.md` or a flat file `<name>.md
 
 `disable-model-invocation: true` keeps the skill out of model-facing catalogs and loaders; `user-invocable: false` keeps it out of human-facing commands, and omitted fields default to permitting their surface. The two keys accept YAML booleans plus the case-insensitive `true`/`false`, `yes`/`no`, `on`/`off`, and `1`/`0` forms; a rejected spelling or a non-boolean value drops the whole skill with a warning rather than silently permitting a surface.
 
+Only a directory bundle exposes attachments. Its model-facing consumer may request one canonical relative path below the bundle; absolute, parent, empty-segment, backslash, and drive aliases are rejected. Resolution follows links only to verify canonical containment, so a link that escapes the bundle is rejected. Attachments must be complete UTF-8 text no larger than 64 KiB; this provider never truncates them.
+
 Catalog entries and loaded skills expose the resolved instruction-file path, so symlinked directories and flat files can open as regular-file previews. Reload locators and resource bases retain the discovered paths, including symlinks.
 
 The catalog and the body have separate lifecycles: discovery parses frontmatter into the catalog entry, and every load re-reads the current file, so editing a skill body needs no versioning or cache invalidation.
@@ -82,7 +84,7 @@ Existing roots are watched, so adding, renaming, or deleting a skill (or editing
 
 ### Observable success and failures
 
-A valid skill under any scanned root appears in the session catalog sorted by name, and loading it returns the current file body. A file without valid frontmatter, an invalid name, or an invalid invocation value is skipped with a warning, so the model catalog receives no per-skill diagnostic and cannot distinguish an absent skill from an invalid one. Unexpected discovery or read failures leave the catalog observation incomplete rather than replacing the last-good view with a misleading deletion.
+A valid skill under any scanned root appears in the session catalog sorted by name, and loading it returns the current file body. Directory bundles can also return a permitted current attachment through the filesystem service. A file without valid frontmatter, an invalid name, or an invalid invocation value is skipped with a warning, so the model catalog receives no per-skill diagnostic and cannot distinguish an absent skill from an invalid one. Missing, non-text, oversized, flat-skill, or escaping attachments fail without falling back to a same-name source. Unexpected discovery or read failures leave the catalog observation incomplete rather than replacing the last-good view with a misleading deletion.
 
 -----
 

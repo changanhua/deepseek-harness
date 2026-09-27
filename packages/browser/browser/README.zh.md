@@ -31,7 +31,7 @@ kind: "package-reference"
 
 声明 `targetFreeOpen` 的执行器接受显式 HTTP(S) URL 且不带 `page` 的直接 `tab_open`。它创建后台标签，在观察文档前返回 `{ opened: true, tab: { tabId, windowId, browserSessionId } }`。首次读取将完整引用作为 `snapshot.expectedTab` 传入；执行器在读取前拒绝变化的浏览器会话或窗口。带 `page` 的既有调用保留页面检查。任务准入仍然生效：这项传输能力本身不会授权未绑定的 BrowserTask 或动态 Cordis 函数接纳新标签。
 
-交互式 `snapshot` 操作接受可选的 `query`、`offset`、`limit` 和 `textLimit` 字段，用于语义控件搜索、分页和正文预算。它还接受 `tree`、`treeCursor` 和 `treeLimit`：树读取会从一份缓存的完整 DOM 层次分页返回稳定节点和父节点索引，元素引用仍是准确的快照局部节点。可信任务消费方还可以附加最多 32 个有界 `presentationQueries`，把预期文本绑定到 `mountId`；只有扩展隔离页面运行时仍拥有该挂载且实际面板仍连接时，才报告成功。模型可见的快照 schema 不暴露这项内部证据查询。扩展提供方验证全部边界；工具负责模型可见的默认值与操作反馈。
+交互式 `snapshot` 操作接受可选的 `query`、`offset`、`limit` 和 `textLimit` 字段，用于语义控件搜索、分页和正文预算。它还接受 `tree`、`treeCursor` 和 `treeLimit`：树读取会从一份缓存的完整 DOM 层次分页返回稳定节点和父节点索引，元素引用仍是准确的快照局部节点。`includeValues` 是显式且默认关闭的请求，用来读取当前非敏感表单值；password、file、hidden 与敏感 autocomplete 字段仍会脱敏。可信任务消费方还可以附加最多 32 个有界 `presentationQueries`，把预期文本绑定到 `mountId`；只有扩展隔离页面运行时仍拥有该挂载且实际面板仍连接时，才报告成功。模型可见的快照 schema 不暴露这项内部证据查询。扩展提供方验证全部边界；工具负责模型可见的默认值与操作反馈。
 
 条目操作使用明确的页面身份和内容区域。`entry_inspect` 是只读操作：它在一个区域内计算以 `:scope` 开头的条目选择器，报告匹配数、有效数、标题或链接缺失数、重复链接数和有界样本，而且不修改页面。`entry_mount` 要求相同所有者与绑定已有成功预检，且区域、条目节点与字段仍然有效；没有证据返回 `inspect_required`，证据变化返回 `stale_binding`。无效替换不会移除仍有效的挂载。动态 Cordis Plugin 应使用运行器管理的 `harness.browser` facade，使 Session 身份、稳定挂载标识和生命周期清理不依赖生成代码。
 
@@ -96,6 +96,7 @@ kind: "package-reference"
 - 本包仅定义抽象；它不提供浏览器执行器、持久化、模型工具或面向用户的路由。
 - `unknown` outcome 保持未解决，直至负责的消费方完成协调；该定义绝不将其转换为自动重试。
 - 会话持久的任务验收、证据、回执和页面资源处置属于 [`@changanhua/dsh-browser-task`](../browser-task/README.zh.md)，而非此服务定义。
+- transition observation 具有边界：v1 记录源 `TabRef` 和 `PageRef`、同标签页重新观察，以及至多八个候选子标签页。opener 关联不证明本次输入的因果关系；并发或迟到候选绝不自动接入。中止、截止时间或授权撤销会立即清理监听；250 ms 窗口只从动作完成后开始计算。
 
 <a id="dev-note"></a>
 ### 开发备注

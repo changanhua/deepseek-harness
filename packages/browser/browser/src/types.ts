@@ -16,6 +16,29 @@ export interface BrowserTabReference {
   readonly browserSessionId: string
 }
 
+/** Bounded browser observations after an input; neither causation nor business success. */
+export interface BrowserTransitionObservation {
+  readonly version: 1
+  readonly source: { readonly tab: BrowserTabReference; readonly page: BrowserPage }
+  readonly startedAt: number
+  readonly observedAt: number
+  readonly sameTab: {
+    readonly kind: 'unchanged' | 'same-document' | 'document-replaced' | 'closed' | 'unavailable'
+    /** Freshly probed, authorized page. Absence never permits reusing the old document. */
+    readonly page?: BrowserPage
+  }
+  readonly candidates: readonly {
+    readonly tab: BrowserTabReference
+    readonly url?: string
+    readonly relation: 'opener'
+    /** Even a sole candidate may originate from concurrent human or page input. */
+    readonly attribution: 'candidate'
+    readonly evidence: 'created-navigation-target' | 'opener-tab'
+  }[]
+  /** True when the candidate bound was exceeded; a false value does not cover late events. */
+  readonly truncated: boolean
+}
+
 /** A snapshot-local element reference, never a selector to be rematched later. */
 export interface BrowserElementReference {
   readonly page: BrowserPage
@@ -54,7 +77,7 @@ export interface BrowserPresentationQuery {
 /** Current consumers: interactive tools, explicit page intake, and finite monitor checks. */
 export type BrowserAction =
   | { readonly kind: 'tabs' }
-  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly expectedTab?: BrowserTabReference; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean; readonly presentationQueries?: readonly BrowserPresentationQuery[] }
+  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly expectedTab?: BrowserTabReference; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; /** Read non-sensitive form values; omitted by default. */ readonly includeValues?: boolean; readonly structure?: boolean; readonly presentationQueries?: readonly BrowserPresentationQuery[] }
   | { readonly kind: 'page_map'; readonly page: BrowserPage }
   | { readonly kind: 'entry_inspect'; readonly page: BrowserPage; readonly regionSelector: string; readonly selector: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly sampleLimit?: number }
   | { readonly kind: 'entry_mount'; readonly page: BrowserPage; readonly mountId: string; readonly regionSelector?: string; readonly selector: string; readonly label: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly collected?: readonly string[] }

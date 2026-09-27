@@ -205,7 +205,15 @@ export const createAssistantJournal = ({ storage, execute, inspect = async () =>
         ...(opensTab(request) ? { operation: 'tab_open' } : {}),
         ...(request.target === undefined ? {} : { target: clone(request.target) }), state: 'active', released: false }
       try { await persist([...retained, entry]) }
-      catch (cause) { if (cause?.code === 'journal_capacity') return denied('journal_capacity'); throw cause }
+      catch (cause) {
+        if (cause?.code !== 'journal_capacity') throw cause
+        const expiries = retained.filter(row => row.mutates && row.released)
+          .map(row => row.identity.deadline + retentionMs)
+        // Expiry only invites a fresh capacity check; other callers can consume the freed space.
+        const rejected = denied('journal_capacity')
+        rejected.result.value = { admission: { executed: false, recheckAt: expiries.length ? Math.min(...expiries) : null } }
+        return rejected
+      }
       const deferred = Promise.withResolvers()
       const work = { ...deferred, controller: new AbortController(), timer: undefined }
       active.set(request.requestId, work)

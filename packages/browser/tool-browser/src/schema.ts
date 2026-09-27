@@ -7,6 +7,20 @@ const page = { type: 'object', additionalProperties: false, properties: {
 const element = { type: 'object', additionalProperties: false, properties: {
   page: { ...page, required: true }, snapshotId: { type: 'string', required: true }, elementId: { type: 'string', required: true },
 } } as const satisfies ValueSchemaSpec
+export const tabReferenceSchema = { type: 'object', additionalProperties: false, properties: {
+  tabId: { type: 'integer', required: true }, windowId: { type: 'integer', required: true },
+  browserSessionId: { type: 'string', required: true },
+} } as const satisfies ValueSchemaSpec
+export const taskScopeSchema = { oneOf: [
+  { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', const: 'single-tab', required: true } } },
+  { type: 'object', additionalProperties: false, properties: {
+    kind: { type: 'string', const: 'descendants', required: true }, root: tabReferenceSchema,
+  } },
+  { type: 'object', additionalProperties: false, properties: {
+    kind: { type: 'string', const: 'explicit-set', required: true },
+    tabs: { type: 'array', required: true, items: tabReferenceSchema },
+  } },
+] } as const satisfies ValueSchemaSpec
 const intent = { type: 'string', required: true, description: 'User-requested purpose. This does not grant permission or change approval policy.' } as const
 const elementProperties = { element: { ...element, required: true }, intent } as const
 

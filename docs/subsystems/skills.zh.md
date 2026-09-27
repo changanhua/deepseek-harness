@@ -49,6 +49,12 @@ interface SkillProvider {
    * @returns the full skill body, or `undefined` if it is no longer loadable.
    */
   readonly get: (candidate: SkillCandidate, options: SkillLookupOptions) => Promise<SkillDefinition | undefined>
+  /**
+   * Optionally load one attachment belonging to a previously listed skill.
+   * The registry calls this only on the scope-winning provider; resource-base
+   * metadata is descriptive and never grants registry filesystem access.
+   */
+  readonly getResource?: (candidate: SkillCandidate, resourcePath: string, options: SkillLookupOptions) => Promise<SkillResource | undefined>
 }
 ```
 
@@ -176,6 +182,26 @@ interface SkillDefinition extends SkillSummary {
 }
 ```
 
+附件由所选 Skill 的 provider 加载。`resourceBase` 仍是描述性信息，不授权注册表或消费者读取任意文件。资源结果独立于主文标明所属 Skill、provider 和相对路径。
+
+```ts type-equiv
+/** One complete provider-owned attachment from the selected skill bundle. */
+interface SkillResource {
+  /** The provider-confirmed relative path within the selected skill bundle. */
+  readonly resourcePath: string
+  /** Complete UTF-8 attachment text. Providers must reject rather than truncate. */
+  readonly content: string
+}
+```
+
+```ts type-equiv
+/** Complete attachment with the selected skill and provider identity attached by the registry. */
+interface SkillResourceDefinition extends SkillResource {
+  readonly name: string
+  readonly provider: string
+}
+```
+
 运行时 skill 输入可以省略调用控制和提供方标签。注册表会一次性补全这两项默认值，随后使用与提供方相同的完整定义形状和先到先得收集顺序。返回的 disposer 移除该贡献并使发现缓存失效。
 
 ```ts type-equiv
@@ -217,7 +243,17 @@ interface SkillViewOptions extends SkillLookupOptions {
 }
 ```
 
-注册表只拥有其发现缓存上限。本地提供方拥有文件系统根目录（`dshHome`、`agentsHome`、`customSkillDirs`，以及可选的 `bundledSkillDir`/`DSH_BUNDLED_SKILL_DIR`），以及 watcher 启用、轮询、稳定性、符号链接和项目容量控制。消费方拥有其目录描述上限。确切的默认值和校验规则见自动生成的[插件配置目录](../config-catalog.zh.md)。
+附件读取在异步加载中保持策略、provider 注册与选定作用域条目的绑定。模型消费者传入 `invocation: 'model'`；胜出项变化、provider 释放或调用取消时，旧附件不能作为当前内容返回。
+
+```ts type-equiv
+/** Resource lookup options with an optional model-facing invocation boundary. */
+interface SkillResourceViewOptions extends SkillViewOptions {
+  /** Require the selected candidate and loaded definition to permit model invocation. */
+  readonly invocation?: 'model' | undefined
+}
+```
+
+注册表拥有发现缓存与完整附件包装上限。本地提供方拥有文件系统根目录（`dshHome`、`agentsHome`、`customSkillDirs`，以及可选的 `bundledSkillDir`/`DSH_BUNDLED_SKILL_DIR`）、附件包含关系与文本上限，以及 watcher 启用、轮询、稳定性、符号链接和项目容量控制。消费方拥有其目录描述上限。确切的默认值和校验规则见自动生成的[插件配置目录](../config-catalog.zh.md)。
 
 ```ts type-equiv
 /** Skill registry configuration. */
@@ -234,6 +270,8 @@ interface Config {
 在后续每个模型步骤之前，消费方都会应用精确的工具可见性，并对完整快照中 `<available_skills>` 标签之间精确渲染的条目计算 digest。它以该插件所发布、最新一条可识别且仍可见的目录消息中的相同条目作为比较基线。digest 发生变化时，会通过 `agent.inject()` 追加一条持久的完整目录替换；删除所有 skill 时会追加一条显式的空替换。不完整快照会保留上一份可用模型视图。如果压缩（compaction）隐藏了所有历史目录消息，下一份完整快照会重新建立当前目录；如果视图为空且从未发布目录，则不发送任何内容。这些目录消息属于会话历史，而非 World State。
 
 面向模型的 `skill({ name })` 工具校验 kebab-case 名称，在与调用策略无关的目录中查找摘要，并在加载前通过 `isModelInvocable` 拒绝无权访问的 skill；随后它根据调用方 agent 的 cwd 重新读取完整定义，并在返回内容前再次检查策略。该工具将无法解析的 skill 报告为未知或已不可用，并返回包含 `<skill_content name="...">`、`<skill_resources>` 和 `<skill_instructions>` 的工具结果。`resourceBase` 仅按需解析显式引用的脚本、参考资料和资产；加载结果不枚举 skill 目录。因此，仅修改正文会改变后续工具调用，而不会生成目录消息或改写先前工具结果。
+
+`skill({ name, resource })` 按精确相对路径选择一个附件。它与主文使用相同的模型调用边界和当前作用域，委托胜出 provider 读取，返回独立的 `<skill_resource>` 块。工具不枚举资源，也不执行脚本。文件系统 provider 接受目录包中完整、有大小上限的 UTF-8 文本；其包含关系和拒绝约定见 [skill-filesystem](../../packages/skill/skill-filesystem/README.zh.md)。
 
 ## 浏览器 Session 目录
 
@@ -335,6 +373,17 @@ async managementSnapshot(options: SkillViewOptions = {}): Promise<SkillManagemen
  * @returns the full skill, including body content, or `undefined`.
  */
 async get(name: string, options: SkillViewOptions = {}): Promise<SkillDefinition | undefined>
+
+/**
+ * Load one attachment through the provider that won this name in the
+ * caller's current scope. The registry never derives a host path from
+ * `resourceBase`; that capability stays with the provider.
+ * @param name - kebab-case name resolved in the caller's scope.
+ * @param resourcePath - exact provider-owned relative attachment path.
+ * @param options - lookup scope, cwd, cancellation, and optional model invocation boundary.
+ * @returns complete attachment from the still-current provider, or undefined if it cannot be loaded.
+ */
+async getResource(name: string, resourcePath: string, options: SkillResourceViewOptions = {}): Promise<SkillResourceDefinition | undefined>
 ```
 
 Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)

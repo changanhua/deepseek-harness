@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { WebSocketServer, WebSocket } from 'ws'
 import { z } from 'zod'
 import { configSchema, rpcSchema } from './schema.ts'
+import { extensionRuntimeSchema, runtimeIdentity } from './runtime.ts'
 import type { ConnectorConfig, Grant, Invocation, Receipt, RpcInput } from './types.ts'
 
 const identityKeys = ['protocolVersion', 'grantEpoch', 'requestId', 'sessionId', 'installationId', 'deadline', 'fingerprint'] as const
@@ -48,10 +49,15 @@ const record = (value: unknown): Record<string, unknown> | undefined => value !=
 
 /** Standalone loopback relay. It imports no Harness runtime and never calls a model. */
 export async function startBrowserRelay(input: ConnectorConfig) {
+  const runtime = runtimeIdentity(import.meta.url)
   // Direct server callers receive the bound port; persisted client configuration requires a fixed port.
   const config = configSchema.extend({ port: z.number().int().min(0).max(65535) }).parse(input)
   const grants = new Map<string, Grant>()
-  const peers = new Map<string, { socket: WebSocket; capabilities?: z.infer<typeof capabilitiesSchema> }>()
+  const peers = new Map<string, {
+    socket: WebSocket
+    capabilities?: z.infer<typeof capabilitiesSchema>
+    runtime?: z.infer<typeof extensionRuntimeSchema>
+  }>()
   const calls = new Map<string, {
     request: Invocation
     response: Promise<Receipt>
@@ -88,9 +94,9 @@ export async function startBrowserRelay(input: ConnectorConfig) {
   const unknown = (request: Invocation, reason: string): Receipt => ({ outcome: 'unknown', quiescent: false, requestId: request.requestId,
     sessionId: request.sessionId, installationId: request.installationId, reason })
   const dispatch = async (rpc: RpcInput, signal: AbortSignal): Promise<unknown> => {
-    if (rpc.method === 'instances') return { instances: [...grants.values()].map((grant) => {
+    if (rpc.method === 'instances') return { relay: runtime, instances: [...grants.values()].map((grant) => {
       const peer = peers.get(grant.installationId)
-      return { installationId: grant.installationId, online: peer !== undefined, scopes: grant.scopes,
+      return { installationId: grant.installationId, online: peer !== undefined, scopes: grant.scopes, runtime: peer?.runtime ?? null,
         capabilities: peer?.capabilities
           ? { targetFreeOpen: peer.capabilities.targetFreeOpen === true, actionKinds: peer.capabilities.actionKinds }
           : { targetFreeOpen: false, actionKinds: [] } }
@@ -142,7 +148,6 @@ export async function startBrowserRelay(input: ConnectorConfig) {
     if (!action) throw fail('action_required')
     if (action.kind === 'snapshot' && !rpc.expectedUrl) throw fail('expected_url_required')
     if (action.kind === 'tab_open' && !rpc.requestId) throw fail('request_id_required')
-    if (rpc.requestId && action.kind !== 'tab_open') throw fail('request_id_not_supported')
     if (action.kind === 'tab_open' && (peer.capabilities?.targetFreeOpen !== true || !peer.capabilities.actionKinds.includes('tab_open'))) throw fail('capability_unavailable', 409)
     if (peer.capabilities && !peer.capabilities.actionKinds.includes(action.kind)) throw fail('capability_unavailable', 409)
     for (const [key, call] of calls) if (call.result && call.expiresAt < Date.now()) forget(key)
@@ -209,7 +214,7 @@ export async function startBrowserRelay(input: ConnectorConfig) {
           res.writeHead(204); res.end(); return
         }
       }
-      if (path === '/health' && req.method === 'GET' && authorized(req)) { json(res, 200, { service: 'browser-extension-connector', protocolVersion: 1 }); return }
+      if (path === '/health' && req.method === 'GET' && authorized(req)) { json(res, 200, { service: 'browser-extension-connector', protocolVersion: 1, runtime }); return }
       if (req.method !== 'POST') throw fail('method_not_allowed', 405)
       if (req.headers['content-type']?.split(';')[0]?.trim() !== 'application/json') throw fail('json_required', 415)
       if (path === '/browser-connector/connect') {
@@ -267,9 +272,12 @@ export async function startBrowserRelay(input: ConnectorConfig) {
           || typeof frame.token !== 'string' || !equal(frame.token, tokenFor(id))) { ws.close(1008); return }
         const parsedCapabilities = frame.capabilities === undefined ? undefined : capabilitiesSchema.safeParse(frame.capabilities)
         if (parsedCapabilities && !parsedCapabilities.success) { ws.close(1008); return }
+        const parsedRuntime = frame.runtime === undefined ? undefined : extensionRuntimeSchema.safeParse(frame.runtime)
+        if (parsedRuntime && !parsedRuntime.success) { ws.close(1008); return }
         const old = peers.get(id)
         installationId = id
-        peers.set(id, { socket: ws, ...(parsedCapabilities ? { capabilities: parsedCapabilities.data } : {}) })
+        peers.set(id, { socket: ws, ...(parsedCapabilities ? { capabilities: parsedCapabilities.data } : {}),
+          ...(parsedRuntime ? { runtime: parsedRuntime.data } : {}) })
         clearTimeout(handshake)
         if (old) {
           for (const call of calls.values()) if (!call.result && call.request.installationId === id) call.finish(unknown(call.request, 'connection_replaced'))

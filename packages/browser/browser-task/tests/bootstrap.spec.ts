@@ -32,6 +32,26 @@ async function harness() {
 }
 
 describe('target-free BrowserTask bootstrap', () => {
+  it('admits read-only tab discovery on a new installation without changing the unselected task', async () => {
+    const h = await targetFreeTask()
+    try {
+      const before = h.ctx.browserTasks.get(h.agent)
+      const operation = { requestId: 'discover-new', sessionId: h.agent.session.id,
+        installationId: 'new-installation', action: { kind: 'tabs' as const } }
+      expect(await h.ctx.agents.withInitiator(h.agent, () => h.ctx.waterfall('browser/operation-intent',
+        { operation, phase: 'execute', logicalMutates: false }, () => ({ kind: 'allow' as const }))))
+        .toEqual({ kind: 'allow' })
+      expect(await h.ctx.agents.withInitiator(h.agent, () => h.ctx.waterfall('browser/dispatch-intent',
+        { operation, phase: 'execute', logicalMutates: false, transportMutates: false,
+          transportRequestId: operation.requestId, grantEpoch: 2 }, () => ({ kind: 'allow' as const }))))
+        .toEqual({ kind: 'allow' })
+      expect(h.ctx.browserTasks.get(h.agent)).toEqual(before)
+      expect(await h.ctx.agents.withInitiator(h.agent, () => h.ctx.waterfall('browser/operation-intent',
+        { operation: { ...operation, sessionId: SessionId('other-owner') }, phase: 'execute', logicalMutates: false },
+        () => ({ kind: 'allow' as const })))).toMatchObject({ kind: 'deny', result: { reason: 'browser_task_owner_mismatch' } })
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
   it('requires the explicit null-selection revision for a target-free task', async () => {
     const { ctx, agent, source } = await harness()
     expect(() => ctx.browserTasks.create(agent, {
@@ -41,10 +61,11 @@ describe('target-free BrowserTask bootstrap', () => {
     await ctx.fiber.dispose()
   })
 
-  async function targetFreeTask(maxActions = 40) {
+  async function targetFreeTask(maxActions = 40, descendants = false) {
     const h = await harness()
     let task = h.ctx.browserTasks.create(h.agent, { objective: '打开新页面', sourceSeq: h.source.seq,
-      targetRevision: 0, maxActions, acceptance: [{ id: 'page', kind: 'url-equals', url: page.url }] })
+      targetRevision: 0, maxActions, ...(descendants ? { scope: { kind: 'descendants' as const } } : {}),
+      acceptance: [{ id: 'page', kind: 'url-equals', url: page.url }] })
     task = h.ctx.browserTasks.recordCapability(h.agent, task, { installationId: 'extension', state: 'observed',
       grantEpoch: 1, scopes: ['browser:read', 'browser:write'], actions: ['tab_open', 'snapshot'], protocol: '1', targetFreeOpen: true })
     return { ...h, task }
@@ -100,8 +121,8 @@ describe('target-free BrowserTask bootstrap', () => {
     await h.ctx.fiber.dispose()
   })
 
-  it('can reread after an interrupted snapshot and adopts its exact tab with one evidence item', async () => {
-    const h = await targetFreeTask()
+  it.each([false, true])('can reread after an interrupted snapshot and adopts its exact tab (descendants=%s)', async (descendants) => {
+    const h = await targetFreeTask(40, descendants)
     let task = h.ctx.browserTasks.recordAttempt(h.agent, h.task, { attemptId: 'open', requestId: 'open',
       actionKind: 'tab_open', grantEpoch: 1, stage: 'planned', write: true,
       bootstrap: { kind: 'target-free-open', installationId: 'extension', targetRevision: 0, url: page.url } })
@@ -120,7 +141,9 @@ describe('target-free BrowserTask bootstrap', () => {
       requestId: 'snapshot', sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed', delivery: 'sent',
       value: { page, text: 'opened' } } })
     expect(settled).toMatchObject({ evidenceRecorded: true, task: { target: { installationId: 'extension', page } } })
+    expect(settled.task).toHaveProperty('targetReceipt', settled.receipt)
     expect(settled.task).not.toHaveProperty('pendingTarget')
+    if (descendants) expect(settled.task.scope).toEqual({ kind: 'descendants', root: opened, members: [] })
     expect(settled.task.evidence).toHaveLength(1)
     expect(settled.task.budget.actionsUsed).toBe(0)
     const duplicate = h.ctx.browserTasks.settleBootstrapOperation(h.agent, settled.task, { kind: 'result', result: {

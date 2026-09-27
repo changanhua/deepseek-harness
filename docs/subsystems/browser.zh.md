@@ -28,6 +28,89 @@ interface BrowserPage {
 ```
 
 ```ts type-equiv
+/** Bounded browser observations after an input; neither causation nor business success. */
+interface BrowserTransitionObservation {
+  readonly version: 1
+  readonly source: { readonly tab: BrowserTabReference; readonly page: BrowserPage }
+  readonly startedAt: number
+  readonly observedAt: number
+  readonly sameTab: {
+    readonly kind: 'unchanged' | 'same-document' | 'document-replaced' | 'closed' | 'unavailable'
+    /** Freshly probed, authorized page. Absence never permits reusing the old document. */
+    readonly page?: BrowserPage
+  }
+  readonly candidates: readonly {
+    readonly tab: BrowserTabReference
+    readonly url?: string
+    readonly relation: 'opener'
+    /** Even a sole candidate may originate from concurrent human or page input. */
+    readonly attribution: 'candidate'
+    readonly evidence: 'created-navigation-target' | 'opener-tab'
+  }[]
+  /** True when the candidate bound was exceeded; a false value does not cover late events. */
+  readonly truncated: boolean
+}
+```
+
+```ts type-equiv
+/** Opener relationships observed during one action, including an incomplete observation window. */
+interface BrowserTaskChildObservation {
+  readonly sourceTab: BrowserTabReference
+  readonly observedAt: number
+  readonly candidates: BrowserTransitionObservation['candidates']
+  readonly truncated: boolean
+}
+```
+
+BrowserTask 页面回执保留最多八个 opener 候选，含观察包装的完整内容不超过 4 KiB。观察不会改变任务目标或结算 unknown 动作。显式选择需要单独判断任务范围，再按完整标签引用获取新快照。
+
+BrowserTask 的范围决定可显式选择哪些标签。选择在原任务中占一次动作预算，只有当前权限下的完整标签快照及可回放的来源证明才能更换目标。旧页面证据变为 stale，资源保留原页面归属。终态只允许回读最终精确页；范围不会扩大 Cordis 页面函数权限。
+
+```ts type-equiv
+/** Requested task-wide tab admission policy. */
+type BrowserTaskScopeRequest =
+  | { readonly kind: 'single-tab' }
+  | { readonly kind: 'descendants'; readonly root?: BrowserTabReference }
+  | { readonly kind: 'explicit-set'; readonly tabs: readonly BrowserTabReference[] }
+```
+
+```ts type-equiv
+/** Durable, canonical task-wide tab admission policy. */
+type BrowserTaskScope =
+  | { readonly kind: 'single-tab' }
+  | { readonly kind: 'descendants'; readonly root?: BrowserTabReference; readonly members: readonly { readonly tab: BrowserTabReference; readonly admittedBy: Extract<BrowserTaskSourceRef, { readonly kind: 'browser-task-receipt' }> }[] }
+  | { readonly kind: 'explicit-set'; readonly tabs: readonly BrowserTabReference[] }
+```
+
+```ts type-equiv
+type BrowserScopeSelectionEligibility =
+  | { readonly kind: 'explicit-set' }
+  | { readonly kind: 'descendant-root' }
+  | { readonly kind: 'admitted-descendant'; readonly admittedBy: Extract<BrowserTaskSourceRef, { readonly kind: 'browser-task-receipt' }> }
+  | { readonly kind: 'descendant-candidate'; readonly candidateReceipt: Extract<BrowserTaskSourceRef, { readonly kind: 'browser-task-receipt' }> }
+```
+
+```ts type-equiv
+/** Authority for the one fresh snapshot that may change task target within its scope. */
+interface BrowserScopeSelectionAuthority {
+  readonly kind: 'scope-tab-snapshot'
+  readonly installationId: string
+  readonly targetRevision: number
+  readonly fromTarget?: BrowserTargetBinding
+  readonly tab: BrowserTabReference
+  readonly eligibility: BrowserScopeSelectionEligibility
+}
+```
+
+```ts type-equiv
+type BrowserSelectionSettlement = BrowserBootstrapSettlement
+```
+
+```ts type-equiv
+interface BrowserSelectionSettlementResult extends BrowserBootstrapSettlementResult {}
+```
+
+```ts type-equiv
 /** A snapshot-local element reference, never a selector to be rematched later. */
 interface BrowserElementReference {
   readonly page: BrowserPage
@@ -74,7 +157,7 @@ interface BrowserPresentationQuery {
 /** Current consumers: interactive tools, explicit page intake, and finite monitor checks. */
 type BrowserAction =
   | { readonly kind: 'tabs' }
-  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly expectedTab?: BrowserTabReference; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; readonly structure?: boolean; readonly presentationQueries?: readonly BrowserPresentationQuery[] }
+  | { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: number; readonly expectedTab?: BrowserTabReference; readonly documentId?: string; readonly query?: string; readonly offset?: number; readonly limit?: number; readonly textLimit?: number; readonly tree?: boolean; readonly treeCursor?: string; readonly treeLimit?: number; readonly includeOptions?: boolean; /** Read non-sensitive form values; omitted by default. */ readonly includeValues?: boolean; readonly structure?: boolean; readonly presentationQueries?: readonly BrowserPresentationQuery[] }
   | { readonly kind: 'page_map'; readonly page: BrowserPage }
   | { readonly kind: 'entry_inspect'; readonly page: BrowserPage; readonly regionSelector: string; readonly selector: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly sampleLimit?: number }
   | { readonly kind: 'entry_mount'; readonly page: BrowserPage; readonly mountId: string; readonly regionSelector?: string; readonly selector: string; readonly label: string; readonly titleSelector?: string; readonly linkSelector?: string; readonly collected?: readonly string[] }
@@ -476,6 +559,27 @@ latestUserSource(agent: Agent): number | undefined
 create(agent: Agent, request: CreateBrowserTaskRequest): BrowserTaskSnapshot
 
 /**
+ * Plan the one exact snapshot that can select an already admitted task-scope tab.
+ * This consumes one action only for a new request identity and never executes Browser I/O.
+ * @param agent - Live owner of the Session task.
+ * @param ref - Current compare-and-set task revision.
+ * @param request - Original request identity, installation, and complete desired tab reference.
+ * @returns The planned task and its fixed snapshot action.
+ * @throws BrowserTaskError on scope, authority, budget, or request-identity conflicts.
+ */
+selectTarget(agent: Agent, ref: BrowserTaskRef, request: { readonly requestId: string; readonly installationId: string; readonly tab: BrowserTabReference }): { task: BrowserTaskSnapshot; action: { readonly kind: 'snapshot'; readonly tabId: number; readonly frameId: 0; readonly expectedTab: BrowserTabReference } }
+
+/**
+ * Settle or reconcile one planned scoped selection and atomically adopt only its verified snapshot.
+ * @param agent - Live owner of the original selection request.
+ * @param ref - Current compare-and-set task revision.
+ * @param settlement - Original result or a terminal quiescent recovery observation.
+ * @returns The retained receipt, task state, and whether this receipt supplied current page evidence.
+ * @throws BrowserTaskError when the result does not belong to the original request owner.
+ */
+settleSelectionOperation(agent: Agent, ref: BrowserTaskRef, settlement: BrowserSelectionSettlement): BrowserSelectionSettlementResult
+
+/**
  * Settle one target-free open or its first exact snapshot without spending another action.
  * @param agent - Exact live Agent whose Session owns the bootstrap attempt.
  * @param ref - Current task compare-and-set reference.
@@ -491,7 +595,17 @@ settleBootstrapOperation(agent: Agent, ref: BrowserTaskRef, settlement: BrowserB
  * @param receipt - Outcome bound to an existing attempt and exact authority.
  * @returns The durable receipt source reference.
  */
-recordReceipt( agent: Agent, task: BrowserTaskRef, receipt: Omit<BrowserTaskReceipt, 'kind' | 'version' | 'taskId'>, ): Extract<BrowserTaskSourceRef, { kind: 'browser-task-receipt' }>
+recordReceipt( agent: Agent, task: BrowserTaskRef, receipt: Omit<BrowserTaskReceipt, 'kind' | 'version' | 'taskId' | 'transition' | 'children'> & { readonly transition?: BrowserTransitionObservation }, ): Extract<BrowserTaskSourceRef, { kind: 'browser-task-receipt' }>
+
+/**
+ * Adopt the fresh same-tab page from one settled, canonical execution receipt.
+ * @param agent - Live Agent that owns the task and its receipt.
+ * @param ref - Current compare-and-set task revision.
+ * @param input - Receipt already recorded and settled by this task.
+ * @returns The task with stale prior evidence and unchanged action budget.
+ * @throws BrowserTaskError on authority drift, unresolved writes, or an unmatched receipt.
+ */
+advancePage(agent: Agent, ref: BrowserTaskRef, input: { readonly receipt: Extract<BrowserTaskSourceRef, { readonly kind: 'browser-task-receipt' }> }): BrowserTaskSnapshot
 
 /**
  * Append one deterministic acceptance check over current evidence.

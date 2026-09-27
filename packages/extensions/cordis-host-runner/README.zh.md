@@ -71,6 +71,8 @@ host 半可以使用受管 `harness.browser` facade 映射目标页面、把高�
 
 runner 基于两项职责划分。**注册表与沙箱是同一个服务。** `DynamicCordisRunnerService` 拥有定义注册表、vm 沙箱、host 半 fiber 生命周期与 invoke handler 表，因此一个定义的整个生命周期只有一个 owner。**版本是不可变的包。** 插件持有 `define` 之后永不变化的包；`currentPackageId` 与 `nextPackageId` 指向运行中与目标版本，`mode: "run"` 与 `"update"` 编码目标是否等于当前版本。浏览器往返之所以存在，是因为浏览器半只能由页面执行：服务 emit 请求并挂起，由页面的结论结算，调用方的 `AbortSignal` 是唯一的另一条出路。
 
+每条 Browser 执行路径都保留 Provider 服务作为方法接收者，包括创建它的 Agent 销毁后，由安装拥有的资源清理。
+
 ### 源码地图
 
 | 文件 | 职责 |

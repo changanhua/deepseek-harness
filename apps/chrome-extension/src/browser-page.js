@@ -2,6 +2,7 @@
   if (globalThis.__dshBrowserAssistant) return
 
   const MAX_TEXT = 50_000
+  const MAX_VALUE_TEXT = 16_384
   const MAX_ELEMENTS = 128
   const MAX_SNAPSHOTS = 8
   const MAX_RECORDS = 128
@@ -123,10 +124,10 @@
     expanded: node.tagName === 'SUMMARY' && node.parentElement?.tagName === 'DETAILS' ? node.parentElement.open
       : ['true', 'false'].includes(node.getAttribute('aria-expanded')) ? node.getAttribute('aria-expanded') === 'true' : null,
   }) : null
-  const visibleBodyText = (limit = MAX_TEXT) => {
+  const visibleBodyText = (limit = MAX_TEXT, roots = [document.body]) => {
     const pieces = []
     let visited = 0, length = 0
-    for (const node of walkOpen(document.body)) {
+    for (const root of roots) for (const node of walkOpen(root)) {
       if (++visited >= 10000 || length >= limit) break
       if (node.nodeType !== Node.TEXT_NODE) continue
       const parent = node.parentElement
@@ -135,6 +136,24 @@
       if (value) { pieces.push(value); length += value.length + 1 }
     }
     return { text: pieces.join(' ').slice(0, limit), textTruncated: length >= limit || visited >= 10000 }
+  }
+
+  // Values are opt-in evidence, never search material or normalized page text.
+  const controlValue = (node, budget) => {
+    if (!['INPUT', 'TEXTAREA'].includes(node.tagName)) return {}
+    if (['password', 'hidden', 'file'].includes(node.type)
+      || /(?:^|\s)(?:current-password|new-password|one-time-code|cc-\S+)(?:\s|$)/iu.test(node.getAttribute('autocomplete') ?? '')) return { valueRedacted: true }
+    if (node.tagName === 'INPUT' && ['button', 'submit', 'reset', 'checkbox', 'radio', 'image'].includes(node.type)) return {}
+    const value = node.value.slice(0, budget.remaining)
+    budget.remaining -= value.length
+    return { value, valueTruncated: value.length < node.value.length }
+  }
+
+  const queryRoots = nodes => {
+    const roots = [...new Set([...nodes.values()].map(({ node }) => node.closest(
+      'article,li,tr,fieldset,form,section,dialog,[role="dialog"],[role="region"],[role="listitem"],[role="row"]',
+    ) ?? node))]
+    return roots.filter(root => !roots.some(other => other !== root && other.contains(root)))
   }
 
   const contextOf = node => {
@@ -150,15 +169,18 @@
     label: text(option.label).slice(0, 128), value: option.value.slice(0, 256), disabled: disabledControl(option),
   })) : undefined
   const bounded = (value, fallback, minimum, maximum) => Number.isSafeInteger(value) ? Math.min(maximum, Math.max(minimum, value)) : fallback
-  const structuralSummary = (elements = [], nodes = new Map()) => {
+  const structuralSummary = (elements = [], nodes = new Map(), roots = [document.body]) => {
     const regions = [], collections = []
-    const regionNodes = [...document.querySelectorAll('main,nav,header,aside,footer,[role="main"],[role="navigation"],[role="region"]')]
+    const select = selector => [...new Set(roots.flatMap(root => [
+      ...(root.matches(selector) ? [root] : []), ...root.querySelectorAll(selector),
+    ]))]
+    const regionNodes = select('main,nav,header,aside,footer,[role="main"],[role="navigation"],[role="region"]')
     for (const node of regionNodes.slice(0, 24)) {
       if (!visible(node)) continue
       const heading = node.querySelector(':scope > h1,:scope > h2,:scope > h3,:scope > [role="heading"]')
       regions.push({ kind: roleOf(node) === 'generic' ? node.tagName.toLowerCase() : roleOf(node), label: text(heading?.textContent ?? '').slice(0, 160), text: elementText(node, 240) })
     }
-    const collectionNodes = [...document.querySelectorAll('[role="feed"],[role="list"],[role="grid"],ul,ol')]
+    const collectionNodes = select('[role="feed"],[role="list"],[role="grid"],ul,ol')
     for (const node of collectionNodes.slice(0, 16)) {
       if (!visible(node)) continue
       const kind = node.getAttribute('role') ?? node.tagName.toLowerCase()
@@ -198,6 +220,7 @@
     const limit = bounded(options?.limit, MAX_ELEMENTS, 1, MAX_ELEMENTS)
     const query = text(options?.query).slice(0, 256).toLocaleLowerCase()
     const contextCache = new Map()
+    const valueBudget = { remaining: MAX_VALUE_TEXT }
     let examined = 0, matched = 0, hasMore = false
     for (const node of options?.references === false ? [] : walkOpen(document.body, NodeFilter.SHOW_ELEMENT)) {
       if (++examined > 10000) break
@@ -218,6 +241,7 @@
       const rect = node.getBoundingClientRect()
       elements.push({ snapshotId, elementId, tag: node.tagName.toLowerCase(),
         text: content, role: roleOf(node), label, context,
+        ...(options?.includeValues === true ? controlValue(node, valueBudget) : {}),
         ...(options?.includeOptions && node.tagName === 'SELECT' ? { options: optionsOf(node), optionsTruncated: node.options.length > 256 } : {}),
         state: { ...stateOf(node), inViewport: rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth }, attributes })
     }
@@ -234,10 +258,12 @@
         ? [...mounted.panels].filter(panel => panel.isConnected) : []
       return [{ mountId: query.mountId, text: expected, present: panels.some(panel => text(panel.textContent).includes(expected)) }]
     }) : []
+    const roots = query ? queryRoots(nodes) : [document.body]
     return { snapshotId, url: window.location.href, title: document.title,
-      ...visibleBodyText(bounded(options?.textLimit, MAX_TEXT, 0, MAX_TEXT)), elements,
+      ...visibleBodyText(bounded(options?.textLimit, MAX_TEXT, 0, MAX_TEXT), roots),
+      textScope: query ? 'matched-controls' : 'page', elements,
       presentations,
-      ...(options?.structure === false ? {} : { structure: structuralSummary(elements, nodes) }),
+      ...(options?.structure === false ? {} : { structure: structuralSummary(elements, nodes, roots) }),
       offset, nextOffset: hasMore ? offset + elements.length : null, elementsTruncated: hasMore,
       scanTruncated: examined >= 10000 }
   }

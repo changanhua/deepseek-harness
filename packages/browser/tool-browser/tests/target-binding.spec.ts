@@ -108,7 +108,7 @@ describe('tool-browser target capture', () => {
       element: { page: pageA, snapshotId: 'snapshot-a', elementId: 'link-a' }, intent: 'open' },
     expectedTarget: pageA, expectedTargetLost: true },
     { label: 'explicit navigation', action: { kind: 'navigate' as const, page: pageA, url: navigatedPageA.url },
-      expectedTarget: navigatedPageA, expectedTargetLost: false },
+      expectedTarget: pageA, expectedTargetLost: true },
   ])('exposes a same-tab new document after $label without replaying or transferring resources', async ({
     action, expectedTarget, expectedTargetLost,
   }) => {

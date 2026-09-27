@@ -23,6 +23,8 @@ const DEFAULT_COLLECT_CACHE_ENTRIES = 128
 const MAX_COLLECT_ATTEMPTS = 2
 const RUNTIME_PROVIDER = 'runtime'
 const RUNTIME_RANK = 250
+/** Total UTF-8 result limit for an attachment after model-facing framing. */
+export const MAX_RENDERED_SKILL_RESOURCE_BYTES = 72 * 1024
 
 /** Standard precedence rank for packaged skill providers and local bundled roots. */
 export const BUNDLED_SKILL_RANK = 600
@@ -111,6 +113,20 @@ export interface SkillDefinition extends SkillSummary {
   readonly metadata?: Readonly<Record<string, unknown>>
 }
 
+/** One complete provider-owned attachment from the selected skill bundle. */
+export interface SkillResource {
+  /** The provider-confirmed relative path within the selected skill bundle. */
+  readonly resourcePath: string
+  /** Complete UTF-8 attachment text. Providers must reject rather than truncate. */
+  readonly content: string
+}
+
+/** Complete attachment with the selected skill and provider identity attached by the registry. */
+export interface SkillResourceDefinition extends SkillResource {
+  readonly name: string
+  readonly provider: string
+}
+
 /** Runtime skill contribution accepted by `ctx.skills.register()`. */
 export type SkillRegistration = Omit<SkillDefinition, 'invocation' | 'provider'> & {
   /** Invocation controls; omission permits both model and user surfaces. */
@@ -136,6 +152,12 @@ export interface SkillLookupOptions {
 export interface SkillViewOptions extends SkillLookupOptions {
   /** Viewing scope (the calling agent); omitted reads the global layer alone. */
   readonly scope?: ScopeKey | undefined
+}
+
+/** Resource lookup options with an optional model-facing invocation boundary. */
+export interface SkillResourceViewOptions extends SkillViewOptions {
+  /** Require the selected candidate and loaded definition to permit model invocation. */
+  readonly invocation?: 'model' | undefined
 }
 
 /**
@@ -200,6 +222,19 @@ export function renderSkillContent(skill: Pick<SkillDefinition, 'name' | 'provid
     '</skill_instructions>',
     '</skill_content>',
   ].join('\n')
+}
+
+/** Render one loaded attachment without presenting it as the skill's main instructions. */
+export function renderSkillResource(resource: SkillResourceDefinition): string {
+  const rendered = [
+    `<skill_resource skill="${escapeAttr(resource.name)}" provider="${escapeAttr(resource.provider)}" path="${escapeAttr(resource.resourcePath)}">`,
+    resource.content,
+    '</skill_resource>',
+  ].join('\n')
+  if (new TextEncoder().encode(rendered).byteLength > MAX_RENDERED_SKILL_RESOURCE_BYTES) {
+    throw new RangeError(`skill resource result exceeds ${MAX_RENDERED_SKILL_RESOURCE_BYTES} UTF-8 bytes`)
+  }
+  return rendered
 }
 
 function renderResourceHint(skill: Pick<SkillDefinition, 'provider' | 'resourceBase'>): string[] {
@@ -328,6 +363,13 @@ export interface SkillProvider {
    * @returns the full skill body, or `undefined` if it is no longer loadable.
    */
   readonly get: (candidate: SkillCandidate, options: SkillLookupOptions) => Promise<SkillDefinition | undefined>
+  /**
+   * Optionally load one attachment belonging to a previously listed skill.
+   * The registry calls this only on the scope-winning provider; resource-base
+   * metadata is descriptive and never grants registry filesystem access.
+   */
+  readonly getResource?: (candidate: SkillCandidate, resourcePath: string,
+    options: SkillLookupOptions) => Promise<SkillResource | undefined>
 }
 
 /** Registration-scoped lifecycle and invalidation capability borrowed by one provider. */
@@ -368,6 +410,8 @@ interface IndexedCandidate {
   localOrder: number
   /** Owning layer, so a stale-definition invalidation can verify the exact registration is still live. */
   layer: SkillLayer
+  /** Exact registration retained while provider discovery was in flight. */
+  registration: RegisteredProvider | undefined
 }
 
 /** One provider registration retained by its layer. */
@@ -375,6 +419,7 @@ interface RegisteredProvider {
   provider: SkillProvider
   /** Service-wide monotonic registration order, the within-layer rank tiebreak. */
   order: number
+  signal: AbortSignal
 }
 
 interface LayerCollectResult {
@@ -389,6 +434,9 @@ interface CollectResult {
   shadows: SkillShadowEdge[]
   diagnostics: SkillDiagnostic[]
   cacheable: boolean
+  /** False only when the registry exhausted its bounded revision retry. */
+  stable: boolean
+  revision: number
 }
 
 /** One scope's complete skill-registry contribution. */
@@ -479,7 +527,7 @@ export class SkillRegistry extends Service {
       return this.layers.effect(
         this.ctx,
         (layer) => {
-          const undo = layer.providers.insert(name, { provider, order })
+          const undo = layer.providers.insert(name, { provider, order, signal: lifecycle.signal })
           registration = { layer, name }
           return () => {
             registration = undefined
@@ -610,6 +658,54 @@ export class SkillRegistry extends Service {
     return definition
   }
 
+  /**
+   * Load one attachment through the provider that won this name in the
+   * caller's current scope. The registry never derives a host path from
+   * `resourceBase`; that capability stays with the provider.
+   * @param name - kebab-case name resolved in the caller's scope.
+   * @param resourcePath - exact provider-owned relative attachment path.
+   * @param options - lookup scope, cwd, cancellation, and optional model invocation boundary.
+   * @returns complete attachment from the still-current provider, or undefined if it cannot be loaded.
+   */
+  async getResource(name: string, resourcePath: string,
+    options: SkillResourceViewOptions = {}): Promise<SkillResourceDefinition | undefined> {
+    if (!isSkillName(name) || typeof resourcePath !== 'string') return undefined
+    const collected = await this.collect(options)
+    throwIfAborted(options.signal)
+    if (!collected.stable) return undefined
+    const match = collected.entries.get(name)
+    if (match === undefined) return undefined
+    if (!this.isActive(match)) return undefined
+    if (options.invocation === 'model' && !isModelInvocable(match.candidate)) {
+      throw new Error(`skill "${name}" is not available for model invocation`)
+    }
+    const signal = combinedSignal(options.signal, match.registration?.signal)
+    try {
+      if (options.invocation === 'model') {
+        const definition = await waitWithAbort(match.provider.get(match.candidate, { cwd: options.cwd, signal }), signal)
+        if (!await this.isCurrentMatch(name, match, options)) return undefined
+        if (definition === undefined) return undefined
+        validateDefinition(definition)
+        if (definition.name !== match.candidate.name) {
+          this.invalidateEntry(match)
+          return undefined
+        }
+        if (!isModelInvocable(definition)) {
+          throw new Error(`skill "${name}" is not available for model invocation`)
+        }
+      }
+      const load = match.provider.getResource
+      if (load === undefined) throw new Error(`skill "${name}" does not support resources`)
+      const resource = await waitWithAbort(load.call(match.provider, match.candidate, resourcePath, { ...options, signal }), signal)
+      if (!await this.isCurrentMatch(name, match, options)) return undefined
+      if (resource === undefined) return undefined
+      validateResource(resource)
+      return { name: match.candidate.name, provider: match.provider.name, ...resource }
+    } finally {
+      signal.dispose()
+    }
+  }
+
   private async collect(options: SkillViewOptions): Promise<CollectResult> {
     throwIfAborted(options.signal)
     let attempt = 1
@@ -629,20 +725,22 @@ export class SkillRegistry extends Service {
           attempt += 1
           continue
         }
-        return { entries: result.entries, shadows: result.shadows, diagnostics: result.diagnostics, cacheable: false }
+        return { entries: result.entries, shadows: result.shadows, diagnostics: result.diagnostics,
+          cacheable: false, stable: false, revision }
       }
-      if (result.cacheable) {
-        this.collectCache.set(key, result)
+      const settled = { ...result, stable: true, revision }
+      if (settled.cacheable) {
+        this.collectCache.set(key, settled)
         if (this.collectCache.size > this.collectCacheMaxEntries) {
           const oldest = this.collectCache.keys().next() as IteratorYieldResult<string>
           this.collectCache.delete(oldest.value)
         }
       }
-      return result
+      return settled
     }
   }
 
-  private async collectFresh(options: SkillViewOptions): Promise<CollectResult> {
+  private async collectFresh(options: SkillViewOptions): Promise<Omit<CollectResult, 'stable' | 'revision'>> {
     // Global first, then existing chain overlays farthest ancestor first and
     // the exact scope last, so the nearest layer's same-name entry replaces
     // the farther ones — the tools registry's shadowing rule. Rank decides
@@ -697,10 +795,12 @@ export class SkillRegistry extends Service {
         providerOrder: -1,
         localOrder: runtimeOrder,
         layer,
+        registration: undefined,
       })
       runtimeOrder += 1
     }
-    for (const { provider, order } of [...layer.providers.values()]) {
+    for (const registration of [...layer.providers.values()]) {
+      const { provider, order } = registration
       let localOrder = 0
       let output: unknown
       try {
@@ -710,6 +810,10 @@ export class SkillRegistry extends Service {
         cacheable = false
         this.ctx.logger.warn(`skill provider "${provider.name}" skipped: ${errorMessage(error)}`)
         diagnostics.push({ code: 'provider-discovery-failed', severity: 'error', stage: 'provider-discovery', message: `skill provider "${provider.name}" was skipped: ${errorMessage(error)}`, provider: provider.name })
+        continue
+      }
+      if (layer.providers.get(provider.name) !== registration) {
+        cacheable = false
         continue
       }
       let observation: SkillProviderObservation
@@ -736,7 +840,7 @@ export class SkillRegistry extends Service {
           diagnostics.push({ code: 'invalid-candidate', severity: 'error', stage: 'registry-validation', message: `skill provider "${provider.name}" returned an invalid candidate: ${errorMessage(error)}`, provider: provider.name, ...candidate.path !== undefined ? { candidatePath: candidate.path } : {} })
           continue
         }
-        candidates.push({ candidate, provider, providerOrder: order, localOrder, layer })
+        candidates.push({ candidate, provider, providerOrder: order, localOrder, layer, registration })
         localOrder += 1
       }
     }
@@ -753,6 +857,17 @@ export class SkillRegistry extends Service {
   private invalidateEntry(entry: IndexedCandidate): void {
     /* v8 ignore else -- A definition load can outlive the exact provider registration it selected. */
     if (entry.layer.providers.get(entry.provider.name)?.provider === entry.provider) this.invalidateCache()
+  }
+
+  private isActive(entry: IndexedCandidate): boolean {
+    const registration = entry.registration
+    return registration === undefined || entry.layer.providers.get(entry.provider.name) === registration
+  }
+
+  private async isCurrentMatch(name: string, expected: IndexedCandidate, options: SkillViewOptions): Promise<boolean> {
+    if (!this.isActive(expected)) return false
+    const current = await this.collect(options)
+    return current.stable && current.entries.get(name) === expected
   }
 
   private scopeId(key: ScopeKey): number {
@@ -899,6 +1014,15 @@ function validateDefinition(skill: SkillDefinition): void {
   if (path !== undefined && typeof path !== 'string') throw new TypeError(`loaded skill "${name}" path must be a string`)
 }
 
+function validateResource(resource: SkillResource): void {
+  if (typeof resource.resourcePath !== 'string' || resource.resourcePath.length === 0) {
+    throw new TypeError('loaded skill resource path must be a non-empty string')
+  }
+  if (typeof resource.content !== 'string') {
+    throw new TypeError(`loaded skill resource "${resource.resourcePath}" content must be a string`)
+  }
+}
+
 function toSummary(skill: SkillDefinition | SkillCandidate): SkillSummary {
   const { name, description, whenToUse, invocation, source, provider, resourceBase } = skill
   return {
@@ -971,6 +1095,28 @@ function waitWithAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined):
         reject(toError(error))
       },
     )
+  })
+}
+
+function combinedSignal(first: AbortSignal | undefined, second: AbortSignal | undefined): AbortSignal & { dispose(): void } {
+  const controller = new AbortController()
+  const signals = [first, second].filter((signal): signal is AbortSignal => signal !== undefined)
+  const listeners = new Map<AbortSignal, () => void>()
+  const abort = (signal: AbortSignal): void => { controller.abort(signal.reason) }
+  for (const signal of signals) {
+    if (signal.aborted) {
+      abort(signal)
+      break
+    }
+    const listener = (): void => { abort(signal) }
+    listeners.set(signal, listener)
+    signal.addEventListener('abort', listener, { once: true })
+  }
+  return Object.assign(controller.signal, {
+    dispose: () => {
+      for (const [signal, listener] of listeners) signal.removeEventListener('abort', listener)
+      listeners.clear()
+    },
   })
 }
 

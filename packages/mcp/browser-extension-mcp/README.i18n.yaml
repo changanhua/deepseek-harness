@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/mcp/browser-extension-mcp/README.md
-README.md: 428b9a435f8421585d3eb24123b233ce66d57ed1
-README.zh.md: 6eb31aa616abfb677d4d0200512b6754836e8753
+README.md: 0246d05bad031fe8a83c3764e312b4cf73935566
+README.zh.md: bfed4b01739b50256e2a5d5e85bce6cb86214169

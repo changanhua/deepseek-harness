@@ -763,16 +763,37 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'The committed revision-one task.',
       },
       {
+        signature: 'selectTarget(agent: Agent, ref: BrowserTaskRef, request: { readonly requestId: string; readonly installationId: string; readonly tab: BrowserTabReference }): { task: BrowserTaskSnapshot; action: { readonly kind: \'snapshot\'; readonly tabId: number; readonly frameId: 0; readonly expectedTab: BrowserTabReference } }',
+        description: 'Plan the one exact snapshot that can select an already admitted task-scope tab. This consumes one action only for a new request identity and never executes Browser I/O.',
+        parameters: [{ name: 'agent', description: 'Live owner of the Session task.' }, { name: 'ref', description: 'Current compare-and-set task revision.' }, { name: 'request', description: 'Original request identity, installation, and complete desired tab reference.' }],
+        returns: 'The planned task and its fixed snapshot action.',
+        throws: ['BrowserTaskError on scope, authority, budget, or request-identity conflicts.'],
+      },
+      {
+        signature: 'settleSelectionOperation(agent: Agent, ref: BrowserTaskRef, settlement: BrowserSelectionSettlement): BrowserSelectionSettlementResult',
+        description: 'Settle or reconcile one planned scoped selection and atomically adopt only its verified snapshot.',
+        parameters: [{ name: 'agent', description: 'Live owner of the original selection request.' }, { name: 'ref', description: 'Current compare-and-set task revision.' }, { name: 'settlement', description: 'Original result or a terminal quiescent recovery observation.' }],
+        returns: 'The retained receipt, task state, and whether this receipt supplied current page evidence.',
+        throws: ['BrowserTaskError when the result does not belong to the original request owner.'],
+      },
+      {
         signature: 'settleBootstrapOperation(agent: Agent, ref: BrowserTaskRef, settlement: BrowserBootstrapSettlement): BrowserBootstrapSettlementResult',
         description: 'Settle one target-free open or its first exact snapshot without spending another action.',
         parameters: [{ name: 'agent', description: 'Exact live Agent whose Session owns the bootstrap attempt.' }, { name: 'ref', description: 'Current task compare-and-set reference.' }, { name: 'settlement', description: 'Returned result or a quiescent journal recovery status.' }],
         returns: 'The receipt, settlement disposition, and atomically adopted task when a fresh snapshot proves it.',
       },
       {
-        signature: 'recordReceipt( agent: Agent, task: BrowserTaskRef, receipt: Omit<BrowserTaskReceipt, \'kind\' | \'version\' | \'taskId\'>, ): Extract<BrowserTaskSourceRef, { kind: \'browser-task-receipt\' }>',
+        signature: 'recordReceipt( agent: Agent, task: BrowserTaskRef, receipt: Omit<BrowserTaskReceipt, \'kind\' | \'version\' | \'taskId\' | \'transition\' | \'children\'> & { readonly transition?: BrowserTransitionObservation }, ): Extract<BrowserTaskSourceRef, { kind: \'browser-task-receipt\' }>',
         description: 'Append a bounded Browser receipt before any task mutation cites it.',
         parameters: [{ name: 'agent', description: 'Exact live Agent that owns the task.' }, { name: 'task', description: 'Current compare-and-set task revision.' }, { name: 'receipt', description: 'Outcome bound to an existing attempt and exact authority.' }],
         returns: 'The durable receipt source reference.',
+      },
+      {
+        signature: 'advancePage(agent: Agent, ref: BrowserTaskRef, input: { readonly receipt: Extract<BrowserTaskSourceRef, { readonly kind: \'browser-task-receipt\' }> }): BrowserTaskSnapshot',
+        description: 'Adopt the fresh same-tab page from one settled, canonical execution receipt.',
+        parameters: [{ name: 'agent', description: 'Live Agent that owns the task and its receipt.' }, { name: 'ref', description: 'Current compare-and-set task revision.' }, { name: 'input', description: 'Receipt already recorded and settled by this task.' }],
+        returns: 'The task with stale prior evidence and unchanged action budget.',
+        throws: ['BrowserTaskError on authority drift, unresolved writes, or an unmatched receipt.'],
       },
       {
         signature: 'recordCheck(agent: Agent, task: BrowserTaskRef, check: Omit<import(\'./types.ts\').BrowserTaskCheck, \'kind\' | \'version\' | \'taskId\'>): { kind: \'browser-task-check\'; sessionSeq: number }',
@@ -2894,6 +2915,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'name', description: 'kebab-case skill name.' }, { name: 'options', description: 'view options; `scope` selects the viewing agent\'s layers, `cwd` selects workspace-sensitive skills, and `signal` cancels work.' }],
         returns: 'the full skill, including body content, or `undefined`.',
       },
+      {
+        signature: 'async getResource(name: string, resourcePath: string, options: SkillResourceViewOptions = {}): Promise<SkillResourceDefinition | undefined>',
+        description: 'Load one attachment through the provider that won this name in the caller\'s current scope. The registry never derives a host path from `resourceBase`; that capability stays with the provider.',
+        parameters: [{ name: 'name', description: 'kebab-case name resolved in the caller\'s scope.' }, { name: 'resourcePath', description: 'exact provider-owned relative attachment path.' }, { name: 'options', description: 'lookup scope, cwd, cancellation, and optional model invocation boundary.' }],
+        returns: 'complete attachment from the still-current provider, or undefined if it cannot be loaded.',
+      },
     ],
   },
   {
@@ -4715,11 +4742,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserAction',
-    declaration: 'export type BrowserAction = {\n    readonly kind: \'tabs\';\n} | {\n    readonly kind: \'snapshot\';\n    readonly tabId: number;\n    readonly frameId: number;\n    readonly expectedTab?: BrowserTabReference;\n    readonly documentId?: string;\n    readonly query?: string;\n    readonly offset?: number;\n    readonly limit?: number;\n    readonly textLimit?: number;\n    readonly tree?: boolean;\n    readonly treeCursor?: string;\n    readonly treeLimit?: number;\n    readonly includeOptions?: boolean;\n    readonly structure?: boolean;\n    readonly presentationQueries?: readonly BrowserPresentationQuery[];\n} | {\n    readonly kind: \'page_map\';\n    readonly page: BrowserPage;\n} | {\n    readonly kind: \'entry_inspect\';\n    readonly page: BrowserPage;\n    readonly regionSelector: string;\n    readonly selector: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly sampleLimit?: number;\n} | {\n    readonly kind: \'entry_mount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly regionSelector?: string;\n    readonly selector: string;\n    readonly label: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly collected?: readonly string[];\n} | {\n    readonly kind: \'entry_unmount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly forgetCollected?: boolean;\n} | {\n    readonly kind: \'region_render\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly regionRe /* …truncated — full shape in source */',
+    declaration: 'export type BrowserAction = {\n    readonly kind: \'tabs\';\n} | {\n    readonly kind: \'snapshot\';\n    readonly tabId: number;\n    readonly frameId: number;\n    readonly expectedTab?: BrowserTabReference;\n    readonly documentId?: string;\n    readonly query?: string;\n    readonly offset?: number;\n    readonly limit?: number;\n    readonly textLimit?: number;\n    readonly tree?: boolean;\n    readonly treeCursor?: string;\n    readonly treeLimit?: number;\n    readonly includeOptions?: boolean;\n    readonly includeValues?: boolean;\n    readonly structure?: boolean;\n    readonly presentationQueries?: readonly BrowserPresentationQuery[];\n} | {\n    readonly kind: \'page_map\';\n    readonly page: BrowserPage;\n} | {\n    readonly kind: \'entry_inspect\';\n    readonly page: BrowserPage;\n    readonly regionSelector: string;\n    readonly selector: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly sampleLimit?: number;\n} | {\n    readonly kind: \'entry_mount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly regionSelector?: string;\n    readonly selector: string;\n    readonly label: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly collected?: readonly string[];\n} | {\n    readonly kind: \'entry_unmount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly forgetCollected?: boolean;\n} | {\n    readonly kind: \'region_render\';\n    readonly page: BrowserPage;\n    readonly  /* …truncated — full shape in source */',
   },
   {
     name: 'BrowserActionAttempt',
-    declaration: 'export type BrowserActionAttempt = (BrowserActionAttemptBase & {\n    readonly target: BrowserTargetBinding;\n    readonly bootstrap?: never;\n}) | (BrowserActionAttemptBase & {\n    readonly bootstrap: BrowserBootstrapAuthority;\n    readonly target?: never;\n});',
+    declaration: 'export type BrowserActionAttempt = (BrowserActionAttemptBase & {\n    readonly target: BrowserTargetBinding;\n    readonly bootstrap?: never;\n    readonly selection?: never;\n}) | (BrowserActionAttemptBase & {\n    readonly bootstrap: BrowserBootstrapAuthority;\n    readonly target?: never;\n    readonly selection?: never;\n}) | (BrowserActionAttemptBase & {\n    readonly selection: BrowserScopeSelectionAuthority;\n    readonly target?: never;\n    readonly bootstrap?: never;\n});',
   },
   {
     name: 'BrowserActionAttemptBase',
@@ -4846,6 +4873,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BrowserRequestStatusQuery {\n    readonly requestId: string;\n    readonly sessionId: SessionId;\n    readonly installationId: string;\n    readonly recoveryLocator?: BrowserRecoveryLocator;\n}',
   },
   {
+    name: 'BrowserScopeSelectionAuthority',
+    declaration: 'export interface BrowserScopeSelectionAuthority {\n    readonly kind: \'scope-tab-snapshot\';\n    readonly installationId: string;\n    readonly targetRevision: number;\n    readonly fromTarget?: BrowserTargetBinding;\n    readonly tab: BrowserTabReference;\n    readonly eligibility: BrowserScopeSelectionEligibility;\n}',
+  },
+  {
+    name: 'BrowserScopeSelectionEligibility',
+    declaration: 'export type BrowserScopeSelectionEligibility = {\n    readonly kind: \'explicit-set\';\n} | {\n    readonly kind: \'descendant-root\';\n} | {\n    readonly kind: \'admitted-descendant\';\n    readonly admittedBy: Extract<BrowserTaskSourceRef, {\n        readonly kind: \'browser-task-receipt\';\n    }>;\n} | {\n    readonly kind: \'descendant-candidate\';\n    readonly candidateReceipt: Extract<BrowserTaskSourceRef, {\n        readonly kind: \'browser-task-receipt\';\n    }>;\n};',
+  },
+  {
+    name: 'BrowserSelectionSettlement',
+    declaration: 'export type BrowserSelectionSettlement = BrowserBootstrapSettlement;',
+  },
+  {
+    name: 'BrowserSelectionSettlementResult',
+    declaration: 'export interface BrowserSelectionSettlementResult extends BrowserBootstrapSettlementResult {\n}',
+  },
+  {
     name: 'BrowserSessionTargetBinding',
     declaration: 'export interface BrowserSessionTargetBinding extends BrowserTargetBinding {\n    readonly page: BrowserPage;\n    readonly revision: number;\n    readonly boundAt: number;\n    readonly boundBy: \'user\';\n}',
   },
@@ -4874,6 +4917,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BrowserTaskCheck {\n    readonly kind: \'browser-task/check\';\n    readonly version: 1;\n    readonly taskId: BrowserTaskId;\n    readonly checkerId: string;\n    readonly target: BrowserTargetBinding;\n    readonly grantEpoch: number;\n    readonly evaluations: readonly {\n        readonly clauseId: string;\n        readonly satisfied: boolean;\n        readonly evidenceIds: readonly string[];\n    }[];\n}',
   },
   {
+    name: 'BrowserTaskChildObservation',
+    declaration: 'export interface BrowserTaskChildObservation {\n    readonly sourceTab: BrowserTabReference;\n    readonly observedAt: number;\n    readonly candidates: BrowserTransitionObservation[\'candidates\'];\n    readonly truncated: boolean;\n}',
+  },
+  {
     name: 'BrowserTaskEvidence',
     declaration: 'export interface BrowserTaskEvidence {\n    readonly id: string;\n    readonly state: EvidenceState;\n    readonly source: BrowserTaskSourceRef;\n    readonly digest: string;\n    readonly coverage?: number;\n    readonly pageMap?: BrowserPageMapEvidence;\n    readonly target: BrowserTargetBinding;\n    readonly grantEpoch: number;\n}',
   },
@@ -4891,23 +4938,39 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserTaskReceipt',
-    declaration: 'export type BrowserTaskReceipt = (BrowserTaskReceiptBase & {\n    readonly version: 1;\n    readonly target: BrowserTargetBinding;\n    readonly bootstrap?: never;\n    readonly observation?: never;\n}) | (BrowserTaskReceiptBase & {\n    readonly version: 2;\n    readonly bootstrap: BrowserBootstrapAuthority;\n    readonly target?: never;\n    readonly observation: {\n        readonly kind: \'none\';\n    } | {\n        readonly kind: \'opened-tab\';\n        readonly tab: BrowserTabReference;\n    } | {\n        readonly kind: \'page\';\n        readonly target: BrowserTargetBinding;\n        readonly digest: string;\n    };\n});',
+    declaration: 'export type BrowserTaskReceipt = (BrowserTaskReceiptBase & {\n    readonly version: 1;\n    readonly target: BrowserTargetBinding;\n    readonly bootstrap?: never;\n    readonly selection?: never;\n    readonly observation?: never;\n}) | (BrowserTaskReceiptBase & {\n    readonly version: 2;\n    readonly bootstrap: BrowserBootstrapAuthority;\n    readonly target?: never;\n    readonly selection?: never;\n    readonly observation: {\n        readonly kind: \'none\';\n    } | {\n        readonly kind: \'opened-tab\';\n        readonly tab: BrowserTabReference;\n    } | {\n        readonly kind: \'page\';\n        readonly target: BrowserTargetBinding;\n        readonly digest: string;\n    };\n}) | (BrowserTaskReceiptBase & {\n    readonly version: 3;\n    readonly selection: BrowserScopeSelectionAuthority;\n    readonly target?: never;\n    readonly bootstrap?: never;\n    readonly observation: {\n        readonly kind: \'none\';\n    } | {\n        readonly kind: \'page\';\n        readonly target: BrowserTargetBinding;\n        readonly tab: BrowserTabReference;\n        readonly digest: string;\n    };\n});',
   },
   {
     name: 'BrowserTaskReceiptBase',
-    declaration: 'export interface BrowserTaskReceiptBase {\n    readonly kind: \'browser-task/receipt\';\n    readonly taskId: BrowserTaskId;\n    readonly requestId: string;\n    readonly actionKind: string;\n    readonly outcome: AttemptOutcome;\n    readonly delivery: \'sent\' | \'not-sent\';\n    readonly quiescent: boolean;\n    readonly grantEpoch: number;\n    readonly resourceId?: string;\n    readonly reason?: string;\n    readonly failureFingerprint?: string;\n    readonly presentation?: {\n        readonly contentDigest: string;\n        readonly excerpt: string;\n    };\n}',
+    declaration: 'export interface BrowserTaskReceiptBase {\n    readonly kind: \'browser-task/receipt\';\n    readonly taskId: BrowserTaskId;\n    readonly requestId: string;\n    readonly actionKind: string;\n    readonly outcome: AttemptOutcome;\n    readonly delivery: \'sent\' | \'not-sent\';\n    readonly quiescent: boolean;\n    readonly grantEpoch: number;\n    readonly resourceId?: string;\n    readonly reason?: string;\n    readonly failureFingerprint?: string;\n    readonly presentation?: {\n        readonly contentDigest: string;\n        readonly excerpt: string;\n    };\n    readonly transition?: BrowserTaskTransition;\n    readonly children?: BrowserTaskChildObservation;\n}',
   },
   {
     name: 'BrowserTaskRef',
     declaration: 'export interface BrowserTaskRef {\n    readonly id: BrowserTaskId;\n    readonly revision: number;\n}',
   },
   {
+    name: 'BrowserTaskScope',
+    declaration: 'export type BrowserTaskScope = {\n    readonly kind: \'single-tab\';\n} | {\n    readonly kind: \'descendants\';\n    readonly root?: BrowserTabReference;\n    readonly members: readonly {\n        readonly tab: BrowserTabReference;\n        readonly admittedBy: Extract<BrowserTaskSourceRef, {\n            readonly kind: \'browser-task-receipt\';\n        }>;\n    }[];\n} | {\n    readonly kind: \'explicit-set\';\n    readonly tabs: readonly BrowserTabReference[];\n};',
+  },
+  {
+    name: 'BrowserTaskScopeRequest',
+    declaration: 'export type BrowserTaskScopeRequest = {\n    readonly kind: \'single-tab\';\n} | {\n    readonly kind: \'descendants\';\n    readonly root?: BrowserTabReference;\n} | {\n    readonly kind: \'explicit-set\';\n    readonly tabs: readonly BrowserTabReference[];\n};',
+  },
+  {
     name: 'BrowserTaskSnapshot',
-    declaration: 'export interface BrowserTaskSnapshot extends BrowserTaskRef {\n    readonly objective: string;\n    readonly sourceSeq: number;\n    readonly phase: BrowserTaskPhase;\n    readonly outcome?: BrowserTaskOutcome;\n    readonly terminationSource?: {\n        readonly kind: \'user\';\n        readonly sessionSeq: number;\n    };\n    readonly blockers: readonly BrowserTaskBlocker[];\n    readonly target?: BrowserTargetBinding;\n    readonly targetRevision?: number;\n    readonly pendingTarget?: BrowserPendingTarget;\n    readonly targetLossAcknowledged: boolean;\n    readonly acceptance: readonly AcceptanceClause[];\n    readonly evidence: readonly BrowserTaskEvidence[];\n    readonly evaluations: readonly AcceptanceEvaluation[];\n    readonly attempts: readonly BrowserActionAttempt[];\n    readonly resources: readonly BrowserPageResource[];\n    readonly functionHandoff?: {\n        readonly owner: BrowserFunctionOwner;\n        readonly scope: BrowserFunctionScope;\n        readonly resourceIds: readonly string[];\n        readonly createdBySessionId: string;\n        readonly source: Extract<BrowserTaskSourceRef, {\n            kind: \'browser-task-function-handoff\';\n        }>;\n    };\n    readonly capability?: BrowserCapability;\n    readonly delegated: readonly DelegatedWorkRef[];\n    readonly budget: BrowserTaskBudget;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n}',
+    declaration: 'export interface BrowserTaskSnapshot extends BrowserTaskRef {\n    readonly objective: string;\n    readonly sourceSeq: number;\n    readonly phase: BrowserTaskPhase;\n    readonly outcome?: BrowserTaskOutcome;\n    readonly terminationSource?: {\n        readonly kind: \'user\';\n        readonly sessionSeq: number;\n    };\n    readonly blockers: readonly BrowserTaskBlocker[];\n    readonly scope: BrowserTaskScope;\n    readonly target?: BrowserTargetBinding;\n    readonly targetReceipt?: Extract<BrowserTaskSourceRef, {\n        readonly kind: \'browser-task-receipt\';\n    }>;\n    readonly targetRevision?: number;\n    readonly pendingTarget?: BrowserPendingTarget;\n    readonly targetLossAcknowledged: boolean;\n    readonly acceptance: readonly AcceptanceClause[];\n    readonly evidence: readonly BrowserTaskEvidence[];\n    readonly evaluations: readonly AcceptanceEvaluation[];\n    readonly attempts: readonly BrowserActionAttempt[];\n    readonly resources: readonly BrowserPageResource[];\n    readonly functionHandoff?: {\n        readonly owner: BrowserFunctionOwner;\n        readonly scope: BrowserFunctionScope;\n        readonly resourceIds: readonly string[];\n        readonly createdBySessionId: string;\n        readonly source: Extract<BrowserTaskSourceRef, {\n            kind: \'browser-task-function-handoff\';\n        }>;\n    };\n    readonly capability?: BrowserCapability;\n    readonly delegated: readonly DelegatedWorkRef[];\n    readonly budget: BrowserTaskBudget;\n    readonly createdAt: number;\n /* …truncated — full shape in source */',
   },
   {
     name: 'BrowserTaskSourceRef',
     declaration: 'export type BrowserTaskSourceRef = {\n    readonly kind: \'user\' | \'message\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'tool-call\';\n    readonly callId: string;\n} | {\n    readonly kind: \'tool-result\';\n    readonly callId: string;\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-receipt\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-check\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-delegation\';\n    readonly sessionSeq: number;\n} | {\n    readonly kind: \'browser-task-function-handoff\';\n    readonly sessionSeq: number;\n};',
+  },
+  {
+    name: 'BrowserTaskTransition',
+    declaration: 'export interface BrowserTaskTransition {\n    readonly source: {\n        readonly tab: BrowserTabReference;\n        readonly page: BrowserPage;\n    };\n    readonly observedAt: number;\n    readonly sameTab: {\n        readonly kind: \'same-document\' | \'document-replaced\';\n        readonly page: BrowserPage;\n    };\n}',
+  },
+  {
+    name: 'BrowserTransitionObservation',
+    declaration: 'export interface BrowserTransitionObservation {\n    readonly version: 1;\n    readonly source: {\n        readonly tab: BrowserTabReference;\n        readonly page: BrowserPage;\n    };\n    readonly startedAt: number;\n    readonly observedAt: number;\n    readonly sameTab: {\n        readonly kind: \'unchanged\' | \'same-document\' | \'document-replaced\' | \'closed\' | \'unavailable\';\n        readonly page?: BrowserPage;\n    };\n    readonly candidates: readonly {\n        readonly tab: BrowserTabReference;\n        readonly url?: string;\n        readonly relation: \'opener\';\n        readonly attribution: \'candidate\';\n        readonly evidence: \'created-navigation-target\' | \'opener-tab\';\n    }[];\n    readonly truncated: boolean;\n}',
   },
   {
     name: 'CapabilityState',
@@ -5179,7 +5242,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateBrowserTaskRequest',
-    declaration: 'export interface CreateBrowserTaskRequest {\n    readonly objective: string;\n    readonly sourceSeq: number;\n    readonly acceptance: readonly AcceptanceClause[];\n    readonly target?: BrowserTargetBinding;\n    readonly targetRevision?: number;\n    readonly maxSteps?: number;\n    readonly maxActions?: number;\n}',
+    declaration: 'export interface CreateBrowserTaskRequest {\n    readonly objective: string;\n    readonly sourceSeq: number;\n    readonly acceptance: readonly AcceptanceClause[];\n    readonly target?: BrowserTargetBinding;\n    readonly targetRevision?: number;\n    readonly scope?: BrowserTaskScopeRequest;\n    readonly maxSteps?: number;\n    readonly maxActions?: number;\n}',
   },
   {
     name: 'CreateCheckpointRequest',
@@ -7127,7 +7190,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SettingsDocumentOpenValue',
-    declaration: 'export interface SettingsDocumentOpenValue {\n    readonly opened: true;\n}',
+    declaration: 'export type SettingsDocumentOpenValue = {\n    readonly opened: true;\n} | {\n    readonly opened: false;\n    readonly path: string;\n};',
   },
   {
     name: 'SettingsNamespace',
@@ -7239,7 +7302,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SkillProvider',
-    declaration: 'export interface SkillProvider {\n    readonly name: string;\n    readonly list: (options: SkillLookupOptions) => Promise<readonly SkillCandidate[] | SkillProviderObservation>;\n    readonly get: (candidate: SkillCandidate, options: SkillLookupOptions) => Promise<SkillDefinition | undefined>;\n}',
+    declaration: 'export interface SkillProvider {\n    readonly name: string;\n    readonly list: (options: SkillLookupOptions) => Promise<readonly SkillCandidate[] | SkillProviderObservation>;\n    readonly get: (candidate: SkillCandidate, options: SkillLookupOptions) => Promise<SkillDefinition | undefined>;\n    readonly getResource?: (candidate: SkillCandidate, resourcePath: string, options: SkillLookupOptions) => Promise<SkillResource | undefined>;\n}',
   },
   {
     name: 'SkillProviderControl',
@@ -7254,8 +7317,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SkillRegistration = Omit<SkillDefinition, \'invocation\' | \'provider\'> & {\n    readonly invocation?: SkillInvocationPolicy;\n    readonly provider?: string;\n};',
   },
   {
+    name: 'SkillResource',
+    declaration: 'export interface SkillResource {\n    readonly resourcePath: string;\n    readonly content: string;\n}',
+  },
+  {
     name: 'SkillResourceBase',
     declaration: 'export type SkillResourceBase = {\n    readonly kind: \'directory\';\n    readonly path: string;\n} | {\n    readonly kind: \'url\';\n    readonly url: string;\n} | {\n    readonly kind: \'opaque\';\n    readonly description: string;\n};',
+  },
+  {
+    name: 'SkillResourceDefinition',
+    declaration: 'export interface SkillResourceDefinition extends SkillResource {\n    readonly name: string;\n    readonly provider: string;\n}',
+  },
+  {
+    name: 'SkillResourceViewOptions',
+    declaration: 'export interface SkillResourceViewOptions extends SkillViewOptions {\n    readonly invocation?: \'model\' | undefined;\n}',
   },
   {
     name: 'SkillSource',

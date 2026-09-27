@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SessionStore, { SessionId, type JsonValue } from '@deepseek-ai/dsh-session'
-import { BrowserRegionRef, type BrowserRegionRef as BrowserRegionReference } from '@changanhua/dsh-browser'
+import { BrowserRegionRef, type BrowserPage, type BrowserRegionRef as BrowserRegionReference } from '@changanhua/dsh-browser'
 import { createToolResultMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -26,6 +26,42 @@ const create=(ctx:Context,a:Agent,seq=0)=>ctx.browserTasks.create(a,{ objective:
 const cap={ installationId:'chrome-a',state:'observed' as const,grantEpoch:1,scopes:['browser:read'],actions:['snapshot'],protocol:'v1' }
 const evidence={ id:'e1',state:'current' as const,source:{ kind:'user' as const,sessionSeq:0 },digest:'sha256:e1',target,grantEpoch:1 }
 const attempt=(value:Record<string,unknown>)=>({ actionKind:'resourceId'in value?'region_render':'click',grantEpoch:1,...value })
+const nextPage={ ...target.page,documentId:'doc-b',url:'https://example.test/b' }
+const transition=(page:BrowserPage=nextPage,kind:'same-document'|'document-replaced'='document-replaced',source:BrowserPage=target.page)=>({
+  version:1 as const,source:{ tab:{ tabId:source.tabId,windowId:2,browserSessionId:'123e4567-e89b-42d3-a456-426614174000' },page:source },startedAt:9,observedAt:10,
+  sameTab:{ kind,page },candidates:[],truncated:false,
+})
+async function advanceReady(options:{
+  page?:typeof nextPage
+  kind?:'same-document'|'document-replaced'
+  source?:BrowserPage
+  resource?:boolean
+  rendered?:boolean
+}={}){
+  const{ ctx,agent,session }=await h();let task=create(ctx,agent)
+  task=ctx.browserTasks.recordCapability(agent,task,cap);task=ctx.browserTasks.recordEvidence(agent,task,evidence)
+  if(options.resource){task=ctx.browserTasks.upsertResource(agent,task,{ id:'panel',state:'reserved',target });task=ctx.browserTasks.upsertResource(agent,task,{ id:'panel',state:'active',target })}
+  if(options.rendered){
+    const render={ attemptId:'render',requestId:'render',actionKind:'region_render',resourceId:'panel',grantEpoch:1,write:true,target }
+    task=ctx.browserTasks.recordAttempt(agent,task,{ ...render,stage:'planned' })
+    task=ctx.browserTasks.advanceAttempt(agent,task,{ ...render,stage:'dispatched' })
+    const presentation={ contentDigest:`sha256:${'a'.repeat(64)}`,excerpt:'panel' }
+    const receipt=ctx.browserTasks.recordReceipt(agent,task,{ requestId:render.requestId,actionKind:render.actionKind,
+      resourceId:render.resourceId,grantEpoch:1,target,presentation,
+      outcome:'observed',delivery:'sent',quiescent:true })
+    task=ctx.browserTasks.advanceAttempt(agent,task,{ ...render,stage:'settled',outcome:'observed',quiescent:true,settledBy:receipt })
+    task=ctx.browserTasks.recordEvidence(agent,task,{ ...evidence,id:'render-evidence',source:receipt })
+    task=ctx.browserTasks.upsertResource(agent,task,{ id:'panel',state:'active',target,
+      presentation:{ ...presentation,renderReceipt:receipt,evidenceId:'render-evidence' } })
+  }
+  task=ctx.browserTasks.recordAttempt(agent,task,attempt({ attemptId:'navigate',requestId:'navigate',stage:'planned',write:true,target }) as never)
+  task=ctx.browserTasks.advanceAttempt(agent,task,attempt({ attemptId:'navigate',requestId:'navigate',stage:'dispatched',write:true,target }) as never)
+  const receipt=ctx.browserTasks.recordReceipt(agent,task,{ requestId:'navigate',actionKind:'click',target,outcome:'observed',delivery:'sent',quiescent:true,grantEpoch:1,
+    transition:transition(options.page,options.kind,options.source) } as never)
+  task=ctx.browserTasks.advanceAttempt(agent,task,attempt({ attemptId:'navigate',requestId:'navigate',stage:'settled',outcome:'observed',quiescent:true,settledBy:receipt,write:true,target }) as never)
+  const service=ctx.browserTasks as unknown as { advancePage(agent:Agent,task:typeof task,input:{ receipt:typeof receipt }):typeof task }
+  return { ctx,agent,session,task,receipt,service }
+}
 describe('browser task kernel',()=>{
   it('persists only opaque regionRef page-map recovery facts',()=>{
     expect(browserPageMapEvidence({ regions:[{ regionRef:'11111111-1111-4111-8111-111111111111',disposable:true,protected:false }] })).toEqual({ regions:[{ regionRef:'11111111-1111-4111-8111-111111111111',disposable:true,protected:false }] })
@@ -128,7 +164,223 @@ describe('browser task kernel',()=>{
     expect(ctx.browserTasks.get(agent)?.phase).toBe('waiting')
     expect(ctx.browserTasks.get(agent)?.blockers).toEqual(expect.arrayContaining(['cleanup','internal-invariant']))
   })
-  it('marks authority drift stale and requires explicit target rebind acknowledgement',async()=>{const{ ctx,agent }=await h();let t=create(ctx,agent);t=ctx.browserTasks.recordCapability(agent,t,cap);t=ctx.browserTasks.recordEvidence(agent,t,evidence);t=ctx.browserTasks.recordCapability(agent,t,{ ...cap,actions:['snapshot','click'] });expect(t.evidence[0]?.state).toBe('stale');t=ctx.browserTasks.transition(agent,t,'waiting',[...t.blockers,'target-lost']);const next={ ...target,page:{ ...target.page,documentId:'doc-b',url:'https://example.test/b' } };t=ctx.browserTasks.rebind(agent,t,next);expect(t.target).toEqual(next);t=ctx.browserTasks.acknowledgeTargetLoss(agent,t);expect(t.blockers).not.toContain('target-lost')})
+  it('marks authority drift stale and requires explicit target rebind acknowledgement',async()=>{
+    const{ ctx,agent }=await h();let t=create(ctx,agent)
+    t=ctx.browserTasks.recordCapability(agent,t,cap);t=ctx.browserTasks.recordEvidence(agent,t,evidence)
+    t=ctx.browserTasks.recordCapability(agent,t,{ ...cap,actions:['snapshot','click'] })
+    expect(t.evidence[0]?.state).toBe('stale')
+    t=ctx.browserTasks.transition(agent,t,'waiting',[...t.blockers,'target-lost'])
+    const next={ ...target,page:{ ...target.page,documentId:'doc-b',url:'https://example.test/b' } }
+    ctx.browserTasks.bindTargetByUser(agent,{ expectedRevision:0,...next })
+    t=ctx.browserTasks.rebind(agent,t,next);expect(t.target).toEqual(next)
+    t=ctx.browserTasks.acknowledgeTargetLoss(agent,t);expect(t.blockers).not.toContain('target-lost')
+  })
+  it('advances one task from a trusted same-tab document replacement without moving its old page resource',async()=>{
+    const{ ctx,agent,session }=await h();let t=create(ctx,agent)
+    t=ctx.browserTasks.recordCapability(agent,t,cap);t=ctx.browserTasks.recordEvidence(agent,t,evidence)
+    t=ctx.browserTasks.upsertResource(agent,t,{ id:'panel',state:'reserved',target })
+    t=ctx.browserTasks.upsertResource(agent,t,{ id:'panel',state:'active',target })
+    t=ctx.browserTasks.recordAttempt(agent,t,attempt({ attemptId:'navigate',requestId:'navigate',stage:'planned',write:true,target }) as never)
+    t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:'navigate',requestId:'navigate',stage:'dispatched',write:true,target }) as never)
+    const receipt=ctx.browserTasks.recordReceipt(agent,t,{ requestId:'navigate',actionKind:'click',target,outcome:'observed',delivery:'sent',quiescent:true,grantEpoch:1,
+      transition:{ version:1,source:{ tab:{ tabId:1,windowId:2,browserSessionId:'123e4567-e89b-42d3-a456-426614174000' },page:target.page },startedAt:9,observedAt:10,
+        sameTab:{ kind:'document-replaced',page:{ ...target.page,documentId:'doc-b',url:'https://example.test/b' } },candidates:[],truncated:false } } as never)
+    t=ctx.browserTasks.advanceAttempt(agent,t,attempt({ attemptId:'navigate',requestId:'navigate',stage:'settled',outcome:'observed',quiescent:true,settledBy:receipt,write:true,target }) as never)
+    const service=ctx.browserTasks as unknown as {
+      advancePage(agent:Agent,task:typeof t,input:{ receipt:typeof receipt }):typeof t
+    }
+    const advanced=service.advancePage(agent,t,{ receipt })
+    expect(advanced).toMatchObject({ target:{ page:{ documentId:'doc-b',url:'https://example.test/b' } },targetRevision:0,
+      evidence:[{ id:'e1',state:'stale' }],evaluations:[],resources:[{ id:'panel',state:'vanished',disposition:'document-replaced',target }] })
+    expect(advanced.attempts).toEqual(t.attempts);expect(advanced.budget).toEqual(t.budget)
+    expect(foldBrowserTask(session.snapshotEvents())).toEqual(advanced)
+    expect(()=>browserTaskProjectionDefinition.stateSchema.parse(ctx.sessionProjections.stateOf(session,'browserTask'))).not.toThrow()
+    const newTarget={ installationId:target.installationId,page:{ ...target.page,documentId:'doc-b',url:'https://example.test/b' } }
+    const reading=ctx.browserTasks.recordAttempt(agent,advanced,{ attemptId:'next-read',requestId:'next-read',actionKind:'snapshot',
+      grantEpoch:1,stage:'planned',write:false,target:newTarget })
+    expect(reading.attempts[0]).toEqual(advanced.attempts[0])
+    expect(reading.attempts.at(-1)?.target).toEqual(newTarget)
+  })
+  it('rejects forged receipt, changed selection, and a repeated page advance',async()=>{
+    const ready=await advanceReady()
+    expect(()=>ready.service.advancePage(ready.agent,ready.task,{ receipt:{ kind:'browser-task-receipt',sessionSeq:999 } })).toThrow(BrowserTaskError)
+    ready.ctx.browserTasks.bindTargetByUser(ready.agent,{ expectedRevision:0,...target })
+    expect(()=>ready.service.advancePage(ready.agent,ready.task,{ receipt:ready.receipt })).toThrow(BrowserTaskError)
+    const again=await advanceReady();const advanced=again.service.advancePage(again.agent,again.task,{ receipt:again.receipt })
+    expect(()=>again.service.advancePage(again.agent,advanced,{ receipt:again.receipt })).toThrow(BrowserTaskError)
+  })
+  it('rejects cross-tab and cross-frame transition candidates before they become receipt authority',async()=>{
+    const crossTab=await advanceReady({ page:{ ...nextPage,tabId:9 },source:target.page })
+    expect(()=>crossTab.service.advancePage(crossTab.agent,crossTab.task,{ receipt:crossTab.receipt })).toThrow(BrowserTaskError)
+    const crossFrame=await advanceReady({ page:{ ...nextPage,frameId:1 },source:target.page })
+    expect(()=>crossFrame.service.advancePage(crossFrame.agent,crossFrame.task,{ receipt:crossFrame.receipt })).toThrow(BrowserTaskError)
+  })
+  it('retains child observations without adopting a target or granting child-page authority',async()=>{
+    const { ctx,agent,session }=await h()
+    try {
+      let task=create(ctx,agent)
+      task=ctx.browserTasks.recordCapability(agent,task,cap)
+      task=ctx.browserTasks.consumeAction(agent,task)
+      const input={ attemptId:'child-open',requestId:'child-open',actionKind:'click',grantEpoch:1,write:true,target }
+      task=ctx.browserTasks.recordAttempt(agent,task,{ ...input,stage:'planned' })
+      task=ctx.browserTasks.advanceAttempt(agent,task,{ ...input,stage:'dispatched' })
+      const observed={ ...transition(),sameTab:{ kind:'unchanged' as const,page:target.page },
+        candidates:[{ tab:{ tabId:7,windowId:2,browserSessionId:'123e4567-e89b-42d3-a456-426614174000' },
+          url:'https://example.test/child',relation:'opener' as const,attribution:'candidate' as const,evidence:'opener-tab' as const }] }
+      const receipt=ctx.browserTasks.recordReceipt(agent,task,{ requestId:input.requestId,actionKind:input.actionKind,
+        target,outcome:'observed',delivery:'sent',quiescent:true,grantEpoch:1,transition:observed })
+      task=ctx.browserTasks.advanceAttempt(agent,task,{ ...input,stage:'settled',outcome:'observed',quiescent:true,settledBy:receipt })
+      const fact=ctx.sessionProjections.stateOf(session,'browserTask')!.sourceFacts.find(item=>item.sessionSeq===receipt.sessionSeq)
+      expect(fact).toMatchObject({ children:{ sourceTab:observed.source.tab,observedAt:10,
+        candidates:observed.candidates,truncated:false } })
+      expect(fact).not.toHaveProperty('transition')
+      expect(task.target).toEqual(target)
+      expect(task).not.toHaveProperty('targetReceipt')
+      expect(task.budget.actionsUsed).toBe(1)
+      expect(task.attempts).toHaveLength(1)
+      expect(()=>ctx.browserTasks.advancePage(agent,task,{ receipt })).toThrow(BrowserTaskError)
+      expect(()=>ctx.browserTasks.recordAttempt(agent,task,{ ...input,attemptId:'child-read',requestId:'child-read',
+        actionKind:'snapshot',write:false,stage:'planned',target:{ installationId:target.installationId,
+          page:{ ...target.page,tabId:7,documentId:'child',url:'https://example.test/child' } } })).toThrow(BrowserTaskError)
+      expect(foldBrowserTask(session.snapshotEvents())).toEqual(task)
+      expect(browserTaskProjectionDefinition.stateSchema.safeParse(ctx.sessionProjections.stateOf(session,'browserTask')).success).toBe(true)
+    } finally { await ctx.fiber.dispose() }
+  })
+  it.each(['wrong-source', 'oversized', 'forged-field', 'unknown'] as const)('contains child observation boundary: %s',async(kind)=>{
+    const { ctx,agent,session }=await h()
+    try {
+      let task=create(ctx,agent)
+      const input={ attemptId:'children',requestId:'children',actionKind:'click',grantEpoch:1,write:true,target }
+      task=ctx.browserTasks.recordAttempt(agent,task,{ ...input,stage:'planned' })
+      task=ctx.browserTasks.advanceAttempt(agent,task,{ ...input,stage:'dispatched' })
+      const raw={ ...transition(),sameTab:{ kind:'unchanged' as const,page:target.page },
+        candidates:[{ tab:{ tabId:7,windowId:2,browserSessionId:'123e4567-e89b-42d3-a456-426614174000' },
+          relation:'opener' as const,attribution:'candidate' as const,evidence:'opener-tab' as const }],truncated:true }
+      if(kind==='wrong-source')raw.source.page={ ...target.page,documentId:'old-source' }
+      if(kind==='oversized')raw.candidates=Array.from({ length:9 },(_,i)=>({ ...raw.candidates[0],tab:{ ...raw.candidates[0].tab,tabId:i+7 } }))
+      const outcome=kind==='unknown'?'unknown':'observed'
+      const receipt=ctx.browserTasks.recordReceipt(agent,task,{ requestId:input.requestId,actionKind:input.actionKind,target,
+        outcome,delivery:'sent',quiescent:kind!=='unknown',grantEpoch:1,
+        ...(kind==='forged-field'?{ children:{ sourceTab:raw.source.tab,observedAt:10,candidates:raw.candidates,truncated:false } }:{ transition:raw }) } as never)
+      task=ctx.browserTasks.advanceAttempt(agent,task,{ ...input,stage:'settled',outcome,quiescent:kind!=='unknown',settledBy:receipt })
+      const fact=ctx.sessionProjections.stateOf(session,'browserTask')!.sourceFacts.find(item=>item.sessionSeq===receipt.sessionSeq)
+      if(kind==='unknown') {
+        expect(fact).toMatchObject({ outcome:'unknown',quiescent:false,children:{ candidates:raw.candidates,truncated:true } })
+        expect(task.blockers).toContain('unknown-attempt')
+      } else expect(fact).not.toHaveProperty('children')
+      expect(task.target).toEqual(target)
+      expect(task).not.toHaveProperty('targetReceipt')
+      expect(()=>ctx.browserTasks.advancePage(agent,task,{ receipt })).toThrow(BrowserTaskError)
+      expect(foldBrowserTask(session.snapshotEvents())).toEqual(task)
+    } finally { await ctx.fiber.dispose() }
+  })
+  it('keeps resources on a same-document route advance',async()=>{
+    const route=await advanceReady({ page:{ ...target.page,url:'https://example.test/a#route' },kind:'same-document',resource:true })
+    const advanced=route.service.advancePage(route.agent,route.task,{ receipt:route.receipt })
+    expect(advanced.resources).toMatchObject([{ id:'panel',state:'active',target }])
+    const clear={ attemptId:'clear-route',requestId:'clear-route',actionKind:'region_clear',grantEpoch:1,
+      stage:'planned' as const,write:true,resourceId:'panel',target }
+    let clearing=route.ctx.browserTasks.recordAttempt(route.agent,advanced,clear)
+    clearing=route.ctx.browserTasks.advanceAttempt(route.agent,clearing,{ ...clear,stage:'dispatched' })
+    const receipt=route.ctx.browserTasks.recordReceipt(route.agent,clearing,{ requestId:clear.requestId,actionKind:clear.actionKind,
+      target,resourceId:'panel',outcome:'observed',delivery:'sent',quiescent:true,grantEpoch:1 })
+    clearing=route.ctx.browserTasks.advanceAttempt(route.agent,clearing,{ ...clear,stage:'settled',
+      outcome:'observed',quiescent:true,settledBy:receipt })
+    expect(clearing.attempts.at(-1)).toMatchObject({ target,outcome:'observed' })
+    expect(()=>route.ctx.browserTasks.recordAttempt(route.agent,clearing,{ ...clear,requestId:'old-click',
+      attemptId:'old-click',actionKind:'click' })).toThrow(BrowserTaskError)
+  })
+  it('disposes old-route resources when a later navigation replaces their document',async()=>{
+    const routePage={ ...target.page,url:'https://example.test/route' }
+    const ready=await advanceReady({ page:routePage,kind:'same-document',resource:true,rendered:true })
+    try {
+      let task=ready.service.advancePage(ready.agent,ready.task,{ receipt:ready.receipt })
+      expect(task.resources[0]).toMatchObject({ state:'active',target })
+      const routeTarget={ installationId:target.installationId,page:routePage }
+      const input={ attemptId:'second-nav',requestId:'second-nav',actionKind:'click',grantEpoch:1,write:true,target:routeTarget }
+      task=ready.ctx.browserTasks.recordAttempt(ready.agent,task,{ ...input,stage:'planned' })
+      task=ready.ctx.browserTasks.advanceAttempt(ready.agent,task,{ ...input,stage:'dispatched' })
+      const receipt=ready.ctx.browserTasks.recordReceipt(ready.agent,task,{ requestId:input.requestId,actionKind:'click',
+        grantEpoch:1,target:routeTarget,outcome:'observed',delivery:'sent',quiescent:true,
+        transition:transition(nextPage,'document-replaced',routePage) })
+      task=ready.ctx.browserTasks.advanceAttempt(ready.agent,task,{ ...input,stage:'settled',outcome:'observed',quiescent:true,settledBy:receipt })
+      task=ready.service.advancePage(ready.agent,task,{ receipt })
+      expect(task.resources[0]).toMatchObject({ state:'vanished',target,disposition:'document-replaced',dispositionSource:receipt })
+      expect(task.evidence.find(item=>item.id==='render-evidence')?.state).toBe('stale')
+      expect(foldBrowserTask(ready.session.snapshotEvents())).toEqual(task)
+      expect(browserTaskProjectionDefinition.stateSchema.safeParse(ready.ctx.sessionProjections.stateOf(ready.session,'browserTask')).success).toBe(true)
+    } finally { await ready.ctx.fiber.dispose() }
+  })
+  it.each(['transition', 'source-tab', 'target-authority'])('rejects corrupt accepted checkpoint facts: %s',async(corruption)=>{
+    const ready=await advanceReady()
+    try {
+      ready.service.advancePage(ready.agent,ready.task,{ receipt:ready.receipt })
+      const checkpoint=structuredClone(ready.ctx.sessionProjections.stateOf(ready.session,'browserTask'))
+      if(!checkpoint?.current)throw new Error('checkpoint missing')
+      const fact=checkpoint.sourceFacts.find(item=>item.sessionSeq===ready.receipt.sessionSeq)
+      if(!fact?.transition)throw new Error('transition fact missing')
+      if(corruption==='transition')Reflect.set(fact,'transition',{})
+      else if(corruption==='source-tab')Reflect.set(fact.transition.source,'tab',{})
+      else Reflect.set(checkpoint.current,'targetReceipt',{ kind:'browser-task-receipt',sessionSeq:0 })
+      expect(browserTaskProjectionDefinition.stateSchema.safeParse(checkpoint).success).toBe(false)
+    } finally { await ready.ctx.fiber.dispose() }
+  })
+  it('retains historical render evidence without treating it as current after navigation',async()=>{
+    const rendered=await advanceReady({ resource:true,rendered:true })
+    const advanced=rendered.service.advancePage(rendered.agent,rendered.task,{ receipt:rendered.receipt })
+    expect(advanced.resources[0]).toMatchObject({ state:'vanished',presentation:{ evidenceId:'render-evidence' } })
+    expect(advanced.evidence.find(item=>item.id==='render-evidence')?.state).toBe('stale')
+  })
+  it.each([{ frameId:9 },{ documentId:'unaccepted' },{ documentId:undefined }]
+    .flatMap(override=>[{ override,terminal:false },{ override,terminal:true }]))(
+    'rejects provider snapshots outside an accepted page: %j',async({ override,terminal })=>{
+      const ready=await advanceReady()
+      try {
+        const accepted=ready.service.advancePage(ready.agent,ready.task,{ receipt:ready.receipt })
+        if(terminal)ready.ctx.browserTasks.terminate(ready.agent,accepted,'failed')
+        const context={ operation:{ requestId:'wrong-page-read',sessionId:ready.agent.session.id,installationId:target.installationId,
+          action:{ kind:'snapshot' as const,tabId:nextPage.tabId,frameId:nextPage.frameId,documentId:nextPage.documentId,...override } },
+        phase:'execute' as const,logicalMutates:false }
+        const before=ready.ctx.browserTasks.get(ready.agent)
+        expect(await ready.ctx.agents.withInitiator(ready.agent,()=>ready.ctx.waterfall('browser/operation-intent',context,
+          ()=>({ kind:'allow' as const })))).toMatchObject({ kind:'deny',result:{ delivery:'not-sent' } })
+        expect(ready.ctx.browserTasks.get(ready.agent)).toEqual(before)
+      } finally { await ready.ctx.fiber.dispose() }
+    })
+  it('preserves stable selected-tab discovery when no task owns a document',async()=>{
+    const ready=await providerH()
+    try {
+      const context={ operation:{ requestId:'selected-read',sessionId:ready.agent.session.id,installationId:target.installationId,
+        action:{ kind:'snapshot' as const,tabId:target.page.tabId,frameId:target.page.frameId } },
+      phase:'execute' as const,logicalMutates:false }
+      expect(await ready.ctx.agents.withInitiator(ready.agent,()=>ready.ctx.waterfall('browser/operation-intent',context,
+        ()=>({ kind:'allow' as const })))).toEqual({ kind:'allow' })
+    } finally { await ready.ctx.fiber.dispose() }
+  })
+  it('authorizes provider reads only from an accepted target receipt, never a later arbitrary rebind',async()=>{
+    const h=await advanceReady()
+    let advanced=h.service.advancePage(h.agent,h.task,{ receipt:h.receipt })
+    const context={ operation:{ requestId:'next-page',sessionId:h.agent.session.id,installationId:target.installationId,
+      action:{ kind:'snapshot' as const,tabId:nextPage.tabId,frameId:nextPage.frameId,documentId:nextPage.documentId } },
+    phase:'execute' as const,logicalMutates:false }
+    const admit=()=>h.ctx.agents.withInitiator(h.agent,()=>h.ctx.waterfall('browser/operation-intent',context,()=>({ kind:'allow' as const })))
+    expect(await admit()).toEqual({ kind:'allow' })
+    advanced=h.ctx.browserTasks.get(h.agent)??advanced
+    advanced=h.ctx.browserTasks.transition(h.agent,advanced,'waiting',['target-lost'])
+    expect(()=>h.ctx.browserTasks.rebind(h.agent,advanced,{ installationId:target.installationId,page:nextPage })).toThrow('current user target')
+    const selected={ installationId:target.installationId,page:{ ...nextPage,tabId:9,documentId:'chosen-page' } }
+    h.ctx.browserTasks.bindTargetByUser(h.agent,{ expectedRevision:0,...selected })
+    advanced=h.ctx.browserTasks.rebind(h.agent,advanced,selected)
+    expect(advanced).toMatchObject({ scope:{ kind:'single-tab' },targetRevision:1 })
+    expect(advanced).not.toHaveProperty('targetReceipt')
+    h.ctx.browserTasks.acknowledgeTargetLoss(h.agent,advanced)
+    expect(await admit()).toMatchObject({ kind:'deny',result:{ reason:'browser_target_mismatch',delivery:'not-sent' } })
+  })
+  it('rejects an advance while another write is unknown or unsettled',async()=>{
+    const unknown=await advanceReady();let task=unknown.task
+    task=unknown.ctx.browserTasks.recordAttempt(unknown.agent,task,attempt({ attemptId:'other',requestId:'other',stage:'planned',write:true,target }) as never)
+    expect(()=>unknown.service.advancePage(unknown.agent,task,{ receipt:unknown.receipt })).toThrow(BrowserTaskError)
+  })
   it('enforces resource/step budgets and preserves sequential task history',async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.consumeContinuation(agent,t,2);expect(()=>ctx.browserTasks.consumeContinuation(agent,t,2)).toThrow(expect.objectContaining({ code:'BROWSER_TASK_BUDGET' }));t=ctx.browserTasks.terminate(agent,t,'failed');const source=session.append('user/message',createUserMessage({ content:[{ type:'text',text:'next' }],source:{ kind:'user' } }),{ surfaceOp:'append' });const second=create(ctx,agent,source.seq);expect(second.id).not.toBe(t.id);expect(session.snapshotEvents().filter(x=>x.type==='browser-task/change')).toHaveLength(4)})
   it('fails closed on corrupt projection state and malformed replay',async()=>{expect(()=>browserTaskProjectionDefinition.stateSchema.parse({ current:{},recentTaskIds:[],lastSourceSeq:-1,sourceFacts:[],failure:null })).toThrow();const{ ctx,agent,session }=await h();const t=create(ctx,agent);session.append('browser-task/change',{ kind:'browser-task/change',version:2,operation:'terminate',task:{ ...t,revision:99,phase:'terminal',outcome:'completed' } } as never);expect(()=>ctx.browserTasks.get(agent)).toThrow('browser task replay failed')})
   it('rejects a direct raw resource operation that removes an existing resource',async()=>{const{ ctx,agent,session }=await h();let t=create(ctx,agent);t=ctx.browserTasks.upsertResource(agent,t,{ id:'panel',state:'reserved',target });session.append('browser-task/change',{ kind:'browser-task/change',version:3,operation:'resource',task:{ ...t,revision:t.revision+1,updatedAt:t.updatedAt+1,resources:[] } } as never);expect(()=>ctx.browserTasks.get(agent)).toThrow('browser task replay failed')})

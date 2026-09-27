@@ -2357,17 +2357,17 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     // its original requestStatus identity in reconcileCleanup().
     if (allowDetachedOwnerCleanup && (plugin.owner.kind === 'browser-installation' || plugin.owner.kind === 'revoked'
       || !this.ownerIsLive(plugin) || this.ownerTaskIsTerminal(plugin))) {
-      return execute(operation, signal)
+      return execute.call(browser, operation, signal)
     }
     const controller = plugin.run?.controller
     if (controller !== undefined) {
       const controllerAgent = this.rootCtx.agents.get(controller.sessionId)
       if (controllerAgent === undefined) throw new Error('delivered dynamic Plugin browser controller is no longer live')
-      return this.rootCtx.agents.withInitiator(controllerAgent, () => execute(operation, signal))
+      return this.rootCtx.agents.withInitiator(controllerAgent, () => execute.call(browser, operation, signal))
     }
     const owner = this.agentOwner(plugin)
     if (owner === undefined) throw new Error('delivered dynamic Plugin browser work requires an installation authority')
-    return this.rootCtx.agents.withInitiator(owner.agent, () => execute(operation, signal))
+    return this.rootCtx.agents.withInitiator(owner.agent, () => execute.call(browser, operation, signal))
   }
 
   private ownerTaskIsTerminal(plugin: DynamicCordisPlugin): boolean {

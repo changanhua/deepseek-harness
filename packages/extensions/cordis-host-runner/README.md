@@ -71,6 +71,8 @@ This section explains the design behind the runner; the observable behavior is f
 
 The runner is built on two separations. **Registry and sandbox are one service.** The `DynamicCordisRunnerService` owns the definition registry, the vm sandbox, the host-half fiber lifecycle, and the invoke handler table, so a definition's whole life has one owner. **Versions are immutable packages.** A plugin holds packages that never change after `define`; `currentPackageId` and `nextPackageId` point at the running and target versions, and `mode: "run"` versus `"update"` encodes whether the target equals the current version. The browser round trip exists because a browser half can only be carried out by a page: the service emits a request, suspends, and is settled by the page's verdict, with the caller's `AbortSignal` as the only other exit.
 
+Browser calls preserve the provider service as their method receiver in every execution path, including installation-owned cleanup after the creating Agent is disposed.
+
 ### Source map
 
 | File | Role |
