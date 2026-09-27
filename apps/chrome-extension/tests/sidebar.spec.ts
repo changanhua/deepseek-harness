@@ -54,6 +54,13 @@ const element = (selector: string): HTMLElement => {
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); vi.useRealTimers(); document.body.replaceChildren() })
 
 describe('DSH 浏览器助手 V2 侧栏', () => {
+  test.each([true, false])('连接恢复状态区分有限退避与等待事件：retryPending=%s', async retryPending => {
+    await load(baseState({ assistantV2: { ...baseState().assistantV2,
+      connection: { phase: 'offline', baseUrl: 'http://127.0.0.1:3080', retryPending, retryPaused: !retryPending } } }))
+    expect(element('#connection-panel').textContent).toContain(retryPending ? '正在有限退避重试' : '已暂停自动重试')
+    expect(element('#connection-panel').textContent).not.toContain(retryPending ? '已暂停自动重试' : '正在有限退避重试')
+  })
+
   test('设置页显示独立的 Codex 浏览器连接，并可发起连接', async () => {
     const current = baseState({ assistantV2: { ...baseState().assistantV2,
       codexConnection: { baseUrl: 'http://127.0.0.1:3091', phase: 'configured' } } })
@@ -81,7 +88,7 @@ describe('DSH 浏览器助手 V2 侧栏', () => {
     expect(String(fixture.wireMessages[0]?.surfaceId)).toMatch(/^surface-[0-9a-f-]{36}$/u)
   })
 
-  test('首页不创建会话，主导航只保留对话、页面认知和功能', async () => {
+  test('首页不创建会话，主导航展示对话、页面认知、功能和 SBC', async () => {
     const fixture = await load()
     expect(document.body.textContent).toContain('今天，想做点什么')
     expect(document.body.textContent).toContain('页面认知')

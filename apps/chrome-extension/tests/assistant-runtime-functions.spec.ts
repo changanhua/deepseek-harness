@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => {
     codexInstallationId,
     connectionChanged: null as null | ((state: unknown) => void),
     codexConnectionChanged: null as null | ((state: unknown) => void),
+    dshCreateChannel: null as null | ((options: unknown) => unknown),
+    codexCreateChannel: null as null | ((options: unknown) => unknown),
+    createChannel: vi.fn(),
     connectionCall: vi.fn(),
     codexCall: vi.fn(),
     connectionRead: vi.fn(async () => ({ baseUrl: 'http://127.0.0.1:3080', phase: 'connected' })),
@@ -28,9 +31,10 @@ const mocks = vi.hoisted(() => {
 })
 
 vi.mock('../src/assistant-transport.js', () => ({ createAssistantTransport: () => ({}) }))
-vi.mock('../src/assistant-channel.js', () => ({ createAssistantChannel: () => ({}) }))
-vi.mock('../src/assistant-connection.js', () => ({ createAssistantConnection: (options: { changed: (state: unknown) => void }) => {
+vi.mock('../src/assistant-channel.js', () => ({ createAssistantChannel: mocks.createChannel }))
+vi.mock('../src/assistant-connection.js', () => ({ createAssistantConnection: (options: { changed: (state: unknown) => void; createChannel: (options: unknown) => unknown }) => {
   mocks.connectionChanged = options.changed
+  mocks.dshCreateChannel = options.createChannel
   return {
     read: mocks.connectionRead,
     call: mocks.connectionCall, getGrant: () => ({ installationId: mocks.installationId, grantEpoch: 1, scopes: ['browser:write'], origins: ['*'] }),
@@ -39,8 +43,9 @@ vi.mock('../src/assistant-connection.js', () => ({ createAssistantConnection: (o
     cancel: vi.fn(), openApproval: vi.fn(), poll: vi.fn(),
   }
 } }))
-vi.mock('../src/codex-browser-connection.js', () => ({ createCodexBrowserConnection: (options: { changed: (state: unknown) => void }) => {
+vi.mock('../src/codex-browser-connection.js', () => ({ createCodexBrowserConnection: (options: { changed: (state: unknown) => void; createChannel: (options: unknown) => unknown }) => {
   mocks.codexConnectionChanged = options.changed
+  mocks.codexCreateChannel = options.createChannel
   return {
     read: vi.fn(async () => ({ baseUrl: 'http://127.0.0.1:3091', phase: 'connected' })),
     getGrant: () => ({ installationId: mocks.codexInstallationId, grantEpoch: 1, scopes: ['browser:write'], origins: ['*'] }),
@@ -68,7 +73,7 @@ vi.mock('../src/assistant-functions.js', () => ({ createAssistantFunctions: () =
 import { createAssistantRuntime } from '../src/assistant-runtime.js'
 
 const chromeApi = () => ({
-  runtime: { id: 'extension-id' }, storage: { local: { get: vi.fn(async () => ({})), set: vi.fn(async () => {}) } },
+  runtime: { id: 'extension-id', getManifest: vi.fn(() => ({ version: '0.4.0' })) }, storage: { local: { get: vi.fn(async () => ({})), set: vi.fn(async () => {}) } },
   permissions: { contains: vi.fn(async () => true) },
   tabs: { create: vi.fn(async (value: unknown): Promise<unknown> => value), update: vi.fn(async () => ({ windowId: 3 })) },
   windows: { update: vi.fn() }, scripting: { executeScript: vi.fn() }, action: { setBadgeText: vi.fn() },
@@ -80,6 +85,7 @@ describe('assistant runtime function handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks(); mocks.sessionState.binding = { baseUrl: 'http://127.0.0.1:3080', installationId: mocks.installationId, sessionId: 'current-session' }
     mocks.codexCall.mockReset()
+    mocks.createChannel.mockReset().mockReturnValue({})
     mocks.connectionRead.mockResolvedValue({ baseUrl: 'http://127.0.0.1:3080', phase: 'connected' })
     mocks.connectionRetry.mockResolvedValue(false)
     mocks.intakeTarget.mockResolvedValue({ tabId: 7, windowId: 2, frameId: 0, documentId: 'doc-7',
@@ -89,6 +95,26 @@ describe('assistant runtime function handlers', () => {
     mocks.sessionModels.mockResolvedValue({ groups: [] })
     mocks.sessionSelectModel.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-chat' })
     mocks.functionRun.mockResolvedValue({ accepted: true }); mocks.functionEdit.mockResolvedValue({ prepared: true })
+  })
+
+  test('向 DSH 与 Codex 统一报告实际 manifest 版本', () => {
+    const api = chromeApi(); createAssistantRuntime({ chromeApi: api })
+    mocks.dshCreateChannel!({ credentials: {} })
+    mocks.codexCreateChannel!({ credentials: {} })
+
+    expect(mocks.createChannel).toHaveBeenNthCalledWith(1, { credentials: {}, runtime: { version: '0.4.0' } })
+    expect(mocks.createChannel).toHaveBeenNthCalledWith(2, { credentials: {}, runtime: { version: '0.4.0' } })
+    expect(api.runtime.getManifest).toHaveBeenCalledTimes(1)
+  })
+
+  test('manifest 信息不可用时不虚构 hello 运行时版本', () => {
+    const api = chromeApi(); delete (api.runtime as { getManifest?: unknown }).getManifest
+    createAssistantRuntime({ chromeApi: api })
+    mocks.dshCreateChannel!({ credentials: {} })
+    mocks.codexCreateChannel!({ credentials: {} })
+
+    expect(mocks.createChannel).toHaveBeenNthCalledWith(1, { credentials: {} })
+    expect(mocks.createChannel).toHaveBeenNthCalledWith(2, { credentials: {} })
   })
 
   test('显式重试只恢复已保存授权，不发起新配对', async () => {

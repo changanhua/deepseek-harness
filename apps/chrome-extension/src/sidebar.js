@@ -112,6 +112,8 @@ const renderConnection = () => {
       connection.phase === 'offline' ? retryConnection : connect, 'primary')
     action.disabled = connection.phase === 'connecting'
     panel.append(`${label(connection.phase)}${connection.baseUrl ? ` · ${connection.baseUrl}` : ''}`, action)
+    if (connection.phase === 'offline') panel.append(connection.retryPending
+      ? '正在有限退避重试。' : '已暂停自动重试；服务页面恢复或重新打开侧栏时检查连接。')
   }
 }
 
@@ -607,5 +609,6 @@ const connectView = () => {
   } catch (error) { if (invalidatedExtensionContext(error)) stopInvalidatedView(); else retryView() }
 }
 document.addEventListener('visibilitychange', publishPresence)
+window.addEventListener('online', () => { void send({ type: 'dsh-assistant-recover' }) })
 window.addEventListener('pagehide', () => { closingView = true; clearTimeout(presenceRetry); presencePort?.disconnect(); presencePort = undefined })
 render(); connectView(); void readState()

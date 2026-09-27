@@ -33,6 +33,24 @@ const harness = () => {
 }
 
 describe('Codex 浏览器直连', () => {
+  test('断线的暂停跨 worker 保留，事件恢复沿用 token 且不重新配对', async () => {
+    const h = harness()
+    await h.connection.connect()
+    h.channels[0].options.onState({ phase: 'offline', retryPaused: false, retryPending: true, pauseOnRestart: true })
+    await vi.waitFor(() => { expect(h.values.get('dsh.codex.browser.connection.v1')).toMatchObject({ retryPaused: true }) })
+    expect(await h.connection.read()).toMatchObject({ retryPending: true, retryPaused: false })
+    const restored = createCodexBrowserConnection({ storage: h.storage, extensionId, fetchImpl: h.fetchImpl,
+      createChannel: h.createChannel, createInstallationId: () => installationId })
+    expect(await restored.restore()).toMatchObject({ phase: 'offline', retryPaused: true })
+    expect(h.channels).toHaveLength(1)
+    await restored.retrySaved({ once: true })
+    expect(h.values.get('dsh.codex.browser.connection.v1')).toMatchObject({ retryPaused: true })
+    expect(h.channels).toHaveLength(2)
+    expect(h.channels[1].channel.start).toHaveBeenCalledExactlyOnceWith({ once: true })
+    expect(h.channels[1].options.credentials).toMatchObject({ installationId, token, grant })
+    expect(h.fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
   test('首次连接只向本地桥申请一次凭据，并持久化独立安装身份', async () => {
     const h = harness()
 

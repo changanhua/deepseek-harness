@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/chrome-extension/README.md
-README.md: 69a4f0ac5eb4ffbe24c40d5a10d55ba40f76e13f
-README.zh.md: 342b822b639adfda1c4de6ea4a1d8fd48551c520
+README.md: fd751fc5aae68aafcf04b5109aae1ee78605cf58
+README.zh.md: 6b3f0d4cff8cea6a548da3c61fbd781de3b8ae52

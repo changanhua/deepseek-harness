@@ -1,4 +1,5 @@
 import { normalizeBaseUrl } from './pending.js'
+import { probeAssistantService } from './assistant-recovery.js'
 
 const MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 const MAX_AUTO_RECONNECTS = 5
@@ -54,19 +55,25 @@ const serializeFrame = frame => {
 export const createAssistantChannel = ({
   credentials,
   WebSocketImpl = WebSocket,
+  fetchImpl = fetch,
   onState = /** @returns {unknown} */ () => {},
   onCommand = /** @returns {unknown} */ () => {},
   onEvent = /** @returns {unknown} */ () => {},
+  runtime,
   reconnectDelayMs = 1000,
   maxPending = 32,
   requestTimeoutMs = 10_000,
 }) => {
   const channelCredentials = clone(credentials)
+  const runtimeMetadata = typeof runtime?.version === 'string' && runtime.version.length > 0 && runtime.version.length <= 64
+    ? { version: runtime.version } : undefined
   let socket = null
   let activeGrant = null
   let stopped = false
   let reconnectTimer = null
   let autoReconnects = 0
+  let probe = null
+  let oneShot = false
   let connectedAt = null
   let stableTimer = null
   const pending = new Map()
@@ -85,13 +92,25 @@ export const createAssistantChannel = ({
   }
 
   const scheduleReconnect = () => {
-    if (stopped || reconnectTimer || autoReconnects >= MAX_AUTO_RECONNECTS) return
+    if (stopped) return
+    if (reconnectTimer || probe) return
+    if (oneShot || autoReconnects >= MAX_AUTO_RECONNECTS) {
+      report({ phase: 'offline', retryPaused: true, retryPending: false, pauseOnRestart: true })
+      return
+    }
     const delay = reconnectDelayMs * 2 ** autoReconnects
     autoReconnects += 1
-    reconnectTimer = setTimeout(() => {
+    reconnectTimer = setTimeout(async () => {
       reconnectTimer = null
-      connect()
+      const controller = new AbortController()
+      probe = controller
+      const available = await probeAssistantService(channelCredentials.baseUrl, fetchImpl, controller.signal)
+      if (probe !== controller || stopped) return
+      probe = null
+      if (available) connect()
+      else scheduleReconnect()
     }, delay)
+    report({ phase: 'offline', retryPaused: false, retryPending: true, pauseOnRestart: true })
   }
 
   const closeCurrent = code => {
@@ -134,7 +153,6 @@ export const createAssistantChannel = ({
     let next
     try { next = new WebSocketImpl(socketUrlFor(channelCredentials.baseUrl)) } catch {
       scheduleReconnect()
-      report({ phase: 'offline', retryPaused: true })
       return
     }
     socket = next
@@ -145,7 +163,7 @@ export const createAssistantChannel = ({
       if (socket !== next || stopped) return
       try {
         next.send(JSON.stringify({ type: 'hello', protocolVersion: 1, installationId: channelCredentials.installationId, token: channelCredentials.token,
-          capabilities: executorCapabilities }))
+          capabilities: executorCapabilities, ...(runtimeMetadata === undefined ? {} : { runtime: runtimeMetadata }) }))
       } catch {
         closeCurrent()
       }
@@ -170,6 +188,7 @@ export const createAssistantChannel = ({
           stableTimer = null
           if (socket !== next || stopped || !activeGrant) return
           autoReconnects = 0
+          oneShot = false
           report({ phase: 'stable' })
         }, STABLE_CONNECTION_MS)
         report({ phase: 'connected', grant: clone(activeGrant) })
@@ -220,13 +239,15 @@ export const createAssistantChannel = ({
         return
       }
       scheduleReconnect()
-      report({ phase: 'offline', retryPaused: true })
     }
     next.onerror = () => {}
   }
 
-  const start = () => {
+  const start = ({ once = false } = {}) => {
     if (stopped || socket) return
+    probe?.abort()
+    probe = null
+    oneShot = once
     if (reconnectTimer) clearTimeout(reconnectTimer)
     reconnectTimer = null
     autoReconnects = 0
@@ -238,6 +259,8 @@ export const createAssistantChannel = ({
 
   const stop = () => {
     stopped = true
+    probe?.abort()
+    probe = null
     if (reconnectTimer) clearTimeout(reconnectTimer)
     reconnectTimer = null
     connectedAt = null

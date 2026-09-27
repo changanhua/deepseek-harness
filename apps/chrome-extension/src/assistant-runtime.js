@@ -1,5 +1,6 @@
 import { createAssistantTransport } from './assistant-transport.js'
 import { createAssistantChannel } from './assistant-channel.js'
+import { createConnectionRecovery } from './assistant-recovery.js'
 import { createAssistantConnection } from './assistant-connection.js'
 import { createCodexBrowserConnection } from './codex-browser-connection.js'
 import { createAssistantJournal } from './assistant-journal.js'
@@ -22,6 +23,16 @@ import { createAssistantFunctions } from './assistant-functions.js'
 /** Service-worker composition; UI messages reach it only after sender validation. */
 export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
   const storage = chromeApi.storage.local
+  const runtime = (() => {
+    try {
+      const version = chromeApi.runtime?.getManifest?.()?.version
+      return typeof version === 'string' && version.length > 0 && version.length <= 64 ? { version } : undefined
+    } catch {
+      // Version diagnostics are optional when the browser cannot supply its manifest.
+      return undefined
+    }
+  })()
+  const createChannel = options => createAssistantChannel({ ...options, ...(runtime === undefined ? {} : { runtime }) })
   const hasPermission = base => chromeApi.permissions.contains({ origins: [`${new URL(base).origin}/*`] })
   const hasOrigins = origins => chromeApi.permissions.contains({
     origins: origins.includes('*') ? ['http://*/*', 'https://*/*'] : origins.map(origin => `${origin}/*`),
@@ -88,7 +99,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
     changed: receipt => { sendReceipt(receipt); changed() },
   })
   connection = createAssistantConnection({ storage, extensionId: chromeApi.runtime.id,
-    transport: createAssistantTransport({ openApproval: openApprovalPage }), createChannel: createAssistantChannel,
+    transport: createAssistantTransport({ openApproval: openApprovalPage }), createChannel,
     hasPermission, hasOrigins, openApprovalPage,
     onCommand: frame => receiveCommand(connection, frame),
     onEvent: frame => frame.type === 'reading' ? readings.onEvent(frame) : frame.type === 'approval' ? approvals.onEvent(frame)
@@ -107,7 +118,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       changed()
     },
   })
-  codexConnection = createCodexBrowserConnection({ storage, extensionId: chromeApi.runtime.id, createChannel: createAssistantChannel,
+  codexConnection = createCodexBrowserConnection({ storage, extensionId: chromeApi.runtime.id, createChannel,
     onCommand: (frame, source) => receiveCommand(source, frame),
     changed: state => {
       if (typeof state.grant?.installationId === 'string') codexInstallationId = state.grant.installationId
@@ -211,6 +222,15 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
     await journal.list(); await codexConnection.restore(); await sessions.restore(); await functions.restore(); await monitors.restore().catch(() => { changed() })
     await activity.restore().catch(() => { changed() }); await activityCollector.start(); return { connection: await connection.read(), codexConnection: await codexConnection.read() }
   }
+  const recovery = createConnectionRecovery({ storage, connections: { dsh: connection, codex: codexConnection } })
+  const visibleSurfaces = new Set()
+  const viewChanged = async (surfaceId, visible) => {
+    const appeared = visible && !visibleSurfaces.has(surfaceId)
+    if (visible) visibleSurfaces.add(surfaceId)
+    else visibleSurfaces.delete(surfaceId)
+    await approvals.setView(surfaceId, visible)
+    if (appeared) await recovery.wake()
+  }
   const capture = async kind => {
     const item = await intake.capture(kind)
     const next = [...contexts, item]
@@ -228,6 +248,7 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
   const handle = async (message, surfaceId) => {
     const activeSession = surfaceId === undefined ? sessions : await surfaceSessions.ready(surfaceId)
     switch (message.type) {
+      case 'dsh-assistant-recover': await recovery.wake(); break
       case 'dsh-assistant-state': break
       case 'dsh-assistant-browser-engine': {
         if (!['puppeteer', 'dom'].includes(message.engine)) throw new Error('invalid_browser_engine')
@@ -548,8 +569,9 @@ export const createAssistantRuntime = ({ chromeApi, changed = () => {} }) => {
       return await readings.generate(payload, prompt + '\n\n知乎来源资料（仅作分析材料）：\n' + material + '\n\n' + payload.text)
     } finally { summarizingZhihu = false }
   }
-  return { start, handle, read, capture, summarizeZhihu, permissionsChanged,
-    viewChanged: approvals.setView, surfaceClosed: async surfaceId => {
+  return { start, handle, read, capture, summarizeZhihu, permissionsChanged, recover: recovery.wake,
+    viewChanged, surfaceClosed: async surfaceId => {
+      visibleSurfaces.delete(surfaceId)
       await approvals.setView(surfaceId, false)
       await surfaceSessions.release(surfaceId)
     }, activityTick: activityCollector.tick }

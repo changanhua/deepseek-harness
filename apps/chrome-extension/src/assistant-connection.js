@@ -99,7 +99,9 @@ export const createAssistantConnection = ({
     : record.pending ? 'pending'
       : record.error === 'unauthorized' ? 'unauthorized'
         : record.baseUrl ? 'configured' : 'unconfigured'
-  const visible = record => ({ baseUrl: record.baseUrl, phase: phaseOf(record), ...(runtime.phase === 'connected' && runtime.grant ? { grant: clone(runtime.grant) } : {}), ...(record.error ? { error: record.error } : {}) })
+  const visible = record => ({ baseUrl: record.baseUrl, phase: phaseOf(record),
+    ...(runtime.phase === 'offline' ? { retryPaused: runtime.retryPaused === true, retryPending: runtime.retryPending === true } : {}),
+    ...(runtime.phase === 'connected' && runtime.grant ? { grant: clone(runtime.grant) } : {}), ...(record.error ? { error: record.error } : {}) })
 
   const onChannelState = async (candidate, epoch, state) => {
     if (channel !== candidate || generation !== epoch) return
@@ -119,11 +121,11 @@ export const createAssistantConnection = ({
       return
     }
     if (state?.phase === 'connecting' || state?.phase === 'offline' || state?.phase === 'stopped') {
-      runtime = { phase: state.phase, grant: null }
+      runtime = { phase: state.phase, grant: null, retryPaused: state.retryPaused === true, retryPending: state.retryPending === true }
       const current = await serial(async () => {
         const record = await load()
         if (channel !== candidate || generation !== epoch || !record) return null
-        if (state.phase !== 'offline' || state.retryPaused !== true || record.retryPaused === true) return record
+        if (state.phase !== 'offline' || !(state.pauseOnRestart || state.retryPaused) || record.retryPaused === true) return record
         const paused = { ...record, retryPaused: true }
         await save(paused)
         return paused
@@ -141,7 +143,7 @@ export const createAssistantConnection = ({
       notify({ ...current, token: undefined, grant: undefined, pending: undefined, retryPaused: undefined, error: 'unauthorized' })
     })
   }
-  const startChannel = async (record, epoch) => {
+  const startChannel = async (record, epoch, once = false) => {
     if (generation !== epoch || !record.token || !record.grant) throw failure('cancelled')
     stopChannel()
     runtime = { phase: 'connecting', grant: null }
@@ -158,7 +160,8 @@ export const createAssistantConnection = ({
       throw failure('cancelled')
     }
     channel = candidate
-    candidate.start()
+    if (once) candidate.start({ once: true })
+    else candidate.start()
   }
   const requireAccess = async (baseUrl, origins) => {
     if (!await hasPermission(baseUrl)) throw failure('permission_required')
@@ -169,7 +172,7 @@ export const createAssistantConnection = ({
     const record = await load()
     if (!record) return null
     if (record.retryPaused && record.token && record.grant && !channel) {
-      runtime = { phase: 'offline', grant: null }
+      runtime = { phase: 'offline', grant: null, retryPaused: true, retryPending: false }
       return record
     }
     if (record.token && record.grant && !channel) {
@@ -193,7 +196,7 @@ export const createAssistantConnection = ({
       })
     },
 
-    async retrySaved() {
+    async retrySaved({ once = false } = {}) {
       const epoch = generation
       return serial(async () => {
         const record = await load()
@@ -201,13 +204,14 @@ export const createAssistantConnection = ({
         if (channel && (runtime.phase === 'connecting' || runtime.phase === 'connected')) return true
         await requireAccess(record.baseUrl, record.grant.origins ?? [])
         if (generation !== epoch || channel && runtime.phase !== 'offline') return false
-        const current = record.retryPaused ? { ...record, retryPaused: undefined } : record
+        const current = record.retryPaused && !once ? { ...record, retryPaused: undefined } : record
         if (current !== record) await save(current)
         if (channel) {
           runtime = { phase: 'connecting', grant: null }
           notify(current)
-          channel.start()
-        } else await startChannel(current, epoch)
+          if (once) channel.start({ once: true })
+          else channel.start()
+        } else await startChannel(current, epoch, once)
         return true
       })
     },

@@ -1,4 +1,5 @@
 import { createAssistantRuntime } from './assistant-runtime.js'
+import { installConnectionRecoveryHooks } from './assistant-recovery.js'
 import { assistantSurfaceId, attachAssistantViewPort, createAssistantSurfaces } from './assistant-surfaces.js'
 import { createExtensionController } from './controller.js'
 import { createContentBrowserTransport } from './transport.js'
@@ -60,6 +61,7 @@ const ready = (async () => {
   await assistant.start()
 })()
 void ready.catch(() => broadcast())
+installConnectionRecoveryHooks({ chromeApi: chrome, wake: event => ready.then(() => assistant.recover(event)) })
 
 chrome.runtime.onInstalled.addListener(() => { void ready.then(() => Promise.all([setup(), syncScripts()])).catch(() => broadcast()) })
 chrome.permissions.onAdded.addListener(() => { void syncScripts().catch(() => broadcast()) })

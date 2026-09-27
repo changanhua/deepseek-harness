@@ -27,12 +27,14 @@ export const createCodexBrowserConnection = ({ storage, extensionId, fetchImpl =
   let initialized = false
   let activeGrant = null
   let phase = 'unconfigured'
+  let retryPending = false
+  let retryPaused = false
   let initializing = null
   let revision = 0
   let persistence = Promise.resolve()
 
   const view = () => ({ baseUrl: record?.baseUrl ?? null, installationId: record?.installationId ?? null,
-    phase, ...(activeGrant ? { grant: clone(activeGrant) } : {}) })
+    phase, ...(phase === 'offline' ? { retryPaused, retryPending } : {}), ...(activeGrant ? { grant: clone(activeGrant) } : {}) })
   const publish = () => { changed(view()) }
   const persist = patch => {
     const work = persistence.then(() => storage.set(patch))
@@ -45,9 +47,10 @@ export const createCodexBrowserConnection = ({ storage, extensionId, fetchImpl =
     if (!UUID_V4.test(candidate.installationId)) throw failure('invalid_codex_connection')
     if (candidate.token === undefined && candidate.grant === undefined) return { baseUrl, installationId: candidate.installationId }
     if (!BASE64_URL_32.test(candidate.token) || !validGrant(candidate.grant, candidate.installationId, extensionId)) throw failure('invalid_codex_connection')
-    return { baseUrl, installationId: candidate.installationId, token: candidate.token, grant: clone(candidate.grant) }
+    return { baseUrl, installationId: candidate.installationId, token: candidate.token, grant: clone(candidate.grant),
+      ...(candidate.retryPaused === true ? { retryPaused: true } : {}) }
   }
-  const start = () => {
+  const start = (once = false) => {
     if (!record?.token || !record.grant || channel) return
     const expectedRecord = record
     const expectedRevision = revision
@@ -63,14 +66,29 @@ export const createCodexBrowserConnection = ({ storage, extensionId, fetchImpl =
           activeGrant = clone(state.grant); phase = 'connected'
         } else if (state.phase === 'stable') {
           phase = 'connected'
+          delete record.retryPaused
+          void persist({ [CONNECTION_KEY]: clone(record) }).catch(() => {})
         } else if (['offline', 'unauthorized', 'stopped'].includes(state.phase)) {
           activeGrant = null; phase = state.phase
+          retryPending = state.retryPending === true
+          retryPaused = state.retryPaused === true
+          if (state.phase === 'offline' && (state.pauseOnRestart || state.retryPaused)) {
+            record.retryPaused = true
+            void persist({ [CONNECTION_KEY]: clone(record) }).catch(() => {
+              if (current()) { nextChannel.stop(); phase = 'invalid'; publish() }
+            })
+          }
+          if (state.phase === 'unauthorized') {
+            delete record.token; delete record.grant; delete record.retryPaused
+            void persist({ [CONNECTION_KEY]: clone(record) }).catch(() => {})
+          }
         } else if (state.phase === 'connecting') phase = 'connecting'
         publish()
       },
     })
     channel = nextChannel
-    nextChannel.start()
+    if (once) nextChannel.start({ once: true })
+    else nextChannel.start()
     publish()
   }
   const initialize = async () => {
@@ -79,7 +97,11 @@ export const createCodexBrowserConnection = ({ storage, extensionId, fetchImpl =
     initializing = (async () => {
       const stored = (await storage.get(CONNECTION_KEY))[CONNECTION_KEY]
       if (stored !== undefined) {
-        try { record = validate(stored); phase = 'configured'; start() }
+        try {
+          record = validate(stored); phase = 'configured'
+          if (record?.retryPaused) { phase = 'offline'; retryPaused = true; retryPending = false }
+          else start()
+        }
         catch { record = null; phase = 'invalid' }
       } else phase = 'unconfigured'
       initialized = true
@@ -106,6 +128,7 @@ export const createCodexBrowserConnection = ({ storage, extensionId, fetchImpl =
     if (!EXTENSION_ID.test(extensionId)) throw failure('invalid_extension_id')
     if (!record) await configure(DEFAULT_BASE_URL)
     if (channel && ['connecting', 'connected'].includes(phase)) return view()
+    if (record?.token && record.grant) { await retrySaved(); return view() }
     const requestedRecord = record
     const requestedRevision = revision
     phase = 'connecting'; publish()
@@ -125,6 +148,22 @@ export const createCodexBrowserConnection = ({ storage, extensionId, fetchImpl =
     return view()
   }
   const restore = async () => { await initialize(); return view() }
+  const retrySaved = async ({ once = false } = {}) => {
+    await initialize()
+    if (!record?.token || !record.grant || phase === 'unauthorized' || phase === 'invalid') return false
+    if (phase === 'connecting' || phase === 'connected') return true
+    const expectedRecord = record, expectedRevision = revision
+    if (!once) delete record.retryPaused
+    await persist({ [CONNECTION_KEY]: clone(record) })
+    if (record !== expectedRecord || revision !== expectedRevision) return false
+    if (channel) {
+      phase = 'connecting'; retryPending = false; retryPaused = false
+      if (once) channel.start({ once: true })
+      else channel.start()
+      publish()
+    } else start(once)
+    return true
+  }
   const disconnect = async () => {
     await initialize()
     revision += 1
@@ -133,7 +172,7 @@ export const createCodexBrowserConnection = ({ storage, extensionId, fetchImpl =
     phase = record ? 'configured' : 'unconfigured'; publish(); return view()
   }
   return {
-    restore, configure, connect, disconnect,
+    restore, configure, connect, disconnect, retrySaved,
     read: async () => { await initialize(); return view() },
     getGrant: () => activeGrant ? clone(activeGrant) : null,
     call: (...args) => channel ? channel.call(...args) : Promise.reject(failure('offline')),
