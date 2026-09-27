@@ -50,6 +50,7 @@ import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 import * as ToolPresent from '@deepseek-ai/dsh-tool-present'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
+import * as ToolChoice from '../packages/llm/tool-choice/src/index.ts'
 import RuntimeFacts from '@changanhua/dsh-runtime-facts'
 import { Browser } from '@changanhua/dsh-browser'
 import BrowserActivity from '@changanhua/dsh-browser-activity'
@@ -469,6 +470,18 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments.',
+  },
+  {
+    pkg: '@changanhua/dsh-tool-choice',
+    dir: 'tool-choice',
+    source: 'packages/llm/tool-choice/src/index.ts',
+    requires: ['ctx.tools', 'ctx.llm', 'real Agent at call time'],
+    writes: ['choice/llm-request', 'choice/llm-result'],
+    async mount(ctx) {
+      if (ctx.get('llm') === undefined) await ctx.plugin(LlmRuntime)
+      await ctx.plugin(ToolChoice, { provider: 'deepseek-official', model: 'deepseek-flash', maxInputBytes: 16384, maxCandidates: 32, maxOutputTokens: 128, timeoutMs: 5000 })
+    },
+    note: 'The route and limits are explicit catalog fixtures. Registration does not call the provider; execution selects one eligible candidate or abstains without executing an action.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-terminal',

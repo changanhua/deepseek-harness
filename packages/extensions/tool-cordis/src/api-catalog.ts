@@ -1915,6 +1915,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'mcpServer',
+    summary: 'One Host-owned MCP endpoint; each stateless HTTP exchange owns its SDK transport.',
+    description: 'One Host-owned MCP endpoint; each stateless HTTP exchange owns its SDK transport.',
+    methods: [],
+  },
+  {
     key: 'messageFeedback',
     summary: 'Session-log service; cold operations never construct a Session or Agent.',
     description: 'Session-log service; cold operations never construct a Session or Agent.',

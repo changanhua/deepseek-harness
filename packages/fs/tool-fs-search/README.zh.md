@@ -41,6 +41,10 @@ kind: "package-reference"
 
 `sampleOverCapGlobResults` 是必填项且没有回退值：部署必须显式选择超过上限时的排序约定。格式化 spill 成功时，两种模式都会在 spill 产物中保留完整排序列表。
 
+### 编程式 `glob` 声明
+
+`@deepseek-ai/dsh-tool-fs-search/declaration` 导出 `describe({ sampleOverCapGlobResults, globMaxResults })`，供能力目录在挂载可执行插件前发现 `glob`。它返回工具名称、描述、原始输入 JSON Schema 与原始输出 JSON Schema。声明会校验这两个可见配置，并与原生工具共享面向作者的参数和输出 DSL；导入或调用它都不会注册工具或启动 `rg`。
+
 ### 工具
 
 | 工具 | 参数 | 行为 |
@@ -95,6 +99,7 @@ Node 部署在受支持的 macOS、Linux 与 Windows 目标上获得 `@vscode/ri
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：`Config`、工具组合、上限校验 |
+| [`src/declaration.ts`](src/declaration.ts) | 无执行副作用的 `glob` 声明及其共享 schema DSL |
 | [`src/glob.ts`](src/glob.ts) | `glob` schema、argv、解析、内联采样、格式化 |
 | [`src/grep.ts`](src/grep.ts) | `grep` schema、argv、`--json` 解析、预览保留、格式化 |
 | [`src/search-core.ts`](src/search-core.ts) | 共享 spawn 助手、`SEARCH_*` 错误、spill 交接、工作目录相对展示 |

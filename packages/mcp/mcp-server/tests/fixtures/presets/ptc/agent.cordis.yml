@@ -1,0 +1,6 @@
+- id: normal-tool
+  name: ../../plugins/capability.js
+  config:
+    name: ptc_lookup
+    description: PTC lookup.
+    ptc: true

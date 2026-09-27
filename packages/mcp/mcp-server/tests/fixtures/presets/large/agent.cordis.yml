@@ -1,0 +1,6 @@
+- id: large-tool
+  name: ../../plugins/capability.js
+  config:
+    name: large_lookup
+    description: Large lookup.
+    size: 8192

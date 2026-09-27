@@ -1,0 +1,6 @@
+- id: contexts-tool
+  name: ../../plugins/capability.js
+  config:
+    name: context_lookup
+    description: Context lookup.
+    additionalContext: true

@@ -1,0 +1,5 @@
+- id: alpha-tool
+  name: ../../plugins/capability.js
+  config:
+    name: alpha_lookup
+    description: Alpha lookup.

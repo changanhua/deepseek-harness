@@ -1,0 +1,2 @@
+- id: broken-tool
+  name: ../../plugins/throws.js

@@ -1,0 +1,6 @@
+- id: conclusion-tool
+  name: ../../plugins/capability.js
+  config:
+    name: conclusion_lookup
+    description: Conclusion lookup.
+    concludesTurn: true

@@ -1,0 +1,5 @@
+- id: beta-tool
+  name: ../../plugins/capability.js
+  config:
+    name: beta_lookup
+    description: Beta lookup.
