@@ -2810,9 +2810,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote async openSettingsDocument(signal: AbortSignal): Promise<SettingsDocumentOpenValue>',
-        description: 'Materialize the provider-owned settings document and open it in a native text editor.',
+        description: 'Materialize the provider-owned settings document and open it in a native text editor, or return its path when no native opener exists.',
         parameters: [{ name: 'signal', description: 'caller lifetime; abort terminates preparation or the native command.' }],
-        returns: 'confirmation after the native opener accepts the document.',
+        returns: 'confirmation after the native opener accepts the document, or the path to show as text.',
         throws: ['RemoteError when no document exists, preparation fails, or opening fails.'],
       },
       {

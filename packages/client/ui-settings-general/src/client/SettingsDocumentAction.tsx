@@ -38,14 +38,24 @@ export function SettingsDocumentAction({ controller, useSnapshot, t }: SettingsD
   return (
     <div className={css.action}>
       {state.error === null ? null : <span className={css.error} role="alert">{t('openDocument.error')}</span>}
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={state.opening}
-        onClick={() => { void controller.open() }}
-      >
-        {t('openDocument')}
-      </Button>
+      {state.path === null
+        ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={state.opening}
+            onClick={() => { void controller.open() }}
+          >
+            {t('openDocument')}
+          </Button>
+        )
+        : (
+          <span className={css.path} title={state.path}>
+            {t('openDocument.path')}
+            {' '}
+            <code>{state.path}</code>
+          </span>
+        )}
     </div>
   )
 }

@@ -152,4 +152,29 @@ describe('SettingsDocumentAction', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Could not open configuration file')
     expect(screen.getByRole('button', { name: 'Open configuration file' })).toBeTruthy()
   })
+
+  it('replaces the native-open action with the document path when the Host is headless', async () => {
+    const controller = derivedDocumentStore({
+      settings: {
+        describe: vi.fn(() => Promise.resolve({
+          ok: true as const,
+          value: { writable: true, hasDocument: true, namespaces: [] },
+        })),
+        openSettingsDocument: vi.fn(() => Promise.resolve({
+          ok: true as const,
+          value: { opened: false as const, path: '/deployment/settings.yaml' },
+        })),
+      },
+    })
+    render(<SettingsDocumentAction
+      {...kit}
+      t={t}
+      controller={controller}
+      useSnapshot={bindSnapshotSelector(controller.store)}
+    />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open configuration file' }))
+    expect(await screen.findByText(/Configuration file:/u)).toBeTruthy()
+    expect(screen.getByText('/deployment/settings.yaml')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Open configuration file' })).toBeNull()
+  })
 })
