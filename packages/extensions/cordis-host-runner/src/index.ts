@@ -1749,9 +1749,9 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
 
   /**
    * Reconcile one cleanup action. A sent/unknown cleanup is never executed a
-   * second time: its original request id is status-polled until a conclusive
-   * receipt arrives. Only an explicitly not-sent result becomes eligible for
-   * a later fresh cleanup request.
+   * second time: reconcile its original request id, then use a read-only check
+   * of the exact document if necessary. Only a conclusive not-sent receipt
+   * makes the write eligible for a later fresh request.
    */
   private async reconcileCleanup(
     plugin: DynamicCordisPlugin,
@@ -1784,12 +1784,19 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         // cache.  It cannot satisfy a later permanent removal that explicitly
         // asks the extension to forget that cache, so make that stronger,
         // semantically distinct cleanup eligible on the next lifecycle pass.
-        if (kind === 'entry_unmount' && forgetCollected && !prior.forgetCollected) return false
+        if (kind === 'entry_unmount' && forgetCollected && !prior.forgetCollected && !confirmedDocumentGone(status)) return false
         return true
       }
       // The action was definitely never sent. Drop only this transport
       // identity; the next lifecycle pass may mint a fresh cleanup request.
-      if (definitelyNotSent(status)) this.cleanupRequests.delete(key)
+      if (definitelyNotSent(status)) {
+        this.cleanupRequests.delete(key)
+        return false
+      }
+      if (await this.confirmCleanupDocumentGone(plugin, browser, target)) {
+        this.cleanupRequests.delete(key)
+        return true
+      }
       return false
     }
 
@@ -1805,14 +1812,40 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         installationId: request.installationId, action,
       }, AbortSignal.timeout(5_000), true)
       if (cleanupConfirmed(kind, result)) return true
-      if (!definitelyNotSent(result)) this.cleanupRequests.set(key, request)
+      if (definitelyNotSent(result)) return false
+      this.cleanupRequests.set(key, request)
+      if (result !== null && typeof result === 'object'
+        && (result as { outcome?: unknown }).outcome === 'unknown'
+        && typeof browser.requestStatus === 'function') return false
     } catch (error) {
       // A thrown transport boundary does not prove that the page did not see
-      // the cleanup. Preserve its identity and require status-only recovery.
+      // the cleanup. Preserve its identity for status or document-loss proof.
       this.cleanupRequests.set(key, request)
       console.error(`[cordis:${plugin.pluginId}] failed to dispatch browser cleanup ${target.mountId}`, error)
+      if (typeof browser.requestStatus === 'function') return false
+    }
+    if (await this.confirmCleanupDocumentGone(plugin, browser, target)) {
+      this.cleanupRequests.delete(key)
+      return true
     }
     return false
+  }
+
+  /** Read the exact old document when a cleanup receipt cannot settle it. */
+  private async confirmCleanupDocumentGone(
+    plugin: DynamicCordisPlugin,
+    browser: BrowserGateway,
+    target: { sessionId: string; installationId: string; page: { tabId: number; frameId: number; documentId: string; url: string } },
+  ): Promise<boolean> {
+    try {
+      const result = await this.executeBrowser(plugin, browser, {
+        requestId: randomUUID(), sessionId: target.sessionId, installationId: target.installationId,
+        action: { kind: 'page_map', page: target.page },
+      }, AbortSignal.timeout(5_000), true)
+      return confirmedDocumentGone(result)
+    } catch {
+      return false
+    }
   }
 
   private cleanupKey(plugin: DynamicCordisPlugin, kind: BrowserCleanupKind, mountId: string): string {
@@ -2429,7 +2462,7 @@ function confirmedUnmount(result: unknown): boolean {
   }
   return receipt.outcome === 'observed' && receipt.delivery === 'sent'
       && receipt.value?.unmounted === true && receipt.value.remaining === 0
-    || receipt.outcome === 'failed' && receipt.delivery === 'sent' && receipt.reason === 'document_replaced'
+    || confirmedDocumentGone(result)
     || receipt.delivery === 'not-sent' && receipt.reason === 'already_released'
 }
 
@@ -2443,8 +2476,15 @@ function confirmedRegionClear(result: unknown): boolean {
   }
   return receipt.outcome === 'observed' && receipt.delivery === 'sent'
       && (receipt.value?.cleared === true || receipt.value?.disposition === 'absent')
-    || receipt.outcome === 'failed' && receipt.delivery === 'sent' && receipt.reason === 'document_replaced'
+    || confirmedDocumentGone(result)
     || receipt.delivery === 'not-sent' && receipt.reason === 'already_released'
+}
+
+function confirmedDocumentGone(result: unknown): boolean {
+  if (result === null || typeof result !== 'object') return false
+  const receipt = result as { outcome?: unknown; delivery?: unknown; quiescent?: unknown; reason?: unknown }
+  return receipt.delivery === 'sent' && receipt.reason === 'document_replaced'
+    && (receipt.outcome === 'failed' || receipt.outcome === 'unknown' && receipt.quiescent === true)
 }
 
 function cleanupConfirmed(kind: BrowserCleanupKind, result: unknown): boolean {
@@ -2452,8 +2492,11 @@ function cleanupConfirmed(kind: BrowserCleanupKind, result: unknown): boolean {
 }
 
 function definitelyNotSent(result: unknown): boolean {
-  return result !== null && typeof result === 'object'
-    && (result as { delivery?: unknown }).delivery === 'not-sent'
+  if (result === null || typeof result !== 'object') return false
+  const receipt = result as { outcome?: unknown; delivery?: unknown }
+  // Unknown/not-sent can describe an unavailable status lookup, not the old write.
+  return receipt.delivery === 'not-sent'
+    && (receipt.outcome === 'failed' || receipt.outcome === 'cancelled' || receipt.outcome === 'observed')
 }
 
 const MAX_PLUGIN_STATE_ENTRIES = 32

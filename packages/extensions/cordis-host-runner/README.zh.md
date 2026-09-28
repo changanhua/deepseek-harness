@@ -45,7 +45,7 @@ kind: "package-reference"
 
 定义由 `cordis_define` 记录、由 `cordis_run` 激活。只有 host 半的包直接在本进程中激活：它的代码在沙箱中运行。带浏览器半的包变成一次请求：它一直等到有人在一个页面上允许或拒绝，或提问的轮次被取消；作答页面随后先装载 host 半、再装载浏览器半。`mode: "run"` 启动当前包或重启它，`mode: "update"` 切换到另一个包版本。`cordis_stop` 结束一次存活运行——移除该包的 handler 与任何已装载的浏览器 UI——同时保留可再次运行的定义；`cordis_undefine` 停止并忘掉它。
 
-host 半可以使用受管 `harness.browser` facade 映射目标页面、把高层展示渲染进一个不透明区域引用，并恢复其精确挂载。runner 会捕获定义它的精确 live Agent；生成代码不能提供 Session 身份、重置 BrowserTask 预算、检查私有 selector 或绕过 Provider 恢复策略。每项普通调用，以及停止、更新、undefine、启动失败或 owner scope 清理，都在该 Agent initiator 下运行。所有本地 mount 输入都会在登记 ownership 前完成校验。owner scope 清理会在 Agent detach 前开始；如果所属 BrowserTask 已经 terminal，只有 runner 预先登记的精确清理责任会转交 runner 账本，而不会重开旧任务。如果清理已经发送但结果仍 unknown，孤儿恢复路径只轮询原 request identity，绝不再次执行。之后永久性的 `forgetCollected` 请求与更早的普通 unmount 保持为不同语义。
+host 半可以使用受管 `harness.browser` facade 映射目标页面、把高层展示渲染进一个不透明区域引用，并恢复其精确挂载。runner 会捕获定义它的精确 live Agent；生成代码不能提供 Session 身份、重置 BrowserTask 预算、检查私有 selector 或绕过 Provider 恢复策略。每项普通调用，以及停止、更新、undefine、启动失败或 owner scope 清理，都在该 Agent initiator 下运行。所有本地 mount 输入都会在登记 ownership 前完成校验。owner scope 清理会在 Agent detach 前开始；如果所属 BrowserTask 已经 terminal，只有 runner 预先登记的精确清理责任会转交 runner 账本，而不会重开旧任务。已发送的清理按原 request identity 核对，结果仍 unknown 时绝不重放。如果回执不能确认释放，则用只读页面地图核查精确的旧文档。已发送的文档替换失败回执，或已停稳的文档替换状态，可以结清资源；离线、权限丢失和一般页面不可用都不能。状态查询结果未知绝不授权新的写入。之后永久性的 `forgetCollected` 请求与更早的普通 unmount 保持为不同语义。
 
 ### 定义的去向
 

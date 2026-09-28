@@ -437,6 +437,29 @@ describe('Chrome document-bound browser executor', () => {
     ) as Promise<unknown>)
     expect(result).toMatchObject({ outcome: 'failed', quiescent: true, reason: 'document_replaced' })
   })
+  test('a closed tab proves its bound document is gone, but an unavailable tab lookup does not', async () => {
+    const h = harness()
+    h.chromeApi.scripting.executeScript.mockRejectedValue(new Error('No such document'))
+    h.chromeApi.tabs.get.mockRejectedValue(new Error('No tab with id: 7.'))
+    const request = operation({ kind: 'entry_unmount', page, mountId: 'old-entry' })
+    expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({
+      outcome: 'failed', quiescent: true, reason: 'document_replaced',
+    })
+    expect(await h.executor.inspect({ identity: request, target: page })).toMatchObject({
+      outcome: 'unknown', quiescent: true, reason: 'document_replaced',
+    })
+    h.chromeApi.tabs.get.mockRejectedValue(new Error('tab facts unavailable'))
+    expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({
+      outcome: 'failed', quiescent: true, reason: 'page_unavailable',
+    })
+    expect(await h.executor.inspect({ identity: request, target: page })).toMatchObject({
+      outcome: 'unknown', quiescent: false, reason: 'executor_unavailable',
+    })
+    h.chromeApi.tabs.get.mockRejectedValue(new Error('No tab with id: 8.'))
+    expect(await h.executor.inspect({ identity: request, target: page })).toMatchObject({
+      outcome: 'unknown', quiescent: false, reason: 'executor_unavailable',
+    })
+  })
   test('entry mount and unmount are issued through the page runtime and return their receipts', async () => {
     const h = harness()
     h.chromeApi.scripting.executeScript.mockImplementation(async (options) => {

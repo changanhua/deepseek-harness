@@ -21,6 +21,8 @@ const pageOf = action => action.element?.page ?? action.page
 const staleTarget = (expected, current) => current?.documentId !== expected.documentId || current?.frameId !== expected.frameId
   ? 'document_replaced'
   : current?.url !== expected.url ? 'target_url_stale' : 'stale_document'
+const tabConfirmedGone = (error, tabId) => typeof error?.message === 'string'
+  && error.message === `No tab with id: ${tabId}.`
 const actionOf = request => ['prepare', 'commit', 'observe'].includes(request.payload?.kind) ? request.payload.action : request.payload
 
 /** All page work is pinned to Chrome's documentId, never foreground state. */
@@ -90,6 +92,9 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
         const current = await probe({ tabId: entry.target.tabId, frameIds: [entry.target.frameId] })
         if (current.documentId !== entry.target.documentId) return { outcome: 'unknown', quiescent: true, reason: 'document_replaced' }
       } catch { /* loss of permission alone does not prove document destruction */ }
+      try { await chromeApi.tabs.get(entry.target.tabId) } catch (error) {
+        if (tabConfirmedGone(error, entry.target.tabId)) return { outcome: 'unknown', quiescent: true, reason: 'document_replaced' }
+      }
       return { outcome: 'unknown', quiescent: false, reason: 'executor_unavailable' }
     }
   }
@@ -186,6 +191,7 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
               if (typeof tab?.url === 'string' && tab.url !== expected.url) throw failure('target_url_stale')
             } catch (replacement) {
               if (['document_replaced', 'target_url_stale'].includes(replacement?.code)) throw replacement
+              if (tabConfirmedGone(replacement, expected.tabId)) throw failure('document_replaced')
             }
           }
         }

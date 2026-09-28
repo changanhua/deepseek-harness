@@ -605,7 +605,7 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     await expect(renderPanel('two', twoRef)).resolves.toMatchObject({ delivery: 'not-sent', reason: 'mount_capacity' })
   })
 
-  it('仅 document_replaced 回收失去页面运行时的 entry lease', async () => {
+  it.each(['entry_unmount', 'page_map'] as const)('%s 的 document_replaced 回收失去页面运行时的 entry lease', async (kind) => {
     const test = await mounted({ maxMounts: 1 }); const identity = await test.pair(); const extension = await peer(test.base, identity)
     const oldPage = { tabId: 12, frameId: 0, documentId: 'document-1', url: 'https://example.test/page' }
     const mount = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
@@ -618,9 +618,9 @@ describe('browser extension gateway over the real HTTP and WebSocket carriers', 
     } }))
     await mount
     const unmount = test.ctx.browser.execute({ requestId: randomUUID(), sessionId: SessionId('test-session'), installationId: identity.installationId,
-      action: { kind: 'entry_unmount', page: oldPage, mountId: 'old-entry' } }, new AbortController().signal)
-    await expect.poll(() => extension.frames.some(frame => actionKind(frame, 'entry_unmount'))).toBe(true)
-    const unmountRequest = execute(extension.frames, request => object(request.payload).kind === 'entry_unmount')
+      action: kind === 'entry_unmount' ? { kind, page: oldPage, mountId: 'old-entry' } : { kind, page: oldPage } }, new AbortController().signal)
+    await expect.poll(() => extension.frames.some(frame => actionKind(frame, kind))).toBe(true)
+    const unmountRequest = execute(extension.frames, request => object(request.payload).kind === kind)
     extension.socket.send(JSON.stringify({ type: 'result', receipt: { protocolVersion: unmountRequest.protocolVersion, grantEpoch: unmountRequest.grantEpoch,
       installationId: unmountRequest.installationId, sessionId: unmountRequest.sessionId, requestId: unmountRequest.requestId,
       deadline: unmountRequest.deadline, fingerprint: unmountRequest.fingerprint, outcome: 'failed', quiescent: true, reason: 'document_replaced',
