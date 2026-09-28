@@ -36,5 +36,10 @@
     "@deepseek-ai/schemastery": "workspace:^",
     "@changanhua/dsh-planning-local": "workspace:^",
     "@changanhua/dsh-delivery-local": "workspace:^"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/planning/planning-delivery-bridge"
   }
 }

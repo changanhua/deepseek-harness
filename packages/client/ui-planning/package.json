@@ -72,5 +72,10 @@
     "lib/index.js",
     "lib/client.js",
     "lib/types/**/*.d.ts"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/client/ui-planning"
+  }
 }

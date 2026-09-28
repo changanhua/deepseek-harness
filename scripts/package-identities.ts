@@ -1,7 +1,7 @@
 /** Personal-distribution package provenance and fail-closed publication identity. */
 
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   assertPublicationIdentity as assertSharedPublicationIdentity,
@@ -171,6 +171,23 @@ export function loadPackageIdentities(root: string = resolve(import.meta.dirname
 export function checkPackageIdentities(root: string = resolve(import.meta.dirname, '..')): string[] {
   const registry = loadPackageIdentities(root)
   const errors: string[] = []
+  const registeredDirectories = new Set(registry.personalPackages.map(identity => identity.directory))
+  const packagesRoot = resolve(root, 'packages')
+  for (const group of readdirSync(packagesRoot, { withFileTypes: true }).filter(entry => entry.isDirectory())) {
+    const groupRoot = join(packagesRoot, group.name)
+    for (const child of readdirSync(groupRoot, { withFileTypes: true }).filter(entry => entry.isDirectory())) {
+      const directory = `packages/${group.name}/${child.name}`
+      const manifestPath = join(groupRoot, child.name, 'package.json')
+      if (!existsSync(manifestPath)) continue
+      const manifest: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      if (!isRecord(manifest)) continue
+      if (typeof manifest.name === 'string'
+        && manifest.name.startsWith(`${registry.personalScope}/`)
+        && !registeredDirectories.has(directory)) {
+        errors.push(`${directory}: personal-scoped package is missing from ${REGISTRY_PATH}`)
+      }
+    }
+  }
   for (const identity of registry.personalPackages) {
     const manifestPath = resolve(root, identity.directory, 'package.json')
     if (!existsSync(manifestPath)) {

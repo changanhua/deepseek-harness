@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "officialRepository": "deepseek-ai/deepseek-harness",
+  "officialDefaultBranch": "master",
+  "forkRepository": "changanhua/deepseek-harness",
+  "forkDefaultBranch": "master",
+  "supportedUpstreamBase": {
+    "sha": "c291e7961a515f6d7af9304e7fd1d257929aef26",
+    "tag": null
+  },
+  "recordedPersonalHeadSha": "73e82d0f95bb1e7dfdeef84310fd1ac6282d71a2",
+  "observedUpstreamHeadSha": "21638c56315ae6a2b552d6091945d3144c9af32e",
+  "mergeBaseSha": "c291e7961a515f6d7af9304e7fd1d257929aef26",
+  "divergence": {
+    "personalAhead": 431,
+    "personalBehind": 3666
+  },
+  "lastRevalidatedAt": "2026-09-28T19:45:01.6600797+08:00",
+  "revalidationScope": "git-history-and-path-inventory; official head confirmed by ls-remote on 2026-09-28; runtime acceptance not rerun",
+  "runtimeEvidence": []
+}

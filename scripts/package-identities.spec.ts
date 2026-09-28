@@ -1,9 +1,11 @@
 /** Personal-distribution package provenance and publication-boundary policy. */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { removeFixtureSafely } from './test-fixture-cleanup.ts'
 import {
   assertPublicationIdentity,
   checkPackageIdentities,
@@ -14,15 +16,34 @@ import {
 const root = resolve(import.meta.dirname, '..')
 
 describe('package identity registry', () => {
+  it('rejects a personal-scoped package omitted from the explicit registry', () => {
+    const fixture = mkdtempSync(resolve(tmpdir(), 'dsh-package-identity-'))
+    try {
+      mkdirSync(resolve(fixture, 'downstream'), { recursive: true })
+      mkdirSync(resolve(fixture, 'packages/example/unregistered'), { recursive: true })
+      writeFileSync(resolve(fixture, 'downstream/package-identities.json'), JSON.stringify({
+        ...loadPackageIdentities(root), personalPackages: [],
+      }))
+      writeFileSync(resolve(fixture, 'packages/example/unregistered/package.json'), JSON.stringify({
+        name: '@changanhua/unregistered', private: true,
+      }))
+      expect(checkPackageIdentities(fixture)).toEqual([
+        'packages/example/unregistered: personal-scoped package is missing from downstream/package-identities.json',
+      ])
+    } finally {
+      removeFixtureSafely(fixture)
+    }
+  })
+
   it('classifies the rescoped tree and keeps every personal package source-only', () => {
     const registry = loadPackageIdentities(root)
 
     expect(checkPackageIdentities(root)).toEqual([])
     expect(registry.schemaVersion).toBe(2)
     expect(registry.personalScope).toBe('@changanhua')
-    expect(registry.personalPackages).toHaveLength(41)
+    expect(registry.personalPackages.length).toBeGreaterThan(0)
     expect(registry.versionPolicy).toBe('preserve-existing-during-rescope')
-    expect(new Set(registry.personalPackages.map(entry => entry.sourceName)).size).toBe(41)
+    expect(new Set(registry.personalPackages.map(entry => entry.sourceName)).size).toBe(registry.personalPackages.length)
     expect(registry.personalPackages.every(entry => entry.sourceIdentity === 'personal')).toBe(true)
     expect(registry.personalPackages.every(entry => entry.sourceName.startsWith('@changanhua/'))).toBe(true)
     expect(registry.personalPackages.every(entry => entry.legacyName.startsWith('@deepseek-ai/'))).toBe(true)
