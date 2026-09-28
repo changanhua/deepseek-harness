@@ -63,6 +63,7 @@ export const architectureCatalog: ArchitectureCatalog = {
       path: 'packages/bundle/base',
       description: 'The shared dsh core as a profile bundle: the first patch layer of base-backed profiles, inserting core rows over the empty profile root',
       packages: [
+        '@changanhua/dsh-browser-task',
         '@changanhua/dsh-command-task-queue',
         '@changanhua/dsh-image-generation',
         '@changanhua/dsh-image-generation-arkcli',
@@ -210,6 +211,27 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-tool-memory',
       ],
       source: 'packages/bundle/personal-memory/package.json',
+    },
+    {
+      name: '@changanhua/dsh-personal-planning',
+      short: 'personal-planning',
+      path: 'packages/bundle/personal-planning',
+      description: 'Optional personal planning bundle for durable project boards, model tools, browser Remote, and planning UI',
+      packages: [
+        '@changanhua/dsh-client-ui-planning',
+        '@changanhua/dsh-command-memory',
+        '@changanhua/dsh-knowledge-base',
+        '@changanhua/dsh-knowledge-base-task-queue',
+        '@changanhua/dsh-memory-local',
+        '@changanhua/dsh-planning-delivery-bridge',
+        '@changanhua/dsh-planning-local',
+        '@changanhua/dsh-planning-remote',
+        '@changanhua/dsh-tool-knowledge-base',
+        '@changanhua/dsh-tool-memory',
+        '@changanhua/dsh-tool-planning',
+        '@deepseek-ai/dsh-skill-filesystem',
+      ],
+      source: 'packages/bundle/personal-planning/package.json',
     },
     {
       name: '@deepseek-ai/dsh-sdk-app',
@@ -671,9 +693,12 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@changanhua/dsh-browser',
         '@changanhua/dsh-browser-activity',
         '@changanhua/dsh-browser-monitor',
+        '@changanhua/dsh-browser-task',
+        '@deepseek-ai/dsh-agent',
         '@deepseek-ai/dsh-agent-default-model',
         '@deepseek-ai/dsh-api-session-controller',
         '@deepseek-ai/dsh-client-connection',
+        '@deepseek-ai/dsh-commands',
         '@deepseek-ai/dsh-credentials',
         '@deepseek-ai/dsh-host-webserver',
         '@deepseek-ai/dsh-invariants',
@@ -698,6 +723,26 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-invariants',
         '@deepseek-ai/dsh-session',
         '@deepseek-ai/dsh-storage-domain',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-browser-task',
+      short: 'browser-task',
+      group: 'browser',
+      path: 'packages/browser/browser-task',
+      source: 'packages/browser/browser-task/package.json',
+      description: 'Session-persistent browser task acceptance domain for DeepSeek Harness',
+      dependencies: [
+        '@changanhua/dsh-browser',
+        '@deepseek-ai/dsh-agent',
+        '@deepseek-ai/dsh-brand',
+        '@deepseek-ai/dsh-session',
+        '@deepseek-ai/dsh-session-projection',
+        '@deepseek-ai/dsh-system-prompt',
+        '@deepseek-ai/dsh-tools',
       ],
       faces: [
         'package',
@@ -729,6 +774,7 @@ export const architectureCatalog: ArchitectureCatalog = {
       dependencies: [
         '@changanhua/dsh-browser',
         '@changanhua/dsh-browser-activity',
+        '@changanhua/dsh-browser-task',
         '@deepseek-ai/dsh-agent',
         '@deepseek-ai/dsh-attachment',
         '@deepseek-ai/dsh-invariants',
@@ -806,6 +852,19 @@ export const architectureCatalog: ArchitectureCatalog = {
       description: 'Explicit project-memory bundle with proposal tools and human review commands',
       dependencies: [
         '@deepseek-ai/dsh-invariants',
+      ],
+      faces: [
+        'bundle',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-personal-planning',
+      short: 'personal-planning',
+      group: 'bundle',
+      path: 'packages/bundle/personal-planning',
+      source: 'packages/bundle/personal-planning/package.json',
+      description: 'Optional personal planning bundle for durable project boards, model tools, browser Remote, and planning UI',
+      dependencies: [
       ],
       faces: [
         'bundle',
@@ -1293,6 +1352,25 @@ export const architectureCatalog: ArchitectureCatalog = {
       source: 'packages/client/ui-plan/package.json',
       description: 'Plan-mode composer control: the conversation.input.plan seat over the plan projection and the /plan command channel',
       dependencies: [
+      ],
+      faces: [
+        'client',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-client-ui-planning',
+      short: 'client-ui-planning',
+      group: 'client',
+      path: 'packages/client/ui-planning',
+      source: 'packages/client/ui-planning/package.json',
+      description: 'Personal planning-pool workbench over the Planning Remote projection',
+      dependencies: [
+        '@changanhua/dsh-planning-remote',
+        '@deepseek-ai/dsh-api-remotes',
+        '@deepseek-ai/dsh-client-locale',
+        '@deepseek-ai/dsh-client-ui-layout',
+        '@deepseek-ai/dsh-client-ui-renderer',
+        '@deepseek-ai/dsh-client-ui-sidebar',
       ],
       faces: [
         'client',
@@ -3826,6 +3904,88 @@ export const architectureCatalog: ArchitectureCatalog = {
       ],
       faces: [
         'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-planning-delivery-bridge',
+      short: 'planning-delivery-bridge',
+      group: 'planning',
+      path: 'packages/planning/planning-delivery-bridge',
+      source: 'packages/planning/planning-delivery-bridge/package.json',
+      description: 'Host-only deterministic bridge from Planning revisions to Delivery Cases',
+      dependencies: [
+        '@changanhua/dsh-delivery',
+        '@changanhua/dsh-delivery-protocol',
+        '@changanhua/dsh-planning',
+        '@deepseek-ai/dsh-workspace',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-planning-local',
+      short: 'planning-local',
+      group: 'planning',
+      path: 'packages/planning/planning-local',
+      source: 'packages/planning/planning-local/package.json',
+      description: 'Local Storage Domain provider for durable project planning Boards',
+      dependencies: [
+        '@changanhua/dsh-content',
+        '@changanhua/dsh-planning',
+        '@deepseek-ai/dsh-session',
+        '@deepseek-ai/dsh-session-query',
+        '@deepseek-ai/dsh-storage-domain',
+        '@deepseek-ai/dsh-workspace',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-planning-remote',
+      short: 'planning-remote',
+      group: 'planning',
+      path: 'packages/planning/planning-remote',
+      source: 'packages/planning/planning-remote/package.json',
+      description: 'Authenticated browser access to durable project planning',
+      dependencies: [
+      ],
+      faces: [
+        'remote',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-planning',
+      short: 'planning',
+      group: 'planning',
+      path: 'packages/planning/planning',
+      source: 'packages/planning/planning/package.json',
+      description: 'Project planning Board definition with immutable revisions and CAS commands',
+      dependencies: [
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-tool-planning',
+      short: 'tool-planning',
+      group: 'planning',
+      path: 'packages/planning/tool-planning',
+      source: 'packages/planning/tool-planning/package.json',
+      description: 'Agent-scoped model tools for bounded project planning Boards',
+      dependencies: [
+        '@changanhua/dsh-planning',
+        '@deepseek-ai/dsh-agent',
+        '@deepseek-ai/dsh-llm',
+        '@deepseek-ai/dsh-session',
+        '@deepseek-ai/dsh-system-prompt',
+        '@deepseek-ai/dsh-tools',
+        '@deepseek-ai/dsh-workspace',
+      ],
+      faces: [
+        'tool',
       ],
     },
     {

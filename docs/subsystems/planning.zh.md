@@ -1,0 +1,108 @@
+# 项目规划
+
+[English](planning.md) | 中文
+
+Planning 为每个 Workspace 持有一个持久 Board。Board 记录人工安排的事项、不可变版本、依赖链接、复盘、草稿、来源溯源和交接引用。它帮助项目保留决策，但不会把计划卡当作执行权限。
+
+## Board 与版本边界
+
+每次写入都携带当前 Board 版本并通过 compare-and-set 提交。事项版本创建后不可变。后续版本会改变 head，但保留旧版本、其来源、复盘和 Delivery 交接。复盘指向精确事项和版本，因此旧 Packet 在事项已有新 head 后仍可追溯和复盘。
+
+本地 provider 自行捕获来源。它把手动和链接引用视为未验证，校验 Workspace 所有的已存储 Session event，并在 Content 可用时读取精确保存版本。Board provider 缺失或不可用时操作失败；调用方不得用合成 Board 替代，也不得从 handoff 推断执行状态。
+
+## 权限与复盘
+
+浏览器 Remote 使用已认证的本地人工身份。模型工具推导发起 Agent、其当前 Workspace 和最新直接用户消息。调用方都不能提供另一个 actor、Workspace、来源哈希或持久 receipt。Planning 记录 completed review 只是一项复盘事实；它不会作出 Delivery 接纳决定。
+
+## Delivery 边界
+
+可选 bridge 冻结一个精确已采纳版本，并创建可恢复的 Delivery shaping Case。它将版本来源和稳定映射标识带入 Delivery。只有 Delivery 拥有需求批准、Packet 就绪、派发、执行、验证、证据发布和人工接纳。
+
+浏览器 snapshot 可以将已链接的 Delivery 摘要作为只读 `executions` 加入。未组合 Delivery 时返回空列表。已链接 shaping Case 不是完成证明。只有所选 Plan 的已链接 packet 声明精确证据 id 时，Planning Remote 才能读取 Packet 证据；Delivery 负责校验字节读取。
+
+## 延伸阅读
+
+- [Planning 包组](../../packages/planning/README.zh.md)
+- [Delivery 子系统](delivery.zh.md)
+
+<!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
+
+<a id="cordis-surface"></a>
+
+## Cordis API
+
+Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxplanning--planning-abstract-seam"></a>
+
+### `ctx.planning` — `Planning` (abstract seam)
+
+Trusted Host-only planning seam. A trusted composition supplies PlanningAccess; this contract does not isolate callers from a malicious Host plugin. Providers reauthorize that supplied access before source reads and commits so a stale legitimate caller cannot write.
+
+```ts cordis-catalog
+/**
+ * Read a detached Board snapshot.
+ * @param access - Trusted Host-derived caller authority for one Workspace.
+ * @param signal - Optional caller lifetime; cancellation prevents a result from being returned.
+ * @returns A consumer-safe current Board snapshot without provider-private replay receipts.
+ * @throws {PlanningError} When the caller is no longer authorized, the Workspace is unavailable, or the provider is closed.
+ */
+abstract snapshot(access: PlanningAccess, signal?: AbortSignal): Promise<PlanningBoardSnapshot>
+
+/**
+ * Atomically apply one CAS-fenced command.
+ * @param access - Trusted Host-derived caller authority rechecked before the durable commit.
+ * @param command - Strict command carrying the expected Board version and idempotency request id.
+ * @param signal - Optional caller lifetime checked before externally observed work and commit.
+ * @returns The committed or replayed mutation receipt; an identical request id returns its original receipt.
+ * @throws {PlanningError} When authorization, references, version, capacity, source capture, or provider lifetime prevents the mutation.
+ */
+abstract execute( access: PlanningAccess, command: PlanningCommand, signal?: AbortSignal, ): Promise<PlanningMutationResult>
+
+/**
+ * Freeze one exact current revision for deterministic Delivery mapping without creating external work.
+ * @param access - Trusted Host-derived caller authority rechecked before the durable handoff record is written.
+ * @param input - Exact revision, repository, mapping version, and stable request identity to freeze.
+ * @param signal - Optional caller lifetime checked before the durable write.
+ * @returns The prepared durable handoff; retries with the same identity return that frozen record.
+ * @throws {PlanningError} When direct-user authorization, revision identity, mapping identity, or provider lifetime is invalid.
+ */
+abstract prepareDeliveryHandoff( access: PlanningAccess, input: PrepareDeliveryHandoffInput, signal?: AbortSignal, ): Promise<PlanningHandoff>
+
+/**
+ * Bind a prepared handoff to the exact Case and Contract revision returned by Delivery.
+ * @param access - Trusted Host bridge authority; providers reject a direct user or Agent caller for this transition.
+ * @param input - Stable handoff key plus the Case and Contract revision identities returned by Delivery.
+ * @param signal - Optional caller lifetime checked before the durable link is committed.
+ * @returns The linked durable handoff; an identical recovery retry returns the same record.
+ * @throws {PlanningError} When the prepared handoff is absent, identities conflict, authorization is invalid, or the provider is closed.
+ */
+abstract linkDeliveryHandoff( access: PlanningAccess, input: LinkDeliveryHandoffInput, signal?: AbortSignal, ): Promise<PlanningHandoff>
+```
+
+Source: [`packages/planning/planning/src/index.ts`](../../packages/planning/planning/src/index.ts)
+
+<a id="ctxplanningdelivery--planningdelivery"></a>
+
+### `ctx.planningDelivery` — `PlanningDelivery`
+
+Host-only Planning-to-Delivery bridge. It freezes a Planning revision before it creates or links a recoverable shaping Case; it neither approves requirements nor accepts execution.
+
+```ts cordis-catalog
+/**
+ * Prepare and recoverably link one adopted Planning revision to a Delivery shaping Case.
+ * @param access - Trusted Host-derived direct-user authority; the bridge switches only its final link to bridge authority.
+ * @param input - Exact Planning item and revision selected for handoff.
+ * @param signal - Optional caller lifetime checked before bridge-side work.
+ * @returns The prepared or linked durable Planning handoff, including Delivery identities once linked.
+ * @throws {PlanningError} When authorization, route, revision, digest, or Delivery linkage is unavailable or conflicts.
+ */
+async handoff( access: PlanningAccess, input: PlanningDeliveryHandoffInput, signal?: AbortSignal, ): Promise<PlanningHandoff>
+```
+
+Source: [`packages/planning/planning-delivery-bridge/src/index.ts`](../../packages/planning/planning-delivery-bridge/src/index.ts)
+<!-- END GENERATED cordis-surface -->
+
+## 开发备注
+
+无。

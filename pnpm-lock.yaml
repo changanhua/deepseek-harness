@@ -530,7 +530,7 @@ importers:
         version: 26.15.3(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3)
       electron:
         specifier: ^44.0.0
-        version: 44.4.3
+        version: 44.4.3(supports-color@9.4.0)
       electron-builder:
         specifier: ^26.15.3
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
@@ -2033,6 +2033,121 @@ importers:
       js-yaml:
         specifier: ^4.2.0
         version: 4.3.1
+
+  packages/bundle/personal-planning:
+    dependencies:
+      '@changanhua/dsh-client-ui-planning':
+        specifier: workspace:^
+        version: link:../../client/ui-planning
+      '@changanhua/dsh-command-memory':
+        specifier: workspace:^
+        version: link:../../memory/command-memory
+      '@changanhua/dsh-knowledge-base':
+        specifier: workspace:^
+        version: link:../../knowledge/knowledge-base
+      '@changanhua/dsh-knowledge-base-task-queue':
+        specifier: workspace:^
+        version: link:../../knowledge/knowledge-base-task-queue
+      '@changanhua/dsh-memory-local':
+        specifier: workspace:^
+        version: link:../../memory/memory-local
+      '@changanhua/dsh-planning-delivery-bridge':
+        specifier: workspace:^
+        version: link:../../planning/planning-delivery-bridge
+      '@changanhua/dsh-planning-local':
+        specifier: workspace:^
+        version: link:../../planning/planning-local
+      '@changanhua/dsh-planning-remote':
+        specifier: workspace:^
+        version: link:../../planning/planning-remote
+      '@changanhua/dsh-tool-knowledge-base':
+        specifier: workspace:^
+        version: link:../../knowledge/tool-knowledge-base
+      '@changanhua/dsh-tool-memory':
+        specifier: workspace:^
+        version: link:../../memory/tool-memory
+      '@changanhua/dsh-tool-planning':
+        specifier: workspace:^
+        version: link:../../planning/tool-planning
+      '@deepseek-ai/dsh-skill-filesystem':
+        specifier: workspace:^
+        version: link:../../skill/skill-filesystem
+    devDependencies:
+      '@changanhua/dsh-delivery-evidence-local':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-evidence-local
+      '@changanhua/dsh-delivery-local':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-local
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-protocol
+      '@changanhua/dsh-delivery-remote':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-remote
+      '@changanhua/dsh-delivery-runner-codex':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-runner-codex
+      '@changanhua/dsh-delivery-task-queue':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-task-queue
+      '@changanhua/dsh-delivery-verifier':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-verifier
+      '@changanhua/dsh-personal-memory':
+        specifier: workspace:^
+        version: link:../personal-memory
+      '@changanhua/dsh-planning':
+        specifier: workspace:^
+        version: link:../../planning/planning
+      '@changanhua/dsh-repo-workspace-git-local':
+        specifier: workspace:^
+        version: link:../../delivery/repo-workspace-git-local
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue
+      '@changanhua/dsh-task-queue-local':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue-local
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/cordis-plugin-include':
+        specifier: workspace:^
+        version: link:../../../vendor/include
+      '@deepseek-ai/cordis-plugin-loader':
+        specifier: workspace:^
+        version: link:../../../vendor/loader
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:^
+        version: link:../../credentials/credentials
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../core/session
+      '@deepseek-ai/dsh-session-persistence-jsonl':
+        specifier: workspace:^
+        version: link:../../session/session-persistence-jsonl
+      '@deepseek-ai/dsh-session-query-sqlite':
+        specifier: workspace:^
+        version: link:../../session-query/session-query-sqlite
+      '@deepseek-ai/dsh-storage':
+        specifier: workspace:^
+        version: link:../../storage/storage
+      '@deepseek-ai/dsh-storage-domain':
+        specifier: workspace:^
+        version: link:../../storage/storage-domain
+      '@deepseek-ai/dsh-storage-json':
+        specifier: workspace:^
+        version: link:../../storage/storage-json
+      '@deepseek-ai/dsh-subagent-codex':
+        specifier: workspace:^
+        version: link:../../subagent/subagent-codex
+      '@deepseek-ai/dsh-subprocess-local':
+        specifier: workspace:^
+        version: link:../../subprocess/subprocess-local
+      '@deepseek-ai/dsh-workspace':
+        specifier: workspace:^
+        version: link:../../workspace/workspace
 
   packages/bundle/sdk-app:
     dependencies:
@@ -4011,6 +4126,66 @@ importers:
       react:
         specifier: ^18.2.0
         version: 18.3.1
+
+  packages/client/ui-planning:
+    devDependencies:
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-protocol
+      '@changanhua/dsh-delivery-remote':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-remote
+      '@changanhua/dsh-planning':
+        specifier: workspace:^
+        version: link:../../planning/planning
+      '@changanhua/dsh-planning-remote':
+        specifier: workspace:^
+        version: link:../../planning/planning-remote
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: workspace:^
+        version: link:../../api/remotes
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:^
+        version: link:../locale
+      '@deepseek-ai/dsh-client-store':
+        specifier: workspace:^
+        version: link:../store
+      '@deepseek-ai/dsh-client-ui-chat':
+        specifier: workspace:^
+        version: link:../ui-chat
+      '@deepseek-ai/dsh-client-ui-layout':
+        specifier: workspace:^
+        version: link:../ui-layout
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:^
+        version: link:../ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:^
+        version: link:../ui-renderer
+      '@deepseek-ai/dsh-client-ui-sidebar':
+        specifier: workspace:^
+        version: link:../ui-sidebar
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:^
+        version: link:../ui-slots
+      '@deepseek-ai/dsh-client-ui-workspace':
+        specifier: workspace:^
+        version: link:../ui-workspace
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
 
   packages/client/ui-primitives:
     devDependencies:
@@ -9110,6 +9285,25 @@ importers:
         specifier: workspace:^
         version: link:../../core/tools
 
+  packages/mcp/browser-extension-mcp:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.12.0
+        version: 1.29.0(zod@4.4.3)
+      ws:
+        specifier: ^8.18.3
+        version: 8.21.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      playwright:
+        specifier: ^1.49.0
+        version: 1.61.1
+
   packages/mcp/mcp-client:
     dependencies:
       '@deepseek-ai/schemastery':
@@ -9340,6 +9534,176 @@ importers:
       '@deepseek-ai/dsh-user-questions':
         specifier: workspace:^
         version: link:../../interaction/user-questions
+
+  packages/planning/planning:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+
+  packages/planning/planning-delivery-bridge:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@changanhua/dsh-delivery':
+        specifier: workspace:^
+        version: link:../../delivery/delivery
+      '@changanhua/dsh-delivery-local':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-local
+      '@changanhua/dsh-delivery-protocol':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-protocol
+      '@changanhua/dsh-planning':
+        specifier: workspace:^
+        version: link:../planning
+      '@changanhua/dsh-planning-local':
+        specifier: workspace:^
+        version: link:../planning-local
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-workspace':
+        specifier: workspace:^
+        version: link:../../workspace/workspace
+
+  packages/planning/planning-local:
+    dependencies:
+      '@changanhua/dsh-content':
+        specifier: workspace:^
+        version: link:../../content/content
+      '@deepseek-ai/dsh-attachment':
+        specifier: workspace:^
+        version: link:../../attachment/attachment
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../core/session
+      '@deepseek-ai/dsh-session-query':
+        specifier: workspace:^
+        version: link:../../session-query/session-query
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@changanhua/dsh-planning':
+        specifier: workspace:^
+        version: link:../planning
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-storage':
+        specifier: workspace:^
+        version: link:../../storage/storage
+      '@deepseek-ai/dsh-storage-domain':
+        specifier: workspace:^
+        version: link:../../storage/storage-domain
+      '@deepseek-ai/dsh-storage-json':
+        specifier: workspace:^
+        version: link:../../storage/storage-json
+      '@deepseek-ai/dsh-workspace':
+        specifier: workspace:^
+        version: link:../../workspace/workspace
+      '@deepseek-ai/node-addon-system':
+        specifier: workspace:^
+        version: link:../../../native/system/packages/entry
+
+  packages/planning/planning-remote:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@changanhua/dsh-delivery-local':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-local
+      '@changanhua/dsh-delivery-remote':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-remote
+      '@changanhua/dsh-planning':
+        specifier: workspace:^
+        version: link:../planning
+      '@changanhua/dsh-planning-delivery-bridge':
+        specifier: workspace:^
+        version: link:../planning-delivery-bridge
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-attachment':
+        specifier: workspace:^
+        version: link:../../attachment/attachment
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../typert/protocol
+      '@deepseek-ai/dsh-workspace':
+        specifier: workspace:^
+        version: link:../../workspace/workspace
+
+  packages/planning/tool-planning:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@changanhua/dsh-delivery-local':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-local
+      '@changanhua/dsh-delivery-remote':
+        specifier: workspace:^
+        version: link:../../delivery/delivery-remote
+      '@changanhua/dsh-planning':
+        specifier: workspace:^
+        version: link:../planning
+      '@changanhua/dsh-planning-delivery-bridge':
+        specifier: workspace:^
+        version: link:../planning-delivery-bridge
+      '@changanhua/dsh-planning-local':
+        specifier: workspace:^
+        version: link:../planning-local
+      '@changanhua/dsh-planning-remote':
+        specifier: workspace:^
+        version: link:../planning-remote
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:^
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../core/session
+      '@deepseek-ai/dsh-storage':
+        specifier: workspace:^
+        version: link:../../storage/storage
+      '@deepseek-ai/dsh-storage-domain':
+        specifier: workspace:^
+        version: link:../../storage/storage-domain
+      '@deepseek-ai/dsh-storage-json':
+        specifier: workspace:^
+        version: link:../../storage/storage-json
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:^
+        version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../core/tools
+      '@deepseek-ai/dsh-workspace':
+        specifier: workspace:^
+        version: link:../../workspace/workspace
 
   packages/preset/agent-presets:
     dependencies:
@@ -21302,7 +21666,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@electron/get@5.1.0':
+  '@electron/get@5.1.0(supports-color@9.4.0)':
     dependencies:
       debug: 4.4.3(supports-color@9.4.0)
       env-paths: 3.0.0
@@ -24416,10 +24780,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@44.4.3:
+  electron@44.4.3(supports-color@9.4.0):
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
-      '@electron/get': 5.1.0
+      '@electron/get': 5.1.0(supports-color@9.4.0)
       '@types/node': 24.13.6
     transitivePeerDependencies:
       - supports-color

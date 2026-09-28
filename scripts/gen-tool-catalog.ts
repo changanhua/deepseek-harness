@@ -79,6 +79,13 @@ import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
 import ProjectMemory from '@changanhua/dsh-memory'
 import * as ToolMemory from '@changanhua/dsh-tool-memory'
+import Planning from '@changanhua/dsh-planning'
+import { PlanningDelivery } from '@changanhua/dsh-planning-delivery-bridge'
+import PlanningRemoteService from '@changanhua/dsh-planning-remote'
+import * as ToolPlanning from '@changanhua/dsh-tool-planning'
+import type { PlanningAccess, PlanningBoardSnapshot, PlanningHandoff, PlanningMutationResult } from '@changanhua/dsh-planning'
+import type { LinkDeliveryHandoffInput, PlanningCommand, PrepareDeliveryHandoffInput } from '@changanhua/dsh-planning'
+import type WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import type TeamService from '@deepseek-ai/dsh-experimental-agent-team'
 import * as ToolTeam from '@deepseek-ai/dsh-experimental-tool-agent-team'
@@ -125,6 +132,32 @@ class CatalogProjectMemory extends ProjectMemory {
 
   private unreachable(): Promise<never> {
     return Promise.reject(new Error('gen-tool-catalog: memory operations are unreachable during schema harvest'))
+  }
+}
+
+/** Inert Planning seam used only to collect schemas; no Board operation is reachable. */
+class CatalogPlanning extends Planning {
+  snapshot(_access: PlanningAccess, _signal?: AbortSignal): Promise<PlanningBoardSnapshot> { return this.unreachable() }
+  execute(
+    _access: PlanningAccess,
+    _command: PlanningCommand,
+    _signal?: AbortSignal,
+  ): Promise<PlanningMutationResult> { return this.unreachable() }
+
+  prepareDeliveryHandoff(
+    _access: PlanningAccess,
+    _input: PrepareDeliveryHandoffInput,
+    _signal?: AbortSignal,
+  ): Promise<PlanningHandoff> { return this.unreachable() }
+
+  linkDeliveryHandoff(
+    _access: PlanningAccess,
+    _input: LinkDeliveryHandoffInput,
+    _signal?: AbortSignal,
+  ): Promise<PlanningHandoff> { return this.unreachable() }
+
+  private unreachable(): Promise<never> {
+    return Promise.reject(new Error('gen-tool-catalog: planning operations are unreachable during schema harvest'))
   }
 }
 
@@ -295,6 +328,24 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolMemory)
     },
     note: 'Explicit opt-in project memory. Models can search, read checked claims, and propose candidates; human acceptance, rejection, and withdrawal are separate command operations.',
+  },
+  {
+    pkg: '@changanhua/dsh-tool-planning',
+    dir: 'tool-planning',
+    source: 'packages/planning/tool-planning/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.planning', 'ctx.agents', 'ctx.sessions', 'ctx.workspaceRegistry', 'an initiating Agent in a registered Workspace'],
+    writes: ['tool/call', 'tool/result', 'Planning Board mutations through ctx.planning'],
+    async mount(ctx) {
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(CatalogPlanning)
+      // Optional bridge and Remote seams are present solely to harvest their conditional schemas.
+      ctx.provide('workspaceRegistry', {} as WorkspaceRegistry)
+      ctx.provide('planningDelivery', {} as PlanningDelivery)
+      ctx.provide('planningRemote', {} as PlanningRemoteService)
+      await ctx.plugin(ToolPlanning)
+    },
+    note: 'planning_handoff is registered only when the optional Planning–Delivery bridge is composed. planning_execution reads linked Delivery state and evidence only when the bridge and Planning Remote are both composed; it never dispatches or accepts Delivery work.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-ask-user',

@@ -22,6 +22,7 @@
 | `@changanhua/dsh-tool-browser` | `browser_action`、`browser_action_sequence`、`browser_activity_search`、`browser_entry_mount`、`browser_entry_unmount`、`browser_extract`、`browser_instances`、`browser_page_map`、`browser_region_clear`、`browser_region_render`、`browser_request_status`、`browser_snapshot`、`browser_tabs`、`browser_task_cancel`、`browser_task_start`、`browser_task_verify` | `ctx.browser`、`ctx.browserTasks`、`ctx.tools`、`ctx.approval`、`用于历史活动搜索的 ctx.browserActivity`、`发起 Agent 的 Session` | `tool/call`、`tool/result`、`browser-task/change`、`browser-task/receipt`、`browser-task/check`、`browser-task/delegation`、`经 Browser 批准的页面动作` | - | 只有组合了 `browserActivity` 时才提供活动搜索。它依据当前 Host 授权读取发起 Session，包括 Chrome 离线时。 |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`、`task_queue_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时的 live Agent Session` | `tool/call`、`tool/result`、`Queue v2 agent.run@1 admission` | - | 类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，但不暴露执行器、Profile、模型、凭据或 shell 路由字段。 |
 | `@changanhua/dsh-tool-memory` | `memory_propose`、`memory_read`、`memory_search` | `ctx.tools`、`ctx.systemPrompt`、`ctx.projectMemory`、`已注册 Workspace 中的 live Agent` | `tool/call`、`tool/result`、`project_memory 领域中的候选修订与提案回执` | - | 显式选择启用的项目记忆。模型可以搜索、读取已核查的主张并提出候选；人类接受、拒绝和撤回是独立的命令操作。 |
+| `@changanhua/dsh-tool-planning` | `planning_execution`、`planning_handoff`、`planning_list`、`planning_read`、`planning_update` | `ctx.tools`、`ctx.systemPrompt`、`ctx.planning`、`ctx.agents`、`ctx.sessions`、`ctx.workspaceRegistry`、`已注册 Workspace 中的发起 Agent` | `tool/call`、`tool/result`、`通过 ctx.planning 变更 Planning Board` | - | 只有组合可选的 Planning–Delivery bridge 时才注册 `planning_handoff`。只有 bridge 与 Planning Remote 都已组合时，`planning_execution` 才读取已链接的 Delivery 状态和证据；它绝不派发或接纳 Delivery 工作。 |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`、`ctx.userQuestions` | `tool/call`、`tool/result after a UI/provider answers the question` | - | ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类答案。 |
 | `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`、`ctx.codeRuntime (execution time)`、`ctx.systemPrompt` | `tool/call`、`one tool/ptc-dispatch-start + tool/ptc-dispatch pair per bridged sub-call`、`tool/result` | - | 在 `mode: ptc`／`mode: both` 下，它由工具注册表所有，作为可过滤能力层之外的保留传输机制（参见 PTC mode Agent Note）。在 `ptc` 下，它是注册表对协议格式（wire format）的唯一贡献；其他可见能力在使用已加载运行时语言生成的 SDK 章节中声明。程序通过 binding 调用这些能力，调用按照原生并发约定调度：启动顺序和策略遵循提交顺序，并发安全的函数体最多重叠执行 `maxParallelSubCalls` 个。调用会重新进入完整且受守卫保护的工具流水线，并将每个嵌套执行关联到此外层结果。 |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`、`ctx.systemPrompt`、`ctx.userQuestions (execution time, opportunistic)` | `tool/call`、`plan/mode inactive on an approved review`、`tool/result` | - | 规划未激活时，exit_plan_mode 仍保留在面向模型的 schema 中，这样状态转换不会在规划策略变更之外额外造成工具目录变动。其执行路径会拒绝规划模式之外的调用；在规划模式下，它通过用户交互 seam 提交计划（批准／根据反馈继续规划），批准后会在步骤边界记录规划模式已停用。 |
@@ -3381,6 +3382,1245 @@
 显式选择启用的项目记忆。模型可以搜索、读取已核查的主张并提出候选；人类接受、拒绝和撤回是独立的命令操作。
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
++<a id="changanhuadsh-tool-planning"></a>
+
+## `@changanhua/dsh-tool-planning`
+
+### `planning_execution`
+
+读取所选计划的执行、独立验证、人工接纳或不可变证据。这些事实独立于其规划泳道。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "item_id": {
+      "type": "string",
+      "description": "Current-project plan whose execution evidence should be read."
+    },
+    "packet_id": {
+      "type": "string",
+      "description": "Optional packet id from the summary to inspect results and evidence references."
+    },
+    "evidence_id": {
+      "type": "string",
+      "description": "Optional evidence id from a packet to read its immutable text; use instead of packet_id."
+    },
+    "cursor": {
+      "type": "integer",
+      "description": "Summary or evidence-reference page cursor, initially 0."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Summary or evidence-reference page size, from 1 to 50."
+    },
+    "offset": {
+      "type": "integer",
+      "description": "Evidence text character offset, initially 0. Each page contains at most 2000 Unicode characters."
+    }
+  },
+  "required": [
+    "item_id"
+  ]
+}
+```
+
+来源：[`packages/planning/tool-planning/src/index.ts`](../packages/planning/tool-planning/src/index.ts)
+
+### `planning_handoff`
+
+在 Delivery 中准备一个由当前用户明确选择的计划版本。这不会批准、执行或接纳该工作。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "item_id": {
+      "type": "string",
+      "description": "Adopted planning item explicitly selected by the current user for execution preparation."
+    },
+    "expected_revision_id": {
+      "type": "string",
+      "description": "Exact head revision read from the selected item. Keep unchanged when retrying."
+    }
+  },
+  "required": [
+    "item_id",
+    "expected_revision_id"
+  ]
+}
+```
+
+来源：[`packages/planning/tool-planning/src/index.ts`](../packages/planning/tool-planning/src/index.ts)
+
+### `planning_list`
+
+列出或按关键词筛选当前项目 Planning 卡片与草稿摘要的有界页面。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "description": "List current cards or planning proposals. Defaults to items.",
+      "enum": [
+        "items",
+        "proposals"
+      ]
+    },
+    "cursor": {
+      "type": "integer",
+      "description": "Zero-based continuation cursor returned by planning_list."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Requested card count, from 1 through 50."
+    },
+    "query": {
+      "type": "string",
+      "description": "Optional project-local title, intent, scope, acceptance, or captured-source keywords. Separate terms with spaces."
+    }
+  }
+}
+```
+
+来源：[`packages/planning/tool-planning/src/index.ts`](../packages/planning/tool-planning/src/index.ts)
+
+### `planning_read`
+
+读取当前项目的一张 Planning 卡片及一个不可变版本。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "item_id": {
+      "type": "string",
+      "description": "Planning item id returned by planning_list. Use instead of proposal_id."
+    },
+    "revision_id": {
+      "type": "string",
+      "description": "Optional immutable revision id; defaults to the item head."
+    },
+    "proposal_id": {
+      "type": "string",
+      "description": "Proposal id. Use instead of item_id."
+    },
+    "proposal_version": {
+      "type": "integer",
+      "description": "Optional immutable proposal generation; defaults to its head."
+    },
+    "section": {
+      "type": "string",
+      "description": "Read section. Reviews and handoffs belong to items; assumptions belong to proposals. Omit revision_id to read all item review or handoff history.",
+      "enum": [
+        "overview",
+        "title",
+        "intent",
+        "scope",
+        "acceptance",
+        "sources",
+        "assumptions",
+        "reviews",
+        "handoffs"
+      ]
+    }
+  }
+}
+```
+
+来源：[`packages/planning/tool-planning/src/index.ts`](../packages/planning/tool-planning/src/index.ts)
+
+### `planning_update`
+
+在当前项目中应用一条受 CAS 保护的 PlanningCommand。完全相同的重试复用 requestId。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "create"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "expectedBoardVersion": {
+              "type": "integer"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "fromReviewId": {
+              "type": "string",
+              "description": "Source review for an explicitly requested new follow-up; links atomically."
+            },
+            "lane": {
+              "type": "string",
+              "enum": [
+                "inbox",
+                "now",
+                "next",
+                "later",
+                "parking"
+              ]
+            },
+            "title": {
+              "type": "string"
+            },
+            "intent": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "acceptance": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "manual"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "text"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "session-event"
+                      },
+                      "sessionId": {
+                        "type": "string"
+                      },
+                      "seq": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sessionId",
+                      "seq"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "content"
+                      },
+                      "entryId": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "entryId",
+                      "version"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "link"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "url",
+                      "label"
+                    ]
+                  }
+                ]
+              }
+            },
+            "estimate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "urgency": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reuse": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "compounding": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timeCost": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tokenCost": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "risk": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cognitiveCost": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "urgency",
+                "reuse",
+                "compounding",
+                "timeCost",
+                "tokenCost",
+                "risk",
+                "cognitiveCost",
+                "rationale"
+              ]
+            },
+            "reviewAt": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "requestId",
+            "expectedBoardVersion",
+            "lane",
+            "title",
+            "intent",
+            "scope",
+            "acceptance",
+            "sources",
+            "estimate",
+            "reviewAt"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "revise"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "expectedBoardVersion": {
+              "type": "integer"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "expectedRevisionId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "intent": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "acceptance": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "manual"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "text"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "session-event"
+                      },
+                      "sessionId": {
+                        "type": "string"
+                      },
+                      "seq": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sessionId",
+                      "seq"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "content"
+                      },
+                      "entryId": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "entryId",
+                      "version"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "link"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "url",
+                      "label"
+                    ]
+                  }
+                ]
+              }
+            },
+            "estimate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "urgency": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reuse": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "compounding": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timeCost": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tokenCost": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "risk": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cognitiveCost": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "urgency",
+                "reuse",
+                "compounding",
+                "timeCost",
+                "tokenCost",
+                "risk",
+                "cognitiveCost",
+                "rationale"
+              ]
+            },
+            "reviewAt": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "requestId",
+            "expectedBoardVersion",
+            "itemId",
+            "expectedRevisionId",
+            "title",
+            "intent",
+            "scope",
+            "acceptance",
+            "sources",
+            "estimate",
+            "reviewAt"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "move"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "expectedBoardVersion": {
+              "type": "integer"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "lane": {
+              "type": "string",
+              "enum": [
+                "inbox",
+                "now",
+                "next",
+                "later",
+                "parking"
+              ]
+            },
+            "beforeItemId": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "requestId",
+            "expectedBoardVersion",
+            "itemId",
+            "lane",
+            "beforeItemId"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "dependencies"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "expectedBoardVersion": {
+              "type": "integer"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "dependsOnItemIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "requestId",
+            "expectedBoardVersion",
+            "itemId",
+            "dependsOnItemIds"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "archive"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "expectedBoardVersion": {
+              "type": "integer"
+            },
+            "itemId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "requestId",
+            "expectedBoardVersion",
+            "itemId"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "review"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "expectedBoardVersion": {
+              "type": "integer"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "expectedRevisionId": {
+              "type": "string"
+            },
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "completed",
+                "abandoned",
+                "learned"
+              ]
+            },
+            "summary": {
+              "type": "string"
+            },
+            "lessons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "followUpItemIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "acceptanceRef": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "requestId",
+            "expectedBoardVersion",
+            "itemId",
+            "expectedRevisionId",
+            "outcome",
+            "summary",
+            "lessons",
+            "followUpItemIds",
+            "acceptanceRef"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "follow-up"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "expectedBoardVersion": {
+              "type": "integer"
+            },
+            "reviewId": {
+              "type": "string"
+            },
+            "itemId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "requestId",
+            "expectedBoardVersion",
+            "reviewId",
+            "itemId"
+          ]
+        }
+      ],
+      "description": "One explicit direct PlanningCommand. It changes a card only when the current user message directs that exact change."
+    },
+    "propose": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "type": "string"
+        },
+        "expected_board_version": {
+          "type": "integer"
+        },
+        "proposal_id": {
+          "type": "string"
+        },
+        "from_review_id": {
+          "type": "string",
+          "description": "Source review for a new follow-up draft; preserve it across generations."
+        },
+        "expected_proposal_version": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_item_id": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "base_revision_id": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "draft": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "intent": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "acceptance": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "manual"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "text"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "session-event"
+                      },
+                      "sessionId": {
+                        "type": "string"
+                      },
+                      "seq": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sessionId",
+                      "seq"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "content"
+                      },
+                      "entryId": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "entryId",
+                      "version"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "link"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "url",
+                      "label"
+                    ]
+                  }
+                ]
+              }
+            },
+            "estimate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "urgency": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reuse": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "compounding": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timeCost": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "tokenCost": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "risk": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cognitiveCost": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "urgency",
+                "reuse",
+                "compounding",
+                "timeCost",
+                "tokenCost",
+                "risk",
+                "cognitiveCost",
+                "rationale"
+              ]
+            },
+            "reviewAt": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "title",
+            "intent",
+            "scope",
+            "acceptance",
+            "sources",
+            "estimate",
+            "reviewAt"
+          ]
+        },
+        "suggested_lane": {
+          "type": "string",
+          "enum": [
+            "inbox",
+            "now",
+            "next",
+            "later",
+            "parking"
+          ]
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "request_id",
+        "expected_board_version",
+        "proposal_id",
+        "expected_proposal_version",
+        "target_item_id",
+        "base_revision_id",
+        "draft",
+        "suggested_lane",
+        "assumptions"
+      ]
+    },
+    "accept_proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "type": "string"
+        },
+        "expected_board_version": {
+          "type": "integer"
+        },
+        "proposal_id": {
+          "type": "string"
+        },
+        "expected_proposal_version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "request_id",
+        "expected_board_version",
+        "proposal_id",
+        "expected_proposal_version"
+      ]
+    },
+    "dismiss_proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "type": "string"
+        },
+        "expected_board_version": {
+          "type": "integer"
+        },
+        "proposal_id": {
+          "type": "string"
+        },
+        "expected_proposal_version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "request_id",
+        "expected_board_version",
+        "proposal_id",
+        "expected_proposal_version"
+      ]
+    }
+  }
+}
+```
+
+来源：[`packages/planning/tool-planning/src/index.ts`](../packages/planning/tool-planning/src/index.ts)
+
+只有组合可选的 Planning–Delivery bridge 时才注册 planning_handoff。只有 bridge 与 Planning Remote 都已组合时，planning_execution 才读取已链接的 Delivery 状态和证据；它绝不派发或接纳 Delivery 工作。
+
+
+
 
 ## `@deepseek-ai/dsh-tool-ask-user`
 

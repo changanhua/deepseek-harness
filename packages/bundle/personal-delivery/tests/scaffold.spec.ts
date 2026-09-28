@@ -73,7 +73,7 @@ describe('Personal Delivery bundle composition', () => {
     await writeFile(configPath, [
       "- { id: storage, name: '@deepseek-ai/dsh-storage' }",
       "- id: storage-json\n  name: '@deepseek-ai/dsh-storage-json'\n  config:\n    root: " + JSON.stringify(resolve(temp, 'storage')),
-      "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  config:\n    backend: json",
+      "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  isolate:\n    storageDomain: web-host\n  config:\n    backend: json",
       "- { id: subprocess, name: '@deepseek-ai/dsh-subprocess-local' }",
       "- id: task-queue\n  name: '@changanhua/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(resolve(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1',
       patch,

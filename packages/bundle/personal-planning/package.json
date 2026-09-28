@@ -1,0 +1,85 @@
+{
+  "name": "@changanhua/dsh-personal-planning",
+  "description": "Optional personal planning bundle for durable project boards, model tools, browser Remote, and planning UI",
+  "version": "0.1.2-alpha.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/bundle/personal-planning"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./delivery.patch.yml": "./delivery.patch.yml",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json",
+    "./knowledge.patch.yml": "./knowledge.patch.yml",
+    "./memory.patch.yml": "./memory.patch.yml"
+  },
+  "files": [
+    "lib/index.js",
+    "cordis.patch.yml",
+    "delivery.patch.yml",
+    "skills",
+    "lib/types/**/*.d.ts",
+    "knowledge.patch.yml",
+    "memory.patch.yml"
+  ],
+  "license": "MIT",
+  "private": true,
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@changanhua/dsh-planning-local": "workspace:^",
+    "@changanhua/dsh-tool-planning": "workspace:^",
+    "@changanhua/dsh-planning-remote": "workspace:^",
+    "@changanhua/dsh-client-ui-planning": "workspace:^",
+    "@deepseek-ai/dsh-skill-filesystem": "workspace:^",
+    "@changanhua/dsh-planning-delivery-bridge": "workspace:^",
+    "@changanhua/dsh-knowledge-base": "workspace:^",
+    "@changanhua/dsh-knowledge-base-task-queue": "workspace:^",
+    "@changanhua/dsh-tool-knowledge-base": "workspace:^",
+    "@changanhua/dsh-memory-local": "workspace:^",
+    "@changanhua/dsh-tool-memory": "workspace:^",
+    "@changanhua/dsh-command-memory": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/cordis-plugin-include": "workspace:^",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:^",
+    "@deepseek-ai/dsh-storage": "workspace:^",
+    "@deepseek-ai/dsh-storage-domain": "workspace:^",
+    "@deepseek-ai/dsh-storage-json": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "@deepseek-ai/dsh-session": "workspace:^",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:^",
+    "@deepseek-ai/dsh-session-query-sqlite": "workspace:^",
+    "@changanhua/dsh-planning": "workspace:^",
+    "@changanhua/dsh-delivery-local": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
+    "@deepseek-ai/dsh-subprocess-local": "workspace:^",
+    "@deepseek-ai/dsh-subagent-codex": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-task-queue-local": "workspace:^",
+    "@changanhua/dsh-delivery-evidence-local": "workspace:^",
+    "@changanhua/dsh-delivery-remote": "workspace:^",
+    "@changanhua/dsh-delivery-task-queue": "workspace:^",
+    "@changanhua/dsh-repo-workspace-git-local": "workspace:^",
+    "@changanhua/dsh-delivery-runner-codex": "workspace:^",
+    "@changanhua/dsh-delivery-verifier": "workspace:^",
+    "@changanhua/dsh-personal-memory": "workspace:^"
+  }
+}

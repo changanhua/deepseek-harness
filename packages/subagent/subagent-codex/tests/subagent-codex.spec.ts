@@ -625,17 +625,19 @@ describe('task admission and package contracts', () => {
   })
 
   it.each([
-    ['never', { approvalPolicy: 'never' }],
+    ['never', { approvalPolicy: 'never', ephemeral: true }],
     ['approve-for-me', {
       approvalPolicy: 'on-request',
       approvalsReviewer: 'auto_review',
       sandbox: 'workspace-write',
+      ephemeral: false,
     }],
     ['dangerously-bypass-approvals-and-sandbox', {
       approvalPolicy: 'never',
       sandbox: 'danger-full-access',
+      ephemeral: true,
     }],
-  ] as const)('maps %s to the official thread/start fields', async (permissionMode, expected) => {
+  ] as const)('maps %s to matching official thread/start persistence and response', async (permissionMode, expected) => {
     const child = fakeChild()
     const wire = new CodexAppServerWire(
       child.handle.stdout!,
@@ -652,11 +654,12 @@ describe('task admission and package contracts', () => {
     const threadStart = await child.peer.nextMethod('thread/start')
     expect(threadStart.params).toEqual({
       cwd: '/workspace',
-      ephemeral: true,
       ...expected,
     })
     expect(threadStart.params).not.toHaveProperty('model')
-    child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
+    child.peer.respond(threadStart, {
+      thread: { id: 'thread-1', ephemeral: expected.ephemeral },
+    })
     await starting
     wire.close()
   })
@@ -926,7 +929,7 @@ describe('CodexAppServerWire', () => {
       const pending = wire.startThread('/workspace', new AbortController().signal)
       const frame = await child.peer.nextMethod('thread/start')
       child.peer.respond(frame, { thread: { id: 'thread-1', ephemeral: false } })
-      await expect(pending).rejects.toThrow('did not create an ephemeral thread')
+      await expect(pending).rejects.toThrow('did not create a thread with the requested persistence')
       wire.close()
     }
     {
@@ -2179,13 +2182,13 @@ describe('run lifecycle and quiescence', () => {
     const threadStart = await child.peer.nextMethod('thread/start')
     expect(threadStart.params).toEqual({
       cwd: process.cwd(),
-      ephemeral: true,
+      ephemeral: false,
       model: 'codex-diagnostic-model',
       approvalPolicy: 'on-request',
       approvalsReviewer: 'auto_review',
       sandbox: 'workspace-write',
     })
-    child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: true } })
+    child.peer.respond(threadStart, { thread: { id: 'thread-1', ephemeral: false } })
     const run = await starting
     const turnStart = await child.peer.nextMethod('turn/start')
     child.peer.respond(turnStart, { turn: { id: 'turn-1' } })

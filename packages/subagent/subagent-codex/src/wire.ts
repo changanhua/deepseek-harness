@@ -184,7 +184,7 @@ async function raceAbort<T>(pending: Promise<T>, signal: AbortSignal): Promise<T
 }
 
 /**
- * One app-server connection and its single ephemeral thread/turn.
+ * One app-server connection and its single mode-selected thread/turn.
  *
  * The class deliberately exposes no generic request surface. Supporting
  * another product method must first become part of the provider contract.
@@ -281,21 +281,22 @@ export class CodexAppServerWire {
   }
 
   /**
-   * Create the run's private ephemeral thread and retain its identity.
+   * Create the run's private thread with the selected persistence and retain its identity.
    * @param cwd - parent Session workspace.
    * @param signal - unpublished-start cancellation.
    */
   async startThread(cwd: string, signal: AbortSignal): Promise<void> {
+    const ephemeral = this.permissionMode !== 'approve-for-me'
     const response = object(await this.guarded(this.transport.request('thread/start', {
       cwd,
-      ephemeral: true,
+      ephemeral,
       ...this.model === undefined ? {} : { model: this.model },
       ...THREAD_PERMISSION_PARAMS[this.permissionMode],
     }, signal), signal), 'thread/start response')
     const thread = object(response.thread, 'thread/start thread')
     const id = string(thread.id, 'thread/start thread id')
-    if (thread.ephemeral !== true) {
-      throw new Error('subagent-codex: app-server did not create an ephemeral thread')
+    if (thread.ephemeral !== ephemeral) {
+      throw new Error('subagent-codex: app-server did not create a thread with the requested persistence')
     }
     this.threadId = id
   }

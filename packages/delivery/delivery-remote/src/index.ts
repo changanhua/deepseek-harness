@@ -77,6 +77,8 @@ export type { DeliveryAttentionReason } from './types.ts'
 
 export type {
   DeliveryAcceptanceDecisionView,
+  DeliveryCaseCard,
+  DeliveryCaseLane,
   DeliveryContractRevisionView,
   DeliveryCreateCaseInput,
   DeliveryCreatePacketInput,

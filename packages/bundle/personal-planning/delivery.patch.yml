@@ -1,0 +1,11 @@
+# Apply only together with personal-planning and personal-delivery.
+- insert:
+    - id: planning-delivery-bridge
+      name: '@changanhua/dsh-planning-delivery-bridge'
+      isolate:
+        workspaceRegistry: web-host
+      config:
+        operatorId: local-operator
+        routes:
+          - workspacePath: !!js process.cwd()
+            repositoryId: workspace

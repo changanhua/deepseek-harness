@@ -1,0 +1,32 @@
+# Optional personal planning layer. Apply after dsh-base and dsh-web-app.
+- insert:
+    # A bundle-owned, isolated provider keeps this optional Skill out of every
+    # default Profile and leaves the Web preset's own skill-filesystem intact.
+    - id: planning-skills
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        providerName: personal-planning
+        includeDefaultRoots: false
+        watch: false
+        bundledSkillDir: !!js "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(new URL('package.json', baseUrl)).resolve('@changanhua/dsh-personal-planning/package.json')), 'skills')"
+
+    - id: planning-local
+      name: '@changanhua/dsh-planning-local'
+      isolate:
+        storageDomain: web-host
+        workspaceRegistry: web-host
+      config:
+        ownershipRoot: !!js dshHomePath('storages', 'planning-ownership')
+
+    - id: tool-planning
+      name: '@changanhua/dsh-tool-planning'
+      isolate:
+        workspaceRegistry: web-host
+
+    - id: planning-remote
+      name: '@changanhua/dsh-planning-remote'
+      isolate:
+        workspaceRegistry: web-host
+
+    - id: ui-planning
+      name: '@changanhua/dsh-client-ui-planning'

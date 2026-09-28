@@ -36,11 +36,11 @@ Codex defaults to `never` and accepts the three native non-interactive modes exp
 
 | Value | `thread/start` fields | Native behavior |
 | --- | --- | --- |
-| `never` | `approvalPolicy: never`; sandbox omitted | Never prompt; execution failures return to the model under the native sandbox. |
-| `approve-for-me` | `approvalPolicy: on-request`, `approvalsReviewer: auto_review`, `sandbox: workspace-write` | Route permission requests through Codex automatic review. |
-| `dangerously-bypass-approvals-and-sandbox` | `approvalPolicy: never`, `sandbox: danger-full-access` | Skip approval and sandbox enforcement. |
+| `never` | `ephemeral: true`, `approvalPolicy: never`; sandbox omitted | Never prompt; execution failures return to the model under the native sandbox. |
+| `approve-for-me` | `ephemeral: false`, `approvalPolicy: on-request`, `approvalsReviewer: auto_review`, `sandbox: workspace-write` | Route permission requests through Codex automatic review. |
+| `dangerously-bypass-approvals-and-sandbox` | `ephemeral: true`, `approvalPolicy: never`, `sandbox: danger-full-access` | Skip approval and sandbox enforcement. |
 
-The Provider overrides only those permission and sandbox fields. An optional instance-level model is a separate direct `thread/start` override; `CODEX_HOME`, project configuration, model-provider selection, MCP, hooks, skills, authentication, and sandbox facts not selected by the mode remain native Codex state. The wire still denies any unexpected approval, permission, user-input, or MCP request rather than opening a dynamic allow path.
+The Provider overrides only those permission, sandbox, and thread-persistence fields. `approve-for-me` requests a native persistent thread so Codex can run guardian review; Codex stores that native session in the configured `CODEX_HOME`, whose isolation controls retained state. The other modes request ephemeral threads. An optional instance-level model is a separate direct `thread/start` override; project configuration, model-provider selection, MCP, hooks, skills, authentication, and sandbox facts not selected by the mode remain native Codex state. The wire still denies any unexpected approval, permission, user-input, or MCP request rather than opening a dynamic allow path.
 
 ### Failure diagnostic
 
@@ -55,7 +55,7 @@ The foreground consumer presents the stop-reason headline, then the optional dia
 | Fact or resource | Owner | Observable behavior |
 | --- | --- | --- |
 | Profile permission choice | Each product Provider Config | Invalid, interactive, or unknown values fail during configuration. |
-| Permission and sandbox semantics | Claude Code Agent SDK or Codex app-server | Each Provider passes one native mode and does not mirror product policy. |
+| Permission, sandbox, and thread persistence semantics | Claude Code Agent SDK or Codex app-server | Each Provider passes one native mode and does not mirror product policy. |
 | Interaction decisions and safe diagnostic | One product run | Concurrent runs keep independent mode, protocol, and diagnostic state. |
 | Diagnostic type and byte limit | `dsh-subagent` | Consumers receive a bounded optional field separate from assistant output. |
 | Foreground and Job presentation | `dsh-tool-subagent` and the generic Job runtime | Scheduling choice does not change the underlying failure fact. |
@@ -63,7 +63,7 @@ The foreground consumer presents the stop-reason headline, then the optional dia
 
 ## Verification
 
-Package tests pin every allowed and rejected Config value, the exact SDK and app-server field mappings, dangerous confirmations, unattended terminal responses, diagnostic sanitization and UTF-8 bound, successful-result omission, concurrent-run isolation, foreground ordering, Job detail, stderr observer disposal, and process cleanup. The real Claude Agent SDK 0.3.263 and Claude Code 2.1.263 fixture proves its safe default, restricted denial, explicit bypass, and whole-tree quiescence. The real Codex 0.153.4 app-server fixture proves that thread-level `never` overrides ambient `on-request`, automatic review starts, dangerous bypass writes only inside suite-owned temporary storage, a rejected escalation leaves no side effect or raw command or path in the diagnostic, stderr remains Host-only, and the wrapper/native tree exits. Loader composition proves non-default modes can be published without starting either product, and the keyless ACP snapshot records each product's failure diagnostic through foreground and Job presentation while the model-facing product tool schemas contain no permission parameter.
+Package tests pin every allowed and rejected Config value, the exact SDK and app-server field mappings, mode-specific `thread/start` persistence and matching responses, dangerous confirmations, unattended terminal responses, diagnostic sanitization and UTF-8 bound, successful-result omission, concurrent-run isolation, foreground ordering, Job detail, stderr observer disposal, and process cleanup. The real Claude Agent SDK 0.3.263 and Claude Code 2.1.263 fixture proves its safe default, restricted denial, explicit bypass, and whole-tree quiescence. The real Codex 0.153.4 app-server fixture proves that thread-level `never` overrides ambient `on-request`, automatic review starts, dangerous bypass writes only inside suite-owned temporary storage, a rejected escalation leaves no side effect or raw command or path in the diagnostic, stderr remains Host-only, and the wrapper/native tree exits. Loader composition proves non-default modes can be published without starting either product, and the keyless ACP snapshot records each product's failure diagnostic through foreground and Job presentation while the model-facing product tool schemas contain no permission parameter.
 
 ## Alternatives considered
 
@@ -85,4 +85,4 @@ Profiles can select each product's native restricted, automatic, planning/edit-a
 
 Permission failures become visible to both foreground parents and one-shot background Jobs without turning infrastructure text into an assistant answer. The same field can also carry the separately owned structured failure facts. It can enter model context, Job notices, API projections, and Job UI through the ordinary consumer paths, so the Provider must sanitize and bound the complete text before result settlement.
 
-The change adds no product session persistence, human approval channel, dynamic permission operation, progress stream, retry policy, or rollback. Other Providers remain valid without producing a diagnostic or exposing a permission-mode Config.
+The change adds no DSH-managed session persistence, human approval channel, dynamic permission operation, progress stream, retry policy, or rollback. Codex native persistence remains limited to `approve-for-me` and its configured `CODEX_HOME`. Other Providers remain valid without producing a diagnostic or exposing a permission-mode Config.

@@ -20,6 +20,7 @@ const source = {
   sourceId: knowledgeIdSchema, title: z.string().min(1).max(240),
   url: z.url().optional(),
 }
+const safeNonnegativeInteger = z.number().int().refine(Number.isSafeInteger)
 const requests = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('siyuan-sync'), ...project, version: knowledgeIdSchema }),
   z.strictObject({ action: z.literal('siyuan-status'), ...project }),
@@ -29,6 +30,12 @@ const requests = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('create'), spec: projectSpecSchema }),
   z.strictObject({ action: z.literal('list') }),
   z.strictObject({ action: z.literal('source'), ...project, ...source, text: z.string().min(1).max(200_000) }),
+  z.strictObject({
+    action: z.literal('read-source'), ...project, sourceId: knowledgeIdSchema,
+    snapshotId: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
+    offset: safeNonnegativeInteger.min(0).default(0),
+    limit: safeNonnegativeInteger.min(1).max(8192).default(4000),
+  }),
   z.strictObject({ action: z.literal('fetch'), ...project, ...source, url: z.url() }),
   z.strictObject({ action: z.literal('refresh'), ...project, sourceId: knowledgeIdSchema }),
   z.strictObject({ action: z.literal('plan'), ...project }),
@@ -161,6 +168,22 @@ export async function executeKnowledgeRequest(
       }
       return snapshotSummary(await repo.ingest(request.projectId, imported))
     }
+    case 'read-source': {
+      const record = repo.get(request.projectId)
+      const snapshotId = request.snapshotId ?? record.latestSources[request.sourceId]
+      if (snapshotId === undefined) throw new Error('knowledge-base: source missing: ' + request.sourceId)
+      const snapshot = record.sources[request.sourceId + ':' + snapshotId]
+      if (snapshot === undefined) throw new Error('knowledge-base: source snapshot missing: ' + request.sourceId + ':' + snapshotId)
+      const characters = Array.from(snapshot.text)
+      const end = Math.min(request.offset + request.limit, characters.length)
+      const text = characters.slice(request.offset, end).join('')
+      const nextOffset = end < characters.length ? end : undefined
+      return {
+        projectId: request.projectId, sourceId: request.sourceId, snapshotId: snapshot.snapshotId,
+        title: snapshot.title, offset: request.offset, text, totalCharacters: characters.length,
+        ...(nextOffset === undefined ? {} : { nextOffset }),
+      }
+    }
     case 'fetch': return retrieve(request, deps, signal)
     case 'refresh': {
       const record = repo.get(request.projectId)
@@ -243,7 +266,7 @@ function renderResult(value: unknown): string {
 export function createKnowledgeTool(deps: KnowledgeToolDependencies): ReturnType<typeof defineTool> {
   return defineTool({
     name: 'knowledge_base',
-    description: '创建、维护和发布带来源的知识库，可通过已配置的思源连接阅读和维护。request 是含 action 的 JSON：create 带 spec；source 带 projectId/sourceId/title/text；fetch 带 projectId/sourceId/title/url；refresh 带 projectId/sourceId；plan、map、status、check、build 带 projectId；confirm 再带 planHash；generate、review、adopt 再带 entryId；publish、export-draft、rollback 带 projectId/version；diff 带 projectId/from/to；work、cancel、retry、correct、resume 带 workId；stop-generation 和 resume-generation 无其它字段。每次任务的知识地图由规划自动构造，map 可查看当前地图；每次发布包含 map.md 和 map.json，思源同步自动生成该版本地图。先检查并确认规划，再 build；maxRevisions 为初次生成后的修订次数，0–3，默认2。build 不自动发布，unknown 不自动重发。retry 仅重试明确未启动的失败；correct 仅修正已返回但格式校验失败的响应；resume 仅接收已有可验证结果。全局停止会保留进度并等待活动调用结束；模型工具不能解除停止，只有人类命令或可信 Host 可 resume-generation。思源读操作：siyuan-status、siyuan-verify 带 projectId；siyuan-inspect 再带 entryId。siyuan-sync 带 projectId/version，siyuan-adopt 带 projectId/entryId/snapshotHash，二者只允许人类命令或可信 Host；更新会保留独立候选，不覆盖已有思源正文。',
+    description: '创建、维护和发布带来源的知识库，可通过已配置的思源连接阅读和维护。request 是含 action 的 JSON：create 带 spec；source 带 projectId/sourceId/title/text；read-source 带 projectId/sourceId，可选 snapshotId、offset、limit（默认读取最新快照的 4000 个字符）；fetch 带 projectId/sourceId/title/url；refresh 带 projectId/sourceId；plan、map、status、check、build 带 projectId；confirm 再带 planHash；generate、review、adopt 再带 entryId；publish、export-draft、rollback 带 projectId/version；diff 带 projectId/from/to；work、cancel、retry、correct、resume 带 workId；stop-generation 和 resume-generation 无其它字段。每次任务的知识地图由规划自动构造，map 可查看当前地图；每次发布包含 map.md 和 map.json，思源同步自动生成该版本地图。先检查并确认规划，再 build；maxRevisions 为初次生成后的修订次数，0–3，默认2。build 不自动发布，unknown 不自动重发。retry 仅重试明确未启动的失败；correct 仅修正已返回但格式校验失败的响应；resume 仅接收已有可验证结果。全局停止会保留进度并等待活动调用结束；模型工具不能解除停止，只有人类命令或可信 Host 可 resume-generation。思源读操作：siyuan-status、siyuan-verify 带 projectId；siyuan-inspect 再带 entryId。siyuan-sync 带 projectId/version，siyuan-adopt 带 projectId/entryId/snapshotHash，二者只允许人类命令或可信 Host；更新会保留独立候选，不覆盖已有思源正文。',
     parameters: {
       request: { type: 'string', required: true, description: '包含 action 与相应业务字段的 JSON 对象。' },
     },

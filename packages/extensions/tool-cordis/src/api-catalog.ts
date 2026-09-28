@@ -1976,6 +1976,55 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'planning',
+    summary: 'Trusted Host-only planning seam.',
+    description: 'Trusted Host-only planning seam. A trusted composition supplies PlanningAccess; this contract does not isolate callers from a malicious Host plugin. Providers reauthorize that supplied access before source reads and commits so a stale legitimate caller cannot write.',
+    methods: [
+      {
+        signature: 'abstract snapshot(access: PlanningAccess, signal?: AbortSignal): Promise<PlanningBoardSnapshot>',
+        description: 'Read a detached Board snapshot.',
+        parameters: [{ name: 'access', description: 'Trusted Host-derived caller authority for one Workspace.' }, { name: 'signal', description: 'Optional caller lifetime; cancellation prevents a result from being returned.' }],
+        returns: 'A consumer-safe current Board snapshot without provider-private replay receipts.',
+        throws: ['{PlanningError} When the caller is no longer authorized, the Workspace is unavailable, or the provider is closed.'],
+      },
+      {
+        signature: 'abstract execute( access: PlanningAccess, command: PlanningCommand, signal?: AbortSignal, ): Promise<PlanningMutationResult>',
+        description: 'Atomically apply one CAS-fenced command.',
+        parameters: [{ name: 'access', description: 'Trusted Host-derived caller authority rechecked before the durable commit.' }, { name: 'command', description: 'Strict command carrying the expected Board version and idempotency request id.' }, { name: 'signal', description: 'Optional caller lifetime checked before externally observed work and commit.' }],
+        returns: 'The committed or replayed mutation receipt; an identical request id returns its original receipt.',
+        throws: ['{PlanningError} When authorization, references, version, capacity, source capture, or provider lifetime prevents the mutation.'],
+      },
+      {
+        signature: 'abstract prepareDeliveryHandoff( access: PlanningAccess, input: PrepareDeliveryHandoffInput, signal?: AbortSignal, ): Promise<PlanningHandoff>',
+        description: 'Freeze one exact current revision for deterministic Delivery mapping without creating external work.',
+        parameters: [{ name: 'access', description: 'Trusted Host-derived caller authority rechecked before the durable handoff record is written.' }, { name: 'input', description: 'Exact revision, repository, mapping version, and stable request identity to freeze.' }, { name: 'signal', description: 'Optional caller lifetime checked before the durable write.' }],
+        returns: 'The prepared durable handoff; retries with the same identity return that frozen record.',
+        throws: ['{PlanningError} When direct-user authorization, revision identity, mapping identity, or provider lifetime is invalid.'],
+      },
+      {
+        signature: 'abstract linkDeliveryHandoff( access: PlanningAccess, input: LinkDeliveryHandoffInput, signal?: AbortSignal, ): Promise<PlanningHandoff>',
+        description: 'Bind a prepared handoff to the exact Case and Contract revision returned by Delivery.',
+        parameters: [{ name: 'access', description: 'Trusted Host bridge authority; providers reject a direct user or Agent caller for this transition.' }, { name: 'input', description: 'Stable handoff key plus the Case and Contract revision identities returned by Delivery.' }, { name: 'signal', description: 'Optional caller lifetime checked before the durable link is committed.' }],
+        returns: 'The linked durable handoff; an identical recovery retry returns the same record.',
+        throws: ['{PlanningError} When the prepared handoff is absent, identities conflict, authorization is invalid, or the provider is closed.'],
+      },
+    ],
+  },
+  {
+    key: 'planningDelivery',
+    summary: 'Host-only Planning-to-Delivery bridge.',
+    description: 'Host-only Planning-to-Delivery bridge. It freezes a Planning revision before it creates or links a recoverable shaping Case; it neither approves requirements nor accepts execution.',
+    methods: [
+      {
+        signature: 'async handoff( access: PlanningAccess, input: PlanningDeliveryHandoffInput, signal?: AbortSignal, ): Promise<PlanningHandoff>',
+        description: 'Prepare and recoverably link one adopted Planning revision to a Delivery shaping Case.',
+        parameters: [{ name: 'access', description: 'Trusted Host-derived direct-user authority; the bridge switches only its final link to bridge authority.' }, { name: 'input', description: 'Exact Planning item and revision selected for handoff.' }, { name: 'signal', description: 'Optional caller lifetime checked before bridge-side work.' }],
+        returns: 'The prepared or linked durable Planning handoff, including Delivery identities once linked.',
+        throws: ['{PlanningError} When authorization, route, revision, digest, or Delivery linkage is unavailable or conflicts.'],
+      },
+    ],
+  },
+  {
     key: 'projectMemory',
     summary: 'Providers own durable records and reauthorize every call against the Agent\'s Workspace.',
     description: 'Providers own durable records and reauthorize every call against the Agent\'s Workspace.',
@@ -5814,6 +5863,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n}',
   },
   {
+    name: 'LinkDeliveryHandoffInput',
+    declaration: 'export interface LinkDeliveryHandoffInput {\n    readonly key: string;\n    readonly caseId: string;\n    readonly contractRevisionId: string;\n}',
+  },
+  {
     name: 'LiveAttempt',
     declaration: 'export interface LiveAttempt<K extends WorkKind> {\n    readonly done: Promise<AttemptOutcome<K>>;\n    cancel(reason: string): Promise<void>;\n}',
   },
@@ -6166,6 +6219,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PermissionSelect {\n    options: PresetOption[];\n    currentValue: string;\n}',
   },
   {
+    name: 'PlanningAccess',
+    declaration: 'export interface PlanningAccess {\n    readonly workspaceId: string;\n    readonly actorId: string;\n    readonly kind: \'human\' | \'agent\' | \'bridge\';\n    readonly userMessage?: {\n        readonly sessionId: string;\n        readonly seq: number;\n    };\n    readonly authorize: () => void | Promise<void>;\n}',
+  },
+  {
+    name: 'PlanningBoardSnapshot',
+    declaration: 'export type PlanningBoardSnapshot = Omit<z.infer<typeof planningBoardSchema>, \'receipts\'>;',
+  },
+  {
+    name: 'PlanningCommand',
+    declaration: 'export type PlanningCommand = z.infer<typeof planningCommandSchema>;',
+  },
+  {
+    name: 'PlanningDeliveryHandoffInput',
+    declaration: 'export interface PlanningDeliveryHandoffInput {\n    readonly itemId: string;\n    readonly expectedRevisionId: string;\n}',
+  },
+  {
+    name: 'PlanningHandoff',
+    declaration: 'export type PlanningHandoff = z.infer<typeof planningHandoffSchema>;',
+  },
+  {
+    name: 'PlanningMutationResult',
+    declaration: 'export interface PlanningMutationResult {\n    readonly boardVersion: number;\n    readonly itemId?: string | undefined;\n    readonly revisionId?: string | undefined;\n    readonly reviewId?: string | undefined;\n    readonly proposalId?: string | undefined;\n    readonly proposalVersion?: number | undefined;\n}',
+  },
+  {
     name: 'PostToolDecision',
     declaration: 'export type PostToolDecision = {\n    kind: \'accept\';\n    content?: ContentBlock[];\n    value?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'accept\';\n    value: JsonValue;\n    content?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'block\';\n    feedback: ContentBlock[];\n    additionalContexts?: UserMessage[];\n};',
   },
@@ -6184,6 +6261,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PreparedDeepSeekLlmApiExtensions',
     declaration: 'export interface PreparedDeepSeekLlmApiExtensions {\n    readonly fields: Readonly<Partial<DeepSeekLlmApiExtensionMap>>;\n    accept(): Promise<void>;\n}',
+  },
+  {
+    name: 'PrepareDeliveryHandoffInput',
+    declaration: 'export interface PrepareDeliveryHandoffInput {\n    readonly itemId: string;\n    readonly expectedRevisionId: string;\n    readonly repositoryId: string;\n    readonly key: string;\n    readonly mapperVersion: 1;\n    readonly operatorId: string;\n    readonly deliveryRequestDigest: string;\n}',
   },
   {
     name: 'PreparedLlmCall',

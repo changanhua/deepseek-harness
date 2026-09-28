@@ -59,6 +59,7 @@ Every package lives in exactly one group; new packages join existing groups, and
 | [`spill/`](spill/README.md) | Spill capability family: storage seam, local impl, tool-result spill policy |
 | [`todo/`](todo/README.md) | The model-facing `todo_write` tool |
 | [`plan/`](plan/README.md) | Plan collaboration state with a direct entry command and reviewed exit |
+| [`planning/`](planning/README.md) | Durable project planning Boards, bounded agent/browser access, and optional Delivery handoff |
 | [`delivery/`](delivery/README.md) | Queue-independent Personal Delivery protocol, three host Service Definitions, test fakes, and fail-closed integration package boundaries |
 | [`preset/`](preset/README.md) | Per-session agent composition from preset `cordis.yml` files |
 | [`guard/`](guard/README.md) | Loop-hygiene guards: advisory repeat-call reminders + the `tools/execute` deadline enforcer |

@@ -36,11 +36,11 @@ Codex 默认使用 `never`，并接受 Codex 0.153.4 公开的三种原生非交
 
 | 值 | `thread/start` 字段 | 原生行为 |
 | --- | --- | --- |
-| `never` | `approvalPolicy: never`；省略 sandbox | 永不弹出提示；执行失败会在原生 sandbox 下返回模型。 |
-| `approve-for-me` | `approvalPolicy: on-request`、`approvalsReviewer: auto_review`、`sandbox: workspace-write` | 由 Codex 自动评审权限请求。 |
-| `dangerously-bypass-approvals-and-sandbox` | `approvalPolicy: never`、`sandbox: danger-full-access` | 跳过审批与 sandbox。 |
+| `never` | `ephemeral: true`、`approvalPolicy: never`；省略 sandbox | 永不弹出提示；执行失败会在原生 sandbox 下返回模型。 |
+| `approve-for-me` | `ephemeral: false`、`approvalPolicy: on-request`、`approvalsReviewer: auto_review`、`sandbox: workspace-write` | 由 Codex 自动评审权限请求。 |
+| `dangerously-bypass-approvals-and-sandbox` | `ephemeral: true`、`approvalPolicy: never`、`sandbox: danger-full-access` | 跳过审批与 sandbox。 |
 
-提供方只覆盖这些权限与 sandbox 字段。可选的实例级模型是独立的直接 `thread/start` 覆盖；`CODEX_HOME`、项目配置、模型 provider 选择、MCP、hook、skill、身份验证，以及模式未选择的 sandbox 事实仍属于 Codex 原生状态。wire 仍会拒绝任何意外到达的审批、权限、用户输入或 MCP 请求，而不会开放动态 allow 通道。
+提供方只覆盖这些权限、sandbox 与线程持久性字段。`approve-for-me` 请求原生持久线程，以便 Codex 运行 guardian 评审；Codex 会把该原生会话保存到配置的 `CODEX_HOME`，其隔离决定保留状态。其他模式请求临时线程。可选的实例级模型是独立的直接 `thread/start` 覆盖；项目配置、模型 provider 选择、MCP、hook、skill、身份验证，以及模式未选择的 sandbox 事实仍属于 Codex 原生状态。wire 仍会拒绝任何意外到达的审批、权限、用户输入或 MCP 请求，而不会开放动态 allow 通道。
 
 ### 失败诊断
 
@@ -55,7 +55,7 @@ Codex 默认使用 `never`，并接受 Codex 0.153.4 公开的三种原生非交
 | 事实或资源 | Owner | 可观察行为 |
 | --- | --- | --- |
 | Profile 权限选择 | 各产品提供方 Config | 配置阶段会拒绝无效、交互式或未知值。 |
-| 权限与沙箱语义 | Claude Code Agent SDK 或 Codex app-server | 各提供方传入一个原生模式，不镜像产品策略。 |
+| 权限、沙箱与线程持久性语义 | Claude Code Agent SDK 或 Codex app-server | 各提供方传入一个原生模式，不镜像产品策略。 |
 | 交互决定与安全诊断 | 单次产品运行 | 并发运行分别拥有独立的模式、协议与诊断状态。 |
 | 诊断类型与字节上限 | `dsh-subagent` | 消费方收到与 assistant 输出分离的有界可选字段。 |
 | 前台与 Job 呈现 | `dsh-tool-subagent` 和通用 Job 运行时 | 调度选择不会改变底层失败事实。 |
@@ -63,7 +63,7 @@ Codex 默认使用 `never`，并接受 Codex 0.153.4 公开的三种原生非交
 
 ## Verification
 
-包测试固定所有允许与拒绝的 Config 值、准确的 SDK 与 app-server 字段映射、危险确认、无人值守终态、诊断脱敏与 UTF-8 上限、成功结果不携带诊断、并发运行隔离、前台顺序、Job detail、stderr observer 释放和进程清理。真实 Claude Agent SDK 0.3.263 与 Claude Code 2.1.263 fixture 证明其安全默认、受限拒绝、显式 bypass 与整棵进程树完全停稳。真实 Codex 0.153.4 app-server fixture 证明线程级 `never` 覆盖环境中的 `on-request`、自动评审可以启动、危险绕过只在测试拥有的临时存储中写入、被拒绝的提权不会留下副作用且诊断不含原始命令或路径、stderr 只供 Host 观测，而且 wrapper／native 进程树会退出。Loader 组装证明非默认模式可以在不启动任一产品的情况下发布；无密钥 ACP snapshot 则记录每个产品的失败诊断如何经过前台与 Job 呈现，同时面向模型的产品工具 schema 不包含权限参数。
+包测试固定所有允许与拒绝的 Config 值、准确的 SDK 与 app-server 字段映射、按模式区分的 `thread/start` 持久性与匹配返回值、危险确认、无人值守终态、诊断脱敏与 UTF-8 上限、成功结果不携带诊断、并发运行隔离、前台顺序、Job detail、stderr observer 释放和进程清理。真实 Claude Agent SDK 0.3.263 与 Claude Code 2.1.263 fixture 证明其安全默认、受限拒绝、显式 bypass 与整棵进程树完全停稳。真实 Codex 0.153.4 app-server fixture 证明线程级 `never` 覆盖环境中的 `on-request`、自动评审可以启动、危险绕过只在测试拥有的临时存储中写入、被拒绝的提权不会留下副作用且诊断不含原始命令或路径、stderr 只供 Host 观测，而且 wrapper／native 进程树会退出。Loader 组装证明非默认模式可以在不启动任一产品的情况下发布；无密钥 ACP snapshot 则记录每个产品的失败诊断如何经过前台与 Job 呈现，同时面向模型的产品工具 schema 不包含权限参数。
 
 ## Alternatives considered
 
@@ -85,4 +85,4 @@ Profile 可以在提供方启动前选择各产品原生的受限、自动、在
 
 权限失败会同时到达前台父 agent 和一次性后台 Job，且不会把基础设施文本伪装成 assistant 回答。同一字段还可以承载由另一项决策负责的结构化失败事实。它可以沿普通消费路径进入模型上下文、Job 通知、API 投影与 Job UI，因此提供方必须在结果结算前对完整文本完成脱敏和限长。
 
-本改动不增加产品会话持久化、人工审批通道、动态权限操作、进度流、重试策略或回滚。其他提供方无需产生诊断或公开权限模式 Config，仍然保持合法。
+本改动不增加 DSH 管理的会话持久化、人工审批通道、动态权限操作、进度流、重试策略或回滚。Codex 原生持久化仅限 `approve-for-me` 及其配置的 `CODEX_HOME`。其他提供方无需产生诊断或公开权限模式 Config，仍然保持合法。

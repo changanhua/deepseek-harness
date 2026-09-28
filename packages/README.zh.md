@@ -59,6 +59,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 | [`spill/`](spill/README.zh.md) | spill 能力系列：存储 seam、本地实现、工具结果 spill 策略 |
 | [`todo/`](todo/README.zh.md) | 面向模型的 `todo_write` 工具 |
 | [`plan/`](plan/README.zh.md) | Plan 协作状态，提供直接进入命令与经评审的退出 |
+| [`planning/`](planning/README.zh.md) | 持久项目规划 Board、有界 Agent／浏览器访问与可选 Delivery 交接 |
 | [`delivery/`](delivery/README.zh.md) | 与 Queue 解耦的 Personal Delivery 协议、三个 Host Service Definition、测试替身及故障关闭的集成边界 |
 | [`preset/`](preset/README.zh.md) | 由 preset `cordis.yml` 按会话组装 agent |
 | [`guard/`](guard/README.zh.md) | 循环卫生守卫：建议性重复调用提醒 + `tools/execute` 截止时间强制执行器 |

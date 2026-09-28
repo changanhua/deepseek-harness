@@ -183,7 +183,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/delivery/delivery-remote/src/index.ts:103`](../packages/delivery/delivery-remote/src/index.ts)
+Source: [`packages/delivery/delivery-remote/src/index.ts:105`](../packages/delivery/delivery-remote/src/index.ts)
 
 <a id="changanhuadsh-delivery-task-queue"></a>
 
@@ -416,6 +416,64 @@ export interface OperationDefinition {
 
 Source: [`packages/task-queue/operation-run-task-queue/src/index.ts:21`](../packages/task-queue/operation-run-task-queue/src/index.ts)
 
+<a id="changanhuadsh-planning-delivery-bridge"></a>
+
+## `@changanhua/dsh-planning-delivery-bridge`
+
+Requires: `planning` · `delivery` · `workspaceRegistry`
+
+```ts config-catalog
+export interface PlanningDeliveryConfig {
+  /** Fixed Delivery origin actor; browser or model input cannot override it. */
+  readonly operatorId?: string
+  /** Exact Workspace-path to Delivery-repository routes; an unmatched Workspace rejects handoff. */
+  readonly routes: readonly PlanningDeliveryRoute[]
+}
+
+export interface PlanningDeliveryRoute {
+  /** Canonical Workspace path after startup normalization. */
+  readonly workspacePath: string
+  /** Delivery repository that receives handoffs from this exact Workspace path. */
+  readonly repositoryId: string
+}
+```
+
+Source: [`packages/planning/planning-delivery-bridge/src/index.ts:15`](../packages/planning/planning-delivery-bridge/src/index.ts)
+
+<a id="changanhuadsh-planning-local"></a>
+
+## `@changanhua/dsh-planning-local`
+
+Requires: `storageDomain` · `workspaceRegistry` · `sessionQuery`
+
+```ts config-catalog
+/** Configuration for one local Planning provider. */
+export interface LocalPlanningConfig {
+  /** Required absolute directory used to acquire the single-Host ownership lock. */
+  readonly ownershipRoot: string
+  /** Maximum serialized bytes for one Board; writes over this bound reject before commit. */
+  readonly maxBoardBytes?: number
+}
+```
+
+Source: [`packages/planning/planning-local/src/index.ts:25`](../packages/planning/planning-local/src/index.ts)
+
+<a id="changanhuadsh-planning-remote"></a>
+
+## `@changanhua/dsh-planning-remote`
+
+Requires: `planning` · `workspaceRegistry`
+
+```ts config-catalog
+/** Host identity used for browser-originated planning edits. */
+export interface Config {
+  /** Local operator identity; browsers cannot override it. */
+  operatorId?: string
+}
+```
+
+Source: [`packages/planning/planning-remote/src/index.ts:28`](../packages/planning/planning-remote/src/index.ts)
+
 <a id="changanhuadsh-repo-workspace-git-local"></a>
 
 ## `@changanhua/dsh-repo-workspace-git-local`
@@ -562,6 +620,23 @@ export interface Config {}
 ```
 
 Source: [`packages/task-queue/tool-operation-run-task-queue/src/index.ts:16`](../packages/task-queue/tool-operation-run-task-queue/src/index.ts)
+
+<a id="changanhuadsh-tool-planning"></a>
+
+## `@changanhua/dsh-tool-planning`
+
+Requires: `tools` · `systemPrompt` · `planning` · `agents` · `sessions` · `workspaceRegistry`
+
+```ts config-catalog
+export interface Config {
+  /** Maximum UTF-8 bytes in one complete model-visible result block, including its wrapper. */
+  maxOutputBytes?: number
+  /** Cooperative per-tool deadline in milliseconds; the composed timeout policy enforces it. */
+  timeoutMs?: number
+}
+```
+
+Source: [`packages/planning/tool-planning/src/index.ts:39`](../packages/planning/tool-planning/src/index.ts)
 
 <a id="changanhuadsh-tool-task-queue"></a>
 
@@ -4070,6 +4145,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
 - `@changanhua/dsh-client-ui-content` ([`packages/client/ui-content/src/index.ts`](../packages/client/ui-content/src/index.ts))
 - `@changanhua/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
+- `@changanhua/dsh-client-ui-planning` ([`packages/client/ui-planning/src/index.ts`](../packages/client/ui-planning/src/index.ts))
 - `@changanhua/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
 - `@changanhua/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
 - `@changanhua/dsh-client-ui-work-observatory` ([`packages/client/ui-work-observatory/src/index.ts`](../packages/client/ui-work-observatory/src/index.ts))
@@ -4177,6 +4253,7 @@ Abstract service classes — a deployment loads a concrete implementation packag
 - `@changanhua/dsh-delivery` — abstract `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
 - `@changanhua/dsh-delivery-evidence` — abstract `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
 - `@changanhua/dsh-memory` — abstract `ProjectMemory` ([`packages/memory/memory/src/index.ts`](../packages/memory/memory/src/index.ts))
+- `@changanhua/dsh-planning` — abstract `Planning` ([`packages/planning/planning/src/index.ts`](../packages/planning/planning/src/index.ts))
 - `@changanhua/dsh-repo-workspace` — abstract `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))
 - `@changanhua/dsh-task-queue` — abstract `TaskQueue` ([`packages/task-queue/task-queue/src/index.ts`](../packages/task-queue/task-queue/src/index.ts))
 - `@deepseek-ai/dsh-attachment` — abstract `AttachmentStore` ([`packages/attachment/attachment/src/index.ts`](../packages/attachment/attachment/src/index.ts))
@@ -4200,6 +4277,7 @@ Abstract service classes — a deployment loads a concrete implementation packag
 
 Imported as libraries by other packages; a `cordis.yml` cannot load them.
 
+- `@changanhua/browser-extension-mcp` ([`packages/mcp/browser-extension-mcp/src/index.ts`](../packages/mcp/browser-extension-mcp/src/index.ts))
 - `@changanhua/dsh-delivery-github-intake` ([`packages/delivery/delivery-github-intake/src/index.ts`](../packages/delivery/delivery-github-intake/src/index.ts))
 - `@changanhua/dsh-delivery-github-publisher` ([`packages/delivery/delivery-github-publisher/src/index.ts`](../packages/delivery/delivery-github-publisher/src/index.ts))
 - `@changanhua/dsh-delivery-protocol` ([`packages/delivery/delivery-protocol/src/index.ts`](../packages/delivery/delivery-protocol/src/index.ts))
@@ -4210,6 +4288,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@changanhua/dsh-eval-session-snapshot` ([`packages/eval/eval-session-snapshot/src/index.ts`](../packages/eval/eval-session-snapshot/src/index.ts))
 - `@changanhua/dsh-personal-delivery` ([`packages/bundle/personal-delivery/src/index.ts`](../packages/bundle/personal-delivery/src/index.ts))
 - `@changanhua/dsh-personal-memory` ([`packages/bundle/personal-memory/src/index.ts`](../packages/bundle/personal-memory/src/index.ts))
+- `@changanhua/dsh-personal-planning` ([`packages/bundle/personal-planning/src/index.ts`](../packages/bundle/personal-planning/src/index.ts))
 - `@deepseek-ai/dsh-agent-loop-testkit` ([`packages/test-support/agent-loop-testkit/src/index.ts`](../packages/test-support/agent-loop-testkit/src/index.ts))
 - `@deepseek-ai/dsh-anonymous-user-id` ([`packages/identity/anonymous-user-id/src/index.ts`](../packages/identity/anonymous-user-id/src/index.ts))
 - `@deepseek-ai/dsh-app-boot` ([`packages/boot/app-boot/src/index.ts`](../packages/boot/app-boot/src/index.ts))

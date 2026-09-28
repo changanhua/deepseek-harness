@@ -403,6 +403,12 @@
     { "path": "./packages/memory/tool-memory" },
     { "path": "./packages/memory/command-memory" },
     { "path": "./packages/bundle/personal-memory" },
+    { "path": "./packages/planning/planning" },
+    { "path": "./packages/planning/planning-delivery-bridge" },
+    { "path": "./packages/planning/planning-local" },
+    { "path": "./packages/planning/planning-remote" },
+    { "path": "./packages/planning/tool-planning" },
+    { "path": "./packages/bundle/personal-planning" },
     { "path": "./apps/desktop" },
     { "path": "./apps/desktop-host" },
     { "path": "./apps/cli" }

@@ -1,0 +1,38 @@
+# Planning UI
+
+English | [中文](README.zh.md)
+
+## Summary
+
+Use this browser UI to arrange project plans, inspect their sources and execution summaries, and submit explicitly chosen planning changes. It renders Host-owned data and retains no planning authority.
+
+## Use this package
+
+`@changanhua/dsh-client-ui-planning` renders the personal Planning Remote projection as a workspace-scoped planning pool. It provides project selection, keyword filtering of plans and pending proposals, five arrangement groups, a plan detail panel, and a short addition form that revises the selected item without filling its estimates.
+
+The UI sends every mutation with the current board version. A failed attempt remains available for an explicit retry with its original request identity; it never silently overwrites a newer board. It displays captured Session excerpts and opens their conversation, reads the exact captured Content version when composed, and identifies manual notes and links as unverified sources. Arrangement and Delivery progress appear separately.
+
+## Invariant policy
+
+No invariant companion is published because the workbench holds only disposable browser state over Host-owned records.
+
+## Model Experience
+
+### No direct model context
+
+#### What the model sees
+
+Nothing directly. `PlanningWorkbench` renders browser state and does not register prompts, tools, or model resources.
+
+#### Token effect
+
+The UI adds no direct tokens.
+
+#### KV Cache effect
+
+The UI adds no direct KV-cache effect.
+
+## Known Limitations and Deferred Work
+
+- Planning lanes do not indicate execution outcomes; Delivery contracts and decisions continue in the Delivery workbench.
+- Background notification and atomic review follow-ups remain incomplete.

@@ -262,6 +262,8 @@ function replayProviders(contextWindow: number | undefined): typeof REPLAY_PROVI
 
 /** A booted web scaffold: real composition, mode-selected model backend, temp world. */
 export interface WebScaffold {
+  /** Scenario-owned normalization of domain identities and generated clocks; semantic payloads must remain intact. */
+  normalizeScenarioLog?: (log: string) => string
   /** The active snapshot mode this scaffold booted under. */
   mode: WebSnapshotMode
   /** Browser-facing origin for the bound test server. */
@@ -294,6 +296,8 @@ export interface WebScaffold {
 
 /** Options for {@link launchWebScaffold}. */
 export interface LaunchOptions {
+  /** Normalize domain-specific volatile values before full persisted-session comparison and fixture write-back. */
+  normalizeScenarioLog?: (log: string) => string
   /** Enable the real Open In rows with deterministic launch-environment facts. */
   openInAppEnvironment?: LaunchEnvironmentSnapshot
   /** Compare the replayed root session with `replayFixture`; defaults on for a manifest-owned canonical recording. */
@@ -909,6 +913,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     workspaceCwd,
     persistenceRoot,
     storageRoot: options.storageRoot ?? join(workspaceCwd, '.dsh-storages'),
+    ...options.normalizeScenarioLog === undefined ? {} : { normalizeScenarioLog: options.normalizeScenarioLog },
     hostFetch(path: string, init: RequestInit = {}): Promise<Response> {
       const headers = new Headers(init.headers)
       headers.set('cookie', cookieHeader)
@@ -945,6 +950,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
             mode,
             `http://${browserHost}:${port}`,
             harnessHome,
+            options.normalizeScenarioLog,
           )
         } catch (error) {
           failures.push(error)
@@ -1098,9 +1104,10 @@ function stableSessionFixture(
   existing: string,
   workspaceCwd: string,
   harnessHome: string,
+  normalizeScenarioLog: (log: string) => string = log => log,
 ): string {
   const prepared = prepareSessionSnapshotFixtureForComparison(
-    normalizeWebSessionVolatiles(rawSessionLog(session), workspaceCwd),
+    normalizeWebSessionVolatiles(normalizeScenarioLog(rawSessionLog(session)), workspaceCwd),
   )
   const stabilized = existing === ''
     ? prepared
@@ -1122,8 +1129,9 @@ async function assertReplaySession(
   mode: WebSnapshotMode,
   webUrl: string,
   harnessHome: string,
+  normalizeScenarioLog: (log: string) => string = log => log,
 ): Promise<void> {
-  let expected = await readFile(fixturePath, 'utf8')
+  let expected = normalizeScenarioLog(await readFile(fixturePath, 'utf8'))
   const fixtureDir = dirname(fixturePath)
   const manifestPath = join(fixtureDir, 'snapshot.yml')
   const manifest = parseSnapshotManifest(await readFile(manifestPath, 'utf8'), manifestPath)
@@ -1142,9 +1150,9 @@ async function assertReplaySession(
   const session = candidates[0] as Session
   const sessionCwd = session.header.cwd
   if (sessionCwd === undefined) throw new Error(`${fixturePath}: replayed session has no cwd`)
-  const actual = rawSessionLog(session)
+  const actual = normalizeScenarioLog(rawSessionLog(session))
   if (mode === 'refresh' && writesCurrentSessionFixtures(manifest, mode)) {
-    expected = stableSessionFixture(session, expected, sessionCwd, harnessHome)
+    expected = stableSessionFixture(session, expected, sessionCwd, harnessHome, normalizeScenarioLog)
     expectedPath = recordedSessionFixturePath(fixturePath, session.header.version)
     await writeFile(expectedPath, expected)
   }
@@ -1204,6 +1212,7 @@ export async function recordFixture(scaffold: WebScaffold, sessionId: SessionId,
     existing,
     scaffold.workspaceCwd,
     scaffold.harnessHome,
+    scaffold.normalizeScenarioLog,
   ))
 }
 

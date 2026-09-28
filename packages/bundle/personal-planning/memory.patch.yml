@@ -1,0 +1,17 @@
+# Optional project-memory layer for the personal-planning Web Profile.
+# It deliberately reuses the Web Host's storage and Workspace realms so both
+# durable services bind the same real Session and project identity.
+- insert:
+    - id: project-memory-local
+      name: '@changanhua/dsh-memory-local'
+      isolate:
+        storageDomain: web-host
+        workspaceRegistry: web-host
+      config:
+        ownershipRoot: !!js dshHomePath('storages', 'project-memory-ownership')
+
+    - id: tool-project-memory
+      name: '@changanhua/dsh-tool-memory'
+
+    - id: command-project-memory
+      name: '@changanhua/dsh-command-memory'

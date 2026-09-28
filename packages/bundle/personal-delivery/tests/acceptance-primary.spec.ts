@@ -210,7 +210,7 @@ async function boot(temp: string, repository: string, canary?: GitHubCanaryConfi
   await writeFile(configPath, [
     "- { id: storage, name: '@deepseek-ai/dsh-storage' }",
     "- id: storage-json\n  name: '@deepseek-ai/dsh-storage-json'\n  config:\n    root: " + JSON.stringify(join(temp, 'storage')),
-    "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  config:\n    backend: json",
+    "- id: storage-domain\n  name: '@deepseek-ai/dsh-storage-domain'\n  isolate:\n    storageDomain: web-host\n  config:\n    backend: json",
     "- { id: credentials, name: '@test/dsh-credentials' }",
     "- { id: subprocess, name: '@deepseek-ai/dsh-subprocess-local' }",
     "- id: task-queue\n  name: '@changanhua/dsh-task-queue-local'\n  config:\n    queueRoot: " + JSON.stringify(join(temp, 'queue')) + '\n    maxConcurrent: 1\n    resourceCapacity:\n      agent-run: 1', patch,

@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## Summary
 
-`dsh-tool-knowledge-base` 为 `dsh --profile` 界面添加可编辑、基于来源的知识库工作流。其 bundle patch 挂载业务仓库、原生 Codex Queue 桥接和 `knowledge_base` 工具；带 commands 的 Profile 也会获得 `/knowledge`。在 `dsh-base` 后添加 bundle，然后使用显式的 create、source、confirm、build、check、publish、思源和恢复请求。build 不会自动发布，生成会保持停止，直到人工 `/knowledge` 命令或可信 Host 发送 `resume-generation`；模型工具会拒绝该 action。
+`dsh-tool-knowledge-base` 为 `dsh --profile` 界面添加可编辑、基于来源的知识库工作流。其 bundle patch 挂载业务仓库、原生 Codex Queue 桥接和 `knowledge_base` 工具；带 commands 的 Profile 也会获得 `/knowledge`。在 `dsh-base` 后添加 bundle，然后使用显式的 create、source、read-source、confirm、build、check、publish、思源和恢复请求。build 不会自动发布，生成会保持停止，直到人工 `/knowledge` 命令或可信 Host 发送 `resume-generation`；模型工具会拒绝该 action。
 
 ## Table of Contents
 
@@ -38,6 +38,7 @@ kind: "package-bundle"
 ```json
 {"action":"create","spec":{"id":"game-vibe","title":"Game ideas","readerTask":"plan a prototype","language":"en","seeds":[]}}
 {"action":"source","projectId":"game-vibe","sourceId":"brief","title":"Brief","text":"Prototype the core loop."}
+{"action":"read-source","projectId":"game-vibe","sourceId":"brief","offset":0,"limit":4000}
 {"action":"plan","projectId":"game-vibe"}
 {"action":"confirm","projectId":"game-vibe","planHash":"<status planHash>"}
 {"action":"build","projectId":"game-vibe"}
@@ -49,6 +50,8 @@ kind: "package-bundle"
 ```
 
 `build.maxRevisions` 为 0–3，默认 2；同一输入的格式修正也使用该配置上限。build 在 `unknown` 工作时停止，绝不自动重发。仅在已验证收据可结算未知工作后使用 `resume`；仅对已知 `not-started` 失败使用 `retry`，仅对已知 `knowledge-validation` 失败使用 `correct`。`export-draft` 显式写入部分草稿，不登记完整发布或修改 `currentRelease`；`diff` 先核验两个完整发布，再列出新增、删除和变化的条目 ID。`stop-generation` 持久保存停止状态并等待已知活动调用结束。只有人工 `/knowledge` 命令与可信 Host 请求路径可以发送 `resume-generation`；`knowledge_base` 工具调用会被拒绝。
+
+`read-source` 默认读取最新保存快照，也可由调用者指定不可变 `snapshotId`。它按 Unicode 字符返回分页文本，并在未读完时返回 `nextOffset`，同时返回 `offset` 与 `totalCharacters`。`offset` 默认 0；`limit` 默认 4000，最大 8192。项目、来源或快照不存在时会报错，绝不会把它们转换为空来源结果。
 
 ### 思源编辑
 

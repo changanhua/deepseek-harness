@@ -92,6 +92,17 @@
       ]
     },
     {
+      "directory": "packages/bundle/personal-planning",
+      "legacyName": "@deepseek-ai/dsh-personal-planning",
+      "sourceName": "@changanhua/dsh-personal-planning",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/client/ui-architecture",
       "legacyName": "@deepseek-ai/dsh-client-ui-architecture",
       "sourceName": "@changanhua/dsh-client-ui-architecture",
@@ -137,6 +148,17 @@
       "blockers": [
         "release-family-absent",
         "upstream-private-api-dependency"
+      ]
+    },
+    {
+      "directory": "packages/client/ui-planning",
+      "legacyName": "@deepseek-ai/dsh-client-ui-planning",
+      "sourceName": "@changanhua/dsh-client-ui-planning",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
       ]
     },
     {
@@ -548,6 +570,61 @@
       "directory": "packages/memory/tool-memory",
       "legacyName": "@deepseek-ai/dsh-tool-memory",
       "sourceName": "@changanhua/dsh-tool-memory",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/planning/planning",
+      "legacyName": "@deepseek-ai/dsh-planning",
+      "sourceName": "@changanhua/dsh-planning",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/planning/planning-delivery-bridge",
+      "legacyName": "@deepseek-ai/dsh-planning-delivery-bridge",
+      "sourceName": "@changanhua/dsh-planning-delivery-bridge",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/planning/planning-local",
+      "legacyName": "@deepseek-ai/dsh-planning-local",
+      "sourceName": "@changanhua/dsh-planning-local",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/planning/planning-remote",
+      "legacyName": "@deepseek-ai/dsh-planning-remote",
+      "sourceName": "@changanhua/dsh-planning-remote",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/planning/tool-planning",
+      "legacyName": "@deepseek-ai/dsh-tool-planning",
+      "sourceName": "@changanhua/dsh-tool-planning",
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,

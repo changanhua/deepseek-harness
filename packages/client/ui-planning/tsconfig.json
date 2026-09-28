@@ -1,0 +1,49 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../ui-chat/tsconfig.json" },
+    {
+      "path": "../../api/remotes/tsconfig.client.json"
+    },
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../locale"
+    },
+    {
+      "path": "../store"
+    },
+    {
+      "path": "../ui-layout"
+    },
+    {
+      "path": "../ui-renderer"
+    },
+    {
+      "path": "../ui-sidebar"
+    },
+    {
+      "path": "../ui-slots"
+    },
+    {
+      "path": "../../planning/planning/tsconfig.json"
+    },
+    {
+      "path": "../../planning/planning-remote/tsconfig.json"
+    },
+    {
+      "path": "../../delivery/delivery-remote"
+    },
+    {
+      "path": "../../delivery/delivery-protocol"
+    }
+  ]
+}

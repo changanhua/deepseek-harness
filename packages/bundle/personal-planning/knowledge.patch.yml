@@ -1,0 +1,16 @@
+# Optional local knowledge sources and the existing knowledge workflow.
+# Apply after personal-planning, base, and web. No generation starts at boot.
+- insert:
+    - id: planning-knowledge-base
+      name: '@changanhua/dsh-knowledge-base'
+      isolate:
+        storageDomain: web-host
+      config:
+        root: !!js dshHomePath('planning-knowledge')
+        siyuan: false
+
+    - id: planning-knowledge-queue
+      name: '@changanhua/dsh-knowledge-base-task-queue'
+
+    - id: planning-knowledge-tools
+      name: '@changanhua/dsh-tool-knowledge-base'

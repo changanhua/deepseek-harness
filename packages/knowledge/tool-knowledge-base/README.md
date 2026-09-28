@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-knowledge-base` adds an editable, source-grounded knowledge-library workflow to a `dsh --profile` surface. Its bundle patch mounts the business repository, native Codex Queue bridge, and `knowledge_base` tool; profiles with commands also receive `/knowledge`. Add this bundle after `dsh-base`, then use explicit create, source, confirm, build, check, publish, SiYuan, and recovery requests. Build never publishes automatically, and generation remains stopped until the human `/knowledge` command or a trusted Host sends `resume-generation`; the model tool rejects that action.
+`dsh-tool-knowledge-base` adds an editable, source-grounded knowledge-library workflow to a `dsh --profile` surface. Its bundle patch mounts the business repository, native Codex Queue bridge, and `knowledge_base` tool; profiles with commands also receive `/knowledge`. Add this bundle after `dsh-base`, then use explicit create, source, read-source, confirm, build, check, publish, SiYuan, and recovery requests. Build never publishes automatically, and generation remains stopped until the human `/knowledge` command or a trusted Host sends `resume-generation`; the model tool rejects that action.
 
 ## Table of Contents
 
@@ -38,6 +38,7 @@ Use each JSON object as the `request` string of `knowledge_base`, or append it t
 ```json
 {"action":"create","spec":{"id":"game-vibe","title":"Game ideas","readerTask":"plan a prototype","language":"en","seeds":[]}}
 {"action":"source","projectId":"game-vibe","sourceId":"brief","title":"Brief","text":"Prototype the core loop."}
+{"action":"read-source","projectId":"game-vibe","sourceId":"brief","offset":0,"limit":4000}
 {"action":"plan","projectId":"game-vibe"}
 {"action":"confirm","projectId":"game-vibe","planHash":"<status planHash>"}
 {"action":"build","projectId":"game-vibe"}
@@ -49,6 +50,8 @@ Use each JSON object as the `request` string of `knowledge_base`, or append it t
 ```
 
 `build.maxRevisions` is 0–3 and defaults to 2; the same configured bound limits format correction for one input. Build stops on an `unknown` work item and never resends it automatically. Use `resume` only after a verified receipt can settle an unknown item; use `retry` only for known `not-started` failures, and `correct` only for known `knowledge-validation` failures. `export-draft` explicitly writes a partial draft without registering a complete release or changing `currentRelease`; `diff` verifies two complete releases before listing added, removed, and changed entry ids. `stop-generation` persists the stop and waits for known active calls to end. Only the human `/knowledge` command and trusted Host request path may send `resume-generation`; a `knowledge_base` tool call receives a rejection.
+
+`read-source` reads the latest stored snapshot by default, or the exact immutable `snapshotId` supplied by the caller. It returns a Unicode-character page with `offset`, `totalCharacters`, and `nextOffset` when more text remains. `offset` defaults to 0; `limit` defaults to 4000 and is capped at 8192. A missing project, source, or snapshot is an error, never an empty source result.
 
 ### SiYuan editing
 
