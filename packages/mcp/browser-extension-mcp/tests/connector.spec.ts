@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -67,6 +67,39 @@ async function fixture(
 }
 
 describe('independent browser connector', () => {
+  it('distinguishes lost grants from revocation, bad credentials and protocol errors', async () => {
+    const revoked = randomUUID(), installationId = randomUUID()
+    const secret = randomBytes(32).toString('base64url')
+    const relay = await startBrowserRelay({ port: 0, secret, extensionIds: [extensionId], revokedInstallationIds: [revoked] })
+    cleanup.push(relay.close)
+    const token = (id: string) => createHmac('sha256', secret).update(id).digest('base64url')
+    const hello = { type: 'hello', protocolVersion: 1, installationId, token: token(installationId) }
+    const closed = async (frame: object) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${relay.port}/api/browser-extension/v1/ws`, { origin })
+      cleanup.push(() => socket.terminate())
+      await once(socket, 'open')
+      const done = once(socket, 'close')
+      socket.send(JSON.stringify(frame))
+      const [code, reason] = await done
+      return { code, reason: String(reason) }
+    }
+    expect(await closed(hello)).toEqual({ code: 4409, reason: 'credentials_expired' })
+    expect(await closed({ ...hello, token: 'wrong' })).toEqual({ code: 4401, reason: 'invalid_credentials' })
+    expect(await closed({ ...hello, type: 'invalid' })).toMatchObject({ code: 1008 })
+    expect(await closed({ ...hello, installationId: revoked, token: token(revoked) })).toEqual({ code: 4401, reason: 'authorization_revoked' })
+    const untrusted = new WebSocket(`ws://127.0.0.1:${relay.port}/api/browser-extension/v1/ws`, { origin: 'chrome-extension://' + 'b'.repeat(32) })
+    cleanup.push(() => untrusted.terminate())
+    const [untrustedCode, untrustedReason] = await once(untrusted, 'close')
+    expect(untrustedCode).toBe(4403)
+    expect(String(untrustedReason)).toBe('extension_not_trusted')
+    for (const [requestOrigin, id, code] of [[origin, revoked, 'authorization_revoked'], ['chrome-extension://' + 'b'.repeat(32), installationId, 'extension_not_trusted']] as const) {
+      const response = await fetch(`http://127.0.0.1:${relay.port}/browser-connector/connect`, { method: 'POST',
+        headers: { origin: requestOrigin, 'content-type': 'application/json' }, body: JSON.stringify({ installationId: id, extensionId }) })
+      expect(response.status).toBe(403)
+      expect(await response.json()).toMatchObject({ error: { code } })
+    }
+  })
+
   it('discovers tools without configuration or DSH and contains unavailable calls', async () => {
     const client = await mcp(join(tmpdir(), `absent-${randomUUID()}.json`))
     expect((await client.listTools()).tools).toHaveLength(7)

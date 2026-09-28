@@ -221,6 +221,7 @@ export async function startBrowserRelay(input: ConnectorConfig) {
         if (!trustedOrigin(req)) throw fail('extension_not_trusted', 403)
         const pair = connectSchema.parse(await readBody(req))
         if (req.headers.origin !== `chrome-extension://${pair.extensionId}`) throw fail('origin_mismatch', 403)
+        if (config.revokedInstallationIds?.includes(pair.installationId)) throw fail('authorization_revoked', 403)
         const existing = grants.get(pair.installationId)
         if (existing && existing.extensionId !== pair.extensionId) throw fail('installation_conflict', 409)
         if (!existing && grants.size >= 32) throw fail('installation_capacity', 429)
@@ -244,8 +245,19 @@ export async function startBrowserRelay(input: ConnectorConfig) {
   server.requestTimeout = 5000
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_RESULT })
   server.on('upgrade', (req, socket, head) => {
-    if (!local(req) || !trustedOrigin(req) || req.url !== '/api/browser-extension/v1/ws') { socket.destroy(); return }
-    wss.handleUpgrade(req, socket, head, (ws) => { wss.emit('connection', ws, req) })
+    if (!local(req) || req.url !== '/api/browser-extension/v1/ws') { socket.destroy(); return }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      if (!trustedOrigin(req)) {
+        sockets.add(ws)
+        const closing = setTimeout(() => ws.terminate(), 1000)
+        closing.unref()
+        ws.on('error', () => {})
+        ws.once('close', () => { clearTimeout(closing); sockets.delete(ws) })
+        ws.close(4403, 'extension_not_trusted')
+        return
+      }
+      wss.emit('connection', ws, req)
+    })
   })
   wss.on('connection', (ws, req) => {
     sockets.add(ws)
@@ -268,12 +280,17 @@ export async function startBrowserRelay(input: ConnectorConfig) {
       if (!installationId) {
         const id = typeof frame.installationId === 'string' ? frame.installationId : ''
         const grant = grants.get(id)
-        if (frame.type !== 'hello' || frame.protocolVersion !== 1 || !grant || req.headers.origin !== `chrome-extension://${grant.extensionId}`
-          || typeof frame.token !== 'string' || !equal(frame.token, tokenFor(id))) { ws.close(1008); return }
+        if (frame.type !== 'hello' || frame.protocolVersion !== 1 || !z.uuid().safeParse(id).success
+          || typeof frame.token !== 'string') { ws.close(1008, 'invalid_hello'); return }
         const parsedCapabilities = frame.capabilities === undefined ? undefined : capabilitiesSchema.safeParse(frame.capabilities)
         if (parsedCapabilities && !parsedCapabilities.success) { ws.close(1008); return }
         const parsedRuntime = frame.runtime === undefined ? undefined : extensionRuntimeSchema.safeParse(frame.runtime)
         if (parsedRuntime && !parsedRuntime.success) { ws.close(1008); return }
+        if (config.revokedInstallationIds?.includes(id)) { ws.close(4401, 'authorization_revoked'); return }
+        if (!equal(frame.token, tokenFor(id))) { ws.close(4401, 'invalid_credentials'); return }
+        // Only a trusted origin with a valid prior token may request restart recovery.
+        if (!grant) { ws.close(4409, 'credentials_expired'); return }
+        if (req.headers.origin !== `chrome-extension://${grant.extensionId}`) { ws.close(4403, 'extension_not_trusted'); return }
         const old = peers.get(id)
         installationId = id
         peers.set(id, { socket: ws, ...(parsedCapabilities ? { capabilities: parsedCapabilities.data } : {}),

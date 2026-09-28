@@ -60,11 +60,14 @@ export const createAssistantChannel = ({
   onCommand = /** @returns {unknown} */ () => {},
   onEvent = /** @returns {unknown} */ () => {},
   runtime,
+  renewCredentials,
   reconnectDelayMs = 1000,
   maxPending = 32,
   requestTimeoutMs = 10_000,
 }) => {
-  const channelCredentials = clone(credentials)
+  let channelCredentials = clone(credentials)
+  let refreshRequired = credentials.reauthorize === true
+  let connecting = false
   const runtimeMetadata = typeof runtime?.version === 'string' && runtime.version.length > 0 && runtime.version.length <= 64
     ? { version: runtime.version } : undefined
   let socket = null
@@ -94,7 +97,7 @@ export const createAssistantChannel = ({
   const scheduleReconnect = () => {
     if (stopped) return
     if (reconnectTimer || probe) return
-    if (oneShot || autoReconnects >= MAX_AUTO_RECONNECTS) {
+    if (oneShot && (!refreshRequired || autoReconnects >= 1) || autoReconnects >= MAX_AUTO_RECONNECTS) {
       report({ phase: 'offline', retryPaused: true, retryPending: false, pauseOnRestart: true })
       return
     }
@@ -148,7 +151,26 @@ export const createAssistantChannel = ({
     Promise.resolve().then(() => onCommand(clone(frame))).catch(() => {})
   }
 
-  const connect = () => {
+  const connect = async () => {
+    if (stopped || connecting || socket) return
+    connecting = true
+    if (refreshRequired && renewCredentials) {
+      try {
+        const renewed = await renewCredentials()
+        if (stopped) return
+        channelCredentials = clone(renewed)
+        refreshRequired = false
+      } catch (error) {
+        if (stopped) return
+        if (['authorization_revoked', 'invalid_credentials', 'extension_not_trusted', 'origin_mismatch'].includes(error?.code)) {
+          cleanupAuthority(channelCredentials.grant)
+          stopped = true
+          report({ phase: 'unauthorized', reason: error.code })
+        } else scheduleReconnect()
+        return
+      } finally { connecting = false }
+    }
+    connecting = false
     if (stopped) return
     let next
     try { next = new WebSocketImpl(socketUrlFor(channelCredentials.baseUrl)) } catch {
@@ -198,6 +220,12 @@ export const createAssistantChannel = ({
       if (frame.type === 'authority-revoked') {
         if (frame.installationId !== activeGrant.installationId || frame.grantEpoch !== activeGrant.grantEpoch) return
         cleanupAuthority(activeGrant, next)
+        stopped = true
+        settleAll(channelError('result_unknown', 'authority_revoked'))
+        activeGrant = null
+        if (stableTimer) clearTimeout(stableTimer)
+        stableTimer = null
+        report({ phase: 'unauthorized', reason: 'authorization_revoked' })
         return
       }
       if (frame.type === 'reading' && typeof frame.id === 'string' && typeof frame.text === 'string'
@@ -232,10 +260,19 @@ export const createAssistantChannel = ({
       activeGrant = null
       settleAll(channelError('result_unknown', 'connection_lost'))
       if (stopped) return
-      if (event.code === 4401) {
+      if (event.code === 4401 || event.code === 4403) {
         cleanupAuthority(priorGrant)
         stopped = true
-        report({ phase: 'unauthorized' })
+        report({ phase: 'unauthorized', reason: event.code === 4403 ? 'extension_not_trusted'
+          : event.reason === 'invalid_credentials' ? 'invalid_credentials' : 'authorization_revoked' })
+        return
+      }
+      if (event.code === 4409 && event.reason === 'credentials_expired' && renewCredentials) {
+        refreshRequired = true
+        report({ phase: 'credentials-expired' })
+      } else if (renewCredentials && (event.code === 1008 || event.code === 4409)) {
+        stopped = true
+        report({ phase: 'invalid', reason: 'protocol_rejected' })
         return
       }
       scheduleReconnect()
@@ -244,7 +281,7 @@ export const createAssistantChannel = ({
   }
 
   const start = ({ once = false } = {}) => {
-    if (stopped || socket) return
+    if (stopped || socket || connecting) return
     probe?.abort()
     probe = null
     oneShot = once

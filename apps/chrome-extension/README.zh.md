@@ -74,6 +74,8 @@ Chrome 在离线或重启期间保留不可变 pending submission 或 `pendingCr
 
 ## 连接行为
 
+独立 Codex 连接可在 relay 重启后续授权，无需重载扩展。[恢复协议](../../packages/mcp/browser-extension-mcp/README.zh.md#connection-recovery)区分凭据失效、撤销、不受信任扩展与网络故障。主动断开或收到终止授权拒绝后，自动恢复停止，worker 重启也不会解除该状态。重连绝不重放未知浏览器写入。
+
 保留中的执行回执占满日志时，`journal_capacity` 拒绝会携带 `value.admission.executed: false` 和 `recheckAt`。该时间戳是已停稳写回执最早过期的 Unix 毫秒时刻，只提示何时重查，不预留容量；`null` 不承诺按时间恢复。到期后，新的可准入读取可在同一安装中继续。仍可能执行的请求不因时间流逝而失去保护，未知结果也不授权重复输入。
 
 worker 为所选 Session 流式传送首个 snapshot 和后续按 cursor 寻址的 events。可见且同 Session、具备 `session:interact` 的 peer 能通过既有 Approval answer chain 接收浏览器操作卡；隐藏或断线 peer 委托 Web，取消或超时会移除卡。对于未知操作，journal 直接持久化最小 identity、outcome 和完全停稳事实，无需人工确认：只有仍可能运行的操作占用标签页，已证明停稳的结果会释放占用并保持可查询，后续连接仍可同步它。真实登录站点与真实模型的验收取决于部署配置。扩展不管理 Chrome 用户配置，也不替代 DSH Web 应用的会话历史。

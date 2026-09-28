@@ -4,6 +4,7 @@ export const configSchema = z.object({
   port: z.number().int().min(1).max(65535).default(3091),
   secret: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
   extensionIds: z.array(z.string().regex(/^[a-p]{32}$/u)).min(1).max(16),
+  revokedInstallationIds: z.array(z.uuid()).max(1024).optional(),
 }).strict()
 export const pageSchema = z.object({
   tabId: z.number().int().nonnegative(), frameId: z.number().int().nonnegative().default(0),

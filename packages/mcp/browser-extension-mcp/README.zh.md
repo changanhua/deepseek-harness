@@ -17,6 +17,17 @@ kind: "package-reference"
 
 stdio 入口立即暴露工具；配置可用时独立启动本机连接器。多个 Codex 任务共享连接器，各自拥有不同的请求身份；结束一个任务不会停止它。连接器仅监听本机回环地址。扩展连接须来自明确受信任的扩展 Origin，本机 MCP 调用使用配置密钥。连接失败只影响工具结果，不影响工具发现。这个外部 MCP 程序不注册 Cordis 能力，因此不提供 Cordis invariant 配套入口。
 
+<a id="connection-recovery"></a>
+## 连接恢复
+
+relay 重启会丢失内存中的 grant。受信任扩展携带有效旧 token 时，会收到 WebSocket 关闭码 `4409` 和原因 `credentials_expired`。扩展清除保存的 token 与 grant，保留安装身份，通过原连接入口取得新凭据。自动恢复、手动重试与 worker 唤醒共用一次配对操作和通道的有限指数退避（最多五次自动重试，稳定连接 30 秒后重置）。暂停后的 worker 唤醒允许一次续授权尝试。耗尽后暂停，等待再次显式重试或浏览器生命周期事件。
+
+关闭码 `4401` 停止恢复：`authorization_revoked` 表示明确撤销，`invalid_credentials` 表示 token 未通过认证。`4403` 表示 `extension_not_trusted`；通用 `1008` 表示协议拒绝，绝不授权重新配对。这些终止状态跨 worker 重启保留，并在连接状态中暴露原因。临时网络故障保留凭据，使用有限重试调度。主动断开会移除自动恢复意图。
+
+若要拒绝某个安装，将其 UUID 加入可选配置数组 `revokedInstallationIds`，由运行实例所有者重启 relay。WebSocket 认证与连接入口都会拒绝该安装，包括显式配对请求。从 `extensionIds` 移除扩展后，该 Origin 会在注册 peer 前被拒绝。配置在 relay 启动时读取，仅修改文件不会撤销活动连接。解决服务端拒绝原因后，显式断开再连接，才能清除扩展的终止保留状态。信任、本机回环和 token 检查仍然有效。
+
+重新连接后，刷新 `browser_status`、列出标签并取得新的页面引用。重连不会完成中断任务，也不会重放写入。使用同一个 MCP 请求所有者查询原请求 ID；回执缺失仍返回 `unknown` 和 `receipt_unavailable`。参见[恢复决策](../../../.agents/notes/implemented/bug-fix/2026-09-28-codex-relay-restart-recovery.zh.md)。
+
 ## 使用浏览器
 
 `browser_status` 分别返回 `connector.mcp` 和 `connector.relay`，各自包含包版本、协议版本、已加载模块路径、进程 ID 和组件启动时间。在线扩展通过 `runtime.version` 返回浏览器 manifest 中的版本。扩展和连接器各自编号；`issues` 标明运行信息未知、连接器版本不一致、扩展断线及无目标开页不可用等情况。缺少元数据不能证明安装已过时。relay 不可用时，工具错误仍携带 MCP 身份。这些诊断不包含配置密钥，也不改变执行权限。

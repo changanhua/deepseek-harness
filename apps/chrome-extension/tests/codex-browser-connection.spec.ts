@@ -33,6 +33,58 @@ const harness = () => {
 }
 
 describe('Codex 浏览器直连', () => {
+  test('并发首次连接共享配对，凭据失效续授权后只复用一个通道', async () => {
+    const h = harness()
+    await Promise.all(Array.from({ length: 8 }, () => h.connection.connect()))
+    expect(h.fetchImpl).toHaveBeenCalledTimes(1)
+    expect(h.channels).toHaveLength(1)
+    h.channels[0].options.onState({ phase: 'credentials-expired' })
+    h.channels[0].options.onState({ phase: 'offline', retryPending: true, pauseOnRestart: true })
+    const renewed = await Promise.all(Array.from({ length: 8 }, () => h.channels[0].options.renewCredentials()))
+    expect(h.fetchImpl).toHaveBeenCalledTimes(2)
+    expect(renewed[0]).toMatchObject({ installationId, token, grant })
+    expect(h.values.get('dsh.codex.browser.connection.v1')).not.toHaveProperty('reauthorize')
+    h.channels[0].options.onState({ phase: 'connected', grant })
+    expect((await h.connection.read()).phase).toBe('connected')
+    expect(h.channels).toHaveLength(1)
+  })
+
+  test('失效后的 worker 唤醒保留重新配对意图，撤销后所有入口保持停止', async () => {
+    const h = harness()
+    h.values.set('dsh.codex.browser.connection.v1', { baseUrl: 'http://127.0.0.1:3091', installationId, reauthorize: true, retryPaused: true })
+    expect((await h.connection.restore()).phase).toBe('offline')
+    await Promise.all(Array.from({ length: 8 }, () => h.connection.retrySaved({ once: true })))
+    expect(h.channels).toHaveLength(1)
+    await h.channels[0].options.renewCredentials()
+    expect(h.fetchImpl).toHaveBeenCalledTimes(1)
+    h.channels[0].options.onState({ phase: 'unauthorized' })
+    await vi.waitFor(() => expect(h.values.get('dsh.codex.browser.connection.v1')).toMatchObject({ blocked: true }))
+    await h.connection.connect()
+    await h.connection.retrySaved()
+    const restored = createCodexBrowserConnection({ storage: h.storage, extensionId,
+      fetchImpl: h.fetchImpl, createChannel: h.createChannel })
+    expect((await restored.restore()).phase).toBe('unauthorized')
+    await restored.connect()
+    expect(h.fetchImpl).toHaveBeenCalledTimes(1)
+    expect(h.channels).toHaveLength(1)
+  })
+
+  test('主动断开使飞行中续授权失效，唤醒不能重新连接', async () => {
+    const h = harness()
+    await h.connection.connect()
+    h.channels[0].options.onState({ phase: 'credentials-expired' })
+    const pending = deferred()
+    h.fetchImpl.mockImplementationOnce(() => pending.promise)
+    const renewal = h.channels[0].options.renewCredentials()
+    const rejected = expect(renewal).rejects.toThrow('connection_cancelled')
+    await vi.waitFor(() => expect(h.fetchImpl).toHaveBeenCalledTimes(2))
+    await h.connection.disconnect()
+    pending.resolve(response({ token, grant }))
+    await rejected
+    expect(await h.connection.retrySaved()).toBe(false)
+    expect(h.values.get('dsh.codex.browser.connection.v1')).toEqual({ baseUrl: 'http://127.0.0.1:3091', installationId })
+  })
+
   test('断线的暂停跨 worker 保留，事件恢复沿用 token 且不重新配对', async () => {
     const h = harness()
     await h.connection.connect()
