@@ -320,6 +320,10 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
    * @returns Whether removal succeeded and whether it stopped an active run.
    */
   async undefine(agent: Agent, pluginId: CordisDynamicPluginId): Promise<DynamicCordisUndefineReceipt> {
+    const existing = this.registry.get(pluginId)
+    if (existing?.createdBySessionId === agent.id && existing.owner.kind === 'browser-installation') {
+      return { ok: false, reason: 'owner-transferred', message: 'This function is managed by its authorized browser installation. Inspect or stop it in the browser extension Functions panel.' }
+    }
     const plugin = this.owned(agent, pluginId)
     if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
     const wasRunning = plugin.run !== undefined
@@ -593,6 +597,10 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
    * @returns Success or the reason no run was stopped.
    */
   async stop(agent: Agent, pluginId: CordisDynamicPluginId): Promise<DynamicCordisStopResponse> {
+    const existing = this.registry.get(pluginId)
+    if (existing?.createdBySessionId === agent.id && existing.owner.kind === 'browser-installation') {
+      return { ok: false, reason: 'owner-transferred', message: 'This function is managed by its authorized browser installation. Inspect or stop it in the browser extension Functions panel.' }
+    }
     const plugin = this.owned(agent, pluginId)
     if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
     return this.stopPlugin(plugin)
@@ -1047,6 +1055,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     return this.registry.all().map(plugin => ({
       pluginId: plugin.pluginId,
       agentId: plugin.createdBySessionId,
+      ownerKind: plugin.owner.kind,
       packages: [...plugin.packages.values()].map(definition => ({
         packageId: definition.packageId,
         name: definition.name,

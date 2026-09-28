@@ -150,3 +150,5 @@ None.
 </details>
 
 **Runtime invariant:** No companion is published. The definition registry is process memory with no event stream to observe, and its one owned relation (a running definition owns a settled host-half fiber and its handler table) is established and unwound inside single awaited verbs, so package tests assert it directly.
+
+Frame-wide inventory reports `ownerKind`; `agentId` identifies the creating Session. Agent stop/remove returns `owner-transferred` for a function delivered by that Session. Inspection and stopping remain authenticated to the owning browser installation and grant epoch.

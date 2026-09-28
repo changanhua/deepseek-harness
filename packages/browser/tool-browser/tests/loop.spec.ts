@@ -40,6 +40,35 @@ async function harness() {
 }
 
 describe('BrowserTaskLoop durable bridge', () => {
+  it.each(['page', 'global'] as const)('finishes a delivered %s function through later verification without cleanup', async (scope) => {
+    const h = await harness()
+    try {
+      await h.loop.start(h.agent, { installationId: 'extension', page, goal: 'Deliver function', success: { text: 'Done' } }, new AbortController().signal)
+      let task = h.ctx.browserTasks.get(h.agent)!
+      if (scope === 'page') {
+        task = h.ctx.browserTasks.upsertResource(h.agent, task, { id: 'panel', state: 'reserved', target: task.target! })
+        task = h.ctx.browserTasks.upsertResource(h.agent, task, { id: 'panel', state: 'active', target: task.target! })
+      }
+      const work = { callId: 'cordis-call', kind: 'cordis' as const, status: 'running',
+        identity: { mode: 'cordis' as const, pluginId: 'plugin-a', packageId: 'package-a', pluginRunId: 'run-a' }, evidenceIds: [] }
+      const fact = h.agent.session.append('browser-task/delegation', { kind: 'browser-task/delegation', version: 1, taskId: task.id, work })
+      task = h.ctx.browserTasks.linkDelegatedWork(h.agent, task, { ...work, source: { kind: 'browser-task-delegation', sessionSeq: fact.seq } })
+      const evidenceId = task.evidence.at(-1)!.id
+      const evaluations = task.acceptance.map(clause => ({ clauseId: clause.id, satisfied: true, evidenceIds: [evidenceId] }))
+      const checkerRef = h.ctx.browserTasks.recordCheck(h.agent, task, { checkerId: 'handoff-ready', target: task.target!, grantEpoch: 1, evaluations })
+      task = h.ctx.browserTasks.evaluate(h.agent, task, evaluations.map(value => ({ ...value, checkerRef })))
+      h.ctx.browserTasks.handoffFunction(h.agent, task, {
+        owner: { kind: 'browser-installation', installationId: 'extension', grantEpoch: 1,
+          pluginId: 'plugin-a', packageId: 'package-a', pluginRunId: 'run-a', handoffId: 'handoff-a' },
+        scope: scope === 'global' ? { kind: 'global' } : { kind: 'page', target: task.target!, targetRevision: task.targetRevision },
+        resourceIds: scope === 'page' ? ['panel'] : [],
+      })
+      expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({ status: 'verified' })
+      expect(h.ctx.browserTasks.get(h.agent)).toMatchObject({ phase: 'terminal', outcome: 'completed' })
+      expect(h.browser.execute.mock.calls.some(([operation]) => ['region_clear', 'entry_unmount'].includes(operation.action.kind))).toBe(false)
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
   it.each(['unselected', 'terminal', 'blocked'] as const)('lists fresh installation tabs outside a %s task without granting page authority', async (state) => {
     const h = await harness()
     try {

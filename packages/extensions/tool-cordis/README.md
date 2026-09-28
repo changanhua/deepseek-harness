@@ -198,3 +198,5 @@ None.
 </details>
 
 **Runtime invariant:** No companion is published. This model-facing adapter has no independent lifecycle stream; execution relations are owned by the capability seam it calls.
+
+`cordis_handoff` commits delivery to the authenticated browser installation. After its success receipt, call `browser_task_verify` to complete the task. Completion cannot run inside the handoff tool before its own result is recorded.

@@ -42,7 +42,7 @@ describe('cordis_handoff', () => {
     expect(JSON.stringify(tool?.parameters)).not.toMatch(/installationId|sessionId|owner|retained/u)
   })
 
-  it('derives installation authority from the active BrowserTask and completes after durable handoff', async () => {
+  it('returns committed handoff before task completion can inspect its pending tool result', async () => {
     const registered: RegisteredTool[] = []
     const page = { tabId: 4, frameId: 0, documentId: 'doc-a', url: 'https://example.test/a' }
     const task = {
@@ -51,9 +51,7 @@ describe('cordis_handoff', () => {
     }
     const handed = { ...task, revision: 8 }
     const handoffFunction = vi.fn((_agent: unknown, _ref: unknown, _request: unknown) => handed)
-    const terminate = vi.fn((_agent: unknown, _ref: unknown, _outcome: unknown) => (
-      { ...handed, revision: 9, phase: 'terminal', outcome: 'completed' }
-    ))
+    const terminate = vi.fn(() => { throw new Error('completed has unobserved delegated tool result') })
     const handoffToInstallation = vi.fn((_agent: unknown, request: HandoffRequest,
       persist: (record: HandoffRecord) => void) => {
       persist({
@@ -98,8 +96,8 @@ describe('cordis_handoff', () => {
       resourceIds: ['region-a'],
     })
     expect(typeof taskRequest?.owner.handoffId).toBe('string')
-    expect(terminate).toHaveBeenCalledWith(expect.anything(), { id: 'task-a', revision: 8 }, 'completed')
-    expect(result).toMatchObject({ status: 'handed-off', pluginId: 'plugin-a', scope: 'page' })
+    expect(terminate).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ status: 'handed-off', pluginId: 'plugin-a', scope: 'page', nextStep: 'browser_task_verify' })
   })
 })
 

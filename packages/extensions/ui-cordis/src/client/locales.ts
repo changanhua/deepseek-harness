@@ -4,6 +4,8 @@ export const NS = 'cordis'
 
 /** Simplified Chinese Cordis UI messages. */
 export const zh = {
+  'panel.revoked': '浏览器授权已撤销，不能继续操作。',
+  'panel.browserManaged': '已交付浏览器。请在扩展「功能 → 全部已交付」中查看范围、检查或停止。',
   'row.defineTitle': '注册 Cordis 插件',
   'row.runTitle': '运行 Cordis 插件',
   'row.updateTitle': '更新 Cordis 插件',
@@ -68,6 +70,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** English Cordis UI messages. */
 export const en = {
+  'panel.revoked': 'Browser authorization was revoked; actions are unavailable.',
+  'panel.browserManaged': 'Delivered to the browser. Inspect or stop it under Functions → All delivered in the extension.',
   'row.defineTitle': 'Register Cordis Plugin',
   'row.runTitle': 'Run Cordis Plugin',
   'row.updateTitle': 'Update Cordis Plugin',

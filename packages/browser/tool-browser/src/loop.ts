@@ -233,6 +233,7 @@ function verificationHasInterveningFact(task: BrowserTaskSnapshot): boolean {
   const after = (source: BrowserTaskSourceRef | undefined) => source !== undefined
     && 'sessionSeq' in source && source.sessionSeq > latestCheck
   return task.attempts.some(attempt => after(attempt.settledBy) || after(attempt.reconciledBy))
+    || after(task.functionHandoff?.source)
     || task.resources.some(resource => after(resource.dispositionSource)
       || (resource.presentation?.evidenceId !== undefined
         && task.evidence.some(evidence => evidence.id === resource.presentation?.evidenceId && after(evidence.source))))
@@ -921,7 +922,7 @@ export class BrowserTaskLoop {
       grantEpoch: task.capability.grantEpoch, evaluations: evaluated })
     const checks = evaluated.map(item => ({ ...item, checkerRef }))
     task = this.authority().evaluate(agent, ref(task), checks)
-    const resourcesDisposed = task.resources.every(resource => resource.state === 'released' || resource.state === 'vanished')
+    const resourcesDisposed = task.resources.every(resource => resource.state === 'released' || resource.state === 'vanished' || resource.state === 'retained')
     if (checks.every(item => item.satisfied) && task.blockers.length === 0 && resourcesDisposed) task = this.authority().terminate(agent, ref(task), 'completed')
     return { status: task.outcome === 'completed' ? 'verified' : task.phase, blockers: task.blockers, budget: task.budget }
   }

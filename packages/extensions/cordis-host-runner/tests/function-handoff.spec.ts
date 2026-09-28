@@ -116,6 +116,11 @@ describe('delivered function handoff', () => {
     expect(harness.runner.handoffToInstallation(AGENT_A, {
       ...OWNER, ...HANDOFF, ...GLOBAL_SCOPE, pluginId: definition.pluginId, packageId: definition.packageId, pluginRunId: runId,
     }, (handoff) => { saved.push(handoff) })).toMatchObject({ ok: true })
+    expect(harness.runner.inventory()).toEqual(expect.arrayContaining([expect.objectContaining({
+      pluginId: definition.pluginId, ownerKind: 'browser-installation',
+    })]))
+    await expect(harness.runner.stopFromPanel(AGENT_A, definition.pluginId)).resolves.toMatchObject({ ok: false, reason: 'owner-transferred' })
+    await expect(harness.runner.undefine(AGENT_A, definition.pluginId)).resolves.toMatchObject({ ok: false, reason: 'owner-transferred' })
     harness.disposeAgent(AGENT_A)
     await Promise.resolve()
 

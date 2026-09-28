@@ -54,6 +54,23 @@ const element = (selector: string): HTMLElement => {
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); vi.useRealTimers(); document.body.replaceChildren() })
 
 describe('DSH 浏览器助手 V2 侧栏', () => {
+  test('未固定页面仍可看到、检查和停止旧页面已交付功能', async () => {
+    const fixture = await load(baseState({ assistantV2: { ...baseState().assistantV2,
+      functions: { availability: 'ready', items: [{ pluginId: 'pstfn-1', name: 'Personal result',
+        purpose: '挂载持续入口', scope: 'page', scopeStatus: 'stale-target', status: 'running',
+        target: { url: 'http://127.0.0.1:37922/handoff-child.html' },
+        openTarget: { kind: 'browser' } }] } } }))
+    element('[data-view="functions"]').click()
+    expect(element('#function-count').textContent).toBe('1')
+    expect(element('#functions-content').textContent).toContain('已交付 1 项 · 当前网页可用 0 项')
+    expect(element('#functions-content').textContent).toContain('http://127.0.0.1:37922/handoff-child.html')
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('#functions-content button')]
+    expect(buttons.find(node => node.textContent === '在页面中打开')?.disabled).toBe(true)
+    buttons.find(node => node.textContent === '停止')?.click()
+    await Promise.resolve()
+    expect(fixture.messages).toContainEqual({ type: 'dsh-assistant-function-stop', pluginId: 'pstfn-1' })
+  })
+
   test.each([true, false])('连接恢复状态区分有限退避与等待事件：retryPending=%s', async (retryPending) => {
     await load(baseState({ assistantV2: { ...baseState().assistantV2,
       connection: { phase: 'offline', baseUrl: 'http://127.0.0.1:3080', retryPending, retryPaused: !retryPending } } }))

@@ -24,7 +24,7 @@ const locked = pending => ['sending', 'unknown'].includes(pending?.status)
 
 let state = null
 let activeView = 'chat'
-let functionScope = 'global'
+let functionScope = 'all'
 let draftImages = []
 const drafts = new Map()
 const recoveryFlights = new Set()
@@ -487,7 +487,7 @@ const renderConversation = () => {
   if (liveFunctions.length && home.hidden) { const rail = document.createElement('section'); rail.className = 'conversation-functions'; const heading = document.createElement('strong'); heading.textContent = '可用功能'; rail.append(heading); for (const item of liveFunctions) rail.append(renderFunctionCard(item, true)); conversation.append(rail) }
   byId('cognition-count').textContent = String(cognitionItems.length)
   const functions = current.functions?.items ?? []
-  byId('function-count').textContent = String(functions.filter(item => item.scope !== 'page' || item.scopeStatus === 'current-target').length)
+  byId('function-count').textContent = String(functions.length)
 }
 
 const renderPending = () => {
@@ -547,21 +547,23 @@ const renderCognition = () => {
 
 const renderFunctionCard = (item, compact = false) => {
   const card = document.createElement('article'); card.className = `function${compact ? ' compact' : ''}`
+  const stalePage = item.scope === 'page' && item.scopeStatus !== 'current-target'
   const title = document.createElement('strong'); title.textContent = item.name ?? item.functionId ?? '未命名功能'
   const description = document.createElement('p'); description.textContent = item.purpose ?? '目录没有提供用途说明。'
   const status = document.createElement('span'); status.className = `status-pill ${item.status === 'running' ? 'running' : ''}`; status.textContent = item.status === 'running' ? '运行中' : '已停止'
-  const note = document.createElement('small'); note.className = 'scope-note'; note.textContent = `版本 ${item.currentPackageId ?? '未知'} · ${item.scope === 'page' ? '当前目标页面' : '全局'}`
+  const note = document.createElement('small'); note.className = 'scope-note'; note.textContent = `版本 ${item.currentPackageId ?? '未知'} · ${item.scope === 'page' ? '指定页面' : '全局'}`
   const actions = document.createElement('div'); actions.className = 'function-actions'
   const openLabel = item.openTarget?.kind === 'web' ? '在 DSH 中打开' : item.openTarget?.kind === 'browser' ? '在页面中打开' : '没有可打开的界面'
-  const open = button(openLabel, () => send({ type: 'dsh-assistant-function-open', pluginId: item.pluginId }), 'primary'); open.disabled = !item.openTarget; if (open.disabled) open.title = '这个功能当前没有可打开的界面'; actions.append(open)
+  const open = button(openLabel, () => send({ type: 'dsh-assistant-function-open', pluginId: item.pluginId }), 'primary'); open.disabled = !item.openTarget || stalePage; if (open.disabled) open.title = stalePage ? '原目标页面当前不可用' : '这个功能当前没有可打开的界面'; actions.append(open)
   if (item.status === 'stopped') actions.append(button('运行', () => send({ type: 'dsh-assistant-function-run', pluginId: item.pluginId })))
   else { actions.append(button('检查运行', () => send({ type: 'dsh-assistant-function-inspect', pluginId: item.pluginId }))); actions.append(button('停止', () => send({ type: 'dsh-assistant-function-stop', pluginId: item.pluginId }))) }
   const metadata = document.createElement('details'); metadata.className = 'function-metadata'; const metadataTitle = document.createElement('summary'); metadataTitle.textContent = '详情'; const metadataBody = document.createElement('p'); metadataBody.textContent = [`ID ${item.pluginId}`, `版本 ${item.currentPackageId ?? '未知'}`, item.scope === 'page' ? '范围 当前目标页面' : '范围 全局', item.status === 'running' ? `运行 ${item.activeRun?.pluginRunId ?? '活动中'}` : '当前未运行'].join(' · '); metadata.append(metadataTitle, metadataBody)
   card.append(title, description, status, note, actions, metadata)
+  if (item.scope === 'page') { const scope = document.createElement('p'); scope.textContent = `生效页面：${item.target?.url ?? '地址未知'}。${stalePage ? '当前未选中原目标，或原页面已变化；仍可检查或停止。重新打开同一网址不代表恢复原页面。' : '当前目标页面可用。'}`; card.append(scope) }
   if (!compact) {
     const hasSession = Boolean(viewState().session?.binding)
     const run = [...actions.querySelectorAll('button')].find(action => action.textContent === '运行')
-    if (run && !hasSession) { run.disabled = true; run.title = '开始或选择对话后可运行' }
+    if (run && (!hasSession || stalePage)) { run.disabled = true; run.title = stalePage ? '原目标页面当前不可用' : '开始或选择对话后可运行' }
     const edit = document.createElement('div'); edit.className = 'function-edit'; const input = document.createElement('input'); input.type = 'text'; input.maxLength = 8192; input.placeholder = '用一句话说明要怎样修改'; input.setAttribute('aria-label', `修改${title.textContent}`)
     const apply = button('修改', () => { const instruction = input.value.trim(); if (!instruction) return notice('请先写下要怎样修改'); void send({ type: 'dsh-assistant-function-edit', pluginId: item.pluginId, instruction }) }); input.disabled = !hasSession; apply.disabled = !hasSession; if (!hasSession) { input.title = '开始或选择对话后可修改'; apply.title = input.title }; edit.append(input, apply); card.append(edit)
     if (!hasSession) { const hint = document.createElement('small'); hint.className = 'scope-note'; hint.textContent = '开始或选择对话后可运行和修改。'; card.append(hint) }
@@ -575,8 +577,9 @@ const renderFunctions = () => {
   for (const node of document.querySelectorAll('[data-scope]')) node.setAttribute('aria-pressed', String(node.dataset.scope === functionScope))
   byId('refresh-functions').disabled = functions.availability === 'loading' || viewState().connection?.phase !== 'connected'
   if (functions.availability !== 'ready') { const empty = document.createElement('div'); empty.className = `empty${functions.readError ? ' error-state' : ''}`; empty.textContent = functions.availability === 'loading' ? '正在加载功能。' : functions.readError ? `功能暂不可用：${bounded(functions.readError.message || functions.readError.code, 300)}` : '功能暂不可用。'; panel.append(empty); return }
-  const items = (functions.items ?? []).filter(item => functionScope === 'global' ? item.scope === 'global' : item.scope === 'page' && item.scopeStatus === 'current-target')
-  if (!items.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = functionScope === 'page' ? '当前操作网页没有可用功能。' : '还没有全局功能。'; panel.append(empty) }
+  const summary = document.createElement('p'); summary.textContent = `已交付 ${(functions.items ?? []).length} 项 · 当前网页可用 ${(functions.items ?? []).filter(item => item.scope !== 'page' || item.scopeStatus === 'current-target').length} 项`; panel.append(summary)
+  const items = (functions.items ?? []).filter(item => functionScope === 'all' || (functionScope === 'global' ? item.scope === 'global' : item.scope === 'page' && item.scopeStatus === 'current-target'))
+  if (!items.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = functionScope === 'page' ? '当前操作网页没有可用功能；其他页面的功能可在「全部已交付」中管理。' : functionScope === 'all' ? '这个浏览器尚无已交付功能。' : '还没有全局功能。'; panel.append(empty) }
   for (const item of items) panel.append(renderFunctionCard(item))
   for (const command of functions.orphanCommands ?? []) { const orphan = document.createElement('div'); orphan.className = 'empty'; orphan.textContent = `未归属的${command.kind === 'edit' ? '修改' : '运行'}请求：${command.status ?? '未知'}`; panel.append(orphan) }
 }

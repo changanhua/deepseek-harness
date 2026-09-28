@@ -198,3 +198,5 @@ Dynamic Cordis plugins temporarily extend the current DSH process. A Plugin uses
 </details>
 
 **运行时不变式：** 不发布伴生入口。这个面向模型的适配器没有独立 lifecycle stream；执行关系由它调用的能力 seam 负责。
+
+`cordis_handoff` 将功能交付给已认证的浏览器安装。成功回执返回后，调用 `browser_task_verify` 完成任务；交付工具不能在自己的结果记录前结束任务。
