@@ -7,8 +7,8 @@
   "upstreamScope": "@deepseek-ai",
   "upstreamRepository": "deepseek-ai/deepseek-harness",
   "upstreamRepositoryUrl": "git+https://github.com/deepseek-ai/deepseek-harness.git",
-  "supportedUpstreamCommit": "cd5ef8148158c3a752a658978873241fdf8e2bbc",
-  "observedUpstreamCommit": "76fda729799fe9b3848dbe2c211d4b231032b81e",
+  "supportedUpstreamCommit": "c291e7961a515f6d7af9304e7fd1d257929aef26",
+  "observedUpstreamCommit": "21638c56315ae6a2b552d6091945d3144c9af32e",
   "unlistedPackageOrigin": "upstream",
   "vendorPathPrefix": "vendor/",
   "personalPackages": [
@@ -57,9 +57,31 @@
       ]
     },
     {
+      "directory": "packages/browser/browser-task",
+      "legacyName": "@deepseek-ai/dsh-browser-task",
+      "sourceName": "@changanhua/dsh-browser-task",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/browser/tool-browser",
       "legacyName": "@deepseek-ai/dsh-tool-browser",
       "sourceName": "@changanhua/dsh-tool-browser",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/bundle/capabilities",
+      "legacyName": "@deepseek-ai/dsh-capabilities",
+      "sourceName": "@changanhua/dsh-capabilities",
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,
@@ -504,6 +526,72 @@
       "directory": "packages/image/tool-image-generation-task-queue",
       "legacyName": "@deepseek-ai/dsh-tool-image-generation-task-queue",
       "sourceName": "@changanhua/dsh-tool-image-generation-task-queue",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/knowledge/knowledge-base",
+      "legacyName": "@deepseek-ai/dsh-knowledge-base",
+      "sourceName": "@changanhua/dsh-knowledge-base",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/knowledge/knowledge-base-task-queue",
+      "legacyName": "@deepseek-ai/dsh-knowledge-base-task-queue",
+      "sourceName": "@changanhua/dsh-knowledge-base-task-queue",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/knowledge/tool-knowledge-base",
+      "legacyName": "@deepseek-ai/dsh-tool-knowledge-base",
+      "sourceName": "@changanhua/dsh-tool-knowledge-base",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/llm/tool-choice",
+      "legacyName": "@deepseek-ai/dsh-tool-choice",
+      "sourceName": "@changanhua/dsh-tool-choice",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/mcp/browser-extension-mcp",
+      "legacyName": "@deepseek-ai/dsh-browser-extension-mcp",
+      "sourceName": "@changanhua/browser-extension-mcp",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/mcp/mcp-server",
+      "legacyName": "@deepseek-ai/dsh-mcp-server",
+      "sourceName": "@changanhua/dsh-mcp-server",
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,

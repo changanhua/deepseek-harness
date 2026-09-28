@@ -21,6 +21,11 @@
     "presets"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/bundle/capabilities"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

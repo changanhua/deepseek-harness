@@ -2,8 +2,14 @@
   "name": "@changanhua/dsh-mcp-server",
   "version": "0.1.2-alpha.1",
   "description": "Authenticated local MCP exposure of lazily composed DSH capabilities",
+  "private": true,
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/mcp/mcp-server"
+  },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
