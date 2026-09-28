@@ -1,5 +1,20 @@
+import { globSync } from 'node:fs'
+import { dirname, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'tsdown'
 import { typertPlugin } from './packages/typert/generator/lib/types/tsdown-plugin.js'
+
+const REPOSITORY_ROOT = fileURLToPath(new URL('.', import.meta.url))
+
+function workspacePackages(client: boolean): string[] {
+  const manifests = [
+    'vendor/*/package.json',
+    'packages/*/*/package.json',
+    'apps/cli/package.json',
+    ...(client ? [] : ['apps/desktop/package.json', 'apps/desktop-host/package.json']),
+  ]
+  return globSync(manifests, { cwd: REPOSITORY_ROOT }).map(manifest => dirname(manifest).split(sep).join('/'))
+}
 
 function isBuildFaceClient(value: unknown): boolean {
   if (value === undefined || value === 'host') return false
@@ -16,9 +31,7 @@ function isBuildFaceClient(value: unknown): boolean {
 export default defineConfig(({ env }) => {
   const client = isBuildFaceClient(env?.DSH_BUILD_FACE)
   return {
-    workspace: client
-      ? ['vendor/*', 'packages/*/*', 'apps/cli']
-      : ['vendor/*', 'packages/*/*', 'apps/cli', 'apps/desktop', 'apps/desktop-host'],
+    workspace: workspacePackages(client),
     entry: client ? '' : ['lib/types/{index,invariant,startup}.js'],
     outDir: 'lib',
     format: ['esm'],

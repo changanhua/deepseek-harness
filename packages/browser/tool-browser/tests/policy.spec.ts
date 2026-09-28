@@ -22,9 +22,9 @@ function uuidMatcher(): string {
 const harness = (effect: BrowserActionDescription['effect'], kind: BrowserAction['kind'] = 'click', describedKind = kind) => {
   const description: BrowserActionDescription = { kind: describedKind, page, effect, title: '网页标题', target: { tag: 'button', label: '目标', type: 'button' } }
   const browser = { prepare: vi.fn(async (_operation: BrowserOperation, _signal: AbortSignal) => ({ ticket: BrowserPreparedTicket('ticket'), expiresAt: Date.now() + 300000, description })),
-    executePrepared: vi.fn(async () => structuredClone(observed)),
-    execute: vi.fn(async () => structuredClone(observed)),
-    requestStatus: vi.fn(async () => ({ ...observed, outcome: 'unknown' as const, reason: 'effect_unverified', quiescent: true })),
+    executePrepared: vi.fn(async (_ticket: BrowserPreparedTicket, _signal: AbortSignal) => structuredClone(observed)),
+    execute: vi.fn(async (_operation: BrowserOperation, _signal: AbortSignal) => structuredClone(observed)),
+    requestStatus: vi.fn(async (_identity: { requestId: string; installationId: string; sessionId: SessionId }) => ({ ...observed, outcome: 'unknown' as const, reason: 'effect_unverified', quiescent: true })),
     instances: vi.fn(async () => []),
   }
   const approval = vi.fn(async () => 'allowed-once')

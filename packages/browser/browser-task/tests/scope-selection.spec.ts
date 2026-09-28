@@ -15,7 +15,7 @@ const pageA = { tabId: 1, frameId: 0, documentId: 'a', url: 'https://example.tes
 const tabB = { tabId: 2, windowId: 3, browserSessionId }
 const pageB = { tabId: 2, frameId: 0, documentId: 'b', url: 'https://example.test/b' }
 
-async function harness(withTask = true) {
+async function baseHarness() {
   const ctx = new Context()
   await ctx.plugin(SessionStore); await ctx.plugin(SessionProjectionRegistry); await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime); await ctx.plugin(BrowserTaskService)
@@ -24,14 +24,18 @@ async function harness(withTask = true) {
   const agent = { id: session.id, options: {}, session, ctx, status: 'idle', inbox: { append() {}, remove() { return false }, nextStep: [] }, send() {}, followup() {}, steer() {}, inject() {}, cancel() {}, runMaintenance(fn: (signal: AbortSignal) => unknown) { return fn(new AbortController().signal) }, whenIdle() { return Promise.resolve() } } as unknown as Agent
   ctx.agents.register(agent)
   ctx.browserTasks.bindTargetByUser(agent, { expectedRevision: 0, installationId: 'extension', page: pageA })
-  if (!withTask) return { ctx, agent, source }
+  return { ctx, agent, source }
+}
+
+async function harness() {
+  const { ctx, agent, source } = await baseHarness()
   let task = ctx.browserTasks.create(agent, { objective: '多页读取', sourceSeq: source.seq, target: { installationId: 'extension', page: pageA }, targetRevision: 1, scope: { kind: 'explicit-set', tabs: [{ tabId: 1, windowId: 3, browserSessionId }, tabB] }, acceptance: [{ id: 'url', kind: 'url-equals', url: pageA.url }] })
   task = ctx.browserTasks.recordCapability(agent, task, { installationId: 'extension', state: 'observed', grantEpoch: 1, scopes: ['browser:read'], actions: ['snapshot'], protocol: '1' })
   return { ctx, agent, task, source }
 }
 
 async function descendantReady(outcome: 'observed' | 'unknown' | 'failed' = 'observed') {
-  const h = await harness(false)
+  const h = await baseHarness()
   const root = { tabId: 1, windowId: 3, browserSessionId }
   const target = { installationId: 'extension', page: pageA }
   let task = h.ctx.browserTasks.create(h.agent, { objective: 'Follow child pages', sourceSeq: h.source.seq, target,
@@ -186,7 +190,7 @@ describe('BrowserTask scope selection', () => {
     try {
       const planned = h.ctx.browserTasks.selectTarget(h.agent, h.task, { requestId: 'in-flight', installationId: 'extension', tab: tabB })
       expect(() => h.ctx.browserTasks.selectTarget(h.agent, planned.task, { requestId: 'other', installationId: 'extension', tab: { tabId: 1, windowId: 3, browserSessionId } })).toThrow(BrowserTaskError)
-      const context = { operation: { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'write-after-select', action: { kind: 'click' as const, element: { page: pageA, selector: '#go' } } }, phase: 'execute' as const, logicalMutates: true }
+      const context = { operation: { sessionId: h.agent.session.id, installationId: 'extension', requestId: 'write-after-select', action: { kind: 'click' as const, element: { page: pageA, snapshotId: 'snapshot', elementId: 'go' }, intent: 'test blocked write' } }, phase: 'execute' as const, logicalMutates: true }
       await expect(h.ctx.agents.withInitiator(h.agent, () => h.ctx.waterfall('browser/operation-intent', context, () => ({ kind: 'allow' as const })))).resolves.toMatchObject({ kind: 'deny' })
     } finally { await h.ctx.fiber.dispose() }
   })
@@ -220,7 +224,7 @@ describe('BrowserTask scope selection', () => {
     ['mixed session', [{ tabId: 1, windowId: 3, browserSessionId }, { ...tabB, browserSessionId: '223e4567-e89b-42d3-a456-426614174000' }]],
     ['over capacity', Array.from({ length: 33 }, (_, tabId) => ({ tabId: tabId + 10, windowId: 3, browserSessionId }))],
   ])('rejects an explicit scope with %s', async (_label, tabs) => {
-    const h = await harness(false)
+    const h = await baseHarness()
     try {
       expect(() => h.ctx.browserTasks.create(h.agent, { objective: 'bad scope', sourceSeq: h.source.seq, target: { installationId: 'extension', page: pageA }, targetRevision: 1, scope: { kind: 'explicit-set', tabs }, acceptance: [{ id: 'url', kind: 'url-equals', url: pageA.url }] })).toThrow(BrowserTaskError)
     } finally { await h.ctx.fiber.dispose() }

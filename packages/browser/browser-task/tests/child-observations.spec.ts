@@ -3,7 +3,20 @@ import { BROWSER_TASK_LIMITS, validateChildObservation, validateCheckpointFacts,
 
 const browserSessionId = '123e4567-e89b-42d3-a456-426614174000'
 const target = { installationId: 'extension', page: { tabId: 1, frameId: 0, documentId: 'source', url: 'https://example.test/' } }
-const observation = () => ({ sourceTab: { tabId: 1, windowId: 2, browserSessionId }, observedAt: 10,
+type MutableCandidate = {
+  tab: { tabId: number; windowId: number; browserSessionId: string }
+  url: string
+  relation: string
+  attribution: string
+  evidence: string
+}
+type MutableObservation = {
+  sourceTab: { tabId: number; windowId: number; browserSessionId: string }
+  observedAt: number
+  candidates: MutableCandidate[]
+  truncated: boolean
+}
+const observation = (): MutableObservation => ({ sourceTab: { tabId: 1, windowId: 2, browserSessionId }, observedAt: 10,
   candidates: [{ tab: { tabId: 7, windowId: 2, browserSessionId }, url: 'https://example.test/child',
     relation: 'opener', attribution: 'candidate', evidence: 'created-navigation-target' }], truncated: false })
 const receipt = () => ({ kind: 'browser-task/receipt', version: 1, taskId: 'task', requestId: 'click', actionKind: 'click',
@@ -19,30 +32,30 @@ describe('canonical child-page observations', () => {
   it('uses the executor candidate limit and bounds the whole retained observation in bytes', () => {
     const value = observation()
     value.candidates = Array.from({ length: BROWSER_TASK_LIMITS.childCandidates }, (_, i) => ({
-      ...value.candidates[0], tab: { tabId: i + 10, windowId: 2, browserSessionId },
+      ...value.candidates[0]!, tab: { tabId: i + 10, windowId: 2, browserSessionId },
     }))
     expect(() => validateChildObservation(value, target)).not.toThrow()
-    value.candidates.push({ ...value.candidates[0], tab: { tabId: 20, windowId: 2, browserSessionId } })
+    value.candidates.push({ ...value.candidates[0]!, tab: { tabId: 20, windowId: 2, browserSessionId } })
     expect(() => validateChildObservation(value, target)).toThrow('candidate limit')
     const bounded = observation()
-    bounded.candidates[0].url += 'a'.repeat(BROWSER_TASK_LIMITS.text - Buffer.byteLength(JSON.stringify(bounded)))
+    bounded.candidates[0]!.url += 'a'.repeat(BROWSER_TASK_LIMITS.text - Buffer.byteLength(JSON.stringify(bounded)))
     expect(Buffer.byteLength(JSON.stringify(bounded))).toBe(BROWSER_TASK_LIMITS.text)
     expect(() => validateChildObservation(bounded, target)).not.toThrow()
-    bounded.candidates[0].url += '界'
+    bounded.candidates[0]!.url += '界'
     expect(() => validateChildObservation(bounded, target)).toThrow('children.complete')
   })
 
   it.each([
     ['source identity', (value: ReturnType<typeof observation>) => { value.sourceTab.tabId = 2 }],
     ['source UUID', (value: ReturnType<typeof observation>) => { value.sourceTab.browserSessionId = 'not-a-session' }],
-    ['reused source tab', (value: ReturnType<typeof observation>) => { value.candidates[0].tab.tabId = 1 }],
-    ['browser restart', (value: ReturnType<typeof observation>) => { value.candidates[0].tab.browserSessionId = '123e4567-e89b-42d3-b456-426614174000' }],
-    ['negative window', (value: ReturnType<typeof observation>) => { value.candidates[0].tab.windowId = -1 }],
-    ['duplicate tab', (value: ReturnType<typeof observation>) => { value.candidates.push(value.candidates[0]) }],
-    ['invented causation', (value: ReturnType<typeof observation>) => { value.candidates[0].attribution = 'confirmed' }],
-    ['unsupported relation', (value: ReturnType<typeof observation>) => { value.candidates[0].relation = 'active' }],
-    ['unknown evidence', (value: ReturnType<typeof observation>) => { value.candidates[0].evidence = 'guessed' }],
-    ['extra field', (value: ReturnType<typeof observation>) => { Reflect.set(value.candidates[0], 'authorized', true) }],
+    ['reused source tab', (value: ReturnType<typeof observation>) => { value.candidates[0]!.tab.tabId = 1 }],
+    ['browser restart', (value: ReturnType<typeof observation>) => { value.candidates[0]!.tab.browserSessionId = '123e4567-e89b-42d3-b456-426614174000' }],
+    ['negative window', (value: ReturnType<typeof observation>) => { value.candidates[0]!.tab.windowId = -1 }],
+    ['duplicate tab', (value: ReturnType<typeof observation>) => { value.candidates.push(value.candidates[0]!) }],
+    ['invented causation', (value: ReturnType<typeof observation>) => { value.candidates[0]!.attribution = 'confirmed' }],
+    ['unsupported relation', (value: ReturnType<typeof observation>) => { value.candidates[0]!.relation = 'active' }],
+    ['unknown evidence', (value: ReturnType<typeof observation>) => { value.candidates[0]!.evidence = 'guessed' }],
+    ['extra field', (value: ReturnType<typeof observation>) => { Reflect.set(value.candidates[0]!, 'authorized', true) }],
   ] as const)('rejects corrupt replay facts: %s', (_label, corrupt) => {
     const value = receipt()
     corrupt(value.children)

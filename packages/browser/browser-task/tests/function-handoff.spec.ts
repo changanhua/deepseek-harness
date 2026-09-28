@@ -88,7 +88,7 @@ describe('BrowserTask function handoff', () => {
       if (changed) expect(handoff).toThrow(BrowserTaskError)
       else {
         const handed = handoff()
-        expect(handed.resources[0].state).toBe('retained')
+        expect(handed.resources[0]!.state).toBe('retained')
         expect(h.ctx.browserTasks.get(h.agent)).toEqual(handed)
         expect(h.ctx.browserTasks.readTarget(h.agent)).toEqual({ binding: null, revision: 0 })
       }

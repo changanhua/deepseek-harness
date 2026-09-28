@@ -32,7 +32,7 @@ const transition=(page:BrowserPage=nextPage,kind:'same-document'|'document-repla
   sameTab:{ kind,page },candidates:[],truncated:false,
 })
 async function advanceReady(options:{
-  page?:typeof nextPage
+  page?:BrowserPage
   kind?:'same-document'|'document-replaced'
   source?:BrowserPage
   resource?:boolean
@@ -59,7 +59,7 @@ async function advanceReady(options:{
   const receipt=ctx.browserTasks.recordReceipt(agent,task,{ requestId:'navigate',actionKind:'click',target,outcome:'observed',delivery:'sent',quiescent:true,grantEpoch:1,
     transition:transition(options.page,options.kind,options.source) } as never)
   task=ctx.browserTasks.advanceAttempt(agent,task,attempt({ attemptId:'navigate',requestId:'navigate',stage:'settled',outcome:'observed',quiescent:true,settledBy:receipt,write:true,target }) as never)
-  const service=ctx.browserTasks as unknown as { advancePage(agent:Agent,task:typeof task,input:{ receipt:typeof receipt }):typeof task }
+  const service=ctx.browserTasks
   return { ctx,agent,session,task,receipt,service }
 }
 describe('browser task kernel',()=>{
@@ -257,7 +257,7 @@ describe('browser task kernel',()=>{
         candidates:[{ tab:{ tabId:7,windowId:2,browserSessionId:'123e4567-e89b-42d3-a456-426614174000' },
           relation:'opener' as const,attribution:'candidate' as const,evidence:'opener-tab' as const }],truncated:true }
       if(kind==='wrong-source')raw.source.page={ ...target.page,documentId:'old-source' }
-      if(kind==='oversized')raw.candidates=Array.from({ length:9 },(_,i)=>({ ...raw.candidates[0],tab:{ ...raw.candidates[0].tab,tabId:i+7 } }))
+      if(kind==='oversized')raw.candidates=Array.from({ length:9 },(_,i)=>({ ...raw.candidates[0]!,tab:{ ...raw.candidates[0]!.tab,tabId:i+7 } }))
       const outcome=kind==='unknown'?'unknown':'observed'
       const receipt=ctx.browserTasks.recordReceipt(agent,task,{ requestId:input.requestId,actionKind:input.actionKind,target,
         outcome,delivery:'sent',quiescent:kind!=='unknown',grantEpoch:1,
@@ -331,7 +331,7 @@ describe('browser task kernel',()=>{
     expect(advanced.resources[0]).toMatchObject({ state:'vanished',presentation:{ evidenceId:'render-evidence' } })
     expect(advanced.evidence.find(item=>item.id==='render-evidence')?.state).toBe('stale')
   })
-  it.each([{ frameId:9 },{ documentId:'unaccepted' },{ documentId:undefined }]
+  it.each([{ frameId:9 },{ documentId:'unaccepted' },{ documentId:undefined as unknown as string }]
     .flatMap(override=>[{ override,terminal:false },{ override,terminal:true }]))(
     'rejects provider snapshots outside an accepted page: %j',async({ override,terminal })=>{
       const ready=await advanceReady()

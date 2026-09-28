@@ -19,7 +19,13 @@ afterEach(async () => { vi.useRealTimers(); while (cleanup.length) await cleanup
 const extensionId = 'a'.repeat(32)
 const origin = `chrome-extension://${extensionId}`
 interface ResultBody {
-  result?: { requestId: string; outcome: string; reason?: string; value: { text: string } }
+  result?: {
+    requestId: string
+    outcome: string
+    reason?: string
+    value: { text: string }
+    instances?: { installationId: string; capabilities?: unknown }[]
+  }
   error?: { message: string }
 }
 const parse = (value: unknown) => value as ResultBody
@@ -182,9 +188,9 @@ describe('independent browser connector', () => {
     const response = await client.callTool({ name: 'browser_read_page', arguments: { ...target,
       query: 'Title', includeValues: true, structure: false } })
     expect(response.isError).toBe(false)
-    expect(requests[0].payload).toMatchObject({ kind: 'snapshot', query: 'Title', includeValues: true, structure: false })
+    expect(requests[0]!.payload).toMatchObject({ kind: 'snapshot', query: 'Title', includeValues: true, structure: false })
     await client.callTool({ name: 'browser_read_page', arguments: target })
-    expect(requests[1].payload).toMatchObject({ includeValues: false, structure: true })
+    expect(requests[1]!.payload).toMatchObject({ includeValues: false, structure: true })
   })
 
   it('rejects foreign web origins and unauthenticated local callers', async () => {
@@ -283,7 +289,7 @@ describe('independent browser connector', () => {
         for await (const chunk of request) chunks.push(Buffer.from(chunk))
         const body = Buffer.concat(chunks).toString()
         const rpc = body ? JSON.parse(body) as { method?: string; requestId?: string } : undefined
-        const result = await fetch(base + request.url, { method: request.method,
+        const result = await fetch(base + request.url, { method: request.method ?? 'GET',
           headers: { authorization: request.headers.authorization ?? '', 'content-type': 'application/json' },
           ...(body ? { body } : {}), redirect: 'error' })
         const text = await result.text()

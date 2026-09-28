@@ -83,7 +83,7 @@ it('reports navigation and child candidates without replaying or choosing a fore
     const call = async (name: string, args: Record<string, unknown> = {}) => {
       const response = await client.callTool({ name, arguments: args })
       expect(response.isError, JSON.stringify(response.structuredContent)).not.toBe(true)
-      return response.structuredContent?.result as unknown as Result
+      return (response.structuredContent as { result?: unknown } | undefined)?.result as Result
     }
     const installationId = (await call('browser_status')).instances?.find(item => item.online)?.installationId
     if (!installationId) throw new Error('extension_offline')

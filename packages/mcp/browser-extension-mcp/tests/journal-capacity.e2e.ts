@@ -61,13 +61,15 @@ it('rejects a full journal before input and resumes after retention in the same 
     await client.connect(new StdioClientTransport({ command: process.execPath,
       args: [join(repo, 'packages/mcp/browser-extension-mcp/lib/startup.js')], env: { ...env, BROWSER_CONNECTOR_CONFIG: configPath }, stderr: 'pipe' }))
     const status = await client.callTool({ name: 'browser_status', arguments: {} })
-    const installationId = (status.structuredContent?.result as { instances: { installationId: string; online: boolean }[] })
+    const installationId = ((status.structuredContent as { result?: unknown } | undefined)?.result as {
+      instances: { installationId: string; online: boolean }[]
+    })
       .instances.find(item => item.online)?.installationId
     if (!installationId) throw new Error('installation_missing')
     const call = async (name: string, args: Record<string, unknown>) => {
       const response = await client.callTool({ name, arguments: { installationId, ...args } })
       expect(response.isError, JSON.stringify(response.structuredContent)).not.toBe(true)
-      return response.structuredContent?.result as unknown as Result
+      return (response.structuredContent as { result?: unknown } | undefined)?.result as Result
     }
     const opened = await call('browser_open_tab', { requestId: randomUUID(), url })
     if (!opened.value.tab) throw new Error('tab_missing')
@@ -83,7 +85,7 @@ it('rejects a full journal before input and resumes after retention in the same 
     for (let count = 0; count < 63; count++) await call('browser_act', { action })
     expect(await actualPage.locator('#count').textContent()).toBe('63')
     const denied = await client.callTool({ name: 'browser_act', arguments: { installationId, action } })
-    const rejection = denied.structuredContent?.result as unknown as Result
+    const rejection = (denied.structuredContent as { result?: unknown } | undefined)?.result as Result
     expect(denied.isError).toBe(true)
     expect(rejection).toMatchObject({ outcome: 'failed', reason: 'journal_capacity',
       value: { admission: { executed: false, recheckAt: expect.any(Number) } } })

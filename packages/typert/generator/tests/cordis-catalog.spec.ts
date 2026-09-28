@@ -57,6 +57,28 @@ describe('Typert-backed Cordis catalog', () => {
     expect(inherited).toContain('([`vendor/cordis/src/context.ts:12`](../../vendor/cordis/src/context.ts))')
   })
 
+  it('normalizes projected CRLF text before writing a generated region', () => {
+    const page = renderPageRegion('fixture.md', [{
+      key: 'fixture',
+      type: 'Fixture',
+      abstract: false,
+      doc: 'Fixture first line.\r\nFixture second line.',
+      methods: [],
+      source: 'packages/fixture/service.ts:24',
+    }], [{
+      name: 'fixture/ready',
+      scope: 'fixture',
+      signature: "'fixture/ready'(\r\n  value: string,\r\n): void",
+      jsDoc: '/** Ready.\r\n * @param value - Input.\r\n */',
+      mode: 'emit',
+      doc: 'Ready.',
+      source: 'packages/fixture/events.ts:42',
+    }], SOURCE_LINK_POLICY)
+
+    expect(page).not.toContain('\r')
+    expect(page).toContain("'fixture/ready'(\n  value: string,\n): void")
+  })
+
   it('reproduces every committed catalog artifact byte for byte', { timeout: 480_000 }, () => {
     const { projector, model } = projection()
     const expected = (path: string): string => readFileSync(join(workspaceRoot, path), 'utf8')

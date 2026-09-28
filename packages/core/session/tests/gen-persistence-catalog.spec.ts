@@ -284,4 +284,20 @@ describe('gen-persistence-catalog annotateSurface + render', () => {
     expect(out).toContain('#### `fix/marker` — log-only')
     expect(out).toContain('```ts persistence-catalog\n/** Records fix/marker. */\n\'fix/marker\': { turn: number }\n```')
   })
+
+  it('normalizes CRLF declarations before writing the generated catalog', () => {
+    const event = {
+      ...entry('fix/marker'),
+      declaration: "/** Records fix/marker. */\r\n'fix/marker': {\r\n  turn: number\r\n}",
+    }
+    const crlfEnvelopeTypes = envelopeTypes.map(item => ({
+      ...item,
+      declaration: item.declaration.replace(/\n/g, '\r\n'),
+    }))
+
+    const out = render(annotateSurface([event], []), crlfEnvelopeTypes)
+
+    expect(out).not.toContain('\r')
+    expect(out).toContain("'fix/marker': {\n  turn: number\n}")
+  })
 })

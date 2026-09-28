@@ -60,7 +60,7 @@ describe('BrowserTaskLoop durable bridge', () => {
       h.ctx.browserTasks.handoffFunction(h.agent, task, {
         owner: { kind: 'browser-installation', installationId: 'extension', grantEpoch: 1,
           pluginId: 'plugin-a', packageId: 'package-a', pluginRunId: 'run-a', handoffId: 'handoff-a' },
-        scope: scope === 'global' ? { kind: 'global' } : { kind: 'page', target: task.target!, targetRevision: task.targetRevision },
+        scope: scope === 'global' ? { kind: 'global' } : { kind: 'page', target: task.target!, targetRevision: task.targetRevision! },
         resourceIds: scope === 'page' ? ['panel'] : [],
       })
       expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({ status: 'verified' })
@@ -201,12 +201,12 @@ describe('BrowserTaskLoop durable bridge', () => {
         if (operation.action.kind !== 'snapshot' || !operation.action.expectedTab) throw new Error('selection must use exact tab')
         const tab = operation.action.expectedTab
         return { requestId: operation.requestId, sessionId: operation.sessionId, installationId: operation.installationId,
-          outcome: 'observed', delivery: 'sent', value: { tab, page: { ...page, tabId: tab.tabId,
+          outcome: 'observed', delivery: 'sent', value: { tab: { ...tab }, page: { ...page, tabId: tab.tabId,
             documentId: `doc-${tab.tabId}`, url: `https://example.test/${tab.tabId}` }, text: `page ${tab.tabId}`, elements: [] } }
       })
-      expect(await h.loop.select(h.agent, { installationId: 'extension', tab: tabs[0] }, new AbortController().signal))
+      expect(await h.loop.select(h.agent, { installationId: 'extension', tab: tabs[0]! }, new AbortController().signal))
         .toMatchObject({ status: 'selected', observation: { tab: tabs[0] } })
-      expect(await h.loop.select(h.agent, { installationId: 'extension', tab: tabs[1] }, new AbortController().signal))
+      expect(await h.loop.select(h.agent, { installationId: 'extension', tab: tabs[1]! }, new AbortController().signal))
         .toMatchObject({ status: 'selected', observation: { tab: tabs[1] } })
       const selected = h.ctx.browserTasks.get(h.agent)!
       expect(selected).toMatchObject({ id: initial.id, targetRevision: 0, budget: { actionsUsed: 2 }, target: { page: { tabId: 5 } } })
@@ -559,7 +559,7 @@ describe('BrowserTaskLoop durable bridge', () => {
     expect(h.agent.session.events.some(event => event.type === 'browser-task/change' && event.data.task.attempts.some((item: { requestId: string; stage: string }) => item.requestId === requestId && item.stage === 'dispatched'))).toBe(false)
     await h.ctx.fiber.dispose()
   })
-  it.each([{ frameId: 7 }, { documentId: 'unaccepted-document' }, { documentId: undefined }])(
+  it.each([{ frameId: 7 }, { documentId: 'unaccepted-document' }, { documentId: undefined as unknown as string }])(
     'rejects a snapshot outside the accepted task document: %j', async (override) => {
       const h = await harness()
       try {

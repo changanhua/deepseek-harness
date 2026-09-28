@@ -107,7 +107,7 @@ it('reads, clicks and reads back through Codex while DSH is absent', async () =>
     const call = async (name: string, args: Record<string, unknown> = {}) => {
       const response = await client.callTool({ name, arguments: args })
       expect(response.isError, JSON.stringify(response.structuredContent)).not.toBe(true)
-      return response.structuredContent?.result as unknown as TestResult
+      return (response.structuredContent as { result?: unknown } | undefined)?.result as TestResult
     }
     const status = await call('browser_status')
     expect(status).toMatchObject({ connector: { mcp: { version: '0.3.1', modulePath: expect.stringContaining('lib'), processId: expect.any(Number) },
@@ -121,7 +121,7 @@ it('reads, clicks and reads back through Codex while DSH is absent', async () =>
     await expect.poll(async () => {
       const response = await client.callTool({ name: 'browser_tabs', arguments: { installationId } })
       if (response.isError) return false
-      const result = response.structuredContent?.result as unknown as TestResult
+      const result = (response.structuredContent as { result?: unknown } | undefined)?.result as TestResult
       return result.value.tabs.some(candidate => candidate.tabId === openedTabId && candidate.url === url)
     }).toBe(true)
     const tabs = await call('browser_tabs', { installationId })
@@ -204,18 +204,27 @@ it('reads, clicks and reads back through Codex while DSH is absent', async () =>
     await cdp.send('ServiceWorker.enable')
     await cdp.send('ServiceWorker.stopAllWorkers')
     const interrupted = await interruptedOpen
-    const interruptedResult = interrupted.structuredContent?.result as unknown as { outcome: string; reason?: string }
+    const interruptedResult = (interrupted.structuredContent as { result?: unknown } | undefined)?.result as {
+      outcome: string
+      reason?: string
+    }
     expect(interrupted.isError).toBe(true)
     expect(interruptedResult).toMatchObject({ outcome: 'unknown' })
     await expect.poll(async () => (await message({ type: 'dsh-assistant-state' })).state.codexConnection.phase).toBe('connected')
     const recoveredStatus = await client.callTool({ name: 'browser_request_status', arguments: { installationId, requestId: interruptedRequestId } })
-    const recoveredStatusResult = recoveredStatus.structuredContent?.result as unknown as { outcome: string; reason?: string }
+    const recoveredStatusResult = (recoveredStatus.structuredContent as { result?: unknown } | undefined)?.result as {
+      outcome: string
+      reason?: string
+    }
     expect(recoveredStatus.isError).toBe(true)
     expect(recoveredStatusResult).toMatchObject({ outcome: 'unknown' })
     const retriedOpen = await client.callTool({ name: 'browser_open_tab', arguments: {
       installationId, requestId: interruptedRequestId, url: interruptedUrl,
     } })
-    const retriedResult = retriedOpen.structuredContent?.result as unknown as { outcome: string; reason?: string }
+    const retriedResult = (retriedOpen.structuredContent as { result?: unknown } | undefined)?.result as {
+      outcome: string
+      reason?: string
+    }
     expect(retriedOpen.isError).toBe(true)
     expect(retriedResult).toMatchObject({ outcome: 'unknown' })
     expect(context.pages().filter(candidate => candidate.url() === interruptedUrl)).toHaveLength(1)

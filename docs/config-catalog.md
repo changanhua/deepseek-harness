@@ -2866,7 +2866,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/skill/skill/src/index.ts:342`](../packages/skill/skill/src/index.ts)
+Source: [`packages/skill/skill/src/index.ts:384`](../packages/skill/skill/src/index.ts)
 
 <a id="deepseek-aidsh-skill-filesystem"></a>
 
@@ -2904,7 +2904,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/skill/skill-filesystem/src/index.ts:49`](../packages/skill/skill-filesystem/src/index.ts)
+Source: [`packages/skill/skill-filesystem/src/index.ts:52`](../packages/skill/skill-filesystem/src/index.ts)
 
 <a id="deepseek-aidsh-spill-local"></a>
 
@@ -3681,7 +3681,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/skill/tool-skill/src/index.ts:61`](../packages/skill/tool-skill/src/index.ts)
+Source: [`packages/skill/tool-skill/src/index.ts:62`](../packages/skill/tool-skill/src/index.ts)
 
 <a id="deepseek-aidsh-tool-str-replace-editor"></a>
 

@@ -1029,7 +1029,7 @@ export function renderPageRegion(page: string, services: ServiceEntry[], events:
   }
   while (lines.at(-1) === '') lines.pop()
   lines.push(REGION_END)
-  return lines.join('\n')
+  return lines.join('\n').replace(/\r\n?/g, '\n')
 }
 
 /**

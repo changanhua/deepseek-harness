@@ -388,7 +388,7 @@ export function render(events: AnnotatedLogEventEntry[], envelopeTypes: EventEnv
       lines.push(...renderEvent(e))
     }
   }
-  return lines.join('\n')
+  return lines.join('\n').replace(/\r\n?/g, '\n')
 }
 
 /**

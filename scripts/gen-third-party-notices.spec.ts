@@ -174,6 +174,7 @@ describe('virtualManifest', () => {
       const other = join(store, 'other-pkg@1.0.0', 'node_modules', 'other-pkg')
       mkdirSync(other, { recursive: true })
       writeFileSync(join(other, 'package.json'), JSON.stringify({ name: 'other-pkg', version: '1.0.0' }))
+      mkdirSync(join(store, '@scope+missing@1.0.0', 'node_modules'), { recursive: true })
 
       expect(virtualManifest(store, '@scope/missing')).toBeUndefined()
     } finally {

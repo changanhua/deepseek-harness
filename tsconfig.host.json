@@ -383,6 +383,7 @@
     { "path": "./packages/hooks/hooks-claude-code" },
     { "path": "./packages/hooks/hooks-codex" },
     { "path": "./packages/mcp/mcp-client" },
+    { "path": "./packages/mcp/browser-extension-mcp" },
     { "path": "./packages/mcp/mcp-server" },
     { "path": "./packages/bundle/capabilities" },
     { "path": "./packages/host/open-in-app" },
