@@ -35,7 +35,9 @@ text(result)
 
 在可表达成功条件时，先用已有 `browser_task_start` 启动任务。条件必须只在真正完成时成立；标题可能出现在查重页，不能把标题单独作为创建成功条件。使用已有 `browser_action` 和 `browser_task_verify` 完成开页与目标接纳。
 
-Host 提供代码运行时的 Browser Assistant 可在 `run_code` 中读取附件并执行。以下回调保留原 Agent、BrowserTask、工具管线和操作记录：
+Host 提供代码运行时的 Browser Assistant 可在 `run_code` 中读取附件并执行。直接返回流程结果；`run_code` 要求结果是无损 JSON，手工摘要中的 `undefined` 会使整个返回被拒绝。若必须摘要，只纳入存在的字段，或对缺失字段使用 `null`，并保留 `status`、`stage`、`reason`、`page`、查重事实及失败/未知请求的完整 `requestId` 和恢复信息。返回失败不表示浏览器动作未执行，须先检查已有回执和新鲜页面，不能重跑流程。
+
+以下回调保留原 Agent、BrowserTask、工具管线和操作记录：
 
 ```javascript
 const modelResource = await tools.skill({ name: "github-issues", resource: "references/application-model.json" })

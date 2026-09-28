@@ -1,11 +1,15 @@
 ---
 name: github-issues
-description: Reuse GitHub Issue page knowledge for browser-only duplicate search, issue creation, and readback, with fresh semantic control bindings. Use when operating repository Issues through browser-extension MCP or DSH browser tools.
+description: Create or find GitHub Issues through browser tools using existing page knowledge and a callable duplicate-search/create flow; hand unfamiliar page states back to the Agent for fresh observation. Use for natural-language repository Issue requests through browser-extension MCP or DSH Browser Assistant.
 ---
 
 # GitHub Issues
 
-先读 [应用模型](references/application-model.json)，再按需要读 [查重与创建流程](references/create-issue.md)。DSH 通过 `skill({ name: "github-issues", resource: "references/application-model.json" })` 读取附件；Codex 使用当前会话的文件读取工具。模型保存页面和动作含义；当前仓库、表单值、页面身份、权限和执行结果来自本次浏览器读取。控件描述同时包含隔离页面和真实 GitHub 列表观察，仍必须逐页重新绑定。
+先根据用户目标选择执行方式。用户给出仓库根 URL、完整标题和正文并要求创建时，读取 [应用模型](references/application-model.json) 和 [调用入口](references/execution.md)，在当前代码运行时可用时优先调用已有的 `runGitHubIssueFlow`，复用查重、填写、逐字回读和一次提交。用户不需要指定 Skill 或脚本；不要先手工执行这些步骤再调用流程。
+
+流程返回 `needs-agent` 时，保留已完成阶段与请求回执，取得新鲜页面观察后判断、消歧或报告阻塞，不重新启动整个流程。没有代码运行时或任务不适用时，按 [查重与创建流程](references/create-issue.md) 分段操作。未知请求未恢复时禁止重放；`submitted-readback-required` 仍需核对详情。
+
+DSH 通过 `skill({ name: "github-issues", resource: "references/application-model.json" })` 读取附件；Codex 使用当前会话的文件读取工具。模型保存页面和动作含义；当前仓库、表单值、页面身份、权限和执行结果来自本次浏览器读取。控件描述同时包含隔离页面和真实 GitHub 列表观察，仍必须逐页重新绑定。
 
 ## 绑定当前页面
 
@@ -15,10 +19,10 @@ description: Reuse GitHub Issue page knowledge for browser-only duplicate search
 4. 仅对 `bound` 或已根据当前观察明确消歧的候选，用其原始 `page + snapshotId + elementId` 调用 `browser_action`。绑定结果的 `source.requestId` 指向生成它的读请求，既有 BrowserTask 负责预算、授权、执行记录与验收。
 5. 独立 browser-extension MCP 使用 `browser_read_page` 和 `browser_act`；按同一知识匹配当前控件。它尚无 `bindings` 参数。不同通道不交换临时引用或 requestId。
 
-缺少匹配时，可以用当前语义候选交给 Flash/Jev 选择或交给通用 Agent 探索。模型返回候选 ID，执行器使用原始引用。选择器无需生成 selector，也不能赋予权限。完整任务仍可由通用 Agent 执行；下面的模板用于重复发生的查重、创建任务。
+缺少匹配时，可以用当前语义候选交给 Flash/Jev 选择或交给通用 Agent 探索。模型返回候选 ID，执行器使用原始引用。选择器无需生成 selector，也不能赋予权限。
 
-## 可选确定流程
+## 确定流程的边界
 
-Agent 先确认用户目标、仓库、完整标题和正文，再选择 [调用入口](references/execution.md) 中的 `runGitHubIssueFlow`。它只使用调用方传入的原浏览器工具，既不另开 MCP 客户端，也不保存任务数据库。DSH 保留当前 BrowserTask；Codex 保留本会话的请求归属。未知请求未恢复时，禁止重新启动流程。
+`runGitHubIssueFlow` 只使用调用方传入的原浏览器工具，既不另开 MCP 客户端，也不保存任务数据库。DSH 保留当前 BrowserTask；Codex 保留本会话的请求归属。
 
 模板只在完整搜索明确没有结果、表单控件唯一绑定、字段逐字回读且用户明确要求创建时派发一次提交。模板选择、非零搜索结果的逐项比较、页面结构变化或校验失败会返回当前阶段与观察，由 Agent 接管。`submitted-readback-required` 只表示已派发提交并重新读页；Agent 仍需核对详情页的仓库、标题与正文。不要把这个状态改称“已创建”。
