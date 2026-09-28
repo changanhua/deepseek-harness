@@ -42,6 +42,12 @@
       "prompt": "同一 subject identity 的 source-contract 与 generated-declaration 已有 fresh receipt；Profile composition 和 Loader activation 还没观察。可以派两个只读 Agent 并行查吗？",
       "expected_output": "Reuses the fresh early-layer evidence but rejects parallel composition and Loader-activation probes because activation depends on proven composition. It may parallelize only complementary read-only facts within the current composition layer, keeps one primary hypothesis/classification owner, and waits for a composition receipt before probing activation.",
       "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "个人 DSH 中 pstfn-2 的 Functions 移除卡在清理。外层按钮请求状态是 unknown；原 Session 里另有一条 entry_unmount 回执 failed/sent/quiescent/page_unavailable。原 tab 不在当前 bounded tabs 列表，Host inventory 仍有定义但无 activeRun。请诊断并继续，不能重放写入、重启清空插件或重建页面。",
+      "expected_output": "Starts with the durable Session receipt and distinguishes the outer UI request from the original entry_unmount request; reads the exact live Host inventory and installation-owner view; treats stopped/no-activeRun and absence from a bounded tab list as insufficient cleanup proof; queries only the original browser request and uses a read-only exact-document check when supported; never replays an unknown write; verifies a state-preserving repair activation path before mutation; otherwise reports the cleanup as unresolved without restarting or re-defining the plugin.",
+      "files": []
     }
   ]
 }

@@ -47,6 +47,8 @@ Integrated verification and acceptance
 
 `dsh-self-development` is a trust and isolation overlay whenever DSH participates in changing or judging DSH. `dsh-runtime-composition-debug` is an exception branch only after a concrete composition-layer disagreement appears. Neither is a mandatory serial phase.
 
+For a live Browser/Cordis cleanup repair, route through `dsh-runtime-composition-debug` and its [browser-resource cleanup reference](../dsh-runtime-composition-debug/references/browser-resource-cleanup.md). Establish the original request, owner, and resource state first, then confirm a state-preserving path to load the repair before issuing another write.
+
 ## Reuse receipts before rediscovery
 
 At each transition, validate an available receipt against the current task, repository identity, dirty-diff identity, scope, and invalidation rules. Reuse its decisions and fresh evidence. Reopen only the field whose input changed; do not rerun an entire upstream Skill because one downstream artifact changed.

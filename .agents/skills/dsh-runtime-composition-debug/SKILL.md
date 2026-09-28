@@ -32,6 +32,7 @@ Use this skill for an observed DSH composition symptom, for example:
 - a Host/Client contract works in source tests but a built UI does not show it;
 - the correct contributor is loaded but the target Agent/Preset/Session cannot see it;
 - a user reaches the intended entry path and behavior is wrong.
+- a live browser resource or delivered Cordis function appears stopped, removed, or stuck in cleanup.
 
 Do not use it for a pure function or local type bug whose reproduction never crosses a DSH composition boundary; use `systematic-debugging` with focused debugging instead. Do not use it to choose a new service, Provider, Consumer, WorkKind, or package design; route that to `dsh-reuse` and DSH plugin architecture work. Do not treat it as completion verification; after Phase 1 classifies the divergence, return to `systematic-debugging` Phase 2–4 for pattern comparison, a single minimal test, and repair; once fixed, use `dsh-change-verification` to select proof.
 
@@ -44,6 +45,8 @@ Read relevant `AGENTS.md` files. Before any repair, record a reproducible sympto
 - exact entry path: Profile, Bundle, Host/Client, Agent/Preset/Session, endpoint or UI;
 - diagnostic DSH identity and subject identity: checkout/commit, dirty state, build artifact, Profile/home/ports, process identity, and launch command when observable without secrets; identify controller/executor separately when present;
 - whether evidence comes from source checkout, generated output, built artifact, or a running process.
+
+For browser-resource cleanup, read [the cleanup evidence reference](references/browser-resource-cleanup.md) before changing code or invoking stop/remove. Reconcile the original DSH operation receipt, owner registry, and page-resource evidence separately; a stopped run, missing tab-list row, or outer UI request is not a removal or cleanup receipt.
 
 State one initial layer hypothesis, for example: `The source contract exists; the first divergence is probably Profile/Bundle composition because the selected Profile lacks the contributor.` It is a testable starting point, not a diagnosis. Collect the ordered evidence below before changing code, config, artifacts, or a running process.
 
