@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { actionMutates } from './policy.ts'
 import type {
   BrowserAction,
   BrowserActionResult,
@@ -10,6 +11,7 @@ import type {
   BrowserPage,
   BrowserRequestStatus,
   BrowserTabReference,
+  BrowserTransitionObservation,
 } from '@changanhua/dsh-browser'
 import type {
   AcceptanceClause,
@@ -19,10 +21,13 @@ import type {
   BrowserTaskRef,
   BrowserTaskSnapshot,
   BrowserTaskSourceRef,
+  BrowserTaskScopeRequest,
   BrowserTargetBinding,
 } from '@changanhua/dsh-browser-task'
-import { BROWSER_TASK_LIMITS, browserFailureFingerprint, browserPageMapEvidence, browserPageMapRecoversFailure,
-  deterministicBrowserFailureCode } from '@changanhua/dsh-browser-task'
+import {
+  BROWSER_TASK_LIMITS, browserFailureFingerprint, browserPageMapEvidence, browserPageMapRecoversFailure,
+  isExactOwnedBrowserResourceCleanupTarget, isBrowserTaskSelectionAction, isBrowserTaskResourceAction, deterministicBrowserFailureCode,
+} from '@changanhua/dsh-browser-task'
 
 export const MAX_STEPS = 12
 export const MAX_ACTIONS = 40
@@ -44,6 +49,7 @@ export interface BrowserTaskStart {
   readonly page?: BrowserPage
   readonly goal: string
   readonly success: BrowserTaskSuccess
+  readonly scope?: BrowserTaskScopeRequest
 }
 
 type BrowserTaskAuthority = Pick<
@@ -51,8 +57,9 @@ type BrowserTaskAuthority = Pick<
   | 'get' | 'readTarget' | 'latestUserSource' | 'create' | 'recordReceipt' | 'recordCheck'
   | 'recordCapability' | 'recordEvidence' | 'recordAttempt' | 'advanceAttempt'
   | 'reconcileAttempt' | 'upsertResource' | 'reconcileResource' | 'evaluate' | 'transition' | 'rebind'
-  | 'acknowledgeTargetLoss' | 'consumeContinuation' | 'consumeAction' | 'terminate' | 'cancelByOwner'
+  | 'acknowledgeTargetLoss' | 'advancePage' | 'consumeContinuation' | 'consumeAction' | 'terminate' | 'cancelByOwner'
   | 'settleBootstrapOperation'
+  | 'selectTarget' | 'settleSelectionOperation'
 >
 type BrowserProvider = Pick<import('@deepseek-ai/cordis').Context['browser'], 'execute' | 'instances'>
 
@@ -87,10 +94,6 @@ function snapshotPage(value: unknown): BrowserPage | undefined {
 
 function actionPage(action: BrowserAction): BrowserPage | undefined {
   return 'element' in action ? action.element.page : 'page' in action ? action.page : undefined
-}
-
-function navigates(action: BrowserAction): boolean {
-  return ['navigate', 'back', 'forward', 'reload', 'tab_open'].includes(action.kind)
 }
 
 function readsPage(action: BrowserAction): boolean {
@@ -230,6 +233,7 @@ function verificationHasInterveningFact(task: BrowserTaskSnapshot): boolean {
   const after = (source: BrowserTaskSourceRef | undefined) => source !== undefined
     && 'sessionSeq' in source && source.sessionSeq > latestCheck
   return task.attempts.some(attempt => after(attempt.settledBy) || after(attempt.reconciledBy))
+    || after(task.functionHandoff?.source)
     || task.resources.some(resource => after(resource.dispositionSource)
       || (resource.presentation?.evidenceId !== undefined
         && task.evidence.some(evidence => evidence.id === resource.presentation?.evidenceId && after(evidence.source))))
@@ -279,9 +283,10 @@ export class BrowserTaskLoop {
           browserSessionId: task.pendingTarget.browserSessionId, openedByRequestId: task.pendingTarget.openedByRequestId } }
     }
     const resourceId = 'mountId' in action ? action.mountId : undefined
+    const resource = isClear(action) ? task.resources.find(item => item.id === resourceId) : undefined
     const presentationIntent = regionPresentation(action, regionExpectation(task, action))
     return { attemptId: requestId, requestId, actionKind: action.kind, grantEpoch: task.capability?.grantEpoch ?? 0,
-      stage: 'planned', write, target: task.target, ...(resourceId === undefined ? {} : { resourceId }),
+      stage: 'planned', write, target: resource?.target ?? task.target, ...(resourceId === undefined ? {} : { resourceId }),
       ...(presentationIntent === undefined ? {} : { presentationIntent }) }
   }
 
@@ -324,19 +329,22 @@ export class BrowserTaskLoop {
       ? deterministicBrowserFailureCode(result.reason) : undefined
     const failureFingerprint = action === undefined || failureCode === undefined
       ? undefined : browserFailureFingerprint(action, failureCode)
+    const transition = object(result.value)?.transition as BrowserTransitionObservation | undefined
     return this.authority().recordReceipt(agent, ref(task), { requestId: result.requestId,
       actionKind: attempt.actionKind, target: attempt.target, outcome: result.outcome,
       delivery: result.delivery, quiescent, grantEpoch: attempt.grantEpoch,
       ...(attempt.resourceId === undefined ? {} : { resourceId: attempt.resourceId }),
       ...(result.reason === undefined ? {} : { reason: result.reason }),
       ...(failureFingerprint === undefined ? {} : { failureFingerprint }),
-      ...(presentation === undefined ? {} : { presentation }) })
+      ...(presentation === undefined ? {} : { presentation }),
+      ...(transition === undefined ? {} : { transition }) })
   }
 
   private confirmPresentations(agent: Agent, task: BrowserTaskSnapshot, snapshot: unknown, evidenceId: string): BrowserTaskSnapshot {
     const presentations = array(object(snapshot)?.presentations)
     let current = task
     for (const resource of task.resources) {
+      if (resource.target.installationId !== task.target?.installationId || !samePage(resource.target.page, task.target.page)) continue
       const presentation = resource.presentation
       const observed = presentations.some((item) => {
         const candidate = object(item)
@@ -354,12 +362,13 @@ export class BrowserTaskLoop {
     snapshot?: unknown
     receipt?: BrowserTaskSourceRef
     missingPresentations?: readonly PresentationQuery[]
-    nextStep?: 'open-target-free-tab'
+    nextStep?: 'open-target-free-tab' | 'select-scope-tab'
   }> {
     if (task.capability?.state !== 'observed') return { task }
     if (task.target === undefined) {
       const selection = this.authority().readTarget(agent)
       if (selection.binding !== null || selection.revision !== task.targetRevision) return { task: this.targetLost(agent, task) }
+      if (task.scope.kind === 'explicit-set') return { task, nextStep: 'select-scope-tab' }
       if (task.pendingTarget === undefined) {
         if (task.capability.targetFreeOpen !== true || !task.capability.scopes.includes('browser:write')
           || !task.capability.actions.includes('tab_open')) {
@@ -427,6 +436,7 @@ export class BrowserTaskLoop {
     if (input.page === undefined) throw new Error('browser task page is required outside the product entry')
     let task = authority.create(agent, { objective: input.goal, sourceSeq, acceptance,
       target: targetOf(input.installationId, input.page),
+      ...(input.scope === undefined ? {} : { scope: input.scope }),
       maxSteps: MAX_STEPS, maxActions: MAX_ACTIONS })
     task = await this.capability(agent, task, input.installationId)
     const observed = await this.observe(agent, task, signal)
@@ -439,6 +449,7 @@ export class BrowserTaskLoop {
 
   /** Product entry: copy the explicit Session binding instead of trusting model arguments. */
   async startBound(agent: Agent, input: BrowserTaskStart, signal: AbortSignal): Promise<object> {
+    this.finishStaleSelection(agent)
     const selected = this.authority().readTarget(agent)
     const binding = selected.binding
     if (binding !== null && (input.page === undefined || binding.installationId !== input.installationId
@@ -455,6 +466,7 @@ export class BrowserTaskLoop {
     const taskTarget = binding === null ? undefined : input.page
     if (binding !== null && taskTarget === undefined) throw new Error('browser target selection changed')
     let task = this.authority().create(agent, { objective: input.goal, sourceSeq, acceptance,
+      ...(input.scope === undefined ? {} : { scope: input.scope }),
       ...(binding === null || taskTarget === undefined ? { targetRevision: selected.revision } : {
         target: targetOf(binding.installationId, taskTarget), targetRevision: binding.revision,
       }), maxSteps: MAX_STEPS, maxActions: MAX_ACTIONS })
@@ -465,6 +477,31 @@ export class BrowserTaskLoop {
       ...(observed.missingPresentations === undefined ? {} : { diagnostic: {
         code: 'presentation-observation-missing', queries: observed.missingPresentations,
       } }), ...(observed.nextStep === undefined ? {} : { nextStep: observed.nextStep }), budget: observed.task.budget }
+  }
+
+  /** Select only a declared member or an eligible child, then acquire its current page identity. */
+  async select(agent: Agent, input: { installationId: string; tab: BrowserTabReference }, signal: AbortSignal): Promise<object> {
+    const current = this.current(agent)
+    if (current === undefined) throw new Error('no active browser task')
+    const requestId = randomUUID()
+    const planned = this.authority().selectTarget(agent, ref(current), { ...input, requestId })
+    const operation = { requestId, sessionId: agent.session.id, installationId: input.installationId, action: planned.action }
+    let result: BrowserActionResult
+    try { result = await this.browser.execute(operation, signal) }
+    catch { result = { requestId, sessionId: agent.session.id, installationId: input.installationId,
+      outcome: 'unknown', delivery: 'sent', reason: 'selection_snapshot_unavailable' } }
+    const settled = this.settle(agent, result, planned.action)
+    if (settled === undefined) throw new Error('browser selection attempt was not settled')
+    const failed = this.finishStaleSelection(agent)
+    if (failed !== undefined) return { status: failed.phase, taskId: failed.id, requestId, outcome: 'failed',
+      reason: 'tab_reference_stale', nextStep: 'list-tabs-and-start-new-task', budget: failed.budget }
+    const attempt = settled.task.attempts.find(item => item.requestId === requestId)
+    const outcome = attempt?.outcome ?? result.outcome
+    return { status: settled.evidenceRecorded ? 'selected' : settled.task.phase,
+      taskId: settled.task.id, requestId, outcome, blockers: settled.task.blockers, budget: settled.task.budget,
+      ...(settled.evidenceRecorded ? { observation: result.value } : {}),
+      ...(result.reason === undefined ? {} : { reason: result.reason }),
+      ...(outcome === 'unknown' ? { nextStep: 'request-status' } : {}) }
   }
 
   /**
@@ -481,26 +518,47 @@ export class BrowserTaskLoop {
     return { status: next.phase, outcome: next.outcome, taskId: next.id, terminationSource: next.terminationSource }
   }
 
+  /** Omitted snapshot identity inherits only the document already accepted by this task. */
+  snapshotDocumentId(
+    agent: Agent, installationId: string, input: { tabId: number; frameId: number; documentId?: string },
+  ): string | undefined {
+    if (input.documentId !== undefined) return input.documentId
+    const target = this.current(agent)?.target
+    return target?.installationId === installationId && target.page.tabId === input.tabId && target.page.frameId === input.frameId
+      ? target.page.documentId : undefined
+  }
+
   allowsAction(agent: Agent, action?: BrowserAction): boolean {
+    if (action?.kind === 'tabs') return true
     const task = this.current(agent)
     if (task === undefined) return true
+    if (action !== undefined && actionMutates(action.kind) && !isClear(action)
+      && task.attempts.some(attempt => attempt.selection !== undefined
+        && (attempt.stage !== 'settled' || attempt.quiescent !== true))) return false
     if (task.target === undefined) {
       if (task.phase === 'terminal' || task.blockers.length > 0 || task.budget.actionsUsed >= task.budget.maxActions) return false
       const selected = this.authority().readTarget(agent)
       if (selected.binding !== null || selected.revision !== task.targetRevision || task.capability?.state !== 'observed') return false
-      if (task.pendingTarget === undefined) return action?.kind === 'tab_open' && action.page === undefined
+      if (task.pendingTarget === undefined) return task.scope.kind !== 'explicit-set'
+        && action?.kind === 'tab_open' && action.page === undefined
         && task.capability.targetFreeOpen === true && task.capability.scopes.includes('browser:write')
         && task.capability.actions.includes('tab_open')
       return action?.kind === 'snapshot' && action.frameId === 0 && action.tabId === task.pendingTarget.tabId
         && sameTab(action.expectedTab, task.pendingTarget) && task.capability.scopes.includes('browser:read')
     }
     const page = action === undefined ? undefined : actionPage(action)
-    const targetMatches = page === undefined || samePage(page, task.target?.page)
+    const targetMatches = action?.kind === 'snapshot'
+      ? action.tabId === task.target.page.tabId && action.frameId === task.target.page.frameId
+        && action.documentId === task.target.page.documentId
+      : page === undefined || samePage(page, task.target.page)
+        || action !== undefined && isClear(action) && 'mountId' in action
+          && isExactOwnedBrowserResourceCleanupTarget(task, { installationId: task.target.installationId, page }, action.mountId)
     const clearsPending = this.clearsPending(task, action)
     const cleanupOnly = task.blockers.every(blocker => blocker === 'cleanup'
-      || blocker === 'unknown-attempt' || blocker === 'capability-drift' || blocker === 'repeated-error')
-    if (task.phase === 'terminal') return action === undefined || readsPage(action)
+      || blocker === 'unknown-attempt' || blocker === 'capability-drift' || blocker === 'repeated-error'
+      || blocker === 'target-lost' || blocker === 'internal-invariant')
     if (!targetMatches) return false
+    if (task.phase === 'terminal') return action === undefined || readsPage(action)
     if (clearsPending && cleanupOnly) return true
     if (task.blockers.includes('repeated-error') && action !== undefined) {
       if (readsPage(action)) return true
@@ -519,11 +577,15 @@ export class BrowserTaskLoop {
   }
 
   planned(agent: Agent, operation: BrowserOperation, write = true): BrowserTaskSnapshot | undefined {
+    // Installation discovery supplies references; it neither acts on nor adopts a task page.
+    if (operation.action.kind === 'tabs') return undefined
     let task = this.current(agent)
     if (task === undefined) return undefined
     if (task.phase === 'terminal') {
-      if (readsPage(operation.action)) return undefined
-      throw new Error('browser task is terminal; only direct read actions may continue')
+      if (!readsPage(operation.action)) throw new Error('browser task is terminal; only direct read actions may continue')
+      if (task.target !== undefined && (operation.installationId !== task.target.installationId
+        || !this.allowsAction(agent, operation.action))) throw new Error('browser task target mismatch')
+      return undefined
     }
     if (task.target !== undefined && operation.installationId !== task.target.installationId) {
       throw new Error('browser task has a blocker, exhausted budget, or target mismatch')
@@ -566,6 +628,15 @@ export class BrowserTaskLoop {
     if (task === undefined) return undefined
     let attempt = task.attempts.find(item => item.requestId === result.requestId)
     if (attempt === undefined) return undefined
+    if (attempt.resourceId !== undefined && !isBrowserTaskResourceAction(attempt, action)) return undefined
+    if (attempt.selection !== undefined) {
+      if (!isBrowserTaskSelectionAction(attempt, action)) return undefined
+      const settled = this.authority().settleSelectionOperation(agent, ref(task), { kind: 'result', result })
+      return { task: settled.task, receipt: settled.receipt, evidenceRecorded: settled.evidenceRecorded }
+    }
+    if (attempt.target !== undefined && !samePage(attempt.target.page, task.target?.page)
+      && !(isClear(action) && 'mountId' in action
+        && isExactOwnedBrowserResourceCleanupTarget(task, attempt.target, action.mountId))) return undefined
     if (attempt.bootstrap !== undefined) {
       const settled = this.authority().settleBootstrapOperation(agent, ref(task), { kind: 'result', result })
       return { task: settled.task, receipt: settled.receipt, evidenceRecorded: settled.evidenceRecorded }
@@ -583,17 +654,15 @@ export class BrowserTaskLoop {
     task = this.authority().advanceAttempt(agent, ref(task), { ...attempt, stage: 'settled',
       outcome: result.outcome, quiescent: result.outcome !== 'unknown', settledBy: receipt })
     task = this.stopRepeatedDeterministicFailure(agent, task, result)
+    if (result.outcome === 'observed' && result.delivery === 'sent'
+      && object(result.value)?.transition !== undefined) {
+      try { task = this.authority().advancePage(agent, ref(task), { receipt: receipt as Extract<BrowserTaskSourceRef, { kind: 'browser-task-receipt' }> }) }
+      catch (error) { if (!(error instanceof Error) || !['page advance receipt invalid', 'page advance authority changed', 'page advance attempt invalid'].includes(error.message)) throw error }
+    }
     const feedback = object(result.value)
     const observed = object(feedback?.feedback)
     const page = snapshotPage(observed?.status === 'observed' ? observed.snapshot : undefined)
-    if (page !== undefined && !samePage(page, task.target?.page)) {
-      task = this.targetLost(agent, task)
-      const target = task.target
-      if (result.outcome === 'observed' && navigates(action) && target !== undefined) {
-        task = this.authority().rebind(agent, ref(task), targetOf(target.installationId, page))
-        task = this.authority().acknowledgeTargetLoss(agent, ref(task))
-      }
-    }
+    if (page !== undefined && !samePage(page, task.target?.page)) task = this.targetLost(agent, task)
     return { task, receipt, evidenceRecorded: false }
   }
 
@@ -644,6 +713,8 @@ export class BrowserTaskLoop {
     const task = this.current(agent)
     const prior = task?.resources.find(item => item.id === id)
     if (task === undefined || prior === undefined) return
+    const attempt = task.attempts.find(item => item.requestId === result.requestId)
+    if (attempt === undefined || attempt.resourceId !== id || !isBrowserTaskResourceAction(attempt, action)) return
     const clear = isClear(action)
     const createdWithoutDispatch = prior.state === 'reserved' && isMount(action)
     const documentReplaced = result.delivery === 'sent' && (clear || isMount(action)) && result.reason === 'document_replaced'
@@ -695,6 +766,9 @@ export class BrowserTaskLoop {
     let attempt = current.attempts.find(item => item.requestId === requestId)
     if (attempt === undefined || result.requestId !== requestId || result.quiescent !== true
       || result.outcome === 'in-flight') return current
+    if (attempt.selection !== undefined) {
+      return this.authority().settleSelectionOperation(agent, ref(current), { kind: 'recovery', status: { ...result, quiescent: true } }).task
+    }
     if (attempt.bootstrap !== undefined) {
       return this.authority().settleBootstrapOperation(agent, ref(current), { kind: 'recovery', status: { ...result, quiescent: true } }).task
     }
@@ -735,13 +809,26 @@ export class BrowserTaskLoop {
       const receipt = this.receipt(agent, current, attempt, recovered, undefined, true)
       current = this.authority().advanceAttempt(agent, ref(current), { ...attempt, stage: 'settled',
         outcome: recovered.outcome, quiescent: true, settledBy: receipt })
+      current = this.advanceRecoveredPage(agent, current, recovered, receipt)
       return this.reconcileResources(agent, current, attempt, result, receipt)
     }
     if (attempt.outcome !== 'unknown') return current
     const receipt = this.receipt(agent, current, attempt, recovered, undefined, true)
     current = this.authority().reconcileAttempt(agent, ref(current), { ...attempt, stage: 'settled',
       outcome: recovered.outcome, quiescent: true, settledBy: receipt, reconciledBy: receipt })
+    current = this.advanceRecoveredPage(agent, current, recovered, receipt)
     return this.reconcileResources(agent, current, attempt, result, receipt)
+  }
+
+  private advanceRecoveredPage(agent: Agent, task: BrowserTaskSnapshot, result: BrowserActionResult,
+    receipt: BrowserTaskSourceRef): BrowserTaskSnapshot {
+    if (result.outcome !== 'observed' || result.delivery !== 'sent' || object(result.value)?.transition === undefined
+      || receipt.kind !== 'browser-task-receipt') return task
+    try { return this.authority().advancePage(agent, ref(task), { receipt }) }
+    catch (error) {
+      if (error instanceof Error && ['page advance receipt invalid', 'page advance authority changed', 'page advance attempt invalid'].includes(error.message)) return task
+      throw error
+    }
   }
 
   /** Settle only leases whose action kind and exact target are proven by the recovered receipt. */
@@ -779,6 +866,31 @@ export class BrowserTaskLoop {
   }
 
   async verify(agent: Agent, signal: AbortSignal): Promise<object> {
+    const result = await this.verifyConditions(agent, signal)
+    const task = this.current(agent)
+    if (task === undefined) throw new Error('browser task disappeared during verification')
+    return { ...result, verification: { scope: 'declared-conditions-only', goal: task.objective,
+      conditions: task.acceptance, evaluations: task.evaluations,
+      notice: 'These checks cover only the declared conditions. Report remaining user requirements separately.' } }
+  }
+
+  /** An obsolete initial scope cannot acquire a page; retain its receipts and require a fresh task. */
+  private finishStaleSelection(agent: Agent): BrowserTaskSnapshot | undefined {
+    const task = this.current(agent)
+    if (task === undefined || task.phase === 'terminal' || task.target !== undefined || task.pendingTarget !== undefined
+      || task.resources.length > 0 || task.delegated.length > 0 || task.attempts.length === 0
+      || task.attempts.some(attempt => attempt.selection === undefined || attempt.write
+        || attempt.stage !== 'settled' || attempt.quiescent !== true || attempt.outcome === 'unknown')) return undefined
+    const stale = agent.session.events.some(event => event.type === 'browser-task/receipt'
+      && event.data.taskId === task.id && event.data.reason === 'tab_reference_stale'
+      && event.data.outcome === 'failed' && task.attempts.some(attempt => attempt.requestId === event.data.requestId))
+    return stale ? this.authority().terminate(agent, ref(task), 'failed') : undefined
+  }
+
+  private async verifyConditions(agent: Agent, signal: AbortSignal): Promise<object> {
+    const failed = this.finishStaleSelection(agent)
+    if (failed !== undefined) return { status: failed.phase, outcome: failed.outcome,
+      nextStep: 'list-tabs-and-start-new-task', budget: failed.budget }
     let task = this.current(agent)
     if (task === undefined) throw new Error('no active browser task')
     const recoveringCapability = task.phase !== 'terminal' && task.blockers.includes('capability-drift')
@@ -810,7 +922,7 @@ export class BrowserTaskLoop {
       grantEpoch: task.capability.grantEpoch, evaluations: evaluated })
     const checks = evaluated.map(item => ({ ...item, checkerRef }))
     task = this.authority().evaluate(agent, ref(task), checks)
-    const resourcesDisposed = task.resources.every(resource => resource.state === 'released' || resource.state === 'vanished')
+    const resourcesDisposed = task.resources.every(resource => resource.state === 'released' || resource.state === 'vanished' || resource.state === 'retained')
     if (checks.every(item => item.satisfied) && task.blockers.length === 0 && resourcesDisposed) task = this.authority().terminate(agent, ref(task), 'completed')
     return { status: task.outcome === 'completed' ? 'verified' : task.phase, blockers: task.blockers, budget: task.budget }
   }
@@ -857,6 +969,7 @@ export class BrowserTaskLoop {
   }
 
   async turnStopping(agent: Agent, signal: AbortSignal): Promise<void> {
+    if (!signal.aborted && this.finishStaleSelection(agent) !== undefined) return
     let task = this.current(agent)
     if (task === undefined || task.phase === 'terminal' || signal.aborted) return
     if (task.budget.stepsUsed >= task.budget.maxSteps || task.budget.actionsUsed >= task.budget.maxActions) {

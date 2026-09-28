@@ -101,6 +101,14 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'mcpServer',
+    pkg: 'mcp-server',
+    title: 'Local MCP capability endpoint',
+    mode: 'core',
+    consumers: ['capabilities'],
+    note: 'Publishes deployment-owned native tool declarations and mounts only the called preset before isolated Agent execution.',
+  },
+  {
     key: 'projectMemory',
     pkg: 'memory',
     title: 'Source-backed Workspace memory',

@@ -128,3 +128,5 @@ None.
 </details>
 
 **Runtime invariant:** No companion is published. A single keyed toolview registration whose disposal is proven by the HMR-safety spec. The one mutable relation this package owns — the per-definition run-state observable — lives in the browser process, out of reach of the host invariant service, and the node half emits no cordis events and holds no cross-plugin state.
+
+The panel identifies installation-owned functions and disables Agent-owned actions for them. Manage these functions in the browser extension under Functions → All delivered, including when their original page is unavailable.

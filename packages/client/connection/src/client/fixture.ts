@@ -1923,7 +1923,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         },
       }
     },
-    openSettingsDocument(): RpcResult<{ opened: true }> {
+    openSettingsDocument(): RpcResult<{ opened: true } | { opened: false; path: string }> {
       return { ok: true, value: { opened: true } }
     },
     openAgentPresetDirectory(agentPreset: string): RpcResult<

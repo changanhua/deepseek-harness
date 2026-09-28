@@ -224,7 +224,8 @@ export function CordisPanel({
       ? activity.requestId
       : latest?.status === 'awaiting-approval' ? latest.approvalRequestId : undefined
     const status = visiblePanelStatus(view, selectedPackageId, loaded)
-    const busy = pending.has(pluginId) || activity?.phase === 'orchestrating'
+    const delivered = listed?.ownerKind === 'browser-installation'
+    const busy = delivered || listed?.ownerKind === 'revoked' || pending.has(pluginId) || activity?.phase === 'orchestrating'
     const failure = errors.get(pluginId)
     const hostFailure = latest?.status === 'failed' ? latest.error : undefined
     const renderFailure = renderFailures.get(pluginId)
@@ -269,6 +270,8 @@ export function CordisPanel({
         )}
         <div className={css.rowDetail}>
           <span className={css.rowPurpose}>{purpose}</span>
+          {delivered && <span>{t('panel.browserManaged')}</span>}
+          {listed?.ownerKind === 'revoked' && <span>{t('panel.revoked')}</span>}
           <div className={css.rowActions}>
             {awaiting !== undefined && (
               <>

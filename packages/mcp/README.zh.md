@@ -22,11 +22,12 @@ kind: "package-group"
 <a id="packages"></a>
 ## 包
 
-本组只包含一个包；详细信息以该包的 README 和下方链接为准。
+本组有客户端和本地能力服务器；详细信息以各自 README 为准。
 
 | 包 | 提供的能力 |
 |---|---|
 | [`mcp-client/`](mcp-client/README.zh.md) | 挂载一台外部 MCP 服务器，让模型可以把它的工具当作原生工具调用 |
+| [`mcp-server/`](mcp-server/README.zh.md) | 通过惰性 preset 向本地 MCP 客户端公开已声明的 DSH 原生工具 |
 
 -----
 
@@ -38,6 +39,7 @@ kind: "package-group"
 - [MCP 客户端插件 Agent Note](../../.agents/notes/implemented/feature/2026-07-07-mcp-client-plugin.zh.md)——桥接的设计：服务器限定命名、发现、执行与环境清洗。
 - [第三方记忆 MCP 指南](../../docs/user/guide/mcp-memory.zh.md)——可运行的 overlay 配置行与设置说明。
 - [工具子系统参考](../../docs/subsystems/tools.zh.md)——接收已注册工具的 `ToolRuntime`。
+- [MCP 子系统参考](../../docs/subsystems/mcp.zh.md)——客户端消费与本地能力公开。
 
 <a id="dev-note"></a>
 ## 开发备注

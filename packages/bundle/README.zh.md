@@ -28,6 +28,7 @@ kind: "package-group"
 | [`headless`](headless/README.zh.md) | 基于 base 的一次性命令行任务应用 | `headless-runner` |
 | [`sdk-app`](sdk-app/README.zh.md) | 基于 base 的 SDK JSON-RPC stdio 应用 | 挂载 SDK 服务器 |
 | [`sdk-minimal`](sdk-minimal/README.zh.md) | 不使用 base 或 Web 的独立极简 SDK 应用 | —（完整 patch 树） |
+| [`capabilities`](capabilities/README.zh.md) | 带惰性 choice 和 search preset 的独立本地 MCP 能力 Host | —（完整 patch 树） |
 | [`personal-delivery`](personal-delivery/README.zh.md) | 叠加在 base Web profile 上的本地 Windows Personal Delivery layer | `delivery`、`deliveryEvidence`、`repoWorkspace`、`remote.delivery` |
 | [`personal-memory`](personal-memory/README.zh.md) | 显式叠加在支持 Workspace 的 Profile 上的本地项目记忆层 | `projectMemory`、模型工具、人工 `/memory` 命令 |
 

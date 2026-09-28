@@ -323,6 +323,45 @@ Source: [`packages/browser/browser-task/src/domain.ts:27`](../packages/browser/b
 
 Source: [`packages/browser/browser-task/src/domain.ts:17`](../packages/browser/browser-task/src/domain.ts)
 
+### `choice/*`
+
+<a id="choicellm-request--log-only"></a>
+
+#### `choice/llm-request` — log-only
+
+```ts persistence-catalog
+/** Exact auxiliary selection input and model route, without any credential value. */
+'choice/llm-request': {
+  provider: string
+  model: string
+  system: string
+  messages: Message[]
+  maxTokens: number
+  promptVersion: number
+}
+```
+
+Source: [`packages/llm/tool-choice/src/index.ts:53`](../packages/llm/tool-choice/src/index.ts)
+
+<a id="choicellm-result--log-only"></a>
+
+#### `choice/llm-result` — log-only
+
+```ts persistence-catalog
+/** Settled selection, partial usage and terminal error for its preceding request. */
+'choice/llm-result': {
+  result: ChoiceResult | null
+  finishKind: string | null
+  usage: TokenUsage | null
+  error: string | null
+  elapsedMs: number
+}
+```
+
+Types: [TokenUsage](subsystems/llm-streaming.md)
+
+Source: [`packages/llm/tool-choice/src/index.ts:62`](../packages/llm/tool-choice/src/index.ts)
+
 ### `command/*`
 
 <a id="commanddone--log-only"></a>
@@ -631,6 +670,43 @@ Source: [`packages/llm/llm-retry/src/types.ts:9`](../packages/llm/llm-retry/src/
 ```
 
 Source: [`packages/llm/llm-retry/src/types.ts:11`](../packages/llm/llm-retry/src/types.ts)
+
+### `mcp/*`
+
+<a id="mcpinvocation-end--log-only"></a>
+
+#### `mcp/invocation-end` — log-only
+
+```ts persistence-catalog
+/** Settled external execution; canonical data stays available after disconnect. */
+'mcp/invocation-end': {
+  callId: string
+  isError: boolean
+  code: string | null
+  value: JsonValue
+  elapsedMs: number
+  state: 'observed' | 'failed' | 'unknown'
+}
+```
+
+Source: [`packages/mcp/mcp-server/src/types.ts:54`](../packages/mcp/mcp-server/src/types.ts)
+
+<a id="mcpinvocation-start--log-only"></a>
+
+#### `mcp/invocation-start` — log-only
+
+```ts persistence-catalog
+/** An external call, distinct from the agent loop's model-step events. */
+'mcp/invocation-start': {
+  callId: string
+  tool: string
+  preset: string
+  declarationDigest: string
+  arguments: JsonValue
+}
+```
+
+Source: [`packages/mcp/mcp-server/src/types.ts:46`](../packages/mcp/mcp-server/src/types.ts)
 
 ### `model/*`
 

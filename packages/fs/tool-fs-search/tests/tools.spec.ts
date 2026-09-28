@@ -24,6 +24,7 @@ import { rgPath } from '@vscode/ripgrep'
 import { SpillLocator, SpillStore } from '@deepseek-ai/dsh-spill'
 import type { SaveTextSpill, SpillRef } from '@deepseek-ai/dsh-spill'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
+import { describe as describeGlob } from '../src/declaration.ts'
 import {
   buildGlobCommand,
   buildGrepCommand,
@@ -233,6 +234,30 @@ function matchLine(path: string, lineNumber: number, lineText: string): string {
 }
 
 describe('registration', () => {
+  it('publishes the executable glob schema from its execution-free declaration', async () => {
+    const declaration = describeGlob({ sampleOverCapGlobResults: true, globMaxResults: 100 })
+    const { ctx, subprocess } = await setup()
+    const glob = ctx.tools.schemas().find(schema => schema.name === 'glob')
+
+    expect(declaration).toEqual({
+      name: glob?.name,
+      description: glob?.description,
+      parameters: glob?.parameters,
+      outputSchema: ctx.tools.get('glob')?.output.schema,
+    })
+    // Describing and registering only compile schema DSL; neither can start rg.
+    expect(subprocess.spawns).toHaveLength(0)
+  })
+
+  it.each([
+    [undefined],
+    [{ sampleOverCapGlobResults: true }],
+    [{ sampleOverCapGlobResults: 'true', globMaxResults: 100 }],
+    [{ sampleOverCapGlobResults: false, globMaxResults: 0 }],
+  ])('rejects an incomplete or invalid glob declaration config: %j', (config) => {
+    expect(() => describeGlob(config)).toThrow(TypeError)
+  })
+
   it('registers glob and grep unconditionally with their prompt sections', async () => {
     const { ctx, subprocess } = await setup()
     // Registration performs NO load-time probe: the packaged binary is always
@@ -1244,7 +1269,7 @@ describe('scope-aware search guidance', () => {
   it('reuses the unchanged grep paragraph when read is visible', async () => {
     const { ctx } = await setup()
     ctx.tools.register({
-      name: 'read', description: 'read fixture', parameters: {},
+      name: 'read', description: 'read fixture', parameters: { type: 'object', properties: {} },
       output: { schema: { type: 'string' }, render: () => [{ type: 'text', text: '' }] },
       execute: () => Promise.resolve(''),
     })

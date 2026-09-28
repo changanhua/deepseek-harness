@@ -17,13 +17,38 @@ kind: "package-reference"
 
 stdio 入口立即暴露工具；配置可用时独立启动本机连接器。多个 Codex 任务共享连接器，各自拥有不同的请求身份；结束一个任务不会停止它。连接器仅监听本机回环地址。扩展连接须来自明确受信任的扩展 Origin，本机 MCP 调用使用配置密钥。连接失败只影响工具结果，不影响工具发现。这个外部 MCP 程序不注册 Cordis 能力，因此不提供 Cordis invariant 配套入口。
 
+<a id="connection-recovery"></a>
+## 连接恢复
+
+relay 重启会丢失内存中的 grant。受信任扩展携带有效旧 token 时，会收到 WebSocket 关闭码 `4409` 和原因 `credentials_expired`。扩展清除保存的 token 与 grant，保留安装身份，通过原连接入口取得新凭据。自动恢复、手动重试与 worker 唤醒共用一次配对操作和通道的有限指数退避（最多五次自动重试，稳定连接 30 秒后重置）。暂停后的 worker 唤醒允许一次续授权尝试。耗尽后暂停，等待再次显式重试或浏览器生命周期事件。
+
+关闭码 `4401` 停止恢复：`authorization_revoked` 表示明确撤销，`invalid_credentials` 表示 token 未通过认证。`4403` 表示 `extension_not_trusted`；通用 `1008` 表示协议拒绝，绝不授权重新配对。这些终止状态跨 worker 重启保留，并在连接状态中暴露原因。临时网络故障保留凭据，使用有限重试调度。主动断开会移除自动恢复意图。
+
+若要拒绝某个安装，将其 UUID 加入可选配置数组 `revokedInstallationIds`，由运行实例所有者重启 relay。WebSocket 认证与连接入口都会拒绝该安装，包括显式配对请求。从 `extensionIds` 移除扩展后，该 Origin 会在注册 peer 前被拒绝。配置在 relay 启动时读取，仅修改文件不会撤销活动连接。解决服务端拒绝原因后，显式断开再连接，才能清除扩展的终止保留状态。信任、本机回环和 token 检查仍然有效。
+
+重新连接后，刷新 `browser_status`、列出标签并取得新的页面引用。重连不会完成中断任务，也不会重放写入。使用同一个 MCP 请求所有者查询原请求 ID；回执缺失仍返回 `unknown` 和 `receipt_unavailable`。参见[恢复决策](../../../.agents/notes/implemented/bug-fix/2026-09-28-codex-relay-restart-recovery.zh.md)。
+
 ## 使用浏览器
+
+`browser_status` 分别返回 `connector.mcp` 和 `connector.relay`，各自包含包版本、协议版本、已加载模块路径、进程 ID 和组件启动时间。在线扩展通过 `runtime.version` 返回浏览器 manifest 中的版本。扩展和连接器各自编号；`issues` 标明运行信息未知、连接器版本不一致、扩展断线及无目标开页不可用等情况。缺少元数据不能证明安装已过时。relay 不可用时，工具错误仍携带 MCP 身份。这些诊断不包含配置密钥，也不改变执行权限。
+
+更新前，先根据返回的组件和模块路径定位安装问题。重载 Chrome 扩展不会更换正在运行的 MCP 或 relay；源码编辑或构建也不会更新已加载的进程。运行诊断不切换发布目录、不重连客户端、不重启进程。扩展向两条连接上报相同的元数据；更新扩展时应部署配套的 DSH 网关。预发布阶段不支持与旧 DSH 网关混用。
 
 用 `browser_status` 选择浏览器实例，并查看它实时声明的能力。只有连接中的执行器同时声明 `targetFreeOpen: true` 和 `tab_open` 时，`browser_open_tab` 才可用；它在 HTTP(S) URL 创建一个后台标签，只返回 `{ opened, tab: { tabId, windowId, browserSessionId } }`。为每次开页提供新的 UUID v4 `requestId`，并保留它用于恢复。调用不等待 DOM，也不返回 PageRef：先用 `browser_tabs` 确认当前 URL，再把完整标签引用作为 `expectedTab` 交给首次 `browser_read_page`，获取页面、文档和元素引用，随后才可读取或操作。该引用跨扩展 worker 重启有效，浏览器或扩展重启后会失效。操作支持滚动、导航、点击、填写和按键；修改后重新读回验证。扩展在 DSH 与 Codex 之间共用执行账本，同一标签上尚未确认结束的写入会阻止来自任一调用方的冲突写入。
 
 读取保留已加载原文及截断标志。树游标对同一文档的节点分页，但单个过长节点仍可能缩短。完成遍历不能证明已经读取隐藏或尚未加载的内容。目标页面变化时返回错误，不把另一目标的内容交给模型。
 
+控件快照中的 `query` 按标签、文字、上下文、角色、占位符或提示标题过滤控件，不搜索输入值或所有页面正文。返回的 `text` 和 `structure` 只覆盖本次控件最近的局部容器（`textScope: matched-controls`），没有命中控件时正文为空。`offset` 对控件及其局部内容分页。省略 `query` 可读取整页正文（`textScope: page`）；`structure: false` 可省略区域和列表摘要。`textTruncated`、`elementsTruncated`、`scanTruncated` 分别表示不同的读取缺口；局部结果或空结果不能证明整页不存在目标内容。
+
+提交前使用 `includeValues: true` 核对表单。返回的 input/textarea 控件携带当前 `value` 和 `valueTruncated`，保留空白与换行。每次读取的输入值共用 16,384 字符预算；预算使其他字段截断时，应缩小 `query` 或对控件分页。密码、文件和隐藏输入框，以及用 autocomplete 标明凭据、验证码或支付信息的字段不返回值（`valueRedacted: true`）。未标记的文本框仍可能包含敏感信息，因此只对目标表单请求值。默认读取和树模式省略输入值。缺失、脱敏或截断的值不能当作已核实的空字段。
+
+表单稳定时，可复用一次快照取得的准确引用连续填写，或填写后按键。引用在 60 秒后过期，也可能被后续读取淘汰；URL、文档或控件身份变化时会被拒绝，单纯修改输入值不会使引用失效。填写完后带值回读核对，只提交一次，再读取生成的条目验证成功。`sameTab.kind: unchanged` 描述页面身份，可以与弹窗或内容更新同时出现；观察到输入本身不代表业务成功。
+
+检查 GitHub Issue 重复项时，在指定仓库搜索 `is:issue in:title "<title>"`，不附加打开或关闭状态条件，再逐条比较完整标题。分词结果不确定时，用标题中特征鲜明的片段复查。页面读取的 `query` 只过滤已加载控件，不会执行 GitHub 搜索。提交结果未知时，先查询原请求状态并检查当前页面，再决定后续操作。
+
 结果未知的操作可能已经发生。`browser_request_status` 从不重放操作。开页请求在连接器保留 60 秒内，应以相同调用方提供的 UUID v4 和相同 URL 重用；调用方或载荷不同会得到 `request_conflict`。连接器不再保留回执后，如执行器声明支持重启状态查询，连接器可只读查询扩展账本，不再次执行操作。MCP 进程重启后任务身份改变，无法恢复此前任务的回执；扩展对未确认写入的保护仍然有效。
+
+MCP 在发送操作给 relay 前保留请求 ID。回包丢失或无法返回时，工具在连接错误旁保留当前连接的会话、浏览器实例和请求 ID，返回 `unknown`、`quiescent: false`。使用该 ID 调用 `browser_request_status`；传输错误不能证明输入尚未执行或已经停止。这种恢复依赖原 MCP 请求拥有者，不能跨 MCP 进程更换。
 
 ## 模型体验
 
@@ -46,3 +71,4 @@ stdio 入口立即暴露工具；配置可用时独立启动本机连接器。�
 - 过长 DOM 节点可能缩短，不承诺无损导出整页。
 - 浏览器断开或重启可能使已发送操作结果未知，不自动重试这类操作。
 - 开页不观察目标文档是否已加载；先确认标签 URL 并读取页面，再进行页面操作。
+- page-bound `tab_open` 会校验源页面，但仍返回完整的后台 `TabRef`。transition candidate 只是观察；opener 关系或已观察的导航都不证明输入效果或业务成功。

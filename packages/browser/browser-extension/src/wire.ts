@@ -55,7 +55,7 @@ export const browserActionSchema = z.discriminatedUnion('kind', [
     query: z.string().max(256).optional(), offset: z.number().int().min(0).max(10000).optional(),
     limit: z.number().int().min(1).max(128).optional(), textLimit: z.number().int().min(0).max(50000).optional(),
     tree: z.boolean().optional(), treeCursor: z.string().min(1).max(256).optional(),
-    treeLimit: z.number().int().min(1).max(1000).optional(), includeOptions: z.boolean().optional(),
+    treeLimit: z.number().int().min(1).max(1000).optional(), includeOptions: z.boolean().optional(), includeValues: z.boolean().optional(),
     structure: z.boolean().optional(), presentationQueries: z.array(z.object({ mountId: id,
       text: z.string().min(1).max(512)
         .refine(value => new TextEncoder().encode(value).byteLength <= 512) }).strict()).max(32).optional(),
@@ -98,7 +98,8 @@ const receipt = identity.extend({
 }).strict()
 /** Authentication is a bounded first frame, never a credential in the URL. */
 export const extensionFrameSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('hello'), protocolVersion: z.literal(1), installationId: z.uuid({ version: 'v4' }), token: z.string().regex(/^[A-Za-z0-9_-]{43}$/u), capabilities: executorCapabilities }).strict(),
+  z.object({ type: z.literal('hello'), protocolVersion: z.literal(1), installationId: z.uuid({ version: 'v4' }), token: z.string().regex(/^[A-Za-z0-9_-]{43}$/u), capabilities: executorCapabilities,
+    runtime: z.object({ version: z.string().min(1).max(64) }).strict().optional() }).strict(),
   z.object({ type: z.literal('authority-cleaned'), installationId: z.uuid({ version: 'v4' }), grantEpoch: z.number().int().positive() }).strict(),
   z.object({ type: z.literal('result'), receipt }).strict(),
   z.object({ type: z.literal('pong') }).strict(),

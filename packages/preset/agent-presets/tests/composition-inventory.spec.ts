@@ -19,6 +19,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AgentPresets, { COMPOSITION_FILE, METADATA_FILE, SHIPPED_PRESET_ROOT } from '@deepseek-ai/dsh-agent-presets'
 import type { Config } from '@deepseek-ai/dsh-agent-presets'
@@ -65,7 +66,7 @@ async function harness(roster: Config): Promise<Context> {
 }
 
 describe('fileComposition', () => {
-  it('keeps browser-assistant limited to Browser, Dynamic Cordis, and conversation compaction', async () => {
+  it('keeps browser-assistant limited to Browser, Dynamic Cordis, scoped Skills, and conversation compaction', async () => {
     const ctx = await harness({
       default: 'browser-assistant',
       roots: [{ path: SHIPPED_PRESET_ROOT, trust: 'system' }],
@@ -83,7 +84,7 @@ describe('fileComposition', () => {
 
     expect(composition.rows.map(row => row.entryId)).toEqual([
       'persona', 'agent-instructions', 'compaction-basic', 'command-compact', 'tool-result-pruner',
-      'tool-browser', 'tool-cordis',
+      'tool-browser', 'tool-cordis', 'skill-filesystem', 'tool-skill', 'tool-presentation',
     ])
     expect(composition.rows.filter(row => row.moduleName === '@changanhua/dsh-tool-browser')).toEqual([
       expect.objectContaining({ entryId: 'tool-browser', enabled: 'conditional' }),
@@ -91,7 +92,66 @@ describe('fileComposition', () => {
     expect(composition.rows.filter(row => row.moduleName === '@deepseek-ai/dsh-tool-cordis')).toEqual([
       { entryId: 'tool-cordis', moduleName: '@deepseek-ai/dsh-tool-cordis', enabled: true },
     ])
+    expect(composition.rows.filter(row => row.moduleName === '@deepseek-ai/dsh-skill-filesystem')).toEqual([
+      { entryId: 'skill-filesystem', moduleName: '@deepseek-ai/dsh-skill-filesystem', enabled: true },
+    ])
+    expect(composition.rows.filter(row => row.moduleName === '@deepseek-ai/dsh-tool-skill')).toEqual([
+      { entryId: 'tool-skill', moduleName: '@deepseek-ai/dsh-tool-skill', enabled: true },
+    ])
+    expect(composition.rows.filter(row => row.moduleName === '@deepseek-ai/dsh-agent-tool-presentation')).toEqual([
+      { entryId: 'tool-presentation', moduleName: '@deepseek-ai/dsh-agent-tool-presentation', enabled: 'conditional',
+        condition: "ctx.get('codeRuntime') === undefined" },
+    ])
+    expect(composition.rows.map(row => row.entryId)).not.toEqual(expect.arrayContaining([
+      'tool-bash', 'tool-pwsh', 'tool-fs', 'tool-fs-search', 'tool-subagent',
+    ]))
     expect(new Set(composition.rows.map(row => row.entryId)).size).toBe(composition.rows.length)
+  })
+
+  it('mounts the Browser Assistant Skill rows through Loader in an agent scope', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-browser-assistant-skills-'))
+    roots.push(root)
+    const cwd = join(root, 'workspace')
+    const skillDir = join(cwd, '.agents', 'skills', 'fc-web-app')
+    const presetDir = join(root, 'browser-skills')
+    // The fixture harness is intentionally not an installed DSH distribution,
+    // so it has no package-manager links for the two workspace packages. Use
+    // their built entrypoints to exercise Loader mounting and the scoped
+    // registrations; the shipped preset's package names remain asserted above.
+    const skillFilesystem = join(process.cwd(), 'packages', 'skill', 'skill-filesystem', 'lib', 'index.js')
+    const toolSkill = join(process.cwd(), 'packages', 'skill', 'tool-skill', 'lib', 'index.js')
+    await mkdir(skillDir, { recursive: true })
+    await mkdir(presetDir)
+    await writeFile(join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: fc-web-app',
+      'description: FC Web App shared knowledge.',
+      '---',
+      '',
+      '# FC Web App',
+    ].join('\n'))
+    await writeFile(join(presetDir, COMPOSITION_FILE), [
+      '- id: skill-filesystem',
+      `  name: ${skillFilesystem}`,
+      '- id: tool-skill',
+      `  name: ${toolSkill}`,
+    ].join('\n'))
+
+    const ctx = await harness({
+      default: 'browser-skills',
+      roots: [{ path: root, trust: 'system' }],
+      includeShippedRoot: false,
+      includeUserRoot: false,
+    })
+    await ctx.plugin(SkillRegistry)
+    const handle = await ctx.agents.create({
+      sessionId: SessionId('browser-assistant-skills'),
+      setup: async (agentCtx: Context) => void await ctx.agentPresets.mount(agentCtx),
+    })
+
+    expect(ctx.tools.schemas(handle.agent).map(schema => schema.name)).toContain('skill')
+    expect(await ctx.skills.list({ cwd, scope: handle.agent, signal: new AbortController().signal }))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ name: 'fc-web-app', provider: 'filesystem' })]))
   })
 
   it('flattens groups and keeps refused expressions conditional', async () => {

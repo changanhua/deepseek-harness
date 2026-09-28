@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { WebSocketServer, WebSocket } from 'ws'
 import { z } from 'zod'
 import { configSchema, rpcSchema } from './schema.ts'
+import { extensionRuntimeSchema, runtimeIdentity } from './runtime.ts'
 import type { ConnectorConfig, Grant, Invocation, Receipt, RpcInput } from './types.ts'
 
 const identityKeys = ['protocolVersion', 'grantEpoch', 'requestId', 'sessionId', 'installationId', 'deadline', 'fingerprint'] as const
@@ -48,10 +49,15 @@ const record = (value: unknown): Record<string, unknown> | undefined => value !=
 
 /** Standalone loopback relay. It imports no Harness runtime and never calls a model. */
 export async function startBrowserRelay(input: ConnectorConfig) {
+  const runtime = runtimeIdentity(import.meta.url)
   // Direct server callers receive the bound port; persisted client configuration requires a fixed port.
   const config = configSchema.extend({ port: z.number().int().min(0).max(65535) }).parse(input)
   const grants = new Map<string, Grant>()
-  const peers = new Map<string, { socket: WebSocket; capabilities?: z.infer<typeof capabilitiesSchema> }>()
+  const peers = new Map<string, {
+    socket: WebSocket
+    capabilities?: z.infer<typeof capabilitiesSchema>
+    runtime?: z.infer<typeof extensionRuntimeSchema>
+  }>()
   const calls = new Map<string, {
     request: Invocation
     response: Promise<Receipt>
@@ -88,9 +94,9 @@ export async function startBrowserRelay(input: ConnectorConfig) {
   const unknown = (request: Invocation, reason: string): Receipt => ({ outcome: 'unknown', quiescent: false, requestId: request.requestId,
     sessionId: request.sessionId, installationId: request.installationId, reason })
   const dispatch = async (rpc: RpcInput, signal: AbortSignal): Promise<unknown> => {
-    if (rpc.method === 'instances') return { instances: [...grants.values()].map((grant) => {
+    if (rpc.method === 'instances') return { relay: runtime, instances: [...grants.values()].map((grant) => {
       const peer = peers.get(grant.installationId)
-      return { installationId: grant.installationId, online: peer !== undefined, scopes: grant.scopes,
+      return { installationId: grant.installationId, online: peer !== undefined, scopes: grant.scopes, runtime: peer?.runtime ?? null,
         capabilities: peer?.capabilities
           ? { targetFreeOpen: peer.capabilities.targetFreeOpen === true, actionKinds: peer.capabilities.actionKinds }
           : { targetFreeOpen: false, actionKinds: [] } }
@@ -142,7 +148,6 @@ export async function startBrowserRelay(input: ConnectorConfig) {
     if (!action) throw fail('action_required')
     if (action.kind === 'snapshot' && !rpc.expectedUrl) throw fail('expected_url_required')
     if (action.kind === 'tab_open' && !rpc.requestId) throw fail('request_id_required')
-    if (rpc.requestId && action.kind !== 'tab_open') throw fail('request_id_not_supported')
     if (action.kind === 'tab_open' && (peer.capabilities?.targetFreeOpen !== true || !peer.capabilities.actionKinds.includes('tab_open'))) throw fail('capability_unavailable', 409)
     if (peer.capabilities && !peer.capabilities.actionKinds.includes(action.kind)) throw fail('capability_unavailable', 409)
     for (const [key, call] of calls) if (call.result && call.expiresAt < Date.now()) forget(key)
@@ -209,13 +214,14 @@ export async function startBrowserRelay(input: ConnectorConfig) {
           res.writeHead(204); res.end(); return
         }
       }
-      if (path === '/health' && req.method === 'GET' && authorized(req)) { json(res, 200, { service: 'browser-extension-connector', protocolVersion: 1 }); return }
+      if (path === '/health' && req.method === 'GET' && authorized(req)) { json(res, 200, { service: 'browser-extension-connector', protocolVersion: 1, runtime }); return }
       if (req.method !== 'POST') throw fail('method_not_allowed', 405)
       if (req.headers['content-type']?.split(';')[0]?.trim() !== 'application/json') throw fail('json_required', 415)
       if (path === '/browser-connector/connect') {
         if (!trustedOrigin(req)) throw fail('extension_not_trusted', 403)
         const pair = connectSchema.parse(await readBody(req))
         if (req.headers.origin !== `chrome-extension://${pair.extensionId}`) throw fail('origin_mismatch', 403)
+        if (config.revokedInstallationIds?.includes(pair.installationId)) throw fail('authorization_revoked', 403)
         const existing = grants.get(pair.installationId)
         if (existing && existing.extensionId !== pair.extensionId) throw fail('installation_conflict', 409)
         if (!existing && grants.size >= 32) throw fail('installation_capacity', 429)
@@ -239,8 +245,19 @@ export async function startBrowserRelay(input: ConnectorConfig) {
   server.requestTimeout = 5000
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_RESULT })
   server.on('upgrade', (req, socket, head) => {
-    if (!local(req) || !trustedOrigin(req) || req.url !== '/api/browser-extension/v1/ws') { socket.destroy(); return }
-    wss.handleUpgrade(req, socket, head, (ws) => { wss.emit('connection', ws, req) })
+    if (!local(req) || req.url !== '/api/browser-extension/v1/ws') { socket.destroy(); return }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      if (!trustedOrigin(req)) {
+        sockets.add(ws)
+        const closing = setTimeout(() => ws.terminate(), 1000)
+        closing.unref()
+        ws.on('error', () => {})
+        ws.once('close', () => { clearTimeout(closing); sockets.delete(ws) })
+        ws.close(4403, 'extension_not_trusted')
+        return
+      }
+      wss.emit('connection', ws, req)
+    })
   })
   wss.on('connection', (ws, req) => {
     sockets.add(ws)
@@ -263,13 +280,21 @@ export async function startBrowserRelay(input: ConnectorConfig) {
       if (!installationId) {
         const id = typeof frame.installationId === 'string' ? frame.installationId : ''
         const grant = grants.get(id)
-        if (frame.type !== 'hello' || frame.protocolVersion !== 1 || !grant || req.headers.origin !== `chrome-extension://${grant.extensionId}`
-          || typeof frame.token !== 'string' || !equal(frame.token, tokenFor(id))) { ws.close(1008); return }
+        if (frame.type !== 'hello' || frame.protocolVersion !== 1 || !z.uuid().safeParse(id).success
+          || typeof frame.token !== 'string') { ws.close(1008, 'invalid_hello'); return }
         const parsedCapabilities = frame.capabilities === undefined ? undefined : capabilitiesSchema.safeParse(frame.capabilities)
         if (parsedCapabilities && !parsedCapabilities.success) { ws.close(1008); return }
+        const parsedRuntime = frame.runtime === undefined ? undefined : extensionRuntimeSchema.safeParse(frame.runtime)
+        if (parsedRuntime && !parsedRuntime.success) { ws.close(1008); return }
+        if (config.revokedInstallationIds?.includes(id)) { ws.close(4401, 'authorization_revoked'); return }
+        if (!equal(frame.token, tokenFor(id))) { ws.close(4401, 'invalid_credentials'); return }
+        // Only a trusted origin with a valid prior token may request restart recovery.
+        if (!grant) { ws.close(4409, 'credentials_expired'); return }
+        if (req.headers.origin !== `chrome-extension://${grant.extensionId}`) { ws.close(4403, 'extension_not_trusted'); return }
         const old = peers.get(id)
         installationId = id
-        peers.set(id, { socket: ws, ...(parsedCapabilities ? { capabilities: parsedCapabilities.data } : {}) })
+        peers.set(id, { socket: ws, ...(parsedCapabilities ? { capabilities: parsedCapabilities.data } : {}),
+          ...(parsedRuntime ? { runtime: parsedRuntime.data } : {}) })
         clearTimeout(handshake)
         if (old) {
           for (const call of calls.values()) if (!call.result && call.request.installationId === id) call.finish(unknown(call.request, 'connection_replaced'))

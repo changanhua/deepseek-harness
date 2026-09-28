@@ -1,5 +1,10 @@
 import { modelSummary } from './model-summary.js'
 import { renderMarkdown } from './preview.js'
+import { createSbcCombReport, formatSbcCombReport } from './fc-sbc-comb-report.js'
+import { createSbcRedactedSample, formatSbcRedactedSample } from './fc-sbc-redacted-sample.js'
+import { updateFcSbcPageModel } from './fc-sbc-page-model.js'
+import { createFcSbcSliceReport, createFcSbcVerificationRequest } from './fc-sbc-slice-report.js'
+
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3080'
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const SURFACE_KEY = 'dsh.assistant.surface.v2'
@@ -19,9 +24,10 @@ const locked = pending => ['sending', 'unknown'].includes(pending?.status)
 
 let state = null
 let activeView = 'chat'
-let functionScope = 'global'
+let functionScope = 'all'
 let draftImages = []
 const drafts = new Map()
+const recoveryFlights = new Set()
 let activeDraftKey = null
 let recentSessions = []
 let recentKey = null
@@ -34,7 +40,103 @@ let modelCatalog = null
 let modelRequest = 0
 let modelPicker = { open: false, phase: 'idle', sessionId: null, selection: null, applying: false }
 let targetDialogTrigger = null
+let fcSbcScan = { phase: 'idle', request: 0, page: null, probe: null, model: null, slice: null, readMode: null,
+  report: null, comb: null, sample: null, staleBinding: false, error: null }
+
 const label = phase => ({ unconfigured: '尚未配置', configured: '尚未连接', pending: '等待批准', connecting: '正在连接', connected: '已连接', offline: '离线', unauthorized: '需要授权', invalid: '配置无效' })[phase] ?? '未知状态'
+const sbcStatusLabel = status => ({ 'ready-for-approval': '可确认', 'draft-only': '草稿', blocked: '阻塞' })[status] ?? '未知'
+const sbcDryRunStatusLabel = status => ({ ready: '可预演', blocked: '预演阻塞', 'no-purchases': '无采购' })[status] ?? '未知'
+const sbcRiskStatusLabel = status => ({ clear: '无拟执行交易', caution: '需谨慎', blocked: '阻塞' })[status] ?? '未知'
+const sbcApprovalPreviewStatusLabel = status => ({ ready: '可审阅', blocked: '预览阻塞' })[status] ?? '未知'
+const sbcTaskLabel = type => ({ puzzle: '拼图 SBC', 'item-score': 'Item Score', unknown: '未知' })[type] ?? '未知'
+const sbcMarketLabel = status => ({ visible: '可见', blocked: '受限', unknown: '未知' })[status] ?? '未知'
+const sbcInventoryLabel = coverage => ({ complete: '完整', partial: '部分覆盖', 'visible-only': '仅可见页面', unread: '未读取' })[coverage] ?? '未知'
+const sbcViewLabel = kind => ({ 'sbc-list': 'SBC 列表', 'sbc-group': '群组详情', club: '俱乐部', 'sbc-storage': 'SBC 仓库', unknown: '未知' })[kind] ?? '未知'
+const sbcIssueLabel = code => ({
+  'page-probe-not-run': '页面探针未运行',
+  'capture-current-fc-sbc-page': '需要采集当前 FC SBC 页面',
+  'login-required': '请先登录 EA 账号并打开 SBC 页面',
+  'unsupported-page': '不是已识别的 FC 页面',
+  'unsupported-task-type': '任务类型未纳入当前纵切',
+  'item-score-executor-deferred': 'Item Score 执行器后续处理',
+  'unknown-task-type': '任务类型未知',
+  'classify-sbc-task-type': '需要识别 SBC 类型',
+  'inventory-unread': '库存未读取',
+  'inventory-visible-only': '库存只来自可见页面',
+  'inventory-snapshot-invalid': '完整库存快照无效',
+  'complete-inventory-adapter': '完整库存适配器待接入',
+  'repair-inventory-snapshot': '需要修复库存快照',
+  'plan-input-missing': '求解输入待接入',
+  'solver-input-adapter-deferred': '求解输入适配器后续处理',
+  'plan-input-invalid': '求解输入无效',
+  'no-executable-plan': '暂无可执行方案',
+  'market-access-blocked': '市场权限受限',
+  'market-access-unverified': '市场权限未验证',
+  'quote-missing': '缺少待买卡报价',
+  'quote-stale': '待买卡报价已过期',
+  'quote-invalid': '待买卡报价无效',
+  'quote-platform-mismatch': '报价平台不匹配',
+  'market-search-limit': '市场搜索量超过上限',
+  'refresh-quotes-before-approval': '批准前需刷新报价',
+  'invalid-purchase-row': '采购行缺少版本或价格',
+  'duplicate-purchase-id': '采购项 ID 重复',
+  'budget-exceeded': '预演预算超过上限',
+  'automation-exposure-nonzero': '存在自动化暴露',
+  'purchase-count-limit': '购买数量超过上限',
+  'market-search-exposure-limit': '市场搜索尝试超过上限',
+  'submit-count-limit': '提交数量超过上限',
+  'transaction-readback-unknown': '交易读回仍未知',
+  'execution-dry-run-blocked': '执行预演阻塞批准',
+  'risk-preflight-blocked': '风险预检阻塞批准',
+  'approval-window-invalid': '批准时间窗无效',
+  'submit-scope-invalid': '提交范围不属于方案',
+  'readiness-not-approvable': 'readiness 尚不可批准',
+  'group-identity-unverified': '当前任务组或关卡数量未核实',
+  'group-hint-unmatched': '当前任务组与应用数据不一致',
+  'challenge-title-unmatched': '有可见关卡未在应用数据中找到',
+  'inventory-coverage-incomplete': '俱乐部或 SBC 仓库尚未读全',
+  'club-pagination-end-unverified': '俱乐部卡牌还有未核实的后续页',
+  'sbc-storage-pagination-end-unverified': 'SBC 仓库还有未核实的后续页',
+  'requirements-missing': '关卡要求尚未读取',
+  'requirements-incomplete': '有要求尚未识别',
+  'chemistry-model-unknown': 'FC27 队伍化学算法尚未验证',
+  'chemistry-evaluator-missing': '缺少已验证的队伍化学计算',
+  'squad-rating-model-unknown': '队伍评分算法尚未验证',
+  'plan-identity-missing': '账号平台或任务组身份尚未核实',
+  'challenge-set-empty': '未取得当前任务组的结构化关卡',
+  'no-verifiable-candidate': '已有卡中暂无可验证的候选阵容',
+  'candidate-search-limit-reached': '候选搜索已达本次上限',
+  'search-incomplete': '候选搜索范围尚未覆盖全部已有卡',
+  'no-cross-challenge-plan': '多关方案中有卡牌冲突',
+  'squad-rating-evaluator-missing': '缺少已验证的队伍评分计算',
+  'squad-rating-evaluator-unknown': '队伍评分未能核实',
+  'native-chemistry-read-failed': 'FC27 原生化学复核未完成',
+  'native-item-missing': '复核时有卡牌已无法读取',
+  'formation-unverified': '当前关卡阵型尚未核实',
+  'all-challenges-completed': '当前任务组已全部完成',
+})[code] ?? code
+const sbcFieldStatusLabel = status => ({ covered: '已覆盖', partial: '部分覆盖', missing: '缺样本' })[status] ?? status
+const sbcFieldLabel = code => ({
+  'page-url': '页面 URL',
+  'page-title': '页面标题',
+  'capture-time': '采集时间',
+  'supported-fc-page': '已识别 FC 页面',
+  'task-type': 'SBC 类型',
+  'challenge-set-title': '任务组标题',
+  'visible-challenge-count': '可见关卡数',
+  'stable-challenge-ids': '稳定关卡 ID',
+  'requirement-lines': '要求行',
+  'reward-lines': '奖励行',
+  'market-access-status': '市场权限状态',
+  'market-access-evidence': '市场权限证据',
+  'inventory-coverage': '完整库存未覆盖',
+  'sbc-storage-visibility': 'SBC Storage 可见性',
+  'visible-card-count': '可见卡牌数',
+  'card-instance-ids': '卡实例 ID',
+  'card-ratings': '卡牌评分',
+  'purchase-result-readback': '购买结果读回未验证',
+  'submission-result-readback': '提交结果读回未验证',
+})[code] ?? code
 const messageError = error => ({
   offline: '连接已中断，恢复连接后可继续。',
   no_saved_connection: '原连接授权不可恢复，请重新连接 DSH。',
@@ -112,6 +214,8 @@ const renderConnection = () => {
       connection.phase === 'offline' ? retryConnection : connect, 'primary')
     action.disabled = connection.phase === 'connecting'
     panel.append(`${label(connection.phase)}${connection.baseUrl ? ` · ${connection.baseUrl}` : ''}`, action)
+    if (connection.phase === 'offline') panel.append(connection.retryPending
+      ? '正在有限退避重试。' : '已暂停自动重试；服务页面恢复或重新打开侧栏时检查连接。')
   }
 }
 
@@ -135,7 +239,9 @@ const renderSettings = () => {
   const codex = current.codexConnection ?? { baseUrl: 'http://127.0.0.1:3091', phase: 'unconfigured' }
   const codexPanel = byId('codex-browser-connection'); codexPanel.replaceChildren()
   codexPanel.append(`Codex 网页连接：${label(codex.phase)}${codex.baseUrl ? ` · ${codex.baseUrl}` : ''}`)
-  if (codex.phase === 'connected') codexPanel.append(button('断开 Codex', () => send({ type: 'dsh-codex-browser-disconnect' })))
+  if (['connected', 'unauthorized', 'invalid'].includes(codex.phase)) {
+    codexPanel.append(button('断开 Codex', () => send({ type: 'dsh-codex-browser-disconnect' })))
+  }
   else {
     const action = button(codex.phase === 'offline' ? '重试 Codex' : '连接 Codex', () => send({ type: 'dsh-codex-browser-connect' }), 'primary')
     action.disabled = codex.phase === 'connecting'
@@ -381,7 +487,7 @@ const renderConversation = () => {
   if (liveFunctions.length && home.hidden) { const rail = document.createElement('section'); rail.className = 'conversation-functions'; const heading = document.createElement('strong'); heading.textContent = '可用功能'; rail.append(heading); for (const item of liveFunctions) rail.append(renderFunctionCard(item, true)); conversation.append(rail) }
   byId('cognition-count').textContent = String(cognitionItems.length)
   const functions = current.functions?.items ?? []
-  byId('function-count').textContent = String(functions.filter(item => item.scope !== 'page' || item.scopeStatus === 'current-target').length)
+  byId('function-count').textContent = String(functions.length)
 }
 
 const renderPending = () => {
@@ -441,21 +547,23 @@ const renderCognition = () => {
 
 const renderFunctionCard = (item, compact = false) => {
   const card = document.createElement('article'); card.className = `function${compact ? ' compact' : ''}`
+  const stalePage = item.scope === 'page' && item.scopeStatus !== 'current-target'
   const title = document.createElement('strong'); title.textContent = item.name ?? item.functionId ?? '未命名功能'
   const description = document.createElement('p'); description.textContent = item.purpose ?? '目录没有提供用途说明。'
   const status = document.createElement('span'); status.className = `status-pill ${item.status === 'running' ? 'running' : ''}`; status.textContent = item.status === 'running' ? '运行中' : '已停止'
-  const note = document.createElement('small'); note.className = 'scope-note'; note.textContent = `版本 ${item.currentPackageId ?? '未知'} · ${item.scope === 'page' ? '当前目标页面' : '全局'}`
+  const note = document.createElement('small'); note.className = 'scope-note'; note.textContent = `版本 ${item.currentPackageId ?? '未知'} · ${item.scope === 'page' ? '指定页面' : '全局'}`
   const actions = document.createElement('div'); actions.className = 'function-actions'
   const openLabel = item.openTarget?.kind === 'web' ? '在 DSH 中打开' : item.openTarget?.kind === 'browser' ? '在页面中打开' : '没有可打开的界面'
-  const open = button(openLabel, () => send({ type: 'dsh-assistant-function-open', pluginId: item.pluginId }), 'primary'); open.disabled = !item.openTarget; if (open.disabled) open.title = '这个功能当前没有可打开的界面'; actions.append(open)
+  const open = button(openLabel, () => send({ type: 'dsh-assistant-function-open', pluginId: item.pluginId }), 'primary'); open.disabled = !item.openTarget || stalePage; if (open.disabled) open.title = stalePage ? '原目标页面当前不可用' : '这个功能当前没有可打开的界面'; actions.append(open)
   if (item.status === 'stopped') actions.append(button('运行', () => send({ type: 'dsh-assistant-function-run', pluginId: item.pluginId })))
   else { actions.append(button('检查运行', () => send({ type: 'dsh-assistant-function-inspect', pluginId: item.pluginId }))); actions.append(button('停止', () => send({ type: 'dsh-assistant-function-stop', pluginId: item.pluginId }))) }
   const metadata = document.createElement('details'); metadata.className = 'function-metadata'; const metadataTitle = document.createElement('summary'); metadataTitle.textContent = '详情'; const metadataBody = document.createElement('p'); metadataBody.textContent = [`ID ${item.pluginId}`, `版本 ${item.currentPackageId ?? '未知'}`, item.scope === 'page' ? '范围 当前目标页面' : '范围 全局', item.status === 'running' ? `运行 ${item.activeRun?.pluginRunId ?? '活动中'}` : '当前未运行'].join(' · '); metadata.append(metadataTitle, metadataBody)
   card.append(title, description, status, note, actions, metadata)
+  if (item.scope === 'page') { const scope = document.createElement('p'); scope.textContent = `生效页面：${item.target?.url ?? '地址未知'}。${stalePage ? '当前未选中原目标，或原页面已变化；仍可检查或停止。重新打开同一网址不代表恢复原页面。' : '当前目标页面可用。'}`; card.append(scope) }
   if (!compact) {
     const hasSession = Boolean(viewState().session?.binding)
     const run = [...actions.querySelectorAll('button')].find(action => action.textContent === '运行')
-    if (run && !hasSession) { run.disabled = true; run.title = '开始或选择对话后可运行' }
+    if (run && (!hasSession || stalePage)) { run.disabled = true; run.title = stalePage ? '原目标页面当前不可用' : '开始或选择对话后可运行' }
     const edit = document.createElement('div'); edit.className = 'function-edit'; const input = document.createElement('input'); input.type = 'text'; input.maxLength = 8192; input.placeholder = '用一句话说明要怎样修改'; input.setAttribute('aria-label', `修改${title.textContent}`)
     const apply = button('修改', () => { const instruction = input.value.trim(); if (!instruction) return notice('请先写下要怎样修改'); void send({ type: 'dsh-assistant-function-edit', pluginId: item.pluginId, instruction }) }); input.disabled = !hasSession; apply.disabled = !hasSession; if (!hasSession) { input.title = '开始或选择对话后可修改'; apply.title = input.title }; edit.append(input, apply); card.append(edit)
     if (!hasSession) { const hint = document.createElement('small'); hint.className = 'scope-note'; hint.textContent = '开始或选择对话后可运行和修改。'; card.append(hint) }
@@ -469,10 +577,206 @@ const renderFunctions = () => {
   for (const node of document.querySelectorAll('[data-scope]')) node.setAttribute('aria-pressed', String(node.dataset.scope === functionScope))
   byId('refresh-functions').disabled = functions.availability === 'loading' || viewState().connection?.phase !== 'connected'
   if (functions.availability !== 'ready') { const empty = document.createElement('div'); empty.className = `empty${functions.readError ? ' error-state' : ''}`; empty.textContent = functions.availability === 'loading' ? '正在加载功能。' : functions.readError ? `功能暂不可用：${bounded(functions.readError.message || functions.readError.code, 300)}` : '功能暂不可用。'; panel.append(empty); return }
-  const items = (functions.items ?? []).filter(item => functionScope === 'global' ? item.scope === 'global' : item.scope === 'page' && item.scopeStatus === 'current-target')
-  if (!items.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = functionScope === 'page' ? '当前操作网页没有可用功能。' : '还没有全局功能。'; panel.append(empty) }
+  const summary = document.createElement('p'); summary.textContent = `已交付 ${(functions.items ?? []).length} 项 · 当前网页可用 ${(functions.items ?? []).filter(item => item.scope !== 'page' || item.scopeStatus === 'current-target').length} 项`; panel.append(summary)
+  const items = (functions.items ?? []).filter(item => functionScope === 'all' || (functionScope === 'global' ? item.scope === 'global' : item.scope === 'page' && item.scopeStatus === 'current-target'))
+  if (!items.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = functionScope === 'page' ? '当前操作网页没有可用功能；其他页面的功能可在「全部已交付」中管理。' : functionScope === 'all' ? '这个浏览器尚无已交付功能。' : '还没有全局功能。'; panel.append(empty) }
   for (const item of items) panel.append(renderFunctionCard(item))
   for (const command of functions.orphanCommands ?? []) { const orphan = document.createElement('div'); orphan.className = 'empty'; orphan.textContent = `未归属的${command.kind === 'edit' ? '修改' : '运行'}请求：${command.status ?? '未知'}`; panel.append(orphan) }
+}
+
+const issueList = (title, items) => {
+  const section = document.createElement('section'); section.className = 'sbc-issues'
+  const heading = document.createElement('strong'); heading.textContent = title
+  const list = document.createElement('ul')
+  for (const item of items) { const row = document.createElement('li'); row.textContent = sbcIssueLabel(item.code); list.append(row) }
+  section.append(heading, list)
+  return section
+}
+const fieldAuditSection = (report, comb) => {
+  const coverage = report.summary?.fieldCoverage ?? comb?.summary?.fieldCoverage
+  const rawGaps = Array.isArray(report.fieldAudit?.gaps)
+    ? report.fieldAudit.gaps.map(gap => ({ code: gap.code, status: gap.status }))
+    : (comb?.fieldGaps ?? []).map(gap => ({ label: gap }))
+  if (!coverage && !rawGaps.length) return null
+  const section = document.createElement('section'); section.className = 'sbc-field-audit'
+  const heading = document.createElement('strong'); heading.textContent = '字段覆盖'
+  section.append(heading)
+  if (coverage) {
+    const summary = document.createElement('p'); summary.className = 'scope-note'
+    summary.textContent = `已覆盖 ${coverage.covered ?? 0} · 部分 ${coverage.partial ?? 0} · 缺样本 ${coverage.missing ?? 0}`
+    section.append(summary)
+  }
+  if (rawGaps.length) {
+    const list = document.createElement('ul')
+    for (const gap of rawGaps.slice(0, 12)) {
+      const row = document.createElement('li')
+      row.textContent = gap.label ?? `${sbcFieldLabel(gap.code)}：${sbcFieldStatusLabel(gap.status)}`
+      list.append(row)
+    }
+    section.append(list)
+  }
+  return section
+}
+const executionDryRunSection = report => {
+  const dryRun = report.executionDryRun
+  if (!dryRun) return null
+  const section = document.createElement('section'); section.className = 'sbc-dry-run'
+  const heading = document.createElement('strong'); heading.textContent = '执行预演'
+  const summary = dryRun.summary ?? {}
+  const detail = document.createElement('p'); detail.className = 'scope-note'
+  detail.textContent = `${sbcDryRunStatusLabel(dryRun.status)} · 购买 ${summary.purchaseCount ?? 0} · 预留 ${summary.reservedIfStarted ?? 0}/${summary.maxSpend ?? 0} · 提交 ${summary.submitCount ?? 0} · 每卡搜索 ${summary.maxSearchesPerPurchase ?? 0}`
+  const safety = document.createElement('p'); safety.className = 'scope-note'
+  safety.textContent = dryRun.sideEffects?.browserWrites === false && dryRun.sideEffects?.purchases === false
+    && dryRun.sideEffects?.squadFill === false && dryRun.sideEffects?.submits === false
+    ? '无副作用：不写浏览器、不购买、不填阵、不提交。'
+    : '副作用边界未知，不能执行。'
+  section.append(heading, detail, safety)
+  if (dryRun.issues?.length) {
+    const list = document.createElement('ul')
+    for (const item of dryRun.issues.slice(0, 8)) {
+      const row = document.createElement('li')
+      row.textContent = sbcIssueLabel(item.code)
+      list.append(row)
+    }
+    section.append(list)
+  }
+  return section
+}
+const riskPreflightSection = report => {
+  const risk = report.riskPreflight
+  if (!risk) return null
+  const section = document.createElement('section'); section.className = 'sbc-risk-preflight'
+  const heading = document.createElement('strong'); heading.textContent = '风险预检'
+  const summary = risk.summary ?? {}
+  const detail = document.createElement('p'); detail.className = 'scope-note'
+  detail.textContent = `${sbcRiskStatusLabel(risk.status)} · 购买 ${summary.purchaseCount ?? 0} · 搜索 ${summary.plannedSearches ?? 0}/${summary.maxTotalSearches ?? 0} · 提交 ${summary.submitCount ?? 0}`
+  const disclaimer = document.createElement('p'); disclaimer.className = 'scope-note'
+  disclaimer.textContent = risk.disclaimer ?? '该预检只统计拟执行的市场搜索、购买和提交；未统计页面读取或内部服务调用风险，不能证明不会封禁。'
+  section.append(heading, detail, disclaimer)
+  if (risk.issues?.length) {
+    const list = document.createElement('ul')
+    for (const item of risk.issues.slice(0, 8)) {
+      const row = document.createElement('li')
+      row.textContent = sbcIssueLabel(item.code)
+      list.append(row)
+    }
+    section.append(list)
+  }
+  return section
+}
+const approvalPreviewSection = report => {
+  const preview = report.approvalPreview
+  if (!preview) return null
+  const section = document.createElement('section'); section.className = 'sbc-approval-preview'
+  const heading = document.createElement('strong'); heading.textContent = '批准预览'
+  const summary = preview.summary ?? {}
+  const detail = document.createElement('p'); detail.className = 'scope-note'
+  detail.textContent = `${sbcApprovalPreviewStatusLabel(preview.status)} · 预算 ${summary.maxSpend ?? 0} · 预留 ${summary.reservedIfStarted ?? 0} · 购买 ${summary.purchaseCount ?? 0} · 提交 ${summary.submitCount ?? 0}`
+  const window = preview.approvalWindow ?? {}
+  const timing = document.createElement('p'); timing.className = 'scope-note'
+  timing.textContent = `启动 ${Math.round((window.startWithinMs ?? 0) / 60000)} 分钟内 · 过期 ${Math.round((window.expiresInMs ?? 0) / 60000)} 分钟内`
+  const digest = document.createElement('p'); digest.className = 'scope-note'
+  digest.textContent = preview.reviewDigest ? `摘要 ${preview.reviewDigest}` : ''
+  const notice = document.createElement('p'); notice.className = 'scope-note'
+  notice.textContent = preview.notice ?? '只生成批准预览；不会购买、填阵或提交。'
+  section.append(heading, detail, timing)
+  if (preview.reviewDigest) section.append(digest)
+  section.append(notice)
+  if (preview.issues?.length) {
+    const list = document.createElement('ul')
+    for (const item of preview.issues.slice(0, 8)) {
+      const row = document.createElement('li')
+      row.textContent = sbcIssueLabel(item.code)
+      list.append(row)
+    }
+    section.append(list)
+  }
+  return section
+}
+const renderFcSbc = () => {
+  const current = viewState(); const selected = current.target?.selected; const content = byId('fc-sbc-content'); content.replaceChildren()
+  const fixedPage = current.target?.availability === 'ready' && Number.isInteger(selected?.tabId)
+    && typeof selected?.documentId === 'string' && typeof selected?.url === 'string'
+  const scan = byId('scan-fc-sbc')
+  scan.disabled = fcSbcScan.phase === 'scanning'
+  scan.title = fixedPage ? '只读梳理已固定的 FC 页面' : '只读梳理当前活动的 FC 标签页'
+  if (fcSbcScan.phase === 'idle') {
+    const empty = document.createElement('div'); empty.className = 'empty'
+    empty.textContent = fixedPage ? '已固定页面尚未梳理。' : '切到 FC 页面后，可直接梳理当前标签。'
+    content.append(empty); return
+  }
+  if (fcSbcScan.phase === 'scanning') {
+    const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = '正在梳理当前页面。'
+    content.append(empty); return
+  }
+  if (fcSbcScan.phase === 'error') {
+    const error = document.createElement('div'); error.className = 'empty error-state'
+    error.textContent = fcSbcScan.error === 'target-changed' ? '目标页已变化，请重新梳理。' : '梳理未完成。'
+    content.append(error); return
+  }
+  const probe = fcSbcScan.probe ?? {}; const report = fcSbcScan.report ?? {}; const summary = report.summary ?? {}
+  const card = document.createElement('article'); card.className = 'sbc-report'
+  const title = document.createElement('strong'); title.textContent = probe.challengeSet?.title ?? probe.title ?? 'FC SBC'
+  const status = document.createElement('span'); status.className = `status-pill ${report.canApproveExecution ? 'running' : ''}`
+  status.textContent = sbcStatusLabel(report.status)
+  const meta = document.createElement('small'); meta.className = 'scope-note'
+  meta.textContent = bounded(fcSbcScan.page?.url ?? probe.url, 300)
+  const metrics = document.createElement('dl'); metrics.className = 'sbc-metrics'
+  const addMetric = (name, value) => {
+    const term = document.createElement('dt'); term.textContent = name
+    const detail = document.createElement('dd'); detail.textContent = value
+    metrics.append(term, detail)
+  }
+  addMetric('任务', sbcTaskLabel(summary.taskType))
+  addMetric('读取方式', fcSbcScan.readMode === 'full-read' ? '应用数据' : '仅当前页面可见内容')
+  addMetric('页面', sbcViewLabel(fcSbcScan.model?.view?.kind))
+  if (fcSbcScan.model?.group) addMetric('详情', `已读取关卡详情 ${fcSbcScan.model.group.observedDetailCount}/${fcSbcScan.model.group.visibleChallengeCount}（仅可见关卡）`)
+  addMetric('市场', sbcMarketLabel(summary.marketAccess))
+  addMetric('库存', sbcInventoryLabel(summary.inventoryCoverage))
+  addMetric('关卡', String(summary.visibleChallengeCount ?? 0))
+  addMetric('方案', String(summary.variantCount ?? 0))
+  if (fcSbcScan.staleBinding) addMetric('DSH 固定目标', '旧文档已失效，发送前请重新固定')
+  if (fcSbcScan.slice) {
+    const slice = fcSbcScan.slice
+    addMetric('应用关卡', `${slice.groupSummary.challengeCount}/${summary.visibleChallengeCount ?? 0}`)
+    addMetric('已读卡牌', String(slice.inventorySummary.cardCount))
+    addMetric('求解', slice.puzzle.status === 'ready' ? '已生成可验证方案' : '缺少验证依据')
+    if (slice.searchLimited) addMetric('候选搜索', '有限范围，尚未证明最优')
+    const provisionalCount = slice.puzzle.provisionalByChallenge?.reduce((sum, row) => sum + row.candidateCount, 0) ?? 0
+    if (provisionalCount) addMetric('待核验候选', String(provisionalCount))
+  }
+  card.append(title, status, meta, metrics)
+  if (fcSbcScan.slice?.issues?.length) card.append(issueList('本次纵切缺口', fcSbcScan.slice.issues.slice(0, 12)))
+  const fields = fieldAuditSection(report, fcSbcScan.comb)
+  if (fields) card.append(fields)
+  const dryRun = executionDryRunSection(report)
+  if (dryRun) card.append(dryRun)
+  const risk = riskPreflightSection(report)
+  if (risk) card.append(risk)
+  const approvalPreview = approvalPreviewSection(report)
+  if (approvalPreview) card.append(approvalPreview)
+  if (report.blockers?.length) card.append(issueList('阻塞项', report.blockers))
+  if (report.deferred?.length) card.append(issueList('后续缺口', report.deferred))
+  if (report.warnings?.length) {
+    const warnings = document.createElement('p'); warnings.className = 'scope-note'
+    warnings.textContent = `页面警告：${report.warnings.map(sbcIssueLabel).join('、')}`
+    card.append(warnings)
+  }
+  if (fcSbcScan.comb) {
+    const handoff = document.createElement('details'); handoff.className = 'sbc-handoff'
+    const heading = document.createElement('summary'); heading.textContent = '交接摘要'
+    const body = document.createElement('pre'); body.textContent = formatSbcCombReport(fcSbcScan.comb)
+    const actions = document.createElement('div'); actions.className = 'function-actions'
+    const sendReport = button('发送给对话', sendFcSbcComb, 'primary')
+    const sendSample = button('发送样本包', sendFcSbcSample)
+    sendReport.disabled = !current.session?.binding || current.connection?.phase !== 'connected'
+      || locked(current.session?.pending) || Boolean(current.session?.pendingCreate) || fcSbcScan.staleBinding
+    sendSample.disabled = sendReport.disabled || !fcSbcScan.sample
+    actions.append(sendReport, sendSample)
+    handoff.append(heading, body, actions)
+    card.append(handoff)
+  }
+  content.append(card)
 }
 
 const renderRecent = () => renderSessionList(byId('recent-list'), recentSessions.slice(0, 3))
@@ -505,8 +809,8 @@ const refreshRecent = async () => {
 const renderDraftImages = () => { const rail = byId('draft-images'); rail.replaceChildren(); for (const [index, image] of draftImages.entries()) { const card = document.createElement('div'); card.className = 'draft-image'; const preview = document.createElement('img'); preview.alt = image.name; preview.src = `data:${image.mediaType};base64,${image.data}`; const remove = button('×', () => { draftImages = draftImages.filter((_, candidate) => candidate !== index); renderDraftImages() }); remove.setAttribute('aria-label', `移除图片 ${image.name}`); card.append(preview, remove); rail.append(card) } }
 const render = () => {
   const current = viewState(); const connection = current.connection ?? {}; const session = current.session ?? {}; const blocked = locked(session.pending) || Boolean(session.pendingCreate)
-  renderConnection(); renderSettings(); renderTarget(); renderConversation(); renderPending(); renderApprovals(); renderCognition(); renderFunctions(); renderRecent(); renderModelPicker()
-  for (const name of ['chat', 'cognition', 'functions']) { byId(`${name}-panel`).hidden = activeView !== name; for (const node of document.querySelectorAll(`[data-view="${name}"]`)) node.setAttribute('aria-selected', String(activeView === name)) }
+  renderConnection(); renderSettings(); renderTarget(); renderConversation(); renderPending(); renderApprovals(); renderCognition(); renderFunctions(); renderFcSbc(); renderRecent(); renderModelPicker()
+  for (const name of ['chat', 'cognition', 'functions', 'fc-sbc']) { byId(`${name}-panel`).hidden = activeView !== name; for (const node of document.querySelectorAll(`[data-view="${name}"]`)) node.setAttribute('aria-selected', String(activeView === name)) }
   byId('composer-wrap').hidden = activeView !== 'chat'
   const offline = connection.phase !== 'connected' || session.phase === 'foreign'
   byId('composer').disabled = blocked; byId('send-queue').disabled = blocked || offline || submitting; byId('send-steer').disabled = blocked || offline || submitting; byId('stop-session').disabled = offline || !session.binding; byId('new-session').disabled = offline || blocked; byId('session-picker').disabled = offline || blocked
@@ -518,6 +822,70 @@ const connect = async () => { try { if (!await chrome.permissions.request({ orig
 const retryConnection = () => send({ type: 'dsh-assistant-retry' })
 const configure = async () => { const baseUrl = byId('base-url').value.trim() || DEFAULT_BASE_URL; try { if (!['http:', 'https:'].includes(new URL(baseUrl).protocol)) throw new Error('invalid_url') } catch { return notice('请输入有效的 HTTP(S) 地址') }; editingUrl = false; if (await send({ type: 'dsh-assistant-configure', baseUrl })) await connect() }
 const openSessionMenu = async menuId => { const menu = byId(menuId); menu.hidden = false; const result = await send({ type: 'dsh-assistant-session-list' }); renderSessionList(menu, normalizeSessions(result?.value), () => { menu.hidden = true }) }
+const scanFcSbc = async () => {
+  const current = viewState(); const selected = current.target?.selected
+  const fixedPage = current.target?.availability === 'ready' && Number.isInteger(selected?.tabId)
+    && typeof selected?.documentId === 'string' && typeof selected?.url === 'string'
+  const request = fcSbcScan.request + 1
+  fcSbcScan = { phase: 'scanning', request, page: fixedPage ? structuredClone(selected) : null, probe: null,
+    model: fcSbcScan.model, slice: null, readMode: null, report: null, comb: null, sample: null, staleBinding: false, error: null }
+  renderFcSbc()
+  const probed = await send({ type: 'dsh-assistant-fc-sbc-slice', mode: 'page-only',
+    ...(fixedPage ? { tabId: selected.tabId, expectedPage: selected } : {}) })
+  if (request !== fcSbcScan.request) return
+  if (!probed?.value?.probe) { fcSbcScan = { ...fcSbcScan, phase: 'error', error: 'probe-failed' }; renderFcSbc(); return }
+  const latestTarget = viewState().target?.selected
+  if (fixedPage && targetIdentity(latestTarget) !== targetIdentity(selected)) {
+    fcSbcScan = { ...fcSbcScan, phase: 'error', error: 'target-changed' }; renderFcSbc(); return
+  }
+  const staleBinding = fixedPage && targetIdentity(probed.value.page) !== targetIdentity(selected)
+  const main = probed.value.readMode === 'full-read' ? probed.value.main : null
+  const verificationRequest = createFcSbcVerificationRequest({ probe: probed.value.probe, main })
+  let verification = null
+  if (verificationRequest.status === 'ready' && verificationRequest.groups.length) {
+    const captured = probed.value.probe
+    const checked = await send({ type: 'dsh-assistant-fc-sbc-evaluate-chemistry', tabId: probed.value.page.tabId,
+      expectedPage: probed.value.page, groups: verificationRequest.groups,
+      expectedView: { kind: captured.view?.kind, title: captured.challengeSet?.title,
+        challenges: captured.challengeSet?.challenges?.map(challenge => ({ title: challenge.title, completed: challenge.completed })) ?? [] } })
+    if (request !== fcSbcScan.request) return
+    if (fixedPage && targetIdentity(viewState().target?.selected) !== targetIdentity(selected)) {
+      fcSbcScan = { ...fcSbcScan, phase: 'error', error: 'target-changed' }; renderFcSbc(); return
+    }
+    verification = checked?.value?.verification ?? { url: probed.value.page.url, status: 'unknown', results: [],
+      issues: [{ code: 'native-chemistry-read-failed' }] }
+  }
+  const slice = createFcSbcSliceReport({ probe: probed.value.probe, main,
+    verificationRequest, verification })
+  const report = probed.value.report ?? slice.report
+  const model = updateFcSbcPageModel(fcSbcScan.model, { page: probed.value.page, probe: probed.value.probe })
+  const comb = createSbcCombReport({ page: probed.value.page, probe: probed.value.probe, readiness: report })
+  const sample = createSbcRedactedSample({ page: probed.value.page, probe: probed.value.probe,
+    pageModel: model, readiness: report, comb })
+  fcSbcScan = { phase: 'ready', request, page: probed.value.page, probe: probed.value.probe, model,
+    slice, readMode: probed.value.readMode ?? 'page-only', report, comb, sample, staleBinding, error: null }
+  renderFcSbc()
+}
+const sendFcSbcComb = async () => {
+  const current = viewState()
+  if (!fcSbcScan.comb || !current.session?.binding) return notice('请先梳理当前 SBC。')
+  if (fcSbcScan.staleBinding) return notice('固定目标已过期，请重新固定当前页后发送。')
+  await send({ type: 'dsh-assistant-session-submit',
+    text: formatSbcCombReport(fcSbcScan.comb),
+    mode: 'queue',
+    expectedSessionId: current.session.binding.sessionId,
+    ...(Number.isSafeInteger(current.target?.revision) ? { expectedTargetRevision: current.target.revision } : {}) })
+}
+const sendFcSbcSample = async () => {
+  const current = viewState()
+  if (!fcSbcScan.sample || !current.session?.binding) return notice('请先梳理当前 SBC。')
+  if (fcSbcScan.staleBinding) return notice('固定目标已过期，请重新固定当前页后发送。')
+  await send({ type: 'dsh-assistant-session-submit',
+    text: formatSbcRedactedSample(fcSbcScan.sample),
+    mode: 'queue',
+    expectedSessionId: current.session.binding.sessionId,
+    ...(Number.isSafeInteger(current.target?.revision) ? { expectedTargetRevision: current.target.revision } : {}) })
+}
 const submit = async (mode = 'queue') => { const text = byId('composer').value.trim(); const current = viewState(); if ((!text && !draftImages.length) || submitting || locked(current.session?.pending) || current.session?.pendingCreate) return; if (current.connection?.phase !== 'connected' || current.session?.phase === 'foreign') return render(); const submittedDraftKey = activeDraftKey; submitting = true; render(); try { const result = await send({ type: 'dsh-assistant-session-submit', text, mode, expectedSessionId: current.session?.binding?.sessionId ?? null, ...(Number.isSafeInteger(current.target?.revision) ? { expectedTargetRevision: current.target.revision } : {}), ...(draftImages.length ? { images: structuredClone(draftImages) } : {}) }); if (result) { const command = result.value?.command?.result; if (command) notice(command.text || (command.kind === 'success' ? '命令已完成。' : '命令未完成。')); drafts.delete(submittedDraftKey); if (activeDraftKey === submittedDraftKey) { byId('composer').value = ''; draftImages = []; renderDraftImages() } } } finally { submitting = false; render() } }
 const imageData = file => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = () => reject(new Error('image_read_failed')); reader.onload = () => { const match = /^data:([^;]+);base64,([A-Za-z0-9+/]+={0,2})$/u.exec(String(reader.result ?? '')); if (!match) return reject(new Error('image_read_failed')); resolve({ type: 'image', mediaType: match[1], data: match[2], name: file.name || 'clipboard-image' }) }; reader.readAsDataURL(file) })
 const addFiles = async files => { const candidates = [...files].filter(file => file instanceof File); if (!candidates.length) return; const totalBytes = draftImages.reduce((total, image) => total + Math.floor(image.data.length * 3 / 4), 0) + candidates.reduce((total, file) => total + file.size, 0); if (draftImages.length + candidates.length > 4 || candidates.some(file => !IMAGE_TYPES.has(file.type) || file.size > 2 * 1024 * 1024) || totalBytes > 3 * 1024 * 1024) return notice('最多添加 4 张、每张不超过 2MB 且合计不超过 3MB 的 PNG、JPG、WebP 或 GIF 图片。'); try { draftImages = [...draftImages, ...await Promise.all(candidates.map(imageData))]; renderDraftImages() } catch (error) { notice(messageError(error)) } }
@@ -549,6 +917,13 @@ byId('session-new').addEventListener('click', () => { void send({ type: 'dsh-ass
 byId('session-switch').addEventListener('click', () => { void openSessionMenu('session-switch-menu') })
 byId('refresh-cognition').addEventListener('click', () => { const current = viewState(); void send({ type: 'dsh-assistant-cognition-refresh', expectedSessionId: current.session?.binding?.sessionId ?? null, expectedTargetRevision: current.target?.revision }) })
 byId('refresh-functions').addEventListener('click', () => { void send({ type: 'dsh-assistant-functions-refresh' }) })
+byId('scan-fc-sbc').addEventListener('click', () => { void scanFcSbc() })
+byId('create-function').addEventListener('click', () => {
+  activeView = 'chat'
+  render()
+  byId('composer').value = `帮我创建一个${functionScope === 'page' ? '当前目标页面' : '全局'}功能：`
+  byId('composer').focus()
+})
 byId('composer').addEventListener('paste', event => { const files = [...(event.clipboardData?.items ?? [])].filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean); if (files.length) { event.preventDefault(); void addFiles(files) } })
 byId('composer').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void submit() } })
 byId('send-queue').addEventListener('click', () => { void submit() })
@@ -607,5 +982,6 @@ const connectView = () => {
   } catch (error) { if (invalidatedExtensionContext(error)) stopInvalidatedView(); else retryView() }
 }
 document.addEventListener('visibilitychange', publishPresence)
+window.addEventListener('online', () => { void send({ type: 'dsh-assistant-recover' }) })
 window.addEventListener('pagehide', () => { closingView = true; clearTimeout(presenceRetry); presencePort?.disconnect(); presencePort = undefined })
 render(); connectView(); void readState()

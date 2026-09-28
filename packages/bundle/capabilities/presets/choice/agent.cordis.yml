@@ -1,0 +1,28 @@
+# The provider and choice tool are one isolated preset. Neither contributes an
+# LLM adapter or tool to the Host until the MCP runtime first loads `choice`.
+
+- id: choice-runtime
+  name: cordis:group
+  group: true
+  isolate:
+    llm: true
+  config:
+    - id: llm
+      name: '@deepseek-ai/dsh-llm'
+
+    - id: llm-deepseek
+      name: '@deepseek-ai/dsh-llm-deepseek'
+      config:
+        apiKeyEnv: DEEPSEEK_API_KEY
+        thinking: disabled
+        reasoningEffort: off
+
+    - id: tool-choice
+      name: '@changanhua/dsh-tool-choice'
+      config:
+        provider: deepseek-official
+        model: deepseek-flash
+        maxInputBytes: 16384
+        maxCandidates: 32
+        maxOutputTokens: 128
+        timeoutMs: 5000

@@ -450,6 +450,10 @@ export class BrowserExtension extends Browser {
         ...(regionGeneration === undefined ? {} : { regionGeneration }),
         ...(mountPreviousGeneration === undefined ? {} : { mountPreviousGeneration }),
         ...(regionPreviousGeneration === undefined ? {} : { regionPreviousGeneration }) }, result)
+      if (resourceAction === undefined && action.kind === 'page_map'
+        && result.delivery === 'sent' && result.outcome === 'failed' && result.reason === 'document_replaced') {
+        this.releaseReplacedDocument(fixed.installationId, action.page)
+      }
       return result
     })() } catch {
       // Once policy has admitted a logical operation, an unexpected provider
@@ -893,6 +897,11 @@ export class BrowserExtension extends Browser {
     for (const [key, evidence] of this.pageMaps) {
       if (evidence.installationId === installationId && sameDocument(evidence, page)) this.pageMaps.delete(key)
     }
+    for (const [key, pending] of this.pendingResourceSettlements) {
+      if (pending.operation.installationId === installationId && sameDocument(pending.action.page, page)) {
+        this.pendingResourceSettlements.delete(key)
+      }
+    }
   }
 
   private prunePageMaps(): void {
@@ -1320,6 +1329,7 @@ function normalizeAction(action: ReturnType<typeof browserActionSchema.parse>): 
       ...(action.treeCursor === undefined ? {} : { treeCursor: action.treeCursor }),
       ...(action.treeLimit === undefined ? {} : { treeLimit: action.treeLimit }),
       ...(action.includeOptions === undefined ? {} : { includeOptions: action.includeOptions }),
+      ...(action.includeValues === undefined ? {} : { includeValues: action.includeValues }),
       ...(action.structure === undefined ? {} : { structure: action.structure }),
       ...(action.presentationQueries === undefined ? {} : { presentationQueries: action.presentationQueries }) }
     : action

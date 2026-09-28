@@ -2,9 +2,13 @@
 
 [English](README.md) | 中文
 
-这是 Manifest V3 的 DSH 浏览器助手，版本为 0.3.0，要求 Chrome 116 或更高版本。它以会话侧栏替换原收藏控制器入口。加载解压版前运行 `pnpm run build:chrome-extension`；根构建依赖固定 `puppeteer-core` 24.31.0 和 `esbuild` 0.28.1，并生成 `vendor/puppeteer.js`。
+这是 Manifest V3 的 DSH 浏览器助手，要求 Chrome 116 或更高版本；版本在 [manifest.json](manifest.json) 中声明。它以会话侧栏替换原收藏控制器入口。加载解压版前运行 `pnpm run build:chrome-extension`；根构建依赖固定 `puppeteer-core` 24.31.0 和 `esbuild` 0.28.1，并生成 `vendor/puppeteer.js`。
 
 ## 使用侧栏
+
+连接恢复依靠浏览器生命周期事件，不进行无限轮询。短暂断线最多进行五次不带凭据的 HTTP 探测，依次退避 1、2、4、8、16 秒；仅在服务响应后尝试 WebSocket。之后连接暂停。浏览器启动、扩展更新、已配置服务的顶层页面成功加载、侧栏重新显示，或侧栏收到网络上线事件时，可使用已保存凭据进行一次恢复尝试。并发事件合并，持久化的十秒冷却防止事件风暴和 worker 重启反复探测。连接稳定后恢复短期重试预算。主动断开和凭据撤销不会自动重连。若服务只在后台恢复且没有浏览器事件，则等待下一个事件或“重试连接”，不使用后台轮询兜底。恢复不会重放页面输入，也不会重新配对。
+
+浏览器动作可返回有界转移观察：来源页面、同一标签中重新验证的页面，以及最多八个候选子标签。子页关系不能证明由哪次输入打开，也不会自动选择子页。取消或请求截止会停止观察；动作结束后的额外观察窗口最多为 250 毫秒，不覆盖更晚的事件。两种显式开页方式均创建后台标签，并返回完整的浏览器会话标签引用。
 
 同一个扩展可以独立连接 Codex 和 DSH。安装监听 `http://127.0.0.1:3091` 的独立浏览器连接器后，在“连接与设置”点击“连接 Codex”，再从 Codex 提问或操作目标网页，无需运行 DSH。两条连接分别管理凭据、结果和断线，共用浏览器执行账本，避免未确认结束的写入在同一标签上冲突。扩展内的聊天和阅读控件继续使用 DSH。
 
@@ -30,9 +34,19 @@ manifest 请求所有 HTTP(S) 网站访问权限、`activeTab`、`debugger`、`w
 
 ## 网页操作引擎
 
+元素动作在其调试会话中临时启用 CDP 焦点模拟，使后台标签能够接收输入，而不激活用户的标签。驱动在断开连接前清除模拟。点击、按键或 `requestSubmit` 已明确完成时，仅旧文档反馈丢失不会抹去该动作回执；业务结果仍须读取新页面核实。基础动作尚未确认完成前的丢失、取消或授权变化仍保留未知结果。
+
 扩展打包 Puppeteer 浏览器侧公开实验性 `ExtensionTransport`，并通过 `chrome.debugger` 连接当前已登录的 Chrome 标签页。传输方式参考 [Nanobrowser](https://github.com/nanobrowser/nanobrowser)，但不引入它的 Agent 循环、模型接入或界面。Puppeteer 是默认引擎，执行全部已实现动作：`click`、`fill`、`submit`、`double_click`、`right_click`、`hover`、`press`、`select`、`check`、`drag`、`upload`、`navigate`、`back`、`forward`、`reload`、`tab_open`、`tab_close`、`tab_focus`、`scroll`、`wait` 和 `screenshot`。DOM 兼容模式只保留早期的 `click`、`fill`、`submit`、`navigate`、`scroll` 和 `wait`；新动作请求会明确失败。首个鼠标或按键 press 发出后，停止会允许对应的 release 完成、报告 `unknown`，绝不承诺撤销在途操作。
 
 快照包含每个控件的标签、角色、可视区状态及附近卡片或区块标题。`tree` 快照从一份稳定缓存分页返回完整的 Document、元素、文本和开放 Shadow Root 层次；每个节点保留稳定的 index 和 parent index，返回的 cursor 读取下一页而不重新匹配节点。iframe 元素标出 source 边界，iframe 文档仍通过独立 frame 读取。树会排除隐藏、可编辑、script 和 style 文本，并保留隐藏结构而不暴露其标签或文本。受信任的任务快照还会把有界 mount／文本展示查询经执行器传给隔离页面运行时；每项回答都绑定精确 Session、installation、grant epoch、页面和仍连接的真实面板实例，不会匹配页面任意位置的同文或伪造 mount 属性。[浏览器工具](../../packages/browser/tool-browser/README.zh.md)负责模型可见的预算与操作后的新反馈。截图仅支持主 frame，base64 上限为 400,000 字符；后台目标会使用不切换焦点的 Puppeteer 路径，否则明确失败，不会激活用户标签页。上传最多接受 16 个绝对路径，且当前用户消息必须逐一写出准确路径；工具会在执行前检查该来源，不额外显示批准框。
+
+带 `query` 的控件快照将正文与结构限定在本次返回控件的局部容器，`textScope` 区分局部证据和整页正文。独立 [MCP 连接器](../../packages/mcp/browser-extension-mcp/README.zh.md)可明确请求当前 input/textarea 值用于提交前核对。默认读取和后台观察省略这些值。密码、文件、隐藏输入框和 autocomplete 标明的凭据或支付信息仍然排除；截断值不能证明完整匹配。
+
+点击在驱动完成滚动、稳定性与命中检查后，使用该精确控件的可点击位置。鼠标输入保留逐包权限检查，不再重复等待可能在后台标签页中暂停回调的视口观察器。
+
+已完成的点击或按键若在反馈读取前替换了文档，回执只确认输入已完成，并标明反馈不可用。转移观察提供替换后的页面身份，供重新读取。输入中断、授权撤销和填写结果无法核实时仍保持未知；执行器不会推断业务成功或重放输入。
+
+标签列表为每个已授权标签提供完整的 `tabId`、`windowId` 和 `browserSessionId` 引用。带 `expectedTab` 的快照在采集前后核对身份，并返回已核验的 `tab`；标签移动或引用失效会失败，不会改选其他页面。任务范围与子页选择仍由调用方负责。
 
 ## 后台监控
 
@@ -62,4 +76,10 @@ Chrome 在离线或重启期间保留不可变 pending submission 或 `pendingCr
 
 ## 连接行为
 
+独立 Codex 连接可在 relay 重启后续授权，无需重载扩展。[恢复协议](../../packages/mcp/browser-extension-mcp/README.zh.md#connection-recovery)区分凭据失效、撤销、不受信任扩展与网络故障。主动断开或收到终止授权拒绝后，自动恢复停止，worker 重启也不会解除该状态。重连绝不重放未知浏览器写入。
+
+保留中的执行回执占满日志时，`journal_capacity` 拒绝会携带 `value.admission.executed: false` 和 `recheckAt`。该时间戳是已停稳写回执最早过期的 Unix 毫秒时刻，只提示何时重查，不预留容量；`null` 不承诺按时间恢复。到期后，新的可准入读取可在同一安装中继续。仍可能执行的请求不因时间流逝而失去保护，未知结果也不授权重复输入。
+
 worker 为所选 Session 流式传送首个 snapshot 和后续按 cursor 寻址的 events。可见且同 Session、具备 `session:interact` 的 peer 能通过既有 Approval answer chain 接收浏览器操作卡；隐藏或断线 peer 委托 Web，取消或超时会移除卡。对于未知操作，journal 直接持久化最小 identity、outcome 和完全停稳事实，无需人工确认：只有仍可能运行的操作占用标签页，已证明停稳的结果会释放占用并保持可查询，后续连接仍可同步它。真实登录站点与真实模型的验收取决于部署配置。扩展不管理 Chrome 用户配置，也不替代 DSH Web 应用的会话历史。
+
+「功能」默认显示「全部已交付」。徽标统计已交付功能，另行显示当前网页可用数量。未选择目标或原文档已变化时，页面功能仍显示原地址并允许检查、停止；原目标不可用时禁用打开和运行。

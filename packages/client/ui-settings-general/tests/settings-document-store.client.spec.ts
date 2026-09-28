@@ -18,6 +18,10 @@ function opened(): RemoteResult<{ opened: true }> {
   return { ok: true, value: { opened: true } }
 }
 
+function documentPath(path: string): RemoteResult<{ opened: false; path: string }> {
+  return { ok: true, value: { opened: false, path } }
+}
+
 function describeFailed(message: string) {
   return { ok: false as const, error: new RemoteError('gateway/internal', message, {}) }
 }
@@ -29,10 +33,28 @@ describe('SettingsDocumentStore', () => {
     const controller = derivedDocumentStore({ settings: { describe, openSettingsDocument: openDocument } })
     await controller.load()
     expect(controller.store.getSnapshot()).toEqual({
-      status: 'ready', opening: false, error: null,
+      status: 'ready', opening: false, path: null, error: null,
     })
     await controller.open()
     expect(openDocument).toHaveBeenCalledWith()
+  })
+
+  it('stores a document path when the Host has no native opener', async () => {
+    const openDocument = vi.fn(() => Promise.resolve(documentPath('/deployment/settings.yaml')))
+    const controller = derivedDocumentStore({
+      settings: { describe: () => Promise.resolve(response(true)), openSettingsDocument: openDocument },
+    })
+    await controller.load()
+    await controller.open()
+    expect(controller.store.getSnapshot()).toEqual({
+      status: 'ready',
+      opening: false,
+      path: '/deployment/settings.yaml',
+      error: null,
+    })
+
+    await controller.open()
+    expect(openDocument).toHaveBeenCalledOnce()
   })
 
   it('marks absent or failed metadata unavailable without opening anything', async () => {
@@ -73,7 +95,7 @@ describe('SettingsDocumentStore', () => {
     resolveOpen({ ok: false, error: new RemoteError('gateway/internal', 'no default editor', {}) })
     await Promise.all([first, second])
     expect(controller.store.getSnapshot()).toMatchObject({
-      status: 'ready', opening: false, error: 'no default editor',
+      status: 'ready', opening: false, path: null, error: 'no default editor',
     })
   })
 
@@ -95,6 +117,6 @@ describe('SettingsDocumentStore', () => {
     await caught.load()
     expect(caught.store.getSnapshot()).toMatchObject({ status: 'unavailable', error: 'offline' })
     await mirror.load()
-    expect(caught.store.getSnapshot()).toMatchObject({ status: 'ready', error: null })
+    expect(caught.store.getSnapshot()).toMatchObject({ status: 'ready', path: null, error: null })
   })
 })

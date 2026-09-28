@@ -50,7 +50,7 @@ agent 可以在会话期间发现并加载 skill。在首次请求前，如果�
 ### 模型得到什么
 
 - **会话目录。** 当存在模型可调用 skill 且 `skill` 工具可见时，agent 会在首次请求前收到一条持久的用户角色消息，列出每个 skill 的名称与有长度上限的描述；该消息告诉模型在着手任务前先用工具加载 skill，且绝不能仅凭摘要推断指令。
-- **加载工具。** 模型以精确的 skill 名称调用 `skill`，并收到完整指令正文以及规范的 `<skill_content>` 块中的资源指引；该结果作为普通工具历史保留。
+- **加载工具。** 模型以精确的 skill 名称调用 `skill`，并收到完整指令正文以及规范的 `<skill_content>` 块中的资源指引。提供 `resource` 时会请求一项提供方拥有的相对附件，并以独立的 `<skill_resource>` 块返回；两类结果都会作为普通工具历史保留。
 - **用户显式调用。** 直接用户输入中的 `/name` token 若指名某个用户可调用 skill，会把该 skill 的指令注入该步骤，而无需模型自行加载。
 - **实时目录更新。** 后续成员关系、描述或可见性变化会追加完整的替换目录；删除全部 skill 时会追加空目录，停用较早的名称。
 
@@ -153,7 +153,7 @@ A user may also invoke a skill directly; its <skill_content> block then appears 
 
 #### 模型看到什么
 
-成功调用使用下方结果模板，以及提供方管理的资源指引、目录资源指引、URL 资源指引或不透明资源指引。
+未提供 `resource` 的调用使用下方结果模板，以及提供方管理的资源指引、目录资源指引、URL 资源指引或不透明资源指引。提供 `resource` 的调用返回所选提供方的完整附件，而不重新加载主指令。
 
 ##### Skill 结果模板
 
@@ -197,6 +197,16 @@ Resources for this skill: <description>
 Load referenced resources only as needed.
 ```
 
+##### 附件结果
+
+```markdown
+<skill_resource skill="<escaped-name>" provider="<escaped-provider>" path="<confirmed-relative-path>">
+<complete-provider-owned-text>
+</skill_resource>
+```
+
+工具会在加载附件前检查模型调用策略。最终附件包装限制为 72 KiB UTF-8，而文件系统附件已由提供方限制为 64 KiB；任一边界都会失败，不会截断 JSON、脚本或其他文本。
+
 #### Token 影响
 
 已加载指令是取决于数据的工具结果 token，并在后续步骤中重新发送，直到压缩；不会制作重复的 `agent.inject()` 副本。
@@ -209,7 +219,7 @@ Load referenced resources only as needed.
 
 #### 模型看到什么
 
-无效或陈旧选择会精确返回 `Error: invalid skill name "<name>"`、`Error: skill "<name>" is unknown or no longer available` 或 `Error: skill "<name>" is not available for model invocation`。提供方抛出的查找文本取决于数据，并套用同一个 `Error: <message>` 包装层。
+无效或陈旧选择会精确返回 `Error: invalid skill name "<name>"`、`Error: skill "<name>" is unknown or no longer available` 或 `Error: skill "<name>" is not available for model invocation`。不可用附件返回 `Error: skill "<name>" resource "<path>" is unavailable`；不支持附件的提供方会报告其不支持资源。提供方抛出的查找文本取决于数据，并套用同一个 `Error: <message>` 包装层。
 
 #### Token 影响
 
@@ -242,7 +252,7 @@ Load referenced resources only as needed.
 
 - **目录省略 `whenToUse`、来源和提供方元数据**——路由只基于名称和有长度上限的描述；`whenToUse` 仍是提供方元数据，加载后的包装层也不渲染它。
 - **已加载指令正文没有大小上限**——提供方可返回足以占用大量下一步上下文的 skill；只有目录描述会被截断。
-- **资源是指引，而非附件**——工具报告基础目录/URL/不透明提示，但既不列举也不为模型获取引用文件。
+- **附件是显式读取**——工具不列举 bundle 文件，也不接受未指定 skill 的资源；提供方可拒绝附件，远程提供方必须自行实现附件读取。
 - **加载是一次性文本**——远程提供方缓慢或 skill 正文很大时，不提供部分内容、流式输出或缓存内容句柄。
 - **目录替换采用全量列表**——一个名称或描述发生变化，就会追加所有可见摘要；这样能显式停用陈旧名称，但 token 成本与目录大小成正比。
 - **正文不做版本化**——仅修改正文不会改变目录 digest，也不会通知模型；后续工具调用会读取提供方的当前内容，而先前工具结果仍是历史事实。

@@ -307,6 +307,7 @@
       "@deepseek-ai/dsh-api-workspace-files/types": ["./packages/api/workspace-files/src/types.ts"],
       "@deepseek-ai/dsh-tool-present/types": ["./packages/fs/tool-present/src/types.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
+      "@changanhua/dsh-capabilities": ["./packages/bundle/capabilities/src"],
       "@changanhua/dsh-command-memory": ["./packages/memory/command-memory/src"],
       "@changanhua/dsh-command-memory/invariant": ["./packages/memory/command-memory/src/invariant.ts"],
       "@changanhua/dsh-command-task-queue": ["./packages/task-queue/command-task-queue/src"],
@@ -356,6 +357,7 @@
       "@changanhua/dsh-knowledge-base/invariant": ["./packages/knowledge/knowledge-base/src/invariant.ts"],
       "@changanhua/dsh-knowledge-base-task-queue": ["./packages/knowledge/knowledge-base-task-queue/src"],
       "@changanhua/dsh-knowledge-base-task-queue/invariant": ["./packages/knowledge/knowledge-base-task-queue/src/invariant.ts"],
+      "@changanhua/dsh-mcp-server": ["./packages/mcp/mcp-server/src"],
       "@changanhua/dsh-memory": ["./packages/memory/memory/src"],
       "@changanhua/dsh-memory/invariant": ["./packages/memory/memory/src/invariant.ts"],
       "@changanhua/dsh-memory-local": ["./packages/memory/memory-local/src"],
@@ -387,6 +389,7 @@
       "@changanhua/dsh-task-queue-remote/invariant": ["./packages/task-queue/task-queue-remote/src/invariant.ts"],
       "@changanhua/dsh-tool-agent-run-task-queue": ["./packages/task-queue/tool-agent-run-task-queue/src"],
       "@changanhua/dsh-tool-agent-run-task-queue/invariant": ["./packages/task-queue/tool-agent-run-task-queue/src/invariant.ts"],
+      "@changanhua/dsh-tool-choice": ["./packages/llm/tool-choice/src"],
       "@changanhua/dsh-tool-image-generation-task-queue/invariant": ["./packages/image/tool-image-generation-task-queue/src/invariant.ts"],
       "@changanhua/dsh-tool-knowledge-base": ["./packages/knowledge/tool-knowledge-base/src"],
       "@changanhua/dsh-tool-knowledge-base/invariant": ["./packages/knowledge/tool-knowledge-base/src/invariant.ts"],

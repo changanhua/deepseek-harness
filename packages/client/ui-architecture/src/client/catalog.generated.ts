@@ -6,6 +6,13 @@ export const architectureCatalog: ArchitectureCatalog = {
   schemaVersion: 3,
   profiles: [
     {
+      name: 'capabilities',
+      bundles: [
+        '@changanhua/dsh-capabilities',
+      ],
+      source: 'packages/boot/app-boot/src/profile.ts',
+    },
+    {
       name: 'acp',
       bundles: [
         '@deepseek-ai/dsh-base',
@@ -162,6 +169,30 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-workflow-worker-thread',
       ],
       source: 'packages/bundle/base/package.json',
+    },
+    {
+      name: '@changanhua/dsh-capabilities',
+      short: 'capabilities',
+      path: 'packages/bundle/capabilities',
+      description: 'Lazy local MCP capability-host bundle for Codex and other MCP clients',
+      packages: [
+        '@changanhua/dsh-mcp-server',
+        '@changanhua/dsh-tool-choice',
+        '@deepseek-ai/dsh-agent',
+        '@deepseek-ai/dsh-agent-loop',
+        '@deepseek-ai/dsh-agent-presets',
+        '@deepseek-ai/dsh-host-webserver',
+        '@deepseek-ai/dsh-llm',
+        '@deepseek-ai/dsh-llm-deepseek',
+        '@deepseek-ai/dsh-session',
+        '@deepseek-ai/dsh-session-persistence-jsonl',
+        '@deepseek-ai/dsh-session-projection',
+        '@deepseek-ai/dsh-subprocess-local',
+        '@deepseek-ai/dsh-system-prompt',
+        '@deepseek-ai/dsh-tool-fs-search',
+        '@deepseek-ai/dsh-tools',
+      ],
+      source: 'packages/bundle/capabilities/package.json',
     },
     {
       name: '@deepseek-ai/dsh-headless',
@@ -806,6 +837,19 @@ export const architectureCatalog: ArchitectureCatalog = {
       path: 'packages/bundle/base',
       source: 'packages/bundle/base/package.json',
       description: 'The shared dsh core as a profile bundle: the first patch layer of base-backed profiles, inserting core rows over the empty profile root',
+      dependencies: [
+      ],
+      faces: [
+        'bundle',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-capabilities',
+      short: 'capabilities',
+      group: 'bundle',
+      path: 'packages/bundle/capabilities',
+      source: 'packages/bundle/capabilities/package.json',
+      description: 'Lazy local MCP capability-host bundle for Codex and other MCP clients',
       dependencies: [
       ],
       faces: [
@@ -3740,6 +3784,22 @@ export const architectureCatalog: ArchitectureCatalog = {
       ],
     },
     {
+      name: '@changanhua/dsh-tool-choice',
+      short: 'tool-choice',
+      group: 'llm',
+      path: 'packages/llm/tool-choice',
+      source: 'packages/llm/tool-choice/package.json',
+      description: 'Bounded auxiliary model-backed candidate selection for DSH',
+      dependencies: [
+        '@deepseek-ai/dsh-llm',
+        '@deepseek-ai/dsh-timeout',
+        '@deepseek-ai/dsh-tools',
+      ],
+      faces: [
+        'tool',
+      ],
+    },
+    {
       name: '@deepseek-ai/dsh-lsp-stdio',
       short: 'lsp-stdio',
       group: 'lsp',
@@ -3804,6 +3864,26 @@ export const architectureCatalog: ArchitectureCatalog = {
         '@deepseek-ai/dsh-scope',
         '@deepseek-ai/dsh-subprocess',
         '@deepseek-ai/dsh-timeout',
+        '@deepseek-ai/dsh-tools',
+      ],
+      faces: [
+        'package',
+      ],
+    },
+    {
+      name: '@changanhua/dsh-mcp-server',
+      short: 'mcp-server',
+      group: 'mcp',
+      path: 'packages/mcp/mcp-server',
+      source: 'packages/mcp/mcp-server/package.json',
+      description: 'Authenticated local MCP exposure of lazily composed DSH capabilities',
+      dependencies: [
+        '@deepseek-ai/dsh-agent',
+        '@deepseek-ai/dsh-agent-presets',
+        '@deepseek-ai/dsh-host-webserver',
+        '@deepseek-ai/dsh-llm',
+        '@deepseek-ai/dsh-session',
+        '@deepseek-ai/dsh-session-persistence',
         '@deepseek-ai/dsh-tools',
       ],
       faces: [

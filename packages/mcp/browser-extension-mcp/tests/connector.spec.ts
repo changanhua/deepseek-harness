@@ -1,5 +1,6 @@
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { once } from 'node:events'
+import { createServer } from 'node:http'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
@@ -11,13 +12,20 @@ import { createBrowserMcp } from '../src/index.ts'
 import { startBrowserRelay } from '../src/relay.ts'
 import type { Invocation } from '../src/types.ts'
 import { actionSchema, configSchema, rpcSchema } from '../src/schema.ts'
+import { connectorVersion } from '../src/runtime.ts'
 
 const cleanup: (() => unknown)[] = []
 afterEach(async () => { vi.useRealTimers(); while (cleanup.length) await cleanup.pop()?.() })
 const extensionId = 'a'.repeat(32)
 const origin = `chrome-extension://${extensionId}`
 interface ResultBody {
-  result?: { requestId: string; outcome: string; reason?: string; value: { text: string } }
+  result?: {
+    requestId: string
+    outcome: string
+    reason?: string
+    value: { text: string }
+    instances?: { installationId: string; capabilities?: unknown }[]
+  }
   error?: { message: string }
 }
 const parse = (value: unknown) => value as ResultBody
@@ -30,7 +38,9 @@ async function mcp(configPath: string) {
   await server.connect(b); await client.connect(a)
   return client
 }
-async function fixture(capabilities?: { targetFreeOpen?: boolean; actionKinds?: string[]; restartStatusLookup?: boolean }) {
+async function fixture(
+  capabilities?: { targetFreeOpen?: boolean; actionKinds?: string[]; restartStatusLookup?: boolean }, runtime?: { version: string },
+) {
   const config = { port: 0, secret: randomBytes(32).toString('base64url'), extensionIds: [extensionId] }
   const relay = await startBrowserRelay(config)
   cleanup.push(relay.close)
@@ -54,6 +64,7 @@ async function fixture(capabilities?: { targetFreeOpen?: boolean; actionKinds?: 
   await once(socket, 'open')
   const ready = once(socket, 'message')
   socket.send(JSON.stringify({ type: 'hello', protocolVersion: 1, installationId, token: credentials.token,
+    ...(runtime ? { runtime } : {}),
     ...(capabilities ? { capabilities: { protocolVersion: 1, requestRecovery: true, actionKinds: capabilities.actionKinds ?? [],
       ...(capabilities.restartStatusLookup === true ? { restartStatusLookup: true } : {}),
       ...(capabilities.targetFreeOpen === undefined ? {} : { targetFreeOpen: capabilities.targetFreeOpen }) } } : {}) }))
@@ -62,11 +73,78 @@ async function fixture(capabilities?: { targetFreeOpen?: boolean; actionKinds?: 
 }
 
 describe('independent browser connector', () => {
+  it('distinguishes lost grants from revocation, bad credentials and protocol errors', async () => {
+    const revoked = randomUUID(), installationId = randomUUID()
+    const secret = randomBytes(32).toString('base64url')
+    const relay = await startBrowserRelay({ port: 0, secret, extensionIds: [extensionId], revokedInstallationIds: [revoked] })
+    cleanup.push(relay.close)
+    const token = (id: string) => createHmac('sha256', secret).update(id).digest('base64url')
+    const hello = { type: 'hello', protocolVersion: 1, installationId, token: token(installationId) }
+    const closed = async (frame: object) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${relay.port}/api/browser-extension/v1/ws`, { origin })
+      cleanup.push(() => socket.terminate())
+      await once(socket, 'open')
+      const done = once(socket, 'close')
+      socket.send(JSON.stringify(frame))
+      const [code, reason] = await done
+      return { code, reason: String(reason) }
+    }
+    expect(await closed(hello)).toEqual({ code: 4409, reason: 'credentials_expired' })
+    expect(await closed({ ...hello, token: 'wrong' })).toEqual({ code: 4401, reason: 'invalid_credentials' })
+    expect(await closed({ ...hello, type: 'invalid' })).toMatchObject({ code: 1008 })
+    expect(await closed({ ...hello, installationId: revoked, token: token(revoked) })).toEqual({ code: 4401, reason: 'authorization_revoked' })
+    const untrusted = new WebSocket(`ws://127.0.0.1:${relay.port}/api/browser-extension/v1/ws`, { origin: 'chrome-extension://' + 'b'.repeat(32) })
+    cleanup.push(() => untrusted.terminate())
+    const [untrustedCode, untrustedReason] = await once(untrusted, 'close')
+    expect(untrustedCode).toBe(4403)
+    expect(String(untrustedReason)).toBe('extension_not_trusted')
+    for (const [requestOrigin, id, code] of [[origin, revoked, 'authorization_revoked'], ['chrome-extension://' + 'b'.repeat(32), installationId, 'extension_not_trusted']] as const) {
+      const response = await fetch(`http://127.0.0.1:${relay.port}/browser-connector/connect`, { method: 'POST',
+        headers: { origin: requestOrigin, 'content-type': 'application/json' }, body: JSON.stringify({ installationId: id, extensionId }) })
+      expect(response.status).toBe(403)
+      expect(await response.json()).toMatchObject({ error: { code } })
+    }
+  })
+
   it('discovers tools without configuration or DSH and contains unavailable calls', async () => {
     const client = await mcp(join(tmpdir(), `absent-${randomUUID()}.json`))
     expect((await client.listTools()).tools).toHaveLength(7)
-    expect((await client.callTool({ name: 'browser_status', arguments: {} })).isError).toBe(true)
+    const status = await client.callTool({ name: 'browser_status', arguments: {} })
+    expect(status.isError).toBe(true)
+    expect(status.structuredContent).toMatchObject({
+      connector: { mcp: { version: connectorVersion, processId: process.pid }, relay: null },
+    })
     expect((await client.listTools()).tools).toHaveLength(7)
+  })
+
+  it('reports the running MCP, relay and extension separately without returning credentials', async () => {
+    const { configPath, installationId, config, credentials, base } = await fixture({ targetFreeOpen: true, actionKinds: ['tab_open'] }, { version: '0.4.0' })
+    const client = await mcp(configPath)
+    const response = await client.callTool({ name: 'browser_status', arguments: {} })
+    expect(response.isError).toBe(false)
+    expect(response.structuredContent).toMatchObject({ result: {
+      connector: { mcp: { version: connectorVersion, protocolVersion: 1, processId: process.pid },
+        relay: { version: connectorVersion, processId: process.pid } },
+      instances: [{ installationId, online: true, runtime: { version: '0.4.0' } }], issues: [],
+    } })
+    const text = JSON.stringify(response)
+    expect(text).not.toContain(config.secret)
+    expect(text).not.toContain(credentials.token)
+    const health = await fetch(`${base}/health`, { headers: { authorization: `Bearer ${config.secret}` } })
+    expect(await health.json()).toMatchObject({ service: 'browser-extension-connector', runtime: { version: connectorVersion } })
+    expect((await fetch(`${base}/health`)).status).not.toBe(200)
+  })
+
+  it('keeps an extension without runtime metadata readable and identifies the missing information', async () => {
+    const { configPath, installationId } = await fixture()
+    const client = await mcp(configPath)
+    const response = await client.callTool({ name: 'browser_status', arguments: {} })
+    expect(response.isError).toBe(false)
+    expect(response.structuredContent).toMatchObject({ result: {
+      instances: [{ installationId, online: true, runtime: null }],
+      issues: [{ component: 'extension', installationId, code: 'runtime_unknown' },
+        { component: 'extension', installationId, code: 'target_free_open_unavailable' }],
+    } })
   })
 
   it('isolates two MCP callers and preserves raw page data through the relay', async () => {
@@ -93,6 +171,26 @@ describe('independent browser connector', () => {
     expect((await read(a, 1, 'https://example.test/changed')).isError).toBe(true)
     await a.close()
     expect((await read(b, 2)).isError).toBe(false)
+  })
+
+  it('carries explicit form-value and compact-read options across MCP and relay', async () => {
+    const { configPath, socket, installationId } = await fixture()
+    const requests: Invocation[] = []
+    socket.on('message', (data: Buffer) => {
+      const frame = JSON.parse(data.toString('utf8')) as { type: string; request: Invocation }
+      if (frame.type !== 'execute') return
+      requests.push(frame.request)
+      socket.send(JSON.stringify({ type: 'result', receipt: { ...frame.request, outcome: 'observed', quiescent: true,
+        value: { text: 'Title', page: { tabId: 7, frameId: 0, documentId: 'form-doc', url: 'https://example.test/form' } } } }))
+    })
+    const client = await mcp(configPath)
+    const target = { installationId, tabId: 7, url: 'https://example.test/form' }
+    const response = await client.callTool({ name: 'browser_read_page', arguments: { ...target,
+      query: 'Title', includeValues: true, structure: false } })
+    expect(response.isError).toBe(false)
+    expect(requests[0]!.payload).toMatchObject({ kind: 'snapshot', query: 'Title', includeValues: true, structure: false })
+    await client.callTool({ name: 'browser_read_page', arguments: target })
+    expect(requests[1]!.payload).toMatchObject({ includeValues: false, structure: true })
   })
 
   it('rejects foreign web origins and unauthenticated local callers', async () => {
@@ -173,6 +271,53 @@ describe('independent browser connector', () => {
     await client.callTool({ name: 'browser_request_status', arguments: { installationId, requestId } })
     expect(count).toBe(1)
     expect((await client.listTools()).tools).toHaveLength(7)
+  })
+
+  it('retains the original action identity when the HTTP reply is lost after execution', async () => {
+    const { configPath, base, config, socket, installationId } = await fixture()
+    let executed = 0, forwardedRequestId: string | undefined, executedRequestId: string | undefined
+    socket.on('message', (data: Buffer) => {
+      const frame = JSON.parse(data.toString('utf8')) as { type: string; request: Invocation }
+      if (frame.type !== 'execute') return
+      executed++
+      executedRequestId = frame.request.requestId
+      socket.send(JSON.stringify({ type: 'result', receipt: { ...frame.request, outcome: 'observed', quiescent: true, value: { acknowledged: true } } }))
+    })
+    const proxy = createServer((request, response) => {
+      void (async () => {
+        const chunks: Buffer[] = []
+        for await (const chunk of request) chunks.push(Buffer.from(chunk))
+        const body = Buffer.concat(chunks).toString()
+        const rpc = body ? JSON.parse(body) as { method?: string; requestId?: string } : undefined
+        const result = await fetch(base + request.url, { method: request.method ?? 'GET',
+          headers: { authorization: request.headers.authorization ?? '', 'content-type': 'application/json' },
+          ...(body ? { body } : {}), redirect: 'error' })
+        const text = await result.text()
+        if (rpc?.method === 'execute') {
+          forwardedRequestId = rpc.requestId
+          response.destroy()
+          return
+        }
+        response.writeHead(result.status, { 'content-type': 'application/json' }); response.end(text)
+      })().catch(() => { response.destroy() })
+    })
+    await new Promise<void>(resolve => proxy.listen(0, '127.0.0.1', resolve))
+    cleanup.push(async () => new Promise<void>((resolve) => { proxy.close(() => resolve()); proxy.closeAllConnections() }))
+    const address = proxy.address()
+    if (!address || typeof address === 'string') throw new Error('proxy listener missing')
+    await writeFile(configPath, JSON.stringify({ ...config, port: address.port }))
+    const client = await mcp(configPath)
+    const failed = await client.callTool({ name: 'browser_act', arguments: { installationId,
+      action: { kind: 'scroll', page: { tabId: 1, frameId: 0, documentId: 'doc-1', url: 'https://example.test/1' }, x: 0, y: 300 } } })
+    expect(executed).toBe(1)
+    expect(failed.isError).toBe(true)
+    expect(parse(failed.structuredContent).result).toMatchObject({
+      outcome: 'unknown', requestId: executedRequestId, reason: 'connector_result_unavailable',
+    })
+    expect(forwardedRequestId).toBe(executedRequestId)
+    const recovered = await client.callTool({ name: 'browser_request_status', arguments: { installationId, requestId: executedRequestId } })
+    expect(parse(recovered.structuredContent).result).toMatchObject({ outcome: 'observed', requestId: executedRequestId })
+    expect(executed).toBe(1)
   })
 
   it('opens a target-free tab only when the installed executor declares that capability, and reuses its caller requestId', async () => {

@@ -12,6 +12,8 @@ export interface SettingsDocumentState {
   status: 'idle' | 'loading' | 'ready' | 'unavailable'
   /** Whether one native-open request is in flight. */
   opening: boolean
+  /** Provider-owned document path returned when this Host cannot open native paths. */
+  path: string | null
   /** Last metadata/native-open diagnostic; UI exposes only localized copy. */
   error: string | null
 }
@@ -23,7 +25,7 @@ export type SettingsDocumentRemote = Pick<ClientRemote['settings'], 'openSetting
 export class SettingsDocumentStore {
   /** uSES-safe state source shared by the registered header action. */
   readonly store: SnapshotStore<SettingsDocumentState> = createSnapshotStore({
-    status: 'idle', opening: false, error: null,
+    status: 'idle', opening: false, path: null, error: null,
   })
 
   private following: (() => void) | undefined
@@ -59,16 +61,26 @@ export class SettingsDocumentStore {
    */
   async open(): Promise<void> {
     const current = this.store.getSnapshot()
-    if (current.status !== 'ready' || current.opening) return
+    if (current.status !== 'ready' || current.opening || current.path !== null) return
     this.store.update((state) => {
       state.opening = true
+      state.path = null
       state.error = null
     })
     try {
       const result = await this.remote.openSettingsDocument()
       if (!result.ok) {
         const { message } = result.error
-        this.store.update((state) => { state.error = message })
+        this.store.update((state) => {
+          state.path = null
+          state.error = message
+        })
+      } else if (!result.value.opened) {
+        const { path } = result.value
+        this.store.update((state) => {
+          state.path = path
+          state.error = null
+        })
       }
     } finally {
       this.store.update((state) => { state.opening = false })
@@ -89,6 +101,7 @@ export class SettingsDocumentStore {
       if (mirrored.error !== null) {
         this.store.update((state) => {
           state.status = 'unavailable'
+          state.path = null
           state.error = mirrored.error
         })
       }
@@ -97,6 +110,7 @@ export class SettingsDocumentStore {
     const { hasDocument } = mirrored.view
     this.store.update((state) => {
       state.status = hasDocument ? 'ready' : 'unavailable'
+      state.path = null
       state.error = null
     })
   }

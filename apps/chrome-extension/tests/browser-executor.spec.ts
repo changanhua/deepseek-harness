@@ -17,6 +17,14 @@ const operation = (payload: BrowserInvocation['payload'] & { kind: string }) => 
 })
 function harness() {
   const session = new Map<string, unknown>()
+  type Listener = (...args: unknown[]) => void
+  const committed = new Set<Listener>(), createdTarget = new Set<Listener>()
+  const history = new Set<Listener>(), fragment = new Set<Listener>(), failedNavigation = new Set<Listener>()
+  const tabCreated = new Set<Listener>(), tabRemoved = new Set<Listener>(), tabReplaced = new Set<Listener>()
+  const listeners = (items: Set<Listener>) => ({
+    addListener: (listener: Listener) => items.add(listener),
+    removeListener: (listener: Listener) => items.delete(listener),
+  })
   const chromeApi = {
     storage: { session: { get: vi.fn(async (key: string) => ({ [key]: session.get(key) })),
       set: vi.fn(async (value: Record<string, unknown>) => { for (const [key, item] of Object.entries(value)) session.set(key, item) }),
@@ -29,7 +37,11 @@ function harness() {
       captureVisibleTab: vi.fn(async (
         _windowId: number,
         _options: { readonly format: 'jpeg'; readonly quality: number },
-      ) => 'data:image/jpeg;base64,AQ==') },
+      ) => 'data:image/jpeg;base64,AQ=='),
+      onCreated: listeners(tabCreated), onRemoved: listeners(tabRemoved), onReplaced: listeners(tabReplaced) },
+    webNavigation: { onCommitted: listeners(committed), onCreatedNavigationTarget: listeners(createdTarget),
+      onHistoryStateUpdated: listeners(history), onReferenceFragmentUpdated: listeners(fragment),
+      onErrorOccurred: listeners(failedNavigation), getAllFrames: vi.fn(async () => []) },
     scripting: { executeScript: vi.fn(async (options: ScriptOptions): Promise<ScriptResult[]> => [{ documentId: page.documentId, frameId: 0,
       result: options.args?.[0] === 'execute' ? { outcome: 'observed', quiescent: true, value: { clicked: true } }
         : options.args?.[0] === 'snapshot' ? { url: page.url, snapshotId: 'snapshot', text: 'Account', elements: [] }
@@ -37,10 +49,27 @@ function harness() {
   }
   const getGrant = vi.fn((): typeof grant | null => structuredClone(grant))
   const executor = createBrowserExecutor({ chromeApi, getGrant, navigationTimeoutMs: 25 })
-  return { executor, chromeApi, getGrant, session }
+  return { executor, chromeApi, getGrant, session, emitCommitted: (event: object) => { for (const listener of committed) listener(event) },
+    emitCreatedTarget: (event: object) => { for (const listener of createdTarget) listener(event) },
+    listenerCount: () => [committed, createdTarget, history, fragment, failedNavigation, tabCreated, tabRemoved, tabReplaced]
+      .reduce((total, set) => total + set.size, 0) }
 }
 
 describe('Chrome document-bound browser executor', () => {
+  test('lists complete tab references for choosing an explicit task scope', async () => {
+    const h = harness()
+    const result = await h.executor.execute(operation({ kind: 'tabs' }), new AbortController().signal) as {
+      value: { tabs: { tabId: number; windowId: number; browserSessionId: string }[] }
+    }
+    expect(result.value.tabs).toHaveLength(1)
+    expect(result.value.tabs[0]).toMatchObject({ tabId: 7, windowId: 1,
+      browserSessionId: expect.stringMatching(/^[0-9a-f-]{36}$/u) })
+    const { tabId, windowId, browserSessionId } = result.value.tabs[0]
+    const reference = { tabId, windowId, browserSessionId }
+    expect(await h.executor.execute(operation({ kind: 'snapshot', tabId: reference.tabId,
+      frameId: 0, expectedTab: reference }), new AbortController().signal))
+      .toMatchObject({ outcome: 'observed', value: { tab: reference } })
+  })
   test('rechecks authority after browser session storage resolves before creating a tab', async () => {
     const h = harness()
     const request = operation({ kind: 'tab_open', url: page.url })
@@ -56,7 +85,7 @@ describe('Chrome document-bound browser executor', () => {
     const request = operation({ kind: 'tab_open', url: page.url })
     delete request.target
     expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({
-      outcome: 'observed', quiescent: true, value: { opened: true, tab: { tabId: 9, windowId: 2, browserSessionId: expect.any(String) } },
+      outcome: 'observed', quiescent: true, value: { opened: true, tab: { tabId: 9, windowId: 2 } },
     })
     expect(h.chromeApi.tabs.create).toHaveBeenCalledExactlyOnceWith({ url: page.url, active: false })
     expect(h.chromeApi.scripting.executeScript).not.toHaveBeenCalled()
@@ -69,9 +98,11 @@ describe('Chrome document-bound browser executor', () => {
       value: { tab: { tabId: number; windowId: number; browserSessionId: string } }
     }
     const snapshot = operation({ kind: 'snapshot', tabId: opened.value.tab.tabId, frameId: 0,
-      expectedTab: opened.value.tab } as BrowserInvocation['payload'] & { kind: 'snapshot'; expectedTab: { tabId: number; windowId: number; browserSessionId: string } })
+      expectedTab: opened.value.tab })
     h.chromeApi.tabs.get.mockResolvedValue({ id: 9, windowId: 2, url: page.url })
-    expect(await h.executor.execute(snapshot, new AbortController().signal)).toMatchObject({ outcome: 'observed' })
+    expect(await h.executor.execute(snapshot, new AbortController().signal)).toMatchObject({
+      outcome: 'observed', value: { tab: opened.value.tab },
+    })
     const beforeRestartInjections = h.chromeApi.scripting.executeScript.mock.calls.length
     h.chromeApi.tabs.get.mockResolvedValue({ id: 9, windowId: 3, url: page.url })
     expect(await h.executor.execute(snapshot, new AbortController().signal)).toMatchObject({ outcome: 'failed', quiescent: true, reason: 'tab_reference_stale' })
@@ -80,6 +111,24 @@ describe('Chrome document-bound browser executor', () => {
     const restarted = createBrowserExecutor({ chromeApi: h.chromeApi, getGrant: h.getGrant, navigationTimeoutMs: 25 })
     expect(await restarted.execute(snapshot, new AbortController().signal)).toMatchObject({ outcome: 'failed', quiescent: true, reason: 'tab_reference_stale' })
     expect(h.chromeApi.scripting.executeScript).toHaveBeenCalledTimes(beforeRestartInjections)
+  })
+  test('rejects a tab moved to another window while its snapshot is being read', async () => {
+    const h = harness()
+    const open = operation({ kind: 'tab_open', url: page.url }); delete open.target
+    const opened = await h.executor.execute(open, new AbortController().signal) as {
+      value: { tab: { tabId: number; windowId: number; browserSessionId: string } }
+    }
+    h.chromeApi.tabs.get.mockResolvedValue({ id: 9, windowId: 2, url: page.url })
+    const original = h.chromeApi.scripting.executeScript.getMockImplementation()!
+    h.chromeApi.scripting.executeScript.mockImplementation(async (options) => {
+      const result = await original(options)
+      if (options.args?.[0] === 'snapshot') h.chromeApi.tabs.get.mockResolvedValue({ id: 9, windowId: 3, url: page.url })
+      return result
+    })
+    const result = await h.executor.execute(operation({ kind: 'snapshot', tabId: 9, frameId: 0,
+      expectedTab: opened.value.tab }), new AbortController().signal)
+    expect(result).toMatchObject({ outcome: 'failed', quiescent: true, reason: 'tab_reference_stale' })
+    expect(result).not.toHaveProperty('value')
   })
   test('denies unauthorized target-free creation before issuing it', async () => {
     const h = harness()
@@ -186,9 +235,20 @@ describe('Chrome document-bound browser executor', () => {
     await h.executor.execute(operation({ kind: 'snapshot', tabId: 7, frameId: 0, presentationQueries }), new AbortController().signal)
     expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args).toEqual(['snapshot', {
       query: '', offset: 0, limit: 128, textLimit: 50000, tree: false, treeLimit: 256,
-      includeOptions: false, structure: true, presentationQueries,
+      includeOptions: false, includeValues: false, structure: true, presentationQueries,
       presentationOwner: { sessionId: 'session:test', installationId: grant.installationId, grantEpoch: 1, page },
     }, {}])
+  })
+  test('explicit form-value reads reach the document but background observations exclude them', async () => {
+    const h = harness()
+    await h.executor.execute(operation({ kind: 'snapshot', tabId: 7, frameId: 0, includeValues: true, structure: false }), new AbortController().signal)
+    expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args)
+      .toEqual(['snapshot', expect.objectContaining({ includeValues: true, structure: false }), {}])
+    h.getGrant.mockReturnValue({ ...grant, scopes: [...grant.scopes, 'browser:observe'] })
+    const observation = operation({ kind: 'observe', action: { kind: 'snapshot', tabId: 7, frameId: 0, includeValues: true } })
+    observation.mutates = false
+    expect(await h.executor.execute(observation, new AbortController().signal)).toMatchObject({ outcome: 'observed' })
+    expect(h.chromeApi.scripting.executeScript.mock.calls.at(-1)?.[0].args).toEqual(['snapshot', { references: false }, {}])
   })
   test('only authorized sites appear in a tabs result', async () => {
     const h = harness()
@@ -315,6 +375,46 @@ describe('Chrome document-bound browser executor', () => {
     expect(await h.executor.execute(operation({ kind: 'navigate', page, url: 'https://example.test/next' }), new AbortController().signal))
       .toMatchObject({ outcome: 'observed', quiescent: true, value: { page: { documentId: 'doc-2', url: 'https://example.test/next' } } })
   })
+  test('a tracked navigation reports its source and a re-probed replacement document', async () => {
+    const h = harness()
+    const puppeteer = { execute: vi.fn(async () => {
+      h.emitCommitted({ tabId: 7, frameId: 0, documentId: 'doc-2', url: 'https://example.test/next', transitionType: 'link', transitionQualifiers: [] })
+      h.chromeApi.scripting.executeScript.mockImplementation(async (options) => {
+        if (options.target.frameIds) return [{ documentId: 'doc-2', frameId: 0, result: { url: 'https://example.test/next' } }]
+        return [{ documentId: page.documentId, frameId: 0, result: { outcome: 'observed', quiescent: true, value: { input: 'click' } } }]
+      })
+      return { outcome: 'observed', quiescent: true, value: { input: 'click', businessOutcome: 'unverified' } }
+    }) }
+    const executor = createBrowserExecutor({ chromeApi: h.chromeApi, getGrant: h.getGrant, puppeteer, navigationTimeoutMs: 25 })
+    const result: unknown = await executor.execute(operation({ kind: 'click', intent: '打开详情', element: { page, snapshotId: 'snapshot', elementId: 'link' } }), new AbortController().signal)
+    expect(result).toMatchObject({ outcome: 'observed', value: { transition: { version: 1,
+      source: { tab: { tabId: 7, windowId: 1 }, page },
+      sameTab: { kind: 'document-replaced', page: { tabId: 7, frameId: 0, documentId: 'doc-2', url: 'https://example.test/next' } },
+      candidates: [], truncated: true } } })
+  })
+  test('observed transition facts do not upgrade an unknown input receipt', async () => {
+    const h = harness()
+    const puppeteer = { execute: vi.fn(async () => {
+      h.emitCommitted({ tabId: 7, frameId: 0, documentId: 'doc-2', url: 'https://example.test/next', transitionType: 'link', transitionQualifiers: [] })
+      h.chromeApi.scripting.executeScript.mockImplementation(async options => options.target.frameIds
+        ? [{ documentId: 'doc-2', frameId: 0, result: { url: 'https://example.test/next' } }]
+        : [{ documentId: page.documentId, frameId: 0, result: { url: page.url } }])
+      return { outcome: 'unknown', quiescent: false, reason: 'executor_reply_lost' }
+    }) }
+    const executor = createBrowserExecutor({ chromeApi: h.chromeApi, getGrant: h.getGrant, puppeteer })
+    await expect(executor.execute(operation({ kind: 'click', intent: '打开详情', element: { page, snapshotId: 'snapshot', elementId: 'link' } }), new AbortController().signal))
+      .resolves.toMatchObject({ outcome: 'unknown', quiescent: false, reason: 'executor_reply_lost', value: { transition: {
+        sameTab: { kind: 'document-replaced', page: { documentId: 'doc-2', url: 'https://example.test/next' } },
+      } } })
+  })
+  test('a failed tracked action removes transition listeners before returning its existing failure', async () => {
+    const h = harness()
+    const puppeteer = { execute: vi.fn(async () => { throw new Error('debugger detached') }) }
+    const executor = createBrowserExecutor({ chromeApi: h.chromeApi, getGrant: h.getGrant, puppeteer, transitionTimeoutMs: 1 })
+    await expect(executor.execute(operation({ kind: 'click', intent: '打开详情', element: { page, snapshotId: 'snapshot', elementId: 'link' } }), new AbortController().signal))
+      .resolves.toMatchObject({ outcome: 'failed' })
+    expect(h.listenerCount()).toBe(0)
+  })
   test('reconciliation distinguishes a replaced document from loss of injection permission', async () => {
     const h = harness(); const row = { identity: operation({ kind: 'navigate', page, url: page.url }), target: page }
     h.chromeApi.scripting.executeScript.mockRejectedValue(new Error('No access'))
@@ -336,6 +436,29 @@ describe('Chrome document-bound browser executor', () => {
       new AbortController().signal,
     ) as Promise<unknown>)
     expect(result).toMatchObject({ outcome: 'failed', quiescent: true, reason: 'document_replaced' })
+  })
+  test('a closed tab proves its bound document is gone, but an unavailable tab lookup does not', async () => {
+    const h = harness()
+    h.chromeApi.scripting.executeScript.mockRejectedValue(new Error('No such document'))
+    h.chromeApi.tabs.get.mockRejectedValue(new Error('No tab with id: 7.'))
+    const request = operation({ kind: 'entry_unmount', page, mountId: 'old-entry' })
+    expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({
+      outcome: 'failed', quiescent: true, reason: 'document_replaced',
+    })
+    expect(await h.executor.inspect({ identity: request, target: page })).toMatchObject({
+      outcome: 'unknown', quiescent: true, reason: 'document_replaced',
+    })
+    h.chromeApi.tabs.get.mockRejectedValue(new Error('tab facts unavailable'))
+    expect(await h.executor.execute(request, new AbortController().signal)).toMatchObject({
+      outcome: 'failed', quiescent: true, reason: 'page_unavailable',
+    })
+    expect(await h.executor.inspect({ identity: request, target: page })).toMatchObject({
+      outcome: 'unknown', quiescent: false, reason: 'executor_unavailable',
+    })
+    h.chromeApi.tabs.get.mockRejectedValue(new Error('No tab with id: 8.'))
+    expect(await h.executor.inspect({ identity: request, target: page })).toMatchObject({
+      outcome: 'unknown', quiescent: false, reason: 'executor_unavailable',
+    })
   })
   test('entry mount and unmount are issued through the page runtime and return their receipts', async () => {
     const h = harness()

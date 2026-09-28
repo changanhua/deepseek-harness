@@ -343,8 +343,8 @@ export function apply(ctx: Context): void {
       + 'has fully verified its result. Use scope:"page" when the function owns UI on the task target, or '
       + 'scope:"global" only when it owns no page resources. The Host derives the authenticated browser installation, '
       + 'grant epoch, Session, target, task revision, resources, and handoff identity; never ask the user or invent them. '
-      + 'A successful handoff completes the current BrowserTask and lets the same authorized browser installation '
-      + 'control the function from a later conversation.',
+      + 'A successful handoff lets the same authorized browser installation control the function from a later '
+      + 'conversation. After receiving success, call browser_task_verify to complete the task; do not recreate the function.',
     parameters: {
       pluginId: { type: 'string', required: true, description: 'Exact running Plugin ID returned by cordis_run.' },
       packageId: { type: 'string', required: true, description: 'Exact current Package ID returned by cordis_run.' },
@@ -415,9 +415,9 @@ export function apply(ctx: Context): void {
       })
       if (!receipt.ok) throw new Error(receipt.message)
       if (handed === undefined) throw new Error('cordis_handoff did not commit its BrowserTask handoff')
-      browserTasks.terminate(agent, { id: handed.id, revision: handed.revision }, 'completed')
       return Promise.resolve({
         status: 'handed-off',
+        nextStep: 'browser_task_verify',
         handoffId,
         pluginId: args.pluginId,
         packageId: args.packageId,

@@ -20,7 +20,7 @@ Browser service 负责显式请求身份、执行器能力声明、精确页面�
 
 projection 还会分离不可变 evidence 与目标绑定、action receipt、页面资源 lease、capability 快照、规范 Subagent/Job/Cordis 身份和验收检查。委派输出只以有界摘要进入，绝不会单独算作验收。区域展示条款要求精确的 observed render 回执与之后命中其文本的新页面观察，随后完成还要等待该区域有回执支持的清理归宿。其他条款也必须拥有 checker 支持的当前 evidence，不能留下 blocker 或未解决 write，预算始终有界。V1 拒绝 retained 资源；显式转交给 Session/用户属于延期能力。tool-browser loop 是该 projection 的无状态 continuation 与 checker facade；它绝不成为第二套任务权威。
 
-动态 Cordis runner 会在定义时捕获精确 live Agent，并在该 initiator scope 内执行每项 Browser 调用和清理。Plugin 版本不能重置任务预算或恢复历史。本地 mount 与 render 校验会在 runner 记录资源所有权之前完成。Agent scope teardown 会在该 Agent 仍存活时执行，因此停止、更新、启动失败、undefine 和 owner disposal 都使用同一资源结算路径。更强的 `forgetCollected` finalizer 在此前普通 release 已结算时仍是独立的清理意图，不能被较弱的清理静默满足。若 owner BrowserTask 已经终态，只有 runner 先前为该精确 owner 登记过的 cleanup 才转交给 runner cleanup ledger。runner 随后按原始请求身份 reconcile，不会重新打开终态任务；任意 Plugin 工作都不能走这条脱离 owner 的路径。facade 暴露 `harness.browser.pageMap`、`render` 和 `restore`；它不会创建第二套页面协议，也不接受调用方提供的 Session 身份。
+动态 Cordis runner 会在定义时捕获精确 live Agent，并在该 initiator scope 内执行每项 Browser 调用和清理。每次调用同时保留 Browser Provider 接收者：授权上下文不能替代拥有请求与资源状态的服务实例。Plugin 版本不能重置任务预算或恢复历史。本地 mount 与 render 校验会在 runner 记录资源所有权之前完成。Agent scope teardown 会在该 Agent 仍存活时执行，因此停止、更新、启动失败、undefine 和 owner disposal 都使用同一资源结算路径。更强的 `forgetCollected` finalizer 在此前普通 release 已结算时仍是独立的清理意图，不能被较弱的清理静默满足。若 owner BrowserTask 已经终态，只有 runner 先前为该精确 owner 登记过的 cleanup 才转交给 runner cleanup ledger。runner 随后按原始请求身份 reconcile，不会重新打开终态任务；任意 Plugin 工作都不能走这条脱离 owner 的路径。facade 暴露 `harness.browser.pageMap`、`render` 和 `restore`；它不会创建第二套页面协议，也不接受调用方提供的 Session 身份。
 
 ## 考虑过的替代方案
 

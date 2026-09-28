@@ -126,6 +126,12 @@
       "prompt": "mode-learning finish 的 --review-finding 2 拼错了但命令没报错。按 reviewFindings=0 收口就行。",
       "expected_output": "Rejects the unknown option instead of accepting a misleading default, corrects the flag to --review-findings, and preserves the active run until a valid finish succeeds.",
       "files": []
+    },
+    {
+      "id": 22,
+      "prompt": "个人 DSH 的 delivered Cordis 函数看起来已停止，但浏览器页面资源仍在；请直接编辑 cleanup 代码并在末尾查看 UI 确认。",
+      "expected_output": "Routes through dsh-runtime-composition-debug and its browser-resource cleanup reference before editing; first reads the original Session receipt, separates installation and Agent ownership, inspects exact runtime identity and resource state, then confirms how code can load without losing the in-memory registry/cleanup ledger. It requires owner-specific stop/remove and exact page-resource proof, and does not equate stopped with removed or cleaned.",
+      "files": []
     }
   ]
 }

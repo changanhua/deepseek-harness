@@ -14,3 +14,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.path {
+  max-width: min(520px, 60vw);
+  overflow: hidden;
+  color: var(--dsw-alias-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

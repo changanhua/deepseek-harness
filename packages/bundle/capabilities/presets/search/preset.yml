@@ -1,0 +1,3 @@
+name: 本地搜索
+description: 在指定工作区执行只读 glob 与 grep。
+order: 2

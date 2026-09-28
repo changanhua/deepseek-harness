@@ -45,7 +45,7 @@ kind: "package-reference"
 
 定义由 `cordis_define` 记录、由 `cordis_run` 激活。只有 host 半的包直接在本进程中激活：它的代码在沙箱中运行。带浏览器半的包变成一次请求：它一直等到有人在一个页面上允许或拒绝，或提问的轮次被取消；作答页面随后先装载 host 半、再装载浏览器半。`mode: "run"` 启动当前包或重启它，`mode: "update"` 切换到另一个包版本。`cordis_stop` 结束一次存活运行——移除该包的 handler 与任何已装载的浏览器 UI——同时保留可再次运行的定义；`cordis_undefine` 停止并忘掉它。
 
-host 半可以使用受管 `harness.browser` facade 映射目标页面、把高层展示渲染进一个不透明区域引用，并恢复其精确挂载。runner 会捕获定义它的精确 live Agent；生成代码不能提供 Session 身份、重置 BrowserTask 预算、检查私有 selector 或绕过 Provider 恢复策略。每项普通调用，以及停止、更新、undefine、启动失败或 owner scope 清理，都在该 Agent initiator 下运行。所有本地 mount 输入都会在登记 ownership 前完成校验。owner scope 清理会在 Agent detach 前开始；如果所属 BrowserTask 已经 terminal，只有 runner 预先登记的精确清理责任会转交 runner 账本，而不会重开旧任务。如果清理已经发送但结果仍 unknown，孤儿恢复路径只轮询原 request identity，绝不再次执行。之后永久性的 `forgetCollected` 请求与更早的普通 unmount 保持为不同语义。
+host 半可以使用受管 `harness.browser` facade 映射目标页面、把高层展示渲染进一个不透明区域引用，并恢复其精确挂载。runner 会捕获定义它的精确 live Agent；生成代码不能提供 Session 身份、重置 BrowserTask 预算、检查私有 selector 或绕过 Provider 恢复策略。每项普通调用，以及停止、更新、undefine、启动失败或 owner scope 清理，都在该 Agent initiator 下运行。所有本地 mount 输入都会在登记 ownership 前完成校验。owner scope 清理会在 Agent detach 前开始；如果所属 BrowserTask 已经 terminal，只有 runner 预先登记的精确清理责任会转交 runner 账本，而不会重开旧任务。已发送的清理按原 request identity 核对，结果仍 unknown 时绝不重放。如果回执不能确认释放，则用只读页面地图核查精确的旧文档。已发送的文档替换失败回执，或已停稳的文档替换状态，可以结清资源；离线、权限丢失和一般页面不可用都不能。状态查询结果未知绝不授权新的写入。之后永久性的 `forgetCollected` 请求与更早的普通 unmount 保持为不同语义。
 
 ### 定义的去向
 
@@ -70,6 +70,8 @@ host 半可以使用受管 `harness.browser` facade 映射目标页面、把高�
 ### 设计理念
 
 runner 基于两项职责划分。**注册表与沙箱是同一个服务。** `DynamicCordisRunnerService` 拥有定义注册表、vm 沙箱、host 半 fiber 生命周期与 invoke handler 表，因此一个定义的整个生命周期只有一个 owner。**版本是不可变的包。** 插件持有 `define` 之后永不变化的包；`currentPackageId` 与 `nextPackageId` 指向运行中与目标版本，`mode: "run"` 与 `"update"` 编码目标是否等于当前版本。浏览器往返之所以存在，是因为浏览器半只能由页面执行：服务 emit 请求并挂起，由页面的结论结算，调用方的 `AbortSignal` 是唯一的另一条出路。
+
+每条 Browser 执行路径都保留 Provider 服务作为方法接收者，包括创建它的 Agent 销毁后，由安装拥有的资源清理。
 
 ### 源码地图
 
@@ -148,3 +150,5 @@ runner 基于两项职责划分。**注册表与沙箱是同一个服务。** `D
 </details>
 
 **运行时不变式：** 不发布伴生入口。definition registry 位于进程内存中且没有可观察的事件流；它唯一负责的关系是运行中的 definition 拥有已结算的 host-half fiber 及其 handler table，该关系在单个等待完成的操作中建立和解除，因此由包测试直接断言。
+
+跨会话目录报告 `ownerKind`，其中 `agentId` 表示创建会话。创建会话停止或移除已交付功能时返回 `owner-transferred`；查看和停止仍由所属浏览器安装及授权世代认证。

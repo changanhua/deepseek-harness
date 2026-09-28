@@ -87,6 +87,19 @@ export interface Config {
 
 Source: [`packages/browser/browser-monitor/src/index.ts:18`](../packages/browser/browser-monitor/src/index.ts)
 
+<a id="changanhuadsh-capabilities"></a>
+
+## `@changanhua/dsh-capabilities`
+
+```ts config-catalog
+/** Preset configuration is validated against the fixed bundle roster at construction. */
+export type Config = AgentPresetsConfig
+```
+
+Depends on: [`AgentPresetsConfig`](#deepseek-aidsh-agent-presets)
+
+Source: [`packages/bundle/capabilities/src/index.ts:15`](../packages/bundle/capabilities/src/index.ts)
+
 <a id="changanhuadsh-command-memory"></a>
 
 ## `@changanhua/dsh-command-memory`
@@ -342,6 +355,48 @@ Depends on: `CodexAppServerPermissionMode` (`@deepseek-ai/dsh-subagent-codex/app
 
 Source: [`packages/knowledge/knowledge-base-task-queue/src/index.ts:20`](../packages/knowledge/knowledge-base-task-queue/src/index.ts)
 
+<a id="changanhuadsh-mcp-server"></a>
+
+## `@changanhua/dsh-mcp-server`
+
+Requires: `webServer` · `tools` · `agents` · `agentPresets` · `sessions` · `loader`
+
+```ts config-catalog
+/** Local HTTP deployment policy. Limits apply across all authenticated calls. */
+export interface Config {
+  /** Exact POST route registered on the loopback web server. */
+  readonly path: string
+  /** Environment variable holding the local bearer token. */
+  readonly tokenEnv: string
+  /** Absolute working directory fixed for every external invocation. */
+  readonly workspace: string
+  /** Installed declarations and their deployment-owned lazy preset bindings. */
+  readonly catalog: CapabilityBinding[]
+  /** Maximum incoming request body bytes. */
+  readonly requestMaxBytes: number
+  /** Maximum serialized tool result bytes, including its receipt. */
+  readonly resultMaxBytes: number
+  /** Cooperative deadline for one admitted call in milliseconds. */
+  readonly callTimeoutMs: number
+  /** Maximum simultaneous admitted exchanges and queued invocations. */
+  readonly maxPendingCalls: number
+}
+
+/** An operator-authored binding; callers cannot choose modules or presets. */
+export interface CapabilityBinding {
+  /** Installed preset ID whose standing composition owns this tool. */
+  readonly preset: string
+  /** Lightweight module exporting describe(options), resolved by the Host loader. */
+  readonly declaration: string
+  /** Metadata-affecting configuration shared with the native tool's preset. */
+  readonly options?: Record<string, JsonValue>
+}
+```
+
+Depends on: [`JsonValue`](../packages/util/values/src/index.ts)
+
+Source: [`packages/mcp/mcp-server/src/types.ts:24`](../packages/mcp/mcp-server/src/types.ts)
+
 <a id="changanhuadsh-memory-local"></a>
 
 ## `@changanhua/dsh-memory-local`
@@ -456,7 +511,7 @@ export interface LocalPlanningConfig {
 }
 ```
 
-Source: [`packages/planning/planning-local/src/index.ts:25`](../packages/planning/planning-local/src/index.ts)
+Source: [`packages/planning/planning-local/src/index.ts:26`](../packages/planning/planning-local/src/index.ts)
 
 <a id="changanhuadsh-planning-remote"></a>
 
@@ -472,7 +527,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/planning/planning-remote/src/index.ts:28`](../packages/planning/planning-remote/src/index.ts)
+Source: [`packages/planning/planning-remote/src/index.ts:31`](../packages/planning/planning-remote/src/index.ts)
 
 <a id="changanhuadsh-repo-workspace-git-local"></a>
 
@@ -589,6 +644,32 @@ export interface Config {}
 ```
 
 Source: [`packages/task-queue/tool-agent-run-task-queue/src/index.ts:12`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
+
+<a id="changanhuadsh-tool-choice"></a>
+
+## `@changanhua/dsh-tool-choice`
+
+Requires: `tools` · `llm`
+
+```ts config-catalog
+/** Explicit model route and per-request bounds. */
+export interface Config {
+  /** Registered LLM provider route used for selection. */
+  readonly provider: string
+  /** Model on that provider, supporting reasoning effort off. */
+  readonly model: string
+  /** Maximum serialized caller input bytes before disabled candidates are removed. */
+  readonly maxInputBytes: number
+  /** Maximum number of eligible candidates after disabled entries are removed. */
+  readonly maxCandidates: number
+  /** Maximum model output tokens. */
+  readonly maxOutputTokens: number
+  /** Cooperative model request deadline in milliseconds. */
+  readonly timeoutMs: number
+}
+```
+
+Source: [`packages/llm/tool-choice/src/index.ts:18`](../packages/llm/tool-choice/src/index.ts)
 
 <a id="changanhuadsh-tool-memory"></a>
 
@@ -2860,7 +2941,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/skill/skill/src/index.ts:342`](../packages/skill/skill/src/index.ts)
+Source: [`packages/skill/skill/src/index.ts:384`](../packages/skill/skill/src/index.ts)
 
 <a id="deepseek-aidsh-skill-filesystem"></a>
 
@@ -2898,7 +2979,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/skill/skill-filesystem/src/index.ts:49`](../packages/skill/skill-filesystem/src/index.ts)
+Source: [`packages/skill/skill-filesystem/src/index.ts:52`](../packages/skill/skill-filesystem/src/index.ts)
 
 <a id="deepseek-aidsh-spill-local"></a>
 
@@ -3675,7 +3756,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/skill/tool-skill/src/index.ts:61`](../packages/skill/tool-skill/src/index.ts)
+Source: [`packages/skill/tool-skill/src/index.ts:62`](../packages/skill/tool-skill/src/index.ts)
 
 <a id="deepseek-aidsh-tool-str-replace-editor"></a>
 

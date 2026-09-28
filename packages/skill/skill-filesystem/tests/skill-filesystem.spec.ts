@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
@@ -43,6 +43,8 @@ class TestFileSystem extends FileSystem {
   statSignals: Array<AbortSignal | undefined> = []
   readTextSignals: Array<AbortSignal | undefined> = []
   readTextOverride?: (target: FsTarget, signal?: AbortSignal) => Promise<string>
+  readBytesCalls: Array<{ target: FsTarget; maxBytes: number }> = []
+  readBytesOverride?: (target: FsTarget, signal: AbortSignal | undefined, maxBytes: number) => Promise<Uint8Array>
 
   override async resolve(path: string): Promise<FsTarget> {
     if (this.failResolvePaths.has(path)) throw new FsError('resolve failed', 'FS_NOT_FOUND')
@@ -55,7 +57,7 @@ class TestFileSystem extends FileSystem {
   override fileUrl(target: FsTarget): string { return `file://${target.targetKey}` }
 
   override contains(parent: FsTarget, child: FsTarget): boolean {
-    return child.targetKey === parent.targetKey || String(child.targetKey).startsWith(`${parent.targetKey}/`)
+    return child.targetKey === parent.targetKey || String(child.targetKey).startsWith(`${parent.targetKey}${sep}`)
   }
 
   override async stat(target: FsTarget, signal?: AbortSignal): Promise<FsInfo | undefined> {
@@ -104,8 +106,12 @@ class TestFileSystem extends FileSystem {
     throw new Error('not needed in skill tests')
   }
 
-  override async readBytes(_target: FsTarget, _signal: AbortSignal | undefined, _maxBytes: number): Promise<Uint8Array> {
-    throw new Error('not needed in skill tests')
+  override async readBytes(target: FsTarget, signal: AbortSignal | undefined, maxBytes: number): Promise<Uint8Array> {
+    this.readBytesCalls.push({ target, maxBytes })
+    if (this.readBytesOverride !== undefined) return await this.readBytesOverride(target, signal, maxBytes)
+    const raw = await readFile(target.displayPath)
+    if (raw.byteLength > maxBytes) throw new FsError('too large', 'FS_TOO_LARGE')
+    return raw
   }
 
   override async readByteRange(_target: FsTarget, _range: { offset: number; length: number }, _signal?: AbortSignal): Promise<Uint8Array> {
@@ -180,6 +186,62 @@ describe('dsh-skill-filesystem plugin exports', () => {
 })
 
 describe('FileSystemSkillProvider', () => {
+  it('uses the filesystem bounded byte read when content grows after stat', async () => {
+    const home = await tempDir('skill-resource-growth')
+    const root = join(home, '.dsh/skills')
+    const resource = join(root, 'growing-skill/references/guide.md')
+    await writeSkill(root, 'growing-skill', 'Growing skill')
+    await mkdir(dirname(resource), { recursive: true })
+    await writeFile(resource, 'small')
+    const ctx = new Context()
+    await ctx.plugin(TestFileSystem)
+    const fs = ctx.fs as TestFileSystem
+    fs.readBytesOverride = async (_target, _signal, maxBytes) => {
+      expect(maxBytes).toBe(64 * 1024)
+      throw new FsError('grew after stat', 'FS_TOO_LARGE')
+    }
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(SkillFileSystem, { dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false })
+
+    await expect(ctx.skills.getResource('growing-skill', 'references/guide.md')).resolves.toBeUndefined()
+    expect(fs.readBytesCalls).toHaveLength(1)
+  })
+
+  it.each(['local', 'bundled'])('rejects invalid UTF-8 and NUL attachments without a filesystem service (%s)', async (source) => {
+    const home = await tempDir(`skill-resource-text-${source}`)
+    const root = source === 'local' ? join(home, '.dsh/skills') : await tempDir('skill-resource-bundled')
+    await writeSkill(root, 'text-skill', 'Text skill')
+    await mkdir(join(root, 'text-skill/references'), { recursive: true })
+    await writeFile(join(root, 'text-skill/references/invalid.md'), Buffer.from([0xff]))
+    await writeFile(join(root, 'text-skill/references/nul.md'), Buffer.from('before\0after'))
+    const ctx = await setupLocal(home, source === 'local' ? {} : { bundledSkillDir: root })
+
+    await expect(ctx.skills.getResource('text-skill', 'references/invalid.md')).resolves.toBeUndefined()
+    await expect(ctx.skills.getResource('text-skill', 'references/nul.md')).resolves.toBeUndefined()
+  })
+
+  it('loads only bounded relative attachments from directory skills', async () => {
+    const home = await tempDir('skill-resource-filesystem')
+    const root = join(home, '.dsh/skills')
+    await writeSkill(root, 'directory-skill', 'Directory skill', 'Main body.')
+    await writeFlatSkill(root, 'flat-skill', 'Flat skill', 'Flat body.')
+    await mkdir(join(root, 'directory-skill/references'), { recursive: true })
+    await writeFile(join(root, 'directory-skill/references/guide.md'), 'Nested attachment.')
+    await writeFile(join(root, 'directory-skill/references/too-large.md'), 'x'.repeat(64 * 1024 + 1))
+    await writeFile(join(root, 'outside.md'), 'Outside attachment.')
+    await symlink(join(root, 'outside.md'), join(root, 'directory-skill/references/escaped.md'))
+    const ctx = await setupLocal(home)
+
+    await expect(ctx.skills.getResource('directory-skill', 'references/guide.md')).resolves.toMatchObject({
+      resourcePath: 'references/guide.md', content: 'Nested attachment.',
+    })
+    for (const resource of ['../outside.md', './references/guide.md', 'references//guide.md', 'references\\guide.md', 'C:guide.md', 'references/escaped.md']) {
+      await expect(ctx.skills.getResource('directory-skill', resource)).resolves.toBeUndefined()
+    }
+    await expect(ctx.skills.getResource('directory-skill', 'references/too-large.md')).resolves.toBeUndefined()
+    await expect(ctx.skills.getResource('flat-skill', 'anything.md')).resolves.toBeUndefined()
+  })
+
   it('discovers project, custom, user, and agents skill roots in priority order', async () => {
     const home = await tempDir('skill-home')
     const project = await tempDir('skill-project')

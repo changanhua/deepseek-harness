@@ -40,6 +40,214 @@ async function harness() {
 }
 
 describe('BrowserTaskLoop durable bridge', () => {
+  it.each(['page', 'global'] as const)('finishes a delivered %s function through later verification without cleanup', async (scope) => {
+    const h = await harness()
+    try {
+      await h.loop.start(h.agent, { installationId: 'extension', page, goal: 'Deliver function', success: { text: 'Done' } }, new AbortController().signal)
+      let task = h.ctx.browserTasks.get(h.agent)!
+      if (scope === 'page') {
+        task = h.ctx.browserTasks.upsertResource(h.agent, task, { id: 'panel', state: 'reserved', target: task.target! })
+        task = h.ctx.browserTasks.upsertResource(h.agent, task, { id: 'panel', state: 'active', target: task.target! })
+      }
+      const work = { callId: 'cordis-call', kind: 'cordis' as const, status: 'running',
+        identity: { mode: 'cordis' as const, pluginId: 'plugin-a', packageId: 'package-a', pluginRunId: 'run-a' }, evidenceIds: [] }
+      const fact = h.agent.session.append('browser-task/delegation', { kind: 'browser-task/delegation', version: 1, taskId: task.id, work })
+      task = h.ctx.browserTasks.linkDelegatedWork(h.agent, task, { ...work, source: { kind: 'browser-task-delegation', sessionSeq: fact.seq } })
+      const evidenceId = task.evidence.at(-1)!.id
+      const evaluations = task.acceptance.map(clause => ({ clauseId: clause.id, satisfied: true, evidenceIds: [evidenceId] }))
+      const checkerRef = h.ctx.browserTasks.recordCheck(h.agent, task, { checkerId: 'handoff-ready', target: task.target!, grantEpoch: 1, evaluations })
+      task = h.ctx.browserTasks.evaluate(h.agent, task, evaluations.map(value => ({ ...value, checkerRef })))
+      h.ctx.browserTasks.handoffFunction(h.agent, task, {
+        owner: { kind: 'browser-installation', installationId: 'extension', grantEpoch: 1,
+          pluginId: 'plugin-a', packageId: 'package-a', pluginRunId: 'run-a', handoffId: 'handoff-a' },
+        scope: scope === 'global' ? { kind: 'global' } : { kind: 'page', target: task.target!, targetRevision: task.targetRevision! },
+        resourceIds: scope === 'page' ? ['panel'] : [],
+      })
+      expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({ status: 'verified' })
+      expect(h.ctx.browserTasks.get(h.agent)).toMatchObject({ phase: 'terminal', outcome: 'completed' })
+      expect(h.browser.execute.mock.calls.some(([operation]) => ['region_clear', 'entry_unmount'].includes(operation.action.kind))).toBe(false)
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
+  it.each(['unselected', 'terminal', 'blocked'] as const)('lists fresh installation tabs outside a %s task without granting page authority', async (state) => {
+    const h = await harness()
+    try {
+      const tab = { tabId: page.tabId, windowId: 1, browserSessionId: '123e4567-e89b-42d3-a456-426614174000' }
+      if (state === 'unselected') {
+        await h.loop.startBound(h.agent, { installationId: 'extension', goal: 'Read existing page',
+          scope: { kind: 'explicit-set', tabs: [tab] }, success: { text: 'Pending' } }, new AbortController().signal)
+      } else {
+        await h.loop.start(h.agent, { installationId: 'extension', page, goal: 'Read existing page',
+          success: { text: 'Pending' } }, new AbortController().signal)
+        const task = h.ctx.browserTasks.get(h.agent)!
+        if (state === 'terminal') h.ctx.browserTasks.terminate(h.agent, task, 'failed')
+        else h.ctx.browserTasks.transition(h.agent, task, 'waiting', ['capability-drift'])
+      }
+      const before = h.ctx.browserTasks.get(h.agent)
+      h.browser.execute.mockResolvedValueOnce({ requestId: 'discover', sessionId: h.agent.session.id,
+        installationId: 'new-installation', outcome: 'observed', delivery: 'sent', value: { tabs: [tab] } })
+      expect(await executeObserved({ browser: h.browser, loop: h.loop, agent: h.agent,
+        operation: { requestId: 'discover', sessionId: h.agent.session.id, installationId: 'new-installation',
+          action: { kind: 'tabs' } }, signal: new AbortController().signal })).toMatchObject({ value: { tabs: [tab] } })
+      expect(h.ctx.browserTasks.get(h.agent)).toEqual(before)
+      expect(() => h.loop.planned(h.agent, { requestId: 'write-new', sessionId: h.agent.session.id,
+        installationId: 'new-installation', action: { kind: 'click',
+          element: { page, snapshotId: 's', elementId: 'e' }, intent: 'click' } })).toThrow()
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
+  it('ends an unselected stale-reference task and admits a fresh explicit task without replaying the old selection', async () => {
+    const h = await harness()
+    try {
+      const tab = { tabId: page.tabId, windowId: 1, browserSessionId: '123e4567-e89b-42d3-a456-426614174000' }
+      await h.loop.startBound(h.agent, { installationId: 'extension', goal: 'Read existing page',
+        scope: { kind: 'explicit-set', tabs: [tab] }, success: { text: 'Pending' } }, new AbortController().signal)
+      h.browser.execute.mockImplementationOnce(async operation => ({ requestId: operation.requestId,
+        sessionId: operation.sessionId, installationId: operation.installationId,
+        outcome: 'failed', delivery: 'sent', quiescent: true, reason: 'tab_reference_stale' }))
+      const failed = await h.loop.select(h.agent, { installationId: 'extension', tab }, new AbortController().signal)
+      expect(failed).toMatchObject({ status: 'terminal', outcome: 'failed', nextStep: 'list-tabs-and-start-new-task' })
+      const previous = h.ctx.browserTasks.get(h.agent)!
+      expect(previous).toMatchObject({ phase: 'terminal', outcome: 'failed', budget: { actionsUsed: 1 } })
+      await h.loop.turnStopping(h.agent, new AbortController().signal)
+      expect(h.inject).not.toHaveBeenCalled()
+      h.agent.session.append('user/message', createUserMessage({ source: { kind: 'user' },
+        content: [{ type: 'text', text: '继续处理同一页面，使用重连后的新身份' }] }), { surfaceOp: 'append' })
+      const freshTab = { ...tab, browserSessionId: '123e4567-e89b-42d3-a456-426614174001' }
+      await h.loop.startBound(h.agent, { installationId: 'extension', goal: 'Read existing page',
+        scope: { kind: 'explicit-set', tabs: [freshTab] }, success: { text: 'Pending' } }, new AbortController().signal)
+      h.browser.execute.mockImplementationOnce(async operation => ({ requestId: operation.requestId,
+        sessionId: operation.sessionId, installationId: operation.installationId, outcome: 'observed', delivery: 'sent',
+        value: { tab: freshTab, page, text: 'Pending', elements: [] } }))
+      expect(await h.loop.select(h.agent, { installationId: 'extension', tab: freshTab }, new AbortController().signal))
+        .toMatchObject({ status: 'selected' })
+      expect(h.ctx.browserTasks.get(h.agent)?.id).not.toBe(previous.id)
+      expect(h.browser.execute).toHaveBeenCalledTimes(2)
+      expect(foldBrowserTask(h.agent.session.snapshotEvents())).toEqual(h.ctx.browserTasks.get(h.agent))
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
+  it('reports the declared verification scope even when a local check passes for a broader goal', async () => {
+    const h = await harness()
+    try {
+      await h.loop.start(h.agent, { installationId: 'extension', page,
+        goal: 'Mount a button and clean it up', success: { text: 'Done' } }, new AbortController().signal)
+      expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({
+        status: 'verified', verification: { scope: 'declared-conditions-only',
+          goal: 'Mount a button and clean it up', conditions: [expect.objectContaining({ text: 'Done' })] },
+      })
+      expect(await h.loop.verify(h.agent, new AbortController().signal)).toMatchObject({
+        verification: { scope: 'declared-conditions-only' },
+      })
+      expect(h.ctx.browserTasks.get(h.agent)?.attempts.every(item => !item.write)).toBe(true)
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
+  it('reselects a reloaded member in the same task without resetting budget or user selection', async () => {
+    const h = await harness()
+    try {
+      const tab = { tabId: page.tabId, windowId: 1, browserSessionId: '123e4567-e89b-42d3-a456-426614174000' }
+      await h.loop.startBound(h.agent, { installationId: 'extension', goal: 'Continue after reload',
+        scope: { kind: 'explicit-set', tabs: [tab] }, success: { text: 'Not yet complete' } }, new AbortController().signal)
+      let currentPage = page
+      h.browser.execute.mockImplementation(async operation => ({ requestId: operation.requestId,
+        sessionId: operation.sessionId, installationId: operation.installationId, outcome: 'observed', delivery: 'sent',
+        value: { tab, page: currentPage, text: 'Pending', elements: [] } }))
+      await h.loop.select(h.agent, { installationId: 'extension', tab }, new AbortController().signal)
+      const before = h.ctx.browserTasks.get(h.agent)!
+      currentPage = { ...page, documentId: 'reloaded' }
+      await h.loop.select(h.agent, { installationId: 'extension', tab }, new AbortController().signal)
+      const after = h.ctx.browserTasks.get(h.agent)!
+      expect(after).toMatchObject({ id: before.id, target: { page: currentPage },
+        budget: { actionsUsed: before.budget.actionsUsed + 1 } })
+      expect(after.evidence.filter(item => item.state === 'current').every(item => item.target.page.documentId === 'reloaded')).toBe(true)
+      expect(h.ctx.browserTasks.readTarget(h.agent)).toEqual({ binding: null, revision: 0 })
+      expect(foldBrowserTask(h.agent.session.snapshotEvents())).toEqual(after)
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
+  it('preserves an adopted page and its task when a later selection has an obsolete tab reference', async () => {
+    const h = await harness()
+    try {
+      const tab = { tabId: page.tabId, windowId: 1, browserSessionId: '123e4567-e89b-42d3-a456-426614174000' }
+      await h.loop.startBound(h.agent, { installationId: 'extension', goal: 'Read existing page',
+        scope: { kind: 'explicit-set', tabs: [tab] }, success: { text: 'Pending' } }, new AbortController().signal)
+      h.browser.execute.mockImplementationOnce(async operation => ({ requestId: operation.requestId,
+        sessionId: operation.sessionId, installationId: operation.installationId, outcome: 'observed', delivery: 'sent',
+        value: { tab, page, text: 'Pending', elements: [] } }))
+      await h.loop.select(h.agent, { installationId: 'extension', tab }, new AbortController().signal)
+      const before = h.ctx.browserTasks.get(h.agent)!
+      h.browser.execute.mockImplementationOnce(async operation => ({ requestId: operation.requestId,
+        sessionId: operation.sessionId, installationId: operation.installationId, outcome: 'failed',
+        delivery: 'sent', quiescent: true, reason: 'tab_reference_stale' }))
+      expect(await h.loop.select(h.agent, { installationId: 'extension', tab }, new AbortController().signal))
+        .toMatchObject({ status: 'running', outcome: 'failed' })
+      expect(h.ctx.browserTasks.get(h.agent)).toMatchObject({ id: before.id, target: before.target,
+        budget: { actionsUsed: before.budget.actionsUsed + 1 } })
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
+  it('starts an explicit set without opening a new page and selects fresh members under one budget', async () => {
+    const h = await harness()
+    try {
+      const browserSessionId = '123e4567-e89b-42d3-a456-426614174000'
+      const tabs = [{ tabId: 4, windowId: 1, browserSessionId }, { tabId: 5, windowId: 1, browserSessionId }]
+      const started = await h.loop.startBound(h.agent, { installationId: 'extension', goal: 'Inspect both pages',
+        scope: { kind: 'explicit-set', tabs }, success: { text: 'Completion not yet verified' } }, new AbortController().signal)
+      expect(started).toMatchObject({ nextStep: 'select-scope-tab' })
+      expect(h.browser.execute).not.toHaveBeenCalled()
+      const initial = h.ctx.browserTasks.get(h.agent)!
+      h.browser.execute.mockImplementation(async (operation) => {
+        if (operation.action.kind !== 'snapshot' || !operation.action.expectedTab) throw new Error('selection must use exact tab')
+        const tab = operation.action.expectedTab
+        return { requestId: operation.requestId, sessionId: operation.sessionId, installationId: operation.installationId,
+          outcome: 'observed', delivery: 'sent', value: { tab: { ...tab }, page: { ...page, tabId: tab.tabId,
+            documentId: `doc-${tab.tabId}`, url: `https://example.test/${tab.tabId}` }, text: `page ${tab.tabId}`, elements: [] } }
+      })
+      expect(await h.loop.select(h.agent, { installationId: 'extension', tab: tabs[0]! }, new AbortController().signal))
+        .toMatchObject({ status: 'selected', observation: { tab: tabs[0] } })
+      expect(await h.loop.select(h.agent, { installationId: 'extension', tab: tabs[1]! }, new AbortController().signal))
+        .toMatchObject({ status: 'selected', observation: { tab: tabs[1] } })
+      const selected = h.ctx.browserTasks.get(h.agent)!
+      expect(selected).toMatchObject({ id: initial.id, targetRevision: 0, budget: { actionsUsed: 2 }, target: { page: { tabId: 5 } } })
+      expect(selected.attempts).toHaveLength(2)
+      expect(selected.evidence.filter(item => item.state === 'current')).toHaveLength(1)
+      expect(h.ctx.browserTasks.readTarget(h.agent)).toEqual({ binding: null, revision: 0 })
+      expect(h.browser.execute.mock.calls.every(([operation]) => operation.action.kind === 'snapshot'
+        && operation.action.documentId === undefined)).toBe(true)
+      expect(foldBrowserTask(h.agent.session.snapshotEvents())).toEqual(selected)
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
+  it('keeps a failed selection on its original request and resumes only after recovery', async () => {
+    const h = await harness()
+    try {
+      const tab = { tabId: 4, windowId: 1, browserSessionId: '123e4567-e89b-42d3-a456-426614174000' }
+      await h.loop.startBound(h.agent, { installationId: 'extension', goal: 'Inspect the chosen page',
+        scope: { kind: 'explicit-set', tabs: [tab] }, success: { text: 'Not yet complete' } }, new AbortController().signal)
+      h.browser.execute.mockRejectedValueOnce(new Error('lost reply'))
+      const result = await h.loop.select(h.agent, { installationId: 'extension', tab }, new AbortController().signal) as {
+        requestId: string
+        nextStep: string
+      }
+      expect(result).toMatchObject({ outcome: 'unknown', nextStep: 'request-status' })
+      expect(h.ctx.browserTasks.get(h.agent)).not.toHaveProperty('target')
+      expect(h.browser.execute).toHaveBeenCalledTimes(1)
+      h.loop.reconcile(h.agent, result.requestId, { requestId: result.requestId, sessionId: h.agent.session.id,
+        installationId: 'extension', outcome: 'failed', delivery: 'sent', quiescent: true, reason: 'snapshot_unavailable' })
+      h.browser.execute.mockImplementation(async operation => ({ requestId: operation.requestId,
+        sessionId: operation.sessionId, installationId: operation.installationId, outcome: 'observed', delivery: 'sent',
+        value: { tab, page, text: 'Read recovered', elements: [] } }))
+      expect(await h.loop.select(h.agent, { installationId: 'extension', tab }, new AbortController().signal))
+        .toMatchObject({ status: 'selected' })
+      const task = h.ctx.browserTasks.get(h.agent)!
+      expect(task.budget.actionsUsed).toBe(2)
+      expect(task.attempts).toHaveLength(2)
+      expect(task.attempts[0]).toMatchObject({ requestId: result.requestId, outcome: 'failed', quiescent: true })
+      expect(h.browser.execute).toHaveBeenCalledTimes(2)
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
   it('starts a task with an explicit region presentation condition', async () => {
     const h = await harness()
     await h.loop.start(h.agent, { installationId: 'extension', page, goal: '展示分析',
@@ -351,6 +559,22 @@ describe('BrowserTaskLoop durable bridge', () => {
     expect(h.agent.session.events.some(event => event.type === 'browser-task/change' && event.data.task.attempts.some((item: { requestId: string; stage: string }) => item.requestId === requestId && item.stage === 'dispatched'))).toBe(false)
     await h.ctx.fiber.dispose()
   })
+  it.each([{ frameId: 7 }, { documentId: 'unaccepted-document' }, { documentId: undefined as unknown as string }])(
+    'rejects a snapshot outside the accepted task document: %j', async (override) => {
+      const h = await harness()
+      try {
+        await h.loop.start(h.agent, { installationId: 'extension', page, goal: 'read accepted page',
+          success: { text: 'Never' } }, new AbortController().signal)
+        const before = h.ctx.browserTasks.get(h.agent)
+        const action = { kind: 'snapshot' as const, tabId: page.tabId, frameId: page.frameId,
+          documentId: page.documentId, limit: 64, textLimit: 8000, ...override }
+        expect(h.loop.allowsAction(h.agent, action)).toBe(false)
+        expect(() => h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension',
+          requestId: 'unaccepted-snapshot', action }, false)).toThrow('target mismatch')
+        expect(h.ctx.browserTasks.get(h.agent)).toEqual(before)
+      } finally { await h.ctx.fiber.dispose() }
+    },
+  )
   it('accounts a direct browser_snapshot through the active task before settling it', async () => {
     const h = await harness(); await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Never' } }, new AbortController().signal)
     const before = h.ctx.browserTasks.get(h.agent)!; const requestId = 'direct-snapshot'
@@ -391,12 +615,50 @@ describe('BrowserTaskLoop durable bridge', () => {
     expect(h.ctx.browserTasks.get(h.agent)!.blockers).not.toContain('target-lost')
     await h.ctx.fiber.dispose()
   })
-  it('explicit navigation rebinds only after the durable target-loss transition', async () => {
+  it('keeps the old target without a trusted navigation transition', async () => {
     const h = await harness(); await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Done' } }, new AbortController().signal)
     const requestId = 'navigate'; const action = { kind: 'navigate' as const, page, url: 'https://example.test/next' }; h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId, action }); h.loop.dispatched(h.agent, requestId)
     h.loop.settle(h.agent, { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed', delivery: 'sent', value: { feedback: { status: 'observed', snapshot: { page: { ...page, documentId: 'second', url: action.url } } } } }, action)
-    expect(h.ctx.browserTasks.get(h.agent)!.target?.page).toMatchObject({ documentId: 'second', url: action.url })
-    expect(h.ctx.browserTasks.get(h.agent)!.blockers).not.toContain('target-lost')
+    expect(h.ctx.browserTasks.get(h.agent)!.target?.page).toEqual(page)
+    expect(h.ctx.browserTasks.get(h.agent)!.blockers).toContain('target-lost')
+    await h.ctx.fiber.dispose()
+  })
+  it('adopts one verified same-tab transition through the loop and ignores its duplicate settlement', async () => {
+    const h = await harness(); await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Done' } }, new AbortController().signal)
+    const requestId = 'trusted-navigate'; const action = { kind: 'navigate' as const, page, url: 'https://example.test/next' }
+    h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId, action }); h.loop.dispatched(h.agent, requestId)
+    const result = { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed' as const, delivery: 'sent' as const,
+      value: { transition: { version: 1, source: { tab: { tabId: page.tabId, windowId: 2, browserSessionId: '123e4567-e89b-42d3-a456-426614174000' }, page }, startedAt: 1, observedAt: 2,
+        sameTab: { kind: 'document-replaced', page: { ...page, documentId: 'second', url: action.url } }, candidates: [], truncated: false } } }
+    h.loop.settle(h.agent, result, action)
+    expect(h.ctx.browserTasks.get(h.agent)?.target?.page).toMatchObject({ documentId: 'second', url: action.url })
+    const revision = h.ctx.browserTasks.get(h.agent)?.revision; h.loop.settle(h.agent, result, action)
+    expect(h.ctx.browserTasks.get(h.agent)?.revision).toBe(revision)
+    await h.ctx.fiber.dispose()
+  })
+  it('adopts a trusted transition when a dispatch-intent request recovers observed', async () => {
+    const h = await harness(); await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Done' } }, new AbortController().signal)
+    const requestId = 'recover-intent'; const action = { kind: 'click' as const, element: { page, snapshotId: 's', elementId: 'go' }, intent: 'go' }
+    let task = h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId, action })!
+    const attempt = task.attempts.find(item => item.requestId === requestId)!; task = h.ctx.browserTasks.advanceAttempt(h.agent, task, { ...attempt, stage: 'dispatch-intent', recoveryLocator: { kind: 'extension-journal-v1', protocolVersion: 1, transportRequestId: requestId, installationId: 'extension', grantEpoch: 1 } })
+    const before = task.budget; const recovered = h.loop.reconcile(h.agent, requestId, { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed', delivery: 'sent', quiescent: true, value: { transition: { version: 1, source: { tab: { tabId: page.tabId, windowId: 2, browserSessionId: '123e4567-e89b-42d3-a456-426614174000' }, page }, startedAt: 1, observedAt: 2, sameTab: { kind: 'document-replaced', page: { ...page, documentId: 'recovered', url: 'https://example.test/recovered' } }, candidates: [], truncated: false } } })!
+    expect(recovered.target?.page.documentId).toBe('recovered');expect(recovered.budget).toEqual(before);expect(recovered.targetReceipt).toMatchObject({ kind: 'browser-task-receipt' });expect(recovered.attempts.find(item => item.requestId === requestId)).toMatchObject({ outcome: 'observed', stage: 'settled' })
+    await h.ctx.fiber.dispose()
+  })
+  it('adopts a trusted transition when an unknown settlement recovers observed', async () => {
+    const h = await harness(); await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Done' } }, new AbortController().signal)
+    const requestId = 'recover-unknown'; const action = { kind: 'click' as const, element: { page, snapshotId: 's', elementId: 'go' }, intent: 'go' }
+    h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId, action });h.loop.dispatched(h.agent, requestId);h.loop.settle(h.agent, { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'unknown', delivery: 'sent' }, action)
+    const recovered = h.loop.reconcile(h.agent, requestId, { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed', delivery: 'sent', quiescent: true, value: { transition: { version: 1, source: { tab: { tabId: page.tabId, windowId: 2, browserSessionId: '123e4567-e89b-42d3-a456-426614174000' }, page }, startedAt: 1, observedAt: 2, sameTab: { kind: 'document-replaced', page: { ...page, documentId: 'unknown-recovered', url: 'https://example.test/unknown-recovered' } }, candidates: [], truncated: false } } })!
+    expect(recovered.target?.page.documentId).toBe('unknown-recovered');expect(recovered.targetReceipt).toMatchObject({ kind: 'browser-task-receipt' });expect(recovered.attempts.find(item => item.requestId === requestId)).toMatchObject({ outcome: 'observed', reconciledBy: { kind: 'browser-task-receipt' } })
+    await h.ctx.fiber.dispose()
+  })
+  it('keeps duplicate and transition-free recovery from advancing the target', async () => {
+    const h = await harness(); await h.loop.start(h.agent, { installationId: 'extension', page, goal: '完成', success: { text: 'Done' } }, new AbortController().signal)
+    const requestId = 'recover-stable'; const action = { kind: 'click' as const, element: { page, snapshotId: 's', elementId: 'go' }, intent: 'go' }
+    h.loop.planned(h.agent, { sessionId: h.agent.session.id, installationId: 'extension', requestId, action });h.loop.dispatched(h.agent, requestId);h.loop.settle(h.agent, { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'unknown', delivery: 'sent' }, action)
+    const plain = h.loop.reconcile(h.agent, requestId, { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed', delivery: 'sent', quiescent: true })!;expect(plain.target?.page).toEqual(page)
+    const revision = plain.revision;expect(h.loop.reconcile(h.agent, requestId, { requestId, sessionId: h.agent.session.id, installationId: 'extension', outcome: 'observed', delivery: 'sent', quiescent: true })?.revision).toBe(revision)
     await h.ctx.fiber.dispose()
   })
   it('unknown action remains a durable blocker and prevents another action', async () => {

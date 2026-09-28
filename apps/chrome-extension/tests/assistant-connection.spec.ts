@@ -185,6 +185,22 @@ describe('浏览器助手持久连接', () => {
     expect(h.channels).toHaveLength(1)
   })
 
+  test('持久暂停防止 worker 重开退避，但 UI 正确显示当前重试且事件只恢复一次', async () => {
+    const h = harness({ 'dsh.assistant.connection.v1': { baseUrl: pending.baseUrl, installationId, token: verifier, grant } })
+    await h.connection.read()
+    h.channels[0].onState({ phase: 'offline', retryPaused: false, retryPending: true, pauseOnRestart: true })
+    await vi.waitFor(async () => {
+      expect(await h.connection.read()).toMatchObject({ phase: 'offline', retryPending: true, retryPaused: false })
+      expect(h.values.get('dsh.assistant.connection.v1')).toMatchObject({ retryPaused: true })
+    })
+    h.channels[0].onState({ phase: 'offline', retryPaused: true, retryPending: false, pauseOnRestart: true })
+    await vi.waitFor(async () => { expect(await h.connection.read()).toMatchObject({ retryPaused: true }) })
+    await h.connection.retrySaved({ once: true })
+    expect(h.channels[0].start).toHaveBeenLastCalledWith({ once: true })
+    expect(h.values.get('dsh.assistant.connection.v1')).toMatchObject({ retryPaused: true })
+    expect(h.transport.begin).not.toHaveBeenCalled()
+  })
+
   test('自动重试耗尽后跨 worker 重启保持暂停，显式重试才恢复原凭据', async () => {
     const h = harness({ 'dsh.assistant.connection.v1': { baseUrl: pending.baseUrl, installationId, token: verifier, grant } })
     await h.connection.read()

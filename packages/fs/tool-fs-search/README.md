@@ -41,6 +41,10 @@ A subprocess backend, then the tools; the spill backend is optional and makes ca
 
 `sampleOverCapGlobResults` is required and has no fallback: deployments choose the over-cap ordering contract explicitly. When formatted spill succeeds, both modes preserve the complete sorted list in the spill artifact.
 
+### Programmatic `glob` declaration
+
+`@deepseek-ai/dsh-tool-fs-search/declaration` exports `describe({ sampleOverCapGlobResults, globMaxResults })` for capability catalogs that must discover `glob` before mounting its executable plugin. It returns the tool name, description, raw input JSON Schema, and raw output JSON Schema. The declaration validates those two visible settings and shares the native tool's author-facing parameter and output DSL; importing or calling it neither registers a tool nor starts `rg`.
+
 ### The tools
 
 | Tool | Arguments | Behavior |
@@ -95,6 +99,7 @@ Local workspace discovery is naturally a process-backed `rg` workflow, and putti
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: `Config`, tool composition, cap validation |
+| [`src/declaration.ts`](src/declaration.ts) | Execution-free `glob` declaration and its shared schema DSL |
 | [`src/glob.ts`](src/glob.ts) | `glob` schema, argv, parsing, inline sampling, formatting |
 | [`src/grep.ts`](src/grep.ts) | `grep` schema, argv, `--json` parsing, preview retention, formatting |
 | [`src/search-core.ts`](src/search-core.ts) | Shared spawn helper, `SEARCH_*` errors, spill handoff, workdir-relative display |

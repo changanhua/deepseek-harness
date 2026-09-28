@@ -22,11 +22,12 @@ The `mcp/` group connects the harness to the Model Context Protocol (MCP) ecosys
 <a id="packages"></a>
 ## Packages
 
-The group holds one package; the package README and the links below own the details.
+The group has a client and a local capability server; their READMEs own the details.
 
 | Package | What it provides |
 |---|---|
 | [`mcp-client/`](mcp-client/README.md) | Attach one external MCP server so the model can call its tools as native tools |
+| [`mcp-server/`](mcp-server/README.md) | Expose declared DSH native tools to local MCP clients through lazy presets |
 
 -----
 
@@ -38,6 +39,7 @@ Try the worked example configurations to see the plugin in action, then read the
 - [MCP client plugin Agent Note](../../.agents/notes/implemented/feature/2026-07-07-mcp-client-plugin.md) — the bridge's design: server-qualified naming, discovery, execution, and environment scrubbing.
 - [Third-party memory MCP guide](../../docs/user/guide/mcp-memory.md) — runnable overlay rows and setup instructions.
 - [Tools subsystem reference](../../docs/subsystems/tools.md) — the `ToolRuntime` that receives the registered tools.
+- [MCP subsystem reference](../../docs/subsystems/mcp.md) — client consumption and local capability exposure.
 
 <a id="dev-note"></a>
 ## Dev Note

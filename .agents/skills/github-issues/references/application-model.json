@@ -1,0 +1,52 @@
+{
+  "application": "github-issues",
+  "coverage": "isolated fixtures and live GitHub issue-list observations on 2026-09-27; rebind every current page",
+  "repository": "{repository}",
+  "pages": {
+    "repository": {
+      "path": "{repository}",
+      "controls": {
+        "issues.open": [{ "role": "link", "href": "{repository}/issues" }]
+      }
+    },
+    "issues": {
+      "path": "{repository}/issues",
+      "controls": {
+        "issues.query": [
+          { "role": "combobox", "tag": "input", "name": "q" },
+          { "role": "searchbox", "tag": "input", "name": "q" },
+          { "role": "textbox", "tag": "input", "name": "q" },
+          { "role": "combobox", "tag": "input", "name": "repository-inputname" }
+        ],
+        "issue.new": [
+          { "role": "link", "href": "{repository}/issues/new" },
+          { "role": "link", "href": "{repository}/issues/new/choose" }
+        ]
+      }
+    },
+    "choose": { "path": "{repository}/issues/new/choose", "controls": {} },
+    "new": {
+      "path": "{repository}/issues/new",
+      "controls": {
+        "issue.title": [
+          { "role": "textbox", "tag": "input", "name": "title" },
+          { "role": "textbox", "tag": "input", "name": "issue[title]" }
+        ],
+        "issue.body": [
+          { "role": "textbox", "tag": "textarea", "name": "body" },
+          { "role": "textbox", "tag": "textarea", "name": "issue[body]" }
+        ],
+        "issue.submit": [{ "role": "button", "type": "submit" }]
+      }
+    },
+    "detail": { "path": "{repository}/issues/{number}", "controls": {} }
+  },
+  "actions": {
+    "issues.open": { "kind": "click", "postcondition": "fresh repository issue list" },
+    "issues.query": { "kinds": ["fill", "press"], "postcondition": "fresh results for exact query, with coverage of open and closed issues" },
+    "issue.new": { "kind": "click", "precondition": "scoped duplicate search completed", "postcondition": "fresh issue form in the same repository" },
+    "issue.title": { "kind": "fill", "postcondition": "complete exact current value readback" },
+    "issue.body": { "kind": "fill", "postcondition": "complete exact multiline current value readback" },
+    "issue.submit": { "kind": "click", "precondition": "repository, title and body verified; no pending or unknown submission", "postcondition": "fresh issue detail with matching repository, title and body" }
+  }
+}

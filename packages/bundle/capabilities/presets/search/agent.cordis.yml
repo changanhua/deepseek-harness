@@ -1,0 +1,18 @@
+# The local subprocess service and filesystem-search tools stay absent until
+# the MCP runtime first loads `search`.
+
+- id: search-runtime
+  name: cordis:group
+  group: true
+  isolate:
+    subprocess: true
+  config:
+    - id: subprocess
+      name: '@deepseek-ai/dsh-subprocess-local'
+
+    - id: tool-fs-search
+      name: '@deepseek-ai/dsh-tool-fs-search'
+      config:
+        sampleOverCapGlobResults: false
+        globMaxResults: 200
+        timeoutMs: 90000

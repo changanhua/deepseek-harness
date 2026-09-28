@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createAssistantChannel } from '../src/assistant-channel.js'
 
 type BrowserFrame = {
@@ -10,6 +10,7 @@ type BrowserFrame = {
   token?: string
   receipt?: Record<string, unknown>
   capabilities?: Record<string, unknown>
+  runtime?: { version?: string }
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -25,6 +26,7 @@ const parseFrame = (value: string): BrowserFrame => {
     ...(typeof parsed.token === 'string' ? { token: parsed.token } : {}),
     ...(isRecord(parsed.receipt) ? { receipt: parsed.receipt } : {}),
     ...(isRecord(parsed.capabilities) ? { capabilities: parsed.capabilities } : {}),
+    ...(isRecord(parsed.runtime) ? { runtime: parsed.runtime } : {}),
   }
 }
 
@@ -54,7 +56,7 @@ class FakeSocket {
   constructor(readonly url: string) { FakeSocket.instances.push(this) }
   open() { this.readyState = FakeSocket.OPEN; this.onopen?.() }
   message(value: unknown) { this.onmessage?.({ data: JSON.stringify(value) } as MessageEvent) }
-  close(code = 1000) { this.readyState = 3; this.onclose?.({ code } as CloseEvent) }
+  close(code = 1000, reason = '') { this.readyState = 3; this.onclose?.({ code, reason } as CloseEvent) }
   send(value: string) { this.sent.push(value) }
 }
 
@@ -72,12 +74,128 @@ const receipt = (requestId: string, grantEpoch = 7) => ({
   deadline: 1_789_000_000_000, fingerprint: 'f'.repeat(64), outcome: 'observed' as const,
 })
 
+beforeEach(() => { vi.stubGlobal('fetch', vi.fn(async () => ({ status: 200 }))) })
 afterEach(() => {
   FakeSocket.instances = []
+  vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 
 describe('浏览器助手 WebSocket 通道', () => {
+  test('没有 Codex 续授权回调的 DSH 通道保留既有有界重连状态', async () => {
+    vi.useFakeTimers()
+    FakeSocket.instances = []
+    const states = []
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, reconnectDelayMs: 10,
+      onState: state => states.push(state) })
+    channel.start()
+    FakeSocket.instances[0].close(1008)
+    expect(states.at(-1)).toMatchObject({ phase: 'offline', retryPending: true })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(FakeSocket.instances).toHaveLength(2)
+    channel.stop()
+  })
+  test('重新配对期间撤销仍清理旧授权，保留准确的终止原因', async () => {
+    vi.useFakeTimers()
+    FakeSocket.instances = []
+    const onCommand = vi.fn()
+    const states = []
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, reconnectDelayMs: 10, onCommand,
+      renewCredentials: async () => { throw Object.assign(new Error('revoked'), { code: 'authorization_revoked' }) },
+      onState: state => states.push(state) })
+    channel.start()
+    FakeSocket.instances[0].close(4409, 'credentials_expired')
+    await vi.runAllTimersAsync()
+    expect(onCommand).toHaveBeenCalledExactlyOnceWith({ type: 'authority-revoked', installationId: credentials.installationId, grantEpoch: 7 })
+    expect(states.at(-1)).toMatchObject({ phase: 'unauthorized', reason: 'authorization_revoked' })
+    channel.stop()
+  })
+
+  test('令牌拒绝不误报为明确撤销', () => {
+    FakeSocket.instances = []
+    const states = []
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, onState: state => states.push(state) })
+    channel.start()
+    FakeSocket.instances[0].close(4401, 'invalid_credentials')
+    expect(states.at(-1)).toMatchObject({ phase: 'unauthorized', reason: 'invalid_credentials' })
+    channel.stop()
+  })
+  test('只有明确失效信号续授权，失败保持有限退避，并发重试不重复建立连接', async () => {
+    vi.useFakeTimers()
+    FakeSocket.instances = []
+    const renewCredentials = vi.fn(async () => credentials)
+    const states = []
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, reconnectDelayMs: 10,
+      renewCredentials, onState: state => states.push(state) })
+    channel.start()
+    FakeSocket.instances[0].open()
+    FakeSocket.instances[0].close(4409, 'credentials_expired')
+    expect(states).toContainEqual({ phase: 'credentials-expired' })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(renewCredentials).toHaveBeenCalledTimes(1)
+    expect(FakeSocket.instances).toHaveLength(2)
+    channel.start(); channel.start()
+    expect(FakeSocket.instances).toHaveLength(2)
+    FakeSocket.instances[1].close(1008)
+    await vi.runAllTimersAsync()
+    expect(renewCredentials).toHaveBeenCalledTimes(1)
+    expect(states.at(-1)).toMatchObject({ phase: 'invalid' })
+    channel.stop()
+  })
+
+  test('worker 单次唤醒允许一次失效重配对，配对网络失败不会无限循环', async () => {
+    vi.useFakeTimers()
+    FakeSocket.instances = []
+    const renewCredentials = vi.fn(async () => { throw new Error('offline') })
+    const states = []
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, reconnectDelayMs: 10,
+      renewCredentials, onState: state => states.push(state) })
+    channel.start({ once: true })
+    FakeSocket.instances[0].close(4409, 'credentials_expired')
+    await vi.runAllTimersAsync()
+    expect(renewCredentials).toHaveBeenCalledTimes(1)
+    expect(states.at(-1)).toMatchObject({ phase: 'offline', retryPaused: true })
+    channel.start()
+    await vi.runAllTimersAsync()
+    expect(renewCredentials).toHaveBeenCalledTimes(7)
+    expect(states.at(-1)).toMatchObject({ phase: 'offline', retryPaused: true })
+    channel.stop()
+  })
+
+  test.each([4401, 4403, 1008])('终止拒绝 %s 不会重新配对或自动重连', async (code) => {
+    vi.useFakeTimers()
+    FakeSocket.instances = []
+    const renewCredentials = vi.fn(async () => credentials)
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, renewCredentials })
+    channel.start()
+    FakeSocket.instances[0].close(code)
+    await vi.runAllTimersAsync()
+    channel.start()
+    expect(FakeSocket.instances).toHaveLength(1)
+    expect(renewCredentials).not.toHaveBeenCalled()
+    channel.stop()
+  })
+
+  test('停止会取消飞行中的探测，迟到响应不会重新打开 socket', async () => {
+    vi.useFakeTimers()
+    let finish!: (value: { status: number }) => void
+    let probeSignal: AbortSignal | undefined
+    const fetchImpl = vi.fn((_url, options) => {
+      probeSignal = options.signal
+      return new Promise<{ status: number }>((resolve) => { finish = resolve })
+    })
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, fetchImpl })
+    channel.start(); FakeSocket.instances[0].close(1006)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(fetchImpl).toHaveBeenCalledOnce()
+    channel.stop()
+    expect(probeSignal?.aborted).toBe(true)
+    finish({ status: 200 })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(FakeSocket.instances).toHaveLength(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   test('新写授权只恢复旧代次的最小状态，不重放旧动作或发送旧页面内容', async () => {
     const writable = { ...credentials, grant: { ...credentials.grant, scopes: ['browser:read', 'browser:write'] } }
     const onCommand = vi.fn<(frame: { type: string }) => void>()
@@ -142,6 +260,14 @@ describe('浏览器助手 WebSocket 通道', () => {
     expect(sent(socket).at(-1)).toEqual({ type: 'result', receipt: result })
   })
 
+  test('hello 在已知扩展版本时携带独立的运行时元数据', () => {
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, runtime: { version: '0.4.0' } })
+    channel.start(); const socket = FakeSocket.instances.at(-1)!; socket.open()
+
+    expect(sent(socket)).toEqual([{ type: 'hello', protocolVersion: 1, installationId: 'installation-1', token: 'secret-token',
+      capabilities: executorCapabilities, runtime: { version: '0.4.0' } }])
+  })
+
   test('RPC 成功和远端失败结算当前 call，发送后的取消与超时均为结果未知', async () => {
     vi.useFakeTimers()
     const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, requestTimeoutMs: 50 })
@@ -181,70 +307,56 @@ describe('浏览器助手 WebSocket 通道', () => {
     second.close(4401)
     await vi.advanceTimersByTimeAsync(100)
     expect(FakeSocket.instances).toHaveLength(2)
-    expect(states.at(-1)).toEqual({ phase: 'unauthorized' })
+    expect(states.at(-1)).toEqual({ phase: 'unauthorized', reason: 'authorization_revoked' })
     vi.useRealTimers()
   })
 
-  test('服务持续离线时有界退避并暂停，用户再次启动才继续尝试', async () => {
+  test('服务持续离线只做五次退避探测，之后无后台重连', async () => {
     vi.useFakeTimers()
-    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, reconnectDelayMs: 1000 })
-    channel.start()
-    FakeSocket.instances.at(-1)!.close(1006)
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('connection refused'))
+    const states: Array<{ phase: string; retryPaused?: boolean }> = []
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, fetchImpl,
+      onState: state => states.push(state) })
+    channel.start(); FakeSocket.instances.at(-1)!.close(1006)
     for (const delay of [1000, 2000, 4000, 8000, 16000]) {
+      const count = fetchImpl.mock.calls.length
       await vi.advanceTimersByTimeAsync(delay - 1)
-      expect(FakeSocket.instances).toHaveLength(1 + [1000, 2000, 4000, 8000, 16000].indexOf(delay))
+      expect(fetchImpl).toHaveBeenCalledTimes(count)
       await vi.advanceTimersByTimeAsync(1)
-      FakeSocket.instances.at(-1)!.close(1006)
+      expect(fetchImpl).toHaveBeenCalledTimes(count + 1)
+      expect(FakeSocket.instances).toHaveLength(1)
     }
-    expect(FakeSocket.instances).toHaveLength(6)
+    expect(states.at(-1)).toMatchObject({ phase: 'offline', retryPaused: true, retryPending: false })
+    await vi.advanceTimersByTimeAsync(3_600_000)
+    expect(fetchImpl).toHaveBeenCalledTimes(5)
     expect(vi.getTimerCount()).toBe(0)
-    await vi.advanceTimersByTimeAsync(120_000)
-    expect(FakeSocket.instances).toHaveLength(6)
-
-    channel.start()
-    expect(FakeSocket.instances).toHaveLength(7)
-    const restored = FakeSocket.instances.at(-1)!
-    restored.open(); ready(restored)
-    restored.close(1006)
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(FakeSocket.instances).toHaveLength(8)
     channel.stop()
   })
 
-  test('握手后立即断线也耗尽同一次启动的预算', async () => {
+  test('事件恢复只尝试一次，未稳定连接不重新启动整轮退避', async () => {
     vi.useFakeTimers()
-    const states: Array<{ phase: string; retryPaused?: boolean }> = []
-    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, reconnectDelayMs: 1000,
-      onState: (state: { phase: string; retryPaused?: boolean }) => states.push(state) })
-    channel.start()
-    for (const delay of [1000, 2000, 4000, 8000, 16000]) {
-      const socket = FakeSocket.instances.at(-1)!
-      socket.open(); ready(socket); socket.close(1006)
-      await vi.advanceTimersByTimeAsync(delay)
-    }
-    const last = FakeSocket.instances.at(-1)!
-    last.open(); ready(last); last.close(1006)
-    expect(states.at(-1)).toMatchObject({ phase: 'offline', retryPaused: true })
+    const states: unknown[] = []
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, onState: state => states.push(state) })
+    channel.start({ once: true })
+    const socket = FakeSocket.instances.at(-1)!
+    socket.open(); ready(socket); socket.close(1006)
+    expect(states.at(-1)).toMatchObject({ phase: 'offline', retryPaused: true, retryPending: false })
+    await vi.advanceTimersByTimeAsync(3_600_000)
+    expect(FakeSocket.instances).toHaveLength(1)
     expect(vi.getTimerCount()).toBe(0)
-    await vi.advanceTimersByTimeAsync(120_000)
-    expect(FakeSocket.instances).toHaveLength(6)
     channel.stop()
   })
 
-  test('首次断线即阻止 worker 重启后新一轮自动尝试，稳定连接才解除', async () => {
+  test('正在退避不显示暂停，稳定连接后恢复短时故障预算', async () => {
     vi.useFakeTimers()
-    const states: Array<{ phase: string; retryPaused?: boolean }> = []
-    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket,
-      onState: (state: { phase: string; retryPaused?: boolean }) => states.push(state) })
-    channel.start()
-    FakeSocket.instances.at(-1)!.close(1006)
-    expect(states.at(-1)).toMatchObject({ phase: 'offline', retryPaused: true })
+    const states: unknown[] = []
+    const channel = createAssistantChannel({ credentials, WebSocketImpl: FakeSocket, onState: state => states.push(state) })
+    channel.start(); FakeSocket.instances.at(-1)!.close(1006)
+    expect(states.at(-1)).toMatchObject({ phase: 'offline', retryPaused: false, retryPending: true, pauseOnRestart: true })
     await vi.advanceTimersByTimeAsync(1000)
     const restored = FakeSocket.instances.at(-1)!
     restored.open(); ready(restored)
-    await vi.advanceTimersByTimeAsync(29_999)
-    expect(states.some(state => state.phase === 'stable')).toBe(false)
-    await vi.advanceTimersByTimeAsync(1)
+    await vi.advanceTimersByTimeAsync(30_000)
     expect(states.at(-1)).toMatchObject({ phase: 'stable' })
     channel.stop()
     expect(vi.getTimerCount()).toBe(0)

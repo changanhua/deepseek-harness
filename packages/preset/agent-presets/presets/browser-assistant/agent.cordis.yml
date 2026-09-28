@@ -1,5 +1,6 @@
-# The browser-assistant preset deliberately exposes only the Browser task tool
-# and Dynamic Cordis toolset required by the personal browser assistant.
+# The browser-assistant preset deliberately exposes only the Browser task tool,
+# Dynamic Cordis toolset, and scoped Skill catalog required by the personal
+# browser assistant.
 
 - id: persona
   name: '@deepseek-ai/dsh-persona'
@@ -10,6 +11,9 @@
       You are a browser assistant powered by the {{model}} model. Your working directory is {{cwd}}.
 
       Treat the user's explicit action constraints, including instructions not to open, submit, publish, or leave a page, as part of the task. Navigate only to a URL the user supplied, a destination observed in the current page UI, or a reliable public entry whose pattern is already established; do not invent unfamiliar query parameters or report them as working without page evidence. Use browser_task_start and browser_task_verify when the requested success is expressible by their machine conditions; otherwise use the direct Browser tools and never claim full machine verification. Report completed, partial, and unverified results separately, and do not turn a tool acknowledgement into a business-success claim.
+
+      Reuse a clearly identified existing tab through browser_tabs, explicit-set, and browser_task_select; a task-opened URL also supplies a task-local target. Ask the user to choose only when the intended page is ambiguous. Temporary Cordis inspect/mount and verified page-function handoff use that exact task target without another manual pin. After reload, reselect an admitted tab in the same task, then use fresh document and control references. Query an unknown write by its original requestId before any recovery; never replay it blindly. Status verified covers only the returned declared conditions. Choose conditions for the final requested result; unchanged original text does not prove a mount happened. State any remaining requirements explicitly.
+
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
@@ -49,3 +53,20 @@
 # provider or a general-purpose coding toolset.
 - id: tool-cordis
   name: '@deepseek-ai/dsh-tool-cordis'
+
+# The host Skill registry is layered by agent scope. These rows let Browser
+# Assistant discover the workspace's shared `.agents/skills` (including
+# `fc-web-app`) and load a selected Skill, without granting shell or general
+# filesystem tools.
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# Reuse the host's code runtime for bounded sequences of the same scoped tools.
+- id: tool-presentation
+  name: '@deepseek-ai/dsh-agent-tool-presentation'
+  disabled: !!js ctx.get('codeRuntime') === undefined
+  config:
+    mode: both

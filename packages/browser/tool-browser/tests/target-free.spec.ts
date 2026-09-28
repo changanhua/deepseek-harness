@@ -34,7 +34,8 @@ async function harness() {
     instances: vi.fn(async () => [{ installationId: 'extension', extensionId: 'test', online: true, grantEpoch: 1,
       origins: ['https://example.test'], scopes: ['browser:read', 'browser:write'], capabilities: { protocolVersion: 1 as const,
         actionKinds: ['tab_open', 'snapshot'] as const, requestRecovery: true as const, targetFreeOpen: true as const } }]),
-    execute: vi.fn(async (operation: BrowserOperation): Promise<BrowserActionResult> => ({ requestId: operation.requestId,
+    execute: vi.fn(async (operation: BrowserOperation, _signal: AbortSignal): Promise<BrowserActionResult> => ({
+      requestId: operation.requestId,
       sessionId: operation.sessionId, installationId: operation.installationId, outcome: 'observed', delivery: 'sent',
       value: operation.action.kind === 'tab_open' ? { opened: true, tab: opened } : { page, text: '已打开', elements: [] } })),
   }

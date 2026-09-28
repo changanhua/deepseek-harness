@@ -23,6 +23,8 @@ The domain deliberately separates page evidence, exact target binding, action re
 
 ## Model Experience
 
+Read-only tab discovery is independent of task page admission and remains subject to Provider authorization. It does not change task targets, capabilities, evidence, attempts or budgets. Selection receipts retain failure reasons so consumers can distinguish an obsolete browser-session reference from an uncertain operation after replay; the service never adopts a replacement identity from a tab listing.
+
 ### Task continuation
 
 #### What the model sees
@@ -39,10 +41,14 @@ Stable task schema and consumer composition preserve the reusable prefix. Change
 
 ## Known Limitations and Deferred Work
 
-- Projection state version 8 stores BrowserTask change version 4 snapshots; older task-change formats are rejected without migration. A target-free task captures a null user-selection revision, retains a pending exact tab reference after `tab_open`, and adopts a page only from a matching main-frame snapshot. Adoption is task-local and never changes the user's Session binding.
+- Projection state version 11 stores BrowserTask change version 6 snapshots; older task-change formats are rejected without migration. A target-free task captures a null user-selection revision, retains a pending exact tab reference after `tab_open`, and adopts a page only from a matching main-frame snapshot. Adoption is task-local and never changes the user's Session binding.
 - The standard Web composition and `tool-browser` consumer use this service, but no dedicated task-status UI renders its generic Session projection yet.
 - An owner cancellation is available only after cleanup and an explicit latest direct-user marker: `[browser-task:cancel]` or `[browser-task:accept-unknown]`. The Agent must ask for that marker when an unknown browser effect needs an owner decision; it cannot infer consent from ordinary prose or assert what the effect did.
 - Extension journal expiry, storage loss, an offline executor, or a mismatched locator leaves the request unknown. The task does not infer `not-sent` and does not replay the write.
+- `advancePage` consumes only the canonical receipt of a settled observed attempt. It keeps installation, tab, frame, budget, attempts, and selection revision fixed; only a document-id replacement disposes old page resources. A same-document route update does not invent cleanup. The persisted target receipt is the authority for later provider reads; a rebind cannot borrow an unrelated receipt.
+- Page receipts retain up to eight opener candidates in a complete observation of at most 4 KiB, including source tab, browser-session identity and truncation. Invalid observations are discarded without altering the action outcome. Replay checks the same bounded shape. Candidates may accompany an unknown action and never settle it or grant access to another page.
+- Task scope is `single-tab`, `descendants`, or a fixed `explicit-set`, bounded to 32 complete tab references. `selectTarget` atomically spends one action and records the fixed snapshot request. A v3 receipt can adopt a target only after fresh full-tab verification, current authority, and replayable scope provenance; ordinary snapshots cannot select implicitly. Unknown selection reads retain their outcome even when recovery proves quiescence. Cross-page evidence never satisfies a current-page check.
+- Selection does not move leases. Page-function handoff uses the current task-selected page and unchanged user-selection revision; it requires current acceptance, exact active resources, and the authenticated Cordis owner without requiring a redundant manual page pin. Exact non-transferred leases retain cleanup permission on their original page even after user selection changes; current browser grants still apply. A completed task retains read-only access to its final exact page under the unchanged user-selection revision, with no further selection or input.
 - A representative DeepSeek-v4.1-flash extension acceptance completed through the configured standard Web deployment; package tests and live Session evidence remain separately owned.
 
 <a id="dev-note"></a>

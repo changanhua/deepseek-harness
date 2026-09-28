@@ -4,6 +4,7 @@ export const configSchema = z.object({
   port: z.number().int().min(1).max(65535).default(3091),
   secret: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
   extensionIds: z.array(z.string().regex(/^[a-p]{32}$/u)).min(1).max(16),
+  revokedInstallationIds: z.array(z.uuid()).max(1024).optional(),
 }).strict()
 export const pageSchema = z.object({
   tabId: z.number().int().nonnegative(), frameId: z.number().int().nonnegative().default(0),
@@ -23,6 +24,7 @@ export const snapshotSchema = z.object({
   treeLimit: z.number().int().min(1).max(1000).default(256),
   offset: z.number().int().min(0).max(10000).default(0), limit: z.number().int().min(1).max(128).default(64),
   query: z.string().max(256).optional(), structure: z.boolean().default(true),
+  includeValues: z.boolean().default(false),
   expectedTab: tabReferenceSchema.optional(),
 }).strict().refine(input => !input.treeCursor || input.tree && !!input.documentId, { message: 'Cursor continuation requires tree and documentId.' })
 export const actionSchema = z.discriminatedUnion('kind', [

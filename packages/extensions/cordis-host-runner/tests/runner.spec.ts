@@ -838,6 +838,66 @@ describe('dynamic runner teardown', () => {
     expect(statusRequests).toHaveLength(1)
   })
 
+  it.each([
+    { status: { outcome: 'unknown', delivery: 'sent', quiescent: true, reason: 'document_replaced' },
+      initial: { outcome: 'unknown', delivery: 'sent', reason: 'executor_reply_lost' },
+      probe: undefined, expected: { ok: true }, probes: 0, queries: 1 },
+    { status: { outcome: 'failed', delivery: 'sent', reason: 'page_unavailable' },
+      initial: { outcome: 'failed', delivery: 'sent', reason: 'page_unavailable' },
+      probe: { outcome: 'failed', delivery: 'sent', reason: 'document_replaced' }, expected: { ok: true }, probes: 1, queries: 0 },
+    { status: { outcome: 'unknown', delivery: 'sent', reason: 'receipt_unavailable' },
+      initial: { outcome: 'unknown', delivery: 'sent', reason: 'executor_reply_lost' },
+      probe: { outcome: 'failed', delivery: 'not-sent', reason: 'offline' },
+      expected: { ok: false, reason: 'cleanup-pending' }, probes: 1, queries: 1 },
+    { status: { outcome: 'unknown', delivery: 'not-sent', reason: 'unauthorized' },
+      initial: { outcome: 'unknown', delivery: 'sent', reason: 'executor_reply_lost' },
+      probe: { outcome: 'failed', delivery: 'not-sent', reason: 'unauthorized' },
+      expected: { ok: false, reason: 'cleanup-pending' }, probes: 1, queries: 1 },
+    { status: { outcome: 'unknown', delivery: 'not-sent', reason: 'closed' },
+      initial: { outcome: 'unknown', delivery: 'not-sent', reason: 'closed' },
+      probe: { outcome: 'failed', delivery: 'not-sent', reason: 'closed' },
+      expected: { ok: false, reason: 'cleanup-pending' }, probes: 1, queries: 1 },
+    { status: { outcome: 'unknown', delivery: 'sent', quiescent: false, reason: 'document_replaced' },
+      initial: { outcome: 'unknown', delivery: 'sent', reason: 'executor_reply_lost' },
+      probe: { outcome: 'failed', delivery: 'not-sent', reason: 'document_replaced' },
+      expected: { ok: false, reason: 'cleanup-pending' }, probes: 1, queries: 1 },
+  ])('settles old cleanup only on exact document-loss proof: $status.reason', async ({ status, initial, probe, expected, probes, queries }) => {
+    const { ctx, runner } = await setup()
+    const calls: string[] = []
+    const probedPages: unknown[] = []
+    const statusQueries: string[] = []
+    ctx.provide('browser', { execute: async (operation: { action: { kind: string; page?: unknown } }) => {
+      calls.push(operation.action.kind)
+      if (operation.action.kind === 'entry_mount') return { outcome: 'observed', delivery: 'sent', value: { mounted: 1 } }
+      if (operation.action.kind === 'page_map') {
+        probedPages.push(operation.action.page)
+        return probe
+      }
+      return initial
+    }, requestStatus: async (query: { requestId: string }) => {
+      statusQueries.push(query.requestId)
+      return status
+    } } as never)
+    const page = { tabId: 1, frameId: 0, documentId: 'document-1', url: 'https://example.test/feed' }
+    const { pluginId, packageId } = define(runner, { sessionId: AGENT_A.id, name: 'old-page', purpose: 'clean exact page', host: `
+      return { name: 'old-page', async apply() {
+        await harness.browser.mount({ installationId: 'installation-1', page: ${JSON.stringify(page)}, slot: 'feed',
+          regionSelector: 'main', selector: ':scope > article', label: 'Collect' })
+      } }
+    ` })
+    await runner.run(AGENT_A, pluginId, packageId, 'run')
+    await expect(runner.stop(AGENT_A, pluginId)).resolves.toMatchObject(expected)
+    expect(calls.filter(kind => kind === 'entry_unmount')).toHaveLength(1)
+    expect(calls.filter(kind => kind === 'page_map')).toHaveLength(probes)
+    expect(probedPages).toEqual(Array.from({ length: probes }, () => page))
+    expect(statusQueries.length).toBeGreaterThanOrEqual(queries)
+    if (!expected.ok) {
+      await expect(runner.stop(AGENT_A, pluginId)).resolves.toMatchObject(expected)
+      expect(calls.filter(kind => kind === 'entry_unmount')).toHaveLength(1)
+      expect(new Set(statusQueries).size).toBe(1)
+    }
+  })
+
   it('may issue a fresh cleanup request only after the previous cleanup was confirmed not-sent', async () => {
     const { ctx, runner } = await setup()
     const calls: string[] = []
@@ -864,6 +924,7 @@ describe('dynamic runner teardown', () => {
     const statusQueries: Array<Record<string, unknown>> = []
     ctx.provide('browser', { execute: async (operation: { requestId: string; action: { kind: string; forgetCollected?: boolean } }) => {
       if (operation.action.kind === 'entry_mount') return { outcome: 'observed', delivery: 'sent', value: { mounted: 1 } }
+      if (operation.action.kind === 'page_map') return { outcome: 'failed', delivery: 'not-sent', reason: 'offline' }
       unmounts.push({
         requestId: operation.requestId,
         ...operation.action.forgetCollected === undefined ? {} : { forgetCollected: operation.action.forgetCollected },

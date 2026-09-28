@@ -49,6 +49,12 @@ interface SkillProvider {
    * @returns the full skill body, or `undefined` if it is no longer loadable.
    */
   readonly get: (candidate: SkillCandidate, options: SkillLookupOptions) => Promise<SkillDefinition | undefined>
+  /**
+   * Optionally load one attachment belonging to a previously listed skill.
+   * The registry calls this only on the scope-winning provider; resource-base
+   * metadata is descriptive and never grants registry filesystem access.
+   */
+  readonly getResource?: (candidate: SkillCandidate, resourcePath: string, options: SkillLookupOptions) => Promise<SkillResource | undefined>
 }
 ```
 
@@ -176,6 +182,26 @@ interface SkillDefinition extends SkillSummary {
 }
 ```
 
+Attachments are loaded through the provider that owns the selected skill. `resourceBase` remains descriptive; it does not authorize the registry or a consumer to read arbitrary files. A resource result identifies its skill, provider, and relative path separately from the instruction body.
+
+```ts type-equiv
+/** One complete provider-owned attachment from the selected skill bundle. */
+interface SkillResource {
+  /** The provider-confirmed relative path within the selected skill bundle. */
+  readonly resourcePath: string
+  /** Complete UTF-8 attachment text. Providers must reject rather than truncate. */
+  readonly content: string
+}
+```
+
+```ts type-equiv
+/** Complete attachment with the selected skill and provider identity attached by the registry. */
+interface SkillResourceDefinition extends SkillResource {
+  readonly name: string
+  readonly provider: string
+}
+```
+
 Runtime skill inputs may omit invocation controls and the provider label. The registry resolves both defaults once, then uses the same complete definition shape and first-wins collection order as providers. The returned disposer removes the contribution and invalidates discovery caches.
 
 ```ts type-equiv
@@ -217,7 +243,17 @@ interface SkillViewOptions extends SkillLookupOptions {
 }
 ```
 
-The registry owns only its discovery-cache bound. The local provider owns filesystem roots (`dshHome`, `agentsHome`, `customSkillDirs`, and optional `bundledSkillDir`/`DSH_BUNDLED_SKILL_DIR`) plus watcher enablement, polling, stability, symlink, and project-capacity controls. The consumer owns its catalog description bound. Exact defaults and validation are in the generated [config catalog](../config-catalog.md).
+Resource reads bind policy, provider registration and the selected scope entry across asynchronous loading. A model consumer supplies `invocation: 'model'`; a changed winner, disposed provider or cancelled caller cannot release an old attachment as current content.
+
+```ts type-equiv
+/** Resource lookup options with an optional model-facing invocation boundary. */
+interface SkillResourceViewOptions extends SkillViewOptions {
+  /** Require the selected candidate and loaded definition to permit model invocation. */
+  readonly invocation?: 'model' | undefined
+}
+```
+
+The registry owns its discovery-cache bound and complete attachment framing bound. The local provider owns filesystem roots (`dshHome`, `agentsHome`, `customSkillDirs`, and optional `bundledSkillDir`/`DSH_BUNDLED_SKILL_DIR`), attachment containment and text limits, plus watcher enablement, polling, stability, symlink, and project-capacity controls. The consumer owns its catalog description bound. Exact defaults and validation are in the generated [config catalog](../config-catalog.md).
 
 ```ts type-equiv
 /** Skill registry configuration. */
@@ -234,6 +270,8 @@ interface Config {
 Before each later model step, the consumer applies exact tool visibility and digests the exact rendered entries between the `<available_skills>` tags from a complete snapshot. It derives the comparison baseline from the same entries in the newest recognizable visible catalog message sourced by the plugin. A changed digest appends a durable full replacement through `agent.inject()`; deleting every skill appends an explicit empty replacement. Incomplete snapshots preserve the last-good model view. If compaction hides every historical catalog message, the next complete snapshot re-establishes the current catalog; an empty view with no prior catalog emits nothing. These catalog messages are session history, not World State.
 
 The model-facing `skill({ name })` tool validates the kebab-case name, finds the summary in the invocation-neutral catalog, rejects it before loading unless `isModelInvocable` permits access, then rereads the complete definition for the calling agent cwd and rechecks the policy before returning content. It reports an unresolved skill as unknown or no longer available and returns a tool result containing `<skill_content name="...">`, `<skill_resources>`, and `<skill_instructions>`. `resourceBase` resolves explicitly referenced scripts, references, and assets only as needed; the loaded result does not enumerate a skill directory. Body-only edits therefore change later tool calls without producing catalog messages or rewriting earlier tool results.
+
+`skill({ name, resource })` selects one attachment by its exact relative path. It uses the same model-invocation boundary and current scope as the main body, delegates to the winning provider, and returns a separate `<skill_resource>` block. It neither enumerates resources nor executes scripts. The filesystem provider accepts complete bounded UTF-8 text from directory bundles; its containment and rejection contract is documented in [skill-filesystem](../../packages/skill/skill-filesystem/README.md).
 
 ## Browser Session catalog
 
@@ -335,6 +373,17 @@ async managementSnapshot(options: SkillViewOptions = {}): Promise<SkillManagemen
  * @returns the full skill, including body content, or `undefined`.
  */
 async get(name: string, options: SkillViewOptions = {}): Promise<SkillDefinition | undefined>
+
+/**
+ * Load one attachment through the provider that won this name in the
+ * caller's current scope. The registry never derives a host path from
+ * `resourceBase`; that capability stays with the provider.
+ * @param name - kebab-case name resolved in the caller's scope.
+ * @param resourcePath - exact provider-owned relative attachment path.
+ * @param options - lookup scope, cwd, cancellation, and optional model invocation boundary.
+ * @returns complete attachment from the still-current provider, or undefined if it cannot be loaded.
+ */
+async getResource(name: string, resourcePath: string, options: SkillResourceViewOptions = {}): Promise<SkillResourceDefinition | undefined>
 ```
 
 Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)

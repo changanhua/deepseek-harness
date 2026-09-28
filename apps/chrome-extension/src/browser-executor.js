@@ -21,11 +21,22 @@ const pageOf = action => action.element?.page ?? action.page
 const staleTarget = (expected, current) => current?.documentId !== expected.documentId || current?.frameId !== expected.frameId
   ? 'document_replaced'
   : current?.url !== expected.url ? 'target_url_stale' : 'stale_document'
+const tabConfirmedGone = (error, tabId) => typeof error?.message === 'string'
+  && error.message === `No tab with id: ${tabId}.`
 const actionOf = request => ['prepare', 'commit', 'observe'].includes(request.payload?.kind) ? request.payload.action : request.payload
 
 /** All page work is pinned to Chrome's documentId, never foreground state. */
-export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, getEngine = () => 'puppeteer', now = Date.now, navigationTimeoutMs = 2000 }) => {
+export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, getEngine = () => 'puppeteer', now = Date.now, navigationTimeoutMs = 2000,
+  transitionTimeoutMs = 250 }) => {
   const browserSessionId = createBrowserSessionId({ storageSession: chromeApi.storage?.session })
+  const readExpectedTab = async (reference, tabId) => {
+    const sessionId = await browserSessionId()
+    if (reference.tabId !== tabId || sessionId !== reference.browserSessionId) throw failure('tab_reference_stale')
+    let tab
+    try { tab = await chromeApi.tabs.get(reference.tabId) } catch { throw failure('tab_reference_stale') }
+    if (tab?.id !== reference.tabId || tab.windowId !== reference.windowId) throw failure('tab_reference_stale')
+    return { tabId: tab.id, windowId: tab.windowId, browserSessionId: sessionId }
+  }
   const releaseInstallation = async ({ installationId, grantEpoch }) => {
     if (typeof installationId !== 'string' || !Number.isSafeInteger(grantEpoch) || grantEpoch < 1) return
     const tabs = await chromeApi.tabs.query({})
@@ -55,6 +66,13 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
     if (result.length !== 1 || !result[0].documentId || !result[0].result?.url) throw failure('document_unavailable')
     return { tabId: target.tabId, frameId: result[0].frameId, documentId: result[0].documentId, url: result[0].result.url }
   }
+  const transitions = createBrowserTransitions({ chromeApi, browserSessionId, probe, now, timeoutMs: transitionTimeoutMs })
+  const tracksTransition = kind => ['navigate', 'click', 'submit', 'press', 'back', 'forward', 'reload', 'tab_close'].includes(kind)
+  const attachTransition = async (result, watcher) => {
+    if (!watcher || !result || typeof result !== 'object') return result
+    const transition = await watcher.settle()
+    return { ...result, value: { ...(result.value ?? {}), transition } }
+  }
   const invoke = async (page, method, value, options = {}) => {
     const results = await chromeApi.scripting.executeScript({ target: targetOf(page), world: 'ISOLATED',
       func: (method, value, options) => globalThis.__dshBrowserAssistant[method](value, options),
@@ -74,6 +92,9 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
         const current = await probe({ tabId: entry.target.tabId, frameIds: [entry.target.frameId] })
         if (current.documentId !== entry.target.documentId) return { outcome: 'unknown', quiescent: true, reason: 'document_replaced' }
       } catch { /* loss of permission alone does not prove document destruction */ }
+      try { await chromeApi.tabs.get(entry.target.tabId) } catch (error) {
+        if (tabConfirmedGone(error, entry.target.tabId)) return { outcome: 'unknown', quiescent: true, reason: 'document_replaced' }
+      }
       return { outcome: 'unknown', quiescent: false, reason: 'executor_unavailable' }
     }
   }
@@ -98,6 +119,7 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
     let issued = false
     let cancel
     let preparedPage
+    let watcher
     try {
       const action = actionOf(request)
       const preparing = request.payload?.kind === 'prepare'
@@ -110,12 +132,15 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
       const grant = grantFor(request, signal)
       if (action.kind === 'tabs') {
         const tabs = []
+        const sessionId = await browserSessionId()
         for (const tab of await chromeApi.tabs.query({})) {
-          if (!allowed(grant, tab.url) || !Number.isInteger(tab.id)) continue
+          if (!allowed(grant, tab.url) || !Number.isSafeInteger(tab.id) || tab.id < 0
+            || !Number.isSafeInteger(tab.windowId) || tab.windowId < 0) continue
           if (!await chromeApi.permissions.contains({ origins: [`${siteOf(tab.url)}/*`] })) continue
           const live = grantFor(request, signal)
           if (!allowed(live, tab.url)) continue
-          tabs.push({ tabId: tab.id, windowId: tab.windowId, url: tab.url, title: tab.title ?? '', active: tab.active === true })
+          tabs.push({ tabId: tab.id, windowId: tab.windowId, browserSessionId: sessionId,
+            url: tab.url, title: tab.title ?? '', active: tab.active === true })
           if (tabs.length >= 128) break
         }
         grantFor(request, signal)
@@ -141,11 +166,7 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
       }
       if (['navigate', 'tab_open'].includes(action.kind)) await checkSite(request, signal, action.url)
       if (action.kind === 'snapshot' && action.expectedTab) {
-        const reference = action.expectedTab
-        if (reference.tabId !== action.tabId || await browserSessionId() !== reference.browserSessionId) throw failure('tab_reference_stale')
-        let tab
-        try { tab = await chromeApi.tabs.get(reference.tabId) } catch { throw failure('tab_reference_stale') }
-        if (tab?.id !== reference.tabId || tab.windowId !== reference.windowId) throw failure('tab_reference_stale')
+        await readExpectedTab(action.expectedTab, action.tabId)
       }
       const target = expected ? targetOf(expected) : action.documentId
         ? { tabId: action.tabId, documentIds: [action.documentId] } : { tabId: action.tabId, frameIds: [action.frameId] }
@@ -170,6 +191,7 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
               if (typeof tab?.url === 'string' && tab.url !== expected.url) throw failure('target_url_stale')
             } catch (replacement) {
               if (['document_replaced', 'target_url_stale'].includes(replacement?.code)) throw replacement
+              if (tabConfirmedGone(replacement, expected.tabId)) throw failure('document_replaced')
             }
           }
         }
@@ -193,6 +215,7 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
           query: action.query ?? '', offset: action.offset ?? 0, limit: action.limit ?? 128, textLimit: action.textLimit ?? 50000,
           tree: action.tree ?? false, ...(action.treeCursor === undefined ? {} : { treeCursor: action.treeCursor }), treeLimit: action.treeLimit ?? 256,
           includeOptions: action.includeOptions ?? false, structure: action.structure ?? true,
+          includeValues: action.includeValues ?? false,
           ...(action.presentationQueries === undefined ? {} : {
             presentationQueries: action.presentationQueries,
             presentationOwner: { sessionId: request.sessionId, installationId: request.installationId,
@@ -211,7 +234,10 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
         }
         grantFor(request, signal)
         if (snapshot.url !== page.url) throw failure('target_url_stale')
-        return { outcome: 'observed', quiescent: true, value: { ...snapshot, page, ...(frames.length ? { frames } : {}) } }
+        const tab = action.expectedTab ? await readExpectedTab(action.expectedTab, page.tabId) : undefined
+        grantFor(request, signal)
+        return { outcome: 'observed', quiescent: true,
+          value: { ...snapshot, page, ...(tab ? { tab } : {}), ...(frames.length ? { frames } : {}) } }
       }
       if (action.kind === 'page_map') {
         const result = await invoke(page, 'pageMap', clone(request))
@@ -272,22 +298,30 @@ export const createBrowserExecutor = ({ chromeApi, getGrant, puppeteer = null, g
           }
         } else if (!puppeteer || getEngine() !== 'puppeteer') throw failure('screenshot_requires_active_tab')
       }
+      watcher = tracksTransition(action.kind) ? await transitions.start({ source: page, deadline: request.deadline, signal,
+        authorized: async url => {
+          try { await checkSite(request, signal, url); return true } catch { return false }
+        } }) : null
       cancel = () => { void inspect({ target: page, identity: request }, { cancel: true }) }
       signal?.addEventListener('abort', cancel, { once: true })
       grantFor(request, signal)
       if (puppeteer && getEngine() === 'puppeteer') {
-          return await puppeteer.execute({ page, request: clone(request), invoke, signal,
-            validate: () => grantFor(request, signal), authorizeUrl: url => checkSite(request, signal, url) })
+          return await attachTransition(await puppeteer.execute({ page, request: clone(request), invoke, signal,
+            validate: () => grantFor(request, signal), authorizeUrl: url => checkSite(request, signal, url) }), watcher)
       }
       issued = true
       const result = await invoke(page, 'execute', clone(request))
-      return action.kind === 'navigate' && result.outcome === 'unknown' ? observeNavigation(request, page, signal) : result
+      const settled = action.kind === 'navigate' && result.outcome === 'unknown' ? await observeNavigation(request, page, signal) : result
+      return await attachTransition(settled, watcher)
     } catch (cause) {
-      if (issued && actionOf(request).kind === 'navigate') return observeNavigation(request, preparedPage, signal)
-      return { outcome: issued ? 'unknown' : cause.code === 'cancelled' ? 'cancelled' : 'failed',
+      const result = issued && actionOf(request).kind === 'navigate'
+        ? await observeNavigation(request, preparedPage, signal)
+        : { outcome: issued ? 'unknown' : cause.code === 'cancelled' ? 'cancelled' : 'failed',
         quiescent: !issued, reason: issued ? 'executor_reply_lost' : cause.code ?? 'page_unavailable' }
+      return await attachTransition(result, watcher)
     } finally { if (cancel) signal?.removeEventListener('abort', cancel) }
   }
   return { execute, inspect, releaseInstallation }
 }
 import { createBrowserSessionId } from './browser-session-id.js'
+import { createBrowserTransitions } from './browser-transitions.js'

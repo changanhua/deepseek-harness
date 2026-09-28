@@ -1,6 +1,6 @@
 {
   "name": "@changanhua/browser-extension-mcp",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "description": "Independent local browser extension connector for MCP clients",
   "type": "module",
   "main": "lib/index.js",

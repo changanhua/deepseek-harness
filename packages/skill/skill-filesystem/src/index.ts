@@ -9,10 +9,11 @@
  * @module @deepseek-ai/dsh-skill-filesystem
  */
 
-import { access, lstat, readdir, readFile, realpath, stat } from 'node:fs/promises'
+import { access, lstat, open, readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { unwatchFile, watchFile, type Stats } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
+import { TextDecoder } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import chokidar from 'chokidar'
 import z from '@deepseek-ai/schemastery'
@@ -41,6 +42,8 @@ const USER_AGENTS_RANK = 500
 const DEFAULT_WATCH_STABILITY_THRESHOLD_MS = 200
 const DEFAULT_WATCH_POLL_INTERVAL_MS = 100
 const DEFAULT_WATCH_MAX_PROJECTS = 128
+/** Complete attachment limit before tool-result framing. */
+export const MAX_SKILL_RESOURCE_BYTES = 64 * 1024
 
 export const name = 'skill-filesystem'
 export const inject = ['skills']
@@ -119,6 +122,7 @@ interface ParsedSkill extends SkillText {
 interface LocalLocator {
   path: string
   directory: string
+  bundle: boolean
 }
 
 interface ResolvedWatchConfig {
@@ -223,6 +227,19 @@ export class FileSystemSkillProvider implements SkillProvider {
       ...parsed.metadata !== undefined ? { metadata: parsed.metadata } : {},
       content: parsed.content,
     }
+  }
+
+  /**
+   * Read one complete UTF-8 attachment from a directory-style skill bundle.
+   * Flat skills deliberately have no attachment namespace. The filesystem
+   * service retains authority for resolution, containment, and text decoding.
+   */
+  async getResource(candidate: SkillCandidate, resourcePath: string,
+    options: SkillLookupOptions): Promise<{ resourcePath: string; content: string } | undefined> {
+    const locator = candidate.locator as LocalLocator
+    if (!locator.bundle || !isCanonicalResourcePath(resourcePath)) return undefined
+    const content = await readBundleResource(this.ctx, locator.directory, resourcePath, options.signal, candidate.source === 'bundled')
+    return content === undefined ? undefined : { resourcePath, content }
   }
 
   /**
@@ -726,9 +743,9 @@ async function discoverRoot(root: SkillRoot, ctx: Context, provider: string): Pr
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (root.skipSystem && entry.name === '.system') continue
     const locator = entry.type === 'directory'
-      ? { path: join(entry.path, 'SKILL.md'), directory: entry.path }
+      ? { path: join(entry.path, 'SKILL.md'), directory: entry.path, bundle: true }
       : entry.type === 'file' && entry.name.endsWith('.md')
-        ? { path: entry.path, directory: root.path }
+        ? { path: entry.path, directory: root.path, bundle: false }
         : undefined
     if (locator === undefined) continue
     const parsed = await parseSkillFile(locator.path, ctx, undefined, root.trustedHost === true)
@@ -888,6 +905,89 @@ async function readSkillTextFromFileSystem(
     if (isAbsentSkillPathError(error)) return undefined
     if (!hasErrorCode(error, 'FS_NOT_TEXT')) throw error
     ctx.logger.warn(`skill file ${path} ignored: ${fsReadErrorMessage(target, error)}`)
+    return undefined
+  }
+}
+
+function isCanonicalResourcePath(path: string): boolean {
+  if (path.length === 0 || path.includes('\0') || path.includes(':') || isAbsolute(path) || path.includes('\\')) return false
+  const segments = path.split('/')
+  return segments.every(segment => segment.length > 0 && segment !== '.' && segment !== '..')
+}
+
+async function readBundleResource(
+  ctx: Context,
+  directory: string,
+  resourcePath: string,
+  signal: AbortSignal | undefined,
+  trustedHost: boolean,
+): Promise<string | undefined> {
+  signal?.throwIfAborted()
+  const path = join(directory, resourcePath)
+  const fs = optionalFileSystem(ctx)
+  if (fs !== undefined && !trustedHost) {
+    let root: FsTarget
+    let target: FsTarget
+    try {
+      const resolveOptions = signal === undefined ? undefined : { signal }
+      root = resolveOptions === undefined ? await fs.resolve(directory) : await fs.resolve(directory, resolveOptions)
+      target = resolveOptions === undefined ? await fs.resolve(path) : await fs.resolve(path, resolveOptions)
+      if (!fs.contains(root, target)) return undefined
+      const info = await fs.stat(target, signal)
+      if (info === undefined || info.type !== 'file') return undefined
+      const raw = await fs.readBytes(target, signal, MAX_SKILL_RESOURCE_BYTES)
+      return decodeResourceText(raw)
+    } catch (error) {
+      signal?.throwIfAborted()
+      if (isAbsentSkillPathError(error) || hasErrorCode(error, 'FS_NOT_TEXT') || hasErrorCode(error, 'FS_TOO_LARGE')) return undefined
+      throw error
+    }
+  }
+  try {
+    const root = await realpath(directory)
+    const target = await realpath(path)
+    if (!isWithin(root, target)) return undefined
+    const info = await stat(target)
+    if (!info.isFile() || info.size > MAX_SKILL_RESOURCE_BYTES) return undefined
+    const raw = await readBoundedResourceBytes(target, signal)
+    if (raw === undefined) return undefined
+    const content = decodeResourceText(raw)
+    return content
+  } catch (error) {
+    signal?.throwIfAborted()
+    if (isAbsentSkillPathError(error)) return undefined
+    throw error
+  }
+}
+
+async function readBoundedResourceBytes(path: string, signal: AbortSignal | undefined): Promise<Uint8Array | undefined> {
+  const handle = await open(path, 'r')
+  try {
+    const bytes = Buffer.allocUnsafe(MAX_SKILL_RESOURCE_BYTES + 1)
+    let offset = 0
+    while (offset < bytes.byteLength) {
+      signal?.throwIfAborted()
+      const { bytesRead } = await handle.read(bytes, offset, bytes.byteLength - offset, offset)
+      if (bytesRead === 0) break
+      offset += bytesRead
+    }
+    signal?.throwIfAborted()
+    return offset > MAX_SKILL_RESOURCE_BYTES ? undefined : bytes.subarray(0, offset)
+  } finally {
+    await handle.close()
+  }
+}
+
+function isWithin(parent: string, child: string): boolean {
+  const path = relative(parent, child)
+  return path === '' || (path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path))
+}
+
+function decodeResourceText(raw: Uint8Array): string | undefined {
+  if (raw.includes(0)) return undefined
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(raw)
+  } catch {
     return undefined
   }
 }

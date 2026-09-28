@@ -3,8 +3,17 @@ const MAX_SCREENSHOT_BASE64 = 1_500_000
 const SCREENSHOT_QUALITIES = [55, 45, 35, 25, 15]
 
 /** Execute one already-reserved action. Returned facts acknowledge the primitive, not the user's whole task. */
-export const performPuppeteerAction = async ({ action, handle, frame, page, chromeApi, targetPage, check, resolveDrop, authorizeUrl }) => {
+export const performPuppeteerAction = async ({ action, handle, frame, page, chromeApi, targetPage, check, resolveDrop, authorizeUrl,
+  getBrowserSessionId }) => {
   check()
+  const click = async (options = {}) => {
+    // The driver already scrolls and validates the exact node. IntersectionObserver
+    // inside ElementHandle.click can remain suspended in a background tab.
+    const { offset, ...mouseOptions } = options
+    const point = await handle.clickablePoint(offset)
+    check()
+    await page.mouse.click(point.x, point.y, mouseOptions)
+  }
   if (action.kind === 'click') {
     if (action.element?.role === 'generic') {
       const target = await handle.evaluate(node => {
@@ -23,13 +32,13 @@ export const performPuppeteerAction = async ({ action, handle, frame, page, chro
         return hit && heading.contains(hit) ? { point: { x: x - bounds.left, y: y - bounds.top } } : fallback
       })
       if (target?.blocked) throw failure('ambiguous_click_target')
-      if (target?.point) { check(); await handle.click({ offset: target.point }); return { input: 'click' } }
+      if (target?.point) { check(); await click({ offset: target.point }); return { input: 'click' } }
     }
-    await handle.click()
+    await click()
     return { input: 'click' }
   }
-  if (action.kind === 'double_click') { await handle.click({ count: 2 }); return { input: 'double_click' } }
-  if (action.kind === 'right_click') { await handle.click({ button: 'right' }); return { input: 'right_click' } }
+  if (action.kind === 'double_click') { await click({ count: 2 }); return { input: 'double_click' } }
+  if (action.kind === 'right_click') { await click({ button: 'right' }); return { input: 'right_click' } }
   if (action.kind === 'hover') { await handle.hover(); return { input: 'hover' } }
   if (action.kind === 'press') {
     await handle.focus(); check()
@@ -56,7 +65,7 @@ export const performPuppeteerAction = async ({ action, handle, frame, page, chro
     return { selectionSet: true }
   }
   if (action.kind === 'check') {
-    if (await handle.evaluate(node => node.checked) !== action.checked) await handle.click()
+    if (await handle.evaluate(node => node.checked) !== action.checked) await click()
     if (await handle.evaluate(node => node.checked) !== action.checked) throw failure('checked_state_unverified')
     return { checked: action.checked }
   }
@@ -119,8 +128,12 @@ export const performPuppeteerAction = async ({ action, handle, frame, page, chro
     return response ? { documentReplaced: true, navigated: true } : { navigated: false }
   }
   if (action.kind === 'tab_open') {
-    const tab = await chromeApi.tabs.create({ url: action.url, active: true })
-    return { tabId: tab.id, opened: true }
+    const browserSessionId = await getBrowserSessionId()
+    await authorizeUrl(action.url)
+    check()
+    const tab = await chromeApi.tabs.create({ url: action.url, active: false })
+    if (!Number.isSafeInteger(tab?.id) || tab.id < 0 || !Number.isSafeInteger(tab.windowId)) throw failure('tab_creation_unconfirmed')
+    return { opened: true, tab: { tabId: tab.id, windowId: tab.windowId, browserSessionId } }
   }
   if (action.kind === 'tab_close') {
     await chromeApi.tabs.remove(targetPage.tabId)

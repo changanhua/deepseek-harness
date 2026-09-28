@@ -186,9 +186,10 @@ export class SettingsController extends TypertRemoteService {
   }
 
   /**
-   * Materialize the provider-owned settings document and open it in a native text editor.
+   * Materialize the provider-owned settings document and open it in a native text editor,
+   * or return its path when no native opener exists.
    * @param signal - caller lifetime; abort terminates preparation or the native command.
-   * @returns confirmation after the native opener accepts the document.
+   * @returns confirmation after the native opener accepts the document, or the path to show as text.
    * @throws RemoteError when no document exists, preparation fails, or opening fails.
    */
   @Remote
@@ -206,6 +207,7 @@ export class SettingsController extends TypertRemoteService {
       throw new RemoteError('gateway/internal', 'settings provider has no local document to open', {})
     }
     if (isAborted(signal)) throw new RemoteError('gateway/cancelled', 'settings document open was aborted', {})
+    if (!this.canOpenPath()) return { opened: false, path }
     try {
       await this.openTextFile(path, signal)
       return { opened: true }

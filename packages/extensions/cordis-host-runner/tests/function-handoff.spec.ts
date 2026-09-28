@@ -20,6 +20,36 @@ async function runningFunction() {
 }
 
 describe('delivered function handoff', () => {
+  it('preserves the Browser service receiver for activation and detached installation cleanup', async () => {
+    const { harness, definition } = await runningFunction()
+    class ReceiverBoundBrowser {
+      readonly calls: { sessionId: string; action: { kind: string; page: unknown } }[] = []
+
+      async execute(operation: { sessionId: string; action: { kind: string; page: unknown } }) {
+        this.calls.push(operation)
+        return { outcome: 'observed', delivery: 'sent', value: operation.action.kind === 'entry_unmount'
+          ? { unmounted: true, remaining: 0 } : { mounted: 1 } }
+      }
+    }
+    const browser = new ReceiverBoundBrowser()
+    harness.ctx.provide('browser', browser as never)
+    const update = harness.runner.define(AGENT_A, {
+      plugin: { kind: 'existing', pluginId: definition.pluginId }, name: 'receiver-bound function', purpose: 'preserve provider state',
+      code: { host: `await harness.browser.mount({ installationId: '${OWNER.installationId}', page: ${JSON.stringify(PAGE)}, slot: 'result', regionSelector: 'main', selector: ':scope', label: 'Result' }); return { name: 'receiver-bound', apply() {} }` },
+    })
+    const run = await harness.runner.run(AGENT_A, definition.pluginId, update.packageId, 'update')
+    expect(run).toMatchObject({ ok: true })
+    if (!run.ok) throw new Error(run.message)
+    expect(harness.runner.handoffToInstallation(AGENT_A, { ...OWNER, ...HANDOFF, ...PAGE_SCOPE,
+      pluginId: definition.pluginId, packageId: update.packageId, pluginRunId: run.pluginRunId,
+    }, () => {})).toMatchObject({ ok: true })
+    expect(await harness.runner.stopForInstallation(OWNER, { pluginId: definition.pluginId,
+      expectedPackageId: update.packageId, expectedPluginRunId: run.pluginRunId })).toEqual({ ok: true })
+    expect(browser.calls.map(call => call.action.kind)).toEqual(['entry_mount', 'entry_unmount'])
+    expect(browser.calls.every(call => call.sessionId === AGENT_A.id
+      && JSON.stringify(call.action.page) === JSON.stringify(PAGE))).toBe(true)
+  })
+
   it('rejects a handoff from an Agent other than the exact running owner', async () => {
     const { harness, definition, runId } = await runningFunction()
 
@@ -86,6 +116,11 @@ describe('delivered function handoff', () => {
     expect(harness.runner.handoffToInstallation(AGENT_A, {
       ...OWNER, ...HANDOFF, ...GLOBAL_SCOPE, pluginId: definition.pluginId, packageId: definition.packageId, pluginRunId: runId,
     }, (handoff) => { saved.push(handoff) })).toMatchObject({ ok: true })
+    expect(harness.runner.inventory()).toEqual(expect.arrayContaining([expect.objectContaining({
+      pluginId: definition.pluginId, ownerKind: 'browser-installation',
+    })]))
+    await expect(harness.runner.stopFromPanel(AGENT_A, definition.pluginId)).resolves.toMatchObject({ ok: false, reason: 'owner-transferred' })
+    await expect(harness.runner.undefine(AGENT_A, definition.pluginId)).resolves.toMatchObject({ ok: false, reason: 'owner-transferred' })
     harness.disposeAgent(AGENT_A)
     await Promise.resolve()
 

@@ -359,8 +359,10 @@ export interface DynamicCordisInventoryPackage {
 export interface DynamicCordisInventoryRow {
   /** Stable plugin instance. */
   pluginId: CordisDynamicPluginId
-  /** Session that owns this plugin. */
+  /** Session that created this plugin. */
   agentId: SessionId
+  /** Current management authority; absent on older inventory producers. */
+  ownerKind?: 'agent' | 'browser-installation' | 'revoked'
   /** Immutable versions in define order. */
   packages: readonly DynamicCordisInventoryPackage[]
   /** Last package that completed activation successfully. */
@@ -379,7 +381,7 @@ export interface DynamicCordisInventoryRow {
 /** Answer to removing a plugin and all of its package versions. */
 export type DynamicCordisUndefineReceipt =
   | { ok: true; wasRunning: boolean }
-  | { ok: false; reason: 'plugin-missing' | 'cleanup-pending'; message: string }
+  | { ok: false; reason: 'plugin-missing' | 'owner-transferred' | 'cleanup-pending'; message: string }
 
 /** One render failure observed after a Client half loaded. */
 export interface DynamicCordisRenderFailure {
@@ -435,7 +437,7 @@ export type DynamicCordisStopResponse =
   | { ok: true }
   | {
     ok: false
-    reason: 'plugin-missing' | 'not-running' | 'cleanup-pending'
+    reason: 'plugin-missing' | 'owner-transferred' | 'not-running' | 'cleanup-pending'
     message: string
     cleanupPending?: readonly string[]
   }
