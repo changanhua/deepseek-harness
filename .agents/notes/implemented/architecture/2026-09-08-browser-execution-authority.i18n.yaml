@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-08-browser-execution-authority.md
-2026-09-08-browser-execution-authority.md: 52023652c8cced9b5a07bcc90366678fe9d74b02
-2026-09-08-browser-execution-authority.zh.md: 8ea31ec098c69ad2411f02ae78eec4acba49c4f1
+2026-09-08-browser-execution-authority.md: ef55b97d4226db8252a6509d45f2e6d6ee91f0b5
+2026-09-08-browser-execution-authority.zh.md: 8c29dee632b6ab1ddefb1709be44d613b23ee2db

@@ -59,11 +59,11 @@ Resume from Codex's native task and tool state before using receipts or reposito
 
 Do not restart Charter, discovery, planning, implementation, or verified checks merely because a turn was interrupted. A single tool-level ambiguity does not justify a new recovery Skill, receipt kind, operation journal, Registry, or DSH architecture diagnosis. Escalate beyond exact-target reconciliation only when concrete repeated evidence shows the native task/tool state cannot represent a required product recovery contract.
 
-## Admit parallel work narrowly
+## Admit delegated work narrowly
 
-Keep the primary agent responsible for outcome, shared contracts, authority, integration, and completion claims. Use subagents only when at least two tasks are independently useful, have disjoint file or read-only question ownership, and save more work than coordination costs.
+Keep the primary agent responsible for outcome, shared contracts, authority, integration, and completion claims. A single bounded, sustained segment may be delegated serially; parallel subagents require at least two independently useful tasks with disjoint file or read-only question ownership that save more work than coordination costs.
 
-Before governed implementation begins, record an explicit `agentPlan`: each admitted role, its independent question or exclusive ownership, the cheapest adequate role/model class, and when it should run. `none` is valid only with a concrete reason such as one tightly coupled file set and no independent evidence question. This is a decision checkpoint, not a requirement to maximize agent count.
+Before delegated implementation begins, state the assigned role, its question or exclusive ownership, the cheapest adequate role/model class, acceptance checks, and when it should run. This is a compact assignment, not a requirement to maximize agent count.
 
 Use positive triggers as well as exclusions:
 
@@ -72,9 +72,9 @@ Use positive triggers as well as exclusions:
 - for a stable candidate that changes security, authority, persistence, recovery, concurrency, or public contracts, use an independent reviewer unless the user opts out or delegation is unavailable;
 - reserve an architect for high-risk architecture/security/concurrency analysis or repeated failure, not routine search or first-pass implementation.
 
-Choose the cheapest role that can answer the question. Prefer role presets over hard-coded model names: explorer/scout for bounded discovery, worker/implementer for exclusive implementation, reviewer for independent semantic review, and architect only for the high-risk cases above. Record the actual model and reasoning level when the runtime exposes them, but route future work by role and task risk so model catalog changes do not stale the Skill.
+Choose the cheapest role that can answer the question. Prefer available role presets over hard-coded model names: scout/explorer for bounded discovery, implementer/worker for exclusive implementation, reviewer for independent semantic review, and architect only for the high-risk cases above. Use the roles the runtime actually exposes. Record the actual model and reasoning level when the runtime exposes them, but route future work by role and task risk so model catalog changes do not stale the Skill.
 
-For expensive or high-reasoning agents, prefer two or three substantial lanes over many microtasks:
+When two or three independent expensive or high-reasoning lanes are useful, prefer substantial lanes over many microtasks:
 
 - read-only explorers answer distinct evidence questions and return receipts, not competing designs;
 - implementation workers receive frozen shared contracts, exclusive files/packages, focused checks, and stop conditions;

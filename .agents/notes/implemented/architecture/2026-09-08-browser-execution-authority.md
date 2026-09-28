@@ -22,6 +22,8 @@ The model-tool consumer owns a finite observe-act-verify task through the native
 
 ## Alternatives considered
 
+Background input uses action-scoped CDP focus emulation instead of activating a mutable foreground tab. The debugger session owns setup and cleanup. Successful protocol delivery alone cannot prove that the document received an input event or that the business action succeeded. A confirmed primitive survives loss of subsequent old-document feedback, while an interrupted primitive retains unknown status; native-browser evidence must cover these distinctions independently of headless tests.
+
 Page-entry bindings retain the inspected region, item and field identities as well as their values. A matching document id alone does not make an old binding current. The executor checks that evidence before replacing a mount and again before dispatching a click from a reused node. Confirmed collection markers have document-and-owner-local retention independent of the observer, while the consumer retains the business results. The dynamic Plugin runner owns cleanup and preserves unresolved mounts until the executor confirms no residue; ordinary model turn completion does not end a persistent Plugin.
 
 **Reuse the Content token or Web cookie.** Both enlarge an existing authorization beyond its stated purpose. Independent installation grants preserve separate revocation and make the requested browser access visible to the owner.

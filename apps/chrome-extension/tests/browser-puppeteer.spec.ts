@@ -19,14 +19,14 @@ test('pre-aborted action never attaches to the browser', async () => {
   expect(attach).not.toHaveBeenCalled()
 })
 
-function feedbackHarness(mode: 'gone' | 'input-failed' | 'abort' | 'deadline' | 'revoked' | 'detach' | 'fill', kind: 'click' | 'press' = 'click') {
+function feedbackHarness(mode: 'gone' | 'background' | 'input-failed' | 'abort' | 'deadline' | 'revoked' | 'detach' | 'fill', kind: 'click' | 'press' | 'submit' = 'click') {
   const events = new Set<(source: object, method: string, params: object) => void>()
   const detached = new Set<(source: object) => void>()
   const controller = new AbortController()
   const page = { tabId: 1, frameId: 0, documentId: 'original', url: 'https://example.test/' }
   const action = mode === 'fill' ? { kind: 'fill', value: 'value', element: { page } } : { kind, key: 'Enter', element: { page } }
   const request = { deadline: Date.now() + 5000, payload: action }
-  const world = { inputs: 0, value: '', authorized: true }
+  const world = { inputs: 0, value: '', authorized: true, focused: false, focusChanges: [] as boolean[] }
   const chromeApi = {
     runtime: { id: 'ext', getPlatformInfo: async () => ({ os: 'win' }) },
     debugger: {
@@ -40,11 +40,19 @@ function feedbackHarness(mode: 'gone' | 'input-failed' | 'abort' | 'deadline' | 
   }
   const handle = {
     scrollIntoView: async () => {}, focus: async () => {}, dispose: async () => {},
-    evaluate: async () => ({ bounds: [0, 0, 100, 20] }),
+    evaluate: async (fn: (...args: unknown[]) => unknown) => {
+      if (kind === 'submit' && fn.toString().includes('requestSubmit')) {
+        world.inputs++
+        if (mode === 'input-failed') throw new Error('No document with id original')
+        return true
+      }
+      return { bounds: [0, 0, 100, 20] }
+    },
     clickablePoint: async () => ({ x: 50, y: 10 }),
   }
   const mouse = {
     click: async () => {
+      if (mode === 'background' && !world.focused) return
       world.inputs++
       if (mode === 'input-failed') throw new Error('No document with id original')
     },
@@ -52,7 +60,12 @@ function feedbackHarness(mode: 'gone' | 'input-failed' | 'abort' | 'deadline' | 
   const frame = {
     _id: 'frame', parentFrame: () => null,
     isolatedRealm: () => ({ adoptBackendNode: async () => ({ asElement: () => handle }) }),
-    client: { id: () => 'pageTargetSessionId', send: async (method: string, params: { expression?: string }) => {
+    client: { id: () => 'pageTargetSessionId', send: async (method: string, params: { expression?: string; enabled?: boolean }) => {
+      if (method === 'Emulation.setFocusEmulationEnabled') {
+        world.focused = params.enabled === true
+        world.focusChanges.push(world.focused)
+        return {}
+      }
       if (method === 'Runtime.evaluate') return { result: params.expression?.includes('externalNode')
         ? { objectId: 'node', subtype: 'node' } : { value: 'token' } }
       return { node: { backendNodeId: 1 } }
@@ -66,7 +79,7 @@ function feedbackHarness(mode: 'gone' | 'input-failed' | 'abort' | 'deadline' | 
     up: async () => {},
     sendCharacter: async (value: string) => { world.value = value },
   }
-  const browser = { pages: async () => [{ frames: () => [frame], keyboard, mouse }], disconnect: async () => {} }
+  const browser = { pages: async () => [{ frames: () => [frame], mainFrame: () => frame, keyboard, mouse }], disconnect: async () => {} }
   const transport = { send: () => {}, close: async () => {} }
   const invoke = async (_page: unknown, method: string) => {
     if (method === 'documentToken') return 'token'
@@ -97,6 +110,29 @@ test('acknowledges a completed click when only old-document feedback disappears'
     value: { engine: 'puppeteer', input: 'click', effect: 'unobserved', feedbackUnavailable: true, businessOutcome: 'unverified' } })
   expect(h.world.inputs).toBe(1)
 })
+
+test('delivers background input with temporary focus emulation and clears it after navigation', async () => {
+  const h = feedbackHarness('background')
+  expect(await h.execute()).toMatchObject({ outcome: 'observed', quiescent: true })
+  expect(h.world.inputs).toBe(1)
+  expect(h.world.focusChanges).toEqual([true, false])
+  expect(h.world.focused).toBe(false)
+})
+
+test('acknowledges a confirmed form submission when only old-document feedback disappears', async () => {
+  const h = feedbackHarness('gone', 'submit')
+  expect(await h.execute()).toMatchObject({ outcome: 'observed', quiescent: true,
+    value: { formSubmitted: true, feedbackUnavailable: true, businessOutcome: 'unverified' } })
+  expect(h.world.inputs).toBe(1)
+})
+
+test.each(['input-failed', 'abort', 'deadline', 'revoked', 'detach'] as const)(
+  'preserves an uncertain or interrupted form submission: %s', async (mode) => {
+    const h = feedbackHarness(mode, 'submit')
+    expect(await h.execute()).toMatchObject({ outcome: 'unknown', quiescent: false })
+    expect(h.world.inputs).toBe(1)
+  },
+)
 
 test.each(['input-failed', 'abort', 'deadline', 'revoked', 'detach'] as const)(
   'does not upgrade an uncertain or interrupted click: %s', async (mode) => {

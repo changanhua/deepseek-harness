@@ -338,13 +338,14 @@ describe('browser tool approval policy', () => {
       value:{ cleared:true,disposition:'already-released' } })
     expect(h.browser.execute).not.toHaveBeenCalled()
   })
-  it('projects the retained request recovery boundary without replaying an action', async () => {
+  it.each([true, false])('requests an owner decision for an unknown result without promising blocked page reads (quiescent=%s)', async (quiescent) => {
     const h = harness('unknown'), registered = new Map<string, ToolDefinition>()
+    h.browser.requestStatus.mockResolvedValue({ ...observed, outcome: 'unknown', reason: 'effect_unverified', quiescent })
     apply({ inject: vi.fn(), on: vi.fn(), browser: h.browser, approval: { request: h.approval },
       tools: { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) } } } as unknown as Context)
     const result = await registered.get('browser_request_status')!.execute({ installationId: 'installation', requestId: 'request' },
       { agent, signal: h.controller.signal } as ToolRunContext)
-    expect(result).toMatchObject({ outcome: 'unknown', quiescent: true, nextStep: 'owner-decision' })
+    expect(result).toMatchObject({ outcome: 'unknown', quiescent, nextStep: 'owner-decision' })
     expect(h.browser.requestStatus).toHaveBeenCalledWith({ requestId: 'request', installationId: 'installation', sessionId })
     expect(h.browser.execute).not.toHaveBeenCalled()
   })

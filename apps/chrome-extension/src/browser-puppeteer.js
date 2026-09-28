@@ -23,7 +23,7 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
     const action = request.payload?.kind === 'commit' ? request.payload.action : request.payload
     let browser, transport, handle, reserved = false, issued = false, stage = 'attach'
     let attached = false, detached = false, closing = false, inputLane = Promise.resolve(), closePromise
-    let keyboard, mouse, interruptedInput, primitiveResult
+    let keyboard, mouse, interruptedInput, primitiveResult, focusClient
     const pressedButtons = new Set(), pressedKeys = new Set()
     const releaseInputs = async () => {
       await inputLane
@@ -132,6 +132,14 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
         }
       }
       if (!match) throw error('puppeteer_document_unavailable')
+      if (action.element) {
+        // Background Chrome tabs may acknowledge mouse packets without dispatching DOM input.
+        // Keep focus emulation on this action's debugger session; never activate the user's tab.
+        stage = 'focus_emulation'
+        focusClient = puppeteerPage.mainFrame().client
+        await focusClient.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+        check()
+      }
       stage = 'start_external'
       check()
       const reservation = await invoke(page, 'startExternal', request)
@@ -212,14 +220,17 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
       return await invoke(page, 'completeExternal', request, result ? { result } : {})
     } catch (cause) {
       await releaseInputs()
-      // A completed click or key press remains acknowledged when its old document
+      // A completed input or confirmed form submission remains acknowledged when its old document
       // disappears during feedback. This does not confirm a navigation cause or
       // the user's business outcome; incomplete input still takes the unknown path.
-      if (stage === 'observe_effect' && ['click', 'press'].includes(action.kind) && primitiveResult?.input === action.kind && !interruptedInput) {
+      const completedPrimitive = stage === 'observe_effect' && (['click', 'press'].includes(action.kind) && primitiveResult?.input === action.kind
+        || action.kind === 'submit' && primitiveResult?.formSubmitted === true)
+      if (stage === 'observe_effect' && completedPrimitive && !interruptedInput) {
         try {
           check()
           return { outcome: 'observed', quiescent: true, value: {
-            engine: 'puppeteer', input: action.kind, effect: 'unobserved', feedbackUnavailable: true, businessOutcome: 'unverified',
+            engine: 'puppeteer', ...(action.kind === 'submit' ? { formSubmitted: true } : { input: action.kind }),
+            effect: 'unobserved', feedbackUnavailable: true, businessOutcome: 'unverified',
           } }
         } catch { /* stop, deadline or changed authority retains the failure below */ }
       }
@@ -239,6 +250,7 @@ export const createPuppeteerDriver = ({ chromeApi, connect, ExtensionTransport, 
       // partially issued key sequences. No later input is allowed to resume.
       try { await handle?.dispose() } catch { /* document may be gone */ }
       await Promise.allSettled(ancestors.map(ancestor => ancestor.dispose()))
+      try { await focusClient?.send('Emulation.setFocusEmulationEnabled', { enabled: false }) } catch { /* debugger detach also releases emulation */ }
       try { if (browser) await browser.disconnect(); else transport?.close() } catch { /* detached externally */ }
       chromeApi.debugger?.onEvent.removeListener(event)
       try { await closePromise } catch { /* target closed or user detached */ }

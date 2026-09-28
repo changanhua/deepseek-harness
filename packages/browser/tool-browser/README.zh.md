@@ -63,6 +63,8 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
+请求状态提示区分仍在执行的请求（`wait`）与保留的未知结果（`owner-decision`）。未知结果不会引导 Agent 执行被其 BrowserTask 阻止的页面读取；该提示和所有者取消操作都不会把动作改为已观察，也不会授权重放。
+
 ### 工具 schema
 
 #### 模型可见内容

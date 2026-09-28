@@ -276,6 +276,46 @@ describe('web e2e: browser platform target-free bootstrap', () => {
     } finally { await handle.dispose() }
   })
 
+  it('retains a confirmed form-submit acknowledgement across document replacement', async () => {
+    const handle = await scaffold.ctx.agents.create({
+      sessionId: SessionId(`browser-submit-feedback-${randomUUID()}`), meta: { cwd: scaffold.workspaceCwd },
+      setup: agentCtx => scaffold.ctx.agentPresets.mount(agentCtx, 'browser-assistant').then(() => undefined),
+    })
+    try {
+      const url = `${new URL(siteUrl).origin}/team/repo/issues/new`
+      const title = 'Confirmed submit feedback', body = 'Read the new document independently.'
+      const before = createdIssues.length
+      const priorPages = new Set(context.pages())
+      handle.agent.session.append('user/message', createUserMessage({ content: [{ type: 'text',
+        text: `Create one local Issue at ${url}: ${title}; ${body}.` }], source: { kind: 'user' } }), { surfaceOp: 'append' })
+      const installationId = (await state()).connection.grant!.installationId
+      await tool(scaffold, handle.agent, 'browser_task_start', { installationId, goal: 'Create one local Issue.', success: { text: 'Issue creation verified' } })
+      const opened = await tool(scaffold, handle.agent, 'browser_action', { installationId, action: { kind: 'tab_open', url } })
+      await tool(scaffold, handle.agent, 'browser_task_verify', {})
+      const tab = opened.value!.tab as { tabId: number }
+      const read = () => tool(scaffold, handle.agent, 'browser_snapshot', { installationId, tabId: tab.tabId, frameId: 0, includeValues: true })
+      const snapshot = (await read()).value as {
+        page: BrowserPage
+        snapshotId: string
+        elements: { elementId: string; label: string; value?: string }[]
+      }
+      const ref = (label: string) => ({ page: snapshot.page, snapshotId: snapshot.snapshotId,
+        elementId: snapshot.elements.find(element => element.label === label)!.elementId })
+      await tool(scaffold, handle.agent, 'browser_action', { installationId, action: { kind: 'fill', element: ref('Title'), value: title, intent: 'Fill the requested title' } })
+      await tool(scaffold, handle.agent, 'browser_action', { installationId, action: { kind: 'fill', element: ref('Body'), value: body, intent: 'Fill the requested body' } })
+      const filled = (await read()).value as typeof snapshot
+      expect(filled.elements.find(element => element.label === 'Title')?.value).toBe(title)
+      expect(filled.elements.find(element => element.label === 'Body')?.value).toBe(body)
+      const result = await tool(scaffold, handle.agent, 'browser_action', { installationId, action: { kind: 'submit', intent: 'Submit the verified local Issue once', element: {
+        page: filled.page, snapshotId: filled.snapshotId, elementId: filled.elements.find(element => element.label === 'Create issue')!.elementId } } })
+      expect(result).toMatchObject({ outcome: 'observed' })
+      expect(createdIssues.slice(before)).toEqual([{ title, body }])
+      expect(await tool(scaffold, handle.agent, 'browser_task_verify', {})).toMatchObject({ status: 'verified' })
+      const detail = context.pages().find(candidate => !priorPages.has(candidate) && candidate.url() === `${new URL(siteUrl).origin}/team/repo/issues/1`)
+      expect(await detail?.locator('article').textContent()).toBe(body)
+    } finally { await handle.dispose() }
+  })
+
   it('refuses input from an adopted task after the user clears the target selection', async () => {
     const handle = await scaffold.ctx.agents.create({
       sessionId: SessionId(`browser-platform-clear-${randomUUID()}`), meta: { cwd: scaffold.workspaceCwd },

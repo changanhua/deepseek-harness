@@ -426,8 +426,8 @@ export function apply(ctx: Context): void {
       if (exec.agent !== undefined && status.outcome !== 'in-flight' && status.quiescent === true) {
         browserTasks.reconcile(exec.agent, args.requestId, status)
       }
-      const nextStep: 'wait' | 'continue-reading' | 'owner-decision' | 'new-request' = status.outcome === 'in-flight' ? 'wait'
-        : status.outcome === 'unknown' ? status.quiescent === true ? 'owner-decision' : 'continue-reading'
+      const nextStep: 'wait' | 'owner-decision' | 'new-request' = status.outcome === 'in-flight' ? 'wait'
+        : status.outcome === 'unknown' ? 'owner-decision'
           : 'new-request'
       return { ...status, nextStep }
     },

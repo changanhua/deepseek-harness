@@ -63,6 +63,8 @@ The tool reads `exec.agent.session.id` for every operation. The provider owns pr
 <a id="model-experience"></a>
 ## Model Experience
 
+Request-status guidance distinguishes a still-running request (`wait`) from a retained unknown outcome (`owner-decision`). An unknown outcome never directs the Agent to page reads that its BrowserTask blocks; neither this guidance nor owner cancellation converts the action to observed or authorizes replay.
+
 ### Tool schemas
 
 #### What the model sees
