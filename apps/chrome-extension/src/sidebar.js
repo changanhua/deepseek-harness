@@ -239,7 +239,9 @@ const renderSettings = () => {
   const codex = current.codexConnection ?? { baseUrl: 'http://127.0.0.1:3091', phase: 'unconfigured' }
   const codexPanel = byId('codex-browser-connection'); codexPanel.replaceChildren()
   codexPanel.append(`Codex 网页连接：${label(codex.phase)}${codex.baseUrl ? ` · ${codex.baseUrl}` : ''}`)
-  if (codex.phase === 'connected') codexPanel.append(button('断开 Codex', () => send({ type: 'dsh-codex-browser-disconnect' })))
+  if (['connected', 'unauthorized', 'invalid'].includes(codex.phase)) {
+    codexPanel.append(button('断开 Codex', () => send({ type: 'dsh-codex-browser-disconnect' })))
+  }
   else {
     const action = button(codex.phase === 'offline' ? '重试 Codex' : '连接 Codex', () => send({ type: 'dsh-codex-browser-connect' }), 'primary')
     action.disabled = codex.phase === 'connecting'

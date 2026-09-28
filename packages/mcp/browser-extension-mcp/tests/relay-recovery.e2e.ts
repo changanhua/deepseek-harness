@@ -170,6 +170,11 @@ it('re-pairs one real extension after relay restart, but preserves revocation an
     await expect.poll(async () => (await message({ type: 'dsh-assistant-state' })).state.codexConnection.phase).toBe('unauthorized')
     expect(await message({ type: 'dsh-codex-browser-connect' })).toMatchObject({ ok: true })
     await expect.poll(async () => (await message({ type: 'dsh-assistant-state' })).state.codexConnection.phase).toBe('unauthorized')
+    await panel.getByRole('button', { name: '连接与设置', exact: true }).click()
+    await panel.getByRole('button', { name: '断开 Codex', exact: true }).click()
+    await expect.poll(async () => (await message({ type: 'dsh-assistant-state' })).state.codexConnection.phase).toBe('configured')
+    expect(await message({ type: 'dsh-codex-browser-connect' })).toMatchObject({ ok: false, error: 'authorization_revoked' })
+    expect((await message({ type: 'dsh-assistant-state' })).state.codexConnection.phase).toBe('unauthorized')
   } finally {
     await client.close()
     await context?.close()
