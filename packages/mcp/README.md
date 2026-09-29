@@ -26,7 +26,7 @@ The group includes clients, a local capability server, and a Host gateway; their
 
 | Package | What it provides |
 |---|---|
-| [`mcp-gateway/`](mcp-gateway/README.md) | Expose the Host's existing Planning provider through a fixed-Workspace MCP endpoint |
+| [`mcp-gateway/`](mcp-gateway/README.md) | Add project-aware Planning tools to an existing connector using the Host's Planning provider |
 | [`mcp-client/`](mcp-client/README.md) | Attach one external MCP server so the model can call its tools as native tools |
 | [`mcp-server/`](mcp-server/README.md) | Expose declared DSH native tools to local MCP clients through lazy presets |
 

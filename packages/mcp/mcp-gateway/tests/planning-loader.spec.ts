@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { Context } from '@deepseek-ai/cordis'
@@ -19,6 +21,7 @@ import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import LocalPlanning from '@changanhua/dsh-planning-local'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Gateway from '../src/index.ts'
+import { registerPlanningTools } from '../src/connector.ts'
 
 const TOKEN_ENV = 'DSH_PLANNING_GATEWAY_COMPOSITION_TEST_TOKEN'
 const TOKEN = 'planning-gateway-test-token'
@@ -37,7 +40,12 @@ function valueOf(result: { structuredContent?: unknown; content: readonly { type
   return JSON.parse(text) as Record<string, unknown>
 }
 
-async function boot(resultMaxBytes = 256 * 1024) {
+async function boot(options: {
+  readonly workspacePaths?: readonly string[]
+  readonly allowProject?: boolean
+  readonly resultMaxBytes?: number
+  readonly fileCredential?: boolean
+} = {}) {
   process.env[TOKEN_ENV] = TOKEN
   const root = await mkdtemp(join(tmpdir(), 'dsh-gateway-planning-'))
   cleanup.push(async () => {
@@ -72,9 +80,11 @@ async function boot(resultMaxBytes = 256 * 1024) {
   if (registry === undefined) throw new Error('Workspace Registry did not activate')
   const workspace = await registry.create(project), foreign = await registry.create(foreignPath)
   const gatewayConfig = join(root, 'gateway.yml')
+  const tokenFile = join(root, 'credential')
+  if (options.fileCredential) await writeFile(tokenFile, TOKEN)
   await writeFile(gatewayConfig, [
     "- id: gateway\n  name: '@deepseek-ai/dsh-mcp-gateway'\n  isolate:\n    workspaceRegistry: web-host",
-    `  config: { planningWorkspaceId: ${JSON.stringify(String(workspace.id))}, tokenEnv: ${TOKEN_ENV}, resultMaxBytes: ${resultMaxBytes} }`,
+    `  config: ${JSON.stringify({ ...(options.fileCredential ? { tokenFile } : { tokenEnv: TOKEN_ENV }), resultMaxBytes: options.resultMaxBytes ?? 256 * 1024, ...(options.workspacePaths === undefined && !options.allowProject ? {} : { workspacePaths: options.workspacePaths ?? [String(workspace.path)] }) })}`,
   ].join('\n'))
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(gatewayConfig).href } }); await ctx.loader.await()
   const planning = [...ctx.loader.entries()].find(entry => entry.options.id === 'planning-local')?.ctx?.get('planning')
@@ -85,45 +95,86 @@ async function boot(resultMaxBytes = 256 * 1024) {
   const transport = new StreamableHTTPClientTransport(url, { requestInit: { headers: { authorization: `Bearer ${TOKEN}` } } })
   return {
     client, ctx, foreignWorkspaceId: String(foreign.id), planning,
-    disposeGateway: () => gateway.fiber!.dispose(), transport, url, workspaceId: String(workspace.id),
+    disposeGateway: () => gateway.fiber!.dispose(), foreignPath: foreign.path,
+    project: workspace.path, transport, url, workspaceId: String(workspace.id),
   }
 }
 
 describe('Planning MCP gateway Loader composition', () => {
-  it('bounds the complete tool result including duplicated text and multibyte data', async () => {
-    const { client, transport } = await boot(1024)
-    await client.connect(transport as Transport)
-    try {
-      const captured = await client.callTool({ name: 'dsh_planning_propose', arguments: {
-        requestId: 'bounded-result', expectedBoardVersion: 0, idea: '界"'.repeat(65),
-      } })
-      expect(captured.isError).not.toBe(true)
-      const listed = await client.callTool({ name: 'dsh_planning_list', arguments: {} })
-      expect(listed.isError).toBe(true)
-      expect(JSON.stringify(listed)).toContain('RESULT_TOO_LARGE')
-      expect(Buffer.byteLength(JSON.stringify(listed))).toBeLessThanOrEqual(1024)
-    } finally { await client.close() }
+  it('rejects absent, conflicting, and relative credential sources before activating', () => {
+    expect(() => Gateway.apply({} as never, {})).toThrow('exactly one')
+    expect(() => Gateway.apply({} as never, { tokenEnv: TOKEN_ENV, tokenFile: 'relative' })).toThrow('exactly one')
+    expect(() => Gateway.apply({} as never, { tokenFile: 'relative' })).toThrow('absolute')
+  })
+  it('uses connection context, permits explicit project switching, and rejects a disallowed default', async () => {
+    const setup = await boot({ fileCredential: true })
+    const server = new McpServer({ name: 'existing-connector', version: '1' })
+    const client = new Client({ name: 'context-test', version: '1' })
+    const [local, remote] = InMemoryTransport.createLinkedPair()
+    let current: string | undefined = setup.project
+    const unregister = registerPlanningTools(server, {
+      url: setup.url.href, token: async () => TOKEN, currentWorkspace: () => current,
+    })
+    cleanup.push(async () => { unregister(); await client.close(); await server.close() })
+    await server.connect(remote); await client.connect(local)
+    expect(valueOf(await client.callTool({ name: 'dsh_planning_list', arguments: {} }))).toMatchObject({ workspaceId: setup.workspaceId })
+    expect(valueOf(await client.callTool({ name: 'dsh_planning_list', arguments: { workspace: setup.foreignWorkspaceId } }))).toMatchObject({ workspaceId: setup.foreignWorkspaceId })
+    current = setup.foreignPath
+    expect(valueOf(await client.callTool({ name: 'dsh_planning_list', arguments: {} }))).toMatchObject({ workspaceId: setup.foreignWorkspaceId })
+    current = undefined
+    expect(await client.callTool({ name: 'dsh_planning_list', arguments: {} })).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('WORKSPACE_REQUIRED') }] })
+    current = 'unregistered-project'
+    expect(await client.callTool({ name: 'dsh_planning_list', arguments: {} })).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('WORKSPACE_UNAVAILABLE') }] })
   })
 
-  it('uses the real provider for fixed-Workspace pending Proposals and idempotent MCP calls', async () => {
-    const { client, foreignWorkspaceId, planning, transport, workspaceId } = await boot()
+  it('treats one path as the default project and an empty allowlist as deny-all', async () => {
+    const allowed = await boot({ workspacePaths: [] })
+    await allowed.client.connect(allowed.transport as Transport)
+    try {
+      expect(valueOf(await allowed.client.callTool({ name: 'dsh_planning_workspaces', arguments: {} }))).toMatchObject({ total: 0, workspaces: [] })
+    } finally { await allowed.client.close() }
+    const onePath = await boot({ allowProject: true })
+    await onePath.client.connect(onePath.transport as Transport)
+    try {
+      expect(valueOf(await onePath.client.callTool({ name: 'dsh_planning_workspaces', arguments: {} }))).toMatchObject({ total: 1 })
+      expect(await onePath.client.callTool({ name: 'dsh_planning_list', arguments: { workspace: onePath.foreignWorkspaceId } })).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('WORKSPACE_UNAVAILABLE') }] })
+      expect(await onePath.client.callTool({ name: 'dsh_planning_propose', arguments: { workspace: onePath.foreignWorkspaceId, requestId: 'forbidden', expectedBoardVersion: 0, idea: 'must not write' } })).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('WORKSPACE_UNAVAILABLE') }] })
+    } finally { await onePath.client.close() }
+  })
+
+  it('uses real projects, strict inputs, pagination, chunked reads, and idempotent pending proposals', async () => {
+    const setup = await boot()
+    const { client, foreignWorkspaceId, planning, transport } = setup
     await client.connect(transport as Transport)
     try {
       const tools = await client.listTools()
-      expect(tools.tools.map(tool => tool.name).sort()).toEqual(['dsh_planning_list', 'dsh_planning_propose', 'dsh_planning_read'])
-      const input = { requestId: 'same-raw-idea', expectedBoardVersion: 0, idea: '恢复浏览器需求的连续性\n具体范围和验收暂不确认。' }
-      const forged = await client.callTool({ name: 'dsh_planning_propose', arguments: { ...input, workspaceId: foreignWorkspaceId, actorId: 'forged-actor', sessionId: 'forged-session' } })
-      expect(forged.isError).not.toBe(true)
+      expect(tools.tools.map(tool => tool.name).sort()).toEqual(['dsh_planning_list', 'dsh_planning_propose', 'dsh_planning_read', 'dsh_planning_workspaces'])
+      const projects = valueOf(await client.callTool({ name: 'dsh_planning_workspaces', arguments: {} }))
+      expect(projects).toMatchObject({ total: 2 })
+      const workspace = String((projects.workspaces as { id: string; title: string }[]).find(value => value.title === 'project')?.id)
+      expect(workspace).not.toBe('undefined')
+      const ambiguous = await client.callTool({ name: 'dsh_planning_propose', arguments: { requestId: 'ambiguous', expectedBoardVersion: 0, idea: '需要明确项目' } })
+      expect(ambiguous).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('WORKSPACE_REQUIRED') }] })
+      const input = { workspace, requestId: 'same-raw-idea', expectedBoardVersion: 0, idea: '恢复浏览器需求的连续性\n具体范围和验收暂不确认。' }
+      const forged = await client.callTool({ name: 'dsh_planning_propose', arguments: { ...input, actorId: 'forged-actor', sessionId: 'forged-session', workspaceId: foreignWorkspaceId } })
+      expect(forged).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('DSH_GATEWAY_INVALID_INPUT') }] })
       const created = await client.callTool({ name: 'dsh_planning_propose', arguments: input })
       expect(created.isError).not.toBe(true)
       const retried = await client.callTool({ name: 'dsh_planning_propose', arguments: input })
       expect(valueOf(retried)).toEqual(valueOf(created))
+      const mismatch = await client.callTool({ name: 'dsh_planning_propose', arguments: { ...input, idea: '相同 requestId 不能改写' } })
+      expect(mismatch).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('idempotency-conflict') }] })
       const proposalId = String(valueOf(created).proposalId)
-      const listed = valueOf(await client.callTool({ name: 'dsh_planning_list', arguments: {} }))
-      expect(listed).toMatchObject({ boardVersion: 1, items: [], proposals: [{ id: proposalId, status: 'pending', targetItemId: null, title: '恢复浏览器需求的连续性', suggestedLane: 'inbox' }] })
-      const read = valueOf(await client.callTool({ name: 'dsh_planning_read', arguments: { id: proposalId } }))
-      expect(read).toMatchObject({ kind: 'proposal', proposal: { id: proposalId, status: 'pending', targetItemId: null, generations: [{ draft: { intent: input.idea, scope: [], acceptance: [], estimate: { value: null, rationale: '' }, reviewAt: null }, assumptions: [] }] } })
-      expect(JSON.stringify(read)).not.toContain(workspaceId)
+      const another = await client.callTool({ name: 'dsh_planning_propose', arguments: { ...input, requestId: 'next-page', expectedBoardVersion: 1, idea: '第二个待整理想法' } })
+      expect(another.isError).not.toBe(true)
+      const listed = valueOf(await client.callTool({ name: 'dsh_planning_list', arguments: { workspace, limit: 1 } }))
+      expect(listed).toMatchObject({ boardVersion: 2, total: 2, nextCursor: expect.any(Number) })
+      const next = valueOf(await client.callTool({ name: 'dsh_planning_list', arguments: { workspace, cursor: listed.nextCursor, limit: 1, boardVersion: listed.boardVersion } }))
+      expect(next).toMatchObject({ boardVersion: 2, total: 2, nextCursor: null })
+      const read = valueOf(await client.callTool({ name: 'dsh_planning_read', arguments: { workspace, id: proposalId, limit: 10 } }))
+      expect(read).toMatchObject({ encoding: 'json', chunk: expect.any(String), nextCursor: expect.any(Number), objectVersion: 1 })
+      const continued = valueOf(await client.callTool({ name: 'dsh_planning_read', arguments: { workspace, id: proposalId, cursor: read.nextCursor, limit: 10, proposalVersion: 1 } }))
+      expect(continued).toMatchObject({ encoding: 'json', objectVersion: 1 })
       await expect(planning.snapshot({ workspaceId: foreignWorkspaceId, actorId: 'inspector', kind: 'human', authorize() {} })).resolves.toMatchObject({ version: 0, items: [], proposals: [] })
     } finally { await client.close() }
   })

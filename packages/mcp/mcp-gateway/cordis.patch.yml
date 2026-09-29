@@ -1,4 +1,4 @@
-# Optional profile bundle: expose one configured Planning Workspace through
+# Optional profile bundle: expose permitted Planning projects through
 # the already-running Host's local Streamable HTTP MCP endpoint.
 - insert:
     - id: dsh-mcp-gateway

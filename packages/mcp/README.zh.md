@@ -26,7 +26,7 @@ kind: "package-group"
 
 | 包 | 提供的能力 |
 |---|---|
-| [`mcp-gateway/`](mcp-gateway/README.zh.md) | 通过固定 Workspace 的 MCP 端点公开 Host 已有的 Planning provider |
+| [`mcp-gateway/`](mcp-gateway/README.zh.md) | 使用 Host 已有的 Planning provider，为现有连接器增加可选择项目的 Planning 工具 |
 | [`mcp-client/`](mcp-client/README.zh.md) | 挂载一台外部 MCP 服务器，让模型可以把它的工具当作原生工具调用 |
 | [`mcp-server/`](mcp-server/README.zh.md) | 通过惰性 preset 向本地 MCP 客户端公开已声明的 DSH 原生工具 |
 
