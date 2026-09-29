@@ -9,13 +9,13 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this Definition to retain project plan cards, their immutable revisions, manual order, dependencies, review notes, and source provenance through a selected provider.
+Use this Definition to retain project plan cards, their immutable revisions, manual order, dependencies, review notes, and source provenance through a selected provider. Consumers can derive a deterministic evolution graph from any detached Board snapshot without a model call.
 
 Proposal generations retain their trusted actor audit record and captured sources; accepting one never rewrites its prior generations.
 
 ## Use this package
 
-Consumers use `ctx.planning` and pass trusted `PlanningAccess`. Inputs cannot provide authorization, observed source hashes, or durable receipts.
+Consumers use `ctx.planning` and pass trusted `PlanningAccess`. Inputs cannot provide authorization, observed source hashes, or durable receipts. Browser-safe consumers import the pure `@changanhua/dsh-planning/evolution` fold; that entry carries no Planning service or provider identity.
 
 ## Invariant policy
 
@@ -39,4 +39,5 @@ This Definition adds no direct KV-cache effect.
 
 ## Known Limitations and Deferred Work
 
+- The evolution projection reconstructs retained object lineage and current relationships. It does not recreate historical lane positions or dependency values that the Board events do not retain.
 - This package supplies no Provider, Remote, tool, Delivery execution state, or memory acceptance authority.

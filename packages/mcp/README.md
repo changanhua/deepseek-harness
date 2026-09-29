@@ -1,5 +1,5 @@
 ---
-description: "The MCP package group: attach external Model Context Protocol servers so their tools are callable as native tools."
+description: "The MCP package group: connect Harness to external Model Context Protocol servers and expose bounded Harness capabilities to MCP clients."
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The `mcp/` group connects the harness to the Model Context Protocol (MCP) ecosystem of tool servers. The one package in this group attaches an external server — a filesystem, GitHub, database, or memory server — so its tools are available to the model as native tools under stable server-qualified names. Each server is one configuration entry; nothing ships enabled, so you opt in per server. Only the Tools capability is bridged: MCP resources and prompts are not supported. This page maps the group; the package README owns the per-package contract.
+The `mcp/` group connects Harness to the Model Context Protocol in both directions. Client packages attach external tool servers; gateway packages expose bounded capabilities from one running Harness Host without starting another Host.
 
 ## Table of Contents
 
@@ -22,10 +22,11 @@ The `mcp/` group connects the harness to the Model Context Protocol (MCP) ecosys
 <a id="packages"></a>
 ## Packages
 
-The group has a client and a local capability server; their READMEs own the details.
+The group includes clients, a local capability server, and a Host gateway; their READMEs own the details.
 
 | Package | What it provides |
 |---|---|
+| [`mcp-gateway/`](mcp-gateway/README.md) | Expose the Host's existing Planning provider through a fixed-Workspace MCP endpoint |
 | [`mcp-client/`](mcp-client/README.md) | Attach one external MCP server so the model can call its tools as native tools |
 | [`mcp-server/`](mcp-server/README.md) | Expose declared DSH native tools to local MCP clients through lazy presets |
 

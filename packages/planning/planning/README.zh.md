@@ -9,13 +9,13 @@ kind: "package-library"
 
 ## 概述
 
-使用此 Definition 可通过所选 Provider 保存项目计划卡、不可变修订、人工排序、依赖、复盘记录和来源信息。
+使用此 Definition 可通过所选 Provider 保存项目计划卡、不可变修订、人工排序、依赖、复盘记录和来源信息。Consumer 可以从任意分离的 Board 快照确定性生成演变图，无需调用模型。
 
 草稿 generation 保留可信 actor 审计记录和已捕获来源；采纳不会改写此前 generation。
 
 ## 使用此包
 
-Consumer 使用 `ctx.planning` 并传入可信的 `PlanningAccess`。输入不能提供授权、已观察来源 hash 或持久回执。
+Consumer 使用 `ctx.planning` 并传入可信的 `PlanningAccess`。输入不能提供授权、已观察来源 hash 或持久回执。浏览器安全的 Consumer 导入纯函数入口 `@changanhua/dsh-planning/evolution`；该入口不携带 Planning 服务或 Provider 身份。
 
 ## 不变量策略
 
@@ -39,4 +39,5 @@ Consumer 使用 `ctx.planning` 并传入可信的 `PlanningAccess`。输入不�
 
 ## 已知限制与延后工作
 
+- 演变投影重建已保留的对象谱系与当前关系，不会虚构 Board 事件未保留的历史泳道位置或依赖值。
 - 此包不提供 Provider、Remote、工具、Delivery 执行状态或记忆接纳权限。

@@ -7,6 +7,7 @@ import css from './PlanningWorkbench.module.css'
 import { PlanningExecution } from './PlanningExecution.tsx'
 import { nextPlanningRequestId } from './request-id.ts'
 import { PlanningImage } from './PlanningImage.tsx'
+import { PlanningEvolution } from './PlanningEvolution.tsx'
 
 const lanes: readonly PlanningLane[] = ['inbox', 'now', 'next', 'later', 'parking']
 const splitLines = (value: string): string[] =>
@@ -461,7 +462,7 @@ export function PlanningWorkbench(props: PlanningWorkbenchProps) {
                 void props.create({ idea, lane: 'inbox' }).then((ok) => {
                   if (ok) {
                     setIdea('')
-                    setActionNotice(t('view.saved'))
+                    setActionNotice(t('capture.saved'))
                   }
                 })
               }}
@@ -594,6 +595,8 @@ export function PlanningWorkbench(props: PlanningWorkbenchProps) {
                     {renderSources(revision.sources, revision.id, revision.createdAt)}
                     {sourceError !== '' && <p role="alert">{sourceError}</p>}
                   </section>
+                  <PlanningEvolution board={board} itemId={selected.id} t={t}
+                    renderSource={(source, owner, at) => renderSources([source], owner, at)} />
                   <form
                     className={css.compactForm}
                     onSubmit={(event) => {

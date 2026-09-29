@@ -1,0 +1,7 @@
+# Optional profile bundle: expose one configured Planning Workspace through
+# the already-running Host's local Streamable HTTP MCP endpoint.
+- insert:
+    - id: dsh-mcp-gateway
+      name: '@deepseek-ai/dsh-mcp-gateway'
+      isolate:
+        workspaceRegistry: web-host

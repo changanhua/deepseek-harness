@@ -8,7 +8,7 @@ Use this browser UI to arrange project plans, inspect their sources and executio
 
 ## Use this package
 
-`@changanhua/dsh-client-ui-planning` renders the personal Planning Remote projection as a workspace-scoped planning pool. It provides project selection, keyword filtering of plans and pending proposals, five arrangement groups, a plan detail panel, and a short addition form that revises the selected item without filling its estimates.
+`@changanhua/dsh-client-ui-planning` renders the personal Planning Remote projection as a workspace-scoped planning pool. A short capture becomes a pending Proposal with empty optional detail; only explicit acceptance creates an active item. The selected item shows a deterministic evolution graph built from retained sources, proposal generations, revisions, reviews, dependencies, and handoffs.
 
 The UI sends every mutation with the current board version. A failed attempt remains available for an explicit retry with its original request identity; it never silently overwrites a newer board. It displays captured Session excerpts and opens their conversation, reads the exact captured Content version when composed, and identifies manual notes and links as unverified sources. Arrangement and Delivery progress appear separately.
 
@@ -35,4 +35,5 @@ The UI adds no direct KV-cache effect.
 ## Known Limitations and Deferred Work
 
 - Planning lanes do not indicate execution outcomes; Delivery contracts and decisions continue in the Delivery workbench.
+- The evolution graph shows retained lineage and current relationships, not historical lane or dependency values that were never stored.
 - Background notification and atomic review follow-ups remain incomplete.

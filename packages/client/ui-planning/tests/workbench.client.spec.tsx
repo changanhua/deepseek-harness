@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { act } from 'react'
 import { PlanningWorkbench } from '../src/client/PlanningWorkbench.tsx'
@@ -213,7 +213,7 @@ describe('PlanningWorkbench', () => {
         readContentSource={readContentSource}
       />,
     )
-    expect(screen.getByText('原始会话的一句话')).toBeTruthy()
+    expect(screen.getAllByText('原始会话的一句话').length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: '外部讨论' }).getAttribute('href')).toBe('https://example.com/context')
     fireEvent.click(screen.getByRole('button', { name: '打开原会话' }))
     expect(openSessionSource).toHaveBeenCalledWith('session-1')
@@ -330,6 +330,62 @@ describe('PlanningWorkbench', () => {
     fireEvent.change(screen.getByLabelText('想法'), { target: { value: 'New idea\nUseful outcome' } })
     fireEvent.click(screen.getByRole('button', { name: '收集想法' }))
     expect(create).toHaveBeenCalledWith({ idea: 'New idea\nUseful outcome', lane: 'inbox' })
+    expect(await screen.findByText('已收录为待整理想法；采纳后才进入计划池。')).toBeTruthy()
+  })
+
+  it('renders the selected plan evolution and distinguishes a pending branch from the accepted spine', () => {
+    const current = structuredClone(state)
+    current.selectedItemId = 'idea'
+    current.board!.proposals = [
+      {
+        id: 'proposal-branch',
+        targetItemId: 'idea',
+        status: 'pending',
+        headVersion: 1,
+        createdAt: '2026-09-27T01:00:00.000Z',
+        generations: [
+          {
+            version: 1,
+            previousVersion: null,
+            baseRevisionId: 'r1',
+            suggestedLane: 'next',
+            assumptions: [],
+            actor: { kind: 'agent', id: 'agent' },
+            createdAt: '2026-09-27T01:00:00.000Z',
+            draft: {
+              title: 'Candidate direction',
+              intent: 'Explore another implementation',
+              scope: [],
+              acceptance: [],
+              sources: [{ kind: 'manual', text: 'candidate source', verification: 'unverified' }],
+              estimate: current.board!.items[0]!.revisions[0]!.estimate,
+              reviewAt: null,
+            },
+          },
+        ],
+      },
+    ]
+    render(
+      <PlanningWorkbench
+        t={t}
+        usePlanning={selector => selector(current)}
+        selectWorkspace={vi.fn()}
+        selectItem={vi.fn()}
+        create={vi.fn()}
+        execute={vi.fn()}
+        retry={vi.fn()}
+        readEvidence={vi.fn()}
+      />,
+    )
+    const evolution = screen.getByRole('region', { name: '计划演变' })
+    expect(within(evolution).getByRole('heading', { name: '计划演变' })).toBeTruthy()
+    expect(within(evolution).getByText('Candidate direction')).toBeTruthy()
+    expect(within(evolution).getByText('当前主干')).toBeTruthy()
+    expect(within(evolution).getByText('待确认分支')).toBeTruthy()
+    expect(within(evolution).getByText('来源与关联记录')).toBeTruthy()
+    fireEvent.click(within(evolution).getByRole('button', { name: 'candidate source' }))
+    expect(within(evolution).getAllByText('candidate source').length).toBeGreaterThan(1)
+    expect(within(evolution).getByText('根据当前结构化计划数据实时生成，不调用模型。')).toBeTruthy()
   })
 
   it('keeps conflict visible and exposes explicit retry', () => {
@@ -455,8 +511,8 @@ describe('PlanningWorkbench', () => {
         readEvidence={vi.fn()}
       />,
     )
-    expect(screen.getByText('lesson')).toBeTruthy()
-    expect(screen.getByText('keep the evidence')).toBeTruthy()
+    expect(screen.getAllByText('lesson').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('keep the evidence').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Follow-up target').length).toBeGreaterThan(1)
     const picker = screen.getByLabelText('关联到已有计划') as HTMLSelectElement
     expect(Array.from(picker.options).map(option => option.value)).not.toContain('idea')

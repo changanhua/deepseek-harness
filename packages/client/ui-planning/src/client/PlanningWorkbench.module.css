@@ -159,6 +159,89 @@
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
 }
+.evolution {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+}
+.evolutionLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.spineLegend::before,
+.branchLegend::before,
+.contextLegend::before {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-inline-end: 6px;
+  border-radius: 50%;
+  content: '';
+}
+.spineLegend::before {
+  background: var(--dsw-alias-state-business-primary);
+}
+.branchLegend::before {
+  border: 1px dashed var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+.contextLegend::before {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+.evolutionCanvas {
+  min-width: 0;
+  overflow-x: auto;
+}
+.evolutionSvg {
+  display: block;
+  min-width: 720px;
+}
+.evolutionEdge,
+.evolutionSpineEdge {
+  stroke: var(--dsw-alias-border-l2);
+  stroke-width: 1.5;
+}
+.evolutionEdge {
+  stroke-dasharray: 5 5;
+}
+.evolutionSpineEdge {
+  stroke: var(--dsw-alias-state-business-primary);
+  stroke-width: 2.5;
+}
+.evolutionSpineNode rect,
+.evolutionBranchNode rect,
+.evolutionContextNode rect {
+  fill: var(--dsw-alias-bg-layer-1);
+  stroke: var(--dsw-alias-border-l2);
+}
+.evolutionSpineNode rect {
+  stroke: var(--dsw-alias-state-business-primary);
+  stroke-width: 2;
+}
+.evolutionBranchNode rect {
+  stroke-dasharray: 4 3;
+}
+.evolutionKind {
+  fill: var(--dsw-alias-label-secondary);
+  font-size: 9px;
+}
+.evolutionLabel {
+  fill: var(--dsw-alias-label-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.evolutionNote {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
 .root :is(details > summary) {
   cursor: pointer;
 }

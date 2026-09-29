@@ -413,17 +413,24 @@ export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFac
         ?.slice(0, 256)
       if (title === undefined) return Promise.resolve(false)
       return run({
-        kind: 'create',
+        kind: 'propose',
         requestId: nextPlanningRequestId(),
         expectedBoardVersion: version,
-        lane: input.lane ?? 'inbox',
-        title,
-        intent: input.idea,
-        scope: [],
-        acceptance: [],
-        sources: [{ kind: 'manual', text: input.idea }],
-        estimate: emptyEstimate,
-        reviewAt: null,
+        proposalId: nextPlanningRequestId(),
+        expectedProposalVersion: null,
+        targetItemId: null,
+        baseRevisionId: null,
+        draft: {
+          title,
+          intent: input.idea,
+          scope: [],
+          acceptance: [],
+          sources: [{ kind: 'manual', text: input.idea }],
+          estimate: emptyEstimate,
+          reviewAt: null,
+        },
+        suggestedLane: input.lane ?? 'inbox',
+        assumptions: [],
       })
     },
     execute: run,

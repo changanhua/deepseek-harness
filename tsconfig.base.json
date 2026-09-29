@@ -306,6 +306,7 @@
       "@deepseek-ai/dsh-message-feedback/types": ["./packages/feedback/message-feedback/src/types.ts"],
       "@deepseek-ai/dsh-api-workspace-files/types": ["./packages/api/workspace-files/src/types.ts"],
       "@deepseek-ai/dsh-tool-present/types": ["./packages/fs/tool-present/src/types.ts"],
+      "@changanhua/dsh-planning/evolution": ["./packages/planning/planning/src/evolution.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@changanhua/dsh-capabilities": ["./packages/bundle/capabilities/src"],
       "@changanhua/dsh-command-memory": ["./packages/memory/command-memory/src"],
@@ -476,6 +477,7 @@
       "@deepseek-ai/dsh-lsp": ["./packages/lsp/lsp/src"],
       "@deepseek-ai/dsh-lsp-stdio": ["./packages/lsp/lsp-stdio/src"],
       "@deepseek-ai/dsh-mcp-client": ["./packages/mcp/mcp-client/src"],
+      "@deepseek-ai/dsh-mcp-gateway": ["./packages/mcp/mcp-gateway/src"],
       "@deepseek-ai/dsh-message-feedback": ["./packages/feedback/message-feedback/src"],
       "@deepseek-ai/dsh-native-command": ["./packages/util/native-command/src"],
       "@deepseek-ai/dsh-output-retention": ["./packages/util/output-retention/src"],

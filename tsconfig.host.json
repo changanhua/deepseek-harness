@@ -382,6 +382,7 @@
     { "path": "./packages/hooks/hook-protocol" },
     { "path": "./packages/hooks/hooks-claude-code" },
     { "path": "./packages/hooks/hooks-codex" },
+    { "path": "./packages/mcp/mcp-gateway" },
     { "path": "./packages/mcp/mcp-client" },
     { "path": "./packages/mcp/browser-extension-mcp" },
     { "path": "./packages/mcp/mcp-server" },

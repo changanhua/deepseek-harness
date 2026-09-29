@@ -74,6 +74,39 @@ const createdBoard = {
   ],
   lanes: { ...board.lanes, inbox: ['idea'] },
 }
+const proposedBoard = {
+  ...board,
+  version: 1,
+  proposals: [
+    {
+      id: 'proposal-1',
+      targetItemId: null,
+      status: 'pending' as const,
+      headVersion: 1,
+      createdAt: '2026-09-27T00:00:00.000Z',
+      generations: [
+        {
+          version: 1,
+          previousVersion: null,
+          baseRevisionId: null,
+          suggestedLane: 'inbox' as const,
+          assumptions: [],
+          actor: { kind: 'human' as const, id: 'human' },
+          createdAt: '2026-09-27T00:00:00.000Z',
+          draft: {
+            title: 'Idea',
+            intent: 'Idea\nMake it real',
+            scope: [],
+            acceptance: [],
+            sources: [{ kind: 'manual' as const, text: 'Idea\nMake it real', verification: 'unverified' as const }],
+            estimate,
+            reviewAt: null,
+          },
+        },
+      ],
+    },
+  ],
+}
 
 describe('Planning runtime controller', () => {
   it('ignores execution results for an earlier project or item and cancels owned reads', async () => {
@@ -179,15 +212,18 @@ describe('Planning runtime controller', () => {
       controller.dispose()
     }
   })
-  it('loads a workspace, creates an item, and refreshes the authoritative board', async () => {
+  it('loads a workspace, captures an idea as a pending proposal, and refreshes the authoritative board', async () => {
     const snapshot = vi
       .fn()
       .mockResolvedValueOnce({ ok: true, value: board })
-      .mockResolvedValueOnce({ ok: true, value: createdBoard })
+      .mockResolvedValueOnce({ ok: true, value: proposedBoard })
     const submitted: { readonly workspaceId: string; readonly command: PlanningCommand }[] = []
     const execute = vi.fn((input: { readonly workspaceId: string; readonly command: PlanningCommand }) => {
       submitted.push(input)
-      return Promise.resolve({ ok: true as const, value: { boardVersion: 1, itemId: 'idea', revisionId: 'r1' } })
+      return Promise.resolve({
+        ok: true as const,
+        value: { boardVersion: 1, proposalId: 'proposal-1', proposalVersion: 1 },
+      })
     })
     const controller = createPlanningRuntimeController({
       workspaces: vi.fn().mockResolvedValue({ ok: true, value: [{ id: 'alpha', title: 'Alpha' }] }),
@@ -205,11 +241,31 @@ describe('Planning runtime controller', () => {
     await expect(controller.create({ idea: 'Idea\nMake it real' })).resolves.toBe(true)
     expect(submitted[0]).toMatchObject({
       workspaceId: 'alpha',
-      command: { kind: 'create', expectedBoardVersion: 0 },
+      command: {
+        kind: 'propose',
+        expectedBoardVersion: 0,
+        expectedProposalVersion: null,
+        targetItemId: null,
+        baseRevisionId: null,
+        suggestedLane: 'inbox',
+        assumptions: [],
+        draft: {
+          title: 'Idea',
+          intent: 'Idea\nMake it real',
+          scope: [],
+          acceptance: [],
+          sources: [{ kind: 'manual', text: 'Idea\nMake it real' }],
+          estimate,
+          reviewAt: null,
+        },
+      },
     })
     expect(typeof submitted[0]?.command.requestId).toBe('string')
+    expect(submitted[0]?.command.kind).toBe('propose')
+    if (submitted[0]?.command.kind !== 'propose') throw new Error('expected a proposal command')
+    expect(typeof submitted[0].command.proposalId).toBe('string')
     await vi.waitFor(() => {
-      expect(controller.source.getSnapshot().board?.version).toBe(1)
+      expect(controller.source.getSnapshot().board?.proposals[0]?.status).toBe('pending')
     })
   })
 

@@ -10,6 +10,7 @@ import type {
 } from './types.ts'
 export * from './schema.ts'
 export * from './types.ts'
+export * from './evolution.ts'
 export { PlanningError } from './errors.ts'
 declare module '@deepseek-ai/cordis' {
   interface Context {
