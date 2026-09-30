@@ -6,6 +6,7 @@ import { PlanningExecution } from './PlanningExecution.tsx'
 import { nextPlanningRequestId } from './request-id.ts'
 import { PlanningImage } from './PlanningImage.tsx'
 import { PlanningEvolution } from './PlanningEvolution.tsx'
+import { isPlanningDeltaReviewComplete, PlanningDeltaDiff, type PlanningDeltaReviewSnapshot } from './PlanningDeltaDiff.tsx'
 
 const lanes: readonly PlanningLane[] = ['inbox', 'now', 'next', 'later', 'parking']
 const splitLines = (value: string): string[] =>
@@ -43,7 +44,12 @@ import type { PlanningWorkbenchProps } from './PlanningWorkbench.tsx'
 type CommandDraft<T> = T extends unknown ? Omit<T, 'requestId' | 'expectedBoardVersion'> : never
 
 /** Planning pool with explicit loading, failure, conflict, and retry states. */
-export function PlanningPanels(props: PlanningWorkbenchProps & { panel: 'current' | 'history' | 'review'; proposalId?: string }) {
+export function PlanningPanels(props: PlanningWorkbenchProps & {
+  panel: 'current' | 'history' | 'review'
+  proposalId?: string
+  /** Proposal-keyed snapshots are captured by the submitting owner, never reconstructed after drift. */
+  reviewSnapshots?: ReadonlyMap<string, PlanningDeltaReviewSnapshot>
+}) {
   const state = props.usePlanning(value => value)
   const { board } = state
   const { t } = props
@@ -220,6 +226,22 @@ export function PlanningPanels(props: PlanningWorkbenchProps & { panel: 'current
             proposal.fromReviewId === undefined
               ? undefined
               : board?.reviews.find(review => review.id === proposal.fromReviewId)
+          const delta = generation.delta
+          const deltaBaseRevision = delta === undefined
+            ? undefined
+            : target?.revisions.find(value => value.id === delta.baseRevision)
+          const currentReviewSnapshot = delta === undefined || stale || board === undefined
+            ? undefined
+            : { planRevision: delta.baseRevision, focuses: board.focuses ?? [], resourceLinks: board.resourceLinks ?? [] }
+          const reviewSnapshot = props.reviewSnapshots?.get(proposal.id)
+          const deltaReviewProps = delta === undefined ? undefined : {
+            delta,
+            ...(deltaBaseRevision === undefined ? {} : { baseRevision: deltaBaseRevision }),
+            ...(reviewSnapshot === undefined ? {} : { reviewSnapshot }),
+            ...(currentReviewSnapshot === undefined ? {} : { currentReviewSnapshot }),
+            stale,
+          }
+          const deltaReviewComplete = deltaReviewProps === undefined || isPlanningDeltaReviewComplete(deltaReviewProps)
           return (
             <article key={proposal.id} className={css.proposal}>
               {sourceReview !== undefined && (
@@ -229,19 +251,7 @@ export function PlanningPanels(props: PlanningWorkbenchProps & { panel: 'current
               )}
               <h3>{generation.draft.title}</h3>
               <p>{generation.draft.intent}</p>
-              {generation.delta !== undefined && <section>
-                <h4>{t('workspace.delta')}</h4>
-                <p>{t('workspace.workingOn')}: {generation.delta.subject.kind} / {generation.delta.subject.id}</p>
-                <p>{t('workspace.baseRevision')}: {generation.delta.baseRevision}</p>
-                <p>{t('workspace.origin')}: {generation.delta.originRef.label ?? generation.delta.originRef.id}</p>
-                <ul>{generation.delta.operations.map((operation, index) => <li key={index}>
-                  {t(`workspace.operation.${operation.kind}`)}: {'entry' in operation ? operation.entry.content :
-                    operation.kind === 'create-focus' ? operation.title : operation.kind === 'update-focus'
-                      ? `${operation.title ?? operation.id} · ${operation.status === undefined ? '' : t(`workspace.status.${operation.status}`)}`
-                      : operation.kind === 'add-resource-link' ? `${operation.resource.kind}: ${operation.resource.label ?? operation.resource.id}` : operation.id}
-                </li>)}</ul>
-                <ul>{generation.delta.evidenceRefs?.map((ref, index) => <li key={index}>{ref.kind}: {ref.label ?? ref.id}</li>)}</ul>
-              </section>}
+              {deltaReviewProps !== undefined && <PlanningDeltaDiff {...deltaReviewProps} />}
               <p>
                 {t('detail.scope')}
                 {generation.draft.scope.join('、') || t('detail.unfilled')}
@@ -277,7 +287,7 @@ export function PlanningPanels(props: PlanningWorkbenchProps & { panel: 'current
               </p>
               {stale && <p role="alert">{t('proposal.stale')}</p>}
               <button
-                disabled={state.pending || stale}
+                disabled={state.pending || stale || !deltaReviewComplete}
                 type="button"
                 onClick={() => {
                   send({

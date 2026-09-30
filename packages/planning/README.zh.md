@@ -18,6 +18,7 @@ Planning 在一个持久 Board 中保存项目想法、证据、版本、顺序�
 | [`planning`](planning/README.zh.md) | 定义 `ctx.planning`、Board 数据和 CAS 变更。 |
 | [`planning-local`](planning-local/README.zh.md) | 为每个 Workspace 持久化 Board 并捕获受信来源。 |
 | [`tool-planning`](tool-planning/README.zh.md) | 向发起 Agent 提供有界 Board 工具。 |
+| [`tool-thinking-case`](tool-thinking-case/README.zh.md) | 向已绑定 Thinking Desk Agent 提供仅候选的上下文和结果工具。 |
 | [`planning-remote`](planning-remote/README.zh.md) | 提供已认证浏览器投影和有界命令。 |
 | [`planning-delivery-bridge`](planning-delivery-bridge/README.zh.md) | 为可恢复的 Delivery shaping Case 冻结一个版本。 |
 

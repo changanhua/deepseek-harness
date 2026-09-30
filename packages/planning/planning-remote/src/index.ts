@@ -12,6 +12,10 @@ import type { PlanningContextInput } from './types.ts'
 import type { SbcDesignCaseView, SbcExploreInput } from './types.ts'
 import { SbcDesignCaseStore, sbcCaseInputSchema, sbcExploreInputSchema } from './sbc-design-case.ts'
 import { planningRemoteFailure, requirePlanningActive } from './failures.ts'
+import { authorizeThinkingStartup, createThinkingAgentOwner } from './thinking-owner.ts'
+import type {
+  AdvanceThinkingInput, ApplyThinkingInput, PrepareThinkingInput, SubmitThinkingProposalInput, ThinkingCaseView,
+} from './thinking-types.ts'
 import type {
   PlanningBoardView,
   PlanningEvidenceInput,
@@ -99,6 +103,8 @@ export class PlanningRemoteService extends TypertRemoteService {
     super(ctx, 'planningRemote', { namespace: 'planning' })
     this.config = Config(config)
     this.operatorId = workspaceIdSchema.parse(config.operatorId ?? 'local-operator')
+    if (this.config.enableSbcDesignCase)
+      this.ctx.provide('thinkingCase', createThinkingAgentOwner(this.ctx, () => this.sbcStore(), (id, signal) => this.access(id, signal)))
     this.ctx.effect(() => async () => {
       this.closing = true
       // Initialization failures reach their callers and own no store to close.
@@ -155,6 +161,93 @@ export class PlanningRemoteService extends TypertRemoteService {
     return opening
   }
 
+  /** Read retained Thinking records for one existing case; this does not create a case or a run. */
+  @Remote('thinkingCase')
+  async thinkingCase(input: PlanningContextInput, signal: AbortSignal): Promise<ThinkingCaseView> {
+    try {
+      const parsed = sbcCaseInputSchema.parse(input); const access = this.access(parsed.workspaceId, signal)
+      return await (await this.sbcStore()).readThinking(parsed, () => this.ctx.planning.snapshot(access, signal), signal)
+    } catch (error) { throw planningRemoteFailure(error, signal) }
+  }
+
+  /** Persist a frozen intent before the caller creates the native Thinking Session. */
+  @Remote('prepareThinking')
+  async prepareThinking(input: PrepareThinkingInput, signal: AbortSignal): Promise<ThinkingCaseView> {
+    try {
+      const parsed = sbcCaseInputSchema.extend({
+        expectedCaseVersion: z.number().int().nonnegative(), runId: workspaceIdSchema, sessionId: workspaceIdSchema,
+        question: z.string().trim().min(1).max(8192), requestId: workspaceIdSchema,
+        bindRequestId: workspaceIdSchema, promptRequestId: workspaceIdSchema,
+      }).parse(input)
+      const access = this.access(parsed.workspaceId, signal)
+      return await (await this.sbcStore()).prepareThinking(parsed, () => this.ctx.planning.snapshot(access, signal), signal)
+    } catch (error) { throw planningRemoteFailure(error, signal) }
+  }
+
+  /** Record one confirmed startup step; native identities remain owned by Session and Planning. */
+  @Remote('advanceThinking')
+  async advanceThinking(input: AdvanceThinkingInput, signal: AbortSignal): Promise<ThinkingCaseView> {
+    try {
+      const parsed = sbcCaseInputSchema.extend({
+        runId: workspaceIdSchema, expectedRunVersion: z.number().int().nonnegative(), requestId: workspaceIdSchema,
+        phase: z.enum(['prepared', 'session-created', 'planning-bound', 'prompt-accepted', 'blocked']),
+        blockedReason: z.string().max(2048).optional(),
+      }).parse(input)
+      const access = this.access(parsed.workspaceId, signal)
+      const store = await this.sbcStore()
+      const before = await store.readThinking(parsed, () => this.ctx.planning.snapshot(access, signal), signal)
+      const run = before.runs.find(value => value.id === parsed.runId)
+      if (!run) throw new PlanningError('not-found', 'Thinking Run is unavailable')
+      if (parsed.phase !== 'prepared' && parsed.phase !== 'blocked') {
+        const binding = await authorizeThinkingStartup(this.ctx, run, access, signal)
+        if (parsed.phase !== 'session-created' && (!binding || binding.subject.kind !== run.subject.kind ||
+          binding.subject.id !== run.subject.id || binding.baseRevision !== run.planningRevisionAtStart))
+          throw new PlanningError('unauthorized', 'Thinking binding is not exact')
+      }
+      return await store.advanceThinking(parsed, () => this.ctx.planning.snapshot(access, signal), signal)
+    } catch (error) { throw planningRemoteFailure(error, signal) }
+  }
+
+  /** Apply an exact reviewed candidate only to exploration or durable design context. */
+  @Remote('applyThinking')
+  async applyThinking(input: ApplyThinkingInput, signal: AbortSignal): Promise<ThinkingCaseView> {
+    try {
+      const parsed = sbcCaseInputSchema.extend({
+        runId: workspaceIdSchema, resultId: workspaceIdSchema, resultVersion: z.number().int().positive(),
+        expectedCaseVersion: z.number().int().nonnegative(), requestId: workspaceIdSchema,
+        kind: z.enum(['notes', 'context']), acknowledgeStale: z.boolean().optional(),
+      }).parse(input)
+      const access = this.access(parsed.workspaceId, signal)
+      return await (await this.sbcStore()).applyThinking(parsed, () => this.ctx.planning.snapshot(access, signal), signal)
+    } catch (error) { throw planningRemoteFailure(error, signal) }
+  }
+
+  /** Create or recover one pending Proposal for an explicitly reviewed Result; never adopt it. */
+  @Remote('submitThinkingProposal')
+  async submitThinkingProposal(input: SubmitThinkingProposalInput, signal: AbortSignal): Promise<ThinkingCaseView> {
+    try {
+      const parsed = sbcCaseInputSchema.extend({
+        runId: workspaceIdSchema, resultId: workspaceIdSchema, resultVersion: z.number().int().positive(), requestId: workspaceIdSchema,
+      }).parse(input)
+      const access = this.access(parsed.workspaceId, signal); const store = await this.sbcStore()
+      const { view, submission } = await store.prepareThinkingProposal(parsed, () => this.ctx.planning.snapshot(access, signal), signal)
+      const attempt = submission.attempts.at(-1)
+      if (!attempt) throw new PlanningError('invalid-reference', 'Thinking submission is empty')
+      if (attempt.status === 'committed') return view
+      let receipt: PlanningMutationResult
+      try {
+        receipt = await this.ctx.planning.execute(access, attempt.command, signal)
+      } catch (error) {
+        if (error instanceof PlanningError && error.code === 'conflict')
+          await store.recordThinkingProposal({ ...parsed, commandRequestId: attempt.command.requestId, conflict: true },
+            () => this.ctx.planning.snapshot(access, signal), signal)
+        throw error
+      }
+      return await store.recordThinkingProposal({ ...parsed, commandRequestId: attempt.command.requestId, receipt },
+        () => this.ctx.planning.snapshot(access, signal), signal)
+    } catch (error) { throw planningRemoteFailure(error, signal) }
+  }
+
   /**
    * List projects visible to the authenticated local Host user.
    * @param signal - Caller lifetime checked before reading.
@@ -181,7 +274,9 @@ export class PlanningRemoteService extends TypertRemoteService {
       const access = this.access(workspaceId, signal)
       const board = await this.ctx.planning.snapshot(access, signal)
       const delivery = this.ctx.get('deliveryRemote') as DeliveryRemoteService | undefined
-      if (delivery === undefined) return { ...board, executions: [] }
+      const thinkingReviewSnapshots = this.config.enableSbcDesignCase
+        ? await (await this.sbcStore()).thinkingReviewSnapshots(workspaceId, signal) : undefined
+      if (delivery === undefined) return { ...board, thinkingReviewSnapshots, executions: [] }
       let view: DeliverySnapshotView
       try {
         view = delivery.snapshot(signal)
@@ -190,6 +285,7 @@ export class PlanningRemoteService extends TypertRemoteService {
         await access.authorize()
         return {
           ...board,
+          thinkingReviewSnapshots,
           executions: board.handoffs.flatMap(handoff =>
             handoff.phase !== 'linked' || handoff.caseId === undefined
               ? []
@@ -208,6 +304,7 @@ export class PlanningRemoteService extends TypertRemoteService {
       await access.authorize()
       return {
         ...board,
+        thinkingReviewSnapshots,
         executions: board.handoffs.flatMap((handoff) => {
           if (handoff.phase !== 'linked' || handoff.caseId === undefined) return []
           const deliveryCase = caseForHandoff(view, handoff)

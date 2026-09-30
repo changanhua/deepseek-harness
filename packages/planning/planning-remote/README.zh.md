@@ -15,9 +15,9 @@ context 操作返回所选 Plan 或 Focus 的投影，不展开资源内容。�
 
 ## 使用此包
 
-Remote 提供 `workspaces`、`snapshot`、`execute`、`handoff`、`execution` 和 `evidence`。组合 Delivery 时，`snapshot` 会增加只读的关联执行摘要。`handoff` 从选中的修订准备 shaping Case；它不批准需求、不派发工作、不验证修改，也不接纳结果。`execution` 将持久 handoff 引用关联到现有 Delivery 只读模型。`evidence` 仅接收所选 Plan 的关联 Case 中 packet 已声明的证据 id，然后使用 Delivery 既有的校验读取器；其他 Plan 不能读取该证据。
+Remote 提供 `workspaces`、`snapshot`、`execute`、`handoff`、`execution` 和 `evidence`；它还读取、准备、推进、应用和提交 Thinking Case。组合后，`snapshot` 会增加只读的关联执行摘要和按 Proposal 关联的 Thinking 审阅快照。Thinking run 会冻结 Planning 修订、Case 版本、Context Pack、Session 身份、binding 命令与 kickoff 请求；恢复会复用这些身份，不创建另一条 run。`handoff` 从选中的修订准备 shaping Case；它不批准需求、不派发工作、不验证修改，也不接纳结果。`execution` 将持久 handoff 引用关联到现有 Delivery 只读模型。`evidence` 仅接收所选 Plan 的关联 Case 中 packet 已声明的证据 id，然后使用 Delivery 既有的校验读取器；其他 Plan 不能读取该证据。
 
-浏览器路径使用配置的本地人类身份，校验所选项目和精确修订。模型工具另行推导 Agent 权限，Planning 再校验当前直接用户消息。意图识别由 Agent 与 Skill 负责；Host 检查身份和版本事实，不解析自然语言授权。
+浏览器路径使用配置的本地人类身份，校验所选项目和精确修订。Thinking 工具在读取上下文或提交结果前，会解析真实 Agent、`thinking-desk` preset、绑定的 Session、Workspace 和精确 run；受限工具集不包含 `planning_update`。结果校验和 Case 字节上限限制保存的上下文和输出。只有浏览器中的显式提交动作会以冻结的 subject、base revision、origin、evidence 和审阅快照创建 Planning Proposal；Agent 不能修改 Planning。意图识别由 Agent 与 Skill 负责；Host 检查身份和版本事实，不解析自然语言授权。
 
 ## 不变量策略
 
@@ -25,7 +25,7 @@ Remote 提供 `workspaces`、`snapshot`、`execute`、`handoff`、`execution` �
 
 ## SBC 探索
 
-显式启用 `enableSbcDesignCase` 配置后，可保存冻结的 Plan/Focus 投影、独立的选择与坐标，以及最近 30 步空间撤销记录。普通 Planning 操作不依赖探索存储。personal-planning Bundle 启用该选项，并选用已有的 web-host StorageDomain。打开案例只创建探索状态；打开和探索均不执行 Planning 命令。
+显式启用 `enableSbcDesignCase` 配置后，可保存冻结的 Plan/Focus 投影、独立的选择与坐标、探索建议、Design Context、Thinking run，以及最近 30 步空间撤销记录。普通 Planning 操作不依赖探索存储。personal-planning Bundle 启用该选项，并选用已有的 web-host StorageDomain。打开案例只创建探索状态；打开和探索均不执行 Planning 命令。
 
 JSON 后端将单条记录保存到配置的存储根目录下的 `sbc_design_cases/cases/<sha256>.json`，键由项目和作用对象身份哈希得到。每次移动保存逆向坐标；选择节点不消耗空间撤销历史。Consumer 在拖动结束时提交一次移动，不逐个提交指针事件。`maxSbcCases` 和 `maxSbcCaseBytes` 超限时在提交前拒绝新增或写入。存储初始化失败后可显式重试。
 
@@ -54,4 +54,4 @@ JSON 后端将单条记录保存到配置的存储根目录下的 `sbc_design_ca
 ## 已知限制与延后工作
 
 - 未组合 Delivery 时会返回不可用 execution view，不改变计划数据。
-- SBC 浏览器 UI 尚未接入。未提供自动协调或向 Planning 晋升的功能。
+- 未提供自动协调或向 Planning 晋升；Proposal 采纳仍是独立的人类 Planning 动作。

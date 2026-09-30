@@ -14,9 +14,9 @@
 
 界面以当前 Board 版本提交每次修改。失败操作保留原请求身份供用户显式重试，不会静默覆盖更新后的 Board。它显示已捕获的会话摘录并可打开原会话；组合 Content 后可读取捕获时的精确版本。手工记录和链接标明未验证，人工安排与 Delivery 进度分别显示。
 
-思考桌面只读取已有 Design Case 的通用摘要，不创建探索。FC27 SBC 是首个 owner adapter：冻结投影、选择、布局和移动撤销仍保存在既有探索存储中。打开独立 owner 视图并返回会保留 Plan/Focus 选择，并重新读取当前 Planning 事实。版本漂移有明确文字，读取失败不能表示基线一致。探索写入失败或结果未知时，必须先重载，界面不会自动重放。
+思考桌面只读取已有 Design Case 的通用摘要，不创建探索。FC27 SBC 会打开独立 owner 视图，并且只在用户输入问题后启动原生 `thinking-desk` Session；启动中断后会恢复同一 prepared Session、Planning binding 与 kickoff 请求。冻结的 Planning 和 Case 输入、选择、布局、探索建议、Design Context 与移动撤销都保存在 Case 记录中；返回后保留 Plan/Focus 选择并重新读取当前 Planning 事实。
 
-Planning 局部样式使用共享主题变量与控件。思考桌面在已有案例摘要旁保留正式目标和决定；修订示意图展示已保存基线与当前修订，不虚构探索节点。完整修订标识和低频管理操作通过折叠区查看。
+结果审阅将 Agent 输出与正式 Planning 分开，在三个独立的人类动作保存探索建议、保存 Design Context 或创建 Proposal 前展示实际内容。Case 漂移时须明确确认才能应用仍适用的候选；Planning 漂移会阻止创建 Proposal。Proposal 审阅展示一个精确代次的 state entry、Focus、资源、来源和证据差异；缺少不可变或代次绑定的前值时会禁用采纳。
 
 ## 不变量策略
 
@@ -43,3 +43,4 @@ Planning 局部样式使用共享主题变量与控件。思考桌面在已有�
 - Planning 分组不表示执行结果；Delivery 合同与决策继续在交付工作台处理。
 - 演变图显示已保留的谱系与当前关系，不会虚构从未存储的历史泳道或依赖值。
 - 后台提醒与复盘的原子后续项仍未完成。
+- 思考面板创建 Proposal，采纳仍交给既有的 Planning 审阅。

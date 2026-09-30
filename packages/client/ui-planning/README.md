@@ -14,9 +14,9 @@ Overview lists current plans, the idea inbox, pending Proposals and archives. Op
 
 The UI sends every mutation with the current board version. A failed attempt remains available for an explicit retry with its original request identity; it never silently overwrites a newer board. It displays captured Session excerpts and opens their conversation, reads the exact captured Content version when composed, and identifies manual notes and links as unverified sources. Arrangement and Delivery progress appear separately.
 
-The thinking desk reads generic summaries of existing Design Cases without creating exploration. FC27 SBC is the first owner adapter: its frozen projection, selection, layout and movement undo remain in the existing exploration store. Opening its separate owner view and returning preserves the Plan/Focus selection and rereads current Planning facts. Revision drift is explicit; failed reads cannot imply alignment. A failed or unknown exploratory write requires reload and is never automatically replayed.
+The thinking desk reads generic summaries of existing Design Cases without creating exploration. FC27 SBC opens a separate owner view, starts a native `thinking-desk` Session only after the user enters a question, and restores the same prepared Session, Planning binding, and kickoff request after an interrupted start. Its frozen Planning and Case inputs, selection, layout, exploration notes, Design Context, and movement undo remain in the Case record; returning preserves Plan/Focus selection and rereads current Planning facts.
 
-Planning-local styles use shared theme tokens and controls. The thinking desk keeps canonical goals and decisions visible beside existing Case summaries; its revision diagram shows retained baselines and current revisions, not invented exploration nodes. Full revision identifiers and infrequent management actions are available in disclosures.
+Result review keeps Agent output separate from canonical Planning and shows the actual exploration notes, Design Context, and delta before three independent human actions save notes, save context, or create a Proposal. Case drift requires an explicit acknowledgement for an applicable candidate; Planning drift blocks Proposal creation. Proposal review shows one exact generation's state-entry, Focus, resource, origin, and evidence differences, and disables adoption when immutable or generation-bound prior material is absent.
 
 ## Invariant policy
 
@@ -43,3 +43,4 @@ The UI adds no direct KV-cache effect.
 - Planning lanes do not indicate execution outcomes; Delivery contracts and decisions continue in the Delivery workbench.
 - The evolution graph shows retained lineage and current relationships, not historical lane or dependency values that were never stored.
 - Background notification and atomic review follow-ups remain incomplete.
+- The thinking panel creates a Proposal but delegates its adoption to the existing Planning review.

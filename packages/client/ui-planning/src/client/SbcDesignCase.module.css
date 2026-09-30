@@ -5,3 +5,9 @@
 .node { position: absolute; left: var(--case-x); top: var(--case-y); width: 260px; display: grid; gap: 8px; padding: 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1); border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 10px; touch-action: none; }
 .node[aria-pressed='true'] { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 2px; }
 .node span { max-height: 110px; overflow: auto; }
+.note { border-style: dashed; background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 88%, var(--dsw-alias-button-info-fill)); }
+.deleteNote { position: absolute; left: calc(var(--case-x) + 226px); top: calc(var(--case-y) + 6px); z-index: 1; width: 28px; height: 28px; padding: 0; border-radius: 50%; }
+.thinking { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; padding-top: 4px; }
+.thinking > section { display: grid; align-content: start; gap: 8px; padding: 14px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 10px; background: var(--dsw-alias-bg-layer-1); }
+.thinking h3, .thinking h4, .thinking p { margin: 0; }
+.thinking textarea { min-height: 92px; width: 100%; box-sizing: border-box; }

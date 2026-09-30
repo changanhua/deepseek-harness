@@ -1,0 +1,41 @@
+{
+  "name": "@changanhua/dsh-tool-thinking-case",
+  "description": "Agent-scoped model tools for bounded Thinking Desk cases",
+  "version": "0.1.2-alpha.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/planning/tool-thinking-case"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./restrict": { "types": "./lib/types/restrict.d.ts", "default": "./lib/restrict.js" },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib/index.js", "lib/restrict.js", "lib/types/**/*.js", "lib/types/**/*.d.ts"],
+  "license": "MIT",
+  "private": true,
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@changanhua/dsh-planning": "workspace:^",
+    "@changanhua/dsh-planning-remote": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-session": "workspace:^",
+    "@changanhua/dsh-planning": "workspace:^",
+    "@changanhua/dsh-planning-remote": "workspace:^"
+  }
+}

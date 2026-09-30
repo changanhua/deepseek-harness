@@ -13,6 +13,7 @@ import type { PlanningWorkspaceInjected } from './contract.ts'
 import { en, NS, zh, type PlanningKey } from './locales.ts'
 import { createPlanningRuntimeController } from './runtime-controller.ts'
 import { createSbcDesignController } from './sbc-design-controller.ts'
+import { createThinkingController, type ThinkingNativeSessions } from './thinking-controller.ts'
 import { PlanningImageAction, type PlanningImageActionInjected } from './PlanningImageAction.tsx'
 import { nextPlanningRequestId } from './request-id.ts'
 import type { PlanningCommand } from '@changanhua/dsh-planning/types'
@@ -48,6 +49,26 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const ui = ctx.inject(['slots', 'locale', 'remote', 'remote.planning', 'uiWorkspace'], (ctx) => {
     const runtime = createPlanningRuntimeController(ctx.remote.planning)
     const sbc = createSbcDesignController(ctx.remote.planning)
+    const sessions = () => {
+      const service = ctx.get('sessions') as unknown as {
+        create: ThinkingNativeSessions['create']
+        binding(id: string): { session: { prompt(content: { type: 'text'; text: string }[], mode: 'queue', signal: AbortSignal,
+          requestId: string): Promise<{ ok: boolean; error?: { message: string } }> } } | undefined
+      } | undefined
+      if (!service) throw new Error('Native Sessions are unavailable')
+      return service
+    }
+    const thinking = createThinkingController(ctx.remote.planning, {
+      create: input => sessions().create(input),
+      prompt: async (sessionId, text, requestId, signal) => {
+        const face = sessions().binding(sessionId)?.session
+        if (!face) throw new Error('Native Session face is unavailable')
+        const result = await face.prompt([{ type: 'text', text }], 'queue', signal, requestId)
+        if (!result.ok) throw new Error(result.error?.message ?? 'Thinking prompt was refused')
+      },
+      open: (id) => { ctx.get('uiWorkspace')?.openSession(id) },
+    })
+    ctx.effect(() => () => { thinking.dispose() }, 'Thinking case lifecycle')
     ctx.effect(() => () =>{  sbc.dispose() }, 'SBC design case lifecycle')
     const sessionStarts = new Map<string, { sessionId: string; command: PlanningCommand }>()
     const bindings = new Map<string, PlanningBindingInjected>()
@@ -91,7 +112,8 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       openDesignCase: (summary) => {
         const workspaceId = runtime.source.getSnapshot().workspaceId
         if (workspaceId && summary.resource.provider === 'sbc') {
-          void sbc.open({ workspaceId, subject: summary.subjectRef })
+          const input = { workspaceId, subject: summary.subjectRef }
+          void sbc.open(input).then(() => thinking.open(input))
           ctx.get('layout')?.openModule('planning-design-case')
         }
       },
@@ -195,8 +217,15 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     )
     ctx.slots.inject('shell.view', () => ctx.slots.register({
       name: 'shell.view', id: 'planning-design-case', locale: NS,
-      inject: (): PlanningDesignCaseInjected => ({ hooks: { sbcDesign: sbc.source }, explore: operation => sbc.explore(operation),
-        refresh: () => sbc.refresh(), close: () => { sbc.close(); runtime.refresh(); ctx.get('layout')?.openModule('planning') } }),
+      inject: (): PlanningDesignCaseInjected => ({ hooks: { sbcDesign: sbc.source, thinking: thinking.source },
+        explore: async (operation) => { await sbc.explore(operation); await thinking.refresh() },
+        refresh: async () => { await sbc.refresh(); await thinking.refresh() },
+        prepareThinking: question => thinking.prepare(question), resumeThinking: runId => thinking.resume(runId),
+        applyThinking: async (...args) => { const saved = await thinking.apply(...args); if (saved) await sbc.refresh(); return saved },
+        submitThinkingProposal: async (...args) => { const saved = await thinking.submitProposal(...args); if (saved) runtime.refresh()
+          return saved },
+        openThinkingSession: id => thinking.openSession(id),
+        close: () => { thinking.close(); sbc.close(); runtime.refresh(); ctx.get('layout')?.openModule('planning') } }),
     }, PlanningDesignCasePage))
     ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
       name: 'conversation.input.dock', id: 'planning-binding', locale: NS,

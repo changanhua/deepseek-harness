@@ -1,4 +1,5 @@
 /** Browser request and project selection types for planning. */
+export type * from './thinking-types.ts'
 import type { PlanningBoardSnapshot, PlanningCommand, PlanningHandoff, PlanningFocus, PlanningRevision } from '@changanhua/dsh-planning'
 import type { PlanningSubjectRef, ResourceRef } from '@changanhua/dsh-planning'
 export interface PlanningContextInput { readonly workspaceId: string; readonly subject: PlanningSubjectRef }
@@ -16,6 +17,7 @@ export interface SbcDesignCase {
   version: number
   local: SbcExploration
   history: { nodeId: string; x: number; y: number }[]
+  notes?: import('./thinking-types.ts').ExplorationNote[]
 }
 export interface SbcDesignCaseView {
   case: SbcDesignCase
@@ -27,6 +29,7 @@ export type SbcExploreOperation =
   | { kind: 'select'; nodeId: string | null }
   | { kind: 'move'; nodeId: string; x: number; y: number }
   | { kind: 'undo' }
+  | { kind: 'delete-note'; nodeId: string }
 export interface SbcExploreInput extends PlanningContextInput {
   expectedVersion: number
   requestId: string
@@ -101,6 +104,7 @@ export interface PlanningExecutionView {
 
 /** Read-only Planning Board augmented with linked Delivery work that has real completion evidence. */
 export interface PlanningBoardView extends PlanningBoardSnapshot {
+  readonly thinkingReviewSnapshots?: Readonly<Record<string, import('./thinking-types.ts').ThinkingReviewSnapshot>> | undefined
   readonly executions: readonly {
     readonly itemId: string
     readonly revisionId: string

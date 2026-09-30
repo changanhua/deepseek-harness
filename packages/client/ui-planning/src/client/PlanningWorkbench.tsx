@@ -214,7 +214,8 @@ export function PlanningWorkbench(props: PlanningWorkbenchProps) {
       <section id="plan-panel" role="tabpanel" aria-labelledby={`plan-${view.tab}`} className={css.planWorkspace}>
         {(view.tab === 'current' || view.tab === 'work') && <PlanningObject key={`${board.workspaceId}:${selected.id}:${view.tab}`} board={board} planId={selected.id} revision={revision} pending={state.pending} execute={props.execute} t={t}
           focusId={focus?.id} mode={view.tab} openSession={props.openSessionSource} startSession={props.startPlanningSession} />}
-        {(view.tab === 'current' || view.tab === 'history') && <PlanningPanels {...props} panel={view.tab} />}
+        {(view.tab === 'current' || view.tab === 'history') && <PlanningPanels {...props} panel={view.tab}
+          reviewSnapshots={new Map(Object.entries(board.thinkingReviewSnapshots ?? {}))} />}
         {view.tab === 'thinking' && <section className={css.thinkingDesk}>
           <div className={css.stateEntries}>{(['objective', 'accepted', 'open'] as const).map(kind => <section key={kind} className={kind === 'objective' ? css.objective : undefined} data-kind={kind}><h3>{t(`workspace.${kind}`)}</h3><ul>{(revision.stateEntries ?? []).filter(entry => entry.kind === kind).map(entry => <li key={entry.id}>{entry.content}</li>)}</ul>{!(revision.stateEntries ?? []).some(entry => entry.kind === kind) && <p className={css.meta}>{t('detail.unfilled')}</p>}</section>)}</div>
           <section className={css.caseCollection}><h2>{t('thinking.cases')}</h2><div className={css.boundaryStrip}>
@@ -265,6 +266,7 @@ export function PlanningWorkbench(props: PlanningWorkbenchProps) {
     )}
 
     {reviewId !== null && <dialog ref={dialog} className={css.reviewDialog} aria-label={t('overview.review')} onCancel={(event) => { event.preventDefault(); closeReview() }}><button onClick={closeReview}>{t('view.close')}</button>
-      <PlanningPanels {...props} panel="review" {...(reviewId === 'plan' ? {} : { proposalId: reviewId })} /></dialog>}
+      <PlanningPanels {...props} panel="review" reviewSnapshots={new Map(Object.entries(board?.thinkingReviewSnapshots ?? {}))}
+        {...(reviewId === 'plan' ? {} : { proposalId: reviewId })} /></dialog>}
   </section>
 }
