@@ -82,16 +82,13 @@ export function SbcDesignCase({ state, explore, refresh, close, t, thinking }: S
   return <section className={css.root} aria-label={t('sbc.title')}>
     <header className={css.toolbar}><h3>{t('sbc.title')}</h3>
       <button type="button" disabled={disabled || !saved} onClick={() => { create() }}>{t('canvas.create')}</button>
-      {saved?.notes?.some(note => note.id === saved.local.selectedNodeId) &&
-        <button type="button" disabled={disabled} onClick={() => {
-          if (saved.local.selectedNodeId) edit(saved.local.selectedNodeId)
-        }}>{t('canvas.edit')}</button>}
+      <button type="button" disabled={disabled || !saved?.notes?.some(note => note.id === saved.local.selectedNodeId)}
+        onClick={() => { if (saved?.local.selectedNodeId) edit(saved.local.selectedNodeId) }}>{t('canvas.edit')}</button>
       <button type="button" disabled={state.pending} onClick={() => { void refresh() }}>{t('sbc.reload')}</button>
       <button type="button" disabled={state.pending || !saved?.history.length || !!state.error} onClick={() => { void explore({ kind: 'undo' }) }}>{t('sbc.undo')}</button>
       <button type="button" onClick={close}>{t('sbc.close')}</button>
     </header>
     <p>{t('sbc.boundary')}</p>
-    {state.pending && <p>{t('sbc.saving')}</p>}
     {state.error && <p role="alert">{state.error} · {t('sbc.recover')}</p>}
     {saved && <>
       <p>{t('sbc.base')}: {saved.baseRevision.id}{saved.baseFocus && <> · {t('sbc.focusVersion')}: {saved.baseFocus.version}</>}</p>
@@ -99,6 +96,7 @@ export function SbcDesignCase({ state, explore, refresh, close, t, thinking }: S
       {view.drift && <p role="status">{t('sbc.drift')}</p>}
       <p>{t('sbc.instructions')}</p>
       <div ref={viewport} className={css.viewport} onScroll={() => { setMenu(null) }}>
+        {state.pending && <span role="status" className={css.saveStatus}>{t('sbc.saving')}</span>}
         <div className={css.canvas} aria-label={t('canvas.label')}
           onPointerDown={() => { setMenu(null) }} onKeyDown={(event) => { if (event.key === 'Escape') setMenu(null) }}
           onContextMenu={(event) => {

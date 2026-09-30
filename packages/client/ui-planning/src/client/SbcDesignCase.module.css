@@ -24,3 +24,7 @@
 .editor button[type='submit'] { background: #2563eb; color: white; border-color: #2563eb; }
 .root button:disabled { opacity: 0.5; cursor: default; }
 .field { display: grid; gap: 6px; }
+/* Saving must not shift or fade the canvas while a selection is persisted. */
+.viewport { position: relative; }
+.saveStatus { position: absolute; top: 10px; right: 16px; z-index: 4; pointer-events: none; font-size: 12px; }
+.root .node:disabled { opacity: 1; }

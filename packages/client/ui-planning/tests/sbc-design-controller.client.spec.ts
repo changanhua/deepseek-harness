@@ -44,3 +44,19 @@ it('does not replay an unknown write and clears the view after closing', async (
   expect(controller.source.getSnapshot().view).toBeNull()
   controller.dispose()
 })
+
+it('does not write or publish pending state when clicking the already selected card', async () => {
+  const saved = view()
+  saved.case.local.selectedNodeId = 'plan:p'
+  let writes = 0
+  const controller = createSbcDesignController({
+    sbcDesignCase: async () => ({ ok: true, value: saved }),
+    exploreSbcDesignCase: async () => { writes++; return { ok: true, value: saved } },
+  })
+  await controller.open({ workspaceId: 'w', subject: { kind: 'plan', id: 'p' } })
+  const original = controller.source.getSnapshot()
+  await controller.explore({ kind: 'select', nodeId: 'plan:p' })
+  expect(writes).toBe(0)
+  expect(controller.source.getSnapshot()).toBe(original)
+  controller.dispose()
+})

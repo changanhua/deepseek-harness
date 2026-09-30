@@ -57,6 +57,7 @@ export function createSbcDesignController(remote: SbcDesignRemote) {
     explore: async (operation: SbcExploreOperation) => {
       const state = source.getSnapshot()
       if (!input || !state.view || state.error) return
+      if (operation.kind === 'select' && operation.nodeId === state.view.case.local.selectedNodeId) return
       const request = { ...input, expectedVersion: state.view.case.version, requestId: nextPlanningRequestId(), operation }
       await run(signal => remote.exploreSbcDesignCase(request, signal))
     },

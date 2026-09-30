@@ -218,7 +218,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     ctx.slots.inject('shell.view', () => ctx.slots.register({
       name: 'shell.view', id: 'planning-design-case', locale: NS,
       inject: (): PlanningDesignCaseInjected => ({ hooks: { sbcDesign: sbc.source, thinking: thinking.source },
-        explore: async (operation) => { await sbc.explore(operation); await thinking.refresh() },
+        explore: operation => sbc.explore(operation),
         refresh: async () => { await sbc.refresh(); await thinking.refresh() },
         prepareThinking: question => thinking.prepare(question), resumeThinking: runId => thinking.resume(runId),
         applyThinking: async (...args) => { const saved = await thinking.apply(...args); if (saved) await sbc.refresh(); return saved },

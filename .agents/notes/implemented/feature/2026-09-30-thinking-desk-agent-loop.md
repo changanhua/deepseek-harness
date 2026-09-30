@@ -28,6 +28,8 @@ Manual canvas authoring uses the same Case note owner, with explicit manual prov
 
 **Automatically rebase or adopt a delta.** Neither action can preserve the review meaning of a candidate whose Planning or Case inputs changed. The implementation retains the candidate and requires a person to choose the next action.
 
+Canvas selection and movement retain the mounted view and its geometry while the Case write is pending. Saving feedback overlays the canvas instead of inserting a document-flow row, and card opacity stays unchanged. Repeated selection is a local no-op; exploration edits do not refresh unrelated Thinking results. This avoids visible jumps and redundant requests without removing Case persistence or version checks.
+
 ## Consequences
 
 Thinking output is available through the native Agent loop without becoming canonical Planning data. The Context Pack remains the first preset's only research input, so it carries no repository or Web research capability. A human can apply each of the three outputs independently, and a later run receives saved Design Context from the same Case.
