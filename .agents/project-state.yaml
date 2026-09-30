@@ -1,5 +1,5 @@
 schema_version: 1
-updated_at: "2026-09-30T12:04:00+08:00"
+updated_at: "2026-09-30T12:18:00+08:00"
 
 project:
   name: deepseek-harness-personal
@@ -15,23 +15,30 @@ project:
 
 baseline:
   branch: master
-  observed_code_head: "0ea5089ace96c41767f5f9d00dd2c4483e4551d7"
-  observed_code_head_title: "merge: integrate planning and downstream maintenance into master"
-  previous_baseline_commit: "73e82d0f95bb1e7dfdeef84310fd1ac6282d71a2"
+  observed_code_head: "c80366260a0eca8d9d7718fc3d69bf4e1368e45d"
+  observed_code_head_title: "fix(hooks): normalize staged command logs"
+  previous_repository_baseline_doc_commit: "2ab84380009b5d588ba0ed5efbff7df21ef5abc0"
+  previous_product_baseline_commit: "0ea5089ace96c41767f5f9d00dd2c4483e4551d7"
   date: "2026-09-30"
   note: >-
     observed_code_head is the reviewed code state before this metadata-only baseline update commit;
     the baseline document commit itself is not a product-code delta.
   landmarks:
-    planning_workbench_implementation:
+    planning_initial_workbench:
       commit: "cc15e46003fc79e62cfe69e175eff4dd8c8115bc"
       title: "feat(planning): add personal planning workbench"
-    planning_fixture_alignment:
-      commit: "ee35ae9398f9e2bf4a848822390122ed30372db9"
-      title: "test(planning): align source fixture with contract"
-    integration_merge:
-      commit: "0ea5089ace96c41767f5f9d00dd2c4483e4551d7"
-      title: "merge: integrate planning and downstream maintenance into master"
+    planning_raw_idea_and_evolution:
+      commit: "e34687cdbb7e781fb48eac9172b00d912f08e9b6"
+      title: "feat(planning): capture raw ideas and expose scoped MCP proposals"
+    planning_project_aware_mcp:
+      commit: "c906e3256fb6b583b3e09bd544f6cd50985fad98"
+      title: "fix(mcp): extend existing connector with project-aware planning"
+    planning_workspace_v0:
+      commit: "052d50e55c7454cacc26e923550c42136abe7d30"
+      title: "feat(planning): add canonical workspace objects"
+    planning_catalog_refresh:
+      commit: "9bead511f7f1f7642dea4109c5d57cacecf7a4df"
+      title: "chore(planning): refresh generated API catalog"
 
 upstream:
   official_repository: deepseek-ai/deepseek-harness
@@ -46,78 +53,178 @@ upstream:
 
 architecture:
   planning:
-    status: implemented
+    status: implemented_workspace_v0
     role: >-
-      Durable canonical project-intent layer across Sessions. Planning owns project-local
-      cards, immutable revisions, pending proposal generations, manual lanes/order,
-      estimates, dependencies, reviews, provenance, and durable Delivery handoff links.
+      Durable canonical work-object layer across Sessions. Planning owns the accepted project
+      state and its revision history; Sessions advance a Plan or Focus, while external systems
+      retain ownership of external facts and execution authority.
     current_model:
-      canonical_revision_fields:
-        - title
-        - intent
-        - scope
-        - acceptance
-        - sources
-        - estimate
-        - reviewAt
+      canonical_revision:
+        fields:
+          - title
+          - intent
+          - stateEntries
+          - scope
+          - acceptance
+          - sources
+          - estimate
+          - reviewAt
+        state_entries:
+          kinds:
+            - objective
+            - accepted
+            - open
+          stable_identity: true
+          note: >-
+            StateEntry IDs remain stable across revisions; retired IDs cannot be silently reused.
+            Legacy intent/scope/acceptance remain supported and are not auto-filled by migration.
       durable_board:
         - items
         - lanes
         - dependencies
         - reviews
         - proposals
+        - focuses
+        - resourceLinks
+        - sessionBindings
         - handoffs
         - events
-      proposal_semantics:
-        - Proposals retain exact generations and a baseRevisionId.
-        - Acceptance targets an exact proposal generation.
-        - A stale proposal stays visible but cannot silently overwrite the current head.
+      subject_model:
+        kinds:
+          - plan
+          - focus
+        note: >-
+          PlanningSubjectRef explicitly identifies whether work is acting on the whole Plan
+          or one Focus, independent of the current UI selection.
+      focus:
+        implemented: true
+        semantics:
+          - Focus is optional and belongs to one Plan.
+          - Focus has title, optional objective, status, and version.
+          - Focus status is open/active/blocked/done.
+          - Focus done does not complete the parent Plan.
+          - Focus is not a Delivery task hierarchy.
+      resources:
+        implemented: true
+        shape:
+          - kind
+          - id
+          - provider
+          - revision
+          - label
+        note: >-
+          ResourceRef is opaque and extensible. Planning stores identity/linkage only;
+          Session transcripts, SBC state, solver results, browser facts, Git artifacts,
+          and Delivery state remain owned by their original systems.
+      session_binding:
+        implemented: true
+        fields:
+          - sessionId
+          - subject
+          - baseRevision
+        note: >-
+          A Session remains bound to its original Plan/Focus and base revision even when
+          the browser later selects another Planning object.
+      context_pack:
+        implemented: true
+        function: buildPlanningContext
+        semantics:
+          - Projects current objective/accepted/open entries.
+          - Includes legacy intent/scope/acceptance for compatibility.
+          - Includes selected Focus when the subject is a Focus.
+          - Includes opaque related resource links.
+          - Does not expand historical Session transcripts.
+      proposal_delta:
+        implemented: true
+        note: >-
+          Existing Proposal generations may carry a PlanningProposedDelta containing subject,
+          baseRevision, operations, originRef, and evidenceRefs. Exact-generation adoption
+          validates the base revision and applies the operation set atomically before advancing
+          the canonical revision. Stale bases are rejected without partial mutation.
+        operations:
+          - add-state-entry
+          - update-state-entry
+          - remove-state-entry
+          - create-focus
+          - update-focus
+          - add-resource-link
+          - remove-resource-link
       workbench:
-        - Project-scoped Planning Web workbench is implemented.
-        - It renders current plans, pending proposals, sources, immutable revisions, reviews, dependencies, and Delivery projections.
-        - Captured Session sources can reopen the original Session; captured Content references can read their exact stored version.
-        - Ordinary conversation can load the packaged planning-maintenance Skill and maintain one proposal across turns.
+        implemented: true
+        capabilities:
+          - Shows objective, accepted, and open canonical state.
+          - Creates and selects optional Focus objects.
+          - Changes Focus status.
+          - Starts a native Session for the selected Plan/Focus.
+          - Shows Session bindings and their base revisions.
+          - Shows related resource references without duplicating external state.
+          - Keeps Proposal review/adoption separate from canonical state.
+          - Preserves sources, revisions, reviews, dependencies, evolution, and Delivery projections.
+      mcp:
+        implemented: true
+        capabilities:
+          - Project-aware Planning discovery, list, exact read, and proposal intake through the existing connector.
+          - Optional proposed delta can target a Plan/Focus and carry external origin/evidence refs.
+          - MCP caller cannot forge trusted Session provenance, adopt proposals, dispatch Delivery, or mutate Memory.
+      evolution:
+        implemented: true
+        note: >-
+          Deterministic projection from retained Planning data; it does not call a model and
+          does not invent history that the Board never stored.
       execution_boundary:
-        - Planning never turns a plan card or proposal acceptance into execution authority.
-        - Delivery and Queue remain the owners of approval, dispatch, execution, verification, evidence, and human acceptance.
+        - Planning adoption is not execution permission.
+        - Delivery and Queue own requirement approval, dispatch, execution, verification, evidence, and human acceptance.
         - Planning reads linked Delivery projections/evidence and does not persist a competing execution-state copy.
       source_boundary:
         - Verified Session-event sources and captured Content versions provide provenance, not authority.
-        - Manual/link sources remain explicitly unverified.
-    current_gaps_vs_next_workspace_design:
-      status: not_implemented_in_core_schema
-      items:
-        - Stable per-entry PlanningStateEntry identities for objective/accepted/open facts.
-        - PlanningFocus as a first-class durable local work target.
-        - PlanningSubjectRef that uniformly addresses a whole Plan or one Focus.
-        - General extensible ResourceRef/ResourceLink for SBC case, browser run, solver result, artifact, and future thinking workspace.
-        - Operation-level ProposedDelta; current Proposal generations still propose a complete planning draft snapshot.
-        - Session binding to a first-class Planning subject plus base revision as a Planning domain contract.
+        - Manual/link sources and MCP external refs remain explicitly unverified unless an owning system proves otherwise.
+    sbc_workspace_pilot:
+      status: implemented_and_tested
+      path: apps/web/tests/planning-workspace.e2e.ts
+      bundle_test: packages/bundle/personal-planning/tests/workspace-pilot.spec.ts
+      verified_flow: >-
+        Plan -> Focus -> Session binding -> SBC/browser/solver refs -> proposed delta ->
+        explicit exact adoption -> new canonical revision -> restart persistence.
+      safety_fact: >-
+        The isolated pilot asserts that SBC-specific fields such as rating, chemistry,
+        formation, inventory, and players do not enter Planning core state.
+    remaining_limits:
+      - Thinking Desktop itself is not implemented by Planning Workspace v0.
+      - External ResourceRef values remain opaque; Planning does not dereference or own their live domain state.
+      - Stale proposal bases are rejected; automatic semantic rebase is not part of the current contract.
+      - Planning remains a bounded single-writer Board and is not a multi-host collaborative store.
     authority_paths:
       - .agents/notes/implemented/architecture/2026-09-27-project-planning-and-execution-boundaries.zh.md
       - docs/subsystems/planning.zh.md
       - packages/planning/planning/src/schema.ts
-      - packages/planning/planning-local/src/spec.ts
-      - packages/client/ui-planning/src/client/PlanningWorkbench.tsx
-      - packages/bundle/personal-planning/README.zh.md
-      - apps/web/tests/planning-conversation.e2e.ts
-      - apps/web/tests/planning-cycle-live.e2e.ts
+      - packages/planning/planning/src/context.ts
+      - packages/planning/planning-local/src/workspace.ts
+      - packages/client/ui-planning/src/client/PlanningObject.tsx
+      - packages/client/ui-planning/src/client/PlanningSessionBinding.tsx
+      - packages/mcp/mcp-gateway/src/planning.ts
+      - apps/web/tests/planning-workspace.e2e.ts
+      - packages/bundle/personal-planning/tests/workspace-pilot.spec.ts
 
   thinking_desktop:
-    status: design_only
+    status: design_only_with_planning_bridge_ready
     intended_role: >-
       Non-destructive cognitive workspace over external work objects. It should own temporary
       representation, context, selection/attention, hypotheses, relations, branches/ghosts,
       views, and transformations; it must not become a second canonical Planning store.
     planning_relationship:
       - Planning remains the canonical commit boundary for durable work state.
-      - Thinking Desktop may later mount a Plan or Focus by reference.
-      - Exploration should produce a proposal/delta for explicit adoption instead of mutating Planning silently.
-      - External systems continue to own external reality; the desktop references rather than duplicates it.
+      - PlanningSubjectRef already provides a mount target for a whole Plan or one Focus.
+      - ResourceRef can later carry thinking-workspace identities without changing Planning core.
+      - PlanningProposedDelta already provides the explicit proposal boundary for exploration results.
+      - Thinking Desktop must not silently mutate Planning; explicit adoption remains required.
+      - External systems continue to own external reality; the desktop should reference rather than duplicate it.
     design_principle: "Reference -> Transform -> Propose"
-    implementation_note: >-
-      Do not claim Thinking Desktop integration is implemented merely because Planning has
-      proposals, sources, or a workbench UI.
+    not_yet_implemented:
+      - Canvas/workspace UI
+      - Context and attention model
+      - Temporary relations and hypotheses
+      - Ghost/branch/what-if exploration
+      - Thinking-workspace persistence
 
   browser_platform:
     status: implemented_personal_platform
@@ -147,32 +254,29 @@ architecture:
 
 integration_boundaries:
   fc27_sbc:
-    status: domain_external_to_planning
+    status: validated_external_domain
     rule: >-
       SBC requirements, player identities, chemistry, inventory, solver outputs, browser slots,
       prices, and transaction state belong to SBC/browser/solver domains, not Planning core.
     planning_use: >-
-      Planning may organize the durable intent and later reference SBC/browser/solver evidence,
-      but domain state must not be copied into Planning merely to support the case.
+      Planning carries the durable work intent, Focus, canonical state, Session binding and
+      opaque resource/evidence references; SBC/browser/solver systems keep their own domain truth.
 
 next_design_direction:
-  priority: planning_workspace_bridge
+  priority: use_workspace_v0_on_real_cases
   goal: >-
-    Evolve the current Planning workbench toward a durable canonical work-object contract that
-    can support the SBC case and later mount into Thinking Desktop without introducing another truth store.
+    Stop redesigning the Planning kernel by default. Exercise the implemented canonical work-object
+    contract on real SBC and other DSH cases, and only promote gaps that appear in actual use.
   preserve:
-    - Existing immutable Revision and Proposal-generation model.
-    - Explicit proposal adoption.
+    - Immutable canonical Revision and stable StateEntry identities.
+    - Optional Focus rather than mandatory task decomposition.
+    - Explicit SubjectRef and Session base-revision binding.
+    - Extensible opaque ResourceRef with external ownership.
+    - Proposal Delta plus explicit exact-generation adoption.
     - CAS/version conflict rejection.
     - Provenance and exact source identities.
     - Delivery/Queue/Memory/Knowledge fact ownership.
-  add_only_when_implemented_and_evidenced:
-    - stable_state_entry_identity
-    - focus
-    - subject_ref
-    - extensible_resource_ref
-    - operation_level_delta
-    - session_subject_binding
+    - Thinking Desktop as a future non-destructive exploration layer, not another truth store.
 
 authority:
   project_state: .agents/project-state.yaml
