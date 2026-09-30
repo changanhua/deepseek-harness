@@ -145,6 +145,7 @@ flowchart TD
     pkg_headless["headless"]
     pkg_personal_delivery["personal-delivery"]
     pkg_personal_memory["personal-memory"]
+    pkg_personal_planning["personal-planning"]
     pkg_sdk_app["sdk-app"]
     pkg_sdk_minimal["sdk-minimal"]
     pkg_web_app["web-app"]
@@ -181,6 +182,7 @@ flowchart TD
     pkg_client_ui_open_in_app["client-ui-open-in-app"]
     pkg_client_ui_permission_presets["client-ui-permission-presets"]
     pkg_client_ui_plan["client-ui-plan"]
+    pkg_client_ui_planning["client-ui-planning"]
     pkg_client_ui_primitives["client-ui-primitives"]
     pkg_client_ui_reference["client-ui-reference"]
     pkg_client_ui_renderer["client-ui-renderer"]
@@ -256,6 +258,11 @@ flowchart TD
     pkg_delivery_verifier["delivery-verifier"]
     pkg_repo_workspace["repo-workspace"]
     pkg_repo_workspace_git_local["repo-workspace-git-local"]
+  end
+  subgraph group_domain_runtime["packages/domain-runtime"]
+    pkg_domain_runtime["domain-runtime"]
+    pkg_fc_sbc_domain["fc-sbc-domain"]
+    pkg_tool_fc_sbc_domain["tool-fc-sbc-domain"]
   end
   subgraph group_e2b["packages/e2b"]
     pkg_e2b["e2b"]
@@ -337,6 +344,7 @@ flowchart TD
   end
   subgraph group_mcp["packages/mcp"]
     pkg_mcp_client["mcp-client"]
+    pkg_mcp_gateway["mcp-gateway"]
     pkg_mcp_server["mcp-server"]
   end
   subgraph group_memory["packages/memory"]
@@ -344,6 +352,13 @@ flowchart TD
     pkg_memory["memory"]
     pkg_memory_local["memory-local"]
     pkg_tool_memory["tool-memory"]
+  end
+  subgraph group_planning["packages/planning"]
+    pkg_planning["planning"]
+    pkg_planning_delivery_bridge["planning-delivery-bridge"]
+    pkg_planning_local["planning-local"]
+    pkg_planning_remote["planning-remote"]
+    pkg_tool_planning["tool-planning"]
   end
   subgraph group_preset["packages/preset"]
     pkg_agent_presets["agent-presets"]
@@ -524,6 +539,8 @@ flowchart TD
   pkg_delivery_evidence --> pkg__deepseek_ai_dsh_invariants
   pkg_repo_workspace --> pkg__changanhua_dsh_delivery_protocol
   pkg_repo_workspace --> pkg__deepseek_ai_dsh_invariants
+  pkg_fc_sbc_domain --> pkg__changanhua_dsh_domain_runtime
+  pkg_fc_sbc_domain --> pkg__deepseek_ai_dsh_storage_domain
   pkg_subprocess_e2b --> pkg__deepseek_ai_dsh_e2b
   pkg_subprocess_e2b --> pkg__deepseek_ai_dsh_subprocess
   pkg_subprocess_e2b --> pkg__deepseek_ai_dsh_timeout
@@ -797,6 +814,10 @@ flowchart TD
   pkg_lsp_stdio --> pkg__deepseek_ai_dsh_timeout
   pkg_memory --> pkg__deepseek_ai_dsh_agent
   pkg_memory --> pkg__deepseek_ai_dsh_invariants
+  pkg_planning_delivery_bridge --> pkg__changanhua_dsh_delivery
+  pkg_planning_delivery_bridge --> pkg__changanhua_dsh_delivery_protocol
+  pkg_planning_delivery_bridge --> pkg__changanhua_dsh_planning
+  pkg_planning_delivery_bridge --> pkg__deepseek_ai_dsh_workspace
   pkg_sandbox_policy --> pkg__deepseek_ai_dsh_agent
   pkg_sandbox_policy --> pkg__deepseek_ai_dsh_invariants
   pkg_sandbox_policy --> pkg__deepseek_ai_dsh_sandbox
@@ -1009,6 +1030,9 @@ flowchart TD
   pkg_runtime_facts --> pkg__deepseek_ai_dsh_scope
   pkg_runtime_facts --> pkg__deepseek_ai_dsh_system_prompt
   pkg_runtime_facts --> pkg__deepseek_ai_dsh_tools
+  pkg_tool_fc_sbc_domain --> pkg__changanhua_dsh_domain_runtime
+  pkg_tool_fc_sbc_domain --> pkg__changanhua_dsh_fc_sbc_domain
+  pkg_tool_fc_sbc_domain --> pkg__deepseek_ai_dsh_tools
   pkg_cordis_host_runner --> pkg__deepseek_ai_dsh_agent
   pkg_cordis_host_runner --> pkg__deepseek_ai_dsh_brand
   pkg_cordis_host_runner --> pkg__deepseek_ai_dsh_llm
@@ -1070,6 +1094,13 @@ flowchart TD
   pkg_tool_memory --> pkg__changanhua_dsh_memory
   pkg_tool_memory --> pkg__deepseek_ai_dsh_system_prompt
   pkg_tool_memory --> pkg__deepseek_ai_dsh_tools
+  pkg_tool_planning --> pkg__deepseek_ai_dsh_agent
+  pkg_tool_planning --> pkg__deepseek_ai_dsh_llm
+  pkg_tool_planning --> pkg__changanhua_dsh_planning
+  pkg_tool_planning --> pkg__deepseek_ai_dsh_session
+  pkg_tool_planning --> pkg__deepseek_ai_dsh_system_prompt
+  pkg_tool_planning --> pkg__deepseek_ai_dsh_tools
+  pkg_tool_planning --> pkg__deepseek_ai_dsh_workspace
   pkg_agent_presets --> pkg__deepseek_ai_dsh_agent
   pkg_agent_presets --> pkg__deepseek_ai_dsh_atomic_write
   pkg_agent_presets --> pkg__deepseek_ai_dsh_home_paths
@@ -1346,6 +1377,14 @@ flowchart TD
   pkg_memory_local --> pkg__deepseek_ai_dsh_session_query
   pkg_memory_local --> pkg__deepseek_ai_dsh_storage_domain
   pkg_memory_local --> pkg__deepseek_ai_dsh_workspace
+  pkg_planning_local --> pkg__deepseek_ai_dsh_attachment
+  pkg_planning_local --> pkg__changanhua_dsh_content
+  pkg_planning_local --> pkg__deepseek_ai_dsh_llm
+  pkg_planning_local --> pkg__changanhua_dsh_planning
+  pkg_planning_local --> pkg__deepseek_ai_dsh_session
+  pkg_planning_local --> pkg__deepseek_ai_dsh_session_query
+  pkg_planning_local --> pkg__deepseek_ai_dsh_storage_domain
+  pkg_planning_local --> pkg__deepseek_ai_dsh_workspace
   pkg_webhook_github --> pkg__deepseek_ai_dsh_credentials
   pkg_webhook_github --> pkg__deepseek_ai_dsh_host_webserver
   pkg_webhook_github --> pkg__deepseek_ai_dsh_session
@@ -1584,6 +1623,15 @@ flowchart TD
   pkg_client_ui_delivery --> pkg__changanhua_dsh_delivery_remote
   pkg_client_ui_delivery --> pkg__deepseek_ai_dsh_invariants
   pkg_client_ui_delivery --> pkg__deepseek_ai_dsh_typert_protocol
+  pkg_client_ui_planning --> pkg__deepseek_ai_dsh_api_remotes
+  pkg_client_ui_planning --> pkg__deepseek_ai_dsh_client_locale
+  pkg_client_ui_planning --> pkg__deepseek_ai_dsh_client_ui_chat
+  pkg_client_ui_planning --> pkg__deepseek_ai_dsh_client_ui_layout
+  pkg_client_ui_planning --> pkg__deepseek_ai_dsh_client_ui_renderer
+  pkg_client_ui_planning --> pkg__deepseek_ai_dsh_client_ui_sidebar
+  pkg_client_ui_planning --> pkg__deepseek_ai_dsh_client_ui_workspace
+  pkg_client_ui_planning --> pkg__changanhua_dsh_planning
+  pkg_client_ui_planning --> pkg__changanhua_dsh_planning_remote
   pkg_client_ui_settings_skills --> pkg__deepseek_ai_dsh_api_remotes
   pkg_client_ui_settings_skills --> pkg__deepseek_ai_dsh_client_connection
   pkg_client_ui_settings_skills --> pkg__deepseek_ai_dsh_client_locale
@@ -1651,6 +1699,7 @@ flowchart TD
 | [`acp-app`](../packages/bundle/acp-app) | `bundle` | — |
 | [`base`](../packages/bundle/base) | `bundle` | — |
 | [`capabilities`](../packages/bundle/capabilities) | `bundle` | — |
+| [`personal-planning`](../packages/bundle/personal-planning) | `bundle` | — |
 | [`sdk-app`](../packages/bundle/sdk-app) | `bundle` | — |
 | [`sdk-minimal`](../packages/bundle/sdk-minimal) | `bundle` | — |
 | [`client-connection`](../packages/client/connection) | `client` | — |
@@ -1704,6 +1753,7 @@ flowchart TD
 | [`client-ui-workspace`](../packages/client/ui-workspace) | `client` | — |
 | [`client-web`](../packages/client/web) | `client` | — |
 | [`code-runtime`](../packages/code-runtime/code-runtime) | `code-runtime` | — |
+| [`domain-runtime`](../packages/domain-runtime/domain-runtime) | `domain-runtime` | — |
 | [`experimental-agent-team-profile`](../packages/experimental/agent-team-profile) | `experimental` | — |
 | [`experimental-agent-team-web-profile`](../packages/experimental/agent-team-web-profile) | `experimental` | — |
 | [`experimental-webworker-packer`](../packages/experimental/webworker-packer) | `experimental` | — |
@@ -1714,6 +1764,9 @@ flowchart TD
 | [`host-directory-picker-native`](../packages/host/directory-picker-native) | `host` | — |
 | [`host-open-in-app`](../packages/host/open-in-app) | `host` | — |
 | [`host-webserver`](../packages/host/webserver) | `host` | — |
+| [`mcp-gateway`](../packages/mcp/mcp-gateway) | `mcp` | — |
+| [`planning`](../packages/planning/planning) | `planning` | — |
+| [`planning-remote`](../packages/planning/planning-remote) | `planning` | — |
 | [`invariants`](../packages/runtime-diagnostics/invariants) | `runtime-diagnostics` | — |
 | [`sandbox-windows-acl`](../packages/sandbox/sandbox-windows-acl) | `sandbox` | — |
 | [`session-format`](../packages/session/session-format) | `session` | — |
@@ -1760,6 +1813,7 @@ flowchart TD
 | [`credentials-local`](../packages/credentials/credentials-local) | `credentials` | `@deepseek-ai/dsh-atomic-write`, `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-home-paths`, `@deepseek-ai/dsh-launch-environment` |
 | [`delivery-evidence`](../packages/delivery/delivery-evidence) | `delivery` | `@changanhua/dsh-delivery-protocol`, `@deepseek-ai/dsh-invariants` |
 | [`repo-workspace`](../packages/delivery/repo-workspace) | `delivery` | `@changanhua/dsh-delivery-protocol`, `@deepseek-ai/dsh-invariants` |
+| [`fc-sbc-domain`](../packages/domain-runtime/fc-sbc-domain) | `domain-runtime` | `@changanhua/dsh-domain-runtime`, `@deepseek-ai/dsh-storage-domain` |
 | [`subprocess-e2b`](../packages/e2b/subprocess-e2b) | `e2b` | `@deepseek-ai/dsh-e2b`, `@deepseek-ai/dsh-subprocess`, `@deepseek-ai/dsh-timeout` |
 | [`image-generation-arkcli`](../packages/image/image-generation-arkcli) | `image` | `@changanhua/dsh-image-generation`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-subprocess` |
 | [`storage-sqlite`](../packages/storage/storage-sqlite) | `storage` | `@deepseek-ai/dsh-home-paths`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-storage`, `@deepseek-ai/dsh-subprocess` |
@@ -1830,6 +1884,7 @@ flowchart TD
 | [`jobs`](../packages/jobs/jobs) | `jobs` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-session` |
 | [`lsp-stdio`](../packages/lsp/lsp-stdio) | `lsp` | `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-fs`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-lsp`, `@deepseek-ai/dsh-subprocess`, `@deepseek-ai/dsh-timeout` |
 | [`memory`](../packages/memory/memory) | `memory` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-invariants` |
+| [`planning-delivery-bridge`](../packages/planning/planning-delivery-bridge) | `planning` | `@changanhua/dsh-delivery`, `@changanhua/dsh-delivery-protocol`, `@changanhua/dsh-planning`, `@deepseek-ai/dsh-workspace` |
 | [`sandbox-policy`](../packages/sandbox/sandbox-policy) | `sandbox` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-sandbox`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-system-prompt` |
 | [`session-telemetry`](../packages/session/session-telemetry) | `session` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-session` |
 | [`session-title`](../packages/session/session-title) | `session` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection` |
@@ -1872,6 +1927,7 @@ flowchart TD
 | [`agent-instructions`](../packages/context/agent-instructions) | `context` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-fs`, `@deepseek-ai/dsh-home-paths`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-tools` |
 | [`file-reference-local`](../packages/context/file-reference-local) | `context` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-file-reference`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools` |
 | [`runtime-facts`](../packages/context/runtime-facts) | `context` | `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-scope`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools` |
+| [`tool-fc-sbc-domain`](../packages/domain-runtime/tool-fc-sbc-domain) | `domain-runtime` | `@changanhua/dsh-domain-runtime`, `@changanhua/dsh-fc-sbc-domain`, `@deepseek-ai/dsh-tools` |
 | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | `extensions` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-scope`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-typert-protocol` |
 | [`message-feedback`](../packages/feedback/message-feedback) | `feedback` | `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-command-feedback`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-persistence`, `@deepseek-ai/dsh-typert-protocol` |
 | [`repeat-tool-reminder`](../packages/guard/repeat-tool-reminder) | `guard` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-tools` |
@@ -1884,6 +1940,7 @@ flowchart TD
 | [`tool-lsp`](../packages/lsp/tool-lsp) | `lsp` | `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-lsp`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-timeout`, `@deepseek-ai/dsh-tools` |
 | [`mcp-client`](../packages/mcp/mcp-client) | `mcp` | `@deepseek-ai/dsh-attachment`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-scope`, `@deepseek-ai/dsh-subprocess`, `@deepseek-ai/dsh-timeout`, `@deepseek-ai/dsh-tools` |
 | [`tool-memory`](../packages/memory/tool-memory) | `memory` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@changanhua/dsh-memory`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools` |
+| [`tool-planning`](../packages/planning/tool-planning) | `planning` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-llm`, `@changanhua/dsh-planning`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-workspace` |
 | [`agent-presets`](../packages/preset/agent-presets) | `preset` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-atomic-write`, `@deepseek-ai/dsh-home-paths`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-scope`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-settings`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-typert-protocol` |
 | [`schedule`](../packages/schedule/schedule) | `schedule` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-persistence`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-tools` |
 | [`session-checkpoint-policy`](../packages/session/session-checkpoint-policy) | `session` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-persistence`, `@deepseek-ai/dsh-tools` |
@@ -1929,6 +1986,7 @@ flowchart TD
 | [`session-reference`](../packages/context/session-reference) | `context` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-compaction`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-output-retention`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-session-projection-cache`, `@deepseek-ai/dsh-session-query`, `@deepseek-ai/dsh-session-title`, `@deepseek-ai/dsh-spill`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-typert-protocol` |
 | [`tool-knowledge-base`](../packages/knowledge/tool-knowledge-base) | `knowledge` | `@deepseek-ai/dsh-commands`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-web` |
 | [`memory-local`](../packages/memory/memory-local) | `memory` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-commands`, `@deepseek-ai/dsh-fs`, `@deepseek-ai/dsh-invariants`, `@changanhua/dsh-memory`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-persistence`, `@deepseek-ai/dsh-session-query`, `@deepseek-ai/dsh-storage-domain`, `@deepseek-ai/dsh-workspace` |
+| [`planning-local`](../packages/planning/planning-local) | `planning` | `@deepseek-ai/dsh-attachment`, `@changanhua/dsh-content`, `@deepseek-ai/dsh-llm`, `@changanhua/dsh-planning`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-query`, `@deepseek-ai/dsh-storage-domain`, `@deepseek-ai/dsh-workspace` |
 | [`webhook-github`](../packages/webhook/webhook-github) | `webhook` | `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-host-webserver`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-webhook` |
 | [`subagent-acp`](../packages/subagent/subagent-acp) | `subagent` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-subagent`, `@deepseek-ai/dsh-subprocess`, `@deepseek-ai/dsh-timeout` |
 | [`subagent-claude-code`](../packages/subagent/subagent-claude-code) | `subagent` | `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-subagent`, `@deepseek-ai/dsh-subprocess`, `@deepseek-ai/dsh-timeout` |
@@ -1957,6 +2015,7 @@ flowchart TD
 | [`client-ui-capability`](../packages/client/ui-capability) | `client` | `@deepseek-ai/dsh-api-remotes`, `@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-client-locale`, `@deepseek-ai/dsh-client-ui-layout`, `@deepseek-ai/dsh-client-ui-renderer`, `@deepseek-ai/dsh-client-ui-sidebar`, `@changanhua/dsh-host-capability-registry`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-typert-protocol` |
 | [`client-ui-content`](../packages/client/ui-content) | `client` | `@deepseek-ai/dsh-api-remotes`, `@deepseek-ai/dsh-client-locale`, `@deepseek-ai/dsh-client-ui-chat`, `@deepseek-ai/dsh-client-ui-conversation`, `@deepseek-ai/dsh-client-ui-layout`, `@deepseek-ai/dsh-client-ui-renderer`, `@deepseek-ai/dsh-client-ui-sidebar`, `@changanhua/dsh-content`, `@changanhua/dsh-content-browser`, `@changanhua/dsh-content-remote`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-typert-protocol`, `@deepseek-ai/dsh-util-crypto` |
 | [`client-ui-delivery`](../packages/client/ui-delivery) | `client` | `@deepseek-ai/dsh-api-remotes`, `@deepseek-ai/dsh-client-locale`, `@deepseek-ai/dsh-client-ui-layout`, `@deepseek-ai/dsh-client-ui-renderer`, `@deepseek-ai/dsh-client-ui-sidebar`, `@changanhua/dsh-delivery-remote`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-typert-protocol` |
+| [`client-ui-planning`](../packages/client/ui-planning) | `client` | `@deepseek-ai/dsh-api-remotes`, `@deepseek-ai/dsh-client-locale`, `@deepseek-ai/dsh-client-ui-chat`, `@deepseek-ai/dsh-client-ui-layout`, `@deepseek-ai/dsh-client-ui-renderer`, `@deepseek-ai/dsh-client-ui-sidebar`, `@deepseek-ai/dsh-client-ui-workspace`, `@changanhua/dsh-planning`, `@changanhua/dsh-planning-remote` |
 | [`client-ui-settings-skills`](../packages/client/ui-settings-skills) | `client` | `@deepseek-ai/dsh-api-remotes`, `@deepseek-ai/dsh-client-connection`, `@deepseek-ai/dsh-client-locale`, `@deepseek-ai/dsh-client-ui-conversation`, `@deepseek-ai/dsh-client-ui-renderer`, `@deepseek-ai/dsh-client-ui-settings`, `@changanhua/dsh-host-capability-registry`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-typert-protocol` |
 | [`client-ui-task-queue`](../packages/client/ui-task-queue) | `client` | `@deepseek-ai/dsh-api-remotes`, `@deepseek-ai/dsh-client-locale`, `@deepseek-ai/dsh-client-ui-layout`, `@deepseek-ai/dsh-client-ui-renderer`, `@deepseek-ai/dsh-client-ui-sidebar`, `@deepseek-ai/dsh-invariants`, `@changanhua/dsh-task-queue-remote`, `@deepseek-ai/dsh-typert-protocol` |
 | [`client-ui-work-observatory`](../packages/client/ui-work-observatory) | `client` | `@deepseek-ai/dsh-api-remotes`, `@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-client-locale`, `@deepseek-ai/dsh-client-ui-layout`, `@deepseek-ai/dsh-client-ui-renderer`, `@deepseek-ai/dsh-client-ui-sidebar`, `@changanhua/dsh-host-work-observatory`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-typert-protocol`, `@deepseek-ai/dsh-util-crypto` |

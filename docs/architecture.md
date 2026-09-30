@@ -67,6 +67,10 @@ Here are some core packages that contribute to the Cordis tree.
 | [`llm/llm`](subsystems/llm-streaming.md) | Message and stream vocabulary plus the adapter seam | `ctx.llm` |
 | [`webhook/webhook`](subsystems/webhook.md) | Authenticated-delivery dispatch and Workspace Session creation | `ctx.webhookRuntime` |
 
+## Domain artifacts
+
+The [Domain Runtime family](../packages/domain-runtime/README.md) connects observed domain facts to immutable candidate plans through provider-routed artifact references. Providers own payload persistence; the generic registry owns discovery and metadata contracts. Typed domain tools consume these services without granting approval, executing business writes or changing Planning canonical state.
+
 ## Events
 
 Events are the extension points, and picking the right domain is the first decision in most changes.

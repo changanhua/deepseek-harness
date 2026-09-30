@@ -31,6 +31,7 @@ Every package lives in exactly one group; new packages join existing groups, and
 | [`core/`](core/README.md) | Product API spine: sessions, prompts, tools, agent services, and the concrete loop |
 | [`api/`](api/README.md) | Remote BFF assembly and Typert RPC gateway |
 | [`typert/`](typert/README.md) | Type graph generation, artifact loading, and runtime registry |
+| [`domain-runtime/`](domain-runtime/README.md) | Immutable domain artifacts, provider routing and domain-owned candidate planning |
 | [`goal/`](goal/README.md) | Same-session goal persistence and lifecycle |
 | [`schedule/`](schedule/README.md) | Session-local scheduled follow-ups |
 | [`feedback/`](feedback/README.md) | Human feedback capture and command |

@@ -62,6 +62,8 @@ import LocalTaskQueue from '@changanhua/dsh-task-queue-local'
 import * as ToolAgentRunTaskQueue from '@changanhua/dsh-tool-agent-run-task-queue'
 import * as ToolImageGenerationTaskQueue from '@changanhua/dsh-tool-image-generation-task-queue'
 import * as ToolOperationRunTaskQueue from '@changanhua/dsh-tool-operation-run-task-queue'
+import * as ToolFcSbcDomain from '@changanhua/dsh-tool-fc-sbc-domain'
+import type { FcSbcDomain } from '@changanhua/dsh-fc-sbc-domain'
 import * as ToolTaskQueue from '@changanhua/dsh-tool-task-queue'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
@@ -272,6 +274,16 @@ export interface ToolPackage {
  * guard proves it is exhaustive against the on-disk glob.
  */
 const TOOL_PACKAGES: ToolPackage[] = [
+  {
+    pkg: '@changanhua/dsh-tool-fc-sbc-domain', dir: 'tool-fc-sbc-domain',
+    source: 'packages/domain-runtime/tool-fc-sbc-domain/src/index.ts',
+    requires: ['ctx.tools', 'ctx.fcSbcDomain'], writes: ['tool/call', 'tool/result', 'FC-owned immutable Storage Domain artifacts'],
+    async mount(ctx) {
+      ctx.provide('fcSbcDomain', {} as FcSbcDomain)
+      await ctx.plugin(ToolFcSbcDomain)
+    },
+    note: 'Typed inspect, plan and status consume supplied observations and immutable refs. No live browser read or external write is performed.',
+  },
   {
     pkg: '@changanhua/dsh-tool-browser',
     dir: 'tool-browser',

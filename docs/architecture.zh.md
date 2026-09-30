@@ -69,6 +69,10 @@ Electron 通过内置的上游 Node.js 进程启动私有 Desktop Host 包；该
 
 <a id="events"></a>
 
+## 领域工件
+
+[Domain Runtime 家族](../packages/domain-runtime/README.zh.md)通过按 provider 路由的工件引用，将已观察的领域事实连接到不可变候选方案。provider 拥有载荷持久化，通用注册表拥有发现与元数据合同。类型化领域工具消费这些服务，不授予批准、不执行业务写入、不改变 Planning canonical 状态。
+
 ## 事件
 
 事件就是扩展点，而选对事件域是大多数改动的第一个决定。

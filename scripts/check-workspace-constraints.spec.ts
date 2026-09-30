@@ -190,3 +190,27 @@ describe('package payload constraints', () => {
     ]))
   })
 })
+
+describe('registered blocked personal package publication policy', () => {
+  const personal: WorkspaceManifest = { dir: 'packages/domain-runtime/domain-runtime', manifest: {
+    name: '@changanhua/dsh-domain-runtime', private: true,
+    repository: { type: 'git', url: 'git+https://github.com/changanhua/deepseek-harness.git',
+      directory: 'packages/domain-runtime/domain-runtime' },
+  } }
+  const publicationErrors = (value: WorkspaceManifest) => checkWorkspaceManifest(value)
+    .filter(error => /release member|personal source|personal package repository/u.test(error))
+  it('uses the existing exact personal registry identity without widening publication', () => {
+    expect(publicationErrors(personal)).toEqual([])
+    expect(publicationErrors({ ...personal, manifest: { ...personal.manifest,
+      private: false } })).toEqual(expect.arrayContaining([expect.stringMatching(/personal source package must set "private": true/u)]))
+    expect(publicationErrors({ ...personal, manifest: { ...personal.manifest,
+      publishConfig: { access: 'public' } } })).toEqual(expect.arrayContaining([expect.stringMatching(/personal source package must omit publishConfig/u)]))
+  })
+  it('does not exempt an unregistered name, path mismatch or upstream impostor', () => {
+    for (const value of [{ ...personal, dir: 'packages/domain-runtime/unregistered' },
+      { ...personal, manifest: { ...personal.manifest, name: '@changanhua/dsh-unregistered' } },
+      { ...personal, manifest: { ...personal.manifest, name: '@deepseek-ai/dsh-domain-runtime' } }]) {
+      expect(publicationErrors(value).some(error => error.includes('release member'))).toBe(true)
+    }
+  })
+})

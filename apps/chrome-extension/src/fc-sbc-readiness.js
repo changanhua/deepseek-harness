@@ -1,3 +1,4 @@
+import { sbcObservationBlockers } from './fc-sbc-readiness-facts.js'
 import { buildSbcPlanVariants } from './fc-sbc-core.js'
 import { createSbcApprovalPreview } from './fc-sbc-approval-preview.js'
 import { createSbcExecutionDryRun } from './fc-sbc-execution-dry-run.js'
@@ -42,28 +43,14 @@ export const createSbcReadinessReport = (input = {}) => {
     deferred.push(codeIssue('repair-inventory-snapshot', 'inventory'))
   }
 
-  if (!input.probe) {
-    blockers.push(codeIssue('page-probe-not-run', 'page'))
-    deferred.push(codeIssue('capture-current-fc-sbc-page', 'page'))
-  } else {
-    if (input.probe.loginRequired) blockers.push(codeIssue('login-required', 'page'))
-    else if (!input.probe.supported) blockers.push(codeIssue('unsupported-page', 'page'))
-    if (!input.probe.loginRequired) {
-      if (input.probe.taskType === 'item-score') {
-        blockers.push(codeIssue('unsupported-task-type', 'task'))
-        deferred.push(codeIssue('item-score-executor-deferred', 'task'))
-      } else if (input.probe.taskType !== 'puzzle') {
-        blockers.push(codeIssue('unknown-task-type', 'task'))
-        deferred.push(codeIssue('classify-sbc-task-type', 'task'))
-      }
-      if (inventoryCoverage === 'unread') {
-        blockers.push(codeIssue('inventory-unread', 'inventory'))
-        deferred.push(codeIssue('complete-inventory-adapter', 'inventory'))
-      } else if (inventoryCoverage !== 'complete') {
-        blockers.push(codeIssue('inventory-visible-only', 'inventory'))
-        deferred.push(codeIssue('complete-inventory-adapter', 'inventory'))
-      }
-    }
+  for (const code of sbcObservationBlockers({ probe: input.probe, inventoryCoverage })) {
+    const source = ['page-probe-not-run', 'login-required', 'unsupported-page'].includes(code) ? 'page'
+      : ['unsupported-task-type', 'unknown-task-type'].includes(code) ? 'task' : 'inventory'
+    blockers.push(codeIssue(code, source))
+    const next = { 'page-probe-not-run': 'capture-current-fc-sbc-page',
+      'unsupported-task-type': 'item-score-executor-deferred', 'unknown-task-type': 'classify-sbc-task-type',
+      'inventory-unread': 'complete-inventory-adapter', 'inventory-visible-only': 'complete-inventory-adapter' }[code]
+    if (next) deferred.push(codeIssue(next, source))
   }
 
   if (!input.planInput) {

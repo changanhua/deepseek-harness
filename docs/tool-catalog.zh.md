@@ -19,6 +19,7 @@
 
 | 工具包 | 模型可见名称 | 依赖 | 写入／影响 | 随产品发布的别名 | 部署说明 |
 | --- | --- | --- | --- | --- | --- |
+| `@changanhua/dsh-tool-fc-sbc-domain` | `fc_sbc_inspect`、`fc_sbc_plan`、`fc_sbc_status` | `ctx.tools`、`ctx.fcSbcDomain` | `tool/call`、`tool/result`、`FC 所有者的不可变 Storage Domain 产物` | - | 类型化的 inspect、plan 和 status 消费提供的观察与不可变引用；不会实时读取浏览器，也不会执行外部写入。 |
 | `@changanhua/dsh-tool-browser` | `browser_action`、`browser_action_sequence`、`browser_activity_search`、`browser_entry_mount`、`browser_entry_unmount`、`browser_extract`、`browser_instances`、`browser_page_map`、`browser_region_clear`、`browser_region_render`、`browser_request_status`、`browser_snapshot`、`browser_tabs`、`browser_task_cancel`、`browser_task_select`、`browser_task_start`、`browser_task_verify` | `ctx.browser`、`ctx.browserTasks`、`ctx.tools`、`ctx.approval`、`用于历史活动搜索的 ctx.browserActivity`、`发起 Agent 的 Session` | `tool/call`、`tool/result`、`browser-task/change`、`browser-task/receipt`、`browser-task/check`、`browser-task/delegation`、`经 Browser 批准的页面动作` | - | 只有组合了 `browserActivity` 时才提供活动搜索。它依据当前 Host 授权读取发起 Session，包括 Chrome 离线时。 |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`、`task_queue_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时的 live Agent Session` | `tool/call`、`tool/result`、`Queue v2 agent.run@1 admission` | - | 类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，但不暴露执行器、Profile、模型、凭据或 shell 路由字段。 |
 | `@changanhua/dsh-tool-memory` | `memory_propose`、`memory_read`、`memory_search` | `ctx.tools`、`ctx.systemPrompt`、`ctx.projectMemory`、`已注册 Workspace 中的 live Agent` | `tool/call`、`tool/result`、`project_memory 领域中的候选修订与提案回执` | - | 显式选择启用的项目记忆。模型可以搜索、读取已核查的主张并提出候选；人类接受、拒绝和撤回是独立的命令操作。 |
@@ -55,6 +56,935 @@
 | `@changanhua/dsh-tool-runtime-inspect` | `runtime_inspect` | `ctx.tools`、`ctx.systemPrompt`、`ctx.runtimeFacts`、`ctx.subprocess` | `tool/call`、`tool/result` | - | 通过当前子进程提供方，只读检查已注册的运行时事实和可执行文件解析。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
+
+<a id="changanhuadsh-tool-fc-sbc-domain"></a>
+
+## `@changanhua/dsh-tool-fc-sbc-domain`
+
+### `fc_sbc_inspect`
+
+将提供的 FC 读取观察编译为不可变 Reality 引用；不会联系或更改 FC。
+
+```json
+{
+  "type": "object",
+  "required": [
+    "requestId",
+    "page",
+    "sourceRefs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "requestId": {
+      "type": "string"
+    },
+    "page": {
+      "type": "object",
+      "required": [
+        "tabId",
+        "frameId",
+        "documentId",
+        "url"
+      ],
+      "properties": {
+        "tabId": {
+          "type": "integer"
+        },
+        "frameId": {
+          "type": "integer"
+        },
+        "documentId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "installationId": {
+      "type": "string"
+    },
+    "clubId": {
+      "type": "string"
+    },
+    "read": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "kind",
+        "url",
+        "capturedAt",
+        "status",
+        "issues",
+        "group",
+        "inventory"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "kind": {
+          "type": "string",
+          "const": "fc-sbc-main-read"
+        },
+        "url": {
+          "type": "string"
+        },
+        "capturedAt": {
+          "type": "string"
+        },
+        "platform": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial",
+            "unknown"
+          ]
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "group": {
+          "type": "object",
+          "required": [
+            "status",
+            "sets"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "complete",
+                "partial",
+                "unknown"
+              ]
+            },
+            "selectedSetId": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "setId",
+                  "title",
+                  "challenges"
+                ],
+                "properties": {
+                  "setId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "challenges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "title",
+                        "requirements"
+                      ],
+                      "properties": {
+                        "challengeId": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "completed": {
+                          "type": "boolean"
+                        },
+                        "formationName": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "requirements": {
+                          "type": "object",
+                          "required": [
+                            "constraints"
+                          ],
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "complete",
+                                "partial",
+                                "unknown"
+                              ]
+                            },
+                            "slotCount": {
+                              "oneOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "constraints": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "type"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string"
+                                  },
+                                  "attribute": {
+                                    "oneOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "field": {
+                                    "oneOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "quality": {
+                                    "oneOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "model": {
+                                    "oneOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "values": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "minimum": {
+                                    "oneOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "maximum": {
+                                    "oneOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "min": {
+                                    "oneOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "max": {
+                                    "oneOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "exact": {
+                                    "oneOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "count": {
+                                    "oneOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "rewards": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "name"
+                            ],
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "inventory": {
+          "type": "object",
+          "required": [
+            "coverage",
+            "cards"
+          ],
+          "properties": {
+            "coverage": {
+              "type": "string",
+              "enum": [
+                "complete",
+                "partial",
+                "visible-only",
+                "unread"
+              ]
+            },
+            "club": {
+              "type": "object",
+              "required": [
+                "status",
+                "pageCount",
+                "retrievedAll"
+              ],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "unknown"
+                  ]
+                },
+                "pageCount": {
+                  "type": "integer"
+                },
+                "retrievedAll": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "sbcStorage": {
+              "type": "object",
+              "required": [
+                "status",
+                "pageCount",
+                "retrievedAll"
+              ],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "unknown"
+                  ]
+                },
+                "pageCount": {
+                  "type": "integer"
+                },
+                "retrievedAll": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "cards": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "instanceId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "cardVersionId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locked": {
+                    "type": "boolean"
+                  },
+                  "tradeable": {
+                    "type": "boolean"
+                  },
+                  "reserveValue": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "rating": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "quality": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "nationId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "leagueId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "clubId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "position": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "required": [
+        "url",
+        "capturedAt",
+        "supported"
+      ],
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "capturedAt": {
+          "type": "string"
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "loginRequired": {
+          "type": "boolean"
+        },
+        "taskType": {
+          "type": "string",
+          "enum": [
+            "puzzle",
+            "item-score",
+            "unknown"
+          ]
+        },
+        "view": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "selectedChallenge": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "visibleIndex"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "visibleIndex": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "challengeSet": {
+          "type": "object",
+          "required": [
+            "challenges"
+          ],
+          "properties": {
+            "title": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "visibleChallengeCount": {
+              "type": "integer"
+            },
+            "challenges": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "title"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "completed": {
+                    "type": "boolean"
+                  },
+                  "requirementLines": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "rewardLines": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "inventory": {
+          "type": "object",
+          "properties": {
+            "coverage": {
+              "type": "string",
+              "enum": [
+                "complete",
+                "partial",
+                "visible-only",
+                "unread"
+              ]
+            },
+            "sbcStorageVisible": {
+              "type": "boolean"
+            },
+            "visibleCards": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "instanceId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "cardVersionId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locked": {
+                    "type": "boolean"
+                  },
+                  "tradeable": {
+                    "type": "boolean"
+                  },
+                  "reserveValue": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "rating": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "quality": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "nationId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "leagueId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "clubId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "position": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "marketAccess": {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "visible",
+                "blocked",
+                "unknown"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "expiresAt": {
+      "type": "string"
+    },
+    "sourceRefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+源码：[`packages/domain-runtime/tool-fc-sbc-domain/src/index.ts`](../packages/domain-runtime/tool-fc-sbc-domain/src/index.ts)
+
+### `fc_sbc_plan`
+
+根据精确 Reality 引用生成临时候选。缺失的证据与报价仍是阻塞项；不会批准或执行。
+
+```json
+{
+  "type": "object",
+  "required": [
+    "requestId",
+    "realityRef"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "requestId": {
+      "type": "string"
+    },
+    "realityRef": {
+      "type": "object",
+      "required": [
+        "domain",
+        "kind",
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        }
+      }
+    },
+    "searchLimit": {
+      "type": "integer"
+    },
+    "candidateLimit": {
+      "type": "integer"
+    }
+  }
+}
+```
+
+源码：[`packages/domain-runtime/tool-fc-sbc-domain/src/index.ts`](../packages/domain-runtime/tool-fc-sbc-domain/src/index.ts)
+
+### `fc_sbc_status`
+
+按引用读取有界产物摘要与当前新鲜度；不会刷新观察。
+
+```json
+{
+  "type": "object",
+  "required": [
+    "ref"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ref": {
+      "type": "object",
+      "required": [
+        "domain",
+        "kind",
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
+```
+
+源码：[`packages/domain-runtime/tool-fc-sbc-domain/src/index.ts`](../packages/domain-runtime/tool-fc-sbc-domain/src/index.ts)
+
+Typed inspect, plan and status consume supplied observations and immutable refs. No live browser read or external write is performed.
 
 <a id="changanhuadsh-tool-browser"></a>
 

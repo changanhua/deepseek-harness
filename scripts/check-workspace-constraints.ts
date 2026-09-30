@@ -8,11 +8,13 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { loadPackageIdentities } from './package-identities.ts'
 import { isPublicExperimentalPackageDirectory } from './experimental-package-policy.ts'
 import { hasTypertRemoteNavigation, isForbiddenPublicationFile } from './publication-payload.ts'
 import { collectProjectReferenceFaceViolations } from './project-reference-faces.ts'
 
 const root = resolve(import.meta.dirname, '..')
+const personalIdentities = loadPackageIdentities(root)
 // vendor/* is single-level; packages/<group>/<pkg> nests one level deeper
 // (the group dirs — core/llm/shell/… — are pure containers with no manifest).
 const workspaceGlobs = [
@@ -342,6 +344,13 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
       || manifest.repository.directory !== expectedDirectory) {
       errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
     }
+  } else if (personalIdentities.personalPackages.some(identity => identity.directory === dir
+    && identity.sourceName === manifest.name && identity.sourceIdentity === 'personal'
+    && identity.publicationPolicy === 'blocked-until-release-verified' && identity.releaseFamily === null)) {
+    if (manifest.private !== true) errors.push(`${label}: personal source package must set "private": true`)
+    if (manifest.publishConfig !== undefined) errors.push(`${label}: personal source package must omit publishConfig`)
+    if (manifest.repository?.type !== 'git' || manifest.repository.url !== personalIdentities.personalRepositoryUrl
+      || manifest.repository.directory !== dir) errors.push(`${label}: personal package repository must match its registered identity`)
   } else if (isReleaseMemberDirectory(dir)) {
     // Release members state that they are publishable: npm refuses a private
     // package, and the repository field is how a consumer finds the source of

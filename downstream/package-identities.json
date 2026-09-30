@@ -455,6 +455,39 @@
       ]
     },
     {
+      "directory": "packages/domain-runtime/domain-runtime",
+      "legacyName": "@deepseek-ai/dsh-domain-runtime",
+      "sourceName": "@changanhua/dsh-domain-runtime",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/domain-runtime/fc-sbc-domain",
+      "legacyName": "@deepseek-ai/dsh-fc-sbc-domain",
+      "sourceName": "@changanhua/dsh-fc-sbc-domain",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/domain-runtime/tool-fc-sbc-domain",
+      "legacyName": "@deepseek-ai/dsh-tool-fc-sbc-domain",
+      "sourceName": "@changanhua/dsh-tool-fc-sbc-domain",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/eval/eval",
       "legacyName": "@deepseek-ai/dsh-eval",
       "sourceName": "@changanhua/dsh-eval",

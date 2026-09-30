@@ -54,6 +54,8 @@ export { REGION_BEGIN, REGION_END }
  * errors, so the partition can never silently drift from the service API.
  */
 export const SERVICE_PAGE: Record<string, string> = {
+  domainArtifacts: 'domain-runtime.md',
+  fcSbcDomain: 'domain-runtime.md',
   browser: 'browser.md',
   browserTasks: 'browser.md',
   browserMonitor: 'browser.md',
@@ -350,6 +352,15 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ContentDraft: 'content.md',
   OperationRecord: 'content.md',
   SessionSource: 'content.md',
+  DomainRuntimeProvider: 'domain-runtime.md',
+  DomainDescriptor: 'domain-runtime.md',
+  DomainArtifactHeader: 'domain-runtime.md',
+  DomainArtifactRef: 'domain-runtime.md',
+  DomainArtifactView: 'domain-runtime.md',
+  CaptureFcReality: 'domain-runtime.md',
+  BuildFcPlan: 'domain-runtime.md',
+  FcArtifact: 'domain-runtime.md',
+  FcArtifactStatus: 'domain-runtime.md',
   PlanningAccess: 'planning.md',
   PlanningBoardSnapshot: 'planning.md',
   PlanningCommand: 'planning.md',

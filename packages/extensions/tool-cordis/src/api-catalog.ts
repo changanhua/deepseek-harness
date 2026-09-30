@@ -1390,6 +1390,43 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'domainArtifacts',
+    summary: 'Effect-scoped provider registry; no central payload store or action executor.',
+    description: 'Effect-scoped provider registry; no central payload store or action executor.',
+    methods: [
+      {
+        signature: 'register(provider: DomainRuntimeProvider): () => void',
+        description: 'Register one domain until its contributing fiber is disposed. Duplicate domains reject.',
+        parameters: [{ name: 'provider', description: 'Trusted owner that supplies metadata and immutable payload reads.' }],
+        returns: 'Effect disposer; existing reads reject if this registration is unloaded.',
+      },
+      {
+        signature: 'discover(): DomainDescriptor[]',
+        description: 'Return detached provider descriptions; no owner payload is loaded.',
+        parameters: [],
+        returns: 'The bounded registered domain catalog.',
+      },
+      {
+        signature: 'async readHeader(ref: DomainArtifactRef, signal?: AbortSignal): Promise<DomainArtifactHeader | undefined>',
+        description: 'Route a metadata-only read, reject mismatched identities, and return a detached header.',
+        parameters: [{ name: 'ref', description: 'Exact owner, kind and identity; a supplied digest must match.' }, { name: 'signal', description: 'Optional lifetime checked before and after the provider read.' }],
+        returns: 'Owner metadata, or undefined for a missing artifact; unavailable providers reject.',
+      },
+      {
+        signature: 'async readArtifact(ref: DomainArtifactRef, signal?: AbortSignal): Promise<DomainArtifactView | undefined>',
+        description: 'Route one exact artifact read; validate JSON but never interpret domain payload fields.',
+        parameters: [{ name: 'ref', description: 'Exact owner, kind and identity; a supplied digest must match.' }, { name: 'signal', description: 'Optional lifetime forwarded to the provider.' }],
+        returns: 'A detached header and payload, or undefined for a missing artifact.',
+      },
+      {
+        signature: 'async parents(ref: DomainArtifactRef, signal?: AbortSignal): Promise<DomainArtifactRef[] | undefined>',
+        description: 'Return direct immutable parent references without recursively loading their payloads.',
+        parameters: [{ name: 'ref', description: 'Child artifact identity.' }, { name: 'signal', description: 'Optional lifetime forwarded to the metadata read.' }],
+        returns: 'Detached direct parent references, or undefined for a missing child.',
+      },
+    ],
+  },
+  {
     key: 'e2b',
     summary: 'Creates one lazily consumable E2B SDK handle and deletes the sandbox at timeout or disposal.',
     description: 'Creates one lazily consumable E2B SDK handle and deletes the sandbox at timeout or disposal. Creation begins at plugin construction; adapters await getSandbox before their first operation.',
@@ -1410,6 +1447,37 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
         returns: 'the created sandbox after the configured cwd exists.',
         throws: ['when E2B rejects creation or the service is disposing.'],
+      },
+    ],
+  },
+  {
+    key: 'fcSbcDomain',
+    summary: 'Typed offline FC capability.',
+    description: 'Typed offline FC capability. It accepts read observations, never external-write callbacks.',
+    methods: [
+      {
+        signature: 'async captureReality(input: CaptureFcReality, signal?: AbortSignal): Promise<DomainArtifactRef>',
+        description: 'Persist an allowlisted existing read/probe observation and return its immutable reference.',
+        parameters: [{ name: 'input', description: 'Typed observations, provenance and idempotency request identity.' }, { name: 'signal', description: 'Optional cancellation checked before durable publication.' }],
+        returns: 'The committed immutable Reality reference; changed request reuse rejects.',
+      },
+      {
+        signature: 'async buildPlan(input: BuildFcPlan, signal?: AbortSignal): Promise<DomainArtifactRef>',
+        description: 'Freeze existing-solver candidates from an exact persisted Reality; never approve or execute.',
+        parameters: [{ name: 'input', description: 'Exact Reality reference including digest, request identity and bounded search options.' }, { name: 'signal', description: 'Optional cancellation checked before durable publication.' }],
+        returns: 'The committed immutable Plan reference; identical canonical input reuses the first artifact.',
+      },
+      {
+        signature: 'async readArtifact(ref: DomainArtifactRef, signal?: AbortSignal): Promise<FcArtifact | undefined>',
+        description: 'Read one exact detached owner payload; unknown identity returns undefined.',
+        parameters: [{ name: 'ref', description: 'Artifact owner, kind, id and optional digest to verify.' }, { name: 'signal', description: 'Optional cancellation checked before reading.' }],
+        returns: 'Detached FC payload and metadata, or undefined for a missing artifact.',
+      },
+      {
+        signature: 'async getStatus(ref: DomainArtifactRef, signal?: AbortSignal): Promise<FcArtifactStatus | undefined>',
+        description: 'Bounded summary; freshness is evaluated at read time without editing historical artifacts.',
+        parameters: [{ name: 'ref', description: 'Exact artifact identity.' }, { name: 'signal', description: 'Optional cancellation forwarded to the owner read.' }],
+        returns: 'Bounded status and blockers, or undefined for a missing artifact.',
       },
     ],
   },
@@ -5028,8 +5096,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BrowserTransitionObservation {\n    readonly version: 1;\n    readonly source: {\n        readonly tab: BrowserTabReference;\n        readonly page: BrowserPage;\n    };\n    readonly startedAt: number;\n    readonly observedAt: number;\n    readonly sameTab: {\n        readonly kind: \'unchanged\' | \'same-document\' | \'document-replaced\' | \'closed\' | \'unavailable\';\n        readonly page?: BrowserPage;\n    };\n    readonly candidates: readonly {\n        readonly tab: BrowserTabReference;\n        readonly url?: string;\n        readonly relation: \'opener\';\n        readonly attribution: \'candidate\';\n        readonly evidence: \'created-navigation-target\' | \'opener-tab\';\n    }[];\n    readonly truncated: boolean;\n}',
   },
   {
+    name: 'BuildFcPlan',
+    declaration: 'export type BuildFcPlan = z.input<typeof buildPlanSchema>;',
+  },
+  {
     name: 'CapabilityState',
     declaration: 'export type CapabilityState = \'observed\' | \'degraded\' | \'unavailable\';',
+  },
+  {
+    name: 'CaptureFcReality',
+    declaration: 'export type CaptureFcReality = z.input<typeof captureRealitySchema>;',
   },
   {
     name: 'ChangedPathFinding',
@@ -5444,6 +5520,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface Domain<S extends DomainSpec> {\n    readonly name: string;\n    readonly global: DomainGlobalHandleOf<S>;\n    table<N extends keyof S[\'tables\'] & string>(name: N): KvTable<TableKeyOf<S, N>, TableValueOf<S, N>>;\n    close(): Promise<void>;\n}',
   },
   {
+    name: 'DomainArtifactHeader',
+    declaration: 'export type DomainArtifactHeader = z.infer<typeof domainArtifactHeaderSchema>;',
+  },
+  {
+    name: 'DomainArtifactRef',
+    declaration: 'export type DomainArtifactRef = z.infer<typeof domainArtifactRefSchema>;',
+  },
+  {
+    name: 'DomainArtifactView',
+    declaration: 'export interface DomainArtifactView {\n    readonly header: DomainArtifactHeader;\n    readonly payload: unknown;\n}',
+  },
+  {
     name: 'DomainChanged',
     declaration: 'export type DomainChanged = DomainChangedPut | DomainChangedDeleted;',
   },
@@ -5460,6 +5548,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface DomainChangedPut extends DomainChangedBase {\n    readonly operation: \'put\';\n    readonly value: unknown;\n}',
   },
   {
+    name: 'DomainDescriptor',
+    declaration: 'export type DomainDescriptor = z.infer<typeof domainDescriptorSchema>;',
+  },
+  {
     name: 'DomainGlobal',
     declaration: 'export interface DomainGlobal<G> {\n    get(): G;\n    set(value: G): Promise<void>;\n}',
   },
@@ -5474,6 +5566,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'DomainImpl',
     declaration: 'export class DomainImpl {\n    readonly name: string;\n    constructor(private readonly ctx: Context, spec: DomainSpec, private readonly unit: KvUnit, records: Map<string, Map<string, unknown>>, globalValue: unknown, private readonly onClosed: () => void);\n    get global(): DomainGlobal<unknown>;\n    table(name: string): KvTable<string, unknown>;\n    close(): Promise<void>;\n}',
+  },
+  {
+    name: 'DomainRuntimeProvider',
+    declaration: 'export interface DomainRuntimeProvider {\n    readonly domain: string;\n    descriptor(): DomainDescriptor;\n    readArtifact(ref: DomainArtifactRef, signal?: AbortSignal): Promise<DomainArtifactView | undefined>;\n    readArtifactHeader(ref: DomainArtifactRef, signal?: AbortSignal): Promise<DomainArtifactHeader | undefined>;\n}',
   },
   {
     name: 'DomainSpec',
@@ -5570,6 +5666,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FailIssuePublicationRequest',
     declaration: 'export interface FailIssuePublicationRequest {\n    readonly publicationId: IssuePublicationId;\n    readonly expectedPhase: \'publishing\';\n    readonly failure: PublicationFailure;\n}',
+  },
+  {
+    name: 'FcArtifact',
+    declaration: 'export interface FcArtifact {\n    readonly header: DomainArtifactHeader;\n    readonly payload: FcSbcRealitySnapshot | FcSbcPlanArtifact;\n}',
+  },
+  {
+    name: 'FcArtifactStatus',
+    declaration: 'export interface FcArtifactStatus {\n    readonly ref: DomainArtifactRef;\n    readonly coverage: DomainArtifactHeader[\'coverage\'];\n    readonly freshness: \'fresh\' | \'stale\' | \'unknown\';\n    readonly issueCodes: readonly string[];\n    readonly candidateCount?: number;\n    readonly readiness?: FcSbcPlanArtifact[\'readiness\'];\n    readonly quoteStatus?: FcSbcPlanArtifact[\'quoteStatus\'];\n}',
+  },
+  {
+    name: 'FcCardObservation',
+    declaration: 'export type FcCardObservation = z.infer<typeof cardSchema>;',
+  },
+  {
+    name: 'FcChallengeObservation',
+    declaration: 'export type FcChallengeObservation = z.infer<typeof challengeSchema>;',
+  },
+  {
+    name: 'FcSbcPlanArtifact',
+    declaration: 'export interface FcSbcPlanArtifact {\n    readonly schemaVersion: 1;\n    readonly realityRef: DomainArtifactRef;\n    readonly solver: {\n        readonly version: string;\n        readonly searched: number;\n        readonly searchComplete: boolean;\n        readonly incompleteReasons: readonly string[];\n    };\n    readonly candidates: readonly {\n        readonly id: string;\n        readonly challengePlans: PlanVariant[\'challenges\'];\n        readonly purchaseCount: number;\n        readonly maxSpend: number;\n        readonly provisional: boolean;\n        readonly issues: readonly string[];\n    }[];\n    readonly challengeCandidates: readonly {\n        readonly challengeId: string;\n        readonly candidates: PuzzleCandidates[\'candidates\'];\n        readonly provisional: boolean;\n        readonly issues: readonly string[];\n    }[];\n    readonly quoteStatus: {\n        readonly status: \'missing\';\n        readonly quoteRefs: readonly DomainArtifactRef[];\n    };\n    readonly readiness: {\n        readonly status: \'candidate\' | \'blocked\';\n        readonly blockers: readonly string[];\n    };\n}',
+  },
+  {
+    name: 'FcSbcRealitySnapshot',
+    declaration: 'export interface FcSbcRealitySnapshot {\n    readonly schemaVersion: 1;\n    readonly pageIdentity: {\n        readonly installationId?: string;\n        readonly tabId: number;\n        readonly frameId: number;\n        readonly documentId: string;\n        readonly url: string;\n        readonly clubId?: string;\n        readonly platform?: string;\n    };\n    readonly group: {\n        readonly id?: string;\n        readonly title: string;\n        readonly taskType: \'puzzle\' | \'item-score\' | \'unknown\';\n        readonly coverage: \'partial\' | \'unknown\';\n        readonly challenges: readonly FcChallengeObservation[];\n    };\n    readonly inventory: {\n        readonly status: \'complete\' | \'partial\' | \'unknown\';\n        readonly coverage: string;\n        readonly cards: readonly FcCardObservation[];\n        readonly summary: InventorySnapshot[\'summary\'];\n    };\n    readonly marketAccess: {\n        readonly status: \'visible\' | \'blocked\' | \'unknown\';\n        readonly observedAt?: string;\n    };\n    readonly pageModel: unknown;\n    readonly capturedAt: string;\n}',
   },
   {
     name: 'FeedbackCategory',
@@ -5830,6 +5950,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'InvariantInstaller',
     declaration: 'export interface InvariantInstaller {\n    (ctx: Context, fail: InvariantFailure): void | Promise<void>;\n    readonly inject?: Inject;\n}',
+  },
+  {
+    name: 'InventorySnapshot',
+    declaration: 'export interface InventorySnapshot {\n    status: \'complete\' | \'partial\' | \'invalid\';\n    summary: {\n        coverage: string;\n        cardCount: number;\n        clubCount: number;\n        sbcStorageCount: number;\n        visibleCount: number;\n        lockedCount: number;\n        tradeableCount: number;\n        duplicateInstanceCount: number;\n        invalidRowCount: number;\n        uniqueCardVersionCount: number;\n    };\n    cards: Array<{\n        instanceId: string;\n        cardVersionId: string;\n        source: string;\n        locked: boolean;\n        tradeable: boolean;\n        reserveValue: number;\n        rating?: number;\n    }>;\n    issues: Array<{\n        code: string;\n        detail?: string;\n    }>;\n}',
   },
   {
     name: 'InvocationDescriptor',
@@ -6312,6 +6436,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PlanningMutationResult {\n    readonly boardVersion: number;\n    readonly itemId?: string | undefined;\n    readonly revisionId?: string | undefined;\n    readonly reviewId?: string | undefined;\n    readonly proposalId?: string | undefined;\n    readonly proposalVersion?: number | undefined;\n}',
   },
   {
+    name: 'PlanVariant',
+    declaration: 'export interface PlanVariant {\n    planId: string;\n    challenges: Array<{\n        challengeId: string;\n        candidateId: string;\n        cards: Array<{\n            kind: \'owned\';\n            instanceId: string;\n            cardVersionId: string;\n            reserveValue: number;\n            opportunityCost: number;\n        }>;\n        purchaseCount: number;\n        maxSpend: number;\n        opportunityCost: number;\n        score: number;\n    }>;\n    purchaseCount: number;\n    maxSpend: number;\n    opportunityCost: number;\n}',
+  },
+  {
     name: 'PostToolDecision',
     declaration: 'export type PostToolDecision = {\n    kind: \'accept\';\n    content?: ContentBlock[];\n    value?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'accept\';\n    value: JsonValue;\n    content?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'block\';\n    feedback: ContentBlock[];\n    additionalContexts?: UserMessage[];\n};',
   },
@@ -6450,6 +6578,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PublicationFailureCategory',
     declaration: 'export type PublicationFailureCategory = \'unmapped-repository\' | \'missing-credential\' | \'unapproved-revision\' | \'not-ready\' | \'rejected\' | \'invalid-response\' | \'transport\' | \'canceled\';',
+  },
+  {
+    name: 'PuzzleCandidates',
+    declaration: 'export interface PuzzleCandidates {\n    status: \'ready\' | \'blocked\';\n    candidates: Array<{\n        candidateId: string;\n        cards: Array<{\n            instanceId: string;\n        }>;\n    }>;\n    provisional: {\n        reasonCodes: string[];\n        candidates: PuzzleCandidates[\'candidates\'];\n    } | null;\n    issues: Array<{\n        code: string;\n        detail?: string;\n    }>;\n    summary: {\n        searched: number;\n        searchComplete: boolean;\n        searchIncompleteReasons: string[];\n        poolComplete: boolean;\n    };\n}',
   },
   {
     name: 'QueueAttemptIdRef',

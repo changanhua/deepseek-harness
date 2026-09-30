@@ -131,6 +131,9 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/domain-runtime/domain-runtime" },
+    { "path": "./packages/domain-runtime/fc-sbc-domain" },
+    { "path": "./packages/domain-runtime/tool-fc-sbc-domain" },
     { "path": "./vendor/cosmokit" },
     { "path": "./vendor/schemastery" },
     { "path": "./vendor/cordis" },

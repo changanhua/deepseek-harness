@@ -100,6 +100,12 @@ const GROUP_ORDER = [
 ]
 
 const SERVICE_ROLES: ServiceRole[] = [
+  { key: 'domainArtifacts', pkg: 'domain-runtime', title: 'Immutable domain artifact registry', mode: 'seam',
+    implementations: ['fc-sbc-domain'], consumers: ['fc-sbc-domain'],
+    note: 'Routes bounded metadata and detached immutable artifact reads; each domain provider owns payload persistence.' },
+  { key: 'fcSbcDomain', pkg: 'fc-sbc-domain', title: 'FC27 observation and candidate owner', mode: 'core',
+    consumers: ['tool-fc-sbc-domain'],
+    note: 'Persists supplied FC observations and existing-solver candidates through Storage Domain without browser, Planning or Safety writes.' },
   {
     key: 'mcpServer',
     pkg: 'mcp-server',

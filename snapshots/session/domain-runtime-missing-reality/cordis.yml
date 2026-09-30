@@ -1,0 +1,51 @@
+# Test-only headless Domain Runtime missing-Reality composition; the replay variant uses recorded model chunks.
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: deepseek-official
+    model: deepseek-v4-pro
+
+- id: session-persistence-jsonl
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: !!js dshHomePath('sessions')
+    compression: !!js 'process.env.DSH_SNAPSHOT === undefined ? ''zstd'' : ''none'''
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+- id: tools
+  name: '@deepseek-ai/dsh-tools'
+  config:
+    mode: both
+
+- id: system-prompt
+  name: '@deepseek-ai/dsh-system-prompt'
+  config:
+    personaPrefix: |
+      You are a coding assistant powered by the {{model}} model. Your working directory is {{cwd}}.
+
+      Verify your work by running the code or tests. Keep answers brief and factual.
+
+- insert:
+    - id: domain-artifacts
+      name: '@changanhua/dsh-domain-runtime'
+    - id: fc-sbc-domain
+      name: '@changanhua/dsh-fc-sbc-domain'
+    - id: tool-fc-sbc-domain
+      name: '@changanhua/dsh-tool-fc-sbc-domain'
+
+# This test-only composition excludes the unrelated projection cache.
+# The baseline cache waits for a storageDomain isolation it does not share.
+- id: session-projection-cache
+  name: '@deepseek-ai/dsh-session-projection-cache'
+  disabled: true
+
+# Test-only shared storage backend; the shipped isolated backend is unrelated to this scenario.
+- id: storage-json
+  name: '@deepseek-ai/dsh-storage-json'
+  isolate: {}
+  config:
+    root: !!js dshHomePath('storages')
