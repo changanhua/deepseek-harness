@@ -16,6 +16,8 @@ SBC Case owner 将 Thinking run 持久化在既有的 Case 记录中。浏览器
 
 浏览器会在三个独立的人类动作应用探索建议、保存 Design Context 或提交 Proposal 前渲染候选。应用建议和上下文只会改变 Case。Proposal 提交使用冻结的 subject、base revision、origin、evidence 和审阅快照，不推进正式 Planning。采纳仍是既有的人类 Planning 动作。Case 漂移要求用户对仍适用的输出做可见确认，Planning 漂移会拒绝创建 Proposal。Proposal 审阅使用不可变的 state-entry 材料和代次绑定的 Focus、资源快照；缺少前值时会阻止采纳。
 
+手动画布创作复用同一 Case 卡片 owner，并明确标记手工来源，避免仅记录一个想法也必须先运行模型。新建和编辑卡片只改变探索内容，冻结的 Planning 投影保持不可变。删除卡片也删除其移动历史，避免撤销产生没有卡片的布局记录。
+
 ## 考虑过的替代方案
 
 **在 Thinking Session 中使用普通 Planning 工具。** 它们现有的授权可从绑定 Session 创建 Proposal，因此提示词文字或隐藏按钮不能强制所需的人工审阅边界。

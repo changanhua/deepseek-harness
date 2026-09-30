@@ -30,6 +30,8 @@ export type SbcExploreOperation =
   | { kind: 'move'; nodeId: string; x: number; y: number }
   | { kind: 'undo' }
   | { kind: 'delete-note'; nodeId: string }
+  | { kind: 'create-note'; title: string; body: string; x: number; y: number }
+  | { kind: 'edit-note'; nodeId: string; title: string; body: string }
 export interface SbcExploreInput extends PlanningContextInput {
   expectedVersion: number
   requestId: string

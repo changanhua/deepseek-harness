@@ -16,6 +16,8 @@ The `thinking-desk` preset gives the run's live Agent child scope only `thinking
 
 The browser renders the candidate before three separate human actions apply exploration notes, save Design Context, or submit a Proposal. Applying notes and context changes only the Case. Proposal submission uses the frozen subject, base revision, origin, evidence, and review snapshot; it does not advance canonical Planning. Adoption remains the existing human Planning action. Case drift requires a visible acknowledgement for an applicable output, while Planning drift rejects Proposal creation. Proposal review uses immutable state-entry material and the generation-bound Focus and resource snapshot; absent prior material blocks adoption.
 
+Manual canvas authoring uses the same Case note owner, with explicit manual provenance, rather than requiring a model run merely to record an idea. Creating and editing notes changes only exploration; the frozen Planning projection remains immutable. Removing a note also removes its movement history so undo cannot recreate orphaned layout entries.
+
 ## Alternatives considered
 
 **Use ordinary Planning tools in the Thinking Session.** Their existing authority can create a Proposal from a bound Session, so prompt wording or a hidden button would not enforce the required human review boundary.

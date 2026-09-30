@@ -31,6 +31,8 @@ The JSON backend saves one record under `sbc_design_cases/cases/<sha256>.json` r
 
 Reads compare the saved Plan revision and optional Focus version with fresh Planning data. Drift preserves the frozen projection and all exploratory state. Concurrent edits use a separate case version; conflicts require rereading the case. The immediately preceding request can be retried with its original identity; older requests conflict after another edit.
 
+Manual create-note and edit-note operations use the same Case version and request identity checks as movement. Manual cards carry source=manual and cannot claim an Agent result identity; Agent-created notes retain their result provenance when edited. Titles must be nonempty and at most 2048 characters, bodies at most 8192, and each Case retains at most 128 notes. Editing or deleting a frozen Planning projection is rejected.
+
 ## Dev Note
 
 None.

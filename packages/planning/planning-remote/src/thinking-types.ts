@@ -9,8 +9,9 @@ export interface ExplorationNote {
   id: string
   title: string
   body?: string
-  sourceResultId: string
-  sourceResultVersion: number
+  source?: 'manual'
+  sourceResultId?: string
+  sourceResultVersion?: number
   createdAt: string
   position: { x: number; y: number }
 }

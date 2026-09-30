@@ -8,8 +8,13 @@ const text = z.string().trim().max(8192)
 const shortText = z.string().trim().max(2048)
 const point = z.strictObject({ x: z.number().min(0).max(20000), y: z.number().min(0).max(20000) })
 export const explorationNoteSchema = z.strictObject({
-  id, title: shortText, body: text.optional(), sourceResultId: id, sourceResultVersion: z.number().int().positive(),
+  id, title: shortText, body: text.optional(), source: z.literal('manual').optional(),
+  sourceResultId: id.optional(), sourceResultVersion: z.number().int().positive().optional(),
   createdAt: z.string().datetime(), position: point,
+}).refine(note => note.source === 'manual'
+  ? note.sourceResultId === undefined && note.sourceResultVersion === undefined
+  : note.sourceResultId !== undefined && note.sourceResultVersion !== undefined, {
+  message: 'Manual notes must not claim a model result; model notes require exact result provenance',
 })
 export const designContextSchema = z.strictObject({
   id, title: shortText, body: text, sourceRunId: id, sourceSessionId: id, sourceResultId: id,

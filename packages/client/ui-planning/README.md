@@ -18,6 +18,8 @@ The thinking desk reads generic summaries of existing Design Cases without creat
 
 Result review keeps Agent output separate from canonical Planning and shows the actual exploration notes, Design Context, and delta before three independent human actions save notes, save context, or create a Proposal. Case drift requires an explicit acknowledgement for an applicable candidate; Planning drift blocks Proposal creation. Proposal review shows one exact generation's state-entry, Focus, resource, origin, and evidence differences, and disables adoption when immutable or generation-bound prior material is absent.
 
+The canvas toolbar and blank-area context menu create manual exploration cards at the chosen position. Select a card to edit it from the toolbar, or right-click or double-click it. Card titles and bodies persist in the Case and join the next Thinking context. Frozen Planning projection cards remain read-only; movement undo applies only to surviving cards.
+
 ## Invariant policy
 
 No invariant companion is published because the workbench holds only disposable browser state over Host-owned records.

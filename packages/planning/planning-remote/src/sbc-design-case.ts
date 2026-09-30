@@ -26,6 +26,9 @@ export const sbcExploreInputSchema = sbcCaseInputSchema.extend({
     z.strictObject({ kind: z.literal('select'), nodeId: nodeId.nullable() }),
     z.strictObject({ kind: z.literal('move'), nodeId, x: coordinate, y: coordinate }),
     z.strictObject({ kind: z.literal('delete-note'), nodeId }),
+    z.strictObject({ kind: z.literal('create-note'), title: z.string().trim().min(1).max(2048),
+      body: z.string().max(8192), x: coordinate, y: coordinate }),
+    z.strictObject({ kind: z.literal('edit-note'), nodeId, title: z.string().trim().min(1).max(2048), body: z.string().max(8192) }),
     z.strictObject({ kind: z.literal('undo') }),
   ]),
 })
@@ -98,6 +101,7 @@ export class SbcDesignCaseStore {
     })
   }
   async explore(input: SbcExploreInput, readBoard: () => Promise<PlanningBoardSnapshot>, signal: AbortSignal): Promise<SbcDesignCaseView> {
+    input = sbcExploreInputSchema.parse(input)
     return this.enqueue(async () => {
       signal.throwIfAborted()
       const board = await readBoard()
@@ -113,9 +117,21 @@ export class SbcDesignCaseStore {
       if (current.version !== input.expectedVersion) throw new PlanningError('conflict', 'exploration version changed')
       const next = structuredClone(current)
       const op = input.operation
-      if (op.kind !== 'undo' && op.nodeId !== null && !Object.hasOwn(current.local.positions, op.nodeId))
+      if ('nodeId' in op && op.nodeId !== null && !Object.hasOwn(current.local.positions, op.nodeId))
         throw new PlanningError('invalid-reference', 'node is outside this projection')
-      if (op.kind === 'undo') {
+      if (op.kind === 'create-note') {
+        if ((next.notes?.length ?? 0) >= 128) throw new PlanningError('capacity-exceeded', 'Exploration note limit reached')
+        const note = explorationNoteSchema.parse({ id: noteId(), title: op.title, body: op.body, source: 'manual',
+          createdAt: now(), position: { x: op.x, y: op.y } })
+        next.notes = [...(next.notes ?? []), note]
+        next.local.positions[note.id] = note.position
+        next.local.selectedNodeId = note.id
+      } else if (op.kind === 'edit-note') {
+        const note = next.notes?.find(value => value.id === op.nodeId)
+        if (!note) throw new PlanningError('invalid-reference', 'node is not an exploration note')
+        note.title = op.title
+        note.body = op.body
+      } else if (op.kind === 'undo') {
         const previous = next.history.pop()
         if (previous) next.local.positions[previous.nodeId] = { x: previous.x, y: previous.y }
       } else if (op.kind === 'select') next.local.selectedNodeId = op.nodeId
@@ -123,6 +139,7 @@ export class SbcDesignCaseStore {
         if (!(next.notes ?? []).some(note => note.id === op.nodeId)) throw new PlanningError('invalid-reference',
           'node is not an exploration note')
         next.notes = next.notes?.filter(note => note.id !== op.nodeId)
+        next.history = next.history.filter(move => move.nodeId !== op.nodeId)
         const { [op.nodeId]: _removed, ...positions } = next.local.positions
         next.local.positions = positions
         if (next.local.selectedNodeId === op.nodeId) next.local.selectedNodeId = null

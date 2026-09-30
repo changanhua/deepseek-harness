@@ -138,3 +138,31 @@ it('retries a recorded Planning CAS conflict with one proposal and recovers a de
   expect(recovered.runs[0]!.results[0]!.applied.planningProposalId).toBe(first.submission.proposalId)
   expect((await read()).proposals.filter(value => value.id === first.submission.proposalId)).toHaveLength(1)
 })
+
+it('creates and edits manual notes durably without modifying canonical Planning', async () => {
+  const h = await createPlanningHarness(); cleanups.push(h.dispose)
+  const created = await h.ctx.planning.execute(h.access(), h.create('manual-seed'))
+  if (!created.itemId) throw new Error('Missing fixture plan')
+  const input = { workspaceId: h.workspace.id, subject: { kind: 'plan' as const, id: created.itemId } }
+  const store = await SbcDesignCaseStore.open(h.ctx.storageDomain, { maxCases: 10, maxCaseBytes: 1024 * 1024 })
+  cleanups.push(() => store.close())
+  const read = () => h.ctx.planning.snapshot(h.access())
+  const before = await read()
+  await store.read(input, read, signal())
+  const request = { ...input, expectedVersion: 0, requestId: 'manual-add',
+    operation: { kind: 'create-note' as const, title: 'My idea', body: 'A local thought', x: 120, y: 180 } }
+  const added = await store.explore(request, read, signal())
+  expect((await store.explore(request, read, signal())).case.notes).toHaveLength(1)
+  const note = added.case.notes?.[0]
+  if (!note) throw new Error('Missing manual note')
+  expect(note).toMatchObject({ source: 'manual', title: 'My idea', position: { x: 120, y: 180 } })
+  expect(note.sourceResultId).toBeUndefined()
+  await expect(store.explore({ ...request, requestId: 'stale' }, read, signal())).rejects.toMatchObject({ code: 'conflict' })
+  await store.explore({ ...input, expectedVersion: 1, requestId: 'manual-edit',
+    operation: { kind: 'edit-note', nodeId: note.id, title: 'Revised', body: 'Updated content' } }, read, signal())
+  expect((await store.read(input, read, signal())).case.notes?.[0]).toMatchObject({ title: 'Revised', body: 'Updated content' })
+  await expect(store.explore({ ...input, expectedVersion: 2, requestId: 'edit-canonical',
+    operation: { kind: 'edit-note', nodeId: `plan:${created.itemId}`, title: 'No', body: '' } }, read, signal()))
+    .rejects.toMatchObject({ code: 'invalid-reference' })
+  expect(await read()).toEqual(before)
+})
