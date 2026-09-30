@@ -1,8 +1,11 @@
 # Thinking Desk WP4：Agent 驱动的思考产物闭环
 
-> 日期：2026-09-30  
-> 实现基线：`codex/planning-ui-workspace@13f1de5f64c5d40af8902ec30984ae082a6618f6`  
-> 当前任务：在已经可显示、可持久探索的思考桌面上，第一次接入真实 LLM / Agent，并完成 **Think → Produce → Review → Commit → Drift** 的最小闭环。  
+> 日期：2026-09-30
+>
+> 实现基线：`codex/planning-ui-workspace@13f1de5f64c5d40af8902ec30984ae082a6618f6`
+>
+> 当前任务：在已经可显示、可持久探索的思考桌面上，第一次接入真实 LLM / Agent，并完成 **Think → Produce → Review → Commit → Drift** 的最小闭环。
+>
 > 重要：这不是“继续做 FC27 自动化”，也不是再次重构 Planning UI。FC27 只是 WP4 的第一个真实验收 Case。
 
 ## 0. 接手位置
@@ -44,7 +47,7 @@
 
 ### 当前 UI / Design Case 基线
 
-- [Planning UI 重构产品规格](2026-09-30-planning-ui-object-workspace-redesign.md)
+- [Planning UI 重构产品规格](https://github.com/changanhua/deepseek-harness/blob/master/docs/specs/2026-09-30-planning-ui-object-workspace-redesign.md)
 - [Planning UI PUI-WP1–3 实现记录](2026-09-30-planning-ui-implementation.md)
 - [FC27 Design Case WP0/WP1 实现记录](2026-09-30-fc27-sbc-design-case-implementation.md)
 - [Planning UI 入口](../../packages/client/ui-planning/src/client/index.ts)
@@ -294,6 +297,8 @@ Case owner 提供：
 
 Planning 或 Case 后续变化不能静默改变一个已经运行中的 run。
 
+Case owner 在持久化启动记录时冻结 Context Pack，并保证 `planning.revisionAtStart === planning.context.plan.revision === run.planningRevisionAtStart`。后续 Planning binding 必须使用这个精确 revision。Case snapshot 与 `caseVersionAtStart` 也必须来自同一次受版本保护的读取；禁止先保存版本号、稍后再读取内容拼装快照。启动恢复和并发处理见 [失败与并发](#12-失败与并发)。
+
 ---
 
 ## 5. WP4.2 — Native Thinking Agent
@@ -510,6 +515,12 @@ interface ThinkingRunRecord {
 
   context: ThinkingContextPack
 
+  startup: {
+    phase: 'prepared' | 'session-created' | 'planning-bound' | 'prompt-accepted' | 'blocked'
+    bindRequestId: string
+    promptRequestId: string
+  }
+
   result?: ThinkingResultRecord
 }
 
@@ -534,6 +545,10 @@ interface ThinkingResultRecord {
 - 写入有 CAS / idempotency；
 - restart 后 run/result 仍可读；
 - 不能把完整 Session transcript 复制进 Case storage。
+
+`startup` 只记录跨 owner 启动步骤的恢复进度，不接管 native Agent 的运行状态。owner 还须保存对应的精确 binding / prompt 请求及已确认回执；结果未知时保留原请求，具体恢复规则见 [失败与并发](#12-失败与并发)。
+
+所有人工应用动作都必须指向用户实际审阅的 `resultId + resultVersion`，并由 owner 校验。新 Result 版本不能改变旧版本已提交的 Proposal 或待恢复操作；保留仍被产物或恢复记录引用的版本。`applied.planningProposalId` 是已关联结果，不能代替 [Proposal 提交恢复记录](#proposal-提交与恢复)。
 
 ---
 
@@ -655,6 +670,17 @@ operations     = Agent candidate
 
 保持现有 Proposal draft / generation 合同所需字段，复用当前 canonical revision，不自行发明另一种 Proposal store。
 
+### Proposal 提交与恢复
+
+Case owner 与 Planning 分别持久化，不能把“创建 Proposal → 回写 `planningProposalId`”视为一个原子写入。使用现有 [Planning receipt](../../packages/planning/planning-local/src/store.ts) 实现恢复：
+
+1. 用户提交精确 `resultId + resultVersion` 后，Case owner 先持久化提交记录，固定 `proposalId`、`requestId`、完整 `PlanningCommand`（包括 `expectedBoardVersion`）及其内容摘要。首次调用 Planning 前必须完成这一步。
+2. 调用 Planning 创建 pending Proposal；成功后将回执和 Proposal identity 回写提交记录及对应 Result 版本。并发点击复用同一提交记录。
+3. 响应丢失、进程中断或 Case 回写失败后，先以原始命令查询或重放 Planning receipt，再补记关联。不能生成新 Proposal，也不能修改原 `requestId` 对应的命令。
+4. 只有确定原尝试未提交且返回 Board CAS conflict，才可在核对 Planning revision 仍一致后持久化新尝试：保留 `proposalId` 与 delta，使用新的 `requestId` 和 Board version，并保留原尝试。结果未知不能走此分支。
+
+恢复已提交操作先于首次提交的 stale 检查。如果 Proposal 已被采纳、驳回或 Planning head 已前进，恢复仍应关联原 Proposal 并显示其当前状态，不能据此创建替代提议。只允许人工 Remote 动作进入提交路径，Thinking model tools 不暴露该能力。
+
 ### stale
 
 当用户准备“提交 Planning 提议”时，如果：
@@ -678,7 +704,7 @@ UI 明确显示：
 - 保存 Design Context；
 - 重新启动一次基于当前 revision 的 Thinking Run。
 
-默认不把 stale candidate 重写到新 revision。
+首次提交在 Host 侧拒绝 stale candidate，不只禁用 UI 按钮。不得把候选重写到新 revision。已提交但尚未回写关联的操作按 [Proposal 提交与恢复](#proposal-提交与恢复) 处理。
 
 ### adoption
 
@@ -692,6 +718,17 @@ Proposal 创建后：
 - 返回 Case 后显示已有 drift。
 
 不要在 Thinking Desk 内复制一套 adoption UI，除非只是导航到现有 Proposal review。
+
+### 补齐现有 Proposal review 的结构化差异
+
+扩展 [PlanningPanels](../../packages/client/ui-planning/src/client/PlanningPanels.tsx) 的现有审阅区域。当前操作摘要不能代替 delta diff；在人工采纳前，页面必须展示精确 Proposal generation 的以下内容：
+
+- state entry：新增后的类别、正文和来源；更新前后的类别、正文和来源；删除前的完整内容。
+- Focus：新建内容，或 title / objective / status 的前后差异及 `expectedVersion`。
+- resource link：增删关系的 subject、resource identity 与 role，不能只显示 link ID。
+- Proposal 的 subject、base revision、origin、evidence，以及当前是否 stale。
+
+差异基于 Proposal 的精确 base 和 operations 构建，不得拿最新状态冒充旧值。Focus / resource link 的前值若不在 immutable Plan revision 中，由人工提交路径从受 Board CAS 保护的快照保留有界审阅材料，并绑定 Proposal generation / command digest。缺失前值时明确显示不可完整审阅并阻止采纳；不得向 Planning core 塞入 Thinking 专用字段。精确代次采纳和现有 stale rejection 保持有效。
 
 ---
 
@@ -752,25 +789,28 @@ Preset: Thinking Desk
 
 ### Session 创建 / binding / prompt 是多步事务，不是假装原子
 
-建议顺序：
+启动顺序：
 
-1. 预分配 `sessionId` / `runId`。
-2. native Session create（thinking-desk preset）。
-3. Planning `bind-session` 到 run 启动时 current revision。
-4. Case owner 创建 run binding / frozen context。
-5. 取得 native Session client face。
-6. 发送 kickoff prompt。
-7. 打开 Session。
+1. 在用户显式开始后，Case owner 先持久化 `prepared` 启动记录：Workspace、subject、`sessionId` / `runId`、preset、question、冻结 Context Pack，以及稳定的 binding / kickoff request identities。此时尚不允许 Thinking tools 读取或提交该 run。
+2. 通过 native Session create 创建或恢复同一 `sessionId`，核对真实 Workspace 和 preset identity 后记录 `session-created`。
+3. 使用准备记录中的精确 revision 执行 Planning `bind-session`，核对 subject / Session / baseRevision 后记录 `planning-bound`。owner 此时才允许相符的 Agent / Session 调用 Thinking tools。
+4. 取得 native Session client face，发送持久化的同一 kickoff 请求；显式传入保存的 `promptRequestId`，不使用 wrapper 每次生成新 ID 的默认行为。确认 native Session 接受后记录 `prompt-accepted`。
+5. 打开 Session；导航失败只重试导航，不重新发送 prompt。
 
-失败时：
+必须保持：
 
-- 已创建 Session 不伪装成不存在；
-- Planning binding 已成功则保留；
-- run 若尚未 prompt，可标 `pending/retryable`；
-- 使用相同 request identity 重试同一步，而不是重复创建 Session；
-- 不因为最后一步失败就删除 canonical provenance。
+```text
+binding.baseRevision
+  = run.planningRevisionAtStart
+  = context.planning.revisionAtStart
+  = context.planning.context.plan.revision
+```
 
-沿用当前 Planning Session start 的 idempotency / conflict 思路。
+刷新或重启后从 Case owner 枚举未完成启动记录，核对 native Session / Planning 回执并继续原步骤；不能仅依赖 Client 内存中的 Map。成功副作用与进度回写之间发生中断时，使用原身份和精确请求恢复。Session create、Planning binding、prompt 各自成功后不因后续步骤失败而删除。
+
+Planning revision 在 binding 前变化时，把该启动标记为 `blocked` 并停止发送 prompt。用户可显式开始新 run；已存在 Session 与 provenance 保留。仅 Board version 冲突且确认原 binding 未提交、目标 revision 未变时，可以持久化新的 binding 尝试和 request ID；不能重绑已经成功的 Session。binding 成功后的 Planning / Case 变化按 stale 处理，不能重新读取 current context 替换输入。
+
+prompt 结果未知时，核对或重放 native Session 已有的同一 request identity 与完整请求，不能启动第二次模型请求。重试前必须确认绑定身份及 [Thinking 权限限制](#13-thinking-agent-preset-的安全边界) 已生效。
 
 ### Case 变化
 
@@ -809,6 +849,16 @@ UI显示 stale result。
 - 可选加入明确只读研究工具。
 
 它不能默认获得能造成外部副作用的能力。
+
+### 全局工具与上下文隔离
+
+专用 preset 本身不是能力白名单。[personal-planning bundle](../../packages/bundle/personal-planning/cordis.patch.yml) 在 Host 注册 [tool-planning](../../packages/planning/tool-planning/src/index.ts)，Thinking Session 可以继承全局 `planning_update`；现有 Planning 权限允许绑定 Session 创建 Proposal。这违反本方案的“人工提交后才创建 Proposal”，必须在实际组合中封住。
+
+在 Thinking preset 的 scope 使用现有 [tools.restrict](../../packages/core/tools/src/index.ts) 限制全局工具，按最小允许集合配置；Thinking tools 在该 preset 注册。该 API 只过滤全局工具，因此也必须核对 preset 自身注册的完整工具集合。限制同时作用于目录展示和实际调用，包括 PTC 间接调用；不能仅依靠 prompt 禁令或隐藏按钮。配置失败时停止 kickoff。
+
+同时调整 `tool-planning` 的全局 `system-prompt/assemble` hook：Thinking Session 的 Planning 输入只来自冻结 Context Pack，不能额外注入实时 Planning context 或鼓励 `planning_update` 的操作指导。普通 Planning Session 保留原有行为。Thinking 身份和限制必须由可信 Session/run 绑定解析，不能由模型参数声明。
+
+Thinking Session 的结果读取与提交必须核对当前真实 preset / scope；如果用户切换到具有执行能力的 preset，应停用原 Thinking Run 的工具访问与结果提交，保留已有候选供人工审阅。恢复运行须重新满足本节限制。
 
 如果 DSH 当前 tooling 无法在不暴露写工具的情况下提供代码阅读，那么：
 
@@ -945,7 +995,11 @@ caseBaseRevision != current Planning head
 - Design Context persistence；
 - exploration note apply；
 - restart persistence；
-- capacity / byte limits。
+- capacity / byte limits；
+- Proposal 已提交而 Case 回写失败后的重启恢复，包含 Proposal 已采纳或驳回的情况；
+- 同一 Result 版本重复或并发提交只关联一个 Proposal，命令不同不能复用 request ID；
+- 启动每一步完成但回执尚未回写时刷新 / 重启，恢复相同 Session、binding 与 kickoff；
+- binding 前 revision 变化时不发送 prompt，binding 后变化时 Context Pack 保持原快照。
 
 ### Client
 
@@ -956,7 +1010,10 @@ caseBaseRevision != current Planning head
 - result 三个独立 action；
 - stale result copy；
 - 不把 Agent candidate 渲染成 canonical；
-- 返回 Session / Planning / Case 后状态保持。
+- 返回 Session / Planning / Case 后状态保持；
+- state entry 删除与类别变化、Focus objective 变化、资源关系删除的完整前后差异；
+- 精确 Result / Proposal generation 审阅，缺失前值时不可采纳；
+- Proposal 恢复与首次提交的 stale 提示分开，恢复不重复创建提议。
 
 ### Session preset
 
@@ -964,7 +1021,10 @@ caseBaseRevision != current Planning head
 
 - `agentPreset` Client create 透传不改变旧调用；
 - thinking-desk Session 的 header / list projection 保留 preset identity；
-- preset 不暴露被明确排除的执行工具。
+- 在加载完整 personal-planning Host 组合时，preset 不暴露被排除的工具，直接调用与 PTC 间接调用也被拒绝，pending Proposal 数量不变；
+- Planning head 变化后重新组装 prompt，不向 Thinking Session 注入动态 Planning context 或写工具指导；
+- 权限配置失败时不发送 kickoff，preset 切换后原 run 不再接受工具读写；
+- 普通 Planning Session 的工具、上下文及 Session create 行为不回退。
 
 ### Composed Web
 
@@ -1003,7 +1063,9 @@ Plan → Case → start thinking Session
 - exploration notes；
 - Design Context；
 - Case → Thinking context projection；
-- Session/run binding。
+- Session/run binding；
+- durable 启动进度、精确请求与恢复回执；
+- 人工 Proposal 提交记录及受引用 Result 版本的保留。
 
 如果继续增大到明显不适合 Remote 包，再提取小 owner package；不要在开始 WP4 前预先大重构。
 
@@ -1027,6 +1089,8 @@ packages/planning/tool-thinking-case/
 
 增加 `thinking-desk` preset，遵循现有 agent-presets 组装规则。
 
+同时修改 personal-planning 组合与 `tool-planning` 的 scoped policy / prompt 注入，使 [权限限制](#13-thinking-agent-preset-的安全边界) 在完整 Host 中生效。复用已有工具限制机制，不重写工具 runtime。
+
 ### Session Client
 
 仅做通用 `agentPreset?: string` create 透传。
@@ -1037,6 +1101,7 @@ packages/planning/tool-thinking-case/
 
 - `PlanningDesignCasePage.tsx`
 - `SbcDesignCase.tsx`
+- `PlanningPanels.tsx` 中现有 Proposal review 的完整 delta diff
 - controller / contract / locale / CSS
 
 可拆：
@@ -1086,6 +1151,8 @@ WP4 不做：
 - ExplorationNote
 - DesignContext
 - run/session scope
+- durable 启动记录、冻结版本一致性、恢复状态与精确请求
+- 精确 Result 版本和 Proposal 提交恢复记录
 - tests
 
 此阶段不需要真实模型。
@@ -1097,6 +1164,7 @@ WP4 不做：
 - `thinking_context`
 - `thinking_submit_result`
 - thinking-desk preset
+- Host 全局工具的 scoped restriction 与 Thinking Session 的 Planning prompt 隔离
 - Session create preset passthrough
 
 先用 deterministic Agent / tool tests 验证。
@@ -1107,7 +1175,7 @@ WP4 不做：
 
 - 与 Agent 思考；
 - question；
-- native Session create + binding + kickoff；
+- 从 durable 启动记录恢复 native Session create + binding + kickoff；
 - Result panel；
 - Apply exploration；
 - Save Design Context。
@@ -1117,8 +1185,8 @@ WP4 不做：
 实现：
 
 - candidate → existing Planning Proposal；
-- stale blocking；
-- navigation to existing review；
+- 跨 owner receipt 恢复、并发提交去重与 Host stale blocking；
+- 完整 delta diff 与到现有 Proposal review 的导航；
 - adoption 后 drift；
 - second-run Context flywheel。
 
@@ -1145,5 +1213,9 @@ WP4 不做：
 13. 哪个测试证明人工 adoption 后 Case drift。
 14. 哪个测试证明第二次 Agent 能继承第一次保存的 Design Context。
 15. 是否触碰 FC27 浏览器执行；正确结果应该是“没有”。
+16. 哪些证据证明完整 Host 组合中的全局写工具实际不可调用，且没有动态 Planning 上下文注入。
+17. Proposal 已提交而 Case 回写中断后如何恢复，为什么不会重复创建。
+18. 刷新 / 重启后如何恢复同一启动过程，以及如何保证 binding、run 与 Context Pack 的 revision 一致。
+19. 人工采纳前如何完整展示每种 delta 的前后差异与精确代次。
 
 如果实现中发现现有 Session / preset / tool scope 机制与本文某个具体 API 名不同，使用仓库真实 seam；不要为了匹配文档另造平行 runtime。数据所有权、显式触发、候选与 canonical 分离、人工 Proposal adoption 这些不变量优先。
