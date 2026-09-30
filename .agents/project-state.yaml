@@ -1,0 +1,183 @@
+schema_version: 1
+updated_at: "2026-09-30T12:04:00+08:00"
+
+project:
+  name: deepseek-harness-personal
+  repository: changanhua/deepseek-harness
+  default_branch: master
+  purpose: >-
+    Repository-side project-state baseline for the personal DSH fork. Read this file first,
+    then verify the live Git HEAD before making implementation claims.
+  truth_policy:
+    - Repository code and durable domain data outrank conversational summaries.
+    - This file records a reviewed point-in-time baseline; it is not a substitute for verifying HEAD.
+    - Design-only items must never be promoted to implemented status without repository evidence.
+
+baseline:
+  branch: master
+  observed_code_head: "0ea5089ace96c41767f5f9d00dd2c4483e4551d7"
+  observed_code_head_title: "merge: integrate planning and downstream maintenance into master"
+  previous_baseline_commit: "73e82d0f95bb1e7dfdeef84310fd1ac6282d71a2"
+  date: "2026-09-30"
+  note: >-
+    observed_code_head is the reviewed code state before this metadata-only baseline update commit;
+    the baseline document commit itself is not a product-code delta.
+  landmarks:
+    planning_workbench_implementation:
+      commit: "cc15e46003fc79e62cfe69e175eff4dd8c8115bc"
+      title: "feat(planning): add personal planning workbench"
+    planning_fixture_alignment:
+      commit: "ee35ae9398f9e2bf4a848822390122ed30372db9"
+      title: "test(planning): align source fixture with contract"
+    integration_merge:
+      commit: "0ea5089ace96c41767f5f9d00dd2c4483e4551d7"
+      title: "merge: integrate planning and downstream maintenance into master"
+
+upstream:
+  official_repository: deepseek-ai/deepseek-harness
+  official_branch: master
+  supported_base_commit: "c291e7961a515f6d7af9304e7fd1d257929aef26"
+  observed_upstream_head_commit: "21638c56315ae6a2b552d6091945d3144c9af32e"
+  metadata_revalidated_at: "2026-09-28T19:45:01.6600797+08:00"
+  authority_path: upstream-base.json
+  caution: >-
+    upstream-base.json recordedPersonalHeadSha is upstream-sync evidence from its last
+    revalidation and is not the current personal-fork baseline HEAD.
+
+architecture:
+  planning:
+    status: implemented
+    role: >-
+      Durable canonical project-intent layer across Sessions. Planning owns project-local
+      cards, immutable revisions, pending proposal generations, manual lanes/order,
+      estimates, dependencies, reviews, provenance, and durable Delivery handoff links.
+    current_model:
+      canonical_revision_fields:
+        - title
+        - intent
+        - scope
+        - acceptance
+        - sources
+        - estimate
+        - reviewAt
+      durable_board:
+        - items
+        - lanes
+        - dependencies
+        - reviews
+        - proposals
+        - handoffs
+        - events
+      proposal_semantics:
+        - Proposals retain exact generations and a baseRevisionId.
+        - Acceptance targets an exact proposal generation.
+        - A stale proposal stays visible but cannot silently overwrite the current head.
+      workbench:
+        - Project-scoped Planning Web workbench is implemented.
+        - It renders current plans, pending proposals, sources, immutable revisions, reviews, dependencies, and Delivery projections.
+        - Captured Session sources can reopen the original Session; captured Content references can read their exact stored version.
+        - Ordinary conversation can load the packaged planning-maintenance Skill and maintain one proposal across turns.
+      execution_boundary:
+        - Planning never turns a plan card or proposal acceptance into execution authority.
+        - Delivery and Queue remain the owners of approval, dispatch, execution, verification, evidence, and human acceptance.
+        - Planning reads linked Delivery projections/evidence and does not persist a competing execution-state copy.
+      source_boundary:
+        - Verified Session-event sources and captured Content versions provide provenance, not authority.
+        - Manual/link sources remain explicitly unverified.
+    current_gaps_vs_next_workspace_design:
+      status: not_implemented_in_core_schema
+      items:
+        - Stable per-entry PlanningStateEntry identities for objective/accepted/open facts.
+        - PlanningFocus as a first-class durable local work target.
+        - PlanningSubjectRef that uniformly addresses a whole Plan or one Focus.
+        - General extensible ResourceRef/ResourceLink for SBC case, browser run, solver result, artifact, and future thinking workspace.
+        - Operation-level ProposedDelta; current Proposal generations still propose a complete planning draft snapshot.
+        - Session binding to a first-class Planning subject plus base revision as a Planning domain contract.
+    authority_paths:
+      - .agents/notes/implemented/architecture/2026-09-27-project-planning-and-execution-boundaries.zh.md
+      - docs/subsystems/planning.zh.md
+      - packages/planning/planning/src/schema.ts
+      - packages/planning/planning-local/src/spec.ts
+      - packages/client/ui-planning/src/client/PlanningWorkbench.tsx
+      - packages/bundle/personal-planning/README.zh.md
+      - apps/web/tests/planning-conversation.e2e.ts
+      - apps/web/tests/planning-cycle-live.e2e.ts
+
+  thinking_desktop:
+    status: design_only
+    intended_role: >-
+      Non-destructive cognitive workspace over external work objects. It should own temporary
+      representation, context, selection/attention, hypotheses, relations, branches/ghosts,
+      views, and transformations; it must not become a second canonical Planning store.
+    planning_relationship:
+      - Planning remains the canonical commit boundary for durable work state.
+      - Thinking Desktop may later mount a Plan or Focus by reference.
+      - Exploration should produce a proposal/delta for explicit adoption instead of mutating Planning silently.
+      - External systems continue to own external reality; the desktop references rather than duplicates it.
+    design_principle: "Reference -> Transform -> Propose"
+    implementation_note: >-
+      Do not claim Thinking Desktop integration is implemented merely because Planning has
+      proposals, sources, or a workbench UI.
+
+  browser_platform:
+    status: implemented_personal_platform
+    role: >-
+      Personal browser extension and BrowserTask capabilities provide task-scoped page evidence,
+      bounded browser operations, write recovery, lifecycle reconnection, and durable task acceptance.
+    authority_paths:
+      - FORK-DIVERGENCE.md
+      - docs/subsystems/browser.zh.md
+      - packages/mcp/browser-extension-mcp
+      - apps/chrome-extension
+
+  task_queue:
+    status: implemented
+    role: durable cross-session task execution and recovery owner
+    authority_path: FORK-DIVERGENCE.md
+
+  project_memory:
+    status: implemented
+    role: source-backed project memory with explicit human acceptance
+    authority_path: FORK-DIVERGENCE.md
+
+  knowledge:
+    status: implemented
+    role: source-grounded editable knowledge libraries with durable execution/recovery and immutable releases
+    authority_path: FORK-DIVERGENCE.md
+
+integration_boundaries:
+  fc27_sbc:
+    status: domain_external_to_planning
+    rule: >-
+      SBC requirements, player identities, chemistry, inventory, solver outputs, browser slots,
+      prices, and transaction state belong to SBC/browser/solver domains, not Planning core.
+    planning_use: >-
+      Planning may organize the durable intent and later reference SBC/browser/solver evidence,
+      but domain state must not be copied into Planning merely to support the case.
+
+next_design_direction:
+  priority: planning_workspace_bridge
+  goal: >-
+    Evolve the current Planning workbench toward a durable canonical work-object contract that
+    can support the SBC case and later mount into Thinking Desktop without introducing another truth store.
+  preserve:
+    - Existing immutable Revision and Proposal-generation model.
+    - Explicit proposal adoption.
+    - CAS/version conflict rejection.
+    - Provenance and exact source identities.
+    - Delivery/Queue/Memory/Knowledge fact ownership.
+  add_only_when_implemented_and_evidenced:
+    - stable_state_entry_identity
+    - focus
+    - subject_ref
+    - extensible_resource_ref
+    - operation_level_delta
+    - session_subject_binding
+
+authority:
+  project_state: .agents/project-state.yaml
+  fork_divergence: FORK-DIVERGENCE.md
+  upstream_sync_state: upstream-base.json
+  core_patch_registry: core-patches.json
+  planning_architecture_note: .agents/notes/implemented/architecture/2026-09-27-project-planning-and-execution-boundaries.zh.md
+  planning_subsystem_doc: docs/subsystems/planning.zh.md
