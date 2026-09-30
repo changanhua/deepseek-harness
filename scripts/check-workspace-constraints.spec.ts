@@ -149,7 +149,7 @@ describe('package payload constraints', () => {
     expect(checkWorkspaceManifest({ dir, manifest }, publicRegistry)).toEqual([])
     expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, private: true } }, publicRegistry))
       .toEqual(expect.arrayContaining([expect.stringMatching(/must not set.*private/)]))
-    expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, publishConfig: undefined } }, publicRegistry))
+    expect(checkWorkspaceManifest({ dir, manifest: { name: manifest.name, repository: manifest.repository } }, publicRegistry))
       .toEqual(expect.arrayContaining([expect.stringMatching(/publishConfig.access/)]))
     expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, name: '@deepseek-ai/dsh-side-effect-safety' } }, publicRegistry))
       .toEqual(expect.arrayContaining([expect.stringMatching(/must use @changanhua/)]))
