@@ -49,6 +49,8 @@ Traversal returns 403 rather than an error page. An absent or non-file target in
 
 -----
 
+Before rendering an index response, the plugin waits for the Loader tree to settle so the injected browser module and Remote rosters are complete.
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 

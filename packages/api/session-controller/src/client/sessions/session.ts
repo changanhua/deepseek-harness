@@ -604,6 +604,7 @@ export class Session implements SessionFace {
 
   /** @param generation - openGeneration at launch; stale passes cannot publish after replacement. */
   private async doOpen(generation: number): Promise<void> {
+    console.debug('[dsh startup] observe/follow', { generation, state: 'opening' })
     this.openState = 'loading'
     this.openError = null
     this.notifier.markDirty()
@@ -621,6 +622,7 @@ export class Session implements SessionFace {
       await events.open({ maxMessages: PAGE_MESSAGES })
       if (generation !== this.openGeneration || this.events !== events) return
       this.openState = 'open'
+      console.debug('[dsh startup] observe/follow snapshot', { generation, state: 'open' })
     } catch (error) {
       if (generation !== this.openGeneration || this.events !== events) return
       if (!isRemoteFailure(error)) throw error

@@ -25,7 +25,7 @@ Browsers reach the web GUI over HTTP through `dsh-host-webserver`: a `node:http`
 <a id="use-this-package"></a>
 ## Use this package
 
-Compose the webserver as the HTTP transport of a browser-facing host, then let the feature plugins claim their routes. Activation listens immediately; registration order carries no request-facing semantics because named routes compose to be disjoint.
+Compose the webserver as the HTTP transport of a browser-facing host, then let the feature plugins claim their routes. Activation listens immediately, but the first HTTP requests wait for the initial Loader tree to settle before routing. This prevents a cold navigation from receiving a 404 while dependent routes are still registering.
 
 ### Minimal configuration
 

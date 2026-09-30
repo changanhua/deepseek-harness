@@ -16,6 +16,7 @@ import type { ServerResponse } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -118,6 +119,9 @@ export function apply(ctx: Context, config: Config): void {
   // relative asset URLs would resolve under the request directory, so the
   // served form anchors them at the site root ahead of every URL-bearing tag.
   const renderIndex = async (): Promise<string> => {
+    // The listener and this fallback activate before sibling plugins finish.
+    // Never freeze an incomplete module/Remote roster into a browser document.
+    await ctx.get('loader')?.await()
     const body = ctx.webServer.renderIndex(await readFile(distIndex, 'utf8'))
     return body.replace(/<head(?:\s[^>]*)?>/i, open => `${open}<base href="/">`)
   }

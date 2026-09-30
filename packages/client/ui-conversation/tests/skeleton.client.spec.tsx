@@ -512,14 +512,22 @@ describe('ConversationRoot resident composer', () => {
     expect(b.view.queryByText('探索未至之境')).toBeNull()
   })
 
-  it('settling phase: a summary that does not prove the session blank hides the composer while it opens', () => {
-    const b = mount(sessionSnapshotOf({ blank: true, openState: 'loading' }))
+  it.each(['cold', 'loading', 'error'] as const)('keeps the Hero visible in %s before the first content snapshot', (openState) => {
+    const b = mount(sessionSnapshotOf({ blank: true, openState }))
     const root = b.view.container.querySelector('[data-phase]')
-    expect(root?.getAttribute('data-phase')).toBe('settling')
-    expect(b.view.queryByTestId('hero-headline')).toBeNull()
+    expect(root?.getAttribute('data-phase')).toBe('hero')
+    expect(b.view.getByText('探索未至之境')).toBeTruthy()
   })
 
-  it('settling phase: a session the list has no row for settles conservatively', () => {
+  it('shows an explicit opening error alongside the resident Hero', () => {
+    const b = mount(sessionSnapshotOf({ blank: true, openState: 'error',
+      openError: new RemoteError('gateway/internal', 'Snapshot unavailable', {}),
+    }))
+    expect(b.view.getByRole('alert').textContent).toBe('Snapshot unavailable')
+    expect(b.view.getByText('探索未至之境')).toBeTruthy()
+  })
+
+  it('keeps the Hero visible even before the selected session summary arrives', () => {
     const b = mount(
       sessionSnapshotOf({ blank: true, openState: 'loading' }),
       undefined,
@@ -527,7 +535,7 @@ describe('ConversationRoot resident composer', () => {
       { omitSummaryRow: true },
     )
     const root = b.view.container.querySelector('[data-phase]')
-    expect(root?.getAttribute('data-phase')).toBe('settling')
+    expect(root?.getAttribute('data-phase')).toBe('hero')
   })
 
   it('startup auto-selection: a summary-proven blank session opens straight into the hero', () => {

@@ -6,10 +6,12 @@ import type {
   ISessions,
   SessionListState,
 } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionCreateError } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {
   IWorkspaces, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
+import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 
 /** Workspace archive and directory operations consumed by Client UI domains. */
@@ -107,7 +109,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     ctx.effect(() => this.watchNavigation(), 'ui-workspace: Workspace navigation policy')
   }
 
-  async connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId> {
+  async connectWorkspace(workspaceId: WorkspaceId, requestedSessionId?: SessionId): Promise<SessionId> {
     const workspace = this.workspaces.list.getSnapshot().items
       .find(item => item.workspaceId === workspaceId)
     if (workspace === undefined) {
@@ -125,7 +127,9 @@ class UiWorkspaceService extends Service implements UiWorkspace {
         && !archived.includes(summary.id)) return summary.id
     }
 
-    const attempt = this.sessions.create({ workspaceId })
+    const attempt = this.sessions.create({ workspaceId,
+      ...(requestedSessionId === undefined ? {} : { sessionId: requestedSessionId }),
+    })
       .finally(() => { this.connecting.delete(workspaceId) })
     this.connecting.set(workspaceId, attempt)
     return attempt
@@ -196,10 +200,15 @@ class UiWorkspaceService extends Service implements UiWorkspace {
 
   private watchNavigation(): () => void {
     let initial: 'waiting' | 'connecting' | 'done' = 'waiting'
+    // Host create idempotently adopts a caller-owned id after a lost response.
+    let identity: { workspaceId: WorkspaceId; sessionId: SessionId } | undefined
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let failures = 0
     const reconcile = (): void => {
       if (this.lifetime.signal.aborted) return
       if (this.clearArchivedCurrent()) return
       if (initial !== 'waiting') return
+      if (retryTimer !== undefined) return
       const workspace = this.workspaces.list.getSnapshot()
       const sessions = this.sessions.list.getSnapshot()
       if (workspace.phase !== 'ready' || sessions.phase !== 'ready') return
@@ -212,19 +221,35 @@ class UiWorkspaceService extends Service implements UiWorkspace {
         initial = 'done'
         return
       }
+      if (identity?.workspaceId !== target) {
+        identity = { workspaceId: target, sessionId: SessionId(`session-${randomUUID()}`) }
+        failures = 0
+      }
       initial = 'connecting'
-      void this.connectWorkspace(target).then(
+      console.debug('[dsh startup] session auto-selection', { state: initial })
+      void this.connectWorkspace(target, identity.sessionId).then(
         (sessionId) => {
           if (this.lifetime.signal.aborted) return
           if (this.sessions.list.getSnapshot().current === undefined) {
             this.sessions.open(sessionId)
           }
           initial = 'done'
+          console.debug('[dsh startup] session auto-selection', { state: initial })
         },
         (reason: unknown) => {
           if (this.lifetime.signal.aborted) return
           initial = 'waiting'
           console.warn('initial workspace selection failed:', reason)
+          // Business failures require a changed baseline/user action. Only
+          // transport/internal failures get a bounded, lifetime-owned retry.
+          if (reason instanceof Error && reason.name === 'SessionCreateError'
+            && (reason as Partial<SessionCreateError>).rpcError?.code === 'gateway/internal' && failures < 5) {
+            const delay = Math.min(250 * 2 ** failures++, 4000)
+            retryTimer = setTimeout(() => {
+              retryTimer = undefined
+              reconcile()
+            }, delay)
+          }
         },
       )
     }
@@ -233,6 +258,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     reconcile()
     return () => {
       this.lifetime.abort()
+      clearTimeout(retryTimer)
       disposeSessions()
       disposeWorkspaces()
     }

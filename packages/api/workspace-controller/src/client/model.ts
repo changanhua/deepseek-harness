@@ -175,6 +175,7 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
    * @param baseline - complete Workspace and archive projection.
    */
   replaceBaseline(baseline: WorkspaceBaseline): void {
+    if (this.phase === 'pending') console.debug('[dsh startup] workspace connection', { workspaces: baseline.items.length })
     this.orderFrameGeneration++
     this.installViews(baseline.items)
     this.installArchived(baseline.archivedSessionIds)

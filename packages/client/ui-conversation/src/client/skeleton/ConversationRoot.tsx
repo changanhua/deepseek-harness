@@ -143,7 +143,6 @@ export function ConversationRoot({
   const openState = session?.openState
   const inputState = useInput(s => s)
   const cwd = useSessions(s => sessionId === undefined ? undefined : s.byId[sessionId]?.cwd)
-  const summaryBlank = useSessions(s => sessionId === undefined ? undefined : s.byId[sessionId]?.blank)
   const workspaces = useWorkspaces(s => s)
   // A plugin this package cannot import (ui-model-selection) says this session cannot
   // send; its reason is already localized by whoever raised it.
@@ -251,26 +250,9 @@ export function ConversationRoot({
     }
   }, [pendingWorkspaceId, sessionWorkspace?.workspaceId, workspaces.phase, pendingWorkspace])
 
-  // While a session is still replaying (loading + blank) the hero/docked
-  // choice is unknowable — render the composer hidden instead of flashing
-  // the centered hero and snapping to the docked bar (or vice versa).
-  // Exemption: a session the list summary already proves blank can only
-  // land on the hero, so hiding would blank the column for the whole
-  // history round-trip (the startup auto-selection flash) for nothing.
-  // The exemption is deliberately open-state-wide, not loading-only: a
-  // summary-blank session is the hero before its open starts (`cold`) and
-  // after one fails (`error`) for the same reason — there is no history.
-  // A restored continuable subagent also stays settled until its eagerly
-  // loaded parent catalog establishes availability. This keeps the composer
-  // hidden instead of briefly rendering the parent-offline takeover.
-  const parentAvailabilityPending = session?.subagent?.address.mode === 'continuable'
-    && session.subagent.parentAvailable === undefined
-  const settling = sessionId !== undefined && (
-    (shellPhase === 'blank' && openState === 'loading' && summaryBlank !== true)
-    || parentAvailabilityPending
-  )
-  const hero = sessionId === undefined
-    || (shellPhase === 'blank' && (openState === 'open' || summaryBlank === true))
+  // The first snapshot, not a list hint, establishes conversation content.
+  // Keep the resident Hero visible across cold/loading/error states.
+  const hero = sessionId === undefined || shellPhase === 'blank'
   const zone: InputZone | undefined =
     session === undefined || inputState === undefined ? undefined : { session, input: inputState }
 
@@ -352,7 +334,10 @@ export function ConversationRoot({
     </div>
   )
 
-  const phase = settling ? 'settling' : hero ? 'hero' : 'active'
+  const phase = hero ? 'hero' : 'active'
+  useEffect(() => {
+    console.debug('[dsh startup] conversation phase', { phase, openState, selected: sessionId !== undefined })
+  }, [phase, openState, sessionId])
   const composer = renderSlotChain(
     'conversation.composer',
     { sessionId, session, pendingInteraction },
@@ -370,7 +355,9 @@ export function ConversationRoot({
   )
 
   return (
-    <div ref={rootResizeRef} className={css.root} data-phase={phase}>
+    <div ref={rootResizeRef} className={css.root} data-phase={phase}
+      data-startup-state={openState === 'error' ? 'error' : hero ? 'hero' : 'conversation'}>
+      {session?.openError != null && <div role="alert">{session.openError.message}</div>}
       {sessionId === undefined ? null : renderSlot('conversation.session.header', {})}
       <div className={css.body}>
         <div className={css.scrollBody} data-conversation-scroll="">

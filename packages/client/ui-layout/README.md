@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 This package provides the Web GUI's three-column AppFrame, edge-column widths, and `ctx.layout` presentation control. The right column concedes space before the center; its occupant renders fullscreen while the frame retains the wide-screen track underneath. The theme presenter owns color scheme, alias tokens, content font size, and document metadata. Layout state resets on reload.
 
+While the Conversation contribution is unavailable during startup, the center column shows a localized boot status instead of an empty frame.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

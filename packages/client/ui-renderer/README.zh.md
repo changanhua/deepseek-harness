@@ -49,6 +49,8 @@ kind: "package-reference"
 
 插件在 `slots`、`sessions` 与 `layout` 就绪后激活；它安装 `createSlotRenderer()` 并 reflect `uiRenderer` 服务。`mountApp` 会查找启动内核的 `[data-dsh-boot]` 元素：存在时经 `BootHandoff`（一个保留加载 DOM 的单帧透传）hydrate，否则创建全新的根节点并同步提交渲染。
 
+Slot 失败会显示本地化的可见警告，不再输出空元素。应用级错误边界也会显示超出 slot 隔离范围的装配错误。渲染器挂载使用 `[dsh startup]` 前缀记录诊断日志。
+
 ### Slot 绑定
 
 `createSlotRenderer` 把 slot 注册表连接到 React：条目列表成为响应式 source，每个 outlet 经已安装的渲染器渲染。业务插件通过带类型的 slot `hooks` 传递裸 observable source；渲染器经 uSES 适配器在 outlet 处完成绑定。

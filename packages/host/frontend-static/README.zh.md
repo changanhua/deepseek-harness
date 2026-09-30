@@ -49,6 +49,8 @@ kind: "package-reference"
 
 -----
 
+渲染首页响应前，本插件会等待 Loader 树完成装配，保证注入浏览器的模块与 Remote 名册完整。
+
 <a id="understand-the-implementation"></a>
 ## 理解实现
 

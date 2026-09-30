@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 `dsh-client-web` boots the web GUI: it loads the client module system from the Host-provided boot graph, then activates every client plugin before the application mounts, so the full UI appears only when every plugin is up. A framework-free boot page reports per-entry status, so a failing bundle or plugin stays visible instead of a blank screen. It also defines the shared module table (`PLATFORM_MODULES`) that every dynamic bundle resolves its externals against. The model never sees this package.
 
+The served document paints a BootPage placeholder before the entry module runs; `BootPage` replaces it before renderer handoff. Minimal `[dsh startup]` diagnostics cover boot, renderer mount, Workspace baseline, Session auto-selection, opening follow snapshot, and conversation phase without recording message content.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

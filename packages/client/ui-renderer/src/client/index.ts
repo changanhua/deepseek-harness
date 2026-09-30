@@ -3,7 +3,7 @@
  * dependencies activate and exposes the mount operation used by the web boot
  * kernel after the complete client roster settles.
  */
-import { createElement, useLayoutEffect, useState, type ReactNode } from 'react'
+import { Component, createElement, useLayoutEffect, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, hydrateRoot, type Root } from 'react-dom/client'
 import type { Context } from '@deepseek-ai/cordis'
@@ -55,6 +55,25 @@ interface BootSnapshot {
   html: string
 }
 
+/** Assembly failures may escape slot isolation but must not erase the page. */
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error?: Error }> {
+  override state: { error?: Error } = {}
+  static getDerivedStateFromError(reason: unknown): { error: Error } {
+    return { error: reason instanceof Error ? reason : new Error(String(reason)) }
+  }
+  override componentDidMount(): void {
+    console.debug('[dsh startup] renderer mounted')
+  }
+  override componentDidCatch(error: Error): void {
+    console.error('[dsh startup] renderer failed', error)
+  }
+  override render(): ReactNode {
+    return this.state.error === undefined ? this.props.children : createElement('div', {
+      role: 'alert', 'data-startup-state': 'error',
+    }, this.state.error.message)
+  }
+}
+
 /** Hydrate the kernel-owned loading DOM before replacing it with the application. */
 function BootHandoff(props: { app: () => ReactNode; boot: BootSnapshot }): ReactNode {
   const [ready, setReady] = useState(false)
@@ -67,17 +86,23 @@ function BootHandoff(props: { app: () => ReactNode; boot: BootSnapshot }): React
   })
 }
 
+/** Evaluate slot assembly inside the application error boundary. */
+function AppContent({ app }: { app: () => ReactNode }): ReactNode {
+  return app()
+}
+
 /** Mount React while preserving the framework-free boot DOM through hydration. */
 function mountApp(container: HTMLElement, app: () => ReactNode): Root {
+  const content = () => createElement(AppErrorBoundary, { children: createElement(AppContent, { app }) })
   const boot = container.querySelector<HTMLElement>(':scope > [data-dsh-boot]')
   if (boot !== null) {
     return hydrateRoot(container, createElement(BootHandoff, {
-      app,
+      app: content,
       boot: { className: boot.className, html: boot.innerHTML },
     }))
   }
   const root = createRoot(container)
-  flushSync(() => { root.render(app()) })
+  flushSync(() => { root.render(content()) })
   return root
 }
 

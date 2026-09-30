@@ -468,9 +468,3 @@
   justify-content: center;
   overflow-y: auto;
 }
-
-/* Settling (session replaying, hero/docked unknown): keep the composer seat
-   mounted but invisible so no wrong layout flashes before the phase lands. */
-.root[data-phase='settling'] .composerSeat {
-  visibility: hidden;
-}

@@ -49,6 +49,8 @@ The package realizes one boundary: the object layer (runtime, React-free) owns b
 
 The plugin activates after `slots`, `sessions`, and `layout`; it installs `createSlotRenderer()` and reflects the `uiRenderer` service. `mountApp` looks for the boot kernel's `[data-dsh-boot]` element: when present it hydrates through `BootHandoff` (a one-frame pass-through that preserves the loading DOM), otherwise it creates a fresh root and flushes the render synchronously.
 
+Slot failures render a localized visible alert instead of an empty element. An application-level error boundary also displays assembly failures that escape slot isolation. Renderer mounting is recorded with the `[dsh startup]` diagnostic prefix.
+
 ### Slot bindings
 
 `createSlotRenderer` connects the slot registry to React: entry lists become reactive sources, and each outlet renders through the installed renderer. Business plugins pass bare observable sources through typed slot `hooks`; the renderer binds them at the outlet via the uSES adapter.

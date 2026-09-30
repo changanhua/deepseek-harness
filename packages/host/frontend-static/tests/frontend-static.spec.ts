@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
@@ -30,7 +30,7 @@ afterEach(async () => {
 })
 
 /** Write a dist fixture and the authenticated Web rows, then boot them through the real Loader. */
-async function loadComposition(): Promise<Context> {
+async function loadComposition(browserAuth = true): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-frontend-static-'))
   const dist = join(root, 'dist')
   await mkdir(dist)
@@ -51,6 +51,8 @@ async function loadComposition(): Promise<Context> {
     "    host: '127.0.0.1'",
     '    port: 0',
     "- name: '@deepseek-ai/dsh-client-connection'",
+    '  config:',
+    `    browserAuth: ${String(browserAuth)}`,
     '- id: frontend',
     "  name: '@deepseek-ai/dsh-host-frontend-static'",
     '  config:',
@@ -94,6 +96,50 @@ async function request(port: number, path: string, init?: RequestInit): Promise<
 }
 
 describe('real Loader composition', () => {
+  it('returns a visible startup error when the initial Loader cannot settle', async () => {
+    const loaded = await loadComposition(false)
+    const spy = vi.spyOn(loaded.loader, 'await').mockRejectedValueOnce(new Error('startup failed'))
+    try {
+      const response = await request(loaded.webServer.port, '/')
+      expect(response.status).toBe(503)
+      expect(response.body).toContain('Application startup failed')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('waits for pending Host plugins before collecting the browser boot manifest', async () => {
+    const loaded = await loadComposition(false)
+    const gate = Promise.withResolvers<undefined>()
+    const entered = Promise.withResolvers<undefined>()
+    loaded.loader.builtins.delayed = {
+      inject: ['webServer'],
+      async apply(ctx: Context) {
+        entered.resolve(undefined)
+        await gate.promise
+        ctx.effect(() => ctx.webServer.tapIndex(html => `${html}<p>complete roster</p>`))
+      },
+    }
+    const adding = loaded.loader.create({ name: 'cordis:delayed' })
+    await entered.promise
+    const requested = Promise.withResolvers<undefined>()
+    const wait = loaded.loader.await.bind(loaded.loader)
+    const spy = vi.spyOn(loaded.loader, 'await').mockImplementation(() => {
+      requested.resolve(undefined)
+      return wait()
+    })
+    const response = request(loaded.webServer.port, '/')
+    try {
+      await requested.promise
+      gate.resolve(undefined)
+      expect((await response).body).toContain('complete roster')
+    } finally {
+      gate.resolve(undefined)
+      spy.mockRestore()
+      await adding
+    }
+  })
+
   it('serves explicit index entries and files while preserving HTTP error semantics', { timeout: 60_000 }, async () => {
     const loaded = await loadComposition()
     const unloaded = [...loaded.loader.entries()]

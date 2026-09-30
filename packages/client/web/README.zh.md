@@ -11,6 +11,8 @@ kind: "package-library"
 
 `dsh-client-web` 启动 web GUI：它先从 Host 提供的启动图加载客户端模块系统，再在应用挂载前激活每一个客户端插件，因此只有当所有插件都就绪时完整 UI 才会出现。无框架启动页会逐 entry 报告状态，因此失败的 bundle 或插件保持可见，而不是白屏。它还定义共享模块表（`PLATFORM_MODULES`），每个动态 bundle 都依据它解析 external。模型永远看不到本包。
 
+服务端页面在入口模块运行前就显示 BootPage 占位内容，`BootPage` 会在交给渲染器前替换它。最小化的 `[dsh startup]` 日志覆盖 boot、渲染器挂载、Workspace 基线、Session 自动选择、首个 follow 快照和 conversation 阶段，不记录消息内容。
+
 ## 目录
 
 - [使用本包](#use-this-package)

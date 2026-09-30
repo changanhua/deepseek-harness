@@ -44,6 +44,7 @@ export class AppWebEntry {
    * @returns Resolves after application mount or failure rendering.
    */
   async run(): Promise<void> {
+    console.debug('[dsh startup] boot')
     try {
       // Boot-readiness gate: whichever bootstrap applies the injection table
       // settles this deferred once every row has taken effect — the served
@@ -84,6 +85,7 @@ export class AppWebEntry {
         manifest: this.manifest,
         onEntryState: (name, state) => { this.page.setState(name, state) },
       })
+      console.debug('[dsh startup] renderer mount', { plugins: this.manifest.plugins.length })
       await mountClient(ctx, this.container)
     } catch (reason) {
       console.error(reason)

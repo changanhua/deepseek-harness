@@ -41,6 +41,7 @@ export class BootPage {
     this.card.append(this.wordmark, this.spinner, this.hint)
     this.root.append(this.card)
     container.append(this.root)
+    container.querySelector('[data-dsh-document-boot]')?.remove()
     this.updateProgress()
   }
 

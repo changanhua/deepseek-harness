@@ -35,6 +35,7 @@
     "negotiator": "^1.0.0"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis-plugin-loader": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
     "@types/compression": "^1.8.1",
     "@types/negotiator": "^0.6.5"

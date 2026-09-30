@@ -322,6 +322,15 @@ function entryKeyOf(entry: StoredEntry): number {
  * only shows until that re-render lands (permanently once the cell is dry —
  * the outlet then owns the crash face).
  */
+/** A failed contribution must leave an explicit, localized visible surface. */
+function SlotFailure({ slotKey }: { slotKey: string }): ReactNode {
+  const host = useHost()
+  useLocaleRevision(host.locale)
+  return <div role="alert" data-slot-error={slotKey} data-startup-state="error">
+    {host.locale?.bind('common')('load.failed') ?? slotKey}
+  </div>
+}
+
 class SlotErrorBoundary extends Component<
   { slotKey: string; onEntryError: (error: unknown) => void; children: ReactNode }, { failed: boolean }
 > {
@@ -335,7 +344,7 @@ class SlotErrorBoundary extends Component<
     this.props.onEntryError(error)
   }
   override render(): ReactNode {
-    if (this.state.failed) return <div data-slot-error={this.props.slotKey} />
+    if (this.state.failed) return <SlotFailure slotKey={this.props.slotKey} />
     return this.props.children
   }
 }
@@ -796,7 +805,7 @@ function renderOutletContent(
   // A cell whose every registration abdicated keeps the crash face: the
   // shadowing collapse ran out of survivors, which is a failure state, not
   // the owner's natural-empty fallback.
-  const deadCell = () => <div data-slot-error={slotKey} />
+  const deadCell = () => <SlotFailure slotKey={slotKey} />
 
   if (spec.kind === 'single') {
     const entry = host.entriesOfSlot(slotKey)[0]
@@ -867,7 +876,7 @@ function renderOutletContent(
     <>
       {list.map((item, i) => item.entry !== undefined
         ? guarded(item.entry, `e${entryKeyOf(item.entry)}`)
-        : <div data-slot-error={slotKey} key={`x${item.id ?? i}`} />)}
+        : <SlotFailure slotKey={slotKey} key={`x${item.id ?? i}`} />)}
     </>
   )
 }
@@ -905,7 +914,7 @@ function RootOutlet({ ownerProps }: { ownerProps: object }) {
     // Registrations exist but every one abdicated: the shadowing collapse ran
     // dry, so the crash face replaces the tree (registered-but-broken is a
     // crash, not the boot-order assembly failure below).
-    if (host.entriesOf('root').length > 0) return <div data-slot-error="root" />
+    if (host.entriesOf('root').length > 0) return <SlotFailure slotKey="root" />
     throw new SlotAssemblyError("renderSlot('root') before any 'root' registration (boot order)")
   }
   // Same anchor contract as SlotOutlet: 'root' is a slot like any other, and

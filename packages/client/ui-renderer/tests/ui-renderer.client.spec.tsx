@@ -94,6 +94,14 @@ describe('UI renderer plugin', () => {
     expect(el.querySelector('[data-testid="root-probe"]')).toBeNull()
   })
 
+  it('shows an assembly error instead of clearing the mounted application', async () => {
+    const { ctx } = await bench()
+    const el = container()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    act(() => { mounted.push(ctx.get('uiRenderer')!.mount(el)) })
+    expect(el.querySelector('[role="alert"]')?.textContent).toContain("'root' has no registration")
+  })
+
   it('retracts the service and renderer with its fiber', async () => {
     const { ctx, slots, fiber } = await bench()
     await stabilize(() => fiber.dispose())

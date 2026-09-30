@@ -238,7 +238,9 @@ export function AppFrame({
             entry while no session is current. */}
         <CenterColumn>
           <div className={css.modulePane} hidden={activeModule !== DEFAULT_MODULE}>
-            {renderSlot('main', {}, { entryKey: 'conversation' })}
+            {renderSlot('main', {}, { entryKey: 'conversation',
+              fallback: <div role="status" data-dsh-boot="">{t('loading')}</div>,
+            })}
           </div>
           {activeModule !== DEFAULT_MODULE && (
             <div className={css.modulePane}>{renderSlot('shell.view', {}, { only: activeModule })}</div>

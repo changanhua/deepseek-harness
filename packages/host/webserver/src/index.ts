@@ -11,6 +11,7 @@ import type { IncomingMessage, ServerResponse, Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { Duplex } from 'node:stream'
 import { Context, Service } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import z from '@deepseek-ai/schemastery'
 import compressionMiddleware from 'compression'
 import Negotiator from 'negotiator'
@@ -218,7 +219,20 @@ export class WebServer extends Service {
 
   /** Listen; resolves once the socket is bound (rejection = FAILED fiber). */
   async [Service.init](): Promise<void> {
+    let startup: Promise<void> | undefined
     const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+      // Binding publishes this service so dependent routes can activate.
+      // An early request must wait for that composition, not receive a 404
+      // from the still-empty route table. Resolve only once per listener.
+      startup ??= this.ctx.get('loader')?.await() ?? Promise.resolve()
+      try {
+        await startup
+      } catch (error) {
+        this.ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
+        res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' })
+        res.end('Application startup failed. See server logs.')
+        return
+      }
       /* v8 ignore next -- `?? '/'` arm: node:http always sets url on server
       requests; the field is only optional on the client-side IncomingMessage type */
       const rawPath = new URL(req.url ?? '/', 'http://x').pathname

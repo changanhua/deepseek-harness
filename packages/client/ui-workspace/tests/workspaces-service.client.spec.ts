@@ -13,6 +13,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ILayout } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DirectoryBrowseError, UiWorkspaceService } from '../src/client/navigation.ts'
+import { SessionCreateError } from '@deepseek-ai/dsh-api-session-controller/client'
 
 const sid = (id: string): SessionId => SessionId(id)
 const wid = (id: string): WorkspaceId => id as WorkspaceId
@@ -438,7 +439,7 @@ describe('UiWorkspaceService', () => {
     await vi.waitFor(() => {
       expect(b.sessions.open).toHaveBeenCalledWith(sid('initial'))
     })
-    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('recent') })
+    expect(b.sessions.create.mock.calls[0]?.[0]).toMatchObject({ workspaceId: wid('recent') })
     expect(b.workspaces.list.getSnapshot().items.map(item => item.workspaceId)).toEqual([
       wid('stable-first'), wid('recent'),
     ])
@@ -458,7 +459,21 @@ describe('UiWorkspaceService', () => {
     await vi.waitFor(() => {
       expect(b.sessions.open).toHaveBeenCalledWith(sid('initial'))
     })
-    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('newest') })
+    expect(b.sessions.create.mock.calls[0]?.[0]).toMatchObject({ workspaceId: wid('newest') })
+  })
+
+  it('retries a transient initial failure without another list event and reuses its Session identity', async () => {
+    const b = bench()
+    b.sessions.create.mockRejectedValueOnce(new SessionCreateError(new RemoteError('gateway/internal', 'offline', {}), undefined))
+    b.workspaces.list.set(workspaceState([workspace('recent')]))
+    b.sessions.list.set(sessionState())
+    try {
+      await vi.waitFor(() => { expect(b.sessions.open).toHaveBeenCalledOnce() }, { timeout: 2000 })
+      expect(b.sessions.create).toHaveBeenCalledTimes(2)
+      expect(b.sessions.create.mock.calls[0]).toEqual(b.sessions.create.mock.calls[1])
+    } finally {
+      await b.ctx.fiber.dispose()
+    }
   })
 
   it('retries failed initial selection and never overwrites a later selection', async () => {
@@ -490,6 +505,39 @@ describe('UiWorkspaceService', () => {
     await flush()
     expect(changed.sessions.open).toHaveBeenCalledTimes(1)
     expect(changed.sessions.open).toHaveBeenCalledWith(sid('manual'))
+  })
+
+  it('bounds startup retries and cancels pending retry work on disposal', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const b = bench()
+    b.sessions.create.mockRejectedValue(new SessionCreateError(new RemoteError('gateway/internal', 'offline', {}), undefined))
+    try {
+      b.workspaces.list.set(workspaceState([workspace('recent')]))
+      b.sessions.list.set(sessionState())
+      await vi.advanceTimersByTimeAsync(30000)
+      expect(b.sessions.create).toHaveBeenCalledTimes(6)
+      await vi.advanceTimersByTimeAsync(30000)
+      expect(b.sessions.create).toHaveBeenCalledTimes(6)
+      expect(b.sessions.open).not.toHaveBeenCalled()
+    } finally {
+      await b.ctx.fiber.dispose()
+      vi.useRealTimers()
+    }
+    vi.useFakeTimers()
+    const disposed = bench()
+    disposed.sessions.create.mockRejectedValue(new SessionCreateError(new RemoteError('gateway/internal', 'offline', {}), undefined))
+    try {
+      disposed.workspaces.list.set(workspaceState([workspace('recent')]))
+      disposed.sessions.list.set(sessionState())
+      await vi.advanceTimersByTimeAsync(0)
+      await disposed.ctx.fiber.dispose()
+      await vi.advanceTimersByTimeAsync(30000)
+      expect(disposed.sessions.create).toHaveBeenCalledOnce()
+    } finally {
+      await disposed.ctx.fiber.dispose()
+      vi.useRealTimers()
+    }
   })
 
   it('stops initial navigation when its Cordis lifetime is disposed', async () => {

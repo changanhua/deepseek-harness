@@ -11,6 +11,8 @@ kind: "package-reference"
 
 本包提供 Web GUI 的三栏 AppFrame、左右栏宽度与 `ctx.layout` 呈现控制。右栏先让步以保护中栏空间，全屏由占用方呈现，框架保留宽屏底层轨道。主题呈现器负责配色、别名 token、正文字号与 document 元数据；布局状态在刷新后重置。
 
+启动期间 Conversation 组件尚未可用时，中间主区会显示本地化的启动状态，避免留下空白框架。
+
 ## 目录
 
 - [使用本包](#use-this-package)
