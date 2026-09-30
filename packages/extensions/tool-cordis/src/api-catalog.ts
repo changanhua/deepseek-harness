@@ -6289,7 +6289,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PlanningAccess',
-    declaration: 'export interface PlanningAccess {\n    readonly workspaceId: string;\n    readonly actorId: string;\n    readonly kind: \'human\' | \'agent\' | \'bridge\';\n    readonly userMessage?: {\n        readonly sessionId: string;\n        readonly seq: number;\n    };\n    readonly authorize: () => void | Promise<void>;\n}',
+    declaration: 'export interface PlanningAccess {\n    readonly workspaceId: string;\n    readonly actorId: string;\n    readonly kind: \'human\' | \'agent\' | \'bridge\';\n    readonly sessionId?: string;\n    readonly userMessage?: {\n        readonly sessionId: string;\n        readonly seq: number;\n    };\n    readonly authorize: () => void | Promise<void>;\n}',
   },
   {
     name: 'PlanningBoardSnapshot',
