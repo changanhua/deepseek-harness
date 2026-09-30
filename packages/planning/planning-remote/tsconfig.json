@@ -8,6 +8,7 @@
     "src"
   ],
   "references": [
+    { "path": "../../storage/storage-domain" },
     { "path": "../../attachment/attachment" },
     {
       "path": "../../../vendor/cordis"

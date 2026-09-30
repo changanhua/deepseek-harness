@@ -20,6 +20,8 @@ Subject 引用明确指定 Plan 或 Focus。资源链接只保留可扩展的 ki
 
 ## 权限与复盘
 
+可选 FC27 SBC 设计案例将既有 Plan 修订和选中 Focus 冻结为独立探索记录。选择、坐标和移动撤销属于该记录，不属于 Board。读取将保留的基础标识与当前 Planning 事实比较，展示漂移而不替换投影或布局。[Planning Remote](../../packages/planning/planning-remote/README.zh.md) 拥有受容量约束的持久化；[Planning UI](../../packages/client/ui-planning/README.zh.md) 拥有交互。
+
 浏览器 Remote 使用已认证的本地人工身份。模型工具推导发起 Agent、其当前 Workspace 和最新直接用户消息。调用方都不能提供另一个 actor、Workspace、来源哈希或持久 receipt。Planning 记录 completed review 只是一项复盘事实；它不会作出 Delivery 接纳决定。
 
 ## Delivery 边界

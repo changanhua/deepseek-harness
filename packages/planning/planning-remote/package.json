@@ -53,6 +53,7 @@
     "@deepseek-ai/cordis": "workspace:^"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-storage-domain": "workspace:^",
     "@deepseek-ai/dsh-attachment": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
     "@changanhua/dsh-planning": "workspace:^",

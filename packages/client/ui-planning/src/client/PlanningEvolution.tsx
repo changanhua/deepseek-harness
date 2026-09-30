@@ -116,7 +116,7 @@ export function PlanningEvolution({ board, itemId, t, renderSource }: PlanningEv
                 role={node.source === undefined ? undefined : 'button'}
                 tabIndex={node.source === undefined ? undefined : 0}
                 aria-label={node.source === undefined ? undefined : node.label}
-                onClick={node.source === undefined ? undefined : () => setSelectedSourceId(node.id)}
+                onClick={node.source === undefined ? undefined : () =>{  setSelectedSourceId(node.id) }}
                 onKeyDown={node.source === undefined ? undefined : (event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()

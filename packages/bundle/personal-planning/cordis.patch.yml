@@ -25,8 +25,11 @@
 
     - id: planning-remote
       name: '@changanhua/dsh-planning-remote'
+      config:
+        enableSbcDesignCase: true
       isolate:
         workspaceRegistry: web-host
+        storageDomain: web-host
 
     - id: ui-planning
       name: '@changanhua/dsh-client-ui-planning'

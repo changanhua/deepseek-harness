@@ -11,7 +11,7 @@ English | [中文](README.zh.md)
 
 Use this Remote to list projects, read a planning Board, apply a bounded planning command, prepare an exact revision for Delivery, and read linked Delivery status and packet-declared evidence. The Host fixes the browser actor identity and rejects unknown or malformed wire fields.
 
-The context operation returns the selected Plan or Focus projection without expanding resource contents. Existing execute calls also carry workspace changes and Session bindings; the provider checks that a bound Session belongs to the project.
+The context operation returns the selected Plan or Focus projection without expanding resource contents. Existing execute calls also carry workspace changes and Session bindings; the provider checks that a bound Session belongs to the project. `designCases` returns only retained case summaries for one Plan, with subject, ResourceRef, frozen base revision and current drift; disabled exploration reports an unavailable owner rather than a verified empty list. The summary operation creates no case and changes no canonical state.
 
 ## Use this package
 
@@ -21,7 +21,15 @@ The browser path uses the configured local human identity and checks the selecte
 
 ## Invariant policy
 
-No invariant companion is published because the Remote reads provider-owned facts and retains no independent durable projection.
+No invariant companion is published because canonical revisions remain provider-owned and drift is derived on each read. Exploratory records have one StorageDomain owner rather than a second live canonical cache.
+
+## SBC exploration
+
+The opt-in `enableSbcDesignCase` configuration enables frozen Plan/Focus projections with separate selection, coordinates, and the last 30 spatial undo steps. Ordinary Planning operations do not require exploratory storage. The personal-planning bundle enables this option and selects its existing web-host StorageDomain. Opening a case creates exploration only; neither opening nor exploring executes a Planning command.
+
+The JSON backend saves one record under `sbc_design_cases/cases/<sha256>.json` relative to its configured storage root. The key hashes the project and subject identity. Each move stores its inverse coordinates; selecting a node does not consume spatial undo history. A consumer submits one move when a drag ends, not each pointer event. The `maxSbcCases` and `maxSbcCaseBytes` settings reject additions or writes before committing when their limits are exceeded. A failed storage initialization can be retried explicitly.
+
+Reads compare the saved Plan revision and optional Focus version with fresh Planning data. Drift preserves the frozen projection and all exploratory state. Concurrent edits use a separate case version; conflicts require rereading the case. The immediately preceding request can be retried with its original identity; older requests conflict after another edit.
 
 ## Dev Note
 
@@ -46,3 +54,4 @@ The Remote adds no direct KV-cache effect.
 ## Known Limitations and Deferred Work
 
 - An unavailable Delivery composition returns an unavailable execution view without changing planning data.
+- The SBC browser UI is not yet connected. Automatic reconciliation and promotion into Planning are not provided.

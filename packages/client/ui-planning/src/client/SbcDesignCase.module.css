@@ -1,0 +1,7 @@
+.root { display: grid; gap: 10px; min-width: 0; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.viewport { overflow: auto; max-height: 640px; border: 0.5px solid var(--dsw-alias-border-l2); }
+.canvas { position: relative; width: var(--case-width); height: var(--case-height); background: var(--dsw-alias-bg-base); }
+.node { position: absolute; left: var(--case-x); top: var(--case-y); width: 260px; display: grid; gap: 8px; padding: 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1); border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 10px; touch-action: none; }
+.node[aria-pressed='true'] { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 2px; }
+.node span { max-height: 110px; overflow: auto; }

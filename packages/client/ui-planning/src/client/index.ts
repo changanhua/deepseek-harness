@@ -1,5 +1,5 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -8,9 +8,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import planningRemote from '@changanhua/dsh-planning-remote/remote'
 import { PlanningNavEntry } from './PlanningNavEntry.tsx'
 import { PlanningWorkbench } from './PlanningWorkbench.tsx'
+import { PlanningDesignCasePage, type PlanningDesignCaseInjected } from './PlanningDesignCasePage.tsx'
 import type { PlanningWorkspaceInjected } from './contract.ts'
 import { en, NS, zh, type PlanningKey } from './locales.ts'
 import { createPlanningRuntimeController } from './runtime-controller.ts'
+import { createSbcDesignController } from './sbc-design-controller.ts'
 import { PlanningImageAction, type PlanningImageActionInjected } from './PlanningImageAction.tsx'
 import { nextPlanningRequestId } from './request-id.ts'
 import type { PlanningCommand } from '@changanhua/dsh-planning/types'
@@ -45,6 +47,8 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(planningRemote)
   const ui = ctx.inject(['slots', 'locale', 'remote', 'remote.planning', 'uiWorkspace'], (ctx) => {
     const runtime = createPlanningRuntimeController(ctx.remote.planning)
+    const sbc = createSbcDesignController(ctx.remote.planning)
+    ctx.effect(() => () =>{  sbc.dispose() }, 'SBC design case lifecycle')
     const sessionStarts = new Map<string, { sessionId: string; command: PlanningCommand }>()
     const bindings = new Map<string, PlanningBindingInjected>()
     const bindingLifetime = new AbortController()
@@ -74,6 +78,37 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       }
     }, 'ui-planning: Remote lifecycle')
     const injected = (): PlanningWorkspaceInjected => ({
+      navigate: (patch) =>{  runtime.navigate(patch) },
+      refreshDesignCases: () =>{  runtime.refreshDesignCases() },
+      continuePlan: async (planId) => {
+        runtime.selectItem(planId)
+        const state = runtime.source.getSnapshot()
+        const plan = state.board?.items.find(value => value.id === planId)
+        if (!plan) throw new Error('Plan is unavailable')
+        const focus = state.board?.focuses?.find(value => value.id === state.navigation?.focusId && value.planId === planId)
+        await injected().continuePlanningSession(focus ? { kind: 'focus', id: focus.id } : { kind: 'plan', id: planId }, plan.headRevisionId)
+      },
+      openDesignCase: (summary) => {
+        const workspaceId = runtime.source.getSnapshot().workspaceId
+        if (workspaceId && summary.resource.provider === 'sbc') {
+          void sbc.open({ workspaceId, subject: summary.subjectRef })
+          ctx.get('layout')?.openModule('planning-design-case')
+        }
+      },
+      continuePlanningSession: async (subject, revision) => {
+        const state = runtime.source.getSnapshot()
+        const candidates = (state.board?.sessionBindings ?? []).filter(value =>
+          value.subject.kind === subject.kind && value.subject.id === subject.id)
+        if (candidates.length) {
+          const owner = ctx.get('remote.session') as ClientRemote['session'] | undefined
+          if (!owner) throw new Error('Native Session list is unavailable')
+          const result = await owner.list({})
+          if (!result.ok) throw new Error(result.error.message)
+          const binding = result.value.items.flatMap(row => candidates.filter(value => value.sessionId === row.sessionId))[0]
+          if (binding) { injected().openSessionSource(binding.sessionId); return }
+        }
+        await injected().startPlanningSession(subject, revision)
+      },
       startPlanningSession: async (subject, revision) => {
         const state = runtime.source.getSnapshot()
         if (!state.board || !state.workspaceId) throw new Error('Planning project is unavailable')
@@ -106,9 +141,11 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       },
       hooks: { planning: runtime.source },
       selectWorkspace: (workspaceId) => {
+        sbc.close()
         runtime.selectWorkspace(workspaceId)
       },
       selectItem: (itemId) => {
+        sbc.close()
         runtime.selectItem(itemId)
       },
       create: input => runtime.create(input),
@@ -156,6 +193,11 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     ctx.slots.inject('shell.view', () =>
       ctx.slots.register({ name: 'shell.view', id: 'planning', locale: NS, inject: injected }, PlanningWorkbench),
     )
+    ctx.slots.inject('shell.view', () => ctx.slots.register({
+      name: 'shell.view', id: 'planning-design-case', locale: NS,
+      inject: (): PlanningDesignCaseInjected => ({ hooks: { sbcDesign: sbc.source }, explore: operation => sbc.explore(operation),
+        refresh: () => sbc.refresh(), close: () => { sbc.close(); runtime.refresh(); ctx.get('layout')?.openModule('planning') } }),
+    }, PlanningDesignCasePage))
     ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
       name: 'conversation.input.dock', id: 'planning-binding', locale: NS,
       inject: sessionId => bindingFor(sessionId),

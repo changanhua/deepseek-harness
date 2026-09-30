@@ -30,6 +30,8 @@ Planning reads Delivery's current projections and immutable evidence through the
 
 Canonical work state is projected from the current immutable revision, including optional stable-id state entries. Optional Focus records select parts of a Plan without creating a task hierarchy or inferring parent completion. Extensible resource references retain only external identities; owning systems retain their state and authority. Session bindings preserve the original subject and base revision independently of UI selection. Bound Sessions propose changes; the human adopts an exact generation. The same Board transaction applies delta operations, records provenance, and advances the canonical revision, rejecting a stale base without partial changes. Thinking Desktop can use these references and proposal boundaries without adding exploration storage to Planning.
 
+SBC exploratory storage is an opt-in Remote capability with independent records and case versions. It retains an existing Planning revision and optional Focus as a frozen projection, compares their current identities on reads, and never calls Planning mutation. Per-case files and compact inverse-move history bound each write; initialization failures remain explicitly retryable. A generated-Remote browser test exercises dragging, selection, undo, reload and visible drift against the assembled personal-planning layer. Its optional local acceptance input copies the personal Board into isolated storage without changing the original; this does not establish deployment to the active personal instance.
+
 ## Alternatives considered
 
 - **Use one Session Goal for the project backlog.** Rejected because a Goal's continuation authority, budget, and Session lifetime do not represent several independently arranged intentions across conversations.
@@ -38,6 +40,7 @@ Canonical work state is projected from the current immutable revision, including
 - **Rely on an in-memory handoff or a cross-store transaction.** Rejected because a process may stop after Delivery creation and before Planning receives the result. Prepared state plus deterministic replay closes that window without assuming atomic writes across stores.
 - **Rely on the model to include the initiating source.** Rejected because a model can preserve older sources while omitting the message that authorized a new revision; the Provider already validates that message and can capture it without changing the request digest.
 - **Create a separate capture store or Planning Provider for MCP.** Rejected because Proposal generations already represent incomplete understanding, while a second Provider would introduce competing project authority and storage ownership.
+- **Save exploratory coordinates in the canonical Board or keep complete layouts for every undo step.** Rejected because spatial exploration does not constitute a Planning decision and full layouts multiply persistence cost. Independent case records and inverse coordinates preserve that distinction.
 
 ## Consequences
 

@@ -20,6 +20,8 @@ The existing Proposal generation can hold a delta with subject, base revision, o
 
 ## Authority and review
 
+The optional FC27 SBC Design Case freezes an existing Plan revision and selected Focus into a separate exploratory record. Selection, coordinates and movement undo belong to that record, not the Board. Reads compare the retained base identifiers with current Planning facts and expose drift without replacing either the projection or layout. The [Planning Remote](../../packages/planning/planning-remote/README.md) owns its bounded persistence; the [Planning UI](../../packages/client/ui-planning/README.md) owns its interactions.
+
 The browser Remote uses the authenticated local human identity. The model tools derive the initiating Agent, its current Workspace, and its latest direct user message. Neither caller supplies a different actor, Workspace, source hash, or durable receipt. Planning records a completed review as a review fact only; it does not make a Delivery acceptance decision.
 
 ## Delivery boundary

@@ -49,13 +49,14 @@ interface Booted {
   dispose(): Promise<void>
 }
 
-async function boot(rootPath: string, project: string, withDelivery = false): Promise<Booted> {
+async function boot(rootPath: string, project: string, withDelivery = false, withExploration = true): Promise<Booted> {
   const configPath = join(rootPath, 'cordis.yml')
   const bundleLink = join(rootPath, 'node_modules', '@changanhua', 'dsh-personal-planning')
   await mkdir(dirname(bundleLink), { recursive: true })
   try { await symlink(root, bundleLink, process.platform === 'win32' ? 'junction' : 'dir') }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error }
   let patch = (await readFile(join(root, 'cordis.patch.yml'), 'utf8')).replaceAll('\r\n', '\n')
+  if (!withExploration) patch = patch.replace('enableSbcDesignCase: true', 'enableSbcDesignCase: false')
   patch = patch.replace("!!js dshHomePath('storages', 'planning-ownership')", JSON.stringify(join(rootPath, 'ownership')))
     .replace(/^- insert:\r?\n/mu, '').replace(/^    /gmu, '')
   const deliveryPatch = withDelivery ? (await readFile(join(root, 'delivery.patch.yml'), 'utf8'))
@@ -98,14 +99,14 @@ async function boot(rootPath: string, project: string, withDelivery = false): Pr
     ctx, root: rootPath, project, workspaceId: workspace.id, remote,
     create: requestId => ({ kind: 'create', requestId, expectedBoardVersion: 0, itemId: 'captured-plan', lane: 'inbox', title: 'Captured bundle plan', intent: 'Prove real Loader composition survives restart.', scope: [], acceptance: [], sources: [{ kind: 'manual', text: 'operator note' }], estimate: { value: null, urgency: null, reuse: null, compounding: null, timeCost: null, tokenCost: null, risk: null, cognitiveCost: null, rationale: '' }, reviewAt: null }),
     close: async () => { await ctx.fiber.dispose() },
-    reopen: async () => boot(rootPath, project, withDelivery),
+    reopen: async () => boot(rootPath, project, withDelivery, withExploration),
     dispose: async () => { await ctx.fiber.dispose(); await rm(rootPath, { recursive: true, force: true }) },
   }
 }
 
 /** Boot a real Loader/Include composition with only infrastructure support stubbed. */
-export async function bootPlanningBundle(withDelivery = false): Promise<Booted> {
+export async function bootPlanningBundle(withDelivery = false, withExploration = true): Promise<Booted> {
   const rootPath = await mkdtemp(join(tmpdir(), 'dsh-personal-planning-'))
   const project = join(rootPath, 'project'); await mkdir(project)
-  return boot(rootPath, project, withDelivery)
+  return boot(rootPath, project, withDelivery, withExploration)
 }

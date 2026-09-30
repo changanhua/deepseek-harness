@@ -9,6 +9,8 @@ import type { PlanningAccess, PlanningHandoff, PlanningMutationResult } from '@c
 import { PlanningError, planningCommandSchema, buildPlanningContext, planningSubjectRefSchema } from '@changanhua/dsh-planning'
 import type { PlanningContextPack } from '@changanhua/dsh-planning'
 import type { PlanningContextInput } from './types.ts'
+import type { SbcDesignCaseView, SbcExploreInput } from './types.ts'
+import { SbcDesignCaseStore, sbcCaseInputSchema, sbcExploreInputSchema } from './sbc-design-case.ts'
 import { planningRemoteFailure, requirePlanningActive } from './failures.ts'
 import type {
   PlanningBoardView,
@@ -33,10 +35,21 @@ import type {
 export interface Config {
   /** Local operator identity; browsers cannot override it. */
   operatorId?: string
+  /** Enable the SBC exploratory operations; ordinary Planning does not require their storage. */
+  enableSbcDesignCase?: boolean
+  /** Maximum retained exploratory cases across this Host. */
+  maxSbcCases?: number
+  /** Maximum serialized bytes of one exploratory record, checked before commit. */
+  maxSbcCaseBytes?: number
 }
 
 /** Deployment-owned identity schema. */
-export const Config: Schema<Config> = Schema.object({ operatorId: Schema.string().default('local-operator') })
+export const Config: Schema<Config> = Schema.object({
+  operatorId: Schema.string().default('local-operator'),
+  enableSbcDesignCase: Schema.boolean().default(false),
+  maxSbcCases: Schema.number().step(1).min(1).max(10000).default(500),
+  maxSbcCaseBytes: Schema.number().step(1).min(1024).max(16 * 1024 * 1024).default(2 * 1024 * 1024),
+})
 
 const workspaceIdSchema = z.string().trim().min(1).max(256)
 const executeInputSchema = z.strictObject({ workspaceId: workspaceIdSchema, command: planningCommandSchema })
@@ -78,10 +91,68 @@ export class PlanningRemoteService extends TypertRemoteService {
   static inject = ['planning', 'workspaceRegistry']
   static Config = Config
   private readonly operatorId: string
+  private sbcCases: Promise<SbcDesignCaseStore> | undefined
+  private closing = false
+  private readonly config: Config
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'planningRemote', { namespace: 'planning' })
+    this.config = Config(config)
     this.operatorId = workspaceIdSchema.parse(config.operatorId ?? 'local-operator')
+    this.ctx.effect(() => async () => {
+      this.closing = true
+      // Initialization failures reach their callers and own no store to close.
+      const store = await this.sbcCases?.catch(() => undefined)
+      await store?.close()
+    }, 'SBC exploratory storage')
+  }
+
+  /** Open or reread an SBC exploration; first open freezes a projection without changing Planning. */
+  /** Read existing exploration summaries for one Plan, without creating cases. */
+  @Remote('designCases')
+  async designCases(input: PlanningExecutionInput, signal: AbortSignal): Promise<import('./types.ts').DesignCaseSummary[]> {
+    try {
+      const parsed = executionInputSchema.parse(input)
+      const access = this.access(parsed.workspaceId, signal)
+      const board = await this.ctx.planning.snapshot(access, signal)
+      if (!board.items.some(value => value.id === parsed.itemId)) throw new PlanningError('not-found', 'Plan is unavailable')
+      if (!this.config.enableSbcDesignCase) throw new PlanningError('closed', 'Design case owner is unavailable')
+      return await (await this.sbcStore()).summaries(parsed.workspaceId, parsed.itemId,
+        () => this.ctx.planning.snapshot(access, signal), signal)
+    } catch (error) { throw planningRemoteFailure(error, signal) }
+  }
+
+  @Remote('sbcDesignCase')
+  async sbcDesignCase(input: PlanningContextInput, signal: AbortSignal): Promise<SbcDesignCaseView> {
+    try {
+      const parsed = sbcCaseInputSchema.parse(input)
+      const access = this.access(parsed.workspaceId, signal)
+      return await (await this.sbcStore()).read(parsed, () => this.ctx.planning.snapshot(access, signal), signal)
+    } catch (error) { throw planningRemoteFailure(error, signal) }
+  }
+
+  /** Persist only selection, coordinates, or undo with case CAS; no Planning commands are executed. */
+  @Remote('exploreSbcDesignCase')
+  async exploreSbcDesignCase(input: SbcExploreInput, signal: AbortSignal): Promise<SbcDesignCaseView> {
+    try {
+      const parsed = sbcExploreInputSchema.parse(input)
+      const access = this.access(parsed.workspaceId, signal)
+      return await (await this.sbcStore()).explore(parsed, () => this.ctx.planning.snapshot(access, signal), signal)
+    } catch (error) { throw planningRemoteFailure(error, signal) }
+  }
+
+  private sbcStore(): Promise<SbcDesignCaseStore> {
+    if (this.closing) throw new PlanningError('closed', 'SBC exploration is closed')
+    if (!this.config.enableSbcDesignCase) throw new PlanningError('closed', 'SBC exploration is disabled')
+    if (this.sbcCases) return this.sbcCases
+    const facility = this.ctx.get('storageDomain')
+    if (!facility) throw new PlanningError('closed', 'SBC storage is unavailable')
+    const opening = SbcDesignCaseStore.open(facility, {
+      maxCases: this.config.maxSbcCases ?? 500, maxCaseBytes: this.config.maxSbcCaseBytes ?? 2 * 1024 * 1024,
+    })
+    this.sbcCases = opening
+    void opening.catch(() => { if (this.sbcCases === opening) this.sbcCases = undefined })
+    return opening
   }
 
   /**

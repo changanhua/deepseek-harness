@@ -1,7 +1,37 @@
 /** Browser request and project selection types for planning. */
-import type { PlanningBoardSnapshot, PlanningCommand, PlanningHandoff } from '@changanhua/dsh-planning'
-import type { PlanningSubjectRef } from '@changanhua/dsh-planning'
+import type { PlanningBoardSnapshot, PlanningCommand, PlanningHandoff, PlanningFocus, PlanningRevision } from '@changanhua/dsh-planning'
+import type { PlanningSubjectRef, ResourceRef } from '@changanhua/dsh-planning'
 export interface PlanningContextInput { readonly workspaceId: string; readonly subject: PlanningSubjectRef }
+/** SBC exploration contains a frozen projection, never accepted Planning state. */
+export interface SbcExploration {
+  positions: Record<string, { x: number; y: number }>
+  selectedNodeId: string | null
+}
+export interface SbcDesignCase {
+  workspaceId: string
+  subject: PlanningSubjectRef
+  planId: string
+  baseRevision: PlanningRevision
+  baseFocus?: PlanningFocus | undefined
+  version: number
+  local: SbcExploration
+  history: { nodeId: string; x: number; y: number }[]
+}
+export interface SbcDesignCaseView {
+  case: SbcDesignCase
+  currentRevision: string | null
+  currentFocusVersion: number | null
+  drift: boolean
+}
+export type SbcExploreOperation =
+  | { kind: 'select'; nodeId: string | null }
+  | { kind: 'move'; nodeId: string; x: number; y: number }
+  | { kind: 'undo' }
+export interface SbcExploreInput extends PlanningContextInput {
+  expectedVersion: number
+  requestId: string
+  operation: SbcExploreOperation
+}
 import type { DeliveryCaseCard, DeliveryCaseLane } from '@changanhua/dsh-delivery-remote'
 
 /** A registered project available to the authenticated local user. */
@@ -39,6 +69,18 @@ export interface PlanningHandoffInput {
 export interface PlanningExecutionInput {
   readonly workspaceId: string
   readonly itemId: string
+}
+
+/** Thin navigation projection; exploration data remains owned by its provider. */
+export interface DesignCaseSummary {
+  resource: ResourceRef
+  title: string
+  subjectRef: PlanningSubjectRef
+  baseRevision: string
+  currentRevision: string | null
+  drift: boolean
+  status: 'exploration'
+  preview: string
 }
 
 /** One evidence object already named by a linked Delivery packet for this Plan. */
