@@ -57,6 +57,8 @@ host 半可以使用受管 `harness.browser` facade 映射目标页面、把高�
 
 沙箱隔离全局变量，但不是安全边界：Node 全局变量不存在，或重定向到 Cordis 服务（`ctx.fs`、`ctx.web`、`ctx.bash` 与定时器 helper），host 半收到的是不含框架内部机制的 façade，但它声明的服务仍会触达存活运行时。对待动态包要像对待 bash 访问一样，参见[自引用工具集 Agent Note](../../../.agents/notes/implemented/feature/2026-07-08-self-referential-cordis-toolset.zh.md)。
 
+原始 `storage`、`storageDomain` 和 `storage.backend.*` 服务仅供 Host 使用，包括 hub、facility、backend registry、backend、KV facet 的身份别名以及服务直接返回的这些对象。动态包使用业务服务或 `harness.state`；静态 Host 存储消费者保持不变。服务 façade 不暴露原始 descriptor、prototype、原实例 symbol 或继承的 Object 方法。动态 `domain/changed` 监听器接收脱离权威对象的 JSON 快照，不能通过事件引用修改已存值。可信 Host 插件不得把私有 Domain、global 或 table 写 handle 再导出给动态包；此 guard 不是任意 Host 代码的沙箱。
+
 -----
 
 <a id="understand-the-implementation"></a>

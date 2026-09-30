@@ -13,7 +13,8 @@
  * @module @deepseek-ai/dsh-cordis-host-runner/guard
  */
 
-import { Context } from '@deepseek-ai/cordis'
+import { Context, symbols } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-storage'
 import type { Plugin } from '@deepseek-ai/cordis'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { assertSupportedJsonSchema, defineTool } from '@deepseek-ai/dsh-tools'
@@ -677,23 +678,60 @@ function denyContext(value: unknown, service: string, reportFailure: (error: Err
   return value
 }
 
+/** Raw storage authority is Host infrastructure, including registrations exposed under aliases. */
+function denyStorage(value: unknown, ctx: Context, reportFailure: (error: Error) => void): unknown {
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value
+  const original = (item: object): object => {
+    const seen = new Set<object>()
+    while (!seen.has(item)) {
+      seen.add(item)
+      const next = Reflect.get(item, symbols.original) as object | undefined
+      if (next === undefined) break
+      item = next
+    }
+    return item
+  }
+  const candidate = original(value)
+  const hub = ctx.get('storage')
+  const authorities: unknown[] = [hub, ctx.get('storageDomain')]
+  if (hub) {
+    authorities.push(hub.backend)
+    for (const name of hub.backend.names()) {
+      const backend = hub.backend.get(name)
+      authorities.push(backend, backend.kv)
+    }
+  }
+  if (authorities.some(item => item !== null && typeof item === 'object' && original(item) === candidate)) {
+    return rejectGuard(reportFailure, 'raw storage authority is Host-only; use a business service or harness.state instead.')
+  }
+  return value
+}
+
 /**
  * Wrap an injected service so its methods forward to the real instance but
  * their return values pass through {@link denyContext}. Non-function members
  * (plain data) pass through as-is; a returned Promise is guarded on resolve.
  */
-function guardedService(service: object, name: string, reportFailure: (error: Error) => void): unknown {
-  return new Proxy(service, {
-    get(target, prop) {
-      const value = Reflect.get(target, prop, target) as unknown
+function guardedService(service: object, name: string, ctx: Context, reportFailure: (error: Error) => void): unknown {
+  const guardResult = (result: unknown): unknown => result === service ? facade
+    : denyContext(denyStorage(result, ctx, reportFailure), name, reportFailure)
+  const invoke = (fn: (...args: unknown[]) => unknown, args: unknown[]): unknown => {
+    const result = Reflect.apply(fn, service, args)
+    return result instanceof Promise ? result.then(guardResult) : guardResult(result)
+  }
+  // Empty targets withhold raw descriptors, prototypes and original-instance symbols.
+  const target = typeof service === 'function' ? (..._args: unknown[]) => undefined : Object.create(null) as object
+  const facade: object = new Proxy(target, {
+    apply(_target, _receiver, args) { return invoke(service as (...args: unknown[]) => unknown, args) },
+    getPrototypeOf() { return null },
+    get(_target, prop) {
+      if (typeof prop !== 'string' || Object.hasOwn(Object.prototype, prop) || prop === 'prototype') return undefined
+      const value = denyStorage(Reflect.get(service, prop, service), ctx, reportFailure)
       if (typeof value !== 'function') return denyContext(value, name, reportFailure)
-      return (...args: unknown[]): unknown => {
-        const result = Reflect.apply(value, target, args) as unknown
-        if (result instanceof Promise) return result.then(v => denyContext(v, name, reportFailure))
-        return denyContext(result, name, reportFailure)
-      }
+      return (...args: unknown[]): unknown => invoke(value as (...args: unknown[]) => unknown, args)
     },
   })
+  return facade
 }
 /* jscpd:ignore-end */
 
@@ -737,10 +775,13 @@ function sandboxContext(ctx: Context, reportFailure: (error: Error) => void): Co
   // is the façade's own API on either path.
   const readService = (name: string, requireDeclaration: boolean): unknown => {
     if (name === 'tools') return tools
+    if (name === 'storage' || name === 'storageDomain' || name.startsWith('storage.backend.')) {
+      return rejectGuard(reportFailure, 'raw storage authority is Host-only; use a business service or harness.state instead.')
+    }
     if (requireDeclaration && !declared.has(name)) return denyRead(name)
-    const service = denyContext(ctx.get(name), name, reportFailure)
+    const service = denyContext(denyStorage(ctx.get(name), ctx, reportFailure), name, reportFailure)
     if (service === null || (typeof service !== 'object' && typeof service !== 'function')) return service
-    return guardedService(service, name, reportFailure)
+    return guardedService(service, name, ctx, reportFailure)
   }
   const get = (name: string): unknown => readService(name, false)
   // The browser half builds the same façade over its own Context
@@ -759,6 +800,10 @@ function sandboxContext(ctx: Context, reportFailure: (error: Error) => void): Co
       // additionally require the Service declaration before Cordis resolves them.
       if (CTX_VERBS.has(prop)) {
         return (...args: unknown[]): unknown => {
+          if ((prop === 'on' || prop === 'once') && args[0] === 'domain/changed' && typeof args[1] === 'function') {
+            const listener = args[1] as (value: unknown) => unknown
+            args[1] = (value: unknown) => listener(cloneJson(value, 'domain/changed snapshot'))
+          }
           if (TIMER_VERBS.has(prop) && !declared.has('timer')) return denyRead('timer')
           const method = ctx[prop as keyof Context]
           return Reflect.apply(method as (...a: unknown[]) => unknown, ctx, args)

@@ -489,6 +489,17 @@
       ]
     },
     {
+      "directory": "packages/guard/side-effect-safety",
+      "legacyName": "@deepseek-ai/dsh-side-effect-safety",
+      "sourceName": "@changanhua/dsh-side-effect-safety",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/host/capability-registry",
       "legacyName": "@deepseek-ai/dsh-host-capability-registry",
       "sourceName": "@changanhua/dsh-host-capability-registry",

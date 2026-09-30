@@ -57,6 +57,8 @@ Delivered browser functions are visible to their authenticated installation acro
 
 The sandbox isolates globals but is not a security boundary: Node globals are absent or redirect to Cordis services (`ctx.fs`, `ctx.web`, `ctx.bash`, the timer helpers), and a host half receives a façade without framework internals, yet the services it declares reach the live runtime. Treat a dynamic package like bash access — see the [self-referential toolset Agent Note](../../../.agents/notes/implemented/feature/2026-07-08-self-referential-cordis-toolset.md).
 
+Raw `storage`, `storageDomain`, and `storage.backend.*` services are Host-only, including identity aliases of the hub, facility, backend registry, backend and KV facet, and direct service returns of those objects. Dynamic packages use business services or `harness.state`; static Host storage consumers are unchanged. Service facades withhold raw descriptors, prototypes, original-instance symbols and inherited Object methods. Dynamic `domain/changed` listeners receive detached JSON snapshots and cannot mutate the stored value through an event reference. Trusted Host plugins must not re-export private Domain, global or table write handles to dynamic packages; this guard is not a sandbox for arbitrary Host code.
+
 -----
 
 <a id="understand-the-implementation"></a>
