@@ -1,0 +1,4 @@
+verify-translation-pairing: recorded packages/client/ui-layout/README.i18n.yaml
+verify-translation-pairing: recorded packages/client/web/README.i18n.yaml
+verify-translation-pairing: 2 record(s) written; run the check to validate the pairs.
+verify-translation-pairing: 2 named pair(s) consistent; the corpus-wide check still runs in doc-sync.

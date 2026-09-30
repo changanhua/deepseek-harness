@@ -1,0 +1,2 @@
+$ tsx scripts/verify-translation-pairing.ts "packages/host/webserver/README.md" "packages/host/frontend-static/README.md" "packages/client/ui-conversation/README.md" "packages/client/ui-renderer/README.md" "packages/client/ui-workspace/README.md"
+verify-translation-pairing: 5 named pair(s) consistent; the corpus-wide check still runs in doc-sync.

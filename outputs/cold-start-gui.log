@@ -1,0 +1,417 @@
+$ vitest run packages/client packages/host
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+
+ RUN  v4.1.8 C:/Users/xbh/deepseek-harness
+
+ ❯ |thread-safe| packages/client/ui-theme/tests/corner-shape-styles.client.spec.ts (4 tests | 1 failed) 399ms
+     × pairs corner-shape: round with every full-round border-radius under packages/ 394ms
+ ❯ |thread-safe| packages/client/ui-theme/tests/scrollbar-styles.client.spec.ts (21 tests | 1 failed) 350ms
+     × every sheet that scrolls on an elevated surface rebinds 8ms
+ ❯ |thread-safe| packages/client/ui-theme/tests/elevation-styles.client.spec.ts (7 tests | 2 failed) 963ms
+     × draws every solid neutral-token border at 0.5px under packages/ 340ms
+     × draws every filled divider line at 0.5px under packages/ 272ms
+Error: renderSlot('root') before any 'root' registration (boot order)
+    at RootOutlet (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:918:11)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+Error: renderSlot('root') before any 'root' registration (boot order)
+    at RootOutlet (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:918:11)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+Error: entry boom
+    at component (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/tests/scoped-slots.client.spec.tsx:374:48)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+Error: entry boom
+    at component (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/tests/scoped-slots.client.spec.tsx:374:48)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+Error: entry A boom
+    at component (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/tests/scoped-slots.client.spec.tsx:434:32)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+Error: entry A boom
+    at component (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/tests/scoped-slots.client.spec.tsx:434:32)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+Error: strict session slot 'k.session' rendered without a scope binding
+    at renderOutletContent (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:748:11)
+    at SlotOutlet (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:726:8)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+Error: strict session slot 'k.session' rendered without a scope binding
+    at renderOutletContent (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:748:11)
+    at SlotOutlet (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:726:8)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at beginWork$1 (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:27465:14)
+    at performUnitOfWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26599:12)
+    at workLoopSync (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26505:5)
+    at renderRootSync (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26473:7)
+    at performConcurrentWorkOnRoot (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:25777:74)
+Error: strict session slot 'k.session' rendered without a scope binding
+    at renderOutletContent (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:748:11)
+    at SlotOutlet (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:726:8)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+Error: strict session slot 'k.session' rendered without a scope binding
+    at renderOutletContent (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:748:11)
+    at SlotOutlet (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:726:8)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at beginWork$1 (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:27465:14)
+    at performUnitOfWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26599:12)
+    at workLoopSync (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26505:5)
+    at renderRootSync (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26473:7)
+    at recoverFromConcurrentError (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:25889:20)
+Error: inject boom
+    at inject (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/tests/scoped-slots.client.spec.tsx:1034:29)
+    at runInject (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:112:29)
+    at cachedRootInject (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:187:13)
+    at RootEntry (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:661:20)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+Error: inject boom
+    at inject (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/tests/scoped-slots.client.spec.tsx:1034:29)
+    at runInject (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:112:29)
+    at cachedRootInject (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:187:13)
+    at RootEntry (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:661:20)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+ ❯ |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts (6 tests | 5 failed) 261ms
+     × occupies sidebar.settings, declared by ui-sidebar, and declares every child slot 219ms
+     × projects the section ledger: product sections in order, defaults for bare rows, stable snapshots 8ms
+     × projects onboarding entries into stable coordinator order 12ms
+     × re-registers after the declarer reloads: the cascade removes the shell, the rebuilt declaration takes it back 8ms
+     × unregisters the shell and collapses every child slot when its row unloads 10ms
+ ❯ |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts (8 tests | 7 failed) 317ms
+     × fills the five seats of the shell it declares, with the locale-following General label 219ms
+     × registers the zh/en settings dictionaries and frees the seats when its row unloads 13ms
+     × the nav label thunk follows the active locale without re-registration 11ms
+     × reads availability from the shared mirror and follows its reconnect refresh 14ms
+     × withholds the Host document action off-loopback 30ms
+     × re-registers after a Loader rebuild of the declaring chain (stale disposers must not block) 9ms
+     × removes every seat and the item declaration when its row unloads 17ms
+Error: scope 'session' adapter does not provide its area renderer
+    at scopeAreaProvider (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:412:11)
+    at standardKit (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:481:32)
+    at RootEntry (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:660:38)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+Error: scope 'session' adapter does not provide its area renderer
+    at scopeAreaProvider (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:412:11)
+    at standardKit (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:481:32)
+    at RootEntry (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:660:38)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at beginWork$1 (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:27465:14)
+    at performUnitOfWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26599:12)
+    at workLoopSync (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26505:5)
+    at renderRootSync (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26473:7)
+Error: scope 'session' adapter does not provide its area renderer
+    at scopeAreaProvider (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:412:11)
+    at standardKit (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:481:32)
+    at RootEntry (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:660:38)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\jsdom@29.1.1_@noble+hashes@2.3.0\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+Error: scope 'session' adapter does not provide its area renderer
+    at scopeAreaProvider (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:412:11)
+    at standardKit (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:481:32)
+    at RootEntry (C:/Users/xbh/deepseek-harness/packages/client/ui-renderer/src/client/scoped-slots.tsx:660:38)
+    at renderWithHooks (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at beginWork$1 (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:27465:14)
+    at performUnitOfWork (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26599:12)
+    at workLoopSync (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26505:5)
+    at renderRootSync (C:\Users\xbh\deepseek-harness\node_modules\.pnpm\react-dom@18.3.1_react@18.3.1\node_modules\react-dom\cjs\react-dom.development.js:26473:7)
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 16 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > fills the five seats of the shell it declares, with the locale-following General label
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > registers the zh/en settings dictionaries and frees the seats when its row unloads
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > the nav label thunk follows the active locale without re-registration
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > reads availability from the shared mirror and follows its reconnect refresh
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > withholds the Host document action off-loopback
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > re-registers after a Loader rebuild of the declaring chain (stale disposers must not block)
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > removes every seat and the item declaration when its row unloads
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts > ui-settings-general shell > occupies sidebar.settings, declared by ui-sidebar, and declares every child slot
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts > ui-settings-general shell > projects the section ledger: product sections in order, defaults for bare rows, stable snapshots
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts > ui-settings-general shell > projects onboarding entries into stable coordinator order
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts > ui-settings-general shell > re-registers after the declarer reloads: the cascade removes the shell, the rebuilt declaration takes it back
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts > ui-settings-general shell > unregisters the shell and collapses every child slot when its row unloads
+Error: client-test-runtime: cannot import @deepseek-ai/dsh-session-log-export/client: TypeError: Cannot read properties of undefined (reading 'load')
+ ❯ importClient packages/test-support/client-runtime/src/assembly/modules.ts:46:11
+     44|     namespace = await import(/* @vite-ignore */ `${name}/client`)
+     45|   } catch (error) {
+     46|     throw new Error(`client-test-runtime: cannot import ${name}/client…
+       |           ^
+     47|   }
+     48|   return namespace as ClientPluginModule
+ ❯ loadPluginModules packages/test-support/client-runtime/src/assembly/modules.ts:36:35
+ ❯ TestClient.start packages/test-support/client-runtime/src/assembly/test-client.ts:234:23
+
+Caused by: TypeError: Cannot read properties of undefined (reading 'load')
+ ❯ packages/packages/session-query/session-log-export/src/client/controller.ts:1:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/16]⎯
+
+ FAIL  |thread-safe| packages/client/ui-theme/tests/corner-shape-styles.client.spec.ts > full-round radii keep circular corners > pairs corner-shape: round with every full-round border-radius under packages/
+AssertionError: expected [ …(16) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureNavEntry.module.css .badge",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .evidenceRow span, .tags span",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .mapLegend span",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .runtimeDot",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .runtimeStatus",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-capability\\src\\client\\CapabilityNavEntry.module.css .badge",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-capability\\src\\client\\CapabilityWorkspace.module.css .groupCount",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-capability\\src\\client\\CapabilityWorkspace.module.css .tag",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-capability\\src\\client\\CapabilityWorkspace.module.css .statusDot",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .spinner",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryNavEntry.module.css .badge",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .trace button",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .cardLane",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .spineDot",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .spineLegend::before, .branchLegend::before, .contextLegend::before",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueNavEntry.module.css .badge",
++ ]
+
+ ❯ packages/client/ui-theme/tests/corner-shape-styles.client.spec.ts:89:22
+     87|     const unpaired = packageStylesheets().flatMap(file =>
+     88|       unpairedFullRound(readFileSync(file, 'utf8')).map(selectors => `…
+     89|     expect(unpaired).toEqual([])
+       |                      ^
+     90|   })
+     91| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/16]⎯
+
+ FAIL  |thread-safe| packages/client/ui-theme/tests/elevation-styles.client.spec.ts > neutral solid borders are hairlines > draws every solid neutral-token border at 0.5px under packages/
+AssertionError: expected [ …(77) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .evidenceRow span, .tags span border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .refresh border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .summary article border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .viewTabs border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .systemMap border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .profileRail border-right: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .mapHeader border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .mapLegend span border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .bundleRegion border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .systemMap > .detail border-left: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .explorer border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .groups border-right: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .search border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .packageTile border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .detail border-left: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .detail dl div border-top: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .systemMap > .detail border-top: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .detail border-top: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .profileRail border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .groups border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\BrowserConnectionPanel.module.css .panel border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .refresh border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .banner border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .row border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .detail border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .projectInput border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .detailAction border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .spinner border: 2px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\EntryEditor.module.css .editor border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\EntryEditor.module.css .titleInput border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\EntryEditor.module.css .bodyInput border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\EntryEditor.module.css .button border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\EntryEditor.module.css .conflict border: 1px solid var(--dsw-alias-border-danger)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .workspace button border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .caseList border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .commandCard border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .commandCard input, .commandCard textarea, .commandCard select, .actionBlock input, .actionBlock select, .decision input, .decision textarea, .decision select border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .clauses border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .ledger, .detailPane border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .ledgerHead, .detailHead border-bottom: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .ledger li + li border-top: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .facts div border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .attention, .actionBlock, .evidenceSection, .decision border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-layout\\src\\client\\AppFrame.module.css .sidebarCol border-right: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-layout\\src\\client\\AppFrame.module.css .detailsCol border-left: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-layout\\src\\client\\AppFrame.module.css .handle[data-side='details']::after border: 1px solid var(--dsw-alias-border-l2-darkmode-thin)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .capture, .detail border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .insights border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .lane border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .card border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .proposals, .proposal border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .sourceList li border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .estimateEditor border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .status border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .evolution border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .contextLegend::before border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .root button border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .root :is(input, textarea, select) border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-settings-skills\\src\\client\\SkillsPopover.module.css .trigger border: 1px solid var(--dsw-alias-border-l)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-settings-skills\\src\\client\\SkillsPopover.module.css .panel border: 1px solid var(--dsw-alias-border-l)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-settings-skills\\src\\client\\SkillsSection.module.css .search border: 1px solid var(--dsw-alias-border-l)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-settings-skills\\src\\client\\SkillsSection.module.css .entry border: 1px solid var(--dsw-alias-border-l)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .listPane, .detailPane border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .toolbar border-bottom: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .search border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .row border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .detailHead border-bottom: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .reasonField input border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .attemptRow border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .advanced border-top: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .header border-bottom: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .controls input, .controls button border: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .track border: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .ledger div border-right: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .sessions ul border-top: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .sessions li border-bottom: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .ledger div border-bottom: 1px solid var(--dsw-alias-border-normal)",
++ ]
+
+ ❯ packages/client/ui-theme/tests/elevation-styles.client.spec.ts:170:18
+    168|         .map(line => `${file} ${line}`)
+    169|     })
+    170|     expect(wide).toEqual([])
+       |                  ^
+    171|   })
+    172|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/16]⎯
+
+ FAIL  |thread-safe| packages/client/ui-theme/tests/elevation-styles.client.spec.ts > neutral solid borders are hairlines > draws every filled divider line at 0.5px under packages/
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .spine::before height: 1px",
++ ]
+
+ ❯ packages/client/ui-theme/tests/elevation-styles.client.spec.ts:180:18
+    178|     const wide = packageStylesheets().flatMap(file =>
+    179|       wideFilledDividers(readFileSync(file, 'utf8')).map(line => `${fi…
+    180|     expect(wide).toEqual([])
+       |                  ^
+    181|   })
+    182| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/16]⎯
+
+ FAIL  |thread-safe| packages/client/ui-theme/tests/scrollbar-styles.client.spec.ts > elevated surface rebinds > every sheet that scrolls on an elevated surface rebinds
+AssertionError: C:\Users\xbh\deepseek-harness\packages\client\ui-work-observatory\src\client\WorkObservatoryWorkspace.module.css scrolls on an elevated surface without rebinding: expected [ '--dsw-alias-bg-module-platform' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "--dsw-alias-bg-module-platform",
++ ]
+
+ ❯ packages/client/ui-theme/tests/scrollbar-styles.client.spec.ts:511:98
+    509|     for (const [file, surfaces] of sheetSurfaces) {
+    510|       if (!surfaces.scrolls || surfaces.rebindsElevation) continue
+    511|       expect([...surfaces.elevated], `${file} scrolls on an elevated s…
+       |                                                                                                  ^
+    512|     }
+    513|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/16]⎯
+
+
+ Test Files  5 failed | 409 passed (414)
+      Tests  16 failed | 5629 passed | 1 skipped (5646)
+   Start at  11:33:38
+   Duration  77.63s (transform 59.14s, setup 37.51s, import 617.57s, tests 123.36s, environment 484.36s)
+
+[ELIFECYCLE] Command failed with exit code 1.

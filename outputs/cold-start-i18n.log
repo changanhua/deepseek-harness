@@ -1,0 +1,2 @@
+$ tsx scripts/verify-client-ui-i18n.ts
+verify-client-ui-i18n: 691 Client UI source file(s) use locale-owned copy.

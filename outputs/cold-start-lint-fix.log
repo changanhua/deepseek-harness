@@ -1,0 +1,29 @@
+native/system/packages/darwin-arm64      | [WARN] Unsupported platform: wanted: {"cpu":["arm64"],"os":["darwin"],"libc":["any"]} (current: {"os":"win32","cpu":"x64","libc":"unknown"})
+native/system/packages/darwin-x64        | [WARN] Unsupported platform: wanted: {"cpu":["x64"],"os":["darwin"],"libc":["any"]} (current: {"os":"win32","cpu":"x64","libc":"unknown"})
+native/system/packages/linux-arm64       | [WARN] Unsupported platform: wanted: {"cpu":["arm64"],"os":["linux"],"libc":["any"]} (current: {"os":"win32","cpu":"x64","libc":"unknown"})
+native/system/packages/linux-x64         | [WARN] Unsupported platform: wanted: {"cpu":["x64"],"os":["linux"],"libc":["any"]} (current: {"os":"win32","cpu":"x64","libc":"unknown"})
+Scope: all 365 workspace projects
+[WARN] There are cyclic workspace dependencies: C:\Users\xbh\deepseek-harness\apps\web, C:\Users\xbh\deepseek-harness\packages\client\web, C:\Users\xbh\deepseek-harness\packages\client\ui-renderer, C:\Users\xbh\deepseek-harness\packages\test-support\client-runtime, C:\Users\xbh\deepseek-harness\packages\bundle\web-app; C:\Users\xbh\deepseek-harness\packages\api\gateway, C:\Users\xbh\deepseek-harness\packages\client\connection, C:\Users\xbh\deepseek-harness\packages\api\session-controller, C:\Users\xbh\deepseek-harness\packages\client\file-upload, C:\Users\xbh\deepseek-harness\packages\api\remotes, C:\Users\xbh\deepseek-harness\packages\api\workspace-controller; C:\Users\xbh\deepseek-harness\packages\client\ui-conversation, C:\Users\xbh\deepseek-harness\packages\client\ui-workspace; C:\Users\xbh\deepseek-harness\packages\core\agent-loop, C:\Users\xbh\deepseek-harness\packages\llm\llm-pi-ai, C:\Users\xbh\deepseek-harness\packages\llm\llm-deepseek, C:\Users\xbh\deepseek-harness\packages\session\session-log-deepseek, C:\Users\xbh\deepseek-harness\packages\feedback\command-feedback, C:\Users\xbh\deepseek-harness\packages\test-support\agent-loop-testkit; C:\Users\xbh\deepseek-harness\packages\e2b\e2b, C:\Users\xbh\deepseek-harness\packages\e2b\fs-e2b; C:\Users\xbh\deepseek-harness\packages\sandbox\sandbox-local, C:\Users\xbh\deepseek-harness\packages\sandbox\sandbox-windows-acl; C:\Users\xbh\deepseek-harness\packages\subagent\subagent-spawn-in-process, C:\Users\xbh\deepseek-harness\packages\subagent\tool-subagent; C:\Users\xbh\deepseek-harness\vendor\cordis, C:\Users\xbh\deepseek-harness\vendor\include
+? Verifying lockfile against supply-chain policies (1570 entries)...
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Progress: resolved 94, reused 91, downloaded 0, added 0
+Progress: resolved 104, reused 104, downloaded 0, added 0
+Progress: resolved 149, reused 145, downloaded 0, added 0
+✓ Lockfile passes supply-chain policies (1570 entries in 4.5s)
+Progress: resolved 195, reused 152, downloaded 0, added 0
+Progress: resolved 747, reused 560, downloaded 0, added 0
+Progress: resolved 1481, reused 1201, downloaded 0, added 0
+[WARN] 11 deprecated subdependencies found: @types/minimatch@6.0.0, boolean@3.2.0, glob@10.5.0, glob@11.1.0, glob@7.2.0, inflight@1.0.6, lodash.isequal@4.5.0, node-domexception@1.0.0, rimraf@2.6.2, tsconfck@3.1.6, whatwg-encoding@2.0.0
+Progress: resolved 1570, reused 1284, downloaded 0, added 0
+Already up to date
+Progress: resolved 1570, reused 1284, downloaded 0, added 0, done
+packages/subprocess/subprocess-local postinstall$ node scripts/ensure-spawn-helper.mjs
+packages/subprocess/subprocess-local postinstall: Done
+. postinstall$ node scripts/install-lefthook.mjs
+. postinstall: sync hooks: ✔️(pre-push, pre-commit, pre-merge-commit)
+. postinstall: (node:31584) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+. postinstall: (Use `node --trace-deprecation ...` to show where the warning was created)
+. postinstall: Done
+
+Done in 11.9s using pnpm v11.7.0
+apps/web/tests/cold-start.e2e.ts:75:13: error typescript(no-floating-promises): Promises must be awaited, add void operator to ignore. help: The promise must end with a call to .catch, or end with a call to .then with a rejection handler, or be explicitly marked as ignored with the `void` operator.

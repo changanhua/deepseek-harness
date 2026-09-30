@@ -1,0 +1,1 @@
+verify-client-packages: 59 client packages (54 dynamic, 5 statically linked) satisfy package-mode and module-request rules; 2 explicit external request(s).

@@ -1,0 +1,238 @@
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+
+ RUN  v4.1.8 C:/Users/xbh/deepseek-harness
+
+ ❯ |thread-safe| packages/client/ui-theme/tests/corner-shape-styles.client.spec.ts (4 tests | 1 failed) 141ms
+     × pairs corner-shape: round with every full-round border-radius under packages/ 138ms
+ ❯ |thread-safe| packages/client/ui-theme/tests/scrollbar-styles.client.spec.ts (21 tests | 1 failed) 123ms
+     × every sheet that scrolls on an elevated surface rebinds 4ms
+ ❯ |thread-safe| packages/client/ui-theme/tests/elevation-styles.client.spec.ts (7 tests | 2 failed) 328ms
+     × draws every solid neutral-token border at 0.5px under packages/ 106ms
+     × draws every filled divider line at 0.5px under packages/ 90ms
+ ❯ |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts (6 tests | 5 failed) 109ms
+     × occupies sidebar.settings, declared by ui-sidebar, and declares every child slot 93ms
+     × projects the section ledger: product sections in order, defaults for bare rows, stable snapshots 4ms
+     × projects onboarding entries into stable coordinator order 3ms
+     × re-registers after the declarer reloads: the cascade removes the shell, the rebuilt declaration takes it back 3ms
+     × unregisters the shell and collapses every child slot when its row unloads 3ms
+ ❯ |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts (8 tests | 7 failed) 119ms
+     × fills the five seats of the shell it declares, with the locale-following General label 93ms
+     × registers the zh/en settings dictionaries and frees the seats when its row unloads 4ms
+     × the nav label thunk follows the active locale without re-registration 5ms
+     × reads availability from the shared mirror and follows its reconnect refresh 4ms
+     × withholds the Host document action off-loopback 5ms
+     × re-registers after a Loader rebuild of the declaring chain (stale disposers must not block) 3ms
+     × removes every seat and the item declaration when its row unloads 4ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 16 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > fills the five seats of the shell it declares, with the locale-following General label
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > registers the zh/en settings dictionaries and frees the seats when its row unloads
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > the nav label thunk follows the active locale without re-registration
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > reads availability from the shared mirror and follows its reconnect refresh
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > withholds the Host document action off-loopback
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > re-registers after a Loader rebuild of the declaring chain (stale disposers must not block)
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/apply.client.spec.ts > ui-settings-general apply > removes every seat and the item declaration when its row unloads
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts > ui-settings-general shell > occupies sidebar.settings, declared by ui-sidebar, and declares every child slot
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts > ui-settings-general shell > projects the section ledger: product sections in order, defaults for bare rows, stable snapshots
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts > ui-settings-general shell > projects onboarding entries into stable coordinator order
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts > ui-settings-general shell > re-registers after the declarer reloads: the cascade removes the shell, the rebuilt declaration takes it back
+ FAIL  |thread-safe| packages/client/ui-settings-general/tests/shell.client.spec.ts > ui-settings-general shell > unregisters the shell and collapses every child slot when its row unloads
+Error: client-test-runtime: cannot import @deepseek-ai/dsh-session-log-export/client: TypeError: Cannot read properties of undefined (reading 'load')
+ ❯ importClient packages/test-support/client-runtime/src/assembly/modules.ts:46:11
+     44|     namespace = await import(/* @vite-ignore */ `${name}/client`)
+     45|   } catch (error) {
+     46|     throw new Error(`client-test-runtime: cannot import ${name}/client…
+       |           ^
+     47|   }
+     48|   return namespace as ClientPluginModule
+ ❯ loadPluginModules packages/test-support/client-runtime/src/assembly/modules.ts:36:35
+ ❯ TestClient.start packages/test-support/client-runtime/src/assembly/test-client.ts:234:23
+
+Caused by: TypeError: Cannot read properties of undefined (reading 'load')
+ ❯ packages/packages/session-query/session-log-export/src/client/controller.ts:1:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/16]⎯
+
+ FAIL  |thread-safe| packages/client/ui-theme/tests/corner-shape-styles.client.spec.ts > full-round radii keep circular corners > pairs corner-shape: round with every full-round border-radius under packages/
+AssertionError: expected [ …(16) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureNavEntry.module.css .badge",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .evidenceRow span, .tags span",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .mapLegend span",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .runtimeDot",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .runtimeStatus",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-capability\\src\\client\\CapabilityNavEntry.module.css .badge",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-capability\\src\\client\\CapabilityWorkspace.module.css .groupCount",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-capability\\src\\client\\CapabilityWorkspace.module.css .tag",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-capability\\src\\client\\CapabilityWorkspace.module.css .statusDot",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .spinner",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryNavEntry.module.css .badge",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .trace button",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .cardLane",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .spineDot",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .spineLegend::before, .branchLegend::before, .contextLegend::before",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueNavEntry.module.css .badge",
++ ]
+
+ ❯ packages/client/ui-theme/tests/corner-shape-styles.client.spec.ts:89:22
+     87|     const unpaired = packageStylesheets().flatMap(file =>
+     88|       unpairedFullRound(readFileSync(file, 'utf8')).map(selectors => `…
+     89|     expect(unpaired).toEqual([])
+       |                      ^
+     90|   })
+     91| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/16]⎯
+
+ FAIL  |thread-safe| packages/client/ui-theme/tests/elevation-styles.client.spec.ts > neutral solid borders are hairlines > draws every solid neutral-token border at 0.5px under packages/
+AssertionError: expected [ …(77) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .evidenceRow span, .tags span border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .refresh border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .summary article border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .viewTabs border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .systemMap border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .profileRail border-right: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .mapHeader border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .mapLegend span border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .bundleRegion border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .systemMap > .detail border-left: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .explorer border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .groups border-right: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .search border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .packageTile border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .detail border-left: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .detail dl div border-top: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .systemMap > .detail border-top: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .detail border-top: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .profileRail border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-architecture\\src\\client\\ArchitectureWorkspace.module.css .groups border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\BrowserConnectionPanel.module.css .panel border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .refresh border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .banner border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .row border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .detail border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .projectInput border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .detailAction border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\ContentLibraryWorkspace.module.css .spinner border: 2px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\EntryEditor.module.css .editor border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\EntryEditor.module.css .titleInput border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\EntryEditor.module.css .bodyInput border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\EntryEditor.module.css .button border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-content\\src\\client\\EntryEditor.module.css .conflict border: 1px solid var(--dsw-alias-border-danger)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .workspace button border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .caseList border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .commandCard border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .commandCard input, .commandCard textarea, .commandCard select, .actionBlock input, .actionBlock select, .decision input, .decision textarea, .decision select border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .clauses border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .ledger, .detailPane border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .ledgerHead, .detailHead border-bottom: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .ledger li + li border-top: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .facts div border: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .attention, .actionBlock, .evidenceSection, .decision border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-layout\\src\\client\\AppFrame.module.css .sidebarCol border-right: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-layout\\src\\client\\AppFrame.module.css .detailsCol border-left: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-layout\\src\\client\\AppFrame.module.css .handle[data-side='details']::after border: 1px solid var(--dsw-alias-border-l2-darkmode-thin)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .capture, .detail border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .insights border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .lane border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .card border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .proposals, .proposal border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .sourceList li border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .estimateEditor border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .status border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .evolution border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .contextLegend::before border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .root button border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-planning\\src\\client\\PlanningWorkbench.module.css .root :is(input, textarea, select) border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-settings-skills\\src\\client\\SkillsPopover.module.css .trigger border: 1px solid var(--dsw-alias-border-l)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-settings-skills\\src\\client\\SkillsPopover.module.css .panel border: 1px solid var(--dsw-alias-border-l)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-settings-skills\\src\\client\\SkillsSection.module.css .search border: 1px solid var(--dsw-alias-border-l)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-settings-skills\\src\\client\\SkillsSection.module.css .entry border: 1px solid var(--dsw-alias-border-l)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .listPane, .detailPane border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .toolbar border-bottom: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .search border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .row border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .detailHead border-bottom: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .reasonField input border: 1px solid var(--dsw-alias-border-l2)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .attemptRow border-bottom: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-task-queue\\src\\client\\QueueWorkspace.module.css .advanced border-top: 1px solid var(--dsw-alias-border-l1)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .header border-bottom: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .controls input, .controls button border: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .track border: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .ledger div border-right: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .sessions ul border-top: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .sessions li border-bottom: 1px solid var(--dsw-alias-border-normal)",
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-work-observatory\\src\\client\\WorkObservatoryWorkspace.module.css .ledger div border-bottom: 1px solid var(--dsw-alias-border-normal)",
++ ]
+
+ ❯ packages/client/ui-theme/tests/elevation-styles.client.spec.ts:170:18
+    168|         .map(line => `${file} ${line}`)
+    169|     })
+    170|     expect(wide).toEqual([])
+       |                  ^
+    171|   })
+    172|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/16]⎯
+
+ FAIL  |thread-safe| packages/client/ui-theme/tests/elevation-styles.client.spec.ts > neutral solid borders are hairlines > draws every filled divider line at 0.5px under packages/
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "C:\\Users\\xbh\\deepseek-harness\\packages\\client\\ui-delivery\\src\\client\\DeliveryWorkbench.module.css .spine::before height: 1px",
++ ]
+
+ ❯ packages/client/ui-theme/tests/elevation-styles.client.spec.ts:180:18
+    178|     const wide = packageStylesheets().flatMap(file =>
+    179|       wideFilledDividers(readFileSync(file, 'utf8')).map(line => `${fi…
+    180|     expect(wide).toEqual([])
+       |                  ^
+    181|   })
+    182| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/16]⎯
+
+ FAIL  |thread-safe| packages/client/ui-theme/tests/scrollbar-styles.client.spec.ts > elevated surface rebinds > every sheet that scrolls on an elevated surface rebinds
+AssertionError: C:\Users\xbh\deepseek-harness\packages\client\ui-work-observatory\src\client\WorkObservatoryWorkspace.module.css scrolls on an elevated surface without rebinding: expected [ '--dsw-alias-bg-module-platform' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "--dsw-alias-bg-module-platform",
++ ]
+
+ ❯ packages/client/ui-theme/tests/scrollbar-styles.client.spec.ts:511:98
+    509|     for (const [file, surfaces] of sheetSurfaces) {
+    510|       if (!surfaces.scrolls || surfaces.rebindsElevation) continue
+    511|       expect([...surfaces.elevated], `${file} scrolls on an elevated s…
+       |                                                                                                  ^
+    512|     }
+    513|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/16]⎯
+
+
+ Test Files  5 failed (5)
+      Tests  16 failed | 30 passed (46)
+   Start at  11:54:24
+   Duration  3.61s (transform 2.30s, setup 1.82s, import 4.70s, tests 819ms, environment 1.49s)
