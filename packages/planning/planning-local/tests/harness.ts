@@ -46,7 +46,7 @@ export async function createPlanningHarness() {
     kind: 'human',
     authorize,
   })
-  const create = (requestId: string, expectedBoardVersion = 0): PlanningCommand => ({
+  const create = (requestId: string, expectedBoardVersion = 0): Extract<PlanningCommand, { kind: 'create' }> => ({
     kind: 'create',
     requestId,
     expectedBoardVersion,

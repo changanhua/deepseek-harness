@@ -18,7 +18,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@changanhua/dsh-tool-browser` | `browser_action`, `browser_action_sequence`, `browser_activity_search`, `browser_entry_mount`, `browser_entry_unmount`, `browser_extract`, `browser_instances`, `browser_page_map`, `browser_region_clear`, `browser_region_render`, `browser_request_status`, `browser_snapshot`, `browser_tabs`, `browser_task_cancel`, `browser_task_select`, `browser_task_start`, `browser_task_verify` | `ctx.browser`, `ctx.browserTasks`, `ctx.tools`, `ctx.approval`, `ctx.browserActivity for historical activity search`, `an initiating Agent session` | `tool/call`, `tool/result`, `browser-task/change`, `browser-task/receipt`, `browser-task/check`, `browser-task/delegation`, `approved page actions through Browser` | - | Activity search is present only when browserActivity is composed. It reads the initiating Session under current Host grants, including while Chrome is offline. |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`, `task_queue_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 agent.run@1 admission` | - | The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields. |
 | `@changanhua/dsh-tool-memory` | `memory_propose`, `memory_read`, `memory_search` | `ctx.tools`, `ctx.systemPrompt`, `ctx.projectMemory`, `a live Agent in a registered Workspace` | `tool/call`, `tool/result`, `candidate revisions and proposal receipts in the project_memory domain` | - | Explicit opt-in project memory. Models can search, read checked claims, and propose candidates; human acceptance, rejection, and withdrawal are separate command operations. |
-| `@changanhua/dsh-tool-planning` | `planning_execution`, `planning_handoff`, `planning_list`, `planning_read`, `planning_update` | `ctx.tools`, `ctx.systemPrompt`, `ctx.planning`, `ctx.agents`, `ctx.sessions`, `ctx.workspaceRegistry`, `an initiating Agent in a registered Workspace` | `tool/call`, `tool/result`, `Planning Board mutations through ctx.planning` | - | planning_handoff is registered only when the optional Planning–Delivery bridge is composed. planning_execution reads linked Delivery state and evidence only when the bridge and Planning Remote are both composed; it never dispatches or accepts Delivery work. |
+| `@changanhua/dsh-tool-planning` | `planning_context`, `planning_execution`, `planning_handoff`, `planning_list`, `planning_read`, `planning_update` | `ctx.tools`, `ctx.systemPrompt`, `ctx.planning`, `ctx.agents`, `ctx.sessions`, `ctx.workspaceRegistry`, `an initiating Agent in a registered Workspace` | `tool/call`, `tool/result`, `Planning Board mutations through ctx.planning` | - | planning_handoff is registered only when the optional Planning–Delivery bridge is composed. planning_execution reads linked Delivery state and evidence only when the bridge and Planning Remote are both composed; it never dispatches or accepts Delivery work. |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`, `ctx.userQuestions` | `tool/call`, `tool/result after a UI/provider answers the question` | - | ask_user_question pauses the tool call until the active UI provider returns a human answer. |
 | `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`, `ctx.codeRuntime (execution time)`, `ctx.systemPrompt` | `tool/call`, `one tool/ptc-dispatch-start + tool/ptc-dispatch pair per bridged sub-call`, `tool/result` | - | Owned by the tool registry as a reserved transport outside filterable capability layers under `mode: ptc` / `mode: both` (see the PTC mode Agent Note). Under `ptc` it is the registry's only wire contribution; the other visible capabilities are declared in a generated SDK section in the loaded runtime's language, and a program calls them through bindings scheduled under the native concurrency contract (submission-ordered starts and policy; concurrency-safe bodies overlap up to `maxParallelSubCalls`) that re-enter the complete guarded tool pipeline and link each nested execution to this outer result. |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`, `ctx.systemPrompt`, `ctx.userQuestions (execution time, opportunistic)` | `tool/call`, `plan/mode inactive on an approved review`, `tool/result` | - | exit_plan_mode stays in the model-facing schema while planning is inactive so transitions add no tool-catalog churn on top of the plan-policy change. Its execute path rejects calls outside plan mode; in plan mode it presents the plan over the user-questions seam (approve / keep planning with feedback), and approval logs plan mode inactive at the step boundary. |
@@ -3570,6 +3570,34 @@ Explicit opt-in project memory. Models can search, read checked claims, and prop
 
 ## `@changanhua/dsh-tool-planning`
 
+### `planning_context`
+
+Read current canonical Plan or Focus context and opaque resource references, without historical transcripts.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "plan",
+        "focus"
+      ]
+    },
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "id"
+  ]
+}
+```
+
+Source: [`packages/planning/tool-planning/src/index.ts`](../packages/planning/tool-planning/src/index.ts)
+
 ### `planning_execution`
 
 Read the selected plan’s execution, independent verification, human acceptance, or immutable evidence. These facts are separate from its planning lane.
@@ -4476,7 +4504,8 @@ Apply one CAS-fenced PlanningCommand in the current project. Reuse requestId for
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "For any delta, including a Focus delta, use planning_context.plan.id (the owning Plan), never the Focus id or null."
         },
         "base_revision_id": {
           "oneOf": [
@@ -4486,7 +4515,8 @@ Apply one CAS-fenced PlanningCommand in the current project. Reuse requestId for
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "For a delta, use planning_context.plan.revision, identical to delta.baseRevision."
         },
         "draft": {
           "type": "object",
@@ -4733,6 +4763,10 @@ Apply one CAS-fenced PlanningCommand in the current project. Reuse requestId for
           "items": {
             "type": "string"
           }
+        },
+        "delta_json": {
+          "type": "string",
+          "description": "Optional JSON delta: {subject:{kind:\"plan\"|\"focus\",id},baseRevision,originRef:{kind,id},evidenceRefs?:[{kind,id}],operations:[{kind:\"add-state-entry\"|\"update-state-entry\",entry:{id,kind:\"objective\"|\"accepted\"|\"open\",content,sourceRefs?:[{kind,id}]} }|{kind:\"remove-state-entry\",id}|{kind:\"create-focus\",id,title,objective?}|{kind:\"update-focus\",id,expectedVersion,status?,title?,objective?}|{kind:\"add-resource-link\",id,resource:{kind,id,provider?,revision?,label?},role?}|{kind:\"remove-resource-link\",id}]}. Delta uses the existing proposal, requires exact adoption, and must match target_item_id/base_revision_id."
         }
       },
       "required": [

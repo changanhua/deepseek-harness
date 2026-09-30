@@ -24,7 +24,10 @@ export function planningRemoteFailure(error: unknown, signal?: AbortSignal): Typ
       'source-unavailable': 'unavailable',
     } as const
     const code = codes[error.code]
-    return new TypertRemoteFailure({ code, message: `Planning operation was refused: ${code}`, details: {} })
+    const message = error.message === 'base revision mismatch'
+      ? 'Planning conflict: base revision mismatch; refresh, review and regenerate the proposal'
+      : `Planning operation was refused: ${code}`
+    return new TypertRemoteFailure({ code, message, details: {} })
   }
   return new TypertRemoteFailure({ code: 'internal', message: 'Planning operation failed', details: {} })
 }

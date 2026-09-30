@@ -9,7 +9,9 @@ kind: "package-reference"
 
 ## 概述
 
-此插件向 Agent（智能体）提供当前项目 Planning Board 的三个工具：有界卡片列表、单卡不可变修订读取，以及带 CAS 围栏的命令更新。Planning provider 拥有持久化、来源捕获和提交授权。模型不能选择 Workspace 或 actor，不能批准 Delivery 工作、接纳 Delivery 结果或接纳 Memory。
+此插件向 Agent（智能体）提供当前项目 Planning Board 的工具：有界卡片列表、单卡不可变修订读取，以及带 CAS 围栏的命令更新。Planning provider 拥有持久化、来源捕获和提交授权。模型不能选择 Workspace 或 actor，不能批准 Delivery 工作、接纳 Delivery 结果或接纳 Memory。
+
+已绑定 Planning 的 Session 通过现有持久上下文装配获得有上限的正式上下文快照，其中保留原始作用对象和基础修订。当前上下文包包含状态条目、可选 Focus、旧字段及资源引用，不包含历史聊天记录。`planning_context` 刷新该投影；`planning_update.propose.delta_json` 在现有 Proposal 代次上提交结构化 delta。已绑定 Session 不能直接修改或采纳正式状态。
 
 ## 使用此包
 
@@ -42,11 +44,11 @@ kind: "package-reference"
 
 #### Token effect
 
-基础能力附带一个固定指引段落和三个工具 schema。组合 Planning Delivery bridge 后会增加交接工具及固定意图与权限指引。当同时组合 Bridge 和 Planning Remote 时，`planning_execution` 会读取所选 Plan 分页的执行事实和 packet 已声明的证据。这些附加能力随各自 provider 卸载。结果文本有上限，随数据变化。
+基础能力附带一个固定指引段落和四个工具 schema。组合 Planning Delivery bridge 后会增加交接工具及固定意图与权限指引。当同时组合 Bridge 和 Planning Remote 时，`planning_execution` 会读取所选 Plan 分页的执行事实和 packet 已声明的证据。这些附加能力随各自 provider 卸载。结果文本有上限，随数据变化。
 
 #### KV Cache effect
 
-插件配置和可见性不变时，指引和 schema 前缀保持稳定。
+插件配置和可见性不变时，指引和 schema 前缀保持稳定。已绑定 Session 的正式上下文变化时，会增加随数据变化的持久上下文快照。
 
 ## Known Limitations and Deferred Work
 

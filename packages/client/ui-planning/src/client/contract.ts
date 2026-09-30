@@ -1,8 +1,9 @@
 import type { HostObservable, PropsLocale, PropsRuntime, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CreateIdeaInput, PlanningRuntimeState } from './runtime-controller.ts'
-import type { PlanningCommand } from '@changanhua/dsh-planning/types'
+import type { PlanningCommand, PlanningSubjectRef } from '@changanhua/dsh-planning/types'
 import type { NS } from './locales.ts'
 export interface PlanningWorkspaceInjected {
+  readonly startPlanningSession: (subject: PlanningSubjectRef, revision: string) => Promise<void>
   readonly hooks: { readonly planning: HostObservable<PlanningRuntimeState> }
   readonly selectWorkspace: (workspaceId: string) => void
   readonly selectItem: (itemId: string | undefined) => void

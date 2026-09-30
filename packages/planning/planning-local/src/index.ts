@@ -93,7 +93,9 @@ export class LocalPlanning extends Planning {
       if (!parsed.success) throw new PlanningError('invalid-reference', 'invalid planning command')
       const replay = store.replay(access.workspaceId, parsed.data)
       if (replay !== undefined) return replay
-      await this.authorizeCommand(access, parsed.data)
+      await this.authorizeCommand(access, parsed.data, store)
+      if (parsed.data.kind === 'bind-session' && !this.requireWorkspace(access.workspaceId).sessionIds.includes(SessionId(parsed.data.sessionId)))
+        throw new PlanningError('invalid-reference', 'session is not in this project')
       const sourceInputs = this.sourceInputsFor(access, parsed.data)
       const sources =
         sourceInputs === undefined
@@ -171,7 +173,17 @@ export class LocalPlanning extends Planning {
     })
   }
   /** Enforce trusted caller kind and the exact persisted direct user message required for agent mutations. */
-  private async authorizeCommand(access: PlanningAccess, command: PlanningCommand): Promise<void> {
+  private async authorizeCommand(access: PlanningAccess, command: PlanningCommand, store: PlanningStore): Promise<void> {
+    if (access.kind === 'agent' && access.sessionId !== undefined) {
+      const board = store.snapshot(access.workspaceId)
+      const binding = board.sessionBindings?.find(value => value.sessionId === access.sessionId)
+      if (binding !== undefined) {
+        if (command.kind !== 'propose') throw new PlanningError('unauthorized', 'bound sessions propose changes; adoption requires a human')
+        const delta = command.delta
+        if (!delta || delta.subject.kind !== binding.subject.kind || delta.subject.id !== binding.subject.id)
+          throw new PlanningError('invalid-reference', 'proposal must retain the session subject')
+      }
+    }
     if (command.kind !== 'propose') await this.authorizeDirectMutation(access)
   }
   private async authorizeDirectMutation(access: PlanningAccess): Promise<void> {

@@ -1,5 +1,7 @@
 /** Browser request and project selection types for planning. */
 import type { PlanningBoardSnapshot, PlanningCommand, PlanningHandoff } from '@changanhua/dsh-planning'
+import type { PlanningSubjectRef } from '@changanhua/dsh-planning'
+export interface PlanningContextInput { readonly workspaceId: string; readonly subject: PlanningSubjectRef }
 import type { DeliveryCaseCard, DeliveryCaseLane } from '@changanhua/dsh-delivery-remote'
 
 /** A registered project available to the authenticated local user. */

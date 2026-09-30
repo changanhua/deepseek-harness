@@ -338,6 +338,7 @@ export function renderPlanningProposal(
           version: generation.version,
           previous_version: generation.previousVersion,
           base_revision_id: generation.baseRevisionId,
+          ...(generation.delta === undefined ? {} : { delta: generation.delta }),
           draft: {
             title: clipped(generation.draft.title, 320),
             intent: clipped(generation.draft.intent, 320),

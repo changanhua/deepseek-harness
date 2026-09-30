@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { Domain, DomainFacility, KvTable } from '@deepseek-ai/dsh-storage-domain'
-import { PlanningError, planningBoardSchema, planningCommandSchema } from '@changanhua/dsh-planning'
+import { PlanningError, planningBoardSchema, planningCommandSchema, planningSubjectPlan } from '@changanhua/dsh-planning'
+import { applyWorkspaceOperations } from './workspace.ts'
 import type {
   LinkDeliveryHandoffInput,
   PlanningActor,
@@ -264,7 +265,20 @@ export class PlanningStore {
           if (index >= 0) lane.splice(index, 1)
         }
       }
-      if (parsed.kind === 'create') {
+      if (parsed.kind === 'workspace-change') {
+        result = { boardVersion: next.version + 1, ...applyWorkspaceOperations(next, parsed.subject,
+          parsed.baseRevision, parsed.operations, actor, at, this.limits.maxRevisions) }
+      } else if (parsed.kind === 'bind-session') {
+        const { plan } = planningSubjectPlan(next, parsed.subject)
+        if (plan.headRevisionId !== parsed.baseRevision) throw new PlanningError('conflict', 'base revision mismatch')
+        const bindings = next.sessionBindings ??= []
+        if (bindings.some(value => value.sessionId === parsed.sessionId))
+          throw new PlanningError('conflict', 'session already bound')
+        bindings.push({ subject: parsed.subject, sessionId: parsed.sessionId, baseRevision: parsed.baseRevision, createdAt: at })
+        ;(next.resourceLinks ??= []).push({ id: `plan-link-${randomUUID()}`, subject: parsed.subject,
+          resource: { kind: 'session', id: parsed.sessionId }, createdAt: at })
+        result = { boardVersion: next.version + 1, itemId: plan.id }
+      } else if (parsed.kind === 'create') {
         if (next.items.length >= this.limits.maxItems)
           throw new PlanningError('capacity-exceeded', 'planning item limit reached')
         const itemId = parsed.itemId ?? `plan-${randomUUID()}`
@@ -281,6 +295,7 @@ export class PlanningStore {
               id: revisionId,
               previousRevisionId: null,
               title: parsed.title,
+              ...(parsed.stateEntries === undefined ? {} : { stateEntries: parsed.stateEntries }),
               intent: parsed.intent,
               scope: parsed.scope,
               acceptance: parsed.acceptance,
@@ -312,6 +327,7 @@ export class PlanningStore {
           id: revisionId,
           previousRevisionId: found.headRevisionId,
           title: parsed.title,
+          stateEntries: parsed.stateEntries ?? found.revisions.find(value => value.id === found.headRevisionId)?.stateEntries,
           intent: parsed.intent,
           scope: parsed.scope,
           acceptance: parsed.acceptance,
@@ -372,6 +388,11 @@ export class PlanningStore {
         })
         result = { boardVersion: next.version + 1, itemId: found.id, revisionId: parsed.expectedRevisionId, reviewId }
       } else if (parsed.kind === 'propose') {
+        if (parsed.delta !== undefined) {
+          const { plan } = planningSubjectPlan(next, parsed.delta.subject)
+          if (plan.id !== parsed.targetItemId || parsed.delta.baseRevision !== parsed.baseRevisionId)
+            throw new PlanningError('invalid-reference', `delta requires targetItemId=${plan.id} (owning Plan, not Focus) and baseRevisionId=${parsed.delta.baseRevision}`)
+        }
         const existingProposal = next.proposals.find(value => value.id === parsed.proposalId)
         if (existingProposal === undefined) {
           if (
@@ -399,6 +420,7 @@ export class PlanningStore {
                 version: 1,
                 previousVersion: null,
                 baseRevisionId: parsed.baseRevisionId,
+                ...(parsed.delta === undefined ? {} : { delta: parsed.delta }),
                 draft: { ...parsed.draft, sources },
                 suggestedLane: parsed.suggestedLane,
                 assumptions: parsed.assumptions,
@@ -425,6 +447,7 @@ export class PlanningStore {
             version,
             previousVersion: existingProposal.headVersion,
             baseRevisionId: parsed.baseRevisionId,
+            ...(parsed.delta === undefined ? {} : { delta: parsed.delta }),
             draft: { ...parsed.draft, sources },
             suggestedLane: parsed.suggestedLane,
             assumptions: parsed.assumptions,
@@ -447,7 +470,17 @@ export class PlanningStore {
           throw new PlanningError('conflict', 'proposal changed; read again')
         const generation = proposal.generations.at(-1)
         if (generation === undefined) throw new PlanningError('conflict', 'proposal has no generation')
-        if (proposal.targetItemId !== null) {
+        if (generation.delta !== undefined) {
+          const delta = generation.delta
+          const { plan } = planningSubjectPlan(next, delta.subject)
+          if (plan.id !== proposal.targetItemId || delta.baseRevision !== generation.baseRevisionId)
+            throw new PlanningError('invalid-reference', 'delta subject or base revision differs from proposal')
+          const changed = applyWorkspaceOperations(next, delta.subject, delta.baseRevision,
+            delta.operations, actor, at, this.limits.maxRevisions)
+          proposal.status = 'accepted'
+          proposal.settlement = { actor, at, ...changed }
+          result = { boardVersion: next.version + 1, ...changed, proposalId: proposal.id, proposalVersion: proposal.headVersion }
+        } else if (proposal.targetItemId !== null) {
           const found = item(proposal.targetItemId)
           if (found.headRevisionId !== generation.baseRevisionId)
             throw new PlanningError('conflict', 'proposal base revision changed')
@@ -458,6 +491,7 @@ export class PlanningStore {
             id: revisionId,
             previousRevisionId: found.headRevisionId,
             ...generation.draft,
+            stateEntries: generation.draft.stateEntries ?? found.revisions.find(value => value.id === found.headRevisionId)?.stateEntries,
             actorId: actor.id,
             actor,
             createdAt: at,
@@ -524,28 +558,32 @@ export class PlanningStore {
         result = { boardVersion: next.version + 1, itemId: parsed.itemId, reviewId: review.id }
       }
       const eventKind =
-        parsed.kind === 'create'
-          ? 'created'
-          : parsed.kind === 'revise'
-            ? 'revised'
-            : parsed.kind === 'move'
-              ? 'moved'
-              : parsed.kind === 'dependencies'
-                ? 'dependencies-changed'
-                : parsed.kind === 'archive'
-                  ? 'archived'
-                  : parsed.kind === 'review'
-                    ? 'reviewed'
-                    : parsed.kind === 'propose'
-                      ? 'proposed'
-                      : parsed.kind === 'accept-proposal'
-                        ? 'proposal-accepted'
-                        : parsed.kind === 'dismiss-proposal'
-                          ? 'proposal-dismissed'
-                          : 'follow-up-linked'
+        parsed.kind === 'workspace-change' ? 'workspace-changed'
+          : parsed.kind === 'bind-session' ? 'session-bound'
+            : parsed.kind === 'create'
+              ? 'created'
+              : parsed.kind === 'revise'
+                ? 'revised'
+                : parsed.kind === 'move'
+                  ? 'moved'
+                  : parsed.kind === 'dependencies'
+                    ? 'dependencies-changed'
+                    : parsed.kind === 'archive'
+                      ? 'archived'
+                      : parsed.kind === 'review'
+                        ? 'reviewed'
+                        : parsed.kind === 'propose'
+                          ? 'proposed'
+                          : parsed.kind === 'accept-proposal'
+                            ? 'proposal-accepted'
+                            : parsed.kind === 'dismiss-proposal'
+                              ? 'proposal-dismissed'
+                              : 'follow-up-linked'
       next.events.push({
         id: `plan-event-${randomUUID()}`,
         kind: eventKind,
+        ...(parsed.kind === 'workspace-change' ? { subject: parsed.subject, operations: parsed.operations } : {}),
+        ...(parsed.kind === 'bind-session' ? { subject: parsed.subject } : {}),
         at,
         actorId: actor.id,
         actor,

@@ -11,6 +11,8 @@ kind: "package-reference"
 
 这个可选 Host 插件使用 Host 已有的 Planning provider，提供项目发现、搜索、读取和原始想法收录。它的连接器扩展将这些工具加入现有 MCP 服务器，保留该服务器的其他工具。收录结果仍是细节留空的待处理提案；这些操作都不调用模型。
 
+Planning 提案收录也接受针对已有 Plan 或 Focus 的可选结构化 delta。Host 在获准项目中解析作用对象，将外部来源及证据保留为未验证引用。该路径只提交待处理代次，不授予采纳或执行权限。
+
 ## 目录
 
 - [使用此包](#use-this-package)

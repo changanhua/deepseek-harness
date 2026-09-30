@@ -33,7 +33,10 @@ afterEach(async () => {
   else process.env[TOKEN_ENV] = originalToken
 })
 
-function valueOf(result: { structuredContent?: unknown; content: readonly { type: string; text?: string }[] }): Record<string, unknown> {
+function valueOf(input: unknown): Record<string, unknown> {
+  if (input === null || typeof input !== 'object' || !('content' in input) || !Array.isArray(input.content))
+    throw new Error('MCP result has no content')
+  const result = input as { structuredContent?: unknown; content: readonly { type: string; text?: string }[] }
   if (typeof result.structuredContent === 'object' && result.structuredContent !== null) return result.structuredContent as Record<string, unknown>
   const text = result.content.find(part => part.type === 'text')?.text
   if (text === undefined) throw new Error('MCP result has no structured content or text payload')
@@ -102,9 +105,9 @@ async function boot(options: {
 
 describe('Planning MCP gateway Loader composition', () => {
   it('rejects absent, conflicting, and relative credential sources before activating', () => {
-    expect(() => Gateway.apply({} as never, {})).toThrow('exactly one')
-    expect(() => Gateway.apply({} as never, { tokenEnv: TOKEN_ENV, tokenFile: 'relative' })).toThrow('exactly one')
-    expect(() => Gateway.apply({} as never, { tokenFile: 'relative' })).toThrow('absolute')
+    expect(() =>{  Gateway.apply({} as never, {}) }).toThrow('exactly one')
+    expect(() =>{  Gateway.apply({} as never, { tokenEnv: TOKEN_ENV, tokenFile: 'relative' }) }).toThrow('exactly one')
+    expect(() =>{  Gateway.apply({} as never, { tokenFile: 'relative' }) }).toThrow('absolute')
   })
   it('uses connection context, permits explicit project switching, and rejects a disallowed default', async () => {
     const setup = await boot({ fileCredential: true })

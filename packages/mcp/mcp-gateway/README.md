@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 This optional Host plugin exposes project discovery, search, reading, and raw idea capture through the Host's existing Planning provider. Its connector extension adds these tools to an existing MCP server, preserving that server's other tools. Captured ideas remain pending proposals with unknown details empty; no operation invokes a model.
 
+Planning proposal capture also accepts an optional structured delta for an existing Plan or Focus. The Host resolves the subject in the allowed project and retains the external origin and evidence as unverified references. This path only submits a pending generation; it grants no adoption or execution authority.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

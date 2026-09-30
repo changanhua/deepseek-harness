@@ -1,5 +1,7 @@
 import type { z } from 'zod'
 import type {
+  resourceRefSchema, planningStateEntrySchema, planningSubjectRefSchema, planningFocusSchema,
+  planningResourceLinkSchema, planningSessionBindingSchema, planningProposedDeltaSchema, planningDeltaOperationSchema,
   planningActorSchema,
   planningBoardSchema,
   planningCapturedDraftSchema,
@@ -13,6 +15,24 @@ import type {
   planningSourceInputSchema,
   planningSourceSchema,
 } from './schema.ts'
+export type ResourceRef = z.infer<typeof resourceRefSchema>
+export type PlanningStateEntry = z.infer<typeof planningStateEntrySchema>
+export type PlanningSubjectRef = z.infer<typeof planningSubjectRefSchema>
+export type PlanningFocus = z.infer<typeof planningFocusSchema>
+export type PlanningResourceLink = z.infer<typeof planningResourceLinkSchema>
+export type PlanningSessionBinding = z.infer<typeof planningSessionBindingSchema>
+export type PlanningProposedDelta = z.infer<typeof planningProposedDeltaSchema>
+export type PlanningDeltaOperation = z.infer<typeof planningDeltaOperationSchema>
+export interface PlanningContextPack {
+  subject: PlanningSubjectRef
+  plan: { id: string; title: string; revision: string }
+  objective: PlanningStateEntry[]
+  accepted: PlanningStateEntry[]
+  open: PlanningStateEntry[]
+  legacy: { intent: string; scope: string[]; acceptance: string[] }
+  selectedFocus?: PlanningFocus
+  resourceRefs: PlanningResourceLink[]
+}
 export type PlanningLane = z.infer<typeof planningLaneSchema>
 export type PlanningSourceInput = z.infer<typeof planningSourceInputSchema>
 export type PlanningSource = z.infer<typeof planningSourceSchema>
@@ -47,6 +67,8 @@ export interface PlanningAccess {
   readonly actorId: string
   /** Authority route admitted by the Host; bridge is reserved for Delivery link completion. */
   readonly kind: 'human' | 'agent' | 'bridge'
+  /** Host-derived Session identity for bound Planning work; never accepted from command input. */
+  readonly sessionId?: string
   /** Latest direct user message evidence when the operation depends on one. */
   readonly userMessage?: { readonly sessionId: string; readonly seq: number }
   /** Revalidate the trusted context immediately before a sensitive read or durable mutation. */

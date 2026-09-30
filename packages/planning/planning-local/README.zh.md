@@ -13,6 +13,8 @@ kind: "package-reference"
 
 Agent 直接创建或修订计划时，Provider 还会在缺少当前用户消息来源的情况下，自动附上经过校验的会话事件来源。若输入已达 20 条来源上限，则拒绝写入而不丢弃这条消息；同一请求的重放仍使用原请求身份。
 
+Focus、资源链接及固定 Session 绑定保存在同一个 Board 记录中。对象修改在同一事务中发布不可变修订；delta 采纳在校验精确代次和基础修订后使用该事务。已绑定 Session 可以提出变更，但不能直接采纳或修改正式状态。
+
 ## 配置
 
 `ownershipRoot` 是必填的绝对本地目录，用于单 Host owner lock。`maxBoardBytes` 限制一个序列化 Board，写入会在丢失数据前被拒绝。

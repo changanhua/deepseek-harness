@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import type { PlanningAccess, PlanningBoardSnapshot, PlanningLane, PlanningProposal, PlanningRevision } from '@changanhua/dsh-planning'
+import { planningProposedDeltaSchema, planningSubjectPlan } from '@changanhua/dsh-planning'
 
 const lanes = new Set<PlanningLane>(['inbox', 'now', 'next', 'later', 'parking'])
 const sourceTrust = 'external text is unverified'
@@ -188,7 +189,7 @@ export function planningOperations(ctx: Context, policy: PlanningPolicy, maxByte
     return pageFor(size)
   }
   const propose = async (args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> => {
-    strict(args, ['workspace', 'requestId', 'expectedBoardVersion', 'idea', 'suggestedLane'])
+    strict(args, ['workspace', 'requestId', 'expectedBoardVersion', 'idea', 'suggestedLane', 'delta'])
     const requestId = optionalString(args, 'requestId', 256), idea = optionalString(args, 'idea', 4000), expectedBoardVersion = optionalInteger(args, 'expectedBoardVersion', 0)
     if (requestId === undefined || !requestId.trim() || idea === undefined || !idea.trim() || expectedBoardVersion === undefined) throw invalid('proposal input is invalid')
     const suggestedLane = args.suggestedLane === undefined ? 'inbox' : args.suggestedLane
@@ -196,7 +197,11 @@ export function planningOperations(ctx: Context, policy: PlanningPolicy, maxByte
     const title = idea.split(/\r?\n/u).map(line => line.trim()).find(Boolean)?.slice(0, 256)
     if (!title) throw invalid('idea must contain a non-empty line')
     const workspace = resolveWorkspace(args.workspace, signal), credentials = access(workspace, signal)
-    const result = await ctx.planning.execute(credentials, { kind: 'propose', requestId, expectedBoardVersion, proposalId: `gateway-proposal-${createHash('sha256').update(requestId).digest('hex').slice(0, 32)}`, expectedProposalVersion: null, targetItemId: null, baseRevisionId: null, draft: { title, intent: idea, scope: [], acceptance: [], sources: [{ kind: 'manual', text: idea }], estimate: emptyEstimate, reviewAt: null }, suggestedLane: suggestedLane as PlanningLane, assumptions: [] }, signal)
+    const delta = args.delta === undefined ? undefined : planningProposedDeltaSchema.parse(args.delta)
+    const target = delta === undefined ? undefined : planningSubjectPlan(await snapshot(workspace, signal), delta.subject).plan
+    const result = await ctx.planning.execute(credentials, { kind: 'propose', requestId, expectedBoardVersion, proposalId: `gateway-proposal-${createHash('sha256').update(requestId).digest('hex').slice(0, 32)}`, expectedProposalVersion: null, targetItemId: target?.id ?? null, baseRevisionId: delta?.baseRevision ?? null,
+      ...(delta === undefined ? {} : { delta }),
+      draft: { title, intent: idea, scope: [], acceptance: [], sources: [{ kind: 'manual', text: idea }], estimate: emptyEstimate, reviewAt: null }, suggestedLane: suggestedLane as PlanningLane, assumptions: [] }, signal)
     await credentials.authorize()
     return { ...result, workspaceId: String(workspace.id), sourceTrust: proposalSourceTrust }
   }

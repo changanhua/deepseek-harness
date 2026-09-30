@@ -8,6 +8,7 @@
     "rewriteRelativeImportExtensions": false
   },
   "include": [
+    "apps/web/tests/planning-workspace.e2e.ts",
     "tsdown.config.ts",
     "apps/web/tests/scaffold.ts",
     "apps/web/tests/personal-workbench.e2e.ts",

@@ -10,6 +10,14 @@ Every write carries the current Board version and commits through compare-and-se
 
 The local provider captures sources itself. It accepts manual and link references as unverified, validates Workspace-owned stored Session events, and reads exact saved Content versions when Content is available. A missing or unavailable Board provider fails the operation; callers must not replace it with a synthetic Board or infer execution state from a handoff.
 
+## Canonical work objects
+
+A Plan remains an item with an immutable head revision. Optional state entries have stable ids and objective, accepted, or open kinds; legacy intent, scope, and acceptance are retained without synthetic migration. A Focus is an optional independently selectable part of one Plan, with its own version and status. It is not an execution task, and done never completes the parent.
+
+Subject references identify either a Plan or Focus explicitly. Resource links retain only extensible kind/id/provider/revision/label locators. External owners retain Session transcripts, SBC data, solver results, browser facts, and Delivery state. Context packs project current canonical entries and references without expanding those resources.
+
+The existing Proposal generation can hold a delta with subject, base revision, operations, origin and evidence. Adoption verifies the exact generation and current base, then applies all operations and the new revision in one Board commit. A stale base rejects; the caller refreshes and prepares another proposal. Session bindings retain the original subject and base revision independently of browser selection.
+
 ## Authority and review
 
 The browser Remote uses the authenticated local human identity. The model tools derive the initiating Agent, its current Workspace, and its latest direct user message. Neither caller supplies a different actor, Workspace, source hash, or durable receipt. Planning records a completed review as a review fact only; it does not make a Delivery acceptance decision.

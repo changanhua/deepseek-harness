@@ -241,11 +241,14 @@ export const updateParameters = {
         description: 'Source review for a new follow-up draft; preserve it across generations.',
       },
       expected_proposal_version: { oneOf: [{ type: 'integer' }, { type: 'null' }], required: true },
-      target_item_id: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true },
-      base_revision_id: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true },
+      target_item_id: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true,
+        description: 'For any delta, including a Focus delta, use planning_context.plan.id (the owning Plan), never the Focus id or null.' },
+      base_revision_id: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true,
+        description: 'For a delta, use planning_context.plan.revision, identical to delta.baseRevision.' },
       draft: { type: 'object', required: true, additionalProperties: false, properties: draftProperties },
       suggested_lane: { type: 'string', required: true, enum: ['inbox', 'now', 'next', 'later', 'parking'] },
       assumptions: { type: 'array', required: true, items: { type: 'string' } },
+      delta_json: { type: 'string', description: 'Optional JSON delta: {subject:{kind:"plan"|"focus",id},baseRevision,originRef:{kind,id},evidenceRefs?:[{kind,id}],operations:[{kind:"add-state-entry"|"update-state-entry",entry:{id,kind:"objective"|"accepted"|"open",content,sourceRefs?:[{kind,id}]} }|{kind:"remove-state-entry",id}|{kind:"create-focus",id,title,objective?}|{kind:"update-focus",id,expectedVersion,status?,title?,objective?}|{kind:"add-resource-link",id,resource:{kind,id,provider?,revision?,label?},role?}|{kind:"remove-resource-link",id}]}. Delta uses the existing proposal, requires exact adoption, and must match target_item_id/base_revision_id.' },
     },
   },
   accept_proposal: {
@@ -425,11 +428,19 @@ export function parseUpdate(value: unknown): PlanningCommand {
         'draft',
         'suggested_lane',
         'assumptions',
+        'delta_json',
       ]
       : ['request_id', 'expected_board_version', 'proposal_id', 'expected_proposal_version'],
   )
   if (kind === 'propose')
     nestedObject(commandValue.draft, ['title', 'intent', 'scope', 'acceptance', 'sources', 'estimate', 'reviewAt'])
+  let delta: unknown
+  if (commandValue.delta_json !== undefined) {
+    if (typeof commandValue.delta_json !== 'string')
+      throw new HarnessError('delta_json must be a JSON string.', 'PLANNING_INVALID_INPUT')
+    try { delta = JSON.parse(commandValue.delta_json) as unknown }
+    catch { throw new HarnessError('delta_json must contain valid JSON.', 'PLANNING_INVALID_INPUT') }
+  }
   const mapped =
     kind === 'propose'
       ? {
@@ -447,6 +458,7 @@ export function parseUpdate(value: unknown): PlanningCommand {
         },
         suggestedLane: commandValue.suggested_lane,
         assumptions: commandValue.assumptions,
+        ...(commandValue.delta_json === undefined ? {} : { delta }),
       }
       : {
         kind: kind === 'accept_proposal' ? 'accept-proposal' : 'dismiss-proposal',

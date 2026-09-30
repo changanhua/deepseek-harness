@@ -12,6 +12,10 @@ import type { PlanningWorkspaceInjected } from './contract.ts'
 import { en, NS, zh, type PlanningKey } from './locales.ts'
 import { createPlanningRuntimeController } from './runtime-controller.ts'
 import { PlanningImageAction, type PlanningImageActionInjected } from './PlanningImageAction.tsx'
+import { nextPlanningRequestId } from './request-id.ts'
+import type { PlanningCommand } from '@changanhua/dsh-planning/types'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { PlanningSessionBinding, type PlanningBindingInjected, type PlanningBindingView } from './PlanningSessionBinding.tsx'
 
 interface ContentReadResult {
   readonly ok: boolean
@@ -41,6 +45,27 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(planningRemote)
   const ui = ctx.inject(['slots', 'locale', 'remote', 'remote.planning', 'uiWorkspace'], (ctx) => {
     const runtime = createPlanningRuntimeController(ctx.remote.planning)
+    const sessionStarts = new Map<string, { sessionId: string; command: PlanningCommand }>()
+    const bindings = new Map<string, PlanningBindingInjected>()
+    const bindingLifetime = new AbortController()
+    ctx.effect(() => () => { bindingLifetime.abort(); bindings.clear(); sessionStarts.clear() }, 'planning Session binding reads')
+    const bindingFor = (sessionId: string): PlanningBindingInjected => {
+      const existing = bindings.get(sessionId)
+      if (existing) return existing
+      const store = createSnapshotStore<PlanningBindingView | null>(null)
+      const value: PlanningBindingInjected = { hooks: { planningBinding: store } }
+      bindings.set(sessionId, value)
+      void ctx.remote.planning.sessionBoard(sessionId, bindingLifetime.signal).then((result) => {
+        if (bindingLifetime.signal.aborted || !result.ok) return
+        const binding = result.value.sessionBindings?.find(value => value.sessionId === sessionId)
+        if (!binding) return
+        const focus = binding.subject.kind === 'focus' ? result.value.focuses?.find(value => value.id === binding.subject.id) : undefined
+        const plan = result.value.items.find(value => value.id === (focus?.planId ?? binding.subject.id))
+        const revision = plan?.revisions.find(value => value.id === binding.baseRevision)
+        store.set({ title: focus?.title ?? revision?.title ?? binding.subject.id, revision: binding.baseRevision })
+      }).catch(() => {})
+      return value
+    }
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-planning: dictionaries')
     ctx.effect(() => {
       runtime.loadWorkspaces()
@@ -49,6 +74,36 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       }
     }, 'ui-planning: Remote lifecycle')
     const injected = (): PlanningWorkspaceInjected => ({
+      startPlanningSession: async (subject, revision) => {
+        const state = runtime.source.getSnapshot()
+        if (!state.board || !state.workspaceId) throw new Error('Planning project is unavailable')
+        const workspaceId = state.workspaceId
+        const key = JSON.stringify([workspaceId, subject, revision])
+        let attempt = sessionStarts.get(key)
+        if (!attempt) {
+          const sessionId = `session-${nextPlanningRequestId()}`
+          attempt = { sessionId, command: { kind: 'bind-session', requestId: nextPlanningRequestId(),
+            expectedBoardVersion: state.board.version, subject, baseRevision: revision, sessionId } }
+          sessionStarts.set(key, attempt)
+        }
+        const sessions = ctx.get('sessions') as unknown as {
+          create: (input: { workspaceId: string; sessionId: string }) => Promise<string>
+        } | undefined
+        if (!sessions) throw new Error('Native sessions are unavailable')
+        await sessions.create({ workspaceId, sessionId: attempt.sessionId })
+        const result = await ctx.remote.planning.execute({ workspaceId, command: attempt.command })
+        if (!result.ok) {
+          if (['conflict'].includes(result.error.code)) {
+            runtime.refresh()
+            sessionStarts.delete(key)
+          }
+          throw new Error(`${result.error.message} (Session: ${attempt.sessionId})`)
+        }
+        sessionStarts.delete(key)
+        runtime.refresh()
+        const navigation = ctx.get('uiWorkspace') as { openSession: (id: string) => void } | undefined
+        navigation?.openSession(attempt.sessionId)
+      },
       hooks: { planning: runtime.source },
       selectWorkspace: (workspaceId) => {
         runtime.selectWorkspace(workspaceId)
@@ -101,6 +156,10 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     ctx.slots.inject('shell.view', () =>
       ctx.slots.register({ name: 'shell.view', id: 'planning', locale: NS, inject: injected }, PlanningWorkbench),
     )
+    ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+      name: 'conversation.input.dock', id: 'planning-binding', locale: NS,
+      inject: sessionId => bindingFor(sessionId),
+    }, PlanningSessionBinding))
     ctx.slots.inject('sidebar.modules.group', () =>
       ctx.slots.register(
         { name: 'sidebar.modules.group', id: 'planning-module', order: 9, locale: NS, inject: injected },

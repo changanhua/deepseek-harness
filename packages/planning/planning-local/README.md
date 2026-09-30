@@ -13,6 +13,8 @@ Mount this Provider to persist one CAS-protected planning Board per Workspace in
 
 For a direct Agent create or revise, the Provider also attaches the verified current user message as a session-event source when it is missing. A full 20-source input is rejected instead of dropping that message; replay keeps the original request identity.
 
+Focus, resource links, and fixed Session bindings persist in the same Board record. A workspace change publishes an immutable revision in the same transaction; delta adoption uses this transaction after exact-generation and base-revision checks. Bound Sessions may propose changes but cannot directly adopt or mutate canonical state.
+
 ## Configuration
 
 `ownershipRoot` is a required absolute local directory used for the single-Host owner lock. `maxBoardBytes` bounds one serialized Board and rejects writes before data is lost.

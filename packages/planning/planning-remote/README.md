@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Use this Remote to list projects, read a planning Board, apply a bounded planning command, prepare an exact revision for Delivery, and read linked Delivery status and packet-declared evidence. The Host fixes the browser actor identity and rejects unknown or malformed wire fields.
 
+The context operation returns the selected Plan or Focus projection without expanding resource contents. Existing execute calls also carry workspace changes and Session bindings; the provider checks that a bound Session belongs to the project.
+
 ## Use this package
 
 The Remote exposes `workspaces`, `snapshot`, `execute`, `handoff`, `execution`, and `evidence`. `snapshot` adds read-only linked execution summaries when Delivery is composed. `handoff` prepares a shaping Case from the selected revision; it does not approve requirements, dispatch work, verify changes, or accept results. `execution` joins durable handoff references to the existing Delivery read model. `evidence` accepts only an evidence id already declared by a packet in the selected Plan's linked Case, then uses Delivery's existing checked reader; another Plan cannot read it.

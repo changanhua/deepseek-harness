@@ -5,6 +5,8 @@ description: Maintain the current project's Planning Board when ordinary discuss
 
 # Planning maintenance
 
+When the Session has a Planning binding, keep its subject even if the browser selection changes. Use `planning_context` to read the current canonical state and opaque resource references. Submit results through `planning_update.propose.delta_json`; bound Sessions cannot directly adopt or mutate canonical state. For a Focus delta, `target_item_id` is the owning `planning_context.plan.id`, not the Focus id, and `base_revision_id` equals `delta.baseRevision` and the reviewed Plan revision. Keep the original Session binding for provenance; after a stale conflict refresh, review and regenerate the proposal against the current revision. Resource references never grant browser Submit or Delivery execution permission.
+
 Use this Skill when the user discusses work that may need to be captured, refined, reordered, blocked, reviewed, or turned into a follow-up on the current project's Planning Board.
 
 Start with `planning_list` for the current project. When the user refers to an earlier idea, search both `items` and `proposals` with distinctive keywords from the request, including source wording when useful; follow `next_cursor` until all plausible matches are seen. Use `planning_read` for an exact item or pending proposal before changing it. When `planning_list` returns `current_user_source`, reuse that exact `session-event` locator in a draft source instead of copying the user text into a manual source. A title match alone does not identify a card.

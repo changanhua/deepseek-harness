@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { planningOperations } from '../src/planning.ts'
+import type { PlanningAccess, PlanningCommand } from '@changanhua/dsh-planning'
 
 const signal = new AbortController().signal
 const revision = (id: string, title: string, intent = '') => ({
-  id, previousRevisionId: null, title, intent, scope: [], acceptance: [], sources: [{ kind: 'manual', text: intent }], estimate: { value: null, urgency: null, reuse: null, compounding: null, timeCost: null, tokenCost: null, risk: null, cognitiveCost: null, rationale: '' }, reviewAt: null,
+  id, previousRevisionId: null as string | null, title, intent, scope: [] as string[], acceptance: [], sources: [{ kind: 'manual', text: intent }], estimate: { value: null, urgency: null, reuse: null, compounding: null, timeCost: null, tokenCost: null, risk: null, cognitiveCost: null, rationale: '' }, reviewAt: null,
 })
 function board(version = 3) {
   return {
@@ -12,10 +13,10 @@ function board(version = 3) {
     lanes: { inbox: ['item-a'], now: [], next: [], later: [], parking: [] }, dependencies: {}, reviews: [], handoffs: [],
   }
 }
-function harness(paths: readonly string[] | undefined = undefined, maxBytes = 2048) {
+function harness(paths?: readonly string[]  , maxBytes = 2048) {
   const one = { id: 'one', path: 'C:/one', title: 'One' }, two = { id: 'two', path: 'C:/two', title: 'Two' }
   const snapshot = vi.fn(async () => board())
-  const execute = vi.fn(async () => ({ boardVersion: 4, proposalId: 'gateway-proposal-test', proposalVersion: 1 }))
+  const execute = vi.fn(async (_access: PlanningAccess, _command: PlanningCommand, _signal?: AbortSignal) => ({ boardVersion: 4, proposalId: 'gateway-proposal-test', proposalVersion: 1 }))
   const registry = { list: () => [one, two], get: (id: string) => [one, two].find(value => value.id === id) }
   const ctx = { workspaceRegistry: registry, planning: { snapshot, execute } }
   return {
@@ -25,6 +26,16 @@ function harness(paths: readonly string[] | undefined = undefined, maxBytes = 20
 }
 
 describe('Planning MCP operations', () => {
+  it('submits external evidence as a delta on the existing proposal path without adopting it', async () => {
+    const local = harness(['C:/one'])
+    const delta = { subject: { kind: 'plan', id: 'item-a' }, baseRevision: 'rev-a',
+      originRef: { kind: 'thinking-workspace', id: 'external-1' },
+      operations: [{ kind: 'add-state-entry', entry: { id: 'identity', kind: 'open', content: 'Verify item identity' } }] }
+    await local.operations.invoke('dsh_planning_propose', { workspace: 'one', requestId: 'delta', expectedBoardVersion: 3,
+      idea: 'External findings', delta }, signal)
+    expect(local.execute.mock.calls[0]?.[1]).toMatchObject({ kind: 'propose', targetItemId: 'item-a', baseRevisionId: 'rev-a', delta })
+    expect(local.execute).toHaveBeenCalledTimes(1)
+  })
   it('requires explicit selection across two projects and never exposes an unallowed one', async () => {
     const local = harness(['C:/one'], 420)
     await expect(local.operations.invoke('dsh_planning_list', {}, signal)).resolves.toMatchObject({ workspaceId: 'one' })

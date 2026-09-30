@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-27-project-planning-and-execution-boundaries.md
-2026-09-27-project-planning-and-execution-boundaries.md: f2ec7de66037d17dd95fdbffaca300cb4aa16dbf
-2026-09-27-project-planning-and-execution-boundaries.zh.md: 1804e4febc75c38be99481c41bd473e90f43bf46
+2026-09-27-project-planning-and-execution-boundaries.md: 30337ca09d8ab29a80280ea23cd536519ed514a5
+2026-09-27-project-planning-and-execution-boundaries.zh.md: b090d0adf3a4a558eb1954a91b1b8e6759d63f81

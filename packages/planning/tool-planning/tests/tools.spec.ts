@@ -58,6 +58,24 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 describe('project planning model tools', () => {
+  it('projects the bound subject and original revision into durable prompt context and only permits proposals', async () => {
+    const local = await harness()
+    const created = await local.ctx.planning.execute(local.access(), local.create('bound-root'))
+    await local.ctx.planning.execute(local.access(), { kind: 'bind-session', requestId: 'binding',
+      expectedBoardVersion: created.boardVersion, subject: { kind: 'plan', id: created.itemId! },
+      baseRevision: created.revisionId!, sessionId: String(local.session.id) })
+    const assembly = await local.ctx.systemPrompt.assemble({ scope: local.caller })
+    const context = assembly.contexts.find(value => value.name === 'planning-workspace')
+    expect(JSON.parse(context!.text)).toMatchObject({ binding: { baseRevision: created.revisionId,
+      subject: { kind: 'plan', id: created.itemId } }, current: { accepted: [], open: [] } })
+    expect(context!.text).not.toContain('Please maintain this plan')
+    const result = await local.call('planning_update', { command: { kind: 'archive', requestId: 'not-allowed',
+      expectedBoardVersion: 2, itemId: created.itemId } })
+    expect(result.isError).toBe(true)
+    const pack = await local.call('planning_context', { kind: 'plan', id: created.itemId })
+    expect(pack.isError).toBe(false)
+    expect(json(pack)).toMatchObject({ plan: { id: created.itemId, revision: created.revisionId } })
+  })
   it('reads execution from the existing Delivery projection without treating handoff as execution', async () => {
     const local = await harness()
     await local.ctx.plugin(LocalDelivery)
@@ -295,7 +313,7 @@ describe('project planning model tools', () => {
         .schemas(caller)
         .map(tool => tool.name)
         .sort(),
-    ).toEqual(['planning_list', 'planning_read', 'planning_update'])
+    ).toEqual(['planning_context', 'planning_list', 'planning_read', 'planning_update'])
     expect((await ctx.systemPrompt.assemble()).sections.some(section => section.name === 'tool:planning')).toBe(true)
     await fiber.dispose()
     expect(ctx.tools.schemas(caller)).toEqual([])

@@ -10,6 +10,14 @@ Planning 为每个 Workspace 持有一个持久 Board。Board 记录人工安排
 
 本地 provider 自行捕获来源。它把手动和链接引用视为未验证，校验 Workspace 所有的已存储 Session event，并在 Content 可用时读取精确保存版本。Board provider 缺失或不可用时操作失败；调用方不得用合成 Board 替代，也不得从 handoff 推断执行状态。
 
+## 正式工作对象
+
+Plan 仍是拥有不可变当前修订的条目。可选状态条目具有稳定 ID，种类为目标、已接受或未解决；旧意图、范围与验收字段继续保留，不通过迁移虚构内容。Focus 是一个 Plan 中可独立选择的可选部分，拥有自己的版本和状态。它不是执行任务，done 不会完成父对象。
+
+Subject 引用明确指定 Plan 或 Focus。资源链接只保留可扩展的 kind/id/provider/revision/label 定位信息。外部系统继续拥有 Session 聊天记录、SBC 数据、solver 结果、浏览器事实和 Delivery 状态。上下文包投影当前正式条目和引用，不展开这些外部资源。
+
+现有 Proposal 代次可以携带作用对象、基础修订、操作、来源及证据组成的 delta。采纳先校验精确代次和当前基础修订，再在一次 Board 提交内应用全部操作并生成新修订。基础修订过期时拒绝；调用方刷新后准备新提案。Session 绑定独立于浏览器选择，保留原始作用对象和基础修订。
+
 ## 权限与复盘
 
 浏览器 Remote 使用已认证的本地人工身份。模型工具推导发起 Agent、其当前 Workspace 和最新直接用户消息。调用方都不能提供另一个 actor、Workspace、来源哈希或持久 receipt。Planning 记录 completed review 只是一项复盘事实；它不会作出 Delivery 接纳决定。

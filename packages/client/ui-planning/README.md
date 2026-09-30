@@ -6,6 +6,8 @@ English | [中文](README.zh.md)
 
 Use this browser UI to arrange project plans, inspect their sources and execution summaries, and submit explicitly chosen planning changes. It renders Host-owned data and retains no planning authority.
 
+An object workspace shows current state entries, optional Focus selection and status, Session bindings, and related resource references. Starting a Session creates an ordinary native conversation and durably binds its subject and base revision before opening it. The native composer retains model, attachment, preset and permission controls. Proposal changes remain visible for explicit exact-generation adoption. HTTP(S) resource identities open their owning pages; opaque identities remain references until an owning application supplies a navigable URL.
+
 ## Use this package
 
 `@changanhua/dsh-client-ui-planning` renders the personal Planning Remote projection as a workspace-scoped planning pool. A short capture becomes a pending Proposal with empty optional detail; only explicit acceptance creates an active item. The selected item shows a deterministic evolution graph built from retained sources, proposal generations, revisions, reviews, dependencies, and handoffs.

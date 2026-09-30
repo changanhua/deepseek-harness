@@ -7,6 +7,22 @@
   background: var(--dsw-alias-bg-base);
   font-family: var(--dsw-font-family);
 }
+.objectWorkspace {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.objectWorkspace form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.objectWorkspace input,
+.objectWorkspace select {
+  min-width: 0;
+  max-width: 100%;
+}
 .header {
   display: flex;
   flex-wrap: wrap;

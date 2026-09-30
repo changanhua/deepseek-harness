@@ -3,6 +3,44 @@ import { z } from 'zod'
 const id = z.string().trim().min(1).max(256)
 const text = z.string().trim().min(1).max(4000)
 const timestamp = z.iso.datetime()
+/** Opaque locators: external owners retain their data and authority. */
+export const resourceRefSchema = z.strictObject({
+  kind: id, id, provider: id.optional(), revision: id.optional(), label: text.optional(),
+})
+export const planningSubjectRefSchema = z.strictObject({ kind: z.enum(['plan', 'focus']), id })
+export const planningStateEntrySchema = z.strictObject({
+  id, kind: z.enum(['objective', 'accepted', 'open']), content: text,
+  sourceRefs: z.array(resourceRefSchema).max(20).optional(),
+})
+const stateEntries = z.array(planningStateEntrySchema).max(200).refine(
+  entries => new Set(entries.map(entry => entry.id)).size === entries.length, 'duplicate state entry id',
+).optional()
+export const planningFocusSchema = z.strictObject({
+  id, planId: id, title: text, objective: text.optional(),
+  status: z.enum(['open', 'active', 'blocked', 'done']), version: z.number().int().positive(),
+  createdAt: timestamp, updatedAt: timestamp,
+})
+export const planningResourceLinkSchema = z.strictObject({
+  id, subject: planningSubjectRefSchema, resource: resourceRefSchema, role: id.optional(), createdAt: timestamp,
+})
+export const planningSessionBindingSchema = z.strictObject({
+  sessionId: id, subject: planningSubjectRefSchema, baseRevision: id, createdAt: timestamp,
+})
+export const planningDeltaOperationSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('add-state-entry'), entry: planningStateEntrySchema }),
+  z.strictObject({ kind: z.literal('update-state-entry'), entry: planningStateEntrySchema }),
+  z.strictObject({ kind: z.literal('remove-state-entry'), id }),
+  z.strictObject({ kind: z.literal('create-focus'), id, title: text, objective: text.optional() }),
+  z.strictObject({ kind: z.literal('update-focus'), id, expectedVersion: z.number().int().positive(),
+    title: text.optional(), objective: text.optional(), status: planningFocusSchema.shape.status.optional() }),
+  z.strictObject({ kind: z.literal('add-resource-link'), id, resource: resourceRefSchema, role: id.optional() }),
+  z.strictObject({ kind: z.literal('remove-resource-link'), id }),
+])
+export const planningProposedDeltaSchema = z.strictObject({
+  subject: planningSubjectRefSchema, baseRevision: id,
+  operations: z.array(planningDeltaOperationSchema).min(1).max(100),
+  originRef: resourceRefSchema, evidenceRefs: z.array(resourceRefSchema).max(30).optional(),
+})
 const httpUrl = z.url().refine((value) => {
   const protocol = new URL(value).protocol
   return protocol === 'http:' || protocol === 'https:'
@@ -69,7 +107,8 @@ export const planningEstimateSchema = z.strictObject({
 /** Untrusted proposal input: source locators carry no observed proof. */
 export const planningDraftSchema = z.strictObject({
   title: text,
-  intent: text,
+  intent: z.string().trim().max(4000),
+  stateEntries,
   scope: z.array(text).max(100),
   acceptance: z.array(text).max(100),
   sources: z.array(planningSourceInputSchema).min(1).max(20),
@@ -79,7 +118,8 @@ export const planningDraftSchema = z.strictObject({
 /** Durable generation content after the Provider captured every source. */
 export const planningCapturedDraftSchema = z.strictObject({
   title: text,
-  intent: text,
+  intent: z.string().trim().max(4000),
+  stateEntries,
   scope: z.array(text).max(100),
   acceptance: z.array(text).max(100),
   sources: z.array(planningSourceSchema).min(1).max(20),
@@ -92,6 +132,7 @@ export const planningActorSchema = z.strictObject({
   userMessage: z.strictObject({ sessionId: id, seq: z.number().int().nonnegative() }).optional(),
 })
 export const planningProposalGenerationSchema = z.strictObject({
+  delta: planningProposedDeltaSchema.optional(),
   version: z.number().int().positive(),
   previousVersion: z.number().int().positive().nullable(),
   baseRevisionId: id.nullable(),
@@ -117,7 +158,8 @@ export const planningRevisionSchema = z.strictObject({
   id,
   previousRevisionId: id.nullable(),
   title: text,
-  intent: text,
+  intent: z.string().trim().max(4000),
+  stateEntries,
   scope: z.array(text).max(100),
   acceptance: z.array(text).max(100),
   sources: z.array(planningSourceSchema).min(1).max(20),
@@ -160,7 +202,7 @@ export const planningReceiptSchema = z.strictObject({
 })
 export const planningHandoffSourceSchema = z.strictObject({
   title: text,
-  intent: text,
+  intent: z.string().trim().max(4000),
   scope: z.array(text).max(100),
   acceptance: z.array(text).max(100),
   sources: z.array(planningSourceSchema).min(1).max(20),
@@ -205,9 +247,13 @@ export const planningHandoffSchema = z
       ctx.addIssue({ code: 'custom', message: 'prepared handoff cannot contain delivery target references' })
   })
 export const planningEventSchema = z.strictObject({
+  subject: planningSubjectRefSchema.optional(),
+  operations: z.array(planningDeltaOperationSchema).max(100).optional(),
   id,
   kind: z.enum([
     'created',
+    'workspace-changed',
+    'session-bound',
     'revised',
     'moved',
     'dependencies-changed',
@@ -229,6 +275,9 @@ export const planningEventSchema = z.strictObject({
   actor: planningActorSchema,
 })
 export const planningBoardSchema = z.strictObject({
+  focuses: z.array(planningFocusSchema).optional(),
+  resourceLinks: z.array(planningResourceLinkSchema).optional(),
+  sessionBindings: z.array(planningSessionBindingSchema).optional(),
   workspaceId: id,
   version: z.number().int().nonnegative(),
   items: z.array(planningItemSchema),
@@ -242,6 +291,15 @@ export const planningBoardSchema = z.strictObject({
 })
 export const planningCommandSchema = z.discriminatedUnion('kind', [
   z.strictObject({
+    kind: z.literal('workspace-change'), requestId: id, expectedBoardVersion: z.number().int().nonnegative(),
+    subject: planningSubjectRefSchema, baseRevision: id,
+    operations: z.array(planningDeltaOperationSchema).min(1).max(100),
+  }),
+  z.strictObject({
+    kind: z.literal('bind-session'), requestId: id, expectedBoardVersion: z.number().int().nonnegative(),
+    subject: planningSubjectRefSchema, baseRevision: id, sessionId: id,
+  }),
+  z.strictObject({
     kind: z.literal('create'),
     requestId: id,
     expectedBoardVersion: z.number().int().nonnegative(),
@@ -249,7 +307,8 @@ export const planningCommandSchema = z.discriminatedUnion('kind', [
     fromReviewId: id.optional(),
     lane: planningLaneSchema.default('inbox'),
     title: text,
-    intent: text,
+    intent: z.string().trim().max(4000),
+    stateEntries,
     scope: z.array(text).max(100).default([]),
     acceptance: z.array(text).max(100).default([]),
     sources: z.array(planningSourceInputSchema).min(1).max(20),
@@ -263,7 +322,8 @@ export const planningCommandSchema = z.discriminatedUnion('kind', [
     itemId: id,
     expectedRevisionId: id,
     title: text,
-    intent: text,
+    intent: z.string().trim().max(4000),
+    stateEntries,
     scope: z.array(text).max(100),
     acceptance: z.array(text).max(100),
     sources: z.array(planningSourceInputSchema).min(1).max(20),
@@ -312,6 +372,7 @@ export const planningCommandSchema = z.discriminatedUnion('kind', [
   }),
   z.strictObject({
     kind: z.literal('propose'),
+    delta: planningProposedDeltaSchema.optional(),
     requestId: id,
     expectedBoardVersion: z.number().int().nonnegative(),
     proposalId: id,

@@ -22,7 +22,7 @@
 | `@changanhua/dsh-tool-browser` | `browser_action`、`browser_action_sequence`、`browser_activity_search`、`browser_entry_mount`、`browser_entry_unmount`、`browser_extract`、`browser_instances`、`browser_page_map`、`browser_region_clear`、`browser_region_render`、`browser_request_status`、`browser_snapshot`、`browser_tabs`、`browser_task_cancel`、`browser_task_select`、`browser_task_start`、`browser_task_verify` | `ctx.browser`、`ctx.browserTasks`、`ctx.tools`、`ctx.approval`、`用于历史活动搜索的 ctx.browserActivity`、`发起 Agent 的 Session` | `tool/call`、`tool/result`、`browser-task/change`、`browser-task/receipt`、`browser-task/check`、`browser-task/delegation`、`经 Browser 批准的页面动作` | - | 只有组合了 `browserActivity` 时才提供活动搜索。它依据当前 Host 授权读取发起 Session，包括 Chrome 离线时。 |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`、`task_queue_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时的 live Agent Session` | `tool/call`、`tool/result`、`Queue v2 agent.run@1 admission` | - | 类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，但不暴露执行器、Profile、模型、凭据或 shell 路由字段。 |
 | `@changanhua/dsh-tool-memory` | `memory_propose`、`memory_read`、`memory_search` | `ctx.tools`、`ctx.systemPrompt`、`ctx.projectMemory`、`已注册 Workspace 中的 live Agent` | `tool/call`、`tool/result`、`project_memory 领域中的候选修订与提案回执` | - | 显式选择启用的项目记忆。模型可以搜索、读取已核查的主张并提出候选；人类接受、拒绝和撤回是独立的命令操作。 |
-| `@changanhua/dsh-tool-planning` | `planning_execution`、`planning_handoff`、`planning_list`、`planning_read`、`planning_update` | `ctx.tools`、`ctx.systemPrompt`、`ctx.planning`、`ctx.agents`、`ctx.sessions`、`ctx.workspaceRegistry`、`已注册 Workspace 中的发起 Agent` | `tool/call`、`tool/result`、`通过 ctx.planning 变更 Planning Board` | - | 只有组合可选的 Planning–Delivery bridge 时才注册 `planning_handoff`。只有 bridge 与 Planning Remote 都已组合时，`planning_execution` 才读取已链接的 Delivery 状态和证据；它绝不派发或接纳 Delivery 工作。 |
+| `@changanhua/dsh-tool-planning` | `planning_context`、`planning_execution`、`planning_handoff`、`planning_list`、`planning_read`、`planning_update` | `ctx.tools`、`ctx.systemPrompt`、`ctx.planning`、`ctx.agents`、`ctx.sessions`、`ctx.workspaceRegistry`、`已注册 Workspace 中的发起 Agent` | `tool/call`、`tool/result`、`通过 ctx.planning 变更 Planning Board` | - | 只有组合可选的 Planning–Delivery bridge 时才注册 `planning_handoff`。只有 bridge 与 Planning Remote 都已组合时，`planning_execution` 才读取已链接的 Delivery 状态和证据；它绝不派发或接纳 Delivery 工作。 |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`、`ctx.userQuestions` | `tool/call`、`tool/result after a UI/provider answers the question` | - | ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类答案。 |
 | `@deepseek-ai/dsh-tools` | `run_code` | `ctx.tools`、`ctx.codeRuntime (execution time)`、`ctx.systemPrompt` | `tool/call`、`one tool/ptc-dispatch-start + tool/ptc-dispatch pair per bridged sub-call`、`tool/result` | - | 在 `mode: ptc`／`mode: both` 下，它由工具注册表所有，作为可过滤能力层之外的保留传输机制（参见 PTC mode Agent Note）。在 `ptc` 下，它是注册表对协议格式（wire format）的唯一贡献；其他可见能力在使用已加载运行时语言生成的 SDK 章节中声明。程序通过 binding 调用这些能力，调用按照原生并发约定调度：启动顺序和策略遵循提交顺序，并发安全的函数体最多重叠执行 `maxParallelSubCalls` 个。调用会重新进入完整且受守卫保护的工具流水线，并将每个嵌套执行关联到此外层结果。 |
 | `@deepseek-ai/dsh-plan-mode` | `exit_plan_mode` | `ctx.tools`、`ctx.systemPrompt`、`ctx.userQuestions (execution time, opportunistic)` | `tool/call`、`plan/mode inactive on an approved review`、`tool/result` | - | 规划未激活时，exit_plan_mode 仍保留在面向模型的 schema 中，这样状态转换不会在规划策略变更之外额外造成工具目录变动。其执行路径会拒绝规划模式之外的调用；在规划模式下，它通过用户交互 seam 提交计划（批准／根据反馈继续规划），批准后会在步骤边界记录规划模式已停用。 |
@@ -3576,6 +3576,34 @@
 
 ## `@changanhua/dsh-tool-planning`
 
+### `planning_context`
+
+读取 Plan 或 Focus 的当前正式上下文及不透明资源引用，不包含历史聊天记录。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "plan",
+        "focus"
+      ]
+    },
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "id"
+  ]
+}
+```
+
+来源： [`packages/planning/tool-planning/src/index.ts`](../packages/planning/tool-planning/src/index.ts)
+
 ### `planning_execution`
 
 读取所选计划的执行、独立验证、人工接纳或不可变证据。这些事实独立于其规划泳道。
@@ -4482,7 +4510,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "For any delta, including a Focus delta, use planning_context.plan.id (the owning Plan), never the Focus id or null."
         },
         "base_revision_id": {
           "oneOf": [
@@ -4492,7 +4521,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "For a delta, use planning_context.plan.revision, identical to delta.baseRevision."
         },
         "draft": {
           "type": "object",
@@ -4739,6 +4769,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "delta_json": {
+          "type": "string",
+          "description": "Optional JSON delta: {subject:{kind:\"plan\"|\"focus\",id},baseRevision,originRef:{kind,id},evidenceRefs?:[{kind,id}],operations:[{kind:\"add-state-entry\"|\"update-state-entry\",entry:{id,kind:\"objective\"|\"accepted\"|\"open\",content,sourceRefs?:[{kind,id}]} }|{kind:\"remove-state-entry\",id}|{kind:\"create-focus\",id,title,objective?}|{kind:\"update-focus\",id,expectedVersion,status?,title?,objective?}|{kind:\"add-resource-link\",id,resource:{kind,id,provider?,revision?,label?},role?}|{kind:\"remove-resource-link\",id}]}. Delta uses the existing proposal, requires exact adoption, and must match target_item_id/base_revision_id."
         }
       },
       "required": [
@@ -5665,12 +5699,46 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
 {
   "type": "object",
   "properties": {
-    "goal": { "type": "string" },
-    "facts": { "type": "string" },
-    "constraints": { "type": "array", "items": { "type": "string" } },
-    "candidates": { "type": "array", "items": { "type": "object", "additionalProperties": false, "properties": { "id": { "type": "string" }, "description": { "type": "string" }, "disabled": { "type": "boolean" } }, "required": ["id", "description"] } }
+    "goal": {
+      "type": "string"
+    },
+    "facts": {
+      "type": "string"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "disabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "description"
+        ]
+      }
+    }
   },
-  "required": ["goal", "facts", "candidates"]
+  "required": [
+    "goal",
+    "facts",
+    "candidates"
+  ]
 }
 ```
 

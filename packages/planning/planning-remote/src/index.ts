@@ -6,7 +6,9 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { PlanningAccess, PlanningHandoff, PlanningMutationResult } from '@changanhua/dsh-planning'
-import { PlanningError, planningCommandSchema } from '@changanhua/dsh-planning'
+import { PlanningError, planningCommandSchema, buildPlanningContext, planningSubjectRefSchema } from '@changanhua/dsh-planning'
+import type { PlanningContextPack } from '@changanhua/dsh-planning'
+import type { PlanningContextInput } from './types.ts'
 import { planningRemoteFailure, requirePlanningActive } from './failures.ts'
 import type {
   PlanningBoardView,
@@ -217,6 +219,15 @@ export class PlanningRemoteService extends TypertRemoteService {
     } catch (error) {
       throw planningRemoteFailure(error, signal)
     }
+  }
+
+  /** Build the selected object's current canonical context without expanding external resources. */
+  @Remote('context')
+  async context(input: PlanningContextInput, signal: AbortSignal): Promise<PlanningContextPack> {
+    try {
+      const parsed = z.strictObject({ workspaceId: workspaceIdSchema, subject: planningSubjectRefSchema }).parse(input)
+      return buildPlanningContext(await this.ctx.planning.snapshot(this.access(parsed.workspaceId, signal), signal), parsed.subject)
+    } catch (error) { throw planningRemoteFailure(error, signal) }
   }
 
   /** Prepare execution from the selected revision. This does not approve or dispatch work. */

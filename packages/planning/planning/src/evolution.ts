@@ -142,7 +142,10 @@ export function projectPlanningEvolution(
       id,
       kind: 'revision',
       label: revision.title,
-      detail: revision.intent,
+      detail: [revision.intent, ...(revision.stateEntries ?? []).map(entry => `${entry.kind}: ${entry.content}`),
+        ...board.events.filter(event => event.revisionId === revision.id).flatMap(event =>
+          (event.operations ?? []).map(operation => `${operation.kind}: ${'id' in operation ? operation.id : operation.entry.id}`)),
+      ].filter(Boolean).join('\n'),
       at: revision.createdAt,
       state: revision.id === item.headRevisionId ? 'current' : 'historical',
     })

@@ -8,6 +8,8 @@ import { PlanningExecution } from './PlanningExecution.tsx'
 import { nextPlanningRequestId } from './request-id.ts'
 import { PlanningImage } from './PlanningImage.tsx'
 import { PlanningEvolution } from './PlanningEvolution.tsx'
+import { PlanningObject } from './PlanningObject.tsx'
+import type { PlanningSubjectRef } from '@changanhua/dsh-planning/types'
 
 const lanes: readonly PlanningLane[] = ['inbox', 'now', 'next', 'later', 'parking']
 const splitLines = (value: string): string[] =>
@@ -42,6 +44,7 @@ const estimateFactors = [
 ] as const
 
 export interface PlanningWorkbenchProps {
+  readonly startPlanningSession?: (subject: PlanningSubjectRef, revision: string) => Promise<void>
   readonly usePlanning: <T>(selector: (state: PlanningRuntimeState) => T) => T
   readonly selectWorkspace: (workspaceId: string) => void
   readonly selectItem: (itemId: string | undefined) => void
@@ -388,6 +391,19 @@ export function PlanningWorkbench(props: PlanningWorkbenchProps) {
                     )}
                     <h3>{generation.draft.title}</h3>
                     <p>{generation.draft.intent}</p>
+                    {generation.delta !== undefined && <section>
+                      <h4>{t('workspace.delta')}</h4>
+                      <p>{t('workspace.workingOn')}: {generation.delta.subject.kind} / {generation.delta.subject.id}</p>
+                      <p>{t('workspace.baseRevision')}: {generation.delta.baseRevision}</p>
+                      <p>{t('workspace.origin')}: {generation.delta.originRef.label ?? generation.delta.originRef.id}</p>
+                      <ul>{generation.delta.operations.map((operation, index) => <li key={index}>
+                        {t(`workspace.operation.${operation.kind}`)}: {'entry' in operation ? operation.entry.content :
+                          operation.kind === 'create-focus' ? operation.title : operation.kind === 'update-focus'
+                            ? `${operation.title ?? operation.id} · ${operation.status === undefined ? '' : t(`workspace.status.${operation.status}`)}`
+                            : operation.kind === 'add-resource-link' ? `${operation.resource.kind}: ${operation.resource.label ?? operation.resource.id}` : operation.id}
+                      </li>)}</ul>
+                      <ul>{generation.delta.evidenceRefs?.map((ref, index) => <li key={index}>{ref.kind}: {ref.label ?? ref.id}</li>)}</ul>
+                    </section>}
                     <p>
                       {t('detail.scope')}
                       {generation.draft.scope.join('、') || t('detail.unfilled')}
@@ -580,6 +596,10 @@ export function PlanningWorkbench(props: PlanningWorkbenchProps) {
               ) : (
                 <>
                   <h2>{revision.title}</h2>
+                  <PlanningObject key={selected.id} board={board} planId={selected.id} revision={revision}
+                    pending={state.pending} execute={props.execute} t={t}
+                    {...(props.startPlanningSession === undefined ? {} : { startSession: props.startPlanningSession })}
+                    {...(props.openSessionSource === undefined ? {} : { openSession: props.openSessionSource })} />
                   <p>{revision.intent}</p>
                   <p>
                     {t('detail.arrangement')}:{' '}

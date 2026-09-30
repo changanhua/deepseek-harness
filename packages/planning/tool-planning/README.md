@@ -9,7 +9,9 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This plugin gives an Agent three tools for its current project's Planning Board: bounded card listing, one-card immutable-revision reading, and a CAS-fenced command update. The Planning provider owns durable storage, source capture, and commit authorization. The model cannot select a Workspace or actor, approve Delivery work, accept Delivery results, or accept Memory.
+This plugin gives an Agent tools for its current project's Planning Board: bounded card listing, one-card immutable-revision reading, and a CAS-fenced command update. The Planning provider owns durable storage, source capture, and commit authorization. The model cannot select a Workspace or actor, approve Delivery work, accept Delivery results, or accept Memory.
+
+Bound Planning Sessions receive a bounded canonical context snapshot through the existing durable context assembly, including their original subject and base revision. The current pack includes state entries, optional Focus, legacy fields, and resource references, never historical transcripts. `planning_context` refreshes that projection; `planning_update.propose.delta_json` submits a structured delta on the existing Proposal generation. Bound Sessions cannot directly mutate or adopt canonical state.
 
 ## Use this package
 
@@ -42,11 +44,11 @@ The `tool:planning` section directs the model to search and read exact candidate
 
 #### Token effect
 
-One fixed guidance section and three tool schemas accompany the base capability. A composed Planning Delivery bridge adds the handoff tool and a fixed intent/authority guidance section. When the bridge and Planning Remote are both composed, `planning_execution` reads paged execution facts and packet-declared evidence for the selected Plan. These additions unload with their providers. Result text is bounded and data-dependent.
+One fixed guidance section and four tool schemas accompany the base capability. A composed Planning Delivery bridge adds the handoff tool and a fixed intent/authority guidance section. When the bridge and Planning Remote are both composed, `planning_execution` reads paged execution facts and packet-declared evidence for the selected Plan. These additions unload with their providers. Result text is bounded and data-dependent.
 
 #### KV Cache effect
 
-Guidance and schemas remain prefix-stable while the plugin configuration and visibility are unchanged.
+Guidance and schemas remain prefix-stable while configuration and visibility are unchanged. A bound Session adds a data-dependent durable context snapshot when its canonical context changes.
 
 ## Known Limitations and Deferred Work
 

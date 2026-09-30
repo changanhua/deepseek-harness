@@ -53,6 +53,7 @@ export async function planningAgentAccess(ctx: Context, agent: Agent, signal?: A
     workspaceId: workspace.id,
     actorId: String(agent.id),
     kind: 'agent',
+    sessionId: String(session.id),
     ...(userMessage === undefined ? {} : { userMessage: { sessionId: String(session.id), seq: userMessage.seq } }),
     authorize,
   }

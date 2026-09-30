@@ -17,6 +17,10 @@ kind: "package-library"
 
 Consumer 使用 `ctx.planning` 并传入可信的 `PlanningAccess`。输入不能提供授权、已观察来源 hash 或持久回执。浏览器安全的 Consumer 导入纯函数入口 `@changanhua/dsh-planning/evolution`；该入口不携带 Planning 服务或 Provider 身份。
 
+可选的 `stateEntries` 属于不可变修订，以稳定条目 ID 表示目标、已接受和未解决内容。旧字段为空时保持为空，读取不会虚构条目。`buildPlanningContext(board, subject)` 定位 Plan 或可选的 Focus，返回当前条目、旧字段内容及不透明资源链接，不读取外部聊天历史。资源种类使用可扩展字符串。
+
+Focus 修改与资源链接共用 Board 事务。Proposal 代次可以携带包含作用对象、基础修订、操作、来源和证据引用的 delta。精确代次采纳在整组应用及发布新修订之前校验对象与基础修订，失败时整个 Board 保持不变。Focus 完成不会完成父 Plan，也不授权 Delivery 或浏览器动作。
+
 ## 不变量策略
 
 不发布 invariant 伴随模块，因为此包只定义契约与 schema，不维护可独立观察的运行时投影。
