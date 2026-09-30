@@ -30,7 +30,7 @@ async function createFixture(): Promise<Fixture> {
     dependencies: {},
     dsh: {
       profile: {
-        bundles: ['@deepseek-ai/dsh-base', '@changanhua/dsh-personal-delivery'],
+        bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@changanhua/dsh-personal-delivery'],
         patchReload: 'startup',
       },
     },
@@ -70,7 +70,8 @@ async function run(fixture: Fixture, args: readonly string[]): Promise<{
   readonly stdout: string
 }> {
   expect(existsSync(builtBin), `missing built CLI ${builtBin}; run pnpm run build`).toBe(true)
-  const result = await execa(process.execPath, [builtBin, '--profile', profileName, ...args], {
+  const webArgs = args.includes('--dump-config') ? [] : ['--host', '127.0.0.1', '--port', '0', '--no-open']
+  const result = await execa(process.execPath, [builtBin, '--profile', profileName, ...args, ...webArgs], {
     cwd: root,
     env: {
       DSH_AGENTS_HOME: join(fixture.home, '.agents'),
