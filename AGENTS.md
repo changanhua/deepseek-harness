@@ -2,6 +2,8 @@
 
 > **语言规则：所有思考和回复必须使用中文。** 每次 compact 后重新读到此文件时，立即恢复中文思考和中文回复，不要用英文。
 
+> **代理使用规则：只有用户明确要求时，才可启动、恢复或委派任务给子代理。默认由当前主代理直接完成工作；任务复杂、可并行或 Skill／流程建议均不构成授权。用户撤回授权后，停止仍在运行的子代理，不再派发任务。**
+
 DeepSeek Harness is a plugin-based agent harness on vendored Cordis: **everything is a plugin**. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
 
 ## Pre-release stance
@@ -23,5 +25,7 @@ After an interruption, resume from Codex task and tool state: reuse completed re
 After context compaction, treat the generated summary as recovery evidence, not as user-authored authority. Call a constraint a user requirement only when the visible conversation contains the user's actual words; otherwise label it as an assistant decision, observed fact, or unverified inference. Assistant-created safeguards such as file hashes, protected-file lists, or temporary no-edit rules must not be attributed to the user or block necessary work without revalidation.
 
 ## Conventions
+
+Skill 质量评估由用户明确发起，使用 [Skill 衡量标准](.agents/skills/dsh-skill-quality/SKILL.md)，以实际任务质量、决策增益及副作用为核心；不自动启动评估或将其接入日常检查。Skill 编写指南、格式通过和作者自评均不构成有效性证明。
 
 Package design, ownership, lifecycle, runtime-invariant, and Agent Note rules live in [packages/AGENTS.md](packages/AGENTS.md) and [.agents/notes/README.md](.agents/notes/README.md). Type, tunable, dependency, and source/artifact rules live in [docs/development.md](docs/development.md); validation, secrets, and provider-e2e policy live in [docs/testing.md](docs/testing.md); concurrency, subprocess, and teardown rules live in [docs/defensive-patterns.md](docs/defensive-patterns.md). Fork-specific differences are recorded in [FORK-DIVERGENCE.md](FORK-DIVERGENCE.md).

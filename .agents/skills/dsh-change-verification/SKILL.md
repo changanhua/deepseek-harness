@@ -7,9 +7,11 @@ description: Use in the deepseek-harness repository before declaring a change, i
 
 DSH is a composed product, not merely a TypeScript workspace. A source edit can type-check while its generated Remote declaration is stale; a mounted package can exist while no shipped Profile selects it; and a loaded service can differ from the built Host/Client process users actually run. Completion evidence must cover the changed promise all the way to the user or machine-observable result, but no change earns credibility by reflexively running every repository lane.
 
-Use this skill when the question is whether a change or milestone is *actually complete*. It selects the evidence. Use `dsh-pre-push-checks` after that selection when preparing an outgoing branch: it scopes the published diff and push procedure. Use `verification-before-completion` as the general honesty rule: it requires fresh evidence before a claim, but does not know which DSH composition layers can falsify that claim. For a failing test or live symptom, diagnose first; do not turn this into a broad test ritual.
+Use this skill when the question is whether a change or milestone is *actually complete*. It selects the DSH-specific evidence. Use `dsh-pre-push-checks` separately only when preparing an outgoing branch. For a failing test or live symptom, diagnose first; do not turn this into a broad test ritual or load another general verification workflow to restate the same rule.
 
 ## Outcome
+
+For a bounded local configuration or documentation edit, one concise observation identifying the changed file, relevant check, and limitation is sufficient. Do not create a delivery receipt or record four runtime identities unless the task actually involves that delivery protocol or DSH self-hosting. Using Codex to edit DSH does not by itself make DSH the controller. The longer ledger below is a template for changes that need it, not a mandatory report shape.
 
 Before a completion claim, produce a short evidence ledger with:
 
@@ -31,21 +33,9 @@ Treat verification commands by side effect. Prefer repository-owned scripts or a
 
 A documentation-only edit invalidates documentation/link/pairing/metadata evidence, not unchanged behavior tests. A known failure stops expansion: diagnose the first cause, then invalidate only the changed layer and dependent later evidence.
 
-## Self-hosting: keep the judge outside the changed loop
+## Self-hosting
 
-
-When DSH is helping develop, launch, test, or verify DSH itself, record four identities before selecting evidence. The controller and mutable subject must not share a worktree, module-resolution path, build output, or live Skill registry. They may share a machine only when the controller is an isolated immutable approved artifact with separate home, ports, data, and process identity. The controller and executor may use that same approved controller artifact only when the executor does not load subject code.
-
-- **controller DSH identity** — the Harness/Profile/home/process that admits or coordinates the work;
-- **executor DSH identity** — the Agent/worker/Tool authority that changes source or runs the requested work;
-- **subject identity** — the checkout, commit/tree, build artifact, Profile/home/ports, and target runtime whose behavior the claim concerns;
-- **verifier identity** — the known-good or previously approved Harness/Profile/toolchain that runs the acceptance observation.
-
-The controller and executor prove orchestration and attempted work, not correctness of their own output. Before the subject starts, the controller must freeze an immutable **Verifier plan** outside the subject worktree. Record its controller-owned identity and digests for its assertions, commands, checker/parser, input fixtures, golden/expected artifacts, and allowed environment inputs. The verifier executes that snapshot read-only against subject artifacts; the subject cannot rewrite the plan, checker, fixtures, expectations, or allowed environment while it is being judged.
-
-If a runtime or verification Skill is being changed, it cannot be its own sole acceptance mechanism: use a known-good or previously approved verifier identity and its frozen Verifier plan, then observe a result through the subject entry path. Subject unit tests, a report written by the subject, `git diff`, and a workspace artifact produced by the subject are candidate evidence only. They can help locate or corroborate a result, but cannot alone constitute independent world evidence. A process-bound protocol response independently checked by the verifier, a browser-visible result, or an external Provider record can be independent world evidence when the frozen plan defines the expected result and the verifier reads it without subject-controlled parsing.
-
-Isolate controller, executor, subject, and verifier Profiles when they can coexist: use distinct `DSH_HOME` data roots, explicit non-overlapping ports, and recorded launch commands. Store the Verifier plan outside the subject worktree and freeze it before the subject process starts. Do not point an acceptance run at the controller's home, reuse its port, or silently attach to an already-running subject. If a distinct verifier or pre-start frozen plan cannot be made available, report the upper acceptance layer as `not run`; source and composition evidence may still be useful but do not establish self-hosted completion.
+Read [self-hosting-verifier.md](references/self-hosting-verifier.md) only when a DSH runtime under test is also coordinating or judging its own change. Editing DSH with Codex, running ordinary repository tests, or changing a Skill does not by itself trigger that protocol.
 
 ## 1. Establish the claim and delivery surface
 
@@ -142,13 +132,13 @@ When a higher layer fails, report the highest layer actually proven and diagnose
 
 ## Handoff to adjacent skills
 
-After this skill selects evidence:
+These are conditional references, not a required chain. Reuse already-read guidance and fresh results; do not invoke a Skill merely because it is linked here. No reference authorizes a subagent.
 
 - invoke `dsh-pre-push-checks` for a branch about to be pushed or marked review-ready; it reassesses the outgoing diff, stack/base state, and push mechanics;
-- invoke `dsh-code-review` for independent semantic review, especially ownership, authority, concurrency, and evidence gaps;
+- use `dsh-code-review` when reviewing an actual PR; a local change does not require creating a PR or dispatching a reviewer;
 - invoke `record-browser-gif` for a product-visible GUI PR;
-- invoke `verification-before-completion` before any passing or completion assertion, using this ledger as its DSH-specific input.
+- the ledger already supplies completion evidence; do not load another general verification Skill solely to repeat it.
 
 Do not use this skill to choose a feature architecture (`dsh-reuse` / plugin architecture work), to submit Queue work (`dsh-task-queue`), or to diagnose a known failing symptom (`systematic-debugging`).
 
-Produce a `VerificationReceipt` that distinguishes reused, rerun, failed, omitted, and still-unverified evidence. It never upgrades a worker or subject self-report into independent acceptance.
+When an existing delivery workflow consumes a `VerificationReceipt`, distinguish reused, rerun, failed, omitted, and still-unverified evidence. Otherwise keep those distinctions in the ordinary task result. Neither format upgrades a subject self-report into independent acceptance.

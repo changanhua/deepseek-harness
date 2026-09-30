@@ -11,6 +11,8 @@ Decide whether a proposed DSH capability should be built and identify the smalle
 
 Finish with:
 
+For a bounded decision, a short conclusion with the owning evidence and remaining gap is sufficient; the expanded sections below apply only when they change the decision. Do not fill empty sections or manufacture requirements to complete a template.
+
 - the user outcome and non-negotiable semantics;
 - existing DSH capabilities that directly or partially cover it;
 - capabilities actually enabled in the relevant Profile or Agent scope;
@@ -18,11 +20,13 @@ Finish with:
 - community candidates, when local coverage leaves a real gap;
 - one decision: `direct reuse`, `adapt`, `bridge`, `vendor/fork`, or `build`;
 - the minimum new code, configuration, documentation, and verification justified by that decision;
-- dependency direction and explicit non-goals.
+- dependency direction and any non-goals the user already confirmed.
 
 Do not call package presence, a matching name, a test fixture, or a community repository proof that the capability is usable. Verify the owning interface, implementation, composition, consumer, and relevant lifecycle behavior.
 
 ## Keep the workflow proportionate
+
+Skip this audit for a mechanical edit or a known implementation fix. For applicable work, state the unresolved reuse decision first; finish when evidence resolves it. A link from another Skill is not a new task. Do not invent non-goals or cost limits the user has not accepted; label unknowns and assistant proposals explicitly.
 
 Use the fast path when the proposal is bounded and a local capability clearly owns it: read the owning definition, provider, consumer, one relevant decision record, and focused tests, then decide. Expand the audit when the proposal introduces persistence, authorization, external side effects, concurrency, a new public interface, or a new package family.
 
@@ -38,8 +42,8 @@ Required inputs and outputs:
 Lifecycle: foreground | live background | durable
 Authority and visibility:
 Side effects and recovery:
-Performance or cost constraint:
-Explicit non-goals:
+Performance or cost constraint: <known or unknown>
+Confirmed non-goals: <user-confirmed only, otherwise none recorded>
 ```
 
 If the user has already supplied these facts, do not interview them again. Ask only when a missing choice would change the owning subsystem or permit materially different side effects.
@@ -157,8 +161,8 @@ Answer in the user's language using this structure. Omit empty rows rather than 
 ## Minimum justified change
 - ...
 
-## Explicit non-goals
-- ...
+## Confirmed non-goals
+- <include only user-confirmed exclusions; otherwise omit this section>
 
 ## Verification
 - ...

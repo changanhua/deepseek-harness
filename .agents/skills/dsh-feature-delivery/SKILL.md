@@ -7,9 +7,9 @@ description: Use when an approved or emerging DeepSeek Harness feature must move
 
 Coordinate DSH feature work through shared receipts and fresh evidence. This Skill owns routing, handoff validation, parallel-work admission, and integration checkpoints. It does not repeat architecture, implementation, debugging, review, or verification rules owned by the selected Skills.
 
-Read [the handoff and evidence protocol](references/handoff-evidence.md) when the task spans more than one phase, reuses prior evidence, or may use subagents.
+Read [the handoff and evidence protocol](references/handoff-evidence.md) only when the task actually needs a multi-phase handoff or must carry evidence across separate owners or sessions.
 
-Read [the delivery-mode learning protocol](references/mode-learning.md) when selecting `native`, `adaptive`, or `governed` delivery, recording its result, or comparing recent mode outcomes.
+Read [the delivery-mode learning protocol](references/mode-learning.md) only when the user explicitly asks to evaluate delivery modes or an already-active learning run must be closed. It is not part of ordinary feature delivery.
 
 ## Select and preserve a delivery mode
 
@@ -23,13 +23,13 @@ Choose one task-level mode before the first delivery action. An explicit user ch
 
 Mode changes process depth, not permissions or completion semantics. `adaptive` escalates to `governed` when work introduces a Service, Provider, WorkKind, persistence or recovery contract, security/authority boundary, DSH self-development, unclear ownership, or a source/composition/runtime disagreement. Reuse completed work and evidence during escalation; never restart the task merely to change mode. De-escalate only when the user explicitly asks or the task is re-scoped so the original trigger no longer exists.
 
-At mode selection, start one learning run with the repository script. At a terminal handoff, finish it once with the actual actions, elapsed time, highest evidence, review findings, evidence reuse, and bounded effect assessment. Supply summaries rather than prompts or payloads; the helper rejects recognizable sensitive forms and competing finalization. Do not record every tool call. Learning records are advisory local artifacts: they do not prove completion, control recovery, change authorization, or replace receipts. A recording failure is reported but never blocks the user's task.
+Do not start a mode-learning run by default. When the user requested one, record the actual outcome and close it at handoff; the record remains advisory and never proves completion.
 
 ## Route proportionately
 
 Do not load the feature chain for a mechanical edit, known-owner bug, documentation-only correction, or already-approved bounded implementation. Route those directly to the owning Skill and focused verification.
 
-For a feature or multi-Issue capability, keep decisions serial:
+For a feature or multi-Issue capability, select only the stages that resolve a current decision. The full sequence is available when every boundary is genuinely present:
 
 ```text
 Feature Charter
@@ -43,7 +43,7 @@ Implementation lanes
 Integrated verification and acceptance
 ```
 
-`dsh-feature-charter` freezes the outcome first. `xia-pluginmaster` collects exact checkout contracts; `dsh-reuse` consumes current and community evidence to decide reuse. They may collect disjoint facts concurrently, but neither duplicates the other's scan. `dsh-issue-stack-planner` runs only after those receipts agree on ownership and dependencies.
+Use `dsh-feature-charter` only while the outcome remains materially unsettled, `dsh-reuse` only while reuse versus build is undecided, and `dsh-issue-stack-planner` only when dependent implementation units need separate ownership or sequencing. An approved outcome, settled owner, or bounded implementation skips the corresponding stage.
 
 `dsh-self-development` is a trust and isolation overlay whenever DSH participates in changing or judging DSH. `dsh-runtime-composition-debug` is an exception branch only after a concrete composition-layer disagreement appears. Neither is a mandatory serial phase.
 
@@ -61,29 +61,9 @@ Resume from Codex's native task and tool state before using receipts or reposito
 
 Do not restart Charter, discovery, planning, implementation, or verified checks merely because a turn was interrupted. A single tool-level ambiguity does not justify a new recovery Skill, receipt kind, operation journal, Registry, or DSH architecture diagnosis. Escalate beyond exact-target reconciliation only when concrete repeated evidence shows the native task/tool state cannot represent a required product recovery contract.
 
-## Admit delegated work narrowly
+## Delegation requires user authorization
 
-Keep the primary agent responsible for outcome, shared contracts, authority, integration, and completion claims. A single bounded, sustained segment may be delegated serially; parallel subagents require at least two independently useful tasks with disjoint file or read-only question ownership that save more work than coordination costs.
-
-Before delegated implementation begins, state the assigned role, its question or exclusive ownership, the cheapest adequate role/model class, acceptance checks, and when it should run. This is a compact assignment, not a requirement to maximize agent count.
-
-Use positive triggers as well as exclusions:
-
-- assign a read-only explorer for an unfamiliar subsystem, cross-store lifecycle, recovery contract, or two or more disjoint evidence questions;
-- assign implementation workers only after contracts freeze and file ownership is genuinely disjoint;
-- for a stable candidate that changes security, authority, persistence, recovery, concurrency, or public contracts, use an independent reviewer unless the user opts out or delegation is unavailable;
-- reserve an architect for high-risk architecture/security/concurrency analysis or repeated failure, not routine search or first-pass implementation.
-
-Choose the cheapest role that can answer the question. Prefer available role presets over hard-coded model names: scout/explorer for bounded discovery, implementer/worker for exclusive implementation, reviewer for independent semantic review, and architect only for the high-risk cases above. Use the roles the runtime actually exposes. Record the actual model and reasoning level when the runtime exposes them, but route future work by role and task risk so model catalog changes do not stale the Skill.
-
-When two or three independent expensive or high-reasoning lanes are useful, prefer substantial lanes over many microtasks:
-
-- read-only explorers answer distinct evidence questions and return receipts, not competing designs;
-- implementation workers receive frozen shared contracts, exclusive files/packages, focused checks, and stop conditions;
-- a reviewer waits for a stable integrated candidate and checks the diff plus evidence gaps independently;
-- workers do not run shared broad gates or declare the Feature/Epic complete.
-
-Do not parallelize Charter approval, shared-contract decisions, authority decisions, final integration, or final acceptance. Do not ask several agents to scan the same tree or run the same fresh command.
+This Skill never authorizes subagents. Use delegation only when the user explicitly requested it and the root repository instructions permit it. Keep the primary agent responsible for the outcome, shared contracts, integration, and completion claim. When delegation is authorized, assign disjoint ownership and do not duplicate scans or checks; otherwise perform the work directly and report any independence limitation honestly.
 
 ## Verify once at the right level
 
@@ -93,7 +73,7 @@ When a known failure exists, stop expanding tests. Insert `dsh-runtime-compositi
 
 ## Output
 
-Return an `OrchestrationReceipt` containing:
+For a real multi-phase handoff, return an `OrchestrationReceipt` containing:
 
 - current phase and approved upstream receipt identities;
 - serial decisions still required;
@@ -104,4 +84,4 @@ Return an `OrchestrationReceipt` containing:
 
 Never claim that orchestration, receipts, plans, or subagent success close a Charter. Only its acceptance evidence can do that.
 
-Also close the active mode-learning run when this delivery reaches a completed, partial, blocked, or abandoned handoff. Keep the effect summary factual and short; use `unknown` when no comparison supports an effect claim.
+Close an active mode-learning run only when one was explicitly started. Keep the effect summary factual and use `unknown` when no comparison supports an effect claim.
