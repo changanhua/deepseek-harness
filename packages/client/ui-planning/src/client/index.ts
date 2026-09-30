@@ -47,7 +47,7 @@ export const inject = ['slots', 'locale', 'remote', 'uiWorkspace']
 export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(planningRemote)
   const ui = ctx.inject(['slots', 'locale', 'remote', 'remote.planning', 'uiWorkspace'], (ctx) => {
-    const runtime = createPlanningRuntimeController(ctx.remote.planning)
+    const runtime = createPlanningRuntimeController(ctx.remote.planning, 'deepseek-harness')
     const sbc = createSbcDesignController(ctx.remote.planning)
     const sessions = () => {
       const service = ctx.get('sessions') as unknown as {

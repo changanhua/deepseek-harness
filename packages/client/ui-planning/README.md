@@ -8,6 +8,8 @@ Use this browser UI to arrange project plans, inspect their sources and executio
 
 Overview lists current plans, the idea inbox, pending Proposals and archives. Opening a Plan shows current state, work and discussion, thinking desk, and history and sources. Focus selection, search and navigation survive module changes within the Client lifetime. Continue work opens a native Session available for the exact subject, or starts one when none remains; existing bindings retain their original base revision. Proposal review opens separately and adopts only an explicitly selected generation.
 
+The personal entry prefers the unique deepseek-harness workspace when no project is selected. A newly opened Plan defaults to the thinking desk; explicit project choices and each Plan's selected tab remain retained for the Client lifetime.
+
 ## Use this package
 
 `@changanhua/dsh-client-ui-planning` renders the personal Planning Remote projection as a workspace-scoped planning pool. A short capture becomes a pending Proposal with empty optional detail; only explicit acceptance creates an active item. The selected item shows a deterministic evolution graph built from retained sources, proposal generations, revisions, reviews, dependencies, and handoffs.

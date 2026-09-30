@@ -107,7 +107,9 @@ function errorMessage(result: Extract<RemoteResult<unknown>, { readonly ok: fals
 }
 
 /** Lifecycle-owned browser mirror for the planning Remote projection. */
-export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFace): PlanningRuntimeController {
+export function createPlanningRuntimeController(
+  remote: PlanningRuntimeRemoteFace, preferredWorkspaceTitle?: string,
+): PlanningRuntimeController {
   const store = createSnapshotStore<PlanningRuntimeState>({
     navigation: initialPlanningNavigation(),
     status: 'idle',
@@ -323,6 +325,10 @@ export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFac
           draft.status = 'ready'
           draft.workspaces = result.value
           draft.retry = undefined
+          if (draft.workspaceId === undefined && preferredWorkspaceTitle) {
+            const matches = result.value.filter(workspace => workspace.title === preferredWorkspaceTitle)
+            if (matches.length === 1) draft.workspaceId = matches[0]?.id
+          }
         })
         const workspaceId = store.getSnapshot().workspaceId
         if (workspaceId !== undefined && !store.getSnapshot().pending) refresh(workspaceId)
@@ -458,7 +464,7 @@ export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFac
           draft.selectedItemId = itemId
           const previous = draft.navigation ?? initialPlanningNavigation()
           const saved = planViews.get(JSON.stringify([draft.workspaceId, itemId]))
-          draft.navigation = { ...previous, ...(saved ?? { tab: 'current' as const, focusId: undefined }),
+          draft.navigation = { ...previous, ...(saved ?? { tab: 'thinking' as const, focusId: undefined }),
             screen: itemId ? 'plan' : 'overview', recentPlanId: itemId ?? previous.recentPlanId }
           draft.retry = undefined
           draft.actionError = null

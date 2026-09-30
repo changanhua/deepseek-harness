@@ -30,6 +30,8 @@ SBC Case owner 将 Thinking run 持久化在既有的 Case 记录中。浏览器
 
 画布选中和移动在 Case 保存期间保留已挂载视图及其布局。保存提示覆盖在画布内，不插入文档流中的新行，卡片透明度保持不变。重复选中是本地空操作，探索编辑不会刷新无关的 Thinking 结果。这样避免可见跳动和多余请求，同时保留 Case 持久化及版本检查。
 
+个人 Planning 入口向通用 Client controller 传入 deepseek-harness 作为优先工作区名称。仅在未选择项目且名称唯一匹配时自动选择，新打开的 Plan 默认显示思考桌面。已有项目及各 Plan 的 Tab 选择优先，减少重复导航，同时保持工作区布局和 Planning 权限不变。
+
 ## 后果
 
 Thinking 输出可通过原生 Agent loop 使用，却不会变成正式 Planning 数据。Context Pack 仍是首个 preset 唯一的研究输入，因此不具备仓库或 Web 研究能力。人可以独立应用三种输出，同一 Case 的后续 run 会读取已保存的 Design Context。

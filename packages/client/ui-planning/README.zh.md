@@ -8,6 +8,8 @@
 
 总览列出当前计划、想法收集箱、待处理 Proposal 与归档。打开 Plan 后进入当前状态、工作与讨论、思考桌面、历史与来源四个视图。Focus 选择、搜索和导航在 Client 生命周期内跨模块保留。继续推进会打开精确作用对象下仍可用的原生 Session；没有时再新建，已有绑定保留原基础修订。Proposal 单独打开审阅，只采纳人工明确选中的代次。
 
+个人入口在尚未选择项目时优先选中唯一的 deepseek-harness 工作区。新打开的 Plan 默认显示思考桌面；显式项目选择和各 Plan 已选中的 Tab 在 Client 生命周期内仍保留。
+
 ## 使用此包
 
 `@changanhua/dsh-client-ui-planning` 将个人 Planning Remote 投影渲染为按项目隔离的计划池。简短收录先成为可选细节为空的待处理 Proposal，只有明确采纳才创建 active item。所选条目会显示一张确定性演变图，它来自已保留的来源、Proposal 代次、修订、复盘、依赖和交接。
