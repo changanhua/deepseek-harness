@@ -26,6 +26,8 @@ dsh、vendor、baseline 和 Landlock 发布路径都会在第一次访问 regist
 
 ## Package ownership
 
+Workspace constraints 在应用上游发布成员要求前，先遵守登记的个人包发布策略。仅源码条目保持私有清单，策略为 `personal` 的条目则要求公开访问元数据和个人仓库地址。未登记的个人包名，或在已登记个人目录使用上游包名，均不能通过验证；目录本身不能授予发布权限。
+
 registry 包含相对于受支持上游 commit `c291e7961a515f6d7af9304e7fd1d257929aef26` 审查确认的 72 个个人 package manifest。显式列入代表所有权决定；commit 比较只是审查证据，不是判断后来上游新增包的推断规则。
 
 个人包是 source-only workspace 成员：manifest 指向个人仓库，设置 `private: true`，省略 `publishConfig`，并按目录从官方 DSH 发布族中排除。只有当 tarball 依赖和配置闭包经过独立验证、Personal 发布族已经定义、`private` 被移除且发布策略改为 `personal` 后，一个包才可以发布。个人包可以继续依赖未修改的官方 Service Definition。依赖私改上游实现的包保持 source-only，直到该依赖被抽离或获得自己的个人发布身份。

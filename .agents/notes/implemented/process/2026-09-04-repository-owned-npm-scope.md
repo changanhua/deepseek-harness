@@ -26,6 +26,8 @@ The official DSH rehearsal and documentation deployment jobs run only in `deepse
 
 ## Package ownership
 
+Workspace constraints use the registered personal publication policy before applying upstream release-member requirements. Source-only entries retain private manifests, while entries whose policy is `personal` require public access metadata and the personal repository. An unregistered personal name or an upstream name at a registered personal directory fails validation; a directory alone cannot grant publication authority.
+
 The registry contains 72 reviewed personal package manifests relative to supported upstream commit `c291e7961a515f6d7af9304e7fd1d257929aef26`. Explicit inclusion records the ownership decision; the commit comparison is evidence for review, not an inference rule for later upstream additions.
 
 A personal package is a source-only workspace member: its manifest points to the personal repository, sets `private: true`, omits `publishConfig`, and is excluded by directory from the official DSH release family. A package becomes publishable only after its tarball dependency and configuration closure is independently verified, a Personal release family is defined, `private` is removed, and its publication policy changes to `personal`. Personal packages may continue to depend on unchanged official Service Definitions. A package that requires a privately modified upstream implementation remains source-only until that dependency is extracted or receives its own personal release identity.

@@ -40,3 +40,11 @@
 - id: session-projection-cache
   name: '@deepseek-ai/dsh-session-projection-cache'
   disabled: true
+# Shell tools are outside this scenario and differ between Windows and POSIX.
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: true
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: true

@@ -1,6 +1,7 @@
 /** Experimental-package publication and dependency constraints. */
 
 import { describe, expect, it } from 'vitest'
+import { loadPackageIdentities } from './package-identities.ts'
 import {
   checkDshFamilyVersion,
   checkExperimentalDependencyIsolation,
@@ -133,6 +134,32 @@ describe('dsh family version coherence', () => {
 })
 
 describe('package payload constraints', () => {
+  it('uses the registered personal publication policy and repository', () => {
+    const registry = loadPackageIdentities()
+    const dir = 'packages/guard/side-effect-safety'
+    const publicRegistry = { ...registry, personalPackages: registry.personalPackages.map(identity =>
+      identity.directory === dir
+        ? { ...identity, publicationPolicy: 'personal' as const, releaseFamily: 'personal' as const, blockers: [] }
+        : identity) }
+    const manifest = {
+      name: '@changanhua/dsh-side-effect-safety',
+      publishConfig: { access: 'public' },
+      repository: { type: 'git', url: registry.personalRepositoryUrl, directory: dir },
+    }
+    expect(checkWorkspaceManifest({ dir, manifest }, publicRegistry)).toEqual([])
+    expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, private: true } }, publicRegistry))
+      .toEqual(expect.arrayContaining([expect.stringMatching(/must not set.*private/)]))
+    expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, publishConfig: undefined } }, publicRegistry))
+      .toEqual(expect.arrayContaining([expect.stringMatching(/publishConfig.access/)]))
+    expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, name: '@deepseek-ai/dsh-side-effect-safety' } }, publicRegistry))
+      .toEqual(expect.arrayContaining([expect.stringMatching(/must use @changanhua/)]))
+    expect(checkWorkspaceManifest({ dir, manifest: { ...manifest,
+      repository: { ...manifest.repository, url: registry.upstreamRepositoryUrl } } }, publicRegistry))
+      .toEqual(expect.arrayContaining([expect.stringMatching(/personal package repository/)]))
+    expect(checkWorkspaceManifest({ dir: 'packages/guard/unregistered', manifest }, publicRegistry))
+      .toEqual(expect.arrayContaining([expect.stringMatching(/missing from.*package-identities/)]))
+  })
+
   it('includes a declared profile patch without a package-name allowlist', () => {
     expect(expectedDshPackageFiles({
       name: '@deepseek-ai/dsh-private-profile',

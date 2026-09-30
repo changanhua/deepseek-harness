@@ -4,18 +4,29 @@ import type { ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type { z } from 'zod'
 import type { approvalSchema, actionSchema, executionSchema, budgetSchema, costSchema, targetSchema } from './state.ts'
 
+/** Opaque identity of one durable execution. */
 export type SafetyExecutionId = Branded<'SafetyExecutionId'>
+/** Opaque identity of one activated human approval. */
 export type SafetyApprovalId = Branded<'SafetyApprovalId'>
+/** Opaque identity of one intent that is never replayed after send. */
 export type SafetyActionId = Branded<'SafetyActionId'>
+/** Opaque identity of a business execution lease. */
 export type SafetyLeaseId = Branded<'SafetyLeaseId'>
+/** Persisted human authorization and its revocation state. */
 export type SafetyApproval = z.infer<typeof approvalSchema>
+/** Persisted action intent, risk consumption and settlement evidence references. */
 export type SafetyAction = z.infer<typeof actionSchema>
+/** Persisted approval-bound execution and action ledger. */
 export type SafetyExecution = z.infer<typeof executionSchema>
+/** Human-approved ceilings for retained attempt risk. */
 export type RiskBudget = z.infer<typeof budgetSchema>
+/** Attempt risk consumed atomically with SENT. */
 export type RiskCost = z.infer<typeof costSchema>
+/** Domain-owned business target identity. */
 export type TargetRef = z.infer<typeof targetSchema>
 /** References only; the referenced owner retains and verifies evidence bytes. */
 export interface SafetyEvidenceRef { uri: string; digest: string }
+/** Complete scope, policy, target, validity window and budget presented for approval. */
 export interface ApprovalDraft {
   domain: string
   subjectRef: TargetRef
@@ -32,6 +43,7 @@ export interface HumanApprovalProof {
   draftDigest: string
   evidenceRefs: SafetyEvidenceRef[]
 }
+/** Adapter preparation input; only the parameter digest is persisted. */
 export interface ActionInput {
   idempotencyKey: string
   kind: string
@@ -41,6 +53,7 @@ export interface ActionInput {
 }
 /** Only the creating binding accepts this process-local one-shot capability. */
 export interface AdmittedAction { readonly actionId: SafetyActionId; readonly __admitted: unique symbol }
+/** Readback outcome with owner-verified evidence references. */
 export interface Settlement {
   outcome: 'CONFIRMED' | 'NOT_APPLIED' | 'UNKNOWN'
   evidenceRefs: SafetyEvidenceRef[]
@@ -69,6 +82,7 @@ export interface SafetyBinding {
   execute(handle: AdmittedAction): Promise<SafetyAction>
   reconcile(executionId: SafetyExecutionId, expectedRevision: number, actionId: SafetyActionId): Promise<SafetyAction>
 }
+/** Required retention, evidence and admission bounds for one Host writer. */
 export interface Config {
   /** Maximum retained execution records. */
   maxExecutions: number
@@ -85,7 +99,9 @@ export interface Config {
   /** Maximum lifetime in milliseconds of a process-local admitted handle. */
   maxAdmissionMs: number
 }
+/** Current admission projection; unresolved effects require reconciliation. */
 export type Breaker = 'READY' | 'RUNNING' | 'PAUSED' | 'RECONCILING' | 'BLOCKED' | 'COMPLETED'
+/** Detached committed execution and derived admission state. */
 export interface SafetySnapshot {
   execution: SafetyExecution
   breaker: Breaker

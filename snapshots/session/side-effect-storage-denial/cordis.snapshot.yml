@@ -1,4 +1,13 @@
 # Test-only headless storage-denial composition; the replay variant uses recorded model chunks.
+# Shell tools are outside this scenario and differ between Windows and POSIX.
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: true
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: true
+
 - id: llm-deepseek
   name: '@deepseek-ai/dsh-llm-deepseek'
   disabled: true

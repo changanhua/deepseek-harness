@@ -5,8 +5,6 @@ You are a coding assistant powered by the deepseek-v4-flash model. Your working 
 Verify your work by running the code or tests. Keep answers brief and factual.
 
 
-Check the [exit code: N] marker on every bash result; investigate failures before moving on.
-
 Use the read tool — not shell commands like cat — to inspect text files. Results include line numbers. Use offset and limit to continue reading large files.
 
 Use the write tool to create files or completely replace file contents. Existing files are overwritten, so read an existing file first (the default fs-observation-policy requires it) and prefer edit for targeted changes.
@@ -147,9 +145,7 @@ Use subagent in the background by default. Start independent delegations togethe
 
 ## Writing code for run_code
 
-`run_code` takes two required arguments: `code` — the body of an async TypeScript function (erasable syntax only — no `enum` or namespaces; type annotations are advisory, the code runs type-stripped) — and `description`, a short summary of what the program does. The declarations below are SDK bindings for this program. A declaration does not make its name a directly callable tool; only names supplied as separate tool schemas may be called directly. When no separate `bash` schema is supplied, invoke a declared `bash` binding inside `run_code`:
-
-`run_code({ code: "return await tools.bash({ command: 'pwd', description: 'Show current directory' })", description: "Show current directory" })`
+`run_code` takes two required arguments: `code` — the body of an async TypeScript function (erasable syntax only — no `enum` or namespaces; type annotations are advisory, the code runs type-stripped) — and `description`, a short summary of what the program does. The declarations below are SDK bindings for this program. A declaration does not make its name a directly callable tool; only names supplied as separate tool schemas may be called directly.
 
 Inside the program:
 
@@ -164,23 +160,6 @@ Program-only SDK bindings:
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
 interface ToolArgsMap {
-  /** Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs in a fresh shell: no state (cwd, variables, functions) persists between calls — pass `workdir` instead of using `cd`. Non-zero exits are reported as `[exit code: N]`. Current harness environment facts are exposed through managed `$DSH_*` variables; inspect them when needed. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a bug in the command; do not retry another way. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Set `run_in_background: true` for long-running commands: the call returns a job id immediately; read its output with `job_output` and stop it with `job_kill`. Attempting a command the sandbox may deny is safe and expected: run it and read the marker rather than assuming the denial. When a command is denied and a wider mode would let it succeed, escalate immediately in the same turn — the one sanctioned exception to a denial: retry the exact same command once with `sandbox_permissions` (the narrowest wider mode that suffices) plus a one-sentence `justification`. Do not detour through chat to ask permission first — the approval prompt raised by that retry is how the user consents. If the session states approval prompts are disabled, there is no exception: a denial is final — do not set `sandbox_permissions`. Never escalate speculatively: ground the request in a real denial — normally the one this command just hit; escalating up front is fine only when this session already denied the same access. A rejected escalation is final for that command — stop and explain, never work around it — but it does not forbid attempting or escalating other commands later. */
-  bash: {
-    /** The bash command to execute. */
-    command: string;
-    /** Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: "ls" → "List files in current directory"; "git status" → "Show working tree status"; "npm install" → "Install package dependencies". */
-    description: string;
-    /** Timeout in milliseconds. The executor applies its configured default and cap, and kills the command on expiry. */
-    timeoutMs?: number;
-    /** Working directory for this command. Defaults to the session workspace; a relative path is resolved against it. */
-    workdir?: string;
-    /** Run in the background and return a job id immediately (collect with job_output, stop with job_kill). No timeout applies. */
-    run_in_background?: boolean;
-    /** The wider sandbox mode this command needs. Only valid as a one-shot retry of a command the sandbox just denied; requires justification and user approval. */
-    sandbox_permissions?: "workspace-write" | "danger-full-access";
-    /** Required with sandbox_permissions: one sentence for the user explaining why this exact command needs the wider access. */
-    justification?: string;
-  } & Record<string, JsonValue>;
   /** Define an immutable Cordis Package. For a new Plugin, use kind:"new" and provide only a semantic prefix of 3–6 lowercase English letters; the Host returns the final pluginId and packageId. To modify an existing Plugin, use kind:"existing" with its exact pluginId to append a Package without overwriting older versions. Provide at least one of code.host and code.client. Each value is a plain JavaScript function body that returns a Cordis Plugin; no TypeScript, JSX, or import transformation occurs. Query Inspect before depending on a Service, Event, Builtin, Slot, or token. Define only validates parameters and syntax and records source: it does not request approval, execute apply, or change currentPackageId. On success, call cordis_run with the returned IDs. */
   cordis_define: {
     plugin: {
@@ -519,33 +498,6 @@ interface ToolArgsMap {
 }
 
 interface ToolOutputMap {
-  bash: {
-    kind: "background";
-    jobId: string;
-  } | {
-    kind: "foreground";
-    exitCode: number | null;
-    signal: string | null;
-    timedOut: boolean;
-    aborted: boolean;
-    timeoutMs: number;
-    stdout: {
-      text: string;
-      truncated: boolean;
-      spillPath?: string;
-    };
-    stderr: {
-      text: string;
-      truncated: boolean;
-      spillPath?: string;
-    };
-    sandbox?: {
-      mode: string;
-      denied: boolean;
-      enforcement?: string;
-      runnerFailed?: boolean;
-    };
-  };
   cordis_define: {
     pluginId: string;
     packageId: string;
