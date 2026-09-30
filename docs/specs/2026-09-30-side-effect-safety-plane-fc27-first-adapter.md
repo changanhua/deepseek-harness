@@ -1,9 +1,6 @@
 # Side-effect Safety Plane：通用副作用安全内核与 FC27 首个 Adapter
 
-> 日期：2026-09-30  
-> 并行开发分支：`codex/side-effect-safety-plane`  
-> 分支基线：`13f1de5f64c5d40af8902ec30984ae082a6618f6`  
-> 定位：建立 DSH 通用的副作用安全机制；FC27 SBC 是第一个真实压力测试实例，不是该能力的产品边界。  
+> 日期：2026-09-30；并行开发分支：`codex/side-effect-safety-plane`；分支基线：`13f1de5f64c5d40af8902ec30984ae082a6618f6`；定位：建立 DSH 通用的副作用安全机制；FC27 SBC 是第一个真实压力测试实例，不是该能力的产品边界。
 > 本线与 Thinking Desk WP4 独立并行。不要修改 `codex/planning-ui-workspace` 上正在推进的 Agent Thinking 闭环。
 
 ## 0. Codex 接手结论
