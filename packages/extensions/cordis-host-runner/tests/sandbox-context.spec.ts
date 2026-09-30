@@ -265,3 +265,16 @@ describe('sandbox tools façade — get is a read-only schema view', () => {
     expect(text(await call(harness.ctx, 'probe_unknown', {}))).toBe('true')
   })
 })
+
+it('preserves ordinary callable services and keeps a self-returning service behind its facade', async () => {
+  const harness = await setup()
+  harness.ctx.provide('ordinaryCallable', (value: string) => `hello ${value}`)
+  const self = { value: 'ok', self() { return this } }
+  harness.ctx.provide('ordinarySelf', self)
+  await expect(mount(harness, `return { name: 'ordinary-consumer', apply(ctx) {
+    if (ctx.get('ordinaryCallable')('world') !== 'hello world') throw new Error('callable broken')
+    const service = ctx.get('ordinarySelf')
+    if (service.self() !== service || service.self().value !== 'ok') throw new Error('self facade broken')
+    if (service.self().valueOf !== undefined) throw new Error('raw self leaked')
+  } }`)).resolves.toBeTruthy()
+})

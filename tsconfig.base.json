@@ -381,6 +381,7 @@
       "@changanhua/dsh-runtime-facts/invariant": ["./packages/context/runtime-facts/src/invariant.ts"],
       "@changanhua/dsh-runtime-facts-host": ["./packages/context/runtime-facts-host/src"],
       "@changanhua/dsh-runtime-facts-host/invariant": ["./packages/context/runtime-facts-host/src/invariant.ts"],
+      "@changanhua/dsh-side-effect-safety": ["./packages/guard/side-effect-safety/src"],
       "@changanhua/dsh-task-queue": ["./packages/task-queue/task-queue/src"],
       "@changanhua/dsh-task-queue/invariant": ["./packages/task-queue/task-queue/src/invariant.ts"],
       "@changanhua/dsh-task-queue-executor-dsh": ["./packages/task-queue/task-queue-executor-dsh/src"],
