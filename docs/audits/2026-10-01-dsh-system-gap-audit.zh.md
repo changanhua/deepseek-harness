@@ -46,7 +46,7 @@ DSH 已是以 owner 分权、可组合的 agent（智能体）运行时，具备
 
 重要反证：最终模型上下文已有装配、提交与重建链；Knowledge 和 Memory 已有审核、晋升与失效治理；Planning 已存依赖、人工顺序、估计和跨 Plan 排序建议；能力安装和生命周期由真实 owner 分担。SSP 在 [PR #78](https://github.com/changanhua/deepseek-harness/pull/78) 有实现，Domain Runtime Phase A 已在分支实现，RIR 在 [PR #79](https://github.com/changanhua/deepseek-harness/pull/79) 仅有规格 seed。未合入不等于无设计，规格存在也不等于已实现。
 
-本次没有新增通用 Plane 达到 L4／L5。Generic Runtime、Constitution、统一 Context Fabric、Credential Plane、Portfolio Manager、Experience Compiler 均没有足够依据成为新权威。未核实到必须把职责迁入这些抽象的当前重复失败。审计确实发现局部 owner 限制与过时 owner 文档，按原尺度记录，不扩成新平台。
+本次没有新增通用 Plane 达到 L4／L5。Generic Runtime、Constitution、统一 Context Fabric、Credential Plane、Portfolio Manager、Experience Compiler 均没有足够依据成为新权威。未核实到必须把职责迁入这些抽象的当前重复失败。审计发现局部 owner 限制、67 项既有 invariant companion／publication 违规及过时 owner 文档，按原尺度记录，不扩成新平台。
 
 ## 2. Current System Map
 
@@ -130,9 +130,9 @@ Session／historical facts 走 canonical projection 和显式 SessionQuery refer
 
 ### H2 — System Constitution / Machine-readable Ownership
 
-**Classification** — 现有 ownership／enforcement 机制为 COMPLETE，不代表一切约束都被形式证明。
+**Classification** — PARTIAL：operation enforcement 与 diagnostic 机制已存在，但仓库 companion／publication 合规未完整满足。
 
-**Maturity** — 既有机制 N/A；Constitution Plane 仍为 L0–L1 假设。
+**Maturity** — 已确认 companion 合规缺口 L2；新 Constitution Plane 仍为 L0–L1 假设。
 
 **FACT / Evidence** — Tool 执行强制 scoped visibility 与 monotonic guard；package-owned invariant 注册拒绝重复占有并回收 effects。静态检查验证 companion、namespace ownership 与省略理由；module／config／Cordis catalog 显示结构。[E06](#e06) [E07](#e07) [E08](#e08) [E05](#e05)
 
@@ -140,11 +140,13 @@ Session／historical facts 走 canonical projection 和显式 SessionQuery refer
 
 **Planned owner / Explicit non-goal** — [PR #7](https://github.com/changanhua/deepseek-harness/pull/7) 是仓库 intelligence，不是 runtime constitution 权威。diagnostics 按组合可选；minimal SDK 挂 companion，base 并未普遍启用。observer 不替代操作时拒绝，也不保护任意 direct one-shot LLM call。
 
+**Observed compliance limit** — exact base 与 audit head 的 verify-package-invariants 都失败，67 项输出完全相同：54 个空 companion installer、7 个位置不当的 client peer dependency、2 个无效 invariant export、2 个无效 publication file entry、2 个缺失省略理由。它们是静态 companion／publication 违规，不证明 operation-time refusal 失效；但不能再把机制存在理解为全库合规。另一个静态 graph check 在两版都报告 12 个缺失 service-role classification，详见第 12 节。
+
 **Actual gap** — 自然语言 owner 文档会漂移：Skill README 否认的 diagnostics／shadow inspection 已由 managementSnapshot 和 Host projection 实现。这是文档准确性问题，不是 runtime ownership 缺失。[E42](#e42) [E27](#e27) [E26](#e26)
 
 **Not a gap / Repeated need / Ownership collision** — 没有统一 graph 不会抹掉已有 enforcement。同一 README 的两条过时陈述不算两个独立 runtime 失败。中央规则引擎会重复领域拒绝逻辑，并可能削弱它。
 
-**PROPOSAL / Recommendation** — 架构 do nothing；另行授权后修正过时 owner 文案，针对具体 invariant 核验对应 profile 覆盖。
+**PROPOSAL / Recommendation** — 不新增 Constitution Plane；另行授权后修 companion／publication 合规与过时 owner 文案，再针对具体 invariant 核验 profile 覆盖。
 
 ### H3 — Cross-domain Provenance / Causal Trace
 
@@ -356,6 +358,7 @@ Session／historical facts 走 canonical projection 和显式 SessionQuery refer
 | Budget 准入 | 跨 fan-out／retry／continuation 杠杆高 | 硬消费边界不是推理质量 | 通用 token accounting 可替代，不能直接替 exact DSH admission | 轮数／并发 cap 与人工监督仅部分替代 | 限定范围中等；通用 policy 高风险 | 广泛自动化前应冻结 ledger 语义 | 缺合同证据强；未测实际损失 |
 | 能力诊断／回收 | 局部运维杠杆 | 模型能辅助诊断，不能靠猜安全回收 fiber | 通用工具可用，lifecycle 仍 owner-specific | 日志、受控 reload、已有管理视图 | 全局 manager 高；窄 owner read API 低 | 只读诊断易撤回，disposal 要谨慎 | 源码遗漏确认；缺重复真实事故 |
 | owner 文案漂移 | 影响判断准确性，修复局部 | 强模型可查源码，漂移仍存在 | generator 有助结构，不能证明所有语义 | 修 owner 文案并对照 source review | 以此建 Constitution Plane 风险极高 | 文档修复易撤回 | 同 owner 两条陈述，矛盾证据强 |
+| Invariant companion 合规 | 影响广泛诊断与 CI 一致性 | 强模型不会使无效 publication 合同变有效 | 通用 package 工具可替代，owner 声明仍属本地 | 复用已有 gate／review；无需新架构 | 扩成 Constitution Plane 风险高 | 窄 metadata／companion 修复可逆；保留真实 runtime check | 强：base／head 67 项一致；未证明 runtime refusal 失效 |
 
 ## 6. False Positives
 
@@ -414,7 +417,7 @@ Observed pattern：offline regression 用 curated examples 比较版本，code e
 | Candidate | Classification | Maturity | Existing Owner | Evidence Strength | Recommended Action |
 | --- | --- | --- | --- | --- | --- |
 | H1 Cross-domain Context | PARTIAL | L1 | systemPrompt／loop／Session／domain contributors | 既有链强；重复缺口证据弱 | observe |
-| H2 Ownership enforcement | COMPLETE | N/A | operation owner／Cordis／package checks | 局部 enforcement 强；非通用证明 | 架构 do nothing |
+| H2 Ownership enforcement | PARTIAL | L2 | operation owner／Cordis／package checks | 机制已存在；67 项 baseline 合规违规 | 在已有检查内修复；不新建 Plane |
 | H3 Causal trace | PARTIAL | L1 | SessionQuery／Delivery／Eval／Queue | 域内 provenance 强；全局查询需求不确定 | observe；复用 refs |
 | H4 Generic Runtime | HYPOTHESIS | L1 | #52 复用既有 domain owner | 合同区别明确；抽象需求弱 | do nothing；复用 #52 |
 | H5 External triggers | PLANNED | L2 | Activation #42 + ingress／Goal／Queue | 窄合同强；通用 bridge deferred | extend existing owners |
@@ -437,9 +440,17 @@ PARTIAL 行的 maturity 指所述剩余问题，不是既有产品成熟度。H5
 
 复现方式：checkout exact baseline，通过下方固定源码链接复查；active ref 按记录 commit 比较，不按当前 branch tip。远端状态会变化，open Issue／PR 搜索应另行重做。否定结论限于已查 owner 与可见来源；私有本地工作、secret 值、实际部署状态、未披露分支不在证据范围。
 
-写文档前已运行 baseline 静态检查：verify-md-links 报 19 项，verify-md-wrap 报 36 项，verify-translation-pairing 报 136 项。仓库 test:docs wrapper 在进入 gate 前因 tsx CLI 无法打开本地 IPC pipe（EPERM）失败；使用 node --import tsx 直接入口完成上述三项检查。这些是 baseline／工具结果，不是审计新增缺陷。本次纯文档审计未运行产品测试、完整 build、完整 lint／doc-sync 或 live model／browser 验收。
+写文档前已运行 baseline 静态检查：verify-md-links 报 19 项，verify-md-wrap 报 36 项，verify-translation-pairing 报 136 项。仓库 test:docs wrapper 在进入 gate 前因 tsx CLI 无法打开本地 IPC pipe（EPERM）失败；使用 node --import tsx 直接入口完成上述三项检查。这些是 baseline／工具结果，不是审计新增缺陷。本地审计未运行产品测试、完整 build、完整 lint／doc-sync 或 live model／browser 验收；远端 CI 执行另列于下文。
 
 最终聚焦验证结果记录在交付 PR 或附带交付说明：检查 source citation 存在性／行号、双语结构、Markdown link／wrap、patch 范围与 exact baseline，不改产品代码。源码测试与 PR 自报验收仅作为已读证据，不冒充本次重跑。
+
+### CI follow-up on the audit delivery
+
+首个审计提交 70e3ab330b6934a0cd7e8817772bbf2ed9099fb4 的两项 CI workflow 失败。Linux 在 verify-package-invariants 报 H2 所述 67 项，exact baseline 与 head 静态输出逐字一致；该 CI 未执行到后续 verify-doc-graphs --check。另行在两版做只读检查，都报告相同 12 个缺失 role classification：browser、browserActivity、browserMonitor、browserTasks、content、contentBrowser、contentRemote、contentSession、knowledgeBase、knowledgeQueue、planning、planningDelivery。stack trace 的绝对 checkout 路径不同，所以 graph 仅语义错误相同。本次只记录，不修复。[Linux job](https://github.com/changanhua/deepseek-harness/actions/runs/36777835841/job/110100135072)。
+
+Windows repository build 通过，随后 personal-source-distribution 测试 1 过 1 失败：5 个 plugin 未激活。session-projection-cache／delivery-local 等待 storageDomain；delivery-task-queue／delivery-remote 等待 delivery；runtime-probe 等待 delivery／deliveryRemote。相关产品源码、配置、fixture、workflow、lockfile 与 exact baseline 无差异，未发现文档引入原因；但未独立重跑 Windows baseline runtime，故运行时原因仍未确认。C0 在 scope detection 后 job 显示成功，实质 gate／test 均跳过，不能称 C0 测试通过。失败步骤后的 Client typecheck 未执行。[Windows job](https://github.com/changanhua/deepseek-harness/actions/runs/36777835811/job/110100135124)、[C0 scope job](https://github.com/changanhua/deepseek-harness/actions/runs/36777835811/job/110100135286)。
+
+CI 运行 synthetic merge commit b1296a34bc4859622f6533595772eac53049ea90，其 tree c71401bc9c3d1226420da95cefb10991fcbf4b91 已独立确认与首个审计提交相同。本地静态 baseline 比较使用 exact baseline 与 audit head，不使用无关分支。
 
 ### Frozen branch inventory and negative-search boundary
 

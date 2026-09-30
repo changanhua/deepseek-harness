@@ -46,7 +46,7 @@ The three strongest confirmed remaining responsibilities are listed below. All h
 
 Important false positives: final model context already has an assembly/commit/reconstruction chain; Knowledge and Memory already have review, promotion and invalidation; Planning already stores dependencies, manual order, estimates and cross-Plan priority suggestions; capability installation and lifecycle are distributed among real owners. SSP has implementation in [PR #78](https://github.com/changanhua/deepseek-harness/pull/78), Domain Runtime Phase A exists on its branch, and RIR has a spec-only seed in [PR #79](https://github.com/changanhua/deepseek-harness/pull/79). Unmerged does not mean undesigned; a spec does not mean implemented.
 
-No new general-purpose Plane reaches L4 or L5 in this audit. Generic Runtime, Constitution, universal Context Fabric, Credential Plane, Portfolio Manager and Experience Compiler remain unjustified as new authorities. No current repeated failure was established that requires moving ownership into them. The audit did find narrow owner limitations and stale owner documentation; those are recorded without turning them into new platforms.
+No new general-purpose Plane reaches L4 or L5 in this audit. Generic Runtime, Constitution, universal Context Fabric, Credential Plane, Portfolio Manager and Experience Compiler remain unjustified as new authorities. No current repeated failure was established that requires moving ownership into them. The audit found narrow owner limitations, 67 pre-existing invariant companion/publication violations, and stale owner documentation; those are recorded without turning them into new platforms.
 
 ## 2. Current System Map
 
@@ -130,9 +130,9 @@ Session/historical facts use canonical projection and explicit SessionQuery refe
 
 ### H2 — System Constitution / Machine-readable Ownership
 
-**Classification** — COMPLETE for the existing ownership/enforcement mechanism; not a claim of universal proof.
+**Classification** — PARTIAL: operation enforcement and diagnostic mechanisms exist, but repository companion/publication compliance is incomplete.
 
-**Maturity** — N/A; Constitution Plane remains L0–L1 hypothesis.
+**Maturity** — L2 for confirmed companion compliance gaps; a new Constitution Plane remains L0–L1 hypothesis.
 
 **FACT / Evidence** — Tool execution enforces scoped visibility and monotonic guards. Package-owned invariant registration rejects duplicate ownership and unwinds effects. Source checks validate companions, namespace ownership and documented omissions; module/config/Cordis catalogs expose structure. [E06](#e06) [E07](#e07) [E08](#e08) [E05](#e05)
 
@@ -140,11 +140,13 @@ Session/historical facts use canonical projection and explicit SessionQuery refe
 
 **Planned owner / Explicit non-goal** — [PR #7](https://github.com/changanhua/deepseek-harness/pull/7) is repository intelligence, not a runtime constitutional authority. Diagnostics are opt-in in compositions; the minimal SDK mounts companions, whereas base does not universally enable them. An observer does not replace operation-time refusal or protect every direct one-shot LLM call.
 
+**Observed compliance limit** — The exact-base and audit-head verify-package-invariants checks both fail with the same 67 findings: 54 empty companion installers, seven misplaced client peer dependencies, two invalid invariant exports, two invalid publication file entries, and two missing omission reasons. These are static companion/publication violations, not proof that operation-time refusal fails. They prevent interpreting existing mechanisms as repository-wide compliance. A separate static graph check also reports 12 missing service-role classifications on both revisions; see section 12.
+
 **Actual gap** — Natural-language owner documentation can drift: Skill README denies diagnostics/shadow inspection that managementSnapshot and Host projection already implement. This is a documentation accuracy failure, not missing runtime ownership. [E42](#e42) [E27](#e27) [E26](#e26)
 
 **Not a gap / Repeated need / Ownership collision** — A missing universal graph does not remove existing enforcement. Two stale statements in one README are not two independent runtime failure cases. A central rule engine would duplicate domain-specific refusal and could weaken it.
 
-**PROPOSAL / Recommendation** — do nothing to architecture; repair stale owner prose in separate authorized work and verify profile-specific coverage when a concrete invariant is in question.
+**PROPOSAL / Recommendation** — do not add a Constitution Plane; repair companion/publication compliance and stale owner prose in separately authorized work, then verify profile-specific coverage for the concrete invariants.
 
 ### H3 — Cross-domain Provenance / Causal Trace
 
@@ -356,6 +358,7 @@ Severity and build priority are different. The following are qualitative audit i
 | Budget admission | High across fan-out/retry/continuation | Hard spending bounds are not reasoning quality | Generic token accounting may substitute, not exact DSH admission | Round/concurrency caps and human supervision only partially substitute | Medium when scoped; high as universal policy | Ledger semantics should precede widespread automation | Strong missing-contract evidence; no measured loss |
 | Capability diagnostics / reclamation | Local operational leverage | Model may help diagnose; cannot reclaim owned fibers safely by guessing | Generic tooling possible; lifecycle still owner-specific | Logs, controlled reload, current management views | High for global manager; low for narrow owner read API | Read-only diagnostics highly reversible; disposal needs care | Source omissions confirmed; repeated real incidents absent |
 | Owner prose drift | Broad decision accuracy; local repair | Better readers can verify source; drift persists | Generators help structure, not every semantic claim | Correct linked owner prose and review against source | Very high if used to justify Constitution Plane | Documentation repair is easy to reverse | Two statements, one owner; strong contradiction evidence |
+| Invariant companion compliance | Broad diagnostic and CI consistency | Stronger models do not make invalid publication contracts valid | General package tooling may substitute; owner declarations remain local | Use existing gates and review rules; no new architecture needed | High if expanded into a Constitution Plane | Narrow metadata/companion corrections are reversible; retain real runtime checks | Strong: 67 identical base/head findings; no runtime refusal failure proved |
 
 ## 6. False Positives
 
@@ -414,7 +417,7 @@ Model improvement could substantially reduce the value of custom relevance scori
 | Candidate | Classification | Maturity | Existing Owner | Evidence Strength | Recommended Action |
 | --- | --- | --- | --- | --- | --- |
 | H1 Cross-domain Context | PARTIAL | L1 | systemPrompt / loop / Session / domain contributors | High existing chain; low repeated-gap evidence | observe |
-| H2 Ownership enforcement | COMPLETE | N/A | operation owners / Cordis / package checks | High scoped enforcement; not universal proof | do nothing to architecture |
+| H2 Ownership enforcement | PARTIAL | L2 | operation owners / Cordis / package checks | Mechanisms exist; 67 baseline compliance findings | repair within existing checks; no new Plane |
 | H3 Causal trace | PARTIAL | L1 | SessionQuery / Delivery / Eval / Queue | High domain provenance; global query need uncertain | observe; reuse refs |
 | H4 Generic Runtime | HYPOTHESIS | L1 | RepoWorkspace / Queue / Browser / SSP | Distinct contracts established; abstraction need weak | do nothing; reuse #52 |
 | H5 External triggers | PLANNED | L2 | Activation #42 + ingress/Goal/Queue | High narrow contract; generic bridges deferred | extend existing owners |
@@ -437,9 +440,17 @@ Placement: the requested docs/audits directory contains a dated reference snapsh
 
 Reproducibility: check out the exact baseline and use the pinned source links below; compare active refs at their recorded commit rather than current branch tips. Repeat open Issue/PR searches separately because remote state changes. Negative findings are bounded by the inspected owners and visible sources; private local work, secret values, runtime deployment state and undisclosed branches are not evidence here.
 
-Baseline static checks were run before authoring: verify-md-links reported 19 findings; verify-md-wrap reported 36; verify-translation-pairing reported 136. The repository test:docs wrapper failed before its gates because the tsx CLI could not open a local IPC pipe (EPERM). Direct node --import tsx entrypoints allowed the three static checks above. These are baseline/tooling results, not new audit defects. Product tests, full build, full lint/doc-sync and live model/browser acceptance were not run for this documentation-only audit.
+Baseline static checks were run before authoring: verify-md-links reported 19 findings; verify-md-wrap reported 36; verify-translation-pairing reported 136. The repository test:docs wrapper failed before its gates because the tsx CLI could not open a local IPC pipe (EPERM). Direct node --import tsx entrypoints allowed the three static checks above. These are baseline/tooling results, not new audit defects. The local audit did not run product tests, full build, full lint/doc-sync or live model/browser acceptance; remote CI execution is reported separately below.
 
 Final focused validation results are recorded in the delivery PR or accompanying delivery note; source citation existence/ranges, bilingual structure, Markdown links/wrap, patch scope and exact baseline are checked without changing product code. Source tests and PR-reported acceptance are cited as evidence inspected, never as tests rerun by this audit.
+
+### CI follow-up on the audit delivery
+
+The first audit commit 70e3ab330b6934a0cd7e8817772bbf2ed9099fb4 produced two failed CI workflows. Linux failed verify-package-invariants with the 67 findings described in H2; exact baseline and head static outputs were byte-identical. The later verify-doc-graphs --check step did not execute in that CI run; separate read-only checks on both revisions reported the same 12 missing role classifications: browser, browserActivity, browserMonitor, browserTasks, content, contentBrowser, contentRemote, contentSession, knowledgeBase, knowledgeQueue, planning and planningDelivery. Absolute checkout paths in stack traces differ, so only the semantic graph error is identical. These findings are recorded, not repaired. [Linux job](https://github.com/changanhua/deepseek-harness/actions/runs/36777835841/job/110100135072).
+
+Windows repository build succeeded, then personal-source-distribution had one passing and one failing test: five plugins did not activate. session-projection-cache and delivery-local waited for storageDomain; delivery-task-queue and delivery-remote waited for delivery; runtime-probe waited for delivery and deliveryRemote. The relevant product source, configuration, fixture, workflow and lockfile are unchanged from the exact baseline. No document-induced cause was identified from that comparison, but the Windows baseline runtime was not independently rerun, so the runtime cause remains unconfirmed. C0 reported job success after scope detection, with its substantive gates/tests skipped; that is not a C0 test pass. Client typecheck after the failing Windows step was not reached. [Windows job](https://github.com/changanhua/deepseek-harness/actions/runs/36777835811/job/110100135124), [C0 scope job](https://github.com/changanhua/deepseek-harness/actions/runs/36777835811/job/110100135286).
+
+CI ran synthetic merge commit b1296a34bc4859622f6533595772eac53049ea90, whose tree c71401bc9c3d1226420da95cefb10991fcbf4b91 was independently confirmed equal to the first audit commit. The local static baseline comparison used the exact baseline and audit head, not an unrelated branch.
 
 ### Frozen branch inventory and negative-search boundary
 

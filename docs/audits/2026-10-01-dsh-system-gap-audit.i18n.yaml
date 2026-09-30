@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/audits/2026-10-01-dsh-system-gap-audit.md
-2026-10-01-dsh-system-gap-audit.md: 6d494100c9a4623d0ef52f3c9d896f6a21f90bbf
-2026-10-01-dsh-system-gap-audit.zh.md: e346d4054935b9c6c2223ec399cfefc587acbcfd
+2026-10-01-dsh-system-gap-audit.md: 847c1646b3f4f9504a7d96afb06b8611a4d833ff
+2026-10-01-dsh-system-gap-audit.zh.md: b26c15a8d4f7c130d6a4c1fecc8ba84310759ad9
