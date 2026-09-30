@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-09-28-short-route-intents.md
+2026-09-28-short-route-intents.md: 4a46a220b567c3726335f67ec6331e51b4668561
+2026-09-28-short-route-intents.zh.md: 0f233fbfe3830c15548d4b7fb498fa493d880a90
