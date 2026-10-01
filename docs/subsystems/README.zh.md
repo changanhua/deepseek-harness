@@ -6,7 +6,7 @@
 
 | 页面 | 负责内容 |
 |---|---|
-| [browser.zh.md](browser.zh.md) | 已授权 Chrome 安装、显式页面与元素引用、有界操作及未知结果恢复 |
+| [browser.md](browser.zh.md) | 已授权 Chrome 安装、显式页面与元素引用、有界操作及未知结果恢复 |
 | [core.md](core.zh.md) | `packages/core` 如何控制 agent loop（智能体循环）：逐包的循环说明、agent 创建与所有权（`AgentHandle`）、`Agent` 句柄的投递/取消/拦截约定，以及全仓通用类型模式（`…Map → 派生联合`、品牌化 id） |
 | [llm-streaming.md](llm-streaming.zh.md) | `packages/llm` 的对话类型——`Message`/`ContentBlock`、组装完成的模型请求、`StreamChunk` wire protocol 和适配器约定（adapter contract）、`BlockAssembler`，以及 `LlmAdapter` 提供方约定 |
 | [mcp.md](mcp.zh.md) | 外部 MCP 工具消费和经过认证的本地 DSH 能力公开 |
@@ -31,6 +31,8 @@
 | [tools.md](tools.zh.md) | `ToolDefinition` 完整字段、schema DSL、`ToolExecution`/`ToolResult`、工具展示 UI 类型，以及受保护的执行流水线 |
 | [user-questions.md](user-questions.zh.md) | UI 支持的人工问答 seam：`AskUserQuestionRequest`、answer/options 词汇、提供方 API、错误分类体系 |
 | [approval.md](approval.zh.md) | 一次性用户审批 seam：`ApprovalRequest`、`ApprovalOutcome`、逐会话策略、审计事件和 answerer 约定 |
+| [side-effect-safety.md](side-effect-safety.zh.md) | 持久审批、执行租约、风险预算、动作账本与 UNKNOWN 对账恢复 |
+| [planning.md](planning.zh.md) | 规划对象、已采纳修订与执行边界 |
 | [attachment.md](attachment.zh.md) | 持久图片标识与元数据、校验输入、经校验读取，以及 `AttachmentStore` seam |
 | [shell.md](shell.zh.md) | bash 执行器 seam：`ShellExecRequest`/`Spec`、`ShellRunResult`、后台 `ShellProcess` 句柄 |
 | [subprocess.md](subprocess.zh.md) | 子进程 seam：完全显式的 `SubprocessSpawnSpec`、基于偏移的输出读取器、不含分类的 `SubprocessOutcome`，以及受管 `DSH_*` 环境词汇 |

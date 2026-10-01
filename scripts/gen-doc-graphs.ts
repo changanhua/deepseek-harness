@@ -568,6 +568,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'One-shot permission decisions dispatched over the `approval/request` waterfall; answerers are listeners (the ACP bridge for its own agents), absence fails closed to `unavailable`.',
   },
   {
+    key: 'sideEffectSafety',
+    pkg: 'side-effect-safety',
+    title: 'Durable side-effect admission',
+    mode: 'core',
+    implementations: [],
+    note: 'Static Host adapters bind human approval, execution leases and risk budgets to durable intent; unresolved outcomes require readback and cannot be replayed.',
+  },
+  {
     key: 'permissionPresets',
     pkg: 'permission-presets',
     title: 'Permission presets',

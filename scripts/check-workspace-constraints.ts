@@ -11,8 +11,11 @@ import { pathToFileURL } from 'node:url'
 import { isPublicExperimentalPackageDirectory } from './experimental-package-policy.ts'
 import { hasTypertRemoteNavigation, isForbiddenPublicationFile } from './publication-payload.ts'
 import { collectProjectReferenceFaceViolations } from './project-reference-faces.ts'
+import { loadPackageIdentities } from './package-identities.ts'
+import type { PackageIdentityRegistry } from './package-identities.ts'
 
 const root = resolve(import.meta.dirname, '..')
+const packageIdentities = loadPackageIdentities(root)
 // vendor/* is single-level; packages/<group>/<pkg> nests one level deeper
 // (the group dirs — core/llm/shell/… — are pure containers with no manifest).
 const workspaceGlobs = [
@@ -317,9 +320,13 @@ export function checkDshFamilyVersion(manifest: PackageManifest, expected: strin
 /**
  * Check one workspace manifest against publication and dsh-package policy.
  * @param workspace - package directory and parsed manifest.
+ * @param identities - registered personal names, repositories and publication policies.
  * @returns path-qualified policy violations.
  */
-export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): string[] {
+export function checkWorkspaceManifest(
+  { dir, manifest }: WorkspaceManifest,
+  identities: PackageIdentityRegistry = packageIdentities,
+): string[] {
   const errors = checkExperimentalManifest({ dir, manifest })
   const label = manifest.name ?? dir
   const familyVersionError = checkDshFamilyVersion(manifest, repositoryVersion)
@@ -329,7 +336,25 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     && manifest.name !== undefined
     && publicNativePackages.has(manifest.name)
 
-  if (isPublicNativePackage) {
+  const personal = identities.personalPackages.find(identity => identity.directory === dir)
+  if (personal || manifest.name?.startsWith(`${identities.personalScope}/`)) {
+    if (!personal) {
+      errors.push(`${label}: personal package is missing from downstream/package-identities.json`)
+    } else {
+      if (manifest.name !== personal.sourceName) errors.push(`${label}: personal package must use ${personal.sourceName}`)
+      if (manifest.repository?.type !== 'git' || manifest.repository.url !== identities.personalRepositoryUrl
+        || manifest.repository.directory !== dir) {
+        errors.push(`${label}: personal package repository must use ${identities.personalRepositoryUrl} with directory ${dir}`)
+      }
+      if (personal.publicationPolicy === 'blocked-until-release-verified') {
+        if (manifest.private !== true) errors.push(`${label}: personal source package must set "private": true`)
+        if (manifest.publishConfig !== undefined) errors.push(`${label}: personal source package must omit publishConfig`)
+      } else {
+        if (manifest.private === true) errors.push(`${label}: publishable personal package must not set "private": true`)
+        if (manifest.publishConfig?.access !== 'public') errors.push(`${label}: publishable personal package must set publishConfig.access to "public"`)
+      }
+    }
+  } else if (isPublicNativePackage) {
     if (manifest.private === true) {
       errors.push(`${label}: published Landlock package must not set "private": true`)
     }
@@ -538,7 +563,7 @@ export function main(): void {
   ]
   const errors = [
     ...checkRepositoryVersion(),
-    ...manifests.flatMap(checkWorkspaceManifest),
+    ...manifests.flatMap(manifest => checkWorkspaceManifest(manifest)),
     ...checkWorkspaceProtocol(manifests),
     ...checkExperimentalDependencyIsolation(dependencyManifests),
     ...checkHierarchyShape(),

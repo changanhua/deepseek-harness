@@ -337,6 +337,7 @@ const subsystemGroups = [
   ]],
   ['策略与交互', 'Policy and interaction', [
     ['approval.md', '审批', 'Approvals'],
+    ['side-effect-safety.md', '副作用安全', 'Side-effect safety'],
     ['permission-presets.md', '权限预设', 'Permission presets'],
     ['sandbox.md', '沙箱', 'Sandboxing'],
     ['plan.md', '计划模式', 'Plan mode'],

@@ -2930,6 +2930,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'sideEffectSafety',
+    summary: 'One Storage Domain writer owns all business leases and durable action records.',
+    description: 'One Storage Domain writer owns all business leases and durable action records.',
+    methods: [
+      {
+        signature: 'snapshot(id: SafetyExecutionId): SafetySnapshot',
+        description: 'Return detached committed state and a current-clock breaker projection.',
+        parameters: [{ name: 'id', description: 'Execution identity.' }],
+        returns: 'bounded snapshot with no action payload or evidence bytes.',
+      },
+    ],
+  },
+  {
     key: 'skills',
     summary: 'Layered registry of skill providers, the host+per-scope shape the tools registry established.',
     description: 'Layered registry of skill providers, the host+per-scope shape the tools registry established. A registration files into the layer of its calling context\'s scope (scopeOf): host rows and repository plugins land in the global layer, while a plugin mounted by an agent preset\'s standing composition lands in that preset\'s layer. A read merges the global layer with the viewing scope\'s chain — the nearest layer\'s entry wins a duplicate name outright, and the rank order decides duplicates only within one layer. It exposes sorted invocation-neutral summaries and loads full skill bodies on demand.',
@@ -4796,6 +4809,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type BrandedNumber<B extends string> = number & {\n    readonly [BRAND]: B;\n};',
   },
   {
+    name: 'Breaker',
+    declaration: 'export type Breaker = \'READY\' | \'RUNNING\' | \'PAUSED\' | \'RECONCILING\' | \'BLOCKED\' | \'COMPLETED\';',
+  },
+  {
     name: 'BrowserAction',
     declaration: 'export type BrowserAction = {\n    readonly kind: \'tabs\';\n} | {\n    readonly kind: \'snapshot\';\n    readonly tabId: number;\n    readonly frameId: number;\n    readonly expectedTab?: BrowserTabReference;\n    readonly documentId?: string;\n    readonly query?: string;\n    readonly offset?: number;\n    readonly limit?: number;\n    readonly textLimit?: number;\n    readonly tree?: boolean;\n    readonly treeCursor?: string;\n    readonly treeLimit?: number;\n    readonly includeOptions?: boolean;\n    readonly includeValues?: boolean;\n    readonly structure?: boolean;\n    readonly presentationQueries?: readonly BrowserPresentationQuery[];\n} | {\n    readonly kind: \'page_map\';\n    readonly page: BrowserPage;\n} | {\n    readonly kind: \'entry_inspect\';\n    readonly page: BrowserPage;\n    readonly regionSelector: string;\n    readonly selector: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly sampleLimit?: number;\n} | {\n    readonly kind: \'entry_mount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly regionSelector?: string;\n    readonly selector: string;\n    readonly label: string;\n    readonly titleSelector?: string;\n    readonly linkSelector?: string;\n    readonly collected?: readonly string[];\n} | {\n    readonly kind: \'entry_unmount\';\n    readonly page: BrowserPage;\n    readonly mountId: string;\n    readonly forgetCollected?: boolean;\n} | {\n    readonly kind: \'region_render\';\n    readonly page: BrowserPage;\n    readonly  /* …truncated — full shape in source */',
   },
@@ -6640,6 +6657,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ReviseDeliveryCaseRequest {\n    readonly idempotencyKey: string;\n    readonly caseId: DeliveryCaseId;\n    readonly expectedHeadRevisionId: ContractRevisionId;\n    readonly origin: RequirementOrigin;\n    readonly title: string;\n    readonly revision: ContractRevisionDraft;\n}',
   },
   {
+    name: 'RiskCost',
+    declaration: 'export type RiskCost = z.infer<typeof costSchema>;',
+  },
+  {
     name: 'RunnerFailureRule',
     declaration: 'export interface RunnerFailureRule {\n    allowedExitCodes?: readonly number[];\n    fatalSignatures: readonly string[];\n    informationalLines?: readonly string[];\n}',
   },
@@ -6682,6 +6703,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RuntimeFactValue',
     declaration: 'export type RuntimeFactValue = string | boolean | number;',
+  },
+  {
+    name: 'SafetyActionId',
+    declaration: 'export type SafetyActionId = Branded<\'SafetyActionId\'>;',
+  },
+  {
+    name: 'SafetyExecution',
+    declaration: 'export type SafetyExecution = z.infer<typeof executionSchema>;',
+  },
+  {
+    name: 'SafetyExecutionId',
+    declaration: 'export type SafetyExecutionId = Branded<\'SafetyExecutionId\'>;',
+  },
+  {
+    name: 'SafetySnapshot',
+    declaration: 'export interface SafetySnapshot {\n    execution: SafetyExecution;\n    breaker: Breaker;\n    reasons: string[];\n    spent: RiskCost;\n    unresolved: SafetyActionId[];\n}',
   },
   {
     name: 'SandboxEnforcement',
