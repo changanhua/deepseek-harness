@@ -1,8 +1,8 @@
 # Requirement Investment Review v1 — RIR-WP1
 
-> 日期：2026-10-01  
-> 状态：当前实现规格  
-> 范围：只实现 RIR-WP1（Minimum Useful Review）。不要顺手推进 WP2 / WP3。
+- 日期：2026-10-01
+- 状态：待实现规格；尚未实现
+- 范围：只实现 RIR-WP1（Minimum Useful Review）。不要顺手推进 WP2 / WP3。
 
 ## 0. 任务目标
 
@@ -27,6 +27,8 @@ RIR 不是需求打分器、Roadmap 排序器、Planning 的审批门，也不�
 - 与 Planning / ResourceRef / Session / Delivery / plugin composition 相关的实际 source 和 package README
 
 若本规格与更高 authority 的当前 source / contract 冲突，以更高 authority 为准，并在 PR 中报告冲突；不要自行扩大 scope 解决无关问题。
+
+实现事实核对基线为 `master@b3b4c0183a77d2c13576d4eaaeeffb2b1c4676f3`。实现前重新检查当前 master。Planning UI 规格描述目标设计，不证明四个 tab 已经落地。[提案决策记录](../../.agents/notes/proposed/feature/2026-10-01-requirement-investment-review-wp1.md)说明职责划分理由；WP1 的验收要求以本文为准。
 
 ## 2. 系统边界
 
@@ -84,7 +86,7 @@ Thinking Desk 的 exploration 不能因一次 Assessment 自动进入 Planning c
 
 概念模型：
 
-```ts
+```text
 interface RequirementAssessment {
   id: string
   workspaceId: string
@@ -142,6 +144,19 @@ RIR-WP1 至少支持：
 若某项当前没有可靠事实，允许明确记录 unknown；不要生成虚假版本。
 
 当 Plan / Focus 当前 revision 已不同于 Assessment baseline 时，UI / projection 必须能显示 baseline drift / stale 状态，但不得自动重新评估。
+
+### 4.1 固定评估输入
+
+调用模型前，通过有权访问的 owner 读取并固定 subject 与实际评估输入。完成的 Assessment 必须保留该输入快照，或仍可解析的不可变引用；只有摘要或可变定位符不能重建输入。记录的 baseline 必须描述这份已固定输入，不能使用模型完成时读到的更新 revision。
+
+- Plan：保存 Plan id、被评估 revision，以及实际送入模型的相关上下文。
+- Focus：保存所属 Plan id/revision、Focus id/version，以及被评估的 title/objective/status。当前 Focus 字段可变，历史 Plan revision 不包含旧 Focus 内容。
+- Manual：保存评估时提交的文本与证据；后续修改或重新评估不得改写旧输入。
+- Evidence：保留提供的摘录或不可变引用、来源及核验状态、实际选择的上下文和省略项；区分用户陈述、owner 观察事实、模型推断与未知。
+
+WP1 使用人工提供的材料与现有授权 owner 的有界读取。opaque `ResourceRef` 不代表自动抓取 URL、任意读取文件系统或自动联网 / GitHub 研究流水线。无法取得的材料明确为 unknown；不得伪造已检索证据，也不得把秘密复制到评估上下文中。
+
+读取评估时，将当前所属 Plan revision 及 Focus version（适用时）与固定基线比较。subject 缺失或不可读时显示 unavailable/unknown，不能默认为 fresh。评估期间 subject 改变时，保留原输入并在完成结果上提示 drift，不静默重跑。历史 Assessment 使用固定输入，不能用当前 Planning context 重建当时依据。这是 RIR 评估记录，不是第二套 Planning 历史库。
 
 ## 5. 八个固定维度
 
@@ -287,7 +302,7 @@ WP1 只做最小但真实可用的 UI。
 
 ### 11.1 Planning 侧
 
-不要给 Plan Workspace 增加第五个一级 tab。
+不要为 RIR 增加额外的一级 tab。
 
 在 Plan / Focus 上提供轻入口，例如：
 
@@ -302,7 +317,9 @@ BUILD_CORE · 基于 r12
 [重新评估]
 ```
 
-入口的确切组件位置由当前 UI 结构决定；保持 Planning 页面现有四个 tab 信息架构。
+入口的确切组件位置由当前 UI 结构决定；不得把另一条线的 Planning 四 tab 重构带入 RIR-WP1。
+
+已核对基线通过 [PlanningWorkbench](../../packages/client/ui-planning/src/client/PlanningWorkbench.tsx) 展示 Plan 详情。链接规格中的四 tab 目标不是 WP1 的前置条件。轻入口加入现有 Plan / Focus 组件；若实现时该重构已经落地，适配其当前结构，不扩大工作包。
 
 ### 11.2 Assessment View
 
@@ -326,16 +343,20 @@ Quick Review 应能在一屏到少量滚动内理解结论；不要做大而全�
 概念上：
 
 ```text
-Plan r12
-  └─ ResourceRef
-      kind=requirement-assessment
-      id=RIR-018
-      revision=<stable assessment identity/version>
+RIR-owned relation
+  subject: Plan r12 / Focus version
+  assessment: ResourceRef
+    kind=requirement-assessment
+    id=RIR-018
+    revision=<stable assessment identity/version>
+Planning UI: read-only projection of this relation
 ```
 
 连接不能把 Assessment route 当成 Planning canonical state。
 
 如果 ResourceRef 只适合 identity 而不适合展示“最新 Assessment”，可以在 RIR adapter / projection 层解决，不得默认把 RIR 字段塞进 Planning item revision。
+
+RIR 按可信 workspace 与 subject identity 持有并持久化 subject-to-assessment 关系。Planning UI 通过 RIR adapter / projection 做只读关联查询。创建、查看与重新评估不得调用 Planning `add-resource-link`、`workspace-change`、Proposal adoption 或其他 Planning mutation。现有 [workspace 操作](../../packages/planning/planning-local/src/workspace.ts) 即使只添加 resource link 也会推进 Plan revision，因此不能复用该写入路径。复用的是 `ResourceRef` 定位结构，不是 Planning mutation。
 
 ## 13. Persistence / authority
 
@@ -347,7 +368,7 @@ RIR 的 durable write 必须遵循 DSH 现有 trusted identity、workspace autho
 
 ## 14. WP1 验收案例
 
-实现完成后至少用以下三个真实案例验收，三者的投资性质必须能产生有意义的差异：
+实现完成后至少用以下三个真实案例验收，依据证据区分其投资性质，不以模板化复述代替分析：
 
 ### Case A — FC27 SBC Solver
 
@@ -375,6 +396,19 @@ RIR 的 durable write 必须遵循 DSH 现有 trusted identity、workspace autho
 - WP2 Deep Review / WP3 Outcome Learning 尚无必要默认实现；
 - 自身也受流程负担和过度工程风险约束。
 
+### 14.1 可复现证据与决策增益
+
+每个案例保留以下验收证据；这是 WP1 的评估产物，不是 Outcome Learning 子系统：
+
+1. 固定的需求与证据材料包，包括来源引用、基线、提供的事实、假设及已知遗漏。分别标明 master 实现、未合并工作与提案；没有证据时，不得将 SSP 或其他 active branch 写成已落地能力。
+2. 评估前的工程选择、替代方案与关键未知。如果原本没有决定，如实记录，不编造前后变化故事。
+3. 实际 Quick Review 调用上下文、可取得的模型 identity/settings、prompt 或其版本，以及未编辑的原始输出，并引用保留的输入与结果。排除秘密；不得用手写或 mock 输出代替真实模型运行。
+4. 经人工审阅的前后比较，说明哪些投资边界、最小 slice、假设或实验发生改变，哪些维持原判断，以及相应证据。事实错误、无依据断言与流程负担记为失败或限制，不删去不利结果。
+
+按提供的证据判断推理质量，不以命中预期 route 为标准。三个案例都必须覆盖八维、三个 stress tests 与三类 allocation，区分事实与假设，并遵守不修改 Planning / 不 dispatch 的边界。有依据时允许相同 route；有证据地维持原决定也可以有价值。仅模板化复述案例描述或预期结论，不构成决策增益证据。
+
+真实案例逐项报告 passed、failed 或 unverified，并给出原因。真实模型访问或事实输入不足时，WP1 质量验收保持 unverified，不能由 schema tests 顶替。验证这些投资判断不需要也不得执行真实 FC / browser 写操作。
+
 ## 15. 自动化验收
 
 实现者需要补齐与当前架构匹配的测试，至少覆盖：
@@ -390,7 +424,11 @@ RIR 的 durable write 必须遵循 DSH 现有 trusted identity、workspace autho
 - route 不触发 Delivery / Queue；
 - UI 能读取并显示一份 Assessment；
 - stale / baseline drift 只提示，不自动重跑；
-- reload 后 Assessment 仍可恢复。
+- reload 后 Assessment 仍可恢复；
+- 评估中或评估后修改 Focus，旧输入仍保留且显示 drift；subject 缺失不得显示 fresh；
+- 修改 Manual 输入及重新评估后，旧文本与证据仍保留；
+- 创建 / 查看 / 重新评估均不改变 Planning Board version、Plan head、Focus version 与 resource links；
+- 恶意模型输出或调用输入不能让评估 runner 调用 Planning mutation 或 Delivery / Queue dispatch；验证实际允许的 tool / 调用路径，不能只检查 prompt 文案。
 
 模型质量不能只靠 schema test。还需要至少三个上述真实案例的可复现 evaluation evidence，报告模型实际输出是否产生决策增益。
 
@@ -451,7 +489,7 @@ ui-requirement-assessment
 8. baseline / drift 如何计算；
 9. 三个真实验收 Case 的输入、输出与观察；
 10. targeted tests 与 repo-required checks；
-11. 未完成项必须明确留在 WP2 / WP3，不得藏在“后续优化”中。
+11. WP1 之外的工作必须明确留在 WP2 / WP3，不得藏在“后续优化”中；WP1 必需项未完成时，必须报告为未完成，不能改称后续工作。
 
 ## 19. 执行约束
 
