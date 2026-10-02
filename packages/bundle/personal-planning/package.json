@@ -22,7 +22,8 @@
     "./knowledge.patch.yml": "./knowledge.patch.yml",
     "./memory.patch.yml": "./memory.patch.yml",
     "./initiative.patch.yml": "./initiative.patch.yml",
-    "./investment-review.patch.yml": "./investment-review.patch.yml"
+    "./investment-review.patch.yml": "./investment-review.patch.yml",
+    "./initiative-review.patch.yml": "./initiative-review.patch.yml"
   },
   "files": [
     "lib/index.js",
@@ -33,7 +34,8 @@
     "knowledge.patch.yml",
     "memory.patch.yml",
     "initiative.patch.yml",
-    "investment-review.patch.yml"
+    "investment-review.patch.yml",
+    "initiative-review.patch.yml"
   ],
   "license": "MIT",
   "private": true,
@@ -62,7 +64,8 @@
     "@changanhua/dsh-requirement-assessment-local": "workspace:^",
     "@changanhua/dsh-requirement-assessment-review": "workspace:^",
     "@changanhua/dsh-requirement-assessment-remote": "workspace:^",
-    "@changanhua/dsh-client-ui-requirement-assessment": "workspace:^"
+    "@changanhua/dsh-client-ui-requirement-assessment": "workspace:^",
+    "@changanhua/dsh-tool-initiative-review": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^"

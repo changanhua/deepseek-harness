@@ -17,6 +17,8 @@ Consumers call ctx.initiative with the exact live Agent. Human calls additionall
 
 See [setup and commands](../README.md) and the [Initiative subsystem](../../../docs/subsystems/initiative.md).
 
+Read pages carry `snapshotDigest` for every Candidate record in the Workspace, regardless of filters or pagination; external RIR relations are excluded. Propose and investigate optionally carry `expectedSnapshotDigest`, checked inside the owner queue after durable receipt replay. A trusted Host may pass `invocation.validateIntake` to reject a new intake commit after validating another owner; the callback cannot grant authority and must not reenter Initiative. Model JSON cannot supply that callback.
+
 ## Invariant policy
 
 No invariant companion is published because it owns definitions and schemas, not a runtime projection.

@@ -17,6 +17,7 @@ Human commands and scoped Agent tools create the same durable Candidate. Initiat
 - [initiative-local](initiative-local/README.md): single-Host Storage Domain provider, trusted identities and pending-only Planning promotion.
 - [command-initiative](command-initiative/README.md): direct Human command, including disposition and promotion.
 - [tool-initiative](tool-initiative/README.md): Agent propose, investigate and read tools, with no settlement authority.
+- [tool-initiative-review](tool-initiative-review/README.md): one Planning Review to a durable create, enrich or no-op decision in a restricted Agent Session.
 
 ## Tutorial: opt-in Web composition
 

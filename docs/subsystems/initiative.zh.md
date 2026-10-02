@@ -10,6 +10,8 @@ provider 从 live Agent/Session 派生 Workspace 和 actor。人工操作必须�
 
 Storage Domain 保留单个原子 Workspace 记录。绑定 actor/payload 的 receipt 跨重启保留。Human assess 通过现有 RIR owner 和 runner 捕获精确不可变 Candidate revision。Human promotion 在 Planning propose 前预留持久 intent；可选 assessmentId 选择已验证的固定 Assessment，包括旧 revision，并将完整 baseline 与 Human rationale 一起冻结。恢复重放该请求，不重新评估或替换 baseline。pending promotion 冻结 Candidate 编辑；确定的 Planning CAS 拒绝可以刷新 Planning 尝试。canonical Planning items/revisions 和 Delivery 状态不变，聚合 Board version 增加。
 
+可选的 [Planning Review 消费者](../../packages/initiative/tool-initiative-review/README.zh.md)为每条 Review 持久保存一个新建、补充或不行动决策，其上下文摘要绑定 Planning 输入 heads 和完整 Candidate 比较快照。`InitiativePage.snapshotDigest` 标识 Workspace 全部 Candidate 记录，不受过滤或分页影响，也不包含外部 RIR 关联。propose/investigate 接受可选的 `expectedSnapshotDigest`；owner 在自身写队列内、回执回放之后检查它。可信 Host 的 `InitiativeInvocation.validateIntake` 可通过重新核对其他 owner 来拒绝新的入口写入，但不授予权限或重入 Initiative。准入是乐观检查，不跨 owner 冻结 Planning。
+
 ## Queries and dependencies
 
 读取投影使用 CandidateSummary，以及所选不可变 revision、revision count、调查和最新 disposition。可选 RIR 关系校验 Workspace、Candidate id、精确 revision、digest 和保存文本。fresh 表示评估内容匹配当前 head，drift 表示有效旧 revision；缺失 revision 为 unavailable，不一致记录为 unknown。这些状态不认证当前 DSH 能力、后端身份或证据真实性。缺失或关闭的 Assessment provider 保持 unavailable。

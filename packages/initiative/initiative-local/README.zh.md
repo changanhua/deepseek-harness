@@ -19,6 +19,8 @@ kind: "package-service"
 
 新的 RIR 请求要求 Candidate 处于 ASSESSABLE，否则在调用评估器前拒绝。已提交的请求以相同 key、actor 和 payload 重试时，即使 Candidate 已晋升，也返回原 receipt，不再调用模型。
 
+Candidate 读取为 Workspace 全部 Candidate 集合计算指纹。可选的入口快照前置条件在写入所用的同一串行队列内拒绝已变化的比较。仅 Host 可提供的入口检查紧邻新的持久写入执行；匹配回执先于这两项检查回放。这会串行化 Candidate 变化，但不锁住独立的 Planning owner。
+
 ## 不变量策略
 
 不发布 invariant 伴随模块：所有 Candidate 事实均由同一个经过 schema 验证的原子记录导出，没有要对齐的独立投射。

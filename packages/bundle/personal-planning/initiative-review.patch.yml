@@ -1,0 +1,9 @@
+# Optional Review feedback; apply after cordis.patch.yml and initiative.patch.yml.
+- insert:
+    - id: initiative-review
+      name: '@changanhua/dsh-tool-initiative-review'
+      isolate:
+        storageDomain: web-host
+        workspaceRegistry: web-host
+      config:
+        ownershipRoot: !!js dshHomePath('storages', 'initiative-review-ownership')

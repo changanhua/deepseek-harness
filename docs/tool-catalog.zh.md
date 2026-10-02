@@ -22,6 +22,8 @@
 | `@changanhua/dsh-tool-browser` | `browser_action`、`browser_action_sequence`、`browser_activity_search`、`browser_entry_mount`、`browser_entry_unmount`、`browser_extract`、`browser_instances`、`browser_page_map`、`browser_region_clear`、`browser_region_render`、`browser_request_status`、`browser_snapshot`、`browser_tabs`、`browser_task_cancel`、`browser_task_select`、`browser_task_start`、`browser_task_verify` | `ctx.browser`、`ctx.browserTasks`、`ctx.tools`、`ctx.approval`、`用于历史活动搜索的 ctx.browserActivity`、`发起 Agent 的 Session` | `tool/call`、`tool/result`、`browser-task/change`、`browser-task/receipt`、`browser-task/check`、`browser-task/delegation`、`经 Browser 批准的页面动作` | - | 只有组合了 `browserActivity` 时才提供活动搜索。它依据当前 Host 授权读取发起 Session，包括 Chrome 离线时。 |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`、`task_queue_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时的 live Agent Session` | `tool/call`、`tool/result`、`Queue v2 agent.run@1 admission` | - | 类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，但不暴露执行器、Profile、模型、凭据或 shell 路由字段。 |
 | `@changanhua/dsh-tool-initiative` | `initiative_read`, `initiative_record` | `ctx.tools`, `ctx.systemPrompt`, `ctx.initiative`, `a live Agent in a registered Workspace` | `tool/call`, `tool/result`, `Candidate revisions and investigation facts in initiative_candidates` | - | 可选 Candidate 入口。Agent 提出与调查建议不授予权限；只有独立人工命令能最终处置或晋升到 pending Planning Proposal。 |
+| `@changanhua/dsh-tool-initiative-review` | `initiative_review_decide`, `initiative_review_read` | `ctx.planning`, `ctx.initiative`, `ctx.storageDomain`, `ctx.workspaceRegistry`, `ctx.agents`, `ctx.sessions`, `ctx.tools`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `持久的 Review 决策与可选 Candidate revision` | - | 要求已有且工具受限的 Agent Session。持久的不行动结果属于成功；不修改 Planning、自动激活 Session 或派发工作。 |
+| `@changanhua/dsh-tool-thinking-case` | `thinking_context`, `thinking_submit_result` | `ctx.tools`, `ctx.thinkingCase` | `tool/call`, `tool/result`, `Thinking 结果草稿` | - | 有界的 Thinking 上下文与草稿提交；不采纳 canonical Planning 或执行工作。 |
 | `@changanhua/dsh-tool-memory` | `memory_propose`、`memory_read`、`memory_search` | `ctx.tools`、`ctx.systemPrompt`、`ctx.projectMemory`、`已注册 Workspace 中的 live Agent` | `tool/call`、`tool/result`、`project_memory 领域中的候选修订与提案回执` | - | 显式选择启用的项目记忆。模型可以搜索、读取已核查的主张并提出候选；人类接受、拒绝和撤回是独立的命令操作。 |
 | `@changanhua/dsh-tool-planning` | `planning_context`、`planning_execution`、`planning_handoff`、`planning_list`、`planning_read`、`planning_update` | `ctx.tools`、`ctx.systemPrompt`、`ctx.planning`、`ctx.agents`、`ctx.sessions`、`ctx.workspaceRegistry`、`已注册 Workspace 中的发起 Agent` | `tool/call`、`tool/result`、`通过 ctx.planning 变更 Planning Board` | - | 只有组合可选的 Planning–Delivery bridge 时才注册 `planning_handoff`。只有 bridge 与 Planning Remote 都已组合时，`planning_execution` 才读取已链接的 Delivery 状态和证据；它绝不派发或接纳 Delivery 工作。 |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`、`ctx.userQuestions` | `tool/call`、`tool/result after a UI/provider answers the question` | - | ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类答案。 |
@@ -3456,6 +3458,442 @@
 来源： [`packages/initiative/tool-initiative/src/index.ts`](../packages/initiative/tool-initiative/src/index.ts)
 
 可选 Candidate 入口。Agent 提出与调查建议不授予权限；只有独立人工命令能最终处置或晋升到 pending Planning Proposal。
+
+<a id="changanhuadsh-tool-memory"></a>
+
+## `@changanhua/dsh-tool-initiative-review`
+
+### `initiative_review_decide`
+
+针对已读取的精确 Review 持久决定新建、补充或不行动，不修改 Planning 或执行状态。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "input_json": {
+      "type": "string",
+      "description": "JSON: reviewId, expectedContextDigest, expectedDecisionVersion, rationale, decision (no-op, create or enrich)."
+    }
+  },
+  "required": [
+    "input_json"
+  ]
+}
+```
+
+Source: [`packages/initiative/tool-initiative-review/src/index.ts`](../packages/initiative/tool-initiative-review/src/index.ts)
+
+### `initiative_review_read`
+
+读取一条 Planning Review、其精确 revision、已有 Candidate 和持久处理结果。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "input_json": {
+      "type": "string",
+      "description": "JSON: reviewId, optional expectedContextDigest for a continued comparison, candidateId, offset and limit (1 to 5)."
+    }
+  },
+  "required": [
+    "input_json"
+  ]
+}
+```
+
+Source: [`packages/initiative/tool-initiative-review/src/index.ts`](../packages/initiative/tool-initiative-review/src/index.ts)
+
+要求已有且工具受限的 Agent Session。持久的不行动结果属于成功；不修改 Planning、自动激活 Session 或派发工作。
+
+<a id="changanhuadsh-tool-thinking-case"></a>
+
+## `@changanhua/dsh-tool-thinking-case`
+
+### `thinking_context`
+
+Read the bounded, frozen context for this active Thinking Desk run.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/planning/tool-thinking-case/src/index.ts`](../packages/planning/tool-thinking-case/src/index.ts)
+
+### `thinking_submit_result`
+
+Save one versioned structured Thinking Desk candidate for human review. This never changes Planning.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "expected_result_version": {
+      "type": "integer",
+      "description": "0 for the first result, then the current result version."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Stable request id. Keep it unchanged when retrying the same submission."
+    },
+    "draft": {
+      "type": "object",
+      "description": "Structured thinking candidate. Use expected_result_version 0 for the first submission, then increment from the stored result version.",
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "open_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exploration_notes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ]
+          }
+        },
+        "design_context": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "body"
+          ]
+        },
+        "planning_delta": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operations": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "add-state-entry"
+                      },
+                      "entry": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "objective",
+                              "accepted",
+                              "open"
+                            ]
+                          },
+                          "content": {
+                            "type": "string"
+                          },
+                          "sourceRefs": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "provider": {
+                                  "type": "string"
+                                },
+                                "revision": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "content"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "entry"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "update-state-entry"
+                      },
+                      "entry": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "objective",
+                              "accepted",
+                              "open"
+                            ]
+                          },
+                          "content": {
+                            "type": "string"
+                          },
+                          "sourceRefs": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "provider": {
+                                  "type": "string"
+                                },
+                                "revision": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "content"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "entry"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "remove-state-entry"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "create-focus"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "objective": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "title"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "update-focus"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "expectedVersion": {
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "objective": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "active",
+                          "blocked",
+                          "done"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "expectedVersion"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "add-resource-link"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "resource": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "provider": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "role": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "resource"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "remove-resource-link"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ]
+                  }
+                ]
+              }
+            },
+            "rationale": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operations"
+          ]
+        }
+      },
+      "required": [
+        "summary",
+        "findings",
+        "open_questions"
+      ]
+    }
+  },
+  "required": [
+    "expected_result_version",
+    "request_id",
+    "draft"
+  ]
+}
+```
+
+Source: [`packages/planning/tool-thinking-case/src/index.ts`](../packages/planning/tool-thinking-case/src/index.ts)
+
+有界的 Thinking 上下文与草稿提交；不采纳 canonical Planning 或执行工作。
 
 <a id="changanhuadsh-tool-memory"></a>
 
