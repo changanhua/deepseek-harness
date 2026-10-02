@@ -39,4 +39,4 @@ kind: "package-library"
 
 ## 已知限制与后续工作
 
-- Definition 不提供 provider 或 RIR 实现；opaque 来源引用不证明其内容。
+- Definition 不提供 provider 或 evaluator。Candidate assessment subject 保留精确 revision 和内容 digest；不透明来源引用不证明其内容。

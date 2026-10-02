@@ -27,7 +27,7 @@ pnpm run build
 pnpm dsh web --patch "$PWD/packages/bundle/personal-planning/cordis.patch.yml" --patch "$PWD/packages/bundle/personal-planning/initiative.patch.yml"
 ```
 
-可选 overlay 装载两个 scoped 模型工具及 `/initiative`，不改默认配置。人工在输入框使用下列命令，不触发模型：
+此 overlay 可选，添加两个 scoped 模型工具与 `/initiative`，不改变默认配置。Human composer 中除 assess 外的命令不调用模型；assess 使用已配置 RIR provider 和 model。需要评估时，组合 investment-review overlay 及其 owner/review provider。
 
 ```text
 /initiative {"action":"propose","key":"audit-delta-1","kind":"simplify","trigger":"The pinned audit ages","facts":{"claim":"Investigate a lighter current-state delta"}}
@@ -48,4 +48,4 @@ pnpm dsh web --patch "$PWD/packages/bundle/personal-planning/cordis.patch.yml" -
 
 ## Verification boundaries
 
-Loader/Commands/Tools 集成测试通过 inert Agent handle 验证 durable owner 与重启恢复，不证明真实模型自主 initiative。基线没有真实 RIR，所以不伪造 Assessment，RIR vertical 保持 blocked。来源定位符和摘录明确为 unverified/unknown/unavailable；提供 digest 不等于核实证据。不要在 Candidate 中保存 credential、secret 或原始 provider payload。
+Loader/Commands/Tools 集成测试验证持久 owner 与重启恢复。可选 Human assess 使用 `{action:"assess",key,id,version}` 指定精确不可变 revision；promote 接受可选 assessmentId，冻结经验证的完整 baseline。同 key 回放不再次评估，Assessment route 仍是建议。RIR owner 缺失或关闭时 availability 为 unavailable。来源 locator 与 excerpt 保持 unverified/unknown/unavailable，所供 digest 不认证证据。不要在 Candidate 中放置凭据、秘密或原始 provider payload。真实 provider 验收 fixture 保留请求、Tool event 与独立 owner 读取；无密钥版本仅证明组合。

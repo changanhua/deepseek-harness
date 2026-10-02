@@ -34,7 +34,9 @@
     "@deepseek-ai/dsh-commands": "workspace:^",
     "@deepseek-ai/dsh-workspace": "workspace:^",
     "@deepseek-ai/dsh-storage-domain": "workspace:^",
-    "@deepseek-ai/node-addon-system": "workspace:^"
+    "@deepseek-ai/node-addon-system": "workspace:^",
+    "@changanhua/dsh-requirement-assessment": "workspace:^",
+    "@changanhua/dsh-requirement-assessment-review": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
@@ -46,7 +48,9 @@
     "@deepseek-ai/dsh-commands": "workspace:^",
     "@deepseek-ai/dsh-workspace": "workspace:^",
     "@deepseek-ai/dsh-storage-domain": "workspace:^",
-    "@deepseek-ai/node-addon-system": "workspace:^"
+    "@deepseek-ai/node-addon-system": "workspace:^",
+    "@changanhua/dsh-requirement-assessment": "workspace:^",
+    "@changanhua/dsh-requirement-assessment-review": "workspace:^"
   },
   "dependencies": {
     "zod": "^4.4.3"

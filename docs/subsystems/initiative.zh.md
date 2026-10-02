@@ -8,11 +8,11 @@ Initiative 拥有 Human 与 Agent proposer 共用的 Planning 前 Candidate。im
 
 provider 从 live Agent/Session 派生 Workspace 和 actor。人工操作必须具有 exact unfinished Commands event。Agent 可 propose、refine 和记录调查 recommendation，但不能 defer、drop 或 promote。调查不执行工具、不创建 Agent、不改变可用权限。Candidate 数据是参考材料，不是可执行 policy。
 
-Storage Domain 保留单个原子 Workspace 记录。Record/head CAS 和 payload-bound receipt 跨重启保留。人工晋升先持久化 intent，只调用 Planning propose，再记录稳定 Proposal 关系。恢复重放固定 Planning 请求，即便 Proposal 之后已被处置。pending promotion 冻结 Candidate 编辑；确定的 Planning CAS 拒绝可以更新尝试，同时保留原 Candidate key。canonical Planning items/revisions 与 Delivery 状态不变，但聚合 Board version 会增加。
+Storage Domain 保留单个原子 Workspace 记录。绑定 actor/payload 的 receipt 跨重启保留。Human assess 通过现有 RIR owner 和 runner 捕获精确不可变 Candidate revision。Human promotion 在 Planning propose 前预留持久 intent；可选 assessmentId 选择已验证的固定 Assessment，包括旧 revision，并将完整 baseline 与 Human rationale 一起冻结。恢复重放该请求，不重新评估或替换 baseline。pending promotion 冻结 Candidate 编辑；确定的 Planning CAS 拒绝可以刷新 Planning 尝试。canonical Planning items/revisions 和 Delivery 状态不变，聚合 Board version 增加。
 
 ## Queries and dependencies
 
-读取投射使用独立 CandidateSummary 类型，另含所选 immutable revision、revision count、对应调查和最新 disposition。summary metadata 保留 origin、lineage 和 promotion 关系。旧 revision 显式读取；drift 比较所选版本与当前 head。过滤和分页限制 Candidate 列表。真实 RIR owner 缺失，因此 RIR availability 明确为 unavailable，assessment history 为空。这不代表 RIR bridge 已实现，也不证明真实模型自主 vertical。
+读取投影使用 CandidateSummary，以及所选不可变 revision、revision count、调查和最新 disposition。可选 RIR 关系校验 Workspace、Candidate id、精确 revision、digest 和保存文本。fresh 表示评估内容匹配当前 head，drift 表示有效旧 revision；缺失 revision 为 unavailable，不一致记录为 unknown。这些状态不认证当前 DSH 能力、后端身份或证据真实性。缺失或关闭的 Assessment provider 保持 unavailable。
 
 参见 [Candidate 包与可选配置](../../packages/initiative/README.zh.md)。
 
@@ -47,7 +47,7 @@ abstract execute( agent: Agent, input: InitiativeCommand, invocation?: Initiativ
  * @param query - Exact revision or bounded filters.
  * @param invocation - Active Human command identity when outside an Agent turn.
  * @param signal - Caller cancellation.
- * @returns Candidate facts and explicitly unavailable RIR relations, never inferred verification.
+ * @returns Candidate facts and bounded exact-subject RIR relations, never inferred evidence verification.
  */
 abstract read(agent: Agent, query: InitiativeQuery, invocation?: InitiativeInvocation, signal?: AbortSignal): Promise<InitiativePage>
 ```

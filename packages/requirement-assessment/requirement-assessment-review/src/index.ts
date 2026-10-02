@@ -7,7 +7,7 @@ import { buildPlanningContext } from '@changanhua/dsh-planning'
 import { runReviewModel } from './model.ts'
 import type { ReviewModelConfig } from './model.ts'
 import { quickReviewInputSchema } from './schema.ts'
-import type { QuickReviewInput } from './types.ts'
+import type { CandidateReviewSource, QuickReviewInput } from './types.ts'
 import { REVIEW_PROMPT_VERSION, REVIEW_SYSTEM_PROMPT } from './prompt.ts'
 export * from './types.ts'
 export * from './schema.ts'
@@ -48,14 +48,25 @@ export class RequirementAssessmentReview extends Service {
    * @param access - Trusted Host workspace and actor capability, reauthorized before work and commit.
    * @param raw - Strict user request without provenance or authority fields.
    * @param signal - Caller lifetime; cancellation leaves a spent reservation unresolved.
+   * @param candidateSource - Trusted owner snapshot for a Candidate subject; never browser/model input.
    * @returns The immutable completed assessment, including a replayed original for the same request.
    */
-  async review(access: AssessmentAccess, raw: QuickReviewInput, signal?: AbortSignal): Promise<RequirementAssessment> {
+  async review(
+    access: AssessmentAccess, raw: QuickReviewInput, signal?: AbortSignal, candidateSource?: CandidateReviewSource,
+  ): Promise<RequirementAssessment> {
     const active = AbortSignal.any([this.lifetime.signal, ...(signal ? [signal] : [])])
     active.throwIfAborted()
     await access.authorize()
     const input = quickReviewInputSchema.parse(raw)
-    const digest = createHash('sha256').update(JSON.stringify(input)).digest('hex')
+    const source = candidateSource === undefined ? undefined : structuredClone(candidateSource)
+    if (input.subject.kind === 'candidate' && (!source || JSON.stringify(source.subject) !== JSON.stringify(input.subject)))
+      throw new AssessmentError('invalid-input', 'Candidate review requires its exact trusted owner snapshot')
+    if (source && createHash('sha256').update(source.text).digest('hex') !== source.subject.digest)
+      throw new AssessmentError('invalid-input', 'Candidate snapshot digest does not match its recorded content')
+    if (input.subject.kind !== 'candidate' && source !== undefined)
+      throw new AssessmentError('invalid-input', 'Candidate snapshot requires a Candidate subject')
+    const identity = input.subject.kind === 'candidate' ? { actor: { kind: access.kind, id: access.actorId }, input } : input
+    const digest = createHash('sha256').update(JSON.stringify(identity)).digest('hex')
     const key = JSON.stringify([access.workspaceId, access.actorId, access.kind, input.requestId])
     const existing = this.inflight.get(key)
     if (existing) {
@@ -64,12 +75,12 @@ export class RequirementAssessmentReview extends Service {
       active.throwIfAborted(); await access.authorize()
       return structuredClone(result)
     }
-    const promise = this.perform(access, input, digest, active)
+    const promise = this.perform(access, input, digest, active, source)
     this.inflight.set(key, { digest, promise })
     try { return await promise } finally { this.inflight.delete(key) }
   }
   private async perform(
-    access: AssessmentAccess, input: QuickReviewInput, requestDigest: string, signal: AbortSignal,
+    access: AssessmentAccess, input: QuickReviewInput, requestDigest: string, signal: AbortSignal, source?: CandidateReviewSource,
   ): Promise<RequirementAssessment> {
     const previous = await this.ctx.requirementAssessment.replay(access, input.requestId, requestDigest, signal)
     if (previous) return previous
@@ -86,7 +97,11 @@ export class RequirementAssessmentReview extends Service {
       workspace: access.workspaceId, capabilityRefs: [],
       evaluator: { provider: this.config.provider, model: this.config.model, identity: 'unknown (configured runtime route; backend model identity not attested)', promptVersion: REVIEW_PROMPT_VERSION }, contextVersions: [],
     }
-    if (input.subject.kind !== 'manual') {
+    if (input.subject.kind === 'candidate' && source !== undefined) {
+      actualInput.text = source.text
+      actualInput.evidence = source.evidence
+      actualInput.omissions.push('Candidate owner observation verifies recorded content, not the truth of its claims or opaque references.')
+    } else if (input.subject.kind === 'plan' || input.subject.kind === 'focus') {
       const board = await this.ctx.planning.snapshot(access, signal)
       const pack = buildPlanningContext(board, { kind: input.subject.kind, id: input.subject.id })
       if (input.subject.kind === 'focus' && pack.selectedFocus?.planId !== input.subject.planId) throw new AssessmentError('invalid-input', 'focus owner mismatch')
@@ -106,7 +121,8 @@ export class RequirementAssessmentReview extends Service {
     const reservation = await this.ctx.requirementAssessment.reserve(access, { requestId: input.requestId, requestDigest }, signal)
     if (reservation.status === 'completed') return reservation.assessment
     if (reservation.status === 'pending') throw new AssessmentError('conflict', 'review may already have consumed model tokens; use a new request id for an explicit retry')
-    const result = await runReviewModel(this.ctx, this.config, REVIEW_SYSTEM_PROMPT, { baseline, actualInput }, signal)
+    const result = await runReviewModel(this.ctx, this.config, REVIEW_SYSTEM_PROMPT,
+      { baseline, actualInput }, signal, () => access.authorize())
     const evaluation = assessmentEvaluationSchema.parse(result.output)
     actualInput.requestPrompt = result.prompt
     baseline.contextVersions.push({ name: 'llm-call-settings', version: JSON.stringify(result.settings) })

@@ -27,7 +27,7 @@ No invariant companion is published because the Tool and prompt registries own r
 
 #### What the model sees
 
-`initiative_record` and `initiative_read` schemas and stable proactive-intake guidance. Candidate content remains untrusted reference data.
+`initiative_record` and `initiative_read` schemas and stable proactive-intake guidance. Guidance states exact kind/status enums and distinguishes string assumptions/uncertainties from structured evidence/counter-evidence references. Candidate content remains untrusted reference data.
 
 #### Token effect
 

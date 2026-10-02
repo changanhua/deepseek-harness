@@ -27,7 +27,7 @@ All product copy is locale-owned. Model output and code enums are shown verbatim
 
 #### What the model sees
 
-Nothing directly; only the Host review runner constructs the model request.
+Nothing directly; only the Host `ctx.requirementAssessmentReview` runner constructs the model request.
 
 #### Token effect
 

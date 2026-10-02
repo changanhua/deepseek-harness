@@ -10,6 +10,10 @@ import { initiativeScope } from './scope.ts'
 import { initiativeDomain, workspaceCandidatesSchema } from './spec.ts'
 import { acquireInitiativeOwnership } from './ownership.ts'
 import { promoteCandidate } from './promotion.ts'
+import { assessmentAccess, assessmentRelations, candidateReviewSource } from './assessment.ts'
+import type { RequirementAssessment } from '@changanhua/dsh-requirement-assessment'
+import { AssessmentError } from '@changanhua/dsh-requirement-assessment'
+import type {} from '@changanhua/dsh-requirement-assessment-review'
 import type {} from '@changanhua/dsh-planning'
 
 /** Local single-Host Candidate provider configuration. */
@@ -70,8 +74,20 @@ export class LocalInitiative extends Initiative {
         && (parsed.data.status === undefined || value.status === parsed.data.status)
         && (parsed.data.proposer === undefined || value.proposer.kind === parsed.data.proposer))
       if (parsed.data.id !== undefined && matches.length === 0) throw new InitiativeError('not-found', 'Candidate is unavailable in this Workspace')
+      const assessmentOwner = this.ctx.get('requirementAssessment')
+      let assessments: RequirementAssessment[] | undefined
+      if (assessmentOwner !== undefined) {
+        try { assessments = (await assessmentOwner.snapshot(assessmentAccess(scope), signal)).assessments }
+        catch (error) { if (!(error instanceof AssessmentError) || error.code !== 'closed') throw error }
+      }
       const entries = matches.slice(parsed.data.offset, parsed.data.offset + parsed.data.limit)
-        .map(candidate => this.view(candidate, parsed.data.version ?? candidate.headVersion))
+        .map((candidate) => {
+          const view = this.view(candidate, parsed.data.version ?? candidate.headVersion)
+          if (assessments !== undefined) view.rir = assessmentRelations(candidate, assessments)
+          while (view.rir.assessments.length > 0 && Buffer.byteLength(JSON.stringify(view), 'utf8') > this.config.maxCandidateViewBytes)
+            view.rir.assessments.shift()
+          return view
+        })
       await scope.authorize()
       return structuredClone({ entries, total: matches.length,
         nextOffset: parsed.data.offset + entries.length < matches.length ? parsed.data.offset + entries.length : null })
@@ -95,8 +111,8 @@ export class LocalInitiative extends Initiative {
     return this.enqueue(async (domain) => {
       const command = parsed.data
       const scope = await initiativeScope(this.ctx, agent, command, invocation, this.config.operatorId, signal)
-      if (scope.actor.kind !== 'human' && (command.action === 'promote' || command.action === 'disposition'))
-        throw new InitiativeError('unauthorized', 'Only an explicit Human command can settle or promote a Candidate')
+      if (scope.actor.kind !== 'human' && (command.action === 'promote' || command.action === 'disposition' || command.action === 'assess'))
+        throw new InitiativeError('unauthorized', 'Only an explicit Human command can assess, settle or promote a Candidate')
       const table = domain.table('workspaces')
       const state = structuredClone(table.get(scope.workspaceId) ?? { candidates: [], receipts: [] })
       const inputDigest = digest({ actor: { kind: scope.actor.kind, id: scope.actor.id }, command })
@@ -135,6 +151,7 @@ export class LocalInitiative extends Initiative {
       await scope.authorize()
       const at = new Date().toISOString()
       let candidate: InitiativeCandidate
+      let assessment: RequirementAssessment | undefined
       if (command.action === 'propose') {
         for (const parent of command.parents) if (!state.candidates.some(value => value.id === parent))
           throw new InitiativeError('not-found', 'Parent Candidate is unavailable in this Workspace')
@@ -149,41 +166,48 @@ export class LocalInitiative extends Initiative {
         const found = state.candidates.find(value => value.id === command.id)
         if (found === undefined) throw new InitiativeError('not-found', 'Candidate is unavailable in this Workspace')
         candidate = found
-        const recovering = command.action === 'promote' && candidate.promotion?.key === command.key
-        if (recovering) {
-          if (candidate.promotion?.digest !== inputDigest) throw new InitiativeError('idempotency-conflict', 'Promotion key already names different input')
+        if (command.action === 'assess') {
+          const review = this.ctx.get('requirementAssessmentReview')
+          if (review === undefined) throw new InitiativeError('unavailable', 'RIR review provider is unavailable')
+          const source = candidateReviewSource(candidate, command.version)
+          assessment = await review.review(assessmentAccess(scope), { requestId: command.key, subject: source.subject }, signal, source)
         } else {
-          if (candidate.promotion !== undefined) throw new InitiativeError('conflict', 'Candidate has an existing promotion; recover its original key')
-          if (candidate.recordVersion !== command.expectedRecordVersion || candidate.headVersion !== command.expectedVersion)
-            throw new InitiativeError('conflict', 'Candidate changed; read its exact versions before retrying')
-        }
-        if (command.action === 'investigate') {
-          if (!['PROPOSED', 'INVESTIGATING', 'ASSESSABLE'].includes(candidate.status))
-            throw new InitiativeError('invalid-transition', 'This Candidate is not open for investigation')
-          if (command.completion === 'blocked' && command.blockedReason === undefined)
-            throw new InitiativeError('invalid-input', 'Blocked investigation requires its owner-policy reason')
-          if (command.completion !== 'blocked' && command.blockedReason !== undefined)
-            throw new InitiativeError('invalid-input', 'Blocked reason requires blocked completion')
-          const baseVersion = candidate.headVersion
-          candidate.headVersion++
-          candidate.recordVersion++
-          candidate.revisions.push({ version: candidate.headVersion, facts: command.facts, createdBy: scope.actor, createdAt: at })
-          candidate.investigations.push({ baseVersion, resultVersion: candidate.headVersion, actor: scope.actor, at,
-            completion: command.completion, ...(command.blockedReason === undefined ? {} : { blockedReason: command.blockedReason }),
-            ...(command.recommendation === undefined ? {} : { recommendation: command.recommendation }) })
-          candidate.status = command.completion === 'complete' ? 'ASSESSABLE' : 'INVESTIGATING'
-        } else if (command.action === 'disposition') {
-          const legal = command.status === 'INVESTIGATING' ? candidate.status === 'DEFERRED'
-            : ['PROPOSED', 'INVESTIGATING', 'ASSESSABLE'].includes(candidate.status)
-          if (!legal) throw new InitiativeError('invalid-transition', 'Illegal Human Candidate transition')
-          candidate.status = command.status
-          candidate.recordVersion++
-          candidate.dispositions.push({ status: command.status, rationale: command.rationale, actor: scope.actor, at })
-        } else {
-          await promoteCandidate(this.ctx, scope, command, inputDigest, candidate, save, signal)
+          const recovering = command.action === 'promote' && candidate.promotion?.key === command.key
+          if (recovering) {
+            if (candidate.promotion?.digest !== inputDigest) throw new InitiativeError('idempotency-conflict', 'Promotion key already names different input')
+          } else {
+            if (candidate.promotion !== undefined) throw new InitiativeError('conflict', 'Candidate has an existing promotion; recover its original key')
+            if (candidate.recordVersion !== command.expectedRecordVersion || candidate.headVersion !== command.expectedVersion)
+              throw new InitiativeError('conflict', 'Candidate changed; read its exact versions before retrying')
+          }
+          if (command.action === 'investigate') {
+            if (!['PROPOSED', 'INVESTIGATING', 'ASSESSABLE'].includes(candidate.status))
+              throw new InitiativeError('invalid-transition', 'This Candidate is not open for investigation')
+            if (command.completion === 'blocked' && command.blockedReason === undefined)
+              throw new InitiativeError('invalid-input', 'Blocked investigation requires its owner-policy reason')
+            if (command.completion !== 'blocked' && command.blockedReason !== undefined)
+              throw new InitiativeError('invalid-input', 'Blocked reason requires blocked completion')
+            const baseVersion = candidate.headVersion
+            candidate.headVersion++
+            candidate.recordVersion++
+            candidate.revisions.push({ version: candidate.headVersion, facts: command.facts, createdBy: scope.actor, createdAt: at })
+            candidate.investigations.push({ baseVersion, resultVersion: candidate.headVersion, actor: scope.actor, at,
+              completion: command.completion, ...(command.blockedReason === undefined ? {} : { blockedReason: command.blockedReason }),
+              ...(command.recommendation === undefined ? {} : { recommendation: command.recommendation }) })
+            candidate.status = command.completion === 'complete' ? 'ASSESSABLE' : 'INVESTIGATING'
+          } else if (command.action === 'disposition') {
+            const legal = command.status === 'INVESTIGATING' ? candidate.status === 'DEFERRED'
+              : ['PROPOSED', 'INVESTIGATING', 'ASSESSABLE'].includes(candidate.status)
+            if (!legal) throw new InitiativeError('invalid-transition', 'Illegal Human Candidate transition')
+            candidate.status = command.status
+            candidate.recordVersion++
+            candidate.dispositions.push({ status: command.status, rationale: command.rationale, actor: scope.actor, at })
+          } else {
+            await promoteCandidate(this.ctx, scope, command, inputDigest, candidate, save, signal)
+          }
         }
       }
-      const result = receipt(candidate)
+      const result = { ...receipt(candidate), ...(assessment === undefined ? {} : { assessmentId: assessment.id }) }
       state.receipts.push({ key: command.key, digest: inputDigest, result })
       await save()
       return structuredClone(result)

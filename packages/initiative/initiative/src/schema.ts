@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CandidateId } from './brand.ts'
+import { assessmentBaselineSchema } from '@changanhua/dsh-requirement-assessment'
 
 const id = z.string().trim().min(1).max(256)
 const candidateId = id.transform(CandidateId)
@@ -44,7 +45,8 @@ export const initiativeCommandSchema = z.discriminatedUnion('action', [
     recommendation: investigationSchema.shape.recommendation }),
   z.strictObject({ action: z.literal('disposition'), ...mutation, ...target,
     status: z.enum(['DEFERRED', 'DROPPED', 'INVESTIGATING']), rationale: text }),
-  z.strictObject({ action: z.literal('promote'), ...mutation, ...target, rationale: text }),
+  z.strictObject({ action: z.literal('assess'), ...mutation, id: candidateId, version }),
+  z.strictObject({ action: z.literal('promote'), ...mutation, ...target, rationale: text, assessmentId: id.optional() }),
 ])
 /** Bounded query; an exact revision stays readable after later refinements. */
 export const initiativeQuerySchema = z.strictObject({
@@ -54,7 +56,8 @@ export const initiativeQuerySchema = z.strictObject({
 })
 /** Exact durable receipt returned before CAS checks on an authorized replay. */
 export const initiativeReceiptSchema = z.strictObject({
-  id: candidateId, recordVersion: version, headVersion: version, status: candidateStatusSchema, proposalId: id.optional(),
+  id: candidateId, recordVersion: version, headVersion: version, status: candidateStatusSchema,
+  proposalId: id.optional(), assessmentId: id.optional(),
 })
 /** Candidate-owned immutable history and optional non-canonical Planning relation. */
 export const candidateSchema = z.strictObject({
@@ -70,6 +73,7 @@ export const candidateSchema = z.strictObject({
     phase: z.enum(['prepared', 'linked']), key: id, digest: id, candidateVersion: version, rationale: text,
     actor: candidateActorSchema, proposalId: id, requestId: id, expectedBoardVersion: z.number().int().nonnegative(),
     preparedAt: timestamp, linkedAt: timestamp.optional(),
+    assessment: z.strictObject({ id, baseline: assessmentBaselineSchema }).optional(),
   }).optional(),
 }).superRefine((value, ctx) => {
   if (value.headVersion !== value.revisions.length || value.revisions.some((revision, index) => revision.version !== index + 1))
@@ -84,4 +88,9 @@ export const candidateSchema = z.strictObject({
     || (value.promotion.phase === 'prepared' && value.status !== 'ASSESSABLE')
     || (value.promotion.phase === 'linked') !== (value.promotion.linkedAt !== undefined)))
     ctx.addIssue({ code: 'custom', message: 'Promotion must retain its exact Candidate baseline and settlement' })
+  const assessment = value.promotion?.assessment
+  if (assessment !== undefined && (assessment.baseline.subject.kind !== 'candidate'
+    || assessment.baseline.subject.id !== value.id || assessment.baseline.workspace !== value.workspaceId
+    || assessment.baseline.subject.revision > value.headVersion))
+    ctx.addIssue({ code: 'custom', message: 'Selected Assessment must retain this Candidate and Workspace baseline' })
 })

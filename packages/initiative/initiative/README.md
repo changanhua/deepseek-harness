@@ -39,4 +39,4 @@ No direct KV-cache effect.
 
 ## Known Limitations and Deferred Work
 
-- The Definition has no provider or RIR implementation. Opaque source references do not prove their contents.
+- The Definition has no provider or evaluator. Candidate assessment subjects retain an exact revision and content digest; opaque source references do not prove their contents.

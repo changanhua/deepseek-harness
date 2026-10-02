@@ -13,7 +13,7 @@ Direct Human Candidate command with exact-event authority.
 
 ## Use this package
 
-The /initiative command accepts strict JSON and never starts a model turn. Human propose, investigate, disposition and promote share the durable owner. Read returns bounded pages. The owner matches the normalized payload to the unfinished Commands-produced command/run event before committing; old or invented command ids reject. maxOutputBytes bounds the full rendered result.
+The /initiative command accepts strict JSON. Human propose, investigate, disposition and promote share the durable owner; assess requests one real RIR review of an exact immutable Candidate version. Other commands never invoke a model. Read returns bounded pages. The owner matches the normalized payload to the unfinished Commands-produced command/run event before committing; old or invented command ids reject. maxOutputBytes bounds the full rendered result.
 
 See [setup and commands](../README.md) and the [Initiative subsystem](../../../docs/subsystems/initiative.md).
 

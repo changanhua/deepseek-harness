@@ -9,7 +9,10 @@ it('uses the existing runtime with an empty capability surface and rejects unsaf
   let chunks: StreamChunk[] = []
   let calls = 0
   class Adapter extends LlmAdapter {
-    async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> { calls++; expect(options.tools).toEqual([]); for (const chunk of chunks) yield chunk }
+    async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+      calls++; expect(options.tools).toEqual([])
+      for (const chunk of chunks) yield chunk
+    }
   }
   await ctx.plugin(Llm)
   ctx.llm.registerAdapter(['fixture'], new Adapter())
@@ -39,7 +42,7 @@ it('propagates caller cancellation and the configured deadline to the runtime ad
   class WaitingAdapter extends LlmAdapter {
     async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
       await new Promise<void>((_resolve, reject) => {
-        const abort = () => reject(options.signal?.reason)
+        const abort = () => { reject(new Error('aborted', { cause: options.signal?.reason })) }
         if (options.signal?.aborted) abort()
         else options.signal?.addEventListener('abort', abort, { once: true })
       })

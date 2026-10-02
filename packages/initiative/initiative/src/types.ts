@@ -22,7 +22,17 @@ export interface InitiativeView {
   investigations: InitiativeCandidate['investigations']
   latestDisposition?: InitiativeCandidate['dispositions'][number]
   drift: boolean
-  rir: { availability: 'unavailable'; assessments: never[] }
+  rir: {
+    availability: 'available' | 'unavailable'
+    assessments: Array<{
+      id: string
+      candidateVersion: number
+      candidateDigest: string
+      state: 'fresh' | 'drift' | 'unknown' | 'unavailable'
+      route: string
+    }>
+    total?: number
+  }
 }
 /** Detached filtered Candidate page; nextOffset is null at the final page. */
 export interface InitiativePage { entries: InitiativeView[]; total: number; nextOffset: number | null }

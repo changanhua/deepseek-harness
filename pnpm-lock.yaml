@@ -8665,6 +8665,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@changanhua/dsh-requirement-assessment':
+        specifier: workspace:^
+        version: link:../../requirement-assessment/requirement-assessment
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -8684,6 +8687,12 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@changanhua/dsh-requirement-assessment':
+        specifier: workspace:^
+        version: link:../../requirement-assessment/requirement-assessment
+      '@changanhua/dsh-requirement-assessment-review':
+        specifier: workspace:^
+        version: link:../../requirement-assessment/requirement-assessment-review
       '@changanhua/dsh-initiative':
         specifier: workspace:^
         version: link:../initiative

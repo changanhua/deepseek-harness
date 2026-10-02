@@ -24,14 +24,18 @@ import type { InitiativeCommand, InitiativeReceipt } from '@changanhua/dsh-initi
 import LocalInitiative from '../src/index.ts'
 import * as CommandInitiative from '../../command-initiative/src/index.ts'
 import * as ToolInitiative from '../../tool-initiative/src/index.ts'
+import Llm from '@deepseek-ai/dsh-llm'
+import type { LlmAdapter } from '@deepseek-ai/dsh-llm'
+import LocalAssessment from '../../../requirement-assessment/requirement-assessment-local/src/index.ts'
+import Review from '../../../requirement-assessment/requirement-assessment-review/src/index.ts'
 
-export async function boot(existingRoot?: string, maxWorkspaceBytes?: number) {
+export async function boot(existingRoot?: string, maxWorkspaceBytes?: number, assessmentAdapter?: LlmAdapter) {
   const root = existingRoot ?? await mkdtemp(join(tmpdir(), 'dsh-initiative-test-'))
   const cwd = join(root, 'project')
   await mkdir(cwd, { recursive: true })
   const ctx = new Context()
   const configPath = join(root, 'cordis.yml')
-  const rows = [
+  const rows: Array<{ name: string; config?: Record<string, unknown> }> = [
     { name: '@deepseek-ai/dsh-session' }, { name: '@deepseek-ai/dsh-agent' },
     { name: '@deepseek-ai/dsh-session-persistence-jsonl', config: { root: join(root, 'sessions'), compression: 'none' } },
     { name: '@deepseek-ai/dsh-storage' }, { name: '@deepseek-ai/dsh-storage-json', config: { root: join(root, 'storage') } },
@@ -42,6 +46,12 @@ export async function boot(existingRoot?: string, maxWorkspaceBytes?: number) {
     { name: '@changanhua/dsh-initiative-local', config: { ownershipRoot: join(root, 'initiative-owner'), operatorId: 'local-human', ...(maxWorkspaceBytes === undefined ? {} : { maxWorkspaceBytes }) } },
     { name: '@changanhua/dsh-command-initiative' }, { name: '@changanhua/dsh-tool-initiative' },
   ]
+  if (assessmentAdapter !== undefined) rows.push(
+    { name: 'assessment', config: { ownershipRoot: join(root, 'assessment-owner') } },
+    { name: 'llm' }, { name: 'review-fixture' },
+    { name: 'review', config: { provider: 'initiative-fixture', model: 'fixture', dshBaseline: 'keyless-test',
+      maxInputBytes: 200000, maxOutputBytes: 200000, maxOutputTokens: 12000, timeoutMs: 10000 } },
+  )
   // JSON is also YAML; the real Loader owns import normalization, injection and disposal.
   await writeFile(configPath, JSON.stringify(rows, null, 2))
   const modules = new Map<string, unknown>([
@@ -52,6 +62,12 @@ export async function boot(existingRoot?: string, maxWorkspaceBytes?: number) {
     ['@deepseek-ai/dsh-commands', Commands], ['@deepseek-ai/dsh-tools', Tools], ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
     ['@changanhua/dsh-initiative-local', LocalInitiative], ['@changanhua/dsh-command-initiative', CommandInitiative], ['@changanhua/dsh-tool-initiative', ToolInitiative],
   ])
+  modules.set('assessment', LocalAssessment)
+  modules.set('llm', Llm)
+  modules.set('review', Review)
+  modules.set('review-fixture', { name: 'initiative-review-fixture', inject: ['llm'], apply(context: Context) {
+    context.llm.registerAdapter(['initiative-fixture'], assessmentAdapter!)
+  } })
   ctx.baseUrl = pathToFileURL(root).href + '/'
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include

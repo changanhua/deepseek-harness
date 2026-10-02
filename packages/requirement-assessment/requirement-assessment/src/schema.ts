@@ -7,6 +7,7 @@ export const assessmentSubjectSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('manual'), id, title: text }),
   z.strictObject({ kind: z.literal('plan'), id }),
   z.strictObject({ kind: z.literal('focus'), id, planId: id }),
+  z.strictObject({ kind: z.literal('candidate'), id, revision: z.number().int().positive(), digest: z.string().regex(/^[a-f0-9]{64}$/u) }),
 ])
 export const assessmentEvidenceSchema = z.strictObject({
   source: text, provenance: z.enum(['user_statement', 'owner_observation', 'model_inference', 'unknown']),
@@ -51,7 +52,8 @@ export const assessmentCreateSchema = z.strictObject({
   rawOutput: z.string().min(1).max(150000), supersedes: id.optional(),
 }).superRefine((value, ctx) => {
   if (JSON.stringify(value.subject) !== JSON.stringify(value.baseline.subject)) ctx.addIssue({ code: 'custom', message: 'baseline subject mismatch' })
-  if (value.subject.kind !== 'manual' && !value.baseline.planRevision) ctx.addIssue({ code: 'custom', message: 'planning baseline requires exact revision' })
+  if ((value.subject.kind === 'plan' || value.subject.kind === 'focus') && !value.baseline.planRevision) ctx.addIssue({ code: 'custom', message: 'planning baseline requires exact revision' })
+  if (value.subject.kind === 'candidate' && value.baseline.planRevision) ctx.addIssue({ code: 'custom', message: 'Candidate baseline is independent of Planning' })
   if (value.subject.kind === 'focus') {
     const focus = value.actualInput.focus
     if (!focus || focus.id !== value.subject.id || focus.planId !== value.subject.planId || focus.version !== value.baseline.focusVersion)

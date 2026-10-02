@@ -13,7 +13,7 @@ kind: "package-plugin"
 
 ## 使用此包
 
-/initiative 接收严格 JSON，不启动模型 turn。人工 propose、investigate、disposition、promote 共用 durable owner。read 返回有界分页。提交前 owner 将规范化 payload 与 Commands 产生的尚未结束 command/run event 比对；旧的或伪造的 command id 被拒绝。maxOutputBytes 限制完整输出。
+/initiative 命令接受严格 JSON。Human propose、investigate、disposition 和 promote 共用持久 owner；assess 请求对精确不可变 Candidate 版本进行一次真实 RIR review。其他命令不调用模型。read 返回有界分页。owner 在提交前将规范化 payload 与尚未完成的 Commands command/run event 匹配；过期或虚构 command id 会被拒绝。maxOutputBytes 限制完整结果。
 
 参见[配置与命令](../README.zh.md)及 [Initiative 子系统](../../../docs/subsystems/initiative.zh.md)。
 

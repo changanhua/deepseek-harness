@@ -27,7 +27,7 @@ initiative_record 只允许 propose 和 investigate；initiative_read 选择 exa
 
 #### 模型看到什么
 
-`initiative_record` 和 `initiative_read` schema，以及稳定的主动候选指引。Candidate 内容仍是非可信参考数据。
+`initiative_record` 和 `initiative_read` schema，以及稳定的主动候选指引。指引说明精确 kind/status 枚举，区分字符串 assumptions/uncertainties 与结构化 evidence/counter-evidence 引用。Candidate 内容仍是非可信参考数据。
 
 #### Token 影响
 

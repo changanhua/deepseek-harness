@@ -39,4 +39,4 @@ No direct KV-cache effect.
 
 ## Known Limitations and Deferred Work
 
-- Prepared promotion freezes the Candidate until its original key recovers. Only Planning propose is called: the aggregate Board version changes but canonical items and Delivery state do not. Real RIR is unavailable. No automatic external-reference resolution, secret detection or investigation execution is supplied.
+- Prepared promotion freezes the Candidate until its original key recovers. Only Planning propose is called: the aggregate Board version changes but canonical items and Delivery state do not. Optional RIR requires the Assessment owner and review provider; missing or closed providers are unavailable. No automatic external-reference resolution, secret detection or investigation execution is supplied.

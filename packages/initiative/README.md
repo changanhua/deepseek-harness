@@ -27,7 +27,7 @@ pnpm run build
 pnpm dsh web --patch "$PWD/packages/bundle/personal-planning/cordis.patch.yml" --patch "$PWD/packages/bundle/personal-planning/initiative.patch.yml"
 ```
 
-The overlay is optional and adds the two scoped model tools as well as `/initiative`. It does not change shipped defaults. Use the Human composer to issue these commands; they do not invoke a model:
+The overlay is optional and adds two scoped model tools and `/initiative`. It does not change shipped defaults. Human composer commands other than assess do not invoke a model; assess uses the configured RIR provider and model. Compose the investment-review overlay and its owner/review provider when assessment is required.
 
 ```text
 /initiative {"action":"propose","key":"audit-delta-1","kind":"simplify","trigger":"The pinned audit ages","facts":{"claim":"Investigate a lighter current-state delta"}}
@@ -48,4 +48,4 @@ To defer/drop, use `action: disposition`, the exact Candidate versions, `status:
 
 ## Verification boundaries
 
-Loader/Commands/Tools integration tests exercise durable owners and restart recovery with an inert Agent handle. They do not prove spontaneous live-model initiative. Real RIR is unavailable in this baseline, so no assessment is fabricated and the RIR vertical remains blocked. Source locators and excerpts are explicitly unverified/unknown/unavailable; supplied digests do not certify evidence. Never place credentials, secrets or raw provider payloads in a Candidate.
+Loader/Commands/Tools integration tests exercise durable owners and restart recovery. Optional Human assess uses `{action:"assess",key,id,version}` for an exact immutable revision; promote accepts optional assessmentId and freezes its validated complete baseline. Same-key replays do not evaluate again. Assessment routes remain advisory. RIR availability is unavailable when its owner is absent or closed. Source locators and excerpts remain unverified/unknown/unavailable; supplied digests do not certify evidence. Never place credentials, secrets or raw provider payloads in a Candidate. The real-provider acceptance fixture retains requests, Tool events and independent owner reads; its keyless variant proves composition only.

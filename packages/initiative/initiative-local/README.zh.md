@@ -39,4 +39,4 @@ kind: "package-service"
 
 ## 已知限制与后续工作
 
-- prepared promotion 冻结 Candidate，直到原 key 恢复。仅调用 Planning propose：聚合 Board version 改变，canonical items 与 Delivery 状态不变。真实 RIR 不可用。不提供外部引用自动解析、秘密识别或调查执行。
+- prepared promotion 冻结 Candidate，直到原 key 恢复。仅调用 Planning propose：聚合 Board version 改变，canonical items 和 Delivery 状态不变。可选 RIR 需要 Assessment owner 和 review provider；缺失或关闭的 provider 显示 unavailable。不提供外部引用自动解析、秘密识别或调查执行。

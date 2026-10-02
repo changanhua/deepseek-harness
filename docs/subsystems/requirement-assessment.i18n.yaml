@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/requirement-assessment.md
-requirement-assessment.md: c9b62b033ed232eec220f3f7a36c4a5a936d2638
-requirement-assessment.zh.md: 2f4e790064752ccb841be660cb2fadf9913ff228
+requirement-assessment.md: 9a4aefa0afa2026179172e5bebd93ac0ef808bda
+requirement-assessment.zh.md: 2f381ee4e43a240d4b0a96307961530c614cf3ef

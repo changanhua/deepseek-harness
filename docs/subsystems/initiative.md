@@ -8,11 +8,11 @@ Initiative owns pre-Planning Candidates shared by Human and Agent proposers. Imm
 
 The provider derives Workspace and actor from a live Agent/Session. Human operations require an exact unfinished Commands event. Agents may propose, refine and record investigation recommendations, but cannot defer, drop or promote. Investigation does not execute tools, create Agents or change available permissions. Candidate data is reference material, never executable policy.
 
-Storage Domain retains one atomic Workspace record. Record/head CAS and payload-bound receipts survive restart. Human promotion prepares a durable intent before calling only Planning propose, then records the stable Proposal relation. Recovery replays the frozen Planning request, including when the Proposal has since been settled. A pending promotion freezes Candidate edits; a definitive Planning CAS rejection can refresh the attempt while preserving the original Candidate request key. Canonical Planning items/revisions and Delivery state remain unchanged, although the aggregate Board version increases.
+Storage Domain retains one atomic Workspace record. Actor/payload-bound receipts survive restart. Human assess captures an exact immutable Candidate revision through the existing RIR owner and runner. Human promotion prepares a durable intent before Planning propose; optional assessmentId selects a validated fixed Assessment, including an older revision, and freezes its complete baseline with Human rationale. Recovery replays that request without evaluating again or replacing the baseline. A pending promotion freezes Candidate edits; a definitive Planning CAS rejection can refresh the Planning attempt. Canonical Planning items/revisions and Delivery state remain unchanged, although the aggregate Board version increases.
 
 ## Queries and dependencies
 
-Read projections use a separate CandidateSummary type plus the selected immutable revision, revision count, its investigation and latest disposition. Summary metadata retains origin, lineage and promotion relation. Older revisions are read explicitly; drift compares that selected version with the current head. Filters and pages bound Candidate listing. The real RIR owner is absent, so RIR availability is explicitly unavailable and assessment history is empty. This is not an implemented RIR bridge or proof of a live-model autonomous vertical.
+Read projections use CandidateSummary plus the selected immutable revision, revision count, investigation and latest disposition. Optional RIR relations validate Workspace, Candidate id, exact revision, digest and stored text. fresh means the assessed Candidate content matches the current head; drift means a valid older revision. Missing revisions are unavailable and inconsistent records are unknown. These states do not attest current DSH capabilities, backend identity or evidence truth. Missing or closed Assessment providers remain unavailable.
 
 See [Candidate packages and opt-in setup](../../packages/initiative/README.md).
 
@@ -47,7 +47,7 @@ abstract execute( agent: Agent, input: InitiativeCommand, invocation?: Initiativ
  * @param query - Exact revision or bounded filters.
  * @param invocation - Active Human command identity when outside an Agent turn.
  * @param signal - Caller cancellation.
- * @returns Candidate facts and explicitly unavailable RIR relations, never inferred verification.
+ * @returns Candidate facts and bounded exact-subject RIR relations, never inferred evidence verification.
  */
 abstract read(agent: Agent, query: InitiativeQuery, invocation?: InitiativeInvocation, signal?: AbortSignal): Promise<InitiativePage>
 ```

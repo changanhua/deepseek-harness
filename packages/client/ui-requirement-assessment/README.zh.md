@@ -27,7 +27,7 @@ kind: "package-reference"
 
 #### What the model sees
 
-不直接向模型提供内容；只有 Host review runner 构建模型请求。
+无直接模型上下文；只有 Host 的 `ctx.requirementAssessmentReview` runner 构造模型请求。
 
 #### Token effect
 

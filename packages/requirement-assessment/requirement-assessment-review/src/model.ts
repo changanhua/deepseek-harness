@@ -31,10 +31,12 @@ export interface ReviewModelResult {
  * @param system - Stable evaluator instruction.
  * @param input - Frozen evidence payload, framed as one JSON message.
  * @param signal - Caller lifetime fused with the deployment deadline.
+ * @param authorize - Recheck the live Host capability after asynchronous call preparation, before dispatch.
  * @returns Raw output, parsed JSON and exact request facts; schema validation belongs to the caller.
  */
 export async function runReviewModel(
   ctx: Context, config: ReviewModelConfig, system: string, input: unknown, signal: AbortSignal,
+  authorize?: () => void | Promise<void>,
 ): Promise<ReviewModelResult> {
   using lifetime = deadline(signal, config.timeoutMs, 'REQUIREMENT_REVIEW_TIMEOUT')
   const active = lifetime.signal
@@ -46,6 +48,9 @@ export async function runReviewModel(
   const messages = [createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'plugin', plugin: 'dsh-requirement-assessment-review' } })]
   const request = deepFreeze({ ...prepared.config, system, messages, tools: [], signal: active })
   if (Buffer.byteLength(JSON.stringify({ ...prepared.config, system, messages, tools: [] }), 'utf8') > config.maxInputBytes) throw new Error('review input exceeds byte limit')
+  active.throwIfAborted()
+  await authorize?.()
+  active.throwIfAborted()
   const assembler = new BlockAssembler()
   let bytes = 0
   let finished = false

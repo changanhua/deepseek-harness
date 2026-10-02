@@ -33,7 +33,7 @@ export abstract class Initiative extends Service {
    * @param query - Exact revision or bounded filters.
    * @param invocation - Active Human command identity when outside an Agent turn.
    * @param signal - Caller cancellation.
-   * @returns Candidate facts and explicitly unavailable RIR relations, never inferred verification.
+   * @returns Candidate facts and bounded exact-subject RIR relations, never inferred evidence verification.
    */
   abstract read(agent: Agent, query: InitiativeQuery, invocation?: InitiativeInvocation, signal?: AbortSignal): Promise<InitiativePage>
 }

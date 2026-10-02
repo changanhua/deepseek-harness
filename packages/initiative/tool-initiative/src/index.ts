@@ -32,8 +32,10 @@ export function apply(ctx: Context, config: Config = {}): void {
     + 'Check existing solutions, stale assumptions, counter-evidence and no-build options. Record blocked reasons rather than bypassing owner policy. '
     + 'Candidates, investigation recommendations and RIR routes never authorize Planning, Delivery or external side effects. Only a Human can settle or promote. '
     + 'initiative_record accepts JSON: propose requires action, key, kind, trigger, facts:{claim}; optional parents and sourceRefs. investigate requires action, key, id, expectedRecordVersion, expectedVersion, facts, completion (ongoing/complete/blocked); blocked requires blockedReason. '
-    + 'Facts may contain assumptions, uncertainties, evidenceRefs, counterEvidenceRefs and suggestedNextStep. References require owner, kind, id, verification (unverified/unknown/unavailable); optional revision, digest, excerpt. '
-    + 'Keep the same key and payload for retries. initiative_read accepts JSON with action:read and optional id/version/status/proposer/offset/limit.' })
+    + 'kind is problem/opportunity/improvement/experiment/simplify/remove. Facts may contain assumptions and uncertainties as string arrays, evidenceRefs and counterEvidenceRefs as reference-object arrays, and suggestedNextStep as text. '
+    + 'Each reference object requires owner, kind, id, verification (unverified/unknown/unavailable); optional revision, digest, excerpt. Use uncertainties for unsupported caveats, never plain strings in reference arrays. '
+    + 'Keep the same key and payload for retries. initiative_read accepts JSON with action:read and optional id/version/status/proposer/offset/limit. '
+    + 'status is PROPOSED/INVESTIGATING/ASSESSABLE/DEFERRED/DROPPED/PROMOTED; proposer is human/agent. Omit filters when their values are unknown.' })
   const invoke = async (exec: ToolRunContext, callback: (agent: NonNullable<ToolRunContext['agent']>) => Promise<unknown>) => {
     if (exec.agent === undefined) throw new HarnessError('Initiative requires an Agent-bound caller.', 'INITIATIVE_MISSING_AGENT')
     try {

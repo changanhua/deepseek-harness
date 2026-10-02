@@ -43,7 +43,7 @@ export class RequirementAssessmentRemote extends TypertRemoteService {
     try {
       const input = listSchema.parse(raw), access = this.access(input.workspaceId, signal)
       const snapshot = await this.ctx.requirementAssessment.snapshot(access, signal)
-      const board = snapshot.assessments.some(value => value.subject.kind !== 'manual') ? await this.board(access, signal) : undefined
+      const board = snapshot.assessments.some(value => value.subject.kind === 'plan' || value.subject.kind === 'focus') ? await this.board(access, signal) : undefined
       const result = snapshot.assessments.map(assessment => ({ assessment, drift: this.drift(assessment, board) }))
       await access.authorize(); return result
     } catch (error) { throw failure(error, signal) }
@@ -75,7 +75,7 @@ export class RequirementAssessmentRemote extends TypertRemoteService {
     } catch (error) { throw failure(error, signal) }
   }
   private async view(access: AssessmentAccess, assessment: RequirementAssessment, signal: AbortSignal): Promise<AssessmentView> {
-    const board = assessment.subject.kind === 'manual' ? undefined : await this.board(access, signal)
+    const board = assessment.subject.kind === 'manual' || assessment.subject.kind === 'candidate' ? undefined : await this.board(access, signal)
     signal.throwIfAborted(); await access.authorize()
     return { assessment, drift: this.drift(assessment, board) }
   }
@@ -85,7 +85,7 @@ export class RequirementAssessmentRemote extends TypertRemoteService {
   }
   private drift(assessment: RequirementAssessment, board: PlanningBoardSnapshot | undefined): AssessmentDrift {
     const subject = assessment.subject
-    if (subject.kind === 'manual') return 'unknown'
+    if (subject.kind === 'manual' || subject.kind === 'candidate') return 'unknown'
     if (!board) return 'unavailable'
     const focus = subject.kind === 'focus' ? board.focuses?.find(value => value.id === subject.id && value.planId === subject.planId) : undefined
     const plan = board.items.find(value => value.id === (subject.kind === 'plan' ? subject.id : subject.planId))
