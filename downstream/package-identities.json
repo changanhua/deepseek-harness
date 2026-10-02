@@ -787,6 +787,17 @@
       ]
     },
     {
+      "directory": "packages/planning/tool-thinking-case",
+      "legacyName": "@deepseek-ai/dsh-tool-thinking-case",
+      "sourceName": "@changanhua/dsh-tool-thinking-case",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/requirement-assessment/requirement-assessment",
       "legacyName": "@deepseek-ai/dsh-requirement-assessment",
       "sourceName": "@changanhua/dsh-requirement-assessment",
