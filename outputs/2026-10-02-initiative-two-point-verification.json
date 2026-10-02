@@ -1,0 +1,235 @@
+{
+  "baseCommit": "514ea1ed5d2bc3197821b0f0fb349e74577a951d",
+  "observedAt": "2026-10-02",
+  "scope": "Two focused PR82 acceptance checks; previous validation remains separate.",
+  "assessmentGate": {
+    "beforeFix": "PROPOSED assessment incorrectly returned success",
+    "afterFix": "PROPOSED denied before model dispatch; ASSESSABLE accepted; retries before and after promotion reused one model call",
+    "focusedTests": 5
+  },
+  "investigationAttempts": [
+    {
+      "outcome": "failed",
+      "httpAttempts": 7,
+      "requests": [
+        {
+          "ordinal": 1,
+          "provider": "deepseek-official",
+          "model": "deepseek-flash",
+          "status": "completed",
+          "usage": {
+            "inputTokens": 289,
+            "outputTokens": 82,
+            "totalTokens": 1395,
+            "cacheReadTokens": 1024
+          }
+        },
+        {
+          "ordinal": 2,
+          "provider": "deepseek-official",
+          "model": "deepseek-flash",
+          "status": "completed",
+          "usage": {
+            "inputTokens": 837,
+            "outputTokens": 1285,
+            "totalTokens": 3402,
+            "cacheReadTokens": 1280
+          }
+        },
+        {
+          "ordinal": 3,
+          "provider": "deepseek-official",
+          "model": "deepseek-flash",
+          "status": "completed",
+          "usage": {
+            "inputTokens": 226,
+            "outputTokens": 1278,
+            "totalTokens": 4704,
+            "cacheReadTokens": 3200
+          }
+        },
+        {
+          "ordinal": 4,
+          "provider": "deepseek-official",
+          "model": "deepseek-flash",
+          "status": "completed",
+          "usage": {
+            "inputTokens": 248,
+            "outputTokens": 111,
+            "totalTokens": 4839,
+            "cacheReadTokens": 4480
+          }
+        },
+        {
+          "ordinal": 5,
+          "provider": "deepseek-official",
+          "model": "deepseek-flash",
+          "status": "completed",
+          "usage": {
+            "inputTokens": 825,
+            "outputTokens": 229,
+            "totalTokens": 5790,
+            "cacheReadTokens": 4736
+          }
+        },
+        {
+          "ordinal": 6,
+          "provider": "deepseek-official",
+          "model": "deepseek-flash",
+          "status": "completed",
+          "usage": {
+            "inputTokens": 213,
+            "outputTokens": 147,
+            "totalTokens": 5992,
+            "cacheReadTokens": 5632
+          }
+        },
+        {
+          "ordinal": 7,
+          "provider": "deepseek-official",
+          "model": "deepseek-flash",
+          "status": "completed",
+          "usage": {
+            "inputTokens": 545,
+            "outputTokens": 561,
+            "totalTokens": 6994,
+            "cacheReadTokens": 5888
+          }
+        }
+      ],
+      "candidateId": "332acd56-297c-4a16-9b2f-066ea4bc336f",
+      "proposerKind": "human",
+      "headVersion": 2,
+      "status": "ASSESSABLE",
+      "investigations": [
+        {
+          "baseVersion": 1,
+          "resultVersion": 2,
+          "actor": {
+            "kind": "agent",
+            "id": "human-candidate-investigator",
+            "sessionId": "human-candidate-investigator",
+            "eventSeq": 4
+          },
+          "at": "2026-10-02T09:21:00.707Z",
+          "completion": "complete"
+        }
+      ],
+      "facts": {
+        "claim": "Investigated whether the historical fresh-checkout import failure still warrants a new setup mechanism; the two supplied observations are from different commits and do not establish that the historical failure is a current unmet need.",
+        "assumptions": [],
+        "uncertainties": [],
+        "evidenceRefs": [],
+        "counterEvidenceRefs": []
+      },
+      "rawOwnerSha256": "cd7090af2127f844235fe2beff40aa505b2c8286924d6c15b8379bf37ad710f9"
+    },
+    {
+      "outcome": "passed",
+      "httpAttempts": 3,
+      "requests": [
+        {
+          "ordinal": 1,
+          "provider": "deepseek-official",
+          "model": "deepseek-flash",
+          "status": "completed",
+          "usage": {
+            "inputTokens": 361,
+            "outputTokens": 82,
+            "totalTokens": 1467,
+            "cacheReadTokens": 1024
+          }
+        },
+        {
+          "ordinal": 2,
+          "provider": "deepseek-official",
+          "model": "deepseek-flash",
+          "status": "completed",
+          "usage": {
+            "inputTokens": 782,
+            "outputTokens": 650,
+            "totalTokens": 2840,
+            "cacheReadTokens": 1408
+          }
+        },
+        {
+          "ordinal": 3,
+          "provider": "deepseek-official",
+          "model": "deepseek-flash",
+          "status": "completed",
+          "usage": {
+            "inputTokens": 208,
+            "outputTokens": 649,
+            "totalTokens": 3545,
+            "cacheReadTokens": 2688
+          }
+        }
+      ],
+      "candidateId": "4c365c45-4723-48b6-8c06-7d420fcfb050",
+      "proposerKind": "human",
+      "headVersion": 2,
+      "status": "ASSESSABLE",
+      "investigations": [
+        {
+          "baseVersion": 1,
+          "resultVersion": 2,
+          "actor": {
+            "kind": "agent",
+            "id": "human-candidate-investigator",
+            "sessionId": "human-candidate-investigator",
+            "eventSeq": 4
+          },
+          "at": "2026-10-02T09:22:23.873Z",
+          "completion": "complete"
+        }
+      ],
+      "facts": {
+        "claim": "Investigate whether the historical fresh-checkout failure still warrants a new setup mechanism.",
+        "assumptions": [],
+        "uncertainties": [
+          "Failure frequency across fresh checkouts and environments remains unmeasured (one observed failure only).",
+          "Cross-platform applicability remains unknown: the historical failure was observed in a fresh Windows checkout, and the newer clean build was also on Windows, so non-Windows behavior is untested.",
+          "The historical evidence does not establish a flock runtime defect nor a need for a new capability; whether the historical import failure is reproducible on the current commit is untested here."
+        ],
+        "evidenceRefs": [
+          {
+            "owner": "acceptance-controller",
+            "kind": "command-observation",
+            "id": "historical-import-failure",
+            "verification": "unverified",
+            "excerpt": "{\"source\":\"Actual fresh-checkout verification performed by external Codex, 2026-10-02\",\"checkout\":\"f4fb5aa16441ba7aac94b22770d74feb36240943 plus RIR input integration\",\"command\":\"pnpm exec vitest run packages/initiative/initiative-local/tests/initiative.spec.ts packages/requirement-assessment\",\"outcome\":\"exit 1; four suites failed during import, twelve other tests passed\",\"error\":\"Cannot find package '@deepseek-ai/node-addon-system/flock' imported from packages/session/session-persistence-jsonl/src/lease.ts\",\"followUp\":\"The host-addon-only native script exits successfully on Windows but does not build the JavaScript entry. pnpm -C native/system run build:ts created the entry; focused verification then passed 34 tests.\",\"limits\":\"This is one observed setup failure. It does not establish frequency, a flock runtime defect, or a need for a new capability.\"}"
+          }
+        ],
+        "counterEvidenceRefs": [
+          {
+            "owner": "acceptance-controller",
+            "kind": "command-observation",
+            "id": "current-clean-build",
+            "verification": "unverified",
+            "excerpt": "On 2026-10-02, commit 514ea1ed5d2bc3197821b0f0fb349e74577a951d passed frozen offline install and a complete pnpm run build in a fresh Windows checkout, producing 252 client artifacts. This does not measure failure frequency on other environments."
+          }
+        ]
+      },
+      "rawOwnerSha256": "8a5b83d4a42a2d3d7835132c10d847b7c06da677c83b05175c87297f8a0f9552"
+    }
+  ],
+  "agentInvestigation": {
+    "sourceIdentity": {
+      "head": "514ea1ed5d2bc3197821b0f0fb349e74577a951d",
+      "trackedDiffSha256": "85657396bfe4c97d8ecbe4606a3ebd5ee208541c293c9ace576afb3264e39d55",
+      "sourceSha256": "5f070cb1928a19ca08bf3d4af9b6137e915ae7d0ec885bedf737381a173d541c",
+      "builtHashes": {
+        "apps/cli/lib/bin.js": "68ee1830647d9d6d7a74dcb04b5de232e507acc7b846b3a54e72851641288508",
+        "packages/initiative/initiative-local/lib/index.js": "d4a2366168430d402b78e596ce5a11f498249e5bf4622501472bf2c3d83fa639",
+        "packages/initiative/command-initiative/lib/index.js": "e39392f34f2ae86b0e2ed81573eb27a8126bd6a442ac05b701c9291573b432b9",
+        "packages/initiative/tool-initiative/lib/index.js": "c3ec0c453f77919e17a73392cc0f372aed4f239d4e4c60ab11a3ae35a4cb14ab",
+        "packages/requirement-assessment/requirement-assessment-review/lib/index.js": "2c76c2576b5d7c9bd6128d1c9fd35616ee55226a62b7ce186eb8f29eebe381ef",
+        "packages/requirement-assessment/requirement-assessment-local/lib/index.js": "4245cc1eb50b5d4201b08f935b4d158e3fb517c5623c8eb234241283293f2af5"
+      }
+    },
+    "originalRevisionUnchanged": true,
+    "planningStorageUnchanged": true,
+    "rationale": "First attempt omitted structured evidence. The second prompt explicitly required the complete facts snapshot; assertions were not weakened.",
+    "limit": "The model analyzed supplied historical and current build observations; it did not independently reproduce the historical failure."
+  }
+}

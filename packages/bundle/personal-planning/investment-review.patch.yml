@@ -1,0 +1,27 @@
+# Optional RIR-WP1. Apply after base, web, and personal-planning.
+# Explicitly set DSH_RIR_PROVIDER / DSH_RIR_MODEL to an already configured route.
+# These bounds are deployment policy, not domain invariants; override this row if needed.
+- insert:
+    - id: requirement-assessment-local
+      name: '@changanhua/dsh-requirement-assessment-local'
+      isolate:
+        storageDomain: web-host
+        workspaceRegistry: web-host
+      config:
+        ownershipRoot: !!js dshHomePath('storages', 'requirement-assessment-ownership')
+    - id: requirement-assessment-review
+      name: '@changanhua/dsh-requirement-assessment-review'
+      config:
+        provider: !!js process.env.DSH_RIR_PROVIDER
+        model: !!js process.env.DSH_RIR_MODEL
+        dshBaseline: !!js process.env.DSH_RIR_BASELINE || 'unknown'
+        maxInputBytes: 262144
+        maxOutputBytes: 262144
+        maxOutputTokens: 12000
+        timeoutMs: 120000
+    - id: requirement-assessment-remote
+      name: '@changanhua/dsh-requirement-assessment-remote'
+      isolate:
+        workspaceRegistry: web-host
+    - id: ui-requirement-assessment
+      name: '@changanhua/dsh-client-ui-requirement-assessment'

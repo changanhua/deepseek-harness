@@ -1,0 +1,45 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../initiative"
+    },
+    {
+      "path": "../../planning/planning"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../interaction/commands"
+    },
+    {
+      "path": "../../workspace/workspace"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../requirement-assessment/requirement-assessment"
+    },
+    {
+      "path": "../../requirement-assessment/requirement-assessment-review"
+    }
+  ]
+}

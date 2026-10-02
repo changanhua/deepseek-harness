@@ -78,6 +78,8 @@ import Lsp from '@deepseek-ai/dsh-lsp'
 import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
+import Initiative from '@changanhua/dsh-initiative'
+import * as ToolInitiative from '@changanhua/dsh-tool-initiative'
 import ProjectMemory from '@changanhua/dsh-memory'
 import * as ToolMemory from '@changanhua/dsh-tool-memory'
 import Planning from '@changanhua/dsh-planning'
@@ -121,6 +123,12 @@ class CatalogAttachmentStore extends AttachmentStore {
   override readImage(_ref: ImageAttachmentRef): Promise<StoredImageAttachment> {
     return Promise.reject(new Error('gen-tool-catalog: attachment reads are unreachable during schema harvest'))
   }
+}
+
+/** Schema-only Candidate definition; no Candidate operation is reachable while collecting tool schemas. */
+class CatalogInitiative extends Initiative {
+  override execute(): Promise<never> { return Promise.reject(new Error('Candidate execution is unreachable during schema harvest')) }
+  override read(): Promise<never> { return Promise.reject(new Error('Candidate reads are unreachable during schema harvest')) }
 }
 
 /** Fail-closed Definition implementation used only to harvest registered schemas. */
@@ -318,6 +326,18 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolAgentRunTaskQueue)
     },
     note: 'The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields.',
+  },
+  {
+    pkg: '@changanhua/dsh-tool-initiative',
+    dir: 'tool-initiative',
+    source: 'packages/initiative/tool-initiative/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.initiative', 'a live Agent in a registered Workspace'],
+    writes: ['tool/call', 'tool/result', 'Candidate revisions and investigation facts in initiative_candidates'],
+    async mount(ctx) {
+      await ctx.plugin(CatalogInitiative)
+      await ctx.plugin(ToolInitiative)
+    },
+    note: 'Opt-in Candidate intake. Agent proposals and investigation recommendations grant no authority; only a separate Human command may settle or promote to a pending Planning Proposal.',
   },
   {
     pkg: '@changanhua/dsh-tool-memory',

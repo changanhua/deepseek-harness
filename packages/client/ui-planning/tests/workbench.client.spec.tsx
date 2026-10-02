@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { act } from 'react'
+import { PlanningPanels } from '../src/client/PlanningPanels.tsx'
 import { PlanningWorkbench } from '../src/client/PlanningWorkbench.tsx'
 import { PlanningExecution } from '../src/client/PlanningExecution.tsx'
 import type { PlanningRuntimeState } from '../src/client/runtime-controller.ts'
@@ -200,7 +201,7 @@ describe('PlanningWorkbench', () => {
     const openSessionSource = vi.fn()
     const readContentSource = vi.fn().mockResolvedValue({ title: '固定版本标题', body: '冻结版本正文' })
     render(
-      <PlanningWorkbench
+      <PlanningPanels panel="history"
         t={t}
         usePlanning={selector => selector(current)}
         selectWorkspace={vi.fn()}
@@ -310,7 +311,7 @@ describe('PlanningWorkbench', () => {
     fireEvent.click(screen.getByRole('button', { name: '准备执行' }))
     expect(handoff).toHaveBeenCalledOnce()
   })
-  it('shows five planning lanes and submits a manual-source idea', async () => {
+  it('shows overview groups and submits a manual-source idea', async () => {
     const store = createSnapshotStore(state)
     const create = vi.fn().mockResolvedValue(true)
     render(
@@ -325,8 +326,9 @@ describe('PlanningWorkbench', () => {
         readEvidence={vi.fn()}
       />,
     )
-    for (const label of ['收集箱', '现在', '接下来', '稍后', '停放'])
-      expect(screen.getByRole('heading', { name: label })).toBeTruthy()
+    for (const label of ['当前计划', '想法收集箱', '待我确认 0', '已归档'])
+      expect(screen.getByRole('tab', { name: label })).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: '想法收集箱' }))
     fireEvent.change(screen.getByLabelText('想法'), { target: { value: 'New idea\nUseful outcome' } })
     fireEvent.click(screen.getByRole('button', { name: '收集想法' }))
     expect(create).toHaveBeenCalledWith({ idea: 'New idea\nUseful outcome', lane: 'inbox' })
@@ -366,7 +368,7 @@ describe('PlanningWorkbench', () => {
       },
     ]
     render(
-      <PlanningWorkbench
+      <PlanningPanels panel="history"
         t={t}
         usePlanning={selector => selector(current)}
         selectWorkspace={vi.fn()}
@@ -500,7 +502,7 @@ describe('PlanningWorkbench', () => {
       return Promise.resolve(true)
     })
     render(
-      <PlanningWorkbench
+      <PlanningPanels panel="history"
         t={t}
         usePlanning={selector => selector(store.getSnapshot())}
         selectWorkspace={vi.fn()}
@@ -542,6 +544,7 @@ describe('PlanningWorkbench', () => {
         readEvidence={vi.fn()}
       />,
     )
+    fireEvent.click(screen.getByText('管理计划与详细信息'))
     fireEvent.change(screen.getByLabelText('移动到'), { target: { value: 'parking' } })
     fireEvent.click(screen.getByRole('button', { name: '移动计划' }))
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({ kind: 'move', lane: 'parking', beforeItemId: null }))
@@ -598,7 +601,7 @@ describe('PlanningWorkbench', () => {
     const readContentSource = vi.fn().mockResolvedValue({ title: '冻结草稿原文', body: '不可变版本正文' })
     const store = createSnapshotStore({ ...state, board: { ...state.board!, proposals: [proposal] } })
     render(
-      <PlanningWorkbench
+      <PlanningPanels panel="review"
         t={t}
         usePlanning={selector => selector(store.getSnapshot())}
         selectWorkspace={vi.fn()}
@@ -677,7 +680,7 @@ describe('PlanningWorkbench', () => {
       },
     })
     render(
-      <PlanningWorkbench
+      <PlanningPanels panel="review"
         t={t}
         usePlanning={selector => selector(store.getSnapshot())}
         selectWorkspace={vi.fn()}
@@ -694,6 +697,41 @@ describe('PlanningWorkbench', () => {
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'dismiss-proposal', proposalId: 'proposal-stale', expectedProposalVersion: 1 }),
     )
+  })
+
+  it('blocks adoption when an exact delta base cannot show a removed entry in full', () => {
+    const proposal = {
+      id: 'proposal-incomplete-delta',
+      targetItemId: 'idea',
+      status: 'pending' as const,
+      headVersion: 1,
+      createdAt: '2026-09-30T00:00:00.000Z',
+      generations: [{
+        version: 1,
+        previousVersion: null,
+        baseRevisionId: 'r1',
+        suggestedLane: 'next' as const,
+        assumptions: [],
+        actor: { kind: 'agent' as const, id: 'agent-1' },
+        createdAt: '2026-09-30T00:00:00.000Z',
+        delta: {
+          subject: { kind: 'plan' as const, id: 'idea' }, baseRevision: 'r1',
+          originRef: { kind: 'thinking-result', id: 'result-1' },
+          operations: [{ kind: 'remove-state-entry' as const, id: 'missing-entry' }],
+        },
+        draft: {
+          title: 'Incomplete candidate', intent: '', scope: [], acceptance: [],
+          sources: [{ kind: 'manual' as const, text: 'note', verification: 'unverified' as const }],
+          estimate: state.board!.items[0]!.revisions[0]!.estimate, reviewAt: null,
+        },
+      }],
+    }
+    const store = createSnapshotStore({ ...state, board: { ...state.board!, proposals: [proposal] } })
+    render(<PlanningPanels panel="review" t={t} usePlanning={selector => selector(store.getSnapshot())}
+      selectWorkspace={vi.fn()} selectItem={vi.fn()} create={vi.fn()} execute={vi.fn()} retry={vi.fn()} readEvidence={vi.fn()} />)
+
+    expect(screen.getByRole('alert').textContent).toContain('缺少该精确代次的前值')
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '采纳草稿' }).disabled).toBe(true)
   })
 
   it('does not suggest a review for a linked Delivery Case that is still shaping', () => {
@@ -764,7 +802,7 @@ describe('PlanningWorkbench', () => {
       createdAt: '2026-09-27T00:00:00.000Z',
     })
     render(
-      <PlanningWorkbench
+      <PlanningPanels panel="history"
         t={t}
         usePlanning={selector => selector({ ...current, selectedItemId: 'idea' })}
         selectWorkspace={vi.fn()}
@@ -786,7 +824,7 @@ describe('PlanningWorkbench', () => {
     current.board!.items[0]!.revisions.push({ ...first, id: 'r2', previousRevisionId: 'r1', title: 'Current revision' })
     const execute = vi.fn().mockResolvedValue(true)
     render(
-      <PlanningWorkbench
+      <PlanningPanels panel="history"
         t={t}
         usePlanning={selector => selector({ ...current, selectedItemId: 'idea' })}
         selectWorkspace={vi.fn()}
@@ -829,7 +867,7 @@ describe('PlanningWorkbench', () => {
       readEvidence: vi.fn(),
     }
     const mounted = render(
-      <PlanningWorkbench {...props} usePlanning={selector => selector({ ...current, selectedItemId: 'idea' })} />,
+      <PlanningPanels panel="history" {...props} usePlanning={selector => selector({ ...current, selectedItemId: 'idea' })} />,
     )
     fireEvent.click(screen.getAllByText('保存复盘')[0]!)
     fireEvent.change(screen.getByLabelText('复盘摘要'), { target: { value: 'old revision notes' } })
@@ -837,7 +875,7 @@ describe('PlanningWorkbench', () => {
     expect(screen.getByLabelText<HTMLTextAreaElement>('复盘摘要').value).toBe('')
     fireEvent.change(screen.getByLabelText('复盘摘要'), { target: { value: 'other plan notes' } })
     mounted.rerender(
-      <PlanningWorkbench {...props} usePlanning={selector => selector({ ...current, selectedItemId: 'other' })} />,
+      <PlanningPanels panel="history" {...props} usePlanning={selector => selector({ ...current, selectedItemId: 'other' })} />,
     )
     expect(screen.getByLabelText<HTMLTextAreaElement>('复盘摘要').value).toBe('')
   })

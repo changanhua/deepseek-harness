@@ -28,6 +28,16 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@changanhua/dsh-requirement-assessment": ["./packages/requirement-assessment/requirement-assessment/src"],
+      "@changanhua/dsh-requirement-assessment/types": ["./packages/requirement-assessment/requirement-assessment/src/types.ts"],
+      "@changanhua/dsh-requirement-assessment-local": ["./packages/requirement-assessment/requirement-assessment-local/src"],
+      "@changanhua/dsh-requirement-assessment-local/types": ["./packages/requirement-assessment/requirement-assessment-local/src/types.ts"],
+      "@changanhua/dsh-requirement-assessment-review": ["./packages/requirement-assessment/requirement-assessment-review/src"],
+      "@changanhua/dsh-requirement-assessment-review/types": ["./packages/requirement-assessment/requirement-assessment-review/src/types.ts"],
+      "@changanhua/dsh-requirement-assessment-remote": ["./packages/requirement-assessment/requirement-assessment-remote/src"],
+      "@changanhua/dsh-requirement-assessment-remote/types": ["./packages/requirement-assessment/requirement-assessment-remote/src/types.ts"],
+      "@changanhua/dsh-client-ui-requirement-assessment": ["./packages/client/ui-requirement-assessment/src"],
+      "@changanhua/dsh-client-ui-requirement-assessment/client": ["./packages/client/ui-requirement-assessment/src/client/index.tsx"],
       "@changanhua/dsh-browser": ["./packages/browser/browser/src"],
       "@changanhua/dsh-browser/types": ["./packages/browser/browser/src/types.ts"],
       "@changanhua/dsh-browser/invariant": ["./packages/browser/browser/src/invariant.ts"],
@@ -309,6 +319,7 @@
       "@changanhua/dsh-planning/evolution": ["./packages/planning/planning/src/evolution.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@changanhua/dsh-capabilities": ["./packages/bundle/capabilities/src"],
+      "@changanhua/dsh-command-initiative": ["./packages/initiative/command-initiative/src"],
       "@changanhua/dsh-command-memory": ["./packages/memory/command-memory/src"],
       "@changanhua/dsh-command-memory/invariant": ["./packages/memory/command-memory/src/invariant.ts"],
       "@changanhua/dsh-command-task-queue": ["./packages/task-queue/command-task-queue/src"],
@@ -354,6 +365,8 @@
       "@changanhua/dsh-image-generation/invariant": ["./packages/image/image-generation/src/invariant.ts"],
       "@changanhua/dsh-image-generation-arkcli/invariant": ["./packages/image/image-generation-arkcli/src/invariant.ts"],
       "@changanhua/dsh-image-generation-task-queue/invariant": ["./packages/image/image-generation-task-queue/src/invariant.ts"],
+      "@changanhua/dsh-initiative": ["./packages/initiative/initiative/src"],
+      "@changanhua/dsh-initiative-local": ["./packages/initiative/initiative-local/src"],
       "@changanhua/dsh-knowledge-base": ["./packages/knowledge/knowledge-base/src"],
       "@changanhua/dsh-knowledge-base/invariant": ["./packages/knowledge/knowledge-base/src/invariant.ts"],
       "@changanhua/dsh-knowledge-base-task-queue": ["./packages/knowledge/knowledge-base-task-queue/src"],
@@ -393,6 +406,7 @@
       "@changanhua/dsh-tool-agent-run-task-queue/invariant": ["./packages/task-queue/tool-agent-run-task-queue/src/invariant.ts"],
       "@changanhua/dsh-tool-choice": ["./packages/llm/tool-choice/src"],
       "@changanhua/dsh-tool-image-generation-task-queue/invariant": ["./packages/image/tool-image-generation-task-queue/src/invariant.ts"],
+      "@changanhua/dsh-tool-initiative": ["./packages/initiative/tool-initiative/src"],
       "@changanhua/dsh-tool-knowledge-base": ["./packages/knowledge/tool-knowledge-base/src"],
       "@changanhua/dsh-tool-knowledge-base/invariant": ["./packages/knowledge/tool-knowledge-base/src/invariant.ts"],
       "@changanhua/dsh-tool-memory": ["./packages/memory/tool-memory/src"],

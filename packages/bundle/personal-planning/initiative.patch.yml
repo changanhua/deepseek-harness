@@ -1,0 +1,14 @@
+# Optional Candidate intake; apply after personal-planning/cordis.patch.yml.
+- insert:
+    - id: initiative-local
+      name: '@changanhua/dsh-initiative-local'
+      isolate:
+        storageDomain: web-host
+        workspaceRegistry: web-host
+      config:
+        ownershipRoot: !!js dshHomePath('storages', 'initiative-ownership')
+        operatorId: local-human
+    - id: command-initiative
+      name: '@changanhua/dsh-command-initiative'
+    - id: tool-initiative
+      name: '@changanhua/dsh-tool-initiative'

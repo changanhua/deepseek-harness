@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-30-thinking-desk-agent-loop.md
+2026-09-30-thinking-desk-agent-loop.md: a1815ef3c6bd2a8b9574ba1403bfe9f25295dbb0
+2026-09-30-thinking-desk-agent-loop.zh.md: 6df6eebe1f85724a233ad4ee87bca30437b0ca66

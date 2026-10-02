@@ -1653,6 +1653,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'initiative',
+    summary: 'Candidate owner; callers supply a live Agent, never a claimed actor or Workspace.',
+    description: 'Candidate owner; callers supply a live Agent, never a claimed actor or Workspace.',
+    methods: [
+      {
+        signature: 'abstract execute( agent: Agent, input: InitiativeCommand, invocation?: InitiativeInvocation, signal?: AbortSignal, ): Promise<InitiativeReceipt>',
+        description: 'Commit an authorized Candidate fact or explicit Human promotion.',
+        parameters: [{ name: 'agent', description: 'Exact live runtime caller, revalidated at durable commits.' }, { name: 'input', description: 'Strict mutation with idempotency key and exact versions where required.' }, { name: 'invocation', description: 'Commands-owned identity for Human calls; absent for model Tools.' }, { name: 'signal', description: 'Caller cancellation, checked before commits.' }],
+        returns: 'Original durable receipt on an identical authorized replay.',
+      },
+      {
+        signature: 'abstract read(agent: Agent, query: InitiativeQuery, invocation?: InitiativeInvocation, signal?: AbortSignal): Promise<InitiativePage>',
+        description: 'Read detached Candidate history in the caller\'s current Workspace.',
+        parameters: [{ name: 'agent', description: 'Exact live runtime caller.' }, { name: 'query', description: 'Exact revision or bounded filters.' }, { name: 'invocation', description: 'Active Human command identity when outside an Agent turn.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Candidate facts and bounded exact-subject RIR relations, never inferred evidence verification.',
+      },
+    ],
+  },
+  {
     key: 'inspector',
     summary: 'Shared Host/Client service façade over the realm\'s source publisher.',
     description: 'Shared Host/Client service façade over the realm\'s source publisher.',
@@ -2128,6 +2147,81 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Open an isolated checkout pinned to one verification target.',
         parameters: [{ name: 'request', description: 'Attempt identity plus verified base and target revisions.' }],
         returns: 'an idempotently recovered or newly created verification lease.',
+      },
+    ],
+  },
+  {
+    key: 'requirementAssessment',
+    summary: 'Assessment owner; no Planning mutations or execution authority are part of this service.',
+    description: 'Assessment owner; no Planning mutations or execution authority are part of this service.',
+    methods: [
+      {
+        signature: 'abstract reserve(access: AssessmentAccess, request: AssessmentRequestIdentity, signal?: AbortSignal): Promise<AssessmentReservation>',
+        description: 'Reserve a model invocation durably; unresolved reservations forbid automatic repeated billing.',
+        parameters: [{ name: 'access', description: 'Trusted Workspace and actor capability, rechecked before publication.' }, { name: 'request', description: 'Request id and digest binding the exact evaluator input.' }, { name: 'signal', description: 'Caller cancellation, checked before publication.' }],
+        returns: 'Acquired, pending, or completed reservation with its immutable original result.',
+      },
+      {
+        signature: 'abstract create(access: AssessmentAccess, input: AssessmentCreateInput, signal?: AbortSignal): Promise<RequirementAssessment>',
+        description: 'Persist one complete review atomically; identical request identities return their immutable original.',
+        parameters: [{ name: 'access', description: 'Trusted Workspace and actor capability.' }, { name: 'input', description: 'Schema-valid immutable review and request identity.' }, { name: 'signal', description: 'Caller cancellation, checked before publication.' }],
+        returns: 'The committed Assessment; conflicting request digests reject.',
+      },
+      {
+        signature: 'abstract snapshot(access: AssessmentAccess, signal?: AbortSignal): Promise<AssessmentSnapshot>',
+        description: 'Read detached bounded Workspace history, rechecking the trusted caller\'s current authority.',
+        parameters: [{ name: 'access', description: 'Trusted Workspace and actor capability.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'The authorized Workspace\'s immutable Assessment history.',
+      },
+      {
+        signature: 'abstract get(access: AssessmentAccess, id: string, signal?: AbortSignal): Promise<RequirementAssessment>',
+        description: 'Read one immutable result inside the authorized Workspace; foreign ids are never resolved.',
+        parameters: [{ name: 'access', description: 'Trusted Workspace and actor capability.' }, { name: 'id', description: 'Assessment identity within this Workspace.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'The detached Assessment; missing or foreign ids reject as not-found.',
+      },
+      {
+        signature: 'abstract replay( access: AssessmentAccess, requestId: string, requestDigest: string, signal?: AbortSignal, ): Promise<RequirementAssessment | undefined>',
+        description: 'Recover a committed request before calling the evaluator; conflicting request digests reject.',
+        parameters: [{ name: 'access', description: 'Trusted Workspace and actor capability.' }, { name: 'requestId', description: 'Durable request identity.' }, { name: 'requestDigest', description: 'Exact evaluator input digest.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'The immutable original when committed, otherwise undefined.',
+      },
+    ],
+  },
+  {
+    key: 'requirementAssessmentRemote',
+    summary: 'Read-only Planning projection and trusted evaluation entry point.',
+    description: 'Read-only Planning projection and trusted evaluation entry point.',
+    methods: [
+      {
+        signature: '@Remote(\'list\') async list(raw: AssessmentListInput, signal: AbortSignal): Promise<AssessmentView[]>',
+        description: 'List immutable assessments and live baseline status within the selected registered workspace.',
+        parameters: [{ name: 'raw', description: 'Selected workspace, checked against Host registration.' }, { name: 'signal', description: 'Browser request lifetime.' }],
+        returns: 'Immutable history projected against one current authorized Planning snapshot.',
+      },
+      {
+        signature: '@Remote(\'get\') async get(raw: AssessmentGetInput, signal: AbortSignal): Promise<AssessmentView>',
+        description: 'Resolve only an assessment owned by the selected registered workspace.',
+        parameters: [{ name: 'raw', description: 'Workspace and assessment identities; foreign ids never resolve.' }, { name: 'signal', description: 'Browser request lifetime.' }],
+        returns: 'The assessment and read-time baseline drift.',
+      },
+      {
+        signature: '@Remote(\'review\') async review(raw: AssessmentReviewInput, signal: AbortSignal): Promise<AssessmentView>',
+        description: 'Run one explicitly requested quick review; routes never execute downstream actions.',
+        parameters: [{ name: 'raw', description: 'Bounded user input without actor, baseline or evidence provenance authority.' }, { name: 'signal', description: 'Browser lifetime propagated through capture, evaluation and persistence.' }],
+        returns: 'Completed assessment with current drift; rejected attempts do not create results.',
+      },
+    ],
+  },
+  {
+    key: 'requirementAssessmentReview',
+    summary: 'Fixed-context, bounded, single-call evaluator using the configured LLM runtime.',
+    description: 'Fixed-context, bounded, single-call evaluator using the configured LLM runtime.',
+    methods: [
+      {
+        signature: 'async review( access: AssessmentAccess, raw: QuickReviewInput, signal?: AbortSignal, candidateSource?: CandidateReviewSource, ): Promise<RequirementAssessment>',
+        description: 'Deduplicate requests before spending model tokens.',
+        parameters: [{ name: 'access', description: 'Trusted Host workspace and actor capability, reauthorized before work and commit.' }, { name: 'raw', description: 'Strict user request without provenance or authority fields.' }, { name: 'signal', description: 'Caller lifetime; cancellation leaves a spent reservation unresolved.' }, { name: 'candidateSource', description: 'Trusted owner snapshot for a Candidate subject; never browser/model input.' }],
+        returns: 'The immutable completed assessment, including a replayed original for the same request.',
       },
     ],
   },
@@ -4657,6 +4751,54 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AssembledSection {\n    name: string;\n    text: string;\n}',
   },
   {
+    name: 'AssessmentAccess',
+    declaration: 'export interface AssessmentAccess {\n    readonly workspaceId: string;\n    readonly actorId: string;\n    readonly kind: \'human\' | \'agent\';\n    authorize(): void | Promise<void>;\n}',
+  },
+  {
+    name: 'AssessmentCreateInput',
+    declaration: 'export type AssessmentCreateInput = z.infer<typeof assessmentCreateSchema>;',
+  },
+  {
+    name: 'AssessmentDrift',
+    declaration: 'export type AssessmentDrift = \'fresh\' | \'stale\' | \'unknown\' | \'unavailable\';',
+  },
+  {
+    name: 'AssessmentEvidence',
+    declaration: 'export type AssessmentEvidence = z.infer<typeof assessmentEvidenceSchema>;',
+  },
+  {
+    name: 'AssessmentGetInput',
+    declaration: 'export interface AssessmentGetInput extends AssessmentListInput {\n    id: string;\n}',
+  },
+  {
+    name: 'AssessmentListInput',
+    declaration: 'export interface AssessmentListInput {\n    workspaceId: string;\n}',
+  },
+  {
+    name: 'AssessmentRequestIdentity',
+    declaration: 'export interface AssessmentRequestIdentity {\n    requestId: string;\n    requestDigest: string;\n}',
+  },
+  {
+    name: 'AssessmentReservation',
+    declaration: 'export type AssessmentReservation = {\n    status: \'acquired\' | \'pending\';\n} | {\n    status: \'completed\';\n    assessment: RequirementAssessment;\n};',
+  },
+  {
+    name: 'AssessmentReviewInput',
+    declaration: 'export type AssessmentReviewInput = QuickReviewInput & AssessmentListInput;',
+  },
+  {
+    name: 'AssessmentSnapshot',
+    declaration: 'export interface AssessmentSnapshot {\n    workspaceId: string;\n    assessments: RequirementAssessment[];\n}',
+  },
+  {
+    name: 'AssessmentSubject',
+    declaration: 'export type AssessmentSubject = z.infer<typeof assessmentSubjectSchema>;',
+  },
+  {
+    name: 'AssessmentView',
+    declaration: 'export interface AssessmentView {\n    assessment: RequirementAssessment;\n    drift: AssessmentDrift;\n}',
+  },
+  {
     name: 'AssistantMessage',
     declaration: 'export interface AssistantMessage extends Message {\n    readonly role: \'assistant\';\n    readonly source: ModelMessageSource;\n}',
   },
@@ -5043,6 +5185,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'BrowserTransitionObservation',
     declaration: 'export interface BrowserTransitionObservation {\n    readonly version: 1;\n    readonly source: {\n        readonly tab: BrowserTabReference;\n        readonly page: BrowserPage;\n    };\n    readonly startedAt: number;\n    readonly observedAt: number;\n    readonly sameTab: {\n        readonly kind: \'unchanged\' | \'same-document\' | \'document-replaced\' | \'closed\' | \'unavailable\';\n        readonly page?: BrowserPage;\n    };\n    readonly candidates: readonly {\n        readonly tab: BrowserTabReference;\n        readonly url?: string;\n        readonly relation: \'opener\';\n        readonly attribution: \'candidate\';\n        readonly evidence: \'created-navigation-target\' | \'opener-tab\';\n    }[];\n    readonly truncated: boolean;\n}',
+  },
+  {
+    name: 'CandidateReviewSource',
+    declaration: 'export interface CandidateReviewSource {\n    subject: Extract<AssessmentSubject, {\n        kind: \'candidate\';\n    }>;\n    text: string;\n    evidence: AssessmentEvidence[];\n}',
+  },
+  {
+    name: 'CandidateSummary',
+    declaration: 'export type CandidateSummary = Omit<InitiativeCandidate, \'revisions\' | \'investigations\' | \'dispositions\'>;',
   },
   {
     name: 'CapabilityState',
@@ -5817,6 +5967,34 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type IndexInjectionPlacement = \'head\' | \'body\';',
   },
   {
+    name: 'InitiativeCandidate',
+    declaration: 'export type InitiativeCandidate = z.infer<typeof candidateSchema>;',
+  },
+  {
+    name: 'InitiativeCommand',
+    declaration: 'export type InitiativeCommand = z.infer<typeof initiativeCommandSchema>;',
+  },
+  {
+    name: 'InitiativeInvocation',
+    declaration: 'export interface InitiativeInvocation {\n    readonly commandId?: string;\n}',
+  },
+  {
+    name: 'InitiativePage',
+    declaration: 'export interface InitiativePage {\n    entries: InitiativeView[];\n    total: number;\n    nextOffset: number | null;\n}',
+  },
+  {
+    name: 'InitiativeQuery',
+    declaration: 'export type InitiativeQuery = z.infer<typeof initiativeQuerySchema>;',
+  },
+  {
+    name: 'InitiativeReceipt',
+    declaration: 'export type InitiativeReceipt = z.infer<typeof initiativeReceiptSchema>;',
+  },
+  {
+    name: 'InitiativeView',
+    declaration: 'export interface InitiativeView {\n    candidate: CandidateSummary;\n    revision: InitiativeCandidate[\'revisions\'][number];\n    revisionCount: number;\n    investigations: InitiativeCandidate[\'investigations\'];\n    latestDisposition?: InitiativeCandidate[\'dispositions\'][number];\n    drift: boolean;\n    rir: {\n        availability: \'available\' | \'unavailable\';\n        assessments: Array<{\n            id: string;\n            candidateVersion: number;\n            candidateDigest: string;\n            state: \'fresh\' | \'drift\' | \'unknown\' | \'unavailable\';\n            route: string;\n        }>;\n        total?: number;\n    };\n}',
+  },
+  {
     name: 'InspectorId',
     declaration: 'export type InspectorId<Role extends string> = Branded<Role>;',
   },
@@ -6477,6 +6655,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type QueueWorkIdRef = Branded<\'DeliveryQueueWorkIdRef\'>;',
   },
   {
+    name: 'QuickReviewInput',
+    declaration: 'export type QuickReviewInput = z.infer<typeof quickReviewInputSchema>;',
+  },
+  {
     name: 'ReadFileLine',
     declaration: 'export interface ReadFileLine {\n    number: number;\n    text: string;\n}',
   },
@@ -6575,6 +6757,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RequestRunOutcome',
     declaration: 'export type RequestRunOutcome = \'approved\' | \'completed\' | \'rejected\' | \'cancelled\' | \'failed\';',
+  },
+  {
+    name: 'RequirementAssessment',
+    declaration: 'export type RequirementAssessment = z.infer<typeof requirementAssessmentSchema>;',
   },
   {
     name: 'RequirementDecision',

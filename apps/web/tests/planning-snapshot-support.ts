@@ -96,9 +96,10 @@ export function normalizePlanningSessionLog(raw: string): string {
   for (const value of planningResults) collectPlanningVolatiles(value, replacements, clockReplacements, counters)
   for (const text of skillResultTexts) {
     const line = /^Base directory for this skill: ([^\r\n]+)$/mu.exec(text)
-    const relative = line?.[1].match(/[\\/]packages[\\/]bundle[\\/]personal-planning([\\/]skills[\\/].+)$/u)
-    if (line !== null && relative !== null) {
-      replacements.set(line[1].replaceAll('\\', '\\\\'), `PLANNING_PERSONAL_PACKAGE_ROOT${relative[1].replaceAll('\\', '/')}`)
+    const base = line?.[1]
+    const relative = base?.match(/[\\/]packages[\\/]bundle[\\/]personal-planning([\\/]skills[\\/].+)$/u)?.[1]
+    if (base !== undefined && relative !== undefined) {
+      replacements.set(base.replaceAll('\\', '\\\\'), `PLANNING_PERSONAL_PACKAGE_ROOT${relative.replaceAll('\\', '/')}`)
     }
   }
 
@@ -113,7 +114,7 @@ export function normalizePlanningSessionLog(raw: string): string {
     if (planningResultIndexes.has(recordIndex)) {
       for (const key of CLOCK_KEYS) {
         const escaped = new RegExp(`(\\\\"${key}\\\\":\\\\")([^"\\\\]+)(\\\\")`, 'gu')
-        lines[index] = lines[index].replace(escaped, (whole, prefix: string, value: string, suffix: string) => {
+        lines[index] = (lines[index] ?? '').replace(escaped, (whole, prefix: string, value: string, suffix: string) => {
           const replacement = clockReplacements.get(value)
           return replacement === undefined ? whole : `${prefix}${replacement}${suffix}`
         })

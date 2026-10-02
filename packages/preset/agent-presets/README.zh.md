@@ -7,6 +7,9 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
+
+随包交付的 `work-steward` 预设使用与 `standard` 相同的编程组合，由可选个人 Planning 的委托主理入口显式选择。它不改变默认值，也不授予执行审批；Planning bundle 提供 project-steward Skill。
+
 ## 概述
 
 使用 `dsh-agent-presets` 为每个会话提供某个 preset 的 `agent.cordis.yml` 所指定的工具、提示词段落与 skill（技能）。一个进程可以运行使用不同 preset 的会话，同时保持它们的状态相互隔离。preset 名单合并随附定义、已配置根目录与用户根目录，会报告 preset 无法启动的原因，也能通过复制现有 preset 创建本地 preset。部署与用户都可选择默认值；只有空会话可以切换 preset。请将每个自行编写的 preset 视为受信任配置，因为它会授予其所选插件的能力。

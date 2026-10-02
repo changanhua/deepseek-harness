@@ -79,10 +79,17 @@ function currentUserSource(access: PlanningAccess) {
 /** Register Agent-scoped read/write planning tools and reversible model guidance. */
 export function apply(ctx: Context, config: Config = {}): void {
   const resolved = Config(config) as Required<Config>
+  const thinking = (scope: unknown) => {
+    const agent = scope as Agent | undefined
+    const presets = ctx.get('agentPresets') as { composedPreset(context: Context): string | undefined } | undefined
+    return agent?.session !== undefined && ctx.agents.get(agent.id) === agent &&
+      presets?.composedPreset(agent.ctx) === 'thinking-desk'
+  }
   // Both registry APIs install their reversible registrations through this plugin Context.
-  ctx.systemPrompt.section({ name: 'tool:planning', order: 2360, text: PROMPT })
+  ctx.systemPrompt.section({ name: 'tool:planning', order: 2360, text: context => thinking(context.scope) ? '' : PROMPT })
   ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
     const assembly = await next()
+    if (thinking(context.scope)) return assembly
     const agent = context.scope as Agent | undefined
     if (agent?.session === undefined || ctx.agents.get(agent.id) !== agent) return assembly
     const current = await planningAgentAccess(ctx, agent, context.signal).catch(() => undefined)
@@ -219,7 +226,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     ctx.systemPrompt.section({
       name: 'tool:planning-handoff',
       order: 2361,
-      text: 'Use planning_handoff only when the current user asks to prepare execution of an adopted plan. Keeping an idea, arranging its priority, quoting a command, or reviewing an example does not authorize handoff. Reuse the exact item and revision for a retry. A linked Delivery Case still needs its execution contract, human approval, dispatch, independent verification, and acceptance; handoff alone completes none of those steps.',
+      text: context => thinking(context.scope) ? '' : 'Use planning_handoff only when the current user asks to prepare execution of an adopted plan. Keeping an idea, arranging its priority, quoting a command, or reviewing an example does not authorize handoff. Reuse the exact item and revision for a retry. A linked Delivery Case still needs its execution contract, human approval, dispatch, independent verification, and acceptance; handoff alone completes none of those steps.',
     })
     ctx.tools.register(
       defineTool({

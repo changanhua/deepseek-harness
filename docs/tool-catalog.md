@@ -17,6 +17,7 @@ This table connects model-visible tool names to the plugin package and service s
 | --- | --- | --- | --- | --- | --- |
 | `@changanhua/dsh-tool-browser` | `browser_action`, `browser_action_sequence`, `browser_activity_search`, `browser_entry_mount`, `browser_entry_unmount`, `browser_extract`, `browser_instances`, `browser_page_map`, `browser_region_clear`, `browser_region_render`, `browser_request_status`, `browser_snapshot`, `browser_tabs`, `browser_task_cancel`, `browser_task_select`, `browser_task_start`, `browser_task_verify` | `ctx.browser`, `ctx.browserTasks`, `ctx.tools`, `ctx.approval`, `ctx.browserActivity for historical activity search`, `an initiating Agent session` | `tool/call`, `tool/result`, `browser-task/change`, `browser-task/receipt`, `browser-task/check`, `browser-task/delegation`, `approved page actions through Browser` | - | Activity search is present only when browserActivity is composed. It reads the initiating Session under current Host grants, including while Chrome is offline. |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`, `task_queue_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 agent.run@1 admission` | - | The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields. |
+| `@changanhua/dsh-tool-initiative` | `initiative_read`, `initiative_record` | `ctx.tools`, `ctx.systemPrompt`, `ctx.initiative`, `a live Agent in a registered Workspace` | `tool/call`, `tool/result`, `Candidate revisions and investigation facts in initiative_candidates` | - | Opt-in Candidate intake. Agent proposals and investigation recommendations grant no authority; only a separate Human command may settle or promote to a pending Planning Proposal. |
 | `@changanhua/dsh-tool-memory` | `memory_propose`, `memory_read`, `memory_search` | `ctx.tools`, `ctx.systemPrompt`, `ctx.projectMemory`, `a live Agent in a registered Workspace` | `tool/call`, `tool/result`, `candidate revisions and proposal receipts in the project_memory domain` | - | Explicit opt-in project memory. Models can search, read checked claims, and propose candidates; human acceptance, rejection, and withdrawal are separate command operations. |
 | `@changanhua/dsh-tool-planning` | `planning_context`, `planning_execution`, `planning_handoff`, `planning_list`, `planning_read`, `planning_update` | `ctx.tools`, `ctx.systemPrompt`, `ctx.planning`, `ctx.agents`, `ctx.sessions`, `ctx.workspaceRegistry`, `an initiating Agent in a registered Workspace` | `tool/call`, `tool/result`, `Planning Board mutations through ctx.planning` | - | planning_handoff is registered only when the optional Planning–Delivery bridge is composed. planning_execution reads linked Delivery state and evidence only when the bridge and Planning Remote are both composed; it never dispatches or accepts Delivery work. |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`, `ctx.userQuestions` | `tool/call`, `tool/result after a UI/provider answers the question` | - | ask_user_question pauses the tool call until the active UI provider returns a human answer. |
@@ -3402,6 +3403,54 @@ Atomically enqueue restricted Harness worker requests.
 Source: [`packages/task-queue/tool-agent-run-task-queue/src/index.ts`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
 
 The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields.
+
+<a id="changanhuadsh-tool-initiative"></a>
+
+## `@changanhua/dsh-tool-initiative`
+
+### `initiative_read`
+
+Read exact Candidate history and unresolved source references; unavailable RIR is explicit.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "input_json": {
+      "type": "string",
+      "description": "Query JSON with action:read and optional id/version/status/proposer/offset/limit."
+    }
+  },
+  "required": [
+    "input_json"
+  ]
+}
+```
+
+Source: [`packages/initiative/tool-initiative/src/index.ts`](../packages/initiative/tool-initiative/src/index.ts)
+
+### `initiative_record`
+
+Propose a Candidate or append bounded investigation facts. Never grants authority, settles or promotes.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "input_json": {
+      "type": "string",
+      "description": "Strict propose or investigate command JSON; actor is derived from this Session."
+    }
+  },
+  "required": [
+    "input_json"
+  ]
+}
+```
+
+Source: [`packages/initiative/tool-initiative/src/index.ts`](../packages/initiative/tool-initiative/src/index.ts)
+
+Opt-in Candidate intake. Agent proposals and investigation recommendations grant no authority; only a separate Human command may settle or promote to a pending Planning Proposal.
 
 <a id="changanhuadsh-tool-memory"></a>
 

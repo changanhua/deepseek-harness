@@ -1,0 +1,77 @@
+{
+  "attempts": [
+    {
+      "attempt": 1,
+      "outcome": "failed",
+      "rawFileSha256": {
+        "all-attempts.json": "7b879e7b8b451b4dc7a2d8ed86e4b3cea07799d316ea149b7feae317626a1bf1",
+        "http-attempts.json": "21d8e0b845457b6057aa1f1e4bf1e684485c330a6a5109fbd562c83bb09c36ee",
+        "http-body-1.json": "d572600e7947f4b0c98b1175a12805a8bd63f70d067fd5437375116e56afcf61",
+        "http-body-2.json": "7ad5ed8c0952102a3604530393fe68a2e9a2178a8c79a63583b115e4750c2a38",
+        "http-body-3.json": "540bb98ae0cc4a583f4af38df2777078c8c985bae0dba46fe30c713426cd1c00",
+        "http-body-4.json": "427bc08e14868a69c1c6c261140bae1b6dfd0aa65eb2960d9ba93c3b4e2811c7",
+        "observation.json": "e3ccbfa15f91594beb9c364dc5d5085c30eb83fda136bc6a29f8d2f105a2a4e0",
+        "request-1.json": "fcc2d7cc52903eaca464250d2e7a1b9b28605f8de4f2406b6eee47eb1272895d",
+        "request-2.json": "420c6a0ca6efd907277a70b657e4989fa110298c425a12219164bcb3c6de2c26",
+        "request-3.json": "11a4418f034bffb97ebccc9909c95382d309f01b5b403fe893fa6632bc2bfb55",
+        "request-4.json": "615c4fa0ee03bbe72402b64966d075f0246a8219942e0ce0a5c6cc4c60d339c0",
+        "requests.json": "4321f9e72523d8ed856c50f0d4c7af93ec96f7dad53f297bc59dfb13b4f75874"
+      },
+      "publishedSha256": "61093be5c2a422efbb6c66c0f7c67c7dc288661bbff06934b964c2881f014a13"
+    },
+    {
+      "attempt": 2,
+      "outcome": "failed",
+      "rawFileSha256": {
+        "all-attempts.json": "fb669274643cce5373761ea6287578e48d7d061221ddb792c9f6422e978492cf",
+        "command-result.json": "4703945d71287ab43465cc12ef3bc9c8e6378cde343c34d6161b47d525a3ad67",
+        "http-attempts.json": "28700bdba1b3a42d13f520713001f887bc96778e4d2ae557d209dceb7d6e9322",
+        "http-body-1.json": "e386f3892d62e549bd498fe5f89d29a4ccabb86f9ba82eab1b399d9b8ec075e7",
+        "http-body-2.json": "11b2508b4d26d254404bdd03e16d4aa31a8f89fd29265952f37817b95457957b",
+        "http-body-3.json": "df559c45b24dfdea7e3ee9292f1ef542bdaa5898633592f05697b7cfba13357d",
+        "http-body-4.json": "8a967775482cf6643c3f7cd39fb49e08cb23b88b1a44e12e2df52aaca8e49386",
+        "http-body-5.json": "8b2e8fc57ce9855379f3b96319f889fe82207646059a2251a0b7277d8e41867a",
+        "observation.json": "e3ccbfa15f91594beb9c364dc5d5085c30eb83fda136bc6a29f8d2f105a2a4e0",
+        "request-1.json": "ea73b788faf668d003f604fd3e22300d9874de73e284c14523edfafcc67a49c5",
+        "request-2.json": "80f5a856780da229f574cc93cf694f86db32f8d600ea290c8c93dd72f2cbae18",
+        "request-3.json": "2c2106c47018d93b1a6b9abe92f6eab78487e113f8f942e23c597318dee515a2",
+        "request-4.json": "4005bda4497f10e9ecee0be1206a270d1ca0a7a4a418777400f37b13ff7d0a63",
+        "request-5.json": "a53d64dd4d5fdc79b6b33e01a359b0df5550d7c535d80548da6c72a98a3b423d",
+        "requests.json": "07d017c2ba6d60a2bf57e06e432cecfc4ebe73417be89a6a2689a4e303d4bd64"
+      },
+      "publishedSha256": "463cc3fa1113e7ee7fcca6c2cfff00868c92e808b99c0d106849b57e5dda0935"
+    },
+    {
+      "attempt": 3,
+      "outcome": "passed",
+      "rawFileSha256": {
+        "all-attempts.json": "40680264ceab751cc21f2109584be3e360fdb4ebab978d5242362266bfd55ba6",
+        "command-result.json": "c2d291745f895f801ec701dafdae9d70fccfe1f8eb6907c1d2853905867cf370",
+        "http-attempts.json": "6d22517dbe0dd3ce659915a80778e7a137dd4e40b7f8cb2147c52b7a24b07b9f",
+        "http-body-1.json": "e386f3892d62e549bd498fe5f89d29a4ccabb86f9ba82eab1b399d9b8ec075e7",
+        "http-body-2.json": "434f96d8040bbce4b843d1f0f1bbe2609eac8454a5bd38a48cb090944a316170",
+        "http-body-3.json": "3d41290b373146e85a401f593e7778a1c7f2987095903ee8c3b6227dcebbbf2a",
+        "http-body-4.json": "93d7987b147d97bfdf69a5d633a45485037f553eceaaf8a2c7fa863ebfe939bd",
+        "http-body-5.json": "d5ba1cae3cbcbaacbd6693878b1cf8ebb41c6b3fadfacac434ac740366895187",
+        "observation.json": "e3ccbfa15f91594beb9c364dc5d5085c30eb83fda136bc6a29f8d2f105a2a4e0",
+        "report.json": "9edfc7753923b64fd5736f2305214a2cee03c64e8df5f3bcb4c8b15aa748f808",
+        "request-1.json": "63c9a7a9f812abe8253e64b314245cf497058186d2ec184833c993af5ea72ab9",
+        "request-2.json": "af29664ecf886b83a5a2b7ace23f999742338ebbf0889cd4010fec24f5022ee8",
+        "request-3.json": "1df0579983c018f57717307b1f93b18a0b6d94aae6fabea52a1f0b22e00a0897",
+        "request-4.json": "1573e97fa41b8fae697efb2ad4edfcba85f38fa6ecc0aa99f9385566d2c8b64e",
+        "request-5.json": "3cce0ed14b0a811236d5fb94f87b98cd184887f5967b0f6954be8b78bde72111",
+        "requests.json": "91bc19a18f429de0038d50a8b47b26da339fe982552ca0e30ed5c57ee441fef3"
+      },
+      "publishedSha256": "221d0b5dcb6cff387df4395a820fc1ac09a3c01c9c74e335ff11283b4aafae35"
+    }
+  ],
+  "totals": {
+    "requests": 14,
+    "httpAttempts": 14,
+    "uncachedInputTokens": 13107,
+    "cachedInputTokens": 19840,
+    "outputTokens": 10901
+  },
+  "billing": "Provider bill unavailable. Usage comes from the configured adapter; cached inputs are reported separately. Codex usage is excluded.",
+  "identity": "Configured deepseek-official/deepseek-flash; actual backend model identity unavailable."
+}

@@ -184,6 +184,17 @@
       ]
     },
     {
+      "directory": "packages/client/ui-requirement-assessment",
+      "legacyName": "@deepseek-ai/dsh-client-ui-requirement-assessment",
+      "sourceName": "@changanhua/dsh-client-ui-requirement-assessment",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/client/ui-settings-skills",
       "legacyName": "@deepseek-ai/dsh-client-ui-settings-skills",
       "sourceName": "@changanhua/dsh-client-ui-settings-skills",
@@ -567,6 +578,50 @@
       ]
     },
     {
+      "directory": "packages/initiative/command-initiative",
+      "legacyName": "@deepseek-ai/dsh-command-initiative",
+      "sourceName": "@changanhua/dsh-command-initiative",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/initiative/initiative",
+      "legacyName": "@deepseek-ai/dsh-initiative",
+      "sourceName": "@changanhua/dsh-initiative",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/initiative/initiative-local",
+      "legacyName": "@deepseek-ai/dsh-initiative-local",
+      "sourceName": "@changanhua/dsh-initiative-local",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/initiative/tool-initiative",
+      "legacyName": "@deepseek-ai/dsh-tool-initiative",
+      "sourceName": "@changanhua/dsh-tool-initiative",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/knowledge/knowledge-base",
       "legacyName": "@deepseek-ai/dsh-knowledge-base",
       "sourceName": "@changanhua/dsh-knowledge-base",
@@ -724,6 +779,61 @@
       "directory": "packages/planning/tool-planning",
       "legacyName": "@deepseek-ai/dsh-tool-planning",
       "sourceName": "@changanhua/dsh-tool-planning",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/planning/tool-thinking-case",
+      "legacyName": "@deepseek-ai/dsh-tool-thinking-case",
+      "sourceName": "@changanhua/dsh-tool-thinking-case",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/requirement-assessment/requirement-assessment",
+      "legacyName": "@deepseek-ai/dsh-requirement-assessment",
+      "sourceName": "@changanhua/dsh-requirement-assessment",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/requirement-assessment/requirement-assessment-local",
+      "legacyName": "@deepseek-ai/dsh-requirement-assessment-local",
+      "sourceName": "@changanhua/dsh-requirement-assessment-local",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/requirement-assessment/requirement-assessment-remote",
+      "legacyName": "@deepseek-ai/dsh-requirement-assessment-remote",
+      "sourceName": "@changanhua/dsh-requirement-assessment-remote",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/requirement-assessment/requirement-assessment-review",
+      "legacyName": "@deepseek-ai/dsh-requirement-assessment-review",
+      "sourceName": "@changanhua/dsh-requirement-assessment-review",
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,

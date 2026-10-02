@@ -10,7 +10,7 @@ Status: proposed
 
 ## Proposal
 
-[RIR-WP1 规格](../../../../docs/specs/2026-10-01-requirement-investment-review-wp1.md)拥有尚未实现的要求与验收案例。RIR 应拥有不可变评估、每次判断实际使用的输入，以及 subject-to-assessment 关联。复用 opaque ResourceRef identity 与现有 runtime 机制，通过只读投影向 Planning 展示关联。另一条线的 Planning UI 重构不是前置条件。
+[RIR-WP1 规格](../../../../docs/specs/2026-10-01-requirement-investment-review-wp1.md)拥有目标要求与验收案例。本分支已实现 domain 持久化、有界评估 runner、可信 Remote 与可选 UI；真实模型质量验收仍未验证。RIR 应拥有不可变评估、每次判断实际使用的输入，以及 subject-to-assessment 关联。复用 opaque ResourceRef identity 与现有 runtime 机制，通过只读投影向 Planning 展示关联。另一条线的 Planning UI 重构不是前置条件。
 
 ## Alternatives considered
 

@@ -654,6 +654,20 @@ describe('remaining branches', () => {
     expect(await manager.create()).toMatchObject({ ok: false })
   })
 
+  it('passes a requested Agent preset for both workspace and cwd Session creation', async () => {
+    const api = new FakeApiClient()
+    api.onCreate = () => Promise.resolve(ok({ sessionId: S1, agentPreset: 'thinking-desk' }))
+    const manager = new SessionManager(fakeRemote(api))
+
+    await manager.create({ workspaceId: 'w1' as never, sessionId: S1, agentPreset: 'thinking-desk' })
+    await manager.create({ cwd: '/tmp/thinking', agentPreset: 'thinking-desk' })
+
+    expect(api.callsOf('session.create')).toEqual([
+      { workspaceId: 'w1', sessionId: S1, agentPreset: 'thinking-desk' },
+      { cwd: '/tmp/thinking', agentPreset: 'thinking-desk' },
+    ])
+  })
+
   it('publishes a real Ungrouped summary from workspace-attach-failed', async () => {
     const api = new FakeApiClient()
     api.onCreate = () => Promise.resolve(err(new RemoteError('session/workspace-attach-failed', 'published but unattached', {

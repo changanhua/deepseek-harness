@@ -20,7 +20,9 @@
     "./src/*": "./src/*",
     "./package.json": "./package.json",
     "./knowledge.patch.yml": "./knowledge.patch.yml",
-    "./memory.patch.yml": "./memory.patch.yml"
+    "./memory.patch.yml": "./memory.patch.yml",
+    "./initiative.patch.yml": "./initiative.patch.yml",
+    "./investment-review.patch.yml": "./investment-review.patch.yml"
   },
   "files": [
     "lib/index.js",
@@ -29,7 +31,9 @@
     "skills",
     "lib/types/**/*.d.ts",
     "knowledge.patch.yml",
-    "memory.patch.yml"
+    "memory.patch.yml",
+    "initiative.patch.yml",
+    "investment-review.patch.yml"
   ],
   "license": "MIT",
   "private": true,
@@ -41,6 +45,7 @@
   "dependencies": {
     "@changanhua/dsh-planning-local": "workspace:^",
     "@changanhua/dsh-tool-planning": "workspace:^",
+    "@changanhua/dsh-tool-thinking-case": "workspace:^",
     "@changanhua/dsh-planning-remote": "workspace:^",
     "@changanhua/dsh-client-ui-planning": "workspace:^",
     "@deepseek-ai/dsh-skill-filesystem": "workspace:^",
@@ -50,7 +55,14 @@
     "@changanhua/dsh-tool-knowledge-base": "workspace:^",
     "@changanhua/dsh-memory-local": "workspace:^",
     "@changanhua/dsh-tool-memory": "workspace:^",
-    "@changanhua/dsh-command-memory": "workspace:^"
+    "@changanhua/dsh-command-memory": "workspace:^",
+    "@changanhua/dsh-initiative-local": "workspace:^",
+    "@changanhua/dsh-command-initiative": "workspace:^",
+    "@changanhua/dsh-tool-initiative": "workspace:^",
+    "@changanhua/dsh-requirement-assessment-local": "workspace:^",
+    "@changanhua/dsh-requirement-assessment-review": "workspace:^",
+    "@changanhua/dsh-requirement-assessment-remote": "workspace:^",
+    "@changanhua/dsh-client-ui-requirement-assessment": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^"
