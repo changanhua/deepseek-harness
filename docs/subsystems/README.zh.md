@@ -33,6 +33,7 @@
 | [approval.md](approval.zh.md) | 一次性用户审批 seam：`ApprovalRequest`、`ApprovalOutcome`、逐会话策略、审计事件和 answerer 约定 |
 | [side-effect-safety.md](side-effect-safety.zh.md) | 持久审批、执行租约、风险预算、动作账本与 UNKNOWN 对账恢复 |
 | [planning.md](planning.zh.md) | 规划对象、已采纳修订与执行边界 |
+| [eval.md](eval.zh.md) | 评测意图、记录的执行身份与决策一致性 |
 | [attachment.md](attachment.zh.md) | 持久图片标识与元数据、校验输入、经校验读取，以及 `AttachmentStore` seam |
 | [shell.md](shell.zh.md) | bash 执行器 seam：`ShellExecRequest`/`Spec`、`ShellRunResult`、后台 `ShellProcess` 句柄 |
 | [subprocess.md](subprocess.zh.md) | 子进程 seam：完全显式的 `SubprocessSpawnSpec`、基于偏移的输出读取器、不含分类的 `SubprocessOutcome`，以及受管 `DSH_*` 环境词汇 |

@@ -51,3 +51,19 @@ export {
   type EvalSuiteExecution,
   type RunEvalSuiteOptions,
 } from './runner.ts'
+export { serializeEvalContract, evalContractDigest } from './identity.ts'
+export { evalPlanSchema, parseEvalPlan, type EvalPlan } from './plan.ts'
+export {
+  resolvedExecutionManifestSchema,
+  parseResolvedExecutionManifest,
+  type ResolvedExecutionManifest,
+} from './manifest.ts'
+export {
+  evalGateDecisionSchema,
+  parseEvalGateDecision,
+  validateEvalDecisionContext,
+  formatEvalDecisionJson,
+  formatEvalDecisionMarkdown,
+  type EvalGateDecision,
+  type EvalDecisionContext,
+} from './decision.ts'

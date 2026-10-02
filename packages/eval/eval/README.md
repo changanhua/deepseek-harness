@@ -43,6 +43,12 @@ const json = formatEvalReportJson(report)
 
 Success returns ordered `EvalRun[]` plus an `EvalReport`. Schema errors throw. Cancellation, Host or executor exceptions, missing Session facts, missing results, and malformed executor scores remain explicit non-pass outcomes. A model grader carries its own Provider/model/prompt version and cannot override a deterministic failure.
 
+### Decision contracts
+
+Use `parseEvalPlan` for intent, `parseResolvedExecutionManifest` for recorded cell-attempt observations, and `parseEvalGateDecision` for conclusions. `validateEvalDecisionContext({ plan, manifests, decision })` checks exact content references, run/route/repeat bindings, consistent execution identities and fail-closed pass conditions. `formatEvalDecisionJson` and `formatEvalDecisionMarkdown` retain the same complete facts.
+
+Parsing is structural validation, not authentication. A Consumer must obtain observations from trusted owners and verify referenced report, verifier, integrity and budget receipts. No parser promotes a caller's JSON or the existing name-only `visibleSurface` into trusted facts. The [Eval reference](../../../docs/subsystems/eval.md) defines fields, digest ordering and ownership; the library does not execute a Plan or activate a Session.
+
 -----
 
 <a id="understand-the-implementation"></a>

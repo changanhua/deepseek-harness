@@ -1,0 +1,44 @@
+{
+  "issue": 50,
+  "baseCommit": "b86369bc26c5fbd1b58c96e727f6d3108db01844",
+  "branch": "codex/eval-trust-contracts",
+  "scope": "Pure Eval Plan, recorded cell-attempt manifest and gate decision contracts; structural consistency only",
+  "verification": {
+    "coreTests": {
+      "files": 6,
+      "passed": 51,
+      "failed": 0
+    },
+    "selectedSourceCoverage": {
+      "statements": "130/130",
+      "branches": "105/105",
+      "functions": "36/36",
+      "lines": "91/91"
+    },
+    "hostTypecheck": "passed",
+    "changedFileTypeAwareLint": "passed",
+    "fullBuild": "passed; 252 client artifacts",
+    "builtExports": "passed: Plan parse/digest, legacy manifest rejection and public exports",
+    "bilingualPairs": 5,
+    "gitDiffCheck": "passed",
+    "docSync": "failed in repository-wide checks; no diagnostic points to changed Eval source or documentation",
+    "adjacentReplay": {
+      "baselineFailures": 9,
+      "headFailures": 9,
+      "changedFailureNamesOrFirstMessages": 0,
+      "control": "Same built environment, restored master Eval source barrel for baseline, then restored candidate barrel. This is not a fresh independent checkout.",
+      "causes": [
+        "released Session headers missing required fields",
+        "missing escalation-rejected/session.jsonl fixture",
+        "shipped ACP profile returns internal error"
+      ]
+    }
+  },
+  "bounds": [
+    "Schemas, hashes and consistency validation do not authenticate producers or accept observations as trusted facts.",
+    "Trusted observation admission, evidence resolution, verifier-plan preapproval and freezing remain owner/consumer obligations.",
+    "Existing EvalRun/Report version 1 is not promoted to execution attestation.",
+    "No Plan executor, model call, storage ledger, statistical policy, budget enforcement, activation or personal deployment added.",
+    "Independent review not run for this work package; no subagents delegated."
+  ]
+}

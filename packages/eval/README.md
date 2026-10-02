@@ -35,6 +35,7 @@ The checked-in [`minimal-v1` suite](eval-session-snapshot/suites/minimal-v1/suit
 ## Related documentation
 
 - [Deterministic Eval decision](../../.agents/notes/implemented/architecture/2026-08-31-deterministic-eval-contract-and-snapshot-adapter.md) — package ownership, evidence classes, and rejected alternatives.
+- [Eval contracts](../../docs/subsystems/eval.md) — intent, recorded execution identities and decision consistency.
 - [ACP snapshot tests](../../.agents/notes/implemented/testing/2026-06-19-acp-snapshot-tests.md) — recording, replay, normalization, and application-launch owner.
 
 <a id="dev-note"></a>
