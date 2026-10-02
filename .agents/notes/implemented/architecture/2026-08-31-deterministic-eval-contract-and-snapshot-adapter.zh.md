@@ -24,6 +24,8 @@ DSH 已有录制会话的回放与快照基础设施，但没有包级词汇来�
 
 机器报告与 Markdown 报告使用套件路由/case 顺序，保留源码 revision、环境、可见 Tool/Skill 表面、Session 与 fixture provenance，统计四种结果，聚合成功率、失败样本以及拆分 Token/延迟指标，并合成显式不确定性而非丢弃缺失证据。
 
+`EvalPlan`、`ResolvedExecutionManifest` 和 `EvalGateDecision` 在同一纯库内区分意图、记录的观测与结论。解析器检查严格的版本化结构；上下文验证绑定精确内容引用与 cell attempt，并拒绝矛盾的通过结论。解析和哈希永不认证记录。Consumer 采取行动前，可信 owner 必须建立观测及 verifier/证据/预算来源。[Eval 参考页](../../../../docs/subsystems/eval.zh.md) 拥有该契约。现有回放记录仍是回放证据，不转换为执行证明。
+
 ## 考虑过的替代方案
 
 **使用模型 judge 或 embedding 分数。** 否决，因为第一道门禁必须无密钥、透明、确定且可回放。语义或事实 evaluator 以后可以消费相同的运行记录，而无需重新定义此结果词汇。
@@ -35,6 +37,8 @@ DSH 已有录制会话的回放与快照基础设施，但没有包级词汇来�
 **并发执行路由与 case。** 否决，因为回放按首次调用顺序把实时 session 绑定到录制脚本。在 replay 拥有更强的稳定绑定键以前，串行路由/case 执行是确定性基线。
 
 **把 invalid 与基础设施不确定性折叠为 failure。** 否决，因为格式错误的证据和中断的 harness 都不能说明模型行为。保留两种分类可以防止虚假的回归结论和虚假的通过。
+
+**把类型品牌、digest 或 verified 标志当作授权。** 拒绝，因为格式合法的序列化数据仍可能来自非可信调用方。分离契约防止意外复用字段；可信观测准入归生产 owner 和消费边界负责。通用 declared/resolved/observed/verified 阶梯不会增加认证能力，因此不引入。
 
 ## 后果
 

@@ -24,6 +24,8 @@ Outcomes fold with the precedence `invalid` over `infrastructure-uncertain` over
 
 Machine and Markdown reports use suite route/case order, retain source revision, environment, visible Tool/Skill surface, Session and fixture provenance, count all four outcomes, aggregate success/failure samples and split Token/latency metrics, and synthesize explicit uncertainty rather than dropping absent evidence.
 
+`EvalPlan`, `ResolvedExecutionManifest` and `EvalGateDecision` separate intent, recorded observations and conclusions within the same pure library. Their parsers check strict versioned shapes; context validation binds exact content references and cell attempts and rejects contradictory passes. Parsing and hashing never authenticate the records. Trusted owners must establish observations and verifier/evidence/budget provenance before a Consumer can act. The [Eval reference](../../../../docs/subsystems/eval.md) owns the contract. Existing replay runs remain replay evidence and are not converted into execution attestations.
+
 ## Alternatives considered
 
 **Use a model judge or embedding score.** Rejected because the first gate must be keyless, transparent, deterministic, and replayable. Semantic or factual evaluators may consume the same run records later without redefining this result vocabulary.
@@ -35,6 +37,8 @@ Machine and Markdown reports use suite route/case order, retain source revision,
 **Execute routes and cases concurrently.** Rejected because replay binds live sessions to recorded scripts by first-call order. Sequential route/case execution is the deterministic baseline until replay owns a stronger stable binding key.
 
 **Collapse invalid and infrastructure uncertainty into failure.** Rejected because malformed evidence and an interrupted harness say nothing about model behavior. Keeping both classes prevents false regression claims and false passes.
+
+**Treat a type brand, digest or verified flag as authority.** Rejected because valid serialized data can still come from an untrusted caller. Separate contracts prevent accidental field reuse; trusted observation admission belongs to the producing owner and consuming boundary. A generic declared/resolved/observed/verified ladder adds no authentication and is not introduced.
 
 ## Consequences
 

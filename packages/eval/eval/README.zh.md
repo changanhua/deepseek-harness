@@ -43,6 +43,12 @@ const json = formatEvalReportJson(report)
 
 成功时返回有序的 `EvalRun[]` 与一份 `EvalReport`。Schema 错误会抛出。取消、Host 或执行器异常、Session 事实缺失、结果缺失与格式错误的执行器分数保持为显式非通过结果。模型 grader 记录自身 Provider/model/prompt 版本，且不能覆盖确定性失败。
 
+### 决策契约
+
+用 `parseEvalPlan` 解析意图，`parseResolvedExecutionManifest` 解析记录的 cell-attempt 观测，`parseEvalGateDecision` 解析结论。`validateEvalDecisionContext({ plan, manifests, decision })` 检查精确内容引用、run/route/repeat 绑定、执行身份一致性，以及失败关闭的 pass 条件。`formatEvalDecisionJson` 和 `formatEvalDecisionMarkdown` 保留相同的完整事实。
+
+解析属于结构验证，不是认证。Consumer 必须从可信 owner 获取观测，并核验引用的报告、verifier、完整性和预算回执。任何解析器都不会把调用方 JSON 或现有仅含名称的 `visibleSurface` 升级为可信事实。[Eval 参考页](../../../docs/subsystems/eval.zh.md) 定义字段、digest 顺序和归属；此库不执行 Plan，也不激活 Session。
+
 -----
 
 <a id="understand-the-implementation"></a>

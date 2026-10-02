@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-31-deterministic-eval-contract-and-snapshot-adapter.md
-2026-08-31-deterministic-eval-contract-and-snapshot-adapter.md: af39c8ed2e664b0ee5ea1530d44370e6a615278d
-2026-08-31-deterministic-eval-contract-and-snapshot-adapter.zh.md: 12a07c66e0089b9e7a165f1216a1da16d010bae0
+2026-08-31-deterministic-eval-contract-and-snapshot-adapter.md: c5f28d637a70f0c22233e9496ba8f47662044d9e
+2026-08-31-deterministic-eval-contract-and-snapshot-adapter.zh.md: fbf893a0405016cfa20eed24cbbae7709ce7fcdc

@@ -35,6 +35,7 @@ eval 包组让调用方无需 judge 模型即可比较录制的 DSH 行为。`ev
 ## 相关文档
 
 - [确定性 Eval 决策](../../.agents/notes/implemented/architecture/2026-08-31-deterministic-eval-contract-and-snapshot-adapter.zh.md)——包归属、证据分类与被否决的替代方案。
+- [Eval 契约](../../docs/subsystems/eval.zh.md)——意图、记录的执行身份与决策一致性。
 - [ACP 快照测试](../../.agents/notes/implemented/testing/2026-06-19-acp-snapshot-tests.zh.md)——录制、回放、归一化与应用启动 owner。
 
 <a id="dev-note"></a>

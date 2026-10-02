@@ -33,6 +33,7 @@ One page per subsystem of the DeepSeek Harness: what it is, the data structures 
 | [approval.md](approval.md) | the one-shot user-approval seam: `ApprovalRequest`, `ApprovalOutcome`, per-session policy, audit events, and answerer contracts |
 | [side-effect-safety.md](side-effect-safety.md) | durable approval, execution leases, risk budgets, action ledger and UNKNOWN reconciliation |
 | [planning.md](planning.md) | planning objects, accepted revisions and execution boundaries |
+| [eval.md](eval.md) | evaluation intent, recorded execution identities and decision consistency |
 | [attachment.md](attachment.md) | durable image identity and metadata, validation inputs, verified reads, and the `AttachmentStore` seam |
 | [shell.md](shell.md) | the bash executor seam: `ShellExecRequest`/`Spec`, `ShellRunResult`, background `ShellProcess` handles |
 | [subprocess.md](subprocess.md) | the subprocess seam: fully-explicit `SubprocessSpawnSpec`, offset-based output readers, unclassified `SubprocessOutcome`, and the managed `DSH_*` environment vocabulary |
