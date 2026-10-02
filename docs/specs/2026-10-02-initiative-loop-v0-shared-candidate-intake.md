@@ -207,16 +207,15 @@ v0 只支持以下 lifecycle：
 
 ```text
 PROPOSED
-   ↓
-INVESTIGATING
-   ↓
-ASSESSABLE
-   ├─→ DEFERRED
-   ├─→ DROPPED
-   └─→ PROMOTED
+   ├─→ DEFERRED / DROPPED（Human）
+   └─→ INVESTIGATING
+          ├─→ DEFERRED / DROPPED（Human）
+          └─→ ASSESSABLE
+                 ├─→ DEFERRED / DROPPED（Human）
+                 └─→ PROMOTED（Human）
 ```
 
-允许 `DEFERRED → INVESTIGATING` 显式 reopen。
+Human 可以在提出后或调查中直接 defer / drop，无需先把 Candidate 标为 `ASSESSABLE`。允许 Human 显式执行 `DEFERRED → INVESTIGATING` reopen；Agent 只记录 disposition recommendation。
 
 不得支持：
 
@@ -437,7 +436,7 @@ initiative-planning-bridge
   human promotion → Planning Proposal
 ```
 
-只有 source / current conventions 证明拆分过细时才允许合并 package；不得把所有职责塞进 Planning 或 RIR owner。
+以上是职责边界，不要求各占一个 package。实际包数量按当前消费者、可替换性和生命周期确定，优先复用现有组合。Candidate 保持自己的 canonical owner，不得把所有职责塞进 Planning 或 RIR owner。
 
 v0 不要求独立 Web 页面。若实现者增加只读列表或轻入口，必须保持 consumer 角色且不能扩大权限。
 
@@ -473,6 +472,16 @@ v0 不要求独立 Web 页面。若实现者增加只读列表或轻入口，必
 6. 使用真实 RIR（若其 owner 已实现）创建 Assessment；
 7. 未经人类 promotion，Planning 不变化。
 
+随后必须通过真实 Human entry 跑通正向晋升：
+
+1. Human 读取并选择 exact Candidate revision，提供 rationale，显式执行 promotion；若选择 RIR Assessment，同时保留其固定基线与 drift 信息；
+2. 从 Planning 读取新建 Proposal，确认其为 pending，且可以追溯 Candidate id 与 exact version；
+3. 独立读取 Candidate，确认状态为 `PROMOTED`，并保存稳定的 Planning Proposal ref；
+4. Host restart 后重新读取两侧关系，以同一 idempotency key 重试该 promotion，确认返回原结果且未重复创建 Proposal；
+5. 确认没有自动 accept Proposal、修改 canonical Planning Item 或 dispatch Delivery / Queue。
+
+保留真实 Human entry 的调用、两侧 owner 的读取结果和重启后的重试证据。只直接调用底层 service 的测试不能代替该入口验收。RIR 尚不可用时，按第 8 节将 RIR vertical 标为 blocked / unverified；不带 Assessment 的显式 Human promotion 仍须完成上述验证。
+
 该案例不预设最终应 BUILD / DEFER / MODEL_ONLY。
 
 ### Case B — Agent candidate
@@ -503,7 +512,7 @@ v0 不要求独立 Web 页面。若实现者增加只读列表或轻入口，必
 - restart recovery；
 - evidence 与 counter-evidence 分离；
 - parent lineage；
-- legal / illegal lifecycle transition；
+- legal / illegal lifecycle transition，包括 Human 从 `PROPOSED` / `INVESTIGATING` 直接 defer / drop，以及 Agent 只能记录 recommendation；
 - Agent 无 promote 权限；
 - Human promotion 只创建 non-canonical Planning Proposal；
 - promotion 不 accept Planning Proposal；

@@ -26,7 +26,7 @@ DSH 已有 Planning、Delivery、Queue、副作用安全，以及 Trusted Eval�
 
 ## Acceptance criteria
 
-Human 与 Agent 分别通过不同的 trusted entry 创建 Candidate，最终汇入同一 durable contract。Agent 可以追加 bounded investigation evidence 而不获得新能力；Candidate 历史可跨重启恢复且 stale write 失败；exact Candidate revision 可由真实 RIR owner 评估；只有 Human promotion 能创建 Planning Proposal，且不自动 accept 或 dispatch Delivery。负面测试必须证明 Agent initiative、RIR route 与 investigation 都不能绕过现有 authority owner。
+Human 与 Agent 分别通过不同的 trusted entry 创建 Candidate，最终汇入同一 durable contract。Agent 可以追加 bounded investigation evidence 而不获得新能力，Human 可以在调查前或调查中 defer / drop Candidate。Candidate 历史可跨重启恢复且 stale write 失败。exact Candidate revision 可由真实 RIR owner 评估。真实 Human entry 将 exact revision 晋升为 pending Planning Proposal；独立读取确认两个 owner 的关联，重启后以同一 key 重试返回原结果且不重复创建。promotion 不自动 accept Proposal 或 dispatch Delivery。负面测试必须证明 Agent initiative、RIR route 与 investigation 都不能绕过现有 authority owner。
 
 ## Risks
 

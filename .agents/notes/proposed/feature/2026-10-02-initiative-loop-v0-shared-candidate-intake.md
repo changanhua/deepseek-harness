@@ -26,7 +26,7 @@ The [Initiative Loop v0 specification](../../../../docs/specs/2026-10-02-initiat
 
 ## Acceptance criteria
 
-A Human and an Agent can each create a Candidate through distinct trusted entry paths that converge on one durable contract. An Agent can append bounded investigation evidence without gaining capabilities, Candidate history survives restart and stale writes fail, an exact Candidate revision can be assessed by the real RIR owner, and only a Human promotion can create a Planning Proposal without accepting it or dispatching Delivery. Negative tests prove that Agent initiative, RIR routes, and investigation cannot bypass existing authority owners.
+A Human and an Agent can each create a Candidate through distinct trusted entry paths that converge on one durable contract. An Agent can append bounded investigation evidence without gaining capabilities, while a Human can defer or drop a Candidate before or during investigation. Candidate history survives restart and stale writes fail. An exact Candidate revision can be assessed by the real RIR owner. A real Human entry promotes an exact revision to a pending Planning Proposal; independent reads verify both owners' relation, and a same-key retry after restart returns the original result without duplication. Promotion neither accepts the Proposal nor dispatches Delivery. Negative tests prove that Agent initiative, RIR routes, and investigation cannot bypass existing authority owners.
 
 ## Risks
 
