@@ -17,6 +17,8 @@ kind: "package-library"
 
 参见[配置与命令](../README.zh.md)及 [Initiative 子系统](../../../docs/subsystems/initiative.zh.md)。
 
+读取分页携带覆盖 Workspace 全部 Candidate 记录的 `snapshotDigest`，不受过滤条件或分页影响，且不包含外部 RIR 关联。propose 和 investigate 可提供 `expectedSnapshotDigest`，在 owner 队列内、持久回执回放之后检查。可信 Host 可传入 `invocation.validateIntake`，核对其他 owner 后拒绝新的入口提交；该回调不授予权限，且不得重入 Initiative。模型 JSON 不能提供该回调。
+
 ## 不变量策略
 
 不发布 invariant 伴随模块：此包仅拥有定义与 schema，不拥有运行时投射。

@@ -34,13 +34,14 @@ export const investigationSchema = z.strictObject({
   recommendation: z.enum(['continue', 'assess', 'defer', 'drop', 'simplify', 'remove']).optional(),
 })
 const mutation = { key: id }
+const intakeSnapshot = { expectedSnapshotDigest: z.string().regex(/^[a-f0-9]{64}$/u).optional() }
 const target = { id: candidateId, expectedRecordVersion: version, expectedVersion: version }
 /** Strict commands shared by Human and Agent entry points; authority is absent from the JSON. */
 export const initiativeCommandSchema = z.discriminatedUnion('action', [
-  z.strictObject({ action: z.literal('propose'), ...mutation, kind: candidateKindSchema, trigger: text,
+  z.strictObject({ action: z.literal('propose'), ...mutation, ...intakeSnapshot, kind: candidateKindSchema, trigger: text,
     facts: candidateFactsSchema, sourceRefs: z.array(initiativeRefSchema).max(30).default([]),
     parents: z.array(candidateId).max(20).default([]) }),
-  z.strictObject({ action: z.literal('investigate'), ...mutation, ...target, facts: candidateFactsSchema,
+  z.strictObject({ action: z.literal('investigate'), ...mutation, ...intakeSnapshot, ...target, facts: candidateFactsSchema,
     completion: investigationSchema.shape.completion, blockedReason: text.optional(),
     recommendation: investigationSchema.shape.recommendation }),
   z.strictObject({ action: z.literal('disposition'), ...mutation, ...target,

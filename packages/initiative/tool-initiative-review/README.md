@@ -15,9 +15,9 @@ An explicitly started, restricted Agent Session reads one Planning Review and de
 
 Mount the optional `personal-planning/initiative-review.patch.yml` after the Planning and Initiative patches. Select the `initiative-review` Agent preset when explicitly starting a Session, then supply the Review id. The preset restricts the actual Tool executor to Review read and decide. An ordinary Session with broader tools is rejected by the consumer, including after its capabilities change.
 
-`initiative_review_read` takes `reviewId` and optional `candidateId`, `offset`, and `limit` (1–5). It returns the captured Review, exact Planning revision, referenced follow-up items, a Candidate page, digest, decision version and any processing result. Review claims and `acceptanceRef` remain unverified. Reads expose drift when the current Review differs from the consumed snapshot.
+`initiative_review_read` takes `reviewId` and optional `expectedContextDigest`, `candidateId`, `offset`, and `limit` (1–5). It returns the captured Review, exact Planning revision, referenced follow-up items, a Candidate page, `contextDigest`, decision version and any processing result. Review claims and `acceptanceRef` remain unverified. The digest binds the Review, exact reviewed revision, follow-up heads and the whole Workspace Candidate comparison snapshot, independent of pagination. Pass it as `expectedContextDigest` on subsequent comparison reads; a changed context rejects the page. External RIR relations are omitted because their owner is outside this snapshot. Reads expose drift when the current context differs from the consumed context.
 
-`initiative_review_decide` requires `reviewId`, `expectedDigest`, `expectedDecisionVersion`, `rationale` and `decision`. The decision is `{kind:"no-op"}`, `{kind:"create",candidateKind,claim}`, or `{kind:"enrich",candidateId,expectedRecordVersion,expectedCandidateVersion,observation}`. Enrichment appends a Review reference and an observation of at most 1024 characters while retaining earlier facts and immutable origin. It records an ongoing investigation, not a disposition or promotion.
+`initiative_review_decide` requires `reviewId`, `expectedContextDigest`, `expectedDecisionVersion`, `rationale` and `decision`. The decision is `{kind:"no-op"}`, `{kind:"create",candidateKind,claim}`, or `{kind:"enrich",candidateId,expectedRecordVersion,expectedCandidateVersion,observation}`. Enrichment appends a Review reference and an observation of at most 1024 characters while retaining earlier facts and immutable origin. It records an ongoing investigation, not a disposition or promotion.
 
 ## Configuration
 
@@ -26,6 +26,8 @@ Mount the optional `personal-planning/initiative-review.patch.yml` after the Pla
 ## Recovery
 
 The bridge stores intent before calling Initiative with a stable key. A lost acknowledgement recovers through the original authorized Session and exact decision, using Initiative's actor-bound durable replay. Another Session can read the pending record but cannot impersonate its owner. A committed decision, including no-op, is returned on subsequent consumption from any authorized Session in the Workspace. A definite Candidate CAS conflict is retained as a conflict; reread and submit a fresh decision version. Unknown failures retain the original intent. Each Review permits at most 16 attempts; histories are not silently evicted.
+
+Admission rechecks the complete context after Session flush. Candidate intake also checks the full-set fingerprint inside its serialized owner, and a Host-only guard rechecks Planning immediately before a new Candidate commit. Durable Candidate receipt replay runs first, so later context changes cannot turn an acknowledged write into a new decision. A prepared Planning-context conflict is retained as conflict and permits a fresh decision. These are optimistic admission checks, not a cross-owner transaction: Planning can change after its final check, and no-op can overlap later owner writes. Decision storage format 2 requires these context fingerprints and rejects earlier decision records without migration.
 
 ## Invariant policy
 

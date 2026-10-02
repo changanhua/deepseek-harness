@@ -3468,7 +3468,7 @@ Durably decide create, enrich or no-op for the exact Review read. No Planning or
   "properties": {
     "input_json": {
       "type": "string",
-      "description": "JSON: reviewId, expectedDigest, expectedDecisionVersion, rationale, decision (no-op, create or enrich)."
+      "description": "JSON: reviewId, expectedContextDigest, expectedDecisionVersion, rationale, decision (no-op, create or enrich)."
     }
   },
   "required": [
@@ -3489,7 +3489,7 @@ Read one Planning Review, its exact revision, existing Candidates and durable pr
   "properties": {
     "input_json": {
       "type": "string",
-      "description": "JSON: reviewId, optional candidateId, offset and limit (1 to 5)."
+      "description": "JSON: reviewId, optional expectedContextDigest for a continued comparison, candidateId, offset and limit (1 to 5)."
     }
   },
   "required": [

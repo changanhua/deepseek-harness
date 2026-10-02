@@ -19,6 +19,8 @@ See [setup and commands](../README.md) and the [Initiative subsystem](../../../d
 
 New RIR requests require an ASSESSABLE Candidate and fail before invoking the evaluator otherwise. A previously committed request with the same key, actor and payload replays its original receipt even after promotion, without another model call.
 
+Candidate reads fingerprint the complete Workspace Candidate set. Optional intake snapshot preconditions reject changed comparisons inside the same serialized queue as the write. Host-only intake validation runs immediately before a new durable write; matching receipts replay before both checks. This serializes Candidate changes but does not lock a separate Planning owner.
+
 ## Invariant policy
 
 No invariant companion is published because all exposed Candidate facts derive from one schema-validated atomic record, with no independent projection to reconcile.

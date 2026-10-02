@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/initiative.md
-initiative.md: 05580046767ab440f650e443c922777f9cb340dc
-initiative.zh.md: c6256a5556af74314f5ac5e0187a75d3763b177f
+initiative.md: b6c76573202b9bbb1a3fe6789508eab709390e71
+initiative.zh.md: d39b4f706c58c26fb00f94f165897bf0be69b204

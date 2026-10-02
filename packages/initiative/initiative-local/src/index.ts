@@ -90,7 +90,8 @@ export class LocalInitiative extends Initiative {
         })
       await scope.authorize()
       return structuredClone({ entries, total: matches.length,
-        nextOffset: parsed.data.offset + entries.length < matches.length ? parsed.data.offset + entries.length : null })
+        nextOffset: parsed.data.offset + entries.length < matches.length ? parsed.data.offset + entries.length : null,
+        snapshotDigest: digest({ workspaceId: scope.workspaceId, candidates: all }) })
     })
   }
   private view(candidate: InitiativeCandidate, selected: number): InitiativeView {
@@ -124,6 +125,11 @@ export class LocalInitiative extends Initiative {
         if (previous.digest !== inputDigest) throw new InitiativeError('idempotency-conflict', 'Candidate key already names a different payload or actor')
         return structuredClone(previous.result)
       }
+      if (invocation.validateIntake !== undefined && command.action !== 'propose' && command.action !== 'investigate')
+        throw new InitiativeError('invalid-input', 'Intake validation is only available for propose and investigate')
+      if ((command.action === 'propose' || command.action === 'investigate') && command.expectedSnapshotDigest !== undefined
+        && command.expectedSnapshotDigest !== digest({ workspaceId: scope.workspaceId, candidates: state.candidates }))
+        throw new InitiativeError('conflict', 'Candidate comparison snapshot changed; read the decision context again')
       const save = async () => {
         await scope.authorize()
         const validated = workspaceCandidatesSchema.parse(state)
@@ -144,6 +150,8 @@ export class LocalInitiative extends Initiative {
               throw new InitiativeError('capacity-exceeded', 'Candidate revision exceeds the readable view limit; narrow facts or source excerpts')
           }
         }
+        await invocation.validateIntake?.()
+        await scope.authorize()
         await table.put(scope.workspaceId, validated)
       }
       // Retain explicit uncertainty if the Session has no durability listener. Never fabricate durable verification.

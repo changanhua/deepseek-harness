@@ -14,6 +14,8 @@ The [Review consumer](../../../../packages/initiative/tool-initiative-review/REA
 
 The consumer records a frozen intent before a Candidate write. Recovery uses the original Session and key because Candidate receipts bind the actor; completed outcomes can be read from another authorized Session. Definite CAS conflicts permit a fresh decision, while uncertain outcomes cannot be overwritten. Capability restrictions are enforced by the Tool executor and rechecked at decision commits.
 
+Freshness follows the actual comparison basis rather than the Review alone: referenced Planning heads and the complete Candidate set can change a no-op or create decision. Owner-side Candidate checks prevent a bridge-only check from racing its write. Receipt replay must precede these checks because an acknowledged write is recovery, not a new decision; a stale uncommitted intent instead becomes conflict so it cannot pin the Review forever. The consumer uses optimistic admission rather than cross-owner transaction locks, retaining the local ownership and recovery boundaries.
+
 ## Alternatives considered
 
 **Generic Signal and Observer services** add lifecycle and scheduling contracts before a single feedback source proves useful. The bridge uses the existing Review contract and owns only its consumption result.
@@ -24,4 +26,4 @@ The consumer records a frozen intent before a Candidate write. Recovery uses the
 
 ## Consequences
 
-Feedback does not alter Planning or activate execution. An orphaned prepared decision requires the original Session to resume; the consumer neither wakes it nor transfers ownership. Fixed Review snapshots prevent changed follow-up fields from silently becoming a new decision. Loader tests cover restart, lost acknowledgement, CAS and denied capabilities; the bounded real-provider fixture assesses decision behavior on supplied isolated scenarios, not production frequency or long-term selection quality.
+Feedback does not alter Planning or activate execution. An orphaned prepared decision requires the original Session to resume; the consumer neither wakes it nor transfers ownership. Context identities cover referenced follow-up heads and Candidate comparisons. A changed comparison requires a new read; an already committed result remains stable. Loader tests cover restart, lost acknowledgement, CAS and denied capabilities; the bounded real-provider fixture assesses decision behavior on supplied isolated scenarios, not production frequency or long-term selection quality.

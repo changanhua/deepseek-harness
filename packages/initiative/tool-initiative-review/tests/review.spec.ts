@@ -11,7 +11,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 
 type View = Partial<z.infer<typeof attemptSchema>> & {
   review: PlanningBoardSnapshot['reviews'][number]
-  digest: string
+  contextDigest: string
   version: number
   trustedAcceptance?: string
 }
@@ -44,8 +44,109 @@ async function setup(root?: string, config?: Record<string, unknown>) {
   }
   return { ...h, call, review, lift: () => scope.dispose() }
 }
-const decide = (read: View, decision: unknown) => ({ reviewId: read.review.id, expectedDigest: read.digest,
+const decide = (read: View, decision: unknown) => ({ reviewId: read.review.id, expectedContextDigest: read.contextDigest,
   expectedDecisionVersion: read.version, rationale: 'Compared current outcome, evidence and existing work.', decision })
+
+it.each(['create', 'no-op'] as const)('rejects %s when the comparison set changes outside the returned page', async (kind) => {
+  const h = await setup()
+  await h.humanOK(propose('visible'))
+  const hidden = await h.humanOK(propose('outside-page'))
+  const read = await h.call({ reviewId: await h.review(), limit: 1 })
+  await h.humanOK(investigate(hidden, 'outside-page-change'))
+  const input = decide(read, kind === 'create' ? { kind, candidateKind: 'simplify', claim: 'Avoid a duplicate' } : { kind })
+  await expect(h.call(input, 'initiative_review_decide')).rejects.toThrow('changed')
+  expect((await h.read()).total).toBe(2)
+  expect(h.ctx.storageDomain.get('initiative_review_decisions')!.table('workspaces').get(h.workspace.id)).toBeUndefined()
+})
+
+it('rejects a create when another Candidate lands after bridge admission but before the owner write', async () => {
+  const h = await setup(); const read = await h.call({ reviewId: await h.review() })
+  const execute = h.ctx.initiative.execute.bind(h.ctx.initiative)
+  vi.spyOn(h.ctx.initiative, 'execute').mockImplementationOnce(async (...args) => {
+    await h.humanOK(propose('concurrent-candidate'))
+    return execute(...args)
+  })
+  await expect(h.call(decide(read, { kind: 'create', candidateKind: 'simplify', claim: 'Avoid a duplicate' }),
+    'initiative_review_decide')).rejects.toThrow('changed')
+  expect((await h.read()).total).toBe(1)
+})
+
+it('rechecks no-op context after flushing the initiating Session', async () => {
+  const h = await setup(); const read = await h.call({ reviewId: await h.review() })
+  const flush = h.ctx.sessions.flush.bind(h.ctx.sessions)
+  vi.spyOn(h.ctx.sessions, 'flush').mockImplementationOnce(async (session) => {
+    await h.humanOK(propose('during-flush'))
+    return flush(session)
+  })
+  await expect(h.call(decide(read, { kind: 'no-op' }), 'initiative_review_decide')).rejects.toThrow('changed')
+  expect(h.ctx.storageDomain.get('initiative_review_decisions')!.table('workspaces').get(h.workspace.id)).toBeUndefined()
+})
+
+it('rejects a decision after the referenced follow-up head changes with an unchanged Review', async () => {
+  const h = await setup(); const reviewId = await h.review()
+  const board = await h.ctx.planning.snapshot(h.access())
+  const source = board.items[0]!.revisions[0]!
+  const draft = { title: 'Follow-up', intent: source.intent, scope: source.scope, acceptance: source.acceptance,
+    estimate: source.estimate, reviewAt: null, sources: [{ kind: 'manual' as const, text: 'Follow-up source' }] }
+  const followup = await h.ctx.planning.execute(h.access(), { kind: 'create', requestId: 'follow-up',
+    expectedBoardVersion: board.version, lane: 'inbox', itemId: 'follow-up', fromReviewId: reviewId, ...draft })
+  const before = await h.ctx.planning.snapshot(h.access())
+  const read = await h.call({ reviewId })
+  await h.ctx.planning.execute(h.access(), { kind: 'revise', requestId: 'revise-follow-up', expectedBoardVersion: before.version,
+    itemId: followup.itemId!, expectedRevisionId: followup.revisionId!, ...draft, intent: 'A materially different follow-up' })
+  expect((await h.ctx.planning.snapshot(h.access())).reviews).toEqual(before.reviews)
+  await expect(h.call(decide(read, { kind: 'no-op' }), 'initiative_review_decide')).rejects.toThrow('changed')
+})
+
+it('pins pagination to one context and rejects a newly added Candidate', async () => {
+  const h = await setup(); const reviewId = await h.review()
+  await h.humanOK(propose('one')); await h.humanOK(propose('two'))
+  const first = await h.call({ reviewId, limit: 1 })
+  const second = await h.call({ reviewId, offset: 1, limit: 1, expectedContextDigest: first.contextDigest })
+  expect(second.contextDigest).toBe(first.contextDigest)
+  await h.humanOK(propose('three'))
+  await expect(h.call({ reviewId, offset: 1, expectedContextDigest: first.contextDigest })).rejects.toThrow('changed')
+  await expect(h.call(decide(first, { kind: 'create', candidateKind: 'simplify', claim: 'Outdated comparison' }),
+    'initiative_review_decide')).rejects.toThrow('changed')
+})
+
+it('settles a recovered prepared Planning conflict so the Review can be decided again', async () => {
+  const h = await setup(); const reviewId = await h.review()
+  const read = await h.call({ reviewId })
+  const input = decide(read, { kind: 'create', candidateKind: 'simplify', claim: 'Frozen comparison' })
+  vi.spyOn(h.ctx.initiative, 'execute').mockRejectedValueOnce(new Error('before Candidate write'))
+  await expect(h.call(input, 'initiative_review_decide')).rejects.toThrow('before Candidate write')
+  const board = await h.ctx.planning.snapshot(h.access())
+  const revision = board.items[0]!.revisions[0]!
+  await h.ctx.planning.execute(h.access(), { kind: 'create', requestId: 'new-followup', expectedBoardVersion: board.version,
+    itemId: 'new-followup', fromReviewId: reviewId, lane: 'inbox', reviewAt: null, title: 'Existing remedy', intent: 'Already handled',
+    scope: [], acceptance: [], estimate: revision.estimate, sources: [{ kind: 'manual', text: 'Concurrent follow-up' }] })
+  await expect(h.call(input, 'initiative_review_decide')).rejects.toThrow('changed')
+  const record = h.ctx.storageDomain.get('initiative_review_decisions')!.table('workspaces').get(h.workspace.id) as {
+    reviews: Record<string, Array<{ phase: string }>>
+  }
+  expect(record.reviews[reviewId]!.at(-1)!.phase).toBe('conflict')
+  const next = await h.call({ reviewId })
+  expect((await h.call(decide(next, { kind: 'no-op' }), 'initiative_review_decide')).phase).toBe('committed')
+  expect((await h.read()).total).toBe(0)
+})
+
+it('replays a lost acknowledgement before checking later Candidate and Planning changes', async () => {
+  const h = await setup(); const reviewId = await h.review(); const read = await h.call({ reviewId })
+  const input = decide(read, { kind: 'create', candidateKind: 'simplify', claim: 'One recorded decision' })
+  const table = h.ctx.storageDomain.get('initiative_review_decisions')!.table('workspaces')
+  const put = table.put.bind(table); let writes = 0
+  vi.spyOn(table, 'put').mockImplementation(async (...args) => { if (++writes === 2) throw new Error('receipt lost'); return put(...args) })
+  await expect(h.call(input, 'initiative_review_decide')).rejects.toThrow('receipt lost')
+  await h.humanOK(propose('later-candidate'))
+  const board = await h.ctx.planning.snapshot(h.access())
+  await h.ctx.planning.execute(h.access(), { kind: 'create', requestId: 'later-followup', expectedBoardVersion: board.version,
+    itemId: 'later-followup', fromReviewId: reviewId, lane: 'inbox', reviewAt: null, title: 'Later remedy', intent: 'After the Candidate committed',
+    scope: [], acceptance: [], estimate: board.items[0]!.revisions[0]!.estimate, sources: [{ kind: 'manual', text: 'Later observation' }] })
+  expect((await h.call(input, 'initiative_review_decide')).phase).toBe('committed')
+  expect((await h.read()).total).toBe(2)
+  expect((await h.call({ reviewId }) as View & { drift: boolean }).drift).toBe(true)
+})
 
 it('creates once, retains unknown evidence, and replays after restart without changing Planning', async () => {
   let h = await setup(); const id = await h.review(); const before = await h.ctx.planning.snapshot(h.access())
@@ -101,7 +202,7 @@ it('recovers the original Candidate receipt after a lost bridge settlement', asy
 
 it('rejects stale input and a broad tool surface through the executor', async () => {
   const h = await setup(); const read = await h.call({ reviewId: await h.review() })
-  await expect(h.call({ ...decide(read, { kind: 'no-op' }), expectedDigest: '0'.repeat(64) }, 'initiative_review_decide')).rejects.toThrow('changed')
+  await expect(h.call({ ...decide(read, { kind: 'no-op' }), expectedContextDigest: '0'.repeat(64) }, 'initiative_review_decide')).rejects.toThrow('changed')
   expect((await h.tool(propose())).isError).toBe(true)
   await h.lift()
   await expect(h.call(decide(read, { kind: 'no-op' }), 'initiative_review_decide')).rejects.toThrow('restricted')

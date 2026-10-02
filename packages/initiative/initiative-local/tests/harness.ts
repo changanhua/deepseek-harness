@@ -30,7 +30,7 @@ import LocalAssessment from '../../../requirement-assessment/requirement-assessm
 import Review from '../../../requirement-assessment/requirement-assessment-review/src/index.ts'
 
 export async function boot(existingRoot?: string, maxWorkspaceBytes?: number, assessmentAdapter?: LlmAdapter,
-  extensions: Array<{ name: string; plugin: unknown; config?: Record<string, unknown> }> = []) {
+  extensions: Array<{ name: string; plugin: unknown; config?: Record<string, unknown>; importOnly?: boolean }> = []) {
   const root = existingRoot ?? await mkdtemp(join(tmpdir(), 'dsh-initiative-test-'))
   const cwd = join(root, 'project')
   await mkdir(cwd, { recursive: true })
@@ -63,7 +63,8 @@ export async function boot(existingRoot?: string, maxWorkspaceBytes?: number, as
     ['@changanhua/dsh-initiative-local', LocalInitiative], ['@changanhua/dsh-command-initiative', CommandInitiative], ['@changanhua/dsh-tool-initiative', ToolInitiative],
   ])
   for (const extension of extensions) {
-    rows.push({ name: extension.name, config: { ...extension.config, ownershipRoot: join(root, `${extension.name}-owner`) } })
+    if (!extension.importOnly)
+      rows.push({ name: extension.name, config: { ...extension.config, ownershipRoot: join(root, `${extension.name}-owner`) } })
     modules.set(extension.name, extension.plugin)
   }
   await writeFile(configPath, JSON.stringify(rows, null, 2))

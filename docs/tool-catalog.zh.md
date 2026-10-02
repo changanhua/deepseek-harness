@@ -3473,7 +3473,7 @@
   "properties": {
     "input_json": {
       "type": "string",
-      "description": "JSON: reviewId, expectedDigest, expectedDecisionVersion, rationale, decision (no-op, create or enrich)."
+      "description": "JSON: reviewId, expectedContextDigest, expectedDecisionVersion, rationale, decision (no-op, create or enrich)."
     }
   },
   "required": [
@@ -3494,7 +3494,7 @@ Source: [`packages/initiative/tool-initiative-review/src/index.ts`](../packages/
   "properties": {
     "input_json": {
       "type": "string",
-      "description": "JSON: reviewId, optional candidateId, offset and limit (1 to 5)."
+      "description": "JSON: reviewId, optional expectedContextDigest for a continued comparison, candidateId, offset and limit (1 to 5)."
     }
   },
   "required": [

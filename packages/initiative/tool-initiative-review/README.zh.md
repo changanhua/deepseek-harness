@@ -15,9 +15,9 @@ kind: "package-reference"
 
 在 Planning 和 Initiative patch 之后挂载可选的 `personal-planning/initiative-review.patch.yml`。显式启动 Session 时选择 `initiative-review` Agent 预设，然后提供 Review id。预设在真实 Tool 执行器中只允许读取和决定复盘反馈。普通 Session 若拥有更广的工具权限会被消费者拒绝；能力发生变化后同样重新检查。
 
-`initiative_review_read` 接受 `reviewId`，以及可选的 `candidateId`、`offset` 和 `limit`（1–5）。结果包含捕获的 Review、精确 Planning revision、关联后续事项、Candidate 分页、digest、决策版本及已有处理结果。Review 主张和 `acceptanceRef` 均不表示已核验。当前 Review 与已消费快照不同时，读取结果明确显示漂移。
+`initiative_review_read` 接受 `reviewId`，以及可选的 `expectedContextDigest`、`candidateId`、`offset` 和 `limit`（1–5）。结果包含捕获的 Review、精确 Planning revision、关联后续事项、Candidate 分页、`contextDigest`、决策版本及已有处理结果。Review 主张和 `acceptanceRef` 均不表示已核验。摘要绑定 Review、被复盘的精确 revision、follow-up heads 和整个 Workspace 的 Candidate 比较快照，不受分页影响。后续比较读取携带 `expectedContextDigest`，上下文变化时拒绝该页。外部 RIR 关联不在此快照的 owner 范围内，因此不返回。当前上下文与已消费上下文不同时，读取结果明确显示漂移。
 
-`initiative_review_decide` 要求 `reviewId`、`expectedDigest`、`expectedDecisionVersion`、`rationale` 和 `decision`。决策为 `{kind:"no-op"}`、`{kind:"create",candidateKind,claim}` 或 `{kind:"enrich",candidateId,expectedRecordVersion,expectedCandidateVersion,observation}`。补充操作追加 Review 引用和最多 1024 字符的观察，同时保留先前事实与不可变来源。它记录进行中的调查，不进行最终处置或晋升。
+`initiative_review_decide` 要求 `reviewId`、`expectedContextDigest`、`expectedDecisionVersion`、`rationale` 和 `decision`。决策为 `{kind:"no-op"}`、`{kind:"create",candidateKind,claim}` 或 `{kind:"enrich",candidateId,expectedRecordVersion,expectedCandidateVersion,observation}`。补充操作追加 Review 引用和最多 1024 字符的观察，同时保留先前事实与不可变来源。它记录进行中的调查，不进行最终处置或晋升。
 
 ## 配置
 
@@ -26,6 +26,8 @@ kind: "package-reference"
 ## 恢复
 
 桥接先持久保存意图，再使用稳定 key 调用 Initiative。回执丢失时，由原已授权 Session 使用完全相同的决策恢复，复用 Initiative 绑定 actor 的持久回放。其他 Session 可以读取待恢复记录，但不能冒充原 owner。同一 Workspace 内任何已授权 Session 再次消费时，已提交决策（包括不行动）直接返回。确定的 Candidate CAS 冲突会保存为冲突；重新读取后可提交新的决策版本。结果不确定的失败保留原意图。每条 Review 最多 16 次尝试，不静默淘汰历史。
+
+准入在 Session flush 后重新检查完整上下文。Candidate 入口还在自身串行 owner 内检查全集指纹，并通过仅 Host 可提供的检查函数，在新 Candidate 提交前再次核对 Planning。持久 Candidate 回执优先回放，因此之后的上下文变化不能把已确认写入变成新决策。prepared 恢复时的 Planning 上下文冲突会保存为 conflict，允许重新决策。这些是乐观准入检查，不是跨 owner 事务：Planning 可在最后一次检查后变化，no-op 也可能与之后的 owner 写入重叠。决策存储格式 2 要求这些上下文指纹，拒绝旧决策记录，不自动迁移。
 
 ## 不变量策略
 
