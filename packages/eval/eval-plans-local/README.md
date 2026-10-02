@@ -25,7 +25,7 @@ Load approved project Plans without trusting a file to authorize its own credent
 <a id="use-this-package"></a>
 ## Use this package
 
-Start from [the versioned example](examples/minimal-v1.plan.json) and the [setup guide](../../../docs/cookbook/trusted-eval-and-budget.md). Mount this provider with Workspace Registry and a private synchronous Storage Domain; the [tested Profile](tests/fixtures/profile/plans.patch.yml) contains explicit source and capacity configuration.
+Start from [the versioned example](examples/minimal-v1.plan.json) and the [setup guide](../../../docs/cookbook/trusted-eval-and-budget.md). Mount this provider with Workspace Registry and a private synchronous Storage Domain; the [tested Profile](tests/fixtures/profile/plans.patch.yml) contains explicit source and capacity configuration. Live sources require owner-verified finite budget authority with expiry and an explicit positive `maxTokens` on every route. A pinned Plan can exempt only keyless replay from budget admission.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

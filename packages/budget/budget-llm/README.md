@@ -57,7 +57,7 @@ This package does not directly rewrite prompt prefixes; its Consumers own prompt
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- Text input uses a labeled byte-based estimate. Images without a trustworthy Token bound are refused; missing cache usage fields are not treated as zero. This does not perform monetary billing.
+- Text input uses a labeled byte-based estimate. Images without a trustworthy Token bound are refused; missing cache usage fields are not treated as zero. This does not perform monetary billing. Agent-level retries start a fresh stream request identity; attempt ordinals identify waterfall re-entry within one stream. Cross-retry-chain correlation and behavioral acceptance remain separate work.
 
 <a id="dev-note"></a>
 ### Dev Note

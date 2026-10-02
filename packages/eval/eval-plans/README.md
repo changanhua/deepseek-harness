@@ -25,7 +25,7 @@ Discover an approved Plan version and obtain a fresh preflight result before res
 <a id="use-this-package"></a>
 ## Use this package
 
-Use the [local provider](../eval-plans-local/README.md) for project files. Host Consumers supply the exact live Workspace and an authorization callback; browser and command input selects only id/version.
+Use the [local provider](../eval-plans-local/README.md) for project files. Host Consumers supply the exact live Workspace and an authorization callback; browser and command input selects only id/version. The Host-only `resolvedRequirements` retains approved Tool/Skill id/source/digest sets, is deeply frozen and bound into `resolvedDigest`, and supplies expectations for comparison with actual execution observations. Its presence is not a GateDecision; `checks` and `ready` report current verification.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

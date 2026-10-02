@@ -31,7 +31,7 @@ Goal 及其 Session 预算存在后，可使用 `scope: "goal"`。Goal 预算继
 
 [已验证的 Plan 配置](../../packages/eval/eval-plans-local/tests/fixtures/profile/plans.patch.yml)展示完整来源结构。设置受信绝对 `root`、相对 `planFile` 与 `suiteFile`、批准身份、明确的文件/cell 上限、所需产物身份及凭据模式。`workspaceId: null` 选择该确切根目录对应的已注册 Workspace；非空 id 还固定 registry 身份。将 `eval_plan_admissions` 路由到私有同步后端。
 
-在 Host 配置中分别定义无密钥回放和真实调用。`mode: live` 要求 Plan 凭据引用与明确的 Host grant 匹配，且所有绑定凭据均已配置。必需预算必须由 Budget owner 解析。预算豁免只由完整的 Host 固定 Plan 授权，修改项目文件不能自行获取豁免。
+在 Host 配置中分别定义无密钥回放和真实调用。`mode: live` 要求匹配且已配置的凭据授权、`budget.required: true` 及 Budget owner 的确切引用，并要求每条 route 提供正整数 `maxTokens`。预算祖先链必须具备有限资源上限和未过期的截止时间；撤销、未知用量或祖先额度耗尽均阻止准入。只有无密钥回放可使用 Host 固定的预算豁免。Host 对 Plan 内容的批准不能替代真实调用的消费授权。
 
 挂载 `command-eval-plan`，明确配置由 Host 选择的 `entrypoint` 和 `maxOutputBytes`。使用发现结果中的相同 Plan id/version：
 

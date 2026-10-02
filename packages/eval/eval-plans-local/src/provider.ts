@@ -126,6 +126,10 @@ export class LocalEvalPlans extends EvalPlans {
     await check(plan.id, 'workspace-policy', async () => await realpathNormalize(entry.source.root) === access.workspace.path)
     await check(plan.id, 'entrypoint-authorized', () => plan.allowedEntrypoints.includes(access.entrypoint))
     for (const route of plan.routes) {
+      if (entry.source.mode === 'live') await check(route.id, 'output-reservation-bound', () => {
+        const bound = route.parameters.maxTokens
+        return typeof bound === 'number' && Number.isSafeInteger(bound) && bound > 0
+      })
       await check(route.id, 'provider-model-available', async () => this.ctx.get('llm')?.resolveModelInfo(route.provider, route.model, signal))
       await check(route.id, 'preset-identity', async () => {
         const presets = this.ctx.get('agentPresets')
@@ -165,17 +169,20 @@ export class LocalEvalPlans extends EvalPlans {
       return grant.reference
     })
     await check(plan.id, 'budget-authority', () => {
-      if (!plan.budget.required) return { exemption: 'host-pinned-plan' }
+      if (!plan.budget.required) return entry.source.mode === 'keyless' ? { exemption: 'host-pinned-keyless-plan' } : false
       const ref = plan.budget.authorizationRef
       if (ref.version !== '1') return false
       const owner = this.ctx.get('budget')
       if (!owner) return false
       let budget = owner.inspect({ ...ref, version: '1' })
       const views = []
+      const deadline = budget.deadline
+      let bounded = false
       while (true) {
         if (budget.scope.revoked || budget.unknownRequests > 0 || budget.remainingMs === 0) return false
         for (const key of ['requests', 'inputTokens', 'outputTokens', 'totalTokens'] as const) {
           const ceiling = budget.scope.limits[key]
+          if (ceiling !== null) bounded = true
           if (ceiling !== null && budget.consumed[key] + budget.reserved[key] >= ceiling) return false
         }
         const { remainingMs: _remainingMs, ...identity } = budget
@@ -183,13 +190,15 @@ export class LocalEvalPlans extends EvalPlans {
         if (budget.scope.parentId === null) break
         budget = owner.inspect(budget.scope.parentId)
       }
+      if (entry.source.mode === 'live' && (!bounded || deadline === null)) return false
       return views
     })
     await this.access(access, signal)
     if (generation !== this.generation) throw new EvalPlanError('conflict', 'Plan generation changed during preflight')
+    const resolvedRequirements = structuredClone({ tools: entry.source.requiredTools, skills: entry.source.requiredSkills })
     const data = { mode: entry.source.mode, plan: structuredClone(plan), suite: structuredClone(suite), summary: this.summary(entry),
-      checks,
-      ready: checks.every(value => value.ok), resolvedDigest: evalContractDigest({ plan, suite, checks, observed,
+      checks, resolvedRequirements,
+      ready: checks.every(value => value.ok), resolvedDigest: evalContractDigest({ plan, suite, checks, observed, resolvedRequirements,
         sourcePolicy: entry.source }) }
     freeze(data)
     this.resolutions.set(data, { generation, workspace: access.workspace, entrypoint: access.entrypoint })

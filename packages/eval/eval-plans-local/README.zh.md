@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-从[版本化示例](examples/minimal-v1.plan.json)和[配置指南](../../../docs/cookbook/trusted-eval-and-budget.zh.md)开始。将本实现与 Workspace Registry、私有同步 Storage Domain 一起挂载；[已验证的 Profile](tests/fixtures/profile/plans.patch.yml)包含明确的来源和容量配置。
+从[版本化示例](examples/minimal-v1.plan.json)和[配置指南](../../../docs/cookbook/trusted-eval-and-budget.zh.md)开始。将本实现与 Workspace Registry、私有同步 Storage Domain 一起挂载；[已验证的 Profile](tests/fixtures/profile/plans.patch.yml)包含明确的来源和容量配置。 真实调用来源要求 owner 验证的有限预算及到期时间，每条 route 必须明确设置正数 `maxTokens`。固定 Plan 只能豁免无密钥回放的预算准入。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现

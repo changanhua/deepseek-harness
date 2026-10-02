@@ -56,11 +56,11 @@
             root: !!js process.cwd()
             planFile: plan.json
             suiteFile: suite.json
-            mode: keyless
+            mode: !!js process.env.DSH_PLAN_FIXTURE_MODE
             approvedPlan: !!js JSON.parse(process.env.DSH_PLAN_FIXTURE_APPROVAL)
             maxFileBytes: 131072
             maxCells: 20
-            credentialGrant: null
+            credentialGrant: !!js JSON.parse(process.env.DSH_PLAN_FIXTURE_GRANT)
             requiredTools: []
             requiredSkills: []
     - id: command-eval-plan

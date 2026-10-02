@@ -1,4 +1,4 @@
-import type { EvalPlan, EvalSuite } from '@changanhua/dsh-eval'
+import type { EvalPlan, EvalSuite, ResolvedExecutionManifest } from '@changanhua/dsh-eval'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 
 /** Host entrypoint authority; wire callers cannot supply the live Workspace or authorize callback. */
@@ -33,6 +33,11 @@ export interface ResolvedEvalPlan {
   readonly plan: EvalPlan
   readonly suite: EvalSuite
   readonly summary: EvalPlanSummary
+  /** Host-approved capability expectations, frozen and bound into resolvedDigest; checks report their current verification. */
+  readonly resolvedRequirements: {
+    readonly tools: readonly Readonly<ResolvedExecutionManifest['subject']['tools'][number]>[]
+    readonly skills: readonly Readonly<ResolvedExecutionManifest['subject']['skills'][number]>[]
+  }
   readonly checks: readonly EvalPreflightCheck[]
   readonly ready: boolean
   readonly resolvedDigest: string

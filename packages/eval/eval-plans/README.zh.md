@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-项目文件使用[本地实现](../eval-plans-local/README.zh.md)。Host 调用方提供确切的存活 Workspace 和授权回调；浏览器及命令输入只选择 id/version。
+项目文件使用[本地实现](../eval-plans-local/README.zh.md)。Host 调用方提供确切的存活 Workspace 和授权回调；浏览器及命令输入只选择 id/version。 仅供 Host 使用的 `resolvedRequirements` 保留批准的 Tool/Skill id/source/digest 集合，经过深冻结并绑定到 `resolvedDigest`，供后续与实际执行观测比对。字段存在不代表 GateDecision；`checks` 和 `ready` 表示当前验证结果。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现

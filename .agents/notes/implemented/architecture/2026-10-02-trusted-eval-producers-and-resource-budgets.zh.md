@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-项目 Plan 实现接受受信根目录下、由 Host 批准的完整内容身份。Workspace 访问使用存活 registry 对象和 Host 授权回调。发现结果不含路径。解析检查当前可用性与内容身份，准入随后重新验证 owner 签发的不可变解析对象，再提交幂等运行标识，不执行 subject、grader 或 verifier。
+项目 Plan 实现接受受信根目录下、由 Host 批准的完整内容身份。Workspace 访问使用存活 registry 对象和 Host 授权回调。发现结果不含路径。解析检查当前可用性与内容身份，准入随后重新验证 owner 签发的不可变解析对象，再提交幂等运行标识，不执行 subject、grader 或 verifier。 Host 内容批准只允许无密钥回放使用预算豁免。真实调用 Plan 必须有 owner 验证的有限预算、到期时间和每条 route 的输出上限。冻结的能力期望随 Host 专用解析对象及其摘要传递，供下游执行比对批准身份和观测结果；预检本身不证明执行。
 
 Eval 工作目录桥接取得 provider 签发的完整 revision，并使用真实 Queue Attempt id 打开现有 RepositoryWorkspace 租约。准备阶段从确切 commit 复制受限 fixture blob。确定且已静止的完成会移除检出；不确定性会保留检出并产生 Queue unknown Attention。独占准备标记拒绝在重启后复用不确定目录。本桥接既不拥有 Git 状态转换，也不替换 Queue。
 

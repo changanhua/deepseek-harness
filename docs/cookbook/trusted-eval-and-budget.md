@@ -31,7 +31,7 @@ Parse the Suite and compute `evalContractDigest(parsedSuite)`, place that identi
 
 The [tested Plan overlay](../../packages/eval/eval-plans-local/tests/fixtures/profile/plans.patch.yml) shows the complete source shape. Set a trusted absolute `root`, relative `planFile` and `suiteFile`, the approved identity, explicit file/cell bounds, required artifact identities, and a credential mode. `workspaceId: null` selects the registered Workspace at that exact root; a non-null id also pins its registry identity. Route `eval_plan_admissions` to a private synchronous backend.
 
-Keep keyless replay and live calls separate in Host configuration. `mode: live` requires the Plan's credential reference to match an explicit Host grant and every bound credential to be configured. Required budgets must resolve through the Budget owner. A budget exemption is authorized only by the complete Host-pinned Plan; changing the project file cannot grant it.
+Keep keyless replay and live calls separate in Host configuration. `mode: live` requires matching configured credential authority, `budget.required: true` with an exact Budget-owner reference, and a positive integer `maxTokens` for every route. The budget ancestor chain must contain a finite resource ceiling and a non-expired deadline; revocation, unknown usage or exhausted ancestors block admission. Only keyless replay may use a Host-pinned budget exemption. Host approval of Plan contents never substitutes for live spending authority.
 
 Mount `command-eval-plan` with an explicit Host-selected `entrypoint` and `maxOutputBytes`. Use the same Plan id/version from discovery:
 

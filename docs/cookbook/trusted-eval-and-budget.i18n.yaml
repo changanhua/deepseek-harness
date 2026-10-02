@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/cookbook/trusted-eval-and-budget.md
-trusted-eval-and-budget.md: ae2c8ff0b7c0b5e5a064a4805247a9e0480fa4b5
-trusted-eval-and-budget.zh.md: 3c6c7ad5c30bc8f215b29f272f791599f3b7cb01
+trusted-eval-and-budget.md: a82e593a3afc1181237f980a95abe7c53e0d4696
+trusted-eval-and-budget.zh.md: cd276e54102bb7c4af2aeff0e3bcb566d0c3c352

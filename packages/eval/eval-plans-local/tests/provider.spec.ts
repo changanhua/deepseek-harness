@@ -13,6 +13,7 @@ import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { realpathNormalize } from '@deepseek-ai/dsh-workspace'
 import type { EvalPlanAccess } from '@changanhua/dsh-eval-plans'
 import LocalEvalPlans from '../src/index.ts'
+import type { Config } from '../src/config.ts'
 import LocalBudget from '../../../budget/budget-local/src/index.ts'
 import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
 
@@ -34,7 +35,7 @@ async function fixture() {
   await writeFile(join(root, 'plan.json'), JSON.stringify(plan))
   await writeFile(join(root, 'suite.json'), JSON.stringify(suite))
   const workspace = { id: 'workspace', path: await realpathNormalize(root) } as Workspace
-  const config = { maxAdmissions: 10, maxLedgerBytes: 32768, sources: [{ workspaceId: workspace.id, root, mode: 'keyless' as const,
+  const config: Config = { maxAdmissions: 10, maxLedgerBytes: 32768, sources: [{ workspaceId: workspace.id, root, mode: 'keyless' as const,
     planFile: 'plan.json', suiteFile: 'suite.json', approvedPlan: { id: plan.id, version: plan.version, digest: evalContractDigest(plan) },
     maxFileBytes: 65536, maxCells: 20, credentialGrant: null, requiredTools: [], requiredSkills: [] }] }
   const pool = new MemoryMediaPool()
@@ -145,5 +146,84 @@ test.each(['revoke', 'exhaust'] as const)('preflight rechecks parent budget afte
     expect(after.ready).toBe(false)
     expect(after.checks).toContainEqual({ subject: 'plan', code: 'budget-authority', ok: false })
     await expect(h.ctx.evalPlans.admit(f.access, before, 'stale-budget')).rejects.toMatchObject({ code: 'conflict' })
+  } finally { await h.close(); await f.clean() }
+})
+
+
+test.each(['exemption', 'missing-owner', 'forged-reference', 'missing-output', 'no-expiry', 'no-ceiling', 'valid'] as const)(
+  'live admission enforces resource authority: %s', async (scenario) => {
+    const f = await fixture()
+    const h = await f.boot(true, async (ctx) => {
+      const source = f.config.sources[0]
+      if (!source) throw new Error('fixture source missing')
+      source.mode = 'live'
+      const grant = { id: 'credential-grant', version: '1', digest: 'c'.repeat(64) }
+      source.credentialGrant = { reference: grant, credentialRefs: ['FIXTURE_KEY'] }
+      ctx.provide('credentials', { describe: async () => ({ configured: true }) } as unknown as Context['credentials'])
+      let authorizationRef = { id: 'budget', version: '1', digest: 'd'.repeat(64) }
+      if (scenario !== 'missing-owner') {
+        await ctx.plugin(LocalBudget, { maxScopes: 8, maxReservations: 8, maxLedgerBytes: 65536 })
+        const scope = await ctx.budget.createScope({ id: 'budget', kind: 'workflow', subjectId: 'run', parentId: null,
+          limits: { requests: scenario === 'no-ceiling' ? null : 5, inputTokens: null, outputTokens: null,
+            totalTokens: null, wallTimeMs: scenario === 'no-expiry' ? null : 60000 }, onExhausted: 'deny' }, () => {})
+        authorizationRef = scope.reference
+        if (scenario === 'forged-reference') authorizationRef = { ...authorizationRef, digest: 'd'.repeat(64) }
+      }
+      const plan = parseEvalPlan({ ...f.plan, credentialAuthorizationRef: grant,
+        routes: f.plan.routes.map((route, index) => ({ ...route,
+          parameters: scenario === 'missing-output' && index === 1 ? {} : { maxTokens: 32 } })),
+        budget: scenario === 'exemption' ? { required: false, authorizationRef: null } : { required: true, authorizationRef } })
+      await writeFile(join(f.root, 'plan.json'), JSON.stringify(plan))
+      source.approvedPlan.digest = evalContractDigest(plan)
+    })
+    try {
+      const resolved = await h.ctx.evalPlans.resolve(f.access, { id: 'plan', version: '1' })
+      expect(resolved.checks).toContainEqual({ subject: 'plan', code: 'credential-authority', ok: true })
+      expect(resolved.ready).toBe(scenario === 'valid')
+      if (scenario === 'valid') {
+        const receipt = await h.ctx.evalPlans.admit(f.access, resolved, 'live-request')
+        expect(receipt.resolvedDigest).toBe(resolved.resolvedDigest)
+        expect(h.ctx.budget.inspect('budget').consumed.requests).toBe(0)
+      } else {
+        expect(resolved.checks).toContainEqual({ subject: scenario === 'missing-output' ? 'b' : 'plan',
+          code: scenario === 'missing-output' ? 'output-reservation-bound' : 'budget-authority', ok: false })
+        await expect(h.ctx.evalPlans.admit(f.access, resolved, 'live-request')).rejects.toMatchObject({ code: 'preflight-blocked' })
+      }
+    } finally { await h.close(); await f.clean() }
+  },
+)
+
+test('retains immutable approved capability expectations and rejects changed observations before admission', async () => {
+  const f = await fixture()
+  const tool = { name: 'inspect', description: 'Inspect', parameters: { type: 'object' }, output: { schema: { type: 'string' } } }
+  const skill = { name: 'review', description: 'Review', content: 'Read evidence', invocation: { kind: 'manual' },
+    provider: 'fixture', source: 'workspace', metadata: null }
+  const tools = [{ id: tool.name, source: 'tool-contract:global', digest: evalContractDigest({ name: tool.name,
+    description: tool.description, parameters: tool.parameters, outputSchema: tool.output.schema }) }]
+  const skills = [{ id: skill.name, source: 'skill:fixture:workspace', digest: evalContractDigest({ name: skill.name,
+    description: skill.description, content: skill.content, invocation: skill.invocation, metadata: skill.metadata }) }]
+  const h = await f.boot(true, async (ctx) => {
+    const source = f.config.sources[0]
+    if (!source) throw new Error('fixture source missing')
+    source.requiredTools = tools
+    source.requiredSkills = skills
+    ctx.provide('tools', { get: () => tool } as unknown as Context['tools'])
+    ctx.provide('skills', { get: async () => skill } as unknown as Context['skills'])
+  })
+  try {
+    const resolved = await h.ctx.evalPlans.resolve(f.access, { id: 'plan', version: '1' })
+    expect(resolved.ready).toBe(true)
+    expect(resolved.resolvedRequirements).toEqual({ tools, skills })
+    expect(Object.isFrozen(resolved.resolvedRequirements)).toBe(true)
+    expect(Object.isFrozen(resolved.resolvedRequirements.skills[0])).toBe(true)
+    const receipt = await h.ctx.evalPlans.admit(f.access, resolved, 'capabilities')
+    expect(receipt.resolvedDigest).toBe(resolved.resolvedDigest)
+    await expect(h.ctx.evalPlans.admit(f.access, structuredClone(resolved), 'clone')).rejects.toMatchObject({ code: 'unauthorized' })
+    skill.content = 'Changed instructions'
+    await expect(h.ctx.evalPlans.admit(f.access, resolved, 'changed')).rejects.toMatchObject({ code: 'conflict' })
+    const changed = await h.ctx.evalPlans.resolve(f.access, { id: 'plan', version: '1' })
+    expect(changed.ready).toBe(false)
+    expect(changed.resolvedRequirements).toEqual(resolved.resolvedRequirements)
+    expect(changed.resolvedDigest).not.toBe(resolved.resolvedDigest)
   } finally { await h.close(); await f.clean() }
 })

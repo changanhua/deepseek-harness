@@ -55,7 +55,7 @@ Eval 拥有这些值及现有 runner/report 计算。RepoWorkspace、执行 Prov
 
 [Plan 来源](../../packages/eval/eval-plans-local/README.zh.md)拥有受信根目录下的完整 Host 固定内容和持久运行准入。发现结果返回相同的路径无关摘要；解析保留声明的 keyless/live 模式及最新预检。准入只接受本 owner 签发的不可变解析对象，并在写入前重新检查当前来源与预算祖先链。相同请求和相同解析身份恢复同一运行，变化则冲突。解析和准入均不启动 Queue 或模型。
 
-Tool 预检比较全局已注册契约，Preset digest 使用换行归一化的组合文本，Skill 身份包含指令内容和来源。精确执行组合和最终可见能力仍由执行器记录；Host 配置中的 keyless 模式不是执行证明。完整配置参见[指南](../cookbook/trusted-eval-and-budget.zh.md)。
+Tool 预检比较全局已注册契约，Preset digest 使用换行归一化的组合文本，Skill 身份包含指令内容和来源。精确执行组合和最终可见能力仍由执行器记录；Host 配置中的 keyless 模式不是执行证明。完整配置参见[指南](../cookbook/trusted-eval-and-budget.zh.md)。 仅供 Host 使用的 `resolvedRequirements.tools` 和 `.skills` 保留批准的产物身份，经过深冻结并纳入 `resolvedDigest`；下游调用方将其与 Manifest 的实际观测身份比对。真实调用的解析还要求每条 route 具有正数输出上限，以及 owner 验证的有限且有到期时间的预算授权；只有无密钥解析可以豁免。
 
 ## Attempt 工作目录
 

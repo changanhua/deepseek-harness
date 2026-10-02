@@ -57,7 +57,7 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- 文本输入使用明确标记的字节估算。无法取得可信 Token 上界的图片会被拒绝；缺失的缓存用量字段不会被当成零。此包不做货币计费。
+- 文本输入使用明确标记的字节估算。无法取得可信 Token 上界的图片会被拒绝；缺失的缓存用量字段不会被当成零。此包不做货币计费。 Agent 层重试会创建新的 stream 请求身份；attempt 序号标识同一个 stream 内的 waterfall 重入。跨重试链的关联及行为验收仍需单独完成。
 
 <a id="dev-note"></a>
 ### Dev Note

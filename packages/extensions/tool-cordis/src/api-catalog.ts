@@ -7047,7 +7047,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResolvedEvalPlan',
-    declaration: 'export interface ResolvedEvalPlan {\n    readonly mode: \'keyless\' | \'live\';\n    readonly plan: EvalPlan;\n    readonly suite: EvalSuite;\n    readonly summary: EvalPlanSummary;\n    readonly checks: readonly EvalPreflightCheck[];\n    readonly ready: boolean;\n    readonly resolvedDigest: string;\n}',
+    declaration: 'export interface ResolvedEvalPlan {\n    readonly mode: \'keyless\' | \'live\';\n    readonly plan: EvalPlan;\n    readonly suite: EvalSuite;\n    readonly summary: EvalPlanSummary;\n    readonly resolvedRequirements: {\n        readonly tools: readonly Readonly<ResolvedExecutionManifest[\'subject\'][\'tools\'][number]>[];\n        readonly skills: readonly Readonly<ResolvedExecutionManifest[\'subject\'][\'skills\'][number]>[];\n    };\n    readonly checks: readonly EvalPreflightCheck[];\n    readonly ready: boolean;\n    readonly resolvedDigest: string;\n}',
+  },
+  {
+    name: 'ResolvedExecutionManifest',
+    declaration: 'export type ResolvedExecutionManifest = z.infer<typeof resolvedExecutionManifestSchema>;',
   },
   {
     name: 'ResolvedImageGenerationSpec',
