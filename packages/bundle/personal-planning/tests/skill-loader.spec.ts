@@ -19,6 +19,9 @@ describe('personal planning bundled skill', () => {
       expect((await ctx.skills.list({ cwd: world.project })).find(skill => skill.name === 'planning-maintenance'))
         .toMatchObject({ source: 'bundled' })
       expect((await ctx.skills.get('planning-maintenance', { cwd: world.project }))?.content).toContain('planning_update')
+      const stewardship = await ctx.skills.get('project-steward', { cwd: world.project })
+      expect(stewardship?.content).toContain('Keep the original user outcome')
+      expect(stewardship?.content).toContain('planning_execution')
       await world.close()
       expect(ctx.get('skills')).toBeUndefined()
     } finally { await world.dispose() }

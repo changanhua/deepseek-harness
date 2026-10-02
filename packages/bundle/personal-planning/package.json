@@ -45,6 +45,7 @@
   "dependencies": {
     "@changanhua/dsh-planning-local": "workspace:^",
     "@changanhua/dsh-tool-planning": "workspace:^",
+    "@changanhua/dsh-tool-thinking-case": "workspace:^",
     "@changanhua/dsh-planning-remote": "workspace:^",
     "@changanhua/dsh-client-ui-planning": "workspace:^",
     "@deepseek-ai/dsh-skill-filesystem": "workspace:^",

@@ -20,6 +20,8 @@ import Include, { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import * as yaml from 'js-yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import AgentPresets, { SHIPPED_PRESET_ROOT, type Config } from '@deepseek-ai/dsh-agent-presets'
+import SessionStore from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 const SYSTEM_ROOT = join(FIXTURES, 'system')
@@ -41,6 +43,8 @@ async function roster(config: Partial<Config> = {}): Promise<Context> {
   const ctx = new Context()
   ctx.baseUrl = pathToFileURL(FIXTURES).href + '/'
   await ctx.plugin(Loader)
+  await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionProjectionRegistry)
   ctx.loader.builtins.include = Include
   await ctx.plugin(AgentPresets, {
     default: 'standard',
@@ -53,11 +57,23 @@ async function roster(config: Partial<Config> = {}): Promise<Context> {
 }
 
 describe('the shipped preset root', () => {
+  it('ships stewardship with standard capabilities and leaves the default unchanged', async () => {
+    const ctx = await roster({ includeUserRoot: false })
+    try {
+      const preset = await ctx.agentPresets.resolve('work-steward')
+      expect(preset.trust).toBe('system')
+      expect(preset.path.startsWith(SHIPPED_PRESET_ROOT)).toBe(true)
+      expect(ctx.agentPresets.defaultId).toBe('standard')
+      const read = async (id: string) => yaml.load(await ctx.agentPresets.read(id), { schema: entryListSchema })
+      expect(await read('work-steward')).toEqual(await read('standard'))
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('supplies the built-in presets from a bare roster, healthy and system-trusted', async () => {
     const ctx = await roster({ includeUserRoot: false })
 
     const listed = await ctx.agentPresets.list()
-    expect(listed.map(preset => preset.id).sort()).toEqual(['cordis', 'minimal', 'ptc', 'standard'])
+    expect(listed.map(preset => preset.id).sort()).toEqual(['browser-assistant', 'cordis', 'minimal', 'ptc', 'standard', 'thinking-desk', 'work-steward'])
     expect(listed.every(preset => preset.trust === 'system')).toBe(true)
     // Not `broken === undefined`: health asks whether each row's package is
     // installed above the base, and the shipped rows name packages the

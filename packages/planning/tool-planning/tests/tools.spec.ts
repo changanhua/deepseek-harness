@@ -58,6 +58,17 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 describe('project planning model tools', () => {
+  it('keeps Thinking Sessions free of dynamic Planning context and write guidance', async () => {
+    const local = await harness()
+    local.ctx.provide('agentPresets', { composedPreset: () => 'thinking-desk' } as never)
+    const created = await local.ctx.planning.execute(local.access(), local.create('thinking-context'))
+    await local.ctx.planning.execute(local.access(), { kind: 'bind-session', requestId: 'thinking-binding',
+      expectedBoardVersion: created.boardVersion, subject: { kind: 'plan', id: created.itemId! },
+      baseRevision: created.revisionId!, sessionId: String(local.session.id) })
+    const assembly = await local.ctx.systemPrompt.assemble({ scope: local.caller })
+    expect(assembly.contexts.some(value => value.name === 'planning-workspace')).toBe(false)
+    expect(assembly.sections.filter(value => value.name.startsWith('tool:planning')).every(value => value.text === '')).toBe(true)
+  })
   it('projects the bound subject and original revision into durable prompt context and only permits proposals', async () => {
     const local = await harness()
     const created = await local.ctx.planning.execute(local.access(), local.create('bound-root'))

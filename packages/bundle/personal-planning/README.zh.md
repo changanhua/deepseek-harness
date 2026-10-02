@@ -33,7 +33,7 @@ base layer 继续提供 Storage Domain、Workspace Registry、Session Query、Sk
 
 #### 模型看到什么
 
-`tool-planning` 加入有边界的 `planning_list`、`planning_read` 与 `planning_update` schema 和指引。`planning_list` 可在当前项目内按关键词筛选；bundled `planning-maintenance` Skill 要求 Agent 读取稳定身份，并在多个候选都可能匹配时先请用户选择。挂载 `tool-skill` 的 Agent preset 会看到此 Skill；UI 和 Remote 不增加模型上下文。
+`tool-planning` 加入有边界的 `planning_list`、`planning_read` 与 `planning_update` schema 和指引。`planning_list` 可在当前项目内按关键词筛选；bundled `planning-maintenance` Skill 要求 Agent 读取稳定身份，并在多个候选都可能匹配时先请用户选择。随包 `project-steward` Skill 指导调查、投入建议、获授权后的推进，以及将证据返回原目标。挂载 `tool-skill` 的 Agent preset 会看到这两个 Skill。Planning UI 的“委托主理”入口以明确的调查请求开启绑定对话；两个 Skill 均不授予执行权限。
 
 #### Token effect
 

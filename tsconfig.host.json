@@ -8,6 +8,8 @@
     "rewriteRelativeImportExtensions": false
   },
   "include": [
+    "apps/web/tests/planning-snapshot-support.ts",
+    "apps/web/tests/planning-steward.e2e.ts",
     "apps/web/tests/planning-workspace.e2e.ts",
     "tsdown.config.ts",
     "apps/web/tests/scaffold.ts",
@@ -424,6 +426,7 @@
     { "path": "./packages/planning/planning-local" },
     { "path": "./packages/planning/planning-remote" },
     { "path": "./packages/planning/tool-planning" },
+    { "path": "./packages/planning/tool-thinking-case" },
     { "path": "./packages/bundle/personal-planning" },
     { "path": "./apps/desktop" },
     { "path": "./apps/desktop-host" },

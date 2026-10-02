@@ -9,6 +9,7 @@ import type {
   PlanningMutationResult,
 } from '@changanhua/dsh-planning/types'
 import type {
+  DesignCaseSummary,
   PlanningBoardView,
   PlanningEvidenceInput,
   PlanningExecutionInput,
@@ -26,6 +27,7 @@ export type RemoteResult<T> =
   | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
 
 export interface PlanningRuntimeRemoteFace {
+  designCases?(input: PlanningExecutionInput, signal?: AbortSignal): Promise<RemoteResult<readonly DesignCaseSummary[]>>
   workspaces(signal?: AbortSignal): Promise<RemoteResult<readonly PlanningWorkspaceView[]>>
   snapshot(workspaceId: string, signal?: AbortSignal): Promise<RemoteResult<PlanningBoardView>>
   execute(
@@ -38,6 +40,8 @@ export interface PlanningRuntimeRemoteFace {
 }
 
 export interface PlanningRuntimeState {
+  navigation?: PlanningNavigation
+  designCases?: { status: 'loading' | 'ready' | 'error'; summaries: readonly DesignCaseSummary[]; error: string | null } | undefined
   status: 'idle' | 'loading' | 'ready' | 'error'
   workspaces: readonly PlanningWorkspaceView[]
   workspaceId: string | undefined
@@ -54,12 +58,26 @@ export interface PlanningRuntimeState {
   evidencePending: boolean
 }
 
+export interface PlanningNavigation {
+  screen: 'overview' | 'plan'
+  tab: 'current' | 'work' | 'thinking' | 'history'
+  filter: 'active' | 'inbox' | 'pending' | 'archived'
+  search: string
+  focusId: string | undefined
+  recentPlanId: string | undefined
+}
+export const initialPlanningNavigation = (): PlanningNavigation => ({
+  screen: 'overview', tab: 'current', filter: 'active', search: '', focusId: undefined, recentPlanId: undefined,
+})
+
 /** Minimal capture: title is derived from the first non-empty idea line. */
 export interface CreateIdeaInput {
   readonly idea: string
   readonly lane?: PlanningLane
 }
 export interface PlanningRuntimeController {
+  navigate(patch: Partial<PlanningNavigation>): void
+  refreshDesignCases(): void
   readonly source: HostObservable<PlanningRuntimeState>
   loadWorkspaces(): void
   refresh(): void
@@ -89,8 +107,11 @@ function errorMessage(result: Extract<RemoteResult<unknown>, { readonly ok: fals
 }
 
 /** Lifecycle-owned browser mirror for the planning Remote projection. */
-export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFace): PlanningRuntimeController {
+export function createPlanningRuntimeController(
+  remote: PlanningRuntimeRemoteFace, preferredWorkspaceTitle?: string,
+): PlanningRuntimeController {
   const store = createSnapshotStore<PlanningRuntimeState>({
+    navigation: initialPlanningNavigation(),
     status: 'idle',
     workspaces: [],
     workspaceId: undefined,
@@ -117,6 +138,33 @@ export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFac
   let executionGeneration = 0
   let evidenceActive: AbortController | undefined
   let evidenceGeneration = 0
+  let casesActive: AbortController | undefined
+  const projectViews = new Map<string, PlanningNavigation>()
+  const planViews = new Map<string, Pick<PlanningNavigation, 'focusId' | 'tab'>>()
+  const remember = () => {
+    const state = store.getSnapshot()
+    if (!state.workspaceId || !state.navigation) return
+    projectViews.set(state.workspaceId, { ...state.navigation })
+    if (state.selectedItemId) planViews.set(JSON.stringify([state.workspaceId, state.selectedItemId]),
+      { focusId: state.navigation.focusId, tab: state.navigation.tab })
+  }
+  const loadCases = (workspaceId: string, itemId: string | undefined) => {
+    casesActive?.abort()
+    casesActive = undefined
+    store.update((draft) => { draft.designCases = undefined })
+    if (!itemId || !remote.designCases) return
+    const controller = new AbortController(); casesActive = controller
+    store.update((draft) => { draft.designCases = { status: 'loading', summaries: [], error: null } })
+    void remote.designCases({ workspaceId, itemId }, controller.signal).then((result) => {
+      if (disposed || casesActive !== controller || controller.signal.aborted) return
+      store.update((draft) => { draft.designCases = result.ok
+        ? { status: 'ready', summaries: result.value, error: null }
+        : { status: 'error', summaries: [], error: errorMessage(result) } })
+    }, (error: unknown) => {
+      if (disposed || casesActive !== controller || controller.signal.aborted) return
+      store.update((draft) => { draft.designCases = { status: 'error', summaries: [], error: String(error) } })
+    })
+  }
   const clearExecution = (): void => {
     executionGeneration++
     executionActive?.abort('selection-changed')
@@ -189,6 +237,7 @@ export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFac
             : undefined
         })
         const itemId = store.getSnapshot().selectedItemId
+        loadCases(workspaceId, itemId)
         if (itemId === undefined) clearExecution()
         else loadExecution({ workspaceId, itemId })
       },
@@ -276,6 +325,10 @@ export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFac
           draft.status = 'ready'
           draft.workspaces = result.value
           draft.retry = undefined
+          if (draft.workspaceId === undefined && preferredWorkspaceTitle) {
+            const matches = result.value.filter(workspace => workspace.title === preferredWorkspaceTitle)
+            if (matches.length === 1) draft.workspaceId = matches[0]?.id
+          }
         })
         const workspaceId = store.getSnapshot().workspaceId
         if (workspaceId !== undefined && !store.getSnapshot().pending) refresh(workspaceId)
@@ -371,16 +424,28 @@ export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFac
     )
   }
   return {
+    navigate: (patch) => {
+      if (disposed) return
+      store.update((draft) => { draft.navigation = { ...(draft.navigation ?? initialPlanningNavigation()), ...patch } })
+      remember()
+    },
+    refreshDesignCases: () => {
+      const state = store.getSnapshot()
+      if (state.workspaceId) loadCases(state.workspaceId, state.selectedItemId)
+    },
     source,
     loadWorkspaces,
     refresh: loadWorkspaces,
     selectWorkspace: (workspaceId) => {
       if (!disposed) {
+        remember()
+        loadCases(workspaceId, undefined)
         active?.abort('workspace-changed')
         clearExecution()
         clearEvidence()
         store.update((draft) => {
           draft.workspaceId = workspaceId
+          draft.navigation = { ...(projectViews.get(workspaceId) ?? initialPlanningNavigation()), screen: 'overview' }
           draft.board = undefined
           draft.selectedItemId = undefined
           draft.pending = false
@@ -392,14 +457,20 @@ export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFac
     },
     selectItem: (itemId) => {
       if (!disposed) {
+        remember()
         clearExecution()
         clearEvidence()
         store.update((draft) => {
           draft.selectedItemId = itemId
+          const previous = draft.navigation ?? initialPlanningNavigation()
+          const saved = planViews.get(JSON.stringify([draft.workspaceId, itemId]))
+          draft.navigation = { ...previous, ...(saved ?? { tab: 'thinking' as const, focusId: undefined }),
+            screen: itemId ? 'plan' : 'overview', recentPlanId: itemId ?? previous.recentPlanId }
           draft.retry = undefined
           draft.actionError = null
         })
         const workspaceId = store.getSnapshot().workspaceId
+        if (workspaceId) loadCases(workspaceId, itemId)
         if (workspaceId !== undefined && itemId !== undefined) loadExecution({ workspaceId, itemId })
       }
     },
@@ -438,6 +509,7 @@ export function createPlanningRuntimeController(remote: PlanningRuntimeRemoteFac
     handoff,
     readEvidence,
     dispose: () => {
+      casesActive?.abort()
       disposed = true
       generation += 1
       evidenceGeneration += 1

@@ -18,6 +18,7 @@ Planning keeps project ideas, their evidence, revisions, order, dependencies, an
 | [`planning`](planning/README.md) | Defines `ctx.planning`, Board data, and CAS-fenced mutations. |
 | [`planning-local`](planning-local/README.md) | Persists one Board per Workspace and captures trusted sources. |
 | [`tool-planning`](tool-planning/README.md) | Gives the initiating Agent bounded Board tools. |
+| [`tool-thinking-case`](tool-thinking-case/README.md) | Gives a bound Thinking Desk Agent candidate-only context and result tools. |
 | [`planning-remote`](planning-remote/README.md) | Serves the authenticated browser projection and bounded commands. |
 | [`planning-delivery-bridge`](planning-delivery-bridge/README.md) | Freezes one revision for a recoverable Delivery shaping Case. |
 

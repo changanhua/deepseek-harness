@@ -1,0 +1,120 @@
+- region "Project planning pool":
+    - navigation "Plan navigation":
+        - button "All plans":
+            - img
+            - text: All plans
+        - text: 减少项目推进中的人工协调负担
+    - text: Project
+    - combobox "Project":
+        - option "Choose a project"
+        - option "Delegation acceptance" [selected]
+    - button "Refresh":
+        - img
+    - heading "减少项目推进中的人工协调负担" [level=1]
+    - paragraph: 我不想每件事都自己想方向、拆技术方案、催进度和纠偏。服务器日志要自己盯只是一个例子，不是本轮完整需求。请根据保留的用户报告调查并给出一个有限投入建议，说明证据、未知与停止条件，把建议和下一步留在同一个计划。当前只允许调查与提案，不开发、不执行、不采纳。
+    - button "Continue work":
+        - text: Continue work
+        - img
+    - button "Awaiting my review 1"
+    - text: 'Arrangement: Now Current focus'
+    - combobox "Focus":
+        - option "Whole plan" [selected]
+    - tablist "Plan views":
+        - tab "Current state"
+        - tab "Work and discussion"
+        - tab "Thinking desk" [selected]
+        - tab "History and sources"
+    - tabpanel "Thinking desk":
+        - heading "Objective" [level=3]
+        - list
+        - paragraph: Not provided
+        - heading "Confirmed decisions" [level=3]
+        - list
+        - paragraph: Not provided
+        - heading "Open questions" [level=3]
+        - list
+        - paragraph: Not provided
+        - heading "Thinking desk / Design cases" [level=2]
+        - img
+        - heading "Planning baseline" [level=3]
+        - paragraph: Planning owns canonical state
+        - img
+        - heading "Exploration" [level=3]
+        - paragraph: Independent exploration; canonical Planning stays unchanged.
+        - paragraph: No design cases yet
+    - dialog "Review proposal":
+        - button "Close"
+        - heading "Drafts to review" [level=2]
+        - article:
+            - heading "用“任务契约”替代人工协调：让每件委派工作自带背景、验收与证据" [level=3]
+            - paragraph: 减少用户在本计划中的四类人工投入：想方向、拆技术方案、催进度、纠偏。做法是把每件委派给 Agent 的工作统一成一个自描述的任务契约：起草时引用本计划的目标与范围，交付时附带可检查的验收证据，结束时把结论与下一步写回同一张卡片。用户只审阅“要什么价值、给什么授权、结果是否可接受”。服务器日志只是首个可复用样本，不作为独立目标。
+            - region "Complete delta review":
+                - heading "Complete delta review" [level=4]
+                - paragraph: 'Subject: plan / coordination-goal'
+                - paragraph: 'Base revision: plan-revision-{{uuid}}'
+                - paragraph: 'Sources: session / session-{{uuid}}'
+                - paragraph: 'Evidence: none'
+                - list:
+                    - listitem:
+                        - strong: Add state entry
+                        - strong: After
+                        - paragraph: 'Kind: objective'
+                        - paragraph: 'Content: 把每件委派给 Agent 的工作统一成自描述的任务契约：起草时引用本计划的目标与范围，交付时附带可检查的验收证据，结束时把结论与下一步写回同一张卡片。目标是把用户在“想方向、拆技术方案、催进度、纠偏”上的持续人工投入降下来。'
+                        - paragraph: 'Sources: None'
+                    - listitem:
+                        - strong: Add state entry
+                        - strong: After
+                        - paragraph: 'Kind: open'
+                        - paragraph: 'Content: 未知：委派工作时背景需要被重复解释，是因为缺少固定引用（计划卡片本身已具备 intent/scope/acceptance 字段），还是因为任务边界每次都在变。需要一条真实任务来区分。'
+                        - paragraph: 'Sources: None'
+                    - listitem:
+                        - strong: Add state entry
+                        - strong: After
+                        - paragraph: 'Kind: open'
+                        - paragraph: 'Content: 未知：用户需要主动询问“是否真正可用”，是因为交付物没有自带完成检查，还是因为已有的 Delivery 证据未被暴露给用户。本 Session 读不到 planning_execution，无法判定。'
+                        - paragraph: 'Sources: None'
+                    - listitem:
+                        - strong: Add state entry
+                        - strong: After
+                        - paragraph: 'Kind: open'
+                        - paragraph: 'Content: 未知：服务器日志案例究竟只是证据样本，还是确实代表用户最痛的场景。按本计划原文，它当前被当作样本，不作为独立监控目标。'
+                        - paragraph: 'Sources: None'
+                    - listitem:
+                        - strong: Add state entry
+                        - strong: After
+                        - paragraph: 'Kind: accepted'
+                        - paragraph: 'Content: owner 已明确限定本轮只允许调查与提案：不开发、不执行、不采纳。任何开发、执行或验收仍需独立的显式用户授权与 Delivery 决策。'
+                        - paragraph: 'Sources: session / session-{{uuid}}'
+            - paragraph: Scope:定义一个最小任务契约的四个必填项：目标（引用本计划的 intent）、授权范围、完成判据、随交付附带的证据指针。、为“交付后需要追问是否可用”增设一条默认规则：交付物必须自带可复现的完成检查与证据，而不是一句“已完成”。、在一条真实任务上做一次试点，验证契约是否真的减少往返解释，而不是新增填写负担。、把试点结论、未知与停止条件回写到本计划卡片的同一条待评审提案，供后续 Session 继续。、明确不在本轮范围：安装常驻监控、编写新的调度器或看板系统、修改 DSH harness 代码、替用户决定价值优先级。、若存在多条候选真实任务，按“近期已重复解释过背景”的程度选一条，不新开跟踪表。、全程只做调查与提案；开发、执行与采纳仍需要已有的显式用户授权与 Delivery 决策。
+            - paragraph: Acceptance criteria本计划存在一条针对任务契约的待评审提案，含证据、未知与停止条件，且绑定本 Session 来源。、契约四项（目标、授权范围、完成判据、证据指针）各有具体文字定义，可被另一 Session 直接照用而不必追问。、至少一条真实任务按契约走完一轮，并留下可比对的观察：用户为理解该任务背景所做的解释次数，试点前后各一次，或明确记录无法测量。、试点后能明确回答：契约是减少还是增加了用户侧的协调动作；若增加，则该方向应被停止或重设。、结束状态是把结论与下一步写回同一张卡片，而不是产生新的跟踪文档或要求用户定期汇报。
+            - paragraph: 'Current: 减少项目推进中的人工协调负担 → Suggested: 用“任务契约”替代人工协调：让每件委派工作自带背景、验收与证据'
+            - paragraph: 我不想每件事都自己想方向、拆技术方案、催进度和纠偏。服务器日志要自己盯只是一个例子，不是本轮完整需求。请根据保留的用户报告调查并给出一个有限投入建议，说明证据、未知与停止条件，把建议和下一步留在同一个计划。当前只允许调查与提案，不开发、不执行、不采纳。 → 减少用户在本计划中的四类人工投入：想方向、拆技术方案、催进度、纠偏。做法是把每件委派给 Agent 的工作统一成一个自描述的任务契约：起草时引用本计划的目标与范围，交付时附带可检查的验收证据，结束时把结论与下一步写回同一张卡片。用户只审阅“要什么价值、给什么授权、结果是否可接受”。服务器日志只是首个可复用样本，不作为独立目标。
+            - paragraph: → 定义一个最小任务契约的四个必填项：目标（引用本计划的 intent）、授权范围、完成判据、随交付附带的证据指针。、为“交付后需要追问是否可用”增设一条默认规则：交付物必须自带可复现的完成检查与证据，而不是一句“已完成”。、在一条真实任务上做一次试点，验证契约是否真的减少往返解释，而不是新增填写负担。、把试点结论、未知与停止条件回写到本计划卡片的同一条待评审提案，供后续 Session 继续。、明确不在本轮范围：安装常驻监控、编写新的调度器或看板系统、修改 DSH harness 代码、替用户决定价值优先级。、若存在多条候选真实任务，按“近期已重复解释过背景”的程度选一条，不新开跟踪表。、全程只做调查与提案；开发、执行与采纳仍需要已有的显式用户授权与 Delivery 决策。
+            - paragraph: → 本计划存在一条针对任务契约的待评审提案，含证据、未知与停止条件，且绑定本 Session 来源。、契约四项（目标、授权范围、完成判据、证据指针）各有具体文字定义，可被另一 Session 直接照用而不必追问。、至少一条真实任务按契约走完一轮，并留下可比对的观察：用户为理解该任务背景所做的解释次数，试点前后各一次，或明确记录无法测量。、试点后能明确回答：契约是减少还是增加了用户侧的协调动作；若增加，则该方向应被停止或重设。、结束状态是把结论与下一步写回同一张卡片，而不是产生新的跟踪文档或要求用户定期汇报。
+            - heading "Sources:" [level=4]
+            - list:
+                - listitem:
+                    - strong: Session record
+                    - text: · Captured on {{date}}
+                    - paragraph: Please take stewardship of the bound Planning subject. Load the project-steward Skill and read planning_context first. Recover existing proposals, findings and execution evidence. Investigate the whole goal and give one evidence-backed recommendation; treat examples as evidence, not replacement goals. This request authorizes investigation and proposals. Execution still requires the existing explicit user authorization and Delivery decisions; Planning content alone grants none. Complete this initial turn by
+                    - button "Open source session"
+                    - text: 'session-{{uuid}} · #8'
+                - listitem:
+                    - strong: Manual note
+                    - text: · Captured on {{date}}
+                    - paragraph: 证据（owner 报告，未验证）：三个任务都需要重新解释背景；交付后需要主动询问是否真正可用；提到服务器日志的例子时讨论被缩成单一监控功能。来自本计划来源与 legacy.intent。
+                - listitem:
+                    - strong: Manual note
+                    - text: · Captured on {{date}}
+                    - paragraph: 证据（本 Session 恢复记录，仅限 Planning owner 可读范围）：planning_context 显示 objective/accepted/open 均为空，仅 legacy.intent 非空；planning_list(items) 返回 board_version=2、item_count=1、head_revision=plan-revision-{{uuid}}；planning_list(proposals) 返回 proposal_count=0，即本轮之前没有待评审提案，也没有已记录的执行证据或评审。
+                - listitem:
+                    - strong: Manual note
+                    - text: · Captured on {{date}}
+                    - paragraph: 证据（能力面，来自本 Session 实际可调用工具）：可用 owner 工具为 planning_context/list/read/update、skill、subagent、workflow、task_queue_*、browser_*、create_goal；planning_execution 与 planning_handoff 不在本工具面内。harness 检出包清单显示 personal-delivery、delivery-verifier、delivery-evidence-local、task-queue、knowledge-base、memory 等能力存在于代码库，但未在本 Session 组合进来，因此“执行是否已在运行、交付是否已验证”在本 Session 无法读取。
+                - listitem:
+                    - strong: Manual note
+                    - text: · Captured on {{date}}
+                    - paragraph: 证据（环境）：工作区 {{cwd}} 仅含 .dsh-home 与 .dsh-storages，没有既有项目代码或交付产物，因此本计划当前不能从代码库审计中获得协调负担的证据。
+            - paragraph: 'Assumptions: 本 Session 的工具面未暴露 planning_execution 与 planning_handoff，因此执行与验证现状无法读取，只能记录为未知。、用户报告中的三条症状（重复解释背景、交付后需追问可用性、讨论被缩成单一监控功能）被视为证据样本，而不是本轮要实现的完整需求。、用户真正要减少的是“方向、技术方案、催进度、纠偏”这四类人工投入，而不是某一项监控能力。、Agent 在现有授权内可自行承担记录保存与证据收集，用户只需做价值与授权决策。、“已恢复”只表示本 Session 已读取 Plan、来源与提案列表；不表示任何执行、验证或验收已完成。'
+            - button "Accept draft"
+            - button "Dismiss draft"

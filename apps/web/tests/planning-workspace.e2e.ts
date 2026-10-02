@@ -35,13 +35,16 @@ it('works on a Focus through a native Session and explicitly adopts its SBC evid
     }
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await openPlanning()
+    await page.getByRole('tab', { name: 'Current state', exact: true }).click()
     const object = page.getByRole('region', { name: 'Object workspace' })
+    await object.getByText('Edit state and focus', { exact: true }).click()
     await object.getByRole('textbox', { name: 'Focus title' }).fill('Fill + validation')
     await object.getByRole('button', { name: 'Create focus', exact: true }).click()
     await expect.poll(async () => (await planning.snapshot(access)).focuses?.length).toBe(1)
     const focus = (await planning.snapshot(access)).focuses![0]!
-    await object.getByRole('combobox', { name: 'Focus', exact: true }).selectOption(focus.id)
+    await page.getByRole('combobox', { name: 'Focus', exact: true }).selectOption(focus.id)
     const base = (await planning.snapshot(access)).items[0]!.headRevisionId
+    await page.getByRole('tab', { name: 'Work and discussion' }).click()
     await object.getByRole('button', { name: 'Start session', exact: true }).click()
     await expect.poll(async () => (await planning.snapshot(access)).sessionBindings?.length).toBe(1)
     const binding = (await planning.snapshot(access)).sessionBindings![0]!
@@ -65,6 +68,7 @@ it('works on a Focus through a native Session and explicitly adopts its SBC evid
       expect(result.items[0]!.headRevisionId).toBe(base)
       expect(generated?.generations.at(-1)?.delta?.operations.some(value => value.kind === 'add-state-entry')).toBe(true)
       await openPlanning()
+      await page.getByRole('button', { name: /^Awaiting my review/u }).click()
       await page.getByRole('button', { name: 'Accept draft', exact: true }).click()
       await expect.poll(async () => (await planning.snapshot(access)).proposals.find(value => value.id === generated!.id)?.status).toBe('accepted')
       const afterAdoption = await planning.snapshot(access)
@@ -82,6 +86,11 @@ it('works on a Focus through a native Session and explicitly adopts its SBC evid
     }
     await openPlanning()
     const before = await planning.snapshot(access)
+    await page.getByRole('button', { name: 'Continue work', exact: true }).click()
+    await page.getByRole('tab', { name: 'Work and discussion', exact: true }).waitFor({ state: 'hidden' })
+    await page.getByText(`Working on: ${focus.title}`, { exact: false }).waitFor()
+    expect((await planning.snapshot(access)).sessionBindings).toEqual(before.sessionBindings)
+    await openPlanning()
     const head = before.items[0]!.revisions.at(-1)!
     await planning.execute(access, { kind: 'propose', requestId: 'sbc-findings', expectedBoardVersion: before.version,
       proposalId: 'sbc-proposal', expectedProposalVersion: null, targetItemId: 'sbc-plan', baseRevisionId: base,
@@ -95,9 +104,12 @@ it('works on a Focus through a native Session and explicitly adopts its SBC evid
     expect((await planning.snapshot(access)).items[0]!.headRevisionId).toBe(base)
     await page.reload({ waitUntil: 'load' })
     await openPlanning()
-    await page.getByRole('heading', { name: 'Proposed changes' }).waitFor()
+    await page.getByRole('button', { name: /^Awaiting my review/u }).click()
+    await page.getByRole('heading', { name: 'Complete delta review', exact: true }).waitFor()
     await page.getByRole('button', { name: 'Accept draft', exact: true }).click()
     await expect.poll(async () => (await planning.snapshot(access)).items[0]!.revisions.at(-1)!.stateEntries?.[0]?.id).toBe('identity-check')
+    await page.getByRole('button', { name: 'Close', exact: true }).click()
+    await page.getByRole('tab', { name: 'Current state' }).click()
     await page.getByRole('region', { name: 'Object workspace' }).getByText('Read back item identity before Submit', { exact: true }).waitFor()
     expect((await planning.snapshot(access)).sessionBindings![0]).toEqual(binding)
     const artifacts = join(REPO_ROOT, '.artifacts/planning-workspace-v0')

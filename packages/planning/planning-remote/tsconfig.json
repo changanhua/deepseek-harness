@@ -8,6 +8,9 @@
     "src"
   ],
   "references": [
+    { "path": "../../core/agent" },
+    { "path": "../../core/session" },
+    { "path": "../../storage/storage-domain" },
     { "path": "../../attachment/attachment" },
     {
       "path": "../../../vendor/cordis"

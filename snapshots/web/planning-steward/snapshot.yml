@@ -1,0 +1,8 @@
+version: 1
+scenario: planning-steward
+profile: web
+composition: personal-planning
+recording: live
+header:
+  class: planning-steward
+  pin: true

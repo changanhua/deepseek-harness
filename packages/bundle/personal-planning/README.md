@@ -33,7 +33,7 @@ No invariant companion is published because the bundle composes existing owners 
 
 #### What the model sees
 
-`tool-planning` adds the bounded `planning_list`, `planning_read`, and `planning_update` schemas and guidance. `planning_list` can filter the current project by keywords; the bundled `planning-maintenance` Skill directs the Agent to read stable identities and ask the user to resolve ambiguous matches before changing an item. The Skill appears in an Agent preset that mounts `tool-skill`; the UI and Remote add no model context.
+`tool-planning` adds the bounded `planning_list`, `planning_read`, and `planning_update` schemas and guidance. `planning_list` can filter the current project by keywords; the bundled `planning-maintenance` Skill directs the Agent to read stable identities and ask the user to resolve ambiguous matches before changing an item. The packaged `project-steward` Skill guides investigation, investment recommendations, authorized continuation, and evidence return to the original goal. Both appear in an Agent preset that mounts `tool-skill`. The Planning UI's Delegate stewardship entry starts a bound conversation with an explicit investigation request; neither Skill grants execution authority.
 
 #### Token effect
 
