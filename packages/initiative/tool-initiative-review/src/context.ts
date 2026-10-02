@@ -1,10 +1,23 @@
 import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { PlanningAccess, PlanningBoardSnapshot } from '@changanhua/dsh-planning'
+import type { PlanningAccess, PlanningBoardSnapshot, PlanningRevision } from '@changanhua/dsh-planning'
 import { InitiativeError, initiativeQuerySchema } from '@changanhua/dsh-initiative'
+import type { InitiativePage, InitiativeView } from '@changanhua/dsh-initiative'
 import type { z } from 'zod'
 import type { readSchema } from './spec.ts'
+
+interface PlanningContext {
+  review: PlanningBoardSnapshot['reviews'][number]
+  revision: PlanningRevision
+  followUps: Array<{ id: string; revision: PlanningRevision | null }>
+}
+interface DecisionContext extends PlanningContext {
+  planningDigest: string
+  candidateSnapshotDigest: string
+  contextDigest: string
+  candidates: Omit<InitiativePage, 'entries'> & { entries: Array<Omit<InitiativeView, 'rir'>> }
+}
 
 /** Fingerprint an ordered, owner-derived JSON projection.
  * @param value - Detached context projection with deterministic field ordering.
@@ -17,7 +30,7 @@ export const contextHash = (value: unknown): string => createHash('sha256').upda
  * @param reviewId - Selected Review identity.
  * @returns Review, reviewed revision and referenced follow-up heads, including missing-head markers.
  */
-export function planningContext(board: PlanningBoardSnapshot, reviewId: string) {
+export function planningContext(board: PlanningBoardSnapshot, reviewId: string): PlanningContext {
   const review = board.reviews.find(value => value.id === reviewId)
   if (!review) throw new InitiativeError('not-found', 'Review is unavailable in this Workspace')
   const revision = board.items.find(item => item.id === review.itemId)?.revisions.find(value => value.id === review.revisionId)
@@ -35,7 +48,7 @@ export function planningContext(board: PlanningBoardSnapshot, reviewId: string) 
  * @returns Context token shared by every page from the same Candidate set and Planning inputs.
  */
 export async function captureContext(ctx: Context, agent: Agent, access: PlanningAccess,
-  query: z.infer<typeof readSchema>, signal: AbortSignal) {
+  query: z.infer<typeof readSchema>, signal: AbortSignal): Promise<DecisionContext> {
   const planning = planningContext(await ctx.planning.snapshot(access, signal), query.reviewId)
   const planningDigest = contextHash(planning)
   const page = await ctx.initiative.read(agent, initiativeQuerySchema.parse({ action: 'read',
