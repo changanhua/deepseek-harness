@@ -1,0 +1,42 @@
+---
+description: "共享 Candidate Service Definition 与严格 durable schema。"
+kind: "package-library"
+---
+
+# @changanhua/dsh-initiative
+
+[English](README.md) | 中文
+
+## 概述
+
+共享 Candidate Service Definition 与严格 durable schema。
+
+## 使用此包
+
+消费者将 exact live Agent 传给 ctx.initiative。人工调用另携带 active command identity；输入不能指定 actor、Workspace 或核验权限。CandidateId 是跨边界品牌身份。读取投射使用独立 CandidateSummary 类型，另含所选 revision、revision count、对应调查和最新 disposition；旧版本必须明确请求。
+
+参见[配置与命令](../README.zh.md)及 [Initiative 子系统](../../../docs/subsystems/initiative.zh.md)。
+
+## 不变量策略
+
+不发布 invariant 伴随模块：此包仅拥有定义与 schema，不拥有运行时投射。
+
+## 模型体验
+
+### 无直接模型上下文
+
+#### 模型看到什么
+
+无直接模型上下文；此包通过 `ctx.initiative` 不添加模型 prompt 或 tool。
+
+#### Token 影响
+
+无直接 token 影响。
+
+#### KV Cache 影响
+
+无直接 KV-cache 影响。
+
+## 已知限制与后续工作
+
+- Definition 不提供 provider 或 RIR 实现；opaque 来源引用不证明其内容。

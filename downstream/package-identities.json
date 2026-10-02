@@ -567,6 +567,50 @@
       ]
     },
     {
+      "directory": "packages/initiative/command-initiative",
+      "legacyName": "@deepseek-ai/dsh-command-initiative",
+      "sourceName": "@changanhua/dsh-command-initiative",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/initiative/initiative",
+      "legacyName": "@deepseek-ai/dsh-initiative",
+      "sourceName": "@changanhua/dsh-initiative",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/initiative/initiative-local",
+      "legacyName": "@deepseek-ai/dsh-initiative-local",
+      "sourceName": "@changanhua/dsh-initiative-local",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/initiative/tool-initiative",
+      "legacyName": "@deepseek-ai/dsh-tool-initiative",
+      "sourceName": "@changanhua/dsh-tool-initiative",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/knowledge/knowledge-base",
       "legacyName": "@deepseek-ai/dsh-knowledge-base",
       "sourceName": "@changanhua/dsh-knowledge-base",

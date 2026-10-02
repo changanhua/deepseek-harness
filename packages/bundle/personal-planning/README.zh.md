@@ -15,6 +15,8 @@ kind: "package-bundle"
 
 base layer 继续提供 Storage Domain、Workspace Registry、Session Query、Skill registry、模型运行时和 Web shell。此 patch 先添加独立的 `planning-skills` filesystem provider，它只扫描本 Bundle 发布的 `skills/` 根目录；随后添加 `planning-local`、`tool-planning`、`planning-remote` 与 `ui-planning`。Planning 的 ownership lock 位于 `DSH_HOME/storages/planning-ownership`。可选的 `memory.patch.yml` 与 `knowledge.patch.yml` 会为计划经验加入有来源的 Memory candidate 和 Knowledge 来源快照。
 
+可选 `initiative.patch.yml` 增加 Human/Agent 共用 Candidate 入口，以及显式人工晋升到 pending Planning Proposal；参见[候选配置与命令](../../initiative/README.zh.md)。
+
 ## 不变量策略
 
 不发布 invariant 伴随模块，因为Bundle 仅组合已有能力，不拥有独立运行时状态。

@@ -1653,6 +1653,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'initiative',
+    summary: 'Candidate owner; callers supply a live Agent, never a claimed actor or Workspace.',
+    description: 'Candidate owner; callers supply a live Agent, never a claimed actor or Workspace.',
+    methods: [
+      {
+        signature: 'abstract execute( agent: Agent, input: InitiativeCommand, invocation?: InitiativeInvocation, signal?: AbortSignal, ): Promise<InitiativeReceipt>',
+        description: 'Commit an authorized Candidate fact or explicit Human promotion.',
+        parameters: [{ name: 'agent', description: 'Exact live runtime caller, revalidated at durable commits.' }, { name: 'input', description: 'Strict mutation with idempotency key and exact versions where required.' }, { name: 'invocation', description: 'Commands-owned identity for Human calls; absent for model Tools.' }, { name: 'signal', description: 'Caller cancellation, checked before commits.' }],
+        returns: 'Original durable receipt on an identical authorized replay.',
+      },
+      {
+        signature: 'abstract read(agent: Agent, query: InitiativeQuery, invocation?: InitiativeInvocation, signal?: AbortSignal): Promise<InitiativePage>',
+        description: 'Read detached Candidate history in the caller\'s current Workspace.',
+        parameters: [{ name: 'agent', description: 'Exact live runtime caller.' }, { name: 'query', description: 'Exact revision or bounded filters.' }, { name: 'invocation', description: 'Active Human command identity when outside an Agent turn.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Candidate facts and explicitly unavailable RIR relations, never inferred verification.',
+      },
+    ],
+  },
+  {
     key: 'inspector',
     summary: 'Shared Host/Client service façade over the realm\'s source publisher.',
     description: 'Shared Host/Client service façade over the realm\'s source publisher.',
@@ -5815,6 +5834,34 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'IndexInjectionPlacement',
     declaration: 'export type IndexInjectionPlacement = \'head\' | \'body\';',
+  },
+  {
+    name: 'InitiativeCandidate',
+    declaration: 'export type InitiativeCandidate = z.infer<typeof candidateSchema>;',
+  },
+  {
+    name: 'InitiativeCommand',
+    declaration: 'export type InitiativeCommand = z.infer<typeof initiativeCommandSchema>;',
+  },
+  {
+    name: 'InitiativeInvocation',
+    declaration: 'export interface InitiativeInvocation {\n    readonly commandId?: string;\n}',
+  },
+  {
+    name: 'InitiativePage',
+    declaration: 'export interface InitiativePage {\n    entries: InitiativeView[];\n    total: number;\n    nextOffset: number | null;\n}',
+  },
+  {
+    name: 'InitiativeQuery',
+    declaration: 'export type InitiativeQuery = z.infer<typeof initiativeQuerySchema>;',
+  },
+  {
+    name: 'InitiativeReceipt',
+    declaration: 'export type InitiativeReceipt = z.infer<typeof initiativeReceiptSchema>;',
+  },
+  {
+    name: 'InitiativeView',
+    declaration: 'export interface InitiativeView {\n    candidate: InitiativeCandidate;\n    revision: InitiativeCandidate[\'revisions\'][number];\n    drift: boolean;\n    rir: {\n        availability: \'unavailable\';\n        assessments: never[];\n    };\n}',
   },
   {
     name: 'InspectorId',

@@ -15,6 +15,8 @@ This optional patch composes local Planning persistence, Agent-scoped planning t
 
 The base layer continues to provide Storage Domain, Workspace Registry, Session Query, the skill registry, model runtime, and the Web shell. This patch adds a separate `planning-skills` filesystem provider with only this Bundle's packaged `skills/` root, then `planning-local` with its ownership lock below `DSH_HOME/storages/planning-ownership`, `tool-planning`, `planning-remote`, and `ui-planning`. The optional `memory.patch.yml` and `knowledge.patch.yml` layers add source-backed memory candidates and Knowledge source snapshots for planning lessons.
 
+The optional `initiative.patch.yml` adds shared Human/Agent Candidate intake and explicit Human-only promotion to pending Planning Proposals. See [Candidate setup and commands](../../initiative/README.md).
+
 ## Invariant policy
 
 No invariant companion is published because the bundle composes existing owners and has no independent runtime state.

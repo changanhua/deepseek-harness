@@ -21,6 +21,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `@changanhua/dsh-tool-browser` | `browser_action`、`browser_action_sequence`、`browser_activity_search`、`browser_entry_mount`、`browser_entry_unmount`、`browser_extract`、`browser_instances`、`browser_page_map`、`browser_region_clear`、`browser_region_render`、`browser_request_status`、`browser_snapshot`、`browser_tabs`、`browser_task_cancel`、`browser_task_select`、`browser_task_start`、`browser_task_verify` | `ctx.browser`、`ctx.browserTasks`、`ctx.tools`、`ctx.approval`、`用于历史活动搜索的 ctx.browserActivity`、`发起 Agent 的 Session` | `tool/call`、`tool/result`、`browser-task/change`、`browser-task/receipt`、`browser-task/check`、`browser-task/delegation`、`经 Browser 批准的页面动作` | - | 只有组合了 `browserActivity` 时才提供活动搜索。它依据当前 Host 授权读取发起 Session，包括 Chrome 离线时。 |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`、`task_queue_enqueue_batch` | `ctx.tools`、`ctx.taskQueue`、`执行时的 live Agent Session` | `tool/call`、`tool/result`、`Queue v2 agent.run@1 admission` | - | 类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，但不暴露执行器、Profile、模型、凭据或 shell 路由字段。 |
+| `@changanhua/dsh-tool-initiative` | `initiative_read`, `initiative_record` | `ctx.tools`, `ctx.systemPrompt`, `ctx.initiative`, `a live Agent in a registered Workspace` | `tool/call`, `tool/result`, `Candidate revisions and investigation facts in initiative_candidates` | - | 可选 Candidate 入口。Agent 提出与调查建议不授予权限；只有独立人工命令能最终处置或晋升到 pending Planning Proposal。 |
 | `@changanhua/dsh-tool-memory` | `memory_propose`、`memory_read`、`memory_search` | `ctx.tools`、`ctx.systemPrompt`、`ctx.projectMemory`、`已注册 Workspace 中的 live Agent` | `tool/call`、`tool/result`、`project_memory 领域中的候选修订与提案回执` | - | 显式选择启用的项目记忆。模型可以搜索、读取已核查的主张并提出候选；人类接受、拒绝和撤回是独立的命令操作。 |
 | `@changanhua/dsh-tool-planning` | `planning_context`、`planning_execution`、`planning_handoff`、`planning_list`、`planning_read`、`planning_update` | `ctx.tools`、`ctx.systemPrompt`、`ctx.planning`、`ctx.agents`、`ctx.sessions`、`ctx.workspaceRegistry`、`已注册 Workspace 中的发起 Agent` | `tool/call`、`tool/result`、`通过 ctx.planning 变更 Planning Board` | - | 只有组合可选的 Planning–Delivery bridge 时才注册 `planning_handoff`。只有 bridge 与 Planning Remote 都已组合时，`planning_execution` 才读取已链接的 Delivery 状态和证据；它绝不派发或接纳 Delivery 工作。 |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`、`ctx.userQuestions` | `tool/call`、`tool/result after a UI/provider answers the question` | - | ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类答案。 |
@@ -3407,6 +3408,54 @@
 来源：[`packages/task-queue/tool-agent-run-task-queue/src/index.ts`](../packages/task-queue/tool-agent-run-task-queue/src/index.ts)
 
 类型化的受限 worker 准入消费者。它接纳 `agent.run@1` 意图，但不暴露执行器、Profile、模型、凭据或 shell 路由字段。
+
+<a id="changanhuadsh-tool-initiative"></a>
+
+## `@changanhua/dsh-tool-initiative`
+
+### `initiative_read`
+
+读取 exact Candidate 历史和未解析来源引用；明确显示 RIR 不可用。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "input_json": {
+      "type": "string",
+      "description": "Query JSON with action:read and optional id/version/status/proposer/offset/limit."
+    }
+  },
+  "required": [
+    "input_json"
+  ]
+}
+```
+
+来源： [`packages/initiative/tool-initiative/src/index.ts`](../packages/initiative/tool-initiative/src/index.ts)
+
+### `initiative_record`
+
+提出 Candidate 或追加有界调查事实；不授予权限、不最终处置、不晋升。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "input_json": {
+      "type": "string",
+      "description": "Strict propose or investigate command JSON; actor is derived from this Session."
+    }
+  },
+  "required": [
+    "input_json"
+  ]
+}
+```
+
+来源： [`packages/initiative/tool-initiative/src/index.ts`](../packages/initiative/tool-initiative/src/index.ts)
+
+可选 Candidate 入口。Agent 提出与调查建议不授予权限；只有独立人工命令能最终处置或晋升到 pending Planning Proposal。
 
 <a id="changanhuadsh-tool-memory"></a>
 
