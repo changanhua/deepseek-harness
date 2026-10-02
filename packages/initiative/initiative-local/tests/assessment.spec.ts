@@ -25,6 +25,28 @@ class Adapter extends LlmAdapter {
 }
 async function setup(adapter?: Adapter) { const h = await boot(undefined, undefined, adapter); cleanup.push(h.dispose); return h }
 
+it('requires ASSESSABLE before a new review and replays the accepted request without another model call', async () => {
+  const adapter = new Adapter(), h = await setup(adapter)
+  const created = await h.humanOK(propose())
+  const before = await h.ctx.planning.snapshot(h.access())
+  const denied = await h.human({ action: 'assess', key: 'review-too-early', id: created.id, version: 1 })
+  expect(denied.kind).toBe('error')
+  expect(denied.text).toContain('invalid-transition')
+  expect(adapter.calls).toBe(0)
+  expect((await h.ctx.requirementAssessment.snapshot(h.access())).assessments).toEqual([])
+  const ready = await h.humanOK(investigate(created))
+  const command = { action: 'assess', key: 'review-ready', id: ready.id, version: ready.headVersion }
+  const assessed = await h.humanOK(command)
+  expect(assessed.assessmentId).toBeDefined()
+  expect(adapter.calls).toBe(1)
+  expect(await h.humanOK(command)).toEqual(assessed)
+  expect(adapter.calls).toBe(1)
+  expect(await h.ctx.planning.snapshot(h.access())).toEqual(before)
+  await h.humanOK({ ...promotion(ready), assessmentId: assessed.assessmentId })
+  expect(await h.humanOK(command)).toEqual(assessed)
+  expect(adapter.calls).toBe(1)
+})
+
 it('REAL Human commands assess an exact revision, expose drift and recover selected pending promotion without rebilling', async () => {
   const adapter = new Adapter()
   let h = await setup(adapter)
@@ -117,14 +139,14 @@ it('rejects forged, foreign, missing and wrong-revision Assessment selections be
 
 it('does not dispatch a paid review after Agent authority is lost during call preparation', async () => {
   const adapter = new Adapter(), h = await setup(adapter)
-  const candidate = await h.humanOK(propose())
+  const candidate = await h.humanOK(investigate(await h.humanOK(propose())))
   const prepare = h.ctx.llm.prepareCall.bind(h.ctx.llm)
   vi.spyOn(h.ctx.llm, 'prepareCall').mockImplementationOnce(async (...args) => {
     const prepared = await prepare(...args)
     h.unregister()
     return prepared
   })
-  const denied = await h.human({ action: 'assess', key: 'scope-lost', id: candidate.id, version: 1 })
+  const denied = await h.human({ action: 'assess', key: 'scope-lost', id: candidate.id, version: candidate.headVersion })
   expect(denied.kind).toBe('error')
   expect(denied.text).toContain('unauthorized')
   expect(adapter.calls).toBe(0)
@@ -133,17 +155,18 @@ it('does not dispatch a paid review after Agent authority is lost during call pr
 
 it('reports missing RIR and recovers after Assessment commit but before the Candidate receipt', async () => {
   let h = await setup()
-  const created = await h.humanOK(propose())
-  expect((await h.human({ action: 'assess', key: 'review', id: created.id, version: 1 })).text).toContain('unavailable')
+  const created = await h.humanOK(investigate(await h.humanOK(propose())))
+  expect((await h.human({ action: 'assess', key: 'review', id: created.id, version: created.headVersion })).text).toContain('unavailable')
   const root = h.root; await h.close()
   const adapter = new Adapter(); h = await boot(root, undefined, adapter); cleanup.push(h.close)
   const table = h.ctx.storageDomain.get('initiative_candidates')!.table('workspaces')
   vi.spyOn(table, 'put').mockRejectedValueOnce(new Error('lost Candidate receipt'))
-  const command = { action: 'assess', key: 'review', id: created.id, version: 1 }
+  const command = { action: 'assess', key: 'review', id: created.id, version: created.headVersion }
   await expect(h.human(command)).rejects.toThrow('lost Candidate receipt')
   expect((await h.ctx.requirementAssessment.snapshot(h.access())).assessments).toHaveLength(1)
   const view = (await h.read(created.id)).entries[0]!
-  const source = candidateReviewSource({ ...view.candidate, revisions: [view.revision], investigations: [], dispositions: [] }, 1)
+  const source = candidateReviewSource({ ...view.candidate, revisions: [view.revision], investigations: [], dispositions: [] },
+    created.headVersion)
   await expect(h.ctx.requirementAssessmentReview.review({ ...h.access(), actorId: 'another-human' },
     { requestId: 'review', subject: source.subject }, undefined, source)).rejects.toMatchObject({ code: 'idempotency-conflict' })
   expect(adapter.calls).toBe(1)

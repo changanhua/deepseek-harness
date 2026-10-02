@@ -25,7 +25,7 @@ export const observation = {
 }
 
 /** External controller drives the shipped SDK profile and checks owner files after process exit. */
-export async function runAcceptance(root: string, environment: NodeJS.ProcessEnv, mode: 'keyless' | 'paid') {
+export async function runAcceptance(root: string, environment: NodeJS.ProcessEnv, mode: 'keyless' | 'paid', scenario: 'agent-promotion' | 'human-investigation' = 'agent-promotion') {
   if (mode === 'paid' && (environment.DSH_INITIATIVE_REAL_ACCEPTANCE !== 'approved' || !environment.DEEPSEEK_API_KEY?.trim()))
     throw new Error('Real-provider acceptance requires explicit approval and an available credential')
   const endpoint = environment.DEEPSEEK_BASE_URL?.replace(/\/+$/u, '') ?? 'https://api.deepseek.com'
@@ -123,6 +123,65 @@ export async function runAcceptance(root: string, environment: NodeJS.ProcessEnv
     return JSON.parse(execution.result.text) as T
   }
   try {
+    if (scenario === 'human-investigation') {
+      const created = await human<InitiativeReceipt>({ action: 'propose', key: 'human-investigation-intake', kind: 'simplify',
+        trigger: 'A Human wants to distinguish a historical setup failure from a current unmet need.',
+        facts: { claim: 'Investigate whether the historical fresh-checkout failure still warrants a new setup mechanism.',
+          uncertainties: ['Frequency and cross-platform applicability remain unknown.'],
+          evidenceRefs: [{ owner: 'acceptance-controller', kind: 'command-observation', id: 'historical-import-failure',
+            verification: 'unverified', excerpt: JSON.stringify(observation) }],
+          counterEvidenceRefs: [{ owner: 'acceptance-controller', kind: 'command-observation', id: 'current-clean-build',
+            verification: 'unverified', excerpt: 'On 2026-10-02, commit 514ea1ed5d2bc3197821b0f0fb349e74577a951d passed frozen offline install and a complete pnpm run build in a fresh Windows checkout, producing 252 client artifacts. This does not measure failure frequency on other environments.' }],
+        } })
+      const first = (await human<InitiativePage>({ action: 'read', id: created.id, version: 1 })).entries[0]!
+      const planningPath = join(home, 'storages', 'planning_boards.json')
+      const planningBytes = async () => {
+        try { return await readFile(planningPath, 'utf8') }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error }
+      }
+      const planningBefore = await planningBytes()
+      const investigated = await run(`Investigate the existing Human Candidate ${created.id}. Read its exact current version with initiative_read first. Compare its historical failure evidence with the newer successful clean build and distinguish established facts, counter-evidence and remaining unknowns. Use initiative_record action investigate to save your own bounded investigation and mark completion complete. The facts field is a complete new snapshot: retain the supporting observations in facts.evidenceRefs, the newer successful-build observation in facts.counterEvidenceRefs, and the unmeasured frequency and platform limits in facts.uncertainties. Preserve their unverified provenance; do not leave these arrays empty or only describe them in your final reply. Keep the Human origin and do not create another Candidate, assess, promote, modify Planning, or execute shell commands. This task is analysis of the supplied observations, not independent reproduction of them.`, 'human-candidate-investigator')
+      const after = (await human<InitiativePage>({ action: 'read', id: created.id })).entries[0]!
+      const original = (await human<InitiativePage>({ action: 'read', id: created.id, version: 1 })).entries[0]!
+      if (after.candidate.proposer.kind !== 'human' || JSON.stringify(after.candidate.origin) !== JSON.stringify(first.candidate.origin)
+        || JSON.stringify(original.revision) !== JSON.stringify(first.revision) || after.candidate.headVersion <= 1
+        || after.candidate.status !== 'ASSESSABLE') throw new Error('Human Candidate origin, immutable revision or investigation completion failed')
+      const calls = investigated.events.filter(event => event.type === 'tool/call')
+      if (!calls.some(event => event.type === 'tool/call' && event.data.name === 'initiative_read'))
+        throw new Error('Agent did not read the Candidate through its scoped tool')
+      const completed = after.investigations.find(value => value.actor.kind === 'agent'
+        && value.actor.sessionId === investigated.sessionId && value.completion === 'complete')
+      if (!completed || !calls.some((call) => {
+        if (call.type !== 'tool/call' || call.data.name !== 'initiative_record') return false
+        const args = JSON.parse(call.data.arguments) as { input_json: string }
+        const input = JSON.parse(args.input_json) as { action?: string; id?: string }
+        return input.action === 'investigate' && input.id === created.id && investigated.events.some(event =>
+          event.type === 'tool/result' && event.data.message.content.some(block => block.type === 'tool-result'
+            && block.toolCallId === call.data.callId && !block.isError && block.content.some((part) => {
+            if (part.type !== 'text') return false
+            const receipt = JSON.parse(part.text) as InitiativeReceipt
+            return receipt.id === created.id && receipt.headVersion === completed.resultVersion
+          })))
+      })) throw new Error('Successful Agent investigate call does not match the persisted investigation')
+      if (!after.revision.facts.evidenceRefs.length || !after.revision.facts.counterEvidenceRefs.length
+        || !after.revision.facts.uncertainties.length) throw new Error('Investigation lacks evidence, counter-evidence or explicit uncertainty')
+      await harness.close()
+      const document = JSON.parse(await readFile(join(home, 'storages', 'initiative_candidates.json'), 'utf8')) as OwnerDocument
+      const candidates = Object.values(document.tables.workspaces).flatMap(value => workspaceCandidatesSchema.parse(value).candidates)
+      if (candidates.length !== 1 || candidates[0]?.id !== created.id || candidates[0].promotion !== undefined
+        || !candidates[0].investigations.some(value => JSON.stringify(value) === JSON.stringify(completed)))
+        throw new Error('Independent Candidate storage does not match the Agent receipt')
+      const planningAfter = await planningBytes()
+      if (planningAfter !== planningBefore) throw new Error('Agent investigation changed persisted Planning')
+      const requests = JSON.parse(await readFile(join(evidenceRoot, 'requests.json'), 'utf8')) as { phase: string }[]
+      const httpAttempts = JSON.parse(await readFile(join(evidenceRoot, 'http-attempts.json'), 'utf8')) as unknown[]
+      if (requests.some(value => value.phase !== 'candidate')) throw new Error('Investigation unexpectedly invoked assessment')
+      const report = { mode, scenario, liveModelAcceptance: 'Human intake and Agent investigation verified', sourceIdentity,
+        commands, sessions, requests, httpAttempts, first, after, original,
+        ownerReads: { candidateStore: document, planningBefore, planningAfter } }
+      await writeFile(join(evidenceRoot, 'report.json'), JSON.stringify(report, null, 2))
+      return report
+    }
     const prompt = `Analyse this observed failure and its follow-up result. Explain the cause, existing solution, counter-evidence and smallest useful response. Do not edit files or execute shell commands.\n${JSON.stringify(observation)}`
     await writeFile(join(evidenceRoot, 'observation.json'), JSON.stringify(observation, null, 2))
     const caseB = await run(prompt, 'case-b-session')

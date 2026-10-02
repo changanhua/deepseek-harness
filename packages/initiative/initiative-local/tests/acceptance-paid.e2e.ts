@@ -14,3 +14,11 @@ it.skipIf(process.env.DSH_INITIATIVE_REAL_ACCEPTANCE !== 'approved' || !process.
     await runAcceptance(root, process.env, 'paid')
   },
 )
+
+it.skipIf(process.env.DSH_INITIATIVE_REAL_ACCEPTANCE !== 'approved' || !process.env.DEEPSEEK_API_KEY)(
+  'records a real Agent investigation of a Human Candidate through scoped tools', { timeout: 300000, retry: 0 }, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-initiative-investigation-'))
+    console.info(`Human Candidate investigation evidence: ${root}`)
+    await runAcceptance(root, process.env, 'paid', 'human-investigation')
+  },
+)

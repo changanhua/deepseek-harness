@@ -17,6 +17,8 @@ kind: "package-service"
 
 参见[配置与命令](../README.zh.md)及 [Initiative 子系统](../../../docs/subsystems/initiative.zh.md)。
 
+新的 RIR 请求要求 Candidate 处于 ASSESSABLE，否则在调用评估器前拒绝。已提交的请求以相同 key、actor 和 payload 重试时，即使 Candidate 已晋升，也返回原 receipt，不再调用模型。
+
 ## 不变量策略
 
 不发布 invariant 伴随模块：所有 Candidate 事实均由同一个经过 schema 验证的原子记录导出，没有要对齐的独立投射。

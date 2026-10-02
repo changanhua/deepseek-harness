@@ -17,6 +17,8 @@ Configure ownershipRoot and stable operatorId explicitly; maxWorkspaceBytes boun
 
 See [setup and commands](../README.md) and the [Initiative subsystem](../../../docs/subsystems/initiative.md).
 
+New RIR requests require an ASSESSABLE Candidate and fail before invoking the evaluator otherwise. A previously committed request with the same key, actor and payload replays its original receipt even after promotion, without another model call.
+
 ## Invariant policy
 
 No invariant companion is published because all exposed Candidate facts derive from one schema-validated atomic record, with no independent projection to reconcile.

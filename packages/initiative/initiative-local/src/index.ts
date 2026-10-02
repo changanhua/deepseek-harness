@@ -167,6 +167,8 @@ export class LocalInitiative extends Initiative {
         if (found === undefined) throw new InitiativeError('not-found', 'Candidate is unavailable in this Workspace')
         candidate = found
         if (command.action === 'assess') {
+          if (candidate.status !== 'ASSESSABLE')
+            throw new InitiativeError('invalid-transition', 'Only an assessable Candidate can start a new review')
           const review = this.ctx.get('requirementAssessmentReview')
           if (review === undefined) throw new InitiativeError('unavailable', 'RIR review provider is unavailable')
           const source = candidateReviewSource(candidate, command.version)
