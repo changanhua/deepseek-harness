@@ -8,6 +8,8 @@
 
 import { existsSync, globSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { Context, Service } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
@@ -80,6 +82,8 @@ import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
 import Initiative from '@changanhua/dsh-initiative'
 import * as ToolInitiative from '@changanhua/dsh-tool-initiative'
+import * as ToolInitiativeReview from '@changanhua/dsh-tool-initiative-review'
+import * as ToolThinkingCase from '@changanhua/dsh-tool-thinking-case'
 import ProjectMemory from '@changanhua/dsh-memory'
 import * as ToolMemory from '@changanhua/dsh-tool-memory'
 import Planning from '@changanhua/dsh-planning'
@@ -338,6 +342,43 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolInitiative)
     },
     note: 'Opt-in Candidate intake. Agent proposals and investigation recommendations grant no authority; only a separate Human command may settle or promote to a pending Planning Proposal.',
+  },
+  {
+    pkg: '@changanhua/dsh-tool-initiative-review',
+    dir: 'tool-initiative-review',
+    source: 'packages/initiative/tool-initiative-review/src/index.ts',
+    requires: ['ctx.planning', 'ctx.initiative', 'ctx.storageDomain', 'ctx.workspaceRegistry', 'ctx.agents', 'ctx.sessions', 'ctx.tools', 'ctx.systemPrompt'],
+    writes: ['tool/call', 'tool/result', 'durable Review decisions and optional Candidate revisions'],
+    async mount(ctx) {
+      const scratch = await mkdtemp(join(tmpdir(), 'dsh-review-catalog-'))
+      ctx.effect(() => () => rm(scratch, { recursive: true, force: true }))
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(CatalogPlanning)
+      await ctx.plugin(CatalogInitiative)
+      ctx.provide('workspaceRegistry', {} as WorkspaceRegistry)
+      await ctx.plugin(Storage)
+      await ctx.plugin(StorageJson, { root: join(scratch, 'storage') })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(ToolInitiativeReview, { ownershipRoot: join(scratch, 'owner') })
+    },
+    note: 'Requires a restricted existing Agent Session. A durable no-op is success; no Planning mutation, automatic Session activation or work dispatch occurs.',
+  },
+  {
+    pkg: '@changanhua/dsh-tool-thinking-case',
+    dir: 'tool-thinking-case',
+    source: 'packages/planning/tool-thinking-case/src/index.ts',
+    requires: ['ctx.tools', 'ctx.thinkingCase'],
+    writes: ['tool/call', 'tool/result', 'Thinking result drafts'],
+    async mount(ctx) {
+      ctx.provide('thinkingCase', {
+        context: () => Promise.reject(new Error('Thinking context is unreachable during schema harvest')),
+        submit: () => Promise.reject(new Error('Thinking submission is unreachable during schema harvest')),
+        isThinkingSession: () => Promise.resolve(false),
+      })
+      await ctx.plugin(ToolThinkingCase)
+    },
+    note: 'Bounded Thinking context and draft submission; no canonical Planning acceptance or execution.',
   },
   {
     pkg: '@changanhua/dsh-tool-memory',

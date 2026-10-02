@@ -1,0 +1,63 @@
+{
+  "name": "@changanhua/dsh-tool-initiative-review",
+  "description": "Consume one Planning Review as a durable create, enrich or no-op Candidate decision",
+  "version": "0.1.2-alpha.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/initiative/tool-initiative-review"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json",
+    "./restrict": {
+      "types": "./lib/types/restrict.d.ts",
+      "default": "./lib/restrict.js"
+    }
+  },
+  "files": [
+    "lib/*.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "private": true,
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@changanhua/dsh-initiative": "workspace:^",
+    "@changanhua/dsh-planning": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-session": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "@deepseek-ai/dsh-storage-domain": "workspace:^",
+    "@deepseek-ai/node-addon-system": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-system-prompt": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@changanhua/dsh-initiative": "workspace:^",
+    "@changanhua/dsh-planning": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-session": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "@deepseek-ai/dsh-storage-domain": "workspace:^",
+    "@deepseek-ai/node-addon-system": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-system-prompt": "workspace:^",
+    "@deepseek-ai/dsh-scope": "workspace:^"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

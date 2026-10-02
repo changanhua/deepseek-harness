@@ -2109,6 +2109,9 @@ importers:
 
   packages/bundle/personal-planning:
     dependencies:
+      '@changanhua/dsh-tool-initiative-review':
+        specifier: workspace:^
+        version: link:../../initiative/tool-initiative-review
       '@changanhua/dsh-command-initiative':
         specifier: workspace:^
         version: link:../../initiative/command-initiative
@@ -8754,6 +8757,52 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
+
+  packages/initiative/tool-initiative-review:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@changanhua/dsh-initiative':
+        specifier: workspace:^
+        version: link:../initiative
+      '@changanhua/dsh-planning':
+        specifier: workspace:^
+        version: link:../../planning/planning
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:^
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-scope':
+        specifier: workspace:^
+        version: link:../../core/scope
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../core/session
+      '@deepseek-ai/dsh-storage-domain':
+        specifier: workspace:^
+        version: link:../../storage/storage-domain
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:^
+        version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../core/tools
+      '@deepseek-ai/dsh-workspace':
+        specifier: workspace:^
+        version: link:../../workspace/workspace
+      '@deepseek-ai/node-addon-system':
+        specifier: workspace:^
+        version: link:../../../native/system/packages/entry
 
   packages/interaction/commands:
     dependencies:

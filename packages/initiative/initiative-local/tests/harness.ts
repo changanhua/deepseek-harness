@@ -29,7 +29,8 @@ import type { LlmAdapter } from '@deepseek-ai/dsh-llm'
 import LocalAssessment from '../../../requirement-assessment/requirement-assessment-local/src/index.ts'
 import Review from '../../../requirement-assessment/requirement-assessment-review/src/index.ts'
 
-export async function boot(existingRoot?: string, maxWorkspaceBytes?: number, assessmentAdapter?: LlmAdapter) {
+export async function boot(existingRoot?: string, maxWorkspaceBytes?: number, assessmentAdapter?: LlmAdapter,
+  extensions: Array<{ name: string; plugin: unknown; config?: Record<string, unknown> }> = []) {
   const root = existingRoot ?? await mkdtemp(join(tmpdir(), 'dsh-initiative-test-'))
   const cwd = join(root, 'project')
   await mkdir(cwd, { recursive: true })
@@ -53,7 +54,6 @@ export async function boot(existingRoot?: string, maxWorkspaceBytes?: number, as
       maxInputBytes: 200000, maxOutputBytes: 200000, maxOutputTokens: 12000, timeoutMs: 10000 } },
   )
   // JSON is also YAML; the real Loader owns import normalization, injection and disposal.
-  await writeFile(configPath, JSON.stringify(rows, null, 2))
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-session', SessionStore], ['@deepseek-ai/dsh-agent', AgentRegistry],
     ['@deepseek-ai/dsh-session-persistence-jsonl', JsonlPersistence], ['@deepseek-ai/dsh-session-query-sqlite', SessionQuery],
@@ -62,6 +62,11 @@ export async function boot(existingRoot?: string, maxWorkspaceBytes?: number, as
     ['@deepseek-ai/dsh-commands', Commands], ['@deepseek-ai/dsh-tools', Tools], ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
     ['@changanhua/dsh-initiative-local', LocalInitiative], ['@changanhua/dsh-command-initiative', CommandInitiative], ['@changanhua/dsh-tool-initiative', ToolInitiative],
   ])
+  for (const extension of extensions) {
+    rows.push({ name: extension.name, config: { ...extension.config, ownershipRoot: join(root, `${extension.name}-owner`) } })
+    modules.set(extension.name, extension.plugin)
+  }
+  await writeFile(configPath, JSON.stringify(rows, null, 2))
   modules.set('assessment', LocalAssessment)
   modules.set('llm', Llm)
   modules.set('review', Review)

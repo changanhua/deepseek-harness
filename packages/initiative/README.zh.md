@@ -17,6 +17,7 @@ kind: "package-group"
 - [initiative-local](initiative-local/README.zh.md)：单 Host Storage Domain provider、可信身份和仅 pending Proposal 的 Planning 晋升。
 - [command-initiative](command-initiative/README.zh.md)：人工直接命令，包含 disposition 与 promotion。
 - [tool-initiative](tool-initiative/README.zh.md)：Agent propose、investigate、read 工具，不授予最终处置权限。
+- [tool-initiative-review](tool-initiative-review/README.zh.md)：在受限 Agent Session 中将一条 Planning Review 变成持久的新建、补充或不行动决策。
 
 ## Tutorial: opt-in Web composition
 

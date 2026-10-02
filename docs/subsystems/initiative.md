@@ -10,6 +10,8 @@ The provider derives Workspace and actor from a live Agent/Session. Human operat
 
 Storage Domain retains one atomic Workspace record. Actor/payload-bound receipts survive restart. Human assess captures an exact immutable Candidate revision through the existing RIR owner and runner. Human promotion prepares a durable intent before Planning propose; optional assessmentId selects a validated fixed Assessment, including an older revision, and freezes its complete baseline with Human rationale. Recovery replays that request without evaluating again or replacing the baseline. A pending promotion freezes Candidate edits; a definitive Planning CAS rejection can refresh the Planning attempt. Canonical Planning items/revisions and Delivery state remain unchanged, although the aggregate Board version increases.
 
+The optional [Planning Review consumer](../../packages/initiative/tool-initiative-review/README.md) persists one create, enrich or no-op decision per Review. It uses existing Candidate operations without changing this service contract or activating work.
+
 ## Queries and dependencies
 
 Read projections use CandidateSummary plus the selected immutable revision, revision count, investigation and latest disposition. Optional RIR relations validate Workspace, Candidate id, exact revision, digest and stored text. fresh means the assessed Candidate content matches the current head; drift means a valid older revision. Missing revisions are unavailable and inconsistent records are unknown. These states do not attest current DSH capabilities, backend identity or evidence truth. Missing or closed Assessment providers remain unavailable.

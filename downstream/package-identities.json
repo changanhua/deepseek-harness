@@ -622,6 +622,17 @@
       ]
     },
     {
+      "directory": "packages/initiative/tool-initiative-review",
+      "legacyName": "@deepseek-ai/dsh-tool-initiative-review",
+      "sourceName": "@changanhua/dsh-tool-initiative-review",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/knowledge/knowledge-base",
       "legacyName": "@deepseek-ai/dsh-knowledge-base",
       "sourceName": "@changanhua/dsh-knowledge-base",

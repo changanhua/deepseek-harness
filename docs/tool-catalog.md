@@ -18,6 +18,8 @@ This table connects model-visible tool names to the plugin package and service s
 | `@changanhua/dsh-tool-browser` | `browser_action`, `browser_action_sequence`, `browser_activity_search`, `browser_entry_mount`, `browser_entry_unmount`, `browser_extract`, `browser_instances`, `browser_page_map`, `browser_region_clear`, `browser_region_render`, `browser_request_status`, `browser_snapshot`, `browser_tabs`, `browser_task_cancel`, `browser_task_select`, `browser_task_start`, `browser_task_verify` | `ctx.browser`, `ctx.browserTasks`, `ctx.tools`, `ctx.approval`, `ctx.browserActivity for historical activity search`, `an initiating Agent session` | `tool/call`, `tool/result`, `browser-task/change`, `browser-task/receipt`, `browser-task/check`, `browser-task/delegation`, `approved page actions through Browser` | - | Activity search is present only when browserActivity is composed. It reads the initiating Session under current Host grants, including while Chrome is offline. |
 | `@changanhua/dsh-tool-agent-run-task-queue` | `task_queue_enqueue`, `task_queue_enqueue_batch` | `ctx.tools`, `ctx.taskQueue`, `a live Agent session at execution time` | `tool/call`, `tool/result`, `Queue v2 agent.run@1 admission` | - | The typed restricted-worker admission consumer. It admits `agent.run@1` intent without exposing executor, profile, model, credential, or shell routing fields. |
 | `@changanhua/dsh-tool-initiative` | `initiative_read`, `initiative_record` | `ctx.tools`, `ctx.systemPrompt`, `ctx.initiative`, `a live Agent in a registered Workspace` | `tool/call`, `tool/result`, `Candidate revisions and investigation facts in initiative_candidates` | - | Opt-in Candidate intake. Agent proposals and investigation recommendations grant no authority; only a separate Human command may settle or promote to a pending Planning Proposal. |
+| `@changanhua/dsh-tool-initiative-review` | `initiative_review_decide`, `initiative_review_read` | `ctx.planning`, `ctx.initiative`, `ctx.storageDomain`, `ctx.workspaceRegistry`, `ctx.agents`, `ctx.sessions`, `ctx.tools`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `durable Review decisions and optional Candidate revisions` | - | Requires a restricted existing Agent Session. A durable no-op is success; no Planning mutation, automatic Session activation or work dispatch occurs. |
+| `@changanhua/dsh-tool-thinking-case` | `thinking_context`, `thinking_submit_result` | `ctx.tools`, `ctx.thinkingCase` | `tool/call`, `tool/result`, `Thinking result drafts` | - | Bounded Thinking context and draft submission; no canonical Planning acceptance or execution. |
 | `@changanhua/dsh-tool-memory` | `memory_propose`, `memory_read`, `memory_search` | `ctx.tools`, `ctx.systemPrompt`, `ctx.projectMemory`, `a live Agent in a registered Workspace` | `tool/call`, `tool/result`, `candidate revisions and proposal receipts in the project_memory domain` | - | Explicit opt-in project memory. Models can search, read checked claims, and propose candidates; human acceptance, rejection, and withdrawal are separate command operations. |
 | `@changanhua/dsh-tool-planning` | `planning_context`, `planning_execution`, `planning_handoff`, `planning_list`, `planning_read`, `planning_update` | `ctx.tools`, `ctx.systemPrompt`, `ctx.planning`, `ctx.agents`, `ctx.sessions`, `ctx.workspaceRegistry`, `an initiating Agent in a registered Workspace` | `tool/call`, `tool/result`, `Planning Board mutations through ctx.planning` | - | planning_handoff is registered only when the optional Planning–Delivery bridge is composed. planning_execution reads linked Delivery state and evidence only when the bridge and Planning Remote are both composed; it never dispatches or accepts Delivery work. |
 | `@deepseek-ai/dsh-tool-ask-user` | `ask_user_question` | `ctx.tools`, `ctx.userQuestions` | `tool/call`, `tool/result after a UI/provider answers the question` | - | ask_user_question pauses the tool call until the active UI provider returns a human answer. |
@@ -3451,6 +3453,442 @@ Propose a Candidate or append bounded investigation facts. Never grants authorit
 Source: [`packages/initiative/tool-initiative/src/index.ts`](../packages/initiative/tool-initiative/src/index.ts)
 
 Opt-in Candidate intake. Agent proposals and investigation recommendations grant no authority; only a separate Human command may settle or promote to a pending Planning Proposal.
+
+<a id="changanhuadsh-tool-initiative-review"></a>
+
+## `@changanhua/dsh-tool-initiative-review`
+
+### `initiative_review_decide`
+
+Durably decide create, enrich or no-op for the exact Review read. No Planning or execution changes.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "input_json": {
+      "type": "string",
+      "description": "JSON: reviewId, expectedDigest, expectedDecisionVersion, rationale, decision (no-op, create or enrich)."
+    }
+  },
+  "required": [
+    "input_json"
+  ]
+}
+```
+
+Source: [`packages/initiative/tool-initiative-review/src/index.ts`](../packages/initiative/tool-initiative-review/src/index.ts)
+
+### `initiative_review_read`
+
+Read one Planning Review, its exact revision, existing Candidates and durable processing result.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "input_json": {
+      "type": "string",
+      "description": "JSON: reviewId, optional candidateId, offset and limit (1 to 5)."
+    }
+  },
+  "required": [
+    "input_json"
+  ]
+}
+```
+
+Source: [`packages/initiative/tool-initiative-review/src/index.ts`](../packages/initiative/tool-initiative-review/src/index.ts)
+
+Requires a restricted existing Agent Session. A durable no-op is success; no Planning mutation, automatic Session activation or work dispatch occurs.
+
+<a id="changanhuadsh-tool-thinking-case"></a>
+
+## `@changanhua/dsh-tool-thinking-case`
+
+### `thinking_context`
+
+Read the bounded, frozen context for this active Thinking Desk run.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/planning/tool-thinking-case/src/index.ts`](../packages/planning/tool-thinking-case/src/index.ts)
+
+### `thinking_submit_result`
+
+Save one versioned structured Thinking Desk candidate for human review. This never changes Planning.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "expected_result_version": {
+      "type": "integer",
+      "description": "0 for the first result, then the current result version."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Stable request id. Keep it unchanged when retrying the same submission."
+    },
+    "draft": {
+      "type": "object",
+      "description": "Structured thinking candidate. Use expected_result_version 0 for the first submission, then increment from the stored result version.",
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "open_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exploration_notes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ]
+          }
+        },
+        "design_context": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "body"
+          ]
+        },
+        "planning_delta": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operations": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "add-state-entry"
+                      },
+                      "entry": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "objective",
+                              "accepted",
+                              "open"
+                            ]
+                          },
+                          "content": {
+                            "type": "string"
+                          },
+                          "sourceRefs": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "provider": {
+                                  "type": "string"
+                                },
+                                "revision": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "content"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "entry"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "update-state-entry"
+                      },
+                      "entry": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "objective",
+                              "accepted",
+                              "open"
+                            ]
+                          },
+                          "content": {
+                            "type": "string"
+                          },
+                          "sourceRefs": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "provider": {
+                                  "type": "string"
+                                },
+                                "revision": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "content"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "entry"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "remove-state-entry"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "create-focus"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "objective": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "title"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "update-focus"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "expectedVersion": {
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "objective": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "active",
+                          "blocked",
+                          "done"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "expectedVersion"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "add-resource-link"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "resource": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "provider": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "role": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "resource"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "remove-resource-link"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ]
+                  }
+                ]
+              }
+            },
+            "rationale": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operations"
+          ]
+        }
+      },
+      "required": [
+        "summary",
+        "findings",
+        "open_questions"
+      ]
+    }
+  },
+  "required": [
+    "expected_result_version",
+    "request_id",
+    "draft"
+  ]
+}
+```
+
+Source: [`packages/planning/tool-thinking-case/src/index.ts`](../packages/planning/tool-thinking-case/src/index.ts)
+
+Bounded Thinking context and draft submission; no canonical Planning acceptance or execution.
 
 <a id="changanhuadsh-tool-memory"></a>
 

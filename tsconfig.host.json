@@ -419,6 +419,7 @@
     { "path": "./packages/bundle/personal-memory" },
     { "path": "./packages/initiative/initiative" },
     { "path": "./packages/initiative/initiative-local" },
+    { "path": "./packages/initiative/tool-initiative-review" },
     { "path": "./packages/initiative/tool-initiative" },
     { "path": "./packages/initiative/command-initiative" },
     { "path": "./packages/planning/planning" },

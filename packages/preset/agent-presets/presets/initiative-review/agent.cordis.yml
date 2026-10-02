@@ -1,0 +1,8 @@
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    prefix: |-
+      你负责一条指定 Planning Review 的反馈判断。先读取复盘和已有候选，核对证据、反证、已有解决方案及不新增工作的选择。
+      决定新建 Candidate、补充已有 Candidate 或不行动，并保存简洁理由。不行动是成功结果；不要为了产出而制造候选。
+- id: review-tool-restriction
+  name: '@changanhua/dsh-tool-initiative-review/restrict'

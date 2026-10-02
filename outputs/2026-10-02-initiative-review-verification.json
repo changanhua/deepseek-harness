@@ -1,0 +1,108 @@
+{
+  "scope": "Initiative Loop v1: selected Planning Review to create, enrich or no-op in an authorized restricted Session",
+  "base": "b86369bc26c5fbd1b58c96e727f6d3108db01844",
+  "records": [
+    {
+      "label": "combined",
+      "root": "C:/Users/xbh/AppData/Local/Temp/dsh-review-paid-knU3MW",
+      "cases": [
+        {
+          "decision": "no-op",
+          "phase": "committed",
+          "turnEnd": "completed"
+        },
+        {
+          "decision": "enrich",
+          "phase": "committed",
+          "turnEnd": "completed"
+        },
+        {
+          "decision": "create",
+          "phase": "committed",
+          "turnEnd": "error"
+        }
+      ],
+      "planningUnchanged": true,
+      "candidateCount": 2,
+      "httpAttempts": 12,
+      "hashes": {
+        "evidence/build.json": "979e48f0c45e59e35ffcd0f73fe204ec17318cd876d9090ca8e511a22b0ec97d",
+        "evidence/inputs.json": "f06f3484d39c8e386df4d96737d39d7cbfb60bb43c4f0848ac8128220ae25ef7",
+        "evidence/turns.json": "b888541e51c4f2de7ea109bb86b6c9f1569fb5ca04dd6e69d9d82259908a63d3",
+        "evidence/http-attempts.json": "7adbb9222d1324f52ee3df63f2b1ddaab1ddf1eb7ef78f15e269103e7a7304c8",
+        "home/storages/initiative_review_decisions.json": "4ba91ba3dccff77a3784e25907f7a9401cef637c5b9afc4df16c465db09b189e",
+        "home/storages/initiative_candidates.json": "a39c7e22e729815f7ee91b66babf3dbd1f5b0a2d7da0233bc545a4933e3eb252",
+        "home/storages/planning_boards.json": "91ce7c002ac6caa258abb4f7be8df390c7c1b1742114e2d83df2db9996829531"
+      }
+    },
+    {
+      "label": "enrich",
+      "root": "C:/Users/xbh/AppData/Local/Temp/dsh-review-paid-u3X35K",
+      "cases": [
+        {
+          "decision": "enrich",
+          "phase": "committed",
+          "turnEnd": "completed"
+        }
+      ],
+      "planningUnchanged": true,
+      "candidateCount": 1,
+      "httpAttempts": 3,
+      "hashes": {
+        "evidence/build.json": "979e48f0c45e59e35ffcd0f73fe204ec17318cd876d9090ca8e511a22b0ec97d",
+        "evidence/inputs.json": "25e82e8bdf9d92371fe25dd4ecd1c546e68b0da3d0e1ff4483c9d33dbe2731cc",
+        "evidence/turns.json": "f22b9d56766e43c0ffa880d6e6f3f32dad22fd816ca6ffae911eda004e504953",
+        "evidence/http-attempts.json": "eb6bba8f8b6ded7463fa71a17cf2147a28409758fced877f5a076ee404f68280",
+        "home/storages/initiative_review_decisions.json": "af15684643233d42aab3e895811d8a70a786bd4f52e8d1c349d50cf53c1df5ec",
+        "home/storages/initiative_candidates.json": "d24c41dccf7d0321d4536f2912bb2c0e66f0283934136b1ebbf6497d237d4c24",
+        "home/storages/planning_boards.json": "6d07b1d0da9a81359d78bfc66befef846e5934d7e05c3f04b0b55f17f65bedff"
+      }
+    },
+    {
+      "label": "create",
+      "root": "C:/Users/xbh/AppData/Local/Temp/dsh-review-paid-vqNXHA",
+      "cases": [
+        {
+          "decision": "create",
+          "phase": "committed",
+          "turnEnd": "completed"
+        }
+      ],
+      "planningUnchanged": true,
+      "candidateCount": 2,
+      "httpAttempts": 4,
+      "hashes": {
+        "evidence/build.json": "979e48f0c45e59e35ffcd0f73fe204ec17318cd876d9090ca8e511a22b0ec97d",
+        "evidence/inputs.json": "6d74625047865eb6ec2c68f80062b5769a99ab0c88991e6a30f0a3255f2413a0",
+        "evidence/turns.json": "102fc6beeb1b102c9fba19e33760121bf9cc472d20b4bbc41aa7986f7908d2aa",
+        "evidence/http-attempts.json": "6b482aa500f6a9ba6d2827358de04c2ce3c155d8c04416a64af80a46a8dacad8",
+        "home/storages/initiative_review_decisions.json": "c06cf1b06bcf816be61d0df8326efd8eab1fd1e4dd7d202912434f77e6d82368",
+        "home/storages/initiative_candidates.json": "e3976760cc9e5aa368164c49b28ba1dd56cc181ffa474dad7832c2252dfc7d1a",
+        "home/storages/planning_boards.json": "c909ae2c54378e4c23fed37b811e348997a6d86f6cb6d826bb1561571939ad80"
+      }
+    }
+  ],
+  "limitations": [
+    "Scenarios are controller-supplied isolated Planning Reviews, not production incident-frequency claims.",
+    "Combined run committed all three decisions, but the final create-turn explanation hit the 12-request test transport budget. Separate create and enrich suites completed normally.",
+    "Earlier failures retained: bj5FtF used a broad SDK Session and was denied; Pta1YI chose no-op for a redundant observation; Zmu5O3 exposed ambiguous version fields and exhausted its bound. No failed attempt is classified as a full pass.",
+    "No default profile activation, personal deployment, generic scanning, automatic Session start, Planning mutation or execution dispatch.",
+    "Full repository doc-sync retains existing failures; owned additions are checked separately."
+  ],
+  "verifiedAt": "2026-10-02T10:35:31.474Z",
+  "localChecks": {
+    "fullBuild": "pass, 252 Client artifacts",
+    "hostTypes": "pass",
+    "newOwnerTests": 10,
+    "adjacentRegressionTests": 21,
+    "changedSourceLint": "pass",
+    "wholeRepoLint": "fails on existing other paths; no touched-source diagnostics",
+    "wholeRepoDocSync": "fails; retained log in task workspace",
+    "docCodeTypecheck": "fails on existing Thinking Desk specification block; no new file diagnostics",
+    "toolCatalog": "generated and freshness verified",
+    "packageIdentities": "84 personal packages",
+    "translationPairs": "5 selected pairs consistent",
+    "independentReview": "not run; no subagents authorized",
+    "artifactMatchesPaidAcceptance": true
+  }
+}

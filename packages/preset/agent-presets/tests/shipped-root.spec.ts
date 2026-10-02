@@ -73,7 +73,7 @@ describe('the shipped preset root', () => {
     const ctx = await roster({ includeUserRoot: false })
 
     const listed = await ctx.agentPresets.list()
-    expect(listed.map(preset => preset.id).sort()).toEqual(['browser-assistant', 'cordis', 'minimal', 'ptc', 'standard', 'thinking-desk', 'work-steward'])
+    expect(listed.map(preset => preset.id).sort()).toEqual(['browser-assistant', 'cordis', 'initiative-review', 'minimal', 'ptc', 'standard', 'thinking-desk', 'work-steward'])
     expect(listed.every(preset => preset.trust === 'system')).toBe(true)
     // Not `broken === undefined`: health asks whether each row's package is
     // installed above the base, and the shipped rows name packages the
