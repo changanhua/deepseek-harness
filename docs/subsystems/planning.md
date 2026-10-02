@@ -111,6 +111,39 @@ async handoff( access: PlanningAccess, input: PlanningDeliveryHandoffInput, sign
 ```
 
 Source: [`packages/planning/planning-delivery-bridge/src/index.ts`](../../packages/planning/planning-delivery-bridge/src/index.ts)
+
+<a id="ctxthinkingcase--thinkingagentowner"></a>
+
+### `ctx.thinkingCase` — `ThinkingAgentOwner`
+
+Host capability restricted to the real bound Thinking Agent; model-supplied identities are not accepted.
+
+```ts cordis-catalog
+/** Read the admitted run's frozen input after revalidating its live Agent and binding.
+ * @param agent - Exact live caller in the restricted Thinking preset.
+ * @param signal - Caller cancellation.
+ * @returns Detached frozen context; rejects stale scope or missing admission.
+ */
+context(agent: Agent, signal: AbortSignal): Promise<ThinkingContextPack>
+
+/** Persist a versioned suggestion without applying it to Planning or the canvas.
+ * @param agent - Exact live caller bound to the run.
+ * @param input - Draft, expected result version and stable retry identity.
+ * @param signal - Caller cancellation.
+ * @returns Committed result or the original receipt on identical retry.
+ */
+submit( agent: Agent, input: Omit<SubmitThinkingInput, 'runId'>, signal: AbortSignal, ): Promise<ThinkingResultRecord>
+
+/** Check current preset membership without admitting a read or write.
+ * @param sessionId - Native Session to inspect.
+ * @returns Whether the live Agent is composed with the Thinking preset.
+ */
+isThinkingSession(sessionId: string): Promise<boolean>
+```
+
+Types: [Agent](core.md)
+
+Source: [`packages/planning/planning-remote/src/thinking-types.ts`](../../packages/planning/planning-remote/src/thinking-types.ts)
 <!-- END GENERATED cordis-surface -->
 
 ## Dev Note

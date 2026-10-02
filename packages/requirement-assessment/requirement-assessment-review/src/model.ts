@@ -7,11 +7,17 @@ import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 
 /** Deployment-owned route and complete request/response resource bounds. */
 export interface ReviewModelConfig {
+  /** Configured LLM Provider identifier. */
   provider: string
+  /** Model identifier resolved through the selected Provider. */
   model: string
+  /** Maximum UTF-8 bytes of the complete serialized model request. */
   maxInputBytes: number
+  /** Maximum accumulated serialized stream bytes, including reasoning and metadata. */
   maxOutputBytes: number
+  /** Positive maximum output tokens sent to the model. */
   maxOutputTokens: number
+  /** Combined preparation and streaming deadline in milliseconds. */
   timeoutMs: number
 }
 

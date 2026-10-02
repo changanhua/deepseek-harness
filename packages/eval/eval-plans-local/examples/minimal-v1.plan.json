@@ -1,0 +1,65 @@
+{
+  "kind": "eval-plan",
+  "schemaVersion": 1,
+  "id": "trusted-plan-example",
+  "version": "1",
+  "suiteRef": {
+    "id": "trusted-plan-example",
+    "version": "1",
+    "digest": "68480e636045fe9e8bf748947c2a3865b3b100fddfd898df56215d2262f7bd5d"
+  },
+  "repository": {
+    "requestedRevision": "ccfe6400d79daee21932107649ec6c1749e4d5fa",
+    "expectedCommit": "68d03c52d61003989a11a7bd6908af91ebdc76ae"
+  },
+  "routes": [
+    {
+      "id": "flash",
+      "provider": "deepseek-official",
+      "model": "deepseek-v4-flash",
+      "preset": {
+        "id": "standard",
+        "source": "preset:system",
+        "digest": "ad8aec121805f37d580273cf7c430be999825ea88a133c6f8c18b09d7371b6b9"
+      },
+      "parameters": {
+        "maxTokens": 64
+      }
+    },
+    {
+      "id": "pro",
+      "provider": "deepseek-official",
+      "model": "deepseek-v4-pro",
+      "preset": {
+        "id": "standard",
+        "source": "preset:system",
+        "digest": "ad8aec121805f37d580273cf7c430be999825ea88a133c6f8c18b09d7371b6b9"
+      },
+      "parameters": {
+        "maxTokens": 64
+      }
+    }
+  ],
+  "repeatPolicy": {
+    "count": 1,
+    "seed": null,
+    "order": "route-case-repeat"
+  },
+  "baselineRef": null,
+  "workspacePolicy": "per-cell",
+  "allowedEntrypoints": [
+    "ci",
+    "cli",
+    "web"
+  ],
+  "credentialAuthorizationRef": null,
+  "budget": {
+    "required": false,
+    "authorizationRef": null
+  },
+  "verifierPlanRef": {
+    "id": "deterministic-marker-verifier",
+    "version": "1",
+    "digest": "096b4a398bd18d3eb0f0f4e20b98519b86f7d0a53193af27b943a82868cdeb25"
+  }
+}

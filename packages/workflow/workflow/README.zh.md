@@ -96,6 +96,8 @@ return { reviewed: reviews.length }
 -----
 
 <a id="further-exploration"></a>
+Host 可通过 `registerChildGuard` 在实际子 Agent 创建处安装一个检查器。该可释放注册只允许回调一次，移除后保持拒绝；[预算桥接](../../budget/budget-workflow/README.zh.md)通过此接口将子 Agent 绑定到共享运行预算。
+
 ## 进一步探索
 
 当包级契约不够用时阅读以下页面。它们从共享工作流模型逐步进入当前引擎与面向模型的消费方。

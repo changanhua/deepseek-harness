@@ -7,6 +7,7 @@
 export type DomainErrorCode =
   | 'already-open'
   | 'facet-unsupported'
+  | 'guarantee-unsupported'
   | 'invalid-record'
   | 'missing-key'
   | 'closed'

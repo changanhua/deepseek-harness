@@ -120,6 +120,8 @@ for await (const chunk of ctx.llm.stream({
 -----
 
 <a id="further-exploration"></a>
+Host 可在最终适配器调用边界安装一个 `registerDispatchGuard`，覆盖直接调用和 prepared 调用，每次尝试只允许回调派发一次。移除后保持拒绝，直到替换完成。[预算桥接](../../budget/budget-llm/README.zh.md)提供资源准入，不改变模型路由。
+
 ## 进一步探索
 
 当包级约定不够用时阅读以下页面。它们从共享类型逐步进入具体适配器、重试执行器与计量服务。

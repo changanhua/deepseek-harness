@@ -149,6 +149,13 @@ Workflow Service Definition contract. Invalid requests throw before publication;
  * @returns the live run; its `result` resolves when the script settles.
  */
 abstract start(request: WorkflowStartRequest): WorkflowRun
+
+/**
+ * Register one Host resource guard; removal remains fail-closed until a replacement is installed.
+ * @param guard - Host policy wrapping the actual child dispatch callback.
+ * @returns Disposer that revokes this registration and outstanding dispatch callbacks.
+ */
+registerChildGuard(guard: WorkflowChildGuard): () => void
 ```
 
 Source: [`packages/workflow/workflow/src/index.ts`](../../packages/workflow/workflow/src/index.ts)

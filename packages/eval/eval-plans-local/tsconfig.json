@@ -1,0 +1,48 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../eval"
+    },
+    {
+      "path": "../eval-plans"
+    },
+    {
+      "path": "../../workspace/workspace"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../credentials/credentials"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../preset/agent-presets"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../skill/skill"
+    },
+    {
+      "path": "../../budget/budget"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    }
+  ]
+}

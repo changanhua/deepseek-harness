@@ -185,6 +185,7 @@ class WorkerThreadWorkflowEngine extends WorkflowEngine {
         agentEnd: (agent) => { this.emitWorkflowEvent('workflow/agent-end', info, agent) },
       },
       request.signal,
+      (operation, signal) => this.dispatchChild({ run: info, parent: request.parent, signal }, operation),
     )
 
     this.emitWorkflowEvent('workflow/start', info)

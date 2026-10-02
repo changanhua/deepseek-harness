@@ -25,6 +25,7 @@ export const evalReplayFixtureSchema = z.object({
 /** Runtime schema for deterministic workspace preparation. */
 export const evalWorkspaceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('empty') }).strict(),
+  z.object({ kind: z.literal('repository') }).strict(),
   z.object({ kind: z.literal('fixture'), path: nonBlankString }).strict(),
 ])
 

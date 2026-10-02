@@ -1,0 +1,48 @@
+- id: headless-startup
+  disabled: true
+- id: headless-runner
+  disabled: true
+- id: agent-loop
+  config:
+    agents:
+      - id: main
+        provider: budget-fixture
+        model: recorded
+        maxTokens: 32
+        cwd: !!js process.cwd()
+- id: session-persistence-jsonl
+  config:
+    root: './.sessions'
+    compression: none
+- id: storage-domain
+  isolate:
+    storage.backend.json: web-storage
+    storageDomain: web-host
+  config:
+    backend: json
+    routes:
+      resource_budget: budget_data
+- insert:
+    - id: budget-storage
+      name: '../../../../../storage/storage-sqlite/src/index.ts'
+      config:
+        backendName: budget_data
+        path: './budget-private/account.sqlite'
+        ownership: exclusive
+        journalMode: delete
+        synchronous: full
+        privateDirectory: true
+    - id: resource-budget
+      name: '../../../src/index.ts'
+      isolate:
+        storageDomain: web-host
+      config:
+        maxScopes: 20
+        maxReservations: 40
+        maxLedgerBytes: 524288
+    - id: budget-llm
+      name: '../../../../budget-llm/src/index.ts'
+    - id: budget-agent
+      name: '../../../../budget-agent/src/index.ts'
+    - id: budget-fixture
+      name: './fixture.ts'

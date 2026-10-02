@@ -28,6 +28,10 @@ eval 包组让调用方无需 judge 模型即可比较录制的 DSH 行为。`ev
 |---|---|
 | [`eval`](eval/README.zh.md) | 严格的套件与运行、顺序执行、四类结果折叠和稳定报告 |
 | [`eval-session-snapshot`](eval-session-snapshot/README.zh.md) | 无密钥 ACP 回放执行器与归一化 session 日志比较 |
+| [`eval-plans`](eval-plans/README.zh.md) | 可信来源与准入契约 |
+| [`eval-plans-local`](eval-plans-local/README.zh.md) | Host 固定文件、运行时预检与持久准入 |
+| [`command-eval-plan`](command-eval-plan/README.zh.md) | 人工发现、预检与准入 |
+| [`eval-repo-workspace`](eval-repo-workspace/README.zh.md) | 已验证 commit 与 Queue Attempt 工作目录桥接 |
 
 仓库内的 [`minimal-v1` 套件](eval-session-snapshot/suites/minimal-v1/suite.json)提供十个 Case 和二十个独立路由 fixture，作为首个可复现比较。
 

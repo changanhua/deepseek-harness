@@ -114,6 +114,8 @@ kind: "package-reference"
 -----
 
 <a id="further-exploration"></a>
+Worker 子 Agent 请求在 `subagents.start` 前经过 Workflow owner 的子 Agent 检查器。准入拒绝不会启动子 Agent；成功启动的子 Agent 保持既有的 Worker 取消及等待静止后清理契约。
+
 ## 进一步探索
 
 当引擎级约定不够用时阅读以下页面。它们从 seam 契约逐步进入面向模型的消费方与设计决策。

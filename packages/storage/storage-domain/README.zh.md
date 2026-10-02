@@ -113,6 +113,8 @@ domain.table('workspaces').update(id, (r) => ({ ...r, path: newPath }))
 -----
 
 <a id="further-exploration"></a>
+Domain 可通过 `requires` 要求后端保证。打开时在获取任何 KV 句柄前检查要求，缺少保证则返回 `guarantee-unsupported`；调用方声明要求不能提升介质本身的保证。
+
 ## 进一步探索
 
 当领域层视角不够用时阅读以下页面：子系统参考是权威约定，Agent Note 记录了设计与延期工作。

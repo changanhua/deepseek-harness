@@ -143,6 +143,7 @@ export class WorkerRun implements WorkflowRun {
     private readonly disposeGraceMs: number,
     private readonly observer: ExecutionObserver,
     signal: AbortSignal | undefined,
+    private readonly admitChild: <T>(operation: () => Promise<T>, signal: AbortSignal) => Promise<T> = operation => operation(),
   ) {
     this.result = new Promise<WorkflowResult>((resolve) => { this.settleResolve = resolve })
     // workerData rides the structured clone: args are plain JSON by the seam
@@ -352,7 +353,7 @@ export class WorkerRun implements WorkflowRun {
   private async startChild(callId: number, request: ChildStartRequest): Promise<void> {
     let run: SubagentRun
     try {
-      run = await this.subagents.start(this.provider, {
+      run = await this.admitChild(() => this.subagents.start(this.provider, {
         prompt: [{ type: 'text', text: request.prompt }],
         parent: this.parent,
         signal: this.controller.signal,
@@ -365,7 +366,7 @@ export class WorkerRun implements WorkflowRun {
             },
           }
           : {},
-      })
+      }), this.controller.signal)
     } catch (error: unknown) {
       const failure = this.childAdmissionFailure()
       this.post(HostToWorkerType.ChildStartError, {

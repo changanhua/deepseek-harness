@@ -138,6 +138,14 @@ flowchart TD
     pkg_browser_task["browser-task"]
     pkg_tool_browser["tool-browser"]
   end
+  subgraph group_budget["packages/budget"]
+    pkg_budget["budget"]
+    pkg_budget_agent["budget-agent"]
+    pkg_budget_llm["budget-llm"]
+    pkg_budget_local["budget-local"]
+    pkg_budget_workflow["budget-workflow"]
+    pkg_command_budget["command-budget"]
+  end
   subgraph group_bundle["packages/bundle"]
     pkg_acp_app["acp-app"]
     pkg_base["base"]
@@ -266,7 +274,11 @@ flowchart TD
     pkg_subprocess_e2b["subprocess-e2b"]
   end
   subgraph group_eval["packages/eval"]
+    pkg_command_eval_plan["command-eval-plan"]
     pkg_eval["eval"]
+    pkg_eval_plans["eval-plans"]
+    pkg_eval_plans_local["eval-plans-local"]
+    pkg_eval_repo_workspace["eval-repo-workspace"]
     pkg_eval_session_snapshot["eval-session-snapshot"]
   end
   subgraph group_experimental["packages/experimental"]
@@ -322,6 +334,7 @@ flowchart TD
     pkg_initiative["initiative"]
     pkg_initiative_local["initiative-local"]
     pkg_tool_initiative["tool-initiative"]
+    pkg_tool_initiative_review["tool-initiative-review"]
   end
   subgraph group_interaction["packages/interaction"]
     pkg_commands["commands"]
@@ -362,6 +375,7 @@ flowchart TD
     pkg_planning_local["planning-local"]
     pkg_planning_remote["planning-remote"]
     pkg_tool_planning["tool-planning"]
+    pkg_tool_thinking_case["tool-thinking-case"]
   end
   subgraph group_preset["packages/preset"]
     pkg_agent_presets["agent-presets"]
@@ -484,6 +498,8 @@ flowchart TD
   end
   pkg_scope --> pkg__deepseek_ai_dsh_invariants
   pkg_attachment --> pkg__deepseek_ai_dsh_brand
+  pkg_budget_llm --> pkg__changanhua_dsh_budget
+  pkg_budget_llm --> pkg__deepseek_ai_dsh_llm
   pkg_personal_delivery --> pkg__deepseek_ai_dsh_invariants
   pkg_personal_memory --> pkg__deepseek_ai_dsh_invariants
   pkg_content --> pkg__deepseek_ai_dsh_invariants
@@ -527,6 +543,8 @@ flowchart TD
   pkg_skill --> pkg__deepseek_ai_dsh_scope
   pkg_attachment_local --> pkg__deepseek_ai_dsh_attachment
   pkg_attachment_local --> pkg__deepseek_ai_dsh_home_paths
+  pkg_budget_local --> pkg__changanhua_dsh_budget
+  pkg_budget_local --> pkg__deepseek_ai_dsh_storage_domain
   pkg_client_file_upload --> pkg__deepseek_ai_dsh_scope
   pkg_content_browser --> pkg__deepseek_ai_dsh_client_connection
   pkg_content_browser --> pkg__changanhua_dsh_content
@@ -672,6 +690,10 @@ flowchart TD
   pkg_delivery_testkit --> pkg__changanhua_dsh_delivery_protocol
   pkg_delivery_testkit --> pkg__deepseek_ai_dsh_invariants
   pkg_delivery_testkit --> pkg__changanhua_dsh_repo_workspace
+  pkg_eval_repo_workspace --> pkg__changanhua_dsh_delivery_protocol
+  pkg_eval_repo_workspace --> pkg__changanhua_dsh_eval
+  pkg_eval_repo_workspace --> pkg__changanhua_dsh_repo_workspace
+  pkg_eval_repo_workspace --> pkg__changanhua_dsh_task_queue
   pkg_image_generation_task_queue --> pkg__deepseek_ai_dsh_attachment
   pkg_image_generation_task_queue --> pkg__changanhua_dsh_image_generation
   pkg_image_generation_task_queue --> pkg__deepseek_ai_dsh_invariants
@@ -791,6 +813,8 @@ flowchart TD
   pkg_delivery_remote --> pkg__deepseek_ai_dsh_typert_protocol
   pkg_fs_e2b --> pkg__deepseek_ai_dsh_e2b
   pkg_fs_e2b --> pkg__deepseek_ai_dsh_fs
+  pkg_eval_plans --> pkg__changanhua_dsh_eval
+  pkg_eval_plans --> pkg__deepseek_ai_dsh_workspace
   pkg_initiative --> pkg__deepseek_ai_dsh_agent
   pkg_initiative --> pkg__deepseek_ai_dsh_brand
   pkg_initiative --> pkg__changanhua_dsh_requirement_assessment
@@ -884,6 +908,14 @@ flowchart TD
   pkg_fs_sandbox --> pkg__deepseek_ai_dsh_fs_local
   pkg_fs_sandbox --> pkg__deepseek_ai_dsh_sandbox
   pkg_fs_sandbox --> pkg__deepseek_ai_dsh_sandbox_policy
+  pkg_budget_agent --> pkg__deepseek_ai_dsh_agent
+  pkg_budget_agent --> pkg__changanhua_dsh_budget
+  pkg_budget_agent --> pkg__deepseek_ai_dsh_goal
+  pkg_budget_agent --> pkg__deepseek_ai_dsh_user_approval
+  pkg_command_budget --> pkg__deepseek_ai_dsh_agent
+  pkg_command_budget --> pkg__changanhua_dsh_budget
+  pkg_command_budget --> pkg__deepseek_ai_dsh_commands
+  pkg_command_budget --> pkg__deepseek_ai_dsh_goal
   pkg_headless --> pkg__deepseek_ai_dsh_agent
   pkg_headless --> pkg__deepseek_ai_dsh_agent_default_model
   pkg_headless --> pkg__deepseek_ai_dsh_llm
@@ -893,6 +925,10 @@ flowchart TD
   pkg_compaction --> pkg__deepseek_ai_dsh_invariants
   pkg_compaction --> pkg__deepseek_ai_dsh_llm
   pkg_compaction --> pkg__deepseek_ai_dsh_session
+  pkg_command_eval_plan --> pkg__deepseek_ai_dsh_agent
+  pkg_command_eval_plan --> pkg__deepseek_ai_dsh_commands
+  pkg_command_eval_plan --> pkg__changanhua_dsh_eval_plans
+  pkg_command_eval_plan --> pkg__deepseek_ai_dsh_workspace
   pkg_command_feedback --> pkg__deepseek_ai_dsh_anonymous_user_id
   pkg_command_feedback --> pkg__deepseek_ai_dsh_commands
   pkg_command_feedback --> pkg__deepseek_ai_dsh_session
@@ -1040,6 +1076,10 @@ flowchart TD
   pkg_browser_task --> pkg__deepseek_ai_dsh_session_projection
   pkg_browser_task --> pkg__deepseek_ai_dsh_system_prompt
   pkg_browser_task --> pkg__deepseek_ai_dsh_tools
+  pkg_budget_workflow --> pkg__deepseek_ai_dsh_agent
+  pkg_budget_workflow --> pkg__changanhua_dsh_budget
+  pkg_budget_workflow --> pkg__changanhua_dsh_budget_agent
+  pkg_budget_workflow --> pkg__deepseek_ai_dsh_workflow
   pkg_command_compact --> pkg__deepseek_ai_dsh_commands
   pkg_command_compact --> pkg__deepseek_ai_dsh_compaction
   pkg_agent_instructions --> pkg__deepseek_ai_dsh_agent
@@ -1093,6 +1133,15 @@ flowchart TD
   pkg_tool_initiative --> pkg__deepseek_ai_dsh_llm
   pkg_tool_initiative --> pkg__deepseek_ai_dsh_system_prompt
   pkg_tool_initiative --> pkg__deepseek_ai_dsh_tools
+  pkg_tool_initiative_review --> pkg__deepseek_ai_dsh_agent
+  pkg_tool_initiative_review --> pkg__changanhua_dsh_initiative
+  pkg_tool_initiative_review --> pkg__deepseek_ai_dsh_llm
+  pkg_tool_initiative_review --> pkg__changanhua_dsh_planning
+  pkg_tool_initiative_review --> pkg__deepseek_ai_dsh_session
+  pkg_tool_initiative_review --> pkg__deepseek_ai_dsh_storage_domain
+  pkg_tool_initiative_review --> pkg__deepseek_ai_dsh_system_prompt
+  pkg_tool_initiative_review --> pkg__deepseek_ai_dsh_tools
+  pkg_tool_initiative_review --> pkg__deepseek_ai_dsh_workspace
   pkg_tool_ask_user --> pkg__deepseek_ai_dsh_agent
   pkg_tool_ask_user --> pkg__deepseek_ai_dsh_tools
   pkg_tool_ask_user --> pkg__deepseek_ai_dsh_user_questions
@@ -1131,6 +1180,11 @@ flowchart TD
   pkg_tool_planning --> pkg__deepseek_ai_dsh_system_prompt
   pkg_tool_planning --> pkg__deepseek_ai_dsh_tools
   pkg_tool_planning --> pkg__deepseek_ai_dsh_workspace
+  pkg_tool_thinking_case --> pkg__deepseek_ai_dsh_agent
+  pkg_tool_thinking_case --> pkg__deepseek_ai_dsh_llm
+  pkg_tool_thinking_case --> pkg__changanhua_dsh_planning
+  pkg_tool_thinking_case --> pkg__changanhua_dsh_planning_remote
+  pkg_tool_thinking_case --> pkg__deepseek_ai_dsh_tools
   pkg_agent_presets --> pkg__deepseek_ai_dsh_agent
   pkg_agent_presets --> pkg__deepseek_ai_dsh_atomic_write
   pkg_agent_presets --> pkg__deepseek_ai_dsh_home_paths
@@ -1258,6 +1312,16 @@ flowchart TD
   pkg_runtime_facts_host --> pkg__changanhua_dsh_runtime_facts
   pkg_runtime_facts_host --> pkg__deepseek_ai_dsh_subprocess
   pkg_runtime_facts_host --> pkg__deepseek_ai_dsh_system_prompt
+  pkg_eval_plans_local --> pkg__deepseek_ai_dsh_agent_presets
+  pkg_eval_plans_local --> pkg__changanhua_dsh_budget
+  pkg_eval_plans_local --> pkg__deepseek_ai_dsh_credentials
+  pkg_eval_plans_local --> pkg__changanhua_dsh_eval
+  pkg_eval_plans_local --> pkg__changanhua_dsh_eval_plans
+  pkg_eval_plans_local --> pkg__deepseek_ai_dsh_llm
+  pkg_eval_plans_local --> pkg__deepseek_ai_dsh_skill
+  pkg_eval_plans_local --> pkg__deepseek_ai_dsh_storage_domain
+  pkg_eval_plans_local --> pkg__deepseek_ai_dsh_tools
+  pkg_eval_plans_local --> pkg__deepseek_ai_dsh_workspace
   pkg_tool_cordis --> pkg__deepseek_ai_dsh_agent
   pkg_tool_cordis --> pkg__deepseek_ai_dsh_cordis_host_runner
   pkg_tool_cordis --> pkg__deepseek_ai_dsh_llm
@@ -1736,6 +1800,7 @@ flowchart TD
 | [`api-gateway`](../packages/api/gateway) | `api` | — |
 | [`api-workspace-files`](../packages/api/workspace-files) | `api` | — |
 | [`cmdline`](../packages/boot/cmdline) | `boot` | — |
+| [`budget`](../packages/budget/budget) | `budget` | — |
 | [`acp-app`](../packages/bundle/acp-app) | `bundle` | — |
 | [`base`](../packages/bundle/base) | `bundle` | — |
 | [`capabilities`](../packages/bundle/capabilities) | `bundle` | — |
@@ -1824,6 +1889,7 @@ flowchart TD
 | [`typert-registry`](../packages/typert/registry) | `typert` | — |
 | [`scope`](../packages/core/scope) | `core` | `@deepseek-ai/dsh-invariants` |
 | [`attachment`](../packages/attachment/attachment) | `attachment` | `@deepseek-ai/dsh-brand` |
+| [`budget-llm`](../packages/budget/budget-llm) | `budget` | `@changanhua/dsh-budget`, `@deepseek-ai/dsh-llm` |
 | [`personal-delivery`](../packages/bundle/personal-delivery) | `bundle` | `@deepseek-ai/dsh-invariants` |
 | [`personal-memory`](../packages/bundle/personal-memory) | `bundle` | `@deepseek-ai/dsh-invariants` |
 | [`content`](../packages/content/content) | `content` | `@deepseek-ai/dsh-invariants` |
@@ -1848,6 +1914,7 @@ flowchart TD
 | [`system-prompt`](../packages/core/system-prompt) | `core` | `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-scope` |
 | [`skill`](../packages/skill/skill) | `skill` | `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-scope` |
 | [`attachment-local`](../packages/attachment/attachment-local) | `attachment` | `@deepseek-ai/dsh-attachment`, `@deepseek-ai/dsh-home-paths` |
+| [`budget-local`](../packages/budget/budget-local) | `budget` | `@changanhua/dsh-budget`, `@deepseek-ai/dsh-storage-domain` |
 | [`client-file-upload`](../packages/client/file-upload) | `client` | `@deepseek-ai/dsh-scope` |
 | [`content-browser`](../packages/content/content-browser) | `content` | `@deepseek-ai/dsh-client-connection`, `@changanhua/dsh-content`, `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-host-webserver`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-typert-protocol` |
 | [`content-domain`](../packages/content/content-domain) | `content` | `@changanhua/dsh-content`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-storage-domain` |
@@ -1891,6 +1958,7 @@ flowchart TD
 | [`delivery-local`](../packages/delivery/delivery-local) | `delivery` | `@changanhua/dsh-delivery`, `@changanhua/dsh-delivery-protocol`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-storage-domain` |
 | [`delivery-task-queue`](../packages/delivery/delivery-task-queue) | `delivery` | `@changanhua/dsh-delivery`, `@changanhua/dsh-delivery-evidence`, `@changanhua/dsh-delivery-protocol`, `@changanhua/dsh-delivery-runner-codex`, `@changanhua/dsh-delivery-verifier`, `@deepseek-ai/dsh-invariants`, `@changanhua/dsh-repo-workspace`, `@deepseek-ai/dsh-subprocess`, `@changanhua/dsh-task-queue`, `@deepseek-ai/dsh-timeout` |
 | [`delivery-testkit`](../packages/delivery/delivery-testkit) | `delivery` | `@changanhua/dsh-delivery`, `@changanhua/dsh-delivery-evidence`, `@changanhua/dsh-delivery-protocol`, `@deepseek-ai/dsh-invariants`, `@changanhua/dsh-repo-workspace` |
+| [`eval-repo-workspace`](../packages/eval/eval-repo-workspace) | `eval` | `@changanhua/dsh-delivery-protocol`, `@changanhua/dsh-eval`, `@changanhua/dsh-repo-workspace`, `@changanhua/dsh-task-queue` |
 | [`image-generation-task-queue`](../packages/image/image-generation-task-queue) | `image` | `@deepseek-ai/dsh-attachment`, `@changanhua/dsh-image-generation`, `@deepseek-ai/dsh-invariants`, `@changanhua/dsh-task-queue` |
 | [`sandbox-local`](../packages/sandbox/sandbox-local) | `sandbox` | `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-sandbox`, `@deepseek-ai/dsh-session` |
 | [`session-persistence-jsonl`](../packages/session/session-persistence-jsonl) | `session` | `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-persistence` |
@@ -1919,6 +1987,7 @@ flowchart TD
 | [`tmux-context`](../packages/context/tmux-context) | `context` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-shell` |
 | [`delivery-remote`](../packages/delivery/delivery-remote) | `delivery` | `@deepseek-ai/dsh-credentials`, `@changanhua/dsh-delivery`, `@changanhua/dsh-delivery-evidence`, `@changanhua/dsh-delivery-github-intake`, `@changanhua/dsh-delivery-github-publisher`, `@changanhua/dsh-delivery-protocol`, `@changanhua/dsh-delivery-task-queue`, `@deepseek-ai/dsh-invariants`, `@changanhua/dsh-repo-workspace`, `@changanhua/dsh-task-queue`, `@deepseek-ai/dsh-typert-protocol` |
 | [`fs-e2b`](../packages/e2b/fs-e2b) | `e2b` | `@deepseek-ai/dsh-e2b`, `@deepseek-ai/dsh-fs` |
+| [`eval-plans`](../packages/eval/eval-plans) | `eval` | `@changanhua/dsh-eval`, `@deepseek-ai/dsh-workspace` |
 | [`initiative`](../packages/initiative/initiative) | `initiative` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-brand`, `@changanhua/dsh-requirement-assessment` |
 | [`commands`](../packages/interaction/commands) | `interaction` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-attachment`, `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-scope`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-typert-protocol` |
 | [`user-approval`](../packages/interaction/user-approval) | `interaction` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-scope`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-system-prompt` |
@@ -1940,8 +2009,11 @@ flowchart TD
 | [`command-goal`](../packages/goal/command-goal) | `goal` | `@deepseek-ai/dsh-commands`, `@deepseek-ai/dsh-goal`, `@deepseek-ai/dsh-llm` |
 | [`goal-round-driver`](../packages/goal/goal-round-driver) | `goal` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-goal`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session` |
 | [`fs-sandbox`](../packages/fs/fs-sandbox) | `fs` | `@deepseek-ai/dsh-fs`, `@deepseek-ai/dsh-fs-local`, `@deepseek-ai/dsh-sandbox`, `@deepseek-ai/dsh-sandbox-policy` |
+| [`budget-agent`](../packages/budget/budget-agent) | `budget` | `@deepseek-ai/dsh-agent`, `@changanhua/dsh-budget`, `@deepseek-ai/dsh-goal`, `@deepseek-ai/dsh-user-approval` |
+| [`command-budget`](../packages/budget/command-budget) | `budget` | `@deepseek-ai/dsh-agent`, `@changanhua/dsh-budget`, `@deepseek-ai/dsh-commands`, `@deepseek-ai/dsh-goal` |
 | [`headless`](../packages/bundle/headless) | `bundle` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-agent-default-model`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session` |
 | [`compaction`](../packages/compaction/compaction) | `compaction` | `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-commands`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session` |
+| [`command-eval-plan`](../packages/eval/command-eval-plan) | `eval` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-commands`, `@changanhua/dsh-eval-plans`, `@deepseek-ai/dsh-workspace` |
 | [`command-feedback`](../packages/feedback/command-feedback) | `feedback` | `@deepseek-ai/dsh-anonymous-user-id`, `@deepseek-ai/dsh-commands`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-typert-protocol` |
 | [`side-effect-safety`](../packages/guard/side-effect-safety) | `guard` | `@deepseek-ai/dsh-brand`, `@changanhua/dsh-delivery-protocol`, `@deepseek-ai/dsh-storage-domain`, `@deepseek-ai/dsh-user-approval` |
 | [`command-initiative`](../packages/initiative/command-initiative) | `initiative` | `@deepseek-ai/dsh-commands`, `@changanhua/dsh-initiative` |
@@ -1969,6 +2041,7 @@ flowchart TD
 | [`plan-mode`](../packages/plan/plan-mode) | `plan` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-commands`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-user-questions` |
 | [`hooks-codex`](../packages/hooks/hooks-codex) | `hooks` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-hook-protocol`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-tools` |
 | [`browser-task`](../packages/browser/browser-task) | `browser` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-brand`, `@changanhua/dsh-browser`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools` |
+| [`budget-workflow`](../packages/budget/budget-workflow) | `budget` | `@deepseek-ai/dsh-agent`, `@changanhua/dsh-budget`, `@changanhua/dsh-budget-agent`, `@deepseek-ai/dsh-workflow` |
 | [`command-compact`](../packages/compaction/command-compact) | `compaction` | `@deepseek-ai/dsh-commands`, `@deepseek-ai/dsh-compaction` |
 | [`agent-instructions`](../packages/context/agent-instructions) | `context` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-fs`, `@deepseek-ai/dsh-home-paths`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-tools` |
 | [`file-reference-local`](../packages/context/file-reference-local) | `context` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-file-reference`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools` |
@@ -1980,6 +2053,7 @@ flowchart TD
 | [`host-capability-registry`](../packages/host/capability-registry) | `host` | `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-scope`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-skill`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-typert-protocol` |
 | [`tool-image-generation-task-queue`](../packages/image/tool-image-generation-task-queue) | `image` | `@changanhua/dsh-image-generation-task-queue`, `@deepseek-ai/dsh-invariants`, `@changanhua/dsh-task-queue`, `@deepseek-ai/dsh-tools` |
 | [`tool-initiative`](../packages/initiative/tool-initiative) | `initiative` | `@changanhua/dsh-initiative`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools` |
+| [`tool-initiative-review`](../packages/initiative/tool-initiative-review) | `initiative` | `@deepseek-ai/dsh-agent`, `@changanhua/dsh-initiative`, `@deepseek-ai/dsh-llm`, `@changanhua/dsh-planning`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-storage-domain`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-workspace` |
 | [`tool-ask-user`](../packages/interaction/tool-ask-user) | `interaction` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-user-questions` |
 | [`tool-jobs`](../packages/jobs/tool-jobs) | `jobs` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-jobs`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-output-retention`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools` |
 | [`knowledge-base`](../packages/knowledge/knowledge-base) | `knowledge` | `@deepseek-ai/dsh-atomic-write`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-storage-domain`, `@deepseek-ai/dsh-tools` |
@@ -1987,6 +2061,7 @@ flowchart TD
 | [`mcp-client`](../packages/mcp/mcp-client) | `mcp` | `@deepseek-ai/dsh-attachment`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-scope`, `@deepseek-ai/dsh-subprocess`, `@deepseek-ai/dsh-timeout`, `@deepseek-ai/dsh-tools` |
 | [`tool-memory`](../packages/memory/tool-memory) | `memory` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@changanhua/dsh-memory`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools` |
 | [`tool-planning`](../packages/planning/tool-planning) | `planning` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-llm`, `@changanhua/dsh-planning`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-workspace` |
+| [`tool-thinking-case`](../packages/planning/tool-thinking-case) | `planning` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-llm`, `@changanhua/dsh-planning`, `@changanhua/dsh-planning-remote`, `@deepseek-ai/dsh-tools` |
 | [`agent-presets`](../packages/preset/agent-presets) | `preset` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-atomic-write`, `@deepseek-ai/dsh-home-paths`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-scope`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-settings`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-typert-protocol` |
 | [`schedule`](../packages/schedule/schedule) | `schedule` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-persistence`, `@deepseek-ai/dsh-session-projection`, `@deepseek-ai/dsh-tools` |
 | [`session-checkpoint-policy`](../packages/session/session-checkpoint-policy) | `session` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-persistence`, `@deepseek-ai/dsh-tools` |
@@ -2010,6 +2085,7 @@ flowchart TD
 | [`web-app`](../packages/bundle/web-app) | `bundle` | `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-shell-env`, `@deepseek-ai/dsh-system-prompt` |
 | [`compaction-tool-result-pruner`](../packages/compaction/compaction-tool-result-pruner) | `compaction` | `@deepseek-ai/dsh-compaction`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-token-meter` |
 | [`runtime-facts-host`](../packages/context/runtime-facts-host) | `context` | `@deepseek-ai/dsh-host-webserver`, `@deepseek-ai/dsh-invariants`, `@deepseek-ai/dsh-launch-environment`, `@changanhua/dsh-runtime-facts`, `@deepseek-ai/dsh-subprocess`, `@deepseek-ai/dsh-system-prompt` |
+| [`eval-plans-local`](../packages/eval/eval-plans-local) | `eval` | `@deepseek-ai/dsh-agent-presets`, `@changanhua/dsh-budget`, `@deepseek-ai/dsh-credentials`, `@changanhua/dsh-eval`, `@changanhua/dsh-eval-plans`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-skill`, `@deepseek-ai/dsh-storage-domain`, `@deepseek-ai/dsh-tools`, `@deepseek-ai/dsh-workspace` |
 | [`tool-cordis`](../packages/extensions/tool-cordis) | `extensions` | `@deepseek-ai/dsh-agent`, `@deepseek-ai/dsh-cordis-host-runner`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-scope`, `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-system-prompt`, `@deepseek-ai/dsh-tools` |
 | [`tool-runtime-inspect`](../packages/extensions/tool-runtime-inspect) | `extensions` | `@deepseek-ai/dsh-invariants`, `@changanhua/dsh-runtime-facts`, `@deepseek-ai/dsh-subprocess`, `@deepseek-ai/dsh-tools` |
 | [`host-plugin-inventory`](../packages/host/plugin-inventory) | `host` | `@deepseek-ai/dsh-agent-presets`, `@deepseek-ai/dsh-brand`, `@deepseek-ai/dsh-typert-protocol` |

@@ -1,0 +1,317 @@
+{
+  "schemaVersion": 1,
+  "id": "trusted-plan-example",
+  "version": "1",
+  "sourceRevision": "68d03c52d61003989a11a7bd6908af91ebdc76ae",
+  "title": "Authored keyless Plan example",
+  "defaultRouteIds": [
+    "flash",
+    "pro"
+  ],
+  "routes": [
+    {
+      "id": "flash",
+      "provider": "deepseek-official",
+      "model": "deepseek-v4-flash",
+      "preset": "standard"
+    },
+    {
+      "id": "pro",
+      "provider": "deepseek-official",
+      "model": "deepseek-v4-pro",
+      "preset": "standard"
+    }
+  ],
+  "cases": [
+    {
+      "id": "case-01",
+      "title": "Deterministic marker 1",
+      "prompt": "Reply with exactly CASE-01. Do not use any tools.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "output-equals",
+          "text": "CASE-01"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-01-flash/session.v3.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-01-pro/session.v3.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-02",
+      "title": "Deterministic marker 2",
+      "prompt": "Reply with exactly CASE-02. Do not use any tools.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "output-equals",
+          "text": "CASE-02"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-02-flash/session.v3.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-02-pro/session.v3.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-03",
+      "title": "Deterministic marker 3",
+      "prompt": "Reply with exactly CASE-03. Do not use any tools.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "output-equals",
+          "text": "CASE-03"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-03-flash/session.v3.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-03-pro/session.v3.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-04",
+      "title": "Deterministic marker 4",
+      "prompt": "Reply with exactly CASE-04. Do not use any tools.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "output-equals",
+          "text": "CASE-04"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-04-flash/session.v3.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-04-pro/session.v3.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-05",
+      "title": "Deterministic marker 5",
+      "prompt": "Reply with exactly CASE-05. Do not use any tools.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "output-equals",
+          "text": "CASE-05"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-05-flash/session.v3.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-05-pro/session.v3.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-06",
+      "title": "Deterministic marker 6",
+      "prompt": "Reply with exactly CASE-06. Do not use any tools.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "output-equals",
+          "text": "CASE-06"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-06-flash/session.v3.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-06-pro/session.v3.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-07",
+      "title": "Deterministic marker 7",
+      "prompt": "Reply with exactly CASE-07. Do not use any tools.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "output-equals",
+          "text": "CASE-07"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-07-flash/session.v3.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-07-pro/session.v3.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-08",
+      "title": "Deterministic marker 8",
+      "prompt": "Reply with exactly CASE-08. Do not use any tools.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "output-equals",
+          "text": "CASE-08"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-08-flash/session.v3.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-08-pro/session.v3.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-09",
+      "title": "Deterministic marker 9",
+      "prompt": "Reply with exactly CASE-09. Do not use any tools.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "output-equals",
+          "text": "CASE-09"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-09-flash/session.v3.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-09-pro/session.v3.jsonl"
+        }
+      ]
+    },
+    {
+      "id": "case-10",
+      "title": "Deterministic marker 10",
+      "prompt": "Reply with exactly CASE-10. Do not use any tools.",
+      "workspace": {
+        "kind": "empty"
+      },
+      "successCriteria": [
+        {
+          "kind": "output-equals",
+          "text": "CASE-10"
+        }
+      ],
+      "evaluator": {
+        "kind": "deterministic"
+      },
+      "replayFixtures": [
+        {
+          "routeId": "flash",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-10-flash/session.v3.jsonl"
+        },
+        {
+          "routeId": "pro",
+          "binding": "first-call-order",
+          "sessionFile": "snapshots/session/eval-plan-case-10-pro/session.v3.jsonl"
+        }
+      ]
+    }
+  ]
+}

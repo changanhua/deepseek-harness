@@ -13,7 +13,10 @@ export * from './types.ts'
 export * from './schema.ts'
 export { REVIEW_PROMPT_VERSION, REVIEW_SYSTEM_PROMPT } from './prompt.ts'
 /** Explicit deployment policy; no model route or unverified baseline is guessed. */
-export interface Config extends ReviewModelConfig { dshBaseline: string }
+export interface Config extends ReviewModelConfig {
+  /** Deployment-supplied DSH revision identity recorded in assessment evidence. */
+  dshBaseline: string
+}
 export const Config: Schema<Config> = Schema.object({
   provider: Schema.string().required(), model: Schema.string().required(),
   maxInputBytes: Schema.number().min(1).step(1).required(), maxOutputBytes: Schema.number().min(1).step(1).required(),

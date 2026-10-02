@@ -1,0 +1,7 @@
+version: 1
+scenario: eval-plan-case-02-flash
+profile: headless
+composition: eval-plan-example
+recording: authored
+header:
+  class: eval-plan-flash
