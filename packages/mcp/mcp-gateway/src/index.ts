@@ -21,13 +21,19 @@ const defaults = { path: '/mcp/planning', requestMaxBytes: 64 * 1024, resultMaxB
 export interface Config {
   /** Omitted allows registered local projects; an empty list denies all projects. */
   readonly workspacePaths?: string[] | undefined
+  /** Environment variable holding the bearer token; use exactly one credential source. */
   readonly tokenEnv?: string | undefined
   /** Absolute credential file; use exactly one of tokenEnv and tokenFile. */
   readonly tokenFile?: string | undefined
+  /** Absolute HTTP route without a trailing slash. */
   readonly path?: string
+  /** Maximum incoming request body bytes. */
   readonly requestMaxBytes?: number
+  /** Maximum serialized tool result bytes. */
   readonly resultMaxBytes?: number
+  /** Deadline in milliseconds for one tool call. */
   readonly callTimeoutMs?: number
+  /** Maximum concurrent admitted tool calls. */
   readonly maxPendingCalls?: number
 }
 

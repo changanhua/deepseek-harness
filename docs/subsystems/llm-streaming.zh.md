@@ -899,6 +899,16 @@ The abstract `llm` service: an adapter registry plus a streaming model-call API,
 
 ```ts cordis-catalog
 /**
+ * Install the single Host-owned guard at final adapter dispatch, for direct and prepared calls.
+ * Disposal revokes the generation immediately and keeps dispatch fail-closed until a replacement
+ * is installed. A runtime that never installed a guard retains its existing unguarded behavior.
+ * @param guard Host policy; cannot be supplied by browser/model JSON.
+ * @returns Fiber-owned idempotent disposer; in-flight admission cannot dispatch after revocation.
+ * @throws {LlmError} When an active policy is already registered.
+ */
+registerDispatchGuard(guard: LlmDispatchGuard): () => void
+
+/**
  * Register an adapter for the given provider routes. Throws `LlmError` with code
  * `DUPLICATE_ADAPTER` if any provider already has an adapter (all-or-nothing).
  * Disposed with the fiber.

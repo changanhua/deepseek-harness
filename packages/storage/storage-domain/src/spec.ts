@@ -9,7 +9,7 @@
  */
 
 import type { ZodType } from 'zod'
-import { UNIT_NAME_RE, type KvUnitDescriptor } from '@deepseek-ai/dsh-storage'
+import { STORAGE_BACKEND_GUARANTEES, UNIT_NAME_RE, type KvUnitDescriptor, type StorageBackendGuarantee } from '@deepseek-ai/dsh-storage'
 
 /** Global singleton declaration: schema plus the value used before the first write. */
 export interface DomainGlobalSpec<G> {
@@ -37,6 +37,8 @@ export interface DomainSpec {
   readonly name: string
   /** Current domain format version; reads enforce it according to the selected layout. */
   readonly version: number
+  /** Backend guarantees required before opening the medium; absence imposes no additional requirement. */
+  readonly requires?: readonly StorageBackendGuarantee[]
   /**
    * Medium layout for the backend unit: `single` (the default) stores the
    * whole unit as one document; `per-record` stores each record as its own
@@ -105,6 +107,10 @@ export function domainTable<K extends string, V>(schema: ZodType<V>): DomainTabl
  * @returns the same spec, narrowed to its literal type.
  */
 export function defineDomain<S extends DomainSpec>(spec: S): S {
+  if (spec.requires !== undefined && (!Array.isArray(spec.requires)
+    || spec.requires.some((value: unknown) => !STORAGE_BACKEND_GUARANTEES.some(known => known === value)))) {
+    throw new Error(`domain '${spec.name}' requires contains an unsupported backend guarantee`)
+  }
   if (!UNIT_NAME_RE.test(spec.name)) {
     throw new Error(`domain name '${spec.name}' must match ${UNIT_NAME_RE}`)
   }

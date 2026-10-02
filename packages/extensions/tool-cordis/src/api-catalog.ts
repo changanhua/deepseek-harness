@@ -918,6 +918,77 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'budget',
+    summary: 'Durable user resource policy; no model-facing mutation or monetary accounting.',
+    description: 'Durable user resource policy; no model-facing mutation or monetary accounting.',
+    methods: [
+      {
+        signature: 'abstract createScope(input: BudgetScopeInput, authorize: BudgetAuthority): Promise<BudgetSnapshot>',
+        description: 'Create immutable limits through a trusted Consumer, with idempotent scope identity.',
+        parameters: [{ name: 'input', description: 'Immutable subject, ancestor and resource policy.' }, { name: 'authorize', description: 'Rechecked trusted authority before durable creation.' }],
+        returns: 'Current scope snapshot; conflicting reuse rejects.',
+      },
+      {
+        signature: 'abstract inspect(reference: BudgetReference | string): BudgetSnapshot',
+        description: 'Read current usage; exact references reject changed scope definitions.',
+        parameters: [{ name: 'reference', description: 'Scope id or exact owner-issued reference.' }],
+        returns: 'Current cumulative usage, holds and policy.',
+      },
+      {
+        signature: 'abstract scopeFor(subject: BudgetSubject): BudgetSnapshot | undefined',
+        description: 'Find the immutable scope bound to an owner-derived subject.',
+        parameters: [{ name: 'subject', description: 'Subject identity obtained from its runtime owner.' }],
+        returns: 'Current scope snapshot, or undefined when no scope is bound.',
+      },
+      {
+        signature: 'abstract revoke(scopeId: string, authorize: BudgetAuthority): Promise<void>',
+        description: 'Permanently revoke a scope; descendants and pending dispatches observe it.',
+        parameters: [{ name: 'scopeId', description: 'Existing scope to revoke.' }, { name: 'authorize', description: 'Trusted authority rechecked before persistence.' }],
+      },
+      {
+        signature: 'abstract reservation(requestId: string, attemptId: string): BudgetReservationView | undefined',
+        description: 'Read one retained reservation for operator/evaluation evidence.',
+        parameters: [{ name: 'requestId', description: 'Stable logical request identity.' }, { name: 'attemptId', description: 'Exact paid dispatch attempt identity.' }],
+        returns: 'Retained reservation, or undefined when none exists.',
+      },
+      {
+        signature: 'abstract decision(requestId: string, attemptId: string): BudgetDecisionRecord | undefined',
+        description: 'Read a durable admission decision, including denied cases that never reached a provider.',
+        parameters: [{ name: 'requestId', description: 'Stable logical request identity.' }, { name: 'attemptId', description: 'Exact dispatch attempt identity.' }],
+        returns: 'Retained decision, or undefined before admission.',
+      },
+      {
+        signature: 'abstract registerApprover(approver: BudgetApprover): () => void',
+        description: 'Register the sole trusted interactive Consumer; absence of a handler never grants an exception.',
+        parameters: [{ name: 'approver', description: 'Host callback that obtains explicit Human approval.' }],
+        returns: 'Disposer that removes this registration.',
+      },
+      {
+        signature: 'abstract reconcile(requestId: string, attemptId: string, usage: BudgetUsage, authorize: BudgetAuthority): Promise<void>',
+        description: 'Settle an unknown attempt only after explicit operator verification; never automatically retry it.',
+        parameters: [{ name: 'requestId', description: 'Logical request holding unknown usage.' }, { name: 'attemptId', description: 'Exact attempt to settle.' }, { name: 'usage', description: 'Operator-verified actual input and output usage.' }, { name: 'authorize', description: 'Trusted reconciliation authority rechecked before commit.' }],
+      },
+      {
+        signature: 'abstract registerSubjectResolver(owner: string, resolver: BudgetSubjectResolver): () => void',
+        description: 'Register one owner-derived context source; registration is disposable and duplicate names reject.',
+        parameters: [{ name: 'owner', description: 'Stable runtime owner identity.' }, { name: 'resolver', description: 'Callback deriving current subjects from trusted runtime state.' }],
+        returns: 'Disposer; removal remains fail-closed for the required owner.',
+      },
+      {
+        signature: 'abstract withScope<T>(reference: BudgetReference, operation: () => Promise<T>): Promise<T>',
+        description: 'Run Host work under an exact grant; the operation must await all stream consumption.',
+        parameters: [{ name: 'reference', description: 'Exact owner-issued immutable scope reference.' }, { name: 'operation', description: 'Work inheriting this scope for its asynchronous lifetime.' }],
+        returns: 'The awaited operation result.',
+      },
+      {
+        signature: 'abstract streamModel<T>( request: BudgetRequest, dispatch: (signal: AbortSignal) => AsyncIterable<T>, observe: (chunk: T) => BudgetChunkObservation, signal?: AbortSignal, ): AsyncIterable<T>',
+        description: 'Admit and account for one actual model dispatch and its entire iterator lifetime. No callback is invoked on refusal; missing usage remains held for reconciliation.',
+        parameters: [{ name: 'request', description: 'Bounded input estimate, output ceiling and stable request/attempt identity.' }, { name: 'dispatch', description: 'Invoked once after durable reservation, with the budget-owned cancellation signal.' }, { name: 'observe', description: 'Extracts actual usage and completion from each provider chunk.' }, { name: 'signal', description: 'Optional caller cancellation, combined with budget deadlines.' }],
+        returns: 'Stream whose terminal result is published only after accounting settles.',
+      },
+    ],
+  },
+  {
     key: 'clientModules',
     summary: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows.',
     description: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows. Construction runs the activation scan synchronously — a malformed declaration or missing bundle among the already-loaded entries aggregates into one loud throw (FAILED fiber; the boot activation audit reports it).',
@@ -1414,6 +1485,36 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'evalPlans',
+    summary: 'Trusted project Plan source.',
+    description: 'Trusted project Plan source. This owner does not execute, grade, enqueue or attest model outcomes.',
+    methods: [
+      {
+        signature: 'abstract discover(access: EvalPlanAccess, signal?: AbortSignal): Promise<readonly EvalPlanSummary[]>',
+        description: 'Read safe source summaries under the caller\'s exact live Workspace authority.',
+        parameters: [{ name: 'access', description: 'Exact live Workspace and trusted entrypoint authorization.' }, { name: 'signal', description: 'Optional caller cancellation.' }],
+        returns: 'Safe Plan summaries without Host paths or credential material.',
+      },
+      {
+        signature: 'abstract resolve(access: EvalPlanAccess, selection: EvalPlanSelection, signal?: AbortSignal): Promise<ResolvedEvalPlan>',
+        description: 'Resolve approved immutable source and fresh runtime preflight. The returned object is Host-only.',
+        parameters: [{ name: 'access', description: 'Exact live Workspace and trusted entrypoint authorization.' }, { name: 'selection', description: 'Only the configured Plan id and version.' }, { name: 'signal', description: 'Optional caller cancellation.' }],
+        returns: 'Owner-minted resolution with current readiness evidence.',
+      },
+      {
+        signature: 'abstract admit(access: EvalPlanAccess, resolved: ResolvedEvalPlan, requestId: string, signal?: AbortSignal): Promise<EvalPlanAdmission>',
+        description: 'Revalidate one Provider-minted resolution and durably mint/recover the same run identity.',
+        parameters: [{ name: 'access', description: 'Current Workspace authority, rechecked before persistence.' }, { name: 'resolved', description: 'Exact resolution object issued by this Provider.' }, { name: 'requestId', description: 'Stable admission identity; changed resolution reuse rejects.' }, { name: 'signal', description: 'Optional caller cancellation.' }],
+        returns: 'Durable admission receipt; replay recovers the original run identity.',
+      },
+      {
+        signature: 'abstract reload(authorize: () => void | Promise<void>, signal?: AbortSignal): Promise<void>',
+        description: 'Atomically publish a complete configured source generation, or retain the prior generation on error.',
+        parameters: [{ name: 'authorize', description: 'Host reload authority, rechecked before publication.' }, { name: 'signal', description: 'Optional caller cancellation.' }],
+      },
+    ],
+  },
+  {
     key: 'fileReferences',
     summary: 'Host capability for cancellable file-reference discovery.',
     description: 'Host capability for cancellable file-reference discovery.',
@@ -1821,6 +1922,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
     description: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
     methods: [
+      {
+        signature: 'registerDispatchGuard(guard: LlmDispatchGuard): () => void',
+        description: 'Install the single Host-owned guard at final adapter dispatch, for direct and prepared calls. Disposal revokes the generation immediately and keeps dispatch fail-closed until a replacement is installed. A runtime that never installed a guard retains its existing unguarded behavior.',
+        parameters: [{ name: 'guard', description: 'Host policy; cannot be supplied by browser/model JSON.' }],
+        returns: 'Fiber-owned idempotent disposer; in-flight admission cannot dispatch after revocation.',
+        throws: ['{LlmError} When an active policy is already registered.'],
+      },
       {
         signature: 'registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle',
         description: 'Register an adapter for the given provider routes. Throws `LlmError` with code `DUPLICATE_ADAPTER` if any provider already has an adapter (all-or-nothing). Disposed with the fiber.',
@@ -3439,6 +3547,31 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'thinkingCase',
+    summary: 'Host capability restricted to the real bound Thinking Agent; model-supplied identities are not accepted.',
+    description: 'Host capability restricted to the real bound Thinking Agent; model-supplied identities are not accepted.',
+    methods: [
+      {
+        signature: 'context(agent: Agent, signal: AbortSignal): Promise<ThinkingContextPack>',
+        description: 'Read the admitted run\'s frozen input after revalidating its live Agent and binding.',
+        parameters: [{ name: 'agent', description: 'Exact live caller in the restricted Thinking preset.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Detached frozen context; rejects stale scope or missing admission.',
+      },
+      {
+        signature: 'submit( agent: Agent, input: Omit<SubmitThinkingInput, \'runId\'>, signal: AbortSignal, ): Promise<ThinkingResultRecord>',
+        description: 'Persist a versioned suggestion without applying it to Planning or the canvas.',
+        parameters: [{ name: 'agent', description: 'Exact live caller bound to the run.' }, { name: 'input', description: 'Draft, expected result version and stable retry identity.' }, { name: 'signal', description: 'Caller cancellation.' }],
+        returns: 'Committed result or the original receipt on identical retry.',
+      },
+      {
+        signature: 'isThinkingSession(sessionId: string): Promise<boolean>',
+        description: 'Check current preset membership without admitting a read or write.',
+        parameters: [{ name: 'sessionId', description: 'Native Session to inspect.' }],
+        returns: 'Whether the live Agent is composed with the Thinking preset.',
+      },
+    ],
+  },
+  {
     key: 'timer',
     summary: 'Disposable timer helpers mixed into Cordis contexts.',
     description: 'Disposable timer helpers mixed into Cordis contexts.',
@@ -3784,6 +3917,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Parse and execute a workflow script.',
         parameters: [{ name: 'request', description: 'the script, its `args`, the parent agent, and an optional cancel signal.' }],
         returns: 'the live run; its `result` resolves when the script settles.',
+      },
+      {
+        signature: 'registerChildGuard(guard: WorkflowChildGuard): () => void',
+        description: 'Register one Host resource guard; removal remains fail-closed until a replacement is installed.',
+        parameters: [{ name: 'guard', description: 'Host policy wrapping the actual child dispatch callback.' }],
+        returns: 'Disposer that revokes this registration and outstanding dispatch callbacks.',
       },
     ],
   },
@@ -5187,6 +5326,62 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BrowserTransitionObservation {\n    readonly version: 1;\n    readonly source: {\n        readonly tab: BrowserTabReference;\n        readonly page: BrowserPage;\n    };\n    readonly startedAt: number;\n    readonly observedAt: number;\n    readonly sameTab: {\n        readonly kind: \'unchanged\' | \'same-document\' | \'document-replaced\' | \'closed\' | \'unavailable\';\n        readonly page?: BrowserPage;\n    };\n    readonly candidates: readonly {\n        readonly tab: BrowserTabReference;\n        readonly url?: string;\n        readonly relation: \'opener\';\n        readonly attribution: \'candidate\';\n        readonly evidence: \'created-navigation-target\' | \'opener-tab\';\n    }[];\n    readonly truncated: boolean;\n}',
   },
   {
+    name: 'BudgetApprovalRequest',
+    declaration: 'export interface BudgetApprovalRequest {\n    readonly request: BudgetRequest;\n    readonly scopes: readonly BudgetSnapshot[];\n}',
+  },
+  {
+    name: 'BudgetApprover',
+    declaration: 'export type BudgetApprover = (request: BudgetApprovalRequest, signal: AbortSignal) => Promise<\'allowed-once\' | \'rejected\' | \'cancelled\' | \'unavailable\'>;',
+  },
+  {
+    name: 'BudgetAuthority',
+    declaration: 'export type BudgetAuthority = () => void | Promise<void>;',
+  },
+  {
+    name: 'BudgetChunkObservation',
+    declaration: 'export interface BudgetChunkObservation {\n    readonly terminal: boolean;\n    readonly usage?: BudgetUsage | null;\n}',
+  },
+  {
+    name: 'BudgetDecisionRecord',
+    declaration: 'export interface BudgetDecisionRecord {\n    readonly request: BudgetRequest;\n    readonly scopeId: string;\n    readonly kind: \'allow\' | \'deny\' | \'pause\' | \'ask\';\n    readonly reason: string;\n    readonly createdAt: number;\n    readonly approval: \'pending\' | \'allowed-once\' | \'rejected\' | \'cancelled\' | \'unavailable\' | null;\n    readonly snapshots: readonly BudgetSnapshot[];\n}',
+  },
+  {
+    name: 'BudgetReference',
+    declaration: 'export interface BudgetReference {\n    readonly id: string;\n    readonly version: \'1\';\n    readonly digest: string;\n}',
+  },
+  {
+    name: 'BudgetRequest',
+    declaration: 'export type BudgetRequest = z.input<typeof budgetRequestSchema>;',
+  },
+  {
+    name: 'BudgetReservationView',
+    declaration: 'export interface BudgetReservationView {\n    readonly scopeId: string;\n    readonly request: BudgetRequest;\n    readonly phase: \'reserved\' | \'dispatched\' | \'settled\' | \'released\' | \'unknown\';\n    readonly usage: BudgetUsage | null;\n    readonly createdAt: number;\n    readonly exceptionScopes: readonly string[];\n}',
+  },
+  {
+    name: 'BudgetScopeInput',
+    declaration: 'export type BudgetScopeInput = z.infer<typeof budgetScopeInputSchema>;',
+  },
+  {
+    name: 'BudgetSnapshot',
+    declaration: 'export interface BudgetSnapshot {\n    readonly reference: BudgetReference;\n    readonly scope: BudgetScopeInput & {\n        readonly createdAt: number;\n        readonly revoked: boolean;\n    };\n    readonly consumed: BudgetTotals;\n    readonly reserved: BudgetTotals;\n    readonly unknownRequests: number;\n    readonly deadline: number | null;\n    readonly remainingMs: number | null;\n}',
+  },
+  {
+    name: 'BudgetSubject',
+    declaration: 'export interface BudgetSubject {\n    readonly kind: BudgetScopeInput[\'kind\'];\n    readonly id: string;\n}',
+  },
+  {
+    name: 'BudgetSubjectResolver',
+    declaration: 'export type BudgetSubjectResolver = () => readonly BudgetSubject[] | Promise<readonly BudgetSubject[]>;',
+  },
+  {
+    name: 'BudgetTotals',
+    declaration: 'export interface BudgetTotals {\n    readonly requests: number;\n    readonly inputTokens: number;\n    readonly outputTokens: number;\n    readonly totalTokens: number;\n}',
+  },
+  {
+    name: 'BudgetUsage',
+    declaration: 'export type BudgetUsage = z.infer<typeof budgetUsageSchema>;',
+  },
+  {
     name: 'CandidateReviewSource',
     declaration: 'export interface CandidateReviewSource {\n    subject: Extract<AssessmentSubject, {\n        kind: \'candidate\';\n    }>;\n    text: string;\n    evidence: AssessmentEvidence[];\n}',
   },
@@ -5563,6 +5758,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface DeliverySnapshot {\n    readonly contractRevisions: readonly ContractRevision[];\n    readonly workPackets: readonly WorkPacket[];\n    readonly dispatchBindings: readonly DispatchBinding[];\n    readonly acceptanceDecisions: readonly AcceptanceDecision[];\n    readonly deliveryCases: readonly DeliveryCase[];\n    readonly requirementDecisions: readonly RequirementDecision[];\n    readonly issuePublications: readonly IssuePublication[];\n}',
   },
   {
+    name: 'DesignContextRecord',
+    declaration: 'export interface DesignContextRecord {\n    id: string;\n    title: string;\n    body: string;\n    sourceRunId: string;\n    sourceSessionId: string;\n    sourceResultId: string;\n    sourceResultVersion: number;\n    caseVersionAtCreation: number;\n    planningRevisionAtCreation: string;\n    createdAt: string;\n}',
+  },
+  {
     name: 'DiffCallView',
     declaration: 'export interface DiffCallView {\n    card: \'diff\';\n    title: string;\n    diffs: FileDiff[];\n    locations?: FileLocation[];\n}',
   },
@@ -5644,7 +5843,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'DomainSpec',
-    declaration: 'export interface DomainSpec {\n    readonly name: string;\n    readonly version: number;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n    readonly invalidRecords?: \'backup-and-skip\';\n    readonly global?: DomainGlobalSpec<unknown>;\n    readonly tables: Record<string, DomainTableSpec>;\n}',
+    declaration: 'export interface DomainSpec {\n    readonly name: string;\n    readonly version: number;\n    readonly requires?: readonly StorageBackendGuarantee[];\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n    readonly invalidRecords?: \'backup-and-skip\';\n    readonly global?: DomainGlobalSpec<unknown>;\n    readonly tables: Record<string, DomainTableSpec>;\n}',
   },
   {
     name: 'DomainTableSpec',
@@ -5699,6 +5898,34 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    tools?: ToolSchema[];\n}',
   },
   {
+    name: 'EvalPlan',
+    declaration: 'export type EvalPlan = z.infer<typeof evalPlanSchema>;',
+  },
+  {
+    name: 'EvalPlanAccess',
+    declaration: 'export interface EvalPlanAccess {\n    readonly workspace: Workspace;\n    readonly entrypoint: \'web\' | \'cli\' | \'ci\';\n    readonly authorize: () => void | Promise<void>;\n}',
+  },
+  {
+    name: 'EvalPlanAdmission',
+    declaration: 'export interface EvalPlanAdmission {\n    readonly requestId: string;\n    readonly runId: string;\n    readonly workspaceId: string;\n    readonly planId: string;\n    readonly planVersion: string;\n    readonly planDigest: string;\n    readonly resolvedDigest: string;\n    readonly admittedAt: number;\n}',
+  },
+  {
+    name: 'EvalPlanSelection',
+    declaration: 'export interface EvalPlanSelection {\n    readonly id: string;\n    readonly version: string;\n}',
+  },
+  {
+    name: 'EvalPlanSummary',
+    declaration: 'export interface EvalPlanSummary extends EvalPlanSelection {\n    readonly mode: \'keyless\' | \'live\';\n    readonly digest: string;\n    readonly suiteId: string;\n    readonly cellCount: number;\n    readonly routeIds: readonly string[];\n}',
+  },
+  {
+    name: 'EvalPreflightCheck',
+    declaration: 'export interface EvalPreflightCheck {\n    readonly subject: string;\n    readonly code: string;\n    readonly ok: boolean;\n}',
+  },
+  {
+    name: 'EvalSuite',
+    declaration: 'export type EvalSuite = z.infer<typeof evalSuiteSchema>;',
+  },
+  {
     name: 'EvidenceId',
     declaration: 'export type EvidenceId = Branded<\'DeliveryEvidenceId\'>;',
   },
@@ -5733,6 +5960,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ExecutorPreference',
     declaration: 'export type ExecutorPreference = {\n    readonly mode: \'any\';\n} | {\n    readonly mode: \'preferred\' | \'required\';\n    readonly executorId: ExecutorId;\n};',
+  },
+  {
+    name: 'ExplorationNote',
+    declaration: 'export interface ExplorationNote {\n    id: string;\n    title: string;\n    body?: string;\n    source?: \'manual\';\n    sourceResultId?: string;\n    sourceResultVersion?: number;\n    createdAt: string;\n    position: {\n        x: number;\n        y: number;\n    };\n}',
   },
   {
     name: 'FailIssuePublicationRequest',
@@ -5976,11 +6207,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'InitiativeInvocation',
-    declaration: 'export interface InitiativeInvocation {\n    readonly commandId?: string;\n}',
+    declaration: 'export interface InitiativeInvocation {\n    readonly commandId?: string;\n    readonly validateIntake?: () => Promise<void>;\n}',
   },
   {
     name: 'InitiativePage',
-    declaration: 'export interface InitiativePage {\n    entries: InitiativeView[];\n    total: number;\n    nextOffset: number | null;\n}',
+    declaration: 'export interface InitiativePage {\n    entries: InitiativeView[];\n    total: number;\n    nextOffset: number | null;\n    snapshotDigest: string;\n}',
   },
   {
     name: 'InitiativeQuery',
@@ -6159,6 +6390,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface LlmDiscoveredModel {\n    id: string;\n    name?: string;\n    contextWindow?: number;\n    maxTokens?: number;\n}',
   },
   {
+    name: 'LlmDispatchGuard',
+    declaration: 'export type LlmDispatchGuard = (request: {\n    readonly options: Readonly<GenerateOptions>;\n    readonly identity: LlmDispatchIdentity;\n}, dispatch: (signal?: AbortSignal) => AsyncIterable<StreamChunk>) => AsyncIterable<StreamChunk>;',
+  },
+  {
+    name: 'LlmDispatchIdentity',
+    declaration: 'export interface LlmDispatchIdentity {\n    readonly requestId: string;\n    readonly attemptId: string;\n}',
+  },
+  {
     name: 'LlmFailure',
     declaration: 'export interface LlmFailure {\n    readonly message: string;\n    readonly code: string;\n    readonly status?: number;\n    readonly providerRetryAfterMs?: number;\n    readonly requestId?: ProviderRequestId;\n}',
   },
@@ -6200,7 +6439,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmRuntime',
-    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;\n    fileRequestText(ref: FileAttachmentRef): string;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions) /* …truncated — full shape in source */',
+    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerDispatchGuard(guard: LlmDispatchGuard): () => void;\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;\n    fileRequestText(ref: FileAttachmentRef): string;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal) /* …truncated — full shape in source */',
   },
   {
     name: 'LspHover',
@@ -6495,8 +6734,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type PlanningCommand = z.infer<typeof planningCommandSchema>;',
   },
   {
+    name: 'PlanningContextPack',
+    declaration: 'export interface PlanningContextPack {\n    subject: PlanningSubjectRef;\n    plan: {\n        id: string;\n        title: string;\n        revision: string;\n    };\n    objective: PlanningStateEntry[];\n    accepted: PlanningStateEntry[];\n    open: PlanningStateEntry[];\n    legacy: {\n        intent: string;\n        scope: string[];\n        acceptance: string[];\n    };\n    selectedFocus?: PlanningFocus;\n    resourceRefs: PlanningResourceLink[];\n}',
+  },
+  {
     name: 'PlanningDeliveryHandoffInput',
     declaration: 'export interface PlanningDeliveryHandoffInput {\n    readonly itemId: string;\n    readonly expectedRevisionId: string;\n}',
+  },
+  {
+    name: 'PlanningDeltaOperation',
+    declaration: 'export type PlanningDeltaOperation = z.infer<typeof planningDeltaOperationSchema>;',
+  },
+  {
+    name: 'PlanningFocus',
+    declaration: 'export type PlanningFocus = z.infer<typeof planningFocusSchema>;',
   },
   {
     name: 'PlanningHandoff',
@@ -6505,6 +6756,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PlanningMutationResult',
     declaration: 'export interface PlanningMutationResult {\n    readonly boardVersion: number;\n    readonly itemId?: string | undefined;\n    readonly revisionId?: string | undefined;\n    readonly reviewId?: string | undefined;\n    readonly proposalId?: string | undefined;\n    readonly proposalVersion?: number | undefined;\n}',
+  },
+  {
+    name: 'PlanningResourceLink',
+    declaration: 'export type PlanningResourceLink = z.infer<typeof planningResourceLinkSchema>;',
+  },
+  {
+    name: 'PlanningStateEntry',
+    declaration: 'export type PlanningStateEntry = z.infer<typeof planningStateEntrySchema>;',
+  },
+  {
+    name: 'PlanningSubjectRef',
+    declaration: 'export type PlanningSubjectRef = z.infer<typeof planningSubjectRefSchema>;',
   },
   {
     name: 'PostToolDecision',
@@ -6783,6 +7046,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResolvedCredential {\n    value: string;\n    source: string;\n}',
   },
   {
+    name: 'ResolvedEvalPlan',
+    declaration: 'export interface ResolvedEvalPlan {\n    readonly mode: \'keyless\' | \'live\';\n    readonly plan: EvalPlan;\n    readonly suite: EvalSuite;\n    readonly summary: EvalPlanSummary;\n    readonly checks: readonly EvalPreflightCheck[];\n    readonly ready: boolean;\n    readonly resolvedDigest: string;\n}',
+  },
+  {
     name: 'ResolvedImageGenerationSpec',
     declaration: 'export interface ResolvedImageGenerationSpec {\n    readonly provider: string;\n    readonly model: string;\n    readonly size: string;\n    readonly outputFormat: ImageOutputFormat;\n    readonly watermark: boolean;\n    readonly providerSpec?: unknown;\n}',
   },
@@ -6825,6 +7092,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResourceDisposition',
     declaration: 'export type ResourceDisposition = \'clear-observed\' | \'document-replaced\' | \'absent\' | \'owner-transfer\' | \'reconcile-active\' | \'reconcile-observed\' | \'not-sent\';',
+  },
+  {
+    name: 'ResourceRef',
+    declaration: 'export type ResourceRef = z.infer<typeof resourceRefSchema>;',
   },
   {
     name: 'RestoredSessionOptions',
@@ -7791,6 +8062,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SubagentStopReasonMap {\n    completed: \'completed\';\n    aborted: \'aborted\';\n    error: \'error\';\n    \'max-tokens\': \'max-tokens\';\n    refusal: \'refusal\';\n}',
   },
   {
+    name: 'SubmitThinkingInput',
+    declaration: 'export interface SubmitThinkingInput {\n    runId: string;\n    expectedResultVersion: number;\n    requestId: string;\n    draft: ThinkingResultDraft;\n}',
+  },
+  {
     name: 'SubprocessCollect',
     declaration: 'export interface SubprocessCollect {\n    maxBytes: number;\n    spill?: {\n        maxBytes: number;\n    };\n}',
   },
@@ -8005,6 +8280,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TerminalWaitReason',
     declaration: 'export type TerminalWaitReason = \'stdin_read\' | \'inferred_idle\' | \'timeout\' | \'session_exit\';',
+  },
+  {
+    name: 'ThinkingContextPack',
+    declaration: 'export interface ThinkingContextPack {\n    run: {\n        id: string;\n        question: string;\n        sessionId: string;\n        presetId: string;\n        createdAt: string;\n    };\n    subject: PlanningSubjectRef;\n    planning: {\n        revisionAtStart: string;\n        context: PlanningContextPack;\n    };\n    designCase: {\n        resource: ResourceRef;\n        title: string;\n        caseVersionAtStart: number;\n        caseBaseRevision: string;\n        currentRevisionAtStart: string | null;\n        driftAtStart: boolean;\n        selectedNode?: {\n            id: string;\n            title: string;\n            body?: string;\n        };\n        existingExplorationNotes: readonly Omit<ExplorationNote, \'position\'>[];\n        priorDesignContexts: readonly DesignContextRecord[];\n    };\n    availableResourceRefs: readonly ResourceRef[];\n}',
+  },
+  {
+    name: 'ThinkingResultDraft',
+    declaration: 'export interface ThinkingResultDraft {\n    summary: string;\n    findings: readonly string[];\n    openQuestions: readonly string[];\n    explorationNotes?: readonly {\n        title: string;\n        body?: string;\n    }[];\n    designContext?: {\n        title: string;\n        body: string;\n    };\n    planningDelta?: {\n        operations: readonly PlanningDeltaOperation[];\n        rationale?: string;\n    };\n}',
+  },
+  {
+    name: 'ThinkingResultRecord',
+    declaration: 'export interface ThinkingResultRecord {\n    id: string;\n    version: number;\n    createdAt: string;\n    draft: ThinkingResultDraft;\n    applied: {\n        explorationNoteIds: readonly string[];\n        designContextId?: string;\n        planningProposalId?: string;\n    };\n}',
   },
   {
     name: 'TokenMeasurement',
@@ -8433,6 +8720,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkflowAgentOutcome',
     declaration: 'export type WorkflowAgentOutcome = \'completed\' | \'failed\' | \'cancelled\';',
+  },
+  {
+    name: 'WorkflowChildContext',
+    declaration: 'export interface WorkflowChildContext {\n    readonly run: WorkflowRunInfo;\n    readonly parent: Agent;\n    readonly signal: AbortSignal;\n}',
+  },
+  {
+    name: 'WorkflowChildGuard',
+    declaration: 'export type WorkflowChildGuard = <T>(context: WorkflowChildContext, dispatch: () => Promise<T>) => Promise<T>;',
   },
   {
     name: 'WorkflowMeta',

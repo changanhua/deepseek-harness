@@ -7,6 +7,7 @@
  */
 
 import { Context } from '@deepseek-ai/cordis'
+import { randomUUID } from 'node:crypto'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type {
@@ -191,6 +192,25 @@ export interface PreparedAdapterCall {
   stream(options: GenerateOptions): AsyncIterable<StreamChunk>
 }
 
+/** Host-generated identity of one stream request and one actual adapter attempt. */
+export interface LlmDispatchIdentity {
+  readonly requestId: string
+  readonly attemptId: string
+}
+
+/**
+ * Final-dispatch policy receiving detached request data after route resolution and projection.
+ * Calling dispatch begins possible Provider effects, at most once; only its AbortSignal
+ * can be replaced. A policy must preserve terminal chunks and close its owned iterator.
+ * @param request Immutable request snapshot and Host-generated attempt identity.
+ * @param dispatch Single-use callback bound to the resolved adapter generation.
+ * @returns Stream admitting, refusing or accounting for that exact attempt.
+ */
+export type LlmDispatchGuard = (
+  request: { readonly options: Readonly<GenerateOptions>; readonly identity: LlmDispatchIdentity },
+  dispatch: (signal?: AbortSignal) => AsyncIterable<StreamChunk>,
+) => AsyncIterable<StreamChunk>
+
 /**
  * Provider-wire adapter for the harness message and stream vocabulary. Register implementations
  * with `ctx.llm.registerAdapter(providers, adapter)`. Every provider HTTP request must include
@@ -331,6 +351,8 @@ export interface DirectoryRegistrationHandle {
  * API, interceptable via the `llm/stream` waterfall.
  */
 export class LlmRuntime extends TypertRemoteService {
+  private dispatchGuard: { readonly guard: LlmDispatchGuard; active: boolean } | undefined
+  private dispatchGuardRequired = false
   private adapters = new Map<string, AdapterRegistration>()
   private directory = new Map<string, LlmConfigurableProvider>()
   private discoveries = new Map<
@@ -340,6 +362,29 @@ export class LlmRuntime extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'llm')
+  }
+
+  /**
+   * Install the single Host-owned guard at final adapter dispatch, for direct and prepared calls.
+   * Disposal revokes the generation immediately and keeps dispatch fail-closed until a replacement
+   * is installed. A runtime that never installed a guard retains its existing unguarded behavior.
+   * @param guard Host policy; cannot be supplied by browser/model JSON.
+   * @returns Fiber-owned idempotent disposer; in-flight admission cannot dispatch after revocation.
+   * @throws {LlmError} When an active policy is already registered.
+   */
+  registerDispatchGuard(guard: LlmDispatchGuard): () => void {
+    if (this.dispatchGuard?.active) throw new LlmError('a dispatch guard is already registered', 'DUPLICATE_DISPATCH_GUARD')
+    const registration = { guard, active: true }
+    this.dispatchGuardRequired = true
+    const revoke = (): void => {
+      registration.active = false
+      if (this.dispatchGuard === registration) this.dispatchGuard = undefined
+    }
+    const dispose = this.ctx.effect(function* (this: LlmRuntime) {
+      this.dispatchGuard = registration
+      yield revoke
+    }.bind(this), 'llm.registerDispatchGuard()')
+    return () => { revoke(); void dispose() }
   }
 
   /** Notify topology observers without letting one broken listener veto the commit. */
@@ -1010,6 +1055,7 @@ export class LlmRuntime extends TypertRemoteService {
    */
   private async * adapterStream(
     options: GenerateOptions,
+    identity: LlmDispatchIdentity,
     prepared?: PreparedDispatch,
   ): AsyncGenerator<StreamChunk> {
     let iterator: AsyncIterator<StreamChunk>
@@ -1055,7 +1101,25 @@ export class LlmRuntime extends TypertRemoteService {
         : Object.isFrozen(resolvedOptions)
           ? deepFreeze({ ...resolvedOptions, messages: projectedMessages as Message[] })
           : { ...resolvedOptions, messages: projectedMessages as Message[] }
-      const stream = dispatch(this.forAdapter(projectedOptions, adapter))
+      const adapterOptions = this.forAdapter(projectedOptions, adapter)
+      let stream: AsyncIterable<StreamChunk>
+      if (this.dispatchGuardRequired) {
+        const registration = this.dispatchGuard
+        if (!registration?.active) throw new LlmError('dispatch policy is unavailable', 'DISPATCH_GUARD_UNAVAILABLE')
+        const { signal, ...data } = adapterOptions
+        const snapshot = Object.freeze({ ...deepFreeze(structuredClone(data)), ...(signal ? { signal } : {}) })
+        let started = false
+        stream = registration.guard({ options: snapshot, identity: Object.freeze({ ...identity }) }, (guardSignal) => {
+          if (started) throw new LlmError('this guarded attempt was already dispatched', 'DISPATCH_ALREADY_STARTED')
+          if (!registration.active || this.dispatchGuard !== registration) {
+            throw new LlmError('dispatch policy was revoked during admission', 'DISPATCH_GUARD_UNAVAILABLE')
+          }
+          started = true
+          return dispatch({ ...snapshot, ...(guardSignal ? { signal: guardSignal } : {}) })
+        })
+      } else {
+        stream = dispatch(adapterOptions)
+      }
       iterator = stream[Symbol.asyncIterator]()
     } catch (error: unknown) {
       yield adapterFailureChunk(error, options.signal)
@@ -1111,11 +1175,13 @@ export class LlmRuntime extends TypertRemoteService {
     options: GenerateOptions,
     prepared?: PreparedDispatch,
   ): AsyncIterable<StreamChunk> {
+    const requestId = randomUUID()
+    let attempt = 0
     return this.ctx.waterfall(
       this,
       'llm/stream',
       options,
-      () => this.adapterStream(options, prepared),
+      () => this.adapterStream(options, { requestId, attemptId: String(++attempt) }, prepared),
     )
   }
 }

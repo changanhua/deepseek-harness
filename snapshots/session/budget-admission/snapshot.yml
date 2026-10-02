@@ -1,0 +1,10 @@
+version: 1
+scenario: budget-admission
+profile: headless
+composition: budget-admission
+recording: authored
+header:
+  class: budget-admission
+  pin: true
+workspace:
+  parent: outside-temp

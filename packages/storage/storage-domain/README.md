@@ -113,6 +113,8 @@ The `storage-domain-invariant` companion registers the owned relationship: every
 -----
 
 <a id="further-exploration"></a>
+A Domain may require backend guarantees through `requires`. Opening checks them before any KV handle is acquired and rejects missing guarantees with `guarantee-unsupported`; callers cannot upgrade a medium's guarantees by declaring requirements.
+
 ## Further Exploration
 
 Read these pages when the domain layer's view is not enough: the subsystem reference is the authoritative contract, and the Agent Note records the design and deferred work.

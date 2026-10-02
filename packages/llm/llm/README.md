@@ -120,6 +120,8 @@ File detection reads current content, including nested tool results, on every re
 -----
 
 <a id="further-exploration"></a>
+A Host may install one `registerDispatchGuard` at the final adapter boundary. It covers direct and prepared calls, grants a single dispatch callback per attempt, and remains fail-closed after removal until replaced. The [Budget bridge](../../budget/budget-llm/README.md) supplies resource admission without changing model routes.
+
 ## Further Exploration
 
 Read these pages when the package-level contract is not enough. They move from the shared types to the concrete adapters, the retry executor, and the measurement service.

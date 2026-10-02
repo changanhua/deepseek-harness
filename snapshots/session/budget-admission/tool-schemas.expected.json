@@ -1,0 +1,14 @@
+{
+  "initial": [
+    {
+      "name": "eval_marker",
+      "description": "Return the deterministic replay marker.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
+  ],
+  "changes": []
+}

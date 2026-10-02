@@ -536,7 +536,7 @@
       "id": "core-tool-and-agent-authority-hardening",
       "status": "active",
       "kind": "upstream-candidate",
-      "title": "Keep tool registration and Agent inbox authority invariants",
+      "title": "Keep final dispatch, tool registration and Agent inbox authority invariants",
       "owner": "runtime-reliability",
       "introducedAt": "2026-08-28",
       "upstreamBaseSha": "c291e7961a515f6d7af9304e7fd1d257929aef26",
@@ -549,7 +549,9 @@
         "packages/core/tools",
         "packages/experimental/agent-team",
         "packages/fs/tool-fs-search",
-        "packages/llm/llm"
+        "packages/llm/llm",
+        "packages/workflow/workflow",
+        "packages/workflow/workflow-worker-thread"
       ],
       "affectedFiles": [
         "packages/core/agent/**",
@@ -557,34 +559,41 @@
         "packages/core/tools/**",
         "packages/experimental/agent-team/**",
         "packages/fs/tool-fs-search/**",
-        "packages/llm/llm/**"
+        "packages/llm/llm/**",
+        "packages/workflow/workflow/**",
+        "packages/workflow/workflow-worker-thread/**"
       ],
-      "reason": "Personal Queue and multi-Agent consumers require object-rooted tool schemas, staged activation, and inbox ownership semantics that fail closed.",
-      "whyPluginIsInsufficient": "Registration validation and inbox commit ordering must execute inside the service that owns those operations.",
+      "reason": "Personal Queue, Budget and multi-Agent consumers require object-rooted schemas, staged activation, inbox ownership and single-owner final LLM/Workflow dispatch guards that fail closed.",
+      "whyPluginIsInsufficient": "Registration, inbox commits and final adapter/child dispatch must enforce policy inside their owning operations; a listener or facade can be bypassed by direct and prepared calls.",
       "whyCompatibilityAdapterIsInsufficient": "An outer adapter can be bypassed by direct service consumers and cannot repair already-published state.",
-      "factOwnershipEffect": "Core Agent and Tool services retain their existing facts and enforce their own commit points.",
+      "factOwnershipEffect": "Agent and Tool retain their facts; LLM and Workflow retain dispatch ownership while the separate Budget owner retains resource decisions and receipts.",
       "dataFormatEffect": "none",
-      "securityEffect": "Invalid tool schemas and unauthorized staged work are rejected before publication.",
+      "securityEffect": "Invalid registrations and unauthorized work are refused before publication or dispatch; removing an installed guard fails closed.",
       "tests": [
         "packages/core/agent/tests/agent.spec.ts",
-        "packages/core/tools/tests/tools.spec.ts"
+        "packages/core/tools/tests/tools.spec.ts",
+        "packages/llm/llm/tests/dispatch-guard.spec.ts",
+        "packages/budget/budget-workflow/tests/integration.spec.ts"
       ],
       "upstreamCanaryTests": [
         "pnpm exec vitest run packages/core/agent packages/core/tools packages/experimental/agent-team"
       ],
       "migrationPlan": "Drop individual fork commits when upstream behavior and negative tests become equivalent.",
       "rollbackPlan": "Revert one invariant commit at a time and keep its negative test as the comparison oracle.",
-      "replacementCondition": "Upstream enforces equivalent registration, activation, and inbox ownership at the final operation.",
+      "replacementCondition": "Upstream enforces equivalent registration, activation, inbox ownership and revocable final dispatch guards in their owning operations.",
       "upstreamIssueOrPr": null,
       "expiryReviewDate": "2026-11-05",
       "knownMergeConflicts": [
         "packages/core/agent/src/inbox.ts",
-        "packages/core/tools/src/index.ts"
+        "packages/core/tools/src/index.ts",
+        "packages/llm/llm/src/index.ts",
+        "packages/workflow/workflow/src/index.ts",
+        "packages/workflow/workflow-worker-thread/src/host.ts"
       ],
       "lastRevalidatedUpstreamSha": "c291e7961a515f6d7af9304e7fd1d257929aef26",
       "risk": {
-        "level": "medium",
-        "points": 5
+        "level": "high",
+        "points": 8
       },
       "heatmap": {
         "architectureCentrality": 4,
@@ -808,7 +817,7 @@
       "whyCompatibilityAdapterIsInsufficient": "An outer adapter cannot repair a persisted event or storage lifecycle after the owning service commits it.",
       "factOwnershipEffect": "Existing Session, Storage, Settings, and Workspace services retain their facts.",
       "dataFormatEffect": "The v0 migration validates prompt digests while current storage schemas retain their existing version owners.",
-      "securityEffect": "Private storage directories and settings access stay inside their owning services.",
+      "securityEffect": "Private storage directories and settings access stay inside their owning services. Storage Domain verifies every declared backend guarantee before opening the medium.",
       "tests": [
         "packages/core/session/tests/gen-persistence-catalog.spec.ts",
         "packages/session/session-format-v0-to-v1/tests/validation.spec.ts",

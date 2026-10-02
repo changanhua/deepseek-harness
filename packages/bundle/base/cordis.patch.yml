@@ -154,6 +154,9 @@
 
     - id: storage-domain
       name: '@deepseek-ai/dsh-storage-domain'
+      isolate:
+        storage.backend.json: web-storage
+        storageDomain: web-host
       config:
         backend: json
 

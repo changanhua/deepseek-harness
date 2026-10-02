@@ -1,0 +1,40 @@
+{
+  "name": "@changanhua/dsh-eval-repo-workspace",
+  "description": "Fixed-revision Attempt-owned Eval workspace bridge",
+  "version": "0.1.2-alpha.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/eval/eval-repo-workspace"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "private": true,
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@changanhua/dsh-eval": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-repo-workspace": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@changanhua/dsh-eval": "workspace:^",
+    "@changanhua/dsh-delivery-protocol": "workspace:^",
+    "@changanhua/dsh-repo-workspace": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^"
+  }
+}

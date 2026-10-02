@@ -114,6 +114,8 @@ The host keeps a ledger of forwarded child starts; a graceful worker supplies th
 -----
 
 <a id="further-exploration"></a>
+Worker child requests pass through the Workflow owner's child guard immediately before `subagents.start`. Admission rejection starts no child; successful children retain the existing worker cancellation and quiescent cleanup contract.
+
 ## Further Exploration
 
 Read these pages when the engine-level contract is not enough. They move from the seam contract to the model-facing consumers and the design decisions.

@@ -90,6 +90,32 @@ describe('defineDomain', () => {
 })
 
 describe('DomainFacility.open', () => {
+  it('refuses unmet guarantees before opening a medium and releases the failed reservation', async () => {
+    const { ctx, backend } = await harness()
+    const guarantees: Array<'single-writer' | 'commit-sync'> = ['single-writer']
+    const open = vi.fn((descriptor: Parameters<typeof backend.kv.open>[0]) => backend.kv.open(descriptor))
+    const unregister = ctx.storage.backend.register('guarded', { guarantees, kv: { open }, close: () => backend.close() })
+    const facility = new DomainFacility(ctx, { backend: 'guarded' })
+    const guarded = defineDomain({ name: 'guarded', version: 1, requires: ['single-writer', 'commit-sync'] as const, tables: {} })
+    try {
+      await expect(facility.open(guarded)).rejects.toMatchObject({ code: 'guarantee-unsupported' })
+      expect(open).not.toHaveBeenCalled()
+      guarantees.push('commit-sync')
+      const domain = await facility.open(guarded)
+      expect(open).toHaveBeenCalledTimes(1)
+      await domain.close()
+    } finally { unregister(); await backend.close(); await ctx.fiber.dispose() }
+  })
+
+  it('does not treat absent backend guarantees as an approved declaration', async () => {
+    const { ctx, facility, backend } = await harness()
+    try {
+      await expect(facility.open(defineDomain({
+        name: 'guarded', version: 1, requires: ['private-root'] as const, tables: {},
+      }))).rejects.toMatchObject({ code: 'guarantee-unsupported' })
+    } finally { await backend.close(); await ctx.fiber.dispose() }
+  })
+
   it('opens, reads back stored records, and rejects a second open of the same name', async () => {
     const { facility } = await harness()
     const domain = await facility.open(spec)

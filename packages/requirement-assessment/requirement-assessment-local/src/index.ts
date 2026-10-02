@@ -5,7 +5,12 @@ import RequirementAssessmentService, { AssessmentError } from '@changanhua/dsh-r
 import type { AssessmentAccess, AssessmentRequestIdentity, AssessmentReservation, AssessmentCreateInput, AssessmentSnapshot, RequirementAssessment } from '@changanhua/dsh-requirement-assessment'
 import { AssessmentStore } from './store.ts'
 import { acquireAssessmentOwnership } from './ownership.ts'
-export interface LocalAssessmentConfig { ownershipRoot: string; maxWorkspaceBytes?: number }
+export interface LocalAssessmentConfig {
+  /** Local directory holding the exclusive Host ownership lock. */
+  ownershipRoot: string
+  /** Maximum serialized assessment state bytes per workspace. */
+  maxWorkspaceBytes?: number
+}
 /** Single-Host local provider using the existing Storage Domain atomic persistence. */
 export class LocalRequirementAssessment extends RequirementAssessmentService {
   static inject = ['storageDomain', 'workspaceRegistry']

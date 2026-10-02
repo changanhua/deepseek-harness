@@ -2,7 +2,7 @@
 
 [English](eval.md) | 中文
 
-本参考页描述纯 [Eval 库](../../packages/eval/eval/README.zh.md)：评测意图、记录的执行身份及内部一致的决策。此库不执行观测、凭据访问、证据读取、预算准入或激活。现有 Suite/Run/report runner 保持确定性回放语义。
+本参考页描述可信 Plan 来源、Attempt 工作区及纯 [Eval 库](../../packages/eval/eval/README.zh.md)：评测意图、记录的执行身份及内部一致的决策。此库不执行观测、凭据访问、证据读取、预算准入或激活。现有 Suite/Run/report runner 保持确定性回放语义。
 
 ## 信任边界
 
@@ -50,3 +50,68 @@
 ## 归属
 
 Eval 拥有这些值及现有 runner/report 计算。RepoWorkspace、执行 Provider 和 Host 组合提供观测；证据 Consumer 校验保留的产物；预算 owner 提供资源决策；Activation 拥有继续运行的权限。此纯库不发布 Cordis 服务、配置项、Storage Domain、模型工具或运行时授权工厂。因此它不产生新的 Cordis/config/persistence 目录条目。
+
+## 可信来源与运行准入
+
+[Plan 来源](../../packages/eval/eval-plans-local/README.zh.md)拥有受信根目录下的完整 Host 固定内容和持久运行准入。发现结果返回相同的路径无关摘要；解析保留声明的 keyless/live 模式及最新预检。准入只接受本 owner 签发的不可变解析对象，并在写入前重新检查当前来源与预算祖先链。相同请求和相同解析身份恢复同一运行，变化则冲突。解析和准入均不启动 Queue 或模型。
+
+Tool 预检比较全局已注册契约，Preset digest 使用换行归一化的组合文本，Skill 身份包含指令内容和来源。精确执行组合和最终可见能力仍由执行器记录；Host 配置中的 keyless 模式不是执行证明。完整配置参见[指南](../cookbook/trusted-eval-and-budget.zh.md)。
+
+## Attempt 工作目录
+
+[RepositoryWorkspace 桥接](../../packages/eval/eval-repo-workspace/README.zh.md)先解析真实完整 commit，再使用 Queue 的 Attempt id 打开独立租约。准备策略包括空目录、受根目录和数量/字节限制的固定 commit fixture，以及仓库检出。输出记录 Provider 观察的 commit、准备 digest 和租约处置，不持久化绝对路径。
+
+执行器在子任务静止后报告确定完成，桥接才移除租约。不确定执行、复用冲突或清理不确定不会变成成功；Queue 包装返回 unknown，并由 Queue 保留 Attention。已有准备标记阻止在重启后复用未知目录。此桥接不实现 subject/grader 或可信 GateDecision。
+
+<!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
+
+<a id="cordis-surface"></a>
+
+## Cordis API
+
+Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxevalplans--evalplans-abstract-seam"></a>
+
+### `ctx.evalPlans` — `EvalPlans` (abstract seam)
+
+Trusted project Plan source. This owner does not execute, grade, enqueue or attest model outcomes.
+
+```ts cordis-catalog
+/**
+ * Read safe source summaries under the caller's exact live Workspace authority.
+ * @param access - Exact live Workspace and trusted entrypoint authorization.
+ * @param signal - Optional caller cancellation.
+ * @returns Safe Plan summaries without Host paths or credential material.
+ */
+abstract discover(access: EvalPlanAccess, signal?: AbortSignal): Promise<readonly EvalPlanSummary[]>
+
+/**
+ * Resolve approved immutable source and fresh runtime preflight. The returned object is Host-only.
+ * @param access - Exact live Workspace and trusted entrypoint authorization.
+ * @param selection - Only the configured Plan id and version.
+ * @param signal - Optional caller cancellation.
+ * @returns Owner-minted resolution with current readiness evidence.
+ */
+abstract resolve(access: EvalPlanAccess, selection: EvalPlanSelection, signal?: AbortSignal): Promise<ResolvedEvalPlan>
+
+/**
+ * Revalidate one Provider-minted resolution and durably mint/recover the same run identity.
+ * @param access - Current Workspace authority, rechecked before persistence.
+ * @param resolved - Exact resolution object issued by this Provider.
+ * @param requestId - Stable admission identity; changed resolution reuse rejects.
+ * @param signal - Optional caller cancellation.
+ * @returns Durable admission receipt; replay recovers the original run identity.
+ */
+abstract admit(access: EvalPlanAccess, resolved: ResolvedEvalPlan, requestId: string, signal?: AbortSignal): Promise<EvalPlanAdmission>
+
+/**
+ * Atomically publish a complete configured source generation, or retain the prior generation on error.
+ * @param authorize - Host reload authority, rechecked before publication.
+ * @param signal - Optional caller cancellation.
+ */
+abstract reload(authorize: () => void | Promise<void>, signal?: AbortSignal): Promise<void>
+```
+
+Source: [`packages/eval/eval-plans/src/index.ts`](../../packages/eval/eval-plans/src/index.ts)
+<!-- END GENERATED cordis-surface -->

@@ -10,7 +10,10 @@ import { quickReviewInputSchema } from '@changanhua/dsh-requirement-assessment-r
 import type { AssessmentView, AssessmentDrift, AssessmentListInput, AssessmentGetInput, AssessmentReviewInput } from './types.ts'
 export * from './types.ts'
 /** Deployment-owned local operator identity, never accepted from the wire. */
-export interface Config { operatorId?: string }
+export interface Config {
+  /** Host-authenticated actor recorded for browser operations. */
+  operatorId?: string
+}
 export const Config: Schema<Config> = Schema.object({ operatorId: Schema.string().default('local-operator') })
 const id = z.string().trim().min(1).max(256)
 const listSchema = z.strictObject({ workspaceId: id })

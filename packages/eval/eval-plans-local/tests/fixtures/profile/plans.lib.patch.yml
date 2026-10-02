@@ -1,0 +1,72 @@
+- id: headless-startup
+  disabled: true
+- id: headless-runner
+  disabled: true
+- id: llm-deepseek
+  disabled: true
+- id: agent-loop
+  config:
+    agents:
+      - id: main
+        provider: deepseek-official
+        model: deepseek-v4-flash
+        cwd: !!js process.cwd()
+- id: session-persistence-jsonl
+  config:
+    root: './.sessions'
+    compression: none
+- id: storage-domain
+  isolate:
+    storage.backend.json: web-storage
+    storageDomain: web-host
+  config:
+    backend: json
+    routes:
+      eval_plan_admissions: eval_data
+- insert:
+    - id: eval-agent-presets
+      name: '../../../../../preset/agent-presets/lib/index.js'
+      config:
+        default: standard
+        roots: []
+        includeShippedRoot: true
+        includeUserRoot: false
+    - id: eval-storage
+      name: '../../../../../storage/storage-sqlite/lib/index.js'
+      config:
+        backendName: eval_data
+        path: './eval-private/account.sqlite'
+        ownership: exclusive
+        journalMode: delete
+        synchronous: full
+        privateDirectory: true
+    - id: eval-workspace-registry
+      name: '../../../../../workspace/workspace/lib/index.js'
+      isolate:
+        storageDomain: web-host
+    - id: eval-plans
+      name: '../../../lib/index.js'
+      isolate:
+        storageDomain: web-host
+      config:
+        maxAdmissions: 10
+        maxLedgerBytes: 65536
+        sources:
+          - workspaceId: null
+            root: !!js process.cwd()
+            planFile: plan.json
+            suiteFile: suite.json
+            mode: keyless
+            approvedPlan: !!js JSON.parse(process.env.DSH_PLAN_FIXTURE_APPROVAL)
+            maxFileBytes: 131072
+            maxCells: 20
+            credentialGrant: null
+            requiredTools: []
+            requiredSkills: []
+    - id: command-eval-plan
+      name: '../../../../command-eval-plan/lib/index.js'
+      config:
+        entrypoint: cli
+        maxOutputBytes: 65536
+    - id: eval-plan-fixture
+      name: './fixture.lib.ts'

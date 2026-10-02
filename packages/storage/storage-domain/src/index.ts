@@ -108,6 +108,11 @@ export class DomainFacility {
     try {
       const backendName = this.config.routes?.[spec.name] ?? this.config.backend
       const backend = this.ctx.storage.backend.get(backendName)
+      const missing = (spec.requires ?? []).filter(guarantee => !backend.guarantees?.includes(guarantee))
+      if (missing.length > 0) {
+        throw new DomainError('guarantee-unsupported',
+          `backend '${backendName}' cannot satisfy domain '${spec.name}': ${missing.join(', ')}`)
+      }
       if (!backend.kv) {
         throw new DomainError(
           'facet-unsupported',

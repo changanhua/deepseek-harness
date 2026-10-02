@@ -133,6 +133,7 @@ export function createSessionSnapshotEvalExecutor(
   const drive = options.runScenario ?? runScenario
   const now = options.now ?? (() => performance.now())
   return async (request) => {
+    if (request.evalCase.workspace.kind === 'repository') throw new Error('repository cases require the Eval RepoWorkspace bridge')
     if (request.signal?.aborted === true) throw new DOMException('cancelled', 'AbortError')
     const fixtureFile = fixturePath(root, request.replayFixture.sessionFile)
     const childFiles = (request.replayFixture.childFiles ?? []).map(file => fixturePath(root, file))

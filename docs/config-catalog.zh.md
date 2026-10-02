@@ -89,6 +89,21 @@ export interface Config {
 
 来源：[`packages/browser/browser-monitor/src/index.ts:18`](../packages/browser/browser-monitor/src/index.ts)
 
+<a id="changanhuadsh-budget-workflow"></a>
+
+## `@changanhua/dsh-budget-workflow`
+
+Requires: `workflowEngine` · `agents` · `budget`
+
+```ts config-catalog
+/** Host-owned ceilings by workflow name; scripts can select neither a larger policy nor an exemption. */
+export type Config = z.infer<typeof configSchema>
+```
+
+Depends on: `z` (`zod`)
+
+Source: [`packages/budget/budget-workflow/src/index.ts:18`](../packages/budget/budget-workflow/src/index.ts)
+
 <a id="changanhuadsh-capabilities"></a>
 
 ## `@changanhua/dsh-capabilities`
@@ -101,6 +116,53 @@ export type Config = AgentPresetsConfig
 依赖：[`AgentPresetsConfig`](#deepseek-aidsh-agent-presets)
 
 来源：[`packages/bundle/capabilities/src/index.ts:15`](../packages/bundle/capabilities/src/index.ts)
+
+<a id="changanhuadsh-command-budget"></a>
+
+## `@changanhua/dsh-command-budget`
+
+Requires: `commands` · `agents` · `budget`
+
+```ts config-catalog
+/** Complete Human response limit. */
+export interface Config {
+  /** Maximum UTF-8 bytes in the complete serialized Human response. */
+  maxOutputBytes?: number
+}
+```
+
+Source: [`packages/budget/command-budget/src/index.ts:14`](../packages/budget/command-budget/src/index.ts)
+
+<a id="changanhuadsh-command-eval-plan"></a>
+
+## `@changanhua/dsh-command-eval-plan`
+
+Requires: `commands` · `agents` · `workspaceRegistry` · `evalPlans`
+
+```ts config-catalog
+/** The deployment chooses the entrypoint; command JSON cannot impersonate another channel. */
+export type Config = z.infer<typeof configSchema>
+```
+
+Depends on: `z` (`zod`)
+
+Source: [`packages/eval/command-eval-plan/src/index.ts:21`](../packages/eval/command-eval-plan/src/index.ts)
+
+<a id="changanhuadsh-command-initiative"></a>
+
+## `@changanhua/dsh-command-initiative`
+
+Requires: `commands` · `initiative`
+
+```ts config-catalog
+/** Complete Human response bound. */
+export interface Config {
+  /** Complete rendered Human response byte limit. */
+  maxOutputBytes?: number
+}
+```
+
+Source: [`packages/initiative/command-initiative/src/index.ts:11`](../packages/initiative/command-initiative/src/index.ts)
 
 <a id="changanhuadsh-command-memory"></a>
 
@@ -307,6 +369,28 @@ export interface Config {
 ```
 
 来源：[`packages/image/image-generation-task-queue/src/index.ts:11`](../packages/image/image-generation-task-queue/src/index.ts)
+
+<a id="changanhuadsh-initiative-local"></a>
+
+## `@changanhua/dsh-initiative-local`
+
+Requires: `storageDomain` · `workspaceRegistry` · `agents` · `sessions`
+
+```ts config-catalog
+/** Local single-Host Candidate provider configuration. */
+export interface Config {
+  /** Absolute local ownership directory, shared by all Hosts using this Candidate storage root. */
+  ownershipRoot: string
+  /** Stable Host-configured human operator identity; never accepted from command JSON. */
+  operatorId: string
+  /** Maximum complete serialized Workspace record, including receipts and history. */
+  maxWorkspaceBytes?: number
+  /** Maximum complete single-revision read view; keep consumer output limits above this bound. */
+  maxCandidateViewBytes?: number
+}
+```
+
+Source: [`packages/initiative/initiative-local/src/index.ts:20`](../packages/initiative/initiative-local/src/index.ts)
 
 <a id="changanhuadsh-knowledge-base"></a>
 
@@ -519,17 +603,23 @@ export interface LocalPlanningConfig {
 
 ## `@changanhua/dsh-planning-remote`
 
-需要：`planning` · `workspaceRegistry`
+Requires: `planning` · `workspaceRegistry`
 
 ```ts config-catalog
 /** Host identity used for browser-originated planning edits. */
 export interface Config {
   /** Local operator identity; browsers cannot override it. */
   operatorId?: string
+  /** Enable the SBC exploratory operations; ordinary Planning does not require their storage. */
+  enableSbcDesignCase?: boolean
+  /** Maximum retained exploratory cases across this Host. */
+  maxSbcCases?: number
+  /** Maximum serialized bytes of one exploratory record, checked before commit. */
+  maxSbcCaseBytes?: number
 }
 ```
 
-来源：[`packages/planning/planning-remote/src/index.ts:28`](../packages/planning/planning-remote/src/index.ts)
+Source: [`packages/planning/planning-remote/src/index.ts:39`](../packages/planning/planning-remote/src/index.ts)
 
 <a id="changanhuadsh-repo-workspace-git-local"></a>
 
@@ -553,6 +643,71 @@ export interface Config {
 
 来源：[`packages/delivery/repo-workspace-git-local/src/index.ts:51`](../packages/delivery/repo-workspace-git-local/src/index.ts)
 
+<a id="changanhuadsh-requirement-assessment-local"></a>
+
+## `@changanhua/dsh-requirement-assessment-local`
+
+Requires: `storageDomain` · `workspaceRegistry`
+
+```ts config-catalog
+export interface LocalAssessmentConfig {
+  /** Local directory holding the exclusive Host ownership lock. */
+  ownershipRoot: string
+  /** Maximum serialized assessment state bytes per workspace. */
+  maxWorkspaceBytes?: number
+}
+```
+
+Source: [`packages/requirement-assessment/requirement-assessment-local/src/index.ts:8`](../packages/requirement-assessment/requirement-assessment-local/src/index.ts)
+
+<a id="changanhuadsh-requirement-assessment-remote"></a>
+
+## `@changanhua/dsh-requirement-assessment-remote`
+
+Requires: `requirementAssessment` · `requirementAssessmentReview` · `planning` · `workspaceRegistry`
+
+```ts config-catalog
+/** Deployment-owned local operator identity, never accepted from the wire. */
+export interface Config {
+  /** Host-authenticated actor recorded for browser operations. */
+  operatorId?: string
+}
+```
+
+Source: [`packages/requirement-assessment/requirement-assessment-remote/src/index.ts:13`](../packages/requirement-assessment/requirement-assessment-remote/src/index.ts)
+
+<a id="changanhuadsh-requirement-assessment-review"></a>
+
+## `@changanhua/dsh-requirement-assessment-review`
+
+Requires: `requirementAssessment` · `planning` · `llm`
+
+```ts config-catalog
+/** Explicit deployment policy; no model route or unverified baseline is guessed. */
+export interface Config extends ReviewModelConfig {
+  /** Deployment-supplied DSH revision identity recorded in assessment evidence. */
+  dshBaseline: string
+}
+
+/** Deployment-owned route and complete request/response resource bounds. */
+export interface ReviewModelConfig {
+  /** Configured LLM Provider identifier. */
+  provider: string
+  /** Model identifier resolved through the selected Provider. */
+  model: string
+  /** Maximum UTF-8 bytes of the complete serialized model request. */
+  maxInputBytes: number
+  /** Maximum accumulated serialized stream bytes, including reasoning and metadata. */
+  maxOutputBytes: number
+  /** Positive maximum output tokens sent to the model. */
+  maxOutputTokens: number
+  /** Combined preparation and streaming deadline in milliseconds. */
+  timeoutMs: number
+}
+```
+
+Source: [`packages/requirement-assessment/requirement-assessment-review/src/index.ts:16`](../packages/requirement-assessment/requirement-assessment-review/src/index.ts)
+
 <a id="changanhuadsh-runtime-facts"></a>
 
 ## `@changanhua/dsh-runtime-facts`
@@ -568,6 +723,34 @@ export interface Config {
 ```
 
 来源：[`packages/context/runtime-facts/src/index.ts:29`](../packages/context/runtime-facts/src/index.ts)
+
+<a id="changanhuadsh-side-effect-safety"></a>
+
+## `@changanhua/dsh-side-effect-safety`
+
+Requires: `storageDomain`
+
+```ts config-catalog
+/** Required retention, evidence and admission bounds for one Host writer. */
+export interface Config {
+  /** Maximum retained execution records. */
+  maxExecutions: number
+  /** Maximum retained human approval artifacts. */
+  maxApprovals: number
+  /** Maximum retained ledger actions per execution. */
+  maxActionsPerExecution: number
+  /** UTF-8 byte limit for a complete approval or execution. */
+  maxRecordBytes: number
+  /** UTF-8 byte limit for the complete durable state. */
+  maxTotalBytes: number
+  /** Maximum references on one approval or settlement. */
+  maxEvidenceRefs: number
+  /** Maximum lifetime in milliseconds of a process-local admitted handle. */
+  maxAdmissionMs: number
+}
+```
+
+Source: [`packages/guard/side-effect-safety/src/types.ts:86`](../packages/guard/side-effect-safety/src/types.ts)
 
 <a id="changanhuadsh-task-queue-executor-dsh"></a>
 
@@ -673,6 +856,46 @@ export interface Config {
 
 来源：[`packages/llm/tool-choice/src/index.ts:18`](../packages/llm/tool-choice/src/index.ts)
 
+<a id="changanhuadsh-tool-initiative"></a>
+
+## `@changanhua/dsh-tool-initiative`
+
+Requires: `initiative` · `tools` · `systemPrompt`
+
+```ts config-catalog
+/** Complete result and cooperative timeout bounds. */
+export interface Config {
+  /** Complete rendered Tool result byte limit. */
+  maxOutputBytes?: number
+  /** Cooperative execution deadline used by the existing Tool timeout policy. */
+  timeoutMs?: number
+}
+```
+
+Source: [`packages/initiative/tool-initiative/src/index.ts:14`](../packages/initiative/tool-initiative/src/index.ts)
+
+<a id="changanhuadsh-tool-initiative-review"></a>
+
+## `@changanhua/dsh-tool-initiative-review`
+
+Requires: `planning` · `initiative` · `storageDomain` · `workspaceRegistry` · `agents` · `sessions` · `tools` · `systemPrompt`
+
+```ts config-catalog
+/** Deployment bounds and single-Host storage ownership. */
+export interface Config {
+  /** Absolute local directory shared by Hosts using this decision storage root. */
+  ownershipRoot: string
+  /** Complete serialized Workspace history limit, including recovery reservation. */
+  maxWorkspaceBytes?: number
+  /** Complete model-visible JSON output limit; oversized reads fail without mutation. */
+  maxOutputBytes?: number
+  /** Cooperative deadline for one read or decision; uncertain writes retain their intent. */
+  timeoutMs?: number
+}
+```
+
+Source: [`packages/initiative/tool-initiative-review/src/index.ts:20`](../packages/initiative/tool-initiative-review/src/index.ts)
+
 <a id="changanhuadsh-tool-memory"></a>
 
 ## `@changanhua/dsh-tool-memory`
@@ -708,7 +931,7 @@ export interface Config {}
 
 ## `@changanhua/dsh-tool-planning`
 
-需要：`tools` · `systemPrompt` · `planning` · `agents` · `sessions` · `workspaceRegistry`
+Requires: `tools` · `systemPrompt` · `planning` · `agents` · `sessions` · `workspaceRegistry`
 
 ```ts config-catalog
 export interface Config {
@@ -719,7 +942,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/planning/tool-planning/src/index.ts:39`](../packages/planning/tool-planning/src/index.ts)
+Source: [`packages/planning/tool-planning/src/index.ts:40`](../packages/planning/tool-planning/src/index.ts)
 
 <a id="changanhuadsh-tool-task-queue"></a>
 
@@ -736,6 +959,24 @@ export interface Config {
 ```
 
 来源：[`packages/task-queue/tool-task-queue/src/index.ts:237`](../packages/task-queue/tool-task-queue/src/index.ts)
+
+<a id="changanhuadsh-tool-thinking-case"></a>
+
+## `@changanhua/dsh-tool-thinking-case`
+
+Requires: `tools` · `thinkingCase`
+
+```ts config-catalog
+/** Deployment limits for the restricted Thinking tools. */
+export interface Config {
+  /** Cooperative deadline for one tool invocation, in milliseconds. */
+  timeoutMs?: number
+  /** Maximum UTF-8 bytes in the complete rendered tool result. */
+  maxOutputBytes?: number
+}
+```
+
+Source: [`packages/planning/tool-thinking-case/src/index.ts:13`](../packages/planning/tool-thinking-case/src/index.ts)
 
 <a id="deepseek-aidsh-acp"></a>
 
@@ -1639,7 +1880,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-host-frontend-static`
 
-需要：`webServer` · `connection`
+Requires: `webServer` · `connection`
 
 ```ts config-catalog
 /** Plugin config: the dist anchor. */
@@ -1649,7 +1890,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/host/frontend-static/src/index.ts:30`](../packages/host/frontend-static/src/index.ts)
+Source: [`packages/host/frontend-static/src/index.ts:31`](../packages/host/frontend-static/src/index.ts)
 
 <a id="deepseek-aidsh-host-open-in-app"></a>
 
@@ -1702,7 +1943,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/host/webserver/src/index.ts:59`](../packages/host/webserver/src/index.ts)
+Source: [`packages/host/webserver/src/index.ts:60`](../packages/host/webserver/src/index.ts)
 
 <a id="deepseek-aidsh-invariants"></a>
 
@@ -2343,6 +2584,36 @@ export interface ReconnectConfig {
 ```
 
 来源：[`packages/mcp/mcp-client/src/index.ts:98`](../packages/mcp/mcp-client/src/index.ts)
+
+<a id="deepseek-aidsh-mcp-gateway"></a>
+
+## `@deepseek-ai/dsh-mcp-gateway`
+
+Requires: `webServer` · `planning` · `workspaceRegistry`
+
+```ts config-catalog
+/** The Host owns admission; each call selects an allowed, registered project. */
+export interface Config {
+  /** Omitted allows registered local projects; an empty list denies all projects. */
+  readonly workspacePaths?: string[] | undefined
+  /** Environment variable holding the bearer token; use exactly one credential source. */
+  readonly tokenEnv?: string | undefined
+  /** Absolute credential file; use exactly one of tokenEnv and tokenFile. */
+  readonly tokenFile?: string | undefined
+  /** Absolute HTTP route without a trailing slash. */
+  readonly path?: string
+  /** Maximum incoming request body bytes. */
+  readonly requestMaxBytes?: number
+  /** Maximum serialized tool result bytes. */
+  readonly resultMaxBytes?: number
+  /** Deadline in milliseconds for one tool call. */
+  readonly callTimeoutMs?: number
+  /** Maximum concurrent admitted tool calls. */
+  readonly maxPendingCalls?: number
+}
+```
+
+Source: [`packages/mcp/mcp-gateway/src/index.ts:21`](../packages/mcp/mcp-gateway/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -4224,11 +4495,14 @@ export interface Config {
 这些插件通过 `cordis.yml` 中不含 `config:` 块的条目加载；它们未声明任何配置接口。
 
 - `@changanhua/dsh-browser-task` — 需要 `agents` · `sessions` · `sessionProjections` · `systemPrompt` · `tools` ([`packages/browser/browser-task/src/index.ts`](../packages/browser/browser-task/src/index.ts))
+- `@changanhua/dsh-budget-agent` — requires `agents` · `budget` ([`packages/budget/budget-agent/src/index.ts`](../packages/budget/budget-agent/src/index.ts))
+- `@changanhua/dsh-budget-llm` — requires `llm` ([`packages/budget/budget-llm/src/index.ts`](../packages/budget/budget-llm/src/index.ts))
 - `@changanhua/dsh-client-ui-architecture` ([`packages/client/ui-architecture/src/index.ts`](../packages/client/ui-architecture/src/index.ts))
 - `@changanhua/dsh-client-ui-capability` ([`packages/client/ui-capability/src/index.ts`](../packages/client/ui-capability/src/index.ts))
 - `@changanhua/dsh-client-ui-content` ([`packages/client/ui-content/src/index.ts`](../packages/client/ui-content/src/index.ts))
 - `@changanhua/dsh-client-ui-delivery` ([`packages/client/ui-delivery/src/index.ts`](../packages/client/ui-delivery/src/index.ts))
 - `@changanhua/dsh-client-ui-planning` ([`packages/client/ui-planning/src/index.ts`](../packages/client/ui-planning/src/index.ts))
+- `@changanhua/dsh-client-ui-requirement-assessment` ([`packages/client/ui-requirement-assessment/src/index.ts`](../packages/client/ui-requirement-assessment/src/index.ts))
 - `@changanhua/dsh-client-ui-settings-skills` ([`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts))
 - `@changanhua/dsh-client-ui-task-queue` ([`packages/client/ui-task-queue/src/index.ts`](../packages/client/ui-task-queue/src/index.ts))
 - `@changanhua/dsh-client-ui-work-observatory` ([`packages/client/ui-work-observatory/src/index.ts`](../packages/client/ui-work-observatory/src/index.ts))
@@ -4332,12 +4606,16 @@ export interface Config {
 抽象服务类——部署时应改为加载具体的实现包（参见[能力 seam](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)）。
 
 - `@changanhua/dsh-browser` — abstract `Browser` ([`packages/browser/browser/src/index.ts`](../packages/browser/browser/src/index.ts))
+- `@changanhua/dsh-budget` — abstract `Budget` ([`packages/budget/budget/src/index.ts`](../packages/budget/budget/src/index.ts))
 - `@changanhua/dsh-content` — abstract `Content` ([`packages/content/content/src/index.ts`](../packages/content/content/src/index.ts))
 - `@changanhua/dsh-delivery` — abstract `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
 - `@changanhua/dsh-delivery-evidence` — abstract `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
+- `@changanhua/dsh-eval-plans` — abstract `EvalPlans` ([`packages/eval/eval-plans/src/index.ts`](../packages/eval/eval-plans/src/index.ts))
+- `@changanhua/dsh-initiative` — abstract `Initiative` ([`packages/initiative/initiative/src/index.ts`](../packages/initiative/initiative/src/index.ts))
 - `@changanhua/dsh-memory` — abstract `ProjectMemory` ([`packages/memory/memory/src/index.ts`](../packages/memory/memory/src/index.ts))
 - `@changanhua/dsh-planning` — abstract `Planning` ([`packages/planning/planning/src/index.ts`](../packages/planning/planning/src/index.ts))
 - `@changanhua/dsh-repo-workspace` — abstract `RepositoryWorkspace` ([`packages/delivery/repo-workspace/src/index.ts`](../packages/delivery/repo-workspace/src/index.ts))
+- `@changanhua/dsh-requirement-assessment` — abstract `RequirementAssessmentService` ([`packages/requirement-assessment/requirement-assessment/src/index.ts`](../packages/requirement-assessment/requirement-assessment/src/index.ts))
 - `@changanhua/dsh-task-queue` — abstract `TaskQueue` ([`packages/task-queue/task-queue/src/index.ts`](../packages/task-queue/task-queue/src/index.ts))
 - `@deepseek-ai/dsh-attachment` — abstract `AttachmentStore` ([`packages/attachment/attachment/src/index.ts`](../packages/attachment/attachment/src/index.ts))
 - `@deepseek-ai/dsh-code-runtime` — abstract `CodeRuntime` ([`packages/code-runtime/code-runtime/src/index.ts`](../packages/code-runtime/code-runtime/src/index.ts))
@@ -4361,6 +4639,7 @@ export interface Config {
 由其他包作为库导入；`cordis.yml` 无法加载它们。
 
 - `@changanhua/browser-extension-mcp`（[`packages/mcp/browser-extension-mcp/src/index.ts`](../packages/mcp/browser-extension-mcp/src/index.ts)）
+- `@changanhua/dsh-budget-local` ([`packages/budget/budget-local/src/index.ts`](../packages/budget/budget-local/src/index.ts))
 - `@changanhua/dsh-delivery-github-intake`（[`packages/delivery/delivery-github-intake/src/index.ts`](../packages/delivery/delivery-github-intake/src/index.ts)）
 - `@changanhua/dsh-delivery-github-publisher`（[`packages/delivery/delivery-github-publisher/src/index.ts`](../packages/delivery/delivery-github-publisher/src/index.ts)）
 - `@changanhua/dsh-delivery-protocol`（[`packages/delivery/delivery-protocol/src/index.ts`](../packages/delivery/delivery-protocol/src/index.ts)）
@@ -4368,6 +4647,8 @@ export interface Config {
 - `@changanhua/dsh-delivery-testkit`（[`packages/delivery/delivery-testkit/src/index.ts`](../packages/delivery/delivery-testkit/src/index.ts)）
 - `@changanhua/dsh-delivery-verifier`（[`packages/delivery/delivery-verifier/src/index.ts`](../packages/delivery/delivery-verifier/src/index.ts)）
 - `@changanhua/dsh-eval`（[`packages/eval/eval/src/index.ts`](../packages/eval/eval/src/index.ts)）
+- `@changanhua/dsh-eval-plans-local` ([`packages/eval/eval-plans-local/src/index.ts`](../packages/eval/eval-plans-local/src/index.ts))
+- `@changanhua/dsh-eval-repo-workspace` ([`packages/eval/eval-repo-workspace/src/index.ts`](../packages/eval/eval-repo-workspace/src/index.ts))
 - `@changanhua/dsh-eval-session-snapshot`（[`packages/eval/eval-session-snapshot/src/index.ts`](../packages/eval/eval-session-snapshot/src/index.ts)）
 - `@changanhua/dsh-personal-delivery`（[`packages/bundle/personal-delivery/src/index.ts`](../packages/bundle/personal-delivery/src/index.ts)）
 - `@changanhua/dsh-personal-memory`（[`packages/bundle/personal-memory/src/index.ts`](../packages/bundle/personal-memory/src/index.ts)）

@@ -2,7 +2,7 @@
 
 English | [中文](eval.zh.md)
 
-This reference covers the pure [Eval library](../../packages/eval/eval/README.md): evaluation intent, recorded execution identities and internally consistent decisions. The library performs no observation, credential access, evidence retrieval, budget admission or activation. Its existing Suite/Run/report runner retains deterministic replay semantics.
+This reference covers trusted Plan sources, Attempt workspaces and the pure [Eval library](../../packages/eval/eval/README.md): evaluation intent, recorded execution identities and internally consistent decisions. The library performs no observation, credential access, evidence retrieval, budget admission or activation. Its existing Suite/Run/report runner retains deterministic replay semantics.
 
 ## Trust boundary
 
@@ -50,3 +50,68 @@ The decision context checks that supplied manifest contents hash to the referenc
 ## Ownership
 
 Eval owns these values and the existing runner/report calculations. RepoWorkspace, execution Providers and Host composition supply observations; evidence Consumers verify retained artifacts; the budget owner supplies resource decisions; Activation owns permission to continue. This pure library publishes no Cordis service, config row, Storage Domain, model tool or runtime authority factory. Accordingly, it contributes no new Cordis/config/persistence catalog entries.
+
+## Trusted sources and run admission
+
+The [Plan source](../../packages/eval/eval-plans-local/README.md) owns complete Host-pinned contents under trusted roots and durable run admission. Discovery returns the same path-free summaries; resolution retains the declared keyless/live mode and fresh preflight. Admission accepts only this owner's immutable resolution and rechecks current source and the budget ancestor chain before writing. An identical request and resolution recover the same run; changed identities conflict. Neither resolution nor admission starts Queue work or a model.
+
+Tool preflight compares the globally registered contract, Preset digests use newline-normalized composition text, and Skill identity includes instruction content and source. The executor still records the exact execution composition and visible capabilities; Host-declared keyless mode is not execution evidence. See the [configuration guide](../cookbook/trusted-eval-and-budget.md).
+
+## Attempt workspaces
+
+The [RepositoryWorkspace bridge](../../packages/eval/eval-repo-workspace/README.md) resolves an actual full commit before opening a separate lease under the Queue Attempt id. Preparation supports an empty directory, contained and bounded exact-commit fixture files, or the repository checkout. Output retains the Provider-observed commit, preparation digest and lease disposition, without durable absolute paths.
+
+The bridge removes the lease only after the executor reports known completion and child quiescence. Uncertain execution, reuse conflicts or uncertain cleanup cannot become success; the Queue wrapper returns unknown and Queue retains Attention. An existing preparation marker prevents reuse of an unknown directory after restart. This bridge implements neither the subject/grader nor a trusted GateDecision.
+
+<!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
+
+<a id="cordis-surface"></a>
+
+## Cordis API
+
+Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxevalplans--evalplans-abstract-seam"></a>
+
+### `ctx.evalPlans` — `EvalPlans` (abstract seam)
+
+Trusted project Plan source. This owner does not execute, grade, enqueue or attest model outcomes.
+
+```ts cordis-catalog
+/**
+ * Read safe source summaries under the caller's exact live Workspace authority.
+ * @param access - Exact live Workspace and trusted entrypoint authorization.
+ * @param signal - Optional caller cancellation.
+ * @returns Safe Plan summaries without Host paths or credential material.
+ */
+abstract discover(access: EvalPlanAccess, signal?: AbortSignal): Promise<readonly EvalPlanSummary[]>
+
+/**
+ * Resolve approved immutable source and fresh runtime preflight. The returned object is Host-only.
+ * @param access - Exact live Workspace and trusted entrypoint authorization.
+ * @param selection - Only the configured Plan id and version.
+ * @param signal - Optional caller cancellation.
+ * @returns Owner-minted resolution with current readiness evidence.
+ */
+abstract resolve(access: EvalPlanAccess, selection: EvalPlanSelection, signal?: AbortSignal): Promise<ResolvedEvalPlan>
+
+/**
+ * Revalidate one Provider-minted resolution and durably mint/recover the same run identity.
+ * @param access - Current Workspace authority, rechecked before persistence.
+ * @param resolved - Exact resolution object issued by this Provider.
+ * @param requestId - Stable admission identity; changed resolution reuse rejects.
+ * @param signal - Optional caller cancellation.
+ * @returns Durable admission receipt; replay recovers the original run identity.
+ */
+abstract admit(access: EvalPlanAccess, resolved: ResolvedEvalPlan, requestId: string, signal?: AbortSignal): Promise<EvalPlanAdmission>
+
+/**
+ * Atomically publish a complete configured source generation, or retain the prior generation on error.
+ * @param authorize - Host reload authority, rechecked before publication.
+ * @param signal - Optional caller cancellation.
+ */
+abstract reload(authorize: () => void | Promise<void>, signal?: AbortSignal): Promise<void>
+```
+
+Source: [`packages/eval/eval-plans/src/index.ts`](../../packages/eval/eval-plans/src/index.ts)
+<!-- END GENERATED cordis-surface -->

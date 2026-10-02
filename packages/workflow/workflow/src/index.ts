@@ -13,6 +13,16 @@ import type {
   WorkflowRunInfo,
 } from './types.ts'
 import type { WorkflowRun, WorkflowStartRequest } from './runtime-types.ts'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+
+/** Host child boundary; scripts cannot choose or replace the budget authority carried here. */
+export interface WorkflowChildContext {
+  readonly run: WorkflowRunInfo
+  readonly parent: Agent
+  readonly signal: AbortSignal
+}
+/** Single resource-policy owner wraps each actual child dispatch. */
+export type WorkflowChildGuard = <T>(context: WorkflowChildContext, dispatch: () => Promise<T>) => Promise<T>
 
 export { WorkflowRunId } from './types.ts'
 export type {
@@ -155,6 +165,8 @@ export function isFatalWorkflowError(error: unknown): boolean {
  * result settles.
  */
 export abstract class WorkflowEngine extends Service {
+  private childGuard: { guard: WorkflowChildGuard; active: boolean } | undefined
+  private childGuardRequired = false
   constructor(ctx: Context) {
     super(ctx, 'workflowEngine')
   }
@@ -166,6 +178,37 @@ export abstract class WorkflowEngine extends Service {
    * @returns the live run; its `result` resolves when the script settles.
    */
   abstract start(request: WorkflowStartRequest): WorkflowRun
+
+  /**
+   * Register one Host resource guard; removal remains fail-closed until a replacement is installed.
+   * @param guard - Host policy wrapping the actual child dispatch callback.
+   * @returns Disposer that revokes this registration and outstanding dispatch callbacks.
+   */
+  registerChildGuard(guard: WorkflowChildGuard): () => void {
+    if (this.childGuard) throw new WorkflowError('workflow child guard already registered', 'AGENT_START')
+    const registration = { guard, active: true }
+    this.childGuard = registration
+    this.childGuardRequired = true
+    const dispose = this.ctx.effect(() => () => {
+      registration.active = false
+      if (this.childGuard === registration) this.childGuard = undefined
+    }, 'workflow.childGuard()')
+    return () => { void dispose() }
+  }
+
+  /** Apply the installed resource guard at the provider's actual child dispatch boundary. */
+  protected dispatchChild<T>(context: WorkflowChildContext, dispatch: () => Promise<T>): Promise<T> {
+    const registration = this.childGuard
+    if (!this.childGuardRequired) return dispatch()
+    if (!registration?.active) return Promise.reject(new WorkflowError('workflow child policy is unavailable', 'AGENT_START'))
+    let started = false
+    return registration.guard(context, () => {
+      context.signal.throwIfAborted()
+      if (started || !registration.active || this.childGuard !== registration) throw new WorkflowError('workflow child policy was revoked or reused', 'AGENT_START')
+      started = true
+      return dispatch()
+    })
+  }
 
   /**
    * Emit a lifecycle event while containing and logging each listener failure.

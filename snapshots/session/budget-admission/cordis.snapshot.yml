@@ -1,0 +1,79 @@
+# Replay patch shared by the ordinary headless snapshot composition. The model
+# script comes from the scenario's committed session JSONL.
+
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  disabled: true
+
+- id: plugin-package-inventory-deepseek
+  disabled: true
+
+- id: session-title-llm
+  disabled: true
+
+- id: session-persistence-jsonl
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: !!js dshHomePath('sessions')
+    compression: none
+
+- id: sandbox
+  name: '@deepseek-ai/dsh-sandbox-local'
+  config:
+    runnerCommand:
+      - bash
+      - -c
+      - while [ "$1" != "--" ]; do shift; done; shift; exec "$@"
+      - passthrough-runner
+    runnerFailureSignatures:
+      - 'passthrough-runner: profile rejected'
+
+- insert:
+    - id: llm-replay
+      name: '@deepseek-ai/dsh-llm-replay'
+      config:
+        providers:
+          - id: deepseek-official
+            name: DeepSeek
+            models:
+              - id: deepseek-v4-flash
+                defaultMaxTokens: 64
+              - id: deepseek-v4-pro
+                defaultMaxTokens: 64
+
+- insert:
+    - id: eval-plan-composition
+      name: ../eval-plan-case-01-flash/composition.ts
+
+- id: storage-domain
+  isolate:
+    storage.backend.json: web-storage
+    storageDomain: web-host
+  config:
+    backend: json
+    routes:
+      resource_budget: budget_data
+- insert:
+    - id: budget-storage
+      name: '../../../packages/storage/storage-sqlite/src/index.ts'
+      config:
+        backendName: budget_data
+        path: !!js dshHomePath('budget/account.sqlite')
+        ownership: exclusive
+        journalMode: delete
+        synchronous: full
+        privateDirectory: true
+    - id: resource-budget
+      name: '../../../packages/budget/budget-local/src/index.ts'
+      isolate:
+        storageDomain: web-host
+      config:
+        maxScopes: 20
+        maxReservations: 40
+        maxLedgerBytes: 524288
+    - id: budget-llm
+      name: '../../../packages/budget/budget-llm/src/index.ts'
+    - id: budget-agent
+      name: '../../../packages/budget/budget-agent/src/index.ts'
+    - id: seed-budget
+      name: './seed.ts'

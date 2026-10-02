@@ -79,6 +79,39 @@
       ]
     },
     {
+      "directory": "packages/budget/budget",
+      "legacyName": "@deepseek-ai/dsh-budget",
+      "sourceName": "@changanhua/dsh-budget",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/budget/budget-llm",
+      "legacyName": "@deepseek-ai/dsh-budget-llm",
+      "sourceName": "@changanhua/dsh-budget-llm",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/budget/budget-local",
+      "legacyName": "@deepseek-ai/dsh-budget-local",
+      "sourceName": "@changanhua/dsh-budget-local",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/bundle/capabilities",
       "legacyName": "@deepseek-ai/dsh-capabilities",
       "sourceName": "@changanhua/dsh-capabilities",
@@ -469,6 +502,17 @@
       "directory": "packages/eval/eval",
       "legacyName": "@deepseek-ai/dsh-eval",
       "sourceName": "@changanhua/dsh-eval",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/eval/eval-plans-local",
+      "legacyName": "@deepseek-ai/dsh-eval-plans-local",
+      "sourceName": "@changanhua/dsh-eval-plans-local",
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,
@@ -950,6 +994,72 @@
       "blockers": [
         "release-family-absent",
         "upstream-private-api-dependency"
+      ]
+    },
+    {
+      "directory": "packages/eval/eval-plans",
+      "legacyName": "@deepseek-ai/dsh-eval-plans",
+      "sourceName": "@changanhua/dsh-eval-plans",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/eval/eval-repo-workspace",
+      "legacyName": "@deepseek-ai/dsh-eval-repo-workspace",
+      "sourceName": "@changanhua/dsh-eval-repo-workspace",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/budget/budget-agent",
+      "legacyName": "@deepseek-ai/dsh-budget-agent",
+      "sourceName": "@changanhua/dsh-budget-agent",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/budget/budget-workflow",
+      "legacyName": "@deepseek-ai/dsh-budget-workflow",
+      "sourceName": "@changanhua/dsh-budget-workflow",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/budget/command-budget",
+      "legacyName": "@deepseek-ai/dsh-command-budget",
+      "sourceName": "@changanhua/dsh-command-budget",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/eval/command-eval-plan",
+      "legacyName": "@deepseek-ai/dsh-command-eval-plan",
+      "sourceName": "@changanhua/dsh-command-eval-plan",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
       ]
     }
   ]

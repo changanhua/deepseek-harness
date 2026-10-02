@@ -96,6 +96,8 @@ The per-item `null` is reserved for child-run failures and ordinary in-stage scr
 -----
 
 <a id="further-exploration"></a>
+A Host may install one `registerChildGuard` around actual child creation. The disposable registration admits a single callback and fails closed after removal; the [Budget bridge](../../budget/budget-workflow/README.md) uses it to bind children to a shared run budget.
+
 ## Further Exploration
 
 Read these pages when the package-level contract is not enough. They move from the shared workflow model to the current engine and the model-facing consumers.

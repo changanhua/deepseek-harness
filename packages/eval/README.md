@@ -28,6 +28,10 @@ Choose the pure contract library unless the evaluation must boot a DSH applicati
 |---|---|
 | [`eval`](eval/README.md) | Strict suites and runs, ordered execution, four-class outcome folding, and stable reports |
 | [`eval-session-snapshot`](eval-session-snapshot/README.md) | Keyless ACP replay executor and normalized session-log comparison |
+| [`eval-plans`](eval-plans/README.md) | Trusted source and admission contract |
+| [`eval-plans-local`](eval-plans-local/README.md) | Host-pinned files, runtime preflight and durable admission |
+| [`command-eval-plan`](command-eval-plan/README.md) | Human discovery, preflight and admission |
+| [`eval-repo-workspace`](eval-repo-workspace/README.md) | Verified commit and Queue Attempt workspace bridge |
 
 The checked-in [`minimal-v1` suite](eval-session-snapshot/suites/minimal-v1/suite.json) provides ten cases and twenty independent route fixtures for the first reproducible comparison.
 

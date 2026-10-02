@@ -1,0 +1,27 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../eval"
+    },
+    {
+      "path": "../../delivery/delivery-protocol"
+    },
+    {
+      "path": "../../delivery/repo-workspace"
+    },
+    {
+      "path": "../../task-queue/task-queue"
+    }
+  ]
+}
