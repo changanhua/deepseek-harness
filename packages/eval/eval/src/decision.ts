@@ -99,9 +99,9 @@ const decisionContextSchema = z.object({
     if (!sameValue(manifest.planRef, planRef) || !sameValue(manifest.suiteRef, plan.suiteRef)) reject('manifest Plan/Suite identity mismatch')
     if (manifest.runId !== decision.runId) reject('manifest belongs to a different run')
     if (manifest.cell.repeatIndex >= plan.repeatPolicy.count) reject('repeat index exceeds Plan')
-    if (manifest.subject.repository.verifiedCommit !== plan.repository.expectedCommit) reject('observed commit differs from Plan')
+    if (decision.decision === 'pass' && manifest.subject.repository.verifiedCommit !== plan.repository.expectedCommit) reject('observed commit differs from Plan')
     const route = plan.routes.find(candidate => candidate.id === manifest.cell.routeId)
-    if (!route || !sameValue(route, manifest.subject.route)) reject('observed route differs from Plan')
+    if (decision.decision === 'pass' && (!route || !sameValue(route, manifest.subject.route))) reject('observed route differs from Plan')
     if (!sameValue(manifest.verifierPlanRef, plan.verifierPlanRef)) reject('manifest verifier policy differs from Plan')
     if (decision.decision === 'pass' && (!manifest.verifier || manifest.verifier.executionId !== decision.verifier?.executionId)) reject('manifest does not bind the deciding verifier')
   }

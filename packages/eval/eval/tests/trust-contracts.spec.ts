@@ -251,4 +251,22 @@ describe('Eval trust contracts', () => {
       decision: { ...value.decision, manifestRefs, verifier: { ...value.decision.verifier!, manifestRefs } },
     })).toThrow(/execution identity/u)
   })
+
+  test('preserves observed revision and model deviations in a blocked decision', () => {
+    const value = context()
+    const manifest = api.parseResolvedExecutionManifest({
+      ...value.manifests[0], subject: {
+        ...identity('subject'), repository: { verifiedCommit: 'c'.repeat(40), workspaceLeaseRef: ref('lease-subject') },
+        route: { ...route, model: 'unexpected-model' },
+      },
+    })
+    const manifestRefs = [contractRef(manifest)]
+    const decision = {
+      ...value.decision, decision: 'block', reasonCode: 'identity-mismatch', manifestRefs,
+      verifier: { ...value.decision.verifier!, manifestRefs, outcome: 'rejected' },
+    }
+    const result = api.validateEvalDecisionContext({ ...value, manifests: [manifest], decision })
+    expect(result.manifests[0]?.subject.repository.verifiedCommit).toBe('c'.repeat(40))
+    expect(result.manifests[0]?.subject.route.model).toBe('unexpected-model')
+  })
 })

@@ -31,7 +31,7 @@
 
 每个记录的角色身份包含 execution id、observer 与 evidence 引用、完整观测 commit 与 workspace lease 引用、build/config digest、Profile 产物身份、可空模型 route，以及 Tool/Skill 产物集合。Subject 必须有模型 route。非模型 grader/verifier 可以使用 null route。产物身份包含 id、source 与内容 digest；仅有名称不够。Config 正文、凭据与产物字节不属于这些身份记录；生产者必须将 route 参数限制为非秘密值。
 
-上下文验证要求观测到的 subject commit 和 route 与 Plan 一致，repeat index 在规定次数内，且每份 manifest 与决策使用相同的 run、Plan、Suite 和冻结的 verifier 策略。Manifest id 和 cell-attempt 元组必须唯一。复用的 execution id 必须在所有提供的角色和 manifest 中具有相同观测。这些属于结构约束，不证明进程隔离或实际 Provider 配置。
+上下文验证要求 pass 时观测到的 subject commit 和 route 与 Plan 一致；非通过决策保留这些偏差作为失败证据。Repeat index 必须在 Plan 规定次数内，且每份 manifest 与决策使用相同的 run、Plan、Suite 和冻结的 verifier 策略。Manifest id 和 cell-attempt 元组必须唯一。复用的 execution id 必须在所有提供的角色和 manifest 中具有相同观测。这些属于结构约束，不证明进程隔离或实际 Provider 配置。
 
 ## EvalGateDecision
 

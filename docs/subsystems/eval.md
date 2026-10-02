@@ -31,7 +31,7 @@ Each manifest binds an id/version to `planRef`, `suiteRef`, `runId` and one cell
 
 Each recorded role identity contains an execution id, observer and evidence references, full observed commit and workspace lease reference, build/config digests, Profile artifact identity, nullable model route, and Tool/Skill artifact sets. The subject requires a model route. A non-model grader/verifier can use a null route. Artifact identities contain id, source and content digest; names alone are insufficient. Config bodies, credentials and artifact bytes do not belong in these identity records; producers must restrict route parameters to non-secret values.
 
-Context validation requires the observed subject commit and route to match the Plan, repeat indexes to fit its count, and every manifest to name the same run, Plan, Suite and frozen verifier policy as the decision. Manifest ids and cell-attempt tuples are unique. A reused execution id must carry identical observations across all supplied roles and manifests. These are structural constraints, not proof of process isolation or actual Provider configuration.
+Context validation requires the observed subject commit and route to match the Plan for pass; non-pass decisions retain those deviations as failure evidence. Repeat indexes must fit the Plan count, and every manifest must name the same run, Plan, Suite and frozen verifier policy as the decision. Manifest ids and cell-attempt tuples are unique. A reused execution id must carry identical observations across all supplied roles and manifests. These are structural constraints, not proof of process isolation or actual Provider configuration.
 
 ## EvalGateDecision
 

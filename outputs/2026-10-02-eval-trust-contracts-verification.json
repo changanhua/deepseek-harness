@@ -6,18 +6,18 @@
   "verification": {
     "coreTests": {
       "files": 6,
-      "passed": 51,
+      "passed": 52,
       "failed": 0
     },
     "selectedSourceCoverage": {
       "statements": "130/130",
-      "branches": "105/105",
+      "branches": "108/108",
       "functions": "36/36",
       "lines": "91/91"
     },
     "hostTypecheck": "passed",
     "changedFileTypeAwareLint": "passed",
-    "fullBuild": "passed; 252 client artifacts",
+    "fullBuild": "e924517d53 passed; 252 client artifacts; final Host rebuild follows the non-pass identity-deviation fix",
     "builtExports": "passed: Plan parse/digest, legacy manifest rejection and public exports",
     "bilingualPairs": 5,
     "gitDiffCheck": "passed",
@@ -32,7 +32,8 @@
         "missing escalation-rejected/session.jsonl fixture",
         "shipped ACP profile returns internal error"
       ]
-    }
+    },
+    "finalNonPassRegression": "Blocked decision retains observed commit/model deviations; pass still rejects both (red then green)"
   },
   "bounds": [
     "Schemas, hashes and consistency validation do not authenticate producers or accept observations as trusted facts.",
