@@ -39,3 +39,5 @@ The UI adds no direct KV-cache effect.
 - Planning lanes do not indicate execution outcomes; Delivery contracts and decisions continue in the Delivery workbench.
 - The evolution graph shows retained lineage and current relationships, not historical lane or dependency values that were never stored.
 - Background notification and atomic review follow-ups remain incomplete.
+
+The `planning.subject.actions` slot supplies only workspace id, owning Plan id, and the selected Plan/Focus identity to optional consumers. It owns no assessment state and grants no mutation capability. Unloading a consumer removes its entry without changing Planning.

@@ -15,6 +15,12 @@ kind: "package-bundle"
 
 base layer 继续提供 Storage Domain、Workspace Registry、Session Query、Skill registry、模型运行时和 Web shell。此 patch 先添加独立的 `planning-skills` filesystem provider，它只扫描本 Bundle 发布的 `skills/` 根目录；随后添加 `planning-local`、`tool-planning`、`planning-remote` 与 `ui-planning`。Planning 的 ownership lock 位于 `DSH_HOME/storages/planning-ownership`。可选的 `memory.patch.yml` 与 `knowledge.patch.yml` 会为计划经验加入有来源的 Memory candidate 和 Knowledge 来源快照。
 
+## Investment review opt-in
+
+包内的 `investment-review.patch.yml` 在本 bundle 之后添加 Assessment provider、有界 Quick Review runner、Remote 与 UI。它作为显式 profile patch 使用，不进入默认 bundle 层。将 `DSH_RIR_PROVIDER` 与 `DSH_RIR_MODEL` 设为已有模型路由；缺失时阻止激活，不猜测 provider。只有已知 build/commit identity 才设置 `DSH_RIR_BASELINE`，否则保持 `unknown`。本 patch 不存储凭据。
+
+示例策略限制每份序列化请求与流式响应为 256 KiB、输出最多 12,000 Token、每次评估 120 秒。这些是可修改的部署限制，不是质量保证或 domain invariant。启动时不调用模型。在 UI 中通过投资评估页面创建手工评估，或使用 Plan / Focus 入口。真实评估产生所配置模型的用量，历史读取不调用模型。三个必需质量案例见 [WP1 规格](../../../docs/specs/2026-10-01-requirement-investment-review-wp1.md)。
+
 ## 不变量策略
 
 不发布 invariant 伴随模块，因为Bundle 仅组合已有能力，不拥有独立运行时状态。

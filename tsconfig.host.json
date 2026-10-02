@@ -131,6 +131,11 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/requirement-assessment/requirement-assessment" },
+    { "path": "./packages/requirement-assessment/requirement-assessment-local" },
+    { "path": "./packages/requirement-assessment/requirement-assessment-review" },
+    { "path": "./packages/requirement-assessment/requirement-assessment-remote" },
+
     { "path": "packages/guard/side-effect-safety" },
     { "path": "./vendor/cosmokit" },
     { "path": "./vendor/schemastery" },

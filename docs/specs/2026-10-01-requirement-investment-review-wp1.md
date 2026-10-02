@@ -1,7 +1,7 @@
 # Requirement Investment Review v1 — RIR-WP1
 
 - 日期：2026-10-01
-- 状态：待实现规格；尚未实现
+- 状态：已有部分实现；真实模型质量验收与完整 WP1 验收尚未完成
 - 范围：只实现 RIR-WP1（Minimum Useful Review）。不要顺手推进 WP2 / WP3。
 
 ## 0. 任务目标

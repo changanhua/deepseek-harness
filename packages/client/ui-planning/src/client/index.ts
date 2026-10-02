@@ -34,6 +34,9 @@ interface ContentReadResult {
 export type { PlanningKey } from './locales.ts'
 export type { PlanningRuntimeController, PlanningRuntimeState } from './runtime-controller.ts'
 declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    'planning.subject.actions': { kind: 'list'; scope: 'root'; owner: { workspaceId: string; planId: string; subject: import('@changanhua/dsh-planning/types').PlanningSubjectRef } }
+  }
   interface LocaleNamespaceMap {
     planning: PlanningKey
   }
@@ -154,7 +157,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
       },
     })
     ctx.slots.inject('shell.view', () =>
-      ctx.slots.register({ name: 'shell.view', id: 'planning', locale: NS, inject: injected }, PlanningWorkbench),
+      ctx.slots.register({ name: 'shell.view', id: 'planning', locale: NS, inject: injected, children: { 'planning.subject.actions': { kind: 'list', scope: 'root' } } }, PlanningWorkbench),
     )
     ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
       name: 'conversation.input.dock', id: 'planning-binding', locale: NS,

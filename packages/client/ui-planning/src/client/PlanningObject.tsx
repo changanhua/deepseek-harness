@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { PlanningBoardSnapshot, PlanningCommand, PlanningDeltaOperation, PlanningRevision, PlanningSubjectRef } from '@changanhua/dsh-planning/types'
 import type { PlanningKey } from './locales.ts'
 import { nextPlanningRequestId } from './request-id.ts'
@@ -8,6 +8,7 @@ export interface PlanningObjectProps {
   board: PlanningBoardSnapshot
   planId: string
   revision: PlanningRevision
+  renderSubjectActions?: (subject: PlanningSubjectRef) => ReactNode
   pending: boolean
   execute: (command: PlanningCommand) => Promise<boolean>
   startSession?: (subject: PlanningSubjectRef, revision: string) => Promise<void>
@@ -16,7 +17,9 @@ export interface PlanningObjectProps {
 }
 
 /** Object workspace projects canonical revisions and refers users to resource owners. */
-export function PlanningObject({ board, planId, revision, pending, execute, startSession, openSession, t }: PlanningObjectProps) {
+export function PlanningObject({
+  board, planId, revision, pending, execute, startSession, openSession, renderSubjectActions, t,
+}: PlanningObjectProps) {
   const [focusId, setFocusId] = useState<string>()
   const [starting, setStarting] = useState(false)
   const [sessionError, setSessionError] = useState('')
@@ -70,6 +73,7 @@ export function PlanningObject({ board, planId, revision, pending, execute, star
       <input aria-label={t('workspace.focusTitle')} placeholder={t('workspace.focusTitle')} value={title} onChange={(event) => { setTitle(event.target.value) }} />
       <button disabled={pending || !title.trim()}>{t('workspace.createFocus')}</button>
     </form>
+    {renderSubjectActions?.(subject)}
     <h3>{t('workspace.sessions')}</h3>
     <p>{t('workspace.workingOn')}: {focus?.title ?? revision.title}</p>
     <button disabled={pending || starting || startSession === undefined} onClick={() => {

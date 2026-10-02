@@ -39,3 +39,5 @@
 - Planning 分组不表示执行结果；Delivery 合同与决策继续在交付工作台处理。
 - 演变图显示已保留的谱系与当前关系，不会虚构从未存储的历史泳道或依赖值。
 - 后台提醒与复盘的原子后续项仍未完成。
+
+`planning.subject.actions` slot 只向可选 consumer 提供 workspace id、所属 Plan id 及选中的 Plan/Focus identity。它不拥有评估状态，不授予 mutation 能力。卸载 consumer 后入口移除，Planning 状态不变。
