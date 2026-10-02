@@ -101,6 +101,21 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'requirementAssessment', pkg: 'requirement-assessment', title: 'Immutable investment assessments', mode: 'seam',
+    implementations: ['requirement-assessment-local'], consumers: ['requirement-assessment-review', 'requirement-assessment-remote'],
+    note: 'Owns frozen assessment inputs, advisory results and durable request receipts without Planning mutation.',
+  },
+  {
+    key: 'requirementAssessmentReview', pkg: 'requirement-assessment-review', title: 'Bounded investment review', mode: 'core',
+    consumers: ['requirement-assessment-remote'],
+    note: 'One configured LLM call with no tools; captures Planning context and commits only validated advisory output.',
+  },
+  {
+    key: 'requirementAssessmentRemote', pkg: 'requirement-assessment-remote', title: 'Investment review browser boundary', mode: 'core',
+    consumers: ['client-ui-requirement-assessment'],
+    note: 'Binds the local Host actor and registered workspace; projects drift through read-only Planning access.',
+  },
+  {
     key: 'mcpServer',
     pkg: 'mcp-server',
     title: 'Local MCP capability endpoint',

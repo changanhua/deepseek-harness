@@ -1,0 +1,48 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../api/remotes/tsconfig.client.json"
+    },
+    {
+      "path": "../locale"
+    },
+    {
+      "path": "../ui-layout"
+    },
+    {
+      "path": "../ui-renderer"
+    },
+    {
+      "path": "../ui-sidebar"
+    },
+    {
+      "path": "../ui-slots"
+    },
+    {
+      "path": "../ui-planning"
+    },
+    {
+      "path": "../../planning/planning-remote"
+    },
+    {
+      "path": "../../requirement-assessment/requirement-assessment"
+    },
+    {
+      "path": "../../requirement-assessment/requirement-assessment-remote"
+    },
+    {
+      "path": "../../util/crypto"
+    }
+  ]
+}

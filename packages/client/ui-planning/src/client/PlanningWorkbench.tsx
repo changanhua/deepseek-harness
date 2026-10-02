@@ -1,3 +1,4 @@
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PlanningCommand, PlanningLane, PlanningSource, PlanningSourceInput } from '@changanhua/dsh-planning/types'
 import { planningPriorityScore, planningReviewState } from './projections.ts'
@@ -44,6 +45,7 @@ const estimateFactors = [
 ] as const
 
 export interface PlanningWorkbenchProps {
+  readonly renderSlot?: PropsRenderSlots<'planning.subject.actions'>['renderSlot']
   readonly startPlanningSession?: (subject: PlanningSubjectRef, revision: string) => Promise<void>
   readonly usePlanning: <T>(selector: (state: PlanningRuntimeState) => T) => T
   readonly selectWorkspace: (workspaceId: string) => void
@@ -598,6 +600,7 @@ export function PlanningWorkbench(props: PlanningWorkbenchProps) {
                   <h2>{revision.title}</h2>
                   <PlanningObject key={selected.id} board={board} planId={selected.id} revision={revision}
                     pending={state.pending} execute={props.execute} t={t}
+                    renderSubjectActions={subject => props.renderSlot?.('planning.subject.actions', { workspaceId: board.workspaceId, planId: selected.id, subject })}
                     {...(props.startPlanningSession === undefined ? {} : { startSession: props.startPlanningSession })}
                     {...(props.openSessionSource === undefined ? {} : { openSession: props.openSessionSource })} />
                   <p>{revision.intent}</p>

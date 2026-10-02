@@ -10,7 +10,7 @@ An investment assessment must remain readable after its subject changes without 
 
 ## Proposal
 
-The [RIR-WP1 specification](../../../../docs/specs/2026-10-01-requirement-investment-review-wp1.md) owns the unimplemented requirements and acceptance cases. RIR should own immutable assessments, the inputs used for each judgment, and subject-to-assessment associations. Reuse opaque ResourceRef identities and existing runtime mechanisms; expose associations to Planning through a read-only projection. The separate Planning UI redesign is not a prerequisite.
+The [RIR-WP1 specification](../../../../docs/specs/2026-10-01-requirement-investment-review-wp1.md) owns the target requirements and acceptance cases. Domain persistence, the bounded review runner, trusted Remote, and optional UI have an implementation in this branch; real-model quality acceptance remains unverified. RIR should own immutable assessments, the inputs used for each judgment, and subject-to-assessment associations. Reuse opaque ResourceRef identities and existing runtime mechanisms; expose associations to Planning through a read-only projection. The separate Planning UI redesign is not a prerequisite.
 
 ## Alternatives considered
 

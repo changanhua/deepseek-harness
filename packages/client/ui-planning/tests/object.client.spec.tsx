@@ -15,3 +15,15 @@ it('starts work on the whole plan without requiring a focus and displays its exa
   fireEvent.click(screen.getByText('启动会话'))
   expect(start).toHaveBeenCalledWith({ kind: 'plan', id: 'p' }, 'r12')
 })
+it('exposes only the selected subject to optional actions without writing Planning', () => {
+  const execute = vi.fn()
+  const renderActions = vi.fn((subject: { kind: string; id: string }) => <button>{subject.id}</button>)
+  render(<PlanningObject board={{ workspaceId: 'w', version: 1, items: [], proposals: [], reviews: [], handoffs: [], events: [],
+    lanes: { inbox: [], now: [], next: [], later: [], parking: [] }, dependencies: {},
+    focuses: [{ id: 'focus', planId: 'p', title: 'Focus', status: 'open', version: 1, createdAt: '', updatedAt: '' }] }} planId="p"
+    revision={{ id: 'r12', title: 'SBC' } as never} pending={false} execute={execute} renderSubjectActions={renderActions} t={key => zh[key]} />)
+  expect(renderActions).toHaveBeenLastCalledWith({ kind: 'plan', id: 'p' })
+  fireEvent.change(screen.getByLabelText('Focus'), { target: { value: 'focus' } })
+  expect(renderActions).toHaveBeenLastCalledWith({ kind: 'focus', id: 'focus' })
+  expect(execute).not.toHaveBeenCalled()
+})
