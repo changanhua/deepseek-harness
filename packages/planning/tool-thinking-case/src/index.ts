@@ -9,8 +9,11 @@ import type { ThinkingResultDraft } from '@changanhua/dsh-planning-remote/types'
 export const name = 'tool-thinking-case'
 export const inject = ['tools', 'thinkingCase']
 
+/** Deployment limits for the restricted Thinking tools. */
 export interface Config {
+  /** Cooperative deadline for one tool invocation, in milliseconds. */
   timeoutMs?: number
+  /** Maximum UTF-8 bytes in the complete rendered tool result. */
   maxOutputBytes?: number
 }
 

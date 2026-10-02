@@ -8,6 +8,7 @@ export interface SbcExploration {
   positions: Record<string, { x: number; y: number }>
   selectedNodeId: string | null
 }
+/** Durable exploratory projection with its original Planning baseline and local edit history. */
 export interface SbcDesignCase {
   workspaceId: string
   subject: PlanningSubjectRef
@@ -19,12 +20,14 @@ export interface SbcDesignCase {
   history: { nodeId: string; x: number; y: number }[]
   notes?: import('./thinking-types.ts').ExplorationNote[]
 }
+/** Exploration plus current canonical identities for displaying revision and Focus drift. */
 export interface SbcDesignCaseView {
   case: SbcDesignCase
   currentRevision: string | null
   currentFocusVersion: number | null
   drift: boolean
 }
+/** Selection, movement and manual-note operations that cannot mutate canonical Planning. */
 export type SbcExploreOperation =
   | { kind: 'select'; nodeId: string | null }
   | { kind: 'move'; nodeId: string; x: number; y: number }
@@ -32,6 +35,7 @@ export type SbcExploreOperation =
   | { kind: 'delete-note'; nodeId: string }
   | { kind: 'create-note'; title: string; body: string; x: number; y: number }
   | { kind: 'edit-note'; nodeId: string; title: string; body: string }
+/** One local canvas mutation guarded by case version and retry identity. */
 export interface SbcExploreInput extends PlanningContextInput {
   expectedVersion: number
   requestId: string

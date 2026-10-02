@@ -7,6 +7,7 @@ import type { PlanningCommand } from '@changanhua/dsh-planning/types'
 import type { RemoteResult } from './runtime-controller.ts'
 import { nextPlanningRequestId } from './request-id.ts'
 
+/** Authenticated case-owner operations and the existing Planning binding transport. */
 export interface ThinkingRemote {
   thinkingCase(input: PlanningContextInput, signal?: AbortSignal): Promise<RemoteResult<ThinkingCaseView>>
   prepareThinking(input: PrepareThinkingInput, signal?: AbortSignal): Promise<RemoteResult<ThinkingCaseView>>
@@ -15,13 +16,29 @@ export interface ThinkingRemote {
   submitThinkingProposal(input: SubmitThinkingProposalInput, signal?: AbortSignal): Promise<RemoteResult<ThinkingCaseView>>
   execute(input: { workspaceId: string; command: PlanningCommand }, signal?: AbortSignal): Promise<RemoteResult<unknown>>
 }
+/** Native Session creation, idempotent prompting and user navigation callbacks. */
 export interface ThinkingNativeSessions {
   create(input: { workspaceId: string; sessionId: string; agentPreset: string }): Promise<string>
   prompt(sessionId: string, content: string, requestId: string, signal: AbortSignal): Promise<void>
   open(sessionId: string): void
 }
-/** Durable owner records drive recovery; this controller owns only one visible request lifetime. */
-export function createThinkingController(remote: ThinkingRemote, native: ThinkingNativeSessions) {
+/** Durable owner records drive recovery; this controller owns only one visible request lifetime.
+ * @param remote - Case owner and canonical Planning binding transport.
+ * @param native - Native Session lifecycle and navigation callbacks.
+ * @returns Disposable controller; failed operations retain owner state for explicit recovery.
+ */
+export function createThinkingController(remote: ThinkingRemote, native: ThinkingNativeSessions): {
+  source: ReturnType<typeof createSnapshotStore<{ view: ThinkingCaseView | null; pending: boolean; error: string | null }>>
+  close(): void
+  open(input: PlanningContextInput): Promise<boolean>
+  refresh(): Promise<boolean>
+  resume(runId: string): Promise<boolean>
+  prepare(question: string): Promise<boolean>
+  apply(runId: string, resultId: string, resultVersion: number, kind: 'notes' | 'context', acknowledgeStale?: boolean): Promise<boolean>
+  submitProposal(runId: string, resultId: string, resultVersion: number): Promise<boolean>
+  openSession(sessionId: string): void
+  dispose(): void
+} {
   const source = createSnapshotStore<{ view: ThinkingCaseView | null; pending: boolean; error: string | null }>({
     view: null, pending: false, error: null,
   })

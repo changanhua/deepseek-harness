@@ -6,7 +6,12 @@ import type { PlanningAccess } from '@changanhua/dsh-planning'
 import type { SbcDesignCaseStore } from './sbc-design-case.ts'
 import type { ThinkingAgentOwner, ThinkingRunRecord } from './thinking-types.ts'
 
-/** Host-private capability: callers carry the actual live Agent, never an authority id from model input. */
+/** Host-private capability: callers carry the actual live Agent, never an authority id from model input.
+ * @param ctx - Host registries used to revalidate live Session and preset membership.
+ * @param store - Lazy exploration store owned by the Remote service.
+ * @param humanAccess - Trusted Workspace authorization factory; no identity comes from model input.
+ * @returns Restricted context and submission operations; stale or foreign callers reject.
+ */
 export function createThinkingAgentOwner(
   ctx: Context, store: () => Promise<SbcDesignCaseStore>,
   humanAccess: (workspaceId: string, signal: AbortSignal) => PlanningAccess,
@@ -64,8 +69,14 @@ export function createThinkingAgentOwner(
   }
 }
 
-/** Progress cannot grant model access until the native Session and exact Planning binding exist. */
-export async function authorizeThinkingStartup(ctx: Context, run: ThinkingRunRecord, access: PlanningAccess, signal: AbortSignal) {
+/** Validate native startup before recording progress; a missing binding is returned for the caller to classify.
+ * @param ctx - Host registries and capability surface.
+ * @param run - Frozen run being advanced.
+ * @param access - Trusted authorization for its original Workspace.
+ * @param signal - Caller cancellation.
+ * @returns Current binding, if present; rejects wrong presets, tools or Workspace.
+ */
+export async function authorizeThinkingStartup(ctx: Context, run: ThinkingRunRecord, access: PlanningAccess, signal: AbortSignal): Promise<import('@changanhua/dsh-planning').PlanningSessionBinding | undefined> {
   const agent = ctx.get('agents')?.get(run.sessionId as Agent['id'])
   const owner = ctx.get('thinkingCase')
   if (!agent || !await owner?.isThinkingSession(run.sessionId))

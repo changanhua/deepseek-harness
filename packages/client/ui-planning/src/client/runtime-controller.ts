@@ -58,6 +58,7 @@ export interface PlanningRuntimeState {
   evidencePending: boolean
 }
 
+/** Saved project navigation; view selection never mutates canonical Planning. */
 export interface PlanningNavigation {
   screen: 'overview' | 'plan'
   tab: 'current' | 'work' | 'thinking' | 'history'
@@ -66,6 +67,9 @@ export interface PlanningNavigation {
   focusId: string | undefined
   recentPlanId: string | undefined
 }
+/** Initial overview state before a saved or Plan-specific view is restored.
+ * @returns Independent navigation state for a new controller.
+ */
 export const initialPlanningNavigation = (): PlanningNavigation => ({
   screen: 'overview', tab: 'current', filter: 'active', search: '', focusId: undefined, recentPlanId: undefined,
 })
@@ -106,7 +110,11 @@ function errorMessage(result: Extract<RemoteResult<unknown>, { readonly ok: fals
   return `${result.error.code}: ${result.error.message}`
 }
 
-/** Lifecycle-owned browser mirror for the planning Remote projection. */
+/** Lifecycle-owned browser mirror for the planning Remote projection.
+ * @param remote - Authenticated Planning projection and mutation operations.
+ * @param preferredWorkspaceTitle - Optional unique default; saved Workspace selection takes precedence.
+ * @returns Disposable controller retaining navigation and request recovery state.
+ */
 export function createPlanningRuntimeController(
   remote: PlanningRuntimeRemoteFace, preferredWorkspaceTitle?: string,
 ): PlanningRuntimeController {

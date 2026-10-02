@@ -2,13 +2,25 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { PlanningContextInput, SbcDesignCaseView, SbcExploreInput, SbcExploreOperation } from '@changanhua/dsh-planning-remote/types'
 import type { RemoteResult } from './runtime-controller.ts'
 import { nextPlanningRequestId } from './request-id.ts'
+/** Authenticated transport for reading and editing one exploratory case. */
 export interface SbcDesignRemote {
   sbcDesignCase(input: PlanningContextInput, signal?: AbortSignal): Promise<RemoteResult<SbcDesignCaseView>>
   exploreSbcDesignCase(input: SbcExploreInput, signal?: AbortSignal): Promise<RemoteResult<SbcDesignCaseView>>
 }
+/** Visible case data and request status owned by one mounted browser controller. */
 export interface SbcDesignState { view: SbcDesignCaseView | null; pending: boolean; error: string | null; opened: boolean }
-/** One lifecycle-owned mirror. Unknown writes require a read, never automatic replay. */
-export function createSbcDesignController(remote: SbcDesignRemote) {
+/** One lifecycle-owned mirror. Unknown writes require a read, never automatic replay.
+ * @param remote - Case read and CAS mutation transport.
+ * @returns Disposable view controller; close cancels its current request.
+ */
+export function createSbcDesignController(remote: SbcDesignRemote): {
+  source: ReturnType<typeof createSnapshotStore<SbcDesignState>>
+  close(): void
+  refresh(): Promise<void>
+  open(input: PlanningContextInput): Promise<void>
+  explore(operation: SbcExploreOperation): Promise<void>
+  dispose(): void
+} {
   const source = createSnapshotStore<SbcDesignState>({ view: null, pending: false, error: null, opened: false })
   let input: PlanningContextInput | null = null
   let active: AbortController | null = null

@@ -19,7 +19,9 @@ const exploration = z.strictObject({
   positions: z.record(nodeId, z.strictObject({ x: coordinate, y: coordinate })),
   selectedNodeId: nodeId.nullable(),
 })
+/** Workspace and subject identity for an exploratory case. */
 export const sbcCaseInputSchema = z.strictObject({ workspaceId: id, subject: planningSubjectRefSchema })
+/** Bounded local operations with case CAS and retry identity. */
 export const sbcExploreInputSchema = sbcCaseInputSchema.extend({
   expectedVersion: z.number().int().nonnegative(), requestId: id,
   operation: z.discriminatedUnion('kind', [
@@ -47,6 +49,7 @@ const spec = defineDomain({ name: 'sbc_design_cases', version: 1, layout: 'per-r
 const caseKey = (input: PlanningContextInput) => createHash('sha256')
   .update(JSON.stringify([input.workspaceId, input.subject.kind, input.subject.id])).digest('hex')
 
+/** Deployment limits for retained case count and each complete serialized record. */
 export interface SbcLimits { maxCases: number; maxCaseBytes: number }
 
 /** Serial writes preserve case CAS and creation; disposal drains admitted work before closing storage. */
@@ -54,8 +57,21 @@ export class SbcDesignCaseStore {
   private tail: Promise<void> = Promise.resolve()
   private closing = false
   private constructor(private readonly domain: Domain<typeof spec>, private readonly limits: SbcLimits) {}
-  static async open(facility: DomainFacility, limits: SbcLimits) { return new SbcDesignCaseStore(await facility.open(spec), limits) }
-  /** List only retained cases. This never freezes a new baseline or writes a record. */
+  /** Open the owned storage domain; callers must close the returned store.
+   * @param facility - Composed storage-domain provider.
+   * @param limits - Bounds enforced before case publication.
+   * @returns Serial case owner over the opened domain.
+   */
+  static async open(facility: DomainFacility, limits: SbcLimits): Promise<SbcDesignCaseStore> {
+    return new SbcDesignCaseStore(await facility.open(spec), limits)
+  }
+  /** List only retained cases. This never freezes a new baseline or writes a record.
+   * @param workspaceId - Authorized Workspace to inspect.
+   * @param planId - Owning Plan whose cases are requested.
+   * @param readBoard - Reauthorize and read current canonical revisions.
+   * @param signal - Caller cancellation.
+   * @returns Detached summaries with drift against the current Board.
+   */
   async summaries(workspaceId: string, planId: string, readBoard: () => Promise<PlanningBoardSnapshot>,
     signal: AbortSignal): Promise<import('./types.ts').DesignCaseSummary[]> {
     return this.enqueue(async () => {
@@ -72,6 +88,12 @@ export class SbcDesignCaseStore {
       })
     })
   }
+  /** Read a case, creating its frozen exploratory baseline on first access.
+   * @param input - Workspace and subject to open.
+   * @param readBoard - Reauthorize and read canonical Planning through its owner.
+   * @param signal - Caller cancellation.
+   * @returns Case projection with current revision drift.
+   */
   async read(
     input: PlanningContextInput, readBoard: () => Promise<PlanningBoardSnapshot>, signal: AbortSignal,
   ): Promise<SbcDesignCaseView> {
@@ -100,6 +122,12 @@ export class SbcDesignCaseStore {
       return this.view(value, board)
     })
   }
+  /** Commit a bounded local canvas edit; stale CAS and changed retry payloads reject.
+   * @param input - Case version, retry identity and local edit.
+   * @param readBoard - Reauthorize and read canonical Planning through its owner.
+   * @param signal - Caller cancellation.
+   * @returns Updated exploration without canonical Planning writes.
+   */
   async explore(input: SbcExploreInput, readBoard: () => Promise<PlanningBoardSnapshot>, signal: AbortSignal): Promise<SbcDesignCaseView> {
     input = sbcExploreInputSchema.parse(input)
     return this.enqueue(async () => {
@@ -159,6 +187,12 @@ export class SbcDesignCaseStore {
       return this.view(next, board)
     })
   }
+  /** Persist run identities and frozen context before native Session creation.
+   * @param input - Question, original case CAS and admission identities.
+   * @param readBoard - Reauthorize and read canonical Planning through its owner.
+   * @param signal - Caller cancellation.
+   * @returns Case projection including the prepared run.
+   */
   async prepareThinking(input: PrepareThinkingInput, readBoard: () => Promise<PlanningBoardSnapshot>,
     signal: AbortSignal): Promise<ThinkingCaseView> {
     return this.enqueue(async () => {
@@ -200,12 +234,22 @@ export class SbcDesignCaseStore {
       this.checkSize(value); await this.domain.table('cases').put(key, caseSchema.parse(value)); return this.thinkingView(value, board)
     })
   }
+  /** Read retained Thinking state from an existing exploration.
+   * @param input - Workspace and subject; absent cases reject.
+   * @param readBoard - Reauthorize and read canonical Planning through its owner.
+   * @param signal - Caller cancellation.
+   * @returns Detached run and design-context history.
+   */
   async readThinking(input: PlanningContextInput, readBoard: () => Promise<PlanningBoardSnapshot>,
     signal: AbortSignal): Promise<ThinkingCaseView> {
     return this.enqueue(async () => { signal.throwIfAborted(); const board = await readBoard()
       return this.thinkingView(this.current(input).current, board) })
   }
-  /** Review metadata is retained only for proposals this Case has durably linked. */
+  /** Review metadata is retained only for proposals this Case has durably linked.
+   * @param workspaceId - Authorized Workspace to inspect.
+   * @param signal - Caller cancellation.
+   * @returns Proposal-keyed frozen review baselines; no unlinked attempt is included.
+   */
   async thinkingReviewSnapshots(workspaceId: string, signal: AbortSignal): Promise<Record<string, ThinkingReviewSnapshot>> {
     return this.enqueue(() => {
       signal.throwIfAborted()
@@ -221,6 +265,12 @@ export class SbcDesignCaseStore {
       return Promise.resolve(snapshots)
     })
   }
+  /** Commit one legal startup transition with run CAS and idempotency.
+   * @param input - Exact run, expected version and confirmed next phase.
+   * @param readBoard - Reauthorize and read canonical Planning through its owner.
+   * @param signal - Caller cancellation.
+   * @returns Case projection after the transition.
+   */
   async advanceThinking(input: AdvanceThinkingInput, readBoard: () => Promise<PlanningBoardSnapshot>,
     signal: AbortSignal): Promise<ThinkingCaseView> {
     return this.enqueue(async () => { signal.throwIfAborted(); const board = await readBoard()
@@ -237,6 +287,12 @@ export class SbcDesignCaseStore {
         input.requestId, digest); this.checkSize(next); await this.domain.table('cases').put(key, caseSchema.parse(next))
       return this.thinkingView(next, board) })
   }
+  /** Append a bounded result only to an admitted run; identical retry returns the original result.
+   * @param input - Exact run, previous result version and draft with retry identity.
+   * @param readBoard - Reauthorize and read canonical Planning through its owner.
+   * @param signal - Caller cancellation.
+   * @returns Committed result; no output is applied automatically.
+   */
   async submitThinking(input: ThinkingRunInput & Omit<SubmitThinkingInput, 'runId'>, readBoard: () => Promise<PlanningBoardSnapshot>,
     signal: AbortSignal): Promise<ThinkingResultRecord> {
     return this.enqueue(async () => { signal.throwIfAborted(); await readBoard(); signal.throwIfAborted()
@@ -255,6 +311,12 @@ export class SbcDesignCaseStore {
         input.requestId, digest, result); this.checkSize(next); await this.domain.table('cases').put(key, caseSchema.parse(next))
       return structuredClone(result) as unknown as ThinkingResultRecord })
   }
+  /** Apply one exact result to notes or design context without changing canonical Planning.
+   * @param input - Result selection, case CAS and any explicit drift acknowledgement.
+   * @param readBoard - Reauthorize and read canonical Planning through its owner.
+   * @param signal - Caller cancellation.
+   * @returns Updated case with durable application links.
+   */
   async applyThinking(input: ApplyThinkingInput, readBoard: () => Promise<PlanningBoardSnapshot>,
     signal: AbortSignal): Promise<ThinkingCaseView> {
     return this.enqueue(async () => { signal.throwIfAborted(); const board = await readBoard()
@@ -277,6 +339,12 @@ export class SbcDesignCaseStore {
       next.version++; this.remember(next, input.requestId, digest); this.checkSize(next)
       await this.domain.table('cases').put(key, caseSchema.parse(next)); return this.thinkingView(next, board) })
   }
+  /** Freeze an exact Planning command before the cross-owner write; unknown attempts are retained.
+   * @param input - Reviewed result and the caller retry identity.
+   * @param readBoard - Reauthorize and read canonical Planning through its owner.
+   * @param signal - Caller cancellation.
+   * @returns Current case and a durable Proposal attempt to execute or recover.
+   */
   async prepareThinkingProposal(input: SubmitThinkingProposalInput, readBoard: () => Promise<PlanningBoardSnapshot>,
     signal: AbortSignal): Promise<{ view: ThinkingCaseView; submission: ThinkingProposalSubmission }> {
     return this.enqueue(async () => { signal.throwIfAborted(); const board = await readBoard()
@@ -311,6 +379,12 @@ export class SbcDesignCaseStore {
       await this.domain.table('cases').put(key, caseSchema.parse(next)); return { view: this.thinkingView(next, board),
         submission: structuredClone(submission) as unknown as ThinkingProposalSubmission } })
   }
+  /** Record the outcome of an already prepared Planning command.
+   * @param input - Exact result and command identity, with a confirmed conflict or receipt.
+   * @param readBoard - Reauthorize and read canonical Planning through its owner.
+   * @param signal - Caller cancellation.
+   * @returns Case projection retaining the Proposal receipt and link.
+   */
   async recordThinkingProposal(input: ThinkingRunInput & {
     resultId: string
     resultVersion: number
@@ -403,5 +477,8 @@ export class SbcDesignCaseStore {
     this.tail = run.then(() => {}, () => {})
     return run
   }
+  /** Reject new work, drain admitted operations and close the storage domain.
+   * @returns Completion after the owner and its storage have quiesced.
+   */
   async close(): Promise<void> { this.closing = true; await this.tail; await this.domain.close() }
 }

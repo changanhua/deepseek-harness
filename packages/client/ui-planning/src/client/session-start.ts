@@ -19,8 +19,14 @@ interface Dependencies {
   refresh(): void
 }
 
-/** Keep one in-flight admission per subject; retry identities belong to this mounted UI. */
-export function createPlanningSessionStarter(dependencies: Dependencies) {
+/** Keep one in-flight admission per subject; retry identities belong to this mounted UI.
+ * @param dependencies - Native Session admission, Planning binding and navigation callbacks.
+ * @returns Starter preserving unknown-operation identities until retry or disposal.
+ */
+export function createPlanningSessionStarter(dependencies: Dependencies): {
+  start(input: StartInput): Promise<void>
+  dispose(): void
+} {
   const lifetime = new AbortController()
   const attempts = new Map<string, {
     sessionId: string

@@ -113,8 +113,11 @@ export class PlanningRemoteService extends TypertRemoteService {
     }, 'SBC exploratory storage')
   }
 
-  /** Open or reread an SBC exploration; first open freezes a projection without changing Planning. */
-  /** Read existing exploration summaries for one Plan, without creating cases. */
+  /** List retained explorations without creating a case.
+   * @param input - Selected Workspace and Plan.
+   * @param signal - Caller cancellation, checked by the owning operations.
+   * @returns Detached summaries with current drift information.
+   */
   @Remote('designCases')
   async designCases(input: PlanningExecutionInput, signal: AbortSignal): Promise<import('./types.ts').DesignCaseSummary[]> {
     try {
@@ -128,6 +131,11 @@ export class PlanningRemoteService extends TypertRemoteService {
     } catch (error) { throw planningRemoteFailure(error, signal) }
   }
 
+  /** Open or reread an exploration; first open freezes its baseline without changing Planning.
+   * @param input - Selected Workspace and Plan or Focus.
+   * @param signal - Caller cancellation, checked by the owning operations.
+   * @returns Persisted case and current canonical identities.
+   */
   @Remote('sbcDesignCase')
   async sbcDesignCase(input: PlanningContextInput, signal: AbortSignal): Promise<SbcDesignCaseView> {
     try {
@@ -137,7 +145,11 @@ export class PlanningRemoteService extends TypertRemoteService {
     } catch (error) { throw planningRemoteFailure(error, signal) }
   }
 
-  /** Persist only selection, coordinates, or undo with case CAS; no Planning commands are executed. */
+  /** Persist a local canvas operation with case CAS; canonical Planning is unchanged.
+   * @param input - Exact case version, request identity and local operation.
+   * @param signal - Caller cancellation, checked by the owning operations.
+   * @returns Updated case, or its original result on an identical immediate retry.
+   */
   @Remote('exploreSbcDesignCase')
   async exploreSbcDesignCase(input: SbcExploreInput, signal: AbortSignal): Promise<SbcDesignCaseView> {
     try {
@@ -161,7 +173,11 @@ export class PlanningRemoteService extends TypertRemoteService {
     return opening
   }
 
-  /** Read retained Thinking records for one existing case; this does not create a case or a run. */
+  /** Read retained Thinking records without creating a case or a run.
+   * @param input - Existing Workspace and subject.
+   * @param signal - Caller cancellation, checked by the owning operations.
+   * @returns Detached case, run history and saved design context.
+   */
   @Remote('thinkingCase')
   async thinkingCase(input: PlanningContextInput, signal: AbortSignal): Promise<ThinkingCaseView> {
     try {
@@ -170,7 +186,11 @@ export class PlanningRemoteService extends TypertRemoteService {
     } catch (error) { throw planningRemoteFailure(error, signal) }
   }
 
-  /** Persist a frozen intent before the caller creates the native Thinking Session. */
+  /** Persist frozen run intent before the caller creates a native Session; stale case versions reject.
+   * @param input - Case CAS, question and caller-selected run, Session and request identities.
+   * @param signal - Caller cancellation, checked by the owning operations.
+   * @returns Prepared run and frozen context in the case projection.
+   */
   @Remote('prepareThinking')
   async prepareThinking(input: PrepareThinkingInput, signal: AbortSignal): Promise<ThinkingCaseView> {
     try {
@@ -184,7 +204,11 @@ export class PlanningRemoteService extends TypertRemoteService {
     } catch (error) { throw planningRemoteFailure(error, signal) }
   }
 
-  /** Record one confirmed startup step; native identities remain owned by Session and Planning. */
+  /** Record confirmed native startup progress; missing preset restrictions or exact binding reject.
+   * @param input - Run CAS and the confirmed next phase.
+   * @param signal - Caller cancellation, checked by the owning operations.
+   * @returns Case projection after the durable transition.
+   */
   @Remote('advanceThinking')
   async advanceThinking(input: AdvanceThinkingInput, signal: AbortSignal): Promise<ThinkingCaseView> {
     try {
@@ -208,7 +232,11 @@ export class PlanningRemoteService extends TypertRemoteService {
     } catch (error) { throw planningRemoteFailure(error, signal) }
   }
 
-  /** Apply an exact reviewed candidate only to exploration or durable design context. */
+  /** Apply a human-selected result only to exploration or saved context; stale input requires acknowledgement.
+   * @param input - Exact result version, case CAS, product kind and retry identity.
+   * @param signal - Caller cancellation, checked by the owning operations.
+   * @returns Case projection with the applied product links.
+   */
   @Remote('applyThinking')
   async applyThinking(input: ApplyThinkingInput, signal: AbortSignal): Promise<ThinkingCaseView> {
     try {
@@ -222,7 +250,11 @@ export class PlanningRemoteService extends TypertRemoteService {
     } catch (error) { throw planningRemoteFailure(error, signal) }
   }
 
-  /** Create or recover one pending Proposal for an explicitly reviewed Result; never adopt it. */
+  /** Create or recover one pending Proposal for a reviewed result; never accept it or dispatch work.
+   * @param input - Exact result and stable request identity.
+   * @param signal - Caller cancellation, checked by the owning operations.
+   * @returns Case projection with the recovered or committed Proposal link.
+   */
   @Remote('submitThinkingProposal')
   async submitThinkingProposal(input: SubmitThinkingProposalInput, signal: AbortSignal): Promise<ThinkingCaseView> {
     try {
