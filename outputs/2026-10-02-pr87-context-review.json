@@ -1,0 +1,55 @@
+{
+  "fixCommit": "12ce6c7ac462b4992874c61e705b2a93793065aa",
+  "originalPrHead": "d0c5bac36c4ad485dc828dcd8427283e627de646",
+  "independentReview": {
+    "reviewer": "/root/pr87_independent_review",
+    "role": "independent read-only reviewer agent",
+    "reviewedCommit": "12ce6c7ac462b4992874c61e705b2a93793065aa",
+    "result": "No new blocking findings",
+    "independentValidation": [
+      "19 review/preset tests passed",
+      "TypeScript builds passed for initiative, initiative-local, tool-initiative-review"
+    ],
+    "githubApproval": false
+  },
+  "changes": [
+    "Context digest binds selected Review, exact reviewed revision, follow-up current revisions and all Workspace Candidate records",
+    "Candidate owner checks expectedSnapshotDigest after durable receipt replay inside its write queue",
+    "Host-only intake guard rechecks Planning immediately before a new Candidate write",
+    "Uncommitted stale Planning intent becomes conflict; acknowledged writes replay despite later drift",
+    "Actual shipped preset is mounted through Loader and Agent factory; inherited write and subagent tools are denied"
+  ],
+  "verification": {
+    "redTests": "5 targeted race cases failed before implementation",
+    "focusedSuite": "12 files, 58 tests passed",
+    "finalOwnerSuite": "2 files, 19 tests passed",
+    "fullBuild": "passed: 252 client artifacts",
+    "hostTypes": "passed",
+    "changedSourceLint": "passed",
+    "translationPairs": 6,
+    "exportJsdoc": "No diagnostics in touched source; existing repository diagnostics remain"
+  },
+  "realProvider": {
+    "root": "C:/Users/xbh/AppData/Local/Temp/dsh-review-paid-4CuET9",
+    "result": {
+      "passed": true,
+      "cases": [
+        "create"
+      ],
+      "candidateCount": 2
+    },
+    "httpAttempts": 3,
+    "builtSha256": "e7d345f4ba98a7b5323306e3ffd0c633974ec2230f9b40a06c97d19b538ab344",
+    "finalBuiltSha256": "ec468c43fd1a2fa3d8f8c30cd9ba3db2ea289cae8732a9eb628685c375074e75",
+    "exactArtifactMatch": false,
+    "retainedRecordsPassFinalSchema": true,
+    "scope": "Real-model use of expectedContextDigest; later record-consistency assertion and explicit return annotations do not change the admitted valid payload. This is not a claim of an exact final-artifact provider rerun."
+  },
+  "bounds": [
+    "Optimistic admission, not an atomic cross-owner transaction; Planning may change after its final check and no-op may overlap later writes",
+    "The snapshot detects changes, not semantic equivalence of independently worded Candidates",
+    "Decision storage format 2 rejects previous records; no migration added",
+    "No extra Signal source, scheduler, Session activation, Planning mutation or dispatch introduced"
+  ],
+  "recordedAt": "2026-10-02T11:37:48.346Z"
+}
