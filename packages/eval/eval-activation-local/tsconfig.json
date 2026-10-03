@@ -1,0 +1,54 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../budget/budget"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../goal/goal"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../task-queue/task-queue"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../eval"
+    },
+    {
+      "path": "../eval-activation"
+    },
+    {
+      "path": "../eval-gates"
+    },
+    {
+      "path": "../eval-runs"
+    },
+    {
+      "path": "../../goal/goal-round-driver"
+    }
+  ]
+}

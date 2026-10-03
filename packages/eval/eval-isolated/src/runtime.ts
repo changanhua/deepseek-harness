@@ -23,6 +23,8 @@ import type { CoreObservation } from './identity.ts'
 import { ownDirectoryCleanup } from './cleanup.ts'
 import { runIsolatedTask } from './task.ts'
 import type { TaskCustody } from './task.ts'
+import { DiskUsageMonitor } from './disk.ts'
+import type { DiskLimitFailure, IsolatedDiskLimits } from './disk.ts'
 
 /** Trusted Host configuration; no field is accepted from a role frame. */
 export interface IsolatedRuntimeConfig {
@@ -40,6 +42,8 @@ export interface IsolatedRuntimeConfig {
   readonly stopMs: number
   readonly maxResponseBytes: number
   readonly maxModelAttempts: number
+  /** Host-selected sampling limit for this role's workspace and private execution world. */
+  readonly diskLimits: IsolatedDiskLimits
 }
 
 /** Host-only input, derived by the execution owner from its admitted cell and open workspace lease. */
@@ -113,7 +117,8 @@ export class IsolatedRoleRuntime {
       if (!isAbsolute(core.directory) || !/^[a-f0-9]{64}$/u.test(core.digest) || !Array.isArray(core.plugins)) throw new Error('eval-runtime-invalid-config')
     }
     for (const value of [config.maxFrameBytes, config.maxRequests, config.executionMs, config.graceMs,
-      config.stopMs, config.maxResponseBytes, config.maxModelAttempts]) {
+      config.stopMs, config.maxResponseBytes, config.maxModelAttempts, config.diskLimits.maxBytes,
+      config.diskLimits.maxEntries, config.diskLimits.sampleMs]) {
       if (!Number.isSafeInteger(value) || value < 1) throw new Error('eval-runtime-invalid-bound')
     }
     this.cache = new RuntimeImageCache(join(config.root, 'images'), config.imageBounds)
@@ -143,6 +148,7 @@ export class IsolatedRoleRuntime {
     const runtime = await this.cache.verify(image, signal)
     const executionId = randomUUID(), sessionId = `eval-${executionId}`
     const directory = join(config.root, 'executions', executionId), home = join(directory, 'home'), data = join(home, 'data')
+    const privateOutput = join(directory, 'output')
     const profile = join(home, 'profiles/eval-isolated'), broker = join(data, 'broker')
     await mkdir(broker, { recursive: true })
     await mkdir(profile, { recursive: true })
@@ -152,10 +158,12 @@ export class IsolatedRoleRuntime {
     const descriptors: number[] = []
     const tasks: TaskCustody[] = []
     const observer = createRoleObserver(executionId, sessionId)
-    const bootstrap = join(directory, 'bootstrap')
-    let channel: RoleChannel | undefined, child: WindowsRoleProcess | undefined
+    const bootstrap = join(privateOutput, 'bootstrap')
+    let channel: RoleChannel | undefined, child: WindowsRoleProcess | undefined, diskMonitor: DiskUsageMonitor | undefined
+    const diskAbort = new AbortController()
     let actual: CoreObservation | null = null, mismatch = false, configDigest = '', profileDigest = ''
     let completed: SupervisedRoleResult | undefined
+    const disk = { failure: null as DiskLimitFailure | null }
     const readProfile = async () => {
       const file = await open(join(profile, 'cordis.yml'), 'r')
       try {
@@ -170,6 +178,7 @@ export class IsolatedRoleRuntime {
     const empty: RoleProtocolResult = { status: 'uncertain', reason: 'eval-role-startup-uncertain',
       rawReports: { ready: null, complete: null }, accounting: [], observations: [], tasks: [] }
     try {
+      await mkdir(privateOutput, { recursive: true })
       const rows = this.rows(runtime, data, broker, sessionId, input)
       const patch = JSON.stringify([{ insert: rows }])
       if (Buffer.byteLength(patch) > config.maxFrameBytes) throw new Error('eval-runtime-profile-capacity')
@@ -187,14 +196,20 @@ export class IsolatedRoleRuntime {
           || contains(input.cwd, material) || contains(material, input.cwd)) throw new Error('eval-runtime-readonly-input-refused')
         await boundary.grant(material, false)
       }
-      const stdio = { stdin: openSync(bootstrap, 'r'), stdout: openSync(join(directory, 'stdout'), 'wx'), stderr: openSync(join(directory, 'stderr'), 'wx') }
+      const stdio = { stdin: openSync(bootstrap, 'r'), stdout: openSync(join(privateOutput, 'stdout'), 'wx'), stderr: openSync(join(privateOutput, 'stderr'), 'wx') }
       descriptors.push(...Object.values(stdio))
+      diskMonitor = await DiskUsageMonitor.start([input.cwd, data, privateOutput], config.diskLimits, signal, (failure) => {
+        disk.failure = failure
+        diskAbort.abort()
+      })
+      if (diskMonitor.failure) throw new Error(diskMonitor.failure)
       child = boundary.launch({ kind: 'core', executable: join(runtime, 'node.exe'),
         args: ['--preserve-symlinks', '--preserve-symlinks-main', '--import', pathToFileURL(join(runtime, 'startup.js')).href,
           join(runtime, 'node_modules/@deepseek-ai/dsh/lib/bin.js'), '--profile', 'eval-isolated'], cwd: input.cwd,
         env: { SystemRoot: systemRoot, LOCALAPPDATA: data, USERPROFILE: home, TEMP: data, TMP: data,
           DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1', DSH_EVAL_VOLUME_MAP: JSON.stringify(observeVolumeMapping(runtime.slice(0, 2))) }, stdio })
       completed = await superviseRoleProcess(child, channel, { sessionId, maxRequests: config.maxRequests, observer,
+        lifecycleGuard: { signal: diskAbort.signal, reason: () => disk.failure },
         observe: (observation) => {
           const compared = compareCoreObservation(observation, { sessionId, preset: input.route.preset,
             tools: input.tools, skills: input.skills })
@@ -212,9 +227,9 @@ export class IsolatedRoleRuntime {
         model: createGuardedModelBroker(this.ctx, { route: input.route, budget: input.budget, sessionId,
           maxResponseBytes: config.maxResponseBytes, maxAttempts: config.maxModelAttempts }),
         task: async (source, taskSignal) => {
-          const task = await runIsolatedTask({ runtime, cwd: input.cwd, directory: join(directory, 'tasks'), source,
+          const task = await runIsolatedTask({ runtime, cwd: input.cwd, directory: join(privateOutput, 'tasks'), source,
             readOnlyInputs: input.readOnlyInputs ?? [], executionMs: config.executionMs, stopMs: config.stopMs,
-            maxOutputBytes: config.maxResponseBytes }, taskSignal)
+            maxOutputBytes: config.maxResponseBytes, diskLimits: config.diskLimits }, taskSignal)
           tasks.push(task)
           return task.result
         },
@@ -234,6 +249,7 @@ export class IsolatedRoleRuntime {
       }
       completed ??= { status: 'uncertain', reason: 'eval-role-startup-uncertain', quiescent: true, exitCode: null, protocol: null }
     } finally {
+      diskMonitor?.stop()
       await writeFile(bootstrap, '').catch(() => {})
     }
     let resourcesClosed = false
@@ -255,7 +271,8 @@ export class IsolatedRoleRuntime {
     let accepted = false, released = false
     const result: IsolatedRoleResult = {
       status: mismatch && settled.status !== 'uncertain' && settled.exitCode === 0 && settled.protocol?.rawReports.complete ? 'invalid' : settled.status,
-      reason: mismatch && settled.status !== 'uncertain' ? 'eval-role-identity-mismatch' : settled.reason,
+      reason: mismatch && settled.status !== 'uncertain' ? 'eval-role-identity-mismatch'
+        : disk.failure ?? settled.reason,
       output: typeof report?.output === 'string' ? report.output : null,
       observation: { executionId, sessionId, role: input.role, verifiedCommit: input.verifiedCommit,
         buildDigest: image.buildDigest, profile: { id: 'eval-isolated', source: 'profile:host-pinned-core', digest: profileDigest },

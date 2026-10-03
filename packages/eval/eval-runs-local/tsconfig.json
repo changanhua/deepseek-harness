@@ -1,0 +1,45 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../budget/budget"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../task-queue/task-queue"
+    },
+    {
+      "path": "../../workspace/workspace"
+    },
+    {
+      "path": "../eval"
+    },
+    {
+      "path": "../eval-gates"
+    },
+    {
+      "path": "../eval-isolated"
+    },
+    {
+      "path": "../eval-plans"
+    },
+    {
+      "path": "../eval-runs"
+    }
+  ]
+}

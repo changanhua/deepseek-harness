@@ -69,6 +69,16 @@ Tool 预检比较全局已注册契约，Preset digest 使用换行归一化的�
 
 `IsolatedCellBinding` 是可持久化、无路径的选择数据，不是执行权限。`PreparedIsolatedCell.start` 要求匹配的活动 Attempt。`IsolatedCellResult` 区分执行状态与业务结果，包含可空的实际 Manifest 和已交接证据摘要。`ExecutionEvidenceBundle` 包含不可变且绑定角色的材料引用及内容；只有精确确认才允许释放。结算、进程静止或交接不确定时，返回 Queue unknown Attention 并保留托管责任。这些契约不认证任意修改核心，也不生成 GateDecision。
 
+## 持久运行与决策
+
+[EvalRuns](../../packages/eval/eval-runs/README.zh.md) 定义提交、查询、条件控制和安全证据读取。其[本地生产者](../../packages/eval/eval-runs-local/README.zh.md)复用原 Plan admission 和 Queue Batch，持久记录控制意图，并从原始材料、当前 Attempt 和 Budget 回执派生私有 Gate 快照。历史 Plan recover 不依赖模型可用性，不签发新的 admission。公开视图省略原始提示词、凭据和 Host 路径。
+
+[EvalGates](../../packages/eval/eval-gates/README.zh.md) 将保留的 EvalGateDecision 与 current/stale 有效性分开。[本地 Gate 生产者](../../packages/eval/eval-gates-local/README.zh.md)串行处理同一 run 的评估，在独立 Profile 中运行固定检查器，保留原始输入、准确报告和 Host 身份材料。过期决策仍可查看；授权消费者必须检查当前有效性。首版仅支持无基线的确定性输出条件。
+
+## 显式续跑
+
+[EvalActivation](../../packages/eval/eval-activation/README.zh.md) 使用 Host 固定的 ContinuationPolicy 和从真实 Gate/Queue 派生的请求，最多认领一次 Grant。其[本地生产者](../../packages/eval/eval-activation-local/README.zh.md)核对目标 Session 工作区、Goal 版本和 Budget 父链，在专用无自动 Goal 驱动器的 Profile 中派发一轮。consumed 只证明准确消息的持久回执，不表示 Goal 完成；无法证实的恢复边界保持 needs-attention，不自动重发。[CLI 消费者](../../packages/eval/eval-app/README.zh.md)只接受已配置策略的标识，不接受这些私有授权事实。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -76,6 +86,70 @@ Tool 预检比较全局已注册契约，Preset digest 使用换行归一化的�
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxevalactivation--evalactivation-abstract-seam"></a>
+
+### `ctx.evalActivation` — `EvalActivation` (abstract seam)
+
+Durable, explicit bridge from one approved Eval terminal result to at most one Goal round.
+
+```ts cordis-catalog
+/**
+ * Persist or recover one exact single-use continuation intent.
+ * @param access Current Host-bound actor and Workspace authorization.
+ * @param request Host-derived Grant, terminal Attempt and fixed continuation message.
+ * @param signal Caller cancellation; committed claims remain recoverable.
+ * @returns Durable receipt state; consumption never asserts Goal completion.
+ */
+abstract activate(access: EvalActivationAccess, request: EvalActivationRequest, signal?: AbortSignal): Promise<EvalActivationView>
+
+/**
+ * Read a path-free continuation projection without resuming an Agent or sending a follow-up.
+ * @param access Current Workspace read authorization.
+ * @param id Exact retained continuation identity.
+ * @returns Safe receipt without private message text or filesystem locations.
+ */
+abstract get(access: EvalActivationAccess, id: string): Promise<EvalActivationView>
+
+/**
+ * Reconcile persisted intent after a restart; uncertain delivery stays needs-attention.
+ * @param access Current authorization for the actor that owns the claimed Grant.
+ * @param id Exact existing continuation identity.
+ * @param signal Cancellation of recovery; an unproven dispatch is never repeated.
+ * @returns Refreshed receipt based on exact persisted Goal message identity.
+ */
+abstract reconcile(access: EvalActivationAccess, id: string, signal?: AbortSignal): Promise<EvalActivationView>
+```
+
+Source: [`packages/eval/eval-activation/src/index.ts`](../../packages/eval/eval-activation/src/index.ts)
+
+<a id="ctxevalgates--evalgates-abstract-seam"></a>
+
+### `ctx.evalGates` — `EvalGates` (abstract seam)
+
+Gate producer contract for CLI and later Activation Consumers.
+
+```ts cordis-catalog
+/**
+ * Re-read original Host facts, evaluate one frozen policy idempotently, and retain the conclusion.
+ * @param access Current Workspace and principal authorization.
+ * @param runId Existing admitted run whose original evidence is available to the Host.
+ * @param policyId Host-approved fixed verifier policy.
+ * @param signal Cancellation of verification; no partial pass is retained.
+ * @returns Retained decision and independently refreshed evidence validity.
+ */
+abstract evaluate(access: EvalRunAccess, runId: string, policyId: string, signal?: AbortSignal): Promise<EvalGateView>
+
+/**
+ * Read one previously retained conclusion without re-running the verifier.
+ * @param access Current Workspace read authorization.
+ * @param id Exact retained decision identity.
+ * @returns Historical decision with current or stale validity; neither implies permission to act.
+ */
+abstract get(access: EvalRunAccess, id: string): Promise<EvalGateView>
+```
+
+Source: [`packages/eval/eval-gates/src/index.ts`](../../packages/eval/eval-gates/src/index.ts)
 
 <a id="ctxevalplans--evalplans-abstract-seam"></a>
 
@@ -112,6 +186,15 @@ abstract resolve(access: EvalPlanAccess, selection: EvalPlanSelection, signal?: 
 abstract admit(access: EvalPlanAccess, resolved: ResolvedEvalPlan, requestId: string, signal?: AbortSignal): Promise<EvalPlanAdmission>
 
 /**
+ * Recover original admitted facts without requiring current Provider availability or remaining Budget.
+ * @param access - Current read authority for the exact live Workspace and an originally allowed entrypoint.
+ * @param requestId - Original admission request identity in that Workspace.
+ * @param signal - Read cancellation; this operation performs no execution or new admission.
+ * @returns Frozen historical snapshot, or null when this Workspace has no matching admission.
+ */
+abstract recover(access: EvalPlanAccess, requestId: string, signal?: AbortSignal): Promise<RecoveredEvalPlan | null>
+
+/**
  * Atomically publish a complete configured source generation, or retain the prior generation on error.
  * @param authorize - Host reload authority, rechecked before publication.
  * @param signal - Optional caller cancellation.
@@ -120,4 +203,56 @@ abstract reload(authorize: () => void | Promise<void>, signal?: AbortSignal): Pr
 ```
 
 Source: [`packages/eval/eval-plans/src/index.ts`](../../packages/eval/eval-plans/src/index.ts)
+
+<a id="ctxevalruns--evalruns-abstract-seam"></a>
+
+### `ctx.evalRuns` — `EvalRuns` (abstract seam)
+
+Shared run-control and report contract for CLI and future Web Consumers.
+
+```ts cordis-catalog
+/**
+ * Admit or reconcile one exact request through the Plan owner and Queue.
+ * @param access Current Workspace and principal authority.
+ * @param input Stable request, approved Plan selection and Host policy id.
+ * @param signal Caller cancellation; committed intent remains recoverable.
+ * @returns Safe current view; repeated intent resolves the original run.
+ */
+abstract start(access: EvalRunAccess, input: StartEvalRun, signal?: AbortSignal): Promise<EvalRunView>
+
+/**
+ * Read one run without dispatching work or requiring unspent model budget.
+ * @param access Current read authority.
+ * @param runId Exact admitted run identity.
+ * @returns Current Queue-derived status and checked evidence availability.
+ */
+abstract get(access: EvalRunAccess, runId: string): Promise<EvalRunView>
+
+/**
+ * List bounded run projections for one authorized Workspace.
+ * @param access Current Workspace read authority.
+ * @returns Views without private evidence bodies, raw Queue payloads or Host paths.
+ */
+abstract list(access: EvalRunAccess): Promise<readonly EvalRunView[]>
+
+/**
+ * Verify and inspect one historical Attempt without executing or exposing private material.
+ * @param access Current Workspace read authority.
+ * @param runId Exact admitted run identity.
+ * @param cellId Exact cell identity from the run view.
+ * @param attemptId Real Queue Attempt identity from that cell.
+ * @returns Evidence availability, material identities and allowlisted role/accounting facts.
+ */
+abstract evidence(access: EvalRunAccess, runId: string, cellId: string, attemptId: string): Promise<EvalEvidenceView>
+
+/**
+ * Persist an operator action and conditionally apply it to the observed Queue state.
+ * @param access Current operator identity and authority.
+ * @param input Exact operation and expected safe-view revision.
+ * @returns Reconciled view; uncertainty is retained instead of replaying against a later Attempt.
+ */
+abstract control(access: EvalRunAccess, input: EvalRunControl): Promise<EvalRunView>
+```
+
+Source: [`packages/eval/eval-runs/src/index.ts`](../../packages/eval/eval-runs/src/index.ts)
 <!-- END GENERATED cordis-surface -->

@@ -54,3 +54,9 @@ export interface EvalPlanAdmission {
   readonly resolvedDigest: string
   readonly admittedAt: number
 }
+
+/** Historical owner-persisted facts; recovery does not grant a new dispatch or admission capability. */
+export interface RecoveredEvalPlan {
+  readonly admission: EvalPlanAdmission
+  readonly resolved: ResolvedEvalPlan
+}

@@ -1,0 +1,33 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../subprocess/subprocess"
+    },
+    {
+      "path": "../eval"
+    },
+    {
+      "path": "../eval-gates"
+    },
+    {
+      "path": "../eval-isolated"
+    },
+    {
+      "path": "../eval-runs"
+    }
+  ]
+}

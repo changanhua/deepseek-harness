@@ -33,6 +33,14 @@ Choose the pure contract library unless the evaluation must boot a DSH applicati
 | [`command-eval-plan`](command-eval-plan/README.md) | Human discovery, preflight and admission |
 | [`eval-repo-workspace`](eval-repo-workspace/README.md) | Verified commit and Queue Attempt workspace bridge |
 | [`eval-isolated`](eval-isolated/README.md) | Windows-isolated Subject/Grader execution and authenticated evidence transfer |
+| [`eval-runs`](eval-runs/README.md) | Durable run-control contract |
+| [`eval-runs-local`](eval-runs-local/README.md) | Queue-backed recovery and private evidence |
+| [`eval-gates`](eval-gates/README.md) | Independent decision and validity contract |
+| [`eval-gates-local`](eval-gates-local/README.md) | Retained Host decisions and verifier launch |
+| [`eval-verifier`](eval-verifier/README.md) | Fixed deterministic checker Profile |
+| [`eval-activation`](eval-activation/README.md) | Explicit single-use continuation contract |
+| [`eval-activation-local`](eval-activation-local/README.md) | Durable Grant claim and one Goal round |
+| [`eval-app`](eval-app/README.md) | CLI run, decision and continuation consumer |
 
 The checked-in [`minimal-v1` suite](eval-session-snapshot/suites/minimal-v1/suite.json) provides ten cases and twenty independent route fixtures for the first reproducible comparison.
 

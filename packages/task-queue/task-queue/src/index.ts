@@ -13,7 +13,7 @@ export type {
   Batch, BatchItem, BatchRequest, ChangeSet, DomainEvent, EnqueueRequest, JsonValue, LiveAttempt, Notification,
   OperatorWorkQueue, PreparedWork, PrepareContext, QueueFoldSnapshot, Receipt, ResolvedWork, ResourceClaim,
   SideEffectState, StartContext, UnknownResolution, VerifiedAgentAuthority, VerifiedOperatorAuthority,
-  WorkAttempt, WorkFailure, WorkHandler, WorkInput, WorkItem, WorkKind, WorkKindDefinition,
+  WorkAttempt, WorkControlPrecondition, WorkFailure, WorkHandler, WorkInput, WorkItem, WorkKind, WorkKindDefinition,
   WorkOutput, WorkPolicy, WorkResult, WorkState, WorkStatus, WorkView,
 } from './types.ts'
 export { AttentionId, AttemptId, BatchId, NotificationId, ResultId, WorkId } from './brand.ts'

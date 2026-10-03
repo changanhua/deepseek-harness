@@ -1,0 +1,55 @@
+{
+  "name": "@changanhua/dsh-eval-runs-local",
+  "description": "Local Eval run reconciliation and private evidence custody",
+  "version": "0.1.2-alpha.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/eval/eval-runs-local"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "private": true,
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@deepseek-ai/dsh-storage-domain": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "@changanhua/dsh-eval": "workspace:^",
+    "@changanhua/dsh-eval-plans": "workspace:^",
+    "@changanhua/dsh-eval-runs": "workspace:^",
+    "@changanhua/dsh-eval-isolated": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-eval-gates": "workspace:^",
+    "@changanhua/dsh-budget": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@deepseek-ai/dsh-storage-domain": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "@changanhua/dsh-eval": "workspace:^",
+    "@changanhua/dsh-eval-plans": "workspace:^",
+    "@changanhua/dsh-eval-runs": "workspace:^",
+    "@changanhua/dsh-eval-isolated": "workspace:^",
+    "@changanhua/dsh-task-queue": "workspace:^",
+    "@changanhua/dsh-eval-gates": "workspace:^",
+    "@changanhua/dsh-budget": "workspace:^"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

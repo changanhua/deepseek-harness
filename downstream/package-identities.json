@@ -554,6 +554,61 @@
       ]
     },
     {
+      "directory": "packages/eval/eval-activation",
+      "legacyName": "@deepseek-ai/dsh-eval-activation",
+      "sourceName": "@changanhua/dsh-eval-activation",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/eval/eval-activation-local",
+      "legacyName": "@deepseek-ai/dsh-eval-activation-local",
+      "sourceName": "@changanhua/dsh-eval-activation-local",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/eval/eval-app",
+      "legacyName": "@deepseek-ai/dsh-eval-app",
+      "sourceName": "@changanhua/dsh-eval-app",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/eval/eval-gates",
+      "legacyName": "@deepseek-ai/dsh-eval-gates",
+      "sourceName": "@changanhua/dsh-eval-gates",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/eval/eval-gates-local",
+      "legacyName": "@deepseek-ai/dsh-eval-gates-local",
+      "sourceName": "@changanhua/dsh-eval-gates-local",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/eval/eval-isolated",
       "legacyName": "@deepseek-ai/dsh-eval-isolated",
       "sourceName": "@changanhua/dsh-eval-isolated",
@@ -598,9 +653,42 @@
       ]
     },
     {
+      "directory": "packages/eval/eval-runs",
+      "legacyName": "@deepseek-ai/dsh-eval-runs",
+      "sourceName": "@changanhua/dsh-eval-runs",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/eval/eval-runs-local",
+      "legacyName": "@deepseek-ai/dsh-eval-runs-local",
+      "sourceName": "@changanhua/dsh-eval-runs-local",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/eval/eval-session-snapshot",
       "legacyName": "@deepseek-ai/dsh-eval-session-snapshot",
       "sourceName": "@changanhua/dsh-eval-session-snapshot",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
+      "directory": "packages/eval/eval-verifier",
+      "legacyName": "@deepseek-ai/dsh-eval-verifier",
+      "sourceName": "@changanhua/dsh-eval-verifier",
       "sourceIdentity": "personal",
       "publicationPolicy": "blocked-until-release-verified",
       "releaseFamily": null,

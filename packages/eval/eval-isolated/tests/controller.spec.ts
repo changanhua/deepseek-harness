@@ -1,9 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { RoleChannel } from '../src/channel.ts'
-import { runRoleProtocol } from '../src/controller.ts'
+import { runRoleProtocol, superviseRoleProcess } from '../src/controller.ts'
+import type { WindowsRoleProcess } from '../src/windows.ts'
 
 test('rejects identity mismatch before input admission while allowing the core to flush and close', async () => {
   const root = await mkdtemp(join(tmpdir(), 'eval-controller-'))
@@ -102,4 +103,30 @@ test.each(['denied', 'uncertain'] as const)('drains the canceled role after %s a
     await worker.receive(3, AbortSignal.timeout(3000))
     expect(await running).toMatchObject({ status: status === 'denied' ? 'invalid' : 'uncertain', reason: 'accounting' })
   } finally { await running; await worker.close(); await host.close(); await rm(root, { recursive: true, force: true }) }
+})
+
+test('a Host lifecycle guard uses the normal cancellation path and retains its reason', async () => {
+  let exit: ((code: number) => void) | undefined
+  const terminate = vi.fn(() => { exit?.(1) })
+  const process = {
+    terminate,
+    wait: vi.fn(() => new Promise<number>((resolve) => { exit = resolve })),
+  } as unknown as WindowsRoleProcess
+  const requestCancellation = vi.fn(async () => {})
+  const channel = {
+    requestCancellation,
+    receive: vi.fn((_sequence: number, signal: AbortSignal) => new Promise((_, reject) => {
+      signal.addEventListener('abort', () => { reject(new Error('stopped')) }, { once: true })
+    })),
+  } as unknown as RoleChannel
+  const guard = new AbortController()
+  const running = superviseRoleProcess(process, channel, { sessionId: 'subject', maxRequests: 2,
+    model: async () => { throw new Error('must not dispatch') },
+    lifecycleGuard: { signal: guard.signal, reason: () => 'eval-disk-limit-exceeded' },
+  }, { executionMs: 10_000, graceMs: 1, stopMs: 1_000 }, AbortSignal.timeout(15_000))
+  guard.abort()
+  await expect(running).resolves.toMatchObject({ status: 'uncertain', quiescent: true, exitCode: 1,
+    reason: 'eval-disk-limit-exceeded' })
+  expect(requestCancellation).toHaveBeenCalledOnce()
+  expect(terminate).toHaveBeenCalled()
 })

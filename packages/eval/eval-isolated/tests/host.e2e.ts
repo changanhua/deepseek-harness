@@ -27,7 +27,7 @@ import * as BudgetBridge from '../../../budget/budget-llm/src/index.ts'
 import { MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
 import { stageProfileFixture } from './runtime-fixture.ts'
 import { observeRuntimeTree } from '../src/build.ts'
-import { admitIsolatedEval } from '../src/index.ts'
+import { admitIsolatedEval, recoverIsolatedEval } from '../src/index.ts'
 import type { IsolatedCellBinding, PreparedIsolatedCell, IsolatedCellResult } from '../src/index.ts'
 import type { ExecutionEvidenceBundle } from '../src/evidence.ts'
 
@@ -102,19 +102,20 @@ test.skipIf(process.platform !== 'win32' || process.arch !== 'x64')('binds real 
     const corePin = { directory: core, digest: coreImage.digest, plugins: [] }
     const config = { repositoryId: 'fixture', runtime: { root: join(root, 'runs'), core: { subject: corePin, grader: corePin },
       imageBounds: bounds, maxFrameBytes: 1024 * 1024, maxRequests: 8, executionMs: 20000, graceMs: 5000,
-      stopMs: 10000, maxResponseBytes: 8192, maxModelAttempts: 4 },
+      stopMs: 10000, maxResponseBytes: 8192, maxModelAttempts: 4,
+      diskLimits: { maxBytes: 512 * 1024 * 1024, maxEntries: 50000, sampleMs: 250 } },
     workspaceLimits: { maxFixtureFiles: 10, maxFixtureBytes: 65536 }, evidenceLimits: { maxBytes: 4 * 1024 * 1024, maxMaterials: 16 },
     grader: { routeId: 'grader', promptVersion: '1', prompt: 'Grade the subject. Return PASS or FAIL.', tools: [], skills: [] },
     receive: async (bundle: ExecutionEvidenceBundle) => {
       bundles.push(bundle)
-      if (bundles.length > 1) throw new Error('receiver unavailable')
+      if (bundles.length === 2) throw new Error('receiver unavailable')
       expect((await readdir(join(root, 'leases'))).length).toBeGreaterThan(0)
       await writeFile(join(root, 'accepted-evidence.json'), JSON.stringify(bundle))
       expect(JSON.parse(await readFile(join(root, 'accepted-evidence.json'), 'utf8')) as unknown).toMatchObject({ digest: bundle.digest })
       return { acceptedDigest: bundle.digest }
     } }
     await expect(admitIsolatedEval(ctx, access, structuredClone(resolved), 'forged', config, signal)).rejects.toMatchObject({ code: 'unauthorized' })
-    const run = await admitIsolatedEval(ctx, access, resolved, 'run', config, signal)
+    let run = await admitIsolatedEval(ctx, access, resolved, 'run', config, signal)
     ctx.taskQueue.registerHandler({ kind: 'isolated-eval-integration@1',
       resolveAdmission: async input => ({ eval: run.bind({ caseId: 'case', routeId: 'subject', repeatIndex: input.repeatIndex }) }),
       resources: () => [], policy: () => ({ maxAttempts: 1 }),
@@ -136,5 +137,15 @@ test.skipIf(process.platform !== 'win32' || process.arch !== 'x64')('binds real 
     expect(operator.get(second).attempts).toHaveLength(1)
     const retained = bundles[1]!.materials[0]!
     expect(run.resolveEvidence(retained.reference, retained.executionId, retained.role)).toEqual(retained)
+    const firstRunId = run.runId
+    run = await recoverIsolatedEval(ctx, access, 'run', config, signal)
+    expect(run.runId).toBe(firstRunId)
+    expect(operator.get(second).state.status).toBe('unknown')
+    expect(operator.get(second).attempts).toHaveLength(1)
+    await operator.resolveUnknown(second, { kind: 'authorize-retry' })
+    await vi.waitFor(() => { expect(operator.get(second).state.status).toBe('succeeded') }, { timeout: 60000, interval: 100 })
+    const retried = operator.get(second).result!.output as IsolatedCellResult
+    expect(retried.manifest?.cell.attempt).toBe(2)
+    expect(retried.manifest?.subject.executionId).not.toBe(manifest.subject.executionId)
   } finally { await ctx.fiber.dispose(); await backend.close(); await rm(root, { recursive: true, force: true }) }
 }, 180_000)

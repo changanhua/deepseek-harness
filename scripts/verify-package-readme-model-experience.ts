@@ -44,6 +44,13 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/eval/eval-runs': { kind: 'none', reason: 'This package produces no model context; isolated execution and the activation provider own rendered prompts.' },
+  'packages/eval/eval-runs-local': { kind: 'none', reason: 'This package produces no model context; isolated execution and the activation provider own rendered prompts.' },
+  'packages/eval/eval-gates': { kind: 'none', reason: 'This package produces no model context; isolated execution and the activation provider own rendered prompts.' },
+  'packages/eval/eval-gates-local': { kind: 'none', reason: 'This package produces no model context; isolated execution and the activation provider own rendered prompts.' },
+  'packages/eval/eval-verifier': { kind: 'none', reason: 'This package produces no model context; isolated execution and the activation provider own rendered prompts.' },
+  'packages/eval/eval-activation': { kind: 'none', reason: 'This package produces no model context; isolated execution and the activation provider own rendered prompts.' },
+  'packages/eval/eval-app': { kind: 'none', reason: 'This package produces no model context; isolated execution and the activation provider own rendered prompts.' },
   'packages/budget/budget': { kind: 'none', reason: 'Resource and evaluation Consumers own rendered model context; this package adds no prompt text.' },
   'packages/budget/budget-local': { kind: 'indirect', reason: 'Resource and evaluation Consumers own rendered model context; this package adds no prompt text.' },
   'packages/budget/budget-llm': { kind: 'indirect', reason: 'Resource and evaluation Consumers own rendered model context; this package adds no prompt text.' },

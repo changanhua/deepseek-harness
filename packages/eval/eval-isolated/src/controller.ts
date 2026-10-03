@@ -21,6 +21,9 @@ export interface RoleProtocolBinding {
   /** Validate a fresh authenticated capability observation before every model request. */
   readonly observe?: (observation: unknown) => void | Promise<void>
   readonly task?: (source: string, signal: AbortSignal) => Promise<IsolatedTaskResult>
+  /** Host-only monitor that requests the normal channel-first, Job-backed stop sequence. */
+  readonly lifecycleGuard?: { readonly signal: AbortSignal
+    reason(): string | null }
 }
 
 /** Raw reports require an independent observer; reported is deliberately not completed. */
@@ -172,7 +175,8 @@ export async function superviseRoleProcess(process: WindowsRoleProcess, channel:
   }
   if (ownedChannels.has(channel)) throw new Error('eval-role-channel-already-owned')
   const lifecycle = new AbortController()
-  const deadline = AbortSignal.any([signal, AbortSignal.timeout(limits.executionMs)])
+  const deadline = AbortSignal.any([signal, binding.lifecycleGuard?.signal ?? new AbortController().signal,
+    AbortSignal.timeout(limits.executionMs)])
   const lifecycleState = { forced: false }
   let stopTimer: ReturnType<typeof setTimeout> | undefined
   const stop = () => {
@@ -203,6 +207,8 @@ export async function superviseRoleProcess(process: WindowsRoleProcess, channel:
     const observed = await protocol
     const base = { quiescent: exitCode !== null, exitCode, protocol: observed }
     if (exitCode === null) return { ...base, status: 'uncertain', reason: 'eval-role-quiescence-uncertain' }
+    const guardReason = binding.lifecycleGuard?.reason()
+    if (guardReason) return { ...base, status: 'uncertain', reason: guardReason }
     if (observed?.status === 'uncertain') return { ...base, status: 'uncertain', reason: observed.reason }
     if (lifecycleState.forced && (observed?.rawReports.complete !== null || deadline.aborted)) return { ...base, status: 'uncertain', reason: 'eval-role-forced-stop' }
     if (observed?.status === 'invalid') return { ...base, status: 'invalid', reason: observed.reason }

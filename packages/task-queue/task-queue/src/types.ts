@@ -76,6 +76,13 @@ export interface WorkState {
   readonly updatedAt: string
 }
 
+/** Exact lifecycle observation required by a durable controller before mutating a WorkItem. */
+export interface WorkControlPrecondition {
+  readonly status: WorkStatus
+  readonly attemptCount: number
+  readonly activeAttemptId: AttemptId | null
+}
+
 /** One durable execution attempt. */
 export interface WorkAttempt {
   readonly id: AttemptId
@@ -302,10 +309,13 @@ export interface OperatorWorkQueue {
   /** List every WorkItem visible to the trusted host operator. */
   list(): readonly WorkView[]
   get(id: WorkId): WorkView
-  cancel(id: WorkId): Promise<void>
-  retry(id: WorkId): Promise<void>
+  /** Check the optional observation atomically with the mutation; stale requests throw TASK_QUEUE_CONTROL_CONFLICT. */
+  cancel(id: WorkId, expected?: WorkControlPrecondition): Promise<void>
+  /** Authorize one retry only when the optional observation still names the current failed state. */
+  retry(id: WorkId, expected?: WorkControlPrecondition): Promise<void>
   pause(): void
   resume(): void
-  resolveUnknown(workId: WorkId, resolution: UnknownResolution): Promise<void>
+  /** Resolve only the observed unknown Attempt when a precondition is supplied. */
+  resolveUnknown(workId: WorkId, resolution: UnknownResolution, expected?: WorkControlPrecondition): Promise<void>
   pendingAttentions(): readonly Attention[]
 }
