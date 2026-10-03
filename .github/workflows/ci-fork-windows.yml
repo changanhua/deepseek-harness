@@ -51,6 +51,12 @@ jobs:
       - name: Build repository
         shell: pwsh
         run: pnpm run build
+      - name: Run tool terminal-state regressions
+        shell: pwsh
+        run: >-
+          pnpm exec vitest run
+          packages/core/agent-loop/tests/tool-terminal-state.spec.ts
+          packages/core/session/tests/tool-protocol.spec.ts
       - name: Verify personal source distribution
         shell: pwsh
         run: pnpm run verify:personal-source

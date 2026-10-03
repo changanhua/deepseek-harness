@@ -36,7 +36,7 @@ import { ReactLoopInbox } from './inbox.ts'
 import { RuntimeContextProjection } from './runtime-context.ts'
 import { AssistantStreamAttempt } from './assistant-stream.ts'
 import { SystemPromptProjection } from './runtime-context.ts'
-import { executeToolCalls } from './tool-calls.ts'
+import { executeToolCalls, ToolCallSettlementError } from './tool-calls.ts'
 
 type Phase =
   | { kind: 'idle'; lastTurn: number }
@@ -73,6 +73,8 @@ export class ReactLoopAgent implements Agent {
   readonly inbox: ReactLoopInbox
   private phase: Phase
   private activityDone: Promise<void> = Promise.resolve()
+  /** A rejected tool settlement leaves this exact handle's tail unsealed. */
+  private toolSettlementFailure: ToolCallSettlementError | undefined
 
   /** The agent-scoped registration boundary; the lifecycle owner unwinds it after the driver exits. */
   readonly scope: Scope
@@ -126,6 +128,7 @@ export class ReactLoopAgent implements Agent {
   }
 
   send(message: UserMessage, target: InboxTarget, wakeup: boolean): void {
+    if (this.toolSettlementFailure) this.throwError(this.toolSettlementFailure)
     // Waking input cannot join an aborted activity, so it starts the next turn.
     // Captured before the insertion so a reentrant cancel from a splice observer cannot reclassify it.
     const wakingAfterAbort = wakeup && this.phase.kind !== 'idle' && this.phase.abort.signal.aborted
@@ -155,6 +158,7 @@ export class ReactLoopAgent implements Agent {
   }
 
   runMaintenance<T>(job: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    if (this.toolSettlementFailure) this.throwError(this.toolSettlementFailure)
     if (this.phase.kind !== 'idle') throw new Error(`agent "${this.id}" already has active work`)
     const done = Promise.withResolvers<void>()
     const maintenance: Phase = {
@@ -182,9 +186,10 @@ export class ReactLoopAgent implements Agent {
    * when its message was cleared; only a latched replay is suppressed when
    * the queue no longer holds the wake.
    * @param wakeAfterAbort - the {@link send} classification, captured before
-   *   the inbox insertion so a reentrant cancel cannot reclassify it.
+   *   the inbox insertion so a reentrant cancel from a splice observer cannot reclassify it.
    */
   private wakeDriver(wakeAfterAbort = false): void {
+    if (this.toolSettlementFailure) this.throwError(this.toolSettlementFailure)
     if (this.phase.kind !== 'idle') {
       // Maintenance and aborted drivers cannot deliver the wake: latch it for
       // replay at convergence. Live drivers claim queued work themselves;
@@ -232,7 +237,7 @@ export class ReactLoopAgent implements Agent {
       if (this.phase.kind === 'running') {
         const { turn, wakeRequested } = this.phase
         this.setPhase({ kind: 'idle', lastTurn: turn })
-        if (wakeRequested && this.inbox.hasPending) this.wakeDriver()
+        if (!this.toolSettlementFailure && wakeRequested && this.inbox.hasPending) this.wakeDriver()
       }
     }
   }
@@ -320,8 +325,12 @@ export class ReactLoopAgent implements Agent {
           // max-tokens stays sticky: a later completed step must not
           // downgrade the turn outcome.
           if (turnEnds === null || turnEnds.kind !== 'max-tokens') turnEnds = stepEnd
+        } catch (error: unknown) {
+          if (error instanceof ToolCallSettlementError) this.toolSettlementFailure = error
+          throw error
         } finally {
-          this.session.append('step/end', { turn, step })
+          // Do not seal a tail whose terminal tool facts could not be written.
+          if (!this.toolSettlementFailure) this.session.append('step/end', { turn, step })
         }
         signal.throwIfAborted()
         if (turnEnds && this.inbox.nextStep.length === 0) {
@@ -332,7 +341,7 @@ export class ReactLoopAgent implements Agent {
         target = 'next-step'
       }
     } catch (error: unknown) {
-      if (signal.aborted) {
+      if (signal.aborted && !this.toolSettlementFailure) {
         turnEnds = { kind: 'aborted', reason: signal.reason as AgentCancelCause }
         throw error
       }
@@ -347,8 +356,10 @@ export class ReactLoopAgent implements Agent {
       this.throwError(error)
     } finally {
       try {
-        // oxlint-disable-next-line typescript/no-non-null-assertion -- every exit assigns a turn ending
-        this.session.append('turn/end', { turn, reason: turnEnds! })
+        if (!this.toolSettlementFailure) {
+          // oxlint-disable-next-line typescript/no-non-null-assertion -- every sealable exit assigns a turn ending
+          this.session.append('turn/end', { turn, reason: turnEnds! })
+        }
       } catch (error: unknown) {
         this.throwError(error)
       }
