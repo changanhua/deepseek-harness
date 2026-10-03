@@ -99,8 +99,9 @@ afterEach(async () => {
 })
 
 describe('Windows durable namespace helpers', () => {
-  it('keeps drive-root probes native while namespacing descendants', async () => {
+  it('accepts an existing directory without probing inaccessible ancestors and keeps explicit drive roots native', async () => {
     const probes: string[] = []
+    let denyRoot = true
     vi.resetModules()
     vi.doMock('node:fs/promises', async (importOriginal) => {
       const actual = await importOriginal<typeof import('node:fs/promises')>()
@@ -108,6 +109,7 @@ describe('Windows durable namespace helpers', () => {
         ...actual,
         stat: async (path: string) => {
           probes.push(path)
+          if (denyRoot && path === 'C:\\') throw Object.assign(new Error('root metadata denied'), { code: 'EACCES' })
           return { isDirectory: () => true }
         },
       }
@@ -126,7 +128,10 @@ describe('Windows durable namespace helpers', () => {
 
     await ensureDurableDirectoryWin32('C:\\existing')
 
-    expect(probes).toEqual(['C:\\', '\\\\?\\C:\\existing'])
+    expect(probes).toEqual(['\\\\?\\C:\\existing'])
+    denyRoot = false
+    await ensureDurableDirectoryWin32('C:\\')
+    expect(probes.at(-1)).toBe('C:\\')
   })
 
   it('publishes a new file with write-through MoveFileExW semantics', async () => {

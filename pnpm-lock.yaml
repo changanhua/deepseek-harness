@@ -14771,6 +14771,58 @@ importers:
         specifier: workspace:^
         version: link:../../../vendor/cordis
 
+  packages/eval/eval-isolated:
+    dependencies:
+      '@changanhua/dsh-eval':
+        specifier: workspace:^
+        version: link:../eval
+      '@deepseek-ai/dsh-win32-process':
+        specifier: workspace:^
+        version: link:../../subprocess/win32-process
+      koffi:
+        specifier: ^3.1.0
+        version: 3.1.1
+    devDependencies:
+      '@changanhua/dsh-eval-plans':
+        specifier: workspace:^
+        version: link:../eval-plans
+      '@changanhua/dsh-eval-repo-workspace':
+        specifier: workspace:^
+        version: link:../eval-repo-workspace
+      '@changanhua/dsh-task-queue':
+        specifier: workspace:^
+        version: link:../../task-queue/task-queue
+      '@changanhua/dsh-budget':
+        specifier: workspace:^
+        version: link:../../budget/budget
+      '@changanhua/dsh-budget-llm':
+        specifier: workspace:^
+        version: link:../../budget/budget-llm
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:^
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-agent-presets':
+        specifier: workspace:^
+        version: link:../../preset/agent-presets
+      '@deepseek-ai/dsh-cmdline':
+        specifier: workspace:^
+        version: link:../../boot/cmdline
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../core/session
+      '@deepseek-ai/dsh-skill':
+        specifier: workspace:^
+        version: link:../../skill/skill
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../core/tools
+
 packages:
 
   '@agentclientprotocol/sdk@1.4.0':

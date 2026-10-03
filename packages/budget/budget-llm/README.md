@@ -27,6 +27,10 @@ Apply resource admission to both ordinary and prepared model calls. Rejected req
 
 Mount this bridge beside the LLM runtime and [local budget owner](../budget-local/README.md). The [Profile example](../budget-local/tests/fixtures/profile/budget.patch.yml) installs the final dispatch guard; requests require a positive output Token limit and a Host-bound scope.
 
+Host execution consumers can wrap fully awaited work with `withBudgetDispatchEvidence(ctx, maxAttempts, operation)`. It refuses to enter without this bridge and returns final-dispatch identities, observed Provider/model, an input digest, whether dispatch occurred, and Budget-owned decision/reservation receipts. The attempt bound refuses additional dispatches before an adapter call. The caller supplies its existing Budget scope and must consume or close every iterator before returning. Evidence stays within the asynchronous operation, contains no prompts or credentials, and rejects a bridge generation change.
+
+An optional fourth `validate` callback checks copied final dispatch facts before reservation and HTTP. A rejection still records the actual attempted identity with `dispatched: false`; it cannot change the dispatch options or create another budget ledger.
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 

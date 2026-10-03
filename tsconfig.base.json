@@ -367,6 +367,7 @@
       "@changanhua/dsh-delivery-verifier/invariant": ["./packages/delivery/delivery-verifier/src/invariant.ts"],
       "@changanhua/dsh-eval": ["./packages/eval/eval/src"],
       "@changanhua/dsh-eval/invariant": ["./packages/eval/eval/src/invariant.ts"],
+      "@changanhua/dsh-eval-isolated": ["./packages/eval/eval-isolated/src"],
       "@changanhua/dsh-eval-plans": ["./packages/eval/eval-plans/src"],
       "@changanhua/dsh-eval-plans-local": ["./packages/eval/eval-plans-local/src"],
       "@changanhua/dsh-eval-repo-workspace": ["./packages/eval/eval-repo-workspace/src"],

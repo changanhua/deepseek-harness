@@ -95,8 +95,13 @@ test('two concurrent cells have distinct writable directories pinned to the obse
     await fixtureGit(f.repository, 'add', 'fixture/input.txt')
     await fixtureGit(f.repository, 'commit', '-m', 'move branch')
     const paths: string[] = []
-    const results = await Promise.all(['attempt-a', 'attempt-b'].map(id => resolved.run(context(id), async (cwd) => {
+    const results = await Promise.all(['attempt-a', 'attempt-b'].map(id => resolved.run(context(id), async (cwd, _signal, execution) => {
       paths.push(cwd)
+      expect(execution).toMatchObject({ repositoryId: 'fixture', verifiedCommit: f.commit, ownerAttemptId: id })
+      expect(Object.isFrozen(execution)).toBe(true)
+      expect(execution.preparationDigest).toMatch(/^[a-f0-9]{64}$/u)
+      expect(execution.checkoutRoot).not.toBe(cwd)
+      expect((await readFile(join(execution.checkoutRoot, 'fixture/input.txt'), 'utf8')).replace(/\r\n/gu, '\n')).toBe('fixed commit content\n')
       expect(await readFile(join(cwd, 'input.txt'), 'utf8')).toBe('fixed commit content\n')
       await writeFile(join(cwd, 'output.txt'), id)
       return { status: 'known', value: id }

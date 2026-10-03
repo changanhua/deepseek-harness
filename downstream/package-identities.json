@@ -554,6 +554,17 @@
       ]
     },
     {
+      "directory": "packages/eval/eval-isolated",
+      "legacyName": "@deepseek-ai/dsh-eval-isolated",
+      "sourceName": "@changanhua/dsh-eval-isolated",
+      "sourceIdentity": "personal",
+      "publicationPolicy": "blocked-until-release-verified",
+      "releaseFamily": null,
+      "blockers": [
+        "release-family-absent"
+      ]
+    },
+    {
       "directory": "packages/eval/eval-plans",
       "legacyName": "@deepseek-ai/dsh-eval-plans",
       "sourceName": "@changanhua/dsh-eval-plans",

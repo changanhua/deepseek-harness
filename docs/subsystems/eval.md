@@ -63,6 +63,12 @@ The [RepositoryWorkspace bridge](../../packages/eval/eval-repo-workspace/README.
 
 The bridge removes the lease only after the executor reports known completion and child quiescence. Uncertain execution, reuse conflicts or uncertain cleanup cannot become success; the Queue wrapper returns unknown and Queue retains Attention. An existing preparation marker prevents reuse of an unknown directory after restart. This bridge implements neither the subject/grader nor a trusted GateDecision.
 
+## Isolated cell execution
+
+The [isolated execution library](../../packages/eval/eval-isolated/README.md) consumes owner-minted admission and binds one cell to its real active Queue Attempt and repository lease. The Host pins trusted core artifacts separately for Subject and Grader; Windows AppContainer identities and Jobs isolate task code and role-private state. Authenticated core registry snapshots supply actual capabilities, while Host observations supply build/config/process identity and final Budget-guarded model dispatch facts. Agent output remains untrusted task material.
+
+`IsolatedCellBinding` is durable path-free selection data, not execution authority. `PreparedIsolatedCell.start` requires the matching active Attempt. `IsolatedCellResult` separates execution status from business outcome and includes a nullable actual Manifest plus the transferred evidence digest. `ExecutionEvidenceBundle` contains immutable, role-bound material references and content; only exact acknowledgement permits release. Unknown accounting, quiescence or transfer returns Queue unknown Attention with retained custody. These contracts neither certify arbitrary modified cores nor produce GateDecision.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
