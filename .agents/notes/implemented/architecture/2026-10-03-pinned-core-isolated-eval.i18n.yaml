@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-03-pinned-core-isolated-eval.md
+2026-10-03-pinned-core-isolated-eval.md: 399270c8aff677961746d01eb859b9e9b9eeab5c
+2026-10-03-pinned-core-isolated-eval.zh.md: 2993e7c6a53d026329ea815450dfee57e470c0e7

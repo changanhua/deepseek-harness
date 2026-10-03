@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-eval 包组让调用方无需 judge 模型即可比较录制的 DSH 行为。`eval` 拥有严格的套件/运行值、顺序执行、结果折叠与报告。`eval-session-snapshot` 通过现有无密钥 ACP 快照 harness 驱动这些 case。录制、回放派生与快照归一化仍由测试支持包拥有。
+eval 包组支持录制回归比较和 Host 准入的隔离评估。`eval` 拥有严格的套件/运行值、顺序执行、结果折叠与报告。`eval-session-snapshot` 驱动无密钥 ACP 回放；`eval-isolated` 在锁定核心下运行独立 Subject 和 Grader Agent。录制、回放派生与快照归一化仍由测试支持包拥有。
 
 ## 目录
 
@@ -32,6 +32,7 @@ eval 包组让调用方无需 judge 模型即可比较录制的 DSH 行为。`ev
 | [`eval-plans-local`](eval-plans-local/README.zh.md) | Host 固定文件、运行时预检与持久准入 |
 | [`command-eval-plan`](command-eval-plan/README.zh.md) | 人工发现、预检与准入 |
 | [`eval-repo-workspace`](eval-repo-workspace/README.zh.md) | 已验证 commit 与 Queue Attempt 工作目录桥接 |
+| [`eval-isolated`](eval-isolated/README.zh.md) | Windows 隔离的 Subject/Grader 执行与认证证据交接 |
 
 仓库内的 [`minimal-v1` 套件](eval-session-snapshot/suites/minimal-v1/suite.json)提供十个 Case 和二十个独立路由 fixture，作为首个可复现比较。
 

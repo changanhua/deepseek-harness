@@ -63,6 +63,12 @@ Tool 预检比较全局已注册契约，Preset digest 使用换行归一化的�
 
 执行器在子任务静止后报告确定完成，桥接才移除租约。不确定执行、复用冲突或清理不确定不会变成成功；Queue 包装返回 unknown，并由 Queue 保留 Attention。已有准备标记阻止在重启后复用未知目录。此桥接不实现 subject/grader 或可信 GateDecision。
 
+## 隔离 cell 执行
+
+[隔离执行库](../../packages/eval/eval-isolated/README.zh.md) 消费 owner 签发的准入，把单个 cell 绑定到真实活动 Queue Attempt 和仓库租约。Host 分别锁定 Subject 与 Grader 的可信核心产物；Windows AppContainer 身份和 Job 隔离任务代码及角色私有状态。经过认证的核心注册表快照提供实际能力，Host 观测提供构建、配置、进程身份和经过最终 Budget guard 的模型派发事实。Agent 输出仍是不可信任务材料。
+
+`IsolatedCellBinding` 是可持久化、无路径的选择数据，不是执行权限。`PreparedIsolatedCell.start` 要求匹配的活动 Attempt。`IsolatedCellResult` 区分执行状态与业务结果，包含可空的实际 Manifest 和已交接证据摘要。`ExecutionEvidenceBundle` 包含不可变且绑定角色的材料引用及内容；只有精确确认才允许释放。结算、进程静止或交接不确定时，返回 Queue unknown Attention 并保留托管责任。这些契约不认证任意修改核心，也不生成 GateDecision。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>

@@ -4645,6 +4645,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@changanhua/dsh-delivery-testkit` ([`packages/delivery/delivery-testkit/src/index.ts`](../packages/delivery/delivery-testkit/src/index.ts))
 - `@changanhua/dsh-delivery-verifier` ([`packages/delivery/delivery-verifier/src/index.ts`](../packages/delivery/delivery-verifier/src/index.ts))
 - `@changanhua/dsh-eval` ([`packages/eval/eval/src/index.ts`](../packages/eval/eval/src/index.ts))
+- `@changanhua/dsh-eval-isolated` ([`packages/eval/eval-isolated/src/index.ts`](../packages/eval/eval-isolated/src/index.ts))
 - `@changanhua/dsh-eval-plans-local` ([`packages/eval/eval-plans-local/src/index.ts`](../packages/eval/eval-plans-local/src/index.ts))
 - `@changanhua/dsh-eval-repo-workspace` ([`packages/eval/eval-repo-workspace/src/index.ts`](../packages/eval/eval-repo-workspace/src/index.ts))
 - `@changanhua/dsh-eval-session-snapshot` ([`packages/eval/eval-session-snapshot/src/index.ts`](../packages/eval/eval-session-snapshot/src/index.ts))

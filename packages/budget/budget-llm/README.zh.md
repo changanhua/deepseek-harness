@@ -27,6 +27,10 @@ kind: "package-reference"
 
 将本桥接与 LLM 运行时及[本地预算 owner](../budget-local/README.zh.md)一起挂载。[Profile 示例](../budget-local/tests/fixtures/profile/budget.patch.yml)安装最终派发检查；请求必须具有正数输出 Token 上限和 Host 绑定的作用域。
 
+Host 执行消费者可以用 `withBudgetDispatchEvidence(ctx, maxAttempts, operation)` 包裹完整等待的工作。桥接缺失时，它拒绝进入操作；返回最终派发身份、实际 Provider/model、输入摘要、是否发生派发，以及 Budget owner 的准入和预留记录。达到尝试数量上限后，后续调用在进入适配器前被拒绝。调用方提供既有 Budget 作用域，并在返回前消费或关闭全部迭代器。证据限定在当前异步操作内，不含提示词或凭据；桥接代际变化时拒绝返回成功。
+
+可选的第四个 `validate` 回调在资源预留和 HTTP 前检查复制出的最终派发事实。拒绝仍记录实际尝试身份和 `dispatched: false`；它不能修改派发参数，也不会创建另一个预算账本。
+
 <a id="understand-the-implementation"></a>
 ## 理解实现
 

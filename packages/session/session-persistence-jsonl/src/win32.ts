@@ -13,7 +13,7 @@
 
 import { createHash } from 'node:crypto'
 import { mkdtemp, rm, stat } from 'node:fs/promises'
-import { join, parse, resolve, toNamespacedPath } from 'node:path'
+import { dirname, join, parse, resolve, toNamespacedPath } from 'node:path'
 
 type MoveFileExW = (existing: string, replacement: string, flags: number) => number
 type CreateSemaphoreW = (security: null, initial: number, maximum: number, name: string) => number
@@ -177,20 +177,22 @@ export async function releaseLockHandleWin32(handle: number): Promise<void> {
  * publication. Each missing directory is first created as a random staging
  * sibling, then moved to its final name with `MOVEFILE_WRITE_THROUGH`; races
  * with another creator are accepted only after verifying the winner is a
- * directory.
+ * directory. Existing directories do not require access to their ancestors.
  * @param target - the absolute directory path to create durably when absent.
  */
 export async function ensureDurableDirectoryWin32(target: string): Promise<void> {
   const absolute = resolve(target)
-  const root = parse(absolute).root
-  await assertDirectory(root)
-
-  const segments = absolute.slice(root.length).split(/[\\/]+/).filter(part => part.length > 0)
-  let current = root
-  for (const segment of segments) {
-    const next = join(current, segment)
-    if (!await assertDirectory(next)) await createLeafDirectoryWin32(current, next)
-    current = next
+  const missing: string[] = []
+  let current = absolute
+  while (!await assertDirectory(current)) {
+    const parent = dirname(current)
+    if (parent === current) throw Object.assign(new Error(`directory root is unavailable: ${current}`), { code: 'ENOENT', path: current })
+    missing.push(current)
+    current = parent
+  }
+  for (const directory of missing.reverse()) {
+    await createLeafDirectoryWin32(current, directory)
+    current = directory
   }
 }
 

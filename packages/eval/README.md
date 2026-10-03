@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The eval group lets callers compare recorded DSH behavior without a judge model. `eval` owns strict suite/run values, ordered execution, outcome folding, and reports. `eval-session-snapshot` drives those cases through the existing keyless ACP snapshot harness. Recording, replay derivation, and snapshot normalization remain owned by the test-support packages.
+The eval group supports recorded regression comparisons and Host-admitted isolated evaluation. `eval` owns strict suite/run values, ordered execution, outcome folding, and reports. `eval-session-snapshot` drives keyless ACP replay; `eval-isolated` runs separate Subject and Grader Agents under a pinned core. Recording, replay derivation, and snapshot normalization remain owned by the test-support packages.
 
 ## Table of Contents
 
@@ -32,6 +32,7 @@ Choose the pure contract library unless the evaluation must boot a DSH applicati
 | [`eval-plans-local`](eval-plans-local/README.md) | Host-pinned files, runtime preflight and durable admission |
 | [`command-eval-plan`](command-eval-plan/README.md) | Human discovery, preflight and admission |
 | [`eval-repo-workspace`](eval-repo-workspace/README.md) | Verified commit and Queue Attempt workspace bridge |
+| [`eval-isolated`](eval-isolated/README.md) | Windows-isolated Subject/Grader execution and authenticated evidence transfer |
 
 The checked-in [`minimal-v1` suite](eval-session-snapshot/suites/minimal-v1/suite.json) provides ten cases and twenty independent route fixtures for the first reproducible comparison.
 

@@ -438,6 +438,7 @@
     { "path": "./packages/eval/command-eval-plan" },
     { "path": "./packages/eval/eval-plans" },
     { "path": "./packages/eval/eval-repo-workspace" },
+    { "path": "./packages/eval/eval-isolated" },
     { "path": "./packages/eval/eval-plans-local" },
     { "path": "./apps/desktop" },
     { "path": "./apps/desktop-host" },

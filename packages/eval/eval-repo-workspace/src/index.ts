@@ -41,6 +41,20 @@ export type EvalWorkspaceOutcome<T> =
 /** Explicit fixture preparation bounds, shared across the complete tree. */
 export interface EvalWorkspaceLimits { readonly maxFixtureFiles: number; readonly maxFixtureBytes: number }
 
+/** Host-only identity read from the actual open lease; cleanup remains owned by this bridge. */
+export interface EvalWorkspaceExecution {
+  readonly repositoryId: string
+  readonly verifiedCommit: string
+  readonly ownerAttemptId: string
+  /** Verified checkout root, distinct from an empty/fixture case's writable cwd; never publish this path. */
+  readonly checkoutRoot: string
+  readonly preparationDigest: string
+}
+
+/** Executor receives owner-observed lease identity alongside the prepared case directory. */
+export type EvalWorkspaceExecutor<T> = (cwd: string, signal: AbortSignal,
+  execution: Readonly<EvalWorkspaceExecution>) => Promise<EvalCellCompletion<T>>
+
 /**
  * Resolve the full commit through the configured repository owner before Queue admission.
  * The returned closure holds the actual provider proof, never a caller reconstruction.
@@ -81,7 +95,7 @@ export class ResolvedEvalWorkspace {
    */
   start<K extends WorkKind, T>(
     context: StartContext,
-    execute: (cwd: string, signal: AbortSignal) => Promise<EvalCellCompletion<T>>,
+    execute: EvalWorkspaceExecutor<T>,
     output: (value: T, evidence: EvalWorkspaceEvidence) => WorkOutput<K>,
   ): LiveAttempt<K> {
     const controller = new AbortController()
@@ -104,8 +118,7 @@ export class ResolvedEvalWorkspace {
    * @param execute The isolated executor/grader Consumer, which owns child quiescence.
    * @returns Known outcome after remove, or unknown outcome after preserve/cleanup ambiguity.
    */
-  async run<T>(context: StartContext, execute: (cwd: string,
-    signal: AbortSignal) => Promise<EvalCellCompletion<T>>): Promise<EvalWorkspaceOutcome<T>> {
+  async run<T>(context: StartContext, execute: EvalWorkspaceExecutor<T>): Promise<EvalWorkspaceOutcome<T>> {
     const attempt = QueueAttemptIdRef(String(context.attemptId))
     context.signal.throwIfAborted()
     const lease = await this.owner.openChange({ ownerAttemptId: attempt, base: this.revision, signal: context.signal })
@@ -139,7 +152,10 @@ export class ResolvedEvalWorkspace {
       return { status: context.signal.aborted ? 'canceled' : 'failed', reason: context.signal.aborted ? 'cancelled' : 'preparation-failed', evidence: evidence('removed') }
     }
     let completion: EvalCellCompletion<T>
-    try { completion = await execute(cwd, context.signal) }
+    try { completion = await execute(cwd, context.signal, Object.freeze({
+      repositoryId: lease.repositoryId, verifiedCommit: lease.baseCommit, ownerAttemptId: lease.ownerAttemptId,
+      checkoutRoot: lease.cwd, preparationDigest: preparationDigest,
+    })) }
     catch { return preserve('execution-uncertain') }
     if (completion.status === 'unknown') return preserve('execution-uncertain')
     try { await lease.close('remove') }
