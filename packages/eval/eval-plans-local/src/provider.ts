@@ -3,8 +3,8 @@ import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import EvalPlans, { EvalPlanError } from '@changanhua/dsh-eval-plans'
-import type { EvalPlanAccess, EvalPlanAdmission, EvalPlanSelection, EvalPreflightCheck, ResolvedEvalPlan } from '@changanhua/dsh-eval-plans'
-import { evalContractDigest } from '@changanhua/dsh-eval'
+import type { EvalPlanAccess, EvalPlanAdmission, EvalPlanSelection, EvalPreflightCheck, ResolvedEvalPlan, RecoveredEvalPlan } from '@changanhua/dsh-eval-plans'
+import { evalContractDigest, evalPlanSchema, evalSuiteSchema, resolvedExecutionManifestSchema } from '@changanhua/dsh-eval'
 import { realpathNormalize } from '@deepseek-ai/dsh-workspace'
 import { defineDomain } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
@@ -20,10 +20,25 @@ import type { PlanSourceSnapshot } from './source.ts'
 
 const receiptSchema = z.object({ requestId: z.string(), runId: z.string(), workspaceId: z.string(), planId: z.string(),
   planVersion: z.string(), planDigest: z.string(), resolvedDigest: z.string(), admittedAt: z.number().int().nonnegative() }).strict()
-const domainSpec = defineDomain({ name: 'eval_plan_admissions', version: 1, layout: 'single',
+const resolutionSchema = z.object({
+  mode: z.enum(['keyless', 'live']), plan: evalPlanSchema, suite: evalSuiteSchema,
+  summary: z.object({ id: z.string(), version: z.string(), mode: z.enum(['keyless', 'live']), digest: z.string(),
+    suiteId: z.string(), cellCount: z.number().int().nonnegative(), routeIds: z.array(z.string()) }).strict(),
+  checks: z.array(z.object({ subject: z.string(), code: z.string(), ok: z.boolean() }).strict()),
+  resolvedRequirements: z.object({ tools: resolvedExecutionManifestSchema.shape.subject.shape.tools,
+    skills: resolvedExecutionManifestSchema.shape.subject.shape.skills }).strict(),
+  ready: z.literal(true), resolvedDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+}).strict()
+const storedAdmissionSchema = z.object({ admission: receiptSchema, resolved: resolutionSchema }).strict()
+  .refine(({ admission, resolved }) =>
+    admission.planId === resolved.plan.id && admission.planVersion === resolved.plan.version
+  && admission.planDigest === evalContractDigest(resolved.plan) && admission.planDigest === resolved.summary.digest
+  && admission.resolvedDigest === resolved.resolvedDigest && resolved.plan.suiteRef.digest === evalContractDigest(resolved.suite),
+  'Admission snapshot identity mismatch')
+const domainSpec = defineDomain({ name: 'eval_plan_admissions', version: 2, layout: 'single',
   requires: ['single-writer', 'commit-sync', 'private-root'] as const,
-  global: { schema: z.object({ version: z.literal(1), receipts: z.array(receiptSchema) }).strict(),
-    initial: { version: 1 as const, receipts: [] } }, tables: {} })
+  global: { schema: z.object({ version: z.literal(2), receipts: z.array(storedAdmissionSchema) }).strict(),
+    initial: { version: 2 as const, receipts: [] } }, tables: {} })
 type Entry = { source: Config['sources'][number]; snapshot: PlanSourceSnapshot }
 
 /** Host-pinned Plan source with safe discovery, fresh preflight and durable idempotent admission. */
@@ -221,15 +236,17 @@ export class LocalEvalPlans extends EvalPlans {
       const domain = this.domain
       if (!domain) throw new EvalPlanError('unavailable', 'Plan owner is unavailable')
       const before = domain.global.get()
-      const existing = before.receipts.find(row => row.workspaceId === access.workspace.id && row.requestId === requestId)
+      const existing = before.receipts.find(row => row.admission.workspaceId === access.workspace.id
+        && row.admission.requestId === requestId)
       if (existing) {
-        if (existing.resolvedDigest !== resolved.resolvedDigest) throw new EvalPlanError('conflict', 'Request identity already names another resolution')
-        return structuredClone(existing)
+        if (existing.admission.resolvedDigest !== resolved.resolvedDigest) throw new EvalPlanError('conflict', 'Request identity already names another resolution')
+        return structuredClone(existing.admission)
       }
       const receipt: EvalPlanAdmission = { requestId, runId: randomUUID(), workspaceId: access.workspace.id,
         planId: resolved.plan.id, planVersion: resolved.plan.version, planDigest: resolved.summary.digest,
         resolvedDigest: resolved.resolvedDigest, admittedAt: Date.now() }
-      const next = { version: 1 as const, receipts: [...before.receipts, receipt] }
+      const next = { version: 2 as const, receipts: [...before.receipts,
+        storedAdmissionSchema.parse({ admission: receipt, resolved })] }
       if (next.receipts.length > this.config.maxAdmissions || Buffer.byteLength(JSON.stringify(next)) > this.config.maxLedgerBytes) {
         throw new EvalPlanError('capacity', 'Plan admission ledger is full')
       }
@@ -238,6 +255,18 @@ export class LocalEvalPlans extends EvalPlans {
       catch { this.faulted = true; throw new EvalPlanError('unavailable', 'Plan admission persistence requires recovery') }
       return structuredClone(receipt)
     })
+  }
+
+  async recover(access: EvalPlanAccess, requestId: string, signal?: AbortSignal): Promise<RecoveredEvalPlan | null> {
+    z.string().min(1).max(256).parse(requestId)
+    await this.access(access, signal)
+    const stored = this.domain?.global.get().receipts.find(row =>
+      row.admission.workspaceId === access.workspace.id && row.admission.requestId === requestId)
+    if (!stored) return null
+    if (!stored.resolved.plan.allowedEntrypoints.includes(access.entrypoint)) throw new EvalPlanError('unauthorized', 'Entrypoint not admitted')
+    const recovered = structuredClone(stored)
+    freeze(recovered)
+    return recovered
   }
 }
 

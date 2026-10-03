@@ -298,6 +298,257 @@ Depends on: [`CodexAppServerPermissionMode`](../packages/delivery/delivery-runne
 
 来源：[`packages/delivery/delivery-task-queue/src/index.ts:91`](../packages/delivery/delivery-task-queue/src/index.ts)
 
+<a id="changanhuadsh-eval-activation-local"></a>
+
+## `@changanhua/dsh-eval-activation-local`
+
+Requires: `storageDomain` · `agents` · `goals` · `sessions`
+
+```ts config-catalog
+/** Explicit capacity and private Host verification for a dedicated continuation Profile. */
+export interface Config {
+  /** Maximum retained Grant claims, including uncertain and consumed records. */
+  readonly maxRecords: number
+  /** Maximum complete encoded ledger bytes. */
+  readonly maxLedgerBytes: number
+  /** This bridge owns the one round only in a Profile that omits goal-round-driver. */
+  readonly exclusiveGoalDriver: true
+  /** Private capabilities installed by the trusted Profile composition. */
+  readonly host: {
+    /** Reauthorize the exact target and current Gate, Queue and Budget facts immediately before delivery. */
+    verify(access: EvalActivationAccess, grant: EvalActivationGrant,
+      request: EvalActivationRequest, signal?: AbortSignal): Promise<'approved' | 'blocked' | 'unknown'> }
+}
+```
+
+Depends on: [`EvalActivationAccess`](subsystems/eval.zh.md) · [`EvalActivationGrant`](../packages/eval/eval-activation/src/index.ts) · [`EvalActivationRequest`](subsystems/eval.zh.md)
+
+Source: [`packages/eval/eval-activation-local/src/config.ts:14`](../packages/eval/eval-activation-local/src/config.ts)
+
+<a id="changanhuadsh-eval-app"></a>
+
+## `@changanhua/dsh-eval-app`
+
+Requires: `cmdlineArgs` · `evalRuns` · `workspaceRegistry`
+
+```ts config-catalog
+/** Trusted Profile binding; command-line callers cannot replace these facts. */
+export interface Config {
+  /** Profile identity rendered in command help. */
+  readonly profile: string
+  /** Registered Workspace identity this Profile is permitted to operate. */
+  readonly workspaceId: string
+  /** Auditable operator identity retained with every control. */
+  readonly actorId: string
+  /** Execution policies the Profile may select by id. */
+  readonly policyIds: string[]
+  /** Gate policies the Profile may ask the trusted Gate owner to evaluate. */
+  readonly gatePolicyIds: string[]
+  /** Optional explicit continuation Grants installed by trusted Host composition. */
+  readonly continuationPolicies?: {
+    /** Policy selector accepted by the continue command. */
+    readonly id: string
+    /** Fixed Session, Goal, Budget, expiry and message; none are command-line input. */
+    readonly policy: ContinuationPolicy
+  }[]
+  /** Host capability deriving current Queue/Gate facts; required only for continuation. */
+  readonly activationRequests?: ActivationRequestFactory
+  /** Upper bound for one JSON result, including its envelope. */
+  readonly maxOutputBytes: number
+  /** Maximum bounded observation interval for `start --wait`. */
+  readonly waitMs: number
+}
+```
+
+Depends on: [`ActivationRequestFactory`](../packages/eval/eval-activation/src/index.ts) · [`ContinuationPolicy`](../packages/eval/eval-activation/src/index.ts)
+
+Source: [`packages/eval/eval-app/src/index.ts:29`](../packages/eval/eval-app/src/index.ts)
+
+<a id="changanhuadsh-eval-gates-local"></a>
+
+## `@changanhua/dsh-eval-gates-local`
+
+Requires: `storageDomain`
+
+```ts config-catalog
+/** Local producer config. Callbacks are code capabilities, absent from any wire/Profile schema. */
+export interface Config {
+  /** Maximum retained decision records, checked before dispatch. */
+  readonly maxDecisions: number
+  /** Maximum complete encoded private ledger bytes. */
+  readonly maxLedgerBytes: number
+  /** Maximum milliseconds a retained decision may remain current. */
+  readonly retentionMs: number
+  /** Explicit Host-approved fixed verifier policies. */
+  readonly policies: readonly GatePolicy[]
+  /** Private capabilities supplied by trusted Host composition. */
+  readonly host: GateHost }
+
+/** Locked Host verifier policy; process/profile execution is supplied by the local owner, never a caller. */
+export interface GatePolicy {
+  /** Stable Host-approved identity. */
+  readonly id: string
+  /** Exact verifier policy reference frozen in the admitted Eval Plan. */
+  readonly verifierPlan: {
+  /** Stable Host-approved identity. */
+    readonly id: string
+    /** Immutable policy content version. */
+    readonly version: string
+    /** SHA-256 of the complete approved content. */
+    readonly digest: string }
+  /** SHA-256 of the complete pinned verifier artifact tree. */
+  readonly coreDigest: string
+  /** Host-only process launcher and pinned verifier image; no wire input may alter them. */
+  readonly launch: {
+  /** Absolute Node executable inside the pinned core tree. */
+    readonly executable: string
+    /** Absolute dsh launcher inside the pinned core tree. */
+    readonly entrypoint: string
+    /** Fixed private Profile name selected by the Host. */
+    readonly profile: string
+    /** Host-owned parent for fresh verifier worlds; never shared with a Subject. */
+    readonly homeRoot: string
+    /** Complete pinned verifier image and approved source provenance. */
+    readonly core: {
+      /** Absolute physical core directory; links and shared writable files are refused. */
+      readonly directory: string
+      /** SHA-256 of the complete approved content. */
+      readonly digest: string
+      /** Approved build provenance in the pinned image's eval-core.json. Artifact bytes remain independently hashed. */
+      readonly sourceCommit: string
+      /** Complete image inventory and byte limits. */
+      readonly imageBounds: {
+        /** Maximum files in the observed core image. */
+        readonly maxFiles: number
+        /** Maximum image bytes including inventory metadata. */
+        readonly maxBytes: number } }
+    /** Maximum milliseconds for core observation, process execution and final evidence reads. */
+    readonly timeoutMs: number
+    /** Milliseconds allowed for forced process-tree quiescence. */
+    readonly graceMs: number }
+  /** Maximum complete verifier input and Host Profile file bytes. */
+  readonly maxInputBytes: number
+  /** Maximum report and collected process-output bytes. */
+  readonly maxOutputBytes: number }
+
+/** Private callbacks supplied only by trusted Host composition. */
+export interface GateHost {
+  /** Reauthorize and capture original Host facts, never a safe projection. */
+  readonly snapshots: GateSnapshotReader
+  /** Run the fixed independent checker and return Host-observed completion. */
+  readonly verify: (input: GateVerifierInput, policy: GatePolicy, signal?: AbortSignal) => Promise<VerifierExecution>
+  /** Optional test clock; production defaults to Date.now. */
+  readonly now?: () => number }
+
+/** Host-observed completion of one separate verifier Profile world. */
+export interface VerifierExecution {
+  /** Host-generated identity of this separate verifier execution. */
+  readonly executionId: string
+  /** Actual Session id materialized by the verifier Profile. */
+  readonly sessionId: string
+  /** Parsed deterministic checker report, bound to exact retained bytes. */
+  readonly report: GateVerifierReport
+  /** SHA-256 of reportText. */
+  readonly reportDigest: string
+  /** SHA-256 of the exact rendered verifier input. */
+  readonly inputDigest: string
+  /** SHA-256 of the Host-written Profile patch. */
+  readonly profileDigest: string
+  /** Canonical content digest of the fixed checker configuration. */
+  readonly configDigest: string
+  /** Approved core source checkpoint read from the pinned build provenance. */
+  readonly verifiedCommit: string
+  /** Exact retained Host observation and world custody materials, addressed by their SHA-256. */
+  readonly observer: string
+  /** Retained Host world-custody material, distinct from a Subject lease. */
+  readonly workspace: string
+  /** Exact original report bytes decoded as UTF-8. */
+  readonly reportText: string
+  /** Whether the managed process tree was confirmed stopped. */
+  readonly quiescent: boolean }
+```
+
+Depends on: [`GateSnapshotReader`](../packages/eval/eval-gates/src/index.ts) · [`GateVerifierInput`](../packages/eval/eval-gates/src/index.ts) · [`GateVerifierReport`](../packages/eval/eval-gates/src/index.ts)
+
+Source: [`packages/eval/eval-gates-local/src/config.ts:86`](../packages/eval/eval-gates-local/src/config.ts)
+
+<a id="changanhuadsh-eval-runs-local"></a>
+
+## `@changanhua/dsh-eval-runs-local`
+
+Requires: `storageDomain` · `evalPlans` · `taskQueue` · `workspaceRegistry`
+
+```ts config-catalog
+/** Explicit deployment limits and approved execution policies. */
+export interface Config extends LedgerLimits {
+  /** Maximum cells admitted by one run. */
+  readonly maxCells: number
+  /** Maximum prepared cell work submitted together. */
+  readonly maxParallel: number
+  /** Maximum bytes in a complete safe response. */
+  readonly maxResponseBytes: number
+  /** Milliseconds for which retained evidence may authorize a fresh decision. */
+  readonly retentionMs: number
+  /** Existing Queue resource name charged by each cell. */
+  readonly resource: string
+  /** Complete Host-approved execution policies; callers select only an id. */
+  readonly policies: RunPolicy[]
+}
+
+export interface LedgerLimits {
+  /** Maximum retained coordination records. */
+  readonly maxRuns: number
+  /** Maximum encoded bytes of the complete retained ledger. */
+  readonly maxLedgerBytes: number
+  /** Maximum acknowledged private evidence bundles. */
+  readonly maxBundles: number
+  /** Maximum control intents retained for one run. */
+  readonly maxControls: number
+}
+
+/** Host-owned policy. Wire callers may select only its id, never replace execution configuration. */
+export interface RunPolicy {
+  /** Approved execution policy identifier selected by Consumers. */
+  readonly id: string
+  /** Registered Workspace bound to this execution policy. */
+  readonly workspaceId: string
+  /** Pinned isolated executor configuration; wire callers cannot replace it. */
+  readonly execution: Omit<IsolatedEvalConfig, 'receive'> }
+```
+
+Depends on: [`IsolatedEvalConfig`](../packages/eval/eval-isolated/src/index.ts)
+
+Source: [`packages/eval/eval-runs-local/src/config.ts:14`](../packages/eval/eval-runs-local/src/config.ts)
+
+<a id="changanhuadsh-eval-verifier"></a>
+
+## `@changanhua/dsh-eval-verifier`
+
+Requires: `appReady` · `appExit` · `sessions` · `sessionPersistence`
+
+```ts config-catalog
+/** A one-shot, Host-generated Profile row. Paths are never Agent input. */
+export interface Config extends VerifierFileConfig {
+  /** Host-written profile identity; never command-line input. */
+  readonly profile: string
+  /** Host-derived identity of the frozen checker configuration. */
+  readonly configDigest: string
+}
+
+/** Host-owned paths passed through a frozen one-shot Profile patch. */
+export interface VerifierFileConfig {
+  /** Host-created frozen verifier input path. */
+  readonly inputFile: string
+  /** Exclusive output path created once by the verifier. */
+  readonly outputFile: string
+  /** Maximum complete input bytes before parsing. */
+  readonly maxInputBytes: number
+  /** Maximum complete report bytes including runtime identity. */
+  readonly maxOutputBytes: number }
+```
+
+Source: [`packages/eval/eval-verifier/src/index.ts:13`](../packages/eval/eval-verifier/src/index.ts)
+
 <a id="changanhuadsh-host-work-observatory"></a>
 
 ## `@changanhua/dsh-host-work-observatory`
@@ -4610,7 +4861,10 @@ export interface Config {
 - `@changanhua/dsh-content` — abstract `Content` ([`packages/content/content/src/index.ts`](../packages/content/content/src/index.ts))
 - `@changanhua/dsh-delivery` — abstract `Delivery` ([`packages/delivery/delivery/src/index.ts`](../packages/delivery/delivery/src/index.ts))
 - `@changanhua/dsh-delivery-evidence` — abstract `DeliveryEvidence` ([`packages/delivery/delivery-evidence/src/index.ts`](../packages/delivery/delivery-evidence/src/index.ts))
+- `@changanhua/dsh-eval-activation` — abstract `EvalActivation` ([`packages/eval/eval-activation/src/index.ts`](../packages/eval/eval-activation/src/index.ts))
+- `@changanhua/dsh-eval-gates` — abstract `EvalGates` ([`packages/eval/eval-gates/src/index.ts`](../packages/eval/eval-gates/src/index.ts))
 - `@changanhua/dsh-eval-plans` — abstract `EvalPlans` ([`packages/eval/eval-plans/src/index.ts`](../packages/eval/eval-plans/src/index.ts))
+- `@changanhua/dsh-eval-runs` — abstract `EvalRuns` ([`packages/eval/eval-runs/src/index.ts`](../packages/eval/eval-runs/src/index.ts))
 - `@changanhua/dsh-initiative` — abstract `Initiative` ([`packages/initiative/initiative/src/index.ts`](../packages/initiative/initiative/src/index.ts))
 - `@changanhua/dsh-memory` — abstract `ProjectMemory` ([`packages/memory/memory/src/index.ts`](../packages/memory/memory/src/index.ts))
 - `@changanhua/dsh-planning` — abstract `Planning` ([`packages/planning/planning/src/index.ts`](../packages/planning/planning/src/index.ts))

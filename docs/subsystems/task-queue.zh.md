@@ -40,6 +40,10 @@ WorkKind 专属 Consumer 持有准入 schema：`dsh-tool-agent-run-task-queue` �
 
 `task-queue/changed` 只在完整 `ChangeSet` 持久化并 folding 后发布。
 
+## 条件式操作员控制
+
+操作员 cancel、retry 和 resolveUnknown 可携带 WorkControlPrecondition。owner 在同一存储事务中比较 status、attemptCount 和 activeAttemptId 后才变更状态，避免持久控制意图作用于后来的 Attempt。条件不匹配时拒绝，不解释成重复成功。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>

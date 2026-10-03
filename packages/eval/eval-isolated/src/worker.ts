@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import { LlmAdapter, createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { TurnEndReason } from '@deepseek-ai/dsh-session'
 import { evalContractDigest, evalPlanSchema } from '@changanhua/dsh-eval'
@@ -89,6 +89,13 @@ export function apply(ctx: Context, config: Config): void {
       return next
     }
     class BrokerAdapter extends LlmAdapter {
+      override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+        if (provider !== route.provider || model !== route.model) throw new Error('eval-worker-route-mismatch')
+        // The proxy exposes only the pinned choice; the Host adapter validates its real capability at final dispatch.
+        const effort = route.parameters.reasoningEffort
+        return Promise.resolve({ provider, id: model, name: model, defaultMaxTokens: outputBound,
+          ...(typeof effort === 'string' ? { reasoning: { efforts: [{ id: ReasoningEffortId(effort), name: effort }] } } : {}) })
+      }
       async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
         const { signal: _signal, ...request } = options
         if (!observe) throw new Error('eval-worker-observer-unavailable')
@@ -111,6 +118,9 @@ export function apply(ctx: Context, config: Config): void {
         meta: { cwd: process.cwd(), agentPreset: route.preset.id }, signal,
         setup: async (agentCtx) => { await ctx.agentPresets.mount(agentCtx, route.preset.id) },
         agentOptions: { provider: route.provider, model: route.model, maxTokens: outputBound,
+          ...(typeof route.parameters.temperature === 'number' ? { temperature: route.parameters.temperature } : {}),
+          ...(Array.isArray(route.parameters.stop) && route.parameters.stop.every(value => typeof value === 'string')
+            ? { stop: route.parameters.stop } : {}),
           ...(typeof route.parameters.reasoningEffort === 'string' ? { reasoningEffort: ReasoningEffortId(route.parameters.reasoningEffort) } : {}) } })
       const agent = handle.agent
       const cancel = () => { agent.cancel({ kind: 'parent' }) }

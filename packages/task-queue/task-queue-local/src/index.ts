@@ -9,7 +9,7 @@ import {
 import type {
   AgentWorkQueue, AttemptOutcome, BatchRequest, ChangeSet, EnqueueRequest, LiveAttempt, OperatorWorkQueue,
   PreparedWork, Receipt, ResourceClaim, UnknownResolution, VerifiedAgentAuthority, VerifiedOperatorAuthority,
-  WorkFailure, WorkHandler, ResolvedWork, WorkItem, WorkKind, WorkPolicy, WorkView,
+  WorkControlPrecondition, WorkState, WorkFailure, WorkHandler, ResolvedWork, WorkItem, WorkKind, WorkPolicy, WorkView,
 } from '@changanhua/dsh-task-queue'
 import { WorkQueueStore } from './v2-store.ts'
 
@@ -52,6 +52,12 @@ function firstWorkId(ids: readonly WorkId[]): WorkId {
 }
 
 function isAborted(signal: AbortSignal): boolean { return signal.aborted }
+function assertControlState(state: WorkState | undefined, expected: WorkControlPrecondition | undefined): void {
+  if (expected && (!state || state.status !== expected.status || state.attemptCount !== expected.attemptCount
+    || state.activeAttemptId !== expected.activeAttemptId)) {
+    throw Object.assign(new Error('task queue control observation changed'), { code: 'TASK_QUEUE_CONTROL_CONFLICT' })
+  }
+}
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000
 
 function admissionScope(authority: AdmissionAuthority): AdmissionScope {
@@ -145,11 +151,11 @@ export class LocalTaskQueue extends TaskQueue {
       enqueueBatch: request => this.enqueueBatch(authority, request),
       list: () => this.listAll(),
       get: id => this.view(id),
-      cancel: id => this.cancel(id),
-      retry: id => this.retry(id),
+      cancel: (id, expected) => this.cancel(id, expected),
+      retry: (id, expected) => this.retry(id, expected),
       pause: () => { this.paused = true },
       resume: () => { this.paused = false; void this.pump() },
-      resolveUnknown: (id, resolution) => this.resolveUnknown(id, resolution),
+      resolveUnknown: (id, resolution, expected) => this.resolveUnknown(id, resolution, expected),
       pendingAttentions: () => this.pendingAttentions(),
     }
   }
@@ -376,46 +382,58 @@ export class LocalTaskQueue extends TaskQueue {
     await this.retry(id)
   }
 
-  private async cancel(id: WorkId): Promise<void> {
+  private async cancel(id: WorkId, expected?: WorkControlPrecondition): Promise<void> {
+    const condition = expected && { ...expected }
     await this.ready
-    const state = this.store.current().statesByWorkId.get(id)
-    if (state === undefined) throw new Error(`unknown WorkItem ${id}`)
-    if (state.status === 'succeeded' || state.status === 'failed' || state.status === 'canceled') throw new Error(`cannot cancel terminal WorkItem ${id}`)
-    const now = new Date().toISOString()
-    if (state.status === 'queued') {
-      const work = this.store.current().worksById.get(id)
-      const events: Array<ChangeSet['events'][number]> = [{ type: 'cancel/requested', workId: id, at: now }, { type: 'work/canceled', workId: id, at: now }]
-      if (work?.ownerSessionId !== null && work !== undefined) events.push(this.notification(id, null, null, work.ownerSessionId, now))
-      await this.commit(events)
-      return
-    }
-    await this.commit([{ type: 'cancel/requested', workId: id, at: now }])
-    const execution = state.activeAttemptId === null ? undefined : this.executing.get(state.activeAttemptId)
+    const execution = await this.store.transaction(async () => {
+      const state = this.store.current().statesByWorkId.get(id)
+      assertControlState(state, condition)
+      if (state === undefined) throw new Error(`unknown WorkItem ${id}`)
+      if (state.status === 'succeeded' || state.status === 'failed' || state.status === 'canceled') throw new Error(`cannot cancel terminal WorkItem ${id}`)
+      const now = new Date().toISOString()
+      if (state.status === 'queued') {
+        const work = this.store.current().worksById.get(id)
+        const events: Array<ChangeSet['events'][number]> = [{ type: 'cancel/requested', workId: id, at: now }, { type: 'work/canceled', workId: id, at: now }]
+        if (work?.ownerSessionId !== null && work !== undefined) events.push(this.notification(id, null, null, work.ownerSessionId, now))
+        await this.commitInTransaction(events)
+        return undefined
+      }
+      await this.commitInTransaction([{ type: 'cancel/requested', workId: id, at: now }])
+      return state.activeAttemptId === null ? undefined : this.executing.get(state.activeAttemptId)
+    })
     execution?.controller.abort('canceled by owner')
     if (execution?.live !== null && execution?.live !== undefined) await execution.live.cancel('canceled by owner')
   }
 
-  private async retry(id: WorkId): Promise<void> {
+  private async retry(id: WorkId, expected?: WorkControlPrecondition): Promise<void> {
+    const condition = expected && { ...expected }
     await this.ready
-    const state = this.store.current().statesByWorkId.get(id)
-    if (state?.status !== 'failed') throw new Error(`manual retry requires failed WorkItem ${id}`)
-    await this.commit([{ type: 'work/manual-retry-authorized', workId: id, at: new Date().toISOString() }])
+    await this.store.transaction(async () => {
+      const state = this.store.current().statesByWorkId.get(id)
+      assertControlState(state, condition)
+      if (state?.status !== 'failed') throw new Error(`manual retry requires failed WorkItem ${id}`)
+      await this.commitInTransaction([{ type: 'work/manual-retry-authorized', workId: id, at: new Date().toISOString() }])
+    })
     void this.pump()
   }
 
-  private async resolveUnknown(id: WorkId, resolution: UnknownResolution): Promise<void> {
+  private async resolveUnknown(id: WorkId, resolution: UnknownResolution, expected?: WorkControlPrecondition): Promise<void> {
+    const condition = expected && { ...expected }
     await this.ready
-    const state = this.store.current().statesByWorkId.get(id)
-    if (state?.status !== 'unknown' || state.activeAttemptId === null) throw new Error(`unknown resolution requires active unknown WorkItem ${id}`)
-    const at = new Date().toISOString()
-    const attention = [...this.store.current().attentionsById.values()].find(value => value.workId === id && value.status === 'pending')
-    const work = this.store.current().worksById.get(id)
-    const events: Array<ChangeSet['events'][number]> = [{ type: 'unknown/resolved', attemptId: state.activeAttemptId, resolution, at }]
-    if (attention !== undefined) events.push({ type: 'attention/resolved', attentionId: attention.id, at })
-    if (resolution.kind === 'confirm-failed' && work?.ownerSessionId !== null && work !== undefined) {
-      events.push(this.notification(id, state.activeAttemptId, null, work.ownerSessionId, at))
-    }
-    await this.commit(events)
+    await this.store.transaction(async () => {
+      const state = this.store.current().statesByWorkId.get(id)
+      assertControlState(state, condition)
+      if (state?.status !== 'unknown' || state.activeAttemptId === null) throw new Error(`unknown resolution requires active unknown WorkItem ${id}`)
+      const at = new Date().toISOString()
+      const attention = [...this.store.current().attentionsById.values()].find(value => value.workId === id && value.status === 'pending')
+      const work = this.store.current().worksById.get(id)
+      const events: Array<ChangeSet['events'][number]> = [{ type: 'unknown/resolved', attemptId: state.activeAttemptId, resolution, at }]
+      if (attention !== undefined) events.push({ type: 'attention/resolved', attentionId: attention.id, at })
+      if (resolution.kind === 'confirm-failed' && work?.ownerSessionId !== null && work !== undefined) {
+        events.push(this.notification(id, state.activeAttemptId, null, work.ownerSessionId, at))
+      }
+      await this.commitInTransaction(events)
+    })
     void this.pump()
   }
 

@@ -42,6 +42,8 @@ return prepared.start(context, (cell, workspace) => ({ cell, workspace }))
 
 `output-equals` 或 `output-contains` case 执行一次 Subject。model-grader case 还要求 Host 批准的评分提示词及版本、与 Suite evaluator 匹配的 Plan route，以及精确的能力期望。Grader 获得独立可写目录和 Subject 输出的只读副本，返回 `PASS` 或 `FAIL`。确定性条件和评分必须同时通过。执行完成与该业务结果分开，且永不授予续跑权限。
 
+Plan 参数必须固定模型的有效设置，包括 Provider 会自动填入的默认 reasoning effort。worker 代理只暴露已批准的推理选项，并转发锁定参数；真实 Host adapter 仍会核验是否支持。最终派发若新增或改变未批准的参数，会在 HTTP 请求前被拒绝。
+
 证据引用在已准入 run 内可解析，直到交接确认并释放。之后由接收方负责保留材料。接收方失败时，存活的 run owner 仍提供 `resolveEvidence`。确认等待受 `stopMs` 和调用方取消约束；未完成接收不能触发重复交接、自动清理或把 unknown 结果提升为成功。取消先请求 Agent 停止并刷新 Session，再等待进程 Job；有限宽限期结束后强制终止。usage 缺失、进程退出不确定、刷新失败或清理不确定均保留证据和租约。不自动重试。
 
 <a id="understand-the-implementation"></a>
@@ -89,7 +91,7 @@ Subject 接收原始 case 提示词、已批准的 Preset 和可见 Tool/Skill �
 - 执行需要 Windows x64 AppContainer 和 Job API，且私有 runtime 与 case 工作区位于同一 DOS 卷。不支持的平台直接拒绝。
 - 信任 Host、锁定的 Harness 核心、已批准插件和操作系统。任意恶意核心改动及独立自开发认证需要另外的 verifier；Agent 自述不能认证这套基础设施。
 - Session-snapshot 条件属于现有回放 executor。附件和图片缺少跨 runtime 的材料及预算契约，因此被拒绝。任务执行目前通过已批准工具接收有边界的 Node 源码。
-- 协议和证据有有限的内存及输出边界；可写任务目录没有磁盘配额。已存在的 run 目录会被拒绝。run 恢复、长期证据存储、报告汇总、GateDecision 和 CLI/Web run 控制属于既有下游 owner。
+- 协议和证据有有限的内存及输出边界。必填 diskLimits 对可写世界、临时数据和标准输出采样；增长超限或观测不确定时先请求正常取消，再强制等待 Job 静止。采样不等于文件系统配额，不能限制单次采样间隔内的超量或保留历史的总量。恢复使用新的 Host 世界，不复用不确定目录。run 保留、汇总、决策和用户控制属于下游 owner。
 
 <a id="dev-note"></a>
 ### 开发备注

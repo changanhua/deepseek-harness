@@ -40,6 +40,10 @@ Image results contain Attachment references produced through `ctx.attachments`; 
 
 `task-queue/changed` is emitted only after a complete `ChangeSet` is durable and folded.
 
+## Conditional operator controls
+
+Operator cancel, retry and resolveUnknown may carry a WorkControlPrecondition. The owner compares status, attemptCount and activeAttemptId inside the same storage transaction before mutation so durable control intent cannot affect a later Attempt. A mismatch rejects rather than being interpreted as duplicate success.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>

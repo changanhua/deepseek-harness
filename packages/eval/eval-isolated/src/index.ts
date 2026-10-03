@@ -1,11 +1,11 @@
 /** Host-owned single-cell Eval execution, consuming Plan, Queue, RepoWorkspace and Budget authority. */
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { lstat, mkdir, realpath, writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { evalContractDigest, parseResolvedExecutionManifest } from '@changanhua/dsh-eval'
 import type { ResolvedExecutionManifest } from '@changanhua/dsh-eval'
-import type { EvalPlanAccess, ResolvedEvalPlan } from '@changanhua/dsh-eval-plans'
+import type { EvalPlanAccess, EvalPlanAdmission, ResolvedEvalPlan } from '@changanhua/dsh-eval-plans'
 import { resolveEvalWorkspace } from '@changanhua/dsh-eval-repo-workspace'
 import type { EvalWorkspaceEvidence, EvalWorkspaceLimits } from '@changanhua/dsh-eval-repo-workspace'
 import { createVerifiedOperatorAuthority } from '@changanhua/dsh-task-queue'
@@ -20,6 +20,8 @@ import { ownDirectoryCleanup } from './cleanup.ts'
 
 export type { IsolatedRuntimeConfig } from './runtime.ts'
 export { observeRuntimeTree } from './build.ts'
+export { inspectDiskUsage } from './disk.ts'
+export type { IsolatedDiskLimits, DiskUsageInspection } from './disk.ts'
 export type { RuntimeImageBounds } from './build.ts'
 export type { ExecutionEvidenceBundle, ExecutionEvidenceMaterial, ExecutionEvidenceReference } from './evidence.ts'
 
@@ -95,6 +97,29 @@ export async function admitIsolatedEval(ctx: Context, access: EvalPlanAccess, re
   requestId: string, supplied: IsolatedEvalConfig, signal?: AbortSignal): Promise<AdmittedIsolatedEval> {
   if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('eval-isolation-platform-unavailable')
   const receipt = await ctx.evalPlans.admit(access, resolved, requestId, signal)
+  return openExecutionOwner(ctx, access, receipt, resolved, supplied, false, signal)
+}
+
+/**
+ * Recover an admitted run with a fresh execution directory; old uncertain worlds remain untouched.
+ * @param ctx Trusted Host composing the original Plan and Queue owners.
+ * @param access Current authority for the run's Workspace.
+ * @param requestId Original Plan admission identity, read from the Plan owner's durable record.
+ * @param supplied Current Host execution policy; the run-control owner must compare its persisted policy digest.
+ * @param signal Recovery cancellation. Opening this owner never dispatches a cell.
+ * @returns Live executor for explicitly dispatched Queue Attempts; historical snapshots grant no new model authority.
+ */
+export async function recoverIsolatedEval(ctx: Context, access: EvalPlanAccess, requestId: string,
+  supplied: IsolatedEvalConfig, signal?: AbortSignal): Promise<AdmittedIsolatedEval> {
+  if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('eval-isolation-platform-unavailable')
+  const recovered = await ctx.evalPlans.recover(access, requestId, signal)
+  if (!recovered) throw new Error('eval-admission-not-found')
+  return openExecutionOwner(ctx, access, recovered.admission, recovered.resolved, supplied, true, signal)
+}
+
+async function openExecutionOwner(ctx: Context, access: EvalPlanAccess, receipt: EvalPlanAdmission, resolved: ResolvedEvalPlan,
+  supplied: IsolatedEvalConfig, recovering: boolean, signal?: AbortSignal): Promise<AdmittedIsolatedEval> {
+  signal?.throwIfAborted()
   const { receive, ...settings } = supplied
   const config = structuredClone(settings)
   if (typeof receive !== 'function' || !config.repositoryId) throw new Error('eval-host-invalid-config')
@@ -104,12 +129,14 @@ export async function admitIsolatedEval(ctx: Context, access: EvalPlanAccess, re
   if (!budget || resolved.plan.budget.required && resolved.plan.budget.authorizationRef.version !== '1') throw new Error('eval-execution-budget-required')
   const budgetReference: BudgetReference = budget
   const operator = ctx.taskQueue.forOperator(createVerifiedOperatorAuthority())
-  const root = join(config.runtime.root, receipt.runId)
+  const runRoot = join(config.runtime.root, receipt.runId)
   await mkdir(config.runtime.root, { recursive: true })
-  await mkdir(root)
+  await mkdir(runRoot, { recursive: recovering })
+  if ((await lstat(runRoot)).isSymbolicLink() || await realpath(runRoot) !== resolve(runRoot)) throw new Error('eval-run-root-refused')
+  const root = join(runRoot, 'hosts', randomUUID())
+  await mkdir(root, { recursive: true })
   const runtime = new IsolatedRoleRuntime(ctx, { ...config.runtime, root })
   const handoffs = new Map<string, ExecutionEvidenceHandoff>()
-  const preparations = new Map<string, Promise<PreparedIsolatedCell>>()
   const plan = resolved.plan, suite = resolved.suite
   const planRef = { id: plan.id, version: plan.version, digest: receipt.planDigest }
   const graderPolicyDigest = evalContractDigest(config.grader ?? null)
@@ -128,11 +155,13 @@ export async function admitIsolatedEval(ctx: Context, access: EvalPlanAccess, re
     const expected = bind(binding)
     if (evalContractDigest(expected) !== evalContractDigest(binding)) throw new Error('eval-cell-binding-mismatch')
     const key = evalContractDigest(expected)
-    const previous = preparations.get(key)
-    if (previous) return previous
-    const pending = (async (): Promise<PreparedIsolatedCell> => {
+    return (async (): Promise<PreparedIsolatedCell> => {
       await access.authorize()
       preparationSignal.throwIfAborted()
+      const fresh = await ctx.evalPlans.resolve(access, { id: plan.id, version: plan.version }, preparationSignal)
+      const identity = (value: ResolvedEvalPlan) => evalContractDigest({ mode: value.mode, plan: value.plan,
+        suite: value.suite, requirements: value.resolvedRequirements })
+      if (!fresh.ready || identity(fresh) !== identity(resolved)) throw new Error('eval-current-authority-unavailable')
       const evalCase = suite.cases.find(row => row.id === binding.caseId)
       const route = plan.routes.find(row => row.id === binding.routeId)
       if (!evalCase || !route) throw new Error('eval-cell-not-approved')
@@ -226,8 +255,6 @@ export async function admitIsolatedEval(ctx: Context, access: EvalPlanAccess, re
         }, output)
       } })
     })()
-    preparations.set(key, pending)
-    return pending
   }
   return Object.freeze({ runId: receipt.runId, bind, prepare,
     resolveEvidence(reference: ExecutionEvidenceReference, executionId: string, role: ExecutionEvidenceMaterial['role']) {
