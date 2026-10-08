@@ -1485,6 +1485,50 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'evalActivation',
+    summary: 'Durable, explicit bridge from one approved Eval terminal result to at most one Goal round.',
+    description: 'Durable, explicit bridge from one approved Eval terminal result to at most one Goal round.',
+    methods: [
+      {
+        signature: 'abstract activate(access: EvalActivationAccess, request: EvalActivationRequest, signal?: AbortSignal): Promise<EvalActivationView>',
+        description: 'Persist or recover one exact single-use continuation intent.',
+        parameters: [{ name: 'access', description: 'Current Host-bound actor and Workspace authorization.' }, { name: 'request', description: 'Host-derived Grant, terminal Attempt and fixed continuation message.' }, { name: 'signal', description: 'Caller cancellation; committed claims remain recoverable.' }],
+        returns: 'Durable receipt state; consumption never asserts Goal completion.',
+      },
+      {
+        signature: 'abstract get(access: EvalActivationAccess, id: string): Promise<EvalActivationView>',
+        description: 'Read a path-free continuation projection without resuming an Agent or sending a follow-up.',
+        parameters: [{ name: 'access', description: 'Current Workspace read authorization.' }, { name: 'id', description: 'Exact retained continuation identity.' }],
+        returns: 'Safe receipt without private message text or filesystem locations.',
+      },
+      {
+        signature: 'abstract reconcile(access: EvalActivationAccess, id: string, signal?: AbortSignal): Promise<EvalActivationView>',
+        description: 'Reconcile persisted intent after a restart; uncertain delivery stays needs-attention.',
+        parameters: [{ name: 'access', description: 'Current authorization for the actor that owns the claimed Grant.' }, { name: 'id', description: 'Exact existing continuation identity.' }, { name: 'signal', description: 'Cancellation of recovery; an unproven dispatch is never repeated.' }],
+        returns: 'Refreshed receipt based on exact persisted Goal message identity.',
+      },
+    ],
+  },
+  {
+    key: 'evalGates',
+    summary: 'Gate producer contract for CLI and later Activation Consumers.',
+    description: 'Gate producer contract for CLI and later Activation Consumers.',
+    methods: [
+      {
+        signature: 'abstract evaluate(access: EvalRunAccess, runId: string, policyId: string, signal?: AbortSignal): Promise<EvalGateView>',
+        description: 'Re-read original Host facts, evaluate one frozen policy idempotently, and retain the conclusion.',
+        parameters: [{ name: 'access', description: 'Current Workspace and principal authorization.' }, { name: 'runId', description: 'Existing admitted run whose original evidence is available to the Host.' }, { name: 'policyId', description: 'Host-approved fixed verifier policy.' }, { name: 'signal', description: 'Cancellation of verification; no partial pass is retained.' }],
+        returns: 'Retained decision and independently refreshed evidence validity.',
+      },
+      {
+        signature: 'abstract get(access: EvalRunAccess, id: string): Promise<EvalGateView>',
+        description: 'Read one previously retained conclusion without re-running the verifier.',
+        parameters: [{ name: 'access', description: 'Current Workspace read authorization.' }, { name: 'id', description: 'Exact retained decision identity.' }],
+        returns: 'Historical decision with current or stale validity; neither implies permission to act.',
+      },
+    ],
+  },
+  {
     key: 'evalPlans',
     summary: 'Trusted project Plan source.',
     description: 'Trusted project Plan source. This owner does not execute, grade, enqueue or attest model outcomes.',
@@ -1508,9 +1552,52 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Durable admission receipt; replay recovers the original run identity.',
       },
       {
+        signature: 'abstract recover(access: EvalPlanAccess, requestId: string, signal?: AbortSignal): Promise<RecoveredEvalPlan | null>',
+        description: 'Recover original admitted facts without requiring current Provider availability or remaining Budget.',
+        parameters: [{ name: 'access', description: 'Current read authority for the exact live Workspace and an originally allowed entrypoint.' }, { name: 'requestId', description: 'Original admission request identity in that Workspace.' }, { name: 'signal', description: 'Read cancellation; this operation performs no execution or new admission.' }],
+        returns: 'Frozen historical snapshot, or null when this Workspace has no matching admission.',
+      },
+      {
         signature: 'abstract reload(authorize: () => void | Promise<void>, signal?: AbortSignal): Promise<void>',
         description: 'Atomically publish a complete configured source generation, or retain the prior generation on error.',
         parameters: [{ name: 'authorize', description: 'Host reload authority, rechecked before publication.' }, { name: 'signal', description: 'Optional caller cancellation.' }],
+      },
+    ],
+  },
+  {
+    key: 'evalRuns',
+    summary: 'Shared run-control and report contract for CLI and future Web Consumers.',
+    description: 'Shared run-control and report contract for CLI and future Web Consumers.',
+    methods: [
+      {
+        signature: 'abstract start(access: EvalRunAccess, input: StartEvalRun, signal?: AbortSignal): Promise<EvalRunView>',
+        description: 'Admit or reconcile one exact request through the Plan owner and Queue.',
+        parameters: [{ name: 'access', description: 'Current Workspace and principal authority.' }, { name: 'input', description: 'Stable request, approved Plan selection and Host policy id.' }, { name: 'signal', description: 'Caller cancellation; committed intent remains recoverable.' }],
+        returns: 'Safe current view; repeated intent resolves the original run.',
+      },
+      {
+        signature: 'abstract get(access: EvalRunAccess, runId: string): Promise<EvalRunView>',
+        description: 'Read one run without dispatching work or requiring unspent model budget.',
+        parameters: [{ name: 'access', description: 'Current read authority.' }, { name: 'runId', description: 'Exact admitted run identity.' }],
+        returns: 'Current Queue-derived status and checked evidence availability.',
+      },
+      {
+        signature: 'abstract list(access: EvalRunAccess): Promise<readonly EvalRunView[]>',
+        description: 'List bounded run projections for one authorized Workspace.',
+        parameters: [{ name: 'access', description: 'Current Workspace read authority.' }],
+        returns: 'Views without private evidence bodies, raw Queue payloads or Host paths.',
+      },
+      {
+        signature: 'abstract evidence(access: EvalRunAccess, runId: string, cellId: string, attemptId: string): Promise<EvalEvidenceView>',
+        description: 'Verify and inspect one historical Attempt without executing or exposing private material.',
+        parameters: [{ name: 'access', description: 'Current Workspace read authority.' }, { name: 'runId', description: 'Exact admitted run identity.' }, { name: 'cellId', description: 'Exact cell identity from the run view.' }, { name: 'attemptId', description: 'Real Queue Attempt identity from that cell.' }],
+        returns: 'Evidence availability, material identities and allowlisted role/accounting facts.',
+      },
+      {
+        signature: 'abstract control(access: EvalRunAccess, input: EvalRunControl): Promise<EvalRunView>',
+        description: 'Persist an operator action and conditionally apply it to the observed Queue state.',
+        parameters: [{ name: 'access', description: 'Current operator identity and authority.' }, { name: 'input', description: 'Exact operation and expected safe-view revision.' }],
+        returns: 'Reconciled view; uncertainty is retained instead of replaying against a later Attempt.',
       },
     ],
   },
@@ -5898,6 +5985,46 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    tools?: ToolSchema[];\n}',
   },
   {
+    name: 'EvalActivationAccess',
+    declaration: 'export interface EvalActivationAccess {\n    readonly actorId: string;\n    readonly workspaceId: string;\n    authorize(): void | Promise<void>;\n}',
+  },
+  {
+    name: 'EvalActivationGrant',
+    declaration: 'export interface EvalActivationGrant {\n    readonly id: string;\n    readonly actorId: string;\n    readonly workspaceId: string;\n    readonly sessionId: string;\n    readonly goal: {\n        readonly id: string;\n        readonly revision: number;\n    };\n    readonly decisionDigest: string;\n    readonly gateId: string;\n    readonly budgetRef: {\n        readonly id: string;\n        readonly version: \'1\';\n        readonly digest: string;\n    };\n    readonly expiresAt: number;\n    readonly maxActivations: 1;\n}',
+  },
+  {
+    name: 'EvalActivationRequest',
+    declaration: 'export interface EvalActivationRequest {\n    readonly idempotencyKey: string;\n    readonly grant: EvalActivationGrant;\n    readonly work: {\n        readonly id: string;\n        readonly attemptId: string;\n        readonly terminalDigest: string;\n    };\n    readonly followup: string;\n}',
+  },
+  {
+    name: 'EvalActivationView',
+    declaration: 'export interface EvalActivationView {\n    readonly id: string;\n    readonly grantId: string;\n    readonly workId: string;\n    readonly sessionId: string;\n    readonly goal: {\n        readonly id: string;\n        readonly revision: number;\n    };\n    readonly phase: \'pending\' | \'resuming\' | \'followup-pending\' | \'consumed\' | \'blocked\' | \'needs-attention\';\n    readonly messageId: string | null;\n    readonly reason: string | null;\n}',
+  },
+  {
+    name: 'EvalCellView',
+    declaration: 'export interface EvalCellView {\n    readonly id: string;\n    readonly caseId: string;\n    readonly routeId: string;\n    readonly repeatIndex: number;\n    readonly workId: string | null;\n    readonly status: string;\n    readonly attempts: readonly {\n        readonly id: string;\n        readonly ordinal: number;\n        readonly status: string;\n    }[];\n    readonly evidence: \'none\' | \'intact\' | \'missing\' | \'expired\' | \'corrupt\';\n    readonly outcome: \'passed\' | \'failed\' | \'invalid\' | null;\n    readonly reason: string | null;\n}',
+  },
+  {
+    name: 'EvalEvidenceIdentity',
+    declaration: 'export interface EvalEvidenceIdentity {\n    readonly id: string;\n    readonly digest: string;\n}',
+  },
+  {
+    name: 'EvalEvidenceView',
+    declaration: 'export interface EvalEvidenceView {\n    readonly runId: string;\n    readonly cellId: string;\n    readonly attemptId: string;\n    readonly availability: EvalCellView[\'evidence\'];\n    readonly bundle: EvalEvidenceIdentity | null;\n    readonly receivedAt: number | null;\n    readonly expiresAt: number | null;\n    readonly materials: readonly {\n        readonly reference: EvalEvidenceIdentity;\n        readonly kind: string;\n        readonly role: \'subject\' | \'grader\';\n        readonly executionId: string;\n        readonly bytes: number;\n    }[];\n    readonly roles: readonly {\n        readonly role: \'subject\' | \'grader\';\n        readonly executionId: string;\n        readonly sessionId: string;\n        readonly verifiedCommit: string;\n        readonly buildDigest: string;\n        readonly profile: EvalEvidenceIdentity;\n        readonly elapsedMs: number;\n        readonly preset: EvalEvidenceIdentity | null;\n        readonly tools: readonly EvalEvidenceIdentity[];\n        readonly skills: readonly EvalEvidenceIdentity[];\n        readonly calls: readonly EvalModelCall[];\n    }[];\n}',
+  },
+  {
+    name: 'EvalGateDecision',
+    declaration: 'export type EvalGateDecision = z.infer<typeof evalGateDecisionSchema>;',
+  },
+  {
+    name: 'EvalGateView',
+    declaration: 'export interface EvalGateView {\n    readonly id: string;\n    readonly runId: string;\n    readonly policyId: string;\n    readonly snapshotRevision: string;\n    readonly decision: EvalGateDecision;\n    readonly validity: \'current\' | \'stale\';\n    readonly createdAt: number;\n}',
+  },
+  {
+    name: 'EvalModelCall',
+    declaration: 'export interface EvalModelCall {\n    readonly requestId: string;\n    readonly attemptId: string;\n    readonly provider: string;\n    readonly model: string;\n    readonly dispatched: boolean;\n    readonly phase: \'reserved\' | \'dispatched\' | \'settled\' | \'released\' | \'unknown\' | \'denied\';\n    readonly usage: {\n        readonly inputTokens: number;\n        readonly outputTokens: number;\n    } | null;\n}',
+  },
+  {
     name: 'EvalPlan',
     declaration: 'export type EvalPlan = z.infer<typeof evalPlanSchema>;',
   },
@@ -5920,6 +6047,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EvalPreflightCheck',
     declaration: 'export interface EvalPreflightCheck {\n    readonly subject: string;\n    readonly code: string;\n    readonly ok: boolean;\n}',
+  },
+  {
+    name: 'EvalRunAccess',
+    declaration: 'export interface EvalRunAccess extends EvalPlanAccess {\n    readonly actorId: string;\n}',
+  },
+  {
+    name: 'EvalRunControl',
+    declaration: 'export type EvalRunControl = {\n    readonly runId: string;\n    readonly operationId: string;\n    readonly expectedRevision: string;\n} & ({\n    readonly action: \'cancel\';\n} | {\n    readonly action: \'retry\';\n    readonly cellId: string;\n} | {\n    readonly action: \'resolve-unknown\';\n    readonly cellId: string;\n    readonly resolution: \'confirm-failed\' | \'authorize-retry\';\n    readonly evidence: string;\n});',
+  },
+  {
+    name: 'EvalRunView',
+    declaration: 'export interface EvalRunView {\n    readonly id: string | null;\n    readonly requestId: string;\n    readonly plan: {\n        readonly id: string;\n        readonly version: string;\n        readonly digest: string;\n    };\n    readonly revision: string;\n    readonly phase: \'submitting\' | \'queued\' | \'running\' | \'settled\' | \'canceled\' | \'needs-attention\';\n    readonly outcome: \'passed\' | \'failed\' | \'invalid\' | null;\n    readonly cells: readonly EvalCellView[];\n    readonly controls: readonly {\n        readonly operationId: string;\n        readonly actorId: string;\n        readonly action: string;\n        readonly phase: \'pending\' | \'applied\' | \'needs-attention\';\n        readonly reason: string | null;\n    }[];\n}',
   },
   {
     name: 'EvalSuite',
@@ -6703,7 +6842,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'OperatorWorkQueue',
-    declaration: 'export interface OperatorWorkQueue {\n    enqueue<K extends WorkKind>(request: EnqueueRequest<K>): Promise<WorkId>;\n    enqueueBatch<K extends WorkKind>(request: BatchRequest<K>): Promise<BatchId>;\n    list(): readonly WorkView[];\n    get(id: WorkId): WorkView;\n    cancel(id: WorkId): Promise<void>;\n    retry(id: WorkId): Promise<void>;\n    pause(): void;\n    resume(): void;\n    resolveUnknown(workId: WorkId, resolution: UnknownResolution): Promise<void>;\n    pendingAttentions(): readonly Attention[];\n}',
+    declaration: 'export interface OperatorWorkQueue {\n    enqueue<K extends WorkKind>(request: EnqueueRequest<K>): Promise<WorkId>;\n    enqueueBatch<K extends WorkKind>(request: BatchRequest<K>): Promise<BatchId>;\n    list(): readonly WorkView[];\n    get(id: WorkId): WorkView;\n    cancel(id: WorkId, expected?: WorkControlPrecondition): Promise<void>;\n    retry(id: WorkId, expected?: WorkControlPrecondition): Promise<void>;\n    pause(): void;\n    resume(): void;\n    resolveUnknown(workId: WorkId, resolution: UnknownResolution, expected?: WorkControlPrecondition): Promise<void>;\n    pendingAttentions(): readonly Attention[];\n}',
   },
   {
     name: 'OptionalSessionSeq',
@@ -6948,6 +7087,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RecordRequirementDecisionRequest',
     declaration: 'export interface RecordRequirementDecisionRequest {\n    readonly idempotencyKey: string;\n    readonly caseId: DeliveryCaseId;\n    readonly revisionId: ContractRevisionId;\n    readonly decision: RequirementDecision[\'decision\'];\n    readonly reason: string;\n    readonly actorId: string;\n    readonly decisionNonce: string;\n}',
+  },
+  {
+    name: 'RecoveredEvalPlan',
+    declaration: 'export interface RecoveredEvalPlan {\n    readonly admission: EvalPlanAdmission;\n    readonly resolved: ResolvedEvalPlan;\n}',
   },
   {
     name: 'RedactedSecret',
@@ -7958,6 +8101,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface StartContext {\n    readonly attemptId: AttemptId;\n    readonly signal: AbortSignal;\n}',
   },
   {
+    name: 'StartEvalRun',
+    declaration: 'export interface StartEvalRun {\n    readonly requestId: string;\n    readonly plan: EvalPlanSelection;\n    readonly policyId: string;\n}',
+  },
+  {
     name: 'StorageBackend',
     declaration: 'export interface StorageBackend {\n    readonly guarantees?: readonly StorageBackendGuarantee[];\n    readonly kv?: KvFacet;\n    close(): Promise<void>;\n}',
   },
@@ -8708,6 +8855,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkAttempt',
     declaration: 'export interface WorkAttempt {\n    readonly id: AttemptId;\n    readonly workId: WorkId;\n    readonly ordinal: number;\n    readonly status: AttemptStatus;\n    readonly startedAt: string;\n    readonly runningAt: string | null;\n    readonly finishedAt: string | null;\n    readonly failure: WorkFailure | null;\n}',
+  },
+  {
+    name: 'WorkControlPrecondition',
+    declaration: 'export interface WorkControlPrecondition {\n    readonly status: WorkStatus;\n    readonly attemptCount: number;\n    readonly activeAttemptId: AttemptId | null;\n}',
   },
   {
     name: 'WorkFailure',

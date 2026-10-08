@@ -87,7 +87,8 @@ export function apply(ctx){
     const corePin = { directory: core, digest: actual.digest, plugins: [{ id: 'capabilities', module: 'capabilities.mjs' }] }
     const runtime = new IsolatedRoleRuntime(ctx, { root: join(root, 'run'), core: { subject: corePin, grader: corePin },
       imageBounds: bounds, maxFrameBytes: 1024 * 1024, maxRequests: 8, executionMs: 20000, graceMs: 5000,
-      stopMs: 10000, maxResponseBytes: 8192, maxModelAttempts: 4 })
+      stopMs: 10000, maxResponseBytes: 8192, maxModelAttempts: 4,
+      diskLimits: { maxBytes: 512 * 1024 * 1024, maxEntries: 50000, sampleMs: 250 } })
     const route = { id: 'route', provider: 'fixture', model: 'fixture', parameters: { maxTokens: 64 },
       preset: { id: 'minimal', source: 'preset:system', digest: createHash('sha256').update('[]\n').digest('hex') } }
     await mkdir(subjectCwd); await mkdir(graderCwd)

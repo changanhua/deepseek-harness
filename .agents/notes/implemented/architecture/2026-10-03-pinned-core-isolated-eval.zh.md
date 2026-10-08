@@ -32,6 +32,6 @@ Agent 对工具、技能或执行成功的描述不能证明实际运行内容�
 
 ## Consequences
 
-[包契约](../../../../packages/eval/eval-isolated/README.zh.md) 要求 Windows x64、明确核心镜像、同卷工作区和已批准的任务桥接插件。任务目录没有磁盘配额。能力缺失或 OS 隔离失败直接拒绝，没有进程内兜底。核心升级需要重新批准和锁定。无密钥组合测试证明执行机制，不证明当前 Provider 质量或独立自开发认证。
+[包契约](../../../../packages/eval/eval-isolated/README.zh.md) 要求 Windows x64、明确核心镜像、同卷工作区和已批准的任务桥接插件。可写世界有采样增长限制及正常/强制取消，但没有文件系统配额，也不能保证单个采样间隔内的超量上界。能力缺失或 OS 隔离失败直接拒绝，没有进程内兜底。核心升级需要重新批准和锁定。无密钥组合测试证明执行机制，不证明当前 Provider 质量或独立自开发认证。
 
 必要证据包括真实 Profile 启动、跨角色 canary 读写拒绝、任务对核心进程及线程的访问拒绝、核心子进程创建禁止、认证重放和篡改拒绝、实际能力不匹配、Budget 拒绝时零 HTTP、正常 Session 刷新、完整 Job 静止和交接失败后保留。构建产物测试必须消费打包的 worker/preloader，而非 TypeScript emit 文件。[Producer 与 Budget 决策](2026-10-02-trusted-eval-producers-and-resource-budgets.zh.md) 仍有效，因为准入、账本和租约归属未变；本记录补充执行信任边界。

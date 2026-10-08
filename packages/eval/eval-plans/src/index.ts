@@ -1,5 +1,5 @@
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { EvalPlanAccess, EvalPlanAdmission, EvalPlanSelection, EvalPlanSummary, ResolvedEvalPlan } from './types.ts'
+import type { EvalPlanAccess, EvalPlanAdmission, EvalPlanSelection, EvalPlanSummary, ResolvedEvalPlan, RecoveredEvalPlan } from './types.ts'
 export type * from './types.ts'
 
 declare module '@deepseek-ai/cordis' { interface Context { evalPlans: EvalPlans } }
@@ -38,6 +38,14 @@ export abstract class EvalPlans extends Service {
    * @returns Durable admission receipt; replay recovers the original run identity.
    */
   abstract admit(access: EvalPlanAccess, resolved: ResolvedEvalPlan, requestId: string, signal?: AbortSignal): Promise<EvalPlanAdmission>
+  /**
+   * Recover original admitted facts without requiring current Provider availability or remaining Budget.
+   * @param access - Current read authority for the exact live Workspace and an originally allowed entrypoint.
+   * @param requestId - Original admission request identity in that Workspace.
+   * @param signal - Read cancellation; this operation performs no execution or new admission.
+   * @returns Frozen historical snapshot, or null when this Workspace has no matching admission.
+   */
+  abstract recover(access: EvalPlanAccess, requestId: string, signal?: AbortSignal): Promise<RecoveredEvalPlan | null>
   /**
    * Atomically publish a complete configured source generation, or retain the prior generation on error.
    * @param authorize - Host reload authority, rechecked before publication.

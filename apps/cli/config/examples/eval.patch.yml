@@ -1,0 +1,15 @@
+# Apply above a Profile that already mounts eval-plans-local, task-queue-local,
+# eval-runs-local, its isolated executor dependencies, and workspaceRegistry.
+# These identifiers are Profile-owned authority, never command-line input.
+# Operator guide: docs/user/guide/eval.md.
+- insert:
+    - id: eval-app
+      name: '@changanhua/dsh-eval-app'
+      config:
+        profile: eval
+        workspaceId: REPLACE_WITH_REGISTERED_WORKSPACE_ID
+        actorId: eval-operator
+        policyIds: [approved]
+        gatePolicyIds: [release]
+        maxOutputBytes: 65536
+        waitMs: 30000

@@ -27,6 +27,8 @@ kind: "package-reference"
 
 从[版本化示例](examples/minimal-v1.plan.json)和[配置指南](../../../docs/cookbook/trusted-eval-and-budget.zh.md)开始。将本实现与 Workspace Registry、私有同步 Storage Domain 一起挂载；[已验证的 Profile](tests/fixtures/profile/plans.patch.yml)包含明确的来源和容量配置。 真实调用来源要求 owner 验证的有限预算及到期时间，每条 route 必须明确设置正数 `maxTokens`。固定 Plan 只能豁免无密钥回放的预算准入。
 
+历史恢复在当前读取授权通过后返回原批准的 Plan、Suite、要求和预检快照。它不要求当前模型 Provider 可用或预算仍有余额，恢复对象也不能发起新的准入。版本 2 的准入 domain 拒绝旧存储格式，不静默升级。
+
 <a id="understand-the-implementation"></a>
 ## 理解实现
 

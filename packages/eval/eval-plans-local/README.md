@@ -27,6 +27,8 @@ Load approved project Plans without trusting a file to authorize its own credent
 
 Start from [the versioned example](examples/minimal-v1.plan.json) and the [setup guide](../../../docs/cookbook/trusted-eval-and-budget.md). Mount this provider with Workspace Registry and a private synchronous Storage Domain; the [tested Profile](tests/fixtures/profile/plans.patch.yml) contains explicit source and capacity configuration. Live sources require owner-verified finite budget authority with expiry and an explicit positive `maxTokens` on every route. A pinned Plan can exempt only keyless replay from budget admission.
 
+Historical recovery returns the original admitted Plan, Suite, requirements and preflight snapshot after current read authorization. It needs neither a current model Provider nor remaining budget, and the recovered object cannot mint a new admission. The version-2 admission domain rejects older stored formats instead of silently upgrading them.
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 

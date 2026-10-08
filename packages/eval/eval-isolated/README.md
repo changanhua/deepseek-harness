@@ -42,6 +42,8 @@ Each role's approved core directory contains `node.exe`, a complete physical `no
 
 An `output-equals` or `output-contains` case runs the Subject once. A model-grader case additionally needs Host-approved grader prompt/version, a Plan route matching the Suite evaluator and exact expected capabilities. The Grader gets its own writable directory and only a read-only copy of the Subject output; it returns `PASS` or `FAIL`. Deterministic criteria and grading must both pass. Execution completion is separate from this business outcome and never grants continuation.
 
+Plan parameters must fix effective model settings, including a provider's default reasoning effort when it materializes one. The worker proxy exposes only the approved reasoning choice and forwards the pinned controls; the real Host adapter still validates support. A final dispatch that adds or changes an unapproved parameter is refused before HTTP.
+
 Evidence references resolve within the admitted run until acknowledged transfer and release. The receiver owns retained materials thereafter. A failed receiver leaves `resolveEvidence` available on the live run owner. The acknowledgement wait uses `stopMs` and caller cancellation; a pending receiver cannot trigger redelivery, automatic cleanup or promotion of an unknown result. Cancellation first requests Agent stop and Session flush, then waits for the process Job; a finite grace period ends in forced termination. Missing usage, uncertain process exit, flush failure or uncertain cleanup preserves evidence and the lease. There is no automatic retry.
 
 <a id="understand-the-implementation"></a>
@@ -89,7 +91,7 @@ Role prompts and histories are independent. Stable Preset prefixes can retain no
 - Execution requires Windows x64 AppContainer and Job APIs, and a common DOS volume for private runtime and case workspace. Unsupported platforms fail closed.
 - The Host, pinned Harness core, approved plugins and operating system are trusted. Arbitrarily malicious core modifications and independent self-development certification need a separate verifier; Agent reports cannot certify this infrastructure.
 - Session-snapshot criteria belong to the existing replay executor. Attachments and images lack a cross-runtime material/budget contract and are rejected. Task execution currently accepts bounded Node source through approved tools.
-- Protocol and evidence have finite memory/output bounds; writable task directories do not have a disk quota. An existing run directory is refused. Run recovery, long-term evidence storage, report aggregation, GateDecision and CLI/Web run control belong to their existing downstream owners.
+- Protocol and evidence have finite memory/output bounds. Required diskLimits sample writable worlds, temporary data and stdio; excess growth or uncertain observation requests graceful cancellation and then forces Job quiescence. Sampling is not a filesystem quota and does not bound the overshoot within one interval or aggregate retained history. Recovery uses a fresh Host world without reusing uncertain directories. Run retention, aggregation, decisions and user control belong to the downstream owners.
 
 <a id="dev-note"></a>
 ### Dev Note

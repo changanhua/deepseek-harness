@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto'
 import { WindowsRoleBoundary } from './windows.ts'
 import type { WindowsRoleProcess } from './windows.ts'
 import { observeVolumeMapping } from './path-adapter.ts'
+import { DiskUsageMonitor } from './disk.ts'
+import type { IsolatedDiskLimits } from './disk.ts'
 
 /** Task output is untrusted; exit/quiescence come from the Host's Job owner. */
 export interface IsolatedTaskResult {
@@ -39,7 +41,8 @@ export async function runIsolatedTask(input: { readonly runtime: string
   readonly source: string
   readonly executionMs: number
   readonly stopMs: number
-  readonly maxOutputBytes: number }, signal: AbortSignal): Promise<TaskCustody> {
+  readonly maxOutputBytes: number
+  readonly diskLimits: IsolatedDiskLimits }, signal: AbortSignal): Promise<TaskCustody> {
   if (!Number.isSafeInteger(input.maxOutputBytes) || input.maxOutputBytes < 256) throw new Error('eval-task-output-capacity')
   signal.throwIfAborted()
   const systemRoot = process.env.SystemRoot
@@ -51,7 +54,10 @@ export async function runIsolatedTask(input: { readonly runtime: string
   const descriptors: number[] = []
   let child: WindowsRoleProcess | undefined, exitCode: number | null = null, stdout = '', stderr = ''
   let uncertain = false
-  const deadline = AbortSignal.any([signal, AbortSignal.timeout(input.executionMs)])
+  const diskAbort = new AbortController()
+  const deadline = AbortSignal.any([signal, diskAbort.signal, AbortSignal.timeout(input.executionMs)])
+  const disk = { failed: false }
+  let monitor: DiskUsageMonitor | undefined
   const stop = () => { try { child?.terminate() } catch { /* Job wait determines quiescence. */ } }
   let closed = false
   const close = () => {
@@ -82,6 +88,11 @@ export async function runIsolatedTask(input: { readonly runtime: string
     const stdio = { stdin: openSync(stdin, 'r'), stdout: openSync(join(directory, 'stdout'), 'wx'), stderr: openSync(join(directory, 'stderr'), 'wx') }
     descriptors.push(...Object.values(stdio))
     deadline.throwIfAborted()
+    monitor = await DiskUsageMonitor.start([input.cwd, directory], input.diskLimits, deadline, () => {
+      disk.failed = true
+      diskAbort.abort()
+    })
+    if (monitor.failure) throw new Error(monitor.failure)
     child = boundary.launch({ kind: 'task', executable: join(input.runtime, 'node.exe'),
       args: ['--preserve-symlinks', '--preserve-symlinks-main', '--import', pathToFileURL(join(input.runtime, 'startup.js')).href, source],
       cwd: input.cwd, env: { SystemRoot: systemRoot, LOCALAPPDATA: data, USERPROFILE: data, TEMP: data, TMP: data,
@@ -93,6 +104,7 @@ export async function runIsolatedTask(input: { readonly runtime: string
     if (exitCode !== null) {
       stdout = await readOutput(join(directory, 'stdout'), input.maxOutputBytes)
       stderr = await readOutput(join(directory, 'stderr'), input.maxOutputBytes - Buffer.byteLength(stdout))
+      if (disk.failed) { uncertain = true; stdout = ''; stderr = 'eval-task-disk-limit-exceeded' }
       close()
     }
   } catch (error) {
@@ -100,10 +112,11 @@ export async function runIsolatedTask(input: { readonly runtime: string
     stdout = ''
     if (child && exitCode === null) { stop(); try { exitCode = await child.wait(input.stopMs) } catch { /* Preserve task ownership. */ } }
     if (!child || exitCode !== null) { try { close() } catch { /* Retain custody for a later close attempt. */ } }
-    if (error instanceof Error && error.message === 'eval-task-output-capacity') stderr = 'eval-task-output-capacity'
+    if (disk.failed) stderr = 'eval-task-disk-limit-exceeded'
+    else if (error instanceof Error && error.message === 'eval-task-output-capacity') stderr = 'eval-task-output-capacity'
     else stderr = 'eval-task-execution-uncertain'
-  } finally { deadline.removeEventListener('abort', stop) }
-  const result: IsolatedTaskResult = { id, status: uncertain || exitCode === null ? 'uncertain' : deadline.aborted ? 'canceled' : 'exited',
+  } finally { deadline.removeEventListener('abort', stop); monitor?.stop() }
+  const result: IsolatedTaskResult = { id, status: disk.failed || uncertain || exitCode === null ? 'uncertain' : deadline.aborted ? 'canceled' : 'exited',
     quiescent: !child || exitCode !== null, exitCode, canceled: deadline.aborted, stdout, stderr,
     elapsedMs: Math.ceil(performance.now() - startedAt) }
   if (Buffer.byteLength(JSON.stringify(result)) > input.maxOutputBytes) {

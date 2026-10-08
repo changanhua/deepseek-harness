@@ -33,6 +33,14 @@ eval 包组支持录制回归比较和 Host 准入的隔离评估。`eval` 拥�
 | [`command-eval-plan`](command-eval-plan/README.zh.md) | 人工发现、预检与准入 |
 | [`eval-repo-workspace`](eval-repo-workspace/README.zh.md) | 已验证 commit 与 Queue Attempt 工作目录桥接 |
 | [`eval-isolated`](eval-isolated/README.zh.md) | Windows 隔离的 Subject/Grader 执行与认证证据交接 |
+| [`eval-runs`](eval-runs/README.zh.md) | 持久 run 控制契约 |
+| [`eval-runs-local`](eval-runs-local/README.zh.md) | 基于 Queue 的恢复和私有证据 |
+| [`eval-gates`](eval-gates/README.zh.md) | 独立决策及有效性契约 |
+| [`eval-gates-local`](eval-gates-local/README.zh.md) | 保留 Host 决策并启动 verifier |
+| [`eval-verifier`](eval-verifier/README.zh.md) | 固定的确定性检查器 Profile |
+| [`eval-activation`](eval-activation/README.zh.md) | 显式一次性续跑契约 |
+| [`eval-activation-local`](eval-activation-local/README.zh.md) | 持久认领 Grant 并续跑一轮 Goal |
+| [`eval-app`](eval-app/README.zh.md) | CLI 运行、决策和续跑消费者 |
 
 仓库内的 [`minimal-v1` 套件](eval-session-snapshot/suites/minimal-v1/suite.json)提供十个 Case 和二十个独立路由 fixture，作为首个可复现比较。
 

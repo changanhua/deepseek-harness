@@ -1,0 +1,55 @@
+{
+  "name": "@changanhua/dsh-eval-app",
+  "description": "Profile-owned one-shot CLI consumer for trusted Eval runs",
+  "version": "0.1.2-alpha.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/changanhua/deepseek-harness.git",
+    "directory": "packages/eval/eval-app"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "private": true,
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@deepseek-ai/dsh-cmdline": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "@changanhua/dsh-eval-runs": "workspace:^",
+    "@changanhua/dsh-eval-gates": "workspace:^",
+    "@changanhua/dsh-eval-activation": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@deepseek-ai/dsh-cmdline": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "@changanhua/dsh-eval-runs": "workspace:^",
+    "@changanhua/dsh-eval-gates": "workspace:^",
+    "@changanhua/dsh-eval-activation": "workspace:^",
+    "@changanhua/dsh-eval-verifier": "workspace:^",
+    "@deepseek-ai/dsh-agent-loop": "workspace:^",
+    "@deepseek-ai/dsh-agent-presets": "workspace:^",
+    "@deepseek-ai/dsh-skill": "workspace:^",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:^",
+    "@changanhua/dsh-eval": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^"
+  },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "zod": "^4.4.3"
+  }
+}
