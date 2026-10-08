@@ -27,6 +27,8 @@ Run each Eval cell in an isolated checkout of a verified full commit. Known comp
 
 Import `resolveEvalWorkspace` from this library in a typed Queue handler. Resolve at admission, reconstruct at preparation after restart, and call the returned `start` at the Queue side-effect boundary; the [real Queue test](tests/workspace.spec.ts) demonstrates the contract.
 
+The executor's third argument contains the actual lease's repository, verified commit, Attempt owner, checkout root and preparation digest. The checkout root remains Host-only and differs from an empty/fixture case's writable directory. Consumers can bind observed execution evidence to these facts without inventing a lease identity or taking over cleanup.
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 

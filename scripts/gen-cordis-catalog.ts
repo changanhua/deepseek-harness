@@ -259,6 +259,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
  * exemption cannot mask another declaration in that scope.
  */
 export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
+  'eval-isolated/task': 'private pinned-core worker bridge, absent from the public library face — packages/eval/eval-isolated/README.md owns the contract',
   'command/executed': 'client-face local command acknowledgment — packages/client/ui-commands/README.md owns the API',
   'connection/reset': 'client-face transport signal — packages/api/session-controller/README.md owns the API',
   'locale/change': 'client-face locale switch signal — packages/client/locale/README.md owns the API',

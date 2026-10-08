@@ -1,0 +1,48 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../eval-plans" },
+    { "path": "../eval-repo-workspace" },
+    { "path": "../../task-queue/task-queue" },
+    {
+      "path": "../../subprocess/win32-process"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../preset/agent-presets"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../skill/skill"
+    },
+    {
+      "path": "../../boot/cmdline"
+    },
+    {
+      "path": "../eval"
+    },
+    {
+      "path": "../../budget/budget"
+    },
+    {
+      "path": "../../budget/budget-llm"
+    }
+  ]
+}

@@ -30,7 +30,10 @@ test('composes budget accounting into both final dispatch paths and denies a thi
   ctx.provide('storageDomain', new DomainFacility(ctx, { backend: 'memory' }))
   await ctx.plugin(LlmRuntime)
   ctx.llm.registerAdapter(['fixture'], new Adapter())
-  await ctx.plugin(Bridge)
+  let entered = false
+  await expect(Bridge.withBudgetDispatchEvidence(ctx, 2, async () => { entered = true })).rejects.toMatchObject({ code: 'BUDGET_UNAVAILABLE' })
+  expect(entered).toBe(false)
+  const bridge = await ctx.plugin(Bridge)
   try {
     const options = { provider: 'fixture', model: 'fixture', maxTokens: 10, messages: [createUserMessage({ content: [{ type: 'text', text: 'Hello' }], source: { kind: 'user' } })] }
     expect(await collect(ctx.llm.stream(options))).toMatchObject([{ type: 'finish', reason: { failure: { code: 'BUDGET_UNAVAILABLE' } } }])
@@ -38,13 +41,28 @@ test('composes budget accounting into both final dispatch paths and denies a thi
     await ctx.plugin(LocalBudget, { maxScopes: 8, maxReservations: 32, maxLedgerBytes: 128 * 1024 })
     const scope = await ctx.budget.createScope({ id: 'root', kind: 'session', subjectId: 'session', parentId: null,
       limits: { requests: 2, inputTokens: 5000, outputTokens: 100, totalTokens: 5100, wallTimeMs: 60000 }, onExhausted: 'deny' }, () => {})
-    await ctx.budget.withScope(scope.reference, () => collect(ctx.llm.stream(options)))
+    const observed = await Bridge.withBudgetDispatchEvidence(ctx, 1, () => ctx.budget.withScope(scope.reference, async () => {
+      const allowed = await collect(ctx.llm.stream(options))
+      const overflow = await collect(ctx.llm.stream(options))
+      return { allowed, overflow }
+    }))
+    expect(observed.result.overflow).toMatchObject([{ type: 'finish', reason: { failure: { code: 'BUDGET_EVIDENCE_BOUND' } } }])
+    expect(observed.evidence).toHaveLength(1)
+    const receipt = observed.evidence[0]!
+    expect(receipt).toMatchObject({ provider: 'fixture', model: 'fixture', dispatched: true,
+      decision: { kind: 'allow' }, reservation: { phase: 'settled', usage: { inputTokens: 4, outputTokens: 3 } } })
+    expect(receipt.reservation).toEqual(ctx.budget.reservation(receipt.identity.requestId, receipt.identity.attemptId))
+    expect(calls).toBe(1)
     const prepared = await ctx.llm.prepareCall({ provider: options.provider, model: options.model, maxTokens: 10 })
     await ctx.budget.withScope(scope.reference, () => collect(prepared.stream({ ...prepared.config, messages: options.messages })))
     expect(calls).toBe(2)
-    const denied = await ctx.budget.withScope(scope.reference, () => collect(ctx.llm.stream(options)))
-    expect(denied).toMatchObject([{ type: 'finish', reason: { failure: { code: 'BUDGET_EXHAUSTED' } } }])
+    const denied = await Bridge.withBudgetDispatchEvidence(ctx, 1,
+      () => ctx.budget.withScope(scope.reference, () => collect(ctx.llm.stream(options))))
+    expect(denied.result).toMatchObject([{ type: 'finish', reason: { failure: { code: 'BUDGET_EXHAUSTED' } } }])
+    expect(denied.evidence).toMatchObject([{ dispatched: false, decision: { kind: 'deny' }, reservation: null }])
     expect(calls).toBe(2)
     expect(ctx.budget.inspect(scope.reference).consumed).toEqual({ requests: 2, inputTokens: 8, outputTokens: 6, totalTokens: 14 })
+    await bridge.dispose()
+    await expect(Bridge.withBudgetDispatchEvidence(ctx, 1, async () => {})).rejects.toMatchObject({ code: 'BUDGET_UNAVAILABLE' })
   } finally { await ctx.fiber.dispose(); await backend.close() }
 })

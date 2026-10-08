@@ -27,6 +27,8 @@ kind: "package-library"
 
 在类型化 Queue handler 中导入本库的 `resolveEvalWorkspace`。准入时解析，重启后的准备阶段重新取得证明，并在 Queue 副作用边界调用返回对象的 `start`；[真实 Queue 测试](tests/workspace.spec.ts)展示该契约。
 
+执行回调的第三个参数包含实际租约的仓库、已验证 commit、Attempt owner、检出根目录和准备摘要。检出根目录仅供 Host 使用，与 empty/fixture case 的可写目录不同。消费者据此绑定真实执行证据，不自行编造租约身份，也不接管清理。
+
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
